@@ -92,7 +92,11 @@ export interface Org {
   domain: string | null
   website: string | null
   verified_by: 'dns' | 'email' | null
-  state: 'unclaimed' | 'claimed' | 'frozen' | 'deleted'
+  // `pending` and `unclaimed` are opposites, not neighbours - see the backend's
+  // `OrgState`. An unclaimed org is real and nobody has taken it; a pending one
+  // was registered on an address the registrant typed for somebody else, and
+  // nothing about it is published or verified until that person approves a seat.
+  state: 'unclaimed' | 'pending' | 'claimed' | 'frozen' | 'deleted'
   membership_url: string | null
   donation_url: string | null
   created_at: string

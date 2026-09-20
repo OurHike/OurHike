@@ -175,13 +175,27 @@ function main() {
     let message =
       "Add your web address and one admin, and we will check them against each other.";
 
+    // THREE ANSWERS, NOT TWO, because the address you are signed in as and
+    // an address you typed for a colleague are different kinds of thing.
+    // The provider verified the first one. The second is a claim about
+    // somebody else, and taking it as proof let anybody register any
+    // organization under any domain - so the backend now accepts it and
+    // HOLDS the registration rather than refusing it, and this says so
+    // before the form is sent instead of after.
+    const yoursIsOnDomain = atDomain(account || "", domain);
     if (domain && named) {
-      if (onDomain) {
+      if (yoursIsOnDomain) {
         tone = "ok";
         message =
-          `${onDomain} of ${named} admin${named === 1 ? "" : "s"} use${onDomain === 1 && named === 1 ? "s" : ""} ` +
-          `an email at ${domain}. At least one has to — an admin on the org's own domain is how we ` +
-          "confirm the org owns the site, alongside the DNS record.";
+          `You are signed in as ${account}, which is at ${domain}. That is the check — your ` +
+          "registration goes through straight away.";
+      } else if (onDomain) {
+        tone = "held";
+        message =
+          `Nobody signed in here is at ${domain}, but you have named somebody who is. We will take ` +
+          "the registration and hold it: nothing publishes, and we do not record the domain as " +
+          "verified, until one of them signs in and takes their seat. An address you type for " +
+          "somebody else is not something we can check.";
       } else {
         tone = "blocked";
         message =

@@ -21,9 +21,12 @@ is not.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy.orm import Session
 
 from app.core.time import utc_now
+from app.models.club import OrgAdmin
 from app.models.org_role import RoleInvite
 from app.models.profile import Profile
 
@@ -63,5 +66,47 @@ def apply_pending_invites(db: Session, profile: Profile, email: str | None) -> l
     for invite in pending:
         invite.claimed_at = now
         invite.claimed_by = profile.id
+        _seat_from(db, invite, profile, now)
     db.commit()
     return pending
+
+
+def _seat_from(db: Session, invite: RoleInvite, profile: Profile, now: datetime) -> None:
+    """Turn an admin invitation into the seat it was always promising.
+
+    **An invite with no `role_id` is an admin invitation.** A roster upload's
+    two hundred invites each name the `OrgRole` they grant; the ones
+    `routers/clubs.py` writes when an organization registers or invites a
+    colleague name none, because the thing being offered is a seat at the
+    org rather than a role within it.
+
+    Nothing did this until #1547's review found it, and the consequence was
+    not a missing convenience: an organization registered through the
+    product had exactly one admin, permanently, so `is_codeowner`'s
+    three-approvals rule - which every registry change needs - could not be
+    satisfied by anybody, ever.
+
+    **The seat arrives un-approved.** Being invited is not agreeing, and
+    `approve_seat` is where the person says yes. `is_codeowner` is false for
+    the same reason: the three codeowners are a decision the organization
+    makes, not a side effect of being named on a form.
+    """
+    if invite.role_id is not None:
+        return
+    already = db.query(OrgAdmin).filter(OrgAdmin.club_id == invite.club_id, OrgAdmin.person_id == profile.id).one_or_none()
+    if already is not None:
+        return
+    db.add(
+        OrgAdmin(
+            club_id=invite.club_id,
+            person_id=profile.id,
+            title=invite.note,
+            is_codeowner=False,
+            # The organization's own date, not today's: the invitation was
+            # issued when they sent it, and a roster showing "invited today"
+            # for a message sent in March would be wrong about the one thing
+            # the column is for.
+            invited_at=invite.invited_at or now,
+            approved_at=None,
+        )
+    )

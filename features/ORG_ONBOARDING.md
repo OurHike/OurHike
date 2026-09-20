@@ -270,7 +270,7 @@ Names match the repository where the repository already has them.
 ```
 Org                         (repo: clubs — the table keeps its name, conflict 2)
   id · slug · name · domain · website · verified_by (dns|email)
-  state (unclaimed|claimed|frozen|deleted)
+  state (unclaimed|pending|claimed|frozen|deleted)
   membership_url · donation_url · created_by
   assist_opted_in_at · assist_opted_in_by · assist_opted_out_at
 ```
@@ -278,6 +278,30 @@ Org                         (repo: clubs — the table keeps its name, conflict 
 Renamed from Club **in the UI only** — not every org is a club, and the ones that are not are land
 trusts and agencies. `state` drives Claim your org: an unclaimed org has live trails and no admins,
 which is exactly what a source registered by a maintainer looks like today.
+
+**`pending` and `unclaimed` are opposites and read like neighbours, so this is the paragraph that
+separates them.** An unclaimed org is real and untaken — a maintainer wrote its row, hikers are
+walking its trails, and it is public for that reason. A pending org is one somebody registered
+where the only address at its domain was one **they typed for a colleague**. Nothing about it is
+published, it is absent from `GET /clubs`, and `verified_by` stays null, because nobody has
+verified anything: an address a registrant types is a claim about a third party, not evidence about
+the registrant.
+
+Holding it rather than refusing it is the decision, taken by poll 2026-09-20 over refusing the
+registration outright. Refusing is safe and costs a real organization whose chair uses a personal
+address — a common enough shape that the original permissive check was written for it. Holding
+keeps that chair's registration and simply declines to call it proven.
+
+**One thing releases it: somebody who holds an address at the domain approves an admin seat**
+(`routers/clubs.py`'s `approve_seat`). Both halves are load-bearing and neither alone would do. The
+provider verified that caller's address, which is what makes it evidence; approving is what makes
+it agreement. A sign-in alone would prove only the first, and an organization "confirmed" by a
+secretary who opened OurHike to look at a trail has confirmed nothing. The registrant approving
+their own seat releases nothing, because theirs is the address that failed the check.
+
+**The real organization is never locked out.** `pending` is not `claimed`, so Claim your org stays
+open to anybody holding an address at the domain, and taking it makes them a codeowner of the org
+that was sitting in their name. That recourse is why holding is enough.
 
 The three `assist_*` columns are the org's answer to "may a model read our registry" — dated and
 attributed rather than a flag, because an organization asking six months later who agreed to this
@@ -290,9 +314,18 @@ OrgAdmin                    (new: club_admins)
   approved_at · declined_at · decline_reason
 ```
 
-At least one must hold an email at the org domain. One admin registers; three approvals publish. **A
-decline pauses the org and is reversible — never a rejection**, because the common cause is a
-secretary who does not know what OurHike is rather than a board that said no.
+At least one must hold an email at the org domain — and whether that one is the *registrant* or
+somebody they named decides `claimed` against `pending`, above. One admin registers; three
+approvals publish. **A decline pauses the org and is reversible — never a rejection**, because the
+common cause is a secretary who does not know what OurHike is rather than a board that said no.
+
+The other named admins become `RoleInvite` rows rather than seats, because OurHike cannot create a
+user (#1169's problem 3). **The seat appears the first time that person opens the organization** —
+`core/org_access.py` claims any invite waiting for the address on their token, and
+`core/role_invites.py` turns an admin invitation into an un-approved `OrgAdmin` row. Nothing did
+that until #1547's review, and the consequence was not a missing convenience: an org registered
+through the product had exactly one admin, permanently, so the three-codeowner rule every registry
+change needs could not be satisfied by anybody.
 
 ```
 Park / TrailSystem          (new: org_parks)

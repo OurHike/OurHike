@@ -82,16 +82,28 @@ export function SetupHub({
 }: SetupHubProps) {
   const sections = sectionCount(registry)
   const trails = registry.reduce((total, park) => total + park.trails.length, 0)
+  // A domain on file that nobody has verified: the registration rests on an
+  // address the registrant typed for a colleague, and is waiting for that
+  // colleague. See the backend's `OrgState.pending`.
+  const held = Boolean(org.domain) && org.verified_by === null
 
   const stages = [
+    // A HELD REGISTRATION IS NOT A VERIFIED ONE, and this stage used to say
+    // it was: the branch read `verified_by === 'dns' ? ... : 'an email at
+    // the domain'`, so a null - a verification nobody performed - rendered
+    // as one that had. `verified_by` is null exactly when the only address
+    // at the domain was one the registrant typed for a colleague, which is
+    // the case this whole state exists to keep honest.
     {
       key: 'registered',
       title: 'Org registered',
-      body: org.domain
-        ? `${org.domain} verified by ${org.verified_by === 'dns' ? 'a DNS record' : 'an email at the domain'}. ${org.admins.length} admins on file${org.membership_url ? ', giving pages linked' : ''}.`
-        : 'Registered. No domain on file yet.',
-      state: 'done' as const,
-      label: 'done',
+      body: !org.domain
+        ? 'Registered. No domain on file yet.'
+        : held
+          ? `Held: nobody at ${org.domain} has confirmed this registration yet. It is waiting for one of them to sign in and take their seat — until then nothing here publishes.`
+          : `${org.domain} verified by ${org.verified_by === 'dns' ? 'a DNS record' : 'an email at the domain'}. ${org.admins.length} admins on file${org.membership_url ? ', giving pages linked' : ''}.`,
+      state: held ? ('quiet' as const) : ('done' as const),
+      label: held ? 'waiting' : 'done',
       open: null,
     },
     {

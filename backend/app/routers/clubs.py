@@ -97,7 +97,12 @@ def list_orgs(db: Session = Depends(get_db)) -> list[OrgOut]:
     because an unclaimed org is exactly what the claim flow needs to be able
     to find, and because it has live trails a hiker is already walking.
     """
-    clubs = db.query(Club).filter(Club.state != OrgState.deleted).order_by(Club.name).all()
+    # `pending` is excluded for the opposite reason to `deleted`: an
+    # organization that has not confirmed it was registered here has not
+    # agreed to be listed, and listing it puts our word behind a row a
+    # stranger typed. `unclaimed` stays - see `OrgState`, where the two are
+    # distinguished.
+    clubs = db.query(Club).filter(Club.state.notin_([OrgState.deleted, OrgState.pending])).order_by(Club.name).all()
     return [_with_admins(db, club) for club in clubs]
 
 
@@ -240,7 +245,15 @@ def register_org(
     moment they first sign in.
     """
     invited = [admin.email for admin in payload.admins]
-    if not _somebody_holds_the_domain(payload.domain, [email, *invited]):
+    # TWO DIFFERENT QUESTIONS, and running them together was the hole.
+    # The caller's address came from the provider, which verified it; every
+    # address in `invited` is one the caller TYPED into a form. Both can
+    # satisfy the form - an organization whose chair uses a personal email
+    # is a real organization and refusing it outright helps nobody - but
+    # only the first is evidence about the person registering.
+    registrant_holds_it = _somebody_holds_the_domain(payload.domain, [email])
+    somebody_named_holds_it = registrant_holds_it or _somebody_holds_the_domain(payload.domain, invited)
+    if not somebody_named_holds_it:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=(
@@ -257,11 +270,14 @@ def register_org(
         region=payload.region,
         membership_url=payload.membership_url,
         donation_url=payload.donation_url,
-        # Email at the domain is what was actually checked above. DNS is the
-        # stronger proof and is a later, deliberate step - claiming it here
-        # would be recording a verification nobody performed.
-        verified_by=VerifiedBy.email,
-        state=OrgState.claimed,
+        # Email at the domain is what was actually checked above - but only
+        # when it was the REGISTRANT'S address. A registration resting on a
+        # typed one is held at `pending` with nothing recorded as verified,
+        # because recording `verified_by=email` there would be recording a
+        # verification nobody performed. DNS is the stronger proof and is a
+        # later, deliberate step, also not claimed here.
+        verified_by=VerifiedBy.email if registrant_holds_it else None,
+        state=OrgState.claimed if registrant_holds_it else OrgState.pending,
         created_by=current_user.id,
     )
     db.add(club)
@@ -348,6 +364,7 @@ def approve_seat(
     slug: str,
     admin_id: str,
     current_user: Profile = Depends(get_current_user),
+    email: str | None = Depends(get_current_email),
     db: Session = Depends(get_db),
 ) -> OrgOut:
     """Say yes to your own seat. Nobody may approve on anybody else's behalf.
@@ -373,6 +390,21 @@ def approve_seat(
     # the endpoint's caller list, not two contradictory columns.
     seat.declined_at = None
     seat.decline_reason = None
+
+    # THE ONE THING THAT RELEASES A HELD REGISTRATION. `pending` means the
+    # only address at this org's domain was one the registrant typed for
+    # somebody else (see `register_org`), so it waits for that somebody to
+    # turn up and agree. Both halves are required and neither alone would
+    # do: the provider verified this caller's address, which is what makes
+    # it evidence, and approving is what makes it agreement. Signing in
+    # would prove only the first, and an organization confirmed by a
+    # secretary who opened OurHike to look at a trail has confirmed nothing.
+    #
+    # The registrant approving their own seat cannot release it, because
+    # their address is the one that failed the check at registration.
+    if club.state == OrgState.pending and club.domain and _somebody_holds_the_domain(club.domain, [email]):
+        club.state = OrgState.claimed
+        club.verified_by = VerifiedBy.email
     db.commit()
     return _with_admins(db, club)
 

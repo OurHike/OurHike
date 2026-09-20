@@ -18,7 +18,7 @@ import uuid
 
 import pytest
 
-from app.models.club import Club, OrgAdmin, OrgState
+from app.models.club import Club, OrgAdmin, OrgState, VerifiedBy
 from app.models.org_role import RoleInvite
 from app.models.volunteer_hours import HoursActivity, VolunteerHoursRecord
 from tests.factories import make_admin, make_org, make_profile
@@ -83,9 +83,13 @@ def test_nobody_can_register_an_organization_they_have_no_address_at(client):
     assert "ramapotrails.org" in response.json()["detail"]
 
 
-def test_an_invited_admin_on_the_domain_satisfies_the_check(client):
+def test_an_invited_admin_on_the_domain_gets_the_registration_accepted(client):
     """The caller does not personally have to hold the address - one of the
-    three does, which is what an org whose chair uses a personal email needs."""
+    three does, which is what an org whose chair uses a personal email needs.
+
+    Accepted, but see the test below for what it is accepted AS. The address
+    here is one the registrant typed, and typing it proves nothing.
+    """
     response = _register(
         client,
         str(uuid.uuid4()),
@@ -94,6 +98,59 @@ def test_an_invited_admin_on_the_domain_satisfies_the_check(client):
     )
 
     assert response.status_code == 201
+
+
+def test_a_registration_proved_only_by_a_typed_address_is_held(client, db_session):
+    """An address the registrant typed for somebody else is a CLAIM about
+    that person, not evidence about the registrant.
+
+    Taking it as evidence let anybody register any organization under any
+    domain - type one address at it, and the real org is locked out of its
+    own slug with a stranger recorded as its first admin. So the row is
+    written and the registration is accepted, but nothing about it is called
+    verified: `pending`, and `verified_by` stays null because nobody has
+    verified anything yet. `approve_seat` is where that changes.
+    """
+    response = _register(
+        client,
+        str(uuid.uuid4()),
+        email="chair@gmail.com",
+        admins=[{"email": "secretary@ramapotrails.org"}],
+    )
+
+    assert response.status_code == 201
+    assert response.json()["state"] == "pending"
+    club = db_session.query(Club).one()
+    assert club.state == OrgState.pending
+    assert club.verified_by is None
+
+
+def test_a_registration_the_registrant_can_prove_is_claimed_outright(client, db_session):
+    """The other side of the same fork, pinned so the two cannot drift: when
+    the signed-in account itself holds the domain, the provider has already
+    verified that address, and there is nothing left to wait for."""
+    _register(client, str(uuid.uuid4()), email="maria@ramapotrails.org")
+
+    club = db_session.query(Club).one()
+    assert club.state == OrgState.claimed
+    assert club.verified_by == VerifiedBy.email
+
+
+def test_a_held_organization_is_not_in_the_public_list(client, db_session):
+    """`unclaimed` is public because it is a real organization whose trails
+    hikers already walk. A held registration is not that - nobody at the
+    organization has confirmed it exists here, so publishing it would put
+    our word behind a row a stranger typed."""
+    _register(
+        client,
+        str(uuid.uuid4()),
+        email="chair@gmail.com",
+        admins=[{"email": "secretary@ramapotrails.org"}],
+    )
+
+    listed = client.get("/clubs").json()
+
+    assert [org["slug"] for org in listed] == []
 
 
 def test_a_subdomain_counts_as_the_organizations_domain(client):
@@ -213,6 +270,133 @@ def test_a_second_claim_freezes_the_organization_for_a_person(client, db_session
 
     assert response.status_code == 409
     assert db_session.query(Club).one().state == OrgState.frozen
+
+
+def test_an_invited_admin_gets_a_seat_the_first_time_they_sign_in(client, db_session):
+    """The registration's other admins become `RoleInvite` rows, because
+    OurHike cannot create a user (#1169's problem 3). Nothing turned one into
+    a seat, so an organization registered through the product had exactly one
+    admin forever - and `is_codeowner`'s three-approvals rule, which every
+    registry change needs, could never be satisfied by anybody.
+
+    The seat arrives un-approved: being invited is not agreeing, and
+    `approve_seat` is where the person says yes.
+    """
+    _register(client, str(uuid.uuid4()))
+    invitee = str(uuid.uuid4())
+
+    # No profile row for them yet - this request is their first sign-in, and
+    # `/access` is what the console calls when somebody opens an org.
+    client.get(
+        "/clubs/ramapo-trail-conference/access",
+        headers=auth_headers(invitee, email="joseph@ramapotrails.org"),
+    )
+
+    seat = db_session.query(OrgAdmin).filter(OrgAdmin.person_id == invitee).one_or_none()
+    assert seat is not None
+    assert seat.approved_at is None
+
+
+def test_an_invite_reaches_somebody_who_already_had_an_account(client, db_session):
+    """Invites were applied only on the branch that CREATED a profile row, so
+    an invite written after that person's first sign-in never applied at all
+    - which is every invite to somebody who already uses OurHike, and the
+    common case for an organization naming colleagues who are already hikers.
+    """
+    _register(client, str(uuid.uuid4()))
+    # They already have a profile: they are a hiker who signed in last year.
+    invitee = make_profile(db_session)
+
+    client.get(
+        "/clubs/ramapo-trail-conference/access",
+        headers=auth_headers(invitee.id, email="joseph@ramapotrails.org"),
+    )
+
+    seat = db_session.query(OrgAdmin).filter(OrgAdmin.person_id == invitee.id).one_or_none()
+    assert seat is not None
+
+
+def test_a_held_organization_is_released_by_somebody_who_holds_its_domain(client, db_session):
+    """What `pending` is waiting for, and the only thing that ends it.
+
+    Approving is the act that carries the meaning, rather than merely signing
+    in: signing in proves somebody controls the address, and approving proves
+    they agree this organization's registration is theirs. An org verified by
+    a sign-in alone would be verified by a secretary who opened OurHike to
+    look at a trail.
+    """
+    _register(
+        client,
+        str(uuid.uuid4()),
+        email="chair@gmail.com",
+        admins=[{"email": "secretary@ramapotrails.org"}],
+    )
+    secretary = make_profile(db_session)
+    headers = auth_headers(secretary.id, email="secretary@ramapotrails.org")
+    client.get("/clubs/ramapo-trail-conference/access", headers=headers)
+    seat = db_session.query(OrgAdmin).filter(OrgAdmin.person_id == secretary.id).one()
+
+    response = client.post(f"/clubs/ramapo-trail-conference/admins/{seat.id}/approve", headers=headers)
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    club = db_session.query(Club).one()
+    assert club.state == OrgState.claimed
+    assert club.verified_by == VerifiedBy.email
+
+
+def test_a_held_organization_stays_held_when_the_approver_is_not_on_its_domain(client, db_session):
+    """The registrant approving their own invitation to their own squat is
+    the attack this state exists to stop, so approving from off the domain
+    releases nothing - the seat is theirs, the verification is not."""
+    registrant = str(uuid.uuid4())
+    _register(
+        client,
+        registrant,
+        email="chair@gmail.com",
+        admins=[{"email": "secretary@ramapotrails.org"}],
+    )
+    seat = db_session.query(OrgAdmin).filter(OrgAdmin.person_id == registrant).one()
+
+    client.post(
+        f"/clubs/ramapo-trail-conference/admins/{seat.id}/approve",
+        headers=auth_headers(registrant, email="chair@gmail.com"),
+    )
+
+    db_session.expire_all()
+    club = db_session.query(Club).one()
+    assert club.state == OrgState.pending
+    assert club.verified_by is None
+
+
+def test_the_real_organization_can_still_claim_a_held_registration(client, db_session):
+    """The recourse, and the reason holding is enough rather than refusing.
+
+    A stranger registering somebody else's organization does not lock them
+    out of it: `pending` is not `claimed`, so the ordinary claim flow is open
+    to anybody who holds an address at the domain, and taking it makes them a
+    codeowner of the org that was sitting in their name.
+    """
+    _register(
+        client,
+        str(uuid.uuid4()),
+        email="squatter@gmail.com",
+        admins=[{"email": "secretary@ramapotrails.org"}],
+    )
+    maria = make_profile(db_session)
+
+    response = client.post(
+        "/clubs/ramapo-trail-conference/claim",
+        json={},
+        headers=auth_headers(maria.id, email="maria@ramapotrails.org"),
+    )
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    club = db_session.query(Club).one()
+    assert club.state == OrgState.claimed
+    seat = db_session.query(OrgAdmin).filter(OrgAdmin.person_id == maria.id).one()
+    assert seat.is_codeowner is True
 
 
 def test_a_claim_from_off_the_domain_leaves_a_claimed_organization_alone(client, db_session):

@@ -33,7 +33,8 @@ from dataclasses import dataclass
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_current_user
+from app.core.auth import get_current_email, get_current_user
+from app.core.role_invites import apply_pending_invites
 from app.db.session import get_db
 from app.models.club import Club, OrgAdmin, OrgState
 from app.models.maintainer_assignment import MaintainerAssignment
@@ -150,6 +151,7 @@ def club_by_slug(db: Session, slug: str) -> Club:
 def org_access(
     slug: str,
     current_user: Profile = Depends(get_current_user),
+    email: str | None = Depends(get_current_email),
     db: Session = Depends(get_db),
 ) -> OrgAccess:
     """FastAPI dependency: the caller's access at the org in the path.
@@ -159,7 +161,22 @@ def org_access(
     flag false, which is what the public org page and the claim flow both
     need, and what the console's own sidebar reads to decide which sections
     to render at all.
+
+    **WAITING INVITES ARE CLAIMED HERE, WHICH IS A WRITE ON A READ PATH.**
+    `core/auth.py` claims them when it provisions a profile, and that is the
+    only place they were claimed until #1547's review - so an invite written
+    AFTER somebody's first sign-in never applied at all, which is every
+    invite to a person who already uses OurHike. The address only exists on
+    the request's own token (`Profile` stores no email), so there is nowhere
+    to do this except a request that carries one.
+
+    Here rather than in `get_current_user`, which is the seam EVERY
+    authenticated request crosses and would pay the query. `/clubs/{slug}/
+    access` is the console's first call when somebody opens an organization,
+    so a person following an invitation lands on it, which is exactly when
+    the seat needs to exist.
     """
+    apply_pending_invites(db, current_user, email)
     return resolve_access(db, club_by_slug(db, slug), current_user.id)
 
 

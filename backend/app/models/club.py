@@ -60,9 +60,23 @@ class OrgState(str, enum.Enum):
     claiming the same org is not a race to be won, so a contested claim stops
     and waits for a person. It has no automatic exit by design - a timer here
     would resolve the contest in favour of whoever was patient.
+
+    `pending` is the newer one and the easiest to confuse with `unclaimed`.
+    They are opposites. An `unclaimed` org is REAL and nobody has taken it -
+    a maintainer wrote its row, hikers walk its trails, and it is public for
+    exactly that reason. A `pending` org is one somebody registered where
+    the only address at its domain is one THEY TYPED for a colleague: the
+    organization may not know it has been registered, so nothing about it is
+    published and `verified_by` stays null until a person who actually holds
+    an address there approves a seat (`routers/clubs.py`'s `approve_seat`).
+
+    Adding a value here needs no migration: the column renders as a bare
+    VARCHAR(20), not an enum type or a CHECK constraint - see the note on
+    `Profile.role`, which was checked against a real Postgres.
     """
 
     unclaimed = "unclaimed"
+    pending = "pending"
     claimed = "claimed"
     frozen = "frozen"
     deleted = "deleted"

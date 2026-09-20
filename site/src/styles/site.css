@@ -1056,6 +1056,20 @@ a:hover {
   background: var(--bg-sunken);
 }
 
+/* Held is neither ok nor blocked: the registration will be accepted, and
+   nothing about it is verified. Its own tone rather than reusing "ok",
+   because a green rule next to "we will hold this" is the display saying
+   one thing while the words say another. */
+.org-check[data-tone="held"] {
+  border-left-color: var(--accent-blaze-orange);
+  /* The neutral canvas the element already defaults to, stated here so the
+     next person does not "finish" this rule by copying `ok`'s sunken green.
+     Held is not ok: the registration is accepted and nothing about it is
+     verified, and a green panel under a sentence saying we will hold this
+     is the display disagreeing with the words. */
+  background: var(--bg-canvas);
+}
+
 .org-check[data-tone="blocked"] {
   border-left-color: var(--warning);
   background: var(--surface-warning);

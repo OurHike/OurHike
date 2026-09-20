@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest'
+import { createExpression, latest } from '@maplibre/maplibre-gl-style-spec'
 import {
   ATC_TAPE_IMAGE_ID,
+  ATC_UPDATE_CASING_LAYER_ID,
   ATC_UPDATE_CASING_WIDTH,
+  ATC_UPDATE_FULL_LINE_WIDTH,
   ATC_UPDATE_COLOR,
   ATC_NOTICE_CASING_RATIO,
   ATC_NOTICE_CASING_WIDTH,
@@ -23,6 +26,8 @@ import {
   CLOSURE_TAPE_CADENCE,
   CLOSURE_TAPE_IMAGE_ID,
   CLOSURE_TAPE_WIDTH,
+  closureCasingId,
+  closureTapeWidth,
   tapeRedFraction,
   closureTapeImageId,
 } from './closureStyle'
@@ -37,6 +42,30 @@ import {
 
 /** The field day sheet's paper, the ground every tape here is built on. */
 const GROUND = '#ffffff'
+
+/** A zoom-dependent paint value as MapLibre's own engine resolves it, so a
+ *  taper this file compares is a taper the map would draw rather than an
+ *  expression that merely looks equal. */
+function widthAt(value: unknown, zoom: number): number {
+  const compiled = createExpression(
+    value as never,
+    latest.paint_line['line-width'] as never,
+  )
+  if (compiled.result === 'error') throw new Error('line-width is not a valid expression')
+  return compiled.value.evaluate({ zoom }, {} as never) as number
+}
+
+/** The same, for a band's `line-pattern` step (#1598). */
+function patternAt(value: unknown, zoom: number): string {
+  const compiled = createExpression(
+    value as never,
+    latest.paint_line['line-pattern'] as never,
+  )
+  if (compiled.result === 'error') {
+    throw new Error('line-pattern is not a valid expression')
+  }
+  return String(compiled.value.evaluate({ zoom }, {} as never))
+}
 
 function paintOf(id: string): Record<string, unknown> {
   const layer = buildAtcUpdateLayers('atc-updates', GROUND).find(
@@ -95,11 +124,20 @@ function drawnWidthAt(id: string, zoom: number): number {
 const WALKING_ZOOM = 13
 
 describe('an ATC band carries the same weight as a closure', () => {
-  it('is exactly as wide', () => {
+  it('is exactly as wide, at every zoom', () => {
     // A narrower band would be the severity distinction this module refuses
-    // to draw, arrived at by drift rather than by decision.
-    expect(ATC_UPDATE_LINE_WIDTH).toBe(CLOSURE_TAPE_WIDTH)
-    expect(paintOf(ATC_UPDATE_LAYER_ID)['line-width']).toBe(CLOSURE_TAPE_WIDTH)
+    // to draw, arrived at by drift rather than by decision. Since #1598 the
+    // width is a taper, so "as wide" is a claim about the whole curve: the
+    // two are compared zoom by zoom rather than as one number, because a
+    // band that matched at z16 and lagged at z8 would make exactly that
+    // distinction at exactly the camera where it is hardest to notice.
+    expect(ATC_UPDATE_LINE_WIDTH).toEqual(closureTapeWidth())
+    for (const zoom of [0, 8, 9, 11, 13, 18]) {
+      expect(widthAt(paintOf(ATC_UPDATE_LAYER_ID)['line-width'], zoom), `z${zoom}`).toBe(
+        widthAt(closureTapeWidth(), zoom),
+      )
+    }
+    expect(ATC_UPDATE_FULL_LINE_WIDTH).toBe(CLOSURE_TAPE_WIDTH)
   })
 
   it('is the same colour', () => {
@@ -128,11 +166,18 @@ describe('an ATC band carries the same weight as a closure', () => {
 })
 
 describe('and is still distinguishable', () => {
-  it('runs a different cadence, and paints from its own image', () => {
+  it('runs a different cadence, and paints from its own image at both zoom ranges', () => {
     expect(ATC_UPDATE_TAPE_CADENCE).not.toEqual(CLOSURE_TAPE_CADENCE)
-    expect(paintOf(ATC_UPDATE_LAYER_ID)['line-pattern']).toBe(atcTapeImageId(GROUND))
     expect(ATC_TAPE_IMAGE_ID).not.toBe(CLOSURE_TAPE_IMAGE_ID)
-    expect(atcTapeImageId(GROUND)).not.toBe(closureTapeImageId(GROUND))
+    for (const range of ['near', 'overview'] as const) {
+      expect(atcTapeImageId(GROUND, range)).not.toBe(closureTapeImageId(GROUND, range))
+    }
+    // The same step at the same zoom as the closure band (#1598), so the two
+    // feeds change cadence together rather than one of them appearing to
+    // change treatment as a hiker zooms past the seam.
+    const pattern = paintOf(ATC_UPDATE_LAYER_ID)['line-pattern']
+    expect(patternAt(pattern, 8)).toBe(atcTapeImageId(GROUND, 'overview'))
+    expect(patternAt(pattern, 13)).toBe(atcTapeImageId(GROUND, 'near'))
   })
 
   it('is still tape rather than a solid line', () => {
@@ -165,13 +210,20 @@ describe('and is still distinguishable', () => {
 })
 
 describe('the layers themselves', () => {
-  it('draws the band as one layer, with no casing beneath it', () => {
-    // Same reason buildClosureLayers does: a solid casing under tape with
-    // transparent gaps shows through every one of them.
+  it('draws the band once, over the outline both feeds grew on 2026-09-20', () => {
+    // This asserted NO casing until #1598, and the reason it could is the
+    // reason it no longer has to: a casing under tape with TRANSPARENT gaps
+    // shows through every one of them, and #1575 filled the gaps with the
+    // sheet's paper. What is held now is that the ATC band has exactly the
+    // closure band's shape - one band over one outline - because one mark
+    // for "do not walk this" means neither feed grows an edge alone.
     const ids = buildAtcUpdateLayers('atc-updates', GROUND).map((layer) => layer.id)
 
     expect(ids.filter((id) => id === ATC_UPDATE_LAYER_ID)).toHaveLength(1)
-    expect(ids.some((id) => id.includes('casing'))).toBe(false)
+    expect(ids.indexOf(ATC_UPDATE_CASING_LAYER_ID)).toBeLessThan(
+      ids.indexOf(ATC_UPDATE_LAYER_ID),
+    )
+    expect(ATC_UPDATE_CASING_LAYER_ID).toBe(closureCasingId(ATC_UPDATE_LAYER_ID))
   })
 
   it('binds them all to the source it was given', () => {
@@ -195,7 +247,7 @@ describe('a point notice', () => {
     // and that made the ATC's own word about the trail the smallest mark on a
     // map full of 38px waypoint pins. src/test/atcAlertProminence.test.ts is
     // where that comparison is actually held, against the pins themselves.
-    expect(ATC_UPDATE_POINT_DRAWN_WIDTH).toBeGreaterThan(ATC_UPDATE_LINE_WIDTH)
+    expect(ATC_UPDATE_POINT_DRAWN_WIDTH).toBeGreaterThan(ATC_UPDATE_FULL_LINE_WIDTH)
     expect(drawnWidthAt(ATC_UPDATE_POINT_LAYER_ID, WALKING_ZOOM)).toBe(
       ATC_UPDATE_POINT_DRAWN_WIDTH,
     )
@@ -222,7 +274,7 @@ describe('a point notice', () => {
     const atSeam = drawnWidthAt(ATC_UPDATE_POINT_LAYER_ID, ATC_UPDATE_POINT_MIN_ZOOM)
 
     expect(drawnWidthAt(ATC_UPDATE_POINT_LAYER_ID, 0)).toBe(atSeam)
-    expect(atSeam).toBeGreaterThan(ATC_UPDATE_LINE_WIDTH)
+    expect(atSeam).toBeGreaterThan(ATC_UPDATE_FULL_LINE_WIDTH)
   })
 
   it('stops growing once everything else has', () => {
@@ -282,11 +334,13 @@ describe('a point notice', () => {
     expect(layers.map((layer) => (layer as { source: string }).source)).toEqual([
       'atc-updates',
       'atc-updates',
+      'atc-updates',
     ])
   })
 
-  it('is drawn last, over both bands', () => {
+  it('is drawn last, over the band and its outline', () => {
     expect(buildAtcUpdateLayers('atc-updates', GROUND).map((layer) => layer.id)).toEqual([
+      ATC_UPDATE_CASING_LAYER_ID,
       ATC_UPDATE_LAYER_ID,
       ATC_UPDATE_POINT_LAYER_ID,
     ])
@@ -322,10 +376,13 @@ describe('the mark geometry (#1071, and the triangle since 2026-09-10)', () => {
     // because the next pass to reach for "make it louder" will reach here.
     const ids = buildAtcUpdateLayers('atc-updates', GROUND).map((layer) => layer.id)
 
-    // Two, not the three this asserted when it was written: the casing line
-    // under the band went the same way and for the same reason, once the band
-    // became tape with transparent gaps for a casing to show through.
-    expect(ids).toHaveLength(2)
+    // Three: the outline, the band and the point. It was three when this was
+    // written, dropped to two when the band became tape with transparent gaps
+    // for a casing to show through, and is three again since #1575 made the
+    // gaps opaque and #1598 asked for an edge - a different layer from the
+    // glow, and the reason this test names the glow rather than a count
+    // alone.
+    expect(ids).toHaveLength(3)
     expect(ids.some((id) => id.includes('halo'))).toBe(false)
     for (const layer of buildAtcUpdateLayers('atc-updates', GROUND)) {
       expect(

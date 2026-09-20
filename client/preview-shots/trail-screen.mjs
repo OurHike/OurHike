@@ -72,13 +72,16 @@
 // state this frame has always shown; map-plate-folded.mjs is the same screen
 // one pan later.
 // AMENDED 2026-09-18 (#1588): under the default the lines here are the A.T.
-// and the Long Path solid and every other trail a light dashed red - the
+// and the Long Path solid and every other trail thinner and dashed - the
 // maintainer's pick from mock-ups after #1577's first frames drew every
-// trail solid. This recipe is the standing opening frame, so it is
-// photographed on every pull request; the caption below is what to check
-// it against now.
+// trail solid. AMENDED AGAIN 2026-09-20 (#1597): the dashed lines were a
+// light red until then, 45% of the A.T.'s over the paper, and the
+// maintainer read that as pink - so every line in this frame is now the
+// one red and only the width and the dash separate them. This recipe is
+// the standing opening frame, so it is photographed on every pull request;
+// the caption below is what to check it against now.
 export const caption =
-  'The opening map — trail lines only below the seam (#1292), nothing taken (#1306), blaze colours off (#1575, the shipped default): since #1588 the A.T. and the Long Path are each a plain solid red line at one fine weight, badged, and the other organizations’ trails a lighter dashed red around the A.T.’s New York miles; no waypoints, no casing on anything, and the two badges naming the two trails, placed at this camera since the review of #1374'
+  'The opening map — trail lines only below the seam (#1292), nothing taken (#1306), blaze colours off (#1575, the shipped default): since #1588 the A.T. and the Long Path are each a plain solid red line at one fine weight, badged, and the other organizations’ trails a thinner dashed line around the A.T.’s New York miles — in the same red since #1597 took the tint off them, so width and dash are the whole difference; no waypoints, no casing on anything, and the two badges naming the two trails, placed at this camera since the review of #1374'
 export const alt =
   'The whole-corridor opening view: the A.T. as a single fine solid red line from Georgia to Maine over the basemap, the Long Path a second one up the Hudson valley, each with a paper badge naming it, and the other organizations’ trails as fainter dashed red threads around the A.T.’s New York miles, with no pins'
 

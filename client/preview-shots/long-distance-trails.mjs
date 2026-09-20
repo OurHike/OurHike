@@ -6,7 +6,9 @@
 // WHAT THIS FRAME SHOWS. The Long Path from the George Washington Bridge to
 // the Helderbergs and the A.T. from the Delaware Water Gap into New England,
 // each a plain solid red line at one fine weight with its badge, over every
-// other organization's trails as a lighter dashed red - the maintainer's
+// other organization's trails as a thinner dashed line in that same red
+// (#1597 took the 45% tint off those on 2026-09-20; before that they were
+// a lighter dashed red) - the maintainer's
 // pick, 2026-09-18, from two sheets of mock-ups rendered off this release's
 // own lines: "light dashed red" for everything without a pill, and for the
 // two badged trails "solid, no casing" ("the at and long path looks too

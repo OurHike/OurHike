@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  ATC_UPDATE_CASING_LAYER_ID,
   ATC_UPDATE_LAYER_ID,
   ATC_UPDATE_POINT_LAYER_ID,
   atcTapeImageId,
@@ -79,12 +80,10 @@ import {
   sketchLineColor,
   plainRedActive,
   plainLineColor,
-  contextTrailColor,
   contextDashExpression,
   blazeDashArray,
   blazeWidthExpressionFor,
   casingVisibility,
-  CONTEXT_TRAIL_TINT,
   CONTEXT_TRAIL_WIDTH_SCALE,
   CONTEXT_TRAIL_DASH,
   SOLID_DASH,
@@ -116,6 +115,7 @@ import { CLOSURE_SOURCE_ID } from './closureLayers'
 import { WARNING_LAYER_ID, WARNING_SOURCE_ID } from './warningLayers'
 import {
   CLOSURE_TAPE_IMAGE_ID,
+  closureCasingId,
   closureTapeImageId,
   CLOSURE_LAYER_ID,
   LONG_TERM_CLOSED_FILTER,
@@ -235,6 +235,21 @@ function widthFor(
 /** A paint property of one layer, evaluated by MapLibre's own engine for
  *  one feature - the way the renderer will, rather than by reading the
  *  array back. `spec` is the property's entry in the style spec. */
+/** A tape layer's `line-pattern` at one zoom, resolved by MapLibre's own
+ *  engine - the band names two images and steps between them at the seam
+ *  since #1598, so a test that compared the property to an id would be
+ *  asking the wrong question. */
+function tapeAt(paint: Record<string, unknown>, zoom: number): string {
+  const compiled = createExpression(
+    paint['line-pattern'] as never,
+    latest.paint_line['line-pattern'] as never,
+  )
+  if (compiled.result === 'error') {
+    throw new Error('line-pattern is not a valid expression')
+  }
+  return String(compiled.value.evaluate({ zoom }, {} as never))
+}
+
 function paintFor(
   built: ReturnType<typeof buildMapStyle>,
   layerId: string,
@@ -286,7 +301,12 @@ function sortKeyFor(layerId: string, source: string): number {
  * are drawn, do not reach it. Its own rules are lib/closureStyle.ts's and are
  * tested there.
  */
-const CLOSURE_OVERLAY_LAYER_IDS: readonly string[] = [LONG_TERM_CLOSURE_LAYER_ID]
+const CLOSURE_OVERLAY_LAYER_IDS: readonly string[] = [
+  LONG_TERM_CLOSURE_LAYER_ID,
+  // And its outline since #1598, which draws from the same source and is a
+  // barrier rather than a trail line for exactly the same reason the band is.
+  closureCasingId(LONG_TERM_CLOSURE_LAYER_ID),
+]
 
 /** Every trail layer bound to the trail source - casing and blaze alike. */
 function trailLayerIds(): string[] {
@@ -436,9 +456,48 @@ describe('buildMapStyle', () => {
     const band = layer(LONG_TERM_CLOSURE_LAYER_ID).paint as Record<string, unknown>
 
     // The tape on the paper of the sheet this style was built for: the field
-    // day sheet, which is what a build with no appearance draws (#1575).
-    expect(band['line-pattern']).toBe(closureTapeImageId(mapBackdrop({ theme: 'light' })))
-    expect(String(band['line-pattern']).startsWith(CLOSURE_TAPE_IMAGE_ID)).toBe(true)
+    // day sheet, which is what a build with no appearance draws (#1575). At
+    // both of the cadences the band steps between since #1598, because a
+    // texture that survives only above the seam is not a texture at the
+    // camera this map opens on.
+    const paper = mapBackdrop({ theme: 'light' })
+    expect(tapeAt(band, 8)).toBe(closureTapeImageId(paper, 'overview'))
+    expect(tapeAt(band, 13)).toBe(closureTapeImageId(paper, 'near'))
+    expect(tapeAt(band, 13).startsWith(CLOSURE_TAPE_IMAGE_ID)).toBe(true)
+  })
+
+  it('puts an outline under every closure band in the style, and only under those', () => {
+    // ONE TREATMENT ACROSS FOUR SOURCES (#1598), as a property of the built
+    // style rather than four assertions that currently agree: every band
+    // lib/closureStyle.ts's buildClosureLayers produces has its outline
+    // immediately beneath it, whichever feed it draws. A fifth closure
+    // source added without one would fail here, which is the whole reason
+    // this is a sweep and not a list.
+    const ids = style().layers.map((l) => l.id)
+
+    for (const bandId of CLOSURE_TAPE_LAYER_IDS) {
+      const band = ids.indexOf(bandId)
+      expect(band, bandId).toBeGreaterThan(-1)
+      expect(ids[band - 1], bandId).toBe(closureCasingId(bandId))
+    }
+    // And nothing else in the style is named like one, so the sweep above
+    // is over the whole set rather than over the four it happens to know.
+    const casings = ids.filter((id) => id.endsWith('-casing') && id.includes('closure'))
+    expect([...casings].sort()).toEqual(
+      [...CLOSURE_TAPE_LAYER_IDS.map(closureCasingId)].sort(),
+    )
+  })
+
+  it('keeps the overview closure’s outline capped at the seam with the band it edges', () => {
+    // The network overview's band stops at POI_PIN_MIN_ZOOM, where the
+    // nearby network's own tape takes over. An outline that outlived its
+    // band would draw a dark line along a closed trail with no tape on it,
+    // which reads as a trail rather than a barrier - the one thing a
+    // closure may never look like.
+    const overviewCasing = layer(closureCasingId(NETWORK_OVERVIEW_CLOSURE_LAYER_ID))
+
+    expect(overviewCasing.maxzoom).toBe(POI_PIN_MIN_ZOOM)
+    expect(overviewCasing.maxzoom).toBe(layer(NETWORK_OVERVIEW_CLOSURE_LAYER_ID).maxzoom)
   })
 
   it('draws the long-term closure with exactly the temporary closure’s treatment', () => {
@@ -2452,13 +2511,13 @@ describe('one red line for every trail while blaze colours are off (#1575)', () 
     expect(paintsBlazeHues(OFF)).toBe(false)
   })
 
-  it('blazeLineColor answers the default’s red on every sheet, cased or not, while the hues are off', () => {
+  it('blazeLineColor answers PLAIN_TRAIL_COLOR on every sheet, cased or not, while the hues are off', () => {
     // Cased or not: the near-white swap exists because a white line has no
     // edge on white paper, and the red has its own edge on both sheets
     // (lib/blaze.ts's contrast figures), so the sketches take the same
-    // answer as the lines. Since #1588 that answer is per feature - the
-    // red on a through-route, its tint on the rest (plainLineColor) - and
-    // still one expression for every layer.
+    // answer as the lines. One flat colour rather than the `case` #1588
+    // needed for the context tint: #1597 took the tint off, so a park's
+    // trail and the A.T. are the same red and differ by width and dash.
     for (const cased of [true, false]) {
       for (const appearance of [
         OFF,
@@ -2467,12 +2526,7 @@ describe('one red line for every trail while blaze colours are off (#1575)', () 
         { mapStyle: 'parchment', blazeColorsShown: false } as const,
       ]) {
         expect(blazeLineColor(appearance, cased)).toEqual(plainLineColor(appearance))
-        expect(blazeLineColor(appearance, cased)).toEqual([
-          'case',
-          THROUGH_ROUTE_SOURCE_CONDITION,
-          PLAIN_TRAIL_COLOR,
-          contextTrailColor(appearance),
-        ])
+        expect(blazeLineColor(appearance, cased)).toBe(PLAIN_TRAIL_COLOR)
       }
     }
   })
@@ -2500,15 +2554,14 @@ describe('one red line for every trail while blaze colours are off (#1575)', () 
 
     for (const id of BLAZE_LINE_LAYER_IDS) {
       expect(paintOf(id)['line-color'], id).toEqual(plainLineColor({ theme: 'light' }))
-      // Through the engine: the A.T.'s feature the red, a park's its tint.
-      expect(
-        paintFor(built, id, 'line-color', colorSpec, { source: 'centerline' }),
-        id,
-      ).toBe(PLAIN_TRAIL_COLOR)
-      expect(
-        paintFor(built, id, 'line-color', colorSpec, { source: 'oprhp_trails' }),
-        id,
-      ).toBe(contextTrailColor({ theme: 'light' }))
+      // Through the engine: the A.T.'s feature and a park's take the same
+      // red, which is what #1597 asked for - "the same color red as the AT".
+      for (const source of ['centerline', 'oprhp_trails']) {
+        expect(
+          paintFor(built, id, 'line-color', colorSpec, { source }),
+          `${id} / ${source}`,
+        ).toBe(PLAIN_TRAIL_COLOR)
+      }
     }
     expect(validateStyleMin(built, latest)).toEqual([])
   })
@@ -2667,17 +2720,21 @@ describe('the default sheet: light dashed context trails, plain solid through-ro
     ).toBe(false)
   })
 
-  it('tints the context trails’ red towards the sheet’s own paper, and names the three numbers', () => {
-    // 45% of the red over white: each channel 0.45 of the red's plus 0.55
-    // of the paper's, which is what the mock-up drew.
-    expect(CONTEXT_TRAIL_TINT).toBe(0.45)
-    expect(contextTrailColor({ theme: 'light' })).toBe('#dca39a')
-    // Over night_hike's ink the same share of red is a dark red, and on
-    // parchment a warmer tint than on white: the paper is in the hex.
-    expect(contextTrailColor({ theme: 'dark' })).toBe('#572217')
-    expect(contextTrailColor({ mapStyle: 'parchment' })).not.toBe(
-      contextTrailColor({ theme: 'light' }),
-    )
+  it('gives a context trail the A.T.’s own red on every sheet, and leaves the width and the dash to separate them', () => {
+    // #1597. The tint that used to sit here made a context line `#dca39a`
+    // on the field day sheet's white - the pink the maintainer read off a
+    // Hudson Highlands frame, 2026-09-20. The colour channel now says
+    // nothing at all about which trail a line is, on any sheet, which is
+    // why the other two are asserted in the same test: they are the whole
+    // distinction now, and a change that quietly dropped one of them would
+    // leave the A.T. and a park's trails indistinguishable.
+    for (const appearance of [
+      { theme: 'light' } as const,
+      { theme: 'dark' } as const,
+      { mapStyle: 'parchment' } as const,
+    ]) {
+      expect(plainLineColor(appearance)).toBe(PLAIN_TRAIL_COLOR)
+    }
     expect(CONTEXT_TRAIL_WIDTH_SCALE).toBe(0.8)
     expect(CONTEXT_TRAIL_DASH).toEqual([3, 2.5])
     expect(SOLID_DASH).toEqual([1, 0])
@@ -2801,17 +2858,24 @@ describe('the barrier tape lies on the sheet’s paper (#1575, option E)', () =>
     const ground = closureTapeGround({ theme: 'dark' })
 
     for (const id of CLOSURE_TAPE_LAYER_IDS) {
-      expect(paintOf(night, id)['line-pattern'], id).toBe(closureTapeImageId(ground))
+      for (const [zoom, range] of [
+        [8, 'overview'],
+        [13, 'near'],
+      ] as const) {
+        expect(tapeAt(paintOf(night, id), zoom), `${id} z${zoom}`).toBe(
+          closureTapeImageId(ground, range),
+        )
+      }
     }
-    expect(paintOf(night, ATC_UPDATE_LAYER_ID)['line-pattern']).toBe(
-      atcTapeImageId(ground),
+    expect(tapeAt(paintOf(night, ATC_UPDATE_LAYER_ID), 13)).toBe(
+      atcTapeImageId(ground, 'near'),
     )
     expect(ground).toBe(MAP_BACKDROP.light)
     expect(ground).not.toBe(mapBackdrop({ theme: 'dark' }))
     // And parchment's tape is on parchment: the day sheets keep their own.
     const parchment = buildMapStyle({ ...LIVE, mapStyle: 'parchment' })
-    expect(paintOf(parchment, CLOSURE_LAYER_ID)['line-pattern']).toBe(
-      closureTapeImageId(mapBackdrop({ mapStyle: 'parchment' })),
+    expect(tapeAt(paintOf(parchment, CLOSURE_LAYER_ID), 13)).toBe(
+      closureTapeImageId(mapBackdrop({ mapStyle: 'parchment' }), 'near'),
     )
   })
 
@@ -2831,14 +2895,26 @@ describe('the barrier tape lies on the sheet’s paper (#1575, option E)', () =>
     ]) {
       attachMapAppearance(m as never, appearance)
       const ground = closureTapeGround(appearance)
+      // The whole step is rewritten, not one id: a sheet change that wrote a
+      // bare image id would flatten the step and leave the band drawing the
+      // navigation tape at the opening camera (#1598).
       for (const id of CLOSURE_TAPE_LAYER_IDS) {
-        expect(m.paintProperties.get(`${id}/line-pattern`), id).toBe(
-          closureTapeImageId(ground),
+        const written = m.paintProperties.get(`${id}/line-pattern`)
+        expect(tapeAt({ 'line-pattern': written }, 8), id).toBe(
+          closureTapeImageId(ground, 'overview'),
+        )
+        expect(tapeAt({ 'line-pattern': written }, 13), id).toBe(
+          closureTapeImageId(ground, 'near'),
         )
       }
-      expect(m.paintProperties.get(`${ATC_UPDATE_LAYER_ID}/line-pattern`)).toBe(
-        atcTapeImageId(ground),
-      )
+      expect(
+        tapeAt(
+          {
+            'line-pattern': m.paintProperties.get(`${ATC_UPDATE_LAYER_ID}/line-pattern`),
+          },
+          13,
+        ),
+      ).toBe(atcTapeImageId(ground, 'near'))
     }
     expect(m.styles).toEqual([])
   })
@@ -2856,7 +2932,11 @@ describe("the hiker's mark, over everything (#1581)", () => {
     const mark = ids.indexOf(POSITION_LAYER_ID)
 
     expect(ids[mark - 1]).toBe(POSITION_ACCURACY_LAYER_ID)
-    expect(ids.slice(mark + 1)).toEqual([ATC_UPDATE_LAYER_ID, ATC_UPDATE_POINT_LAYER_ID])
+    expect(ids.slice(mark + 1)).toEqual([
+      ATC_UPDATE_CASING_LAYER_ID,
+      ATC_UPDATE_LAYER_ID,
+      ATC_UPDATE_POINT_LAYER_ID,
+    ])
     expect(mark).toBeGreaterThan(ids.indexOf(WARNING_LAYER_ID))
   })
 

@@ -59,9 +59,16 @@ import {
   CLOSURE_CASING_COLOR,
   CLOSURE_CASING_WIDTH,
   CLOSURE_COLOR,
+  CLOSURE_OUTLINE_WIDTH,
+  CLOSURE_STRIPE_EDGE,
   CLOSURE_TAPE_CADENCE,
+  CLOSURE_TAPE_OVERVIEW_SCALE,
   CLOSURE_TAPE_WIDTH,
+  closureCasingId,
+  closureTapeWidth,
+  tapePattern,
   type TapeCadence,
+  type TapeRange,
 } from './closureStyle'
 
 export const ATC_UPDATE_LAYER_ID = 'atc-update-band'
@@ -71,11 +78,17 @@ export const ATC_UPDATE_LAYER_ID = 'atc-update-band'
  *  the two feeds, and nothing about hue or weight may. */
 export const ATC_TAPE_IMAGE_ID = 'atc-update-tape'
 
-/** The ATC tape drawn on `ground`, the sheet's paper - the same rule and
- *  the same reason as lib/closureStyle.ts's closureTapeImageId (#1575). */
-export function atcTapeImageId(ground: string): string {
-  return `${ATC_TAPE_IMAGE_ID}-${ground.replace('#', '').toLowerCase()}`
+/** The ATC tape drawn on `ground`, the sheet's paper, at `range`'s cadence -
+ *  the same rule and the same reason as lib/closureStyle.ts's
+ *  closureTapeImageId (#1575, #1598). */
+export function atcTapeImageId(ground: string, range: TapeRange = 'near'): string {
+  const stem = range === 'near' ? ATC_TAPE_IMAGE_ID : `${ATC_TAPE_IMAGE_ID}-overview`
+  return `${stem}-${ground.replace('#', '').toLowerCase()}`
 }
+
+/** The band's outline, under the tape (#1598). Named through
+ *  closureCasingId so the two feeds' edges cannot be named differently. */
+export const ATC_UPDATE_CASING_LAYER_ID = closureCasingId(ATC_UPDATE_LAYER_ID)
 export const ATC_UPDATE_POINT_LAYER_ID = 'atc-update-point'
 
 /**
@@ -323,11 +336,39 @@ export const ATC_UPDATE_TAPE_CADENCE: TapeCadence = {
   pitch: CLOSURE_TAPE_CADENCE.pitch * ATC_UPDATE_TAPE_SCALE,
 }
 
+/** The ATC tape at and below the seam: this file's doubling applied to the
+ *  closure's overview cadence, so the ATC band steps where the closure band
+ *  steps and stays twice its scale on both sides of the step (#1598). */
+export const ATC_UPDATE_TAPE_OVERVIEW_CADENCE: TapeCadence = {
+  stripe: ATC_UPDATE_TAPE_CADENCE.stripe * CLOSURE_TAPE_OVERVIEW_SCALE,
+  pitch: ATC_UPDATE_TAPE_CADENCE.pitch * CLOSURE_TAPE_OVERVIEW_SCALE,
+}
+
+/**
+ * The ATC overview tape's stripe edge (#1598).
+ *
+ * The closure's own CLOSURE_STRIPE_EDGE, unscaled, which is what this file's
+ * doubled tape already uses at the near cadence. At half of a DOUBLED pitch
+ * the stripes are still 12 px apart with 5 px of stripe between the edges,
+ * so nothing merges - the merging closureStyle.ts's
+ * CLOSURE_TAPE_OVERVIEW_EDGE computes is a property of the closure's tighter
+ * cadence, not of halving as such.
+ */
+export const ATC_UPDATE_TAPE_OVERVIEW_EDGE = CLOSURE_STRIPE_EDGE
+
 /** Re-exported so a test can hold the equality rather than the numbers, and
  *  so the coupling to lib/closureStyle.ts is visible from this file. An ATC
  *  band that quietly drifted narrower than a closure band would be exactly
- *  the severity distinction this module refuses to draw. */
-export const ATC_UPDATE_LINE_WIDTH = CLOSURE_TAPE_WIDTH
+ *  the severity distinction this module refuses to draw. Since #1598 the
+ *  width is a taper rather than a number, and the equality is the same
+ *  claim: both feeds grow with the zoom on one schedule. */
+export const ATC_UPDATE_LINE_WIDTH = closureTapeWidth()
+
+/** The full weight at the top of that taper - the number
+ *  ATC_UPDATE_LINE_WIDTH used to be, kept because
+ *  atcUpdateStyle.test.ts compares this band's weight against a blaze's and
+ *  against the closure's, and a comparison needs a number. */
+export const ATC_UPDATE_FULL_LINE_WIDTH = CLOSURE_TAPE_WIDTH
 /** The old band casing, which nothing paints with now - see the constant's own
  *  note in lib/closureStyle.ts. Kept re-exported because ATC_NOTICE_CASING_WIDTH
  *  is asserted lighter than it, and a comparison needs both sides. */
@@ -342,11 +383,28 @@ export function buildAtcUpdateLayers(
   ground: string,
 ): LayerSpecification[] {
   return [
-    // ONE band layer, and no casing beneath it - see buildClosureLayers, which
-    // makes the same shape for the same reason. A solid casing under tape
-    // showed through every gap while the gaps were transparent, which is the
-    // defect both feeds stopped having on 2026-08-27; since #1575 the gaps
-    // hold the sheet's paper, baked into the image beside the edges.
+    // The band's outline, first so it is underneath - see buildClosureLayers,
+    // which makes the same pair for the same reason and whose header has the
+    // argument. Both feeds got one on 2026-09-20 (#1598): an edge is what is
+    // left to recognise at a zoom where a texture cannot be resolved, and
+    // ONE mark for "do not walk this" means the ATC's band grows an edge the
+    // day the closure's does.
+    {
+      id: ATC_UPDATE_CASING_LAYER_ID,
+      type: 'line',
+      source: sourceId,
+      layout: { 'line-cap': 'butt', 'line-join': 'round' },
+      paint: {
+        'line-color': ATC_UPDATE_CASING_COLOR,
+        'line-width': closureTapeWidth(CLOSURE_OUTLINE_WIDTH) as never,
+      },
+    },
+    // ONE band layer over it, and no casing between - see buildClosureLayers,
+    // which makes the same shape for the same reason. A solid casing under
+    // tape showed through every gap while the gaps were transparent, which is
+    // the defect both feeds stopped having on 2026-08-27; since #1575 the
+    // gaps hold the sheet's paper, baked into the image beside the edges, so
+    // the outline above can only ever appear as an edge.
     //
     // THE GLOW THAT USED TO OPEN THIS LIST IS GONE, and it went for a reason
     // this change shares rather than contradicts. #1071 removed it with the
@@ -360,8 +418,8 @@ export function buildAtcUpdateLayers(
       source: sourceId,
       layout: { 'line-cap': 'butt', 'line-join': 'round' },
       paint: {
-        'line-pattern': atcTapeImageId(ground),
-        'line-width': ATC_UPDATE_LINE_WIDTH,
+        'line-pattern': tapePattern(ground, atcTapeImageId) as never,
+        'line-width': ATC_UPDATE_LINE_WIDTH as never,
       },
     },
     // Points, from the same source. A `line` layer ignores Point features and

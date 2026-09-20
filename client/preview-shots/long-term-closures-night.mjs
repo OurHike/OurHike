@@ -15,6 +15,14 @@
 // day frame's band is white over white paper and the previous build's night
 // band was ink over ink.
 //
+// AMENDED 2026-09-20 (#1598): the band in this frame is heavier than the one
+// described above - 17 px, half its length red, inside a hard dark outline -
+// and on a dark sheet the outline is the one part of it that does nothing,
+// since a near-black edge against near-black ground has nothing to separate.
+// That is the honest reading of this frame: the outline is for the day
+// sheets and for the overview camera, and the white paper is still what
+// makes a closure findable here.
+//
 // THE DARK SCHEME, NOT A PREFERENCE WRITE. The theme preference ships as
 // `auto` (lib/userPreferences.ts), which follows the OS through
 // `prefers-color-scheme` (lib/theme.ts), so the drive asks the browser for
@@ -22,9 +30,9 @@
 // is night_hike - is what draws. Nothing is written to anybody's store, and
 // the day frame's rule stands: no location fix, no account, nobody's reports.
 export const caption =
-  'The Bear Mountain frame of long-term-closures.mjs on the dark sheet: OPRHP’s long-term closed trails as barrier tape on a band of the DAY sheet’s white paper over night_hike’s ink (closureTapeGround, 2026-09-18) - red and white, where the previous build laid red stripes on the sheet’s own ink and the maintainer could not tell a closure from the ground. The lines beneath are #1588’s: the A.T. a solid red, the park’s trails a dark-red dash. Red light is not this frame: it keeps its ink, and the change’s docstring says why that question is left open'
+  'The Bear Mountain frame of long-term-closures.mjs on the dark sheet: OPRHP’s long-term closed trails as barrier tape on a band of the DAY sheet’s white paper over night_hike’s ink (closureTapeGround, 2026-09-18) - red and white, where the previous build laid red stripes on the sheet’s own ink and the maintainer could not tell a closure from the ground. The lines beneath are #1588’s and #1597’s: the A.T. a solid red and the park’s trails a thinner dash, both in the same red since the tint came off. The band carries #1598’s dark outline here too, which on this sheet separates nothing — the white paper is what makes a closure findable in the dark. Red light is not this frame: it keeps its ink, and the change’s docstring says why that question is left open'
 export const alt =
-  'The map screen over Bear Mountain State Park at zoom 13 on a dark sheet: the Appalachian Trail a solid red line and the park’s trails thin dark-red dashed lines over near-black ground, with contour lines, and along several trails a wide white band of red diagonal stripes laid over the line, the barrier tape marking a closed trail, plainly lighter than everything around it'
+  'The map screen over Bear Mountain State Park at zoom 13 on a dark sheet: the Appalachian Trail a solid red line and the park’s trails thinner red dashed lines over near-black ground, with contour lines, and along several trails a wide white band of red diagonal stripes laid over the line, the barrier tape marking a closed trail, plainly lighter than everything around it'
 
 /** Vector tiles from the bucket plus generated contours over a park at z13,
  *  the same allowance long-term-closures.mjs makes. */

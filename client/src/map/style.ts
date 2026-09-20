@@ -77,10 +77,13 @@
 //     chose light dashed red for everything without a pill and a plain
 //     solid red - no casing - for the A.T. and the Long Path, at every zoom.
 //     So while blaze colours are OFF and red light is not in force
-//     (plainRedActive): a context line is the red tinted towards the sheet's
-//     paper (contextTrailColor), thinner (CONTEXT_TRAIL_WIDTH_SCALE) and
-//     dashed (CONTEXT_TRAIL_DASH); a through-route's line is the red at full
-//     strength and its own width; and every casing layer is hidden. With
+//     (plainRedActive): a context line is thinner (CONTEXT_TRAIL_WIDTH_SCALE)
+//     and dashed (CONTEXT_TRAIL_DASH); a through-route's line is solid and
+//     its own width; and every casing layer is hidden. The tint that used to
+//     open that list went on 2026-09-20 (#1597) - the maintainer read 45% of
+//     the red over white paper as pink and asked for the A.T.'s own red - so
+//     EVERY line is now PLAIN_TRAIL_COLOR and the width and the dash carry
+//     the distinction between them by themselves. With
 //     the switch ON the map draws as before this rule - solid, cased lines in
 //     their hues, the frame the maintainer approved - and red light keeps
 //     its own one-hue rule. The dash is data-driven per feature, which
@@ -136,7 +139,7 @@ import {
 import {
   buildClosureLayers,
   CLOSURE_LAYER_ID,
-  closureTapeImageId,
+  tapePattern,
   LONG_TERM_CLOSED_FILTER,
   LONG_TERM_CLOSURE_LAYER_ID,
 } from '../lib/closureStyle'
@@ -228,7 +231,6 @@ import {
   type SheetAppearance,
 } from './liveTopo'
 import { NEARBY_TRAILS_ATTRIBUTION, OSM_CREDIT, USGS_TOPO_CREDIT } from './credits'
-import { parseHex } from './poiIcons'
 import { whenStyleReady } from './styleReady'
 import { TRAILS } from '../lib/trails'
 import type { GeoJSONSource, Map as MapLibreMap, MapSourceDataEvent } from 'maplibre-gl'
@@ -716,23 +718,30 @@ export function plainRedActive(appearance: SheetAppearance): boolean {
 }
 
 /**
- * How much of the red a context trail keeps over the sheet's paper under
- * the default (#1588): the maintainer chose "light dashed red" off a sheet
- * of six treatments rendered at 45% over the paper, and this is that 45%,
- * baked into a hex per sheet (contextTrailColor) rather than written as
- * `line-opacity` - opacity is the ghosting's channel (map/nearbyTrails.ts),
- * written on a take by attachChosenTrail, and a lightness that lived there
- * would be overwritten by the next take or would have to know the mode.
+ * THE CONTEXT TRAILS' TINT IS GONE, and saying so here is worth more than
+ * the constant was (#1597).
  *
- * Measured against the sheets' own papers (lib/blazeGovernance.test.ts
- * computes both): 2.15:1 on the field sheet's white, above the palette's
- * day bar of 2.076, so a context line still separates from paper; 1.5:1 on
- * night_hike's ink, below its 2.66 bar, which is the same faintness the
- * ghosting's 45% already gives a nearby trail on ink and is deliberate: a
- * context trail is context. `@unvalidated` on a phone at night; the number
- * is one knob, and the mock-up it came from was a day frame.
+ * #1588 drew every trail without a pill at 45% of PLAIN_TRAIL_COLOR over the
+ * sheet's own paper, which on the field day sheet's white is `#dca39a`. The
+ * maintainer read that on a Hudson Highlands frame, 2026-09-20: *"the dotted
+ * dashed trail lines look pink. Make them the same color red as the AT."*
+ * So every line is now PLAIN_TRAIL_COLOR at full strength, and plainLineColor
+ * is one flat colour rather than a `case` over THROUGH_ROUTE_SOURCE_CONDITION.
+ *
+ * WHAT DID NOT MOVE, because the maintainer objected to the hue and not to
+ * the vocabulary: CONTEXT_TRAIL_WIDTH_SCALE and CONTEXT_TRAIL_DASH below.
+ * A context trail is still thinner and still dashed, so #1588's other two
+ * channels carry the distinction alone - and both survive greyscale and
+ * glare, which a 45% tint never did as well as it looked like it did.
+ *
+ * What the tint took with it: a mock-up's 45% was the only thing standing
+ * between a context line and the sheet's paper on a dark sheet, where
+ * lib/blazeGovernance.test.ts measured it at 1.5:1 against night_hike's ink
+ * - below that sheet's 2.66 bar. At full strength every line now carries
+ * PLAIN_TRAIL_COLOR's own contrast, which clears #782's bars on both sheets.
+ * That is a gain on the dark sheets and a deliberate loss of hierarchy on
+ * the light ones; the dash and the width are what buy it back.
  */
-export const CONTEXT_TRAIL_TINT = 0.45
 
 /** The context trails' width under the default, as a share of their tier
  *  (#1588): 2.5 px becomes 2, the sketch's 1.5 becomes 1.2 - the mock-up's
@@ -755,36 +764,22 @@ export const CONTEXT_TRAIL_DASH: readonly [number, number] = [3, 2.5]
  *  a layer whose other features dash (#1588). */
 export const SOLID_DASH: readonly [number, number] = [1, 0]
 
-/** `a` mixed towards `b` by `keep` of `a` - 1 is `a`, 0 is `b` - as a hex. */
-function mixHex(a: string, b: string, keep: number): string {
-  const [ar, ag, ab] = parseHex(a)
-  const [br, bg, bb] = parseHex(b)
-  const channel = (x: number, y: number) => Math.round(x * keep + y * (1 - keep))
-  return `#${[channel(ar, br), channel(ag, bg), channel(ab, bb)]
-    .map((v) => v.toString(16).padStart(2, '0'))
-    .join('')}`
-}
-
-/** The context trails' red under the default (#1588): PLAIN_TRAIL_COLOR
- *  kept at CONTEXT_TRAIL_TINT over the sheet's own paper. Per sheet, since
- *  the paper is: '#dca39a' on the field sheet's white, a dark red on ink. */
-export function contextTrailColor(appearance: SheetAppearance): string {
-  return mixHex(PLAIN_TRAIL_COLOR, mapBackdrop(appearance), CONTEXT_TRAIL_TINT)
-}
-
 /**
- * `line-color` under the default (#1588): the red at full strength on a
- * through-route's feature, the tint on everything else. One expression on
- * every blaze layer, cased or not, on every sheet - the same shape as the
- * hues' one match, which is rule 1's whole point.
+ * `line-color` under the default: PLAIN_TRAIL_COLOR on every feature, on
+ * every blaze layer, cased or not, on every sheet (#1588, amended by #1597).
+ *
+ * One value rather than an expression, which is what #1575 shipped and what
+ * #1588 turned into a `case` so the context trails could take a tint. The
+ * tint is gone (see the note where CONTEXT_TRAIL_TINT used to be), so the
+ * `case` had one branch worth keeping and this is it.
+ *
+ * Kept as a function taking the appearance, unused though the argument now
+ * is, because every caller reads it beside blazeLineColor's other two
+ * answers - red light's hue and the blaze match - and a signature that
+ * differs from theirs is a hazard at the call site rather than a saving.
  */
-export function plainLineColor(appearance: SheetAppearance): unknown[] {
-  return [
-    'case',
-    THROUGH_ROUTE_SOURCE_CONDITION,
-    PLAIN_TRAIL_COLOR,
-    contextTrailColor(appearance),
-  ]
+export function plainLineColor(_appearance: SheetAppearance): string {
+  return PLAIN_TRAIL_COLOR
 }
 
 /** `line-dasharray` under the default (#1588): no gap on a through-route's
@@ -825,10 +820,10 @@ export function casingVisibility(appearance: SheetAppearance): 'visible' | 'none
  *
  *   1. red light's one hue, wherever red light is active;
  *   2. the default's red while blaze colours are off (#1575): PLAIN_TRAIL_COLOR
- *      - the palette's Red - on a through-route's feature and its tint on
- *      every other (plainLineColor, #1588), cased or not, day sheet or dark.
- *      lib/blaze.ts carries the red's contrast on both sheets against #782's
- *      bars, so it needs none of the near-white handling below;
+ *      - the palette's Red - on every feature (plainLineColor), cased or not,
+ *      day sheet or dark. lib/blaze.ts carries the red's contrast on both
+ *      sheets against #782's bars, so it needs none of the near-white
+ *      handling below;
  *   3. the shared blaze match - with near-white swapped for the sheet's
  *      casing ink on day sheets where the layer draws with no casing under it
  *      (`cased: false`, the sketches; see NEAR_WHITE_BLAZES). A cased line is
@@ -840,8 +835,8 @@ export function casingVisibility(appearance: SheetAppearance): 'visible' | 'none
  */
 export function blazeLineColor(appearance: SheetAppearance, cased: boolean): unknown {
   if (redLightActive(appearance)) return RED_LIGHT_BLAZE_COLOR
-  // Per feature since #1588: the red on a through-route, its tint on the
-  // context trails (plainLineColor). Still one value for every layer.
+  // One value for every feature and every layer (plainLineColor). It was
+  // per feature from #1588 to #1597, while the context trails took a tint.
   if (!paintsBlazeHues(appearance)) return plainLineColor(appearance)
   if (cased || !inksNearWhiteAsCasing(appearance)) return BLAZE_MATCH_EXPRESSION
   return [
@@ -947,19 +942,19 @@ export function attachMapAppearance(
       // map/closureTape.ts has registered every paper's pair before any of
       // these ids is asked for.
       const tapeGround = closureTapeGround(appearance)
+      // The whole step expression, not one image id (#1598): a tape layer
+      // names its overview cadence and its near one, so a sheet change that
+      // wrote a bare id would flatten the step and leave the band drawing
+      // the navigation tape at the opening camera until the next rebuild.
       for (const layerId of CLOSURE_TAPE_LAYER_IDS) {
         if (map.getLayer(layerId) === undefined) continue
-        map.setPaintProperty(
-          layerId,
-          'line-pattern',
-          closureTapeImageId(tapeGround) as never,
-        )
+        map.setPaintProperty(layerId, 'line-pattern', tapePattern(tapeGround) as never)
       }
       if (map.getLayer(ATC_UPDATE_LAYER_ID) !== undefined) {
         map.setPaintProperty(
           ATC_UPDATE_LAYER_ID,
           'line-pattern',
-          atcTapeImageId(tapeGround) as never,
+          tapePattern(tapeGround, atcTapeImageId) as never,
         )
       }
 

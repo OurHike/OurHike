@@ -28,8 +28,10 @@ import { WARNING_PIN } from '../lib/seriousWarnings'
 import {
   CLOSURE_CASING_COLOR,
   CLOSURE_COLOR,
+  CLOSURE_OUTLINE_WIDTH,
   CLOSURE_STRIPE_EDGE,
   CLOSURE_TAPE_CADENCE,
+  CLOSURE_TAPE_WIDTH,
 } from '../lib/closureStyle'
 
 // The map's pins, drawn in the DOM for the legend (#572).
@@ -225,18 +227,31 @@ describe('MapIcon: a closure', () => {
     // THE DEFECT THIS SWATCH USED TO SHOW, held so it cannot come back. The
     // legend drew a filled casing rect with a dashed band over it - which was
     // honest, because that is what the map drew, and both were a near-black
-    // line with red ticks in it. The one rect here now is the sheet's paper
-    // (#1575), never the casing, and the casing is a stroke wider than the
-    // stripe it outlines.
+    // line with red ticks in it. The casing is a stroke wider than the stripe
+    // it outlines, and no rect behind them is the casing: the ground rect is
+    // the sheet's paper (#1575), and the two dark rects since #1598 are the
+    // band's own outline, each one CLOSURE_OUTLINE_WIDTH tall at an edge of
+    // the tape rather than the full height behind it.
     const svg = draw(<MapIcon type="closure" />)
     const edge = Number(
       part(svg, 'map-icon__closure-casing').getAttribute('stroke-width'),
     )
-    const rects = svg.querySelectorAll('rect')
+    const rects = [...svg.querySelectorAll('rect')]
 
-    expect(rects).toHaveLength(1)
-    expect(rects[0]?.getAttribute('class')).toBe('map-icon__closure-ground')
+    expect(rects.map((r) => r.getAttribute('class'))).toEqual([
+      'map-icon__closure-ground',
+      'map-icon__closure-outline',
+      'map-icon__closure-outline',
+    ])
     expect(rects[0]?.getAttribute('fill')).not.toBe(CLOSURE_CASING_COLOR)
+    for (const outline of rects.slice(1)) {
+      expect(outline.getAttribute('fill')).toBe(CLOSURE_CASING_COLOR)
+      expect(Number(outline.getAttribute('height'))).toBe(CLOSURE_OUTLINE_WIDTH)
+      // An EDGE and not a band: whatever the tape's own height, an outline
+      // that ever grew to a share of it would be the filled casing rect
+      // back under a new name.
+      expect(Number(outline.getAttribute('height'))).toBeLessThan(CLOSURE_TAPE_WIDTH / 4)
+    }
     expect(edge).toBe(CLOSURE_TAPE_CADENCE.stripe + CLOSURE_STRIPE_EDGE * 2)
   })
 
@@ -249,7 +264,9 @@ describe('MapIcon: a closure', () => {
     expect(part(day, 'map-icon__closure-ground').getAttribute('fill')).toBe(
       mapBackdrop({ theme: 'light' }),
     )
-    for (const node of day.querySelectorAll('*:not(.map-icon__closure-ground)')) {
+    for (const node of day.querySelectorAll(
+      '*:not(.map-icon__closure-ground):not(.map-icon__closure-outline)',
+    )) {
       expect(node.getAttribute('fill')).toBeNull()
     }
 

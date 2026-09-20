@@ -65,8 +65,16 @@ import { POSITION_ACCURACY_LAYER_ID, POSITION_LAYER_ID } from './positionLayers'
 import { WORKDAY_LAYER_ID } from './workdayLayers'
 import { DISPUTE_LAYER_ID } from './disputeLayers'
 import { COVERAGE_SEAM_LABEL_LAYER_ID, COVERAGE_SEAM_LAYER_ID } from './coverageLayers'
-import { ATC_UPDATE_LAYER_ID, ATC_UPDATE_POINT_LAYER_ID } from '../lib/atcUpdateStyle'
-import { CLOSURE_LAYER_ID, LONG_TERM_CLOSURE_LAYER_ID } from '../lib/closureStyle'
+import {
+  ATC_UPDATE_CASING_LAYER_ID,
+  ATC_UPDATE_LAYER_ID,
+  ATC_UPDATE_POINT_LAYER_ID,
+} from '../lib/atcUpdateStyle'
+import {
+  closureCasingId,
+  CLOSURE_LAYER_ID,
+  LONG_TERM_CLOSURE_LAYER_ID,
+} from '../lib/closureStyle'
 import {
   ROUTE_CASING_LAYER_ID,
   ROUTE_LINE_LAYER_ID,
@@ -708,6 +716,7 @@ describe('the offline-only background', () => {
       'network-overview-casing',
       'network-overview-line-untaken',
       'network-overview-line',
+      closureCasingId('network-overview-closure-band'),
       'network-overview-closure-band',
       // The corridor-view sketch (#869), which survives the subtraction for
       // a duller reason than the others: it is empty unless the shell has a
@@ -750,6 +759,7 @@ describe('the offline-only background', () => {
       // closures get (features/NEARBY_TRAILS.md §3: one mark for "do not walk
       // this", whoever's trail it is) - over its own blaze, still under
       // everything about the chosen trail.
+      closureCasingId('nearby-long-term-closure-band'),
       'nearby-long-term-closure-band',
       'trail-casing-untaken',
       'trail-blaze-untaken',
@@ -800,12 +810,18 @@ describe('the offline-only background', () => {
       'day-hike-route-gap',
       'day-hike-route-points',
       'day-hike-route-point-labels',
+      // Each band over its own outline (#1598), which is what a hiker
+      // recognises a closure by at the zooms where the stripes are too small
+      // to resolve - so it is a safety layer by the same argument the band
+      // is, and subtracting the live sheet may not take it.
+      closureCasingId(CLOSURE_LAYER_ID),
       CLOSURE_LAYER_ID,
       // The long-term closures a steward marks on the trail line itself
       // (#783, features/NEARBY_TRAILS.md §3). Same treatment as the two
       // above, different feed - and it belongs in this list for the reason
       // the comment at the top gives: it is a safety layer, so a hiker on the
       // offline background is exactly who must keep it.
+      closureCasingId(LONG_TERM_CLOSURE_LAYER_ID),
       LONG_TERM_CLOSURE_LAYER_ID,
       // All three waypoint ranks (#597, and the staleness rings with #759),
       // dots under rings under pins - a waypoint that wins its collision
@@ -847,6 +863,10 @@ describe('the offline-only background', () => {
       // organisation that maintains it, underneath OurHike's own pin for that
       // shelter, is not a picture anybody wants. src/test/atcAlertProminence.test.ts
       // holds that ordering as a property; this case only has to agree with it.
+      // Over its own outline, like every closure band above (#1598): one mark
+      // for "do not walk this" means the ATC's band grew an edge the day the
+      // closures' did.
+      ATC_UPDATE_CASING_LAYER_ID,
       ATC_UPDATE_LAYER_ID,
       // And the dots, which is what most ATC notices actually are - five of
       // the six reviewed on 2026-08-12 name a single mile marker.

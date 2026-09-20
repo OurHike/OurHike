@@ -25,7 +25,8 @@
 // says why that is a question left open rather than answered. What option E
 // costs is exactly the sentence it replaced: the trail is not visible
 // through its closure any more. The stripes, their cadence, their edges and
-// the tape's width did not move.
+// the tape's width did not move THEN; #1598 moved all four, and its own
+// paragraph below says by how much.
 //
 // That distinction is safety-critical and is deliberately structural rather
 // than chromatic. Colour alone vanishes in greyscale, in direct sun on a
@@ -42,12 +43,24 @@
 // Rendered 2026-08-27 in MapLibre 6.4.1 over synthetic geometry; the frames are
 // in the pull request that replaced it.
 //
-// The tape fixes that by construction rather than by tuning. One layer, one
-// image, and no casing underneath to show through anything - because the dark
-// edge every stripe carries IS the casing now. That edge is thinner than the
-// overhang it replaces and CLOSURE_STRIPE_EDGE says so; what it buys is that
-// the casing can only ever be an edge, since there is no longer anything under
-// a gap to fill it with.
+// The tape fixes that by construction rather than by tuning. No casing under
+// a TRANSPARENT gap to show through anything - because the dark edge every
+// stripe carries IS the casing. That edge is thinner than the overhang it
+// replaces and CLOSURE_STRIPE_EDGE says so; what it buys is that the casing
+// can only ever be an edge, since there is nothing under a gap to fill it
+// with.
+//
+// THE BAND GREW AN OUTLINE AND A TAPER ON 2026-09-20 (#1598), and neither
+// reopens that. The gaps stopped being transparent at #1575, so a line under
+// the band shows only at its two edges - which is what CLOSURE_OUTLINE_WIDTH
+// draws, and it is the edge the old casing was always meant to be. The
+// maintainer: "The trail closures are not easily visible. Adjust the settings
+// so that the closures are readily apparent at all the zoom levels." Shown
+// four treatments drawn at z8, z13 and z16, they took the outlined one, "the
+// only one whose shape survives being 4 px long". So the band is now two
+// layers, carries 51% red rather than 28%, grows from CLOSURE_TAPE_FAR_WIDTH
+// to CLOSURE_TAPE_WIDTH across the zooms above the seam, and steps to a
+// half-scale cadence below it. Each of those constants says what it rests on.
 
 import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec'
 
@@ -60,8 +73,18 @@ export const CLOSURE_LAYER_ID = 'closure-band'
 export const CLOSURE_TAPE_IMAGE_ID = 'closure-tape'
 
 /**
- * The id of the closure tape drawn on `ground`, the sheet's paper as a
- * `#rrggbb` hex (#1575, option E).
+ * Which of the tape's two cadences an image carries (#1598).
+ *
+ * `near` is the tape at the zooms a hiker navigates by. `overview` is the
+ * same tape at half scale, for the zooms where a whole closure is a few
+ * pixels long - see CLOSURE_TAPE_OVERVIEW_SCALE for why the second one has
+ * to exist at all.
+ */
+export type TapeRange = 'near' | 'overview'
+
+/**
+ * The id of the closure tape drawn on `ground` - the sheet's paper as a
+ * `#rrggbb` hex (#1575, option E) - at `range`'s cadence (#1598).
  *
  * One image per paper rather than one image and a second layer under it: a
  * `line-pattern` layer ignores `line-color`, so the ground can only be in the
@@ -70,9 +93,15 @@ export const CLOSURE_TAPE_IMAGE_ID = 'closure-tape'
  * registers the image for every paper the sheet table can produce, and
  * map/style.ts's attachMapAppearance points each tape layer at the current
  * one - both through this function, so the two agree by construction.
+ *
+ * `near` is the default so that every existing caller and every test that
+ * names an image without a range still names the tape a hiker navigating
+ * sees, which is the one the id `closure-tape-ffffff` has always meant.
  */
-export function closureTapeImageId(ground: string): string {
-  return `${CLOSURE_TAPE_IMAGE_ID}-${ground.replace('#', '').toLowerCase()}`
+export function closureTapeImageId(ground: string, range: TapeRange = 'near'): string {
+  const stem =
+    range === 'near' ? CLOSURE_TAPE_IMAGE_ID : `${CLOSURE_TAPE_IMAGE_ID}-overview`
+  return `${stem}-${ground.replace('#', '').toLowerCase()}`
 }
 
 /** Drawn at 2x, like every other generated image on this map
@@ -81,20 +110,51 @@ export function closureTapeImageId(ground: string): string {
 export const CLOSURE_TAPE_PIXEL_RATIO = 2
 
 /**
- * How wide the tape is drawn, in CSS pixels.
+ * How wide the tape is drawn where a hiker is navigating by it, in CSS
+ * pixels - the top of the taper closureTapeWidth builds (#1598).
  *
- * Exactly the ink the barred band already occupied - its 10px line plus the
- * 2px casing showing past each side - so replacing one with the other moved no
- * pixel outward or inward. It changed only what is inside them.
+ * It was 14 and flat at every zoom from 2026-08-27, which was exactly the
+ * ink the barred band before it occupied - its 10px line plus the 2px casing
+ * showing past each side - so that replacement moved no pixel outward or
+ * inward and changed only what was inside them. The maintainer read the
+ * result on 2026-09-20: *"The trail closures are not easily visible. Adjust
+ * the settings so that the closures are readily apparent at all the zoom
+ * levels."* One flat number is the half of that complaint this constant
+ * owns: the same band over a 1.5 px sketch line at the opening camera and
+ * over a 4.5 px A.T. at navigation zoom, saying nothing about how close the
+ * hiker is looking.
  *
  * Wide enough that the tape reads as a barrier rather than a route, which
- * means comfortably more than twice the widest blaze on the map: 14 against
- * BLAZE_LINE_WIDTH's 4.5 is 3.1x, where the band's own line was 2.2x.
+ * means comfortably more than twice the widest blaze on the map: 17 against
+ * BLAZE_LINE_WIDTH's 4.5 is 3.8x, where the band's own line was 2.2x.
  * closureStyle.test.ts holds that ratio against map/style.ts rather than
  * against a number restated here, so widening a through-route still has to
  * widen this with it.
+ *
+ * `@unvalidated` as a number. 17 came off the frames of the 2026-09-20 poll
+ * and nobody has watched it on a phone. What would settle it is what would
+ * settle CLOSURE_STRIPE_ANGLE_DEG: whether a closure gets spotted on a
+ * screen somebody was not told to search.
  */
-export const CLOSURE_TAPE_WIDTH = 14
+export const CLOSURE_TAPE_WIDTH = 17
+
+/**
+ * How wide the tape is drawn at and below the seam, in CSS pixels - the
+ * bottom of the taper (#1598).
+ *
+ * Narrower than the navigation weight rather than wider, which is the
+ * opposite of what "make it more visible" sounds like and is the point: down
+ * here the trail lines themselves taper to 1.5 px
+ * (map/style.ts's NETWORK_OVERVIEW_FAR_WIDTH), and a band three times the
+ * navigation line's width over a sketch line would be a blob whose LENGTH
+ * still says nothing. What makes a closure findable at this camera is the
+ * outline below, not more fill.
+ *
+ * Still wider than the navigation-zoom BLAZE_LINE_WIDTH, so the "markedly
+ * wider than any blaze" rule holds at the bottom of the taper too, which is
+ * what closureStyle.test.ts asserts.
+ */
+export const CLOSURE_TAPE_FAR_WIDTH = 11
 
 /**
  * The casing weight the band used to carry, in CSS pixels.
@@ -133,6 +193,114 @@ export const CLOSURE_CASING_COLOR = '#14130f'
 export const CLOSURE_STRIPE_EDGE = 1.25
 
 /**
+ * The last zoom the overview cadence draws at (#1598).
+ *
+ * THE SEAM, and it has to be: this is the zoom where the map's own closure
+ * layers already hand over - map/style.ts caps the network overview's band at
+ * it and starts the nearby network's there, because it is where the map stops
+ * being an overview and starts being something a hiker reads a position off.
+ * Any zoom at which the cadence changes will show the change; this is the one
+ * where every other layer is changing too, so it is the cheapest place to
+ * spend it. closureStyle.test.ts holds it against map/poiLayers.ts's
+ * POI_PIN_MIN_ZOOM rather than trusting the two nines to stay equal.
+ */
+export const CLOSURE_TAPE_OVERVIEW_MAX_ZOOM = 9
+
+/**
+ * The zoom the band reaches CLOSURE_TAPE_WIDTH at (#1598).
+ *
+ * Four zooms above the seam, so the band grows across the band of zooms
+ * where a hiker moves from "which park is this" to "which side of the brook
+ * am I on", and is at full weight for every zoom closer than that. z13 is
+ * the park frame the closure recipe photographs and the frame the treatment
+ * was chosen on, which is the only claim behind the number: `@unvalidated`,
+ * and what would settle it is the same field look every other constant here
+ * is waiting on.
+ */
+export const CLOSURE_TAPE_FULL_WIDTH_ZOOM = 13
+
+/**
+ * The dark outline the whole band carries, in CSS pixels per side (#1598).
+ *
+ * THE MAINTAINER'S CHOICE OF 2026-09-20, off four treatments drawn at z8, z13
+ * and z16: *"the only one whose shape survives being 4 px long"*, which is
+ * the poll option they took. A closure at the opening camera is a handful of
+ * pixels long, and at that size a texture is not resolvable by anybody -
+ * what is left to recognise is a silhouette, and a band with a hard edge has
+ * one where a band without one does not.
+ *
+ * WHY THIS IS NOT THE CASING THIS FILE SPENDS A PARAGRAPH REFUSING. That
+ * refusal was right and is about a different band: a casing under tape whose
+ * gaps were TRANSPARENT showed through every gap, which is what drew the
+ * black rope with red ticks. #1575 made the tape opaque, so a casing under
+ * it can only ever appear at its two edges - the objection does not reach
+ * the band that ships now, and the outline is the edge the old casing was
+ * always meant to be.
+ *
+ * 1.5 rather than 2: lighter than CLOSURE_CASING_WIDTH, the reference weight
+ * this map used to outline a safety mark with, which both of its successors
+ * are held under. Heavier than CLOSURE_STRIPE_EDGE, because the outline has
+ * to read at a zoom where a stripe's edge does not.
+ */
+export const CLOSURE_OUTLINE_WIDTH = 1.5
+
+/**
+ * The band's `line-width`, in CSS pixels, `outset` px wider on each side.
+ *
+ * CLOSURE_TAPE_FAR_WIDTH at and below the seam, CLOSURE_TAPE_WIDTH from
+ * CLOSURE_TAPE_FULL_WIDTH_ZOOM in, linear between - the shape
+ * map/style.ts's overviewTaper gives every line on this map, so the closure
+ * band grows on the same schedule the lines under it do.
+ *
+ * `outset` is what makes the outline one function rather than two that agree
+ * today: the casing layer asks for the same taper CLOSURE_OUTLINE_WIDTH
+ * wider on each side, so a change to either stop cannot move the band
+ * without moving its edge with it.
+ */
+export function closureTapeWidth(outset = 0): unknown[] {
+  return [
+    'interpolate',
+    ['linear'],
+    ['zoom'],
+    CLOSURE_TAPE_OVERVIEW_MAX_ZOOM,
+    CLOSURE_TAPE_FAR_WIDTH + outset * 2,
+    CLOSURE_TAPE_FULL_WIDTH_ZOOM,
+    CLOSURE_TAPE_WIDTH + outset * 2,
+  ]
+}
+
+/**
+ * The band's `line-pattern` on `ground`: the overview tape below the seam,
+ * the near tape from it in (#1598).
+ *
+ * A `step` rather than an `interpolate` because `line-pattern` is
+ * zoom-dependent and NOT interpolatable - the style spec says so, and
+ * style.test.ts validates the built style against it. `imageId` is a
+ * parameter rather than closureTapeImageId itself so lib/atcUpdateStyle.ts
+ * can hand in its own naming and get the same switch at the same zoom: one
+ * treatment, two feeds, which is the guarantee that file exists to keep.
+ */
+export function tapePattern(
+  ground: string,
+  imageId: (ground: string, range: TapeRange) => string = closureTapeImageId,
+): unknown[] {
+  return [
+    'step',
+    ['zoom'],
+    imageId(ground, 'overview'),
+    CLOSURE_TAPE_OVERVIEW_MAX_ZOOM,
+    imageId(ground, 'near'),
+  ]
+}
+
+/** The id of the outline drawn under the band `bandId` - derived rather
+ *  than spelled per call site, so a fifth closure source cannot end up with
+ *  a band and no edge. */
+export function closureCasingId(bandId: string): string {
+  return `${bandId}-casing`
+}
+
+/**
  * The angle a stripe makes with the line it is drawn on, in degrees.
  *
  * 55 rather than 45, picked by eye off the renders in the pull request: the
@@ -154,27 +322,87 @@ export interface TapeCadence {
 }
 
 /**
- * The closure's own cadence.
+ * The closure's own cadence, at the zooms a hiker navigates by.
  *
  * `pitch` is measured along the line rather than across the stripes because
  * that is the axis the image tiles on, and a pitch that is not a whole number
  * of image pixels tiles with a seam - map/closureTape.ts depends on this
  * landing exactly on its pixel ratio.
  *
- * Red covers 28% of the tape's length here and ink of any kind about half of
- * it, the rest being nothing at all (tapeRedFraction computes the first of
- * those rather than this comment asserting it). Against roughly 60% red and
- * 100% opaque for the band's first hazard-tape pass, which drew pale stripes
- * on a solid red ground.
+ * MORE RED THAN IT CARRIED, AND THIS IS A REVERSAL (#1598). From 2026-08-27
+ * this was `{ stripe: 3.5, pitch: 15 }`, which puts red at 28% of the tape's
+ * length, and the reversed direction was written into the constant: "less red
+ * and real transparency between the marks was the direction asked for",
+ * against the first hazard-tape pass's roughly 60% red on a solid red ground.
+ * The maintainer read 28% on the map and asked for the opposite on 2026-09-20
+ * - *"the closures are not easily visible"* - and chose, off four rendered
+ * treatments at z8, z13 and z16, the one that raises red to 51% and puts a
+ * hard outline round the band.
  *
- * Less red and real transparency between the marks was the direction asked
- * for, and the pitch is where it landed by eye: at 13 the tape was tighter and
- * showed less ground, and past about 17 the stripes stop reading as tape and
- * start reading as separate ticks. Both were rendered; the frames are in the
- * pull request. @unvalidated as a threshold - "reads as tape" is nobody's
- * measurement yet.
+ * The two directions are not actually in conflict, and the reason is the
+ * change #1575 made in between. What the August direction was refusing was
+ * ink over a TRANSPARENT band, where the non-red half of the tape's length
+ * was the near-black casing showing through - the black rope with red ticks
+ * this file's header measures. Since #1575 the non-red half is the sheet's
+ * own paper (option E), so 51% red on white is a different mark from 59% red
+ * on black, not more of it.
+ *
+ * `{ stripe: 5, pitch: 12 }` rather than a rounder pair because both have to
+ * be whole numbers of image pixels at CLOSURE_TAPE_PIXEL_RATIO - 10 and 24 -
+ * and because halving them for the overview cadence has to leave that true
+ * as well. @unvalidated as a threshold: "reads as tape" is still nobody's
+ * measurement, and 51% is a pick off a drawn frame.
  */
-export const CLOSURE_TAPE_CADENCE: TapeCadence = { stripe: 3.5, pitch: 15 }
+export const CLOSURE_TAPE_CADENCE: TapeCadence = { stripe: 5, pitch: 12 }
+
+/**
+ * What the overview tape scales the near one by, on both axes (#1598).
+ *
+ * WHY A SECOND CADENCE EXISTS AT ALL, in one measurement. OPRHP's closed
+ * runs are 1.1 to 1.9 km long (measured for
+ * `client/preview-shots/long-term-closures.mjs` against the pinned release's
+ * network overview). At latitude 41 that is 3 to 7 pixels at z8 and 7 to 13
+ * at z9, against a pattern that repeats every `pitch` pixels along the line -
+ * so at the near cadence a whole closure fits inside one tile, and which tile
+ * it happens to land on decides whether a hiker sees red diagonals or a blank
+ * slab of paper. Halving the pitch halves the length a closure has to reach
+ * before it is guaranteed to cross a stripe.
+ *
+ * BOTH AXES BY THE SAME FACTOR, which is lib/atcUpdateStyle.ts's
+ * ATC_UPDATE_TAPE_SCALE argument run the other way and for the same reason:
+ * scaling only the pitch would change how much of the tape is red, and the
+ * overview tape must be the same mark at a smaller size rather than a
+ * different claim. tapeRedFraction is identical for the two by construction,
+ * and closureStyle.test.ts holds that equality rather than these numbers.
+ */
+export const CLOSURE_TAPE_OVERVIEW_SCALE = 0.5
+
+/** The closure's cadence at and below the seam: the near cadence at
+ *  CLOSURE_TAPE_OVERVIEW_SCALE. Whole image pixels at the ratio, 5 and 12,
+ *  for the reason the near cadence is. */
+export const CLOSURE_TAPE_OVERVIEW_CADENCE: TapeCadence = {
+  stripe: CLOSURE_TAPE_CADENCE.stripe * CLOSURE_TAPE_OVERVIEW_SCALE,
+  pitch: CLOSURE_TAPE_CADENCE.pitch * CLOSURE_TAPE_OVERVIEW_SCALE,
+}
+
+/**
+ * The same edge on the overview tape, scaled with the cadence (#1598).
+ *
+ * SCALED, WHERE THE ATC's DOUBLED TAPE LEAVES ITS EDGE ALONE, and the
+ * difference is arithmetic rather than taste. An unscaled 1.25 px edge on
+ * each side of a 2.5 px stripe at a 6 px pitch puts ink on
+ * (2.5 + 2 x 1.25) / sin(55 degrees) / 6 = 102% of the tape's length: the
+ * edges of neighbouring stripes meet, the paper between them disappears, and
+ * the overview tape would draw as one flat dark-red band. Scaled, the ink is
+ * 76% - exactly the near cadence's, which is what "the same tape, smaller"
+ * has to mean.
+ *
+ * The ATC's tape goes the other way, doubling the cadence and keeping the
+ * edge, where merging is impossible and a thinner-looking edge is the whole
+ * softer claim it is allowed to make.
+ */
+export const CLOSURE_TAPE_OVERVIEW_EDGE =
+  CLOSURE_STRIPE_EDGE * CLOSURE_TAPE_OVERVIEW_SCALE
 
 /**
  * What fraction of the tape's length is red, for a given cadence.
@@ -250,13 +478,16 @@ export interface ClosureLayerOptions {
 }
 
 /**
- * ONE LAYER, WHICH IS THE POINT RATHER THAN A SIMPLIFICATION. A casing drawn
- * as a second line beneath this one would have shown through every gap in the
- * tape while the gaps were transparent, which is exactly the defect the tape
- * was built to end - so the casing lives in the image instead, where it can
- * only ever edge a stripe. The paper under-band (#1575) lives there too, and
- * for the same reason: a `line-pattern` layer has no colour of its own, so
- * the image is the only place a ground can be.
+ * TWO LAYERS SINCE #1598, AND THE SECOND ONE IS THE EDGE. The tape's own
+ * paragraph above this file used to end "one layer, which is the point
+ * rather than a simplification", and the argument behind it was that a
+ * casing drawn beneath tape whose gaps were TRANSPARENT showed through every
+ * gap - the defect the tape was built to end. #1575 filled the gaps with the
+ * sheet's paper, and a casing under an opaque band can only appear at its two
+ * edges, so the objection stopped reaching this band a month before the
+ * maintainer asked for an outline. What still holds from that paragraph is
+ * where the ground lives: a `line-pattern` layer has no colour of its own, so
+ * the paper is in the pixels and always will be.
  *
  * Still an array, and still built by one function for every source that needs
  * it: ONE TREATMENT, NOT TWO THAT CURRENTLY AGREE. map/style.ts calls this
@@ -281,22 +512,40 @@ export function buildClosureLayers(
   // that lets the tests assert "one treatment" rather than "two that currently
   // agree".
   const restrict = filter === undefined ? {} : { filter: filter as never }
+  const layout = { 'line-cap': 'butt', 'line-join': 'round' } as const
   return [
+    {
+      // The outline, FIRST so it is underneath (#1598). A flat colour and a
+      // wider taper: the band above covers all of it but the
+      // CLOSURE_OUTLINE_WIDTH showing past each side, which is what a hiker
+      // sees as the edge. Its width comes from the same closureTapeWidth the
+      // band's does, so the two cannot drift.
+      id: closureCasingId(bandId),
+      type: 'line',
+      source: sourceId,
+      ...restrict,
+      layout,
+      paint: {
+        'line-color': CLOSURE_CASING_COLOR,
+        'line-width': closureTapeWidth(CLOSURE_OUTLINE_WIDTH) as never,
+      },
+    },
     {
       id: bandId,
       type: 'line',
       source: sourceId,
       ...restrict,
-      layout: { 'line-cap': 'butt', 'line-join': 'round' },
+      layout,
       paint: {
         // The image, never a flat colour and never an expression off
         // blaze_color - a closure must not inherit the hue of the trail it
         // sits on. Baking the red into the pixels is a stronger form of that
         // guarantee than the flat literal it replaces: there is no colour
         // property left here for anyone to data-drive by accident. Which
-        // image is the sheet's: the tape drawn on this sheet's paper (#1575).
-        'line-pattern': closureTapeImageId(ground),
-        'line-width': CLOSURE_TAPE_WIDTH,
+        // image is the sheet's AND the zoom's since #1598: the tape drawn on
+        // this sheet's paper (#1575), at the cadence this zoom can resolve.
+        'line-pattern': tapePattern(ground) as never,
+        'line-width': closureTapeWidth() as never,
       },
     },
   ]

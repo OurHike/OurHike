@@ -38,12 +38,20 @@ import {
   CLOSURE_STRIPE_ANGLE_DEG,
   CLOSURE_STRIPE_EDGE,
   CLOSURE_TAPE_CADENCE,
+  CLOSURE_TAPE_OVERVIEW_CADENCE,
+  CLOSURE_TAPE_OVERVIEW_EDGE,
   CLOSURE_TAPE_PIXEL_RATIO,
   CLOSURE_TAPE_WIDTH,
   closureTapeImageId,
   type TapeCadence,
+  type TapeRange,
 } from '../lib/closureStyle'
-import { ATC_UPDATE_TAPE_CADENCE, atcTapeImageId } from '../lib/atcUpdateStyle'
+import {
+  ATC_UPDATE_TAPE_CADENCE,
+  ATC_UPDATE_TAPE_OVERVIEW_CADENCE,
+  ATC_UPDATE_TAPE_OVERVIEW_EDGE,
+  atcTapeImageId,
+} from '../lib/atcUpdateStyle'
 import { MAP_STYLE_VALUES, THEME_VALUES } from '../lib/userPreferences'
 import { closureTapeGround } from './style'
 import { whenStyleReady } from './styleReady'
@@ -89,11 +97,21 @@ function coverage(distance: number, half: number): number {
  * parallel stripes is a periodic function of exactly that distance, so the
  * whole image is `distance -> colour` evaluated per pixel. Bottom to top at
  * each one: the ground, opaque everywhere; the stripe's dark edge; the red.
+ *
+ * `edge` is a parameter rather than the constant it defaults to because the
+ * overview tape (#1598) is this tape at half scale and its edge has to halve
+ * with it - lib/closureStyle.ts's CLOSURE_TAPE_OVERVIEW_EDGE has the
+ * arithmetic that makes an unscaled edge merge the stripes into one flat
+ * band. The image HEIGHT stays CLOSURE_TAPE_WIDTH whatever the cadence:
+ * MapLibre scales a `line-pattern` so the height becomes the line width, so
+ * the height here is a drawing resolution and the layer's own `line-width`
+ * is what decides how wide the tape lands on screen.
  */
 export function buildClosureTape(
   ground: string,
   cadence: TapeCadence = CLOSURE_TAPE_CADENCE,
   pixelRatio: number = CLOSURE_TAPE_PIXEL_RATIO,
+  edge: number = CLOSURE_STRIPE_EDGE,
 ): TapeImage {
   const height = Math.round(CLOSURE_TAPE_WIDTH * pixelRatio)
   const width = Math.round(cadence.pitch * pixelRatio)
@@ -109,7 +127,7 @@ export function buildClosureTape(
   const period = cadence.pitch * pixelRatio * Math.sin(angle)
 
   const half = (cadence.stripe * pixelRatio) / 2
-  const edged = half + CLOSURE_STRIPE_EDGE * pixelRatio
+  const edged = half + edge * pixelRatio
 
   const [redR, redG, redB] = parseHex(CLOSURE_COLOR)
   const [darkR, darkG, darkB] = parseHex(CLOSURE_CASING_COLOR)
@@ -175,19 +193,61 @@ export function tapeGrounds(): readonly string[] {
   return [...grounds]
 }
 
+/** Every tape a map has to hold: both feeds at both cadences, named by the
+ *  same functions the layers name them with (#1598). One list rather than
+ *  four `addImage` calls in a row, so a feed or a cadence added here is
+ *  registered on every paper by construction. */
+const TAPES: ReadonlyArray<{
+  id: (ground: string, range: TapeRange) => string
+  range: TapeRange
+  cadence: TapeCadence
+  edge: number
+}> = [
+  {
+    id: closureTapeImageId,
+    range: 'near',
+    cadence: CLOSURE_TAPE_CADENCE,
+    edge: CLOSURE_STRIPE_EDGE,
+  },
+  {
+    id: closureTapeImageId,
+    range: 'overview',
+    cadence: CLOSURE_TAPE_OVERVIEW_CADENCE,
+    edge: CLOSURE_TAPE_OVERVIEW_EDGE,
+  },
+  {
+    id: atcTapeImageId,
+    range: 'near',
+    cadence: ATC_UPDATE_TAPE_CADENCE,
+    edge: CLOSURE_STRIPE_EDGE,
+  },
+  {
+    id: atcTapeImageId,
+    range: 'overview',
+    cadence: ATC_UPDATE_TAPE_OVERVIEW_CADENCE,
+    edge: ATC_UPDATE_TAPE_OVERVIEW_EDGE,
+  },
+]
+
 /**
- * Registers both tapes on every paper on a live map, and returns a detach.
+ * Registers every tape on every paper on a live map, and returns a detach.
  *
- * BOTH, from one call and one generator, because features/NEARBY_TRAILS.md §3
- * and lib/atcUpdateStyle.ts want the same thing from opposite directions: a
- * hiker learns ONE mark for "do not walk this", and which organisation said so
- * is the sheet's job rather than the line's. Two `addImage` calls that could
- * drift apart would be the same latent bug as two layer builders that
- * currently agree.
+ * BOTH FEEDS, from one call and one generator, because
+ * features/NEARBY_TRAILS.md §3 and lib/atcUpdateStyle.ts want the same thing
+ * from opposite directions: a hiker learns ONE mark for "do not walk this",
+ * and which organisation said so is the sheet's job rather than the line's.
+ * Two `addImage` calls that could drift apart would be the same latent bug as
+ * two layer builders that currently agree.
  *
  * EVERY PAPER, not the current one, so a sheet change never points a tape
- * layer at an image the map has not been given (this file's header). Ten
- * images of 30 by 28 pixels is about 34 KB, rasterised once per map.
+ * layer at an image the map has not been given (this file's header). And
+ * since #1598 every CADENCE too, for the same reason one zoom further out: a
+ * band whose `line-pattern` steps to an image the map has not been given
+ * draws nothing at all, and the step happens while a hiker is zooming.
+ *
+ * Five papers times four tapes is 20 images, 73 KB of RGBA rasterised once
+ * per map - computed from the cadences and CLOSURE_TAPE_WIDTH rather than
+ * measured, and closureTape.test.ts holds the count.
  */
 export function attachClosureTape(map: MapLibreMap): () => void {
   return whenStyleReady(
@@ -198,18 +258,15 @@ export function attachClosureTape(map: MapLibreMap): () => void {
     () => map.getLayer(CLOSURE_LAYER_ID) !== undefined,
     () => {
       for (const ground of tapeGrounds()) {
-        // Images outlive a style reload, and re-adding one throws.
-        const closureId = closureTapeImageId(ground)
-        if (!map.hasImage(closureId)) {
-          map.addImage(closureId, buildClosureTape(ground, CLOSURE_TAPE_CADENCE), {
-            pixelRatio: CLOSURE_TAPE_PIXEL_RATIO,
-          })
-        }
-        const atcId = atcTapeImageId(ground)
-        if (!map.hasImage(atcId)) {
-          map.addImage(atcId, buildClosureTape(ground, ATC_UPDATE_TAPE_CADENCE), {
-            pixelRatio: CLOSURE_TAPE_PIXEL_RATIO,
-          })
+        for (const tape of TAPES) {
+          // Images outlive a style reload, and re-adding one throws.
+          const id = tape.id(ground, tape.range)
+          if (map.hasImage(id)) continue
+          map.addImage(
+            id,
+            buildClosureTape(ground, tape.cadence, CLOSURE_TAPE_PIXEL_RATIO, tape.edge),
+            { pixelRatio: CLOSURE_TAPE_PIXEL_RATIO },
+          )
         }
       }
     },

@@ -19,10 +19,11 @@
 // the same ground, so the overview's closed features say where to look.
 //
 // WHAT TO LOOK FOR: over each closed trail, red diagonals on a white band
-// where until this change the red line showed through between the stripes -
-// the maintainer's choice from five rendered treatments: "I think I like
-// option E the best". The band is white because the field day sheet's paper
-// is white (map/style.ts's MAP_BACKDROP.light) - and, since 2026-09-18, it is
+// inside a dark outline, where until #1575 the red line showed through
+// between the stripes - the maintainer's choice from five rendered
+// treatments: "I think I like option E the best". The band is white because
+// the field day sheet's paper is white (map/style.ts's MAP_BACKDROP.light) -
+// and, since 2026-09-18, it is
 // that same white on night_hike too (closureTapeGround), the maintainer having
 // read stripes on ink as no closure at all; long-term-closures-night.mjs is
 // this frame under the dark scheme. Only red light keeps its ink.
@@ -33,13 +34,23 @@
 // The same seeding as network-above-the-seam.mjs: a remembered camera and a
 // reload, and no location fix, no account, nobody's reports.
 // AMENDED 2026-09-18 (#1588): the lines under the tape are the default's new
-// vocabulary - the park's trails a light dashed red, the A.T. a plain solid
+// vocabulary - the park's trails dashed and thinner, the A.T. a plain solid
 // red with no casing - so the tape reads against a quieter ground than the
 // solid cased lines it was chosen over.
+// AMENDED 2026-09-20 (#1598 and #1597), and both changes are in this frame.
+// The band is heavier: 17 px at this zoom rather than 14, half its length
+// red rather than 28% of it, and a hard dark outline round the whole thing -
+// the maintainer's pick from four treatments after "the closures are not
+// easily visible". And the lines under it are no longer a tint: every trail
+// here is the A.T.'s own red, so the tape's job of being unmistakable for a
+// trail line is harder than it was, which is what makes this frame worth
+// reading rather than only the overview one.
+// long-term-closures-overview.mjs is the same closures from the opening
+// camera, which is the zoom the complaint was actually about.
 export const caption =
-  'Bear Mountain and Doodletown on a phone, z13, Blaze colors off (the default): OPRHP’s long-term closed trails drawn as barrier tape on an opaque band of the sheet’s paper (#1575, the maintainer’s option E) over the lines — which since #1588 are the park’s trails as a light dashed red and the A.T. as a plain solid red, so the tape is the one heavy mark on this frame. Seven closed runs of 1.1 to 1.9 km sit in this frame, placed by measuring the pinned release’s network overview, with the A.T. crossing it over Bear Mountain'
+  'Bear Mountain and Doodletown on a phone, z13, Blaze colors off (the default): OPRHP’s long-term closed trails drawn as barrier tape on an opaque band of the sheet’s paper (#1575, the maintainer’s option E) over the lines — and since #1598 the band is 17 px, half its length red, inside a hard dark outline. The lines beneath are the park’s trails dashed and the A.T. solid, both in the one red since #1597 took the tint off them, so the tape is the one heavy mark on this frame without a second hue helping it. Seven closed runs of 1.1 to 1.9 km sit in this frame, placed by measuring the pinned release’s network overview, with the A.T. crossing it over Bear Mountain'
 export const alt =
-  'The map screen over Bear Mountain State Park at zoom 13: the Appalachian Trail a plain solid red line, the park’s trails thin pale red dashed lines, and along several of them a wide band of red diagonal stripes on a white ground laid over the line, the barrier tape marking a closed trail'
+  'The map screen over Bear Mountain State Park at zoom 13: the Appalachian Trail a plain solid red line, the park’s trails thinner red dashed lines, and along several of them a wide band of red diagonal stripes on a white ground inside a dark outline, laid over the line, the barrier tape marking a closed trail'
 
 /** Vector tiles from the bucket plus generated contours over a park at z13,
  *  the same allowance hudson-highlands-desktop.mjs makes. */

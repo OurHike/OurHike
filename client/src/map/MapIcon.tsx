@@ -64,6 +64,7 @@ import { WARNING_PIN } from '../lib/seriousWarnings'
 import {
   CLOSURE_CASING_COLOR,
   CLOSURE_COLOR,
+  CLOSURE_OUTLINE_WIDTH,
   CLOSURE_STRIPE_ANGLE_DEG,
   CLOSURE_STRIPE_EDGE,
   CLOSURE_TAPE_CADENCE,
@@ -289,6 +290,11 @@ function Tile({
  *  every number below is the number map/closureTape.ts rasterises, and the
  *  legend cannot drift from the map by someone editing one of them. */
 const CLOSURE_HEIGHT = CLOSURE_TAPE_WIDTH
+/** The swatch's full height: the tape plus the outline showing past each
+ *  side (#1598). The band's own width is what grows with the zoom on the
+ *  map, and this swatch draws the top of that taper - the weight a hiker
+ *  learns the mark at, which is the zoom they are reading the legend from. */
+const CLOSURE_BOX_HEIGHT = CLOSURE_HEIGHT + CLOSURE_OUTLINE_WIDTH * 2
 /**
  * How many pitches of tape the swatch shows.
  *
@@ -319,6 +325,23 @@ const CLOSURE_STRIPES = Array.from(
 )
 
 function ClosureBand({ className, ground }: { className?: string; ground: string }) {
+  /** The outline, drawn as the two edges it actually is (#1598). Two rects
+   *  over the stripes rather than one behind them, which is the same picture
+   *  the map makes: the band is opaque, so the line under it shows only past
+   *  its two sides - and drawing them last is what stops a stripe painting
+   *  across an edge the map keeps clean. */
+  const outline = (y: number) => (
+    <rect
+      key={`outline-${y}`}
+      className="map-icon__closure-outline"
+      x={0}
+      y={y}
+      width={CLOSURE_WIDTH}
+      height={CLOSURE_OUTLINE_WIDTH}
+      fill={CLOSURE_CASING_COLOR}
+    />
+  )
+
   // Every stripe drawn twice: the dark edge first, the red over it. The same
   // two passes map/closureTape.ts makes into its byte array, and the same
   // reason - the edge is what the stripe is outlined WITH, never a second
@@ -328,9 +351,9 @@ function ClosureBand({ className, ground }: { className?: string; ground: string
       key={`${mark}-${x}`}
       className={mark}
       x1={x}
-      y1={CLOSURE_HEIGHT}
+      y1={CLOSURE_HEIGHT + CLOSURE_OUTLINE_WIDTH}
       x2={x + CLOSURE_STRIPE_RUN}
-      y2={0}
+      y2={CLOSURE_OUTLINE_WIDTH}
       stroke={stroke}
       strokeWidth={width}
     />
@@ -339,7 +362,7 @@ function ClosureBand({ className, ground }: { className?: string; ground: string
   return (
     <svg
       className={className}
-      viewBox={`0 0 ${CLOSURE_WIDTH} ${CLOSURE_HEIGHT}`}
+      viewBox={`0 0 ${CLOSURE_WIDTH} ${CLOSURE_BOX_HEIGHT}`}
       aria-hidden="true"
       focusable="false"
     >
@@ -352,7 +375,7 @@ function ClosureBand({ className, ground }: { className?: string; ground: string
       <rect
         className="map-icon__closure-ground"
         x={0}
-        y={0}
+        y={CLOSURE_OUTLINE_WIDTH}
         width={CLOSURE_WIDTH}
         height={CLOSURE_HEIGHT}
         fill={ground}
@@ -368,6 +391,7 @@ function ClosureBand({ className, ground }: { className?: string; ground: string
       {CLOSURE_STRIPES.map((x) =>
         stripe(x, 'map-icon__closure-band', CLOSURE_COLOR, CLOSURE_TAPE_CADENCE.stripe),
       )}
+      {[0, CLOSURE_HEIGHT + CLOSURE_OUTLINE_WIDTH].map(outline)}
     </svg>
   )
 }

@@ -14,6 +14,32 @@
 // it (#1138) and the whole point here is the switch and the lines in one
 // picture.
 //
+// RE-PHOTOGRAPHED ON 2026-09-20, and for two reasons rather than one.
+//
+// The first is required rather than optional: that day's change moved
+// CONTEXT_TRAIL_TINT from 0.45 to 0.8, which is exactly the ink this frame is
+// about - the park's other trails. A recipe whose subject a pull request
+// repaints has to be re-run, or the comment shows a picture of the build
+// before it.
+//
+// The second is a report this frame is the standing check for. The
+// maintainer, same day: "When I turn on the Blaze Color, it displays as grey
+// and hides some trails. Until I zoom out/in, then it displays correctly."
+// That was investigated and NOT reproduced - map/appearanceRestore.test.ts
+// now diffs every appearance-dependent paint property on every line layer
+// against what buildMapStyle would have produced, and the switch writes all
+// of them back correctly, so it is not a missing write. What is left is a
+// render-timing question that only a real map can answer, and this is the
+// only recipe that taps that switch on one.
+//
+// WHAT TO LOOK FOR in this frame, therefore: coloured lines, not grey ones,
+// and the same number of trails as the recipe beside it. Note what this
+// frame CANNOT settle - it sits at z13 on a desktop, above the waypoint
+// seam, so the below-seam sketches (map/style.ts's TRAIL_OVERVIEW_LAYER_ID
+// and the network's, the two that draw dark-inked because they have no
+// casing) are not on it. If the report turns out to be about those, it will
+// take a camera below z7 that nothing points yet.
+//
 // WHAT THE TAP PROVES. The drive taps the toggle and nothing else; the
 // runner's second settle is what lets the repaint land before the shutter.
 // The lines change colour in place - attachMapAppearance repaints

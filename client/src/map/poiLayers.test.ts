@@ -25,6 +25,7 @@ import {
   CROWDING_PROPERTY,
   POI_ICON_PADDING_EXPRESSION,
   QUIET_NEIGHBOURS,
+  RING_GONE_NEIGHBOURS,
 } from './poiCrowding'
 import {
   attachPoiFilter,
@@ -767,11 +768,40 @@ describe('the staleness ring on crowded ground (#1536)', () => {
   })
 
   it('fades rather than switching, so no hard edge runs across a park', () => {
-    const midpoint = (QUIET_NEIGHBOURS + CROWDED_NEIGHBOURS) / 2
+    // THE RAMP'S FAR END IS RING_GONE_NEIGHBOURS SINCE 2026-09-20, not
+    // CROWDED_NEIGHBOURS. Padding still degrades all the way to 16; the ring
+    // is done at 10, because a 44 px rim stops being readable long before a
+    // pin stops wanting air. So the midpoint this walks to is 9 rather than
+    // 12 - the test's subject, that the ramp has no cliff in it, is
+    // unchanged.
+    const midpoint = (QUIET_NEIGHBOURS + RING_GONE_NEIGHBOURS) / 2
     const faded = ringOpacity('faint-invite', midpoint)
 
     expect(faded).toBeGreaterThan(0)
     expect(faded).toBeLessThan(0.35)
+  })
+
+  it('takes the ring off the crowdedest ground entirely, which is a city', () => {
+    // The frame the maintainer sent on 2026-09-20: the A.T. through New York
+    // City, where the map draws the city's water points and the rings stack
+    // into flat colour. At the old ramp the MEDIAN city mark - 10 neighbours
+    // within 800 m - still drew three quarters of its ring.
+    expect(ringOpacity('faint-invite', 10)).toBe(0)
+    expect(ringOpacity('faint-invite', 21)).toBe(0)
+    expect(ringOpacity('faint-invite', 42)).toBe(0)
+  })
+
+  it('leaves every ring on the trail this app is about untouched', () => {
+    // The other half, and the reason this is a safe change rather than a
+    // trade: the A.T.'s own neighbour counts run median 1, p90 2, max 5
+    // (map/poiCrowding.ts). The fade does not begin until 8, so no waypoint
+    // on the corridor loses any of its ring at all.
+    for (const neighbours of [0, 1, 2, 4, 5, QUIET_NEIGHBOURS]) {
+      expect({ neighbours, opacity: ringOpacity('faint-invite', neighbours) }).toEqual({
+        neighbours,
+        opacity: ringOpacity('faint-invite', 0),
+      })
+    }
   })
 
   it('leaves the per-tier strengths as the one home for how loud a tier is', () => {

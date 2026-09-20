@@ -1278,8 +1278,15 @@
   /* Above the scale bar, not on it: MapLibre's bottom-left control sits in
      the same corner (10px in, ~20px tall), and at 12px the chip drew across
      the "1000 ft" bar (the Harriman z12 render of 2026-09-10). 30px clears
-     the bar's box with its own gap; measured on that render, not derived. */
-  bottom: calc(var(--space-3, 12px) + 30px);
+     the bar's box with its own gap; measured on that render, not derived.
+
+     AND ABOVE THE SHOW POINTS SWITCH since 2026-09-20, which took the spot
+     directly over the scale bar when it was moved out of MapLibre's
+     bottom-right stack. 44 px is that switch's own touch-floor height and
+     the gap is one step - stacked unconditionally, because a chip that
+     dropped down when the switch happened to be absent would move under the
+     hiker as they zoomed. */
+  bottom: calc(var(--space-3, 12px) + 30px + 44px + var(--space-2, 8px));
   left: var(--space-3, 12px);
   z-index: 2;
   margin: 0;
@@ -5212,15 +5219,22 @@ a.poi-card__credit::after {
 
 /* The "Show points" switch over the map (2026-09-20, chrome/ShowPointsToggle.tsx).
 
-   Bottom-RIGHT, where the dropped chip is bottom-left: the two are about the
-   same subject and must not stack, and the right side is the thumb's side on
-   a phone held one-handed. Above the zoom controls' own box for the reason
-   the chip clears the scale bar - MapLibre owns the corners and this has to
-   clear what it puts there. */
+   BOTTOM-LEFT, AND IT WAS BOTTOM-RIGHT FOR ABOUT AN HOUR (2026-09-20). The
+   maintainer: "Show Points on desktop overlaps with the zoom buttons." They
+   do: map/mapChrome.ts adds the compass, the locate button and the report
+   door to 'bottom-right', so that corner holds three or four 42 px controls
+   on a desktop and this switch was laid straight over them. A phone shows
+   fewer, which is why it looked fine on the frame it was drawn against.
+   MapLibre owns that corner; nothing of ours belongs in it.
+
+   So it sits above the scale bar on the left, where the only other floating
+   thing is the dropped chip - and that chip moves up to sit on top of this
+   rather than the two sharing a spot, because this switch is always on the
+   screen and the chip almost never is. */
 .show-points {
   position: absolute;
   bottom: calc(var(--space-3, 12px) + 30px);
-  right: var(--space-3, 12px);
+  left: var(--space-3, 12px);
   z-index: 2;
   display: inline-flex;
   align-items: center;

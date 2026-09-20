@@ -117,6 +117,37 @@ export const QUIET_NEIGHBOURS = 8
  */
 export const CROWDED_NEIGHBOURS = QUIET_NEIGHBOURS * 2
 
+/**
+ * Where a staleness ring stops being drawn at all (2026-09-20).
+ *
+ * ITS OWN NUMBER RATHER THAN {@link CROWDED_NEIGHBOURS}, because the two
+ * answer different questions. Padding asks "how much air should this mark
+ * reserve", and degrading a pixel at a time up to 16 is right for that. The
+ * ring asks "can a rim around this mark still be READ", and the answer stops
+ * being yes much sooner, because a ring is 44 px across and two marks 44 px
+ * apart already overlap.
+ *
+ * MEASURED, on the frame the maintainer sent on 2026-09-20: the A.T. through
+ * New York City, where the map draws the city's municipal water points. At
+ * the previous ramp - full ring at 8 neighbours, gone at 16 - New York's own
+ * distribution (median 10, p90 21, max 42, the figures CROWDED_NEIGHBOURS was
+ * set against) left the MEDIAN city mark still drawing three quarters of its
+ * ring. Hundreds of those at 75% stack into flat colour, which is what that
+ * frame is: the rings are the wall, not the pins.
+ *
+ * 10 puts the median city mark at zero and leaves the corridor untouched: the
+ * A.T.'s own neighbour counts run median 1, p90 2, max 5 (poiCrowding's
+ * measurement above), so no waypoint on the trail this app is about ever
+ * reaches the 8 where the fade even begins.
+ *
+ * WHAT IS LOST, said plainly because it is a safety-adjacent display: on
+ * ground this crowded a hiker no longer sees at a glance how fresh a report
+ * is. They lose the rim, not the fact - the pin is still drawn, and the card
+ * behind it still carries the staleness in words. A rim nobody can separate
+ * from its neighbours was not carrying that fact either.
+ */
+export const RING_GONE_NEIGHBOURS = 10
+
 /** What every pin reserves today, and what a quiet one goes on reserving:
  *  `icon-padding` as map/poiLayers.ts has always set it. */
 export const BASE_PADDING_PX = 2

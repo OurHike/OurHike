@@ -64,7 +64,7 @@ import {
   type PoiConfidence,
 } from './poiIcons'
 import {
-  CROWDED_NEIGHBOURS,
+  RING_GONE_NEIGHBOURS,
   CROWDING_PROPERTY,
   POI_ICON_PADDING_EXPRESSION,
   QUIET_NEIGHBOURS,
@@ -617,7 +617,12 @@ const RING_CROWDING_FADE: unknown[] = [
   ['coalesce', ['get', CROWDING_PROPERTY], QUIET_NEIGHBOURS],
   QUIET_NEIGHBOURS,
   1,
-  CROWDED_NEIGHBOURS,
+  // RING_GONE_NEIGHBOURS rather than CROWDED_NEIGHBOURS since 2026-09-20:
+  // the padding ramp and this one answer different questions, and reusing
+  // one number for both left the median New York City mark drawing three
+  // quarters of a ring it shared with hundreds of others. See that
+  // constant's docstring for the frame this was measured on.
+  RING_GONE_NEIGHBOURS,
   0,
 ]
 

@@ -6,18 +6,26 @@
 // calibrated mile axis that section fits a 390x700 phone at a median z8.26,
 // with nine in ten 120-mile windows fitting at z7.61 or nearer. The pin seam
 // was z9. So the screen a hiker plans a carry from had no waypoint on it at
-// all, and this camera is that screen with the seam moved to 7.5.
+// all, and this camera is that screen with the seam moved to 7 - the
+// maintainer's number, set on 2026-09-20 against two drawn frames, and low
+// enough to clear every carry rather than the median half of them.
 //
 // THE OTHER THING IS WHAT IS NOT MISSING. A first build of #1585 put the
 // shelters, water and towns on this screen and left the campsites, privies,
 // parking, crossings, viewpoints and trailheads off it - a type gate below
 // the seam. The maintainer's rule, 2026-09-18: "Don't auto hide the POIs
 // ever. It's a safety thing, hikers need to know that info." So what this
-// frame has to show is every category the hiker has switched on, drawn: the
-// four a fresh install shows (shelter, water, campsite, privy), as pins where
-// the collision engine places them and as dots where it does not, and never
-// as nothing. A frame with only two or three kinds of mark on it is this
-// change having regressed.
+// frame has to show is every category the hiker has switched on, drawn. That
+// rule survived the seam moving: it is about WHICH categories the map may
+// decide for a hiker, and the seam decides only WHERE waypoints begin.
+//
+// What the frame should hold, as of 2026-09-20: shelters, water, campsites
+// and privies, with the privies and campsites RIDING their shelters' pins as
+// badges rather than stacking beside them - the nesting came back the same
+// day ("You need to nest the Shelters, Campsites, Privies & Water as we did
+// before this PR"). The trail line draws OVER the pins now, and each pin
+// stands on its point rather than being centred on it, so the line passes
+// under the artwork instead of through it.
 //
 // Harriman and the Hudson Highlands, where the A.T. runs through public land
 // thick enough that all four categories are in one frame. Public ground
@@ -29,13 +37,16 @@
 // remembered view on load, validates the shape field by field, and a reload
 // is what that memory is for.
 //
-// WHEN IT SHOWS LESS. Dots with no pins means the camera settled under z7.5;
-// a bare line means the waypoints had not landed by the wait, which is the
-// honest state on a slow bucket rather than a broken recipe.
+// WHEN IT SHOWS LESS. A bare line with the "Show points" switch reading off
+// means the camera settled under z7 and the seam did its job; a bare line
+// with the switch ON means the waypoints had not landed by the wait, which
+// is the honest state on a slow bucket rather than a broken recipe. Both
+// ranks share one floor now, so dots without pins is no longer a state this
+// frame can be in - if it ever is, the two floors have drifted apart.
 export const caption =
-  'Every waypoint at the zoom a resupply carry fits (#1585): the A.T. through the Hudson Highlands at zoom 7.8, below the old z9 seam and above the new 7.5 one — shelters, water, campsites and privies all drawn, as pins where they fit and as dots where they do not, with no category hidden by the map'
+  'Every waypoint at the zoom a resupply carry fits (#1585): the A.T. through the Hudson Highlands at zoom 7.8, just above the z7 seam — shelters and campsites as pins with their privies and water riding them as badges, the trail line drawing over the top, and no category the map decided to leave off'
 export const alt =
-  'The map screen over the Hudson Highlands at zoom 7.8: the Appalachian Trail as a white line inside a dark casing, with dark-green shelter pins, blue water pins, green campsite pins and purple privy marks along it, and smaller coloured dots between them where a pin did not fit'
+  'The map screen over the Hudson Highlands at zoom 7.8: the Appalachian Trail as a red line drawn over the waypoints along it, with dark-green shelter pins standing on their points, each wearing a small strip of badges for the privy, water and campsite that belong to the same place, and a Show points switch at the lower right of the map'
 
 /** Vector tiles from the bucket plus the waypoint source landing take longer
  *  than chrome. */
@@ -44,7 +55,7 @@ export const wait = 6000
 export default async function drive(page) {
   // lib/cameraMemory.ts's contract: { center: [lon, lat], zoom }, read back
   // with every field validated, and null on anything that does not convince.
-  // 7.8 rather than 7.5 itself: a camera parked exactly on the floor would
+  // 7.8 rather than 7 itself: a camera parked exactly on the floor would
   // photograph the one frame where a rounding error decides whether this
   // shot has pins in it at all.
   await page.evaluate(() => {

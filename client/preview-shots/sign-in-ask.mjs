@@ -16,7 +16,7 @@
 export const caption =
   'The sign-in ask, one tap from the map header, as a window over the map rather than a screen instead of it — each door in its own colours (#1596, #1572)'
 export const alt =
-  'A "Sign in" dialog docked to the foot of the screen over the trail map, with a "Continue with …" button for each configured provider - Google\'s white button with the multicolour G, GitHub\'s black button with its mark, and OurHike\'s pine button with the app icon for email - a "Not now" button, and the note that reading the map never needs an account. The map is still visible above it.'
+  'A "Sign in" dialog docked to the foot of the screen over the trail map, with a "Continue with …" button for each configured provider in the order ENABLED_PROVIDERS names them - GitHub\'s black button with its mark first, then Google\'s white button with the multicolour G, then a dark green button carrying the OurHike app icon for email - a "Not now" button, and the note that reading the map never needs an account. The map is still visible above it.'
 
 export default async function drive(page) {
   // ON THE MAP TAB FIRST, because the caption and the alt text both claim the

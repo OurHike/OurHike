@@ -8,11 +8,19 @@ import { ENABLED_PROVIDERS, AUTH_CONFIGURED, getAuthClient } from './supabase'
 // lines a reviewer sees change.
 
 describe('ENABLED_PROVIDERS', () => {
-  it('ships Google, GitHub and an emailed code, in the order the screen lays them out', () => {
+  it('ships GitHub, then Google, then an emailed code - the order SignInPrompt draws them in', () => {
     // Each of the three is enabled in both Supabase projects with credentials
     // behind it (#1572). backend/check_supabase_config.py reads this same line
     // and compares it against the live project.
-    expect(ENABLED_PROVIDERS).toEqual(['google', 'github', 'email'])
+    //
+    // THE ORDER IS PART OF THE ASSERTION, not an artefact of writing the
+    // array down: screens/SignInPrompt.tsx maps this straight into buttons,
+    // so the first name here is the first door a hiker meets. GitHub leads
+    // since 2026-09-20, on the maintainer's instruction - "we are an open
+    // source and open data project". It was Google's slot before that for no
+    // reason anybody had recorded, which is the kind of default worth a test
+    // going red over.
+    expect(ENABLED_PROVIDERS).toEqual(['github', 'google', 'email'])
   })
 
   it('does not ship Apple, which needs a $99/yr membership and is deferred to v2 (#92)', () => {

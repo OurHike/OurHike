@@ -63,8 +63,15 @@ export const AUTH_CONFIGURED = PROJECT_URL !== '' && ANON_KEY !== ''
  * Supabase's built-in mailer refuses every address outside the project's own
  * team, which lib/authMessages.ts says out loud rather than leaving a hiker
  * waiting for a code that was never sent.
+ *
+ * THE ORDER IS THE ORDER THE DOORS ARE DRAWN IN, so it is a statement rather
+ * than an accident - `screens/SignInPrompt.tsx` maps this array straight into
+ * buttons. GitHub is first on the maintainer's instruction, 2026-09-20: "we
+ * are an open source and open data project". It was Google's slot until then,
+ * for no reason anybody had written down, which is the kind of default this
+ * file exists to stop.
  */
-export const ENABLED_PROVIDERS: AuthProvider[] = ['google', 'github', 'email']
+export const ENABLED_PROVIDERS: AuthProvider[] = ['github', 'google', 'email']
 
 let client: Promise<SupabaseClient | null> | undefined
 

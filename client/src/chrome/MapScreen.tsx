@@ -14,6 +14,8 @@
 // can see - which background is drawn, and whether the raster archive it may
 // be drawn over is actually on the phone.
 
+import { ShowPointsToggle } from './ShowPointsToggle'
+import { afterSeamCrossing, afterTap, NO_CHOICE_YET } from '../lib/showPoints'
 import {
   useCallback,
   useEffect,
@@ -1172,6 +1174,21 @@ export function MapScreen({
   // screen covers the held map (#1081), and the root is the highest box
   // that is - see PoiShareSheet.tsx's header. State rather than a plain
   // ref so the card re-renders with the element once it exists.
+  /**
+   * Whether the map is drawing waypoints, and who last said so (2026-09-20).
+   *
+   * Held HERE rather than in App.tsx, and that is what "for that map view"
+   * means in the maintainer's rule: the state lives as long as this screen
+   * does. lib/showPoints.ts carries the reasoning and the two movers.
+   */
+  const [showPoints, setShowPoints] = useState(NO_CHOICE_YET)
+  useEffect(() => {
+    // The auto-rule, which fires at most once per view and never over a
+    // choice the hiker made - both guards live in afterSeamCrossing, so this
+    // effect can run on every camera change without re-deciding anything.
+    setShowPoints((state) => afterSeamCrossing(state, !belowPoiZoom))
+  }, [belowPoiZoom])
+
   const [screenRoot, setScreenRoot] = useState<HTMLDivElement | null>(null)
   const handleMapReady = useCallback(
     (map: MapLibreMap | null) => {
@@ -1687,6 +1704,10 @@ export function MapScreen({
               chosenTrailId={chosenTrailId}
               onMapReady={handleMapReady}
               onLiveSourceHealth={onLiveSourceHealth}
+              // The switch, reaching the layers. Below the seam this is
+              // irrelevant - the layers' own floors draw nothing there - so
+              // the two gates stay independent and neither masks the other.
+              waypointsShown={showPoints.shown}
             />
             {/* On the canvas, so "is there anything here I am not being shown"
                 is answerable without opening the legend (#528).
@@ -1696,6 +1717,16 @@ export function MapScreen({
                 either true or not - and a number that changes on every pinch
                 does not belong beside them. It sits over the map instead,
                 where the thing it is about is. */}
+            {/* The "Show points" switch (2026-09-20). Over the canvas rather
+                than in the status strip, for the same reason the chip below
+                is: it is about the thing under it. See
+                chrome/ShowPointsToggle.tsx for why it stays on screen and
+                disabled below the seam instead of disappearing. */}
+            <ShowPointsToggle
+              shown={showPoints.shown}
+              belowSeam={belowPoiZoom}
+              onToggle={() => setShowPoints(afterTap)}
+            />
             {droppedSummary !== null && (
               <p className="map-screen__dropped" aria-live="polite">
                 {droppedSummary.drawn} of {droppedSummary.present} waypoints fit

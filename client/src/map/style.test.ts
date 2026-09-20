@@ -780,10 +780,19 @@ describe('POI pins', () => {
     expect(layer(POI_LAYER_ID).type).toBe('symbol')
   })
 
-  it('draws every pin over the trail line, never under it', () => {
+  it('draws every pin under the trail line, never over it', () => {
+    // REVERSED 2026-09-20, on the maintainer's instruction: "The Trail line
+    // should sit over the POI's. The user can zoom in to zee the POI."
+    //
+    // It is a paint-order change and nothing more - the pins allow overlap
+    // and ignore placement, so nothing about which marks EXIST moves with it.
+    // What a hiker gets is a trail line that stays a continuous line across a
+    // crowded shelter cluster instead of being chewed by the pins on it.
     const ids = style().layers.map((l) => l.id)
 
-    expect(ids.indexOf(BLAZE_LAYER_ID)).toBeLessThan(ids.indexOf(POI_LAYER_ID))
+    expect(ids.indexOf(POI_LAYER_ID)).toBeLessThan(ids.indexOf(BLAZE_LAYER_ID))
+    // Both halves of the split, so a trail nobody has taken covers them too.
+    expect(ids.indexOf(POI_LAYER_ID)).toBeLessThan(ids.indexOf(BLAZE_UNTAKEN_LAYER_ID))
   })
 
   it('starts the POI source empty, to be filled once the download lands', () => {
@@ -1922,7 +1931,13 @@ describe('the through-route badge (#1283)', () => {
     expect(order.indexOf(TRAIL_BADGE_LAYER_ID)).toBeGreaterThan(
       order.indexOf(NEARBY_TRAIL_LABEL_LAYER_ID),
     )
-    expect(order.indexOf(TRAIL_BADGE_LAYER_ID)).toBeLessThan(order.indexOf(POI_LAYER_ID))
+    // The badge sits AFTER the pins since 2026-09-20, because the waypoints
+    // moved under the trail lines and the badge names one of those lines.
+    // What the badge still loses to is the thing a hiker acts on - the
+    // warning below - and what it still beats is an along-line name.
+    expect(order.indexOf(TRAIL_BADGE_LAYER_ID)).toBeGreaterThan(
+      order.indexOf(POI_LAYER_ID),
+    )
     expect(order.indexOf(TRAIL_BADGE_LAYER_ID)).toBeLessThan(
       order.indexOf(WARNING_LAYER_ID),
     )
@@ -2679,19 +2694,86 @@ describe('the default sheet: light dashed context trails, plain solid through-ro
   })
 
   it('tints the context trails’ red towards the sheet’s own paper, and names the three numbers', () => {
-    // 45% of the red over white: each channel 0.45 of the red's plus 0.55
-    // of the paper's, which is what the mock-up drew.
-    expect(CONTEXT_TRAIL_TINT).toBe(0.45)
-    expect(contextTrailColor({ theme: 'light' })).toBe('#dca39a')
+    // 80% OF THE RED since 2026-09-20, up from 45%, and the direction is the
+    // thing to read here: the number is the share of RED KEPT. At 0.45 a
+    // context trail rendered #dca39a, which the maintainer called pink and
+    // which it is. At 0.8 it is #c15b4c - red, a shade back from the
+    // through-route's #b2321f, which is what a context line is meant to be.
+    //
+    // The hexes are asserted rather than the ratio alone because the ratio
+    // alone cannot tell a reader which way the knob turns, and the first fix
+    // for this turned it the wrong way.
+    expect(CONTEXT_TRAIL_TINT).toBe(0.8)
+    expect(contextTrailColor({ theme: 'light' })).toBe('#c15b4c')
     // Over night_hike's ink the same share of red is a dark red, and on
     // parchment a warmer tint than on white: the paper is in the hex.
-    expect(contextTrailColor({ theme: 'dark' })).toBe('#572217')
+    expect(contextTrailColor({ theme: 'dark' })).toBe('#912c1c')
     expect(contextTrailColor({ mapStyle: 'parchment' })).not.toBe(
       contextTrailColor({ theme: 'light' }),
     )
     expect(CONTEXT_TRAIL_WIDTH_SCALE).toBe(0.8)
     expect(CONTEXT_TRAIL_DASH).toEqual([3, 2.5])
     expect(SOLID_DASH).toEqual([1, 0])
+  })
+
+  it('draws the same dash at every zoom, on every blaze layer, both kinds of line', () => {
+    // THE MAINTAINER, 2026-09-20: "Make sure the dashes are working at all
+    // zoom levels. Add a test for this config too."
+    //
+    // The test above this one is the reason the ask was fair: it checks the
+    // dash on every layer and every source, and it does it at ONE zoom,
+    // because `dashFor` hard-codes 12. A dash that vanished at the seam or
+    // went solid on a continental view would have passed it.
+    //
+    // WHAT MAKES "EVERY ZOOM" PROVABLE RATHER THAN SAMPLED: the dasharray is
+    // a `case` on the feature's source (contextDashExpression) with no zoom
+    // term anywhere in it, so it cannot vary with the camera. The ladder
+    // below is the belt, and the no-zoom-term assertion at the end is the
+    // braces - the same pair that works for poiFilter.
+    const built = buildMapStyle({ ...LIVE, blazeColorsShown: false })
+    const LADDER = [0, 2, 4.9, 6, 6.9, 7, 7.1, 8, 9, 10, 12, 14, 16, 18, 20, 22]
+    const at = (
+      id: string,
+      zoom: number,
+      properties: Record<string, unknown>,
+    ): unknown => {
+      const found = built.layers.find((l) => l.id === id)
+      const compiled = createExpression(
+        (found?.paint as Record<string, unknown>)['line-dasharray'] as never,
+        dashSpec as never,
+      )
+      if (compiled.result === 'error')
+        throw new Error(`line-dasharray on ${id} is not valid`)
+      const value = compiled.value.evaluate({ zoom }, { properties } as never)
+      return Array.isArray(value) ? [...value] : value
+    }
+
+    for (const id of BLAZE_LINE_LAYER_IDS) {
+      for (const zoom of LADDER) {
+        // A through-route stays solid at every zoom - the maintainer's own
+        // #1588 pick, and the reason the dash means anything at all.
+        expect({ id, zoom, dash: at(id, zoom, { source: 'centerline' }) }).toEqual({
+          id,
+          zoom,
+          dash: [...SOLID_DASH],
+        })
+        // And a context trail is dashed at every zoom, including the two
+        // either side of the waypoint seam, where a reader might reasonably
+        // expect the style to change its mind.
+        expect({ id, zoom, dash: at(id, zoom, { source: 'oprhp_trails' }) }).toEqual({
+          id,
+          zoom,
+          dash: [...CONTEXT_TRAIL_DASH],
+        })
+      }
+      // The braces: no zoom term in the expression at all, so there is no
+      // zoom between the rungs where this could differ.
+      const found = built.layers.find((l) => l.id === id)
+      expect(
+        JSON.stringify((found?.paint as Record<string, unknown>)['line-dasharray']),
+        id,
+      ).not.toContain('zoom')
+    }
   })
 
   it('dashes every context feature and none of a through-route’s, on every blaze layer, and the style validates', () => {

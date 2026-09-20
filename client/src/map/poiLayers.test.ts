@@ -135,27 +135,35 @@ describe('the dot rank', () => {
     // and #1135's objection is answered rather than overruled, because #1135
     // itself put every organization's trails on this camera.
     //
-    // At or below the pin floor, always: this is what makes "a pin or a dot
-    // and never neither" true at EVERY zoom rather than only above the seam.
+    // FOURTH TURN, 2026-09-20: back to the seam, on the maintainer's own
+    // reading of the carry frames - "We can keep a seam, and make it at zoom
+    // 7. Yes the POI's can be hidden above there." So the two ranks share one
+    // floor and the corridor view carries no waypoint mark of any kind.
+    //
+    // ONE CONSTANT, NOT TWO THAT AGREE. A second number here that happened to
+    // equal the pins' is how a band of ground with dots and no pins - or the
+    // reverse - gets built by accident.
     expect(buildPoiDotLayer().minzoom).toBe(POI_DOT_MIN_ZOOM)
-    expect(POI_DOT_MIN_ZOOM).toBeLessThanOrEqual(POI_PIN_MIN_ZOOM)
-    expect(POI_DOT_MIN_ZOOM).toBe(0)
+    expect(POI_DOT_MIN_ZOOM).toBe(POI_PIN_MIN_ZOOM)
     expect(buildPoiLayer().minzoom).toBe(POI_PIN_MIN_ZOOM)
   })
 
-  it('opens its radius ramp at the corridor stop, below the seam (#1585)', () => {
-    // The 1.2 px stop came back with the dots it sizes. A ramp that still
-    // opened AT the seam would leave every dot below it at the clamped 2.5 px,
-    // which on the whole-corridor camera is a smear rather than a stipple -
-    // and nothing would have said so.
+  it('opens its radius ramp at the seam, with no stop below it to be degenerate', () => {
+    // The 1.2 px corridor stop went with the band it sized (2026-09-20). This
+    // is not housekeeping: MapLibre requires an `interpolate`'s stops to
+    // ASCEND STRICTLY, so once both floors converged on the seam, a ramp that
+    // still opened at POI_DOT_MIN_ZOOM would have had two stops at one zoom
+    // and the engine would have refused the whole style.
     const ramp = POI_DOT_RADIUS_EXPRESSION
-    const firstStop = ramp[3] as number
-    const firstRadius = ramp[4] as number
-    const atSeam = ramp[ramp.indexOf(POI_PIN_MIN_ZOOM) + 1] as number
+    const stops: number[] = []
+    for (let i = 3; i < ramp.length; i += 2) stops.push(ramp[i] as number)
 
-    expect(firstStop).toBe(POI_DOT_MIN_ZOOM)
-    expect(firstRadius).toBeGreaterThan(0)
-    expect(firstRadius).toBeLessThan(atSeam)
+    expect(stops[0]).toBe(POI_PIN_MIN_ZOOM)
+    for (let i = 1; i < stops.length; i += 1) {
+      expect(stops[i]).toBeGreaterThan(stops[i - 1])
+    }
+    // And it grows with the zoom, which is the ramp's only other job.
+    expect(ramp[ramp.length - 1] as number).toBeGreaterThan(ramp[4] as number)
   })
 
   it('reads the same source as the pins, which is what makes it site-correct', () => {
@@ -402,12 +410,15 @@ describe('density', () => {
     // is the bound either way, because below it the corridor is a texture
     // (POI_MIN_ZOOM's own argument, which was right about that).
     expect(buildPoiLayer().minzoom).toBe(POI_PIN_MIN_ZOOM)
-    // `>= 8` since #1585 moved the seam out to the zoom a hundred-mile
-    // resupply carry fits. What this still holds is that a floor EXISTS and
-    // sits three zooms above the opening camera, which is the whole of the
+    // `>= 7` since the maintainer set the seam there on 2026-09-20, having
+    // seen the carry frames. What this still holds is that a floor EXISTS and
+    // sits well above the opening camera's z4.9, which is the whole of the
     // "eight hundred pins is a texture" argument; the block below holds the
-    // other half, that the floor never decides which categories draw.
-    expect(POI_PIN_MIN_ZOOM).toBeGreaterThanOrEqual(7.5)
+    // other half, that the floor never decides WHICH categories draw.
+    expect(POI_PIN_MIN_ZOOM).toBeGreaterThanOrEqual(7)
+    // Measured, from the calibrated mile axis: nine in ten 120-mile windows
+    // fit at z7.61 or nearer, so a seam above 7.6 stops clearing every carry.
+    expect(POI_PIN_MIN_ZOOM).toBeLessThanOrEqual(7.6)
   })
 
   it('never lets the collision engine drop a pin, and never lets a pin drop anything else', () => {
@@ -623,13 +634,22 @@ describe('poiFeatureCollection', () => {
     expect(resolved).toBe(poiIconId('shelter', 'high'))
   })
 
-  it('keeps every site member in the source, at its own coordinate (#1585)', () => {
-    // THE REVERSE OF WHAT THIS HELD, and the reversal is the point. It used
-    // to drop the privy and let it ride the shelter's pin as a badge, which
-    // was the only way to keep it reachable while a collision could delete
-    // it. Nothing is deleted now, so a member draws its own pin where it
-    // actually is - 284 privies, 144 campsites and 206 water points got
-    // their own mark back on 2026-09-18.
+  it('folds a site member onto its anchor, so one place is one pin', () => {
+    // REVERSED BACK, 2026-09-20, and the round trip is worth pinning because
+    // both directions had a reason. For two days this held the opposite: the
+    // privy drew its own pin at its own coordinate, on the rule that the map
+    // may never take a mark away. What that actually drew was four pins on
+    // one shelter - the privy sits a median 42 m from it, which is the same
+    // pixel at every zoom a hiker walks at.
+    //
+    // The maintainer, having seen it: "The grouping of locations was working
+    // before. You need to nest the Shelters, Campsites, Privies & Water as we
+    // did before this PR."
+    //
+    // The member is NOT deleted, which is what lets this stand beside the
+    // never-hide rule: it rides the anchor's pin as a badge and is listed on
+    // the card behind it. What stayed gone is the collision culling, which
+    // removed marks with no way back.
     const collection = poiFeatureCollection([
       {
         id: 'shelter',
@@ -651,16 +671,18 @@ describe('poiFeatureCollection', () => {
       },
     ])
 
-    expect(collection.features.map((f) => f.id)).toEqual(['shelter', 'privy'])
-    // At its own place, not the anchor's: a hiker walks to the pin.
-    expect(collection.features[1].geometry.coordinates).toEqual([-77, 39.0004])
+    expect(collection.features.map((f) => f.id)).toEqual(['shelter'])
+    // The anchor stays at its own coordinate - folding moves nothing.
+    expect(collection.features[0].geometry.coordinates).toEqual([-77, 39])
+    // And the privy is on the pin rather than gone: the badge key names it.
+    expect(collection.features[0].properties[SITE_MEMBERS_PROPERTY]).toContain('privy')
   })
 
-  it('gives no pin another waypoint to carry, because none is riding one', () => {
+  it('names the folded member on the anchor, so the pin says what is there', () => {
     // The badge key stays present and always a string - the style's `match`
-    // needs no `coalesce` - and is always empty now. A pin wearing a badge
-    // for a waypoint that is also drawing its own pin would be counting the
-    // same place twice.
+    // needs no `coalesce` - and now carries what rode in. A pin that folded a
+    // privy away and then said nothing about it would be the deletion the
+    // fold exists to avoid, with extra steps.
     const collection = poiFeatureCollection([
       {
         id: 'shelter',
@@ -682,9 +704,8 @@ describe('poiFeatureCollection', () => {
       },
     ])
 
-    for (const feature of collection.features) {
-      expect(feature.properties[SITE_MEMBERS_PROPERTY]).toBe('')
-    }
+    expect(collection.features).toHaveLength(1)
+    expect(collection.features[0].properties[SITE_MEMBERS_PROPERTY]).toContain('privy')
   })
 
   it('puts the POI id somewhere a tap can still read it', () => {
@@ -769,10 +790,10 @@ describe('the staleness ring on crowded ground (#1536)', () => {
 
 describe('how crowded the ground is, on the feature (#1536)', () => {
   it('counts every drawn mark, now that every one of them is drawn', () => {
-    // Crowding was computed after the fold, so a shelter carrying a privy and
-    // two campsites counted once. Nothing folds any more, so all four are
-    // marks on the ground and all four count - which is the honest reading of
-    // "how crowded is this ground" and what the staleness ring still fades on.
+    // Crowding is computed AFTER the fold again (2026-09-20), so a shelter
+    // carrying a privy and two campsites is one neighbour to the marks around
+    // it rather than four. Counting before folding would report ground as
+    // crowded that the fold had already uncrowded, and buy air nobody needed.
     const site = ['privy', 'campsite', 'campsite'].map((type, i) => ({
       id: `${type}-${i}`,
       type,
@@ -797,9 +818,11 @@ describe('how crowded the ground is, on the feature (#1536)', () => {
 
     const collection = poiFeatureCollection(pois)
 
-    expect(collection.features).toHaveLength(4)
+    expect(collection.features).toHaveLength(1)
     const shelter = collection.features.find((f) => f.id === 'shelter')
-    expect(shelter?.properties[CROWDING_PROPERTY]).toBeGreaterThan(0)
+    expect(shelter).toBeDefined()
+    // One mark on this ground, so nothing is crowding it.
+    expect(shelter?.properties[CROWDING_PROPERTY]).toBe(0)
   })
 
   it('recounts when the hiker hides a category, so air is bought against pins that exist', () => {
@@ -932,11 +955,11 @@ describe('filtering the legend down to one category', () => {
     expect(drawnPins(onlyType('privy'))).toEqual(['privy'])
   })
 
-  it('draws the shelter AND the privy when nothing is hidden (#1585)', () => {
-    // It used to draw the shelter alone, the privy folded onto its pin. Both
-    // are marks on the ground now, so both are on the map - which is the
-    // whole of what #1585 changed here.
-    expect(drawnPins(showAllTypes()).sort()).toEqual(['privy', 'shelter'])
+  it('draws the shelter alone when nothing is hidden, the privy riding its pin', () => {
+    // Folding again since 2026-09-20. The privy is not off the map: it is on
+    // the shelter's pin as a badge and on the card behind it. #607's fallback
+    // is the test below - hide the shelter and the privy takes the pin.
+    expect(drawnPins(showAllTypes()).sort()).toEqual(['shelter'])
   })
 
   it('draws the shelter and not the privy when only shelters are asked for', () => {
@@ -1257,5 +1280,160 @@ describe('pushing all of it onto a live map', () => {
 
     expect(map.listenerCount('styledata')).toBe(0)
     expect(map.listenerCount('load')).toBe(0)
+  })
+})
+
+/**
+ * The zoom ladder the maintainer asked for on 2026-09-20: "Add Tests at every
+ * zoom level to make sure the above happens."
+ *
+ * One list of zooms, walked by every rule this design turns on, so a change
+ * that is right at z12 and wrong at z7 cannot pass. The three blocks above
+ * check the FILTER (which categories) at every zoom; this one checks the
+ * LAYERS (whether anything is drawn at all) and the SOURCE (what got folded),
+ * which are the two other places a waypoint can be lost.
+ */
+describe('the zoom ladder (2026-09-20)', () => {
+  // Every zoom a hiker's camera can be at, with the seam and the two zooms
+  // either side of it named rather than assumed. MapLibre's own range is 0-24;
+  // 22 is the furthest this app's basemap goes.
+  const LADDER = [0, 2, 4.9, 6, 6.9, 7, 7.1, 8, 9, 10, 12, 14, 16, 18, 20, 22]
+  const BELOW = LADDER.filter((z) => z < POI_PIN_MIN_ZOOM)
+  const ATiOR_ABOVE = LADDER.filter((z) => z >= POI_PIN_MIN_ZOOM)
+
+  /** Whether a layer draws at a zoom, by its own floor and ceiling. */
+  function draws(layer: { minzoom?: number; maxzoom?: number }, zoom: number): boolean {
+    return zoom >= (layer.minzoom ?? 0) && zoom < (layer.maxzoom ?? 25)
+  }
+
+  it('draws no waypoint mark of any kind below the seam', () => {
+    // The seam the maintainer set: "We can keep a seam, and make it at zoom 7.
+    // Yes the POI's can be hidden above there" - above meaning further out.
+    // Both ranks, because a dot below the seam is still a waypoint mark and
+    // the corridor view is meant to be trails and clubs.
+    expect(BELOW.length).toBeGreaterThan(3)
+    for (const zoom of BELOW) {
+      expect({ zoom, pins: draws(buildPoiLayer(), zoom) }).toEqual({ zoom, pins: false })
+      expect({ zoom, dots: draws(buildPoiDotLayer(), zoom) }).toEqual({
+        zoom,
+        dots: false,
+      })
+    }
+  })
+
+  it('draws both ranks at every zoom from the seam up, with no gap between them', () => {
+    // "A pin or a dot and never neither" (#597), asserted across the ladder
+    // rather than at the two ends: a ceiling on either layer would open a band
+    // where a waypoint has no mark, and a ceiling is the one thing a floor
+    // test cannot see.
+    expect(ATiOR_ABOVE.length).toBeGreaterThan(5)
+    for (const zoom of ATiOR_ABOVE) {
+      expect({ zoom, pins: draws(buildPoiLayer(), zoom) }).toEqual({ zoom, pins: true })
+      expect({ zoom, dots: draws(buildPoiDotLayer(), zoom) }).toEqual({
+        zoom,
+        dots: true,
+      })
+    }
+    expect(buildPoiLayer().maxzoom).toBeUndefined()
+    expect(buildPoiDotLayer().maxzoom).toBeUndefined()
+  })
+
+  it('crosses the seam exactly once, so there is no zoom that draws half a rank', () => {
+    // The seam is a single boundary rather than two that nearly agree. Walking
+    // the ladder, the number of times "does anything draw" changes answer must
+    // be exactly one, and it must change at the seam.
+    let flips = 0
+    let at = -1
+    for (let i = 1; i < LADDER.length; i += 1) {
+      const before = draws(buildPoiLayer(), LADDER[i - 1])
+      const now = draws(buildPoiLayer(), LADDER[i])
+      if (before !== now) {
+        flips += 1
+        at = LADDER[i]
+      }
+      // And the two ranks flip together, always.
+      expect({
+        zoom: LADDER[i],
+        same: now === draws(buildPoiDotLayer(), LADDER[i]),
+      }).toEqual({ zoom: LADDER[i], same: true })
+    }
+    expect(flips).toBe(1)
+    expect(at).toBe(POI_PIN_MIN_ZOOM)
+  })
+
+  it('folds a site the same way at every zoom, because the fold is in the source', () => {
+    // THE NESTING AS A REQUIREMENT, which is what the maintainer asked for:
+    // "The grouping of locations was working before. You need to nest the
+    // Shelters, Campsites, Privies & Water as we did before this PR. Add a
+    // test to make this a requirement."
+    //
+    // The honest form of "at every zoom" for this one: folding happens when
+    // the source is built and carries no zoom term at all, so the assertion
+    // is that it CANNOT vary with the camera. A fold that did would be a
+    // waypoint appearing and disappearing as a hiker pinched.
+    const site = poiFeatureCollection([
+      {
+        id: 'shelter',
+        type: 'shelter',
+        lat: 39,
+        lon: -77,
+        confidence: 'high',
+        siteId: 'site_1',
+        siteRole: 'anchor',
+      },
+      ...['privy', 'water', 'campsite'].map((type) => ({
+        id: type,
+        type,
+        lat: 39.0004,
+        lon: -77,
+        confidence: 'high' as const,
+        siteId: 'site_1',
+        siteRole: 'member',
+      })),
+    ])
+
+    // One pin for the place, carrying all three parts the pipeline groups on.
+    expect(site.features).toHaveLength(1)
+    const badge = site.features[0].properties[SITE_MEMBERS_PROPERTY] as string
+    for (const member of ['privy', 'water', 'campsite']) {
+      expect({ member, onThePin: badge.includes(member) }).toEqual({
+        member,
+        onThePin: true,
+      })
+    }
+    // And nothing in the style that draws it consults the zoom to decide.
+    const iconLayout = buildPoiLayer().layout as Record<string, unknown>
+    expect(JSON.stringify(iconLayout['icon-image'])).not.toContain('zoom')
+  })
+
+  it('stands the pin on its point at every zoom, so the trail line passes under it', () => {
+    // The jigger the maintainer chose on 2026-09-20, once the trail line went
+    // over the waypoints: the pin steps clear rather than being sliced.
+    //
+    // ANCHORED, NOT OFFSET, and the test says so because the difference is
+    // the whole of whether this is honest. An offset would move the drawn pin
+    // off the place; an anchor says which part of the artwork lands ON the
+    // place. A regression to `icon-offset` would look identical on screen and
+    // would be the app drawing a waypoint where it is not.
+    const layout = buildPoiLayer().layout as Record<string, unknown>
+    expect(layout['icon-anchor']).toBe('bottom')
+    expect(layout['icon-offset']).toBeUndefined()
+    // No zoom term, so the pin stands on its point at every zoom rather than
+    // at the two somebody checked.
+    expect(typeof layout['icon-anchor']).toBe('string')
+  })
+
+  it('keeps the collision engine off at every zoom, so folding is the only grouping', () => {
+    // The two are easy to confuse and must not be: FOLDING removes a member
+    // from the source and puts it on the anchor's pin, where the hiker can
+    // still reach it. CULLING dropped whichever pin lost a collision, with no
+    // way back. The fold came back on 2026-09-20; the culling did not, and
+    // this is the line that stops it returning by accident.
+    const layout = buildPoiLayer().layout as Record<string, unknown>
+    expect(layout['icon-allow-overlap']).toBe(true)
+    expect(layout['icon-ignore-placement']).toBe(true)
+    // Neither is a zoom expression, so there is no band where culling resumes.
+    expect(typeof layout['icon-allow-overlap']).toBe('boolean')
+    expect(typeof layout['icon-ignore-placement']).toBe('boolean')
   })
 })

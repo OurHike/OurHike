@@ -159,7 +159,7 @@ export const ATC_UPDATE_POINT_DRAWN_WIDTH = 40
  *    a waypoint pin is its whole 38px. This is the comparison every bound in
  *    src/test/atcAlertProminence.test.ts is about, so it has to be the zoom
  *    both are at full size.
- *  - **z7.5, 0.8.** Where waypoint pins first appear (`POI_PIN_MIN_ZOOM`), at
+ *  - **At the seam, 0.8.** Where waypoint pins first appear (`POI_PIN_MIN_ZOOM`), at
  *    the fraction they are drawn at there (`POI_PIN_MIN_SCALE`). Matching the
  *    pin's own scale is what keeps this dot its couple of pixels clear at
  *    every zoom where both are drawn, rather than only at the top.
@@ -204,7 +204,7 @@ export const ATC_UPDATE_POINT_ZOOM_STOPS: ReadonlyArray<[zoom: number, scale: nu
   // pin beside it at every zoom where both are drawn, and a notice that
   // stayed at 9 would simply be absent on the first screen that has pins on
   // it - the one place a hiker planning a carry would want it.
-  [7.5, 0.8],
+  [7, 0.8],
   [13, 1],
 ]
 
@@ -218,7 +218,14 @@ export const ATC_UPDATE_POINT_ZOOM_STOPS: ReadonlyArray<[zoom: number, scale: nu
  * for the reason the 0.8 above gives: `lib/` does not depend on `map/`, and
  * src/test/atcAlertProminence.test.ts holds the two equal.
  */
-export const ATC_UPDATE_POINT_MIN_ZOOM = 7.5
+// 7 SINCE 2026-09-20, following map/poiLayers.ts's POI_PIN_MIN_ZOOM down
+// from 7.5. A LITERAL rather than an import, deliberately: this module sits
+// outside the map layer, and importing a value from poiLayers.ts would pull
+// a MapLibre-shaped module into whatever chunk this lands in - the bundle
+// boundary LOCATE_MIN_ZOOM's docstring describes. The two numbers agreeing
+// is enforced instead, by src/test/atcAlertProminence.test.ts, which fails
+// if the seam moves and this does not.
+export const ATC_UPDATE_POINT_MIN_ZOOM = 7
 
 /**
  * What the symbol layer is given instead of a number.

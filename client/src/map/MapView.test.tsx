@@ -895,23 +895,24 @@ describe('POI pins', () => {
     )
     const [map] = MockMap.live
     loadStyle(map)
-    // WHAT THIS TEST IS ABOUT HAS CHANGED, AND THE NEW ANSWER IS THE STRONGER
-    // ONE (#1585). It used to hold that hiding a site's anchor REBUILT the
-    // source, because the privy had been folded away and only a rebuild could
-    // promote it back - #607, a real bug where hiding shelters left a hiker
-    // with neither pin. Nothing folds any more, so there is no promotion to
-    // wait for: both waypoints are in the source from the first frame and
-    // stay there, and the legend's tap is a filter on the layer.
+    // BACK TO #607's OWN QUESTION (2026-09-20), because folding is back and
+    // so is the bug it guards. For two days this asserted the opposite - both
+    // waypoints in the source from the first frame - which was true while
+    // nothing folded and is the weaker claim now that something does.
     //
-    // So what is asserted is the property that made #607 impossible rather
-    // than the mechanism that fixed it: the hiker's tap never takes a
-    // waypoint OUT OF THE SOURCE, which is the only place a mark can be lost
-    // where no filter can put it back.
-    expect(pinnedIds(map)).toEqual(['shelter', 'privy'])
+    // Folded, the privy is NOT in the source: it rides the shelter's pin.
+    // Hide shelters and that pin goes, so the privy has to be promoted into
+    // the source by a REBUILD - and a rebuild only happens if the effect that
+    // builds it depends on the hidden set. That dependency is the whole of
+    // what this test catches, and dropping it is invisible in composeSites,
+    // which would be perfectly right about the promotion nobody asked for.
+    expect(pinnedIds(map)).toEqual(['shelter'])
 
     rerender(<MapView {...PROPS} pois={site} hiddenTypes={new Set(['shelter'])} />)
 
-    expect(pinnedIds(map)).toEqual(['shelter', 'privy'])
+    // The privy takes the pin rather than the place going dark, which is
+    // #607's fix and the reason a fold is not a deletion.
+    expect(pinnedIds(map)).toEqual(['privy'])
   })
 
   it('takes POIs arriving after the map was built, which is the normal case', () => {

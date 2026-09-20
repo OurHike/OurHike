@@ -47,6 +47,7 @@ import { POI_TYPES } from '../lib/config'
 import type { MapPoint } from '../lib/legendContents'
 import {
   SITE_ANCHOR_TYPES,
+  composeSites,
   SITE_MEMBERS_PROPERTY,
   siteMembersKey,
   type SiteVisibility,
@@ -137,7 +138,7 @@ export const POI_NAME_PROPERTY = 'poi_name'
  * texture and wrong about what to do: it drew nothing rather than drawing the
  * texture honestly. The dot rank is that texture, labelled.
  */
-export const POI_PIN_MIN_ZOOM = 7.5
+export const POI_PIN_MIN_ZOOM = 7
 
 // IT IS 7.5 SINCE 2026-09-18 (#1585), AND THE DOCSTRING ABOVE IS KEPT WHOLE
 // BECAUSE ITS ARGUMENT IS STILL THE ONE THAT DECIDES THIS NUMBER - the seam is
@@ -176,17 +177,31 @@ export const POI_PIN_MIN_ZOOM = 7.5
 // A 0.6 ramp was drawn and offered - it fits about a quarter more pins - and
 // was not taken.
 //
-// WHAT THIS IS NOT, and the first attempt at #1585 got it wrong in exactly
-// this way: it is not a licence to draw SOME categories down here. That build
-// put a type gate below the seam - shelters, water and towns only - and a
-// hiker at z8 saw no campsite, no privy, no parking and no crossing, with
-// nothing on the screen to say they existed. The maintainer's rule, 2026-09-18:
-// "Don't auto hide the POIs ever. It's a safety thing, hikers need to know
-// that info." So the seam decides WHERE waypoints start, and never WHICH:
-// from here up every category the hiker has switched on is drawn, as a pin
-// where it fits and as a dot where it does not, and {@link poiFilter} carries
-// no zoom term at all. poiLayers.test.ts's "the map never hides a category of
-// its own accord" block is that rule, pinned.
+// IT IS 7 SINCE 2026-09-20, AND THE SEAM IS A SEAM AGAIN. The maintainer,
+// having seen the z7.8 carry frames drawn from the live preview: "We can keep
+// a seam, and make it at zoom 7. Yes the POI's can be hidden above there" -
+// above meaning further out, which they confirmed against two drawn frames
+// before any of this was written. So below z7 the map carries no waypoints at
+// all, and 7 rather than 7.5 is their number rather than a derivation: the
+// measured table above says nine in ten 120-mile windows fit at z7.61 or
+// nearer, so 7 clears every carry with room to spare.
+//
+// WHAT THE SEAM STILL NEVER DECIDES IS *WHICH*, and the first attempt at
+// #1585 got exactly that wrong: it put a type gate below the seam - shelters,
+// water and towns only - and a hiker at z8 saw no campsite, no privy, no
+// parking and no crossing, with nothing on the screen to say they existed.
+// The maintainer's rule of 2026-09-18 stands unchanged over the top of the
+// new seam: "Don't auto hide the POIs ever. It's a safety thing, hikers need
+// to know that info." So from z7 up, every category the hiker has switched on
+// is drawn, and {@link poiFilter} carries no zoom term at all.
+// poiLayers.test.ts's "the map never hides a category of its own accord"
+// block is that rule, pinned, and it now runs at every zoom from the seam up.
+//
+// AND THE HIKER CAN SEE THE SEAM WORKING, which is what makes it a seam
+// rather than a silence: chrome/ShowPointsToggle.tsx puts a "Show points"
+// switch over the map, on by itself the first time a hiker crosses z7 inward
+// in a given map view, and never again overriding a state they chose
+// themselves (lib/showPoints.ts).
 
 /**
  * The closest one tap of the map's locate button brings the camera from
@@ -457,6 +472,38 @@ export function buildPoiLayer(sourceId: string = POI_SOURCE_ID): LayerSpecificat
       // the staleness ring still reads that same property to fade itself on
       // crowded ground. A future change that reinstates any placement pass
       // finds the air it needs already computed.
+      // THE JIGGER (2026-09-20). The maintainer put the trail line over the
+      // waypoints - "The Trail line should sit over the POI's" - and asked
+      // what stops the line swallowing a pin that sits on it: "If that would
+      // hide the POI, maybe we should jigger." They chose the pin stepping
+      // aside over a translucent line or a plain swap, from three drawn
+      // frames.
+      //
+      // ANCHORED RATHER THAN OFFSET, and that is what keeps this honest. An
+      // `icon-offset` would draw the pin somewhere the place is not, which is
+      // the thing map/poiSites.ts refuses in as many words: "drawing a privy
+      // 80 px from where it is, is the same refusal" as drawing a stale GPS
+      // fix like a live one. `icon-anchor: 'bottom'` moves no coordinate - it
+      // says which part of the artwork lands ON the coordinate, and the part
+      // that lands on it is the pin's bottom edge. The place is still exactly
+      // where the pin touches down.
+      //
+      // WHAT IT BUYS: the trail line is at most CASING_LINE_WIDTH wide - 6.5
+      // px, so 3.25 either side of a centreline running through the point -
+      // and the pin body is now entirely above that, whatever the zoom,
+      // because the anchor scales with the icon rather than being a constant
+      // in pixels.
+      //
+      // `@unvalidated` on the READING, not on the arithmetic: nobody has
+      // looked at a bottom-anchored circular pin on a phone, and a circle
+      // with no stem sitting above its point may read as floating rather than
+      // as marking. What would settle it is one look at the carry and walking
+      // zooms on a real screen - the preview recipe
+      // client/preview-shots/waypoints-at-the-carry-zoom.mjs points the
+      // camera at exactly that, which is why it exists. If it reads as
+      // floating, the fix is a stem on the artwork rather than a different
+      // anchor.
+      'icon-anchor': 'bottom',
       'icon-padding': POI_ICON_PADDING_EXPRESSION as unknown as number,
       // No `text-field` anywhere in this layer, and the reason has shifted
       // slightly rather than gone away. It used to be that the style had no
@@ -641,21 +688,27 @@ export const POI_DOT_COLOR_EXPRESSION: unknown[] = [
  * overview sketch (pipeline/export_nearby_trails.py's write_overview), so a
  * network waypoint down here now sits on a line the map is drawing.
  *
- * WHAT DECIDED IT is the maintainer's rule of 2026-09-18, and it is a safety
- * rule rather than a density one: "Don't auto hide the POIs ever. It's a
- * safety thing, hikers need to know that info." A hiker cannot ask about a
- * mark that is not drawn. Between the opening camera and the pin seam this
- * rank is the only thing that says a place is there at all, so it draws every
- * waypoint the hiker has switched on, at every zoom, with no type gate of any
- * kind - {@link poiFilter} carries no zoom term, and poiLayers.test.ts's "the
- * map never hides a category of its own accord" block is that rule pinned.
+ * IT IS THE SEAM AGAIN SINCE 2026-09-20, which is the fourth position this
+ * floor has held and the second time it has landed here. The maintainer, shown
+ * the z7.8 carry frames off the live preview: "We can keep a seam, and make it
+ * at zoom 7. Yes the POI's can be hidden above there." So the corridor view
+ * carries no waypoint marks of any kind again, in either rank.
  *
- * The cost this doc should keep stating, and #603's own docstring stated it
- * first: features/POI_VISIBILITY.md's "below the seam the map is a complete
- * map of something ELSE" is softer while this floor is here. The corridor view
- * carries the clubs and the trails AND a stipple of places, and the stipple is
- * texture rather than a subject. It is cheap to draw - a circle layer runs no
- * collision pass - and it is not free of meaning.
+ * THIS IS NOT THE 2026-09-18 RULE BEING WOUND BACK, and the distinction is the
+ * whole of why both can stand. That rule - "Don't auto hide the POIs ever.
+ * It's a safety thing, hikers need to know that info" - is about the map
+ * choosing WHICH categories a hiker may see, and it is untouched: from the
+ * seam up every category draws, {@link poiFilter} carries no zoom term, and
+ * poiLayers.test.ts's "the map never hides a category of its own accord"
+ * block still runs at every zoom the marks exist at. What the maintainer
+ * reversed is the CAMERA half - whether a continental view is a waypoint map
+ * at all - and they reversed it having seen what it drew, which is the
+ * strongest evidence any of these four positions has had.
+ *
+ * And the hiker is told, rather than left to wonder: the "Show points" switch
+ * (chrome/ShowPointsToggle.tsx) is on the screen below the seam as well as
+ * above it, so the absence down here reads as a state rather than as a map
+ * with nothing on it.
  *
  * The record of what it replaced, kept because the third reversal is only
  * defensible against the first two: how far down the dot rank went from
@@ -688,7 +741,7 @@ export const POI_DOT_COLOR_EXPRESSION: unknown[] = [
  * what lets features/POI_VISIBILITY.md's "below the seam the map is a
  * complete map of something else" read unqualified once more.
  */
-export const POI_DOT_MIN_ZOOM = 0
+export const POI_DOT_MIN_ZOOM = POI_PIN_MIN_ZOOM
 
 /**
  * Small, and smaller the further out you are.
@@ -703,19 +756,17 @@ export const POI_DOT_MIN_ZOOM = 0
  * design most likely to be wrong in a browser and right on a phone, or the
  * reverse.
  *
- * The 1.2 px corridor stop is back with the below-seam dots it sizes (#1585).
- * It went away with them on #1135 and returns unchanged, because what it was
- * sized for has not changed: at the opening camera the corridor is a stipple
- * of thousands of places, and 2.5 px ink at that scale is a smear rather than
- * a texture. It still wants a look on a real screen in real sunlight - #105
- * closed without giving this band one.
+ * THE 1.2 px CORRIDOR STOP IS GONE AGAIN (2026-09-20), because the band it
+ * sized no longer exists: both ranks floor at the seam, so there is no zoom
+ * below it at which a dot is drawn and needs a size. Two stops at one zoom is
+ * not a harmless leftover either - MapLibre requires an interpolate's stops to
+ * ascend strictly, and leaving it would have been a style the engine refuses
+ * rather than a number nobody reads.
  */
 export const POI_DOT_RADIUS_EXPRESSION: unknown[] = [
   'interpolate',
   ['linear'],
   ['zoom'],
-  POI_DOT_MIN_ZOOM,
-  1.2,
   POI_PIN_MIN_ZOOM,
   2.5,
   16,
@@ -817,8 +868,7 @@ const NO_CONDITION: PinCondition = { ring: NO_RING, faded: false }
  */
 export function poiFeatureCollection(
   pois: readonly MapPoint[],
-  /** Taken and no longer read - see the note on `drawn` below (#1585). */
-  _visibility: SiteVisibility = {},
+  visibility: SiteVisibility = {},
   pinCondition: (poiId: string, poiType: string) => PinCondition = () => NO_CONDITION,
 ): PoiFeatureCollection {
   // ONE FEATURE PER SITE, not per POI (#524). The members are removed here
@@ -840,30 +890,32 @@ export function poiFeatureCollection(
   // wears ITS OWN notes' condition; a folded member's notes reach the card
   // (per-part reads) but not the shared pin, which is a known simplification
   // rather than a rule.
-  // NOTHING IS FOLDED AWAY ANY MORE (#1585, 2026-09-18). This was
-  // `composeSites(pois, visibility)`, which removed a co-located waypoint
-  // from the source entirely and let it ride its anchor's pin as a badge.
-  // Measured against the identity ledger that day: 634 of the 1,387
-  // waypoints a fresh install drew - 46% - had no mark of their own. 284
-  // privies, 144 campsites, and 206 WATER POINTS, which is the category
-  // CLAUDE.md names second of the four ways this app can hurt somebody.
+  // THE FOLD IS BACK (2026-09-20). It was removed on 2026-09-18 under "never
+  // hide anything", and the maintainer put it back in as many words: "The
+  // grouping of locations was working before. You need to nest the Shelters,
+  // Campsites, Privies & Water as we did before this PR."
   //
-  // The fold was the right answer to the problem it was built for, and that
-  // problem is gone: #524 existed because a privy 42 m from its shelter
-  // could not win a collision at any zoom a hiker walks at, so folding it
-  // onto the pin that DID draw was the only way to keep it reachable. With
-  // `icon-allow-overlap: true` nothing loses a collision, so a member can
-  // simply draw its own pin at its own coordinate - which is the thing the
-  // badge was standing in for.
+  // What the unfolded build actually drew is why: four pins stacked on one
+  // shelter - the shelter, its privy, its water and its campsite, a median
+  // 42 m apart and therefore on top of each other at every zoom a hiker
+  // walks at. Measured against the identity ledger, 2026-09-18: the fold
+  // removes 634 of 1,387 marks, which unfolded is 634 pins piled on the 753
+  // that anchor them.
   //
-  // `visibility` is still taken and no longer read. Left in the signature
-  // rather than removed because #607's rule - a site whose anchor the legend
-  // hid falls back to a member - was about keeping a PLACE on the map when
-  // its anchor went, and every part of that place now draws for itself. The
-  // parameter is the seam a future change would reach for if any grouping
-  // comes back; map/poiSites.ts keeps the model, and the waypoint card still
-  // reads it to say what a place is made of.
-  const drawn = pois
+  // AND IT IS NOT THE CULLING COMING BACK WITH IT, which is the distinction
+  // that lets this sit beside the 2026-09-18 rule rather than against it.
+  // `icon-allow-overlap` stays `true`: nothing is dropped by the collision
+  // engine, and nothing is dropped for being the loser of anything. A folded
+  // member is not deleted - it rides its anchor's pin as a badge, it is
+  // listed on the card behind that pin, and the hiker steps between the
+  // parts from there. The one mechanism that removed a place with no way
+  // back is still gone.
+  //
+  // WHICH IS WHY `visibility` IS READ AGAIN (#607): the removal is only safe
+  // while the pin that replaces the member is on the map, so a site whose
+  // anchor the legend hid falls back to its highest-priority drawn member,
+  // and goes dark only when the hiker has hidden every part of it.
+  const { drawn, membersFor } = composeSites(pois, visibility)
 
   // AFTER the fold, and that is the point of where this sits: what competes
   // for a pin is the drawn mark, so a shelter riding one pin with its privy
@@ -891,12 +943,7 @@ export function poiFeatureCollection(
           // Always present, empty where the pin carries nothing, so the style's
           // `match` needs no `coalesce` and a pin with no site is not a separate
           // expression path that could drift from the one with.
-          // Always the empty key now: no pin carries another waypoint's
-          // badge, because no waypoint is riding one. The property stays
-          // present and always a string so the style's `match` needs no
-          // `coalesce` and the site artwork is still reachable if grouping
-          // ever returns.
-          [SITE_MEMBERS_PROPERTY]: siteMembersKey(undefined),
+          [SITE_MEMBERS_PROPERTY]: siteMembersKey(membersFor.get(poi.id)),
           staleness_ring: condition.ring,
           staleness_faded: condition.faded,
           [CROWDING_PROPERTY]: crowding.get(poi.id) ?? 0,

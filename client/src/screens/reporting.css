@@ -307,16 +307,21 @@
   border: 0;
 }
 .reporting__provider--email .reporting__provider-mark {
-  /* ON PAPER, NOT STRAIGHT ONTO THE BUTTON. The app icon is a rounded tile
-     split between forest green and stone, with the white blaze down it. Laid
-     directly on --brand-primary its green half is the button's own colour, so
-     the mark reads as a smudge with a white stripe rather than as a logo -
-     seen on the preview of #1572 before this rule existed.
+  /* ON PAPER, NOT STRAIGHT ONTO THE BUTTON, and this is measured rather than
+     a matter of taste: the app icon's green half is `#355c3a`, and
+     `--brand-primary` in the light theme is `--forest-600`, which is
+     `#355c3a`. The same hex. Laid straight on the button that half is not
+     merely close to invisible, it is invisible by construction, and what is
+     left reads as a brown triangle with a white bar through it.
 
-     The paper tile is the same move Google's own button makes for its G,
-     which their branding page requires to sit on white whatever surrounds it.
-     box-sizing keeps the whole thing 20px, so it still lines up with the G
-     and the GitHub mark beside it on the other two doors.
+     3px, not 1px. The first version of this rule padded by one, which gives
+     a hairline and leaves the green half still touching green a pixel away -
+     the preview of bce3aecb shows the logo still reading as a hole. Three
+     gives the mark its own card to stand on, which is what Google's branding
+     page means when it requires their G on white whatever surrounds the
+     button. box-sizing keeps the whole thing 20px, so it still lines up with
+     the G and the GitHub mark on the other two doors; the icon inside is
+     14px, which is the cost of the card and worth it.
 
      THE HEX IS DELIBERATE, and is `--paper-0`'s own light value rather than a
      new colour. A semantic token here would follow the theme, and following
@@ -325,9 +330,9 @@
      any token light enough for the pine button turns dark behind the logo on
      the moss one. The mark needs one fixed light ground in both themes - the
      same reason the Google, GitHub and Apple rules above carry literals. */
-  border-radius: 5px;
+  border-radius: 6px;
   box-sizing: border-box;
-  padding: 1px;
+  padding: 3px;
   background: #fffdf7;
 }
 .reporting__card--thanks {

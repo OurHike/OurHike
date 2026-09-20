@@ -644,6 +644,24 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+
+  /* HOW FAR ABOVE THIS BOX'S BOTTOM EDGE ANYTHING OF OURS HAS TO SIT to clear
+     MapLibre's scale bar. map/mapChrome.ts puts the scale bar at
+     'bottom-left'; the compass, the locate button and the report door all go
+     'bottom-right'. So this corner is the one the app may float things in,
+     and the scale bar is the only thing already in it.
+
+     30px is measured rather than derived - the Harriman z12 render of
+     2026-09-10, where .map-screen__dropped at 12px drew across the "1000 ft"
+     bar - and covers the bar's box plus MapLibre's own 10px control margin.
+     --space-3 is the gap above it.
+
+     ONE FIGURE FOR TWO CONTROLS, which is the same argument .turn-card's
+     comment makes about the other corner: the dropped chip and the Show
+     points switch clear one control stack, so they clear it by one number and
+     cannot drift apart. src/desktop.css raises it where the credit strip
+     joins this box. */
+  --over-map-floor: calc(var(--space-3, 12px) + 30px);
 }
 
 /* A row of its own rather than an overlay in the corner, which is where it
@@ -1275,10 +1293,8 @@
    alert - the panel is where the per-category detail lives. */
 .map-screen__dropped {
   position: absolute;
-  /* Above the scale bar, not on it: MapLibre's bottom-left control sits in
-     the same corner (10px in, ~20px tall), and at 12px the chip drew across
-     the "1000 ft" bar (the Harriman z12 render of 2026-09-10). 30px clears
-     the bar's box with its own gap; measured on that render, not derived.
+  /* Above the scale bar, not on it - .map-screen__canvas's --over-map-floor
+     is where that figure and its measurement live now.
 
      AND ABOVE THE SHOW POINTS SWITCH since 2026-09-20, which took the spot
      directly over the scale bar when it was moved out of MapLibre's
@@ -1286,13 +1302,19 @@
      the gap is one step - stacked unconditionally, because a chip that
      dropped down when the switch happened to be absent would move under the
      hiker as they zoomed. */
-  bottom: calc(var(--space-3, 12px) + 30px + 44px + var(--space-2, 8px));
+  bottom: calc(var(--over-map-floor) + 44px + var(--space-2, 8px));
   left: var(--space-3, 12px);
   z-index: 2;
   margin: 0;
   padding: 2px var(--space-2, 8px);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--bg-raised) 82%, transparent);
+  /* `--bg-raised` until 2026-09-20, and nothing has ever defined it - so this
+     declaration was invalid at computed-value time and the chip rendered with
+     no background at all from #528 onwards, map showing straight through the
+     figures. --surface-over-map is the token for exactly this surface and the
+     reason it exists (#336: a screen surface over the map came out at 1.06:1
+     against it). */
+  background: color-mix(in srgb, var(--surface-over-map) 82%, transparent);
   color: var(--fg-2);
   font-size: 12px;
   pointer-events: none;
@@ -2907,7 +2929,10 @@
   font-size: 13px;
   font-weight: 600;
   color: var(--fg-1);
-  background: var(--bg-raised, var(--bg-0));
+  /* `--bg-raised, --bg-0` until 2026-09-20 and neither has ever been defined,
+     so this button had no face - only its border. --bg-surface is what
+     .poi-card__observation, the other button on this card, already uses. */
+  background: var(--bg-surface);
   border: 1px solid var(--border-2, var(--bg-sunken));
   border-radius: var(--radius-pill, 999px);
   cursor: pointer;
@@ -3501,7 +3526,10 @@ a.poi-card__credit::after {
   font: inherit;
   font-size: 12px;
   color: var(--fg-1);
-  background: var(--bg-raised, var(--bg-0));
+  /* See .poi-card__expand: the token this reached for does not exist, so the
+     field was transparent. --bg-surface is what every other text input in the
+     app uses (.search__input, .legend's fields, reporting.css). */
+  background: var(--bg-surface);
   border: 1px solid var(--bg-sunken);
   border-radius: 8px;
   resize: vertical;
@@ -3547,7 +3575,9 @@ a.poi-card__credit::after {
 }
 
 .poi-card__observation:hover {
-  background: var(--bg-raised, var(--bg-0));
+  /* One step off the card rather than the undefined token this reached for,
+     which left the hover indistinguishable from the rest state. */
+  background: var(--surface-card-alt);
   color: var(--fg-1);
 }
 
@@ -5233,7 +5263,9 @@ a.poi-card__credit::after {
    screen and the chip almost never is. */
 .show-points {
   position: absolute;
-  bottom: calc(var(--space-3, 12px) + 30px);
+  /* .map-screen__canvas's own figure, so this and the dropped chip above it
+     clear the scale bar by one number rather than two. */
+  bottom: var(--over-map-floor);
   left: var(--space-3, 12px);
   z-index: 2;
   display: inline-flex;
@@ -5242,13 +5274,26 @@ a.poi-card__credit::after {
   /* The 44px touch floor this app holds everywhere a finger lands. */
   min-height: 44px;
   padding: 0 var(--space-3, 12px);
-  border: 1px solid var(--border-1, rgba(0, 0, 0, 0.14));
+  border: 1px solid var(--border-1);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--bg-raised, var(--bg-0)) 94%, transparent);
+  /* --surface-over-map rather than a screen surface, for the reason that
+     token exists (#336). It was written as `var(--bg-raised, var(--bg-0))`
+     for about a day and BOTH of those names are undefined, so the whole
+     color-mix was invalid and the pill rendered transparent - visible on the
+     pr-1590 preview frame of 2026-09-20, where the map showed through the
+     words. */
+  background: color-mix(in srgb, var(--surface-over-map) 94%, transparent);
   color: var(--fg-1);
   font: inherit;
   font-size: 13px;
   cursor: pointer;
+}
+
+/* The same ring the legend's switch takes, because a hiker tabbing the map
+   meets both. */
+.show-points:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
 }
 
 .show-points:disabled {
@@ -5259,28 +5304,41 @@ a.poi-card__credit::after {
   opacity: 0.55;
 }
 
+/* THE LEGEND SWITCH'S OWN VOCABULARY, one size down: --fg-3 off,
+   --brand-primary on, --bg-surface for the knob (.legend__switch above).
+   Two switches in one app that answered to different colours would read as
+   two different kinds of control, and these two sit a tap apart - the legend
+   is one button away from this map. Smaller because it rides inside a pill
+   beside its own label rather than owning a 52px column in a list. */
 .show-points__track {
   width: 30px;
   height: 18px;
   flex: none;
+  box-sizing: border-box;
+  border: 1px solid var(--fg-3);
   border-radius: 999px;
-  background: var(--border-2, rgba(0, 0, 0, 0.26));
+  background: var(--fg-3);
   position: relative;
   transition: background 120ms ease;
 }
 
 .show-points[aria-checked='true'] .show-points__track {
-  background: var(--accent-chrome);
+  border-color: var(--brand-primary);
+  background: var(--brand-primary);
 }
 
 .show-points__knob {
   position: absolute;
-  top: 2px;
-  left: 2px;
+  top: 1px;
+  left: 1px;
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: var(--bg-raised, var(--bg-0));
+  /* Undefined until 2026-09-20, so the knob had no background and the switch
+     had nothing in it to say which way it was set - the whole of what the
+     control carries. --bg-surface is what .legend__switch-knob uses. */
+  background: var(--bg-surface);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 30%);
   transition: transform 120ms ease;
 }
 

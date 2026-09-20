@@ -323,6 +323,60 @@ class TestTheClubsOwnScreen:
         client.post(f"/nominations/{nomination.proposal_token}/decision", json={"approve": False})
         assert db_session.query(NominationRefusal).count() == 0
 
+    def test_a_decision_locks_the_row_before_it_reads_the_state(self, client, db_session):
+        """The link goes to three people, and two of them can answer at once.
+
+        Without a lock both callers read `proposed`, both pick the same first
+        un-answered contact, and the last commit wins - so two approvals
+        record as one and, worse, a REFUSAL racing an approval is overwritten.
+        "One refusal ends it" is the asymmetry this endpoint is built on, and
+        the race could take it away silently.
+
+        WHAT THIS ASSERTS AND WHAT IT DOES NOT. It asserts the lock is taken:
+        a `SELECT ... FOR UPDATE` against `org_nominations` is emitted while a
+        decision is being made. It does NOT reproduce the lost refusal, which
+        would need two connections interleaved at a point neither controls -
+        a test that passes by winning a coin toss is not evidence. The lock is
+        the mechanism; that it is requested is the checkable part.
+        """
+        from sqlalchemy import event
+        from sqlalchemy.engine import Engine
+
+        nomination = self._submit(client, db_session)
+        statements: list[str] = []
+
+        def record(conn, cursor, statement, parameters, context, executemany):  # noqa: ANN001, ANN202
+            statements.append(statement)
+
+        event.listen(Engine, "before_cursor_execute", record)
+        try:
+            client.post(f"/nominations/{nomination.proposal_token}/decision", json={"approve": True})
+        finally:
+            event.remove(Engine, "before_cursor_execute", record)
+
+        locked = [s for s in statements if "FOR UPDATE" in s.upper() and "org_nominations" in s.lower()]
+        assert locked, "a decision read org_nominations without FOR UPDATE, so two answers can race"
+
+    def test_reading_a_proposal_does_not_queue_behind_a_decision(self, client, db_session):
+        """The GET is a read. Locking there would make three people opening
+        one link wait on each other for nothing."""
+        from sqlalchemy import event
+        from sqlalchemy.engine import Engine
+
+        nomination = self._submit(client, db_session)
+        statements: list[str] = []
+
+        def record(conn, cursor, statement, parameters, context, executemany):  # noqa: ANN001, ANN202
+            statements.append(statement)
+
+        event.listen(Engine, "before_cursor_execute", record)
+        try:
+            client.get(f"/nominations/{nomination.proposal_token}")
+        finally:
+            event.remove(Engine, "before_cursor_execute", record)
+
+        assert not [s for s in statements if "FOR UPDATE" in s.upper()]
+
     def test_an_answered_proposal_cannot_be_answered_again(self, client, db_session):
         nomination = self._submit(client, db_session)
         token = nomination.proposal_token

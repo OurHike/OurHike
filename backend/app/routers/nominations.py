@@ -439,6 +439,26 @@ def decide_proposal(
     `POST /clubs/nominations` before anybody there is written to a second time.
     """
     nomination, club = _by_token(db, token)
+
+    # LOCKED BEFORE THE STATE IS READ, because the link goes to three people
+    # and nothing stops two of them answering in the same moment. Without the
+    # lock both read `proposed`, both pick the same first un-answered contact,
+    # and the last commit wins - so two approvals record as one, and worse, a
+    # REFUSAL racing an approval is overwritten. "One refusal ends it" is the
+    # asymmetry this whole endpoint is built on, and it was the thing the race
+    # could silently take away.
+    #
+    # `populate_existing` because `_by_token` has already put this row in the
+    # session's identity map: without it the locked SELECT would refresh the
+    # database row and leave the stale in-memory object for the check below to
+    # read. The second caller now waits, then sees the first's committed state
+    # and answers 409.
+    #
+    # The first `with_for_update` in `backend/app/`. It is here and not in
+    # `_by_token` because reading a proposal is a GET that should not queue
+    # behind anybody.
+    nomination = db.query(OrgNomination).filter(OrgNomination.id == nomination.id).populate_existing().with_for_update().one()
+
     if nomination.state in (NominationState.accepted, NominationState.declined):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

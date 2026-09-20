@@ -200,7 +200,7 @@ export const SAFETY_LAYERS = ['closure', 'serious-warning'] as const
  * What is no longer promised is permanence within a single view. The Alerts
  * switch is deliberately not routed through here or through
  * `waypoint_types_shown` at all: it is a `useState` in
- * chrome/alertLayerPanel.ts that nothing writes down, and it resets whenever
+ * a `useState` that nothing wrote down, and it reset whenever
  * the app is next opened. Two mechanisms, and the reason they are two is that
  * only one of them can outlive the moment a hiker is looking at the screen.
  *

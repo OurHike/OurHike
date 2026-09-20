@@ -38,6 +38,18 @@ waypoint lanes](https://github.com/OurHike/OurHike/issues/532), and answers it w
 > sheet and the tap path stay in the code, reachable from no mark: whether highlights get a band
 > above the seam or are retired is still the maintainer's to decide.
 
+>
+> **And reopened, 2026-09-18 ([#1585](https://github.com/OurHike/OurHike/issues/1585) — A
+> hundred-mile resupply carry fits a phone at z8, and the map draws no waypoint until z9).**
+> The dot rank is back at `POI_DOT_MIN_ZOOM = 0`, so this view carries the stipple again
+> alongside the trails, the clubs and the highlights — and the pin seam moved to **7.5**, so
+> this view now owns z0–z7.5 rather than z0–z8. What changed since #1135 is that its own
+> objection had been answered by #1135 itself: the network's waypoints are drawn onto lines
+> this view draws now, because it carries every organization's trails. What decided it is a
+> safety rule rather than a density one — the maintainer's *"Don't auto hide the POIs ever"* —
+> and the honest cost is the one #603's docstring already stated: "below the seam the map is a
+> complete map of something else" is softer while a stipple of places is on it.
+
 `CORRIDOR_BOUNDS` in [`App.tsx`](../client/src/App.tsx):240 opens the app on the whole 2,197-mile
 corridor, which lands at **z4.87** on a phone — `fitBounds` over `[[-84.73, 34.2], [-68.3, 46.34]]`
 on a 390 × 700 canvas with `FIT_PADDING = 24`, Web Mercator, measured 2026-08-19 (#598). It is

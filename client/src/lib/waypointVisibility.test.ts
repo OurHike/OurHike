@@ -178,25 +178,35 @@ describe('HIDEABLE_TYPES', () => {
   })
 })
 
-describe('DEFAULT_SHOWN_TYPES (#865)', () => {
-  it('is exactly shelter, water, campsite and privy', () => {
-    expect([...DEFAULT_SHOWN_TYPES].sort()).toEqual(
-      ['campsite', 'privy', 'shelter', 'water'].sort(),
-    )
+describe('DEFAULT_SHOWN_TYPES (#865, reversed by #1585)', () => {
+  it('is every category, because a default is the map deciding', () => {
+    // It was shelter, water, campsite and privy (#865) - a curated four, and
+    // 84% of the corridor's published waypoints off the map on a fresh
+    // install: 5,318 crossings, 1,223 viewpoints, 482 parking areas and 59
+    // towns that nobody had switched off. The maintainer, 2026-09-18: "never
+    // hide anything!!!!!!!" A default is the one state no hiker ever chose,
+    // so it is the map hiding rather than the hiker.
+    expect([...DEFAULT_SHOWN_TYPES].sort()).toEqual([...HIDEABLE_TYPES].sort())
+  })
+
+  it('leaves a fresh install with nothing hidden at all', () => {
+    // The property that matters, stated where a change to the list above
+    // cannot slip past it: the hidden set a fresh install computes is empty.
+    expect([...hiddenTypesFrom(DEFAULT_SHOWN_TYPES)]).toEqual([])
   })
 
   it('only names categories a release actually serves', () => {
     for (const type of DEFAULT_SHOWN_TYPES) expect(HIDEABLE_TYPES).toContain(type)
   })
 
-  it('hides exactly the other five when used as the stored preference', () => {
-    // What a fresh install's map actually draws: resupply, crossing, viewpoint,
-    // parking and trailhead start off, same as if a hiker had toggled them off
-    // by hand.
-    const hidden = hiddenTypesFrom(DEFAULT_SHOWN_TYPES)
-    expect([...hidden].sort()).toEqual(
-      ['crossing', 'parking', 'resupply', 'trailhead', 'viewpoint'].sort(),
+  it('still hides exactly what a hiker switches off, and only that', () => {
+    // The one honest subtraction survives the default changing: a category
+    // the hiker took off their own map is off it. That control is the
+    // difference between a map that hides and a hiker who chose.
+    const hidden = hiddenTypesFrom(
+      DEFAULT_SHOWN_TYPES.filter((type) => type !== 'viewpoint'),
     )
+    expect([...hidden]).toEqual(['viewpoint'])
   })
 
   it('leaves a category added after it OFF, which is not what the header used to claim', () => {

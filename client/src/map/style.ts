@@ -146,6 +146,12 @@ import { buildClosureSource, CLOSURE_SOURCE_ID } from './closureLayers'
 import {
   buildCorridorLayers,
   buildCorridorSource,
+  // Every seam in THIS file is a line's, and a line's seam is where the
+  // corridor sketch hands over to the tiled network - not where the waypoints
+  // start. The two were one number until #1585 moved the pins to z7.5 and left
+  // the trails where they were; naming the right one here is what kept a band
+  // of ground from losing every trail but the A.T.
+  CORRIDOR_MAX_ZOOM,
   CORRIDOR_SOURCE_ID,
 } from './corridorLayers'
 import {
@@ -178,7 +184,6 @@ import {
   buildPoiLayer,
   buildPoiSource,
   buildPoiStalenessLayer,
-  POI_PIN_MIN_ZOOM,
   POI_SOURCE_ID,
 } from './poiLayers'
 import { buildPoiLabelLayer } from './poiLabels'
@@ -732,7 +737,36 @@ export function plainRedActive(appearance: SheetAppearance): boolean {
  * context trail is context. `@unvalidated` on a phone at night; the number
  * is one knob, and the mock-up it came from was a day frame.
  */
-export const CONTEXT_TRAIL_TINT = 0.45
+export const CONTEXT_TRAIL_TINT = 0.8
+
+// 0.8 SINCE 2026-09-20, UP FROM 0.45, because at 0.45 the context trails were
+// not a lighter red, they were pink. The maintainer: "The trails look pink
+// now, not red. Can you make sure the trails appear red with dashed."
+//
+// THE NUMBER IS THE SHARE OF RED KEPT, not the share of paper mixed in, and
+// the first attempt at this fix moved it the wrong way for exactly that
+// reason - 0.2 rendered #f0d6d2, which is paler than what it was replacing.
+// Read off contextTrailColor itself rather than derived by hand:
+//
+//     tint   context trail on the day sheet   reads as
+//     0.20   #f0d6d2                          washed pink
+//     0.45   #dca39a                          salmon  (what was shipping)
+//     0.80   #c15b4c                          red, a shade back
+//
+// A through-route was already correct at PLAIN_TRAIL_COLOR's #b2321f and is
+// untouched: with nothing taken, nearbyTrailOpacityExpression returns
+// CHOSEN_TRAIL_OPACITY, which is 1, so the opening view ghosts nothing. A
+// first pass at this diagnosis blamed NEARBY_TRAIL_OPACITY's 0.45 as well and
+// was wrong - that value only reaches a line once a trail has been TAKEN, and
+// the screen the maintainer was looking at had none.
+//
+// WHAT 0.2 COSTS, kept because the 0.45 it replaces was picked against it:
+// contrast on the sheets' papers rises rather than falls, so the day bar
+// argument below is not weakened. What narrows is the SEPARATION between a
+// context trail and a through-route, which was the reason for a tint at all -
+// at 0.2 the dash is doing more of that work and the hue less. The dash is
+// per-feature and carries no zoom term, so it does that work at every zoom;
+// style.test.ts pins exactly that.
 
 /** The context trails' width under the default, as a share of their tier
  *  (#1588): 2.5 px becomes 2, the sketch's 1.5 becomes 1.2 - the mock-up's
@@ -1586,7 +1620,7 @@ function buildNetworkOverviewLayer(
     filter: (side === 'chosen'
       ? chosenSystemFilter(chosen)
       : nearbyTrailFilter(chosen)) as never,
-    maxzoom: POI_PIN_MIN_ZOOM,
+    maxzoom: CORRIDOR_MAX_ZOOM,
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: {
       // Uncased on the haze, so a near-white line there is inked dark on a
@@ -1628,7 +1662,7 @@ function buildNetworkOverviewCasingLayer(
     type: 'line',
     source: NETWORK_OVERVIEW_SOURCE_ID,
     filter: THROUGH_ROUTE_SOURCE_CONDITION as never,
-    maxzoom: POI_PIN_MIN_ZOOM,
+    maxzoom: CORRIDOR_MAX_ZOOM,
     // Hidden under the default like every casing (#1588): there the
     // through-routes are plain solid red, which is what the maintainer
     // chose over this casing on the same sheet of frames.
@@ -1965,7 +1999,7 @@ export const OVERVIEW_FAR_ZOOM = 4
 
 /**
  * One line-width taper across the representational band: `far` at the
- * continental camera, `atSeam` at POI_PIN_MIN_ZOOM, linear between.
+ * continental camera, `atSeam` at CORRIDOR_MAX_ZOOM, linear between.
  *
  * Written once because three layers take it and they have to agree to the
  * pixel: the network overview sketch, the A.T.'s own sketch while it is
@@ -1987,7 +2021,7 @@ function overviewTaper(far: unknown, atSeam: unknown): unknown[] {
     ['zoom'],
     OVERVIEW_FAR_ZOOM,
     far,
-    POI_PIN_MIN_ZOOM,
+    CORRIDOR_MAX_ZOOM,
     atSeam,
   ]
 }
@@ -2680,7 +2714,7 @@ export function buildMapStyle({
         ground: tapeGround,
         bandId: NETWORK_OVERVIEW_CLOSURE_LAYER_ID,
         filter: LONG_TERM_CLOSED_FILTER,
-      }).map((layer) => ({ ...layer, maxzoom: POI_PIN_MIN_ZOOM })),
+      }).map((layer) => ({ ...layer, maxzoom: CORRIDOR_MAX_ZOOM })),
       {
         // The corridor-view sketch (#869), UNDER the real trail's casing, so
         // on the one frame where both exist the real line is what a hiker
@@ -2700,7 +2734,7 @@ export function buildMapStyle({
         id: TRAIL_OVERVIEW_LAYER_ID,
         type: 'line',
         source: TRAIL_OVERVIEW_SOURCE_ID,
-        maxzoom: POI_PIN_MIN_ZOOM,
+        maxzoom: CORRIDOR_MAX_ZOOM,
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
           // The same expressions the real line is painted with, off the same
@@ -2740,6 +2774,72 @@ export function buildMapStyle({
       // map/dayHikeLayers.ts carries the full argument; style.test.ts pins
       // the order by index.
       ...buildDayHikeCasingLayers(),
+      // THE WAYPOINTS SIT UNDER THE TRAIL LINES (2026-09-20). The maintainer:
+      // "The Trail line should sit over the POI's. The user can zoom in to
+      // zee the POI." So this whole block moved from the end of the style -
+      // where it drew over everything - to here, ahead of every line layer.
+      //
+      // WHAT MOVING IT DOES NOT COST, and this is the part worth checking
+      // before anyone moves it back: the pins are immune to draw-order
+      // effects on PLACEMENT, because poiLayers.ts sets both
+      // `icon-allow-overlap` and `icon-ignore-placement` to true. A symbol
+      // layer earlier in the style normally loses collisions to later ones;
+      // a layer that allows overlap and ignores placement takes no part in
+      // that contest at all. liveTopo.test.ts used to assert these were the
+      // LAST symbol layers "so they win collisions against our labels", and
+      // that reason retired with the collision pass itself.
+      //
+      // WHAT IT DOES COST: the waypoint NAMES move with their marks, so a
+      // name now loses a collision to a trail label or a trail badge where
+      // it used to win. They move together deliberately - a pin under the
+      // line with its name over it is one place drawn in two planes - and
+      // the alternative, splitting them, was worse. If a hiker reports
+      // missing waypoint names around a badge, this is the line that did it.
+      //
+      // The day-hike ticks stayed behind with the rest of the walk's own
+      // chrome: the hiker's route is drawn ON the map rather than being part
+      // of the ground the map describes.
+      // Then the waypoints, in their two ranks (#597). The dots go down first
+      // so every pin that wins its collision sits on top of its own dot and
+      // hides it, and every waypoint that loses one still leaves a dot behind.
+      // Reversing these two would put a 2.5 px dot over the middle of a 38 px
+      // pin, which reads as a defect rather than as a rank.
+      //
+      // Both are above the closure bands for the same reason as before: a
+      // waypoint is never buried under the trail line it sits on. See
+      // poiLayers.ts for why the pins are one layer rather than one per
+      // category, and why a non-colliding circle layer beside them does not
+      // undo that argument.
+      // Waypoint NAMES and the walk's mile marks, BEFORE the pins (#1194).
+      //
+      // BEFORE IS THE LOAD-BEARING WORD. MapLibre ranks symbol layers for
+      // placement by their order in the style, later winning, which is why
+      // liveTopo.test.ts asserts that our own pins are the LAST symbol layers
+      // of all: "so they win collisions against our labels". These two are
+      // labels. Putting them after the pins - which is where they first went
+      // - would have let a shelter's NAME suppress a shelter's PIN, the exact
+      // inversion that test exists to catch, and it caught it.
+      //
+      // Within the pair, the ticks come second and so outrank the names: on
+      // the builder's screen the hiker's own route is tier 2 of
+      // map/labelLadder.ts and a waypoint they did not choose is tier 4.
+      buildPoiLabelLayer(),
+      buildPoiDotLayer(),
+      // The staleness rings between the two ranks (#759's nudge surface):
+      // over the dots, so a ring is never sliced by its own waypoint's dot,
+      // and under the pins, so the pin's artwork stays whole and the ring
+      // reads as a rim around it rather than a wash over it.
+      buildPoiStalenessLayer(),
+      buildPoiLayer(),
+      // THE DISPUTE MARK MOVED WITH THE PINS (2026-09-20). Its own rule is
+      // that it sits ON the waypoint it annotates, so leaving it behind when
+      // the waypoints went under the trail lines would have drawn a footnote
+      // over the trail and the thing it footnotes under it.
+      // The dispute mark (#876) immediately over the pins it annotates, and
+      // under everything else: it is a footnote on a waypoint, so it has to
+      // sit on the waypoint - but a hazard or a closure is a bigger claim
+      // than "somebody says this is not here" and wins the pixels.
+      buildDisputeLayer(),
       ...onSourceLayer(
         buildTrailLineSplit(
           NEARBY_TRAILS_SOURCE_ID,
@@ -2764,7 +2864,7 @@ export function buildMapStyle({
           // exists. Until it does, the Long Path is absent below z9 rather than
           // drawn at the wrong prominence. Cutting the smear is the half worth
           // having first; the other half is #557's ground.
-          POI_PIN_MIN_ZOOM,
+          CORRIDOR_MAX_ZOOM,
           chosen,
         ),
         NETWORK_TILES_LAYER,
@@ -2802,7 +2902,7 @@ export function buildMapStyle({
       // trail rather than draw it. Nothing until a release carries the
       // pairs - map/sharedGround.ts, "guarded on absence".
       ...onSourceLayer(
-        buildSharedGroundLayers(appearance, POI_PIN_MIN_ZOOM, chosen),
+        buildSharedGroundLayers(appearance, CORRIDOR_MAX_ZOOM, chosen),
         NETWORK_TILES_LAYER,
       ),
       // Trail names (#930), directly over the lines they name and UNDER every
@@ -2908,44 +3008,7 @@ export function buildMapStyle({
         bandId: LONG_TERM_CLOSURE_LAYER_ID,
         filter: LONG_TERM_CLOSED_FILTER,
       }),
-      // Then the waypoints, in their two ranks (#597). The dots go down first
-      // so every pin that wins its collision sits on top of its own dot and
-      // hides it, and every waypoint that loses one still leaves a dot behind.
-      // Reversing these two would put a 2.5 px dot over the middle of a 38 px
-      // pin, which reads as a defect rather than as a rank.
-      //
-      // Both are above the closure bands for the same reason as before: a
-      // waypoint is never buried under the trail line it sits on. See
-      // poiLayers.ts for why the pins are one layer rather than one per
-      // category, and why a non-colliding circle layer beside them does not
-      // undo that argument.
-      // Waypoint NAMES and the walk's mile marks, BEFORE the pins (#1194).
-      //
-      // BEFORE IS THE LOAD-BEARING WORD. MapLibre ranks symbol layers for
-      // placement by their order in the style, later winning, which is why
-      // liveTopo.test.ts asserts that our own pins are the LAST symbol layers
-      // of all: "so they win collisions against our labels". These two are
-      // labels. Putting them after the pins - which is where they first went
-      // - would have let a shelter's NAME suppress a shelter's PIN, the exact
-      // inversion that test exists to catch, and it caught it.
-      //
-      // Within the pair, the ticks come second and so outrank the names: on
-      // the builder's screen the hiker's own route is tier 2 of
-      // map/labelLadder.ts and a waypoint they did not choose is tier 4.
-      buildPoiLabelLayer(),
       ...buildDayHikeTickLayers(),
-      buildPoiDotLayer(),
-      // The staleness rings between the two ranks (#759's nudge surface):
-      // over the dots, so a ring is never sliced by its own waypoint's dot,
-      // and under the pins, so the pin's artwork stays whole and the ring
-      // reads as a rim around it rather than a wash over it.
-      buildPoiStalenessLayer(),
-      buildPoiLayer(),
-      // The dispute mark (#876) immediately over the pins it annotates, and
-      // under everything else: it is a footnote on a waypoint, so it has to
-      // sit on the waypoint - but a hazard or a closure is a bigger claim
-      // than "somebody says this is not here" and wins the pixels.
-      buildDisputeLayer(),
       // Volunteer workdays (#760) OVER the waypoints and UNDER the warning
       // pins - later in this list means drawn on top, so the order here is
       // the claim. Over the waypoints because a pin nobody can see is the

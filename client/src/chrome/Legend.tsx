@@ -110,7 +110,8 @@
 // these rows are not buttons and why lib/legendContents.ts's NEVER_HIDEABLE is
 // untouched. The half that went is permanence - a hiker can clear the bands
 // off the canvas for as long as they are looking at it, and the app gives them
-// back at the next open (chrome/alertLayerPanel.ts).
+// back at the next open. The switch was removed on 2026-09-20 - see the
+// comment where it stood, below the Verified? row.
 //
 // So these rows now say which of the two states they are in, and grey out with
 // the switch. A row promising "Always shown" over a map a hiker has just
@@ -156,6 +157,9 @@ import type { DownloadActivity } from '../lib/downloadActivity'
 // Refresh (see chrome/legendLabels.ts).
 const ALL_TYPES = '\0all'
 const SOME_TYPES = '\0some'
+/** The far end of the picker's own range (2026-09-20). See the `None` option
+ *  below for why the waypoint master switch lives in this control. */
+const NO_TYPES = '\0none'
 
 export interface LegendProps {
   open: boolean
@@ -224,6 +228,30 @@ export interface LegendProps {
    *  "All types" - the state a fresh install is in. */
   typesShown?: readonly string[]
   /**
+   * Whether the map is drawing waypoints at all (2026-09-20).
+   *
+   * A SECOND GATE, NOT A NINTH CATEGORY, and the distinction is the whole
+   * reason this is its own prop rather than a value in `typesShown`. The
+   * categories are a stored preference that syncs to an account
+   * (lib/userPreferences.ts); this is lib/showPoints.ts's per-view state,
+   * which is deliberately forgotten when the hiker leaves the map screen. A
+   * hiker who cleared the map to read the contours on one planning session
+   * must not find their shelters missing a week later on the trail.
+   *
+   * Absent, the picker offers no "None" - a shell with no state to move must
+   * not draw a control that goes nowhere, the same rule `onOnlyType` follows.
+   */
+  waypointsShown?: boolean
+  /**
+   * Turns the waypoints off, or back on.
+   *
+   * One handler taking the value rather than two, because the two directions
+   * are one fact: "None" means false and every other entry in the picker
+   * means true, and a picker that could enter the empty state without leaving
+   * it is the trap `onShowAllTypes` exists to avoid on the other axis.
+   */
+  onSetWaypointsShown?: (shown: boolean) => void
+  /**
    * Draw only waypoints somebody has confirmed exist.
    *
    * This is what became of the "Unverified" rows. They doubled the length of
@@ -235,30 +263,13 @@ export interface LegendProps {
    */
   verifiedOnly?: boolean
   onToggleVerifiedOnly?: () => void
-  /**
-   * Whether the alert marks are on the canvas (#1047).
-   *
-   * Read twice on this panel and for two different jobs: it is what the Alerts
-   * switch displays, and it is what the closure and serious-warning rows in
-   * the grid say about themselves. A row tagged "Alerts" over a map with no
-   * band on it would be this panel making the exact claim it exists to
-   * prevent - see the header comment.
-   *
-   * Defaults to drawn, like MapScreen's own prop and for the same reason.
+  /* `alertsShown` AND `onToggleAlerts` WERE HERE, and they are gone
+   * (2026-09-20). #1047 had put a switch over the alert marks and this panel
+   * drew it; the maintainer removed it rather than keep the last thing in the
+   * app that could take a closure off the canvas. The safety rows say "Always
+   * shown" again, unconditionally, because that is now the whole truth -
+   * lib/safetyLayersNeverHidden.test.ts is the table with no exception row.
    */
-  alertsShown?: boolean
-  /**
-   * Takes them off, and puts them back.
-   *
-   * Omitted, no switch is drawn, and a panel drawing alerts says "Always
-   * shown" on its safety rows - which is exactly what they are where nothing
-   * here can hide them. The two branches are one fact, not two designs.
-   *
-   * What this does NOT decide is a panel handed `alertsShown={false}` with no
-   * handler: the screen wins, the rows grey, and the tag reads "Alerts off".
-   * A tag is a statement about the map, never about what this panel can offer.
-   */
-  onToggleAlerts?: () => void
   /**
    * The drought wash, and how to turn it off (#720).
    *
@@ -326,16 +337,18 @@ export interface LegendProps {
    */
   drawnCounts?: ReadonlyMap<string, number>
   /**
-   * Whether the camera is below POI_PIN_MIN_ZOOM, where neither waypoint rank
-   * is drawn at all.
+   * Whether the camera is below POI_PIN_MIN_ZOOM, where the waypoints are
+   * drawn as dots rather than as pins.
    *
    * Its own flag rather than inferred from an empty row list, because the two are
    * different facts with opposite remedies: nothing here, or everything here and
-   * none of it drawable yet. The panel said the wrong one at the opening view.
+   * drawn in the smaller rank. The panel said the wrong one at the opening view.
    *
-   * "The pin layer" until #597 landed a second rank under it. Below the seam
-   * both are absent, so the sentence this gates is still the true one - but the
-   * reason is now the seam rather than one layer's floor.
+   * IT NO LONGER MEANS "NOTHING IS DRAWN" (#1585, 2026-09-18). It meant "the
+   * pin layer" until #597 landed a second rank under it, and then "neither
+   * rank" until the dot floor went back to z0 - so the flag now gates the
+   * sentence saying which rank the hiker is looking at, not one saying the
+   * map is holding waypoints back. Nothing is held back at any zoom.
    */
   belowPoiZoom?: boolean
   /** Opens the download window, from the link at the foot of the panel.
@@ -422,9 +435,9 @@ export function Legend({
   onOnlyType,
   onShowAllTypes,
   typesShown,
+  waypointsShown,
+  onSetWaypointsShown,
   verifiedOnly = false,
-  alertsShown = true,
-  onToggleAlerts,
   droughtShown = false,
   onToggleDrought,
   blazeColorsShown = true,
@@ -481,7 +494,11 @@ export function Legend({
     bbox,
     points,
     verifiedOnly,
-    belowPoiZoom ? undefined : drawnCounts,
+    // Withheld where the map is not drawing waypoints, for #1135's reason and
+    // now for a second one: the picker's "None" empties the canvas above the
+    // seam too, and a row reading `Water 0/14` there would be the panel
+    // reporting a collision that did not happen.
+    belowPoiZoom || waypointsShown === false ? undefined : drawnCounts,
   )
   // Padded for the toggles, then keyed for the two symbols that have no toggle
   // and had no row at all (#1051). `withSafetyKey` is last because it OWNS those
@@ -498,8 +515,19 @@ export function Legend({
   // What the type picker shows. Not a placeholder: a picker sitting at "Show one
   // only…" over a map drawing water alone is a control disowning its own state.
   const shown = shownSelection(typesShown ?? [])
+  // "None" wins the readout, because it is what the map is doing. A picker
+  // reading "All types" over a map drawing no waypoint at all would be this
+  // panel disowning the screen - the same rule the safety rows follow, and the
+  // reason the Show points switch read `shown && !belowSeam` rather than
+  // `shown` before this control absorbed it.
   const shownValue =
-    shown.kind === 'all' ? ALL_TYPES : shown.kind === 'one' ? shown.type : SOME_TYPES
+    waypointsShown === false
+      ? NO_TYPES
+      : shown.kind === 'all'
+        ? ALL_TYPES
+        : shown.kind === 'one'
+          ? shown.type
+          : SOME_TYPES
 
   // An empty grid has two quite different causes and one of them is this
   // panel's own doing. "Nothing here yet, pan or zoom out" is a false claim
@@ -630,9 +658,44 @@ export function Legend({
           camera is below the seam - not only on an empty viewport, as the
           dots-era version did - because it now describes every below-seam
           rectangle: the waypoints a hiker can see counted in the grid are
-          all of what this zoom declines to draw. */}
+          all of what this zoom declines to draw.
+
+          FOURTH FLIP, #1585: the dot rank went to every zoom, so the sentence
+          carried both halves - dots drawn, pins not yet.
+
+          FIFTH, AND BACK (2026-09-20), because the maintainer put the seam
+          back at z7 and floored BOTH ranks there: "We can keep a seam, and
+          make it at zoom 7. Yes the POI's can be hidden above there." So
+          nothing is drawn down here at all, and the dots half became the
+          false half - a sentence telling a hiker their map has dots on it
+          when it has none is the exact failure the first version of this line
+          was written to end.
+
+          The counts stay withheld for #1135's reason, unchanged.
+
+          IT WAS NOT THE ONLY THING SAYING THIS FOR ONE DAY: a "Show points"
+          pill sat over the map, disabled below the seam and reading "Zoom in
+          to show waypoints". The pill became this panel's own Showing picker
+          on 2026-09-20, so this line is the only place a hiker is told, and
+          e2e/mapChrome.spec.ts asserts it verbatim. */}
       {belowPoiZoom && (
         <p className="legend__empty">Waypoints appear from a closer zoom.</p>
+      )}
+
+      {/* THE SAME SENTENCE FOR THE OTHER WAY THE CANVAS GOES EMPTY
+          (2026-09-20). Above the seam a hiker can choose "None" in the picker,
+          and the greyed grid below says which marks are missing but not why -
+          the picker's own readout is three rows further down on a phone, which
+          is off the screen at the moment a hiker is wondering.
+          
+          Below the seam the sentence above wins, because down there the floor
+          is the reason and zooming in is the fix; naming the picker there
+          would send a hiker to a control that would not change what they are
+          looking at. */}
+      {waypointsShown === false && !belowPoiZoom && (
+        <p className="legend__empty">
+          Waypoints are off — choose a category under “Showing” to draw them.
+        </p>
       )}
 
       {/* "No WAYPOINTS", where this said "Nothing", and the word had to change
@@ -674,12 +737,18 @@ export function Legend({
         <ul className="legend__pins">
           {rows.map((row) => {
             const label = typeLabel(row.type)
-            // A hideable row is off when the hiker hid its category; a safety
-            // row is off when the alert marks are off, which is a different
-            // switch and the only one that can reach it (#1047). Both end up
-            // greyed by the same class, because to a hiker they are the same
-            // statement: this is not on the map right now.
-            const hidden = row.hideable ? hiddenTypes.has(row.type) : !alertsShown
+            // A hideable row is off when the hiker hid its category, or when
+            // they chose "None" in the picker above - that is every category
+            // at once, and a row left lit under it would be the panel
+            // claiming a pin the map is not drawing.
+            //
+            // A safety row is NEVER off: nothing in this app can take a
+            // closure or a serious warning off the map any more, so the only
+            // honest value here is false. It was `!alertsShown` while #1047's
+            // switch existed - see the props above.
+            const hidden = row.hideable
+              ? waypointsShown === false || hiddenTypes.has(row.type)
+              : false
             // Only where it differs, which keeps the panel quiet at the zooms
             // where nothing is being dropped: `Water 14` and `Water 13/14` are
             // the same row saying as much as is true.
@@ -789,33 +858,20 @@ export function Legend({
                 ) : (
                   <>
                     {face}
-                    {/* WHAT THIS TAG SAYS DEPENDS ON WHETHER A SWITCH EXISTS,
-                        and that is one fact rather than two designs. "Always
-                        shown" was the whole truth for as long as nothing in
-                        the app could hide a closure; #1047 built the Alerts
-                        switch below, and a row still promising "always" over a
-                        map a hiker has just cleared would be the panel
+                    {/* ONE WORD IN ONE STATE, which is what it was before
+                        #1047 and is again. This tag had three branches while
+                        the Alerts switch existed - "Alerts off" when the map
+                        was clear of them, "Alerts" when a switch was on the
+                        panel to name, "Always shown" only where no switch was
+                        offered - because a row promising "always" over a map a
+                        hiker had just cleared would have been this panel
                         disagreeing with the screen.
 
-                        So where the switch is on the panel, the tag names it -
-                        the word is the switch's own visible label, which is
-                        what makes it findable from here - and the row greys
-                        out with it. Where no switch is offered, nothing on
-                        that panel can take these marks off the map and the
-                        original promise is exactly right.
-
-                        WHAT THE MAP IS DOING IS ASKED FIRST, and deliberately.
-                        A panel handed `alertsShown={false}` with no handler -
-                        a shell that draws no alerts and offers no way back -
-                        must not tag a greyed row "Always shown". The screen
-                        wins over the affordance in every branch here. */}
-                    <span className="legend__always">
-                      {!alertsShown
-                        ? 'Alerts off'
-                        : onToggleAlerts === undefined
-                          ? 'Always shown'
-                          : 'Alerts'}
-                    </span>
+                        There is no switch and no screen state to disagree
+                        with now. A closure and a serious warning are drawn
+                        wherever the map draws anything, so the promise is
+                        unconditional and says so. */}
+                    <span className="legend__always">Always shown</span>
                   </>
                 )}
               </li>
@@ -898,6 +954,16 @@ export function Legend({
             value={shownValue}
             onChange={(event) => {
               const next = event.target.value
+              // "None" is the only entry that touches the second gate, and
+              // every other entry has to LEAVE it: a hiker at None choosing
+              // "Water" is asking for water on the map, and a picker that
+              // wrote the category and left the master off would show them an
+              // empty screen and a control claiming otherwise.
+              if (next === NO_TYPES) {
+                onSetWaypointsShown?.(false)
+                return
+              }
+              if (waypointsShown === false) onSetWaypointsShown?.(true)
               if (next === ALL_TYPES) onShowAllTypes()
               // SOME_TYPES is the state the row toggles put the map in, and it
               // is only ever the selected entry - choosing what is already
@@ -920,6 +986,26 @@ export function Legend({
                 {typeLabel(type)}
               </option>
             ))}
+            {/* THE WAYPOINT MASTER SWITCH, AND WHY IT IS AN ENTRY IN THIS LIST
+                RATHER THAN A CONTROL OF ITS OWN. It shipped for a day as a
+                "Show points" pill floating over the map, and the maintainer
+                moved it here from three drawn frames: *"Maybe the show points
+                should be part of the legend. Can this be integrated into the
+                showing dropdown?"*
+
+                It fits because this picker was already a range and this is its
+                far end: All types, then some, then one, then none. A separate
+                switch would have been a second door to one state, with the two
+                to keep agreeing in both directions.
+
+                LAST rather than beside "All types", so the list runs from most
+                to least drawn and a hiker scanning it passes everything they
+                might have wanted before reaching the empty end.
+
+                What it is NOT: a ninth category. It writes lib/showPoints.ts's
+                per-view state, never `waypoint_types_shown` - see the
+                `waypointsShown` prop. */}
+            {onSetWaypointsShown !== undefined && <option value={NO_TYPES}>None</option>}
           </select>
         </label>
       )}
@@ -936,45 +1022,23 @@ export function Legend({
         </label>
       )}
 
-      {/* THE ALERTS SWITCH (#1047), the first control this app has ever put
-          over a safety layer.
+      {/* THE ALERTS SWITCH STOOD HERE (#1047), the first and only control
+          this app ever put over a safety layer. The maintainer removed it on
+          2026-09-20, having been shown the table of every mechanism that
+          could hide a closure and told that this was the one row left with a
+          "yes" in it.
 
-          Here rather than in the grid above, and that is the decision. The
-          rows are one waypoint CATEGORY each and are toggled through the
-          stored `waypoint_types_shown` preference; alerts are neither - they
-          are three map layers (closure bands, the ATC's bands and dots,
-          serious-warning pins) governed by a flag nothing writes down. Putting
-          them in the grid would have meant either a fourth thing the stored
-          filter can express, which is the one shape #1047 rules out, or a row
-          that looks identical to its neighbours and behaves unlike all of
-          them. It sits with the drought wash instead, which is the honest
-          neighbour: a map overlay, switched here because the moment you want
-          it off is the moment you are looking at it.
+          What it cost to keep was small and what it cost to have was not
+          bounded by anything the code could state. Its own design said so:
+          the flag reset on `visibilitychange` so a hide could not survive
+          into a second day, and the gap that left was written down at the
+          time - "an app held in the foreground continuously never fires the
+          event, so a hide lasts as long as the screen stays awake." An
+          afternoon's walk fits inside that.
 
-          The row states what the switch does NOT take away, in both states
-          rather than only while it is off - the moment that matters is
-          BEFORE the tap, when a hiker is deciding what it will cost them.
-          chrome/alertLayerPanel.ts is what makes the sentence true, and
-          chrome/StatusStrip.tsx is what says so on the map itself once the
-          legend is shut. */}
-      {onToggleAlerts !== undefined && (
-        <label className="legend__alerts">
-          <span className="legend__alerts-name">
-            Alerts
-            <span className="legend__alerts-detail">
-              {alertsShown
-                ? 'Closures and warnings, drawn on the map. What is ahead of you is called out at the top either way.'
-                : 'Hidden until you open the app again. What is ahead of you is still called out at the top.'}
-            </span>
-          </span>
-          <input
-            type="checkbox"
-            name="alert_layer"
-            checked={alertsShown}
-            onChange={onToggleAlerts}
-          />
-        </label>
-      )}
+          Nothing replaced it. There is no hidden setting, no long-press, no
+          Settings row: closures, the ATC's bands and dots, and
+          serious-warning pins are drawn wherever this app draws a map. */}
 
       {/* The drought wash (#720). Rendered whenever the shell can write the
           preference back, INCLUDING in a week with no drought on the trail -

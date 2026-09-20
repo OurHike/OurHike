@@ -241,7 +241,7 @@ Works unchanged once a row exists: `publishedConditions.ts`'s fetch/cache/valida
 machinery (parameterized over key and field — it needs a payload key added to three
 string-literal unions, not a rewrite), `atcAlertsBanner.ts` (needs only `updated_at`),
 `atcUpdateStyle.ts`'s paint spec (already takes a `sourceId` argument),
-`alertLayerPanel.ts` (no per-source knowledge), and `stewards.ts`.
+and `stewards.ts`.
 
 Needs real work, in rough order of size:
 

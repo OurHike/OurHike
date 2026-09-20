@@ -487,7 +487,6 @@ import {
   useWaypointFiltersPanel,
   type UpdatePreferences,
 } from './chrome/waypointFiltersPanel'
-import { useAlertLayerPanel } from './chrome/alertLayerPanel'
 import { LOCATE_MIN_ZOOM, POI_PIN_MIN_ZOOM } from './map/poiLayers'
 import { useTappedLinePanel } from './chrome/tappedLinePanel'
 import {
@@ -7207,19 +7206,16 @@ function App() {
     droughtWeek,
   })
 
-  /**
-   * The legend's fourth switch, and the one thing on this screen that decides
-   * what the map leaves out WITHOUT writing it down (#1047).
+  /* THE LEGEND'S FOURTH SWITCH USED TO BE HERE, and it was the one thing on
+   * this screen that decided what the map left out (#1047). It is gone, by
+   * the maintainer's decision of 2026-09-20 - see chrome/Legend.tsx, where
+   * the row it drew now reads "Always shown" with no control on it.
    *
-   * Its own hook rather than a fifth field on the filters above, and the
-   * reason is the whole design: everything that one owns is a preference and
-   * reaches an account, and the alerts flag must never do either. Two files
-   * make that hard to undo by accident - `preferences` and
-   * `updatePreferences` are not in scope inside chrome/alertLayerPanel.ts at
-   * all, so storing the flag would take an import somebody would have to add
-   * on purpose.
+   * What it held was a `useState` that no file could write down, so nothing
+   * here has to be unwound: there is no stored flag to migrate, no
+   * preference to drop, and no account that ever carried one. The hook and
+   * its visibilitychange listener are deleted outright.
    */
-  const alerts = useAlertLayerPanel()
 
   /**
    * The background choice, and the one case where making it does something
@@ -11043,7 +11039,6 @@ function App() {
                   : undefined
               }
               {...filters.mapScreen}
-              {...alerts.mapScreen}
               selectedPoi={selectedPoi}
               selectedSite={selectedSite}
               removedPoiCard={

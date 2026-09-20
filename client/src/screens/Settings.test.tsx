@@ -419,7 +419,10 @@ describe('MapSettings', () => {
       for (const box of group.getAllByRole('checkbox')) expect(box).toBeChecked()
     })
 
-    it('defaults to shelter, campsite, water and privy - not every category (#865)', () => {
+    it('defaults to every category checked, so nothing starts hidden (#1585)', () => {
+      // It defaulted to the curated four of #865, which left this panel
+      // opening with five boxes unticked that no hiker had unticked. The
+      // maintainer, 2026-09-18: "never hide anything!!!!!!!"
       renderMap()
 
       const group = within(screen.getByRole('group', { name: /waypoints shown/i }))
@@ -428,10 +431,10 @@ describe('MapSettings', () => {
           group.getByRole('checkbox', { name: new RegExp(shown, 'i') }),
         ).toBeChecked()
       }
-      for (const hidden of ['resupply', 'crossing', 'viewpoint', 'parking']) {
+      for (const alsoShown of ['resupply', 'crossing', 'viewpoint', 'parking']) {
         expect(
-          group.getByRole('checkbox', { name: new RegExp(hidden, 'i') }),
-        ).not.toBeChecked()
+          group.getByRole('checkbox', { name: new RegExp(alsoShown, 'i') }),
+        ).toBeChecked()
       }
     })
 

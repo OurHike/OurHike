@@ -193,29 +193,45 @@ describe('PLAIN_TRAIL_COLOR, the one red every line takes while blaze colours ar
 })
 
 describe('the context trails’ tint of that red under the default (#1588)', () => {
-  it('keeps 45% of the red over each sheet’s paper, 2.15 on paper and 1.5 on ink', () => {
+  it('keeps 80% of the red over each sheet’s paper, 4.31 on paper and 2.30 on ink', () => {
     // Computed here for the same reason PLAIN_TRAIL_COLOR's figures are: so
-    // map/style.ts's docstring and the hex cannot drift apart. The day tint
-    // clears the palette's day bar (2.076), so a context trail still
-    // separates from paper; the night tint sits under its bar (2.66) on
-    // purpose - the same faintness the ghosting's 45% gives a nearby trail
-    // on ink, for a line that is context. The mock-up the maintainer chose
-    // from was a day frame; the night figure is what that choice costs
-    // there, written down rather than rounded to fine.
-    expect(CONTEXT_TRAIL_TINT).toBe(0.45)
+    // map/style.ts's docstring and the hex cannot drift apart.
+    //
+    // THE TINT WENT 0.45 -> 0.8 ON 2026-09-20, because at 0.45 a context
+    // trail rendered #dca39a and the maintainer called it what it is: "The
+    // trails look pink now, not red."
+    //
+    // BOTH RATIOS ROSE, which is worth stating because a colour change made
+    // for looks usually costs contrast and this one paid it back:
+    //
+    //     sheet    was     now     bar
+    //     day      2.15    4.31    2.076  (clears it, and by far more)
+    //     night    1.50    2.30    2.66   (still under, still on purpose)
+    //
+    // The night figure staying under its bar is the same deliberate faintness
+    // as before - a context trail is context, and the ghosting gives a nearby
+    // trail the same treatment on ink. What changed is that the gap narrowed
+    // rather than widened, so the night sheet is less of a compromise than
+    // the 0.45 it replaces, not more.
+    expect(CONTEXT_TRAIL_TINT).toBe(0.8)
     expect(contrastRatio(contextTrailColor({ theme: 'light' }), DAY_SHEET)).toBeCloseTo(
-      2.15,
+      4.31,
       1,
     )
     expect(
       contrastRatio(contextTrailColor({ theme: 'light' }), DAY_SHEET),
     ).toBeGreaterThan(2.076)
     expect(contrastRatio(contextTrailColor({ theme: 'dark' }), NIGHT_SHEET)).toBeCloseTo(
-      1.5,
+      2.3,
       1,
     )
     expect(contrastRatio(contextTrailColor({ theme: 'dark' }), NIGHT_SHEET)).toBeLessThan(
       2.66,
+    )
+    // And it is still plainly a step back from a through-route, which is the
+    // job the tint exists to do at all.
+    expect(contrastRatio(contextTrailColor({ theme: 'light' }), DAY_SHEET)).toBeLessThan(
+      contrastRatio(PLAIN_TRAIL_COLOR, DAY_SHEET),
     )
   })
 })

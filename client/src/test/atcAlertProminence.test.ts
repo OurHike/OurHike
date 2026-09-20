@@ -112,11 +112,26 @@ describe('the ATC’s point notice sits just above every pin on the map', () => 
       return stops[stops.length - 1][1]
     }
 
+    // A STOP'S OUTPUT IS AN EXPRESSION NOW, NOT A NUMBER (#1585): a pin's
+    // size follows its category, so each `interpolate` stop carries a `match`
+    // on `poi_type`. What this test has to compare against is the LARGEST pin
+    // any category can be drawn at - the notice has to outsize the biggest
+    // thing beside it, not the average one - which is the `match`'s first
+    // output, the full-size tier.
+    const fullSizeOutput = (stop: unknown): number => {
+      if (typeof stop === 'number') return stop
+      const match = stop as unknown[]
+      const outputs = match
+        .slice(3)
+        .filter((value): value is number => typeof value === 'number')
+      return Math.max(...outputs)
+    }
+
     const pinStops: Array<[number, number]> = []
     for (let at = 3; at < POI_ICON_SIZE_EXPRESSION.length; at += 2) {
       pinStops.push([
         POI_ICON_SIZE_EXPRESSION[at] as number,
-        POI_ICON_SIZE_EXPRESSION[at + 1] as number,
+        fullSizeOutput(POI_ICON_SIZE_EXPRESSION[at + 1]),
       ])
     }
 

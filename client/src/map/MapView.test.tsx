@@ -856,7 +856,7 @@ describe('POI pins', () => {
     expect(map.filters.get(POI_LAYER_ID)).toEqual(poiFilter(new Set(['water'])))
   })
 
-  it('rebuilds the source when a legend tap hides a site’s anchor', () => {
+  it('never takes a waypoint out of the source when the legend hides its neighbour', () => {
     // THE WIRING HALF OF #607, and a failure the other two files cannot see.
     // composeSites can be perfectly right about which member carries the pin
     // and the map still draws nothing, because the source is only pushed when
@@ -895,12 +895,23 @@ describe('POI pins', () => {
     )
     const [map] = MockMap.live
     loadStyle(map)
-    // The precondition, asserted rather than assumed: the privy is folded away
-    // and the shelter's pin stands for both. That is #524 working.
+    // BACK TO #607's OWN QUESTION (2026-09-20), because folding is back and
+    // so is the bug it guards. For two days this asserted the opposite - both
+    // waypoints in the source from the first frame - which was true while
+    // nothing folded and is the weaker claim now that something does.
+    //
+    // Folded, the privy is NOT in the source: it rides the shelter's pin.
+    // Hide shelters and that pin goes, so the privy has to be promoted into
+    // the source by a REBUILD - and a rebuild only happens if the effect that
+    // builds it depends on the hidden set. That dependency is the whole of
+    // what this test catches, and dropping it is invisible in composeSites,
+    // which would be perfectly right about the promotion nobody asked for.
     expect(pinnedIds(map)).toEqual(['shelter'])
 
     rerender(<MapView {...PROPS} pois={site} hiddenTypes={new Set(['shelter'])} />)
 
+    // The privy takes the pin rather than the place going dark, which is
+    // #607's fix and the reason a fold is not a deletion.
     expect(pinnedIds(map)).toEqual(['privy'])
   })
 

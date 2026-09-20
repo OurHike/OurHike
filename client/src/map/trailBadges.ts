@@ -711,12 +711,18 @@ export function buildTrailBadgeLayer(
     // something else" and starts being the map a hiker walks with. The pill
     // belongs to the first of those, not the second.
     //
-    // POI_PIN_MIN_ZOOM itself rather than a 9 that happens to agree, for the
-    // reason POI_DOT_MIN_ZOOM is that constant too: the corridor view has ONE
-    // seam for waypoints, and a badge ceiling that drifted from it would put
-    // pills back on a map that had just filled with pins. maplibre reads
-    // `maxzoom` as exclusive, so the badge is gone on the first frame a
-    // waypoint can draw rather than sharing that frame with it.
+    // POI_PIN_MIN_ZOOM itself rather than a 7.5 that happens to agree: the
+    // ceiling is the pins' floor by construction, and one that drifted from
+    // it would put pills back on a map that had just filled with pins.
+    // maplibre reads `maxzoom` as exclusive, so the badge is gone on the
+    // first frame a pin can draw rather than sharing that frame with it.
+    //
+    // THE PINS' FLOOR, NOT "WHERE WAYPOINTS START" (#1585, 2026-09-18). The
+    // dot rank draws at every zoom now, so a badge and a waypoint do share
+    // the frames below this ceiling - which is the ceiling still doing its
+    // job rather than a hole in it. What the maintainer asked to hide the
+    // pills was pins competing for the same ground; a 2.5 px dot is not
+    // competing with a pill for anything.
     maxzoom: POI_PIN_MIN_ZOOM,
     filter: ['!=', ['to-string', ['get', BADGE_NAME_PROPERTY]], ''] as never,
     layout: {

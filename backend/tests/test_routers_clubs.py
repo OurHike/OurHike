@@ -215,6 +215,28 @@ def test_a_second_claim_freezes_the_organization_for_a_person(client, db_session
     assert db_session.query(Club).one().state == OrgState.frozen
 
 
+def test_a_claim_from_off_the_domain_leaves_a_claimed_organization_alone(client, db_session):
+    """The freeze is for two people at one domain, not for whoever asks.
+
+    `frozen` has no automatic exit, by design - a timer would resolve a
+    contested claim in favour of whoever was patient. That makes the freeze
+    an irreversible act, so nothing may reach it before the caller's address
+    has been checked against the org's domain. One signed-in account walking
+    the public list would otherwise take every organization on it offline.
+    """
+    make_org(db_session, state=OrgState.claimed)
+    stranger = make_profile(db_session)
+
+    response = client.post(
+        "/clubs/ramapo-trail-conference/claim",
+        json={},
+        headers=auth_headers(stranger.id, email="somebody@gmail.com"),
+    )
+
+    assert response.status_code == 403
+    assert db_session.query(Club).one().state == OrgState.claimed
+
+
 def test_a_frozen_organization_has_no_automatic_way_out(client, db_session):
     make_org(db_session, state=OrgState.frozen)
     claimer = make_profile(db_session)

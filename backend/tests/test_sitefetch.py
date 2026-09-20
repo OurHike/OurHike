@@ -512,6 +512,27 @@ class TestReadingASite:
         pages = read_site("https://cmc.org/", client=client, resolve=only_public, read_peer=AT_THE_RIGHT_PLACE)
         assert all("cmc.org" in page.url for page in pages)
 
+    def test_a_shared_suffix_is_not_the_same_site(self):
+        """`ramblers.org.uk` and `cotswold-wardens.org.uk` are two different
+        organizations, and the second one nominated nobody. Deriving the
+        site's root from the last two labels makes `org.uk` the root, at
+        which point every UK charity is "the organization's own site" and a
+        single nomination crawls them all, harvesting addresses from each.
+        """
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            body = (
+                b'<a href="https://cotswold-wardens.org.uk/contact">Contact</a><a href="/maps">Maps</a>'
+                if request.url.path == "/"
+                else b"<h1>a page</h1>"
+            )
+            return httpx.Response(200, headers={"content-type": "text/html"}, content=body)
+
+        client = httpx.Client(transport=transport(handler))
+        pages = read_site("https://ramblers.org.uk/", client=client, resolve=only_public, read_peer=AT_THE_RIGHT_PLACE)
+
+        assert all("cotswold-wardens" not in page.url for page in pages)
+
     def test_a_page_that_refuses_does_not_lose_the_others(self):
         """One 500 on a contact page is not a reason to report nothing."""
 

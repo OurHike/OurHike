@@ -167,6 +167,44 @@ def safe_external_url(value: str | None) -> str | None:
     return cleaned
 
 
+# A way to reach a person is wider than a web page: the club's own channel
+# may be an address or a number (`client/src/lib/safeLink.ts`'s
+# CONTACT_SCHEMES, and `pipeline/lib/work_projects.py`'s "a mailto: or tel:
+# or https: string"). Kept in step with that set by hand - two short tuples
+# in two languages, and a comment in each naming the other.
+SAFE_CONTACT_SCHEMES = (*SAFE_URL_SCHEMES, "mailto:", "tel:")
+
+# What a browser treats as a scheme: a letter, then letters, digits, `+`,
+# `-` or `.`, then a colon. A string with no such prefix is not a URL at
+# all - `trails@ramapotrails.org` and `(201) 555-0134` are the common
+# contacts and neither carries one - so it is text, and an anchor resolves
+# it against the page rather than acting on it.
+_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.\-]*:")
+
+
+def safe_contact_target(value: str | None) -> str | None:
+    """A way to reach the organization, refused if a browser would act on it.
+
+    Wider than `safe_external_url` and for the same reason it exists: this
+    lands in an `href` at three sinks, one of them the embed running on the
+    organization's own page, so the scheme is the whole question. A plain
+    address or phone number carries no scheme and is passed through as the
+    text it is.
+    """
+    if value is None:
+        return None
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    if len(cleaned) > URL_MAX:
+        raise ValueError(f"that contact is longer than {URL_MAX} characters")
+    if any(ord(character) < 0x20 or ord(character) == 0x7F for character in cleaned):
+        raise ValueError("that contact contains a control character")
+    if _SCHEME.match(cleaned) and not cleaned.lower().startswith(SAFE_CONTACT_SCHEMES):
+        raise ValueError("a contact is a web address, an email address or a phone number")
+    return cleaned
+
+
 class OrgCreate(BaseModel):
     """Registering. One admin fills this in; three approve before anything publishes."""
 

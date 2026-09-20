@@ -103,6 +103,48 @@
   }
 
   /** Empty a host element without touching anything around it. */
+  /** The schemes a URL we were handed may carry, and nothing else.
+   *
+   *  THIS FILE RUNS ON THE ORGANIZATION'S OWN PAGE. A `javascript:` or
+   *  `data:` URL rendered here is stored XSS on their site, put there by
+   *  us - which makes this the worst of the three sinks that read these
+   *  fields, and the only one with no framework quietly rewriting
+   *  `javascript:` first.
+   *
+   *  A HAND-KEPT THIRD COPY, and deliberately so. `client/src/lib/
+   *  safeLink.ts` is the app's list and `backend/app/schemas/org.py`'s
+   *  SAFE_CONTACT_SCHEMES is the server's. This file has no build step on
+   *  purpose - what an organization audits is what runs - so it cannot
+   *  import either, and `client/src/test/orgEmbeds.test.ts` is what stops
+   *  the three drifting. An allowlist rather than a blocklist because the
+   *  set of schemes a browser will act on is not a list this file could
+   *  keep up with.
+   */
+  var SAFE_SCHEMES = ['http:', 'https:', 'mailto:', 'tel:']
+
+  /** `url` if a browser may be pointed at it, else null.
+   *
+   *  Resolved through the URL parser rather than matched as text, because
+   *  what matters is the scheme the BROWSER lands on: leading whitespace,
+   *  `JaVaScRiPt:` and an embedded newline are all things a regular
+   *  expression reads differently from an anchor. A caller that gets null
+   *  renders no link at all - absent is the honest answer, and a link the
+   *  visitor's phone would act on is worse than none.
+   */
+  function safeHref(url) {
+    if (!url) return null
+    var parsed
+    try {
+      parsed = new URL(String(url), window.location.href)
+    } catch (err) {
+      return null
+    }
+    for (var i = 0; i < SAFE_SCHEMES.length; i += 1) {
+      if (parsed.protocol === SAFE_SCHEMES[i]) return String(url)
+    }
+    return null
+  }
+
   function clear(host) {
     while (host.firstChild) host.removeChild(host.firstChild)
   }
@@ -188,16 +230,18 @@
     if (!org) return null
     var wrap = el('div', 'ourhike__links')
     var any = false
-    if (org.membership_url) {
+    var joinAt = safeHref(org.membership_url)
+    if (joinAt) {
       var join = el('a', null, 'Join ' + (org.name || 'us'))
-      join.href = org.membership_url
+      join.href = joinAt
       join.rel = 'noopener'
       wrap.appendChild(join)
       any = true
     }
-    if (org.donation_url) {
+    var giveAt = safeHref(org.donation_url)
+    if (giveAt) {
       var give = el('a', null, 'Support this work')
-      give.href = org.donation_url
+      give.href = giveAt
       give.rel = 'noopener'
       wrap.appendChild(give)
       any = true
@@ -502,7 +546,7 @@
               card.appendChild(el('div', 'ourhike__meta', 'Called off. Nothing to sign up to.'))
             } else {
               var mirrored = workday.source === 'mirrored' || workday.signup_mode === 'contact'
-              var where = workday.signup_url || null
+              var where = safeHref(workday.signup_url)
               if (mirrored && where) {
                 var out = el('a', null, 'Sign up on our site')
                 out.href = where

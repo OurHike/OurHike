@@ -21,6 +21,7 @@
  */
 
 import { useState } from 'react'
+import { isSafeLink } from '../../lib/safeLink'
 import { PageHeader, formatWorkdayRange } from '../components'
 import type { Workday, WorkdaySignup } from '../orgApi'
 
@@ -188,6 +189,14 @@ export function Workdays({
             <div className="org-stack">
               {workdays.map((workday) => {
                 const mirrored = workday.source === 'mirrored'
+                // The sink half of #1578, as in `org/components.tsx`. Here
+                // it has to be a page rather than a contact, because what
+                // is offered is editing their calendar - you cannot edit a
+                // phone number.
+                const editOnTheirSite =
+                  workday.signup_url !== null && isSafeLink(workday.signup_url)
+                    ? workday.signup_url
+                    : null
                 return (
                   <div className="org-card" key={workday.id}>
                     <div className="org-inline">
@@ -218,13 +227,27 @@ export function Workdays({
                     </p>
                     {canEdit ? (
                       <div className="org-inline">
-                        {mirrored && workday.signup_url ? (
-                          <a
-                            className="org-btn org-btn--ghost org-btn--small"
-                            href={workday.signup_url}
-                          >
-                            Edit on your site ↗
-                          </a>
+                        {mirrored ? (
+                          editOnTheirSite === null ? (
+                            // A mirrored row is read-only here, which the
+                            // line above already says - so no Edit button,
+                            // which would offer a change this screen cannot
+                            // make. That reached a contact-only mirrored
+                            // workday before this branch existed, as well
+                            // as one whose link was refused.
+                            <span className="org-mono">
+                              Edit it wherever you keep your calendar.
+                            </span>
+                          ) : (
+                            <a
+                              className="org-btn org-btn--ghost org-btn--small"
+                              href={editOnTheirSite}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              Edit on your site ↗
+                            </a>
+                          )
                         ) : (
                           <button
                             type="button"

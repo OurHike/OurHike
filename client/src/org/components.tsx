@@ -13,6 +13,7 @@
  * earn its own.
  */
 
+import { isSafeContactLink, isSafeLink } from '../lib/safeLink'
 import { formatDistance, type UnitSystem } from '../lib/units'
 import { useMemo, useState } from 'react'
 import './orgConsole.css'
@@ -534,7 +535,15 @@ export function WorkdaysWidget({
       {workdays.map((workday) => {
         const mirrored =
           workday.source === 'mirrored' || workday.signup_mode === 'contact'
-        const where = workday.signup_url ?? workday.signup_contact ?? null
+        // THE SINK HALF OF #1578, and this widget is exactly the case
+        // lib/safeLink.ts predicted: `chrome/CrewContactLink.tsx` already
+        // guards these two fields for the pipeline's rows, and the console
+        // arrived later as a second consumer and walked straight past it.
+        // `schemas/work_project.py` refuses the scheme at the producer now;
+        // this repeats it because the site fetcher is a second producer and
+        // because a row written before that validator existed is still here.
+        const offered = workday.signup_url ?? workday.signup_contact ?? null
+        const where = offered !== null && isSafeContactLink(offered) ? offered : null
         return (
           <div className="org-card" key={workday.id}>
             <div className="org-inline">
@@ -566,10 +575,27 @@ export function WorkdaysWidget({
                 <span className="org-mono">
                   This one was called off. Nothing to sign up to.
                 </span>
-              ) : mirrored && where ? (
-                <a className="org-btn org-btn--ghost org-btn--small" href={where}>
-                  Sign up on their site
-                </a>
+              ) : mirrored ? (
+                where === null ? (
+                  // Absent rather than a guess. A mirrored workday's signup
+                  // lives on their system, so offering "Put your hand up"
+                  // here would promise a place the backend refuses (409)
+                  // and that nobody at the org would ever see.
+                  <span className="org-mono">
+                    They take signups on their own site. We do not have a link we can open
+                    for this one — ask them directly.
+                  </span>
+                ) : (
+                  <a
+                    className="org-btn org-btn--ghost org-btn--small"
+                    href={where}
+                    {...(isSafeLink(where)
+                      ? { target: '_blank', rel: 'noreferrer' }
+                      : {})}
+                  >
+                    Sign up on their site
+                  </a>
+                )
               ) : onSignUp ? (
                 <button
                   type="button"

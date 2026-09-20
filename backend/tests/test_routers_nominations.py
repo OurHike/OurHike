@@ -317,6 +317,28 @@ class TestTheClubsOwnScreen:
         )
         assert db_session.query(NominationRefusal).filter(NominationRefusal.domain == "carolinamountainclub.org").count() == 1
 
+    def test_a_second_never_ask_again_at_one_domain_still_records_the_decline(self, client, db_session):
+        """`nomination_refusals.domain` is `unique=True`, and the gate that
+        stops a second nomination is checked when one is submitted rather
+        than when one is decided - so two nominations for the same club can
+        both be live, and the second person to tick "never ask again" writes
+        a domain that is already there. An unhandled IntegrityError there
+        rolls back the whole decision with it: the club said no twice and
+        the nomination was still sitting at `proposed`.
+        """
+        nomination = self._submit(client, db_session)
+        db_session.add(NominationRefusal(domain="carolinamountainclub.org"))
+        db_session.commit()
+
+        response = client.post(
+            f"/nominations/{nomination.proposal_token}/decision",
+            json={"approve": False, "never_ask_again": True, "note": "Still no"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["state"] == "declined"
+        assert db_session.query(NominationRefusal).filter(NominationRefusal.domain == "carolinamountainclub.org").count() == 1
+
     def test_declining_without_never_ask_again_leaves_the_door_open(self, client, db_session):
         """They said no to this proposal, not to the idea. Those differ."""
         nomination = self._submit(client, db_session)

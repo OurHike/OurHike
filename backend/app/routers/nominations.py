@@ -498,12 +498,28 @@ def decide_proposal(
         nomination.decided_at = now
         nomination.decided_note = payload.note
         if payload.never_ask_again and club.domain:
-            db.add(
-                NominationRefusal(
-                    domain=club.domain,
-                    note=payload.note,
+            # `nomination_refusals.domain` is unique, and the gate that stops
+            # a second nomination is checked when one is submitted rather
+            # than when one is decided - so two nominations for one club can
+            # both be live and both be declined this way. Inserting blind
+            # raised IntegrityError on the second, and the rollback took the
+            # decline with it: the club had said no and the row still read
+            # `proposed`. Already-refused is the state this asks for, so
+            # finding it there is success, not a collision.
+            already = db.query(NominationRefusal).filter(NominationRefusal.domain == club.domain).one_or_none()
+            if already is None:
+                db.add(
+                    NominationRefusal(
+                        domain=club.domain,
+                        note=payload.note,
+                    )
                 )
-            )
+            elif payload.note and not already.note:
+                # The first refusal said no without saying why and this one
+                # explains. Keep the earlier date - that is when they told
+                # us - and take the words, because a reason nobody recorded
+                # is the thing a person reading this later actually needs.
+                already.note = payload.note
         # The org row itself goes. It exists only because a hiker offered, and
         # a club that said no should not be left as an `unclaimed` row with
         # their name on it in somebody's admin list.

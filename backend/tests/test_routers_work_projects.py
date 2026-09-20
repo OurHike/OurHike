@@ -156,6 +156,69 @@ def test_signing_up_twice_returns_the_first_one_rather_than_an_error(client, db_
     assert db_session.query(WorkProjectSignup).count() == 1
 
 
+def test_a_signup_link_a_browser_would_execute_is_refused(client, db_session):
+    """`signup_url` is rendered straight into an `href` in three places, one
+    of them `site/public/embed/v1/ourhike.js` running on the organization's
+    OWN page - so a `javascript:` URL stored here is stored XSS on their
+    site, published by us. `app/schemas/org.py`'s `safe_external_url` is the
+    gate every other org-supplied link already passes through; this one was
+    missed.
+    """
+    org, admin = _org_with_admin(db_session)
+
+    response = client.post(
+        "/clubs/ramapo-trail-conference/workdays",
+        json={
+            "title": "Cut back the corridor",
+            "starts_on": str(date.today()),
+            "source": "mirrored",
+            "signup_url": "javascript:alert(document.cookie)",
+        },
+        headers=auth_headers(admin.id),
+    )
+
+    assert response.status_code == 422
+
+
+def test_a_signup_contact_a_browser_would_execute_is_refused(client, db_session):
+    """The same sink: `client/src/org/components.tsx` falls back to
+    `signup_contact` for the href when there is no `signup_url`."""
+    org, admin = _org_with_admin(db_session)
+
+    response = client.post(
+        "/clubs/ramapo-trail-conference/workdays",
+        json={
+            "title": "Cut back the corridor",
+            "starts_on": str(date.today()),
+            "signup_mode": "contact",
+            "signup_contact": "javascript:alert(1)",
+        },
+        headers=auth_headers(admin.id),
+    )
+
+    assert response.status_code == 422
+
+
+def test_an_email_address_is_still_a_usable_signup_contact(client, db_session):
+    """The guard on `signup_contact` must not refuse the thing it is for: a
+    contact is an address or a number as well as a page, which is the same
+    set `client/src/lib/safeLink.ts` calls a contact link."""
+    org, admin = _org_with_admin(db_session)
+
+    response = client.post(
+        "/clubs/ramapo-trail-conference/workdays",
+        json={
+            "title": "Cut back the corridor",
+            "starts_on": str(date.today()),
+            "signup_mode": "contact",
+            "signup_contact": "trails@ramapotrails.org",
+        },
+        headers=auth_headers(admin.id),
+    )
+
+    assert response.status_code == 201
+
+
 def test_a_mirrored_workday_sends_the_volunteer_to_the_organizations_own_form(client, db_session):
     org, _ = _org_with_admin(db_session)
     project = make_workday(

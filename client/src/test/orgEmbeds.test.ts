@@ -29,6 +29,121 @@ const EMBED = readRepoFile('site/public/embed/v1/ourhike.js')
  */
 const CODE = EMBED.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 
+describe('no URL the embed was handed becomes an href without a scheme check', () => {
+  /**
+   * The embed runs on the ORGANIZATION'S own page, so a `javascript:` or
+   * `data:` URL it renders is stored XSS on their site, shipped there by us.
+   * That is the worst of the three sinks reading these fields, and the only
+   * one where no framework is quietly rewriting `javascript:` first.
+   *
+   * `client/src/lib/safeLink.ts` is the same rule for the app and says why
+   * it is repeated at every sink. This file cannot import it - the embed is
+   * one `public/` asset with no build step, on purpose, so that what an
+   * organization audits is what runs - so the embed carries its own copy
+   * and this block is what keeps the two from drifting apart.
+   */
+
+  /** The embed's own `safeHref`, lifted out and made callable.
+   *
+   *  The file is one IIFE and exposes nothing, so the alternative was a
+   *  regex asserting the shape of the function's source - which would pass
+   *  on a version of it that always returned the URL. This runs the real
+   *  lines against jsdom's own URL parser, which is the thing the function
+   *  delegates the hard part to.
+   */
+  function liftSafeHref(): (url: unknown) => string | null {
+    const opened = CODE.indexOf('function safeHref(url) {')
+    expect(opened).toBeGreaterThan(-1)
+    let depth = 0
+    let closed = -1
+    for (let at = CODE.indexOf('{', opened); at < CODE.length; at += 1) {
+      if (CODE[at] === '{') depth += 1
+      else if (CODE[at] === '}') {
+        depth -= 1
+        if (depth === 0) {
+          closed = at + 1
+          break
+        }
+      }
+    }
+    expect(closed).toBeGreaterThan(opened)
+    // `safeHref` reads SAFE_SCHEMES from the enclosing IIFE, so the list
+    // travels with it - which is the point: the test runs the real list.
+    const list = /var SAFE_SCHEMES = \[[^\]]*\]/.exec(CODE)?.[0]
+    expect(list).toBeDefined()
+    const source = `${list}; ${CODE.slice(opened, closed)}; return safeHref`
+    return new Function(source)() as (url: unknown) => string | null
+  }
+
+  it('passes a page, an address and a number through unchanged', () => {
+    const safeHref = liftSafeHref()
+    expect(safeHref('https://cmc.org/volunteer')).toBe('https://cmc.org/volunteer')
+    expect(safeHref('http://cmc.org/volunteer')).toBe('http://cmc.org/volunteer')
+    expect(safeHref('mailto:trails@cmc.org')).toBe('mailto:trails@cmc.org')
+    expect(safeHref('tel:+12015550134')).toBe('tel:+12015550134')
+  })
+
+  it('refuses every scheme a browser or a phone would act on', () => {
+    const safeHref = liftSafeHref()
+    for (const url of [
+      'javascript:alert(document.cookie)',
+      'data:text/html,<script>alert(1)</script>',
+      'vbscript:msgbox(1)',
+      'file:///etc/passwd',
+      'intent://evil#Intent;scheme=http;end',
+      'blob:https://cmc.org/8f7e',
+    ]) {
+      expect(safeHref(url)).toBeNull()
+    }
+  })
+
+  it('refuses the spellings that read differently to a regex than to an anchor', () => {
+    const safeHref = liftSafeHref()
+    expect(safeHref('  javascript:alert(1)')).toBeNull()
+    expect(safeHref('JaVaScRiPt:alert(1)')).toBeNull()
+    expect(safeHref('java\nscript:alert(1)')).toBeNull()
+    expect(safeHref('\u0001javascript:alert(1)')).toBeNull()
+  })
+
+  it('answers null for nothing at all, so a missing link is a missing link', () => {
+    const safeHref = liftSafeHref()
+    expect(safeHref(null)).toBeNull()
+    expect(safeHref(undefined)).toBeNull()
+    expect(safeHref('')).toBeNull()
+  })
+
+  it('routes every data-driven href through it', () => {
+    // Sound against the variable form the callers use: an assignment may
+    // read a name only if that name was bound from `safeHref(`. Without
+    // that second half the rule passes on `x = org.donation_url; a.href = x`.
+    const assignments = CODE.match(/\.href\s*=\s*[^\n]+/g) ?? []
+    expect(assignments.length).toBeGreaterThan(0)
+    for (const assignment of assignments) {
+      const value = assignment.replace(/^\.href\s*=\s*/, '').trim()
+      const builtFromLiterals = value.startsWith("'") || value.startsWith('"')
+      const guardedHere = value.startsWith('safeHref(')
+      const name = /^([A-Za-z_$][\w$]*)\s*$/.exec(value)?.[1]
+      const guardedEarlier =
+        name !== undefined && new RegExp(`var\\s+${name}\\s*=\\s*safeHref\\(`).test(CODE)
+      expect(builtFromLiterals || guardedHere || guardedEarlier).toBe(true)
+    }
+  })
+
+  it('allows only the schemes a contact can legitimately be', () => {
+    expect(CODE).toMatch(/SAFE_SCHEMES/)
+    // Kept in step by hand with `client/src/lib/safeLink.ts`'s
+    // CONTACT_SCHEMES and `backend/app/schemas/org.py`'s
+    // SAFE_CONTACT_SCHEMES - three copies, each naming the others.
+    const listed = /var SAFE_SCHEMES = \[([^\]]*)\]/.exec(CODE)?.[1] ?? ''
+    expect(listed.match(/'[^']+'/g)?.sort()).toEqual([
+      "'http:'",
+      "'https:'",
+      "'mailto:'",
+      "'tel:'",
+    ])
+  })
+})
+
 describe('the embeds keep the four promises the console prints', () => {
   it('stores nothing on a visitor: no cookies, no web storage, no IndexedDB', () => {
     expect(CODE).not.toMatch(/document\s*\.\s*cookie/)

@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from app.core.time import UtcDatetime
 from app.models.work_project import ProjectSource, ProjectStatus, SignupMode, SignupState
 from app.schemas.common import FiniteFloat, NoteText
+from app.schemas.org import safe_contact_target, safe_external_url
 
 # The organization's own reply. `interested` is absent because it is what a
 # signup already is - replying "interested" says nothing the volunteer does
@@ -65,6 +66,23 @@ class WorkProjectCreate(BaseModel):
     signup_mode: SignupMode = SignupMode.in_app
     signup_contact: str | None = None
     signup_url: str | None = None
+
+    # Both of these are rendered into an `href`, and one of those sinks -
+    # `site/public/embed/v1/ourhike.js` - runs on the organization's OWN
+    # page, so a scheme a browser acts on is stored XSS that we published
+    # onto their site. Checked here AND at each sink, which is the posture
+    # `client/src/lib/safeLink.ts` states and the reason it gives: "a check
+    # that only exists at the far end is one a future second producer walks
+    # straight past." The site fetcher is exactly that second producer.
+    @field_validator("signup_url")
+    @classmethod
+    def _a_link_a_browser_will_not_execute(cls, value: str | None) -> str | None:
+        return safe_external_url(value)
+
+    @field_validator("signup_contact")
+    @classmethod
+    def _a_contact_a_browser_will_not_execute(cls, value: str | None) -> str | None:
+        return safe_contact_target(value)
 
     @model_validator(mode="after")
     def _a_signup_has_to_go_somewhere(self) -> WorkProjectCreate:

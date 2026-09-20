@@ -540,8 +540,25 @@ def _robots_for(
 def _same_site(base_host: str, candidate: str) -> bool:
     """Whether a link stays on the organization's own site.
 
-    Subdomains count - a club's maps often live on `gis.` or `data.` - and
-    nothing else does.
+    Subdomains of the host we were given count - a club's maps often live on
+    `gis.` or `data.` - and nothing else does.
+
+    **The root is the nominated host with a leading `www.` removed, and no
+    more of it than that.** Taking the last two labels instead, which this
+    did until the review of #1547, makes the root of `ramblers.org.uk` into
+    `org.uk`: every UK charity is then "the organization's own site", and
+    one nomination becomes a crawl that reads and harvests addresses from
+    organizations nobody nominated. The same hole is open under `.co.uk`,
+    `.com.au`, `.gov.uk` and every other two-label suffix.
+
+    @unvalidated that stripping `www.` is the only widening worth making.
+    It is the one alias common enough to be worth the line, but no public
+    suffix list is consulted here, so an org whose pages sit under a
+    different second host (`cmc.org` linking `cmcfoundation.org`) has those
+    links passed over. That is the safe direction to be wrong in - a page
+    not read costs a nomination some coverage, a page wrongly read costs
+    somebody else their inbox - and what would settle it is a count of how
+    often real nominations link a genuine sibling host, which nobody has.
     """
     try:
         host = (urlsplit(candidate).hostname or "").lower()
@@ -549,8 +566,8 @@ def _same_site(base_host: str, candidate: str) -> bool:
         return False
     if not host:
         return False
-    root = ".".join(base_host.split(".")[-2:]) if base_host.count(".") >= 1 else base_host
-    return host == base_host or host.endswith("." + root) or host == root
+    root = base_host[len("www.") :] if base_host.startswith("www.") else base_host
+    return host == base_host or host == root or host.endswith("." + root)
 
 
 def _worth_following(link: Link) -> int:

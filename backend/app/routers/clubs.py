@@ -443,20 +443,12 @@ def claim_org(
                 "We have paused it for a person to look at, and we will be in touch with both of you."
             ),
         )
-    if club.state == OrgState.claimed:
-        # Already somebody's. Freezing it is the honest answer rather than
-        # adding a second admin silently: the people who already hold this
-        # org get to decide who else does.
-        club.state = OrgState.frozen
-        db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "This organization already has admins. We have paused it and a person will "
-                "check whether you should be one of them."
-            ),
-        )
-
+    # The address is checked BEFORE anything is written, including - and
+    # especially - the freeze below. `frozen` has no automatic exit by
+    # design, which makes freezing an org an irreversible act, and an
+    # irreversible act reachable by any signed-in account is a way to take
+    # the whole public registry down a row at a time. This ordering is the
+    # entire defence; there is no later check that would catch it.
     if not club.domain:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -469,6 +461,22 @@ def claim_org(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Claiming this organization needs an email at {club.domain}.",
+        )
+
+    if club.state == OrgState.claimed:
+        # Already somebody's, and the caller holds the domain too - so this
+        # is the contested claim the design means, two colleagues at one
+        # organization. Freezing it is the honest answer rather than adding
+        # a second admin silently: the people who already hold this org get
+        # to decide who else does.
+        club.state = OrgState.frozen
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "This organization already has admins. We have paused it and a person will "
+                "check whether you should be one of them."
+            ),
         )
 
     now = utc_now()

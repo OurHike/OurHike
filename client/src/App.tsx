@@ -10505,9 +10505,24 @@ function App() {
   // function.
   if (inOrgSurface) {
     return (
-      <Suspense fallback={<div className="app__screen">Opening…</div>}>
-        <OrgEntry units={units} />
-      </Suspense>
+      // THE BOUNDARY IS HERE AND NOT INSIDE OrgEntry, because what it has to
+      // catch is OrgEntry's OWN chunk failing to arrive - a build served half
+      // from one deploy and half from the next, a precache evicted mid-hike
+      // (lib/deferredScreen.tsx names both). A boundary inside the module
+      // cannot catch the module not loading.
+      //
+      // Without it this branch had none: it is an early return, above App's
+      // own ErrorBoundary and all three screen-level ones, so a failed import
+      // unwound to the root boundary in main.tsx - which by its own comment
+      // "cannot offer the tab bar, because at this level the thing that
+      // renders the tab bar is the thing that failed". One screen's chunk
+      // taking the whole app down is the failure every other lazy screen here
+      // is built not to have.
+      <ErrorBoundary fallback={() => <ScreenFailed what="The organization console" />}>
+        <Suspense fallback={<div className="app__screen">Opening…</div>}>
+          <OrgEntry units={units} />
+        </Suspense>
+      </ErrorBoundary>
     )
   }
 

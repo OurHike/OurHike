@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { POI_PIN_MIN_ZOOM } from '../map/poiLayers'
 import {
-  afterTap,
+  setShown,
   afterZoom,
   NO_CHOICE_YET,
   waypointsDrawn,
@@ -22,16 +22,25 @@ const SEAM = POI_PIN_MIN_ZOOM
 const BELOW = SEAM - 1
 const ABOVE = SEAM + 1
 
-/** Walk a camera path from a fresh view, returning where the switch ends up. */
-function walk(steps: ReadonlyArray<number | 'tap'>): ShowPoints {
+/**
+ * Walk a camera path from a fresh view, returning where the gate ends up.
+ *
+ * A step is a zoom, or one of the two things the hiker can choose. `'none'`
+ * and `'points'` rather than one `'tap'`, since 2026-09-20: the control is the
+ * legend's Showing picker now, where "None" and a category are two different
+ * entries rather than two presses of one switch.
+ */
+function walk(steps: ReadonlyArray<number | 'none' | 'points'>): ShowPoints {
   let state = NO_CHOICE_YET
   for (const step of steps) {
-    state = step === 'tap' ? afterTap(state) : afterZoom(state, step, SEAM)
+    if (step === 'none') state = setShown(false)(state)
+    else if (step === 'points') state = setShown(true)(state)
+    else state = afterZoom(state, step, SEAM)
   }
   return state
 }
 
-describe('the Show points switch (2026-09-20)', () => {
+describe('whether the map is drawing waypoints (2026-09-20)', () => {
   it('starts off, because the opening camera has no waypoints to claim', () => {
     // The corridor view is about z4.9, well below the seam. A switch that
     // opened reading "on" would be describing a screen that has none.
@@ -53,9 +62,9 @@ describe('the Show points switch (2026-09-20)', () => {
   it('does not turn itself on again after the hiker switched it off', () => {
     // THE CASE THE RULE EXISTS FOR, and the one an auto-on that fires on every
     // crossing gets wrong while looking correct everywhere else. A hiker who
-    // switched the points off to read the ground, then pinched out and back in,
-    // used to get them all back.
-    const state = walk([ABOVE, 'tap', BELOW, ABOVE])
+    // chose "None" to read the ground, then pinched out and back in, used to
+    // get every waypoint back.
+    const state = walk([ABOVE, 'none', BELOW, ABOVE])
 
     expect(state.shown).toBe(false)
     expect(state.chosenByHiker).toBe(true)
@@ -63,10 +72,10 @@ describe('the Show points switch (2026-09-20)', () => {
 
   it('leaves a hiker’s "on" alone too, rather than only their "off"', () => {
     // The rule is about the CHOICE being final, not about one direction of it.
-    // A hiker who turned points on below the seam and then crossed should not
-    // have the auto-rule claim the credit and reset anything.
-    const off = walk([ABOVE, 'tap'])
-    const back = walk([ABOVE, 'tap', 'tap', BELOW, ABOVE])
+    // A hiker who picked a category back out of "None" and then crossed the
+    // seam should not have the auto-rule claim the credit and reset anything.
+    const off = walk([ABOVE, 'none'])
+    const back = walk([ABOVE, 'none', 'points', BELOW, ABOVE])
 
     expect(off.shown).toBe(false)
     expect(back.shown).toBe(true)
@@ -77,7 +86,7 @@ describe('the Show points switch (2026-09-20)', () => {
     // "Only set for the hiker on first time zooming in (for that map view)."
     // Pinching back and forth is one of the most ordinary things a hiker does
     // on a map, and it must not toggle anything.
-    const crossings: Array<number | 'tap'> = []
+    const crossings: Array<number | 'none' | 'points'> = []
     for (let i = 0; i < 5; i += 1) crossings.push(BELOW, ABOVE)
     const state = walk(crossings)
 
@@ -87,9 +96,9 @@ describe('the Show points switch (2026-09-20)', () => {
   })
 
   it('keeps the hiker’s choice across a trip below the seam and back', () => {
-    // Going out to the corridor view is not a reset. The switch remembers, so
+    // Going out to the corridor view is not a reset. The picker remembers, so
     // a hiker returns to the map they left.
-    const state = walk([ABOVE, 'tap', 2, 4.9, BELOW, ABOVE, 22])
+    const state = walk([ABOVE, 'none', 2, 4.9, BELOW, ABOVE, 22])
 
     expect(state.shown).toBe(false)
   })
@@ -129,7 +138,8 @@ describe('the Show points switch (2026-09-20)', () => {
     const before = walk([ABOVE])
     const snapshot = { ...before }
 
-    afterTap(before)
+    setShown(false)(before)
+    setShown(true)(before)
     afterZoom(before, 22, SEAM)
 
     expect(before).toEqual(snapshot)

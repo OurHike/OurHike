@@ -118,23 +118,6 @@ export interface StatusStripProps {
    * window, which is also where the retry is.
    */
   trailLinesMissing?: boolean
-  /**
-   * Whether the hiker has taken the alert marks off the canvas (#1047).
-   *
-   * NOT a courtesy readout of a control's state, which is why it is on the
-   * strip that exists for the map to "admit what it doesn't know" rather than
-   * left to the legend that holds the switch. A map with the bands hidden and
-   * a map with no closure on it for forty miles are the SAME PICTURE, and the
-   * rule this whole codebase is built on is that absent means unknown and
-   * never zero. Three words here are what keep an empty screen from reading as
-   * a clear trail.
-   *
-   * The one flag here a hiker put there themselves, and it is worth saying
-   * that the others are conditions and this is a choice: the remedy is the
-   * legend's Alerts switch, and the app undoes it for them at the next open
-   * anyway (chrome/alertLayerPanel.ts).
-   */
-  alertsHidden?: boolean
 }
 
 /**
@@ -175,7 +158,6 @@ export function StatusStrip({
   belowArchiveZoom = false,
   outsideDownload = false,
   trailLinesMissing = false,
-  alertsHidden = false,
 }: StatusStripProps) {
   // Keyed on the Date itself, which lib/useClock.ts replaces once a minute
   // and never in between - so every other render of the shell reuses the
@@ -211,7 +193,6 @@ export function StatusStrip({
             readings of one blank screen; this is a second thing missing from
             it, and a hiker told only "No live map" would have no reason to
             doubt an empty trail. */}
-        {alertsHidden && <span className="status-strip__flag">Alerts hidden</span>}
         {/* Silent when the closures are live, which is the ordinary case with
             a reachable backend. It appears exactly when there is something a
             hiker would want to know before trusting a clear header. */}

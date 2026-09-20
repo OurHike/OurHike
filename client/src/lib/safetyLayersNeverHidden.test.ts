@@ -1,4 +1,6 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { render, screen, cleanup } from '@testing-library/react'
+import { createElement } from 'react'
 import { SAFETY_LAYERS, NEVER_HIDEABLE } from './legendContents'
 import {
   HIDEABLE_TYPES,
@@ -14,6 +16,7 @@ import { POI_TYPES } from './config'
 import { buildMapStyle } from '../map/style'
 import { CLOSURE_LAYER_ID, LONG_TERM_CLOSURE_LAYER_ID } from './closureStyle'
 import { WARNING_LAYER_ID } from '../map/warningLayers'
+import { Legend } from '../chrome/Legend'
 
 /**
  * Nothing in this app may take a closure or a serious warning off the map.
@@ -26,20 +29,21 @@ import { WARNING_LAYER_ID } from '../map/warningLayers'
  *
  * WHY ONE FILE RATHER THAN A CASE IN EACH MODULE'S OWN TESTS. There are five
  * separate ways a mark can leave this map - a stored preference, the legend's
- * per-category rows, the Show points switch, the style's filter, and a
+ * per-category rows, the legend picker's "None", the style's filter, and a
  * layer's own zoom floor - and they are owned by five modules that do not
  * import each other. A guarantee that has to hold across all five has nowhere
  * to live except a file that knows about all five. The cost is that this file
  * reaches across the tree; the alternative is five partial guarantees and no
  * whole one.
  *
- * WHAT THIS DOES NOT COVER, said here because a reader must not mistake this
- * file for the whole promise: the legend's Alerts switch (#1047) can take
- * these marks off the canvas for the life of one view. That is a deliberate,
- * live, hiker-operated control, held in a `useState` that nothing writes
- * down, so it resets the next time the app opens - which is the property the
- * maintainer's own constraint on #1047 asked for. It is the one exception,
- * and it is raised with the maintainer rather than quietly asserted here.
+ * THERE WAS ONE EXCEPTION AND THERE IS NOT ONE NOW. The legend's Alerts
+ * switch (#1047) could take these marks off the canvas for the life of one
+ * view - a live, hiker-operated control held in a `useState` that nothing
+ * wrote down, so it reset the next time the app opened. This file raised it
+ * with the maintainer rather than quietly asserting around it, and on
+ * 2026-09-20 they removed the switch. The case below is what replaced that
+ * paragraph: a component test, in a file otherwise about pure functions,
+ * because the thing to assert is that a control does not exist.
  */
 describe('a closure or a serious warning can never be hidden', () => {
   it('names both safety layers, so this file cannot silently cover fewer', () => {
@@ -123,8 +127,8 @@ describe('a closure or a serious warning can never be hidden', () => {
     expect(JSON.stringify(poiFilter(new Set(['water'])))).toContain('poi_type')
   })
 
-  it('keeps them out of reach of the Show points switch', () => {
-    // The switch added on 2026-09-20 turns every waypoint layer off at once.
+  it('keeps them out of reach of the waypoint gate', () => {
+    // The legend picker's "None" turns every waypoint layer off at once.
     // A hiker asking for a cleaner map is not asking for the closures to go
     // with it, and this is the line that stops the list growing to include
     // them by someone adding "every layer with a pin" to it.
@@ -158,4 +162,51 @@ describe('a closure or a serious warning can never be hidden', () => {
     // real one rather than two layers that happen to agree.
     expect(POI_PIN_MIN_ZOOM).toBeGreaterThan(0)
   })
+
+  it('offers no control over them on the legend, by any role a control could take', () => {
+    // THE SIXTH DOOR, AND THE ONE THAT WAS OPEN. #1047's Alerts switch could
+    // clear these marks for the life of one view; the maintainer removed it
+    // on 2026-09-20 and this is what holds the door shut.
+    //
+    // A render rather than a pure-function check, because what has to be
+    // asserted is that a control is NOT on the screen - and three roles
+    // rather than one, because the switch could come back as a checkbox (what
+    // it was), a `role="switch"` (what the blaze toggle beside it is), or a
+    // plain button.
+    //
+    // The panel is handed every optional handler a shell can pass, so this
+    // fails if any of them grows an alerts affordance - a check on the
+    // component's whole surface rather than on its default rendering.
+    // createElement rather than JSX: this file is a .ts, because all but one
+    // of its cases are about pure functions and renaming it for the one would
+    // move a file every future reader of this guarantee has to find.
+    render(
+      createElement(Legend, {
+        open: true,
+        bbox: { west: -78, south: 39, east: -77, north: 40 },
+        points: [],
+        hiddenTypes: new Set<string>(),
+        onToggleType: vi.fn(),
+        onClose: vi.fn(),
+        onOnlyType: vi.fn(),
+        onShowAllTypes: vi.fn(),
+        onToggleVerifiedOnly: vi.fn(),
+      } as never),
+    )
+
+    for (const role of ['checkbox', 'switch', 'button'] as const) {
+      expect({
+        role,
+        found: screen.queryAllByRole(role, { name: /alert/i }).length,
+      }).toEqual({ role, found: 0 })
+    }
+    // And the rows say the unconditional thing rather than naming a switch.
+    expect(screen.queryByText(/alerts off/i)).toBe(null)
+    expect(screen.getAllByText(/always shown/i)).toHaveLength(SAFETY_LAYERS.length)
+  })
+})
+
+afterEach(() => {
+  cleanup()
+  vi.clearAllMocks()
 })

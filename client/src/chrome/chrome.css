@@ -656,11 +656,13 @@
      bar - and covers the bar's box plus MapLibre's own 10px control margin.
      --space-3 is the gap above it.
 
-     ONE FIGURE FOR TWO CONTROLS, which is the same argument .turn-card's
-     comment makes about the other corner: the dropped chip and the Show
-     points switch clear one control stack, so they clear it by one number and
-     cannot drift apart. src/desktop.css raises it where the credit strip
-     joins this box. */
+     ONE FIGURE, NAMED ONCE, which is the same argument .turn-card's comment
+     makes about the other corner. Only .map-screen__dropped reads it today -
+     a Show points switch read it too for one day, before moving into the
+     legend - and it stays a token rather than a literal because the next
+     thing floated into this corner must not be a second guess at the same
+     clearance. src/desktop.css raises it where the credit strip joins this
+     box. */
   --over-map-floor: calc(var(--space-3, 12px) + 30px);
 }
 
@@ -1296,13 +1298,12 @@
   /* Above the scale bar, not on it - .map-screen__canvas's --over-map-floor
      is where that figure and its measurement live now.
 
-     AND ABOVE THE SHOW POINTS SWITCH since 2026-09-20, which took the spot
-     directly over the scale bar when it was moved out of MapLibre's
-     bottom-right stack. 44 px is that switch's own touch-floor height and
-     the gap is one step - stacked unconditionally, because a chip that
-     dropped down when the switch happened to be absent would move under the
-     hiker as they zoomed. */
-  bottom: calc(var(--over-map-floor) + 44px + var(--space-2, 8px));
+     A Show points switch sat between this and the scale bar for one day
+     (2026-09-20) and the chip was raised by that switch's 44 px plus a step.
+     The switch moved into the legend's Showing picker the same day, so the
+     chip is back on the floor itself - the one figure both controls in this
+     corner ever read. */
+  bottom: var(--over-map-floor);
   left: var(--space-3, 12px);
   z-index: 2;
   margin: 0;
@@ -1510,39 +1511,6 @@
 
 .legend__verified-name {
   flex: 1;
-}
-
-/* The alerts switch (#1047, Legend.tsx). Shaped exactly like .legend__drought
-   above, down to the second line of smaller text, because it is the same kind
-   of thing and a hiker should not have to work out that it is: a map overlay,
-   named, with a sentence under the name and a checkbox at the end. The one
-   place it deliberately differs is the sentence itself, which on the drought
-   row carries numbers and here carries what the switch does NOT take away. */
-.legend__alerts {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2, 8px);
-  min-height: var(--min-touch-target);
-  margin-top: var(--space-2, 8px);
-  padding-top: var(--space-2, 8px);
-  border-top: 1px solid var(--border-1);
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.legend__alerts-name {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.legend__alerts-detail {
-  /* 12px: the #1054 floor under sun-read prose. --fg-2: #1057's fix -
-     --text-2 was never declared, so the line inherited body colour. */
-  font-size: 12px;
-  color: var(--fg-2);
 }
 
 /* The blaze colours toggle (#1575, Legend.tsx): the first row under the
@@ -5245,117 +5213,4 @@ a.poi-card__credit::after {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   color: var(--fg-2);
-}
-
-/* The "Show points" switch over the map (2026-09-20, chrome/ShowPointsToggle.tsx).
-
-   BOTTOM-LEFT, AND IT WAS BOTTOM-RIGHT FOR ABOUT AN HOUR (2026-09-20). The
-   maintainer: "Show Points on desktop overlaps with the zoom buttons." They
-   do: map/mapChrome.ts adds the compass, the locate button and the report
-   door to 'bottom-right', so that corner holds three or four 42 px controls
-   on a desktop and this switch was laid straight over them. A phone shows
-   fewer, which is why it looked fine on the frame it was drawn against.
-   MapLibre owns that corner; nothing of ours belongs in it.
-
-   So it sits above the scale bar on the left, where the only other floating
-   thing is the dropped chip - and that chip moves up to sit on top of this
-   rather than the two sharing a spot, because this switch is always on the
-   screen and the chip almost never is. */
-.show-points {
-  position: absolute;
-  /* .map-screen__canvas's own figure, so this and the dropped chip above it
-     clear the scale bar by one number rather than two. */
-  bottom: var(--over-map-floor);
-  left: var(--space-3, 12px);
-  z-index: 2;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2, 8px);
-  /* The 44px touch floor this app holds everywhere a finger lands. */
-  min-height: 44px;
-  padding: 0 var(--space-3, 12px);
-  border: 1px solid var(--border-1);
-  border-radius: 999px;
-  /* --surface-over-map rather than a screen surface, for the reason that
-     token exists (#336). It was written as `var(--bg-raised, var(--bg-0))`
-     for about a day and BOTH of those names are undefined, so the whole
-     color-mix was invalid and the pill rendered transparent - visible on the
-     pr-1590 preview frame of 2026-09-20, where the map showed through the
-     words. */
-  background: color-mix(in srgb, var(--surface-over-map) 94%, transparent);
-  color: var(--fg-1);
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-/* The same ring the legend's switch takes, because a hiker tabbing the map
-   meets both. */
-.show-points:focus-visible {
-  outline: 2px solid var(--brand-primary);
-  outline-offset: 2px;
-}
-
-.show-points:disabled {
-  /* Present and plainly unavailable, rather than gone - the maintainer's pick
-     from three drawn frames. A control that vanishes below the seam leaves a
-     hiker with an empty map and no explanation. */
-  cursor: default;
-  opacity: 0.55;
-}
-
-/* THE LEGEND SWITCH'S OWN VOCABULARY, one size down: --fg-3 off,
-   --brand-primary on, --bg-surface for the knob (.legend__switch above).
-   Two switches in one app that answered to different colours would read as
-   two different kinds of control, and these two sit a tap apart - the legend
-   is one button away from this map. Smaller because it rides inside a pill
-   beside its own label rather than owning a 52px column in a list. */
-.show-points__track {
-  width: 30px;
-  height: 18px;
-  flex: none;
-  box-sizing: border-box;
-  border: 1px solid var(--fg-3);
-  border-radius: 999px;
-  background: var(--fg-3);
-  position: relative;
-  transition: background 120ms ease;
-}
-
-.show-points[aria-checked='true'] .show-points__track {
-  border-color: var(--brand-primary);
-  background: var(--brand-primary);
-}
-
-.show-points__knob {
-  position: absolute;
-  top: 1px;
-  left: 1px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  /* Undefined until 2026-09-20, so the knob had no background and the switch
-     had nothing in it to say which way it was set - the whole of what the
-     control carries. --bg-surface is what .legend__switch-knob uses. */
-  background: var(--bg-surface);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 30%);
-  transition: transform 120ms ease;
-}
-
-.show-points[aria-checked='true'] .show-points__knob {
-  transform: translateX(12px);
-}
-
-/* The reason, for the state that needs one. Visually small and never hidden
-   from a screen reader: it is the whole answer to "why is the map empty". */
-.show-points__why {
-  font-size: 11px;
-  color: var(--fg-2);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .show-points__track,
-  .show-points__knob {
-    transition: none;
-  }
 }

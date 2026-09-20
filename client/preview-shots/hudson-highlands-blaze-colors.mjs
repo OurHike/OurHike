@@ -48,29 +48,34 @@
 // checked would be that repaint failing, which is the regression this
 // recipe exists to catch on a real map rather than the mock.
 //
-// THE THIRD REASON IS THE CORNER, not the lines. This is the only committed
-// recipe that photographs a laptop map since the Show points switch was put
-// over it, and the maintainer's report on it - "Show Points on desktop
-// overlaps with the zoom buttons" - was fixed twice: once by moving the
-// switch out of MapLibre's bottom-right stack, and once, here, by clearing
-// the scale bar it landed on instead. So the BOTTOM-LEFT of this frame is
-// evidence too. What has to be in it: a white pill reading "Show points"
-// with a green track and a white knob, sitting clear above the "1000 ft"
-// scale bar, which sits above the credit strip. A pill with the map showing
-// through it, or with nothing in the track, is chrome.css's --surface-over-map
-// and --bg-surface having gone missing again (both were `--bg-raised`, a name
-// nothing has ever defined, which is why the switch shipped invisible);
-// a pill ON the scale bar is desktop.css's --over-map-floor not being raised
-// by the credit strip, which is an in-flow row of .map-screen__canvas only
-// above 900px.
+// THE THIRD REASON IS THE LEGEND'S PICKER, which this frame has open beside
+// the map and no other committed recipe does on a laptop.
+//
+// The waypoint master gate spent one day (2026-09-20) as a "Show points" pill
+// floating over the map's bottom-left, and the maintainer moved it into the
+// Showing picker: *"Maybe the show points should be part of the legend. Can
+// this be integrated into the showing dropdown?"* So the panel down the right
+// carries it now, as the last entry in that control's list. What has to be in
+// the frame: a "Showing" row reading "All types", and NOTHING floating over
+// the map's bottom-left corner but MapLibre's own scale bar.
+//
+// A pill over the map in this frame means the switch came back. A picker
+// reading "None" over a map drawing waypoints means Legend.tsx's readout has
+// stopped following lib/showPoints.ts.
+//
+// The same corner also carries the dropped-waypoint chip when there is one
+// (.map-screen__dropped), and both it and the scale bar clear the credit
+// strip by chrome.css's --over-map-floor. A chip or a bar drawn across the
+// credit line is that figure not being raised above 900px, where the strip
+// becomes an in-flow row of the canvas.
 //
 // The same seeding as hudson-highlands-desktop.mjs, for its reasons: a
 // remembered camera and a reload, no location fix, no account, nobody's
 // reports.
 export const caption =
-  'The same frame with "Blaze colors" switched ON (#1575): the white-blazed park trail over Breakneck Ridge white inside its dark casing again (not the A.T., whose nearest point is 9 km east of this camera), the park’s other trails in their own blaze hues around it, and the legend’s Blaze colors toggle on, first under the Legend / In view pills, reading "Each trail in the color of its blazes." This is what every hiker saw before this change; it is now one tap away and remembered. The frame’s BOTTOM-LEFT carries a second change: the "Show points" switch, a white pill with a green track, clear above the "1000 ft" scale bar — it was drawn across that bar on a laptop, and its pill and knob painted nothing at all, until 2026-09-20'
+  'The same frame with "Blaze colors" switched ON (#1575): the white-blazed park trail over Breakneck Ridge white inside its dark casing again (not the A.T., whose nearest point is 9 km east of this camera), the park’s other trails in their own blaze hues around it, and the legend’s Blaze colors toggle on, first under the Legend / In view pills, reading "Each trail in the color of its blazes." This is what every hiker saw before this change; it is now one tap away and remembered. The panel also carries a second change: the "Showing" picker runs from "All types" down to a new "None", which is where the waypoint master gate lives — it was a "Show points" pill floating over the map’s bottom-left for one day, and that corner is empty of our chrome again'
 export const alt =
-  'The same wide browser window over the Hudson at Dutchess Junction, the trails now solid coloured lines with the one over Breakneck Ridge a white line inside a thin dark casing and the others in blue, yellow and other blaze colours, and in the legend panel down the right the Blaze colors toggle switched on, first under the Legend and In view pills; at the map’s bottom-left a white rounded pill labelled Show points with a small green switch in it, sitting above a scale bar reading 1000 ft'
+  'The same wide browser window over the Hudson at Dutchess Junction, the trails now solid coloured lines with the one over Breakneck Ridge a white line inside a thin dark casing and the others in blue, yellow and other blaze colours, and in the legend panel down the right the Blaze colors toggle switched on, first under the Legend and In view pills, and below the pin grid a row labelled Showing with a dropdown reading All types; the map’s bottom-left corner holds only a scale bar reading 1000 ft, above the OpenStreetMap credit line'
 
 // The wide layout is the subject; the legend is the panel beside the map.
 export const desktop = true

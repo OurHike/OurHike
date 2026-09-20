@@ -302,7 +302,8 @@ export interface MapViewProps {
   /**
    * Whether the waypoint layers draw at all (2026-09-20).
    *
-   * The "Show points" switch, from chrome/MapScreen.tsx. Defaults to true so
+   * The waypoint gate, from chrome/MapScreen.tsx - the legend picker's
+   * "None" at the far end of it. Defaults to true so
    * every existing caller and every fixture keeps the behaviour it had - the
    * switch is a subtraction a hiker asks for, never a default this prop
    * introduces by being forgotten.
@@ -1254,7 +1255,7 @@ export function MapView({
     )
   }, [map, mapLabels])
 
-  // The "Show points" switch (2026-09-20). Its own effect, because it re-runs
+  // The waypoint gate (2026-09-20). Its own effect, because it re-runs
   // when the hiker taps a control and that has nothing to do with the POI
   // source - re-pushing ~2,800 features to hide five layers would be the
   // legend-tap rebuild all over again, for a property MapLibre changes in

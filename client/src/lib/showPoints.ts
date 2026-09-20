@@ -31,7 +31,7 @@
  * WHY A MACHINE RATHER THAN A BOOLEAN. The two rules above cannot be held by
  * one flag, because "on because the zoom said so" and "on because the hiker
  * said so" have to behave differently on the next crossing. {@link ShowPoints}
- * carries both facts, and {@link afterZoom} and {@link afterTap} are the only
+ * carries both facts, and {@link afterZoom} and {@link setShown} are the only
  * ways it changes - so a component cannot set the boolean and lose the reason.
  *
  * WHAT "FOR THAT MAP VIEW" MEANS HERE, said plainly because it is a choice
@@ -118,14 +118,22 @@ export function afterSeamCrossing(state: ShowPoints, atOrAbove: boolean): ShowPo
 }
 
 /**
- * The state after the hiker tapped the switch.
+ * The state after the hiker said which way they want it.
  *
  * Always wins, and always marks the choice - so the next crossing leaves it
  * alone. There is no "un-choose": within a view, once the hiker has an
  * opinion they keep it.
+ *
+ * TAKES THE VALUE RATHER THAN FLIPPING, since 2026-09-20. This was `afterTap`,
+ * a flip, because the control was a two-state switch and a tap on it meant
+ * "the other one". The control is now an entry in the legend's Showing picker
+ * (chrome/Legend.tsx), where "None" means false and every other entry means
+ * true - so the caller knows which state it is asking for, and a flip would
+ * make choosing "Water" from "None" depend on what the map happened to be
+ * doing.
  */
-export function afterTap(state: ShowPoints): ShowPoints {
-  return { ...state, shown: !state.shown, chosenByHiker: true }
+export function setShown(shown: boolean): (state: ShowPoints) => ShowPoints {
+  return (state) => ({ ...state, shown, chosenByHiker: true })
 }
 
 /**

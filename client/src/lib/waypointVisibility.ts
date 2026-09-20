@@ -46,7 +46,8 @@
 // "no hide affordance anywhere in the app" is no longer the rule. What is
 // still true, and is the part a stored preference could have broken, is that
 // nothing anybody can SAVE reaches a closure. The switch lives in a
-// `useState` in chrome/alertLayerPanel.ts, is never written here or anywhere
+// `useState` in the legend's shell until 2026-09-20 and in nothing at all
+// since that switch was removed, is never written here or anywhere
 // else, and is gone by the next time the map opens. A file that syncs to an
 // account is exactly the wrong home for it, which is why it is not in this
 // one.

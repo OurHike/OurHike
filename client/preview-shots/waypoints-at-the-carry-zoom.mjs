@@ -37,16 +37,18 @@
 // remembered view on load, validates the shape field by field, and a reload
 // is what that memory is for.
 //
-// WHEN IT SHOWS LESS. A bare line with the "Show points" switch reading off
-// means the camera settled under z7 and the seam did its job; a bare line
-// with the switch ON means the waypoints had not landed by the wait, which
-// is the honest state on a slow bucket rather than a broken recipe. Both
-// ranks share one floor now, so dots without pins is no longer a state this
+// WHEN IT SHOWS LESS. A bare line means either the camera settled under z7
+// and the seam did its job, or the waypoints had not landed by the wait -
+// the honest state on a slow bucket rather than a broken recipe. The legend
+// is shut in this frame, so which of the two it is has to be read off the
+// zoom rather than off a control; the waypoint gate lives in the legend's
+// Showing picker now ("None" at the far end of it), not over the map. Both
+// ranks share one floor, so dots without pins is no longer a state this
 // frame can be in - if it ever is, the two floors have drifted apart.
 export const caption =
   'Every waypoint at the zoom a resupply carry fits (#1585): the A.T. through the Hudson Highlands at zoom 7.8, just above the z7 seam — shelters and campsites as pins with their privies and water riding them as badges, the trail line drawing over the top, and no category the map decided to leave off'
 export const alt =
-  'The map screen over the Hudson Highlands at zoom 7.8: the Appalachian Trail as a red line drawn over the waypoints along it, with dark-green shelter pins standing on their points, each wearing a small strip of badges for the privy, water and campsite that belong to the same place, and a Show points switch at the lower right of the map'
+  'The map screen over the Hudson Highlands at zoom 7.8: the Appalachian Trail as a red line drawn over the waypoints along it, with dark-green shelter pins standing on their points, each wearing a small strip of badges for the privy, water and campsite that belong to the same place, and no control floating over the map'
 
 /** Vector tiles from the bucket plus the waypoint source landing take longer
  *  than chrome. */

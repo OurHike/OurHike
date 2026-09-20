@@ -6,14 +6,14 @@ import { DISPUTE_LAYER_ID } from './disputeLayers'
 import { WAYPOINT_LAYER_IDS } from './waypointLayerVisibility'
 
 /**
- * The lever behind the "Show points" switch (2026-09-20).
+ * The lever behind the legend picker's "None" (2026-09-20).
  *
  * What is worth pinning here is not the flip - `setLayoutProperty` does that -
  * but the LIST. A waypoint layer added later and left out of it would keep
  * drawing after a hiker switched the points off, and nothing else in the tree
  * would notice.
  */
-describe('which layers the Show points switch reaches', () => {
+describe('which layers the waypoint gate reaches', () => {
   it('names every waypoint layer the style builds, and nothing else', () => {
     // Derived from the style rather than restated, so a new waypoint rank
     // fails here instead of silently escaping the switch. The prefix is the

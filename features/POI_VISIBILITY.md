@@ -398,6 +398,29 @@ quietly become mostly places on trails the view refuses to draw.
 `client/src/map/poiLayers.ts`'s `POI_DOT_MIN_ZOOM` carries the full record, and nothing from the
 seam up is reopened: a pin or a dot and never as neither stands.
 
+**And the hiker can now switch the waypoints off above the seam, which nothing in this document
+previously allowed.** The maintainer, 2026-09-20, ending a branch that had twice tried to answer
+[#1585](https://github.com/OurHike/OurHike/issues/1585) by removing every hiding mechanism at
+once: *"We can keep a seam, and make it at zoom 7. Yes the POI's can be hidden above there. Add a
+toggle over the map to 'Show Points'. Toggle that on and off as you zoom in."*
+
+`client/src/lib/showPoints.ts` is the rule, and it is a three-field machine rather than a boolean
+because the maintainer's answer to "which of two readings did you mean" was both at once — *"Zoom
+sets it, hiker overrides. But only set for the hiker on first time zooming in (for that map
+view). Don't override a setting the hiker chose."* So: crossing the seam inward turns it on once
+per map view, a hiker's own choice is final for that view, and nothing is persisted, because a
+hiker who cleared the map to read the contours on one planning session must not find their
+shelters missing a week later on the trail.
+
+**Where the control lives moved once, the same day.** It shipped as a "Show points" pill floating
+over the map's bottom-left; the maintainer moved it into the legend, from three drawn frames:
+*"Maybe the show points should be part of the legend. Can this be integrated into the showing
+dropdown?"* It is the **"None"** entry at the far end of the Showing picker now — a range that
+already ran All types → several → one, with the empty end added rather than a second control
+beside it. `waypoint_types_shown` is untouched by it: "None" writes the per-view gate, never the
+stored preference, which is what keeps [UX_CUSTOMIZATION.md](UX_CUSTOMIZATION.md)'s account-sync
+argument true of the categories and silent about this.
+
 The legend's sentence for this band is now *"Waypoints appear from a closer zoom."* — its third
 flip, each time with the layer it describes. `Nothing on this part of the map yet — pan or zoom
 out to see more` was false in both halves at the opening view;
@@ -619,6 +642,12 @@ affordance anywhere, and the way that rule is kept is that the affordance is nev
 [#1047](https://github.com/OurHike/OurHike/issues/1047) narrowed it to the half that bears on
 *this* document: **`waypoint_types_shown` cannot reach them.** `NEVER_HIDEABLE` in
 `legendContents.ts` is the existing guard, stays the only one, and now guards exactly that — no
-value anybody can save produces a phone that opens with the alerts off. The legend's Alerts
-switch does take those marks off the canvas and is deliberately not a category, not stored, and
-not routed through anything in this document.
+value anybody can save produces a phone that opens with the alerts off.
+
+**Restored in full 2026-09-20.** #1047's Alerts switch was the one thing that could still take
+those marks off the canvas, and the maintainer removed it — so the original rule, "closures and
+serious warnings have no hide affordance anywhere, and the way that rule is kept is that the
+affordance is never built", is the whole rule again rather than the half of it this document
+inherited. `NEVER_HIDEABLE` stays the guard here; what is new is that it no longer has a live
+exception sitting beside it, and `client/src/lib/safetyLayersNeverHidden.test.ts` is the table of
+all six mechanisms with no "yes" left in it.

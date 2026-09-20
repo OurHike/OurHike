@@ -411,18 +411,6 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/builder.spec.ts' },
   },
-  // The "Show points" switch over the map (2026-09-20). `planned` rather than
-  // `covered`, and the gap is real rather than a formality: its RULE is unit
-  // tested to the letter (lib/showPoints.test.ts drives every camera path,
-  // including the crossing-after-a-choice case the rule exists for), and its
-  // announcement is too (chrome/ShowPointsToggle.test.tsx). What no unit test
-  // reaches is the whole loop on a real map - pinch past z7, watch the pins
-  // arrive, switch them off, pinch out and back, and find them still off.
-  // That wants e2e/data/mapSheets.spec.ts and a camera that actually moves.
-  'chrome/ShowPointsToggle.tsx': {
-    step: 'F12 the map',
-    flow: { status: 'planned' },
-  },
   // NOT A NEEDLE — NO NEEDLE, and #1400's option 3 is what got past it.
   // Measured 2026-09-11 against UA and re-checked 2026-09-15:
   // `conditions/closures.json` carries 0 closures and `conditions/reports.json`

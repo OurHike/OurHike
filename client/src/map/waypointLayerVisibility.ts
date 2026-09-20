@@ -1,7 +1,7 @@
 /**
  * Turning every waypoint layer off and on together (2026-09-20).
  *
- * The "Show points" switch the maintainer asked for - *"Add a toggle over the
+ * The waypoint master gate the maintainer asked for - *"Add a toggle over the
  * map to 'Show Points'"* - needs one lever that reaches every rank at once:
  * the pins, the dots under them, the staleness rings between the two, the
  * waypoint names and the dispute marks that annotate a pin.

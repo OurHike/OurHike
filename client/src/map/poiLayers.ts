@@ -198,10 +198,11 @@ export const POI_PIN_MIN_ZOOM = 7
 // block is that rule, pinned, and it now runs at every zoom from the seam up.
 //
 // AND THE HIKER CAN SEE THE SEAM WORKING, which is what makes it a seam
-// rather than a silence: chrome/ShowPointsToggle.tsx puts a "Show points"
-// switch over the map, on by itself the first time a hiker crosses z7 inward
-// in a given map view, and never again overriding a state they chose
-// themselves (lib/showPoints.ts).
+// rather than a silence: the legend's Showing picker runs from "All types"
+// down to "None", and that gate turns itself on the first time a hiker
+// crosses z7 inward in a given map view, never again overriding a state they
+// chose themselves (lib/showPoints.ts). It floated over the map as a "Show
+// points" pill for one day before the maintainer moved it into the picker.
 
 /**
  * The closest one tap of the map's locate button brings the camera from
@@ -710,9 +711,9 @@ export const POI_DOT_COLOR_EXPRESSION: unknown[] = [
  * at all - and they reversed it having seen what it drew, which is the
  * strongest evidence any of these four positions has had.
  *
- * And the hiker is told, rather than left to wonder: the "Show points" switch
- * (chrome/ShowPointsToggle.tsx) is on the screen below the seam as well as
- * above it, so the absence down here reads as a state rather than as a map
+ * And the hiker is told, rather than left to wonder: below the seam the
+ * legend says so in a sentence of its own - "Waypoints appear from a closer
+ * zoom." - so the absence down here reads as a state rather than as a map
  * with nothing on it.
  *
  * The record of what it replaced, kept because the third reversal is only

@@ -1133,15 +1133,15 @@ describe('signing in from Settings', () => {
   })
 
   it('offers only the providers this build has credentials for', async () => {
-    // ENABLED_PROVIDERS is Google alone - v1's decided provider set (#397).
-    // Apple needs a $99/yr membership and is deferred to v2 (#92); email left
-    // the default because Supabase's built-in sender is not a delivery path
-    // this project ships on, so offering it built a button whose sign-in
-    // could not complete.
+    // ENABLED_PROVIDERS is google, github, email (#1572), each enabled in
+    // both Supabase projects with its credentials in place. Email is here
+    // because a sender is: custom SMTP through Resend, and the 6-digit code
+    // in both email templates (LAUNCH_CHECKLIST.md 4.3c and 4.3d).
     //
-    // Both absences are asserted rather than only Apple's, because they are
-    // absent for different reasons and a single "not Apple" assertion would
-    // pass on a build that had quietly restored email.
+    // Apple's absence is asserted rather than assumed, because it is absent
+    // for a reason that has not changed - a $99/yr Developer Program
+    // membership, deferred to v2 (#92) - and a build that quietly restored
+    // it would offer a button whose round trip cannot finish.
     const user = userEvent.setup()
     hikerOnTrail()
     render(<App />)
@@ -1153,7 +1153,12 @@ describe('signing in from Settings', () => {
     await user.click(await screen.findByRole('button', { name: /sign in/i }))
     await screen.findByRole('button', { name: /continue with google/i })
 
-    expect(screen.queryByRole('button', { name: /continue with email/i })).toBe(null)
+    expect(
+      screen.getByRole('button', { name: /continue with github/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /continue with email/i }),
+    ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /continue with apple/i })).toBe(null)
   })
 

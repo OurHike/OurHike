@@ -241,15 +241,15 @@ SUPABASE_ANON_KEY=<publishable key, sb_publishable_...>
 ```
 SUPABASE_URL=https://<ref>.supabase.co
 SUPABASE_ANON_KEY=<anon public key>
-AUTH_PROVIDERS=google                # optional; defaults to google (#397)
-                                     # google,github,email once 4.3 to 4.5 are done - LAST (#1572)
 ```
+
+**There is no `AUTH_PROVIDERS` here any more, and its absence is the point.** Which buttons a build offers is `ENABLED_PROVIDERS` in `client/src/lib/supabase.ts` — a commit, reviewed like any other. It was a repository variable until 2026-09-20 (#1572), and it went because an unset one meant Google alone with nothing on screen or in the build log naming the cause. That module carries the other three reasons; the short one is that the same variable fed production, UA and every preview alike, so it never bought the per-deployment difference it appeared to.
 
 **Variables, not Secrets.** Neither is secret. The anon key is *designed* to be public — Vite inlines it into a JS bundle that anyone can read with view-source, so hiding it in a Secret buys nothing and costs a readable build log, exactly as the comment above `DATA_BASE_URL` in `pages.yml` explains. Both workflows accept either, and warn if you picked Secrets. What is **not** here, and must never be, is `SUPABASE_JWT_SECRET`: that one is real, it belongs only to the backend's runtime environment, and a `VITE_`-prefixed copy would be inlined into a public file.
 
 Prefer the **publishable** key (`sb_publishable_…`) over the legacy `anon` JWT if the project offers both — Supabase deprecates the legacy keys at the end of 2026.
 
-`AUTH_PROVIDERS` must list only providers actually configured in 4.3. A name here whose credentials do not exist is a button that reaches an error page. Leaving all of these unset is safe: the app builds, the map works, and the sign-in controls say the build has no project rather than offering a round trip that cannot finish.
+`ENABLED_PROVIDERS` must list only providers actually configured in 4.3. A name there whose credentials do not exist is a button that reaches an error page. Leaving the two variables above unset is safe: the app builds, the map works, and the sign-in controls say the build has no project rather than offering a round trip that cannot finish.
 
 **4.3b Allow the app's own URLs back** (Authentication → URL Configuration). The client redirects to the path it was served from, not the bare origin — a redirect to the origin lands on the project site with the code in its URL and no app there to read it.
 
@@ -298,13 +298,11 @@ The image is the app's own icon, served by the same deployment as the app (`clie
 
 - whether `SUPABASE_URL` / `SUPABASE_ANON_KEY` are set and valid (and it names the no-`VITE_`-prefix trap, which is a real one — the prefix belongs on the build variable, not the repository variable);
 - whether the algorithm the project signs with is one the backend accepts;
-- whether every provider in `AUTH_PROVIDERS` is actually enabled in the dashboard — a mismatch there is a button that reaches an error page, and nothing else in the system compares those two lists;
+- whether every provider in `ENABLED_PROVIDERS` is actually enabled in the dashboard — the script reads that list out of `client/src/lib/supabase.ts` itself, so the two cannot drift; a mismatch is a button that reaches an error page, and nothing else in the system compares those two lists;
 - whether the anon key is the legacy JWT rather than the publishable key;
 - **with a `SUPABASE_ACCESS_TOKEN` secret** (#1572) — whether custom SMTP is configured, whether both email templates carry `{{ .Token }}`, the code's length and expiry, and whether each offered provider has a client id. Those live in the project's auth config, which only the management API serves, so without the token the check says which of them it could not see and runs the rest. Mint the token **fine-grained, with `auth_config_read` and nothing more** (supabase.com → Account → Access Tokens); a classic token is the whole account, and `.github/expected-settings.yml` says why that is the wrong thing to keep in Actions.
 
-**Set `AUTH_PROVIDERS` to its new value BEFORE running this check, not after.** The paragraph here said the opposite until 2026-09-20, and the mistake is worth keeping because it is the kind that makes a green check mean nothing: `check_auth_config` looks at the sender, the templates, the code's length and its expiry **only when `email` is among the providers the variable names**, so a run with the old value skips precisely what 4.3c and 4.3d exist to set up, and passes.
-
-Setting the variable deploys nothing. It is read by a *build*, and the next build happens on a push to `main` (UA) or on a tag (production) — both later, both deliberate. So the order that works is: finish 4.3, set the variable, run this check, fix whatever it names, and only then merge. What #397's defect actually was is a provider offered in a build that reached a hiker with no credentials behind it; a variable set minutes before a check that reads those credentials back is the opposite of that.
+**The ordering trap this paragraph used to describe is gone with the variable.** It is worth one sentence of history, because it is the shape of mistake that makes a green check mean nothing: while the shipped set came from `AUTH_PROVIDERS`, running this check before setting that variable made `check_auth_config` skip the sender and the templates entirely — they are examined only for providers the offered set names — so the check passed having looked at nothing 4.3c and 4.3d had just configured. Reading the list from the code removed the order, not just the trap: there is no longer a moment at which the check and the build disagree about which doors ship.
 
 Read-only, and safe to run any time. It does not itself check the redirect allow-list — that is not in the settings document it reads — but **the allow-list is checkable**: `.github/workflows/supabase-config-check.yml`'s `redirects` job runs `pipeline/check_auth_redirects.py` and fails when a sign-in cannot come back to the app.
 

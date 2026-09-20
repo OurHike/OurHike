@@ -12,9 +12,11 @@ name: Supabase config check
 #
 # What it catches is the class of failure nothing else can: the repository
 # variables being absent or misnamed, the project signing tokens with an
-# algorithm the backend does not accept, and AUTH_PROVIDERS naming a provider
-# whose credentials do not exist. Each of those reaches a hiker as "cannot
-# sign in" and none of them is visible to a unit test.
+# algorithm the backend does not accept, and client/src/lib/supabase.ts's
+# ENABLED_PROVIDERS naming a provider whose credentials do not exist in the
+# dashboard. Each of those reaches a hiker as "cannot sign in" and none of
+# them is visible to a unit test. The script reads that provider list out of
+# the client's source itself (#1572), so this job hands it no list.
 #
 # The redirect-allow-list probe - tier 3 of #431 - used to live here as a
 # manual-only sibling job. #488 gave it its own daily schedule, which meant
@@ -53,7 +55,6 @@ jobs:
           # key is designed to be public and ships inside the client bundle.
           SUPABASE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
-          AUTH_PROVIDERS: ${{ vars.AUTH_PROVIDERS }}
           # Optional, and the one real secret here: a fine-grained personal
           # access token with auth_config_read, which lets the script read
           # the project's auth config - custom SMTP, `{{ .Token }}` in the

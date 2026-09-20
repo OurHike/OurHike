@@ -10,13 +10,10 @@ the accepted algorithm list from drifting away from the list the backend
 actually enforces, which would turn a passing diagnostic into a lie.
 """
 
-import re
-from pathlib import Path
+import pytest
 
 import check_supabase_config as check
 from app.core.auth import ASYMMETRIC_ALGORITHMS
-
-CLIENT_SUPABASE_TS = Path(__file__).resolve().parents[2] / "client" / "src" / "lib" / "supabase.ts"
 
 
 def test_the_script_knows_exactly_what_the_backend_accepts():
@@ -60,7 +57,7 @@ def test_a_provider_offered_without_credentials_fails_the_check():
     # lists, and the client cannot discover the difference at runtime.
     report = check.Report()
 
-    check.check_providers({"external": {"email": True, "google": False}}, "google,email", report)
+    check.check_providers({"external": {"email": True, "google": False}}, {"google", "email"}, report)
 
     assert report.failed
 
@@ -68,7 +65,7 @@ def test_a_provider_offered_without_credentials_fails_the_check():
 def test_providers_that_are_all_enabled_pass():
     report = check.Report()
 
-    check.check_providers({"external": {"email": True, "google": True}}, "google,email", report)
+    check.check_providers({"external": {"email": True, "google": True}}, {"google", "email"}, report)
 
     assert not report.failed
 
@@ -78,38 +75,58 @@ def test_a_provider_enabled_but_not_offered_is_only_a_warning():
     # project long before a build chooses to show its button.
     report = check.Report()
 
-    check.check_providers({"external": {"email": True, "apple": True}}, "email", report)
+    check.check_providers({"external": {"email": True, "apple": True}}, {"email"}, report)
 
     assert not report.failed
 
 
-def test_an_unset_provider_list_is_checked_against_the_clients_default():
-    # An unset variable reaches the build as an empty string, and the client
-    # falls back to CLIENT_DEFAULT_PROVIDERS. The check has to make the same
-    # assumption or it would pass a build whose real buttons it never looked at.
-    report = check.Report()
+def test_the_offered_set_is_read_from_the_clients_own_source():
+    """Read rather than duplicated (#1572).
 
-    check.check_providers({"external": {"email": True, "google": False}}, "", report)
+    The previous copy of this list lived here as a constant and said
+    `google,email` for a month after #397 changed the client to `google` - so
+    the check compared the live project against buttons no build had. This
+    asserts the parse works against the real module, which is the only thing
+    that keeps the two from parting again.
+    """
+    offered = check.offered_providers()
 
-    assert report.failed
-
-
-def test_CLIENT_DEFAULT_PROVIDERS_matches_the_default_in_lib_supabase_ts():
-    # The copy said google,email for a month after #397 changed the client to
-    # google, so an unset variable was checked against buttons the build did
-    # not have. Read the default out of the client's source, the same way
-    # .github/tests/test_privacy_policy.py does, so the two cannot part again.
-    source = CLIENT_SUPABASE_TS.read_text(encoding="utf-8")
-    match = re.search(r"CONFIGURED_PROVIDERS\.trim\(\) === ''\s*\?\s*'([^']+)'", source)
-    assert match is not None, "could not read the default provider set out of client/src/lib/supabase.ts"
-
-    assert set(check.CLIENT_DEFAULT_PROVIDERS) == {name.strip() for name in match.group(1).split(",")}
+    assert offered, "no providers parsed out of client/src/lib/supabase.ts"
+    assert offered == {"google", "github", "email"}
 
 
-def test_offered_providers_reads_the_variable_or_falls_back_to_the_clients_default():
-    assert check.offered_providers("google, GitHub ,email") == {"google", "github", "email"}
-    assert check.offered_providers("") == set(check.CLIENT_DEFAULT_PROVIDERS)
-    assert check.offered_providers("  ") == set(check.CLIENT_DEFAULT_PROVIDERS)
+def test_the_parse_reads_the_declaration_and_not_the_prose_around_it():
+    # That module names ENABLED_PROVIDERS in its comments too, and a pattern
+    # that matched one of those would read the wrong list, or none.
+    declaration = "export const ENABLED_PROVIDERS: AuthProvider[] = ['google', 'github', 'email']"
+
+    assert check.providers_in(declaration) == {"google", "github", "email"}
+    assert check.providers_in("// ENABLED_PROVIDERS is what the screen offers") == set()
+    assert check.providers_in('export const ENABLED_PROVIDERS = ["google"]') == {"google"}
+
+
+def test_a_restructured_client_module_stops_the_check_rather_than_emptying_it(tmp_path, monkeypatch):
+    """An empty answer must never read as a healthy project.
+
+    Without the guard the check would find nothing to compare, report every
+    dashboard provider as merely 'enabled but not offered' - a warning, not a
+    failure - and exit zero on a build whose doors it never looked at.
+    """
+    restructured = tmp_path / "supabase.ts"
+    restructured.write_text("export const DOORS = ['google']\n", encoding="utf-8")
+    monkeypatch.setattr(check, "CLIENT_SUPABASE_TS", restructured)
+
+    with pytest.raises(LookupError, match="ENABLED_PROVIDERS"):
+        check.offered_providers()
+
+
+def test_a_missing_client_module_stops_the_check_too(tmp_path, monkeypatch):
+    # The same refusal by a different route: run from somewhere the client
+    # tree is not, and the honest answer is "cannot tell", not "nothing".
+    monkeypatch.setattr(check, "CLIENT_SUPABASE_TS", tmp_path / "does-not-exist.ts")
+
+    with pytest.raises(LookupError):
+        check.offered_providers()
 
 
 def test_project_ref_is_the_first_label_of_the_project_host():

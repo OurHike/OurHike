@@ -15,9 +15,12 @@ away from happening while this was being built:
   Every signed-in request would have come back 401 with a perfectly valid
   token - and no test could have caught it, because the tests minted the
   algorithm the code expected.
-- `VITE_AUTH_PROVIDERS` can name a provider whose credentials do not exist in
-  the dashboard. That is a button which reaches an error page, and nothing
-  else in the system compares those two lists.
+- `ENABLED_PROVIDERS` in client/src/lib/supabase.ts can name a provider whose
+  credentials do not exist in the dashboard. That is a button which reaches an
+  error page, and nothing else in the system compares those two lists. This
+  script reads that constant out of the client's own source rather than taking
+  the list from its environment, because since #1572 the code is where the
+  shipped set is decided and a second copy here would be a second answer.
 - The email provider can be enabled with no sender behind it. Supabase's
   built-in mailer sends 2 messages an hour, to the project's own team
   members only, and answers everyone else `Email address not authorized`
@@ -47,6 +50,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
 # What backend/app/core/auth.py will actually accept. Duplicated here rather
 # than imported so this stays a stdlib-only script with nothing to install -
@@ -54,13 +58,22 @@ import urllib.request
 # what stops the copy drifting into a lie.
 BACKEND_ACCEPTS = ("ES256", "RS256", "HS256")
 
-# What client/src/lib/supabase.ts offers when VITE_AUTH_PROVIDERS is blank.
-# Duplicated for the same stdlib-only reason as BACKEND_ACCEPTS, and held to
-# the client's source by tests/test_supabase_config_check.py - which is what
-# this copy needed all along: it said `google,email` for a month after #397
-# changed the client to `google`, so an unset variable was checked against
-# buttons the build did not have.
-CLIENT_DEFAULT_PROVIDERS = ("google",)
+# The client module that decides which doors ship (#1572). Read rather than
+# duplicated: a copy here is exactly the drift this script exists to catch,
+# and the previous copy proved it - it said `google,email` for a month after
+# #397 changed the client to `google`, so the check was comparing the live
+# project against buttons no build had.
+CLIENT_SUPABASE_TS = Path(__file__).resolve().parent.parent / "client" / "src" / "lib" / "supabase.ts"
+
+# Matches the declaration, and only the declaration:
+#
+#     export const ENABLED_PROVIDERS: AuthProvider[] = ['google', 'github', 'email']
+#
+# `export const` anchors it, because that module mentions the name in prose
+# too and a pattern that matched a comment would read the wrong list. The
+# annotation between the name and the `=` carries its own brackets
+# (`AuthProvider[]`), so the span before the `=` may not exclude `[`.
+ENABLED_PROVIDERS_PATTERN = re.compile(r"export const ENABLED_PROVIDERS[^=]*=\s*\[([^\]]*)\]")
 
 # How many digits screens/EmailSignIn.tsx asks for (CODE_LENGTH there).
 EMAIL_CODE_LENGTH = 6
@@ -105,6 +118,40 @@ def _get_as_owner(url: str, access_token: str) -> tuple[int, dict]:
         return error.code, {}
 
 
+def providers_in(source: str) -> set[str]:
+    """The provider names ENABLED_PROVIDERS lists, out of the client's source.
+
+    A pure function of the text so tests can exercise the parse without a
+    checkout shape, and so a restructure of that module fails here loudly
+    rather than quietly returning nothing - see the caller, which refuses an
+    empty answer instead of reporting a build with no doors as healthy.
+    """
+    match = ENABLED_PROVIDERS_PATTERN.search(source)
+    if match is None:
+        return set()
+    return {name.strip().strip("'\"") for name in match.group(1).split(",") if name.strip()}
+
+
+def offered_providers() -> set[str]:
+    """Which buttons the shipped app offers, read from client/src/lib/supabase.ts.
+
+    Raises rather than guessing. An unreadable or restructured module is a
+    reason to stop, not to check the live project against an empty list and
+    call everything fine.
+    """
+    try:
+        source = CLIENT_SUPABASE_TS.read_text(encoding="utf-8")
+    except OSError as error:
+        raise LookupError(f"could not read {CLIENT_SUPABASE_TS}: {error}") from error
+    offered = providers_in(source)
+    if not offered:
+        raise LookupError(
+            f"found no ENABLED_PROVIDERS list in {CLIENT_SUPABASE_TS}. It has been restructured, "
+            "and this check must be updated rather than left comparing the project against nothing."
+        )
+    return offered
+
+
 def project_ref(project_url: str) -> str:
     """`fehctqdwdjwryzgxzywc` out of `https://fehctqdwdjwryzgxzywc.supabase.co`.
 
@@ -113,17 +160,6 @@ def project_ref(project_url: str) -> str:
     """
     host = urllib.parse.urlparse(project_url).hostname or ""
     return host.split(".")[0]
-
-
-def offered_providers(configured: str) -> set[str]:
-    """The buttons a build shows, from the AUTH_PROVIDERS variable it was built with.
-
-    Blank means the client's default, not "none": an unset repository variable
-    reaches the build as an empty string, and lib/supabase.ts falls back to
-    CLIENT_DEFAULT_PROVIDERS for exactly that case.
-    """
-    offered = {name.strip().lower() for name in configured.split(",") if name.strip()}
-    return offered or set(CLIENT_DEFAULT_PROVIDERS)
 
 
 class Report:
@@ -148,29 +184,25 @@ class Report:
         self.failed = True
 
 
-def check_providers(settings: dict, configured: str, report: Report) -> None:
-    """Compare the providers this build offers with the ones that can work.
+def check_providers(settings: dict, offered: set[str], report: Report) -> None:
+    """Compare the providers the shipped app offers with the ones that can work.
 
-    Nothing else compares these. A name in AUTH_PROVIDERS without credentials
-    behind it is a button that reaches an error page rather than an account,
-    and the app cannot discover the difference at runtime - Supabase's client
-    does not expose which providers a project has enabled.
+    Nothing else compares these. A name in ENABLED_PROVIDERS without
+    credentials behind it is a button that reaches an error page rather than
+    an account, and the app cannot discover the difference at runtime -
+    Supabase's client does not expose which providers a project has enabled.
     """
     external = settings.get("external") or {}
     enabled = {name for name, on in external.items() if on}
-
-    offered = offered_providers(configured)
-    if not configured.strip():
-        report.warn(f"AUTH_PROVIDERS is unset; the client's default of {','.join(CLIENT_DEFAULT_PROVIDERS)} applies.")
 
     for provider in sorted(offered):
         if provider in enabled:
             report.ok(f"Provider '{provider}' is offered and enabled in the project.")
         else:
             report.fail(
-                f"Provider '{provider}' is in AUTH_PROVIDERS but is NOT enabled in the "
+                f"Provider '{provider}' is in ENABLED_PROVIDERS but is NOT enabled in the "
                 "project - its button would reach an error page. Enable it under "
-                "Authentication -> Providers, or drop it from AUTH_PROVIDERS."
+                "Authentication -> Providers, or drop it from client/src/lib/supabase.ts."
             )
 
     for provider in sorted(enabled - offered - {"phone", "anonymous"}):
@@ -273,9 +305,14 @@ def check_signing_keys(algorithms: set[str], report: Report) -> None:
 def main() -> int:
     url = (os.environ.get("SUPABASE_URL") or "").rstrip("/")
     api_key = os.environ.get("SUPABASE_ANON_KEY") or ""
-    configured_providers = os.environ.get("AUTH_PROVIDERS") or ""
 
     report = Report()
+
+    try:
+        offered = offered_providers()
+    except LookupError as error:
+        print(f"  FAIL    {error}")
+        return 1
 
     print("Configuration")
     if not url or not api_key:
@@ -303,7 +340,8 @@ def main() -> int:
     report.ok("Auth settings endpoint answered - the URL and key are both valid.")
 
     print("\nProviders")
-    check_providers(settings, configured_providers, report)
+    print(f"  Offered by the shipped app: {', '.join(sorted(offered))} (client/src/lib/supabase.ts)")
+    check_providers(settings, offered, report)
 
     print("\nToken signing")
     status, jwks = _get(f"{url}/auth/v1/.well-known/jwks.json", api_key)
@@ -329,7 +367,7 @@ def main() -> int:
                 "lacks auth_config_read, or belongs to an account that cannot see this project."
             )
         else:
-            check_auth_config(config, offered_providers(configured_providers), report)
+            check_auth_config(config, offered, report)
 
     # Not checked HERE, but no longer unchecked. The redirect allow-list is
     # not in either document this script reads - the public API does not

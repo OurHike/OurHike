@@ -20,77 +20,51 @@ const ANON_KEY: string = import.meta.env.VITE_SUPABASE_ANON_KEY ?? ''
  *  say so instead of offering a sign-in that cannot complete. */
 export const AUTH_CONFIGURED = PROJECT_URL !== '' && ANON_KEY !== ''
 
-// Which providers this build offers. Configurable because the four do not
-// cost the same to switch on: Google needs a Cloud Console OAuth client and
-// GitHub an OAuth app, both free; Apple needs a $99/yr Developer Program
-// membership and a Services ID; and email needs a sender - custom SMTP on the
-// Supabase project, without which the 6-digit code it sends reaches nobody
-// (LAUNCH_CHECKLIST.md 4.3, which already says "nothing in the code assumes
-// all of them").
-//
-// This is about what a *build* offers, not what a hiker prefers - a button for
-// a provider whose credentials do not exist yet is a button that reaches an
-// error page, which is worse than an absent option.
-//
-// The order here is the order the buttons appear in: the three that leave
-// the app for a provider, then email, which is the one that needs a screen.
-const ALL_PROVIDERS: readonly AuthProvider[] = ['google', 'apple', 'github', 'email']
-
 /**
- * Parses the configured provider list, keeping ALL_PROVIDERS' order rather
- * than the order they were written in - so the buttons cannot be reshuffled
- * by a typo in an env var, and two builds that enable the same set present it
- * the same way.
+ * The sign-in doors this app ships, in the order the screen lays them out.
  *
- * Unknown names are dropped rather than thrown on: this value arrives from a
- * host's build settings, where a stray comma should cost one button, not the
- * whole app's boot.
+ * IN CODE RATHER THAN CONFIGURATION, decided 2026-09-20 (#1572). This was
+ * the `AUTH_PROVIDERS` repository variable until then, on the reasoning that
+ * the providers do not cost the same to switch on and that a build must not
+ * offer a button whose credentials do not exist. That reasoning still holds.
+ * The mechanism did not, on four counts measured the day it was removed:
+ *
+ *   - IT BOUGHT NO PER-DEPLOYMENT DIFFERENCE. pages.yml, ua.yml and
+ *     pr-preview.yml all read the same variable, so production, UA and every
+ *     preview were always offering the same set anyway.
+ *   - IT BOUGHT NO LIVE SWITCH. Production builds from a `v*` tag, so
+ *     changing the variable still cost a build either way.
+ *   - UNSET MEANT GOOGLE ALONE, SILENTLY. Nothing on screen and nothing in
+ *     the build log named the cause. That is what it cost: half an hour on
+ *     2026-09-20 hunting for buttons this code already had, because the
+ *     variable had never been created.
+ *   - IT PUT THE LIST WHERE NO TEST COULD SEE IT.
+ *     `.github/tests/test_privacy_policy.py` asserts the privacy policy
+ *     discloses every provider that ships. Its fixture could only read the
+ *     code default, and its own docstring conceded the variable could widen
+ *     the real set - so the policy was being checked against a list the
+ *     deployed build did not use.
+ *
+ * What the variable did buy was one incident lever: `pages.yml` takes a
+ * manual dispatch, so a provider could be dropped from production without a
+ * merge. That was traded away deliberately. It is worth about ten minutes in
+ * a bad hour, against a silently wrong answer on every ordinary day.
+ *
+ * SO CHANGING THIS LIST IS A COMMIT, and the review that comes with it is
+ * the point rather than the cost. Every name here must be enabled in BOTH
+ * Supabase projects with its credentials in place, or its button reaches an
+ * error page instead of an account. `backend/check_supabase_config.py` reads
+ * this very line and compares it against the live project, which is the
+ * check that catches that before a hiker does.
+ *
+ * Apple is absent rather than forgotten: it needs a $99/yr Developer Program
+ * membership and a Services ID, and is deferred to v2 (#92). Email is here
+ * only because a sender is (LAUNCH_CHECKLIST.md 4.3c and 4.3d); without one,
+ * Supabase's built-in mailer refuses every address outside the project's own
+ * team, which lib/authMessages.ts says out loud rather than leaving a hiker
+ * waiting for a code that was never sent.
  */
-export function parseProviders(raw: string): AuthProvider[] {
-  const named = new Set(
-    raw
-      .split(',')
-      .map((name) => name.trim().toLowerCase())
-      .filter((name) => name !== ''),
-  )
-  return ALL_PROVIDERS.filter((provider) => named.has(provider))
-}
-
-/** Defaults to Google alone, which is v1's decided provider set (#397).
- *
- *  It used to default to `google,email`, on the reasoning that email costs
- *  nothing to switch on. That was true of the *setup* and false of the
- *  result: Supabase's built-in sender is not a delivery path this project
- *  can ship on, so the default offered a button whose sign-in could not
- *  complete - in every build that did not override it, the deployed one
- *  included. A provider nobody configured reaching an error page is the
- *  exact failure the comment above ALL_PROVIDERS describes, and the default
- *  was producing it rather than guarding against it.
- *
- *  The deployed set is the AUTH_PROVIDERS repository variable, not this
- *  default: #1572 switches it to `google,github,email` as the LAST step of
- *  configuring the Supabase project - GitHub's OAuth app, custom SMTP, and
- *  `{{ .Token }}` in the email templates - so no button is offered before
- *  the project can honour it. This default stays at the one provider a
- *  fresh project can complete with a Cloud Console client and nothing else.
- *  Apple stays off for the membership fee and is deferred to v2 (#92). */
-const CONFIGURED_PROVIDERS: string = import.meta.env.VITE_AUTH_PROVIDERS ?? ''
-
-/**
- * Blank counts as unset, not as "none".
- *
- * `??` alone is not enough: a CI job that references a repository variable
- * nobody has created passes an empty string, not undefined, and an empty
- * string parses to zero providers. That would build a working app whose only
- * sign-in screen offers nothing - the same silent-empty-value failure the
- * comment above DATA_BASE_URL in .github/workflows/pages.yml describes.
- *
- * Turning every provider off is still expressible, by not listing this build's
- * credentials in the Supabase dashboard, which is where the real switch is.
- */
-export const ENABLED_PROVIDERS = parseProviders(
-  CONFIGURED_PROVIDERS.trim() === '' ? 'google' : CONFIGURED_PROVIDERS,
-)
+export const ENABLED_PROVIDERS: AuthProvider[] = ['google', 'github', 'email']
 
 let client: Promise<SupabaseClient | null> | undefined
 
@@ -98,7 +72,7 @@ let client: Promise<SupabaseClient | null> | undefined
  * The Supabase client, or null when this build has no project configured.
  *
  * Memoised rather than built at module scope so that importing anything in
- * this file - `AUTH_CONFIGURED`, `parseProviders` - does not construct a
+ * this file - `AUTH_CONFIGURED`, `ENABLED_PROVIDERS` - does not construct a
  * client as a side effect. Several screens read the flag without ever needing
  * the client.
  *

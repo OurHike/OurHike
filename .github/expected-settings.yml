@@ -118,29 +118,6 @@ settings:
       secret, belongs only to the backend's runtime environment, and is
       deliberately absent from this file because no workflow reads it.
 
-  AUTH_PROVIDERS:
-    where: variable
-    required: false
-    why: >-
-      Which sign-in buttons a build offers. Optional because the client
-      defaults to google when it is unset, so a missing value is a working
-      app rather than a broken one. Worth declaring anyway: every name in it
-      must be a provider actually enabled in the Supabase dashboard, and one
-      that is not is a button reaching an error page. The Supabase config
-      check is what compares those two lists.
-
-      The default was google,email until #397 decided v1's provider set.
-      Email was in it because switching it on costs nothing, which was true
-      of the setup and false of the result - Supabase's built-in sender is
-      not a delivery path this project ships on, so an unset variable built
-      an app offering a sign-in that could not complete.
-
-      #1572 is the value becoming `google,github,email`, and the ORDER is the
-      point: it is the last of that issue's steps, after GitHub's OAuth app
-      exists, custom SMTP is configured and both email templates carry
-      `{{ .Token }}` - and after the Supabase config check has read all of
-      that back. Set early, it is #397's defect again with two buttons.
-
   SUPABASE_ACCESS_TOKEN:
     where: secret
     required: false

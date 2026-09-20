@@ -541,22 +541,16 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     flow: { status: 'covered', spec: 'e2e/settingsRooms.spec.ts' },
   },
   'screens/IdentitySetup.tsx': { step: 'F13 More', flow: { status: 'planned' } },
-  'screens/EmailSignIn.tsx': {
-    step: 'F13 More',
-    flow: {
-      // Not "planned": the preview build the flow suite drives cannot render
-      // it. Measured 2026-09-11 by driving More → You → Sign in, which offers
-      // "Continue with Google" and nothing else. lib/supabase.ts is why -
-      // this screen is only mounted when SignInPrompt offers email, and the
-      // deployed set is the AUTH_PROVIDERS repository variable, which #1572
-      // switches to google,github,email as the LAST of its dashboard steps.
-      // The day that variable carries email, the preview build reaches this
-      // screen and a flow spec of both steps (address, then code) belongs
-      // here - #1399 is the account it would need to go further.
-      status: 'unit-only',
-      why: 'Unreachable in the preview build until the AUTH_PROVIDERS repository variable carries email (#1572), because this screen is mounted only when the sign-in prompt offers it. EmailSignIn.test.tsx holds both steps, address then code.',
-    },
-  },
+  // Reachable in every build since #1572 put the provider list in code:
+  // ENABLED_PROVIDERS names email, so SignInPrompt offers it and this screen
+  // mounts behind that button. It was 'unit-only' while the deployed set came
+  // from a repository variable the preview build did not carry.
+  //
+  // 'planned' rather than 'covered' because the spec is not written yet. Its
+  // first step drives from the ask to the address field, which needs nothing;
+  // its second needs a code that a real email carried, so the code step waits
+  // on #1399's account. EmailSignIn.test.tsx holds both steps meanwhile.
+  'screens/EmailSignIn.tsx': { step: 'F13 More', flow: { status: 'planned' } },
   'screens/SignInPrompt.tsx': {
     step: 'F13 More',
     flow: { status: 'covered', spec: 'e2e/identityRooms.spec.ts' },

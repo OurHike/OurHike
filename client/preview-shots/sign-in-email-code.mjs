@@ -15,6 +15,11 @@ export const alt =
   'A "Sign in with email" dialog over the trail map: the note that a 6-digit code will be emailed and typed in here, one Email field, an "Email me a code" button and "Not now"'
 
 export default async function drive(page) {
+  // The Map tab first, for the reason sign-in-ask.mjs gives at length: this
+  // recipe's alt text says "over the trail map" too.
+  await page.getByRole('tab', { name: 'Map' }).click()
+  await page.getByRole('region', { name: /trail map/i }).waitFor()
+
   await page.getByRole('button', { name: 'Sign in' }).first().click()
   await page.getByRole('dialog', { name: 'Sign in' }).waitFor()
   await page.getByRole('button', { name: 'Continue with email' }).click()

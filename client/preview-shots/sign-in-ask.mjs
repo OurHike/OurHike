@@ -19,6 +19,13 @@ export const alt =
   'A "Sign in" dialog docked to the foot of the screen over the trail map, with a "Continue with …" button for each configured provider - Google\'s white button with the multicolour G, GitHub\'s black button with its mark, and OurHike\'s pine button with the app icon for email - a "Not now" button, and the note that reading the map never needs an account. The map is still visible above it.'
 
 export default async function drive(page) {
+  // ON THE MAP TAB FIRST, because the caption and the alt text both claim the
+  // map is behind the window, and a phone opens on Today - which mounts no
+  // MapView at all. The shot would have been a true picture of a dialog over
+  // the wrong screen, under a caption saying otherwise.
+  await page.getByRole('tab', { name: 'Map' }).click()
+  await page.getByRole('region', { name: /trail map/i }).waitFor()
+
   await page.getByRole('button', { name: 'Sign in' }).first().click()
   await page.getByRole('dialog', { name: 'Sign in' }).waitFor()
 }

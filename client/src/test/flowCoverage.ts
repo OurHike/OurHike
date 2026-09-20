@@ -677,6 +677,13 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'shared',
     flow: { status: 'covered', spec: 'e2e/identityRooms.spec.ts' },
   },
+  'chrome/AccountPanel.tsx': {
+    step: 'shared',
+    flow: {
+      status: 'unit-only',
+      why: "What the account button opens once a hiker is SIGNED IN (#1596) - the address, a sign-out and a line saying the rest is in More. A flow spec cannot reach it: driving there means completing a real round trip at GitHub, Google or a mailbox, which is the same wall e2e/identityRooms.spec.ts stops at for the email code step and which waits on #1399's account. App.accountPanel.test.tsx drives it instead, from App with the auth module mocked signed in, and holds the two things the defect it was written for got wrong - that the window says 'Your account' and not 'Sign in', and that signing out closes it rather than swapping the ask in under the tap.",
+    },
+  },
   'chrome/ProviderMark.tsx': {
     step: 'shared',
     flow: {

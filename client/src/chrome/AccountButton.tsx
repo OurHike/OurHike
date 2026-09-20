@@ -20,6 +20,12 @@
 // which is already this app's top-right home for tools, and in Today's own
 // chrome - so it is one tap from the two screens a launch can land on.
 //
+// NOT FROM EVERY SCREEN, which an earlier version of this line claimed. On a
+// phone the Plan and More tabs draw over the map, so the header's copy is
+// inert and Today's is not mounted; the way in from there is the one that
+// always existed, More -> You. The three places below are the map, Today and
+// the sidebar, and those are the three.
+//
 // ONE OF THESE IS DRAWN, NEVER TWO, and where depends on the layout because
 // the layouts differ in how many screens they draw at once:
 //
@@ -40,9 +46,15 @@
 export interface AccountButtonProps {
   /** Null when signed out, which is the state this whole app works in. */
   account: { email: string } | null
-  /** Opens the sign-in window. Signed in, it opens the same window, which is
-   *  where signing out lives - so the control is one thing in both states
-   *  rather than a button that changes what it does under the same glyph. */
+  /** Opens the account window. ONE CONTROL, TWO STATES, ONE WINDOW: signed
+   *  out it opens the ask (screens/SignInPrompt.tsx), signed in it opens
+   *  chrome/AccountPanel.tsx, which says who you are signed in as and signs
+   *  you out. That second half is why this docstring is worth reading: the
+   *  sentence was here before the panel was, so the filled glyph opened the
+   *  SIGN-IN ask - providers for an account the hiker already had, and no
+   *  way out - and AccountButton.test.tsx wrote this claim into a test name
+   *  while asserting only that `onOpen` fired. The review of #1596 found it.
+   *  App.tsx picks the view; this button does not change what it does. */
   onOpen: () => void
   /** The header passes its own button class so this matches Legend and
    *  Search exactly; Today passes its own. Neither should have to restate

@@ -536,6 +536,7 @@ import './App.css'
 // structurally rather than by review.
 import './desktop.css'
 import { SignInWindow } from './chrome/SignInWindow'
+import { AccountPanel } from './chrome/AccountPanel'
 
 // OurHike hikes one trail today - see lib/trails.ts for why this is a lookup
 // and not just a string.
@@ -9023,15 +9024,43 @@ function App() {
    *  `flowOpen` above for what that means for the map behind it. */
   let authWindowNode: ReactNode = null
   if (authFlow !== null) {
-    // ONE WINDOW, TWO VIEWS. The email path's second step swaps the contents
-    // rather than opening a second window, which is what makes "send another
-    // code" and "use a different address" read as the same place.
+    // ONE WINDOW, THREE VIEWS. The email path's second step swaps the
+    // contents rather than opening a second window, which is what makes
+    // "send another code" and "use a different address" read as the same
+    // place - and a hiker who is already signed in gets a third view rather
+    // than the ask.
+    //
+    // THAT THIRD VIEW IS A FIX, not a feature: the button is one control in
+    // two states, and signed in BOTH states opened `SignInPrompt`, so the
+    // filled glyph led to "Continue with GitHub" for an account the hiker
+    // already had and to no way out. The review of #1596 found it.
+    // chrome/AccountPanel.tsx has the rest.
+    const signedIn = authFlow.screen !== 'email' && account !== null
     authWindowNode = (
       <SignInWindow
-        label={authFlow.screen === 'email' ? 'Sign in with email' : 'Sign in'}
+        label={
+          authFlow.screen === 'email'
+            ? 'Sign in with email'
+            : signedIn
+              ? 'Your account'
+              : 'Sign in'
+        }
         onClose={() => setAuthFlow(null)}
       >
-        {authFlow.screen === 'email' ? (
+        {signedIn ? (
+          <AccountPanel
+            account={account}
+            onSignOut={() => {
+              // Closed FIRST, so the window is gone by the time the account
+              // clears rather than re-rendering into the signed-out ask
+              // under the hiker's finger - which would read as the sign-out
+              // having failed and reopened the sign-in.
+              setAuthFlow(null)
+              void handleSignOut()
+            }}
+            onClose={() => setAuthFlow(null)}
+          />
+        ) : authFlow.screen === 'email' ? (
           <EmailSignIn
             onSendCode={sendEmailCode}
             onVerifyCode={verifyEmailCode}

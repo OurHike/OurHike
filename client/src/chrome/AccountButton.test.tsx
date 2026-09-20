@@ -59,7 +59,16 @@ describe('signed in', () => {
     ])
   })
 
-  it('still opens the same window, which is where signing out lives', async () => {
+  it('calls the one opener signed in, the same as signed out', async () => {
+    // WHAT THIS DOES NOT CLAIM, and the name is the fix. It read "still
+    // opens the same window, which is where signing out lives" while
+    // asserting only that `onOpen` fired - and signing out did NOT live
+    // there: App.tsx handed `SignInPrompt` to the window in both states, so
+    // the filled glyph offered providers for an account the hiker already
+    // had. The review of #1596 found the claim by reading the name and the
+    // body together. What lives where is App.tsx's decision and
+    // App.flows.test.tsx's to hold; all this button owes is one opener in
+    // both states.
     const user = userEvent.setup()
     const onOpen = vi.fn()
     render(<AccountButton account={account} onOpen={onOpen} />)

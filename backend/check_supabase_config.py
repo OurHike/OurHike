@@ -99,23 +99,35 @@ EMAIL_CODE_TEMPLATES = (
 TIMEOUT_SECONDS = 15
 
 
-def _get(url: str, api_key: str) -> tuple[int, dict]:
-    request = urllib.request.Request(url, headers={"apikey": api_key})
+def _fetch(url: str, headers: dict[str, str]) -> tuple[int, dict]:
+    """One GET, returning (status, document) and never raising.
+
+    A STATUS OF 0 MEANS THE REQUEST NEVER HAPPENED - DNS, a refused proxy, a
+    socket timeout - as against an HTTP code, which means the server
+    answered. Both are reported rather than raised because this script's
+    whole output is the Report it prints at the end: an exception out of the
+    last check takes the provider mismatches and the signing algorithm found
+    by the earlier ones with it, and the job dies with a traceback where a
+    maintainer wanted a list. `URLError` was uncaught until the review of
+    #1572 pointed out that only `HTTPError` was.
+    """
+    request = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
             return response.status, json.loads(response.read())
     except urllib.error.HTTPError as error:
         return error.code, {}
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+        return 0, {}
+
+
+def _get(url: str, api_key: str) -> tuple[int, dict]:
+    return _fetch(url, {"apikey": api_key})
 
 
 def _get_as_owner(url: str, access_token: str) -> tuple[int, dict]:
     """A management API read, which takes a personal access token rather than the anon key."""
-    request = urllib.request.Request(url, headers={"Authorization": f"Bearer {access_token}"})
-    try:
-        with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
-            return response.status, json.loads(response.read())
-    except urllib.error.HTTPError as error:
-        return error.code, {}
+    return _fetch(url, {"Authorization": f"Bearer {access_token}"})
 
 
 def providers_in(source: str) -> set[str]:
@@ -219,6 +231,24 @@ def check_auth_config(config: dict, offered: set[str], report: Report) -> None:
     link where they were told to expect six digits. This is the half of the
     check that can only be made with the owner's token, against the same
     settings LAUNCH_CHECKLIST.md 4.3c and 4.3d tell a maintainer to set.
+
+    @unvalidated - EVERY FIELD NAME BELOW. `smtp_host`, `smtp_sender_name`,
+    `mailer_templates_magic_link_content`, `mailer_templates_confirmation_content`,
+    `mailer_otp_length`, `mailer_otp_exp`, `rate_limit_email_sent` and
+    `external_<provider>_client_id` were read off Supabase's management API
+    reference and have never been checked against a response from a live
+    project, because this half of the check is gated on a token nobody has
+    run it with yet. What would settle it is one `workflow_dispatch` of
+    supabase-config-check.yml with `SUPABASE_ACCESS_TOKEN` set, against
+    either project - the run either prints the settings or names the keys it
+    could not find, and after that this tag comes off.
+
+    A wrong name fails in two directions and neither is silent, which is the
+    reason for the `else` branches below rather than a bare `isinstance`: a
+    spelling this code has right and the API does not would otherwise make
+    `config.get` return None, skip the check, and print a section that passed
+    having looked at nothing - "the shape of mistake that makes a green check
+    mean nothing", as LAUNCH_CHECKLIST.md 4.5 puts it.
     """
     if "email" in offered:
         host = (config.get("smtp_host") or "").strip()
@@ -245,21 +275,34 @@ def check_auth_config(config: dict, offered: set[str], report: Report) -> None:
                 )
 
         length = config.get("mailer_otp_length")
-        if isinstance(length, int) and length != EMAIL_CODE_LENGTH:
+        if not isinstance(length, int):
+            report.warn(
+                "The project's auth config has no integer 'mailer_otp_length', so the code length "
+                f"was NOT checked against screens/EmailSignIn.tsx's {EMAIL_CODE_LENGTH} (CODE_LENGTH). "
+                "Either this script has the field name wrong - see the @unvalidated note on "
+                "check_auth_config - or the API stopped returning it."
+            )
+        elif length != EMAIL_CODE_LENGTH:
             report.fail(
                 f"Email codes are {length} digits, and screens/EmailSignIn.tsx asks for {EMAIL_CODE_LENGTH} "
                 "(CODE_LENGTH). Set the length back under Authentication -> Providers -> Email."
             )
+        else:
+            report.ok(f"Email codes are {EMAIL_CODE_LENGTH} digits, which is what the app asks for.")
 
         expiry = config.get("mailer_otp_exp")
-        if isinstance(expiry, int):
-            if expiry > EMAIL_CODE_MAX_EXPIRY_SECONDS:
-                report.warn(
-                    f"Email codes stay valid for {expiry} s, longer than the {EMAIL_CODE_MAX_EXPIRY_SECONDS} s "
-                    "Supabase's security advisor allows before flagging it."
-                )
-            else:
-                report.ok(f"Email codes stay valid for {expiry} s.")
+        if not isinstance(expiry, int):
+            report.warn(
+                "The project's auth config has no integer 'mailer_otp_exp', so the code's lifetime "
+                "was NOT checked. Same two causes as the length above."
+            )
+        elif expiry > EMAIL_CODE_MAX_EXPIRY_SECONDS:
+            report.warn(
+                f"Email codes stay valid for {expiry} s, longer than the {EMAIL_CODE_MAX_EXPIRY_SECONDS} s "
+                "Supabase's security advisor allows before flagging it."
+            )
+        else:
+            report.ok(f"Email codes stay valid for {expiry} s.")
 
         rate = config.get("rate_limit_email_sent")
         if isinstance(rate, int):

@@ -8,7 +8,9 @@
 // drawn SIDE BY SIDE and both of those buttons were on the page together -
 // the maintainer's report, 2026-09-20, looking at exactly this frame. The
 // button moved to the sidebar, which is the one piece of chrome both screens
-// share, and desktop.css hides the other two.
+// share, and the other two are not rendered at all - each of the three reads
+// `useDesktop()` and decides, rather than being hidden by a stylesheet
+// (chrome/AccountButton.tsx has why).
 //
 // So the thing to look for is a negative as much as a positive: the person
 // glyph at the top-left of the pine column, above Today - and no second one

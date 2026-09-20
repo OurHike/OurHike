@@ -1,5 +1,6 @@
-// Sign-in, asked at the first contribution and nowhere else
-// (WIREFRAMES.md §6).
+// Sign-in: asked at the first contribution, and offered from the account
+// button at any time (WIREFRAMES.md §6, as #1596 rewrote it - this line said
+// "and nowhere else" until then, which is what §6 said until then too).
 //
 // Two things this screen has to say, both load-bearing:
 //
@@ -80,8 +81,12 @@ const ALL: AuthProvider[] = ['google', 'apple', 'github', 'email']
  *  without signal. See `online` on the props for why email is not one. */
 const LEAVES_THE_APP: ReadonlySet<AuthProvider> = new Set(['google', 'apple', 'github'])
 
-/** The provider names as the offline note reads them out: "Google",
- *  "Google and Apple", "Google, Apple and GitHub". */
+/** The provider names as the offline note reads them out, in the order
+ *  `ENABLED_PROVIDERS` gives them, since `held` is a filter over that array:
+ *  "GitHub", "GitHub and Google". Those two are the only strings this build
+ *  can produce - email never leaves the app, and Apple does not ship (#92).
+ *  The examples here were "Google", "Google and Apple", "Google, Apple and
+ *  GitHub" until the order changed and none of the three was reachable. */
 function namesOf(providers: AuthProvider[]): string {
   const names = providers.map((provider) =>
     LABELS[provider].replace('Continue with ', ''),

@@ -10,6 +10,8 @@ the accepted algorithm list from drifting away from the list the backend
 actually enforces, which would turn a passing diagnostic into a lie.
 """
 
+import urllib.error
+
 import pytest
 
 import check_supabase_config as check
@@ -252,3 +254,50 @@ def test_EMAIL_CODE_TEMPLATES_are_the_one_a_returning_address_gets_and_the_one_a
         "mailer_templates_magic_link_content",
         "mailer_templates_confirmation_content",
     ]
+
+
+def test_check_auth_config_says_so_when_a_field_it_reads_is_absent(capsys):
+    """A field name this script has wrong must be loud, not skipped.
+
+    THE DEFECT THIS PINS, found by the review of #1572: the length and expiry
+    branches were a bare `isinstance(value, int)`, so a key the management API
+    does not return - because it was renamed, or because this script's
+    `@unvalidated` guess at the name was wrong - fell through both branches
+    and reported NOTHING. The section printed green having checked neither,
+    which is LAUNCH_CHECKLIST.md 4.5's "green check that means nothing".
+
+    A warn rather than a fail: the settings may well be right and this
+    script's knowledge of the field names is what is not, so blocking a
+    launch on it would be the wrong way round. What it must not do is stay
+    silent.
+    """
+    report = check.Report()
+    without = {k: v for k, v in CONFIGURED_AUTH.items() if k not in ("mailer_otp_length", "mailer_otp_exp")}
+
+    check.check_auth_config(without, ALL_THREE, report)
+
+    printed = capsys.readouterr().out
+    assert "mailer_otp_length" in printed
+    assert "mailer_otp_exp" in printed
+    assert printed.count("WARN") >= 2
+    # The missing names are the script's problem to investigate, not a reason
+    # to refuse the project - everything else in the config still passed.
+    assert not report.failed
+
+
+def test_fetch_reports_a_connection_failure_rather_than_raising(monkeypatch):
+    """A runner that cannot reach api.supabase.com must still print its report.
+
+    Both helpers caught `HTTPError` only, so a DNS failure, a refused proxy or
+    a socket timeout escaped `main()` as a traceback - taking the provider and
+    signing-algorithm findings the earlier sections had already collected with
+    it. Status 0 means the request never happened, as against an HTTP code,
+    which means the server answered.
+    """
+
+    def refuse(*_args, **_kwargs):
+        raise urllib.error.URLError("no route to host")
+
+    monkeypatch.setattr(check.urllib.request, "urlopen", refuse)
+
+    assert check._fetch("https://api.supabase.com/v1/projects/x/config/auth", {}) == (0, {})

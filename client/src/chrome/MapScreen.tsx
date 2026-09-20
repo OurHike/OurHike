@@ -1983,11 +1983,17 @@ export function MapScreen({
       </div>
 
       {/* The same account and opener this screen already hands its Header
-          (#1596). BOTH get them and only one is ever drawn: desktop.css puts
-          the button in the sidebar and hides `.map-header__account`, and
-          chrome.css does the reverse below the breakpoint. Handing it to one
-          of them here instead would mean this component knowing which layout
-          it is in, which is a media query's job and not a prop's. */}
+          (#1596). BOTH get them and only one is ever drawn, because each
+          reads `useDesktop()` and decides - the Header above the breakpoint,
+          this bar below it. Handing it to one of them here instead would
+          mean this component working out which layout it is in, which is the
+          thing the two of them already know about themselves.
+
+          An earlier version of this comment described a `display: none` in
+          desktop.css. There is no such rule and there should not be: a
+          hidden button is still a button in the DOM, which is what put three
+          of them in front of App.flows.test.tsx. chrome/AccountButton.tsx
+          states the rule and the reasoning once. */}
       <TabBar
         active={activeTab}
         onSelect={onSelectTab}

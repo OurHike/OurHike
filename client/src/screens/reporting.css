@@ -302,35 +302,49 @@
   border-color: #ffffff;
 }
 .reporting__provider--email {
-  /* THE CHROME'S OWN GROUND, which is where this app already stands its logo:
-     the desktop spine under the wordmark, and the phone's tab bar mark, both
-     `--bg-chrome` (chrome/chrome.css, chrome/TabBar.tsx). The maintainer's
-     call, 2026-09-20, and it is better than either option that went to them.
+  /* THE CHROME'S OWN FAMILY, which is where this app already stands its logo:
+     the desktop spine under the wordmark and the phone's tab bar mark are
+     both `--bg-chrome` (chrome/chrome.css, chrome/TabBar.tsx), and this is
+     `--surface-chrome-raised`, one rung above it - a raised surface standing
+     on the chrome rather than the chrome's own ground, which is what a
+     button on a sheet is. The maintainer's call, 2026-09-20, and it is
+     better than either option that went to them.
 
      It fixes the mark rather than framing it. The icon's green half is
      `#355c3a` (design-system/assets/logo-icon.svg) and `--brand-primary` in
      the light theme is `--forest-600`, which is the same hex - so on the
      brand button that half was invisible and the logo read as a brown
-     triangle. `--bg-chrome` is `--pine-900`, `#122016`, far darker than the
-     icon's green, so both halves and the blaze stand out; and it needs no
-     literal, because the token is dark in BOTH themes (`--ink-900` under the
-     dark one) with `--fg-chrome-1` light in both to carry the label. That is
-     the pairing the spine has been using all along. */
+     triangle. This token is `--pine-800`, `#1c2f1f`, sampled off the
+     rendered frame: far darker than the icon's green, so both halves and the
+     blaze stand out. And it needs no literal, because it is dark in BOTH
+     themes (`--ink-800` under the dark one) with `--fg-chrome-1` light in
+     both to carry the label - 13.99:1 for the label, measured.
+
+     `--bg-chrome` ITSELF WAS THE FIRST ANSWER and read as black at this
+     size: pine-900 carries its green across a 208px column and not across a
+     44px strip with GitHub's `#24292f` directly above it. Same family, one
+     rung, and the difference is the whole of it. */
   color: var(--fg-chrome-1);
   background: var(--surface-chrome-raised);
   border: 0;
 }
-/* A DOOR WITH NO EDGE IS NOT A DOOR. Under the dark theme `--bg-chrome` is
-   `--ink-900` (#15140f) and the sheet under it is #1c1a15 - measured off the
-   rendered frame, 2026-09-20 - which is 1.1:1. The button's shape vanishes
-   and only its label and logo say anything is there. The light theme has no
-   such problem: pine-900 on paper is the whole contrast in the palette, which
-   is why this forks rather than applying to both, the same way the Google,
-   GitHub and Apple rules above do.
+/* A DOOR WITH NO EDGE IS NOT A DOOR. Under the dark theme
+   `--surface-chrome-raised` is `--ink-800`, `#24211a`, and the sheet under
+   it renders `#1c1a15` - both sampled off the frame, 2026-09-20 - which is
+   1.08:1. The button's shape vanishes and only its label and logo say
+   anything is there. The light theme has no such problem: pine-800 on paper
+   is 13.99:1, which is why this forks rather than applying to both, the same
+   way the Google, GitHub and Apple rules above do.
 
    45% of the button's own foreground over its own ground, rather than a
    border token: `--border-2` is `--ink-600` there and reaches 1.7:1, under
-   the 3:1 WCAG asks of a control's boundary. This mix measures 3.67:1. */
+   the 3:1 WCAG asks of a control's boundary. This mix measures 3.76:1.
+
+   BOTH FIGURES WERE RECOMPUTED when the ground moved from `--bg-chrome` to
+   `--surface-chrome-raised`, rather than carried over from the version that
+   measured `--ink-900` at 1.1:1 and the mix at 3.67:1. The conclusion did
+   not change and the numbers did, and a measurement naming the wrong thing
+   it was measured against is worse than no number at all. */
 :root[data-theme='dark'] .reporting__provider--email {
   border: 1px solid
     color-mix(in srgb, var(--fg-chrome-1) 45%, var(--surface-chrome-raised));

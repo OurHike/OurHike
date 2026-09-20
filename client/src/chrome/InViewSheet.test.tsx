@@ -194,15 +194,22 @@ describe('what is in view', () => {
     expect(list.querySelectorAll('li')).toHaveLength(rows.length + 1)
   })
 
-  it('says the rows are dots down here, rather than letting "in view" claim a pin (#1585)', () => {
-    // It used to say the map drew NONE of them, which was true while both
-    // ranks stopped at the seam and is false now that the dot rank reaches
-    // every zoom. Both halves, because both are true: drawn, and not as pins.
-    render(<InViewSheet {...PROPS} drawnAsDots />)
+  it('says the map is not drawing these yet, and still lists them', () => {
+    // THIRD WORDING, and the reason to keep the history in one line: it said
+    // the map drew NONE of them, then that it drew them as DOTS for the two
+    // days the dot rank reached every zoom, and now none again because both
+    // ranks floor at the seam. Each version was true of the layer it was
+    // written against and false of the next one.
+    //
+    // What never changed is the trap underneath: this sheet answers what the
+    // VIEWPORT holds, and the sentence answers what the MAP has drawn. They
+    // are different questions, and a sentence that conflated them would make
+    // the rows below it look like a lie.
+    render(<InViewSheet {...PROPS} belowTheSeam />)
 
-    expect(
-      screen.getByText(/the map draws these as dots at this zoom/i),
-    ).toBeInTheDocument()
+    expect(screen.getByText(/the map is not drawing these yet/i)).toBeInTheDocument()
+    // And not the dots claim, which would promise a map the hiker has not got.
+    expect(screen.queryByText(/as dots at this zoom/i)).not.toBeInTheDocument()
     // The rows are still listed: the frame holds them, the zoom hides them.
     expect(screen.getByRole('button', { name: /Murray spring/ })).toBeInTheDocument()
   })

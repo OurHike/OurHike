@@ -308,14 +308,12 @@ test.describe('the map’s chrome', () => {
     await expect(page.getByRole('button', { name: 'Search', exact: true })).toBeVisible()
 
     const legend = await openLegend(page)
-    await expect(
-      legend.getByText(
-        'Waypoints show as dots at this zoom; pins appear from a closer zoom.',
-      ),
-    ).toBeVisible()
-    // And NOT the sentence it replaced, which would mean the dot floor had
-    // gone back up to the seam and this zoom had been emptied again.
-    await expect(legend.getByText('Waypoints appear from a closer zoom.')).toHaveCount(0)
+    await expect(legend.getByText('Waypoints appear from a closer zoom.')).toBeVisible()
+    // And NOT the dots sentence, which this branch shipped for two days while
+    // the dot rank reached every zoom. Both ranks floor at the seam again, so
+    // a legend promising dots down here would be promising a map the hiker
+    // does not have.
+    await expect(legend.getByText(/show as dots at this zoom/)).toHaveCount(0)
     await expect(
       legend.getByText(/No waypoints on this part of the map yet/),
     ).toHaveCount(0)

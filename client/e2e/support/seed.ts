@@ -161,17 +161,23 @@ export const ABOVE_THE_SEAM_ZOOM = 12.5
  * (chrome/tappedLinePanel.tsx: "one tap asks one question, and which question
  * depends on the zoom").
  *
- * 7 rather than 7.4: `map/poiLayers.ts`'s `POI_PIN_MIN_ZOOM` is 7.5 and
- * `belowSeam` is `zoom < POI_PIN_MIN_ZOOM`, so anything under 7.5 is below the
- * seam — but a value that sits on the boundary would turn a one-line change to
- * that constant into a mystifying spec failure rather than an obvious one.
- * It was 8 while the seam was 9, and moved with it (#1585, 2026-09-18).
+ * 6.5, HALF A ZOOM CLEAR OF THE SEAM, and the gap is the whole point. This
+ * was 7 while the seam was 7.5, and on 2026-09-20 the seam moved to 7 - so
+ * `belowSeam`, which is `zoom < POI_PIN_MIN_ZOOM`, became `7 < 7` and this
+ * camera stopped being below anything. Three club-sheet specs then swept the
+ * entire frame looking for a sheet that could no longer open, and timed out
+ * at 180 s each.
  *
- * WHAT IS DRAWN HERE IS NOT NOTHING, and the sweep below depends on knowing
- * it: the dot rank reaches every zoom since #1585, so this camera carries a
- * stipple of waypoints even though no pin is placed. The legend's sentence
- * here is "Waypoints show as dots at this zoom; pins appear from a closer
- * zoom.
+ * The docstring this replaces had already named the trap - "a value that sits
+ * on the boundary would turn a one-line change to that constant into a
+ * mystifying spec failure rather than an obvious one" - and then sat on the
+ * boundary anyway. Half a zoom is the margin that makes the warning true.
+ *
+ * NOTHING IS DRAWN HERE, and the sweep below depends on knowing it: both
+ * waypoint ranks floor at the seam again, so this camera carries trail lines
+ * and clubs and no waypoint mark of any kind. That is what makes a tap here
+ * reach the club sheet rather than a waypoint card. The legend's sentence is
+ * "Waypoints appear from a closer zoom.
  *
  * Measured 2026-09-11 against release 2026-09-10, sweeping the whole frame
  * below the header at this camera: 21 of 247 taps open the club sheet and 28
@@ -180,4 +186,4 @@ export const ABOVE_THE_SEAM_ZOOM = 12.5
  * at one point only. The legend confirms the zoom from the app's own side:
  * "Waypoints appear from a closer zoom."
  */
-export const BELOW_THE_SEAM_ZOOM = 7
+export const BELOW_THE_SEAM_ZOOM = 6.5

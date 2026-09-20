@@ -75,17 +75,20 @@ export interface InViewSheetProps {
   docked?: boolean
   head?: ReactNode
   /**
-   * Whether the map is drawing these as dots rather than pins - below the pin
-   * floor (map/poiLayers.ts's POI_PIN_MIN_ZOOM), where the dot rank draws
-   * every one of them and no pin is placed.
+   * Whether the camera is below the waypoint seam (map/poiLayers.ts's
+   * POI_PIN_MIN_ZOOM), where the map draws none of these.
    *
-   * RENAMED FROM `drawnNone` ON #1585, because that is what it used to mean
-   * and no longer does: the dot rank went back down to every zoom, so down
-   * here the map draws all of these and none of them as a pin. A flag still
-   * called `drawnNone` would have gone on reading as "nothing is on the map",
-   * which is the claim this sheet exists not to make.
+   * THIS FLAG HAS BEEN WRONG TWICE, so the name now says where the camera is
+   * rather than what the map is doing with it - the camera is the fact that
+   * does not change under it. It was `drawnNone`, then `drawnAsDots` for two
+   * days on #1585 while the dot rank reached every zoom, and both names were
+   * claims about a layer's floor that outlived the floor.
+   *
+   * The list still has rows down here: they are what the viewport HOLDS,
+   * which is the question this sheet answers, and it is a different question
+   * from what the map has drawn.
    */
-  drawnAsDots?: boolean
+  belowTheSeam?: boolean
   /**
    * The workdays in view (#1373, frame 14d), under the waypoints: the pinned
    * rows inside the viewport, the day window the pins are filtered to, and
@@ -207,7 +210,7 @@ function InViewSheetBody({
   workdays,
   docked = false,
   head,
-  drawnAsDots = false,
+  belowTheSeam = false,
 }: InViewSheetProps) {
   // Sorted once per viewport, not per render: thirty thousand rows sort in
   // tens of milliseconds, which is fine on a move and not on every tick.
@@ -261,9 +264,9 @@ function InViewSheetBody({
         </p>
       ) : (
         <>
-          {drawnAsDots && (
+          {belowTheSeam && (
             <p className="legend__empty">
-              The map draws these as dots at this zoom &mdash; pins appear from a closer
+              The map is not drawing these yet &mdash; waypoints appear from a closer
               zoom.
             </p>
           )}

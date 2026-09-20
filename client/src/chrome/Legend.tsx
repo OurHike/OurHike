@@ -634,18 +634,25 @@ export function Legend({
           rectangle: the waypoints a hiker can see counted in the grid are
           all of what this zoom declines to draw.
 
-          FOURTH FLIP, #1585: the dot rank went back down to every zoom, so
-          "appear from a closer zoom" was false about the map in front of the
-          hiker - there ARE waypoints on it, as dots. What is true down here is
-          both halves at once, which is why the sentence now carries both: the
-          dots are drawn, the pins are not yet. The counts stay withheld for
-          #1135's reason, unchanged - "drawn" is a query against the PIN layer,
-          so below this floor it measures the floor rather than the collision
-          engine, and every row would read 0/N over a map with dots on it. */}
+          FOURTH FLIP, #1585: the dot rank went to every zoom, so the sentence
+          carried both halves - dots drawn, pins not yet.
+
+          FIFTH, AND BACK (2026-09-20), because the maintainer put the seam
+          back at z7 and floored BOTH ranks there: "We can keep a seam, and
+          make it at zoom 7. Yes the POI's can be hidden above there." So
+          nothing is drawn down here at all, and the dots half became the
+          false half - a sentence telling a hiker their map has dots on it
+          when it has none is the exact failure the first version of this line
+          was written to end.
+
+          The counts stay withheld for #1135's reason, unchanged.
+
+          IT IS NOT THE ONLY THING SAYING THIS ANY MORE, which is why it can
+          be short: chrome/ShowPointsToggle.tsx sits over the map, disabled
+          below the seam and reading "Zoom in to show waypoints". The two have
+          to agree, and e2e/mapChrome.spec.ts asserts this one verbatim. */}
       {belowPoiZoom && (
-        <p className="legend__empty">
-          Waypoints show as dots at this zoom; pins appear from a closer zoom.
-        </p>
+        <p className="legend__empty">Waypoints appear from a closer zoom.</p>
       )}
 
       {/* "No WAYPOINTS", where this said "Nothing", and the word had to change

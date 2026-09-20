@@ -1574,8 +1574,13 @@ describe('below the zoom waypoints are drawn at', () => {
     // Both halves since #1585: the dots ARE drawn down here, the pins are
     // not. "Appear from a closer zoom" alone was false about the first of
     // them, and "pan or zoom out" is still the wrong direction.
-    expect(screen.getByText(/show as dots at this zoom/i)).toBeInTheDocument()
-    expect(screen.getByText(/pins appear from a closer zoom/i)).toBeInTheDocument()
+    // FIFTH WORDING (2026-09-20). Both ranks floor at the seam again, so the
+    // dots half of the #1585 sentence became the false half - and a legend
+    // promising dots over a map that has none is the failure the very first
+    // version of this line was written to end.
+    expect(screen.getByText(/appear from a closer zoom/i)).toBeInTheDocument()
+    expect(screen.queryByText(/show as dots at this zoom/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/appear from a closer zoom/i)).toBeInTheDocument()
     expect(screen.queryByText(/pan or zoom out/i)).not.toBeInTheDocument()
   })
 
@@ -1599,7 +1604,12 @@ describe('below the zoom waypoints are drawn at', () => {
       />,
     )
 
-    expect(screen.getByText(/show as dots at this zoom/i)).toBeInTheDocument()
+    // FIFTH WORDING (2026-09-20). Both ranks floor at the seam again, so the
+    // dots half of the #1585 sentence became the false half - and a legend
+    // promising dots over a map that has none is the failure the very first
+    // version of this line was written to end.
+    expect(screen.getByText(/appear from a closer zoom/i)).toBeInTheDocument()
+    expect(screen.queryByText(/show as dots at this zoom/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/fit at this zoom/i)).not.toBeInTheDocument()
     // Plain names, no "none of 1 shown" fractions: the fraction is the
     // collision engine's report, and it was not consulted. (Two shelter

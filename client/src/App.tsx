@@ -2273,7 +2273,10 @@ function App() {
     // [list], and adding one to `flowOpen` alone is how a deliberately-visible
     // map ends up counted as hidden." It stays in `updateWouldCost`, because a
     // half-typed address is exactly what that one guards.
-    collectingIdentity || reportingFailure || reportingClosure !== null || reporting !== null
+    collectingIdentity ||
+    reportingFailure ||
+    reportingClosure !== null ||
+    reporting !== null
   // STEP 1 BESIDE THE MAP on a laptop (the review of #1374; the design's
   // R2, "the map never leaves"): the Plan tab's step 1 is the map with the
   // step column beside it, the same slot steps 2 and 3 take, so the three

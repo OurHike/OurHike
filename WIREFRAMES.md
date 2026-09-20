@@ -253,9 +253,11 @@ Then a separate section, **"About people on the trail,"** with two full-width ca
 
 **Report form:** note (free text), optional photos — several since #1439, each shrunk on pick under its own tile — location (existing POI, dropped pin, or GPS) **with a `Change` that drops a crosshair on the map**, "signed as `<trail name>` · `<reporter type>`," and the report's **real timestamp — the moment of writing, not of sending**. With no location at all the form asks **"Where was this?"** as free text, which travels as the hiker's own words and is never geocoded.
 
-**Sign-in happens at the first contribution, not in onboarding.** The report is written and saved first; then Google / Apple / email, then trail name + reporter type (thru / section / day / maintainer; maintainer is club-granted and stays unverified until confirmed). A green callout states that reading the map — water, shelters, closures, warnings — never needs an account.
+**Sign-in is asked at the first contribution, and offered from the header at any time (#1596).** The report is written and saved first; then Google / Apple / email, then trail name + reporter type (thru / section / day / maintainer; maintainer is club-granted and stays unverified until confirmed). A green callout states that reading the map — water, shelters, closures, warnings — never needs an account.
 
-Which of the three a given build actually offers is deployment configuration, not a screen decision — a provider whose credentials do not exist reaches an error page rather than an account, and Apple's cost more than the other two. See [features/AUTHENTICATION.md](features/AUTHENTICATION.md).
+The header's action cluster carries an account button on the map and in Today's own chrome, and the ask it opens is a small window docked over the screen rather than one instead of it (`chrome/SignInWindow.tsx`). That is an offer, not a wall: nothing is gated, every screen reachable signed out stays so, and the green callout below still names what needs no account. Until 2026-09-20 the only deliberate way in was More → You → Sign in, three taps inside the settings tab.
+
+Which of the three a given build actually offers is decided in code — a provider whose credentials do not exist reaches an error page rather than an account, and Apple's cost more than the other two. See [features/AUTHENTICATION.md](features/AUTHENTICATION.md).
 
 **Four states, always visible to the reporter:** Waiting → Confirmed → Fixed, or Not confirmed. "Not confirmed" carries no penalty, deliberately.
 

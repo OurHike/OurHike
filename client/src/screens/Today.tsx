@@ -83,6 +83,7 @@ import { isNoteScopedType } from '../lib/fieldNotes'
 import type { NightBehind } from '../lib/nightsBehind'
 import '../chrome/chrome.css'
 import './today.css'
+import { AccountButton } from '../chrome/AccountButton'
 
 const NO_SUGGESTIONS: readonly SuggestedHike[] = []
 
@@ -107,6 +108,12 @@ export interface TodayProps {
   backgroundProblem?: BackgroundProblem | null
   backgroundOverride?: BackgroundOverride | null
   trailLinesMissing?: boolean
+  /** The account, for the button in this screen's own chrome (#1596). The
+   *  map has one in its header; Today is the other screen a launch lands on,
+   *  so it carries the same door rather than sending a hiker to the map to
+   *  find it. */
+  account?: { email: string } | null
+  onOpenAccount?: () => void
 
   mode: HikerMode
   onChangeMode: (mode: HikerMode) => void
@@ -404,6 +411,8 @@ export function Today({
   backgroundProblem = null,
   backgroundOverride = null,
   trailLinesMissing = false,
+  account,
+  onOpenAccount,
   mode,
   onChangeMode,
   modePending = false,
@@ -1183,6 +1192,13 @@ export function Today({
   return (
     <div className="today">
       <header className="today__chrome">
+        {account !== undefined && onOpenAccount !== undefined && (
+          <AccountButton
+            account={account}
+            onOpen={onOpenAccount}
+            className="today__account"
+          />
+        )}
         <StatusStrip
           time={now}
           online={online}

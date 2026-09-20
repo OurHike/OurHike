@@ -103,6 +103,59 @@ test.describe('where you hike', () => {
   })
 })
 
+test.describe('the account button, on the app itself', () => {
+  // #1596. Until then the only deliberate way in was More → You → Sign in:
+  // three taps, in the settings tab. These drive the one-tap door and the
+  // window it opens, which is the whole of that change a hiker can see.
+
+  test('entrance: one tap from the map opens the ask, over a map that stays put', async ({
+    page,
+  }) => {
+    await seedPreferences(page)
+    await page.goto('/')
+
+    await page.getByRole('button', { name: 'Sign in' }).first().click()
+
+    const ask = page.getByRole('dialog', { name: 'Sign in' })
+    await expect(ask).toBeVisible()
+    await expect(ask.getByRole('button', { name: /^Continue with/ })).toBeVisible()
+    // THE POINT OF A WINDOW RATHER THAN A SCREEN: what was behind is still
+    // there. A `flowScreen` would have taken the map subtree out of flow and
+    // out of the accessibility tree, which is what this replaced.
+    await expect(page.getByRole('region', { name: /trail map/i })).toBeVisible()
+  })
+
+  test('states: asked for its own sake, it promises nothing about a saved report', async ({
+    page,
+  }) => {
+    // The five contribution doors open the same ask with a different first
+    // line ("already saved on your phone"). This one is raised by a hiker who
+    // wants an account, with nothing waiting, so that promise would be about
+    // something that does not exist.
+    await seedPreferences(page)
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Sign in' }).first().click()
+
+    const ask = page.getByRole('dialog', { name: 'Sign in' })
+    await expect(ask.getByText(/Reading the map never needs an account/)).toBeVisible()
+    await expect(ask.getByText(/already saved on your phone/)).toHaveCount(0)
+  })
+
+  test('exit: Escape closes the window and leaves the map where it was', async ({
+    page,
+  }) => {
+    await seedPreferences(page)
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Sign in' }).first().click()
+    await expect(page.getByRole('dialog', { name: 'Sign in' })).toBeVisible()
+
+    await page.keyboard.press('Escape')
+
+    await expect(page.getByRole('dialog', { name: 'Sign in' })).toHaveCount(0)
+    await expect(page.getByRole('region', { name: /trail map/i })).toBeVisible()
+  })
+})
+
 test.describe('the sign-in ask', () => {
   test('entrance and states: asked for its own sake, it promises the map without one', async ({
     page,

@@ -633,6 +633,14 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
       why: 'A glyph. ModeIcon.test.tsx draws it; a flow test would be a slower way to look at the same SVG.',
     },
   },
+  'chrome/AccountButton.tsx': {
+    step: 'shared',
+    flow: { status: 'covered', spec: 'e2e/identityRooms.spec.ts' },
+  },
+  'chrome/SignInWindow.tsx': {
+    step: 'shared',
+    flow: { status: 'covered', spec: 'e2e/identityRooms.spec.ts' },
+  },
   'chrome/ProviderMark.tsx': {
     step: 'shared',
     flow: {

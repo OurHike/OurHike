@@ -1,0 +1,55 @@
+/* The sign-in window (chrome/SignInWindow.tsx, #1596): docked to the foot
+   over whatever screen the ask was made from, the way chrome/BailSheet.tsx
+   is. Semantic tokens only.
+
+   ABOVE THE REPORT WINDOW, NOT BESIDE IT. `.reporting-window` is z-index 40
+   and the sign-in ask is raised FROM it - a report is saved first, then this
+   asks how to send it - so 41 is the one value that puts them in the order
+   they happen in. It also clears the tab bar, which is the point of a window
+   rather than a screen: what is behind stays mounted and visible, and the
+   bar behind it is not something to tap while this is open. */
+.sign-in-window {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 41;
+  max-height: 85vh;
+  overflow-y: auto;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-2);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
+}
+
+/* The wrapper takes focus on mount so Escape works before anything inside is
+   tabbed to (see the component). That focus is a mechanism, not something to
+   draw a ring around - the heading inside is what says where you are. */
+.sign-in-window:focus {
+  outline: none;
+}
+
+/* The view inside brings `.reporting`, which paints the page colour because
+   it was a full screen until #1596. In a window the surface underneath is
+   the window's own. */
+.sign-in-window .reporting {
+  background: transparent;
+}
+
+/* A centred box on a laptop. Full width across 1728px is a band of paper
+   with three buttons adrift in the middle of it; 420px is the width the
+   ask was drawn at on a phone, kept. */
+@media (min-width: 900px) {
+  .sign-in-window {
+    left: 50%;
+    right: auto;
+    bottom: auto;
+    top: 50%;
+    width: min(420px, calc(100vw - 32px));
+    transform: translate(-50%, -50%);
+    border: 1px solid var(--border-2);
+    border-radius: 14px;
+    box-shadow: 0 6px 32px rgb(0 0 0 / 18%);
+  }
+}

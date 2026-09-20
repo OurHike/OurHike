@@ -520,6 +520,7 @@ import './App.css'
 // can match a phone, which is how the WEBSITE.md §8 constraint is kept
 // structurally rather than by review.
 import './desktop.css'
+import { SignInWindow } from './chrome/SignInWindow'
 
 // OurHike hikes one trail today - see lib/trails.ts for why this is a lookup
 // and not just a string.
@@ -2237,11 +2238,13 @@ function App() {
   // hooks below need them, and hooks cannot sit under the render-time
   // branches that build the actual screens.
   const flowOpen =
-    authFlow !== null ||
-    collectingIdentity ||
-    reportingFailure ||
-    reportingClosure ||
-    reporting !== null
+    // The sign-in ask is NOT here, since #1596 made it a window rather than a
+    // screen. `screenOver`'s note below states the rule it is following:
+    // "adding an overlay that leaves the map visible means touching neither
+    // [list], and adding one to `flowOpen` alone is how a deliberately-visible
+    // map ends up counted as hidden." It stays in `updateWouldCost`, because a
+    // half-typed address is exactly what that one guards.
+    collectingIdentity || reportingFailure || reportingClosure || reporting !== null
   // STEP 1 BESIDE THE MAP on a laptop (the review of #1374; the design's
   // R2, "the map never leaves"): the Plan tab's step 1 is the map with the
   // step column beside it, the same slot steps 2 and 3 take, so the three
@@ -8482,6 +8485,14 @@ function App() {
     [updatePreferences],
   )
 
+  /** Open the sign-in ask for its own sake, from the account button in the
+   *  header and in Today's chrome (#1596). `afterReport: false` is the whole
+   *  difference from the five contribution doors: nothing is waiting, so the
+   *  ask does not promise that a report is already saved. */
+  const openSignIn = useCallback(() => {
+    setAuthFlow({ screen: 'choose', afterReport: false })
+  }, [])
+
   const handleChooseProvider = useCallback((provider: AuthProvider) => {
     if (provider === 'email') {
       setAuthFlow((current) =>
@@ -8817,27 +8828,41 @@ function App() {
   /** The long report form, rendered as an overlay at the foot of this
    *  component rather than in `flowScreen` - see where it is assigned. */
   let reportFormNode: ReactNode = null
+  /** The sign-in ask, as a small window at the foot of this component rather
+   *  than a `flowScreen` (#1596) - see chrome/SignInWindow.tsx for why, and
+   *  `flowOpen` above for what that means for the map behind it. */
+  let authWindowNode: ReactNode = null
   if (authFlow !== null) {
-    flowScreen =
-      authFlow.screen === 'email' ? (
-        <EmailSignIn
-          onSendCode={sendEmailCode}
-          onVerifyCode={verifyEmailCode}
-          onCancel={() => setAuthFlow(null)}
-        />
-      ) : (
-        <SignInPrompt
-          providers={ENABLED_PROVIDERS}
-          reportSaved={authFlow.afterReport}
-          // #315: Google, Apple and GitHub are a full off-origin navigation,
-          // so offline they take the hiker out of the app and away from the
-          // map rather than merely failing. The screen holds them and says so.
-          online={online}
-          onSignIn={handleChooseProvider}
-          onCancel={() => setAuthFlow(null)}
-        />
-      )
-  } else if (collectingIdentity) {
+    // ONE WINDOW, TWO VIEWS. The email path's second step swaps the contents
+    // rather than opening a second window, which is what makes "send another
+    // code" and "use a different address" read as the same place.
+    authWindowNode = (
+      <SignInWindow
+        label={authFlow.screen === 'email' ? 'Sign in with email' : 'Sign in'}
+        onClose={() => setAuthFlow(null)}
+      >
+        {authFlow.screen === 'email' ? (
+          <EmailSignIn
+            onSendCode={sendEmailCode}
+            onVerifyCode={verifyEmailCode}
+            onCancel={() => setAuthFlow(null)}
+          />
+        ) : (
+          <SignInPrompt
+            providers={ENABLED_PROVIDERS}
+            reportSaved={authFlow.afterReport}
+            // #315: Google, Apple and GitHub are a full off-origin navigation,
+            // so offline they take the hiker out of the app and away from the
+            // map rather than merely failing. The screen holds them and says so.
+            online={online}
+            onSignIn={handleChooseProvider}
+            onCancel={() => setAuthFlow(null)}
+          />
+        )}
+      </SignInWindow>
+    )
+  }
+  if (collectingIdentity) {
     // After the report is saved and after sign-in, which is the order
     // contributionFlow.ts insists on: a trail name belongs to a profile, so
     // asking first collects something with nowhere to put it (#233).
@@ -9479,6 +9504,8 @@ function App() {
   // copies, so the forty-odd props feeding it cannot drift between layouts.
   const todayScreen = (
     <Today
+      account={account}
+      onOpenAccount={openSignIn}
       now={now}
       position={position}
       online={online}
@@ -10350,6 +10377,8 @@ function App() {
             )}
           >
             <MapScreen
+              account={account}
+              onOpenAccount={openSignIn}
               {...modeReadout}
               // First run (#721). Hides everything but the canvas and makes the
               // whole subtree inert, so the steps below are drawn over the map
@@ -11191,6 +11220,13 @@ function App() {
             onClose={handleCloseWindow}
           />
         )}
+
+      {/* THE SIGN-IN WINDOW (#1596), last in the fragment so it stacks over
+          everything - including the report window it is raised from, since a
+          report is saved first and this asks how to send it. Its own z-index
+          says the same thing; the order here is what makes that true even if
+          a later layer forgets to. */}
+      {authWindowNode}
     </>
   )
 }

@@ -785,6 +785,10 @@ export interface MapScreenProps {
    * different conclusion than the download window's own notice.
    */
   trailLinesMissing?: boolean
+  /** The account, passed straight through to the header's button (#1596).
+   *  Undefined draws no button; null draws the way in. */
+  account?: { email: string } | null
+  onOpenAccount?: () => void
   /** What the archive's own header says it covers, for the opening camera. */
   archiveZooms?: ArchiveZooms | null
   /** Room to leave around the opening box, per side - see MapViewProps. The
@@ -978,6 +982,8 @@ export function MapScreen({
   drawnCounts,
   belowPoiZoom = false,
   trailLinesMissing = false,
+  account,
+  onOpenAccount,
   archiveZooms = null,
   boundsPadding,
   entering = false,
@@ -1453,6 +1459,8 @@ export function MapScreen({
                 first run without a list of names (chrome.css). */}
             <div className="map-screen__float" ref={floatRef}>
               <Header
+                account={account}
+                onOpenAccount={onOpenAccount}
                 trailName={trailName}
                 trailLogo={trailLogo}
                 state={state}

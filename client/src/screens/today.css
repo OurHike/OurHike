@@ -20,10 +20,35 @@
 /* ---------- The pine chrome block ---------- */
 
 .today__chrome {
+  position: relative;
   background: var(--bg-chrome);
   padding: 0 18px 14px;
   padding-left: max(18px, env(safe-area-inset-left, 0px));
   padding-right: max(18px, env(safe-area-inset-right, 0px));
+}
+
+/* The account button (#1596), in this chrome's own top-right corner so it
+   lands where the map header's copy does and a hiker finds one control in one
+   place across both screens. Absolute rather than a flex child: the status
+   row and the eyebrow below it are a stack this button must not push around,
+   and the eyebrow's text is short enough that nothing collides at 375px. On
+   pine, so it takes the chrome's foreground rather than the page's. */
+.today__account {
+  position: absolute;
+  top: var(--space-2, 8px);
+  right: max(18px, env(safe-area-inset-right, 0px));
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--header-button-size, 38px);
+  height: var(--header-button-size, 38px);
+  padding: 0;
+  color: var(--fg-chrome-1);
+  background: transparent;
+  border: 1px solid var(--fg-chrome-3);
+  border-radius: var(--radius-pill, 999px);
+  cursor: pointer;
 }
 
 /* The status row is StatusStrip itself, restyled for pine - the same move
@@ -33,7 +58,12 @@
   background: transparent;
   color: var(--fg-chrome-3);
   padding-left: 0;
-  padding-right: 0;
+  /* ROOM FOR THE ACCOUNT BUTTON (#1596), which is positioned over this row's
+     right end. Without it the strip's last flag - "never synced" on a phone
+     that has not - runs under the glyph, which the first frame of this change
+     showed plainly. Reserved rather than shortened: the flags are what this
+     row is for, and a button is not a reason to drop one. */
+  padding-right: calc(var(--header-button-size, 38px) + var(--space-2, 8px));
   /* The top of the screen: the same notch inset .status-strip carries on the
      map screen (#101), restated because the horizontal padding is reset. */
   padding-top: calc(8px + env(safe-area-inset-top, 0px));

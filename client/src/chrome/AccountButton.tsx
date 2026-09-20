@@ -1,0 +1,71 @@
+// The way in to an account, and the way back to it, on every screen (#1596).
+//
+// WHY THIS EXISTS AT ALL, since the app deliberately does not ask. Until now
+// the only deliberate way in was More → You → Sign in: three taps, in the
+// settings tab, under a row nobody opens unless they already suspect an
+// account is there. Every other door was incidental - five contribution
+// flows that open the same ask with `afterReport: true`, which is a
+// different sentence ("your report is saved; signing in is what lets it
+// reach someone").
+//
+// WHAT IT IS NOT. Not a wall, and the distinction is the whole design.
+// Nothing here gates anything: every screen reachable signed out before is
+// reachable signed out after, the callout naming what stays free without an
+// account is untouched, and FEATURES.md's no-signup-wall commitment holds.
+// #393 warns that gating BROWSING behind sign-in would be the most expensive
+// product decision available to this project, because it moves every reader
+// onto the metered line. A door nobody is forced through does not.
+//
+// It lives in chrome/Header.tsx's action cluster beside Legend and Search,
+// which is already this app's top-right home for tools, and in Today's own
+// chrome - so it is one tap from the two screens a launch can land on.
+
+export interface AccountButtonProps {
+  /** Null when signed out, which is the state this whole app works in. */
+  account: { email: string } | null
+  /** Opens the sign-in window. Signed in, it opens the same window, which is
+   *  where signing out lives - so the control is one thing in both states
+   *  rather than a button that changes what it does under the same glyph. */
+  onOpen: () => void
+  /** The header passes its own button class so this matches Legend and
+   *  Search exactly; Today passes its own. Neither should have to restate
+   *  the glyph. */
+  className?: string
+}
+
+export function AccountButton({ account, onOpen, className }: AccountButtonProps) {
+  const signedIn = account !== null
+  return (
+    <button
+      type="button"
+      className={className}
+      onClick={onOpen}
+      // THE ADDRESS IS IN THE LABEL, and deliberately: a screen reader user
+      // gets the same answer a sighted one reads off the filled glyph, which
+      // is "you are signed in, and as whom". The glyph alone cannot say the
+      // second half.
+      aria-label={signedIn ? `Account, signed in as ${account.email}` : 'Sign in'}
+    >
+      <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20">
+        {/* One person glyph in two weights rather than two glyphs: the shape
+            a hiker learns stays put, and only its fill changes with the
+            state. Stroke-only reads as an empty seat; filled reads as taken. */}
+        <circle
+          cx="12"
+          cy="8"
+          r="3.5"
+          fill={signedIn ? 'currentColor' : 'none'}
+          stroke="currentColor"
+          strokeWidth="2"
+        />
+        <path
+          d="M4.5 20c0-4 3.4-6.5 7.5-6.5s7.5 2.5 7.5 6.5"
+          fill={signedIn ? 'currentColor' : 'none'}
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+      </svg>
+    </button>
+  )
+}

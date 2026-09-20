@@ -517,6 +517,40 @@
   display: none;
 }
 
+/* Rendered only in the sidebar layout, and by chrome/TabBar.tsx rather than
+   by a rule in here - AccountButton.tsx carries the reasoning, which is that
+   a button hidden by `display: none` is still a button in the DOM and the
+   three places this app can draw one have to add up to exactly one. So
+   nothing here switches it off; desktop.css only places it. */
+.tab-bar__account {
+  display: flex;
+}
+
+.tab-bar__account-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--header-button-size, 38px);
+  height: var(--header-button-size, 38px);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  /* The chrome's own foreground, as the tab labels and the wordmark use -
+     this button only ever sits on `--bg-chrome`. */
+  color: var(--fg-chrome-1);
+  position: relative;
+}
+
+/* The same trick `.map-header__button` uses: a 38px circle a thumb can still
+   hit, by growing the hit area rather than the drawn one. */
+.tab-bar__account-button::before {
+  content: '';
+  position: absolute;
+  inset: calc((var(--header-button-size, 38px) - var(--min-touch-target, 44px)) / 2);
+}
+
 .tab-bar__brand-icon {
   display: block;
   width: 24px;

@@ -1982,11 +1982,19 @@ export function MapScreen({
         {trailDataUpdate !== undefined && <TrailDataUpdate {...trailDataUpdate} />}
       </div>
 
+      {/* The same account and opener this screen already hands its Header
+          (#1596). BOTH get them and only one is ever drawn: desktop.css puts
+          the button in the sidebar and hides `.map-header__account`, and
+          chrome.css does the reverse below the breakpoint. Handing it to one
+          of them here instead would mean this component knowing which layout
+          it is in, which is a media query's job and not a prop's. */}
       <TabBar
         active={activeTab}
         onSelect={onSelectTab}
         modeSwitch={modeSwitch}
         hikeSwitch={hikeSwitch}
+        account={account}
+        onOpenAccount={onOpenAccount}
         {...(mode === undefined ? {} : { mode, onOpenMode })}
       />
     </div>

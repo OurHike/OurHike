@@ -16,6 +16,7 @@
 
 import type { ReactNode } from 'react'
 import { AccountButton } from './AccountButton'
+import { useDesktop } from '../lib/useDesktop'
 
 export type HikeDirection = 'NOBO' | 'SOBO'
 
@@ -136,6 +137,12 @@ export function Header({
   account,
   onOpenAccount,
 }: HeaderProps) {
+  // The sidebar carries the account button above the breakpoint, where Today
+  // and the map are drawn side by side and this one would be the second on
+  // the page. chrome/AccountButton.tsx states the rule; TabBar.tsx says why
+  // it is a hook rather than a media query.
+  const inSidebarLayout = useDesktop()
+
   return (
     <div className="map-header">
       <header className={`map-plate${folded ? ' map-plate--folded' : ''}`}>
@@ -169,11 +176,11 @@ export function Header({
             hidden at desktop widths, so any later position would move under
             a hiker between screens. #1596 put it here rather than leaving
             sign-in three taps deep in More. */}
-        {account !== undefined && onOpenAccount !== undefined && (
+        {!inSidebarLayout && account !== undefined && onOpenAccount !== undefined && (
           <AccountButton
             account={account}
             onOpen={onOpenAccount}
-            className="map-header__button"
+            className="map-header__button map-header__account"
           />
         )}
         {/* The sentence behind the dot, for a screen reader. Rendered only

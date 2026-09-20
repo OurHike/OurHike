@@ -19,6 +19,23 @@
 // It lives in chrome/Header.tsx's action cluster beside Legend and Search,
 // which is already this app's top-right home for tools, and in Today's own
 // chrome - so it is one tap from the two screens a launch can land on.
+//
+// ONE OF THESE IS DRAWN, NEVER TWO, and where depends on the layout because
+// the layouts differ in how many screens they draw at once:
+//
+//   below 900px  the map header's cluster, and Today's own chrome. One
+//                screen is up at a time, so a hiker sees one button.
+//   at or above  the sidebar's top-left corner (chrome/TabBar.tsx), and
+//                neither of the other two. Today and the map are side by
+//                side up here, so both of those were on the page together -
+//                the maintainer's report, 2026-09-20, #1596.
+//
+// Each of the three reads `useDesktop()` and decides for itself. Doing it in
+// the stylesheet instead left all three in the DOM with two of them
+// `display: none` - gone from a browser's accessibility tree, still there in
+// jsdom, which loads no stylesheet and duly found three buttons named
+// "Sign in" in App.flows.test.tsx. useDesktop.ts's own docstring is the
+// general form of that: "a few things cannot be done in CSS".
 
 export interface AccountButtonProps {
   /** Null when signed out, which is the state this whole app works in. */

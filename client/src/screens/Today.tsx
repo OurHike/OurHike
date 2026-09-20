@@ -85,6 +85,7 @@ import type { NightBehind } from '../lib/nightsBehind'
 import '../chrome/chrome.css'
 import './today.css'
 import { AccountButton } from '../chrome/AccountButton'
+import { useDesktop } from '../lib/useDesktop'
 
 const NO_SUGGESTIONS: readonly SuggestedHike[] = []
 
@@ -459,6 +460,12 @@ export function Today({
   downloadSize = null,
   placeName = null,
 }: TodayProps) {
+  // The sidebar carries the one account button above the breakpoint, where
+  // this screen is a column beside the map rather than a screen of its own.
+  // chrome/AccountButton.tsx states the rule; chrome/TabBar.tsx says why it
+  // is a hook rather than a media query.
+  const inSidebarLayout = useDesktop()
+
   // Memoized because this screen re-renders for reasons that have nothing to do
   // with it (#1090). It is the home screen now, so it is mounted while the GPS
   // clock, the 60-second clock and the hourly conditions check each re-render
@@ -1193,7 +1200,10 @@ export function Today({
   return (
     <div className="today">
       <header className="today__chrome">
-        {account !== undefined && onOpenAccount !== undefined && (
+        {/* Not above the breakpoint: there this screen is a column beside
+            the map and the sidebar carries the one account button
+            (chrome/AccountButton.tsx). */}
+        {!inSidebarLayout && account !== undefined && onOpenAccount !== undefined && (
           <AccountButton
             account={account}
             onOpen={onOpenAccount}

@@ -10046,6 +10046,8 @@ function App() {
           onSelect={selectTab}
           modeSwitch={sidebarModeSwitch}
           hikeSwitch={sidebarHikeSwitch}
+          account={account}
+          onOpenAccount={openSignIn}
           {...modeReadout}
         />
       </div>
@@ -10195,6 +10197,8 @@ function App() {
             onSelect={selectTab}
             modeSwitch={sidebarModeSwitch}
             hikeSwitch={sidebarHikeSwitch}
+            account={account}
+            onOpenAccount={openSignIn}
             {...modeReadout}
           />
         </div>
@@ -10395,6 +10399,8 @@ function App() {
             onSelect={selectTab}
             modeSwitch={sidebarModeSwitch}
             hikeSwitch={sidebarHikeSwitch}
+            account={account}
+            onOpenAccount={openSignIn}
             {...modeReadout}
           />
         </div>
@@ -10529,6 +10535,8 @@ function App() {
             onSelect={selectTab}
             modeSwitch={isDesktop ? sidebarModeSwitch : undefined}
             hikeSwitch={sidebarHikeSwitch}
+            account={account}
+            onOpenAccount={openSignIn}
             {...modeReadout}
           />
         </div>
@@ -10567,7 +10575,13 @@ function App() {
             fallback={() => (
               <div className="app__screen">
                 <ScreenFailed what="The map" />
-                <TabBar active={activeTab} onSelect={selectTab} {...modeReadout} />
+                <TabBar
+                  active={activeTab}
+                  onSelect={selectTab}
+                  account={account}
+                  onOpenAccount={openSignIn}
+                  {...modeReadout}
+                />
               </div>
             )}
           >

@@ -302,39 +302,39 @@
   border-color: #ffffff;
 }
 .reporting__provider--email {
-  color: var(--fg-on-brand);
-  background: var(--brand-primary);
+  /* THE CHROME'S OWN GROUND, which is where this app already stands its logo:
+     the desktop spine under the wordmark, and the phone's tab bar mark, both
+     `--bg-chrome` (chrome/chrome.css, chrome/TabBar.tsx). The maintainer's
+     call, 2026-09-20, and it is better than either option that went to them.
+
+     It fixes the mark rather than framing it. The icon's green half is
+     `#355c3a` (design-system/assets/logo-icon.svg) and `--brand-primary` in
+     the light theme is `--forest-600`, which is the same hex - so on the
+     brand button that half was invisible and the logo read as a brown
+     triangle. `--bg-chrome` is `--pine-900`, `#122016`, far darker than the
+     icon's green, so both halves and the blaze stand out; and it needs no
+     literal, because the token is dark in BOTH themes (`--ink-900` under the
+     dark one) with `--fg-chrome-1` light in both to carry the label. That is
+     the pairing the spine has been using all along. */
+  color: var(--fg-chrome-1);
+  background: var(--bg-chrome);
   border: 0;
 }
-.reporting__provider--email .reporting__provider-mark {
-  /* ON PAPER, NOT STRAIGHT ONTO THE BUTTON, and this is measured rather than
-     a matter of taste: the app icon's green half is `#355c3a`, and
-     `--brand-primary` in the light theme is `--forest-600`, which is
-     `#355c3a`. The same hex. Laid straight on the button that half is not
-     merely close to invisible, it is invisible by construction, and what is
-     left reads as a brown triangle with a white bar through it.
+/* A DOOR WITH NO EDGE IS NOT A DOOR. Under the dark theme `--bg-chrome` is
+   `--ink-900` (#15140f) and the sheet under it is #1c1a15 - measured off the
+   rendered frame, 2026-09-20 - which is 1.1:1. The button's shape vanishes
+   and only its label and logo say anything is there. The light theme has no
+   such problem: pine-900 on paper is the whole contrast in the palette, which
+   is why this forks rather than applying to both, the same way the Google,
+   GitHub and Apple rules above do.
 
-     3px, not 1px. The first version of this rule padded by one, which gives
-     a hairline and leaves the green half still touching green a pixel away -
-     the preview of bce3aecb shows the logo still reading as a hole. Three
-     gives the mark its own card to stand on, which is what Google's branding
-     page means when it requires their G on white whatever surrounds the
-     button. box-sizing keeps the whole thing 20px, so it still lines up with
-     the G and the GitHub mark on the other two doors; the icon inside is
-     14px, which is the cost of the card and worth it.
-
-     THE HEX IS DELIBERATE, and is `--paper-0`'s own light value rather than a
-     new colour. A semantic token here would follow the theme, and following
-     the theme is exactly what this tile must not do: under the dark theme
-     `--brand-primary` is `--moss-400` and `--fg-on-brand` is `--ink-950`, so
-     any token light enough for the pine button turns dark behind the logo on
-     the moss one. The mark needs one fixed light ground in both themes - the
-     same reason the Google, GitHub and Apple rules above carry literals. */
-  border-radius: 6px;
-  box-sizing: border-box;
-  padding: 3px;
-  background: #fffdf7;
+   45% of the button's own foreground over its own ground, rather than a
+   border token: `--border-2` is `--ink-600` there and reaches 1.7:1, under
+   the 3:1 WCAG asks of a control's boundary. This mix measures 3.67:1. */
+:root[data-theme='dark'] .reporting__provider--email {
+  border: 1px solid color-mix(in srgb, var(--fg-chrome-1) 45%, var(--bg-chrome));
 }
+
 .reporting__card--thanks {
   color: var(--fg-1);
   background: color-mix(in srgb, var(--brand-primary) 10%, var(--bg-surface));

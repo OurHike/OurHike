@@ -58,7 +58,7 @@
 // so that the closures are readily apparent at all the zoom levels." Shown
 // four treatments drawn at z8, z13 and z16, they took the outlined one, "the
 // only one whose shape survives being 4 px long". So the band is now two
-// layers, carries 51% red rather than 28%, grows from CLOSURE_TAPE_FAR_WIDTH
+// layers, carries 41% red rather than 28%, grows from CLOSURE_TAPE_FAR_WIDTH
 // to CLOSURE_TAPE_WIDTH across z11 to z13, and steps to a half-scale cadence
 // below z11 - the zoom at which the shortest closure this map draws first
 // clears a whole pitch. Each of those constants says what it rests on.
@@ -126,18 +126,30 @@ export const CLOSURE_TAPE_PIXEL_RATIO = 2
  * hiker is looking.
  *
  * Wide enough that the tape reads as a barrier rather than a route, which
- * means comfortably more than twice the widest blaze on the map: 17 against
- * BLAZE_LINE_WIDTH's 4.5 is 3.8x, where the band's own line was 2.2x.
+ * means comfortably more than twice the widest blaze on the map: 14 against
+ * BLAZE_LINE_WIDTH's 4.5 is 3.1x, where the band's own line was 2.2x - and
+ * the outline puts 3 px more on top of that, which the blaze has no answer
+ * to at all.
  * closureStyle.test.ts holds that ratio against map/style.ts rather than
  * against a number restated here, so widening a through-route still has to
  * widen this with it.
  *
- * `@unvalidated` as a number. 17 came off the frames of the 2026-09-20 poll
- * and nobody has watched it on a phone. What would settle it is what would
- * settle CLOSURE_STRIPE_ANGLE_DEG: whether a closure gets spotted on a
- * screen somebody was not told to search.
+ * IT WENT TO 17 AND CAME BACK, which is the useful part of this note. The
+ * first cut of #1598 raised it, and the frame CI photographed - Bear
+ * Mountain, the densest closure cell in the release - showed what 17 plus a
+ * 1.5 px outline plus half its length in red actually draws at z13: ropes,
+ * with the trails under them gone. The maintainer, 2026-09-21, off that
+ * frame: take the navigation band back, keep the outline and the overview
+ * cadence. So the zoom that was broken (z8, CLOSURE_TAPE_FAR_WIDTH) keeps
+ * every part of the fix and the zoom that was not goes back to the width it
+ * had, carrying only the edge.
+ *
+ * `@unvalidated` as a number, still: 14 is where it was before any of this,
+ * and what would settle it is what would settle CLOSURE_STRIPE_ANGLE_DEG -
+ * whether a closure gets spotted on a screen somebody was not told to
+ * search.
  */
-export const CLOSURE_TAPE_WIDTH = 17
+export const CLOSURE_TAPE_WIDTH = 14
 
 /**
  * How wide the tape is drawn at and below CLOSURE_TAPE_NEAR_MIN_ZOOM, in CSS
@@ -351,8 +363,11 @@ export interface TapeCadence {
  * against the first hazard-tape pass's roughly 60% red on a solid red ground.
  * The maintainer read 28% on the map and asked for the opposite on 2026-09-20
  * - *"the closures are not easily visible"* - and chose, off four rendered
- * treatments at z8, z13 and z16, the one that raises red to 51% and puts a
- * hard outline round the band.
+ * treatments at z8, z13 and z16, the one that raises the red and puts a hard
+ * outline round the band. It went to 51% first; photographed at Bear
+ * Mountain the band read as a rope, and the maintainer took the navigation
+ * weight back on 2026-09-21. 41% is where it landed - half again what it
+ * carried, rather than nearly double.
  *
  * The two directions are not actually in conflict, and the reason is the
  * change #1575 made in between. What the August direction was refusing was
@@ -362,13 +377,14 @@ export interface TapeCadence {
  * own paper (option E), so 51% red on white is a different mark from 59% red
  * on black, not more of it.
  *
- * `{ stripe: 5, pitch: 12 }` rather than a rounder pair because both have to
- * be whole numbers of image pixels at CLOSURE_TAPE_PIXEL_RATIO - 10 and 24 -
+ * `{ stripe: 4, pitch: 12 }` rather than a rounder pair because both have to
+ * be whole numbers of image pixels at CLOSURE_TAPE_PIXEL_RATIO - 8 and 24 -
  * and because halving them for the overview cadence has to leave that true
  * as well. @unvalidated as a threshold: "reads as tape" is still nobody's
- * measurement, and 51% is a pick off a drawn frame.
+ * measurement, and 41% is a pick off one drawn frame and one photographed
+ * one.
  */
-export const CLOSURE_TAPE_CADENCE: TapeCadence = { stripe: 5, pitch: 12 }
+export const CLOSURE_TAPE_CADENCE: TapeCadence = { stripe: 4, pitch: 12 }
 
 /**
  * What the overview tape scales the near one by, on both axes (#1598).
@@ -406,11 +422,12 @@ export const CLOSURE_TAPE_OVERVIEW_CADENCE: TapeCadence = {
  * SCALED, WHERE THE ATC's DOUBLED TAPE LEAVES ITS EDGE ALONE, and the
  * difference is arithmetic rather than taste. An unscaled 1.25 px edge on
  * each side of a 2.5 px stripe at a 6 px pitch puts ink on
- * (2.5 + 2 x 1.25) / sin(55 degrees) / 6 = 102% of the tape's length: the
- * edges of neighbouring stripes meet, the paper between them disappears, and
- * the overview tape would draw as one flat dark-red band. Scaled, the ink is
- * 76% - exactly the near cadence's, which is what "the same tape, smaller"
- * has to mean.
+ * (2 + 2 x 1.25) / sin(55 degrees) / 6 = 92% of the tape's length, against
+ * the near cadence's 66%: the paper between the stripes all but disappears
+ * and the overview tape draws darker than the tape it is a smaller copy of.
+ * Scaled, the ink is 66% - exactly the near cadence's, which is what "the
+ * same tape, smaller" has to mean. (At the 51% red this carried for one
+ * day, an unhalved edge crossed 100% outright and the stripes merged.)
  *
  * The ATC's tape goes the other way, doubling the cadence and keeping the
  * edge, where merging is impossible and a thinner-looking edge is the whole

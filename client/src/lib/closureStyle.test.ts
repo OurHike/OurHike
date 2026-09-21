@@ -134,7 +134,7 @@ describe('closure vs blaze, as structural difference', () => {
 })
 
 describe('how much of the tape is red', () => {
-  it('puts down about half, which is where the maintainer moved it on 2026-09-20', () => {
+  it('puts down about two fifths, which is where the maintainer moved it', () => {
     // A RANGE THAT MOVED, and the move is the thing worth reading. Until
     // #1598 this asserted UNDER a half, and the comment called that "the
     // direction this treatment was asked for in": the band before the tape
@@ -148,11 +148,19 @@ describe('how much of the tape is red', () => {
     // sheet. So half red on white is not a return to the black rope with
     // red ticks; it is the barrier that mark was trying to be.
     //
+    // IT WENT TO 51% AND CAME BACK TO 41% on 2026-09-21, off the frame CI
+    // photographed at Bear Mountain: at 51%, 17 px wide and inside an
+    // outline, the band drew as a rope and the trails under it were gone.
+    // The maintainer took the navigation weight back and kept the outline
+    // and the overview cadence, which are what fix the zoom that was
+    // actually broken.
+    //
     // Bounded on both sides, still, and for the reason the second bound
     // always had: a tape at 100% red is a solid line, which is the one
     // thing a closure may not look like (the blaze comparisons above).
-    expect(tapeRedFraction(CLOSURE_TAPE_CADENCE)).toBeGreaterThan(0.4)
-    expect(tapeRedFraction(CLOSURE_TAPE_CADENCE)).toBeLessThan(0.6)
+    expect(tapeRedFraction(CLOSURE_TAPE_CADENCE)).toBeCloseTo(0.407, 2)
+    expect(tapeRedFraction(CLOSURE_TAPE_CADENCE)).toBeGreaterThan(0.35)
+    expect(tapeRedFraction(CLOSURE_TAPE_CADENCE)).toBeLessThan(0.55)
   })
 
   it('is the same red at both cadences, so the overview tape makes no softer claim', () => {
@@ -224,23 +232,26 @@ describe('the two cadences and where the band swaps between them', () => {
     expect(CLOSURE_TAPE_OVERVIEW_CADENCE.pitch).toBeLessThan(CLOSURE_TAPE_CADENCE.pitch)
   })
 
-  it('keeps the same share of ink at both cadences, so the overview tape does not merge', () => {
+  it('keeps the same share of ink at both cadences, so the overview tape is not the darker one', () => {
     // The arithmetic CLOSURE_TAPE_OVERVIEW_EDGE exists for. Ink is the
-    // stripe plus its two edges, and at a halved pitch an unhalved edge puts
-    // it over 100% - neighbouring stripes meet, the paper between them
-    // disappears, and the overview tape draws as one flat dark-red band that
-    // says "closed" no more clearly than a red line does.
+    // stripe plus its two edges, and at a halved pitch an unhalved edge
+    // leaves much less paper between the stripes than the tape it is a
+    // smaller copy of - so the mark a hiker sees at an overview camera
+    // would be a DARKER band, not the same band smaller.
+    //
+    // Measured: 66% ink at both cadences scaled, against 92% if the edge is
+    // left alone. (At the 51% red this carried for one day it crossed 100%
+    // outright and the stripes merged; the number moved with the cadence on
+    // 2026-09-21, the failure did not.)
     const ink = (cadence: { stripe: number; pitch: number }, edge: number) =>
       tapeRedFraction({ stripe: cadence.stripe + edge * 2, pitch: cadence.pitch })
+    const scaled = ink(CLOSURE_TAPE_OVERVIEW_CADENCE, CLOSURE_TAPE_OVERVIEW_EDGE)
+    const unscaled = ink(CLOSURE_TAPE_OVERVIEW_CADENCE, CLOSURE_STRIPE_EDGE)
 
-    expect(ink(CLOSURE_TAPE_OVERVIEW_CADENCE, CLOSURE_TAPE_OVERVIEW_EDGE)).toBeCloseTo(
-      ink(CLOSURE_TAPE_CADENCE, CLOSURE_STRIPE_EDGE),
-      10,
-    )
-    expect(ink(CLOSURE_TAPE_OVERVIEW_CADENCE, CLOSURE_TAPE_OVERVIEW_EDGE)).toBeLessThan(1)
-    // What it would have been with the edge left alone, so the failure this
-    // guards against is visible rather than described.
-    expect(ink(CLOSURE_TAPE_OVERVIEW_CADENCE, CLOSURE_STRIPE_EDGE)).toBeGreaterThan(1)
+    expect(scaled).toBeCloseTo(ink(CLOSURE_TAPE_CADENCE, CLOSURE_STRIPE_EDGE), 10)
+    expect(scaled).toBeCloseTo(0.661, 2)
+    expect(unscaled).toBeCloseTo(0.916, 2)
+    expect(unscaled).toBeGreaterThan(scaled)
   })
 })
 

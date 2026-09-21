@@ -38,17 +38,25 @@
 // red with no casing - so the tape reads against a quieter ground than the
 // solid cased lines it was chosen over.
 // AMENDED 2026-09-20 (#1598 and #1597), and both changes are in this frame.
-// The band is heavier: 17 px at this zoom rather than 14, half its length
-// red rather than 28% of it, and a hard dark outline round the whole thing -
-// the maintainer's pick from four treatments after "the closures are not
-// easily visible". And the lines under it are no longer a tint: every trail
+// The band carries a hard dark outline and 41% of its length in red rather
+// than 28% - the maintainer's pick from four treatments after "the closures
+// are not easily visible".
+//
+// THIS FRAME IS WHY THE BAND IS 14 PX AND NOT 17. The first cut widened it
+// too, and what CI photographed here was ropes: a dozen closed trails at
+// once, at the densest closure cell in the release, with the lines under
+// them gone. The maintainer took the navigation weight back on 2026-09-21
+// and kept the outline and the overview cadence, which are what fix the
+// zoom that was actually broken. So this frame is the check on the OTHER
+// direction - a closure must be unmistakable AND must not be the subject of
+// a map about trails. And the lines under it are no longer a tint: every trail
 // here is the A.T.'s own red, so the tape's job of being unmistakable for a
 // trail line is harder than it was, which is what makes this frame worth
 // reading rather than only the overview one.
 // long-term-closures-overview.mjs is the same closures from the opening
 // camera, which is the zoom the complaint was actually about.
 export const caption =
-  'Bear Mountain and Doodletown on a phone, z13, Blaze colors off (the default): OPRHP’s long-term closed trails drawn as barrier tape on an opaque band of the sheet’s paper (#1575, the maintainer’s option E) over the lines — and since #1598 the band is 17 px, half its length red, inside a hard dark outline. The lines beneath are the park’s trails dashed and the A.T. solid, both in the one red since #1597 took the tint off them, so the tape is the one heavy mark on this frame without a second hue helping it. Seven closed runs of 1.1 to 1.9 km sit in this frame, placed by measuring the pinned release’s network overview, with the A.T. crossing it over Bear Mountain'
+  'Bear Mountain and Doodletown on a phone, z13, Blaze colors off (the default): OPRHP’s long-term closed trails drawn as barrier tape on an opaque band of the sheet’s paper (#1575, the maintainer’s option E) over the lines — and since #1598 the band is 14 px with 41% of its length red, inside a hard dark outline — 17 px and 51% for one day, until this frame showed a dozen closed trails drawn as ropes. The lines beneath are the park’s trails dashed and the A.T. solid, both in the one red since #1597 took the tint off them, so the tape is the one heavy mark on this frame without a second hue helping it. Seven closed runs of 1.1 to 1.9 km sit in this frame, placed by measuring the pinned release’s network overview, with the A.T. crossing it over Bear Mountain'
 export const alt =
   'The map screen over Bear Mountain State Park at zoom 13: the Appalachian Trail a plain solid red line, the park’s trails thinner red dashed lines, and along several of them a wide band of red diagonal stripes on a white ground inside a dark outline, laid over the line, the barrier tape marking a closed trail'
 

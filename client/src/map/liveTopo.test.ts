@@ -690,8 +690,6 @@ describe('the offline-only background', () => {
       'network-overview-casing',
       'network-overview-line-untaken',
       'network-overview-line',
-      closureCasingId('network-overview-closure-band'),
-      'network-overview-closure-band',
       // The corridor-view sketch (#869), which survives the subtraction for
       // a duller reason than the others: it is empty unless the shell has a
       // sketch to put in it, and the shell only has one when the phone has no
@@ -756,8 +754,6 @@ describe('the offline-only background', () => {
       // closures get (features/NEARBY_TRAILS.md §3: one mark for "do not walk
       // this", whoever's trail it is) - over its own blaze, still under
       // everything about the chosen trail.
-      closureCasingId('nearby-long-term-closure-band'),
-      'nearby-long-term-closure-band',
       'trail-casing-untaken',
       'trail-blaze-untaken',
       'trail-casing',
@@ -807,19 +803,8 @@ describe('the offline-only background', () => {
       'day-hike-route-gap',
       'day-hike-route-points',
       'day-hike-route-point-labels',
-      // Each band over its own outline (#1598), which is what a hiker
-      // recognises a closure by at the zooms where the stripes are too small
-      // to resolve - so it is a safety layer by the same argument the band
-      // is, and subtracting the live sheet may not take it.
-      closureCasingId(CLOSURE_LAYER_ID),
-      CLOSURE_LAYER_ID,
-      // The long-term closures a steward marks on the trail line itself
-      // (#783, features/NEARBY_TRAILS.md §3). Same treatment as the two
-      // above, different feed - and it belongs in this list for the reason
-      // the comment at the top gives: it is a safety layer, so a hiker on the
-      // offline background is exactly who must keep it.
-      closureCasingId(LONG_TERM_CLOSURE_LAYER_ID),
-      LONG_TERM_CLOSURE_LAYER_ID,
+      // Every closure moved to the top of the stack with the other safety
+      // marks (#1599) - see THE SAFETY MARKS near the end of this list.
       // The walk's own mile marks stayed here when the waypoints went down
       // the stack (2026-09-20): the hiker's route is drawn ON the map, not
       // part of the ground it describes.
@@ -830,13 +815,29 @@ describe('the offline-only background', () => {
       // empty whenever the feed is stale - the shell passes nothing - so
       // drawing it here costs a phone with an out-of-date feed nothing.
       WORKDAY_LAYER_ID,
-      WARNING_LAYER_ID,
       // The hiker's mark and its accuracy ring (#1581), over every place and
-      // under the ATC's notices - drawn offline above all, because a phone
-      // with no signal is exactly the one whose owner is standing somewhere
+      // under every hazard - drawn offline above all, because a phone with
+      // no signal is exactly the one whose owner is standing somewhere
       // asking where. Empty until the shell hands a fix over.
       POSITION_ACCURACY_LAYER_ID,
       POSITION_LAYER_ID,
+      // THE SAFETY MARKS, LAST (#1599, the maintainer: "Shouldn't closures
+      // and warnings just be the top 2 layers?"). All four closure bands
+      // together, each over its own outline, then the warning pins - a pin
+      // over a band hides a stripe of it where a band over a pin hides the
+      // whole mark. A hiker with no signal is exactly who must keep these,
+      // which is why this list has always ended with them; what changed is
+      // that the walk's own marks, the workdays and the hiker's mark are
+      // now below rather than above.
+      closureCasingId('network-overview-closure-band'),
+      'network-overview-closure-band',
+      closureCasingId('nearby-long-term-closure-band'),
+      'nearby-long-term-closure-band',
+      closureCasingId(CLOSURE_LAYER_ID),
+      CLOSURE_LAYER_ID,
+      closureCasingId(LONG_TERM_CLOSURE_LAYER_ID),
+      LONG_TERM_CLOSURE_LAYER_ID,
+      WARNING_LAYER_ID,
       // The ATC's own notices survive the subtraction for the same reason the
       // closures do, and arguably more so: their band is baked into a
       // published artifact rather than fetched live, so it is exactly the

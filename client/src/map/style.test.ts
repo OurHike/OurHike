@@ -493,6 +493,37 @@ describe('buildMapStyle', () => {
     )
   })
 
+  it('lets nothing but the ATC’s notices draw over a closure or a warning', () => {
+    // THE PROPERTY THE MAINTAINER ASKED FOR (#1599): "Shouldn't closures and
+    // warnings just be the top 2 layers?" Held as "nothing is above them"
+    // rather than as a list of the four things that were, because the four
+    // things that were got there one defensible argument at a time - the
+    // walk's mile marks, the volunteer workdays, the hiker's mark, its ring
+    // - and a list would have to be edited by whoever adds the fifth.
+    //
+    // The ATC's own group is the one exception and it is not this change's
+    // to move: "nothing on this map can cover one" is #461's rule, held by
+    // src/test/atcAlertProminence.test.ts, which asserts the last two layers
+    // by name.
+    const ids = style().layers.map((l) => l.id)
+    const safety = [
+      ...CLOSURE_TAPE_LAYER_IDS,
+      ...CLOSURE_TAPE_LAYER_IDS.map(closureCasingId),
+      WARNING_LAYER_ID,
+    ]
+    const atc = [
+      ATC_UPDATE_CASING_LAYER_ID,
+      ATC_UPDATE_LAYER_ID,
+      ATC_UPDATE_POINT_LAYER_ID,
+    ]
+    const lowestSafety = Math.min(...safety.map((id) => ids.indexOf(id)))
+
+    expect(lowestSafety).toBeGreaterThan(-1)
+    // Everything above the lowest safety mark is either a safety mark or the
+    // ATC's.
+    expect(ids.slice(lowestSafety).filter((id) => !safety.includes(id))).toEqual(atc)
+  })
+
   it('caps the overview closure’s outline with the band it edges, not with a number', () => {
     // The network overview's band stops at CORRIDOR_MAX_ZOOM, where the
     // nearby network's own tape takes over. An outline that outlived its
@@ -1733,16 +1764,24 @@ describe('the network overview sketch (#1135)', () => {
     // The full network's ordering argument, one zoom band earlier: a nearby
     // trail must never cover the trail the map is about, and below the seam
     // "the trail the map is about" is drawn by the A.T. sketch too.
+    //
+    // ITS CLOSURE BAND IS NO LONGER PART OF THAT CLAIM (#1599). The band
+    // used to sit between this sketch and the A.T.'s, ordered against the
+    // lines around it; every closure on the map is drawn in one group at
+    // the top now, so what this case holds is the LINES' order. The band's
+    // own case is "puts an outline under every closure band in the style"
+    // above, and the group's height is asserted in the safety-marks case.
     const ids = style().layers.map((l) => l.id)
 
     expect(ids.indexOf(NETWORK_OVERVIEW_LAYER_ID)).toBeGreaterThan(-1)
     expect(ids.indexOf(NETWORK_OVERVIEW_LAYER_ID)).toBeLessThan(
-      ids.indexOf(NETWORK_OVERVIEW_CLOSURE_LAYER_ID),
-    )
-    expect(ids.indexOf(NETWORK_OVERVIEW_CLOSURE_LAYER_ID)).toBeLessThan(
       ids.indexOf(TRAIL_OVERVIEW_LAYER_ID),
     )
     expect(ids.indexOf(TRAIL_OVERVIEW_LAYER_ID)).toBeLessThan(
+      ids.indexOf(TRAIL_CASING_LAYER_ID),
+    )
+    // And the band is above both, with the rest of the safety marks.
+    expect(ids.indexOf(NETWORK_OVERVIEW_CLOSURE_LAYER_ID)).toBeGreaterThan(
       ids.indexOf(TRAIL_CASING_LAYER_ID),
     )
   })
@@ -3033,12 +3072,30 @@ describe("the hiker's mark, over everything (#1581)", () => {
     const mark = ids.indexOf(POSITION_LAYER_ID)
 
     expect(ids[mark - 1]).toBe(POSITION_ACCURACY_LAYER_ID)
+    // UNDER THE SAFETY MARKS SINCE #1599, where it used to be under the
+    // ATC's notices alone: the maintainer asked for closures and warnings on
+    // top, and #1581's own argument for letting a notice cover this mark -
+    // it is hollow, so what is covered is its centre and not the ring or
+    // the ticks - holds for a closure band and a warning pin unchanged.
     expect(ids.slice(mark + 1)).toEqual([
+      closureCasingId(NETWORK_OVERVIEW_CLOSURE_LAYER_ID),
+      NETWORK_OVERVIEW_CLOSURE_LAYER_ID,
+      closureCasingId(NEARBY_LONG_TERM_CLOSURE_LAYER_ID),
+      NEARBY_LONG_TERM_CLOSURE_LAYER_ID,
+      closureCasingId(CLOSURE_LAYER_ID),
+      CLOSURE_LAYER_ID,
+      closureCasingId(LONG_TERM_CLOSURE_LAYER_ID),
+      LONG_TERM_CLOSURE_LAYER_ID,
+      WARNING_LAYER_ID,
       ATC_UPDATE_CASING_LAYER_ID,
       ATC_UPDATE_LAYER_ID,
       ATC_UPDATE_POINT_LAYER_ID,
     ])
-    expect(mark).toBeGreaterThan(ids.indexOf(WARNING_LAYER_ID))
+    // Over every PLACE, still, which is what #1581 was about: the waypoint
+    // pins, the workdays and the walk's own marks. What sits above it now is
+    // the hazards, and only those.
+    expect(mark).toBeGreaterThan(ids.indexOf(POI_LAYER_ID))
+    expect(mark).toBeLessThan(ids.indexOf(WARNING_LAYER_ID))
   })
 
   it('declares an empty position source for the shell to fill', () => {

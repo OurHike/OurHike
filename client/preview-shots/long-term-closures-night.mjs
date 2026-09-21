@@ -15,9 +15,9 @@
 // day frame's band is white over white paper and the previous build's night
 // band was ink over ink.
 //
-// AMENDED 2026-09-20 (#1598): the band in this frame is heavier than the one
-// described above - 17 px, half its length red, inside a hard dark outline -
-// and on a dark sheet the outline is the one part of it that does nothing,
+// AMENDED 2026-09-20 (#1598): the band in this frame carries 41% of its
+// length in red rather than 28%, inside a hard dark outline - and on a dark
+// sheet the outline is the one part of it that does nothing,
 // since a near-black edge against near-black ground has nothing to separate.
 // That is the honest reading of this frame: the outline is for the day
 // sheets and for the overview camera, and the white paper is still what

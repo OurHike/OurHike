@@ -2691,16 +2691,9 @@ export function buildMapStyle({
         chosen,
       ),
       buildNetworkOverviewLayer(NETWORK_OVERVIEW_LAYER_ID, appearance, 'chosen', chosen),
-      // Closed ground stays closed-looking below the seam: the sketch keeps
-      // `trail_status` per feature (48.4 line-miles of it, measured
-      // 2026-08-27), so the same barrier tape draws over it - over its own
-      // ghosted line, under everything the A.T. draws, and capped at the
-      // seam where the full network's own tape takes over.
-      ...buildClosureLayers(NETWORK_OVERVIEW_SOURCE_ID, {
-        ground: tapeGround,
-        bandId: NETWORK_OVERVIEW_CLOSURE_LAYER_ID,
-        filter: LONG_TERM_CLOSED_FILTER,
-      }).map((layer) => ({ ...layer, maxzoom: CORRIDOR_MAX_ZOOM })),
+      // The sketch's own closed ground is drawn with every other closure, at
+      // the top of the style (#1599) - it used to sit here, over its own
+      // ghosted line. See THE SAFETY MARKS, LAST at the end of this list.
       {
         // The corridor-view sketch (#869), UNDER the real trail's casing, so
         // on the one frame where both exist the real line is what a hiker
@@ -2855,20 +2848,10 @@ export function buildMapStyle({
         ),
         NETWORK_TILES_LAYER,
       ),
-      // A nearby trail marked closed long-term gets the same barrier tape the
-      // A.T.'s closures get (features/NEARBY_TRAILS.md §3: a hiker learns ONE
-      // mark for "do not walk this"). Over its own blaze for the reason the
-      // chosen trail's band is over its own - a barrier under the line is a
-      // picture of an open trail - and still under everything about the
-      // chosen trail, per the ordering argument above.
-      ...onSourceLayer(
-        buildClosureLayers(NEARBY_TRAILS_SOURCE_ID, {
-          ground: tapeGround,
-          bandId: NEARBY_LONG_TERM_CLOSURE_LAYER_ID,
-          filter: LONG_TERM_CLOSED_FILTER,
-        }),
-        NETWORK_TILES_LAYER,
-      ),
+      // A nearby trail marked closed long-term wears the same barrier tape,
+      // and it is drawn with every other closure at the top of the style
+      // (#1599) rather than over its own blaze here. See THE SAFETY MARKS,
+      // LAST at the end of this list.
       ...buildTrailLineSplit(
         TRAILS_SOURCE_ID,
         {
@@ -2988,12 +2971,9 @@ export function buildMapStyle({
       // closed long-term, whichever draws last wins pixels that look
       // identical either way. Two tapes at the same cadence stack without a
       // seam, because they are the same image.
-      ...buildClosureLayers(CLOSURE_SOURCE_ID, { ground: tapeGround }),
-      ...buildClosureLayers(TRAILS_SOURCE_ID, {
-        ground: tapeGround,
-        bandId: LONG_TERM_CLOSURE_LAYER_ID,
-        filter: LONG_TERM_CLOSED_FILTER,
-      }),
+      // Both of these are drawn at the top of the style now (#1599), with
+      // every other closure. See THE SAFETY MARKS, LAST at the end of this
+      // list.
       ...buildDayHikeTickLayers(),
       // Volunteer workdays (#760) OVER the waypoints and UNDER the warning
       // pins - later in this list means drawn on top, so the order here is
@@ -3003,11 +2983,8 @@ export function buildMapStyle({
       // one a hiker needs. Unlike the warning it submits to the collision
       // engine rather than shoving a shelter aside (workdayLayers.ts).
       buildWorkdayLayer(),
-      // And the serious-warning pins over every waypoint and over those. The
-      // collision engine already keeps them from being dropped
-      // (warningLayers.ts); this keeps them from being covered, which is the
-      // same guarantee by the other mechanism.
-      buildWarningLayer(),
+      // The serious-warning pins used to sit here, over the waypoints and
+      // the workdays. They are at the top of the style now (#1599).
       // The ATC's own notices last of all, so nothing on this map can cover
       // one.
       //
@@ -3043,6 +3020,63 @@ export function buildMapStyle({
       // where the hiker is, and the notice says what is there.
       buildPositionAccuracyLayer(positionInkFor(appearance)),
       buildPositionLayer(positionInkFor(appearance)),
+      // THE SAFETY MARKS, LAST (#1599, the maintainer: "Shouldn't closures
+      // and warnings just be the top 2 layers?").
+      //
+      // They were above every waypoint pin already, and below four things
+      // that had drifted over them one argument at a time: the walk's own
+      // mile marks, the volunteer workdays, and the hiker's mark and its
+      // ring. Each of those moves was defensible alone - which is exactly
+      // how a safety mark ends up underneath an invitation to a work party.
+      // The rule the workdays' own comment states ("when a hazard and an
+      // invitation land on the same pixels, the hazard is the one a hiker
+      // needs") is now a property of the stack rather than a claim about one
+      // pair of layers.
+      //
+      // ALL FOUR CLOSURE BANDS TOGETHER, which is the other half of it. They
+      // were spread across the style - the sketch's under the A.T.'s lines,
+      // the nearby network's over its own blaze, the two OurHike feeds above
+      // the trail stack - each ordered against the trail lines around it. A
+      // hiker reads one mark for "do not walk this"
+      // (features/NEARBY_TRAILS.md §3), so the four draw in one place and at
+      // one height, and "one treatment" stops being a claim about paint
+      // alone. What that gives up is the old argument that a nearby trail's
+      // band must not cover the trail the map is about: it can now, and
+      // that is the point - the band is a barrier, not a trail line.
+      //
+      // The hiker's own mark goes under them, which #1581 already accepted
+      // for the ATC's notices and for the same reason: the mark is hollow,
+      // so a band crossing it hides its centre and nothing else, and the
+      // ring and the ticks still say where the hiker is.
+      ...buildClosureLayers(NETWORK_OVERVIEW_SOURCE_ID, {
+        ground: tapeGround,
+        bandId: NETWORK_OVERVIEW_CLOSURE_LAYER_ID,
+        filter: LONG_TERM_CLOSED_FILTER,
+      }).map((layer) => ({ ...layer, maxzoom: CORRIDOR_MAX_ZOOM })),
+      ...onSourceLayer(
+        buildClosureLayers(NEARBY_TRAILS_SOURCE_ID, {
+          ground: tapeGround,
+          bandId: NEARBY_LONG_TERM_CLOSURE_LAYER_ID,
+          filter: LONG_TERM_CLOSED_FILTER,
+        }),
+        NETWORK_TILES_LAYER,
+      ),
+      ...buildClosureLayers(CLOSURE_SOURCE_ID, { ground: tapeGround }),
+      ...buildClosureLayers(TRAILS_SOURCE_ID, {
+        ground: tapeGround,
+        bandId: LONG_TERM_CLOSURE_LAYER_ID,
+        filter: LONG_TERM_CLOSED_FILTER,
+      }),
+      // The warning pins over the bands: a pin is a point and a band is
+      // hundreds of pixels long, so a band drawn over a pin hides the whole
+      // mark where a pin over a band hides a stripe of it. The same argument
+      // that puts the ATC's dot above its own band, one group down.
+      buildWarningLayer(),
+      // The ATC's notices remain last of all, and that is not this change's
+      // to move: "nothing on this map can cover one" is #461's rule, held as
+      // a property by src/test/atcAlertProminence.test.ts, which asserts the
+      // last two layers by name. So the maintainer's "top 2" is the top two
+      // OurHike layers; the upstream authority on the A.T. keeps the roof.
       ...buildAtcUpdateLayers(ATC_UPDATE_SOURCE_ID, tapeGround),
     ],
   }

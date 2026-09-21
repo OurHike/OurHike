@@ -4,11 +4,11 @@ affine==2.4.0
     # via rasterio
 attrs==26.1.0
     # via rasterio
-boto3==1.43.88
+boto3==1.43.97
     # via
     #   -r requirements.in
     #   moto
-botocore==1.43.89
+botocore==1.43.98
     # via
     #   boto3
     #   moto
@@ -44,7 +44,7 @@ markupsafe==3.0.3
     # via werkzeug
 moto[s3]==5.2.3
     # via -r requirements-dev.in
-numpy==2.5.2
+numpy==2.5.3
     # via
     #   -r requirements.in
     #   opencv-python-headless
@@ -60,7 +60,7 @@ pluggy==1.6.0
     # via
     #   pytest
     #   pytest-cov
-pmtiles==3.7.0
+pmtiles==3.8.1
     # via -r requirements.in
 psycopg[binary]==3.3.5
     # via -r requirements.in
@@ -74,7 +74,7 @@ pygments==2.20.0
     # via pytest
 pyparsing==3.3.2
     # via rasterio
-pyproj==3.7.2
+pyproj==3.8.0
     # via -r requirements.in
 pytest==9.1.1
     # via
@@ -104,7 +104,7 @@ requests-mock==1.12.1
     # via -r requirements-dev.in
 responses==0.26.2
     # via moto
-ruff==0.16.6
+ruff==0.16.8
     # via -r requirements-dev.in
 s3transfer==0.19.2
     # via boto3

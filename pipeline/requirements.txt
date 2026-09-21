@@ -4,9 +4,9 @@ affine==2.4.0
     # via rasterio
 attrs==26.1.0
     # via rasterio
-boto3==1.43.88
+boto3==1.43.97
     # via -r requirements.in
-botocore==1.43.89
+botocore==1.43.98
     # via
     #   boto3
     #   s3transfer
@@ -27,7 +27,7 @@ jmespath==1.1.0
     # via
     #   boto3
     #   botocore
-numpy==2.5.2
+numpy==2.5.3
     # via
     #   -r requirements.in
     #   opencv-python-headless
@@ -37,7 +37,7 @@ opencv-python-headless==4.14.0.94
     # via -r requirements.in
 pillow==12.3.0
     # via -r requirements.in
-pmtiles==3.7.0
+pmtiles==3.8.1
     # via -r requirements.in
 psycopg[binary]==3.3.5
     # via -r requirements.in
@@ -45,7 +45,7 @@ psycopg-binary==3.3.5
     # via psycopg
 pyparsing==3.3.2
     # via rasterio
-pyproj==3.7.2
+pyproj==3.8.0
     # via -r requirements.in
 python-dateutil==2.9.0.post0
     # via botocore

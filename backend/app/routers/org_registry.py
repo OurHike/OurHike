@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.core.org_access import OrgAccess, club_by_slug, org_access, require_org_admin
 from app.core.orm import commit_and_refresh
+from app.core.registry_pr import RegistryPrRefused, open_registry_pr
 from app.db.session import get_db
 from app.models.club import OrgAdmin
 from app.models.maintainer_assignment import MaintainerAssignment
@@ -378,6 +379,29 @@ def sign_off_registry(
     )
     complete = len(signed_by) >= REGISTRY_APPROVALS_REQUIRED
 
+    # THE THIRD SIGNATURE RAISES THE PULL REQUEST, which is the connection
+    # that used to be missing - agreement produced three rows and stopped,
+    # and the console screens described a pull request nothing opened.
+    #
+    # **AFTER THE SIGNATURE IS COMMITTED, AND NEVER INSIDE ITS TRANSACTION.**
+    # The signature is this organization's own record; GitHub being down
+    # must not undo three people's agreement. So a refusal here is caught,
+    # reported in words, and leaves everything already written alone.
+    raised: str | None = None
+    if complete:
+        try:
+            opened = open_registry_pr(db, access.club)
+        except RegistryPrRefused:
+            # Deliberately not surfaced verbatim: the message can name the
+            # repository or the reason a token was refused, and this answer
+            # goes to an organization admin.
+            pass
+        else:
+            access.club.registry_pr_number = opened.number
+            access.club.registry_pr_url = opened.url
+            db.commit()
+            raised = opened.url
+
     return {
         "status": "signed",
         "registry_fingerprint": fingerprint,
@@ -385,12 +409,22 @@ def sign_off_registry(
         "approvals_required": REGISTRY_APPROVALS_REQUIRED,
         "codeowners_available": codeowners,
         "complete": complete,
+        "pull_request": raised,
         "detail": (
             (
-                "All three have signed this exact registry. Nothing is published yet: opening the "
-                "pull request against the public repository is a step nobody has built, so a "
-                "maintainer still raises it by hand. Approved is not published, and the org home "
-                "screen tracks the gap."
+                (
+                    "All three have signed this exact registry, and it is now a pull request "
+                    "against the public repository. Your codeowners are asked to approve it there "
+                    "with their own GitHub accounts. Approved is still not published - a "
+                    "maintainer merges it, and the next map build is what reaches a phone."
+                )
+                if raised is not None
+                else (
+                    "All three have signed this exact registry. The pull request could not be "
+                    "opened just now, so nothing is waiting for your codeowners yet - your "
+                    "signatures are safe and pressing sign off again will try it. Approved is "
+                    "not published, and the org home screen tracks the gap."
+                )
             )
             if complete
             else (

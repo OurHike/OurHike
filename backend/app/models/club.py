@@ -47,7 +47,7 @@ built, and these are the columns it needs:
 import enum
 import uuid
 
-from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint
 
 from app.core.time import utc_now
 from app.db.base import Base
@@ -129,6 +129,17 @@ class Club(Base):
     # Who registered or claimed it. Null for the orgs that got here because a
     # maintainer wrote a row in pipeline/sources.json, which is most of them.
     created_by = Column(String, ForeignKey("profiles.id"), nullable=True)
+
+    # THE PULL REQUEST THIS ORGANIZATION'S REGISTRY IS SITTING IN, when
+    # three codeowners have signed and `registry_pr_enabled` let one be
+    # opened. Null for an organization that has not signed off, and for
+    # every organization on a deployment where the opener is switched off.
+    #
+    # Two columns rather than the number alone: the console shows the link
+    # and should not have to know how to build a GitHub URL, and the host
+    # differs between a fork and this repository.
+    registry_pr_number = Column(Integer, nullable=True)
+    registry_pr_url = Column(String, nullable=True)
 
     created_at = Column(DateTime, nullable=False, default=utc_now)
 

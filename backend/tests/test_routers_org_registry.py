@@ -9,7 +9,7 @@ safely be given a seat.
 
 import uuid
 
-from app.models.club import OrgState
+from app.models.club import Club, OrgState
 from app.models.org_registry import OrgPark, OrgSection, OrgTrail, ParkKind, RegistrySignoff
 from tests.factories import make_admin, make_assignment, make_org, make_profile, make_section
 from tests.tokens import auth_headers
@@ -300,6 +300,89 @@ def test_three_codeowners_signing_the_same_registry_completes_it(client, db_sess
     assert body["complete"] is True
 
 
+class TestTheThirdSignatureRaisesThePullRequest:
+    """The connection that was missing, and the reason the endpoint used to
+    say "a step nobody has built".
+
+    Three codeowners agreeing is what produces the pull request their own
+    GitHub accounts are then asked to approve. Before this, agreement
+    produced three rows and stopped - which is why the console screens
+    described a pull request nothing opened.
+    """
+
+    def _three_sign(self, client, db_session):
+        org = make_org(db_session, state=OrgState.claimed)
+        people = [make_profile(db_session) for _ in range(3)]
+        for person in people:
+            make_admin(db_session, org, person, is_codeowner=True)
+        bodies = [client.post(f"/clubs/{org.slug}/registry/signoff", headers=auth_headers(person.id)).json() for person in people]
+        return org, bodies
+
+    def test_the_first_two_signatures_raise_nothing(self, client, db_session, monkeypatch):
+        """Two people agreeing is not agreement. Opening on the first would
+        put a registry up that one person decided."""
+        from app.core.registry_pr import OpenedPr
+
+        calls = []
+
+        def opener(*args, **kwargs):
+            calls.append(1)
+            return OpenedPr(number=42, url="https://example/42")
+
+        monkeypatch.setattr("app.routers.org_registry.open_registry_pr", opener)
+
+        _, bodies = self._three_sign(client, db_session)
+
+        assert bodies[0]["pull_request"] is None
+        assert bodies[1]["pull_request"] is None
+        assert len(calls) == 1
+
+    def test_the_third_opens_it_and_the_answer_carries_the_link(self, client, db_session, monkeypatch):
+        from app.core.registry_pr import OpenedPr
+
+        monkeypatch.setattr(
+            "app.routers.org_registry.open_registry_pr",
+            lambda *args, **kwargs: OpenedPr(number=42, url="https://github.com/OurHike/OurHike/pull/42"),
+        )
+
+        org, bodies = self._three_sign(client, db_session)
+
+        assert bodies[2]["pull_request"] == "https://github.com/OurHike/OurHike/pull/42"
+        db_session.expire_all()
+        assert db_session.query(Club).filter(Club.id == org.id).one().registry_pr_number == 42
+
+    def test_a_refusal_does_not_lose_the_signature(self, client, db_session, monkeypatch):
+        """The signature is this organization's own record and is committed
+        before anything reaches GitHub. A remote that is down must not undo
+        three people's agreement."""
+        from app.core.registry_pr import RegistryPrRefused
+
+        def refuse(*args, **kwargs):
+            raise RegistryPrRefused("GitHub did not answer.")
+
+        monkeypatch.setattr("app.routers.org_registry.open_registry_pr", refuse)
+
+        _, bodies = self._three_sign(client, db_session)
+
+        assert bodies[2]["signatures"] == 3
+        assert bodies[2]["complete"] is True
+        assert bodies[2]["pull_request"] is None
+
+    def test_a_refusal_says_so_rather_than_claiming_a_pull_request(self, client, db_session, monkeypatch):
+        """The failure this whole session has been correcting: a screen that
+        describes a pull request nothing opened."""
+        from app.core.registry_pr import RegistryPrRefused
+
+        def refuse(*args, **kwargs):
+            raise RegistryPrRefused("not switched on")
+
+        monkeypatch.setattr("app.routers.org_registry.open_registry_pr", refuse)
+
+        _, bodies = self._three_sign(client, db_session)
+
+        assert "not open" in bodies[2]["detail"].lower() or "could not" in bodies[2]["detail"].lower()
+
+
 def test_changing_a_section_asks_the_signers_again(client, db_session):
     """The guarantee the whole screen exists for: nobody's name carries onto
     sections they never read."""
@@ -331,8 +414,19 @@ def test_changing_a_section_asks_the_signers_again(client, db_session):
     assert after["complete"] is False
 
 
-def test_the_response_does_not_claim_a_pull_request_nobody_opens(client, db_session):
-    """No code in this repository opens one. Saying so is the point."""
+def test_the_response_never_claims_a_pull_request_that_was_not_opened(client, db_session):
+    """This test used to assert the opposite sentence, and the reason it
+    changed is the point rather than an inconvenience.
+
+    It was written when no code here opened a pull request, to stop the
+    endpoint promising one anyway. Code now does - so the wording it pinned
+    would itself have become the false claim. What survives is the rule
+    underneath: the answer describes what actually happened.
+
+    The opener is off by default, so on this deployment nothing is raised,
+    and the sentence has to say so rather than describing the pull request a
+    switched-on deployment would have opened.
+    """
     org = make_org(db_session, state=OrgState.claimed)
     people = [make_profile(db_session) for _ in range(3)]
     for person in people:
@@ -341,7 +435,10 @@ def test_the_response_does_not_claim_a_pull_request_nobody_opens(client, db_sess
     for person in people:
         body = client.post(f"/clubs/{org.slug}/registry/signoff", headers=auth_headers(person.id)).json()
 
-    assert "nobody has built" in body["detail"]
+    assert body["complete"] is True
+    assert body["pull_request"] is None
+    assert "could not be opened" in body["detail"]
+    assert "your signatures are safe" in body["detail"].lower()
 
 
 def test_an_admin_who_is_not_a_codeowner_cannot_sign(client, db_session):

@@ -29,6 +29,12 @@
 // frame lost them among 6,677. At Doodletown itself they MERGE into one
 // mass - this is the densest closure cell in the release, where OPRHP marks
 // trail after trail closed, and at 11 px wide the neighbouring bands touch.
+// MAGNIFIED 4x THE BLOCK STRUCTURE DOES NOT SURVIVE THERE, and the caption
+// says so rather than promising blocks a reviewer will not find: the merged
+// cell is a red mass carrying white wedges, because a tick splays where the
+// bend is tight against an 11 px width - railway ties on a curve, which
+// reads correctly at z13 and becomes a starburst at this one - and because
+// each band's casing cuts across its neighbour's ticks where they overlap.
 // That is a true thing about that ground rather than a rendering fault, and
 // it is left in the frame rather than photographed around: a reviewer
 // should see what a park with two dozen closed trails looks like at an
@@ -50,9 +56,9 @@
 // The same seeding as long-term-closures.mjs - a remembered camera and a
 // reload - and the same rule: no location fix, no account, nobody's reports.
 export const caption =
-  'Bear Mountain and the lower Hudson at z10, below the zoom the band’s near rhythm draws at, Blaze colors off (the default): the same OPRHP closed trails long-term-closures.mjs photographs at z13, nine to sixteen pixels long here. Since #1598 a closure at this camera is a dark-edged red block rather than a blank white band — the outline is what survives at that length, and the band steps to a half-scale rhythm below z11 so a short closure still carries a tick. At Doodletown the bands merge into one mass, which is what two dozen closed trails at 11 px wide look like rather than a fault. This frame was z8 until 2026-09-21, where it photographed 6,677 waypoint pins with the closures lost among them; that density is a real question about the opening camera and it is raised in the pull request rather than answered here'
+  'Bear Mountain and the lower Hudson at z10, below the zoom the band’s near rhythm draws at, Blaze colors off (the default): the same OPRHP closed trails long-term-closures.mjs photographs at z13, nine to sixteen pixels long here. Since #1598 a closure at this camera is a dark-edged red block rather than a blank white band — the outline is what survives at that length, and the band steps to a half-scale rhythm below z11 so a short closure still carries a tick. On a run that stands alone that reads as a distinct block; at Doodletown it does not — magnified 4× the merged cell is a red mass carrying white wedges rather than blocks, because each band’s ticks splay where the bends are this tight against an 11 px width and neighbouring casings cut across one another. That is what two dozen closed trails come to at this camera rather than a fault, and the mass is still the most findable thing in the frame — but the block is a claim about the isolated runs only. This frame was z8 until 2026-09-21, where it photographed 6,677 waypoint pins with the closures lost among them; that density is a real question about the opening camera and it is raised in the pull request rather than answered here'
 export const alt =
-  'The map screen over Bear Mountain State Park and the lower Hudson at zoom 10: a web of thin red trail lines with the Appalachian Trail heavier among them, and around Bear Mountain a dense cluster of short wide marks laid across the lines, each a red and white block inside a dark outline, merging into one mass over Doodletown where two dozen trails are closed at once'
+  'The map screen over Bear Mountain State Park and the lower Hudson at zoom 10: a web of thin red trail lines with the Appalachian Trail heavier among them, and around Bear Mountain a dense cluster of short wide marks laid across the lines, each a red and white block inside a dark outline where a closure runs alone, and over Doodletown a single red mass shot through with white wedges where two dozen trails are closed at once'
 
 /** Vector tiles from the bucket plus generated contours across a park and
  *  its valley, the same allowance the z13 frame makes. */

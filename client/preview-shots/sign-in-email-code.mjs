@@ -9,10 +9,17 @@
 // against the preview's real project, which would create a user in
 // production's auth pool for whatever address was typed and send an email to
 // it. EmailSignIn.test.tsx holds the code step instead.
+//
+// THE SENTENCE IN THIS FRAME CHANGED, which is why the recipe is touched by
+// #1600. It read "we email you a 6-digit code"; the screen cannot know the
+// length - the UA project sends eight, and the field that assumed six was
+// dropping the last digit of every code - so it now says "a code" and the
+// alt below says the same. A caption naming a number the app had guessed is
+// how a hiker got told to check six digits of an eight-digit code.
 export const caption =
   'Sign in with email — the address step, in the same window the ask opened in, over the map (#279, #1596)'
 export const alt =
-  'A "Sign in with email" dialog over the trail map: the note that a 6-digit code will be emailed and typed in here, one Email field, an "Email me a code" button and "Not now"'
+  'A "Sign in with email" dialog over the trail map: the note that a code will be emailed and typed in here, one Email field, an "Email me a code" button and "Not now"'
 
 export default async function drive(page) {
   // The Map tab first, for the reason sign-in-ask.mjs gives at length: this

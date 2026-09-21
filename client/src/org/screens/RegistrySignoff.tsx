@@ -245,13 +245,32 @@ export function RegistrySignoff({
         )}
 
         <div className="org-callout" data-tone="info">
-          <span>
-            <strong>Nothing publishes on two approvals.</strong> When all{' '}
-            {approvalsRequired} agree we open a pull request against the public repository
-            — a person merges it, and the next map build is what puts your sections on a
-            phone. Sections stay editable afterwards: every change is dated rather than
-            overwritten.
-          </span>
+          {org.registry_pr_url ? (
+            <span>
+              <strong>It is up, and waiting on your codeowners.</strong> Approve it on
+              GitHub now, with your own GitHub account —{' '}
+              <a
+                className="org-link"
+                href={org.registry_pr_url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                open the pull request
+              </a>
+              . A person merges it after that, and the next map build is what puts your
+              sections on a phone. Sections stay editable afterwards: every change is
+              dated rather than overwritten.
+            </span>
+          ) : (
+            <span>
+              <strong>Nothing publishes on two approvals.</strong> When all{' '}
+              {approvalsRequired} agree, your registry goes up as a pull request against
+              the public repository and your codeowners approve it there with their own
+              GitHub accounts. A person merges it, and the next map build is what puts
+              your sections on a phone. Sections stay editable afterwards: every change is
+              dated rather than overwritten.
+            </span>
+          )}
         </div>
       </section>
     </>

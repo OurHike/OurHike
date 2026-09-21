@@ -89,6 +89,13 @@ class OrgOut(BaseModel):
     state: OrgState
     membership_url: str | None
     donation_url: str | None
+    # WHERE THIS ORGANIZATION'S REGISTRY IS SITTING, once three codeowners
+    # have signed and a pull request was opened. Null until then, and null
+    # on every deployment where `registry_pr_enabled` is off - which the
+    # console has to render as "nothing is waiting for you" rather than as
+    # the mechanism described in the abstract. The number stays behind the
+    # admin gate; the URL is what a screen needs and is public anyway.
+    registry_pr_url: str | None = None
     created_at: UtcDatetime
     admins: list[OrgAdminOut] = []
 

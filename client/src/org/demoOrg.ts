@@ -82,6 +82,10 @@ export const DEMO_ORG: Org = {
   website: 'https://cpthroughikers.example',
   verified_by: 'email',
   state: 'claimed',
+  // Absent, because the opener is off by default and the demo should show
+  // what a real organization sees rather than a link to a pull request
+  // nobody opened.
+  registry_pr_url: null,
   membership_url: 'https://cpthroughikers.example/join',
   donation_url: 'https://cpthroughikers.example/give',
   created_at: '2026-03-02T09:00:00Z',

@@ -294,8 +294,9 @@ export function HikeRegistry({
           Send to admins for sign-off
         </button>
         <span className="org-mono">
-          Your registry is committed to OurHike's public repository as a pull request —
-          your admins review it there, in the open.
+          Three admins sign off here. That is what puts your registry up as a pull request
+          on OurHike's public repository, and they approve it there with their own GitHub
+          accounts — in the open.
         </span>
       </div>
 

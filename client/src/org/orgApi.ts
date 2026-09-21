@@ -97,6 +97,12 @@ export interface Org {
   // was registered on an address the registrant typed for somebody else, and
   // nothing about it is published or verified until that person approves a seat.
   state: 'unclaimed' | 'pending' | 'claimed' | 'frozen' | 'deleted'
+  /** The pull request this registry is sitting in, or null for every
+   *  organization until a service identity's token is issued and
+   *  `registry_pr_enabled` is switched on. Null has to read as null: a
+   *  screen implying somebody is waiting to approve when nothing was
+   *  opened is the defect this field exists to end. */
+  registry_pr_url: string | null
   membership_url: string | null
   donation_url: string | null
   created_at: string

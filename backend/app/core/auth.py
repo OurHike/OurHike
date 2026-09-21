@@ -284,6 +284,51 @@ def get_current_email(
     return email.strip().lower() if isinstance(email, str) and email.strip() else None
 
 
+def get_current_github_login(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> str | None:
+    """The caller's GitHub account, from the token, or None.
+
+    The same bargain as `get_current_email` one provider further out: the
+    provider says who this is, and a username the caller typed says nothing.
+    A CODEOWNERS entry naming the wrong account hands somebody else approval
+    over an organization's registry, so this is the only place a login may
+    come from.
+
+    **WHERE SUPABASE PUTS IT IS @unvalidated.** `user_metadata.user_name` is
+    where a GitHub OAuth login is documented to land, and
+    `preferred_username` is the OIDC spelling some providers use instead;
+    both are read because the provider is not enabled on this project and
+    nobody here has seen a real token. What would settle it is one GitHub
+    sign-in against the live project, with the decoded claims printed once -
+    at which point the losing branch should be deleted rather than left as
+    a guess that looks like breadth.
+
+    The provider is checked as well as the claim: a token from some other
+    provider that happens to carry a `user_name` is not a GitHub identity,
+    and reading one would link an account nobody proved they hold.
+    """
+    if credentials is None:
+        return None
+    try:
+        claims = verify_supabase_jwt(credentials.credentials)
+    except jwt.PyJWTError:
+        return None
+
+    app_metadata = claims.get("app_metadata")
+    if not isinstance(app_metadata, dict) or app_metadata.get("provider") != "github":
+        return None
+
+    user_metadata = claims.get("user_metadata")
+    if not isinstance(user_metadata, dict):
+        return None
+    for claim in ("user_name", "preferred_username"):
+        value = user_metadata.get(claim)
+        if isinstance(value, str) and value.strip():
+            return value.strip().lower()
+    return None
+
+
 def get_current_user_optional(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: Session = Depends(get_db),

@@ -222,6 +222,20 @@ class Settings(BaseSettings):
     # "@ourhike.org" so the flow can be exercised end to end without reaching
     # a club.
     mail_allowed_suffixes: str = ""
+
+    # OPENING AN ORGANIZATION'S REGISTRY PULL REQUEST, and the same
+    # off-by-default argument mail makes one line up: a preview deployment
+    # holding a fixture must not be one variable away from opening pull
+    # requests against a public repository.
+    #
+    # The token is a SERVICE IDENTITY'S and never a person's - see
+    # app/core/registry_pr.py for why opening needs write access where
+    # approving does not. Write should be scoped to the registry directory
+    # GitHub-side; this process cannot assert that, so it asserts the thing
+    # it can and refuses any path outside the organization's own directory.
+    registry_pr_enabled: bool = False
+    registry_pr_token: str = ""
+    registry_pr_repo: str = "OurHike/OurHike"
     # WHERE A LINK WE MAIL POINTS. A preview deployment must mail a preview
     # link rather than a production one - the club-facing proposal screen is
     # reached only by the address in the message, so getting this wrong means

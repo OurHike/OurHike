@@ -599,7 +599,17 @@
   align-items: center;
   min-height: 44px;
   color: var(--brand-primary);
-  font-size: var(--text-body-sm);
+  /* --text-body-sm is not a token here and never was: the scale in
+     design-system/tokens/typography.css is --text-body-l, --text-body and
+     --text-body-s. A var() whose every name is undefined and which carries no
+     literal fallback resolves to the guaranteed-invalid value, so this
+     declaration was dropped whole and the link rendered at the inherited size.
+     Caught by the dangling-chain case in test/themeTokens.test.ts, added by
+     **#1590 - A waypoint seam at z7 with "None" in the legend's picker, the
+     shelters' nesting back, and no way left to hide a closure** after the same
+     mistake dropped the Show points pill's background. 14px matches the 13px
+     meta and 12px terms above it. */
+  font-size: var(--text-body-s, 14px);
   font-weight: 600;
   text-decoration: none;
 }

@@ -2,23 +2,22 @@ import { describe, it, expect } from 'vitest'
 import { createExpression, latest } from '@maplibre/maplibre-gl-style-spec'
 import {
   CLOSURE_CASING_COLOR,
-  CLOSURE_TAPE_WIDTH,
+  CLOSURE_COLOR,
+  CLOSURE_DASH,
+  CLOSURE_DASH_OVERVIEW_SCALE,
+  CLOSURE_LAYER_ID,
+  CLOSURE_OUTLINE_WIDTH,
+  CLOSURE_OVERVIEW_DASH,
   CLOSURE_TAPE_FAR_WIDTH,
   CLOSURE_TAPE_FULL_WIDTH_ZOOM,
-  CLOSURE_TAPE_OVERVIEW_CADENCE,
-  CLOSURE_TAPE_OVERVIEW_EDGE,
   CLOSURE_TAPE_NEAR_MIN_ZOOM,
-  CLOSURE_OUTLINE_WIDTH,
-  CLOSURE_STRIPE_EDGE,
-  CLOSURE_TAPE_CADENCE,
-  CLOSURE_TAPE_IMAGE_ID,
-  CLOSURE_TAPE_PIXEL_RATIO,
-  closureCasingId,
-  closureTapeImageId,
-  CLOSURE_COLOR,
+  CLOSURE_TAPE_WIDTH,
   buildClosureLayers,
-  tapeRedFraction,
-  CLOSURE_LAYER_ID,
+  closureCasingId,
+  closureGroundId,
+  dashArray,
+  dashRedFraction,
+  scaleDash,
 } from './closureStyle'
 import {
   buildMapStyle,
@@ -41,17 +40,16 @@ function evaluateZoom(value: unknown, zoom: number): number {
   return compiled.value.evaluate({ zoom }, {} as never) as number
 }
 
-/** The same, for the band's `line-pattern` step. `resolvedImage` evaluates
- *  to an object, so it is named rather than compared directly. */
-function patternAt(paint: Record<string, unknown>, zoom: number): string {
+/** The same, for the band's `line-dasharray` step. */
+function dashAt(paint: Record<string, unknown>, zoom: number): number[] {
   const compiled = createExpression(
-    paint['line-pattern'] as never,
-    latest.paint_line['line-pattern'] as never,
+    paint['line-dasharray'] as never,
+    latest.paint_line['line-dasharray'] as never,
   )
   if (compiled.result === 'error') {
-    throw new Error('line-pattern is not a valid expression')
+    throw new Error('line-dasharray is not a valid expression')
   }
-  return String(compiled.value.evaluate({ zoom }, {} as never))
+  return [...(compiled.value.evaluate({ zoom }, {} as never) as number[])]
 }
 
 // WIREFRAMES.md §7 and its Load-bearing values: a closure is a barrier along
@@ -65,11 +63,15 @@ function patternAt(paint: Record<string, unknown>, zoom: number): string {
 // colour-blind hiker, which between them cover a great many of the moments
 // this warning matters most.
 //
-// The band these tests were written against was a dashed line over a solid
-// casing, so they asked about a dasharray. It is barrier tape now
-// (lib/closureStyle.ts's header has the measurement that ended the band), so
-// they ask about a pattern - but they ask the same QUESTIONS, which is the
-// part that had to survive the change.
+// THE QUESTIONS HAVE OUTLIVED THREE SPELLINGS OF THE MARK, which is the
+// point of writing them as questions. These cases were first asked of a
+// dashed line over a solid casing; then of barrier tape, where they asked
+// about a `line-pattern`; and now of a barred band again, where they ask
+// about a dasharray once more. lib/closureStyle.ts's header has all three
+// and why each one ended. What has not moved is what is being asked: is a
+// closure wider than any blaze, does it carry a harder edge, does it have a
+// texture where a blaze has none, and do at least two of those survive with
+// hue removed.
 
 /** The blaze layer's own paint, read out of the real style rather than
  *  described here - the texture claims below are about what actually ships. */
@@ -82,35 +84,53 @@ function blazePaint(): Record<string, unknown> {
   return (layer?.paint ?? {}) as Record<string, unknown>
 }
 
+/** The three layers one closure source produces, and the paint of one of
+ *  them by position - the outline is index 0, the paper 1 and the ticks 2,
+ *  which buildClosureLayers' first case below is what holds. */
+const LAYERS = buildClosureLayers('closures', { ground: '#ffffff' })
+const paintAt = (index: number): Record<string, unknown> =>
+  (LAYERS[index] as { paint: Record<string, unknown> }).paint
+
 describe('closure vs blaze, as structural difference', () => {
   it('draws a closure markedly wider than any blaze', () => {
     // BLAZE_LINE_WIDTH is the WIDEST blaze on the map, not one of them, so
     // this holds against the centerline rather than against a side trail.
-    // Widening the AT line therefore has to widen the tape with it, and this
+    // Widening the AT line therefore has to widen the band with it, and this
     // is the test that says so.
     expect(CLOSURE_TAPE_WIDTH).toBeGreaterThan(BLAZE_LINE_WIDTH * 2)
+    // At the bottom of the taper too, which is where a closure is hardest to
+    // see and where a band that had quietly narrowed would say least.
+    expect(CLOSURE_TAPE_FAR_WIDTH).toBeGreaterThan(BLAZE_LINE_WIDTH * 2)
   })
 
   it('gives a closure a harder edge than a blaze gets', () => {
-    // Measured as the dark edge each mark carries beyond its own colour, which
-    // is what actually reads as weight on screen. The closure's edge used to be
-    // a casing line under the whole band; it is now the outline on every
-    // stripe, and it is thinner than that casing was - so this comparison is
-    // the one that had to be re-checked rather than assumed.
+    // Measured as the dark edge each mark carries beyond its own colour,
+    // which is what actually reads as weight on screen. The closure's edge
+    // has been three things - a casing under the whole band, then an outline
+    // on every stripe, now a casing under the whole band again - and this
+    // comparison is the one that had to be re-checked each time rather than
+    // assumed.
     const blazeOverhang = (CASING_LINE_WIDTH - BLAZE_LINE_WIDTH) / 2
 
-    expect(CLOSURE_STRIPE_EDGE).toBeGreaterThan(blazeOverhang)
+    expect(CLOSURE_OUTLINE_WIDTH).toBeGreaterThan(blazeOverhang)
   })
 
   it('textures a closure where every blaze is drawn solid', () => {
     // Having a texture against having none - a stronger difference than two
     // rhythms to tell apart, and one that cannot drift by someone editing a
-    // number. Read off the shipped style so it fails if a dash or a pattern is
-    // ever introduced on the trail lines.
+    // number. Read off the shipped style so it fails if a dash or a pattern
+    // is ever introduced on the trail lines.
+    //
+    // A BLAZE IS SOLID UNDER THE HUES, which is the appearance this reads:
+    // the default sheet dashes its context trails (#1588), so the claim is
+    // about the trail line a hiker takes, and blazePaint builds with no
+    // appearance at all.
     const paint = blazePaint()
 
     expect(paint['line-dasharray']).toBeUndefined()
     expect(paint['line-pattern']).toBeUndefined()
+    // And the closure has one, which is the other half of the sentence.
+    expect(paintAt(2)['line-dasharray']).toBeDefined()
   })
 
   it('stays distinguishable with hue removed entirely', () => {
@@ -125,7 +145,7 @@ describe('closure vs blaze, as structural difference', () => {
     const blazeWidth: number = BLAZE_LINE_WIDTH
 
     const differsOnWidth = closureWidth !== blazeWidth
-    const differsOnTexture = blazePaint()['line-pattern'] === undefined
+    const differsOnTexture = blazePaint()['line-dasharray'] === undefined
 
     expect(
       [differsOnWidth, differsOnTexture].filter(Boolean).length,
@@ -133,175 +153,150 @@ describe('closure vs blaze, as structural difference', () => {
   })
 })
 
-describe('how much of the tape is red', () => {
+describe('how much of the band is red', () => {
   it('puts down about two fifths, which is where the maintainer moved it', () => {
-    // A RANGE THAT MOVED, and the move is the thing worth reading. Until
-    // #1598 this asserted UNDER a half, and the comment called that "the
-    // direction this treatment was asked for in": the band before the tape
-    // was 100% opaque along its length - 59% red, 41% near-black casing
-    // showing through the bars - and less red was the answer to it.
+    // A RANGE THAT MOVED TWICE, and the moves are the thing worth reading.
+    // It asserted UNDER a half until #1598, and the comment called that "the
+    // direction this treatment was asked for in": the 2026-08-27 band was
+    // 100% opaque along its length - 59% red, 41% near-black casing showing
+    // through the bars - and less red was the answer to it.
     //
     // The maintainer read 28% on the map and asked for the opposite:
-    // "the closures are not easily visible". The two directions are about
-    // different marks, and #1575 is what separates them - the not-red half
-    // of this tape is the sheet's own paper now, not the darkest ink on the
-    // sheet. So half red on white is not a return to the black rope with
-    // red ticks; it is the barrier that mark was trying to be.
+    // "the closures are not easily visible". It went to 51%, photographed as
+    // ropes at Bear Mountain, and came back to 41% on 2026-09-21.
     //
-    // IT WENT TO 51% AND CAME BACK TO 41% on 2026-09-21, off the frame CI
-    // photographed at Bear Mountain: at 51%, 17 px wide and inside an
-    // outline, the band drew as a rope and the trails under it were gone.
-    // The maintainer took the navigation weight back and kept the outline
-    // and the overview cadence, which are what fix the zoom that was
-    // actually broken.
+    // The two directions are about different marks, and #1575 is what
+    // separates them: the not-red part of this band is the sheet's own paper
+    // now, not the darkest ink on the sheet.
     //
     // Bounded on both sides, still, and for the reason the second bound
-    // always had: a tape at 100% red is a solid line, which is the one
-    // thing a closure may not look like (the blaze comparisons above).
-    expect(tapeRedFraction(CLOSURE_TAPE_CADENCE)).toBeCloseTo(0.407, 2)
-    expect(tapeRedFraction(CLOSURE_TAPE_CADENCE)).toBeGreaterThan(0.35)
-    expect(tapeRedFraction(CLOSURE_TAPE_CADENCE)).toBeLessThan(0.55)
+    // always had: a band at 100% red is a solid line, which is the one thing
+    // a closure may not look like (the blaze comparisons above).
+    expect(dashRedFraction(CLOSURE_DASH)).toBeCloseTo(0.407, 2)
+    expect(dashRedFraction(CLOSURE_DASH)).toBeGreaterThan(0.35)
+    expect(dashRedFraction(CLOSURE_DASH)).toBeLessThan(0.55)
   })
 
-  it('is the same red at both cadences, so the overview tape makes no softer claim', () => {
-    // The whole point of scaling BOTH axes (CLOSURE_TAPE_OVERVIEW_SCALE).
-    // Scaling only the pitch would thin the overview tape's red to a third,
-    // and a closure would quietly look less closed at the zoom where it is
-    // hardest to see - the same argument lib/atcUpdateStyle.ts makes for its
-    // doubled tape, run the other way.
-    expect(tapeRedFraction(CLOSURE_TAPE_OVERVIEW_CADENCE)).toBeCloseTo(
-      tapeRedFraction(CLOSURE_TAPE_CADENCE),
+  it('is the same red at both rhythms, so the overview band makes no softer claim', () => {
+    // The whole point of scaling BOTH numbers (CLOSURE_DASH_OVERVIEW_SCALE).
+    // Scaling only the gap would thin the overview band's red, and a closure
+    // would quietly look less closed at the zoom where it is hardest to see -
+    // the same argument lib/atcUpdateStyle.ts makes for its slower rhythm,
+    // run the other way.
+    expect(dashRedFraction(CLOSURE_OVERVIEW_DASH)).toBeCloseTo(
+      dashRedFraction(CLOSURE_DASH),
       10,
+    )
+    expect(CLOSURE_OVERVIEW_DASH).toEqual(
+      scaleDash(CLOSURE_DASH, CLOSURE_DASH_OVERVIEW_SCALE),
     )
   })
 
-  it('halves the pitch at the overview, so a 1.5 km closure has to cross a stripe', () => {
-    // The measurement #1598 exists for, as arithmetic rather than a frame.
-    // OPRHP's closed runs are 1.1 to 1.9 km; at latitude 41 that is 3 to 7
-    // px at z8. A run shorter than one pitch can land entirely between two
-    // stripes and draw as a blank slab of paper, so the pitch is the length
-    // a closure must reach before the tape is guaranteed to say anything.
-    expect(CLOSURE_TAPE_OVERVIEW_CADENCE.pitch).toBeLessThan(CLOSURE_TAPE_CADENCE.pitch)
-    // 7 px is the longest of those runs at z8. Held as the number it is,
-    // rather than as "small", so a pitch edited back up fails here.
-    expect(CLOSURE_TAPE_OVERVIEW_CADENCE.pitch).toBeLessThanOrEqual(7)
-  })
+  it('lands the tick on the weight the tape\u2019s own stripe carried', () => {
+    // The rebuild changed the mark's ANGLE and not its weight, and this is
+    // that claim as a number. The tape's stripe was 4 px measured across a
+    // 55-degree lean, which covers 4 / sin(55) = 4.9 px ALONG the line; the
+    // tick is square, so it covers its own length. At the full width the two
+    // are the same ink.
+    const tickPx = CLOSURE_DASH.tick * CLOSURE_TAPE_WIDTH
 
-  it('tiles without a seam at the pixel ratio it is drawn at, at both cadences', () => {
-    // map/closureTape.ts makes the image exactly one pitch wide, so a pitch
-    // that is not a whole number of image pixels rounds - and a rounded tile
-    // repeats at the wrong length, which shows as a stutter every few stripes.
-    // Cheap to hold here, invisible until somebody photographs it. Both
-    // cadences since #1598: halving a pitch is exactly the edit that can put
-    // a half pixel into the second one.
-    for (const cadence of [CLOSURE_TAPE_CADENCE, CLOSURE_TAPE_OVERVIEW_CADENCE]) {
-      const pixels = cadence.pitch * CLOSURE_TAPE_PIXEL_RATIO
-      expect(pixels).toBe(Math.round(pixels))
-      const stripePixels = cadence.stripe * CLOSURE_TAPE_PIXEL_RATIO
-      expect(stripePixels).toBe(Math.round(stripePixels))
-    }
+    expect(tickPx).toBeCloseTo(4 / Math.sin((55 * Math.PI) / 180), 1)
   })
 })
 
-describe('the two cadences and where the band swaps between them', () => {
+describe('the two rhythms and where the band swaps between them', () => {
   it('swaps where the shortest closure on the map first clears one near pitch', () => {
     // The arithmetic the step zoom is derived from, re-run here rather than
-    // trusted: a pattern says nothing about a line shorter than one of its
+    // trusted: a rhythm says nothing about a line shorter than one of its
     // pitches. OPRHP's shortest closed run is 1.1 km, and at latitude 41 a
     // zoom covers 117,610 / 2^z metres per pixel - so the run is 2.4 px at
-    // z8 and 19.2 px at z11, first clearing the near cadence's 12 px
-    // between z10 and z11.
+    // z8 and 19.2 px at z11, first clearing the near pitch between z10 and
+    // z11.
     //
     // This was POI_PIN_MIN_ZOOM's 9 until #1590 moved the seam to 7, which
-    // would have left three zooms drawing the near cadence over closures
-    // two to ten pixels long. The tie to the seam was a convenience; this
-    // is the reason, so this is what the constant follows.
+    // would have left three zooms drawing the near rhythm over closures two
+    // to ten pixels long. The tie to the seam was a convenience; this is the
+    // reason, so this is what the constant follows.
     const SHORTEST_CLOSED_RUN_M = 1100
     const metresPerPixel = (zoom: number) => 117610 / 2 ** zoom
     const runInPixels = (zoom: number) => SHORTEST_CLOSED_RUN_M / metresPerPixel(zoom)
+    const pitchPx = (CLOSURE_DASH.tick + CLOSURE_DASH.gap) * CLOSURE_TAPE_WIDTH
 
-    expect(runInPixels(CLOSURE_TAPE_NEAR_MIN_ZOOM)).toBeGreaterThan(
-      CLOSURE_TAPE_CADENCE.pitch,
-    )
-    expect(runInPixels(CLOSURE_TAPE_NEAR_MIN_ZOOM - 1)).toBeLessThan(
-      CLOSURE_TAPE_CADENCE.pitch,
-    )
-    // And the overview cadence carries the zooms below it for the same
-    // reason: at z8 that run is 2.4 px, under even the halved pitch, but
-    // half as far under it.
-    expect(CLOSURE_TAPE_OVERVIEW_CADENCE.pitch).toBeLessThan(CLOSURE_TAPE_CADENCE.pitch)
+    expect(runInPixels(CLOSURE_TAPE_NEAR_MIN_ZOOM)).toBeGreaterThan(pitchPx)
+    expect(runInPixels(CLOSURE_TAPE_NEAR_MIN_ZOOM - 1)).toBeLessThan(pitchPx)
   })
 
-  it('keeps the same share of ink at both cadences, so the overview tape is not the darker one', () => {
-    // The arithmetic CLOSURE_TAPE_OVERVIEW_EDGE exists for. Ink is the
-    // stripe plus its two edges, and at a halved pitch an unhalved edge
-    // leaves much less paper between the stripes than the tape it is a
-    // smaller copy of - so the mark a hiker sees at an overview camera
-    // would be a DARKER band, not the same band smaller.
-    //
-    // Measured: 66% ink at both cadences scaled, against 92% if the edge is
-    // left alone. (At the 51% red this carried for one day it crossed 100%
-    // outright and the stripes merged; the number moved with the cadence on
-    // 2026-09-21, the failure did not.)
-    const ink = (cadence: { stripe: number; pitch: number }, edge: number) =>
-      tapeRedFraction({ stripe: cadence.stripe + edge * 2, pitch: cadence.pitch })
-    const scaled = ink(CLOSURE_TAPE_OVERVIEW_CADENCE, CLOSURE_TAPE_OVERVIEW_EDGE)
-    const unscaled = ink(CLOSURE_TAPE_OVERVIEW_CADENCE, CLOSURE_STRIPE_EDGE)
+  it('steps the dasharray at that zoom and nowhere else', () => {
+    // Read by EVALUATING the step through MapLibre's own engine rather than
+    // by matching an expression's shape, which passes on an expression that
+    // is valid and wrong.
+    const band = paintAt(2)
 
-    expect(scaled).toBeCloseTo(ink(CLOSURE_TAPE_CADENCE, CLOSURE_STRIPE_EDGE), 10)
-    expect(scaled).toBeCloseTo(0.661, 2)
-    expect(unscaled).toBeCloseTo(0.916, 2)
-    expect(unscaled).toBeGreaterThan(scaled)
+    for (const zoom of [0, 7, 9, CLOSURE_TAPE_NEAR_MIN_ZOOM - 1]) {
+      expect(dashAt(band, zoom), `z${zoom}`).toEqual(dashArray(CLOSURE_OVERVIEW_DASH))
+    }
+    for (const zoom of [CLOSURE_TAPE_NEAR_MIN_ZOOM, 13, 16, 22]) {
+      expect(dashAt(band, zoom), `z${zoom}`).toEqual(dashArray(CLOSURE_DASH))
+    }
   })
 })
 
 describe('buildClosureLayers', () => {
-  const layers = buildClosureLayers('closures', { ground: '#ffffff' })
-  /** The paint of one of the pair, by position - the outline is index 0 and
-   *  the band index 1, which the first case below is what holds. */
-  const paintAt = (index: number): Record<string, unknown> =>
-    (layers[index] as { paint: Record<string, unknown> }).paint
+  const layers = LAYERS
 
-  it('draws the band over an outline, and nothing else between them', () => {
-    // TWO LAYERS SINCE #1598, WHERE THIS ASSERTED ONE. The one-layer rule
-    // was about a casing showing through TRANSPARENT gaps, which is the
-    // defect the tape replaced; #1575 filled the gaps with the sheet's own
-    // paper, so a line under the band can only appear at its two edges.
-    // What this holds now is the ordering that keeps that true: the outline
-    // is first, so it is painted under, and the paper under-band is still in
-    // the image rather than a third layer.
+  it('draws the ticks over the paper over an outline, and nothing else between them', () => {
+    // THREE LAYERS AND ALL OF THEM PLAIN LINES (#1599). The order is the
+    // claim: an outline that drew over the paper would be a bar across the
+    // band, and paper over the ticks would be no mark at all. There is no
+    // fourth layer, because the thing a fourth would be for - a texture - is
+    // what tore at every bend.
     expect(layers.map((l) => l.id)).toEqual([
       closureCasingId(CLOSURE_LAYER_ID),
+      closureGroundId(CLOSURE_LAYER_ID),
       CLOSURE_LAYER_ID,
     ])
+    for (const layer of layers) {
+      expect((layer.paint as Record<string, unknown>)['line-pattern']).toBeUndefined()
+    }
   })
 
   it('shows the outline as an edge and never as a band of its own', () => {
-    // The old objection, made into a number: the outline may only ever be
-    // what shows PAST the opaque band, so its width is the band's plus twice
-    // CLOSURE_OUTLINE_WIDTH and not a pixel more. Compared at both ends of
-    // the taper, because a widened stop on one and not the other is exactly
-    // how an outline turns into a rope.
-    const widthAt = (paint: Record<string, unknown>, zoom: number) =>
-      evaluateZoom(paint['line-width'], zoom)
+    // The old objection to a casing under a band, made into a number: the
+    // outline may only ever be what shows PAST the opaque paper, so its
+    // width is the band's plus twice CLOSURE_OUTLINE_WIDTH and not a pixel
+    // more. Compared at both ends of the taper, because a widened stop on
+    // one and not the other is exactly how an outline turns into a rope.
     const casing = paintAt(0)
-    const band = paintAt(1)
+    const ground = paintAt(1)
 
     for (const zoom of [CLOSURE_TAPE_NEAR_MIN_ZOOM, CLOSURE_TAPE_FULL_WIDTH_ZOOM]) {
-      expect(widthAt(casing, zoom) - widthAt(band, zoom)).toBeCloseTo(
-        CLOSURE_OUTLINE_WIDTH * 2,
-        10,
-      )
+      expect(
+        evaluateZoom(casing['line-width'], zoom) -
+          evaluateZoom(ground['line-width'], zoom),
+      ).toBeCloseTo(CLOSURE_OUTLINE_WIDTH * 2, 10)
     }
     expect(casing['line-color']).toBe(CLOSURE_CASING_COLOR)
-    expect(casing['line-pattern']).toBeUndefined()
+    expect(casing['line-dasharray']).toBeUndefined()
+  })
+
+  it('runs the paper the whole length, which is what stops it being a railway', () => {
+    // The 2026-08-27 band drew red ticks over a SOLID casing, so 41% of its
+    // length was the darkest ink on the sheet and it read as a railway. The
+    // ticks here are square too; what makes this a different mark is that the
+    // layer under them is the sheet's paper, unbroken, and the casing is
+    // reachable only at the two edges.
+    const ground = paintAt(1)
+
+    expect(ground['line-dasharray']).toBeUndefined()
+    expect(ground['line-color']).toBe('#ffffff')
+    expect(evaluateZoom(ground['line-width'], 13)).toBeCloseTo(CLOSURE_TAPE_WIDTH, 10)
   })
 
   it('grows the band with the zoom, and never shrinks it as a hiker zooms in', () => {
     // "Readily apparent at all the zoom levels" (the maintainer, 2026-09-20)
     // as a property rather than two numbers: the band is monotonic across
     // every zoom the map draws, so no camera move can make a closure lighter.
-    const band = paintAt(1)['line-width']
+    const band = paintAt(2)['line-width']
     const widths = [0, 4, 7, 9, 11, 12, 13, 16, 20].map((z) => evaluateZoom(band, z))
 
     expect(widths).toEqual([...widths].sort((a, b) => a - b))
@@ -309,58 +304,46 @@ describe('buildClosureLayers', () => {
     expect(evaluateZoom(band, 16)).toBeCloseTo(CLOSURE_TAPE_WIDTH, 10)
   })
 
+  it('draws all three at one width, so the edge cannot drift off the band', () => {
+    // The paper and the ticks share a width exactly; the outline is that
+    // width plus its two edges. Held at both stops because one taper edited
+    // and not the others is how a band and its ground come apart.
+    for (const zoom of [8, 12, 16]) {
+      expect(evaluateZoom(paintAt(1)['line-width'], zoom)).toBe(
+        evaluateZoom(paintAt(2)['line-width'], zoom),
+      )
+    }
+  })
+
   it('reads from the source it was given', () => {
     expect(layers.every((l) => 'source' in l && l.source === 'closures')).toBe(true)
   })
 
-  it('paints the band with the tape image rather than a flat colour, at each zoom’s cadence', () => {
-    const paint = paintAt(1)
+  it('paints the paper it was given, and a night build asks for its own (#1575)', () => {
+    // One ground per sheet paper: a night build asks for the night paper, and
+    // the two are never the same colour. It was an image id until #1599 and
+    // is a `line-color` now, which is what lets map/style.ts repaint it on a
+    // sheet change rather than re-point it.
+    const night = buildClosureLayers('closures', { ground: '#0c1410' })
 
-    // The overview tape below the seam and the near one from it in (#1598),
-    // read by evaluating the step rather than by matching its shape.
-    expect(patternAt(paint, 8)).toBe(closureTapeImageId('#ffffff', 'overview'))
-    expect(patternAt(paint, CLOSURE_TAPE_NEAR_MIN_ZOOM)).toBe(
-      closureTapeImageId('#ffffff', 'near'),
+    expect((night[1] as { paint: Record<string, unknown> }).paint['line-color']).toBe(
+      '#0c1410',
     )
-    expect(patternAt(paint, 16)).toBe(closureTapeImageId('#ffffff', 'near'))
-    expect(evaluateZoom(paint['line-width'], 16)).toBeCloseTo(CLOSURE_TAPE_WIDTH, 10)
-  })
-
-  it('points the band at the tape drawn on the paper it was given (#1575)', () => {
-    // One image per sheet paper, named from the stem: a night build asks for
-    // the night tape, and the two are never the same image. Both cadences,
-    // since a sheet change that swapped only one of them would draw the day
-    // tape at the opening camera on a night sheet.
-    const night = (
-      buildClosureLayers('closures', { ground: '#0c1410' })[1] as {
-        paint: Record<string, unknown>
-      }
-    ).paint
-
-    for (const zoom of [8, 16]) {
-      expect(patternAt(night, zoom)).not.toBe(patternAt(paintAt(1), zoom))
-      expect(String(patternAt(night, zoom))).toContain('0c1410')
-      expect(String(patternAt(night, zoom)).startsWith(CLOSURE_TAPE_IMAGE_ID)).toBe(true)
-    }
+    expect(paintAt(1)['line-color']).toBe('#ffffff')
   })
 
   it('does not data-drive colour off blaze_color - a closure is not a blaze', () => {
     // Guards against someone reusing the blaze match expression here for
     // consistency's sake, which would make a closure inherit a trail's hue.
-    // Stronger than it was: with the red baked into the image there is no
-    // `line-color` on the band at all, so the check is that none appeared.
-    // The outline under it has one, and it is the sheet's darkest ink -
-    // a constant, never anything read off a feature.
-    const paint = paintAt(1)
-
-    expect(paint['line-color']).toBeUndefined()
+    // Every colour in these three layers is a literal: the closure red, the
+    // sheet's darkest ink, and the paper the caller passed.
     expect(JSON.stringify(layers)).not.toContain('blaze_color')
+    expect(paintAt(2)['line-color']).toBe(CLOSURE_COLOR)
   })
 
-  it('keeps the closure red as the tape colour, wherever it is now drawn', () => {
-    // The hue did not change and must not: the constant is still the one
-    // map/closureTape.ts rasterises, and lib/atcUpdateStyle.ts still reads it
-    // so the two feeds cannot drift into two severities.
+  it('keeps the closure red as the band colour, wherever it is now drawn', () => {
+    // The hue did not change and must not: lib/atcUpdateStyle.ts still reads
+    // it so the two feeds cannot drift into two severities.
     expect(CLOSURE_COLOR).toBe('#b2321f')
   })
 })

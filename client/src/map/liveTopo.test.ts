@@ -65,16 +65,23 @@ import { POSITION_ACCURACY_LAYER_ID, POSITION_LAYER_ID } from './positionLayers'
 import { WORKDAY_LAYER_ID } from './workdayLayers'
 import { DISPUTE_LAYER_ID } from './disputeLayers'
 import { COVERAGE_SEAM_LABEL_LAYER_ID, COVERAGE_SEAM_LAYER_ID } from './coverageLayers'
-import {
-  ATC_UPDATE_CASING_LAYER_ID,
-  ATC_UPDATE_LAYER_ID,
-  ATC_UPDATE_POINT_LAYER_ID,
-} from '../lib/atcUpdateStyle'
+import { ATC_UPDATE_LAYER_ID, ATC_UPDATE_POINT_LAYER_ID } from '../lib/atcUpdateStyle'
 import {
   closureCasingId,
+  closureGroundId,
   CLOSURE_LAYER_ID,
   LONG_TERM_CLOSURE_LAYER_ID,
 } from '../lib/closureStyle'
+
+/** One closure band's three layers, bottom to top (#1599): the dark edge,
+ *  the sheet's paper, the red ticks. Spelled once because the list below
+ *  names five bands and a hand-written triple per band is five chances to
+ *  get the order wrong. */
+const bandLayers = (bandId: string) => [
+  closureCasingId(bandId),
+  closureGroundId(bandId),
+  bandId,
+]
 import {
   ROUTE_CASING_LAYER_ID,
   ROUTE_LINE_LAYER_ID,
@@ -828,15 +835,13 @@ describe('the offline-only background', () => {
       // whole mark. A hiker with no signal is exactly who must keep these,
       // which is why this list has always ended with them; what changed is
       // that the walk's own marks, the workdays and the hiker's mark are
-      // now below rather than above.
-      closureCasingId('network-overview-closure-band'),
-      'network-overview-closure-band',
-      closureCasingId('nearby-long-term-closure-band'),
-      'nearby-long-term-closure-band',
-      closureCasingId(CLOSURE_LAYER_ID),
-      CLOSURE_LAYER_ID,
-      closureCasingId(LONG_TERM_CLOSURE_LAYER_ID),
-      LONG_TERM_CLOSURE_LAYER_ID,
+      // now below rather than above. Each band is three plain lines since
+      // #1599 - a dark edge, the sheet's paper, red ticks - which is what
+      // bandLayers spells, and there is no image behind any of them.
+      ...bandLayers('network-overview-closure-band'),
+      ...bandLayers('nearby-long-term-closure-band'),
+      ...bandLayers(CLOSURE_LAYER_ID),
+      ...bandLayers(LONG_TERM_CLOSURE_LAYER_ID),
       WARNING_LAYER_ID,
       // The ATC's own notices survive the subtraction for the same reason the
       // closures do, and arguably more so: their band is baked into a
@@ -851,8 +856,7 @@ describe('the offline-only background', () => {
       // Over its own outline, like every closure band above (#1598): one mark
       // for "do not walk this" means the ATC's band grew an edge the day the
       // closures' did.
-      ATC_UPDATE_CASING_LAYER_ID,
-      ATC_UPDATE_LAYER_ID,
+      ...bandLayers(ATC_UPDATE_LAYER_ID),
       // And the dots, which is what most ATC notices actually are - five of
       // the six reviewed on 2026-08-12 name a single mile marker.
       ATC_UPDATE_POINT_LAYER_ID,

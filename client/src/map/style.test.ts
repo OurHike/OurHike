@@ -3,7 +3,6 @@ import {
   ATC_UPDATE_CASING_LAYER_ID,
   ATC_UPDATE_LAYER_ID,
   ATC_UPDATE_POINT_LAYER_ID,
-  atcTapeImageId,
 } from '../lib/atcUpdateStyle'
 import {
   SHARED_GROUND_BLAZE_LAYER_ID,
@@ -118,9 +117,11 @@ import { CORRIDOR_MAX_ZOOM } from './corridorLayers'
 import { CLOSURE_SOURCE_ID } from './closureLayers'
 import { WARNING_LAYER_ID, WARNING_SOURCE_ID } from './warningLayers'
 import {
-  CLOSURE_TAPE_IMAGE_ID,
   closureCasingId,
-  closureTapeImageId,
+  CLOSURE_DASH,
+  CLOSURE_OVERVIEW_DASH,
+  closureGroundId,
+  dashArray,
   CLOSURE_LAYER_ID,
   LONG_TERM_CLOSED_FILTER,
   LONG_TERM_CLOSURE_LAYER_ID,
@@ -239,19 +240,19 @@ function widthFor(
 /** A paint property of one layer, evaluated by MapLibre's own engine for
  *  one feature - the way the renderer will, rather than by reading the
  *  array back. `spec` is the property's entry in the style spec. */
-/** A tape layer's `line-pattern` at one zoom, resolved by MapLibre's own
- *  engine - the band names two images and steps between them at the seam
- *  since #1598, so a test that compared the property to an id would be
- *  asking the wrong question. */
-function tapeAt(paint: Record<string, unknown>, zoom: number): string {
+/** A band's `line-dasharray` at one zoom, resolved by MapLibre's own engine
+ *  - the band names two rhythms and steps between them at
+ *  CLOSURE_TAPE_NEAR_MIN_ZOOM, so a test that compared the property to one
+ *  array would be asking the wrong question. */
+function dashAt(paint: Record<string, unknown>, zoom: number): number[] {
   const compiled = createExpression(
-    paint['line-pattern'] as never,
-    latest.paint_line['line-pattern'] as never,
+    paint['line-dasharray'] as never,
+    latest.paint_line['line-dasharray'] as never,
   )
   if (compiled.result === 'error') {
-    throw new Error('line-pattern is not a valid expression')
+    throw new Error('line-dasharray is not a valid expression')
   }
-  return String(compiled.value.evaluate({ zoom }, {} as never))
+  return [...(compiled.value.evaluate({ zoom }, {} as never) as number[])]
 }
 
 function paintFor(
@@ -307,9 +308,10 @@ function sortKeyFor(layerId: string, source: string): number {
  */
 const CLOSURE_OVERLAY_LAYER_IDS: readonly string[] = [
   LONG_TERM_CLOSURE_LAYER_ID,
-  // And its outline since #1598, which draws from the same source and is a
-  // barrier rather than a trail line for exactly the same reason the band is.
+  // And its outline and its paper, which draw from the same source and are a
+  // barrier rather than a trail line for exactly the reason the band is.
   closureCasingId(LONG_TERM_CLOSURE_LAYER_ID),
+  closureGroundId(LONG_TERM_CLOSURE_LAYER_ID),
 ]
 
 /** Every trail layer bound to the trail source - casing and blaze alike. */
@@ -458,20 +460,23 @@ describe('buildMapStyle', () => {
     // and is the confident false statement lib/closureStyle.ts exists to
     // prevent.
     const band = layer(LONG_TERM_CLOSURE_LAYER_ID).paint as Record<string, unknown>
+    const ground = layer(closureGroundId(LONG_TERM_CLOSURE_LAYER_ID)).paint as Record<
+      string,
+      unknown
+    >
 
-    // The tape on the paper of the sheet this style was built for: the field
-    // day sheet, which is what a build with no appearance draws (#1575). At
-    // both of the cadences the band steps between since #1598, because a
+    // Ticks at both of the rhythms the band steps between since #1598 - a
     // texture that survives only above the seam is not a texture at the
-    // camera this map opens on.
-    const paper = mapBackdrop({ theme: 'light' })
-    expect(tapeAt(band, 8)).toBe(closureTapeImageId(paper, 'overview'))
-    expect(tapeAt(band, 10)).toBe(closureTapeImageId(paper, 'overview'))
-    expect(tapeAt(band, 13)).toBe(closureTapeImageId(paper, 'near'))
-    expect(tapeAt(band, 13).startsWith(CLOSURE_TAPE_IMAGE_ID)).toBe(true)
+    // camera this map opens on - over the paper of the sheet this style was
+    // built for: the field day sheet, which is what a build with no
+    // appearance draws (#1575).
+    expect(dashAt(band, 8)).toEqual(dashArray(CLOSURE_OVERVIEW_DASH))
+    expect(dashAt(band, 10)).toEqual(dashArray(CLOSURE_OVERVIEW_DASH))
+    expect(dashAt(band, 13)).toEqual(dashArray(CLOSURE_DASH))
+    expect(ground['line-color']).toBe(mapBackdrop({ theme: 'light' }))
   })
 
-  it('puts an outline under every closure band in the style, and only under those', () => {
+  it('gives every closure band in the style its own paper and outline, and only those', () => {
     // ONE TREATMENT ACROSS FOUR SOURCES (#1598), as a property of the built
     // style rather than four assertions that currently agree: every band
     // lib/closureStyle.ts's buildClosureLayers produces has its outline
@@ -483,7 +488,11 @@ describe('buildMapStyle', () => {
     for (const bandId of CLOSURE_TAPE_LAYER_IDS) {
       const band = ids.indexOf(bandId)
       expect(band, bandId).toBeGreaterThan(-1)
-      expect(ids[band - 1], bandId).toBe(closureCasingId(bandId))
+      expect(ids.slice(band - 2, band + 1), bandId).toEqual([
+        closureCasingId(bandId),
+        closureGroundId(bandId),
+        bandId,
+      ])
     }
     // And nothing else in the style is named like one, so the sweep above
     // is over the whole set rather than over the four it happens to know.
@@ -509,10 +518,12 @@ describe('buildMapStyle', () => {
     const safety = [
       ...CLOSURE_TAPE_LAYER_IDS,
       ...CLOSURE_TAPE_LAYER_IDS.map(closureCasingId),
+      ...CLOSURE_TAPE_LAYER_IDS.map(closureGroundId),
       WARNING_LAYER_ID,
     ]
     const atc = [
       ATC_UPDATE_CASING_LAYER_ID,
+      closureGroundId(ATC_UPDATE_LAYER_ID),
       ATC_UPDATE_LAYER_ID,
       ATC_UPDATE_POINT_LAYER_ID,
     ]
@@ -2989,44 +3000,37 @@ describe('the barrier tape lies on the sheet’s paper (#1575, option E)', () =>
     id: string,
   ) => (built.layers.find((l) => l.id === id)?.paint ?? {}) as Record<string, unknown>
 
-  it('builds every tape layer on the paper closureTapeGround picks for the appearance', () => {
-    // Four closure layers and the ATC band, all on one paper. A night build
-    // that pointed one of them at another paper's tape would draw a
-    // different band on that layer alone. Since 2026-09-18 the night paper
-    // is the day sheet's white, not the sheet's ink (closureTapeGround).
+  it('grounds every band on the paper closureTapeGround picks for the appearance', () => {
+    // Four closure bands and the ATC's, all on one paper. A night build that
+    // grounded one of them on another paper would draw a different band on
+    // that layer alone. Since 2026-09-18 the night paper is the day sheet's
+    // white, not the sheet's ink (closureTapeGround).
     const night = buildMapStyle({ ...LIVE, theme: 'dark' })
     const ground = closureTapeGround({ theme: 'dark' })
 
-    for (const id of CLOSURE_TAPE_LAYER_IDS) {
-      for (const [zoom, range] of [
-        [8, 'overview'],
-        [13, 'near'],
-      ] as const) {
-        expect(tapeAt(paintOf(night, id), zoom), `${id} z${zoom}`).toBe(
-          closureTapeImageId(ground, range),
-        )
-      }
+    for (const id of [...CLOSURE_TAPE_LAYER_IDS, ATC_UPDATE_LAYER_ID]) {
+      expect(paintOf(night, closureGroundId(id))['line-color'], id).toBe(ground)
     }
-    expect(tapeAt(paintOf(night, ATC_UPDATE_LAYER_ID), 13)).toBe(
-      atcTapeImageId(ground, 'near'),
-    )
     expect(ground).toBe(MAP_BACKDROP.light)
     expect(ground).not.toBe(mapBackdrop({ theme: 'dark' }))
-    // And parchment's tape is on parchment: the day sheets keep their own.
+    // And parchment's band is on parchment: the day sheets keep their own.
     const parchment = buildMapStyle({ ...LIVE, mapStyle: 'parchment' })
-    expect(tapeAt(paintOf(parchment, CLOSURE_LAYER_ID), 13)).toBe(
-      closureTapeImageId(mapBackdrop({ mapStyle: 'parchment' }), 'near'),
+    expect(paintOf(parchment, closureGroundId(CLOSURE_LAYER_ID))['line-color']).toBe(
+      mapBackdrop({ mapStyle: 'parchment' }),
     )
   })
 
-  it('re-points every tape layer at the new paper on a sheet change', async () => {
-    // The badge plate's rule, applied to the tape: the image is per sheet,
-    // so a sheet switch that left a tape layer on the previous paper would
-    // keep a day band on a night map. map/closureTape.ts has registered every
-    // paper's pair, so the id named here always exists.
+  it('repaints every band\u2019s paper on a sheet change', async () => {
+    // The badge plate's rule, applied to the band: the paper is per sheet, so
+    // a sheet switch that left a band on the previous one would keep a day
+    // band on a night map. It was an image to re-point until #1599 and is a
+    // `line-color` now, which is the whole of this test's simplification.
     const { MockMap } = await import('../test/mocks/maplibre-gl')
     const m = new MockMap({})
-    m.layerIds = [BACKDROP_LAYER_ID, ...CLOSURE_TAPE_LAYER_IDS, ATC_UPDATE_LAYER_ID]
+    m.layerIds = [
+      BACKDROP_LAYER_ID,
+      ...[...CLOSURE_TAPE_LAYER_IDS, ATC_UPDATE_LAYER_ID].map(closureGroundId),
+    ]
 
     for (const appearance of [
       { theme: 'dark' } as const,
@@ -3035,26 +3039,11 @@ describe('the barrier tape lies on the sheet’s paper (#1575, option E)', () =>
     ]) {
       attachMapAppearance(m as never, appearance)
       const ground = closureTapeGround(appearance)
-      // The whole step is rewritten, not one id: a sheet change that wrote a
-      // bare image id would flatten the step and leave the band drawing the
-      // navigation tape at the opening camera (#1598).
-      for (const id of CLOSURE_TAPE_LAYER_IDS) {
-        const written = m.paintProperties.get(`${id}/line-pattern`)
-        expect(tapeAt({ 'line-pattern': written }, 8), id).toBe(
-          closureTapeImageId(ground, 'overview'),
-        )
-        expect(tapeAt({ 'line-pattern': written }, 13), id).toBe(
-          closureTapeImageId(ground, 'near'),
+      for (const id of [...CLOSURE_TAPE_LAYER_IDS, ATC_UPDATE_LAYER_ID]) {
+        expect(m.paintProperties.get(`${closureGroundId(id)}/line-color`), id).toBe(
+          ground,
         )
       }
-      expect(
-        tapeAt(
-          {
-            'line-pattern': m.paintProperties.get(`${ATC_UPDATE_LAYER_ID}/line-pattern`),
-          },
-          13,
-        ),
-      ).toBe(atcTapeImageId(ground, 'near'))
     }
     expect(m.styles).toEqual([])
   })
@@ -3077,18 +3066,18 @@ describe("the hiker's mark, over everything (#1581)", () => {
     // top, and #1581's own argument for letting a notice cover this mark -
     // it is hollow, so what is covered is its centre and not the ring or
     // the ticks - holds for a closure band and a warning pin unchanged.
+    const bandLayers = (bandId: string) => [
+      closureCasingId(bandId),
+      closureGroundId(bandId),
+      bandId,
+    ]
     expect(ids.slice(mark + 1)).toEqual([
-      closureCasingId(NETWORK_OVERVIEW_CLOSURE_LAYER_ID),
-      NETWORK_OVERVIEW_CLOSURE_LAYER_ID,
-      closureCasingId(NEARBY_LONG_TERM_CLOSURE_LAYER_ID),
-      NEARBY_LONG_TERM_CLOSURE_LAYER_ID,
-      closureCasingId(CLOSURE_LAYER_ID),
-      CLOSURE_LAYER_ID,
-      closureCasingId(LONG_TERM_CLOSURE_LAYER_ID),
-      LONG_TERM_CLOSURE_LAYER_ID,
+      ...bandLayers(NETWORK_OVERVIEW_CLOSURE_LAYER_ID),
+      ...bandLayers(NEARBY_LONG_TERM_CLOSURE_LAYER_ID),
+      ...bandLayers(CLOSURE_LAYER_ID),
+      ...bandLayers(LONG_TERM_CLOSURE_LAYER_ID),
       WARNING_LAYER_ID,
-      ATC_UPDATE_CASING_LAYER_ID,
-      ATC_UPDATE_LAYER_ID,
+      ...bandLayers(ATC_UPDATE_LAYER_ID),
       ATC_UPDATE_POINT_LAYER_ID,
     ])
     // Over every PLACE, still, which is what #1581 was about: the waypoint

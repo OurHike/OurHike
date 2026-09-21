@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { createExpression, latest } from '@maplibre/maplibre-gl-style-spec'
 import {
-  ATC_TAPE_IMAGE_ID,
   ATC_UPDATE_CASING_LAYER_ID,
   ATC_UPDATE_CASING_WIDTH,
   ATC_UPDATE_FULL_LINE_WIDTH,
@@ -15,21 +14,23 @@ import {
   ATC_UPDATE_POINT_DRAWN_WIDTH,
   ATC_UPDATE_POINT_LAYER_ID,
   ATC_UPDATE_POINT_MIN_ZOOM,
-  ATC_UPDATE_TAPE_CADENCE,
-  ATC_UPDATE_TAPE_SCALE,
+  ATC_UPDATE_DASH,
+  ATC_UPDATE_DASH_SCALE,
+  ATC_UPDATE_GROUND_LAYER_ID,
+  ATC_UPDATE_OVERVIEW_DASH,
   buildAtcUpdateLayers,
-  atcTapeImageId,
 } from './atcUpdateStyle'
 import {
   CLOSURE_CASING_WIDTH,
   CLOSURE_COLOR,
-  CLOSURE_TAPE_CADENCE,
-  CLOSURE_TAPE_IMAGE_ID,
+  CLOSURE_DASH,
+  CLOSURE_OVERVIEW_DASH,
   CLOSURE_TAPE_WIDTH,
   closureCasingId,
   closureTapeWidth,
-  tapeRedFraction,
-  closureTapeImageId,
+  closureGroundId,
+  dashArray,
+  dashRedFraction,
 } from './closureStyle'
 
 // #461 asks that an ATC update not look like an OurHike closure. This file
@@ -55,16 +56,16 @@ function widthAt(value: unknown, zoom: number): number {
   return compiled.value.evaluate({ zoom }, {} as never) as number
 }
 
-/** The same, for a band's `line-pattern` step (#1598). */
-function patternAt(value: unknown, zoom: number): string {
+/** The same, for a band's `line-dasharray` step (#1598). */
+function dashAt(value: unknown, zoom: number): number[] {
   const compiled = createExpression(
     value as never,
-    latest.paint_line['line-pattern'] as never,
+    latest.paint_line['line-dasharray'] as never,
   )
   if (compiled.result === 'error') {
-    throw new Error('line-pattern is not a valid expression')
+    throw new Error('line-dasharray is not a valid expression')
   }
-  return String(compiled.value.evaluate({ zoom }, {} as never))
+  return [...(compiled.value.evaluate({ zoom }, {} as never) as number[])]
 }
 
 function paintOf(id: string): Record<string, unknown> {
@@ -145,12 +146,13 @@ describe('an ATC band carries the same weight as a closure', () => {
   })
 
   it('lays down the same amount of red', () => {
-    // The equality that makes "the same tape, slower" true rather than merely
-    // intended. Scaling only the pitch would leave the ATC's band a third as
+    // The equality that makes "the same band, slower" true rather than merely
+    // intended. Scaling only the gap would leave the ATC's band a third as
     // red as a closure's, and a fainter barrier reads as a softer claim -
     // which is the severity distinction this module exists to refuse.
-    expect(tapeRedFraction(ATC_UPDATE_TAPE_CADENCE)).toBeCloseTo(
-      tapeRedFraction(CLOSURE_TAPE_CADENCE),
+    expect(dashRedFraction(ATC_UPDATE_DASH)).toBeCloseTo(dashRedFraction(CLOSURE_DASH), 6)
+    expect(dashRedFraction(ATC_UPDATE_OVERVIEW_DASH)).toBeCloseTo(
+      dashRedFraction(CLOSURE_OVERVIEW_DASH),
       6,
     )
   })
@@ -166,64 +168,64 @@ describe('an ATC band carries the same weight as a closure', () => {
 })
 
 describe('and is still distinguishable', () => {
-  it('runs a different cadence, and paints from its own image at both zoom ranges', () => {
-    expect(ATC_UPDATE_TAPE_CADENCE).not.toEqual(CLOSURE_TAPE_CADENCE)
-    expect(ATC_TAPE_IMAGE_ID).not.toBe(CLOSURE_TAPE_IMAGE_ID)
-    for (const range of ['near', 'overview'] as const) {
-      expect(atcTapeImageId(GROUND, range)).not.toBe(closureTapeImageId(GROUND, range))
-    }
+  it('runs a different rhythm, and steps it where the closure band steps', () => {
+    expect(ATC_UPDATE_DASH).not.toEqual(CLOSURE_DASH)
     // The same step at the same zoom as the closure band (#1598), so the two
-    // feeds change cadence together rather than one of them appearing to
-    // change treatment as a hiker zooms past the seam.
-    const pattern = paintOf(ATC_UPDATE_LAYER_ID)['line-pattern']
-    expect(patternAt(pattern, 8)).toBe(atcTapeImageId(GROUND, 'overview'))
-    expect(patternAt(pattern, 13)).toBe(atcTapeImageId(GROUND, 'near'))
+    // feeds change rhythm together rather than one of them appearing to
+    // change treatment as a hiker zooms past it.
+    const dash = paintOf(ATC_UPDATE_LAYER_ID)['line-dasharray']
+    expect(dashAt(dash, 8)).toEqual(dashArray(ATC_UPDATE_OVERVIEW_DASH))
+    expect(dashAt(dash, 13)).toEqual(dashArray(ATC_UPDATE_DASH))
   })
 
-  it('is still tape rather than a solid line', () => {
+  it('is still barred rather than a solid line', () => {
     // A solid line is what a trail looks like, and the one thing this must
-    // never resemble is a route. Held on the cadence rather than on the
-    // pixels: a stripe with no thickness or no gap is not tape.
-    expect(ATC_UPDATE_TAPE_CADENCE.stripe).toBeGreaterThan(0)
-    expect(ATC_UPDATE_TAPE_CADENCE.pitch).toBeGreaterThan(ATC_UPDATE_TAPE_CADENCE.stripe)
+    // never resemble is a route. Held on the rhythm: a tick with no length,
+    // or no gap after it, is a solid line by another name.
+    expect(ATC_UPDATE_DASH.tick).toBeGreaterThan(0)
+    expect(ATC_UPDATE_DASH.gap).toBeGreaterThan(0)
   })
 
   it('reads as the same treatment at a glance', () => {
     // The intended reading order is "barrier" first and "whose" second, so the
-    // two cadences are the SAME tape at different scales rather than two
-    // unrelated patterns - which here is not a resemblance but an identity,
+    // two rhythms are the SAME band at different scales rather than two
+    // unrelated textures - which here is not a resemblance but an identity,
     // since one is derived from the other by a single factor.
-    expect(ATC_UPDATE_TAPE_CADENCE.stripe).toBe(
-      CLOSURE_TAPE_CADENCE.stripe * ATC_UPDATE_TAPE_SCALE,
-    )
-    expect(ATC_UPDATE_TAPE_CADENCE.pitch).toBe(
-      CLOSURE_TAPE_CADENCE.pitch * ATC_UPDATE_TAPE_SCALE,
-    )
+    expect(ATC_UPDATE_DASH.tick).toBe(CLOSURE_DASH.tick * ATC_UPDATE_DASH_SCALE)
+    expect(ATC_UPDATE_DASH.gap).toBe(CLOSURE_DASH.gap * ATC_UPDATE_DASH_SCALE)
   })
 
   it('is coarser than a closure, never finer', () => {
     // The direction matters: the ATC's band is the slower of the two, so a
     // change that inverted the scale would swap which feed reads as the
     // detailed one without failing anything above.
-    expect(ATC_UPDATE_TAPE_SCALE).toBeGreaterThan(1)
+    expect(ATC_UPDATE_DASH_SCALE).toBeGreaterThan(1)
   })
 })
 
 describe('the layers themselves', () => {
-  it('draws the band once, over the outline both feeds grew on 2026-09-20', () => {
-    // This asserted NO casing until #1598, and the reason it could is the
-    // reason it no longer has to: a casing under tape with TRANSPARENT gaps
-    // shows through every one of them, and #1575 filled the gaps with the
-    // sheet's paper. What is held now is that the ATC band has exactly the
-    // closure band's shape - one band over one outline - because one mark
-    // for "do not walk this" means neither feed grows an edge alone.
+  it('has exactly the closure band\u2019s three layers, in the same order', () => {
+    // ONE MARK FOR "DO NOT WALK THIS" (features/NEARBY_TRAILS.md 3) as a
+    // claim about the layer stack rather than about the paint. This asserted
+    // NO casing until #1598 - a casing under tape with TRANSPARENT gaps
+    // showed through every one of them - and the gaps have held the sheet's
+    // paper since #1575, which is a layer of its own since #1599.
     const ids = buildAtcUpdateLayers('atc-updates', GROUND).map((layer) => layer.id)
 
-    expect(ids.filter((id) => id === ATC_UPDATE_LAYER_ID)).toHaveLength(1)
-    expect(ids.indexOf(ATC_UPDATE_CASING_LAYER_ID)).toBeLessThan(
-      ids.indexOf(ATC_UPDATE_LAYER_ID),
-    )
+    expect(ids.slice(0, 3)).toEqual([
+      ATC_UPDATE_CASING_LAYER_ID,
+      ATC_UPDATE_GROUND_LAYER_ID,
+      ATC_UPDATE_LAYER_ID,
+    ])
     expect(ATC_UPDATE_CASING_LAYER_ID).toBe(closureCasingId(ATC_UPDATE_LAYER_ID))
+    expect(ATC_UPDATE_GROUND_LAYER_ID).toBe(closureGroundId(ATC_UPDATE_LAYER_ID))
+    // And no image anywhere in any of them, which is what stopped the band
+    // tearing at bends (#1599).
+    for (const layer of buildAtcUpdateLayers('atc-updates', GROUND)) {
+      expect(
+        (layer as { paint?: Record<string, unknown> }).paint?.['line-pattern'],
+      ).toBeUndefined()
+    }
   })
 
   it('binds them all to the source it was given', () => {
@@ -335,12 +337,14 @@ describe('a point notice', () => {
       'atc-updates',
       'atc-updates',
       'atc-updates',
+      'atc-updates',
     ])
   })
 
-  it('is drawn last, over the band and its outline', () => {
+  it('is drawn last, over the whole band', () => {
     expect(buildAtcUpdateLayers('atc-updates', GROUND).map((layer) => layer.id)).toEqual([
       ATC_UPDATE_CASING_LAYER_ID,
+      ATC_UPDATE_GROUND_LAYER_ID,
       ATC_UPDATE_LAYER_ID,
       ATC_UPDATE_POINT_LAYER_ID,
     ])
@@ -376,13 +380,11 @@ describe('the mark geometry (#1071, and the triangle since 2026-09-10)', () => {
     // because the next pass to reach for "make it louder" will reach here.
     const ids = buildAtcUpdateLayers('atc-updates', GROUND).map((layer) => layer.id)
 
-    // Three: the outline, the band and the point. It was three when this was
-    // written, dropped to two when the band became tape with transparent gaps
-    // for a casing to show through, and is three again since #1575 made the
-    // gaps opaque and #1598 asked for an edge - a different layer from the
-    // glow, and the reason this test names the glow rather than a count
-    // alone.
-    expect(ids).toHaveLength(3)
+    // Four: the outline, the paper, the ticks and the point. The count has
+    // been three, two, three and four as the band was respelled around it -
+    // which is exactly why this test names the GLOW rather than trusting a
+    // count to catch its return.
+    expect(ids).toHaveLength(4)
     expect(ids.some((id) => id.includes('halo'))).toBe(false)
     for (const layer of buildAtcUpdateLayers('atc-updates', GROUND)) {
       expect(

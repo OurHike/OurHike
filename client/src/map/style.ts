@@ -131,15 +131,11 @@ import type {
   StyleSpecification,
 } from '@maplibre/maplibre-gl-style-spec'
 import { BLAZE_MATCH_EXPRESSION, PLAIN_TRAIL_COLOR } from '../lib/blaze'
-import {
-  ATC_UPDATE_LAYER_ID,
-  atcTapeImageId,
-  buildAtcUpdateLayers,
-} from '../lib/atcUpdateStyle'
+import { ATC_UPDATE_LAYER_ID, buildAtcUpdateLayers } from '../lib/atcUpdateStyle'
 import {
   buildClosureLayers,
   CLOSURE_LAYER_ID,
-  tapePattern,
+  closureGroundId,
   LONG_TERM_CLOSED_FILTER,
   LONG_TERM_CLOSURE_LAYER_ID,
 } from '../lib/closureStyle'
@@ -315,9 +311,9 @@ export const NETWORK_OVERVIEW_CLOSURE_LAYER_ID = 'network-overview-closure-band'
  * Every layer painting barrier tape from the closure image: the closures
  * feed's band, the A.T.'s long-term-closed lines, the nearby network's and the
  * corridor-view sketch's. The tape's ground is the sheet's paper, baked into
- * the image (#1575, option E), so a sheet change points each of these at the
- * tape drawn on its own paper - attachMapAppearance walks this list. The ATC
- * band paints from its own image and is re-pointed beside them by name.
+ * a layer of its own since #1599 (closureGroundId), so a sheet change
+ * repaints each of these bands' ground - attachMapAppearance walks this list
+ * and the ATC band's id beside it.
  */
 export const CLOSURE_TAPE_LAYER_IDS: readonly string[] = [
   CLOSURE_LAYER_ID,
@@ -960,27 +956,17 @@ export function attachMapAppearance(
         map.setLayoutProperty(layerId, 'visibility', casingVisibility(appearance))
       }
 
-      // The barrier tape's ground is the paper closureTapeGround picks for
-      // the sheet, baked into the image (#1575, option E), so a sheet change
-      // points every tape layer at the tape drawn on that paper - the closure
-      // layers at the closure tape, the ATC band at its own.
-      // map/closureTape.ts has registered every paper's pair before any of
-      // these ids is asked for.
+      // The band's ground is the paper closureTapeGround picks for the sheet
+      // (#1575, option E). It was baked into a tape image and re-pointed here
+      // by name; since #1599 every band is three plain lines, so the paper is
+      // a `line-color` on a layer of its own and a sheet change simply
+      // repaints it - no images to have registered first, and no step
+      // expression to flatten by writing a bare value over it.
       const tapeGround = closureTapeGround(appearance)
-      // The whole step expression, not one image id (#1598): a tape layer
-      // names its overview cadence and its near one, so a sheet change that
-      // wrote a bare id would flatten the step and leave the band drawing
-      // the navigation tape at the opening camera until the next rebuild.
-      for (const layerId of CLOSURE_TAPE_LAYER_IDS) {
-        if (map.getLayer(layerId) === undefined) continue
-        map.setPaintProperty(layerId, 'line-pattern', tapePattern(tapeGround) as never)
-      }
-      if (map.getLayer(ATC_UPDATE_LAYER_ID) !== undefined) {
-        map.setPaintProperty(
-          ATC_UPDATE_LAYER_ID,
-          'line-pattern',
-          tapePattern(tapeGround, atcTapeImageId) as never,
-        )
+      for (const bandId of [...CLOSURE_TAPE_LAYER_IDS, ATC_UPDATE_LAYER_ID]) {
+        const groundId = closureGroundId(bandId)
+        if (map.getLayer(groundId) === undefined) continue
+        map.setPaintProperty(groundId, 'line-color', tapeGround as never)
       }
 
       // The through-route badge (#1283): its plate is an image per sheet

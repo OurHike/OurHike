@@ -18,9 +18,9 @@
 // (NEARBY_LONG_TERM_CLOSURE_LAYER_ID), which carry the same OPRHP status on
 // the same ground, so the overview's closed features say where to look.
 //
-// WHAT TO LOOK FOR: over each closed trail, red diagonals on a white band
-// inside a dark outline, where until #1575 the red line showed through
-// between the stripes - the maintainer's choice from five rendered
+// WHAT TO LOOK FOR: over each closed trail, red ticks square to the trail on
+// a white band inside a dark outline, where until #1575 the red line showed
+// through between the marks - the maintainer's choice from five rendered
 // treatments: "I think I like option E the best". The band is white because
 // the field day sheet's paper is white (map/style.ts's MAP_BACKDROP.light) -
 // and, since 2026-09-18, it is
@@ -42,7 +42,16 @@
 // than 28% - the maintainer's pick from four treatments after "the closures
 // are not easily visible".
 //
-// THIS FRAME IS WHY THE BAND IS 14 PX AND NOT 17. The first cut widened it
+// THIS FRAME IS ALSO WHY THE TAPE IS GONE (#1599). Magnified, its red
+// diagonals tore into zigzags at every bend and the dark edge smeared into
+// bars across the band - `line-pattern` shear, which MapLibre does to any
+// image mapped along a bending wide line. The maintainer: "The closure lines
+// still look horrible when going around turns." The band is a dasharray now,
+// and a tick is square to the trail, so there is no diagonal for the shear to
+// break. THIS IS THE FRAME THAT SHOWS WHETHER THAT WORKED: the closed runs
+// here bend constantly.
+//
+// THIS FRAME IS ALSO WHY THE BAND IS 14 PX AND NOT 17. The first cut widened it
 // too, and what CI photographed here was ropes: a dozen closed trails at
 // once, at the densest closure cell in the release, with the lines under
 // them gone. The maintainer took the navigation weight back on 2026-09-21
@@ -56,9 +65,9 @@
 // long-term-closures-overview.mjs is the same closures from the opening
 // camera, which is the zoom the complaint was actually about.
 export const caption =
-  'Bear Mountain and Doodletown on a phone, z13, Blaze colors off (the default): OPRHP’s long-term closed trails drawn as barrier tape on an opaque band of the sheet’s paper (#1575, the maintainer’s option E) over the lines — and since #1598 the band is 14 px with 41% of its length red, inside a hard dark outline — 17 px and 51% for one day, until this frame showed a dozen closed trails drawn as ropes. The lines beneath are the park’s trails dashed and the A.T. solid, both in the one red since #1597 took the tint off them, so the tape is the one heavy mark on this frame without a second hue helping it. Seven closed runs of 1.1 to 1.9 km sit in this frame, placed by measuring the pinned release’s network overview, with the A.T. crossing it over Bear Mountain'
+  'Bear Mountain and Doodletown on a phone, z13, Blaze colors off (the default): OPRHP’s long-term closed trails drawn as a barred band on an opaque band of the sheet’s paper (#1575, the maintainer’s option E) over the lines — 14 px, 41% of its length red, inside a hard dark outline. Two things to check here, both read off this frame’s own predecessor: the band is no longer barrier tape (#1599 — the diagonals tore into zigzags at every bend, so the ticks are square to the trail now and drawn from a dasharray rather than an image), and it is 14 px rather than the 17 it carried for one day. The lines beneath are the park’s trails dashed and the A.T. solid, both in the one red since #1597 took the tint off them, so the tape is the one heavy mark on this frame without a second hue helping it. Seven closed runs of 1.1 to 1.9 km sit in this frame, placed by measuring the pinned release’s network overview, with the A.T. crossing it over Bear Mountain'
 export const alt =
-  'The map screen over Bear Mountain State Park at zoom 13: the Appalachian Trail a plain solid red line, the park’s trails thinner red dashed lines, and along several of them a wide band of red diagonal stripes on a white ground inside a dark outline, laid over the line, the barrier tape marking a closed trail'
+  'The map screen over Bear Mountain State Park at zoom 13: the Appalachian Trail a plain solid red line, the park’s trails thinner red dashed lines, and along several of them a wide white band inside a dark outline carrying evenly spaced red bars square to the trail, following each bend without breaking, the barred band marking a closed trail'
 
 /** Vector tiles from the bucket plus generated contours over a park at z13,
  *  the same allowance hudson-highlands-desktop.mjs makes. */

@@ -29,8 +29,7 @@ import {
   CLOSURE_CASING_COLOR,
   CLOSURE_COLOR,
   CLOSURE_OUTLINE_WIDTH,
-  CLOSURE_STRIPE_EDGE,
-  CLOSURE_TAPE_CADENCE,
+  CLOSURE_DASH,
   CLOSURE_TAPE_WIDTH,
 } from '../lib/closureStyle'
 
@@ -203,27 +202,43 @@ describe('MapIcon: a closure', () => {
   it('is the barrier tape the map draws, not a pin', () => {
     const svg = draw(<MapIcon type="closure" />)
 
-    expect(part(svg, 'map-icon__closure-band').getAttribute('stroke')).toBe(CLOSURE_COLOR)
-    expect(part(svg, 'map-icon__closure-casing').getAttribute('stroke')).toBe(
+    expect(part(svg, 'map-icon__closure-band').getAttribute('fill')).toBe(CLOSURE_COLOR)
+    expect(part(svg, 'map-icon__closure-outline').getAttribute('fill')).toBe(
       CLOSURE_CASING_COLOR,
     )
     expect(svg.querySelector('.map-icon__disc')).toBeNull()
   })
 
-  it('draws the stripes at the map’s own cadence, in the map’s own units', () => {
-    // The swatch's viewBox is in CSS pixels at the tape's width, so every
-    // number here is the number map/closureTape.ts rasterises - no conversion,
-    // and nothing for the legend to drift from the map by.
+  it('draws the ticks at the map’s own rhythm, in the map’s own units', () => {
+    // The swatch's viewBox is in CSS pixels at the band's width, so every
+    // number here resolves from a constant the map ships - no conversion, and
+    // nothing for the legend to drift from the map by. The map writes its
+    // rhythm in LINE WIDTHS (a `line-dasharray`), so a tick is that fraction
+    // of the band's width.
     const svg = draw(<MapIcon type="closure" />)
-    const band = svg.querySelectorAll('.map-icon__closure-band')
+    const ticks = svg.querySelectorAll('.map-icon__closure-band')
 
-    expect(band.length).toBeGreaterThan(1)
-    expect(band[0]?.getAttribute('stroke-width')).toBe(
-      String(CLOSURE_TAPE_CADENCE.stripe),
+    expect(ticks.length).toBeGreaterThan(1)
+    expect(Number(ticks[0]?.getAttribute('width'))).toBeCloseTo(
+      CLOSURE_DASH.tick * CLOSURE_TAPE_WIDTH,
+      6,
     )
   })
 
-  it('edges each stripe rather than laying a casing behind them all', () => {
+  it('stands its ticks square to the band, as the map does since #1599', () => {
+    // The legend taught a 55-degree lean while the map drew one; the map
+    // stopped, because that lean was what tore at every bend. A swatch that
+    // kept it would be teaching a mark the map does not draw, which is this
+    // file's whole rule.
+    const svg = draw(<MapIcon type="closure" />)
+
+    expect(svg.querySelectorAll('line')).toHaveLength(0)
+    for (const tick of svg.querySelectorAll('.map-icon__closure-band')) {
+      expect(Number(tick.getAttribute('height'))).toBe(CLOSURE_TAPE_WIDTH)
+    }
+  })
+
+  it('edges the band rather than laying a casing behind it', () => {
     // THE DEFECT THIS SWATCH USED TO SHOW, held so it cannot come back. The
     // legend drew a filled casing rect with a dashed band over it - which was
     // honest, because that is what the map drew, and both were a near-black
@@ -233,29 +248,26 @@ describe('MapIcon: a closure', () => {
     // band's own outline, each one CLOSURE_OUTLINE_WIDTH tall at an edge of
     // the tape rather than the full height behind it.
     const svg = draw(<MapIcon type="closure" />)
-    const edge = Number(
-      part(svg, 'map-icon__closure-casing').getAttribute('stroke-width'),
-    )
     const rects = [...svg.querySelectorAll('rect')]
 
     expect(rects.map((r) => r.getAttribute('class'))).toEqual([
       'map-icon__closure-ground',
+      ...rects.slice(1, -2).map(() => 'map-icon__closure-band'),
       'map-icon__closure-outline',
       'map-icon__closure-outline',
     ])
     expect(rects[0]?.getAttribute('fill')).not.toBe(CLOSURE_CASING_COLOR)
-    for (const outline of rects.slice(1)) {
+    for (const outline of rects.slice(-2)) {
       expect(outline.getAttribute('fill')).toBe(CLOSURE_CASING_COLOR)
       expect(Number(outline.getAttribute('height'))).toBe(CLOSURE_OUTLINE_WIDTH)
-      // An EDGE and not a band: whatever the tape's own height, an outline
+      // An EDGE and not a band: whatever the band's own height, an outline
       // that ever grew to a share of it would be the filled casing rect
       // back under a new name.
       expect(Number(outline.getAttribute('height'))).toBeLessThan(CLOSURE_TAPE_WIDTH / 4)
     }
-    expect(edge).toBe(CLOSURE_TAPE_CADENCE.stripe + CLOSURE_STRIPE_EDGE * 2)
   })
 
-  it('lays the sheet’s paper under the stripes, in the map’s own colour (#1575)', () => {
+  it('lays the sheet’s paper under the ticks, in the map’s own colour (#1575)', () => {
     // What the map does, restated in the legend: since option E the tape's
     // gaps hold the sheet's paper, so the swatch holds it too - the field day
     // sheet's by default, and night ink beside a night map. Nothing else in
@@ -264,10 +276,11 @@ describe('MapIcon: a closure', () => {
     expect(part(day, 'map-icon__closure-ground').getAttribute('fill')).toBe(
       mapBackdrop({ theme: 'light' }),
     )
-    for (const node of day.querySelectorAll(
-      '*:not(.map-icon__closure-ground):not(.map-icon__closure-outline)',
-    )) {
-      expect(node.getAttribute('fill')).toBeNull()
+    // Every other fill in the swatch is the closure red or the sheet's
+    // darkest ink - the ticks and the two edges - and nothing carries a
+    // stroke at all, which is the swatch's half of "no diagonals left".
+    for (const node of day.querySelectorAll('*:not(.map-icon__closure-ground)')) {
+      expect(node.getAttribute('stroke')).toBeNull()
     }
 
     // Beside a night map the ground is the day paper too, since 2026-09-18

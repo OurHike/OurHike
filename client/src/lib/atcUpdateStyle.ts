@@ -59,36 +59,28 @@ import {
   CLOSURE_CASING_COLOR,
   CLOSURE_CASING_WIDTH,
   CLOSURE_COLOR,
+  CLOSURE_DASH,
+  CLOSURE_DASH_OVERVIEW_SCALE,
   CLOSURE_OUTLINE_WIDTH,
-  CLOSURE_STRIPE_EDGE,
-  CLOSURE_TAPE_CADENCE,
-  CLOSURE_TAPE_OVERVIEW_SCALE,
   CLOSURE_TAPE_WIDTH,
   closureCasingId,
+  closureDashExpression,
+  closureGroundId,
   closureTapeWidth,
-  tapePattern,
-  type TapeCadence,
-  type TapeRange,
+  dashRedFraction,
+  scaleDash,
+  type BandDash,
 } from './closureStyle'
 
 export const ATC_UPDATE_LAYER_ID = 'atc-update-band'
 
-/** The ATC tape's own image id. A second image rather than a second colour,
- *  for the reason the header gives at length: the cadence is what separates
- *  the two feeds, and nothing about hue or weight may. */
-export const ATC_TAPE_IMAGE_ID = 'atc-update-tape'
-
-/** The ATC tape drawn on `ground`, the sheet's paper, at `range`'s cadence -
- *  the same rule and the same reason as lib/closureStyle.ts's
- *  closureTapeImageId (#1575, #1598). */
-export function atcTapeImageId(ground: string, range: TapeRange = 'near'): string {
-  const stem = range === 'near' ? ATC_TAPE_IMAGE_ID : `${ATC_TAPE_IMAGE_ID}-overview`
-  return `${stem}-${ground.replace('#', '').toLowerCase()}`
-}
-
-/** The band's outline, under the tape (#1598). Named through
+/** The band's outline, under the ticks (#1598). Named through
  *  closureCasingId so the two feeds' edges cannot be named differently. */
 export const ATC_UPDATE_CASING_LAYER_ID = closureCasingId(ATC_UPDATE_LAYER_ID)
+
+/** The sheet's paper between this band's ticks (#1599), named through
+ *  closureGroundId for the same reason. */
+export const ATC_UPDATE_GROUND_LAYER_ID = closureGroundId(ATC_UPDATE_LAYER_ID)
 export const ATC_UPDATE_POINT_LAYER_ID = 'atc-update-point'
 
 /**
@@ -331,47 +323,37 @@ export const ATC_NOTICE_GLYPH_BOX =
 // shape of the fault this change is fixing.
 
 /**
- * Wider stripes, further apart - literally the closure's tape at twice the
+ * Longer ticks, further apart - literally the closure's rhythm at twice the
  * scale.
  *
- * DERIVED FROM THE CLOSURE'S CADENCE RATHER THAN PICKED, and multiplied on
- * both axes by the same factor, which is what makes "the same tape, slower"
- * true rather than merely intended: doubling only the pitch would thin the
- * ATC's band to a third of the closure's red and read as a softer claim, which
- * is the severity distinction this module exists to refuse. Scaling both keeps
- * tapeRedFraction identical for the two - the tests hold that equality rather
- * than these numbers.
+ * DERIVED FROM THE CLOSURE'S RHYTHM RATHER THAN PICKED, and multiplied on
+ * both numbers by the same factor, which is what makes "the same band,
+ * slower" true rather than merely intended: doubling only the gap would thin
+ * the ATC's band to a third of the closure's red and read as a softer claim,
+ * which is the severity distinction this module exists to refuse. Scaling
+ * both keeps dashRedFraction identical for the two - the tests hold that
+ * equality rather than these numbers.
  *
- * At a glance the two are one treatment, and only a close look separates them.
- * That is the intended reading order, since what a hiker must register
+ * At a glance the two are one treatment, and only a close look separates
+ * them. That is the intended reading order, since what a hiker must register
  * instantly is "barrier", and only then "whose".
  */
-export const ATC_UPDATE_TAPE_SCALE = 2
+export const ATC_UPDATE_DASH_SCALE = 2
 
-export const ATC_UPDATE_TAPE_CADENCE: TapeCadence = {
-  stripe: CLOSURE_TAPE_CADENCE.stripe * ATC_UPDATE_TAPE_SCALE,
-  pitch: CLOSURE_TAPE_CADENCE.pitch * ATC_UPDATE_TAPE_SCALE,
-}
+export const ATC_UPDATE_DASH: BandDash = scaleDash(CLOSURE_DASH, ATC_UPDATE_DASH_SCALE)
 
-/** The ATC tape at and below the seam: this file's doubling applied to the
- *  closure's overview cadence, so the ATC band steps where the closure band
- *  steps and stays twice its scale on both sides of the step (#1598). */
-export const ATC_UPDATE_TAPE_OVERVIEW_CADENCE: TapeCadence = {
-  stripe: ATC_UPDATE_TAPE_CADENCE.stripe * CLOSURE_TAPE_OVERVIEW_SCALE,
-  pitch: ATC_UPDATE_TAPE_CADENCE.pitch * CLOSURE_TAPE_OVERVIEW_SCALE,
-}
+/** The ATC band at and below the closure's own step zoom: this file's
+ *  doubling applied to the closure's overview rhythm, so the ATC band steps
+ *  where the closure band steps and stays twice its scale on both sides of
+ *  the step (#1598). */
+export const ATC_UPDATE_OVERVIEW_DASH: BandDash = scaleDash(
+  ATC_UPDATE_DASH,
+  CLOSURE_DASH_OVERVIEW_SCALE,
+)
 
-/**
- * The ATC overview tape's stripe edge (#1598).
- *
- * The closure's own CLOSURE_STRIPE_EDGE, unscaled, which is what this file's
- * doubled tape already uses at the near cadence. At half of a DOUBLED pitch
- * the stripes are still 12 px apart with 5 px of stripe between the edges,
- * so nothing merges - the merging closureStyle.ts's
- * CLOSURE_TAPE_OVERVIEW_EDGE computes is a property of the closure's tighter
- * cadence, not of halving as such.
- */
-export const ATC_UPDATE_TAPE_OVERVIEW_EDGE = CLOSURE_STRIPE_EDGE
+/** The share of this band's length that is red - asserted equal to the
+ *  closure's, which is the whole of "one treatment, two feeds". */
+export const ATC_UPDATE_RED_FRACTION = dashRedFraction(ATC_UPDATE_DASH)
 
 /** Re-exported so a test can hold the equality rather than the numbers, and
  *  so the coupling to lib/closureStyle.ts is visible from this file. An ATC
@@ -416,18 +398,28 @@ export function buildAtcUpdateLayers(
         'line-width': closureTapeWidth(CLOSURE_OUTLINE_WIDTH) as never,
       },
     },
-    // ONE band layer over it, and no casing between - see buildClosureLayers,
-    // which makes the same shape for the same reason. A solid casing under
-    // tape showed through every gap while the gaps were transparent, which is
-    // the defect both feeds stopped having on 2026-08-27; since #1575 the
-    // gaps hold the sheet's paper, baked into the image beside the edges, so
-    // the outline above can only ever appear as an edge.
+    // The sheet's paper between the ticks (#1575's option E, as a layer
+    // since #1599) - see buildClosureLayers, which makes the same three for
+    // the same reasons and whose header has the argument. Without it the
+    // casing below would show through every gap, which is the black rope
+    // with red ticks both feeds stopped being on 2026-08-27.
+    {
+      id: ATC_UPDATE_GROUND_LAYER_ID,
+      type: 'line',
+      source: sourceId,
+      layout: { 'line-cap': 'butt', 'line-join': 'round' },
+      paint: {
+        'line-color': ground,
+        'line-width': ATC_UPDATE_LINE_WIDTH as never,
+      },
+    },
+    // And the ticks, at this feed's own slower rhythm.
     //
     // THE GLOW THAT USED TO OPEN THIS LIST IS GONE, and it went for a reason
     // this change shares rather than contradicts. #1071 removed it with the
     // solid disc it surrounded: opaque ink covers the ground a mark is about,
     // and a translucent wash around it was the softer half of the same fault.
-    // The burst below and the tape here are the same answer at two scales -
+    // The burst below and the band here are the same answer at two scales -
     // let the ground read through the mark instead of around it.
     {
       id: ATC_UPDATE_LAYER_ID,
@@ -435,8 +427,12 @@ export function buildAtcUpdateLayers(
       source: sourceId,
       layout: { 'line-cap': 'butt', 'line-join': 'round' },
       paint: {
-        'line-pattern': tapePattern(ground, atcTapeImageId) as never,
+        'line-color': ATC_UPDATE_COLOR,
         'line-width': ATC_UPDATE_LINE_WIDTH as never,
+        'line-dasharray': closureDashExpression(
+          ATC_UPDATE_DASH,
+          ATC_UPDATE_OVERVIEW_DASH,
+        ) as never,
       },
     },
     // Points, from the same source. A `line` layer ignores Point features and

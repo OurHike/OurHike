@@ -1,0 +1,269 @@
+[link] Skip to content
+    [svg]
+    Prototype controls
+    ·
+    signed in as
+  [button] org admin
+  [button] not a lead
+  [button] registered volunteer
+  [button] reset
+  [button] show signed out
+  [button] show a new org
+  [button] show failures
+  [button] onboarding complete · replay it
+    [svg]
+        This org is invented.
+      The coordinates are real — the park’s corners and its landmarks are where they actually are — but the Throughikers, their people, their hours and their reports are all made up so you can look around without signing anything. The real park is maintained by the Central Park Conservancy, who have nothing to do with this page.
+        [button] Leave the demo
+        [svg]
+            NEW YORK, NY · 6 ROUTES · 13.8 MILES · 29 VOLUNTEERS
+        [h1] Central Park Throughikers
+    Published since March 2026 · five of six routes have a maintainer · what a hiker sees is below, exactly as your own org's page would look.
+          THE VIEW THAT MATTERS MOST
+          This is what a volunteer actually opens
+          Every admin screen in this tool exists to produce this one. Sam is a Throughiker who looks after the Ramble — she never sees a registry or a pull request, only her own paths, what hikers said about them, and the three things she can do today.
+            ·
+              No second login.
+            She signed into the Throughikers' own site and arrived here.
+            ·
+              No jargon.
+            Her section has a name, not an OBJECTID.
+            ·
+              Works with no signal.
+            Reports queue and go when she gets back — on her laptop or her phone.
+            [button] Open the full volunteer view
+            ourhike.org/cpthroughikers/my-tread
+              [svg]
+                YOUR TREAD · 1.2 MILES · UNSIGNED PATHS, ON PURPOSE
+                The Ramble
+                      [svg]
+                        2 thanks on your paths
+                      “Got completely lost in the best way. Someone clearly loves this place.” · left near Bow Bridge, way-marking
+                      [svg]
+                        1 open report
+                      Broken bench slat near the Point, reported Sunday by a hiker.
+                      [button] Mark resolved
+                      [button] Add a note
+                  Points of interest · 3 on your paths
+                    Bow Bridge viewpoint ·
+                      confirmed by you, Aug 28
+                    Water fountain, west path ·
+                      needs a look
+                    Bench, the Point ·
+                      added by you, June
+                [svg]
+                  [button] Report something
+                  [button] Log hours
+        Their sections
+        This is the same table and map your own admins sign off on — one widget, one behaviour. Click a row to isolate that route.
+                PARK
+              TRAIL
+              MILES
+              STATUS
+                Central Park
+                Park Drive loop
+                6.1
+                  maintained
+                Central Park
+                Reservoir loop
+                1.58
+                  maintained
+                Central Park
+                Bridle Path · west
+                2.4
+                  maintained
+                Central Park
+                The Ramble
+                1.2
+                  maintained
+                Central Park
+                North Woods & the Loch
+                1.7
+                  no maintainer
+                Central Park
+                The Mall
+                0.8
+                  maintained
+                ON THE MAP
+              [svg]
+                red blaze
+                blue
+                yellow
+                white
+                no blaze
+                All 6 sections · click a row to isolate one
+        Real coordinates, projected: the park’s four surveyed corners, the Reservoir, the Lake, the Mall, the Ramble and the Loch in WGS84. The lines between those points are simplified — a published org’s map draws its own GIS instead.
+          They embed all of this
+          Everything the Throughikers publish also runs on
+            their own website
+          , pasted in as four embeds. Scroll down to see them live — that is the part most clubs did not know was possible.
+          [button] Register your own org
+          [button] Submit a club's trails for them
+          [button] Open the full volunteer view
+          [button] Back to your org
+      [svg]
+        Your trails stay on your website. We just draw them.
+      This is the part clubs miss until they see it.
+        You do not send hikers to OurHike
+      — you paste one line of HTML into your own pages and these four things appear there, in your fonts and colours, under your own domain. Everything below is live, running the Throughikers' data, and it is the same code an org pastes in.
+          It stops going stale
+          A hand-written hikes page is out of date the week you publish it. These read your signed-off registry, so they change when your trails do and never otherwise.
+          Your traffic stays yours
+          The membership and donation links inside them are yours, not ours. No cookies, no tracking, and no OurHike branding you cannot remove.
+          No project to run
+          One line of HTML and a script tag — no CMS plugin, no rebuild, no developer on retainer. If our servers are down your page still renders; the embed just does not appear.
+      THREE ARE PUBLIC AND NEED NO ACCOUNT · THE FOURTH IS THE PRIVATE CONSOLE, BEHIND YOUR OWN LOGIN
+          1 · Find a hike
+          embed.ourhike.org/v1/hikes.js
+        Their featured routes, filterable, reading the registry they signed off. A club stops maintaining a hand-written hikes page and never pastes a list again.
+                    Part of the park
+                  [select] Anywhere in the park | Upper park | Mid park
+                    Difficulty
+                  [select] Any difficulty | Easy | Moderate | Strenuous
+                    Length
+                  [select] Any length | Under 3 miles | 3 to 6 miles | Over 6 miles
+            [button] Clear
+              HIKE
+                AREA
+              LENGTH
+              TIME
+              ROUTE
+              DIFFICULTY
+                  Reservoir loop
+                  Skyline · Cinder track
+                Jacqueline Kennedy Onassis Reservoir
+                1.6 mi
+                0:35
+                Loop
+                  Easy
+                  The Ramble wander
+                  Unsigned paths · Birding
+                The Ramble
+                1.2 mi
+                0:40
+                Loop
+                  Moderate
+                  The Loch and the Ravine
+                  Waterfalls · Stream
+                North Woods
+                1.9 mi
+                0:55
+                Out and back
+                  Moderate
+                  Mall to Bethesda
+                  Elms · Fountain · Accessible
+                The Mall
+                0.8 mi
+                0:20
+                Point to point
+                  Easy
+                  Great Lawn circuit
+                  Open sky · Benches
+                Great Lawn
+                1.1 mi
+                0:25
+                Loop
+                  Easy
+                  Harlem Meer to the Pool
+                  Water · Quiet
+                North end
+                1.4 mi
+                0:30
+                Point to point
+                  Easy
+              Showing
+                1–6
+              of
+                6
+              hikes
+              Published by
+                Central Park Throughikers
+              · drawn by OurHike
+          2 · Workdays
+          embed.ourhike.org/v1/workdays.js
+        The next fortnight of crews. Two of these say
+          sign up on our site
+        because they are mirrored from the Throughikers' own calendar — the button goes to their form, not ours.
+                Come out with us
+                next 14 days · 3 workdays
+                  Sat 20 Sep
+                  9:00am
+                  Ramble path edging
+                  The Ramble
+                · meet at
+                  Bow Bridge, west end
+                  4 of 10 spots left
+                    spots left
+                [button] Sign up on our site
+                  Sun 21 Sep
+                  8:00am
+                  Litter sweep · Harlem Meer
+                  North end
+                · meet at
+                  Dana Discovery Center
+                  open · no cap
+                    open
+                [button] Sign up
+                  Sat 27 Sep
+                  10:00am
+                  Invasives pull · porcelain berry
+                  North Woods
+                · meet at
+                  Huddlestone Arch
+                  full · waitlist open
+                    waitlist
+                [button] Sign up on our site
+                No experience needed. Gloves and loppers provided — and yes, there is coffee.
+              Published by
+                Central Park Throughikers
+              · drawn by OurHike
+          3 · Coverage badge
+          embed.ourhike.org/v1/badge.js
+        One snippet, two shapes. Every figure comes from what they published and confirmed — miles from the registry, volunteers from the roster, hours from the ones a supervisor signed off.
+              FOOTER STRIP
+              [svg]
+                    13.8
+                    miles maintained
+                    29
+                    active volunteers
+                    164
+                    hours this season
+                on OurHike ↗
+              SIDEBAR CARD · FOR A DONATE PAGE
+                  Our park, live
+                      miles maintained
+                      13.8
+                      active volunteers
+                      29
+                      hours this season
+                      164
+                Updated nightly from
+                  our own registry
+                .
+          4 · Management console
+          embed.ourhike.org/v1/console.js
+        The private side, inside their own members area. Somebody signed into the Throughikers' website is signed into this — no second login, and they see only what their roles allow.
+                Central Park Throughikers
+                Membership
+                Volunteer
+                sam@cpthroughikers.org
+              · Sign out
+              ▲ THEIR WEBSITE, THEIR LOGIN · EVERYTHING BELOW IS THE EMBED
+              [svg]
+                  OurHike
+                  with
+                    Central Park Throughikers
+                    signed in via their site
+                    YOUR TREAD
+                    The Ramble
+                    1 issue open
+                    WORKDAYS
+                    3 in 14 days
+                    2 signups to answer
+                    HOURS
+                    9 claimed
+                    awaiting your confirm
+                    COVERAGE
+                    5 of 6 routes
+                    the Loch has nobody
+                Sam is a supervisor, so she sees crews and hours. A maintainer signing into the same page would see only their own stretch of path.

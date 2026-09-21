@@ -17,24 +17,30 @@ from __future__ import annotations
 import datetime as dt
 
 import pytest
-from sqlalchemy import inspect
+from sqlalchemy import inspect, or_
 
 from app.core.account_deletion import delete_account
+from app.core.time import utc_now
 from app.db.base import Base
 from app.models.app_failure import AppFailure
-from app.models.closure import Closure
-from app.models.club import Club
+from app.models.closure import Closure, ClosureApproval
+from app.models.club import Club, OrgAdmin
+from app.models.console_key import ConsoleKey
 from app.models.field_note import FieldNote, NoteFlag
 from app.models.hike import Hike
 from app.models.maintainer_assignment import MaintainerAssignment
+from app.models.nomination import OrgNomination
+from app.models.org_role import RoleInvite, RosterSyncRun
 from app.models.poi_photo import PoiPhoto, PoiPhotoDismissal
 from app.models.preferences import UserPreferences
 from app.models.profile import Profile, Role
 from app.models.report import Report
+from app.models.ridge_runner import RidgeRunnerCommitment
 from app.models.synced_day_hike import SyncedDayHike
 from app.models.synced_hike import SyncedActiveHike, SyncedHike
 from app.models.synced_trip import SyncedPlannedHike, SyncedTrip
 from app.models.volunteer_hours import HoursState, VolunteerHoursRecord
+from app.models.work_project import WorkProject, WorkProjectSignup
 from tests.factories import make_closure, make_profile
 from tests.tokens import auth_headers
 
@@ -75,6 +81,24 @@ def _furnish(db, profile_id: str, *, hours_state=HoursState.claimed) -> None:
             state=hours_state,
         )
     )
+    # A NOMINATION IS KEPT, and the decision is worth reading rather than
+    # inferring from a missing delete. It is a statement this hiker made about
+    # a third party's organization, and by the time an account is deleted
+    # three people at that club may already have been emailed about it and be
+    # partway through deciding. Withdrawing it silently would leave them
+    # answering a question nobody asked. The person does not survive it: the
+    # `profiles` row is scrubbed like every other kept contribution, so the
+    # nomination says somebody offered and no longer says who.
+    db.add(
+        OrgNomination(
+            id=f"nomination-{profile_id}",
+            club_id=club.id,
+            nominated_by=profile_id,
+            website="https://carolinamountainclub.org",
+            proposal_token=f"token-{profile_id}",
+            token_expires_at=utc_now() + dt.timedelta(days=30),
+        )
+    )
     db.add(
         AppFailure(
             reporter_id=profile_id,
@@ -113,6 +137,47 @@ def _furnish(db, profile_id: str, *, hours_state=HoursState.claimed) -> None:
     db.commit()
     # A flag has to point at a note that already exists.
     db.add(NoteFlag(note_id=note.id, flagged_by=profile_id))
+    # --- The organization surface (features/ORG_ONBOARDING.md). One row in
+    # every table that names a profile, so the coverage test below can judge
+    # each of them rather than never seeing them at all. ---
+    db.add(OrgAdmin(club_id=club.id, person_id=profile_id, approved_at=dt.datetime(2026, 3, 1)))
+    workday = WorkProject(
+        id=f"workday-{profile_id}",
+        club_id=club.id,
+        title="Clear blowdowns",
+        starts_on=dt.date(2026, 6, 1),
+        ends_on=dt.date(2026, 6, 1),
+        created_by=profile_id,
+    )
+    db.add(workday)
+    db.flush()
+    db.add(WorkProjectSignup(work_project_id=workday.id, person_id=profile_id))
+    db.add(
+        RidgeRunnerCommitment(
+            person_id=profile_id,
+            starts_on=dt.date(2026, 6, 1),
+            ends_on=dt.date(2026, 6, 4),
+            tasks="cleanup_packout",
+        )
+    )
+    db.add(RoleInvite(club_id=club.id, email=f"{profile_id}@example.org", invited_by=profile_id))
+    db.add(RosterSyncRun(club_id=club.id, run_by=profile_id, source="uploaded roster.csv"))
+    db.add(
+        ConsoleKey(
+            club_id=club.id,
+            public_key=f"ohk_{profile_id}",
+            secret_hash="x" * 64,
+            allowed_origins="https://example.org",
+            created_by=profile_id,
+        )
+    )
+    club.created_by = profile_id
+    # The other profile column on `clubs`: whoever agreed that a model may
+    # read this organization's data. Furnished so the completeness guard
+    # above has something to see on it, and so the unlink is checked rather
+    # than assumed.
+    club.assist_opted_in_at = utc_now()
+    club.assist_opted_in_by = profile_id
     db.commit()
 
 
@@ -120,7 +185,11 @@ def _furnish(db, profile_id: str, *, hours_state=HoursState.claimed) -> None:
 def hiker(db_session):
     profile = make_profile(db_session, role=Role.maintainer, display_name="Switchback")
     _furnish(db_session, profile.id)
-    make_closure(db_session, reported_by=profile.id)
+    closure = make_closure(db_session, reported_by=profile.id)
+    # Their approval rides on the closure they reported rather than on a
+    # second one, so the counts below stay about one closure.
+    db_session.add(ClosureApproval(closure_id=closure.id, person_id=profile.id))
+    db_session.commit()
     return profile
 
 
@@ -249,6 +318,7 @@ def test_the_summary_names_what_stayed(db_session, hiker):
         "trail notes": 1,
         "notes you flagged for a moderator": 1,
         "photos you shared": 1,
+        "closures you helped confirm": 1,
     }
 
 
@@ -291,7 +361,16 @@ def test_every_table_that_names_a_profile_is_accounted_for(db_session, hiker):
                 # Zero rows means "deleted"; rows means "kept", and either is
                 # a decision. What fails is a table nobody furnished, because
                 # then this test never saw it at all.
-                table.c[columns[0]] == hiker.id
+                #
+                # EVERY such column, not `columns[0]`. This read the first one
+                # only until 2026-09-17, when `clubs` gained a second
+                # (`assist_opted_in_by`) that sorts ahead of `created_by` -
+                # which silently moved the question this guard was asking
+                # about `clubs` from a furnished column to an unfurnished one,
+                # and the test stayed green while seeing nothing. A guard that
+                # can be blinded by declaration order is a guard about
+                # declaration order.
+                or_(*[table.c[column] == hiker.id for column in columns])
             )
         ).fetchall()
         if not rows and name not in _TABLES_EMPTIED:
@@ -320,10 +399,40 @@ _TABLES_EMPTIED = {
     "hikes",
     "user_preferences",
     "maintainer_assignments",
+    # A registry signature says a NAMED person read this exact registry and
+    # confirmed it. With the account gone nobody is standing behind that
+    # sentence, so the row goes and the organization is asked again - which
+    # is the same thing a changed section already does to the count. Keeping
+    # it would mean three signatures where only two people exist.
+    "registry_signoffs",
     "volunteer_hours",
     # `reporter_id` is nullable and null is the ordinary state here, so this
     # is the one table that can forget the link without losing the row.
     "app_failures",
+    # --- The organization surface (features/ORG_ONBOARDING.md). Two reasons,
+    # and which one applies to a table is worth being able to read off. ---
+    #
+    # THE ROWS GO. A seat and a signup are permissions rather than
+    # contributions: a deleted account cannot administer anything, and an
+    # organization planning Saturday is better served by a free crew slot than
+    # by a name nobody can reach. The commitment window is a mode the app was
+    # in, visible to nobody else.
+    "club_admins",
+    "work_project_signups",
+    "ridge_runner_commitments",
+    #
+    # THE LINK GOES AND THE ROW STAYS, the same thing `app_failures` does. All
+    # four of these columns are nullable and the row belongs to the
+    # organization: it does not lose its registry, its workdays, its audit
+    # trail or its embed keys because one of its admins closed their account.
+    "clubs",
+    "work_projects",
+    "console_keys",
+    "roster_sync_runs",
+    # Both at once. An invite this person SENT is the organization's and is
+    # unlinked; one they CLAIMED is the audit row for a grant that has just
+    # gone with them, and goes too.
+    "role_invites",
 }
 
 
@@ -381,3 +490,71 @@ def test_the_scrub_clears_every_column_that_says_who_it_was(db_session, hiker):
                 f"{column.key} survived the scrub - either clear it in scrub_profile, "
                 "or add it to `survives` here with a reason it is not identifying"
             )
+
+
+def test_an_organization_keeps_its_agreement_and_forgets_who_gave_it(db_session, hiker):
+    """Deleting an account does not withdraw an organization's consent.
+
+    The two are different people's decisions. The admin closed their OurHike
+    account; the organization did not change its mind about whether a model
+    may read its registry, and an opt-in that lapsed when one admin left
+    would switch a working console off for reasons nobody at the
+    organization could see. What goes is the name beside the date - the same
+    trade `Club.created_by` makes one line above it.
+    """
+    delete_account(db_session, hiker)
+    db_session.commit()
+
+    club = db_session.query(Club).filter(Club.id == f"club-{hiker.id}").one()
+    assert club.assist_opted_in_by is None
+    assert club.assist_opted_in_at is not None
+    assert club.assist_opted_in is True
+
+
+def test_an_organization_keeps_everything_that_is_its_own(db_session, hiker):
+    """An organization does not lose its registry, its workdays, its audit
+    trail or its embed keys because one of its admins closed their account."""
+    delete_account(db_session, hiker)
+    db_session.commit()
+
+    assert db_session.query(Club).count() == 1
+    assert db_session.query(WorkProject).count() == 1
+    assert db_session.query(ConsoleKey).count() == 1
+    assert db_session.query(RosterSyncRun).count() == 1
+
+
+def test_a_deleted_admins_seat_is_released_rather_than_left_waiting(db_session, hiker):
+    """A row saying a deleted account is a codeowner is a codeowner the
+    organization would be waiting on forever."""
+    delete_account(db_session, hiker)
+    db_session.commit()
+
+    assert db_session.query(OrgAdmin).count() == 0
+
+
+def test_a_crew_slot_is_freed_rather_than_held_by_somebody_unreachable(db_session, hiker):
+    delete_account(db_session, hiker)
+    db_session.commit()
+
+    assert db_session.query(WorkProjectSignup).count() == 0
+
+
+def test_a_closure_this_hiker_helped_confirm_keeps_its_approval(db_session, hiker):
+    """Withdrawing one could drop a closure back below the three it needed,
+    which is a decision about that closure rather than about this account."""
+    summary = delete_account(db_session, hiker)
+    db_session.commit()
+
+    assert db_session.query(ClosureApproval).count() == 1
+    assert summary.contributions_kept["closures you helped confirm"] == 1
+
+
+def test_the_receipt_counts_what_the_organization_surface_released(db_session, hiker):
+    summary = delete_account(db_session, hiker)
+    db_session.commit()
+
+    assert summary.org_seats_released == 1
+    assert summary.workday_signups_released == 1
+    assert summary.commitments_deleted == 1
+    # Four unlinked rows plus the one claimed invite that went with them.
+    assert summary.org_rows_unlinked >= 4

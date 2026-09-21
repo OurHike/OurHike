@@ -67,6 +67,7 @@
 
 import { test, expect, type Page } from '@playwright/test'
 import { seedPreferences, seedHikerMode, type HikerMode } from './support/seed'
+import { setSignal } from './support/signal'
 
 /** The fallback chrome/ErrorBoundary.tsx draws, whichever boundary drew it.
  *  `role="alert"` is the component's own contract, so the query is the role
@@ -384,8 +385,10 @@ test.describe('the report door', () => {
     // and the one a hiker is in when the app fails on them. Playwright's own
     // offline, which is what `navigator.onLine` and the window events the app
     // listens on (lib/useOnline.ts) actually answer to; the form stays mounted,
-    // so nothing typed is at stake in the switch.
-    await context.setOffline(true)
+    // so nothing typed is at stake in the switch. Through `setSignal` for the
+    // same reason firstRunStates.spec.ts uses it: `setOffline` returning is
+    // not the page having heard about it.
+    await setSignal(page, context, { on: false })
 
     const save = page.getByRole('button', { name: 'Save to outbox' })
     await expect(save).toBeVisible()

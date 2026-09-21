@@ -72,19 +72,79 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     # while shaken, so of every table here it is the one where "readable with
     # the anon key" would be worst.
     "app_failures",
-    "clubs",
+    # What the assist panels spent (features/ORG_ONBOARDING.md). No prompt and
+    # no answer is stored here - see app/models/assist.py - but `client_hash`
+    # plus `created_at` is still a record of which addresses looked something
+    # up and when, and a readable one would be a traffic log we went out of
+    # our way not to keep.
+    "assist_usage",
+    # One proof-of-work nonce, spent (app/core/challenge.py). The nonces in
+    # it are public by construction, so this one is not about reading: an
+    # anon key that could DELETE a row here would make every solved
+    # challenge replayable, which is the whole of what that mechanism buys.
+    "challenge_spends",
+    "closure_approvals",
     "closures",
+    "club_admins",
+    "clubs",
+    # The management-console embed's key store and its grant log
+    # (features/ORG_ONBOARDING.md, #1542). `console_keys` holds the origin
+    # allow-list and a secret hash; a readable one would hand somebody the
+    # list of sites a key is good on, which is half of guard 2.
+    "console_keys",
+    "console_token_grants",
+    # What this project has written to people who never asked to hear from
+    # it, and the list of the ones who told it to stop
+    # (features/ORG_ONBOARDING.md, app/core/mail.py). A readable
+    # `email_sends` is a record of which organizations we approached and
+    # when; a readable `email_suppressions` is worse, because it is a list
+    # of who complained.
+    "email_sends",
+    "email_suppressions",
     # The field-notes pair (features/FIELD_NOTES.md): notes carry a
     # reporter_id beside a position and a date - #252's route-reconstruction
     # pair - so their RLS staying on is worth a read an hour.
     "field_notes",
     "hikes",
     "maintainer_assignments",
+    # Who signed off which registry, and when. A readable one would name the
+    # people standing behind an organization's published trails, which is
+    # exactly the kind of "who maintains which mile" rule 4 keeps unpublished.
+    "registry_signoffs",
     "note_flags",
+    # A hiker offering somebody else's trails, and what the reading found
+    # (features/ORG_ONBOARDING.md). `nomination_contacts` is the one that
+    # matters most on this whole list: it holds named people's work email
+    # addresses, lifted off their organization's own pages, for an
+    # organization that has not yet agreed to any of this. A readable one is a
+    # contact database of volunteers who never heard of us.
+    "nomination_contacts",
+    "nomination_refusals",
+    "nomination_sources",
+    "org_nominations",
+    # An organization's own registry (features/ORG_ONBOARDING.md, #1540).
+    # Not yet published to anybody when it is written, which is the whole
+    # point of the sign-off: a readable one would serve an org's unpublished
+    # sections to anyone holding the anon key.
+    "org_parks",
+    "org_roles",
+    "org_sections",
+    "org_trails",
     "poi_photo_dismissals",
     "poi_photos",
     "profiles",
     "reports",
+    # A volunteer trail monitor's own window (features/VOLUNTEERING.md §3,
+    # #763). The role is a mode the app is in, visible to its user and to
+    # the organization receiving the data, and to nobody else - "the app
+    # issues nothing that functions as a badge" is undone by a readable
+    # table saying who is out there this week.
+    "ridge_runner_commitments",
+    # A roster in two shapes: the names an organization invited by email,
+    # and the audit of every sync run. Rule 4 keeps nothing about a named
+    # volunteer published, and this is the table that breaks that first.
+    "role_invites",
+    "roster_sync_runs",
     # A hiker's own day hikes (#976): the same private-planning claim as the
     # #892 pair below - a route somebody intends to walk, served to nobody
     # else.
@@ -105,6 +165,11 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     # A volunteer's own logbook (#761), locations and free-text notes - the
     # resource whose whole design is that it is private.
     "volunteer_hours",
+    # Workdays are public by design; who put their hand up for one is not
+    # (features/ORG_ONBOARDING.md rule 4). The pair is listed together so
+    # a reader sees that only one of them is a public resource.
+    "work_project_signups",
+    "work_projects",
 )
 
 TIMEOUT_SECONDS = 15

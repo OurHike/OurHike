@@ -27,6 +27,50 @@ export const OUT_OF_TREE_READS = [
   // live in the stylesheet, the markup in the install page.
   'site/src/styles/site.css',
   'site/src/pages/get-the-app.astro',
+  // The copy /for-orgs/ puts in front of an organization (#1539). It is read
+  // here rather than guarded by site/'s own vitest suite because nothing in
+  // CI runs that suite: pages.yml builds the site and never tests it, so a
+  // guard living there would be a guard nobody ran. The one that matters is
+  // the money sentence - features/ONBOARDING.md records what happened the
+  // last time a value-prop screen claimed OurHike funds anybody.
+  'site/src/lib/orgOnboarding.mjs',
+  'site/src/pages/for-orgs/index.astro',
+  // The other three doors, and the row that reaches all four. The console
+  // already put these four links across the top of every one of its screens
+  // (org/OrgShell.tsx) while the marketing pages reached each other only
+  // through a section most of a page down - so the guard compares the two
+  // surfaces' labels rather than trusting either alone.
+  'site/src/pages/for-orgs/demo.astro',
+  'site/src/pages/for-orgs/nominate.astro',
+  'site/src/pages/for-orgs/claim.astro',
+  'site/src/components/OrgNav.astro',
+  // The demo org's data, served to the REAL public embeds at the four paths
+  // the API serves them at. Declared here because the failure is silent: an
+  // endpoint that stops being generated, or a page that stops setting the
+  // base, renders three empty boxes and nothing throws.
+  'site/src/lib/demoApi.ts',
+  'site/src/pages/for-orgs/demo/api/clubs/central-park-throughikers/index.html.ts',
+  'site/src/pages/for-orgs/demo/api/clubs/central-park-throughikers/registry.ts',
+  'site/src/pages/for-orgs/demo/api/clubs/central-park-throughikers/coverage.ts',
+  // The coverage badge's three figures. It read `/coverage` until
+  // 2026-09-18, which the real API gates to admins and supervisors - so
+  // the public badge drew nothing on every real site and only ever looked
+  // alive here, where a fixture answers without auth.
+  'site/src/pages/for-orgs/demo/api/clubs/central-park-throughikers/scoreboard.ts',
+  'site/src/pages/for-orgs/demo/api/workdays.ts',
+  'site/src/pages/index.astro',
+  'site/src/components/NavBar.astro',
+  // The shell every site page renders inside. Read for the skip link, which
+  // the design carries on all 27 screen extracts and the site had nowhere.
+  'site/src/layouts/Base.astro',
+  // The four embeds (#1542), which run on somebody ELSE's website. The
+  // console screen promises an organization no cookies, no tracking, no
+  // branding they cannot remove and a page that still renders when we are
+  // down - four promises made in copy, kept in one file, and checkable by
+  // reading it. Same reasoning as the /for-orgs/ entries above: site/'s own
+  // vitest suite is never run by CI, so a guard living there is a guard
+  // nobody ran.
+  'site/public/embed/v1/ourhike.js',
   // ciScope.test.ts reads the workflow to check the entries above are
   // scoped - which makes the workflow itself an out-of-tree read, held to
   // the same rule it enforces.

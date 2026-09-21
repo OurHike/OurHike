@@ -124,6 +124,135 @@ class Settings(BaseSettings):
     # a moderator the photo attached to the report they are deciding on.
     r2_photo_write_enabled: bool = False
 
+    # The management-console embed, and it is OFF unless a deployment says
+    # otherwise - deliberately, and for a different reason from the photo
+    # switch above.
+    #
+    # `POST /console/session` mints a token that renders an organization's own
+    # roster inside a page on THEIR domain. That is a first-party credential
+    # crossing to a third-party origin, and the six guards around it
+    # (app/models/console_key.py) are a design nobody has security-reviewed -
+    # the maintainer's call on 2026-09-17 was to build it anyway, against a
+    # recommendation to ship only the three public embeds. Both halves of that
+    # decision are honoured by making it real and making it inert: the code
+    # exists, the endpoint answers 503 while this is false, and switching it
+    # on is a deliberate act after a review rather than a consequence of a
+    # merge.
+    #
+    # The three PUBLIC embeds - hike finder, workdays, coverage badge - are
+    # not gated on this. They read a published registry and hold no
+    # credential, so there is nothing about them to review in this sense.
+    console_embed_enabled: bool = False
+
+    # The assist panels (#1540, #1541 and the nominate form), and the three
+    # settings that decide whether they can run, what they cost and who pays.
+    #
+    # OFF BY DEFAULT, for a different reason from the console embed above.
+    # That one is off pending a security review; this one is off because it
+    # spends money on somebody else's API key, and a deployment that has not
+    # deliberately chosen to spend it should not start doing so because a
+    # branch merged. With no key set the endpoints answer 503 and the panels
+    # say so on screen rather than spinning.
+    assist_enabled: bool = False
+    anthropic_api_key: str = ""
+
+    # THE MODEL IS A SETTING AND NOT A PARAMETER, which is the whole of the
+    # abuse story. A client that could name the model could name the most
+    # expensive one and bill an organization - or us - for it. Nothing in the
+    # request body reaches this value; `app/routers/assist.py` reads it here
+    # and nowhere else, and the tests assert a model in a request body is
+    # ignored rather than honoured. Sonnet by decision, not by default: these
+    # are short structured reads of a GIS layer or a public web page, and the
+    # maintainer's instruction on 2026-09-17 was Sonnet only.
+    assist_model: str = "claude-sonnet-5"
+
+    # What one organization may spend in a day, in tokens across all panels.
+    #
+    # @unvalidated. Nobody has measured what a real registry read costs,
+    # because no organization has run one - the number is a ceiling chosen to
+    # be obviously survivable rather than a budget derived from usage. What
+    # would settle it is the token counts of the first ten real registry
+    # reads, which `assist_usage` records precisely so that the question can
+    # be answered rather than re-guessed.
+    assist_daily_token_budget: int = 400_000
+
+    # The same for the PUBLIC nominate form, per IP per day. Smaller by two
+    # orders of magnitude because it is the one assist surface with no account
+    # behind it: anybody on the internet can reach it, so the only thing
+    # standing between it and a bill is this number.
+    assist_public_daily_token_budget: int = 20_000
+
+    # THE NOMINATE PANEL IS NOT PUBLIC ANY MORE. The maintainer's 2026-09-17
+    # decision: a signed-in hiker, and a proof of work on top, before this
+    # server fetches a website a stranger typed. The budget above still
+    # applies - it is now the third bound rather than the only one.
+    #
+    # The secret signs a challenge; it never leaves this process and is never
+    # in one. Empty means the panel answers 503 rather than issuing
+    # challenges anybody could mint, which is the same posture as an absent
+    # API key: refuse loudly rather than run insecurely.
+    nominate_challenge_secret: str = ""
+
+    # Bits of leading zeroes a browser must find. MEASURED on a CI-class
+    # container with a synchronous JS SHA-256: 18 bits is a 437 ms median and
+    # a 1.2 s p90. See app/core/challenge.py for the table and for what is
+    # still @unvalidated about it (nobody has run it on a phone).
+    nominate_challenge_difficulty: int = 18
+
+    # Whether the fetcher insists on confirming the address it actually
+    # reached against the ones the guard approved. ON, because a check that
+    # passes when it cannot run is not a check - see app/core/sitefetch.py.
+    #
+    # An egress proxy makes this impossible: the socket's peer is the proxy
+    # and the name was resolved by something we are not asking. A deployment
+    # behind one has to turn this off deliberately and knows what it gave up
+    # - the DNS-rebinding window between the guard's check and the socket.
+    site_fetch_require_peer_match: bool = True
+
+    # Mail. Nothing in this repository sent any until 2026-09-17, and the
+    # nominate flow writes to people who never asked to hear from us - see
+    # app/core/mail.py's four promises.
+    #
+    # OFF BY DEFAULT AND THAT IS LOAD-BEARING. A preview deployment holding a
+    # fixture with a real club's address must not be one variable away from
+    # writing to them.
+    mail_enabled: bool = False
+    # Comma-separated address suffixes this environment may write to. Empty
+    # means anywhere, which is only correct in production; UA sets this to
+    # "@ourhike.org" so the flow can be exercised end to end without reaching
+    # a club.
+    mail_allowed_suffixes: str = ""
+
+    # OPENING AN ORGANIZATION'S REGISTRY PULL REQUEST, and the same
+    # off-by-default argument mail makes one line up: a preview deployment
+    # holding a fixture must not be one variable away from opening pull
+    # requests against a public repository.
+    #
+    # The token is a SERVICE IDENTITY'S and never a person's - see
+    # app/core/registry_pr.py for why opening needs write access where
+    # approving does not. Write should be scoped to the registry directory
+    # GitHub-side; this process cannot assert that, so it asserts the thing
+    # it can and refuses any path outside the organization's own directory.
+    registry_pr_enabled: bool = False
+    registry_pr_token: str = ""
+    registry_pr_repo: str = "OurHike/OurHike"
+    # WHERE A LINK WE MAIL POINTS. A preview deployment must mail a preview
+    # link rather than a production one - the club-facing proposal screen is
+    # reached only by the address in the message, so getting this wrong means
+    # three people at an organization following a link to somebody else's
+    # deployment, or to a page that does not exist yet.
+    public_site_url: str = "https://ourhike.org"
+    mail_sender: str = "OurHike <hello@ourhike.org>"
+    mail_reply_to: str = "hello@ourhike.org"
+    # SES, because boto3 is already here for report photos going to R2. One
+    # vendor library rather than two.
+    ses_region: str = "us-east-1"
+
+    @property
+    def mail_allowed(self) -> tuple[str, ...]:
+        """The suffix list as `app/core/mail.py` wants it."""
+        return tuple(part.strip().lower() for part in self.mail_allowed_suffixes.split(",") if part.strip())
+
     @model_validator(mode="after")
     def _photos_do_not_go_in_the_published_bucket(self) -> "Settings":
         """Refuse to start rather than publish a photo of a person.

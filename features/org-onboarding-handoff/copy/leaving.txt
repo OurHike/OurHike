@@ -1,0 +1,109 @@
+[link] Skip to content
+    [svg]
+    Prototype controls
+    ·
+    signed in as
+  [button] org admin
+  [button] not a lead
+  [button] registered volunteer
+  [button] reset
+  [button] show signed out
+  [button] show a new org
+  [button] show failures
+  [button] onboarding complete · replay it
+    [button] RT Ramapo Trail Conference Org admin · maintainer
+      [svg]
+        Onboarding
+      [button] Org home
+      [button] Admin approval
+      [button] Hike registry
+      [button] Registry sign-off
+      [button] Add a trail
+      [svg]
+        Manage volunteers
+      [button] Roles
+      [button] Workdays 3
+      [button] Coverage report 37
+      [button] Your roster
+      [button] Welcome them 37
+      [svg]
+        Volunteer
+      [button] Your Tread
+      [button] On your phone
+      [button] What you hand back
+      [button] Ridge Runner
+      [button] Your profile
+    [button] What we email on your behalf
+    [button] Settings and leaving
+    [link] OurHike
+    [button] For orgs
+    [button] Demo org
+    [button] Nominate an org
+    [button] Claim your org
+        MA
+          Maria Alvarez
+          maria@ramapotrails.org
+      [button] Ramapo Trail Conference
+        ›
+          Settings
+        ›
+          Leaving OurHike
+        [svg]
+            SETTINGS · LEAVING OURHIKE
+        [h1] Leaving, on your terms
+    We promise you can walk away with your data, so here is the door — no email to us, no phone call, no retention team. Everything below is self-serve.
+        Take your data
+        No export request, no waiting. It is already public — this button just packages it for you.
+              Trails and sections
+              GeoJSON · the same shape you gave us
+              312 features
+              Featured hikes
+              YAML
+              41 entries
+              Roles and assignments
+              CSV · dated, including retired ones
+              96 roles · 412 assignments
+              Volunteer hours
+              CSV · claimed and confirmed, with who confirmed each
+              2,418 hours
+              Reports, closures and POI edits
+              JSON
+              1,204 records
+              Everything, as the repo has it
+              git clone — it is already public
+              full history
+          [button] Download everything
+          You can do this any time, not only on the way out.
+        Remove an admin
+        People move on. Removing somebody takes their access away and leaves everything they did in place — their confirmations, their hours, their name on past approvals.
+                Dana Whitfield
+                ·
+                  Secretary · codeowner
+                since Sep 2026
+                Removing a codeowner needs the other two to approve — you cannot drop below three and keep publishing.
+            [button] Propose removal
+                Joseph Okafor
+                ·
+                  Crew lead · codeowner
+                since Sep 2026
+                Holds 4 supervisor roles. Those stay with the org and need reassigning, not deleting.
+            [button] Propose removal
+        Unpublish a trail
+        Take a single trail off the map without leaving. Hikers stop seeing it within the hour; the history stays in the repo, because a merged commit cannot be unsaid.
+        [button] Choose a trail to unpublish
+        Delete this org
+        This removes the org and everybody's admin access.
+          It does not delete the trails.
+        They revert to unclaimed — still on the map for hikers, with nobody behind them — and anybody with an email at your domain can adopt them later from Claim your org.
+          WHAT SURVIVES YOU
+          ·
+            Your trails stay published
+          — removing them is a separate decision, above.
+          ·
+            Volunteers keep their own records.
+          Their hours and reports are theirs, not yours to delete.
+          ·
+            The repo history remains.
+          Every past change stays readable, which is what made it trustworthy in the first place.
+          [button] Propose deletion
+          All three codeowners approve, then 30 days pass.

@@ -45,6 +45,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core.orm import commit_and_refresh
+from app.core.role_invites import apply_pending_invites
 from app.db.session import get_db
 from app.models.profile import Profile, Role
 
@@ -143,7 +144,25 @@ def verify_supabase_jwt(token: str) -> dict:
     )
 
 
-def _get_or_create_profile(db: Session, user_id: str) -> Profile:
+def _get_or_create_profile(db: Session, user_id: str, email: str | None = None) -> Profile:
+    """The caller's local row, made on first sight.
+
+    `email` is passed only so that an organization's pending role invites can
+    be applied the moment the person it invited first signs in - #1169's
+    problem 3, whose answer is invite-not-create because minting a Supabase
+    Auth user needs a service-role key app/config.py does not hold. It is
+    never stored: Supabase Auth owns the address, and a second copy here
+    would be a second thing to keep in step and a second thing to leak.
+
+    **@unvalidated: that an `email` claim is present on a real Supabase
+    access token.** #1169 asked for this to be confirmed against a live token
+    rather than assumed, and it has not been - this environment has no
+    Supabase project. The code is written so that its absence is harmless
+    rather than broken: no claim means no invite is applied, the person still
+    gets a profile and can still be added to an org by hand. What would
+    settle it: decoding one access token from the real project, which
+    `check_supabase_config.py` is the natural home for.
+    """
     profile = db.get(Profile, user_id)
     if profile is None:
         profile = Profile(id=user_id, role=Role.hiker)
@@ -159,6 +178,12 @@ def _get_or_create_profile(db: Session, user_id: str) -> Profile:
             profile = db.get(Profile, user_id)
             if profile is None:
                 raise
+        else:
+            # Only on the branch that actually created the row. A returning
+            # caller must not re-run this on every request: the invites are
+            # already claimed, so it would be a wasted query on the seam
+            # every authenticated request crosses.
+            apply_pending_invites(db, profile, email)
     return profile
 
 
@@ -208,7 +233,7 @@ def get_current_user(
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token missing subject claim")
 
-    profile = _get_or_create_profile(db, user_id)
+    profile = _get_or_create_profile(db, user_id, claims.get("email"))
 
     # A deleted account cannot be signed back into (#895). This is not
     # belt-and-braces: this backend has no way to delete the Supabase Auth
@@ -226,6 +251,82 @@ def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="This account has been deleted")
 
     return profile
+
+
+def get_current_email(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> str | None:
+    """The caller's verified email address, from the token, or None.
+
+    **Verified is the whole point.** Registering an organization requires
+    that at least one of its admins holds an email at the organization's own
+    domain, and an address the caller typed into a form proves nothing about
+    that - anybody can type `chair@ramapotrails.org`. The provider verified
+    this one, which AUTHENTICATION.md already treats as "a Provider fact to
+    trust", so this is the only address this backend will check a domain
+    against.
+
+    Nothing stores it. Supabase Auth owns the address, and a second copy here
+    would be a second thing to keep in step and a second thing to leak.
+
+    Returns None rather than raising when the claim is absent, because a
+    token without one is a token this backend still accepts for everything
+    else - see `_get_or_create_profile`'s @unvalidated note on whether a real
+    Supabase access token carries it at all.
+    """
+    if credentials is None:
+        return None
+    try:
+        claims = verify_supabase_jwt(credentials.credentials)
+    except jwt.PyJWTError:
+        return None
+    email = claims.get("email")
+    return email.strip().lower() if isinstance(email, str) and email.strip() else None
+
+
+def get_current_github_login(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> str | None:
+    """The caller's GitHub account, from the token, or None.
+
+    The same bargain as `get_current_email` one provider further out: the
+    provider says who this is, and a username the caller typed says nothing.
+    A CODEOWNERS entry naming the wrong account hands somebody else approval
+    over an organization's registry, so this is the only place a login may
+    come from.
+
+    **WHERE SUPABASE PUTS IT IS @unvalidated.** `user_metadata.user_name` is
+    where a GitHub OAuth login is documented to land, and
+    `preferred_username` is the OIDC spelling some providers use instead;
+    both are read because the provider is not enabled on this project and
+    nobody here has seen a real token. What would settle it is one GitHub
+    sign-in against the live project, with the decoded claims printed once -
+    at which point the losing branch should be deleted rather than left as
+    a guess that looks like breadth.
+
+    The provider is checked as well as the claim: a token from some other
+    provider that happens to carry a `user_name` is not a GitHub identity,
+    and reading one would link an account nobody proved they hold.
+    """
+    if credentials is None:
+        return None
+    try:
+        claims = verify_supabase_jwt(credentials.credentials)
+    except jwt.PyJWTError:
+        return None
+
+    app_metadata = claims.get("app_metadata")
+    if not isinstance(app_metadata, dict) or app_metadata.get("provider") != "github":
+        return None
+
+    user_metadata = claims.get("user_metadata")
+    if not isinstance(user_metadata, dict):
+        return None
+    for claim in ("user_name", "preferred_username"):
+        value = user_metadata.get(claim)
+        if isinstance(value, str) and value.strip():
+            return value.strip().lower()
+    return None
 
 
 def get_current_user_optional(

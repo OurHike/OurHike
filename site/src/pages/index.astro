@@ -197,6 +197,36 @@ const ORG_COUNT_LINE = orgCountLine(ORGS)
             >Ways to help →</a
           >
         </div>
+        {
+          /* THE FOURTH CARD (features/ORG_ONBOARDING.md, #116 Phase 6). Same
+             shape as the three above, addressed to somebody who arrived as a
+             hiker and happens to run a trail crew. It is the one place on a
+             consumer homepage where that sentence lands.
+
+             The wording is load-bearing and was argued rather than picked:
+
+             - A QUESTION, because the reader is a hiker right up until the
+               moment they realise it is about them. A heading like "For
+               organisations" filters itself out before it is read.
+             - "instead of from us guessing" names the thing that actually
+               annoys a trails chair about every other hiking app.
+             - NO GIS, NO REGISTRY, NO PULL REQUESTS. All true, all on the next
+               page. A homepage card that mentions any of them is a card a
+               volunteer secretary bounces off. */
+        }
+        <div class="card">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 17.5 8 8l4 6.5L15 10l6 7.5z"></path>
+            <path d="M3 20.5h18"></path>
+          </svg>
+          <h3>Do you maintain these trails?</h3>
+          <p>
+            If your club or agency keeps a trail on this map, the data can come
+            from you instead of from us guessing. Publish your own sections,
+            keep your own hikers, and we will draw them.
+          </p>
+          <a class="card__link" href="/for-orgs/">Add your trail data →</a>
+        </div>
       </div>
     </div>
   </section>

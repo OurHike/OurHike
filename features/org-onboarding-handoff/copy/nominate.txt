@@ -1,0 +1,133 @@
+[link] Skip to content
+    [svg]
+    Prototype controls
+    ·
+    signed in as
+  [button] org admin
+  [button] not a lead
+  [button] registered volunteer
+  [button] reset
+  [button] show signed out
+  [button] show a new org
+  [button] show failures
+  [button] onboarding complete · replay it
+  [button] Leave this and go back
+        [svg]
+            ANY SIGNED-IN HIKER CAN DO THIS
+        [h1] Put a club on the map for them
+    Hiking somewhere new and the local club publishes maps nobody can use offline? Give us their website. We go looking for their trail data, you open the pull request, and their trails go on the map — unclaimed, until somebody from the org comes and takes it over.
+          STEP 1 · THEIR WEBSITE
+          Where do they live online?
+              Club website
+            [input text] https://carolinamountainclub.org value=
+          That is all we need. Claude reads the public site the way you would — looking for a maps page, a GIS server, a downloads link, or a data portal.
+            CLAUDE · WHAT I FOUND ON THEIR SITE
+              Carolina Mountain Club
+            — Asheville, NC. Maintains part of the Appalachian Trail plus the Mountains-to-Sea Trail.
+            We found
+              three live sources
+            we can read, one we cannot, and both of their giving pages. Add any we missed — most orgs keep their data in more than one place.
+                    ArcGIS FeatureServer
+                      [svg]
+                        usable
+                  services.arcgis.com/…/CMC_Trails/FeatureServer/0
+                  214 line features · BLZ_COLOR field present · updated March 2026
+                    Mountains-to-Sea segment layer
+                      [svg]
+                        usable
+                  services.arcgis.com/…/MST_NC/FeatureServer/2
+                  38 features · their share of the MST, published separately
+                    Closures feed
+                      [svg]
+                        closures
+                  carolinamountainclub.org/alerts.json
+                  Live JSON · we can read this hourly once they approve
+                    4 PDF trail maps
+                      [svg]
+                        not accepted
+                  carolinamountainclub.org/trail-maps · flat files
+                  We do not take these — a PDF cannot be re-read, so it is stale the day it is uploaded. Ask them for the layer behind it
+                    Membership page
+                      [svg]
+                        found
+                  carolinamountainclub.org/join · $30 a year
+                  We put this in front of every hiker walking their trails — the money goes straight to them
+                    Donation page
+                      [svg]
+                        found
+                  carolinamountainclub.org/support
+                  Same — linked from their sections, never routed through OurHike
+                    Licence
+                      [svg]
+                        no restrictions
+                  nothing restricting use — published publicly, no terms attached
+                  Good to go. They still get the final say when they approve the proposal
+                [button] + Add a source
+              Paste another server, endpoint or data portal. We do not accept PDFs, screenshots or spreadsheets — only something we can re-read.
+            Across those three sources:
+              252 sections, 13 named trails
+            and a blaze field we can map.
+          STEP 3 · WHO AT THE CLUB DECIDES
+          Claude found three people to ask
+          Nothing publishes until three of them say yes — same rule as an org that signs itself up. Edit any of these; a role we could not put a name to is worth checking.
+                  Dale Whitford
+                  ·
+                    Volunteer coordinator
+                  volunteers@carolinamountainclub.org
+                  Listed on the Get Involved page
+                  [svg]
+                    named
+                  Priya Raghavan
+                  ·
+                    GIS / trail data
+                  maps@carolinamountainclub.org
+                  Credited on the trail maps page
+                  [svg]
+                    named
+                  Board president
+                  ·
+                    Leadership
+                  president@carolinamountainclub.org
+                  From the Contact page — no name given
+                  [svg]
+                    no name given
+            [button] + Add a contact
+            A hiker has offered to put your trails on OurHike
+            to volunteers@ · maps@ · president@carolinamountainclub.org
+          [svg]
+            FOR THE CLUBS WHO CUT THE TREAD
+          [h2] A hiker wants to put your trails on the map.
+              Sam Ortiz
+            — a hiker from Durham, on OurHike since 2025 — has proposed adding Carolina Mountain Club's trails. Sam is not affiliated with your club, and nothing has been published.
+            WHAT YOUR CLUB GETS, AT NO COST
+              [svg]
+                Beautiful maps, free to every hiker
+                Your 214 sections drawn from your own data, working with no bars and no data plan.
+              [svg]
+                Crowd-source trail problems
+                A blowdown reported at noon reaches whoever covers that mile — not a generic inbox.
+              [svg]
+                Every hiker learns about volunteering
+                Your workdays appear where hikers already look. More volunteers, more often.
+              [svg]
+                Members and donations reach you
+                We send hikers to your own membership and giving pages. No money passes through us.
+            [svg]
+                Nothing goes live unless three of you approve it.
+              Sam has opened a proposal you can read line by line, and your data stays yours — OurHike is open source, so you can fork it and walk away at any point.
+              [button] Review the proposal
+              [button] No thank you
+            Would rather nobody proposed your data at all? "No thank you" tells us that for good — we will not ask again, and Sam is not told who declined.
+          HOW THIS GOES
+              1
+              You give us their website. Claude finds the data.
+              2
+              You sign in to GitHub and open the pull request under your own name.
+              3
+              We email three people at the club. Three have to approve.
+              4
+              If they accept, the club owns it from then on — not you.
+            You are a proposer, not an admin
+            Opening this gives you no standing at the club and no control over their trails. Your name stays on the pull request as the person who offered — that is the whole of your role, and it is a generous one.
+        [button] Submit the request
+        [button] I represent this org myself

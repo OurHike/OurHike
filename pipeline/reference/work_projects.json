@@ -43,7 +43,7 @@
     "  ends_on        YYYY-MM-DD (same day for a single-day event)",
     "  status         upcoming | completed | cancelled (default upcoming)",
     "  capacity       optional positive integer - absent means 'no cap stated'",
-    "  signup_mode    'contact' (in_app arrives with #762's backend)",
+    "  signup_mode    'contact' (their own form or inbox) or 'in_app' (#762's endpoint)",
     "  signup_contact mailto:/tel:/https: - the club's own channel",
     "",
     "Recurrence is deliberately unmodelled (VOLUNTEERING.md's open question):",

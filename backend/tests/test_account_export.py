@@ -14,6 +14,8 @@ import json
 
 from app.core.account_export import NOT_INCLUDED, build_export
 from app.db.base import Base
+from app.models.closure import ClosureApproval
+from app.models.org_registry import RegistrySignoff
 from app.models.profile import Role
 from tests.factories import make_closure, make_profile
 from tests.test_account_deletion import _furnish
@@ -44,13 +46,37 @@ SECTION_FOR_TABLE = {
     # to see for exactly that reason (#1551).
     "poi_photo_dismissals": "community_photos_of_yours_a_moderator_took_down",
     "profiles": "your_account",
+    # --- The organization surface (features/ORG_ONBOARDING.md). The names say
+    # what the row is to the hiker rather than what it is to an organization:
+    # somebody opening this file months later is reading their own life, not
+    # our schema. ---
+    "club_admins": "organizations_you_help_run",
+    "work_project_signups": "workdays_you_signed_up_for",
+    "ridge_runner_commitments": "trail_monitor_commitments",
+    "closure_approvals": "closures_you_helped_confirm",
+    "registry_signoffs": "registries_you_signed_off",
+    "clubs": "organizations_you_registered",
+    "work_projects": "workdays_you_posted",
+    "role_invites": "people_you_invited",
+    "roster_sync_runs": "roster_loads_you_ran",
+    "console_keys": "embed_keys_you_made",
+    "org_nominations": "organizations_you_nominated",
 }
 
 
 def _furnished(db_session):
     profile = make_profile(db_session, role=Role.maintainer, display_name="Switchback")
     _furnish(db_session, profile.id)
-    make_closure(db_session, reported_by=profile.id)
+    closure = make_closure(db_session, reported_by=profile.id)
+    # The approval rides on the closure they reported, the same way
+    # test_account_deletion.py's fixture builds it - `_furnish` runs before
+    # there is a closure to approve.
+    db_session.add(ClosureApproval(closure_id=closure.id, person_id=profile.id))
+    # `_furnish` builds the club as `club-<profile id>` - reached that way
+    # rather than re-created, so this row hangs off the same organization
+    # every other org row in the fixture does.
+    db_session.add(RegistrySignoff(club_id=f"club-{profile.id}", person_id=profile.id, fingerprint="a" * 64))
+    db_session.commit()
     return profile
 
 

@@ -1,0 +1,151 @@
+[link] Skip to content
+    [svg]
+    Prototype controls
+    ·
+    signed in as
+  [button] org admin
+  [button] not a lead
+  [button] registered volunteer
+  [button] reset
+  [button] show signed out
+  [button] show a new org
+  [button] show failures
+  [button] onboarding complete · replay it
+    [button] RT Ramapo Trail Conference Org admin · maintainer
+      [svg]
+        Onboarding
+      [button] Org home
+      [button] Admin approval
+      [button] Hike registry
+      [button] Registry sign-off
+      [button] Add a trail
+      [svg]
+        Manage volunteers
+      [button] Roles
+      [button] Workdays 3
+      [button] Coverage report 37
+      [button] Your roster
+      [button] Welcome them 37
+      [svg]
+        Volunteer
+      [button] Your Tread
+      [button] On your phone
+      [button] What you hand back
+      [button] Ridge Runner
+      [button] Your profile
+    [button] What we email on your behalf
+    [button] Settings and leaving
+    [link] OurHike
+    [button] For orgs
+    [button] Demo org
+    [button] Nominate an org
+    [button] Claim your org
+        MA
+          Maria Alvarez
+          maria@ramapotrails.org
+      [button] Ramapo Trail Conference
+        ›
+          Volunteer
+        ›
+          On your phone
+        [svg]
+            IN THE FIELD · PHONE, ONE BAR, COLD HANDS
+        [h1] Where the work actually gets logged
+            Not the desktop screens made narrow. A maintainer standing at a blowdown and a supervisor in a trailhead car park need different things than an admin at a laptop — fewer of them, bigger, and working with no signal.
+      RULES THESE FOUR FOLLOW
+          One job per screen.
+        No tabs, no side panels. If it is not the thing you came to do, it is not here.
+          Everything works offline.
+        Actions queue and sync later. A screen never blocks on a network it does not have.
+          Hit targets 44px and up.
+        Assume gloves, low sun and one hand on a trekking pole.
+          Never type what we can read.
+        Location, weather and section come from where the phone already is.
+        Phone Frame: Unexpected token 'typeof'
+            YOUR TREAD · MAINTAINER, OFFLINE
+              9:41
+              [svg]
+              [svg]
+              [svg]
+                No signal · 2 reports queued
+                YOUR TREAD
+                Pine Meadow North
+                MM 11.0 → 14.3 · 3.3 miles
+                        [svg]
+                          2 open reports on your miles
+                        Blowdown near MM 12.4, reported twice on Tuesday. Both hikers said it is passable but awkward.
+                    [button] Read both
+                [button] Report something
+                [button] Log hours
+                [button] Check a POI
+                        [svg]
+                          3 thanks on your miles
+                        “Whoever cleared the steps above the lake — thank you, that used to be a scramble.” · left at MM 12.1, tread work
+                      [button] Read all three
+                      [button] ⚑
+                        [svg]
+                          Park alert · not yours to close
+                        Palisades Interstate Park has closed the Lot 7 access road until 30 Sep. Your section is open; the way in is not.
+              [button] Ask to close a stretch
+                [svg]
+                Downloaded Sep 12 · works with no signal
+        Phone Frame: Unexpected token 'typeof'
+            REPORT SOMETHING · THREE TAPS
+              9:41
+              [svg]
+              [svg]
+              [button] Cancel
+                What did you find?
+                [button] Blowdown
+                [button] Washout
+                [button] Missing blaze
+                [button] Something else
+                  WE FILLED THESE IN
+                  📍 MM 11.8 · Pine Meadow North
+                  🕘 Today, 9:41am
+                  You are the maintainer here
+              [button] Add a photo
+                Anything else worth saying? (optional)
+              [button] Send it
+                No signal — this queues and goes on its own when you get back.
+        Phone Frame: Unexpected token 'typeof'
+            CONFIRM HOURS · SUPERVISOR
+              9:41
+              [svg]
+              [svg]
+                SATURDAY · PINE MEADOW ROCK STEPS
+                Confirm the crew's hours
+                Six people logged 41 hours. Confirm what you saw — the club reports these to the ATC.
+                    AR
+                      Ana Reyes
+                      7.5 hours
+                  [svg]
+                      TB
+                        Tom Boyd
+                        8 hours
+                    [button] Confirm
+                    [button] …
+                    RK
+                      Ruth Kelley
+                      6 hours · waiting
+              [button] Confirm all six
+                Disagree with a figure? Tap the dots — it goes back to that person with your note, never quietly changed.
+        Phone Frame: Unexpected token 'typeof'
+            POI UPKEEP · STANDING AT IT
+              9:41
+              [svg]
+              [svg]
+                2 POIS NEAR YOU
+                Is this still right?
+                    [svg]
+                      Stone Shelter privy
+                      40m away · last checked Feb 2025
+                  Listed as usable, with a note that the door latch sticks.
+                  [button] Still true
+                    [button] Changed
+                    [button] It's gone
+                    [svg]
+                      Spring at MM 12.9
+                      600m ahead · you checked it in June
+              [button] Add one that is missing
+                Your edits go live for hikers straight away. An admin sees them in their proposals queue and can roll one back.

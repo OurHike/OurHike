@@ -14,3 +14,18 @@ psycopg[binary]
 # same way pipeline/publish.py syncs published artifacts - one vendor, one
 # client library, one credential shape. See app/core/photos.py.
 boto3
+
+# The assist panels call Anthropic's API over this, and the site reader
+# fetches a nominated organization's public pages with it -
+# app/core/assist.py and app/core/sitefetch.py both import it at module
+# scope, so the process does not start without it.
+httpx
+
+# app/config.py imports `dotenv_values` directly (line 16), to read a
+# single secret out of an env file without loading the whole settings
+# object. It arrives anyway as a dependency of pydantic-settings and
+# uvicorn[standard] - which is exactly why it is named here: a
+# dependency we import ourselves and do not declare is one that
+# disappears the day either of those drops it, and the failure is at
+# import rather than in a test.
+python-dotenv

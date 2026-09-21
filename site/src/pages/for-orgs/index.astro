@@ -1,0 +1,362 @@
+---
+// /for-orgs/ - why an organization registers, what registering involves, and
+// the form (features/ORG_ONBOARDING.md, #1539, #116 Phase 6).
+//
+// WEBSITE.md §5.7 named this page and NavBar.astro reserved its link with a
+// condition attached: a nav link to a page that is not there is a promise the
+// site breaks on its second click. This is that page, so the link is now the
+// one it was waiting for rather than a broken promise.
+//
+// THE MONEY COPY IS THE PART TO READ CAREFULLY, and it is an old wound.
+// features/ONBOARDING.md records the maintainer's correction of 2026-08-27 -
+// "There is no funding model today for the orgs. The hope is we will drive
+// membership and donations to those orgs" - because the value-prop screen had
+// said OurHike "funds the ATC and affiliated clubs" and that was never true.
+// A test guards the app's own copy against that sentence coming back, and it
+// reads the app's value-prop step only, so it cannot see this page. THIS PAGE
+// HAS ITS OWN GUARD: tests/forOrgsCopy.test.mjs. No money passes through
+// OurHike; the form collects the organization's own pages instead.
+//
+// The shared-revenue block below is copy about a thing that does not exist
+// and is marked as such in the markup rather than in a comment, because the
+// reader is a treasurer. It still wants a legal read - ORG_ONBOARDING.md's
+// known gaps carry that, and it is the one item there that could be a
+// liability rather than a bug.
+import { Image } from 'astro:assets'
+
+import Base from '../../layouts/Base.astro'
+import OrgNav from '../../components/OrgNav.astro'
+import Contours from '../../components/Contours.astro'
+import heroPhoto from '../../../../client/src/design-system/assets/photos/heroes/05-blue-folds.jpg'
+import { STAGES, REASONS } from '../../lib/orgOnboarding.mjs'
+
+const title = 'OurHike — For clubs, agencies and land trusts'
+const description =
+  'Publish your own trail sections to every hiker who walks them, offline and free. Your data stays yours, three of your own admins approve every change, and you can take it all back.'
+---
+
+<Base title={title} description={description}>
+  <OrgNav />
+  <header class="hero hero--org">
+    {
+      /* THE PHOTOGRAPH, AND ITS CREDIT PILL, WHICH IS A LICENCE CONDITION
+         RATHER THAN A COURTESY. `client/src/lib/heroPhotos.ts` admits only
+         public-domain, CC0, CC BY and CC BY-SA images and renders the credit
+         ON the frame it licenses; this is the same pool and the same rule,
+         reached by importing from the client rather than by copying a file
+         into site/public/, so the licence check stays in one place and a
+         second copy cannot drift out of it. Base.astro already imports the
+         client's tokens across the same boundary.
+
+         The contours stay underneath. They are what draws while the photo
+         decodes, and on the home page they are the whole artwork - a hero
+         that flashes empty before an image arrives is worse than one that
+         never had an image. */
+    }
+    <div class="hero__photo">
+      <Image
+        src={heroPhoto}
+        alt="Layered blue ridgelines folding away at dawn"
+        widths={[900, 1440, 1920]}
+        sizes="100vw"
+        loading="eager"
+        fetchpriority="high"
+      />
+      <span class="hero__credit">Evelyn Mostrom · CC0</span>
+    </div>
+    <Contours />
+    <div class="wrap">
+      <div class="hero__inner">
+        <span class="eyebrow"
+          ><span class="blaze"></span>FOR THE PEOPLE WHO CUT THE TREAD</span
+        >
+        <h1>Your trails, drawn from your own data.</h1>
+        <p class="hero__tagline">
+          Nobody knows your sections like you do — so nobody else should be the
+          one to publish them. Hand us your GIS and your hikes, and we will put
+          them on every phone that walks them, offline, for free.
+        </p>
+        <div class="hero__cta">
+          <a class="btn" href="#register">Add your trails</a>
+          <a class="btn btn--ghost" href="/for-orgs/demo/">See the demo org</a>
+        </div>
+        <div class="register">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke-width="1.7" aria-hidden="true">
+            <path d="M12 3v18M5 6h11l2 2.5L16 11H5zM19 14H8l-2 2.5L8 19h11z"></path>
+          </svg>
+          <p>
+            <strong>OurHike is a beta, and you should treat it as one.</strong>
+            Your data stays yours, every section you publish is dated and
+            reversible, and if this project ever goes away the map and the
+            tooling are open source — you fork it and keep going. That is the
+            promise Avenza's shutdown taught us to make in writing.
+          </p>
+        </div>
+      </div>
+    </div>
+    <svg class="ridge" viewBox="0 0 800 100" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M0 78 L48 62 L96 70 L150 40 L196 55 L242 30 L300 52 L352 22 L404 46 L456 28 L510 58 L566 36 L618 64 L672 44 L726 68 L800 50 L800 100 L0 100 Z"></path>
+    </svg>
+  </header>
+
+  <section class="band band--pine">
+    <div class="wrap">
+      <div class="band__head">
+        <span class="blaze"></span>
+        <h2>Four reasons orgs register</h2>
+      </div>
+      <p class="prose" style="color: inherit">
+        Everything below is true on the day you finish. None of it asks you to
+        change how you already work.
+      </p>
+      <div class="cards cards--four" style="margin-top: 24px">
+        {
+          REASONS.map((reason) => (
+            <div class="card card--on-pine">
+              <svg
+                viewBox="0 0 24 24"
+                width="24"
+                height="24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+                set:html={reason.glyph}
+              />
+              <h3 set:html={reason.title} />
+              <p>{reason.body}</p>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <section class="section--tight">
+    <div class="wrap">
+      <div class="org-demo">
+        <div class="org-demo__map" aria-hidden="true">
+          <svg viewBox="0 0 120 200" role="presentation">
+            <rect x="18" y="8" width="70" height="184" rx="3" fill="var(--bg-sunken)" transform="rotate(8 53 100)"></rect>
+            <path d="M34 24 L70 176" stroke="var(--blaze-blue)" stroke-width="2.4" fill="none"></path>
+            <path d="M44 60 L58 140" stroke="var(--blaze-yellow)" stroke-width="2" fill="none"></path>
+            <ellipse cx="52" cy="96" rx="13" ry="20" fill="none" stroke="var(--alert-red)" stroke-width="2.2" transform="rotate(8 52 96)"></ellipse>
+            <path d="M60 40 L74 28" stroke="var(--terracotta-600)" stroke-width="2" fill="none"></path>
+          </svg>
+        </div>
+        <div class="org-demo__words">
+          <span class="org-eyebrow">DEMO ORG · FAKE DATA, REAL GROUND</span>
+          <h3>Central Park Throughikers</h3>
+          <p>
+            Want to see what your own pages would look like before you type
+            anything? We keep a demo org on Central Park — six routes, 13.8
+            miles, 29 invented volunteers. Poke at all of it; nothing you do
+            there matters.
+          </p>
+          <a class="btn btn--ghost" href="/for-orgs/demo/">Open the demo org</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <div class="section__head">
+        <span class="blaze"></span>
+        <h2>What registering actually involves</h2>
+      </div>
+      <p class="lede">
+        Registering takes five minutes today. Three stages follow it, and any of
+        your admins can pick up any of them — nothing expires. After sign-off
+        your trails are live, and the volunteer work carries on from there.
+      </p>
+      <ol class="org-stages">
+        {
+          STAGES.map((stage) => (
+            <li class="org-stage">
+              <span class="org-stage__mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24" set:html={stage.glyph} />
+              </span>
+              <span class="org-eyebrow">{stage.when}</span>
+              <h3>{stage.title}</h3>
+              <p>{stage.body}</p>
+            </li>
+          ))
+        }
+      </ol>
+    </div>
+  </section>
+
+  <section class="section" id="register">
+    <div class="wrap wrap--narrow">
+      <span class="org-eyebrow">THE ON-RAMP · TODAY</span>
+      <h2 class="org-form__title">Register your org</h2>
+
+      {
+        /* THE SIGNED-OUT GATE. Registering names you as the organization's
+           first admin, so there is no anonymous path - and the form says so
+           before it asks for anything rather than after. Rendered server-side
+           as the signed-out state and swapped by the script below once the
+           browser knows who is signed in: a static page cannot know, and
+           guessing wrong in the optimistic direction would show a
+           trails chair a form that cannot submit. */
+      }
+      <p class="org-identity" id="org-identity" data-state="signed-out">
+        <span class="org-identity__out">
+          <strong>Sign in first.</strong> Registering names you as this
+          organization's first admin, so we need to know who you are before the
+          form means anything.
+          <a class="btn btn--ghost btn--small" href="/app/?intent=register-org"
+            >Sign in to continue</a
+          >
+        </span>
+        <span class="org-identity__in" hidden>
+          Signed in as <strong id="org-identity-email"></strong> ·
+          <a href="/app/?intent=switch-account">switch account</a>
+        </span>
+      </p>
+
+      <form class="org-form" id="org-form" novalidate>
+        <fieldset class="org-form__group">
+          <label class="org-label" for="org-website">Your web address</label>
+          <input
+            class="org-input"
+            id="org-website"
+            name="website"
+            type="url"
+            inputmode="url"
+            placeholder="https://ramapotrails.org"
+            autocomplete="url"
+          />
+          <p class="org-help">
+            We take the bare domain from this — <code class="mono"
+              >ramapotrails.org</code
+            > — and it is what an admin's email address is checked against.
+          </p>
+        </fieldset>
+
+        <fieldset class="org-form__group">
+          <legend class="org-label">Admins</legend>
+          <p class="org-help">
+            You can start on your own. Three admins have to approve before your
+            trails publish, so name them whenever you have them — this page
+            waits.
+          </p>
+          <ul class="org-admins" id="org-admins"></ul>
+          <div class="org-check" id="org-domain-check" role="status" aria-live="polite"></div>
+          <button class="org-add" id="org-add-admin" type="button">+ Add admin</button>
+        </fieldset>
+
+        <fieldset class="org-form__group">
+          <legend class="org-label">Where the money goes</legend>
+          <p class="org-help">
+            Today this is a traffic job, not a treasury one: give us your own
+            membership and donation pages and we put them in front of every
+            hiker walking your sections. Hikers pay you directly, and we never
+            see it.
+          </p>
+          <div class="org-pair">
+            <label class="org-field">
+              <span class="org-label org-label--small">Membership page</span>
+              <input
+                class="org-input"
+                name="membership_url"
+                type="url"
+                inputmode="url"
+                placeholder="https://ramapotrails.org/join"
+              />
+            </label>
+            <label class="org-field">
+              <span class="org-label org-label--small">Donation page</span>
+              <input
+                class="org-input"
+                name="donation_url"
+                type="url"
+                inputmode="url"
+                placeholder="https://ramapotrails.org/give"
+              />
+            </label>
+          </div>
+
+          <details class="org-note">
+            <summary>
+              <strong>If we ever collect on your behalf, here is who takes what.</strong>
+            </summary>
+            <p>
+              Money would pass through Open Source Collective as our nonprofit
+              fiscal host, which charges 10%. Stripe takes its published card
+              fee. OurHike keeps a small share for servers and map hosting — no
+              profit, no investors. Everything left is yours. Longer term we may
+              form our own non-profit, which would cut that 10% host fee down as
+              far as we can get it — more of the money would reach you, never
+              us. We are also weighing holding back 1–3% as a long-term fund for
+              the tool itself, and for grants to the things that make a trail
+              worth walking twice: a good bench, a summit register, a
+              hand-carved sign.
+            </p>
+            <p class="org-note__warning">
+              <strong>None of this is live yet, and none of it is promised.</strong>
+              No money passes through OurHike today and there is no arrangement
+              under which it would. The shape being discussed is a quarterly
+              payout once an org clears $1,000, net of those three shares.
+            </p>
+            <p class="org-help">
+              Nothing to sign today. A financial contact would only be asked for
+              once payouts actually open.
+            </p>
+          </details>
+        </fieldset>
+
+        <button class="btn org-form__submit" id="org-submit" type="submit" disabled>
+          Send approval requests
+        </button>
+        <p class="org-help org-help--centred">
+          Nothing is published until all three admins approve.
+        </p>
+      </form>
+    </div>
+  </section>
+
+  <section class="section--tight">
+    <div class="wrap">
+      <div class="section__head">
+        <span class="blaze"></span>
+        <h2>Not here for your own org?</h2>
+      </div>
+      <p class="lede">
+        Two other ways in — both take about five minutes, and neither needs you
+        to speak for anybody.
+      </p>
+      <div class="cards" style="margin-top: 24px">
+        <div class="card">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 21c-5-4.5-8-7.8-8-11a8 8 0 0 1 16 0c0 3.2-3 6.5-8 11z"></path>
+            <circle cx="12" cy="10" r="2.6"></circle>
+          </svg>
+          <h3>A club you hike with isn't here</h3>
+          <p>
+            Give us their website and we go looking for their trail data. You
+            submit it; they take it over whenever they are ready.
+          </p>
+          <a class="card__link" href="/for-orgs/nominate/">Submit their trails →</a>
+        </div>
+        <div class="card">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M7 11V8a5 5 0 0 1 10 0v3"></path>
+            <rect x="4.5" y="11" width="15" height="9.5" rx="2.2"></rect>
+          </svg>
+          <h3>Your org is already on here</h3>
+          <p>
+            Somebody may have submitted your trails already. If you have an
+            email at your org's domain, that is enough to take it over.
+          </p>
+          <a class="card__link" href="/for-orgs/claim/">Claim your org →</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script src="../../scripts/registerOrgForm.js"></script>
+</Base>

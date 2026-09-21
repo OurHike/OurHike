@@ -31,7 +31,11 @@ import { FLOW_COVERAGE } from './flowCoverage'
 
 const SRC = resolve(process.cwd(), 'src')
 const CLIENT = resolve(process.cwd())
-const SCREEN_DIRS = ['screens', 'chrome', 'reporting'] as const
+// THE ORGANIZATION SURFACE IS IN HERE BECAUSE IT WAS NOT, AND THE LEDGER
+// PASSED ON SEVENTEEN SCREENS BY NOT LOOKING AT THEM. `readdirSync` is flat,
+// so a directory that is not named is a directory this guard is silent about
+// - which is the drift it exists to catch, one level up.
+const SCREEN_DIRS = ['screens', 'chrome', 'reporting', 'org', 'org/screens'] as const
 
 function screenModules(): string[] {
   const modules: string[] = []

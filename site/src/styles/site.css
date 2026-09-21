@@ -22,33 +22,33 @@
  */
 
 @font-face {
-  font-family: 'Bitter';
-  src: url('/fonts/bitter-latin.woff2') format('woff2');
+  font-family: "Bitter";
+  src: url("/fonts/bitter-latin.woff2") format("woff2");
   font-weight: 500 700;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Public Sans';
-  src: url('/fonts/public-sans-latin.woff2') format('woff2');
+  font-family: "Public Sans";
+  src: url("/fonts/public-sans-latin.woff2") format("woff2");
   font-weight: 400 700;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'IBM Plex Mono';
-  src: url('/fonts/plex-mono-latin.woff2') format('woff2');
+  font-family: "IBM Plex Mono";
+  src: url("/fonts/plex-mono-latin.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 
 :root {
-  --font-display: 'Bitter', Georgia, 'Times New Roman', serif;
-  --font-body: 'Public Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+  --font-display: "Bitter", Georgia, "Times New Roman", serif;
+  --font-body: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
   --container-max: 1200px;
   --container-narrow: 760px;
 }
@@ -172,7 +172,7 @@ a:hover {
 }
 
 .nav__link:hover,
-.nav__link[aria-current='page'] {
+.nav__link[aria-current="page"] {
   color: var(--fg-1);
 }
 
@@ -299,6 +299,37 @@ a:hover {
 /* A painted white blaze: the organising motif (§3), used sparingly. The
    shadow is what makes it read as a painted chip rather than a missing
    glyph on plain paper - white on paper needs an edge. */
+/* ---------- The skip link ----------
+ *
+ * First in the tab order on every page, and invisible until it has focus.
+ * The design handoff opens all 27 of its screen extracts with "Skip to
+ * content"; this site had it on none, so a keyboard or screen-reader user
+ * tabbed the whole nav on every page before reaching a word of content.
+ *
+ * Moved rather than hidden: `display: none` and `visibility: hidden` both
+ * take an element out of the tab order, which would make this a link nobody
+ * can reach - the exact opposite of the point. It sits off the top of the
+ * screen and comes back on focus.
+ */
+.skip {
+  position: absolute;
+  left: 12px;
+  top: -64px;
+  z-index: 100;
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: var(--bg-chrome);
+  color: var(--fg-1);
+  border: 1px solid var(--brand-primary);
+  text-decoration: none;
+  font-weight: 600;
+  transition: top 120ms ease;
+}
+
+.skip:focus {
+  top: 12px;
+}
+
 .blaze {
   display: inline-block;
   width: 9px;
@@ -468,7 +499,7 @@ a:hover {
 }
 
 .checks li::before {
-  content: '';
+  content: "";
   position: absolute;
   left: 0;
   top: 5px;
@@ -622,6 +653,612 @@ a:hover {
   line-height: 1.6;
   color: var(--fg-2);
   max-width: var(--container-narrow);
+}
+
+/* The org hero's photograph, and the credit pill CC BY/BY-SA require on the
+ * frame. The pill is not decoration and must not be removed: see
+ * client/src/lib/heroPhotos.ts, whose pool this image comes from. */
+.hero__photo {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.hero__photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* The copy sits on top of this, so the image is darkened rather than the
+   * text being given a shadow: a shadow on a paragraph is a readability patch
+   * that fails at every other width. */
+  filter: brightness(0.62) saturate(0.9);
+}
+
+.hero__credit {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--fg-on-dark);
+  background: rgb(20 19 15 / 55%);
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+
+.hero--org .hero__inner {
+  position: relative;
+  z-index: 1;
+}
+
+.hero--org h1,
+.hero--org .hero__tagline,
+.hero--org .eyebrow {
+  color: var(--fg-on-dark);
+}
+
+.hero--org .hero__tagline {
+  color: var(--fg-on-dark-muted);
+}
+
+/* The ghost button sits ON the photograph here, where the light-background
+ * brand green it uses elsewhere all but disappears. Measured by eye against
+ * the rendered hero rather than by a contrast tool - which is worth saying
+ * plainly: this is a fix for a thing that was visibly unreadable, not a
+ * measured ratio. */
+.hero--org .btn--ghost {
+  color: var(--fg-on-dark);
+  border-color: var(--fg-on-dark-muted);
+}
+
+.hero--org .btn--ghost:hover {
+  background: rgb(255 253 247 / 14%);
+  color: var(--fg-on-dark);
+}
+
+/* Above the photograph. The ridge is the cut between the hero and the pine
+ * band below it, and a photograph at `inset: 0` covers it otherwise. */
+.hero--org .ridge {
+  z-index: 1;
+}
+
+/* ---------- For orgs (features/ORG_ONBOARDING.md, #1539) ----------
+ *
+ * Everything here is `.org-` prefixed and used by /for-orgs/ and its three
+ * siblings only. It reads the semantic aliases like the rest of this file -
+ * `--pine-900` and its neighbours are the client's to name, not this
+ * surface's - with one exception marked where it happens.
+ */
+
+.wrap--narrow {
+  max-width: var(--container-narrow);
+}
+
+.hero--org {
+  /* The org hero runs longer than the home page's, because it has a promise
+   * to make before it asks for anything. */
+  min-height: 0;
+}
+
+.cards--four {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.card--on-pine {
+  /* On the pine band, where `--bg-surface` would be invisible. The band sets
+   * its own text colour and the card has to opt back out of it. */
+  background: var(--paper-0);
+  border-color: transparent;
+  color: var(--fg-1);
+}
+
+.card--on-pine h3 {
+  font-family: var(--font-display);
+  font-size: 17px;
+  line-height: 1.25;
+  color: var(--fg-1);
+}
+
+.card--on-pine p {
+  color: var(--fg-2);
+  font-size: 13.5px;
+}
+
+.org-eyebrow {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+/* ---------- The demo-org invitation ---------- */
+
+.org-demo {
+  display: flex;
+  gap: 28px;
+  align-items: center;
+  flex-wrap: wrap;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: 14px;
+  padding: 22px;
+}
+
+.org-demo__map {
+  flex: 0 0 auto;
+  width: 120px;
+  background: var(--bg-sunken);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.org-demo__map svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  fill: none;
+}
+
+.org-demo__words {
+  flex: 1;
+  min-width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.org-demo__words h3 {
+  font-size: 21px;
+  font-weight: 600;
+}
+
+.org-demo__words p {
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--fg-2);
+}
+
+/* ---------- The five stages ---------- */
+
+.org-stages {
+  list-style: none;
+  margin: 24px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 22px;
+}
+
+.org-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.org-stage__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  border: 1px solid var(--border-1);
+  background: var(--bg-surface);
+  margin-bottom: 4px;
+}
+
+.org-stage__mark svg {
+  width: 21px;
+  height: 21px;
+  fill: none;
+  stroke: var(--brand-primary);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.org-stage h3 {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.org-stage p {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--fg-2);
+}
+
+/* ---------- The registration form ---------- */
+
+.org-form__title {
+  font-family: var(--font-display);
+  font-size: clamp(28px, 5vw, 38px);
+  margin: 6px 0 14px;
+}
+
+.org-identity {
+  font-size: 14.5px;
+  color: var(--fg-2);
+  margin-bottom: 20px;
+}
+
+.org-identity__out {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.org-form {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: 14px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.org-form__group {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.org-form__group + .org-form__group {
+  border-top: 1px solid var(--border-1);
+  padding-top: 22px;
+}
+
+.org-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--fg-1);
+  padding: 0;
+}
+
+.org-label--small {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--fg-2);
+}
+
+.org-help {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--fg-3);
+}
+
+.org-help--centred {
+  text-align: center;
+}
+
+.org-input {
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: 14.5px;
+  color: var(--fg-1);
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-2);
+  border-radius: 9px;
+  padding: 11px 13px;
+}
+
+.org-input:focus-visible {
+  outline: 3px solid var(--accent-blaze-orange);
+  outline-offset: 1px;
+}
+
+.org-input--inline {
+  flex: 1 1 200px;
+  width: auto;
+}
+
+.org-input--title {
+  flex: 0 1 150px;
+}
+
+.org-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 220px;
+}
+
+.org-pair {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.org-admins {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.org-admin {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+}
+
+.org-badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  border-radius: 999px;
+  padding: 3px 9px;
+}
+
+/* A badge with nothing to say draws nothing: an empty pill reads as a state
+ * rather than as an absence. */
+.org-badge[data-tone="none"] {
+  padding: 0;
+}
+
+.org-badge[data-tone="inside"] {
+  background: var(--bg-sunken);
+  color: var(--brand-primary);
+}
+
+.org-badge[data-tone="outside"] {
+  background: var(--surface-warning);
+  color: var(--fg-2);
+}
+
+.org-remove,
+.org-add {
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  background: none;
+  border: 0;
+  color: var(--fg-3);
+  cursor: pointer;
+  padding: 4px 2px;
+}
+
+.org-add {
+  align-self: flex-start;
+  color: var(--brand-primary);
+}
+
+.org-remove:hover,
+.org-add:hover {
+  color: var(--fg-1);
+}
+
+.org-check {
+  font-size: 13px;
+  line-height: 1.55;
+  border-radius: 9px;
+  padding: 11px 13px;
+  border-left: 3px solid var(--border-2);
+  background: var(--bg-canvas);
+  color: var(--fg-2);
+}
+
+.org-check[data-tone="ok"] {
+  border-left-color: var(--success);
+  background: var(--bg-sunken);
+}
+
+/* Held is neither ok nor blocked: the registration will be accepted, and
+   nothing about it is verified. Its own tone rather than reusing "ok",
+   because a green rule next to "we will hold this" is the display saying
+   one thing while the words say another. */
+.org-check[data-tone="held"] {
+  border-left-color: var(--accent-blaze-orange);
+  /* The neutral canvas the element already defaults to, stated here so the
+     next person does not "finish" this rule by copying `ok`'s sunken green.
+     Held is not ok: the registration is accepted and nothing about it is
+     verified, and a green panel under a sentence saying we will hold this
+     is the display disagreeing with the words. */
+  background: var(--bg-canvas);
+}
+
+.org-check[data-tone="blocked"] {
+  border-left-color: var(--warning);
+  background: var(--surface-warning);
+}
+
+.org-note {
+  border: 1px solid var(--border-1);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: var(--bg-canvas);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.org-note summary {
+  cursor: pointer;
+  font-size: 13.5px;
+  color: var(--fg-1);
+}
+
+.org-note p {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--fg-2);
+}
+
+.org-note__warning {
+  border-left: 3px solid var(--warning);
+  padding-left: 11px;
+}
+
+.org-form__submit {
+  align-self: flex-start;
+}
+
+.org-form__submit[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn--small {
+  padding: 7px 14px;
+  font-size: 13.5px;
+}
+
+/* ---------- Nominate, claim and the demo ---------- */
+
+/* What a model could see on a club's public site, shown beside the form
+ * rather than filled into it. The border is the visual version of the
+ * sentence inside: this block is a reading, not one of your answers. */
+.org-found {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px dashed var(--border-2);
+  border-radius: 10px;
+  background: var(--bg-sunken);
+}
+
+.org-found[hidden] {
+  display: none;
+}
+
+.org-found__title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  margin: 8px 0 8px;
+}
+
+.org-sources {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.org-source {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-left: 3px solid var(--border-2);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.org-source[data-verdict="usable"] {
+  border-left-color: var(--success);
+}
+
+.org-source[data-verdict="closures"] {
+  border-left-color: var(--accent-blaze-orange);
+}
+
+.org-source[data-verdict="refused"] {
+  border-left-color: var(--danger);
+}
+
+.org-source__what {
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.org-source__verdict {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--fg-3);
+  align-self: center;
+}
+
+.org-source__why {
+  grid-column: 1 / -1;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--fg-2);
+}
+
+.org-results {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.org-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-1);
+  border-radius: 9px;
+  padding: 10px 13px;
+  font-size: 14px;
+}
+
+.org-result--note {
+  color: var(--fg-3);
+  font-size: 13px;
+}
+
+.org-result__name {
+  font-weight: 600;
+  flex: 1 1 180px;
+}
+
+.org-result__where {
+  color: var(--fg-3);
+  font-size: 13px;
+}
+
+.org-numbered {
+  margin: 12px 0 0;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--fg-2);
+}
+
+/* The demo banner. It is the first thing on the page on purpose: a page that
+ * renders like a real organization's and is not one has to be labelled rather
+ * than qualified in a footer. */
+.org-demo-banner {
+  background: var(--surface-warning);
+  border-bottom: 1px solid var(--border-1);
+  padding: 14px 0;
+}
+
+.org-demo-banner .wrap {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.org-demo-banner p {
+  flex: 1 1 320px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--fg-1);
 }
 
 /* ---------- The page footer ---------- */

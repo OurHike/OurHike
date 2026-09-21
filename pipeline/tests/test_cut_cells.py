@@ -27,6 +27,7 @@ from pmtiles.writer import write
 from pyproj import Transformer
 
 import cut_cells
+import export_nearby_trails
 from lib.corridor_grid import graticule_cells
 from lib.tiling import tile_range_for_bounds
 
@@ -428,12 +429,21 @@ def test_every_artifact_is_named_for_its_family(tmp_path, family):
 
 
 def test_a_context_zoom_under_the_archive_leaves_no_context_and_cuts_every_zoom_into_cells(tmp_path):
-    """The network family's cut (#1257 stage 2): publish-vector-data.yml
-    passes --context-zoom 8 against z9-z14 tiles, so nothing is a context
-    tile and the coarsest zoom rides in the cells with the rest - a stretch
-    then costs nothing shared. Modelled with the real archive's minimum
-    zoom: the z9 tile over lon -74.5 spans -74.53 to -73.83 and so crosses
-    the seam into both cells, margin or no margin."""
+    """An archive whose coarsest tile is already past the context zoom has no
+    context to share, and the coarsest zoom rides in the cells with the rest -
+    a stretch then costs nothing shared.
+
+    THIS WAS THE NETWORK FAMILY'S OWN CUT until #1613, which is why the
+    numbers are its: publish-vector-data.yml passed --context-zoom 8 against
+    an archive export_nearby_trails.py cut from z9, so `nearby_trails_context
+    .pmtiles` was never written and features/LAUNCH_BUDGET.md §7.3 planned
+    against an artifact that 404s. The floor is 5 now and the sibling test
+    below holds what that family does today; this one keeps the general
+    property, which other families can still land in.
+
+    Modelled with the old archive's minimum zoom: the z9 tile over lon -74.5
+    spans -74.53 to -73.83 and so crosses the seam into both cells, margin or
+    no margin."""
     coarse = _tile_at(-74.5, 40.5, z=9)
     fine = _tile_at(-74.5, 40.5)
     out_dir, manifest = _cut(tmp_path, [coarse, fine], family="nearby_trails", context_zoom=8, margin_km=0.0)
@@ -445,6 +455,40 @@ def test_a_context_zoom_under_the_archive_leaves_no_context_and_cuts_every_zoom_
     assert not any(name.endswith("_context.pmtiles") for name in manifest["artifacts"])
     assert set(read_all(out_dir / "nearby_trails_cell_n40w075.pmtiles")) == {coarse, fine}
     assert set(read_all(out_dir / "nearby_trails_cell_n40w074.pmtiles")) == {coarse}
+
+
+def test_the_network_cut_writes_a_context_archive_for_the_zooms_below_the_seam(tmp_path):
+    """What publish-vector-data.yml's step does after #1613, and the artifact
+    features/LAUNCH_BUDGET.md §7.3 needs in order to stop shipping the 12 MB
+    corridor sketch to every launch.
+
+    The flag did not move - it is still --context-zoom 8 - and the meaning
+    did, because export_nearby_trails.TILES_MIN_ZOOM went 9 -> 5. z5-z8 are
+    now below the context zoom and become one shared archive the corridor
+    camera reads by range; z9 and finer still ride in the cells, so nothing
+    a stretch download carries changes.
+
+    The zooms are read off the exporter rather than typed again: this test's
+    whole claim is about that constant, and a copy of it here would go on
+    passing the day somebody moved it back."""
+    context = [_tile_at(-74.5, 40.5, z=z) for z in range(export_nearby_trails.TILES_MIN_ZOOM, 9)]
+    in_cells = _tile_at(-74.5, 40.5, z=9)
+    out_dir, manifest = _cut(
+        tmp_path,
+        [*context, in_cells],
+        family="nearby_trails",
+        context_zoom=8,
+        margin_km=0.0,
+    )
+
+    index = json.loads((out_dir / "nearby_trails_cells.json").read_text())
+    assert index["context"] == "nearby_trails_context.pmtiles"
+    assert manifest["stats"]["context_tiles"] == len(context)
+    assert set(read_all(out_dir / "nearby_trails_context.pmtiles")) == set(context)
+    # And z9 is still the cells', which is the half a wider context would have
+    # quietly taken away - cut_cells.py's docstring prices it at 9.65 MB
+    # nationwide.
+    assert set(read_all(out_dir / "nearby_trails_cell_n40w075.pmtiles")) == {in_cells}
 
 
 def test_graticule_routing_is_the_rectangle_scan_exactly():

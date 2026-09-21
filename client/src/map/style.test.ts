@@ -1510,17 +1510,28 @@ describe('the trails other organizations maintain (#950)', () => {
     })
   })
 
-  it('cuts the tiles to start at the seam its layers start at', () => {
-    // The source's minzoom, its layers' minzoom and the pipeline's
-    // TILES_MIN_ZOOM are one number. A source that started above its layers
-    // would leave a band of zooms asking for tiles that do not exist; one
-    // that started below would cut tiles nothing asks for.
+  it('never asks the network tiles for a zoom the cut does not hold', () => {
     // The invariant that actually matters, and it is not the pin seam any
-    // more (#1585): the sketch's ceiling must be the tiles' floor, or a band
-    // of ground draws no trail but the A.T. The waypoints left this pair on
-    // 2026-09-18 and the pair stayed whole.
-    expect(NEARBY_TRAILS_TILES_MIN_ZOOM).toBe(CORRIDOR_MAX_ZOOM)
-    expect(layer(NEARBY_BLAZE_LAYER_ID).minzoom).toBe(NEARBY_TRAILS_TILES_MIN_ZOOM)
+    // more (#1585): the sketch's ceiling IS the tiles' floor, or a band of
+    // ground draws no trail but the A.T.
+    //
+    // Two halves, and only one of them is symmetric (#1613). Where the
+    // SKETCH stops the TILES must start - exactly, or the band appears. What
+    // the ARCHIVE holds under that is free: the cut reaches down to z5 now so
+    // cut_cells.py has z<=8 tiles to route into a context artifact, and those
+    // zooms are tiles nothing currently asks for. That costs archive bytes
+    // nobody reads. The reverse - a layer asking below the cut - costs a
+    // hiker every other organization's trail, silently, because a vector
+    // source asked for a zoom its archive does not hold draws nothing and
+    // says nothing.
+    //
+    // This was spelled `toBe` on both lines, and that is how lowering the cut
+    // took the sketch's ceiling to z5 with it and handed the corridor view to
+    // tiles no release holds.
+    expect(layer(NEARBY_BLAZE_LAYER_ID).minzoom).toBe(CORRIDOR_MAX_ZOOM)
+    expect(layer(NEARBY_BLAZE_LAYER_ID).minzoom).toBeGreaterThanOrEqual(
+      NEARBY_TRAILS_TILES_MIN_ZOOM,
+    )
   })
 
   it('names the one layer inside the tiles on every layer drawn from them', () => {

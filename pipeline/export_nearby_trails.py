@@ -284,12 +284,32 @@ OVERVIEW_ARTIFACT_NAME = "network_overview.geojson"
 # declares NEARBY_TRAILS_TILES_MIN_ZOOM and _MAX_ZOOM for the source it
 # builds over these tiles, and tests/test_export_nearby_trails.py reads that
 # file to hold the two ends equal - a tileset the map asks the wrong zooms of
-# draws nothing, silently. 9 is the pin seam (map/poiLayers.ts), where the
-# full network's layers start; below it the overview sketch above still
-# draws. 14 is where the Fine hiking sheet stops and MapLibre overzooms.
+# draws nothing, silently.
+#
+# THE FLOOR WAS 9 AND IS 5 (#1613). 9 was the pin seam, where the full
+# network's layers start, "below it the overview sketch above still draws" -
+# and that sketch is the point. `network_overview.geojson` is 12,238,110 bytes
+# in release 2026-09-16-4, handed whole to MapLibre's one worker on every
+# launch and cut into tiles there; it costs the A.T.'s own line 2,470 ms of
+# that worker's queue, measured 2026-09-21 (features/LAUNCH_BUDGET.md §7).
+# The archive could not take the sketch's place below z9 because these zooms
+# were never cut, and they were never cut because the sketch drew there.
+#
+# 5 breaks that circle. It is the floor §7.1's experiment cut the A.T.'s own
+# line at, and it carries the continental view a laptop opens on. @unvalidated
+# against the widest camera a hiker actually reaches, which nothing records.
+#
+# WHAT IT COSTS THE ARCHIVE is four zooms of a nationwide network, each about
+# a quarter of the one below it: z9 alone is 9.65 MB (the cut_cells.py
+# docstring's own measurement), so z5-z8 together are a few megabytes against
+# the archive's 155 MB - and they are read by BYTE RANGE, so a phone pays for
+# the tiles in its viewport rather than for the file. That is #1257's whole
+# argument, applied one seam lower.
+#
+# 14 is where the Fine hiking sheet stops and MapLibre overzooms.
 TILES_ARTIFACT_NAME = "nearby_trails.pmtiles"
 TILES_LAYER = "trails"
-TILES_MIN_ZOOM = 9
+TILES_MIN_ZOOM = 5
 TILES_MAX_ZOOM = 14
 
 # Coordinates are written at six decimals - about 0.11 m of longitude at

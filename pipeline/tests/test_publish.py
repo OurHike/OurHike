@@ -2069,6 +2069,28 @@ def test_the_release_folder_copies_everything_and_writes_its_manifest_last(s3_cl
     assert set(result["release_artifacts"]) == set(many_artifacts)
 
 
+def test_the_release_folder_manifest_is_stored_as_json_so_the_cdn_compresses_it(s3_client, many_artifacts):
+    """The second writer of `releases/<id>/manifest.json`; stage_release.py is
+    the other, and that one has the same assertion for the same reason.
+
+    This key is the one EVERY launch fetches - client/src/lib/dataRelease.ts's
+    RELEASE_MANIFEST_PATH names it, not latest.json - and it was written with
+    no Content-Type, so Cloudflare, which compresses in front of R2 by content
+    type, served it raw. Measured against production 2026-09-21: latest.json
+    at 413,343 stored bytes came back 105,331 zstd with the type set;
+    releases/2026-09-16-4/manifest.json at 412,128 came back at 412,128 with
+    no type and no encoding (#1612).
+
+    Content-Type and NOT a stored Content-Encoding, deliberately: gzipping the
+    bytes would change what every reader of this key gets back, the release
+    gate included, where the header changes nothing but the wire."""
+    result = publish.publish(many_artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    stored = s3_client.get_object(Bucket=BUCKET, Key=f"releases/{result['release']}/manifest.json")
+    assert stored["ContentType"] == "application/json"
+    assert "artifacts" in json.loads(stored["Body"].read())
+
+
 def test_a_failed_artifact_upload_fails_the_publish_rather_than_moving_the_pointer(s3_client, many_artifacts):
     """A worker's exception is the publish's exception. Swallowed, the run
     would go on to write a `latest.json` naming a version whose bytes are not

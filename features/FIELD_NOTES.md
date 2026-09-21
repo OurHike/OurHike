@@ -147,8 +147,8 @@ there is a spring here, and there is no spring here.
 ### It renders on the existence axis, not a new one
 
 [../WIREFRAMES.md](../WIREFRAMES.md) §11 pins the axes deliberately: *"a dashed pin means
-**never verified to exist**; staleness means **when a human last said it was fine**."* A
-dispute is a claim on the first axis — a stronger one than "unverified," but the same
+**never verified to exist**; staleness means **when a human was last here and left a note**."*
+A dispute is a claim on the first axis — a stronger one than "unverified," but the same
 question. So existence takes a third value rather than the map taking a fourth channel:
 
 | existence | means | treatment |

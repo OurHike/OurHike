@@ -47,6 +47,24 @@ describe('rollUpNotes', () => {
     expect(rollup.lastConfirmedAt?.toISOString()).toBe(newer.observed_at)
   })
 
+  it('still takes last-confirmed from a note saying dry - recency, not reassurance (#1603)', () => {
+    // The maintainer's decision of 2026-09-21, pinned here so a later
+    // reader who finds it surprising changes it deliberately rather than
+    // as a bug fix. A spring reported dry yesterday counts as freshly
+    // visited: staleness.ts reads this date and gives the pin its green
+    // ring, while the headline below carries the bad news. Feeding this
+    // only from `flowing` was drawn, offered and not taken.
+    const dry = note({
+      observation: 'dry',
+      observed_at: new Date(NOW.getTime() - DAY_MS).toISOString(),
+    })
+
+    const { lastConfirmedAt, headline } = rollUpNotes([dry], NOW)
+
+    expect(lastConfirmedAt).toEqual(new Date(dry.observed_at))
+    expect(headline?.text).toContain('Dry')
+  })
+
   it('writes the headline as the design words it: observation, age, reporter type', () => {
     const dry = note({
       observation: 'dry',

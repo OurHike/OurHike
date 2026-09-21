@@ -43,13 +43,19 @@ describe('the strings #315 found on screen', () => {
 })
 
 describe('the failures of the emailed code (#279)', () => {
-  it('"Token has expired or is invalid" says to check the digits or ask for a new code', () => {
-    // GoTrue's one string for a mistyped code and a code left an hour. The
-    // way out is the same for both, so the sentence does not guess which.
+  it('"Token has expired or is invalid" offers a new code without blaming the digits', () => {
+    // GoTrue's ONE string for three different things: a mistyped code, a code
+    // left too long, and a code the project never minted. The way out of all
+    // three is the same, so the sentence offers that and guesses at nothing.
     const said = signInMessage('Token has expired or is invalid')
 
-    expect(said).toMatch(/did not match, or it has expired/i)
-    expect(said).toMatch(/new code/i)
+    // NOT "check the six digits". #1600 is why: a hiker was told exactly that
+    // about a code that could not have worked however carefully they read it,
+    // so they read it again, and again. An instruction that cannot help is
+    // worse than no instruction.
+    expect(said).toMatch(/was not accepted/i)
+    expect(said).toMatch(/ask for a new one/i)
+    expect(said).not.toMatch(/six digits/i)
     expect(said).not.toMatch(/token/i)
   })
 

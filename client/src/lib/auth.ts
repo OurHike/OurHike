@@ -110,9 +110,31 @@ export async function sendEmailCode(email: string): Promise<AuthOutcome> {
   const client = await getAuthClient()
   if (client === null) return NOT_CONFIGURED
 
+  // NO `emailRedirectTo`, AND THAT IS THE POINT OF THIS CALL (#1600).
+  //
+  // It was here until 2026-09-21 and it is what asks Supabase for a magic
+  // LINK. Their own reference splits the two: the magic-link example passes
+  // `emailRedirectTo`, the OTP example deliberately does not, and the
+  // passwordless guide states the rule one-directionally - "if the
+  // `{{ .ConfirmationURL }}` variable is specified in the email template, a
+  // magiclink will be sent". A redirect URL is what makes that variable
+  // resolve to anything.
+  //
+  // What it cost, measured on UA the night #1576 merged: GoTrue minted a
+  // magic-link token (`auth.one_time_tokens.token_type = 'recovery_token'`,
+  // a 56-hex SHA-224) rather than a six-digit OTP, so the code the email
+  // displayed hashed to nothing the server held. Every candidate code at 5,
+  // 6 and 7 digits was checked against that stored hash, under four
+  // formulations, and none matched - the hiker's two attempts could not have
+  // succeeded, and the token was still sitting there unconsumed afterwards.
+  //
+  // screens/EmailSignIn.tsx asks for six digits and this app has no screen
+  // that a returning link could land on, so there is nothing to redirect TO.
+  // `shouldCreateUser` stays, and stays explicit: "this also creates
+  // accounts" is the whole reason this path replaced two others.
   const { error } = await client.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: redirectUrl(), shouldCreateUser: true },
+    options: { shouldCreateUser: true },
   })
   return error === null ? { ok: true } : failed(error.message)
 }
@@ -120,10 +142,12 @@ export async function sendEmailCode(email: string): Promise<AuthOutcome> {
 /**
  * Signs in with the code that email carried.
  *
- * `type: 'email'` rather than 'magiclink' or 'signup': supabase-js accepts
- * either kind of token under that one type, and which kind was minted
- * depends on whether the address was new - a distinction the hiker never
- * sees and this function should not have to make.
+ * `type: 'email'` is what Supabase's own OTP example passes, for a new
+ * address and a returning one alike - a distinction the hiker never sees and
+ * this function should not have to make. Confirmed against their
+ * passwordless guide 2026-09-21 rather than assumed, which is how the
+ * sibling `sendEmailCode` above was found to be asking for the wrong thing
+ * entirely (#1600).
  *
  * Whitespace is stripped because a code read off a phone's notification and
  * typed with a thumb arrives as "123 456" often enough, and refusing it

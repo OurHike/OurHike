@@ -146,20 +146,37 @@ describe('signInWithProvider', () => {
 })
 
 describe('sendEmailCode', () => {
-  it('calls signInWithOtp for the address, creating the user if new, with the app as the way back', async () => {
+  it('asks signInWithOtp for a code and NOT a link, by sending no emailRedirectTo (#1600)', async () => {
     const signInWithOtp = vi.fn().mockResolvedValue(NO_ERROR)
     mockedGetClient.mockReturnValue(fakeClient({ signInWithOtp }))
 
     await sendEmailCode('hiker@example.com')
 
-    // shouldCreateUser is what lets one path serve both a returning hiker and
-    // a new one, so it is asserted rather than left to the library default.
-    // emailRedirectTo is for a template that still carries a link: it then
-    // returns to the app rather than to the project's Site URL.
+    // THE ABSENCE IS THE ASSERTION, and it is here because the presence of
+    // that one option broke the whole door while every test stayed green.
+    // Supplying a redirect URL is what lets `{{ .ConfirmationURL }}` resolve,
+    // and Supabase's rule is that the variable's presence in the template
+    // makes it send a magic LINK. GoTrue then minted a link token instead of
+    // an OTP, and the six digits the email showed hashed to nothing the
+    // server held - checked on UA against every candidate code at 5, 6 and 7
+    // digits, zero matches. The client cannot see any of that: `signInWithOtp`
+    // returned no error, the screen said "a code is on its way", and it was
+    // the hiker who found out.
+    //
+    // The version of this test that shipped asserted `emailRedirectTo` was
+    // PASSED, with a comment explaining it as "for a template that still
+    // carries a link" - a rationalisation of the defect, holding it in place.
     expect(signInWithOtp).toHaveBeenCalledWith({
       email: 'hiker@example.com',
-      options: { emailRedirectTo: redirectUrl(), shouldCreateUser: true },
+      options: { shouldCreateUser: true },
     })
+    // Said twice deliberately: a future `options` gaining a key would keep
+    // the equality above honest, and this line is what a reader greps for.
+    const [{ options }] = signInWithOtp.mock.calls[0] as [{ options: object }]
+    expect(options).not.toHaveProperty('emailRedirectTo')
+    // shouldCreateUser stays explicit: one path serving a returning hiker and
+    // a new one is the reason this replaced two others.
+    expect(options).toHaveProperty('shouldCreateUser', true)
   })
 
   it('reports a rate limit rather than claiming a code is on its way', async () => {
@@ -233,8 +250,7 @@ describe('verifyEmailCode', () => {
 
     expect(await verifyEmailCode('hiker@example.com', '000000')).toEqual({
       ok: false,
-      message:
-        'That code did not match, or it has expired. Check the six digits, or ask for a new code.',
+      message: 'That code was not accepted. Ask for a new one and use the newest email.',
     })
   })
 })

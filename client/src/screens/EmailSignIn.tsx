@@ -35,12 +35,34 @@ export interface EmailSignInProps {
 }
 
 /**
- * How many digits the code has. Supabase's default, and what the field
- * asks for. The project's own setting is not readable from here, so this
- * and the email templates agree by LAUNCH_CHECKLIST.md 4.3d rather than by
- * construction - backend/check_supabase_config.py is what reads them back.
+ * The code's length, as a RANGE rather than a number, and #1600 is why.
+ *
+ * This was `CODE_LENGTH = 6` - Supabase's default - and the field was capped
+ * at `CODE_LENGTH + 1`. The UA project's length is **8**. So the browser
+ * silently dropped the last digit of every code a hiker typed, the truncated
+ * value was refused, and the screen told them to check their six digits. It
+ * could not be got right by being careful: the eighth character had nowhere
+ * to go. Two attempts, both doomed, and the token was never even consumed.
+ *
+ * THE FIX IS TO STOP ASSUMING. Supabase allows 6 to 10 (Authentication ->
+ * Providers -> Email), the setting is not readable from the client, and a
+ * project that changes it must not break the app. So the field accepts the
+ * whole range with room for a typed separator, the copy stops naming a
+ * number it cannot know, and `backend/check_supabase_config.py` enforces the
+ * project's setting falls inside this range rather than equalling one value.
+ *
+ * The old comment said this and the templates "agree by LAUNCH_CHECKLIST.md
+ * 4.3d rather than by construction". That was true, and agreement by
+ * documentation is exactly what failed here - nobody had run the check that
+ * reads them back (#1572 step 3).
  */
-export const CODE_LENGTH = 6
+export const MIN_CODE_LENGTH = 6
+export const MAX_CODE_LENGTH = 10
+
+/** Room for the range's top plus a separator a thumb types: "1234 5678".
+ *  Generous on purpose - a cap that is too small loses characters in
+ *  silence, which is the whole of #1600. */
+export const CODE_FIELD_MAX = MAX_CODE_LENGTH + 2
 
 type Step = 'address' | 'code'
 
@@ -133,7 +155,7 @@ export function EmailSignIn({ onSendCode, onVerifyCode, onCancel }: EmailSignInP
         <p className="reporting__saved" role="status">
           {status.kind === 'resent'
             ? `Another code is on its way to ${email}. `
-            : `A ${CODE_LENGTH}-digit code is on its way to ${email}. `}
+            : `A code is on its way to ${email}. `}
           Type it here — no need to leave the app. Anything you have written is still
           saved on your phone in the meantime.
         </p>
@@ -151,7 +173,7 @@ export function EmailSignIn({ onSendCode, onVerifyCode, onCancel }: EmailSignInP
               inputMode="numeric"
               autoComplete="one-time-code"
               pattern="[0-9 ]*"
-              maxLength={CODE_LENGTH + 1}
+              maxLength={CODE_FIELD_MAX}
               required
               value={code}
               onChange={(event) => setCode(event.target.value)}
@@ -202,8 +224,8 @@ export function EmailSignIn({ onSendCode, onVerifyCode, onCancel }: EmailSignInP
       <h1 className="reporting__title">Sign in with email</h1>
 
       <p className="reporting__saved" role="status">
-        No password to set or remember — we email you a {CODE_LENGTH}-digit code and you
-        type it in here. If you are new, that also creates your account.
+        No password to set or remember — we email you a code and you type it in here. If
+        you are new, that also creates your account.
       </p>
 
       <form className="reporting__form" onSubmit={(event) => void sendCode(event)}>

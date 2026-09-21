@@ -66,7 +66,22 @@ import { WORKDAY_LAYER_ID } from './workdayLayers'
 import { DISPUTE_LAYER_ID } from './disputeLayers'
 import { COVERAGE_SEAM_LABEL_LAYER_ID, COVERAGE_SEAM_LAYER_ID } from './coverageLayers'
 import { ATC_UPDATE_LAYER_ID, ATC_UPDATE_POINT_LAYER_ID } from '../lib/atcUpdateStyle'
-import { CLOSURE_LAYER_ID, LONG_TERM_CLOSURE_LAYER_ID } from '../lib/closureStyle'
+import {
+  closureCasingId,
+  closureGroundId,
+  CLOSURE_LAYER_ID,
+  LONG_TERM_CLOSURE_LAYER_ID,
+} from '../lib/closureStyle'
+
+/** One closure band's three layers, bottom to top (#1599): the dark edge,
+ *  the sheet's paper, the red ticks. Spelled once because the list below
+ *  names five bands and a hand-written triple per band is five chances to
+ *  get the order wrong. */
+const bandLayers = (bandId: string) => [
+  closureCasingId(bandId),
+  closureGroundId(bandId),
+  bandId,
+]
 import {
   ROUTE_CASING_LAYER_ID,
   ROUTE_LINE_LAYER_ID,
@@ -682,7 +697,6 @@ describe('the offline-only background', () => {
       'network-overview-casing',
       'network-overview-line-untaken',
       'network-overview-line',
-      'network-overview-closure-band',
       // The corridor-view sketch (#869), which survives the subtraction for
       // a duller reason than the others: it is empty unless the shell has a
       // sketch to put in it, and the shell only has one when the phone has no
@@ -747,7 +761,6 @@ describe('the offline-only background', () => {
       // closures get (features/NEARBY_TRAILS.md §3: one mark for "do not walk
       // this", whoever's trail it is) - over its own blaze, still under
       // everything about the chosen trail.
-      'nearby-long-term-closure-band',
       'trail-casing-untaken',
       'trail-blaze-untaken',
       'trail-casing',
@@ -797,13 +810,8 @@ describe('the offline-only background', () => {
       'day-hike-route-gap',
       'day-hike-route-points',
       'day-hike-route-point-labels',
-      CLOSURE_LAYER_ID,
-      // The long-term closures a steward marks on the trail line itself
-      // (#783, features/NEARBY_TRAILS.md §3). Same treatment as the two
-      // above, different feed - and it belongs in this list for the reason
-      // the comment at the top gives: it is a safety layer, so a hiker on the
-      // offline background is exactly who must keep it.
-      LONG_TERM_CLOSURE_LAYER_ID,
+      // Every closure moved to the top of the stack with the other safety
+      // marks (#1599) - see THE SAFETY MARKS near the end of this list.
       // The walk's own mile marks stayed here when the waypoints went down
       // the stack (2026-09-20): the hiker's route is drawn ON the map, not
       // part of the ground it describes.
@@ -814,13 +822,27 @@ describe('the offline-only background', () => {
       // empty whenever the feed is stale - the shell passes nothing - so
       // drawing it here costs a phone with an out-of-date feed nothing.
       WORKDAY_LAYER_ID,
-      WARNING_LAYER_ID,
       // The hiker's mark and its accuracy ring (#1581), over every place and
-      // under the ATC's notices - drawn offline above all, because a phone
-      // with no signal is exactly the one whose owner is standing somewhere
+      // under every hazard - drawn offline above all, because a phone with
+      // no signal is exactly the one whose owner is standing somewhere
       // asking where. Empty until the shell hands a fix over.
       POSITION_ACCURACY_LAYER_ID,
       POSITION_LAYER_ID,
+      // THE SAFETY MARKS, LAST (#1599, the maintainer: "Shouldn't closures
+      // and warnings just be the top 2 layers?"). All four closure bands
+      // together, each over its own outline, then the warning pins - a pin
+      // over a band hides a stripe of it where a band over a pin hides the
+      // whole mark. A hiker with no signal is exactly who must keep these,
+      // which is why this list has always ended with them; what changed is
+      // that the walk's own marks, the workdays and the hiker's mark are
+      // now below rather than above. Each band is three plain lines since
+      // #1599 - a dark edge, the sheet's paper, red ticks - which is what
+      // bandLayers spells, and there is no image behind any of them.
+      ...bandLayers('network-overview-closure-band'),
+      ...bandLayers('nearby-long-term-closure-band'),
+      ...bandLayers(CLOSURE_LAYER_ID),
+      ...bandLayers(LONG_TERM_CLOSURE_LAYER_ID),
+      WARNING_LAYER_ID,
       // The ATC's own notices survive the subtraction for the same reason the
       // closures do, and arguably more so: their band is baked into a
       // published artifact rather than fetched live, so it is exactly the
@@ -831,7 +853,10 @@ describe('the offline-only background', () => {
       // organisation that maintains it, underneath OurHike's own pin for that
       // shelter, is not a picture anybody wants. src/test/atcAlertProminence.test.ts
       // holds that ordering as a property; this case only has to agree with it.
-      ATC_UPDATE_LAYER_ID,
+      // Over its own outline, like every closure band above (#1598): one mark
+      // for "do not walk this" means the ATC's band grew an edge the day the
+      // closures' did.
+      ...bandLayers(ATC_UPDATE_LAYER_ID),
       // And the dots, which is what most ATC notices actually are - five of
       // the six reviewed on 2026-08-12 name a single mile marker.
       ATC_UPDATE_POINT_LAYER_ID,

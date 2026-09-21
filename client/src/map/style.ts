@@ -77,10 +77,13 @@
 //     chose light dashed red for everything without a pill and a plain
 //     solid red - no casing - for the A.T. and the Long Path, at every zoom.
 //     So while blaze colours are OFF and red light is not in force
-//     (plainRedActive): a context line is the red tinted towards the sheet's
-//     paper (contextTrailColor), thinner (CONTEXT_TRAIL_WIDTH_SCALE) and
-//     dashed (CONTEXT_TRAIL_DASH); a through-route's line is the red at full
-//     strength and its own width; and every casing layer is hidden. With
+//     (plainRedActive): a context line is thinner (CONTEXT_TRAIL_WIDTH_SCALE)
+//     and dashed (CONTEXT_TRAIL_DASH); a through-route's line is solid and
+//     its own width; and every casing layer is hidden. The tint that used to
+//     open that list went on 2026-09-20 (#1597) - the maintainer read 45% of
+//     the red over white paper as pink and asked for the A.T.'s own red - so
+//     EVERY line is now PLAIN_TRAIL_COLOR and the width and the dash carry
+//     the distinction between them by themselves. With
 //     the switch ON the map draws as before this rule - solid, cased lines in
 //     their hues, the frame the maintainer approved - and red light keeps
 //     its own one-hue rule. The dash is data-driven per feature, which
@@ -128,15 +131,11 @@ import type {
   StyleSpecification,
 } from '@maplibre/maplibre-gl-style-spec'
 import { BLAZE_MATCH_EXPRESSION, PLAIN_TRAIL_COLOR } from '../lib/blaze'
-import {
-  ATC_UPDATE_LAYER_ID,
-  atcTapeImageId,
-  buildAtcUpdateLayers,
-} from '../lib/atcUpdateStyle'
+import { ATC_UPDATE_LAYER_ID, buildAtcUpdateLayers } from '../lib/atcUpdateStyle'
 import {
   buildClosureLayers,
   CLOSURE_LAYER_ID,
-  closureTapeImageId,
+  closureGroundId,
   LONG_TERM_CLOSED_FILTER,
   LONG_TERM_CLOSURE_LAYER_ID,
 } from '../lib/closureStyle'
@@ -233,7 +232,6 @@ import {
   type SheetAppearance,
 } from './liveTopo'
 import { NEARBY_TRAILS_ATTRIBUTION, OSM_CREDIT, USGS_TOPO_CREDIT } from './credits'
-import { parseHex } from './poiIcons'
 import { whenStyleReady } from './styleReady'
 import { TRAILS } from '../lib/trails'
 import type { GeoJSONSource, Map as MapLibreMap, MapSourceDataEvent } from 'maplibre-gl'
@@ -313,9 +311,9 @@ export const NETWORK_OVERVIEW_CLOSURE_LAYER_ID = 'network-overview-closure-band'
  * Every layer painting barrier tape from the closure image: the closures
  * feed's band, the A.T.'s long-term-closed lines, the nearby network's and the
  * corridor-view sketch's. The tape's ground is the sheet's paper, baked into
- * the image (#1575, option E), so a sheet change points each of these at the
- * tape drawn on its own paper - attachMapAppearance walks this list. The ATC
- * band paints from its own image and is re-pointed beside them by name.
+ * a layer of its own since #1599 (closureGroundId), so a sheet change
+ * repaints each of these bands' ground - attachMapAppearance walks this list
+ * and the ATC band's id beside it.
  */
 export const CLOSURE_TAPE_LAYER_IDS: readonly string[] = [
   CLOSURE_LAYER_ID,
@@ -721,53 +719,51 @@ export function plainRedActive(appearance: SheetAppearance): boolean {
 }
 
 /**
- * How much of the red a context trail keeps over the sheet's paper under
- * the default (#1588): the maintainer chose "light dashed red" off a sheet
- * of six treatments rendered at 45% over the paper, and this is that 45%,
- * baked into a hex per sheet (contextTrailColor) rather than written as
- * `line-opacity` - opacity is the ghosting's channel (map/nearbyTrails.ts),
- * written on a take by attachChosenTrail, and a lightness that lived there
- * would be overwritten by the next take or would have to know the mode.
+ * THE CONTEXT TRAILS' TINT IS GONE, and saying so here is worth more than
+ * the constant was (#1597).
  *
- * Measured against the sheets' own papers (lib/blazeGovernance.test.ts
- * computes both): 2.15:1 on the field sheet's white, above the palette's
- * day bar of 2.076, so a context line still separates from paper; 1.5:1 on
- * night_hike's ink, below its 2.66 bar, which is the same faintness the
- * ghosting's 45% already gives a nearby trail on ink and is deliberate: a
- * context trail is context. `@unvalidated` on a phone at night; the number
- * is one knob, and the mock-up it came from was a day frame.
+ * #1588 drew every trail without a pill at 45% of PLAIN_TRAIL_COLOR over the
+ * sheet's own paper, which on the field day sheet's white is `#dca39a`. The
+ * maintainer read that on a Hudson Highlands frame, 2026-09-20: *"the dotted
+ * dashed trail lines look pink. Make them the same color red as the AT."*
+ * So every line is now PLAIN_TRAIL_COLOR at full strength, and plainLineColor
+ * is one flat colour rather than a `case` over THROUGH_ROUTE_SOURCE_CONDITION.
+ *
+ * WHAT DID NOT MOVE, because the maintainer objected to the hue and not to
+ * the vocabulary: CONTEXT_TRAIL_WIDTH_SCALE and CONTEXT_TRAIL_DASH below.
+ * A context trail is still thinner and still dashed, so #1588's other two
+ * channels carry the distinction alone - and both survive greyscale and
+ * glare, which a 45% tint never did as well as it looked like it did.
+ *
+ * What the tint took with it: a mock-up's 45% was the only thing standing
+ * between a context line and the sheet's paper on a dark sheet, where
+ * lib/blazeGovernance.test.ts measured it at 1.5:1 against night_hike's ink
+ * - below that sheet's 2.66 bar. At full strength every line now carries
+ * PLAIN_TRAIL_COLOR's own contrast, which clears #782's bars on both sheets.
+ * That is a gain on the dark sheets and a deliberate loss of hierarchy on
+ * the light ones; the dash and the width are what buy it back.
+ *
+ * A TINT OF 0.8 WAS TRIED AND IS WHAT THIS REPLACES. #1590 reached the same
+ * complaint from another session an hour earlier - the maintainer, in its
+ * words: "The trails look pink now, not red. Can you make sure the trails
+ * appear red with dashed." - and answered it by raising the share of red
+ * kept rather than removing the mix. Its own table is worth keeping, since
+ * it is the only record of what the intermediate values look like:
+ *
+ *     tint   context trail on the day sheet   reads as
+ *     0.20   #f0d6d2                          washed pink
+ *     0.45   #dca39a                          salmon (what shipped)
+ *     0.80   #c15b4c                          red, a shade back
+ *     1.00   #b2321f                          the A.T.'s own red
+ *
+ * Two reasons this went the last step rather than stopping at 0.8. The
+ * maintainer's instruction here was the more specific one - "Make them the
+ * same color red as the AT", and #c15b4c is not that colour. And 0.8 does
+ * not fix the dark sheets: #912c1c measures 2.30:1 on night_hike's ink,
+ * still under the 2.66 bar the palette sets for any line, where the full red
+ * measures 3.00. blazeGovernance.test.ts computes all three rather than
+ * this comment asserting them.
  */
-export const CONTEXT_TRAIL_TINT = 0.8
-
-// 0.8 SINCE 2026-09-20, UP FROM 0.45, because at 0.45 the context trails were
-// not a lighter red, they were pink. The maintainer: "The trails look pink
-// now, not red. Can you make sure the trails appear red with dashed."
-//
-// THE NUMBER IS THE SHARE OF RED KEPT, not the share of paper mixed in, and
-// the first attempt at this fix moved it the wrong way for exactly that
-// reason - 0.2 rendered #f0d6d2, which is paler than what it was replacing.
-// Read off contextTrailColor itself rather than derived by hand:
-//
-//     tint   context trail on the day sheet   reads as
-//     0.20   #f0d6d2                          washed pink
-//     0.45   #dca39a                          salmon  (what was shipping)
-//     0.80   #c15b4c                          red, a shade back
-//
-// A through-route was already correct at PLAIN_TRAIL_COLOR's #b2321f and is
-// untouched: with nothing taken, nearbyTrailOpacityExpression returns
-// CHOSEN_TRAIL_OPACITY, which is 1, so the opening view ghosts nothing. A
-// first pass at this diagnosis blamed NEARBY_TRAIL_OPACITY's 0.45 as well and
-// was wrong - that value only reaches a line once a trail has been TAKEN, and
-// the screen the maintainer was looking at had none.
-//
-// WHAT 0.2 COSTS, kept because the 0.45 it replaces was picked against it:
-// contrast on the sheets' papers rises rather than falls, so the day bar
-// argument below is not weakened. What narrows is the SEPARATION between a
-// context trail and a through-route, which was the reason for a tint at all -
-// at 0.2 the dash is doing more of that work and the hue less. The dash is
-// per-feature and carries no zoom term, so it does that work at every zoom;
-// style.test.ts pins exactly that.
-
 /** The context trails' width under the default, as a share of their tier
  *  (#1588): 2.5 px becomes 2, the sketch's 1.5 becomes 1.2 - the mock-up's
  *  own figures, picked so a dashed line reads as a lighter line and not as
@@ -789,36 +785,22 @@ export const CONTEXT_TRAIL_DASH: readonly [number, number] = [3, 2.5]
  *  a layer whose other features dash (#1588). */
 export const SOLID_DASH: readonly [number, number] = [1, 0]
 
-/** `a` mixed towards `b` by `keep` of `a` - 1 is `a`, 0 is `b` - as a hex. */
-function mixHex(a: string, b: string, keep: number): string {
-  const [ar, ag, ab] = parseHex(a)
-  const [br, bg, bb] = parseHex(b)
-  const channel = (x: number, y: number) => Math.round(x * keep + y * (1 - keep))
-  return `#${[channel(ar, br), channel(ag, bg), channel(ab, bb)]
-    .map((v) => v.toString(16).padStart(2, '0'))
-    .join('')}`
-}
-
-/** The context trails' red under the default (#1588): PLAIN_TRAIL_COLOR
- *  kept at CONTEXT_TRAIL_TINT over the sheet's own paper. Per sheet, since
- *  the paper is: '#dca39a' on the field sheet's white, a dark red on ink. */
-export function contextTrailColor(appearance: SheetAppearance): string {
-  return mixHex(PLAIN_TRAIL_COLOR, mapBackdrop(appearance), CONTEXT_TRAIL_TINT)
-}
-
 /**
- * `line-color` under the default (#1588): the red at full strength on a
- * through-route's feature, the tint on everything else. One expression on
- * every blaze layer, cased or not, on every sheet - the same shape as the
- * hues' one match, which is rule 1's whole point.
+ * `line-color` under the default: PLAIN_TRAIL_COLOR on every feature, on
+ * every blaze layer, cased or not, on every sheet (#1588, amended by #1597).
+ *
+ * One value rather than an expression, which is what #1575 shipped and what
+ * #1588 turned into a `case` so the context trails could take a tint. The
+ * tint is gone (see the note where CONTEXT_TRAIL_TINT used to be), so the
+ * `case` had one branch worth keeping and this is it.
+ *
+ * Kept as a function taking the appearance, unused though the argument now
+ * is, because every caller reads it beside blazeLineColor's other two
+ * answers - red light's hue and the blaze match - and a signature that
+ * differs from theirs is a hazard at the call site rather than a saving.
  */
-export function plainLineColor(appearance: SheetAppearance): unknown[] {
-  return [
-    'case',
-    THROUGH_ROUTE_SOURCE_CONDITION,
-    PLAIN_TRAIL_COLOR,
-    contextTrailColor(appearance),
-  ]
+export function plainLineColor(_appearance: SheetAppearance): string {
+  return PLAIN_TRAIL_COLOR
 }
 
 /** `line-dasharray` under the default (#1588): no gap on a through-route's
@@ -859,10 +841,10 @@ export function casingVisibility(appearance: SheetAppearance): 'visible' | 'none
  *
  *   1. red light's one hue, wherever red light is active;
  *   2. the default's red while blaze colours are off (#1575): PLAIN_TRAIL_COLOR
- *      - the palette's Red - on a through-route's feature and its tint on
- *      every other (plainLineColor, #1588), cased or not, day sheet or dark.
- *      lib/blaze.ts carries the red's contrast on both sheets against #782's
- *      bars, so it needs none of the near-white handling below;
+ *      - the palette's Red - on every feature (plainLineColor), cased or not,
+ *      day sheet or dark. lib/blaze.ts carries the red's contrast on both
+ *      sheets against #782's bars, so it needs none of the near-white
+ *      handling below;
  *   3. the shared blaze match - with near-white swapped for the sheet's
  *      casing ink on day sheets where the layer draws with no casing under it
  *      (`cased: false`, the sketches; see NEAR_WHITE_BLAZES). A cased line is
@@ -874,8 +856,8 @@ export function casingVisibility(appearance: SheetAppearance): 'visible' | 'none
  */
 export function blazeLineColor(appearance: SheetAppearance, cased: boolean): unknown {
   if (redLightActive(appearance)) return RED_LIGHT_BLAZE_COLOR
-  // Per feature since #1588: the red on a through-route, its tint on the
-  // context trails (plainLineColor). Still one value for every layer.
+  // One value for every feature and every layer (plainLineColor). It was
+  // per feature from #1588 to #1597, while the context trails took a tint.
   if (!paintsBlazeHues(appearance)) return plainLineColor(appearance)
   if (cased || !inksNearWhiteAsCasing(appearance)) return BLAZE_MATCH_EXPRESSION
   return [
@@ -974,27 +956,17 @@ export function attachMapAppearance(
         map.setLayoutProperty(layerId, 'visibility', casingVisibility(appearance))
       }
 
-      // The barrier tape's ground is the paper closureTapeGround picks for
-      // the sheet, baked into the image (#1575, option E), so a sheet change
-      // points every tape layer at the tape drawn on that paper - the closure
-      // layers at the closure tape, the ATC band at its own.
-      // map/closureTape.ts has registered every paper's pair before any of
-      // these ids is asked for.
+      // The band's ground is the paper closureTapeGround picks for the sheet
+      // (#1575, option E). It was baked into a tape image and re-pointed here
+      // by name; since #1599 every band is three plain lines, so the paper is
+      // a `line-color` on a layer of its own and a sheet change simply
+      // repaints it - no images to have registered first, and no step
+      // expression to flatten by writing a bare value over it.
       const tapeGround = closureTapeGround(appearance)
-      for (const layerId of CLOSURE_TAPE_LAYER_IDS) {
-        if (map.getLayer(layerId) === undefined) continue
-        map.setPaintProperty(
-          layerId,
-          'line-pattern',
-          closureTapeImageId(tapeGround) as never,
-        )
-      }
-      if (map.getLayer(ATC_UPDATE_LAYER_ID) !== undefined) {
-        map.setPaintProperty(
-          ATC_UPDATE_LAYER_ID,
-          'line-pattern',
-          atcTapeImageId(tapeGround) as never,
-        )
+      for (const bandId of [...CLOSURE_TAPE_LAYER_IDS, ATC_UPDATE_LAYER_ID]) {
+        const groundId = closureGroundId(bandId)
+        if (map.getLayer(groundId) === undefined) continue
+        map.setPaintProperty(groundId, 'line-color', tapeGround as never)
       }
 
       // The through-route badge (#1283): its plate is an image per sheet
@@ -2705,16 +2677,9 @@ export function buildMapStyle({
         chosen,
       ),
       buildNetworkOverviewLayer(NETWORK_OVERVIEW_LAYER_ID, appearance, 'chosen', chosen),
-      // Closed ground stays closed-looking below the seam: the sketch keeps
-      // `trail_status` per feature (48.4 line-miles of it, measured
-      // 2026-08-27), so the same barrier tape draws over it - over its own
-      // ghosted line, under everything the A.T. draws, and capped at the
-      // seam where the full network's own tape takes over.
-      ...buildClosureLayers(NETWORK_OVERVIEW_SOURCE_ID, {
-        ground: tapeGround,
-        bandId: NETWORK_OVERVIEW_CLOSURE_LAYER_ID,
-        filter: LONG_TERM_CLOSED_FILTER,
-      }).map((layer) => ({ ...layer, maxzoom: CORRIDOR_MAX_ZOOM })),
+      // The sketch's own closed ground is drawn with every other closure, at
+      // the top of the style (#1599) - it used to sit here, over its own
+      // ghosted line. See THE SAFETY MARKS, LAST at the end of this list.
       {
         // The corridor-view sketch (#869), UNDER the real trail's casing, so
         // on the one frame where both exist the real line is what a hiker
@@ -2869,20 +2834,10 @@ export function buildMapStyle({
         ),
         NETWORK_TILES_LAYER,
       ),
-      // A nearby trail marked closed long-term gets the same barrier tape the
-      // A.T.'s closures get (features/NEARBY_TRAILS.md §3: a hiker learns ONE
-      // mark for "do not walk this"). Over its own blaze for the reason the
-      // chosen trail's band is over its own - a barrier under the line is a
-      // picture of an open trail - and still under everything about the
-      // chosen trail, per the ordering argument above.
-      ...onSourceLayer(
-        buildClosureLayers(NEARBY_TRAILS_SOURCE_ID, {
-          ground: tapeGround,
-          bandId: NEARBY_LONG_TERM_CLOSURE_LAYER_ID,
-          filter: LONG_TERM_CLOSED_FILTER,
-        }),
-        NETWORK_TILES_LAYER,
-      ),
+      // A nearby trail marked closed long-term wears the same barrier tape,
+      // and it is drawn with every other closure at the top of the style
+      // (#1599) rather than over its own blaze here. See THE SAFETY MARKS,
+      // LAST at the end of this list.
       ...buildTrailLineSplit(
         TRAILS_SOURCE_ID,
         {
@@ -3002,12 +2957,9 @@ export function buildMapStyle({
       // closed long-term, whichever draws last wins pixels that look
       // identical either way. Two tapes at the same cadence stack without a
       // seam, because they are the same image.
-      ...buildClosureLayers(CLOSURE_SOURCE_ID, { ground: tapeGround }),
-      ...buildClosureLayers(TRAILS_SOURCE_ID, {
-        ground: tapeGround,
-        bandId: LONG_TERM_CLOSURE_LAYER_ID,
-        filter: LONG_TERM_CLOSED_FILTER,
-      }),
+      // Both of these are drawn at the top of the style now (#1599), with
+      // every other closure. See THE SAFETY MARKS, LAST at the end of this
+      // list.
       ...buildDayHikeTickLayers(),
       // Volunteer workdays (#760) OVER the waypoints and UNDER the warning
       // pins - later in this list means drawn on top, so the order here is
@@ -3017,11 +2969,8 @@ export function buildMapStyle({
       // one a hiker needs. Unlike the warning it submits to the collision
       // engine rather than shoving a shelter aside (workdayLayers.ts).
       buildWorkdayLayer(),
-      // And the serious-warning pins over every waypoint and over those. The
-      // collision engine already keeps them from being dropped
-      // (warningLayers.ts); this keeps them from being covered, which is the
-      // same guarantee by the other mechanism.
-      buildWarningLayer(),
+      // The serious-warning pins used to sit here, over the waypoints and
+      // the workdays. They are at the top of the style now (#1599).
       // The ATC's own notices last of all, so nothing on this map can cover
       // one.
       //
@@ -3057,6 +3006,63 @@ export function buildMapStyle({
       // where the hiker is, and the notice says what is there.
       buildPositionAccuracyLayer(positionInkFor(appearance)),
       buildPositionLayer(positionInkFor(appearance)),
+      // THE SAFETY MARKS, LAST (#1599, the maintainer: "Shouldn't closures
+      // and warnings just be the top 2 layers?").
+      //
+      // They were above every waypoint pin already, and below four things
+      // that had drifted over them one argument at a time: the walk's own
+      // mile marks, the volunteer workdays, and the hiker's mark and its
+      // ring. Each of those moves was defensible alone - which is exactly
+      // how a safety mark ends up underneath an invitation to a work party.
+      // The rule the workdays' own comment states ("when a hazard and an
+      // invitation land on the same pixels, the hazard is the one a hiker
+      // needs") is now a property of the stack rather than a claim about one
+      // pair of layers.
+      //
+      // ALL FOUR CLOSURE BANDS TOGETHER, which is the other half of it. They
+      // were spread across the style - the sketch's under the A.T.'s lines,
+      // the nearby network's over its own blaze, the two OurHike feeds above
+      // the trail stack - each ordered against the trail lines around it. A
+      // hiker reads one mark for "do not walk this"
+      // (features/NEARBY_TRAILS.md §3), so the four draw in one place and at
+      // one height, and "one treatment" stops being a claim about paint
+      // alone. What that gives up is the old argument that a nearby trail's
+      // band must not cover the trail the map is about: it can now, and
+      // that is the point - the band is a barrier, not a trail line.
+      //
+      // The hiker's own mark goes under them, which #1581 already accepted
+      // for the ATC's notices and for the same reason: the mark is hollow,
+      // so a band crossing it hides its centre and nothing else, and the
+      // ring and the ticks still say where the hiker is.
+      ...buildClosureLayers(NETWORK_OVERVIEW_SOURCE_ID, {
+        ground: tapeGround,
+        bandId: NETWORK_OVERVIEW_CLOSURE_LAYER_ID,
+        filter: LONG_TERM_CLOSED_FILTER,
+      }).map((layer) => ({ ...layer, maxzoom: CORRIDOR_MAX_ZOOM })),
+      ...onSourceLayer(
+        buildClosureLayers(NEARBY_TRAILS_SOURCE_ID, {
+          ground: tapeGround,
+          bandId: NEARBY_LONG_TERM_CLOSURE_LAYER_ID,
+          filter: LONG_TERM_CLOSED_FILTER,
+        }),
+        NETWORK_TILES_LAYER,
+      ),
+      ...buildClosureLayers(CLOSURE_SOURCE_ID, { ground: tapeGround }),
+      ...buildClosureLayers(TRAILS_SOURCE_ID, {
+        ground: tapeGround,
+        bandId: LONG_TERM_CLOSURE_LAYER_ID,
+        filter: LONG_TERM_CLOSED_FILTER,
+      }),
+      // The warning pins over the bands: a pin is a point and a band is
+      // hundreds of pixels long, so a band drawn over a pin hides the whole
+      // mark where a pin over a band hides a stripe of it. The same argument
+      // that puts the ATC's dot above its own band, one group down.
+      buildWarningLayer(),
+      // The ATC's notices remain last of all, and that is not this change's
+      // to move: "nothing on this map can cover one" is #461's rule, held as
+      // a property by src/test/atcAlertProminence.test.ts, which asserts the
+      // last two layers by name. So the maintainer's "top 2" is the top two
+      // OurHike layers; the upstream authority on the A.T. keeps the roof.
       ...buildAtcUpdateLayers(ATC_UPDATE_SOURCE_ID, tapeGround),
     ],
   }

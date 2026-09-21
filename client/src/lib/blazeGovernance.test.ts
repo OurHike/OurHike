@@ -6,7 +6,7 @@ import {
   PLAIN_TRAIL_COLOR,
   blazePaintColor,
 } from './blaze'
-import { contextTrailColor, CONTEXT_TRAIL_TINT } from '../map/style'
+import { plainLineColor } from '../map/style'
 
 // The palette's admission rules, enforced rather than described (#782).
 //
@@ -192,47 +192,42 @@ describe('PLAIN_TRAIL_COLOR, the one red every line takes while blaze colours ar
   })
 })
 
-describe('the context trails’ tint of that red under the default (#1588)', () => {
-  it('keeps 80% of the red over each sheet’s paper, 4.31 on paper and 2.30 on ink', () => {
-    // Computed here for the same reason PLAIN_TRAIL_COLOR's figures are: so
-    // map/style.ts's docstring and the hex cannot drift apart.
+describe('the context trails, which take that same red rather than a tint of it (#1597)', () => {
+  it('clears both sheets’ bars on every line, where the tint cleared only the day one', () => {
+    // What the change bought, computed rather than asserted in prose. From
+    // #1588 to #1597 a trail without a pill was 45% of the red over the
+    // sheet's own paper - '#dca39a' on the field day sheet's white, which
+    // the maintainer read as pink on 2026-09-20 - and on night_hike's ink
+    // that tint measured 1.5:1, UNDER the palette's night bar of 2.66. A
+    // context line on a dark sheet was below the contrast the palette
+    // requires of any line, and the mock-up it was chosen from was a day
+    // frame, so nobody had looked.
     //
-    // THE TINT WENT 0.45 -> 0.8 ON 2026-09-20, because at 0.45 a context
-    // trail rendered #dca39a and the maintainer called it what it is: "The
-    // trails look pink now, not red."
-    //
-    // BOTH RATIOS ROSE, which is worth stating because a colour change made
-    // for looks usually costs contrast and this one paid it back:
-    //
-    //     sheet    was     now     bar
-    //     day      2.15    4.31    2.076  (clears it, and by far more)
-    //     night    1.50    2.30    2.66   (still under, still on purpose)
-    //
-    // The night figure staying under its bar is the same deliberate faintness
-    // as before - a context trail is context, and the ghosting gives a nearby
-    // trail the same treatment on ink. What changed is that the gap narrowed
-    // rather than widened, so the night sheet is less of a compromise than
-    // the 0.45 it replaces, not more.
-    expect(CONTEXT_TRAIL_TINT).toBe(0.8)
-    expect(contrastRatio(contextTrailColor({ theme: 'light' }), DAY_SHEET)).toBeCloseTo(
-      4.31,
-      1,
-    )
-    expect(
-      contrastRatio(contextTrailColor({ theme: 'light' }), DAY_SHEET),
-    ).toBeGreaterThan(2.076)
-    expect(contrastRatio(contextTrailColor({ theme: 'dark' }), NIGHT_SHEET)).toBeCloseTo(
-      2.3,
-      1,
-    )
-    expect(contrastRatio(contextTrailColor({ theme: 'dark' }), NIGHT_SHEET)).toBeLessThan(
-      2.66,
-    )
-    // And it is still plainly a step back from a through-route, which is the
-    // job the tint exists to do at all.
-    expect(contrastRatio(contextTrailColor({ theme: 'light' }), DAY_SHEET)).toBeLessThan(
-      contrastRatio(PLAIN_TRAIL_COLOR, DAY_SHEET),
-    )
+    // Now every line is PLAIN_TRAIL_COLOR, so every line carries the
+    // figures asserted above: 6.23 on paper and 3.0 on ink, over the bars
+    // of 2.076 and 2.66. The hierarchy the tint drew moved to the width
+    // and the dash (map/style.ts's CONTEXT_TRAIL_WIDTH_SCALE and
+    // CONTEXT_TRAIL_DASH), which cost no contrast at all.
+    expect(plainLineColor({ theme: 'light' })).toBe(PLAIN_TRAIL_COLOR)
+    expect(plainLineColor({ theme: 'dark' })).toBe(PLAIN_TRAIL_COLOR)
+    expect(contrastRatio(PLAIN_TRAIL_COLOR, DAY_SHEET)).toBeGreaterThan(2.076)
+    expect(contrastRatio(PLAIN_TRAIL_COLOR, NIGHT_SHEET)).toBeGreaterThan(2.66)
+
+    // EVERY TINT THAT WAS TRIED, measured, because two of them shipped and
+    // the third is what this replaces. 0.45 cleared the day bar - which is
+    // why the pink survived review - and 1.5 on ink is what nobody had
+    // measured. #1590 then raised it to 0.8 from another session an hour
+    // before this one, on the maintainer's "The trails look pink now, not
+    // red", and that test said in so many words that the night figure was
+    // "still under, still on purpose". It is 2.30 against a 2.66 bar, and
+    // this is where the two changes actually disagree: a context line is
+    // context, but no line on this map is exempt from the palette's own
+    // contrast floor, and only the full red clears it.
+    expect(contrastRatio('#dca39a', DAY_SHEET)).toBeCloseTo(2.15, 1)
+    expect(contrastRatio('#572217', NIGHT_SHEET)).toBeCloseTo(1.5, 1)
+    expect(contrastRatio('#c15b4c', DAY_SHEET)).toBeCloseTo(4.31, 1)
+    expect(contrastRatio('#912c1c', NIGHT_SHEET)).toBeCloseTo(2.3, 1)
+    expect(contrastRatio('#912c1c', NIGHT_SHEET)).toBeLessThan(2.66)
   })
 })
 

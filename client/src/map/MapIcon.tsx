@@ -64,9 +64,8 @@ import { WARNING_PIN } from '../lib/seriousWarnings'
 import {
   CLOSURE_CASING_COLOR,
   CLOSURE_COLOR,
-  CLOSURE_STRIPE_ANGLE_DEG,
-  CLOSURE_STRIPE_EDGE,
-  CLOSURE_TAPE_CADENCE,
+  CLOSURE_DASH,
+  CLOSURE_OUTLINE_WIDTH,
   CLOSURE_TAPE_WIDTH,
 } from '../lib/closureStyle'
 
@@ -285,89 +284,96 @@ function Tile({
   )
 }
 
-/** The swatch's viewBox is drawn in CSS pixels, at the tape's own width - so
- *  every number below is the number map/closureTape.ts rasterises, and the
- *  legend cannot drift from the map by someone editing one of them. */
+/** The swatch's viewBox is drawn in CSS pixels, at the band's own width - so
+ *  every number below is a number lib/closureStyle.ts ships, and the legend
+ *  cannot drift from the map by someone editing one of them. */
 const CLOSURE_HEIGHT = CLOSURE_TAPE_WIDTH
+/** The swatch's full height: the band plus the outline showing past each
+ *  side (#1598). The band's own width grows with the zoom on the map, and
+ *  this swatch draws the top of that taper - the weight a hiker learns the
+ *  mark at, which is the zoom they are reading the legend from. */
+const CLOSURE_BOX_HEIGHT = CLOSURE_HEIGHT + CLOSURE_OUTLINE_WIDTH * 2
+
+/** One tick and the paper after it, in CSS pixels: the map's rhythm, which
+ *  is written in line widths, resolved at the width above. */
+const CLOSURE_TICK = CLOSURE_DASH.tick * CLOSURE_HEIGHT
+const CLOSURE_PITCH = (CLOSURE_DASH.tick + CLOSURE_DASH.gap) * CLOSURE_HEIGHT
+
 /**
- * How many pitches of tape the swatch shows.
+ * How many pitches of band the swatch shows.
  *
  * Four, and the number was chosen by looking rather than by arithmetic: the
  * legend's slot is 24px square (chrome.css's .legend__icon) and the viewBox
  * letterboxes into it, so this trades the strip's height against how much
- * cadence it shows. At two the swatch is a pair of fat slashes with no rhythm
- * to read; at four it is a run of parallel diagonals, which is the thing a
- * hiker has to recognise again on the map.
- *
- * The stripes stay at the map's own proportions throughout - this crops the
- * tape, it does not redraw it - so the last one runs off the right edge, the
- * way a crop of something continuous should.
+ * rhythm it shows. At two the swatch is a pair of fat ticks with no rhythm
+ * to read; at four it is a run of bars, which is the thing a hiker has to
+ * recognise again on the map.
  */
 const CLOSURE_TILES = 4
-const CLOSURE_WIDTH = CLOSURE_TAPE_CADENCE.pitch * CLOSURE_TILES
-/** How far a stripe travels along the tape while crossing it. Same angle the
- *  image uses, so the swatch leans the way the map does. */
-const CLOSURE_STRIPE_RUN =
-  CLOSURE_HEIGHT / Math.tan((CLOSURE_STRIPE_ANGLE_DEG * Math.PI) / 180)
-/** One stripe per pitch, plus one past each end: an SVG clips to its own
- *  viewBox, so a stripe that starts off the left edge still draws the part of
+const CLOSURE_WIDTH = CLOSURE_PITCH * CLOSURE_TILES
+/** One tick per pitch, plus one past each end: an SVG clips to its own
+ *  viewBox, so a tick that starts off the left edge still draws the part of
  *  itself that is inside - which is what keeps the swatch from beginning and
- *  ending on a half-stripe. */
-const CLOSURE_STRIPES = Array.from(
+ *  ending on a half tick. */
+const CLOSURE_TICKS = Array.from(
   { length: CLOSURE_TILES + 2 },
-  (_, index) => (index - 1) * CLOSURE_TAPE_CADENCE.pitch,
+  (_, index) => (index - 1) * CLOSURE_PITCH,
 )
 
 function ClosureBand({ className, ground }: { className?: string; ground: string }) {
-  // Every stripe drawn twice: the dark edge first, the red over it. The same
-  // two passes map/closureTape.ts makes into its byte array, and the same
-  // reason - the edge is what the stripe is outlined WITH, never a second
-  // mark beside it.
-  const stripe = (x: number, mark: string, stroke: string, width: number) => (
-    <line
-      key={`${mark}-${x}`}
-      className={mark}
-      x1={x}
-      y1={CLOSURE_HEIGHT}
-      x2={x + CLOSURE_STRIPE_RUN}
-      y2={0}
-      stroke={stroke}
-      strokeWidth={width}
+  /** The outline, drawn as the two edges it actually is (#1598). Two rects
+   *  over the ticks rather than one behind them, which is the same picture
+   *  the map makes: the band is opaque, so the line under it shows only past
+   *  its two sides. */
+  const outline = (y: number) => (
+    <rect
+      key={`outline-${y}`}
+      className="map-icon__closure-outline"
+      x={0}
+      y={y}
+      width={CLOSURE_WIDTH}
+      height={CLOSURE_OUTLINE_WIDTH}
+      fill={CLOSURE_CASING_COLOR}
     />
   )
 
   return (
     <svg
       className={className}
-      viewBox={`0 0 ${CLOSURE_WIDTH} ${CLOSURE_HEIGHT}`}
+      viewBox={`0 0 ${CLOSURE_WIDTH} ${CLOSURE_BOX_HEIGHT}`}
       aria-hidden="true"
       focusable="false"
     >
-      {/* The sheet's paper under the stripes, exactly as map/closureTape.ts
-          bakes it under them (#1575, option E). There was no rect here from
-          2026-08-27, when the tape's gaps were transparent and the legend's
-          own paper showed through; now the map's paper does, in the map's own
-          colour, which on a dark sheet is ink - a legend that drew the panel's
-          surface instead would be teaching a mark the map does not draw. */}
+      {/* The sheet's paper under the ticks, exactly as the map draws it
+          (#1575, option E). There was no rect here from 2026-08-27, when the
+          band's gaps were transparent and the legend's own paper showed
+          through; now the map's paper does, in the map's own colour, which on
+          a dark sheet is ink - a legend that drew the panel's surface instead
+          would be teaching a mark the map does not draw. */}
       <rect
         className="map-icon__closure-ground"
         x={0}
-        y={0}
+        y={CLOSURE_OUTLINE_WIDTH}
         width={CLOSURE_WIDTH}
         height={CLOSURE_HEIGHT}
         fill={ground}
       />
-      {CLOSURE_STRIPES.map((x) =>
-        stripe(
-          x,
-          'map-icon__closure-casing',
-          CLOSURE_CASING_COLOR,
-          CLOSURE_TAPE_CADENCE.stripe + CLOSURE_STRIPE_EDGE * 2,
-        ),
-      )}
-      {CLOSURE_STRIPES.map((x) =>
-        stripe(x, 'map-icon__closure-band', CLOSURE_COLOR, CLOSURE_TAPE_CADENCE.stripe),
-      )}
+      {/* The ticks, SQUARE TO THE BAND since #1599, which is the whole of
+          that change: a mark leaning at 55 degrees was what tore at every
+          bend on the real map, so the legend leans no more than the map
+          does. */}
+      {CLOSURE_TICKS.map((x) => (
+        <rect
+          key={`tick-${x}`}
+          className="map-icon__closure-band"
+          x={x}
+          y={CLOSURE_OUTLINE_WIDTH}
+          width={CLOSURE_TICK}
+          height={CLOSURE_HEIGHT}
+          fill={CLOSURE_COLOR}
+        />
+      ))}
+      {[0, CLOSURE_HEIGHT + CLOSURE_OUTLINE_WIDTH].map(outline)}
     </svg>
   )
 }

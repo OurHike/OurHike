@@ -418,7 +418,7 @@ describe('every hideable category has a row, in view or not', () => {
 //
 // The legend named categories the map draws as pins and drew none of them.
 // What is asserted here is not "an icon is present" but that it is THE icon -
-// the same glyph data, the same broken rim, the same barrier tape - because a
+// the same glyph data, the same broken rim, the same barred band - because a
 // legend drawing its own approximation of a pin is worse than one drawing
 // none: it teaches a symbol the map does not use.
 
@@ -450,20 +450,24 @@ describe('legend icons are the map’s icons', () => {
     )
   })
 
-  it('draws a closure as the barrier tape it is, not as a pin it never was', () => {
+  it('draws a closure as the barred band it is, not as a pin it never was', () => {
     render(<Legend {...PROPS} />)
     const icon = iconIn(rowFor('Closure'))
 
+    // A FILL RATHER THAN A STROKE SINCE #1599: the swatch's ticks are rects
+    // square to the band, because the map's are - it drew leaning strokes
+    // while the map drew barrier tape, and the tape went when its diagonals
+    // tore at every bend.
     expect(icon?.querySelector('.map-icon__closure-band')).toHaveAttribute(
-      'stroke',
+      'fill',
       CLOSURE_COLOR,
     )
     expect(icon?.querySelector('.map-icon__disc')).toBeNull()
   })
 
-  it('lays the closure swatch on the paper the tape takes beside it (#1575)', () => {
-    // The tape's ground follows closureTapeGround, so the swatch beside a
-    // night map is the day paper under red stripes since 2026-09-18 - red
+  it('lays the closure swatch on the paper the band takes beside it (#1575)', () => {
+    // The band's ground follows closureTapeGround, so the swatch beside a
+    // night map is the day paper under red ticks since 2026-09-18 - red
     // and white, the way the canvas draws it there now.
     render(<Legend {...PROPS} sheetAppearance={{ theme: 'dark' }} />)
 

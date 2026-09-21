@@ -1,7 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { atcTapeImageId } from '../lib/atcUpdateStyle'
-import { closureTapeImageId } from '../lib/closureStyle'
-import { tapeGrounds } from './closureTape'
 import { TRAILS } from '../lib/trails'
 import {
   CHOSEN_SYSTEM_SOURCES,
@@ -996,19 +993,21 @@ describe('POI pins', () => {
     expect(map.images.has(WARNING_ICON_ID)).toBe(true)
   })
 
-  it('registers the barrier tape on every paper the sheet can be, up front (#1575)', () => {
-    // A tape layer whose `line-pattern` names an image the map has not been
-    // given draws nothing, so a sheet change may never be the first time a
-    // paper's tape is asked for: every paper's closure tape and ATC tape are
-    // there once the style is ready.
+  it('registers no barrier-tape images, because there is no tape left (#1599)', () => {
+    // THE ABSENCE IS THE ASSERTION. This case used to check that every
+    // paper's closure tape and ATC tape were rasterised before the style was
+    // ready, because a `line-pattern` naming an image the map has not been
+    // given draws nothing. Both bands are three plain lines now - a dark
+    // edge, the sheet's paper, red ticks on a dasharray - so there is no
+    // image to register and no window to get wrong, and the images this map
+    // does hold are the pins and marks the cases above name.
     render(<MapView {...PROPS} />)
     const [map] = MockMap.live
 
     loadStyle(map)
 
-    for (const ground of tapeGrounds()) {
-      expect(map.images.has(closureTapeImageId(ground)), ground).toBe(true)
-      expect(map.images.has(atcTapeImageId(ground)), ground).toBe(true)
+    for (const id of map.images.keys()) {
+      expect(String(id), 'a tape image came back').not.toContain('tape')
     }
   })
 

@@ -143,7 +143,7 @@ CONFIGURED_AUTH = {
     "smtp_sender_name": "OurHike",
     "mailer_templates_magic_link_content": "<p>Your OurHike sign-in code is {{ .Token }}</p>",
     "mailer_templates_confirmation_content": "<p>Your OurHike sign-in code is {{ .Token }}</p>",
-    "mailer_otp_length": check.EMAIL_CODE_LENGTH,
+    "mailer_otp_length": check.EMAIL_CODE_MIN_LENGTH,
     "mailer_otp_exp": check.EMAIL_CODE_MAX_EXPIRY_SECONDS,
     "rate_limit_email_sent": 100,
     "external_google_enabled": True,
@@ -204,12 +204,31 @@ def test_TOKEN_PLACEHOLDER_reads_the_token_whatever_spacing_the_dashboard_kept()
     assert not check.TOKEN_PLACEHOLDER.search("{{ .ConfirmationURL }}")
 
 
-def test_check_auth_config_fails_a_code_length_other_than_EMAIL_CODE_LENGTH():
-    # screens/EmailSignIn.tsx asks for six digits; an eight-digit code cannot
-    # be typed into it.
+def test_check_auth_config_accepts_an_eight_digit_code_now_the_field_holds_one():
+    """Eight digits is the length that broke UA, and it must pass here (#1600).
+
+    This test asserted the opposite until 2026-09-21 - "an eight-digit code
+    cannot be typed into it" - and it was RIGHT about the screen and wrong
+    about what to do. screens/EmailSignIn.tsx hardcoded six and capped its
+    field at seven characters, so a browser silently dropped the last digit of
+    every code the UA project sent and the hiker was told to check their six.
+    The screen takes 6 to 10 now, which is Supabase's own range, so a project
+    set to 8 is a project that works rather than one to fail.
+    """
     report = check.Report()
 
     check.check_auth_config({**CONFIGURED_AUTH, "mailer_otp_length": 8}, ALL_THREE, report)
+
+    assert not report.failed
+
+
+def test_check_auth_config_fails_a_code_longer_than_the_field_can_hold():
+    # Past Supabase's own maximum, so no setting produces it - but if one ever
+    # did, the field would drop characters in silence, which is the whole of
+    # #1600 and must be loud rather than mysterious.
+    report = check.Report()
+
+    check.check_auth_config({**CONFIGURED_AUTH, "mailer_otp_length": 12}, ALL_THREE, report)
 
     assert report.failed
 

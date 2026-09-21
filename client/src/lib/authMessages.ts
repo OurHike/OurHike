@@ -23,13 +23,15 @@
 // the failure mode of being wrong is a vaguer message rather than a
 // confidently wrong one.
 //
-// `@unvalidated`: the first two patterns come from the strings quoted in
-// #315's audit; the code-path ones below come from Supabase's own docs and
-// GoTrue's error strings ("Token has expired or is invalid", "Email address
-// not authorized", "Error sending magic link email"), not from a failure
-// observed against this project. What would settle it is a real sign-in
-// failing in each of these ways against the live project, which needs
-// #1572's dashboard steps done.
+// The first two patterns come from the strings quoted in #315's audit. Of
+// the code-path ones below, `token has expired or is invalid` is now
+// OBSERVED rather than taken from the docs: it is what UA answered twice on
+// 2026-09-21, logged as `403 otp_expired` against a real sign-in (#1600).
+// The rest - "Email address not authorized", "Error sending magic link
+// email" - remain `@unvalidated`, from Supabase's docs and GoTrue's source
+// rather than from a failure seen here. What would settle those is a project
+// with no sender answering one, which #1572's dashboard steps have made
+// harder to produce on purpose.
 
 /** The general case, and a true sentence about every failure this maps. */
 const UNCLEAR = 'Sign-in did not go through. Nothing was lost — you can try again.'
@@ -54,9 +56,17 @@ export function signInMessage(raw: string): string {
     return 'That was just sent. Give it a minute before asking again.'
   }
   if (text.includes('token has expired or is invalid') || text.includes('otp_expired')) {
-    // A mistyped code and a code left an hour are one case to a hiker: the
-    // way out of both is the same, and saying which it was would be a guess.
-    return 'That code did not match, or it has expired. Check the six digits, or ask for a new code.'
+    // THREE CAUSES, ONE STRING, AND THE OLD SENTENCE NAMED THE WRONG ONE.
+    // GoTrue answers this for a mistyped code, for a code left too long, and
+    // for a code that was never what the project minted at all - #1600, where
+    // a hiker was told to "check the six digits" of a code that could not
+    // have worked however carefully it was read. Telling somebody to look
+    // harder at something that was never the problem is worse than saying
+    // less: they do it, it fails again, and the app has spent their trust.
+    //
+    // So the sentence says what is true of all three and what gets them out
+    // of each: a new code. It no longer claims the digits were wrong.
+    return 'That code was not accepted. Ask for a new one and use the newest email.'
   }
   if (text.includes('email address not authorized')) {
     // What a project with no sender says: Supabase's built-in mailer sends

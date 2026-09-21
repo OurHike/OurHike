@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { EmailSignIn, CODE_LENGTH, type EmailSignInProps } from './EmailSignIn'
+import {
+  EmailSignIn,
+  MAX_CODE_LENGTH,
+  CODE_FIELD_MAX,
+  type EmailSignInProps,
+} from './EmailSignIn'
 
 // A 6-digit code, typed into the app (#279). The address step sends it and
 // the code step signs in with it; neither claims a sign-in, because the
@@ -57,7 +62,11 @@ describe('the address step', () => {
     // onSendCode creates the user when the address is unknown.
     setup()
 
-    expect(screen.getByRole('status')).toHaveTextContent(`${CODE_LENGTH}-digit code`)
+    // No number in the sentence: the project's OTP length is a dashboard
+    // setting this build cannot read, and naming one it had guessed is how
+    // #1600 told a hiker to check six digits of an eight-digit code.
+    expect(screen.getByRole('status')).toHaveTextContent(/we email you a code/i)
+    expect(screen.getByRole('status')).not.toHaveTextContent(/\d-digit/)
     expect(screen.getByRole('status')).toHaveTextContent(/creates your account/i)
     expect(screen.queryByRole('button', { name: /create account/i })).toBe(null)
   })
@@ -139,9 +148,7 @@ describe('the code step', () => {
     const user = userEvent.setup()
     setup({
       onVerifyCode: vi.fn(
-        fails(
-          'That code did not match, or it has expired. Check the six digits, or ask for a new code.',
-        ),
+        fails('That code was not accepted. Ask for a new one and use the newest email.'),
       ),
     })
 
@@ -149,7 +156,7 @@ describe('the code step', () => {
     await user.type(screen.getByLabelText(/^code$/i), '999999')
     await user.click(screen.getByRole('button', { name: /^sign in$/i }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/did not match/i)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/was not accepted/i)
     expect(screen.getByLabelText(/^code$/i)).toHaveValue('999999')
     expect(screen.getByRole('button', { name: /^sign in$/i })).toBeEnabled()
   })
@@ -188,7 +195,7 @@ describe('the code step', () => {
   it('"Use a different address" goes back with the address still typed and no stale failure', async () => {
     const user = userEvent.setup()
     setup({
-      onVerifyCode: vi.fn(fails('That code did not match, or it has expired.')),
+      onVerifyCode: vi.fn(fails('That code was not accepted.')),
     })
 
     await reachCodeStep(user)
@@ -289,5 +296,38 @@ describe('when a sign-in call throws rather than returning (#315)', () => {
     await renderThrowing('a bare string, which a library is entitled to throw')
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/did not go through/i)
+  })
+})
+
+describe('the code field accepts what the project actually sends (#1600)', () => {
+  // THE DEFECT, and it needed no server to reproduce: the field was capped at
+  // `CODE_LENGTH + 1` = 7 while the UA project mints EIGHT digits. The eighth
+  // character had nowhere to go, so every code a hiker typed was submitted a
+  // digit short and refused - and no amount of care could have fixed it. The
+  // screen then told them to check their six digits.
+
+  it('holds the longest code Supabase can be set to send, plus a typed separator', async () => {
+    const user = userEvent.setup()
+    setup()
+    await reachCodeStep(user)
+
+    // 10 is Supabase's maximum (Authentication -> Providers -> Email); the two
+    // spare are for "1234 5678" read off a notification and typed with a
+    // thumb, which verifyEmailCode strips.
+    const field = screen.getByLabelText(/^code$/i) as HTMLInputElement
+    expect(field.maxLength).toBe(CODE_FIELD_MAX)
+    expect(field.maxLength).toBeGreaterThan(MAX_CODE_LENGTH)
+  })
+
+  it('submits all eight digits of an 8-digit code, the length that broke UA', async () => {
+    const user = userEvent.setup()
+    const props = setup()
+    await reachCodeStep(user)
+
+    await user.type(screen.getByLabelText(/^code$/i), '12345678')
+    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+
+    // The whole of it, not the first seven. The shipped field failed this.
+    expect(props.onVerifyCode).toHaveBeenCalledWith('hiker@example.com', '12345678')
   })
 })

@@ -75,8 +75,17 @@ CLIENT_SUPABASE_TS = Path(__file__).resolve().parent.parent / "client" / "src" /
 # (`AuthProvider[]`), so the span before the `=` may not exclude `[`.
 ENABLED_PROVIDERS_PATTERN = re.compile(r"export const ENABLED_PROVIDERS[^=]*=\s*\[([^\]]*)\]")
 
-# How many digits screens/EmailSignIn.tsx asks for (CODE_LENGTH there).
-EMAIL_CODE_LENGTH = 6
+# The code lengths screens/EmailSignIn.tsx can accept (MIN_CODE_LENGTH and
+# MAX_CODE_LENGTH there), which is Supabase's own allowed range.
+#
+# A RANGE, NOT A NUMBER, since #1600. The screen used to hardcode 6 and cap
+# its field at 7 characters; the UA project was set to 8, so a browser dropped
+# the last digit of every code and the app told the hiker to check their six.
+# The screen takes the whole range now, and what this asserts is that the
+# project's setting falls inside it - not that it equals one value the client
+# happened to pick.
+EMAIL_CODE_MIN_LENGTH = 6
+EMAIL_CODE_MAX_LENGTH = 10
 
 # Supabase's own ceiling before its advisor flags the expiry as too long.
 EMAIL_CODE_MAX_EXPIRY_SECONDS = 3600
@@ -85,6 +94,20 @@ MANAGEMENT_API = "https://api.supabase.com/v1"
 
 # `{{ .Token }}` in a Go template, with whatever spacing the dashboard kept.
 TOKEN_PLACEHOLDER = re.compile(r"\{\{\s*\.Token\s*\}\}")
+
+# `{{ .ConfirmationURL }}`, whose PRESENCE is what decides that Supabase sends
+# a magic link rather than a code - regardless of whether `{{ .Token }}` is
+# there too. From their passwordless guide, read 2026-09-21: "If the
+# `{{ .ConfirmationURL }}` variable is specified in the email template, a
+# magiclink will be sent. If the `{{ .Token }}` variable is specified in the
+# email template, an OTP will be sent."
+#
+# This is the rule that was missing when #1576 shipped, and the omission is
+# what let the email door reach a hiker broken (#1600). Both templates carried
+# `{{ .Token }}` and both ALSO carried the URL, so the check above passed
+# while GoTrue minted link tokens - `auth.one_time_tokens.token_type =
+# 'recovery_token'` - that no six-digit code could ever match.
+CONFIRMATION_URL_PLACEHOLDER = re.compile(r"\{\{\s*\.ConfirmationURL\s*\}\}")
 
 # The templates a code has to be in, and why both: a returning address gets
 # "Magic Link" and a new one gets "Confirm sign up", and
@@ -265,30 +288,50 @@ def check_auth_config(config: dict, offered: set[str], report: Report) -> None:
             )
 
         for key, template in EMAIL_CODE_TEMPLATES:
-            if TOKEN_PLACEHOLDER.search(config.get(key) or ""):
-                report.ok(f"The '{template}' email template carries {{{{ .Token }}}}, the code the app asks for.")
-            else:
+            body = config.get(key) or ""
+            has_token = bool(TOKEN_PLACEHOLDER.search(body))
+            has_url = bool(CONFIRMATION_URL_PLACEHOLDER.search(body))
+
+            if not has_token:
                 report.fail(
-                    f"The '{template}' email template has no {{{{ .Token }}}}, so that email carries a "
-                    "link and no code - and screens/EmailSignIn.tsx asks for a code. Edit it under "
+                    f"The '{template}' email template has no {{{{ .Token }}}}, so that email carries no "
+                    "code - and screens/EmailSignIn.tsx asks for one. Edit it under "
                     "Authentication -> Emails -> Templates (LAUNCH_CHECKLIST.md 4.3d)."
                 )
+            # BOTH IS THE CASE THAT BROKE, and it is the one a maintainer is
+            # most likely to produce: adding the code to Supabase's stock
+            # template rather than replacing it leaves the URL in place, the
+            # email then shows six digits that look right, and every one of
+            # them is refused (#1600).
+            elif has_url:
+                report.fail(
+                    f"The '{template}' email template carries {{{{ .Token }}}} AND "
+                    "{{{{ .ConfirmationURL }}}}. The URL wins: Supabase sends a magic link, GoTrue mints "
+                    "a link token instead of a code, and every code typed into screens/EmailSignIn.tsx "
+                    "is refused as invalid. DELETE the link from the template - adding the code beside "
+                    "it is not enough (LAUNCH_CHECKLIST.md 4.3d)."
+                )
+            else:
+                report.ok(f"The '{template}' email template carries {{{{ .Token }}}} and no link, so it sends a code.")
 
         length = config.get("mailer_otp_length")
         if not isinstance(length, int):
             report.warn(
                 "The project's auth config has no integer 'mailer_otp_length', so the code length "
-                f"was NOT checked against screens/EmailSignIn.tsx's {EMAIL_CODE_LENGTH} (CODE_LENGTH). "
-                "Either this script has the field name wrong - see the @unvalidated note on "
-                "check_auth_config - or the API stopped returning it."
+                "was NOT checked against what screens/EmailSignIn.tsx accepts "
+                f"({EMAIL_CODE_MIN_LENGTH}-{EMAIL_CODE_MAX_LENGTH}). Either this script has the field "
+                "name wrong - see the @unvalidated note on check_auth_config - or the API stopped "
+                "returning it."
             )
-        elif length != EMAIL_CODE_LENGTH:
+        elif not (EMAIL_CODE_MIN_LENGTH <= length <= EMAIL_CODE_MAX_LENGTH):
             report.fail(
-                f"Email codes are {length} digits, and screens/EmailSignIn.tsx asks for {EMAIL_CODE_LENGTH} "
-                "(CODE_LENGTH). Set the length back under Authentication -> Providers -> Email."
+                f"Email codes are {length} digits, outside the {EMAIL_CODE_MIN_LENGTH}-"
+                f"{EMAIL_CODE_MAX_LENGTH} screens/EmailSignIn.tsx accepts, so its field cannot hold one. "
+                "That is #1600's failure exactly: the digits past the cap are dropped by the browser "
+                "and every code is refused. Set the length under Authentication -> Providers -> Email."
             )
         else:
-            report.ok(f"Email codes are {EMAIL_CODE_LENGTH} digits, which is what the app asks for.")
+            report.ok(f"Email codes are {length} digits, which the app's field can hold.")
 
         expiry = config.get("mailer_otp_exp")
         if not isinstance(expiry, int):

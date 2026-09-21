@@ -8,7 +8,7 @@ import {
 
 // WIREFRAMES.md §11. Staleness is a THIRD visual channel, independent of
 // confidence:
-//   - staleness  = when a human last said this was fine
+//   - staleness  = when a human was last here, whatever they said
 //   - confidence = whether it was ever verified to exist (a dashed pin)
 // A dashed (unverified) pin can still be Fresh; a verified pin can go Stale.
 // Conflating them would tell someone a spring is unreliable when the real

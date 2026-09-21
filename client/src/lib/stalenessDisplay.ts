@@ -2,7 +2,8 @@
 //
 // They are two separate channels and are kept as two separate functions on
 // purpose:
-//   - staleness  = when a human last said this was fine   -> ring + fade
+//   - staleness  = when a human was last here, whatever
+//                  they said                              -> ring + fade
 //   - confidence = was it ever verified to exist          -> dashed outline
 //
 // A dashed pin that is Fresh means "we're not certain this spring exists, but
@@ -114,7 +115,7 @@ export function confidenceTreatment(confidence: 'high' | 'low'): ConfidenceTreat
 
 /**
  * The map-pin form of the decision above: which ring a waypoint wears and
- * whether its pin fades, from when a human last said it was fine.
+ * whether its pin fades, from when a human was last here and left a note.
  *
  * Returns a lookup rather than answering directly because the map rebuilds
  * ~2,800 features in one pass (map/poiLayers.ts) and each asks this - the

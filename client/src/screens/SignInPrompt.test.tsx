@@ -242,3 +242,49 @@ describe('when there is no report behind it', () => {
     expect(screen.getByRole('button', { name: /not now/i })).toBeInTheDocument()
   })
 })
+
+describe('when the ask opened because a round trip was refused (#1573)', () => {
+  // Google and GitHub are a full off-origin navigation, so a refusal comes
+  // back as a fresh page load with nothing left alive to have been told.
+  // App.tsx reads it off the URL and re-opens this ask carrying the
+  // sentence; this is the half that renders it.
+
+  const REFUSAL = 'That sign-in was not finished, so nothing changed.'
+
+  it('says why, in an alert, so a window that opened by itself is not silent', () => {
+    render(<SignInPrompt {...PROPS} reportSaved={false} refusal={REFUSAL} />)
+
+    expect(screen.getByRole('alert')).toHaveTextContent(REFUSAL)
+  })
+
+  it('puts the reason before the doors, which is the order it is read in', () => {
+    // "Why am I looking at this" is the question the hiker arrives with, and
+    // a sentence underneath three buttons answers it after they have already
+    // decided. `compareDocumentPosition` rather than a snapshot: the claim is
+    // about order, not markup.
+    render(<SignInPrompt {...PROPS} reportSaved={false} refusal={REFUSAL} />)
+
+    const alert = screen.getByRole('alert')
+    const firstDoor = screen.getByRole('button', { name: /github/i })
+
+    expect(alert.compareDocumentPosition(firstDoor)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+  })
+
+  it('still offers every way in, because a refusal is not a lock-out', () => {
+    render(<SignInPrompt {...PROPS} reportSaved={false} refusal={REFUSAL} />)
+
+    expect(screen.getByRole('button', { name: /github/i })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /google/i })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /email/i })).toBeEnabled()
+  })
+
+  it('says nothing at all on the ordinary path, where somebody pressed a button', () => {
+    // The defect's mirror image, and the cheaper one to ship: an alert in
+    // front of a hiker who opened the ask deliberately.
+    render(<SignInPrompt {...PROPS} />)
+
+    expect(screen.queryByRole('alert')).toBe(null)
+  })
+})

@@ -419,6 +419,7 @@ import { ENABLED_PROVIDERS } from './lib/supabase'
 import { TRAILS } from './lib/trails'
 import { useAccount } from './lib/useAuth'
 import { sendEmailCode, signInWithProvider, signOut, verifyEmailCode } from './lib/auth'
+import { clearRefusalFromUrl, refusalIn } from './lib/authRefusal'
 import {
   amendQueuedReport,
   attachQueuedPhotos,
@@ -649,7 +650,23 @@ type ReportingState =
 // would mean the Settings path inheriting the report flow's copy, which
 // promises that a report is already saved - true in one case and not the
 // other.
-type AuthFlowState = null | { screen: 'choose' | 'email'; afterReport: boolean }
+type AuthFlowState = null | {
+  screen: 'choose' | 'email'
+  afterReport: boolean
+  /**
+   * Why the last sign-in did not happen, when this window opened BECAUSE one
+   * did not (#1573) - a returned-to `#error=…` read at boot.
+   *
+   * ON THE FLOW RATHER THAN IN A STATE OF ITS OWN, so it cannot outlive the
+   * window that explains it. Closing the window drops it, opening the ask
+   * from the account button builds a fresh one without it, and stepping into
+   * the email view rebuilds it without it too - a sentence about Google
+   * hanging over the address field would be answering a question nobody is
+   * asking any more. A separate `useState` would need all three of those
+   * written out and would be one missed call away from a stale refusal.
+   */
+  refusal?: string
+}
 
 /** A saved day hike's default name: its longest leg's trail, or a plain
  *  fallback. The hiker renames it; this is what the row says until they do. */
@@ -8890,6 +8907,42 @@ function App() {
   }, [account])
 
   /**
+   * A sign-in REFUSED at Google or GitHub, which is the other way that same
+   * redirect can land (#1573).
+   *
+   * The successful round trip above needs nothing from this file - the
+   * account appears and the effect closes the flow. The refused one used to
+   * need nothing either, and that was the defect: supabase-js reads
+   * `#error=access_denied&…` inside `GoTrueClient._initialize()`, which
+   * nothing here awaits and which fires no `onAuthStateChange`, so the hiker
+   * landed on the map signed out with the window shut and no sentence
+   * anywhere. Every other refusal in sign-in has said something out loud
+   * since #279; this was the last silent one.
+   *
+   * ON MOUNT AND ONLY ON MOUNT. The URL that carries the refusal is the one
+   * the page loaded with, and it is cleared immediately below - so a second
+   * run would find nothing, and a dependency that made it run again would
+   * re-open a window the hiker had already dismissed.
+   *
+   * CLEARED BEFORE THE WINDOW OPENS, not after it closes, so a reload cannot
+   * repeat it: the sentence lives in React state from here on and the
+   * address bar is back to what it was.
+   */
+  useEffect(() => {
+    const refusal = refusalIn(window.location.hash, window.location.search)
+    if (refusal === null) return
+    clearRefusalFromUrl()
+    // `afterReport: false`, which is the honest answer rather than the
+    // convenient one. The round trip reloaded the page, so nothing survives
+    // that could say whether this hiker was part-way through filing
+    // something - and "Your report is already saved on your phone" is a
+    // promise about a specific report, not a general reassurance. A report
+    // that WAS saved is in the outbox either way; screens/Today.tsx is where
+    // they meet it again.
+    setAuthFlow({ screen: 'choose', afterReport: false, refusal })
+  }, [])
+
+  /**
    * Signing in hands on to the step it was standing in front of (#233).
    *
    * contributionFlow.ts puts the account first because a trail name belongs
@@ -9070,6 +9123,10 @@ function App() {
             // so offline they take the hiker out of the app and away from the
             // map rather than merely failing. The screen holds them and says so.
             online={online}
+            // Why this window is open at all, when it opened by itself
+            // (#1573). Undefined on every other path, which is the ordinary
+            // case: somebody pressed a button and knows why they are here.
+            refusal={authFlow.refusal ?? null}
             onSignIn={handleChooseProvider}
             onCancel={() => setAuthFlow(null)}
           />

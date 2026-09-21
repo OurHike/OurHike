@@ -151,6 +151,33 @@ test.describe('the account button, on the app itself', () => {
     await expect(ask.getByText(/already saved on your phone/)).toHaveCount(0)
   })
 
+  test('failure: landing back from a refused sign-in says so, instead of nothing', async ({
+    page,
+  }) => {
+    // #1573. The two provider doors are a full off-origin navigation, so a
+    // refusal comes back as a FRESH PAGE LOAD carrying `#error=…` and there
+    // is no component left alive to have been told about it - which is why
+    // this is a `goto` with a fragment rather than a tap. The fragment's
+    // shape is GoTrue's; what this drives is what the app does with it.
+    await seedPreferences(page)
+    await page.goto(
+      '/#error=server_error&error_code=access_denied&error_description=The+user+denied+the+request',
+    )
+
+    const ask = page.getByRole('dialog', { name: 'Sign in' })
+    await expect(ask).toBeVisible()
+    await expect(ask.getByRole('alert')).toHaveText(/was not finished/)
+    // A refusal is not a lock-out: every door is still open, which is the
+    // half a hiker needs after being told the last attempt failed.
+    await expect(ask.getByRole('button', { name: 'Continue with GitHub' })).toBeEnabled()
+
+    // OFF THE ADDRESS BAR, so a pull-to-refresh does not tell them again
+    // about a sign-in they have since forgotten. This assertion is the
+    // reason the test drives a real browser rather than jsdom: it is about
+    // history, and `replaceState` is what keeps Back out of it too.
+    await expect.poll(() => new URL(page.url()).hash).toBe('')
+  })
+
   test('exit: Escape closes the window and leaves the map where it was', async ({
     page,
   }) => {

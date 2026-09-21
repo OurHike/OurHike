@@ -84,6 +84,45 @@ describe('the failures of the emailed code (#279)', () => {
   })
 })
 
+describe('a round trip refused at Google or GitHub (#1573)', () => {
+  // These two arrive in the fragment of a redirect rather than as the
+  // message of a rejected promise, which is why they were missing: nothing
+  // read that fragment until lib/authRefusal.ts did.
+
+  it('does not tell somebody they cancelled, because the server may have', () => {
+    // RFC 6749 §4.1.2.1 spends `access_denied` on both "the resource owner
+    // denied" and "the authorization server denied". A sentence that picks
+    // the first is an app arguing with a hiker who did not do it.
+    const said = signInMessage('access_denied')
+
+    expect(said).toMatch(/was not finished/i)
+    expect(said).not.toMatch(/you cancelled|you denied|you tapped/i)
+  })
+
+  it('does not name a provider for access_denied, since the string does not say', () => {
+    // Google and GitHub both answer with this code and neither is in it.
+    expect(signInMessage('access_denied')).not.toMatch(/google|github/i)
+  })
+
+  it('says nothing changed, which is the thing worth knowing after a refusal', () => {
+    expect(signInMessage('access_denied')).toMatch(/nothing changed/i)
+  })
+
+  it('explains an account with no verified address, and says where to fix it', () => {
+    // GoTrue answers this when the provider hands back no address; in
+    // practice that is a GitHub account with none verified. The only refusal
+    // in this file a hiker can go and do something about, so it says what.
+    const said = signInMessage('Error getting user email from external provider')
+
+    expect(said).toMatch(/verified email address/i)
+    expect(said).toMatch(/github/i)
+  })
+
+  it('reads a refusal whatever case the provider sent it in', () => {
+    expect(signInMessage('ACCESS_DENIED')).toMatch(/was not finished/i)
+  })
+})
+
 describe('when the message is one nothing here knows', () => {
   it('falls through to a sentence that is still true', () => {
     // The intended failure mode of matching on text: a reworded upstream

@@ -32,9 +32,23 @@
 // rather than from a failure seen here. What would settle those is a project
 // with no sender answering one, which #1572's dashboard steps have made
 // harder to produce on purpose.
+//
+// The two redirect patterns added by #1573 are `@unvalidated` in the same
+// way and for a narrower reason: `access_denied` is read off OAuth2 RFC 6749
+// §4.1.2.1 and `Error getting user email from external provider` out of
+// GoTrue's `api/external.go`, and neither has been seen arriving at this
+// app. What would settle them is one refused round trip each against the
+// live project - tapping Cancel on Google's consent screen, and a GitHub
+// account with no verified address - with the returned-to URL read off the
+// address bar. Both are a minute of somebody's time and neither has been
+// spent.
 
-/** The general case, and a true sentence about every failure this maps. */
-const UNCLEAR = 'Sign-in did not go through. Nothing was lost — you can try again.'
+/** The general case, and a true sentence about every failure this maps.
+ *
+ *  Exported since #1573 so lib/authRefusal.ts can tell "this key matched
+ *  something" from "this key told us nothing" — a returned-to URL carries
+ *  three candidate values and only one of them is usually recognisable. */
+export const UNCLEAR = 'Sign-in did not go through. Nothing was lost — you can try again.'
 
 /**
  * One supabase-js message as a hiker reads it.
@@ -67,6 +81,29 @@ export function signInMessage(raw: string): string {
     // So the sentence says what is true of all three and what gets them out
     // of each: a new code. It no longer claims the digits were wrong.
     return 'That code was not accepted. Ask for a new one and use the newest email.'
+  }
+  // THE TWO THAT ARRIVE ON A URL RATHER THAN FROM A CALL (#1573). Every
+  // pattern above is the `message` of a rejected supabase-js promise; these
+  // two come back in the fragment of a redirect, after the hiker has been to
+  // Google or GitHub and back. lib/authRefusal.ts is what reads them.
+  if (text.includes('access_denied')) {
+    // OAuth2 §4.1.2.1's code for "the resource owner OR the authorization
+    // server denied the request", which is why the sentence does not say
+    // "you cancelled" — the hiker tapping Cancel is the common cause and not
+    // the only one, and telling somebody they did a thing they did not do is
+    // how an app argues with them. Nor does it name the provider: this
+    // mapping is handed a string, not a button, and Google and GitHub both
+    // answer with this.
+    return 'That sign-in was not finished, so nothing changed. You can try again, or use a different way in.'
+  }
+  if (text.includes('error getting user email')) {
+    // GoTrue's `Error getting user email from external provider`, which in
+    // practice means GitHub: a GitHub account can have no verified address,
+    // and Supabase needs one because the address is the account's identity
+    // here. The second sentence is conditional rather than an assertion
+    // about which provider failed, so it stays true either way — and it is
+    // the only refusal in this file a hiker can actually go and fix.
+    return 'That account did not share a verified email address, so it cannot be used to sign in. On GitHub, verifying an address in your account settings fixes it.'
   }
   if (text.includes('email address not authorized')) {
     // What a project with no sender says: Supabase's built-in mailer sends

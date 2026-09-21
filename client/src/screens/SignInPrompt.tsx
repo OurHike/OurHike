@@ -66,6 +66,22 @@ export interface SignInPromptProps {
    * that takes the map away.
    */
   online?: boolean
+  /**
+   * Why the last attempt did not sign anybody in, when this ask is being
+   * shown BECAUSE one did not (#1573).
+   *
+   * The Google and GitHub buttons are a full off-origin navigation, so a
+   * refusal lands back here as a fresh page load with the failure on the URL
+   * and no component left alive to have been told about it. `App.tsx` reads
+   * it at boot (lib/authRefusal.ts), re-opens this ask, and hands the
+   * sentence down here - which is what makes the two paths that leave the
+   * app say something, as #397's acceptance requires of all of them.
+   *
+   * Above the buttons rather than beside the one that failed: which button
+   * it was is not in the URL, and putting the sentence under a guess is
+   * worse than putting it where the eye already is.
+   */
+  refusal?: string | null
 }
 
 const LABELS: Record<AuthProvider, string> = {
@@ -101,11 +117,23 @@ export function SignInPrompt({
   providers = ALL,
   reportSaved = true,
   online = true,
+  refusal = null,
 }: SignInPromptProps) {
   const held = providers.filter((provider) => !online && LEAVES_THE_APP.has(provider))
   return (
     <main className="reporting">
       <h1 className="reporting__title">{reportSaved ? 'One thing first' : 'Sign in'}</h1>
+
+      {refusal !== null && (
+        /* `role="alert"` for the same reason EmailSignIn's failures carry
+           one: this window opened by itself, so a screen reader that was not
+           told would be handed three buttons and no reason for them. First
+           in the panel because it is the answer to "why am I looking at
+           this", which is the question the hiker arrives with. */
+        <p className="reporting__error" role="alert">
+          {refusal}
+        </p>
+      )}
 
       {reportSaved && (
         <p className="reporting__saved" role="status">

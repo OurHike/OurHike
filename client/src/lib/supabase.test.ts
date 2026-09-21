@@ -1,73 +1,38 @@
 import { describe, it, expect } from 'vitest'
-import {
-  parseProviders,
-  ENABLED_PROVIDERS,
-  AUTH_CONFIGURED,
-  getAuthClient,
-} from './supabase'
+import { ENABLED_PROVIDERS, AUTH_CONFIGURED, getAuthClient } from './supabase'
 
-// Which providers a build offers is configuration, and configuration arrives
-// from a host's build settings where nobody is checking spelling. The rule
-// this encodes is that a bad value costs a button, never the boot.
+// Which doors this app ships. A code constant since #1572, not the
+// `AUTH_PROVIDERS` repository variable it was until 2026-09-20 - lib/supabase.ts
+// carries the four reasons that variable was removed. What these pin is the
+// list itself, because changing it is now a reviewed commit and these are the
+// lines a reviewer sees change.
 
-describe('parseProviders', () => {
-  it('keeps the providers that were named', () => {
-    expect(parseProviders('google,email')).toEqual(['google', 'email'])
-  })
-
-  it('presents them in one fixed order, whatever order they were written in', () => {
-    // Otherwise two builds enabling the same providers would lay the screen
-    // out differently, and the difference would be a comma in an env var.
-    expect(parseProviders('email,google')).toEqual(['google', 'email'])
-    expect(parseProviders('apple,email,google')).toEqual(['google', 'apple', 'email'])
-  })
-
-  it('ignores whitespace and casing, which a settings field will contain', () => {
-    expect(parseProviders(' Google , EMAIL ')).toEqual(['google', 'email'])
-  })
-
-  it('drops an unknown name rather than throwing', () => {
-    // A stray comma or a typo should cost one button, not the whole app.
-    expect(parseProviders('google,,facebook,email')).toEqual(['google', 'email'])
-  })
-
-  it('returns nothing for an empty setting, rather than defaulting to all', () => {
-    // "None configured" is a real answer, and silently offering all three
-    // would put three broken buttons in front of a hiker.
-    expect(parseProviders('')).toEqual([])
-    expect(parseProviders('   ')).toEqual([])
-  })
-
-  it('never invents a provider that was not named', () => {
-    expect(parseProviders('google')).toEqual(['google'])
-  })
-})
-
-describe('the default build', () => {
-  it('offers Google alone - not Apple, and no longer email', () => {
-    // v1's decided provider set (#397). Apple needs a $99/yr Developer Program
-    // membership that Google does not (LAUNCH_CHECKLIST.md 4.3), so it is
-    // opt-in rather than assumed, and is deferred to v2 (#92).
+describe('ENABLED_PROVIDERS', () => {
+  it('ships GitHub, then Google, then an emailed code - the order SignInPrompt draws them in', () => {
+    // Each of the three is enabled in both Supabase projects with credentials
+    // behind it (#1572). backend/check_supabase_config.py reads this same line
+    // and compares it against the live project.
     //
-    // Email left the default rather than never being in it, and the direction
-    // matters: it was included because switching it on costs nothing, which
-    // was true of the setup and false of the outcome. Supabase's built-in
-    // sender is not a delivery path this project ships on, so the default was
-    // putting a button on the sign-in screen whose flow could not finish -
-    // including in the deployed build, which is what made it a defect rather
-    // than a preference.
-    expect(ENABLED_PROVIDERS).toEqual(['google'])
+    // THE ORDER IS PART OF THE ASSERTION, not an artefact of writing the
+    // array down: screens/SignInPrompt.tsx maps this straight into buttons,
+    // so the first name here is the first door a hiker meets. GitHub leads
+    // since 2026-09-20, on the maintainer's instruction - "we are an open
+    // source and open data project". It was Google's slot before that for no
+    // reason anybody had recorded, which is the kind of default worth a test
+    // going red over.
+    expect(ENABLED_PROVIDERS).toEqual(['github', 'google', 'email'])
   })
 
-  it('falls back to the default when the setting is blank, not to nothing', () => {
-    // This test environment has VITE_AUTH_PROVIDERS unset, which is the same
-    // shape CI produces when it references a repository variable nobody has
-    // created: an empty string, not undefined. `??` does not catch that, and
-    // an empty string parses to zero providers - which would build a working
-    // app whose only sign-in screen offers no way in.
-    //
-    // Asserting it here rather than trusting the ?? because the failure is
-    // silent: nothing throws, nothing logs, the button is just missing.
+  it('does not ship Apple, which needs a $99/yr membership and is deferred to v2 (#92)', () => {
+    // Asserted separately from the equality above, because an absence has its
+    // own reason and a reader changing the list should meet that reason here.
+    expect(ENABLED_PROVIDERS).not.toContain('apple')
+  })
+
+  it('offers at least one door, so the sign-in screen is never a dead end', () => {
+    // An empty list renders a screen with nothing on it but "Not now". That
+    // was reachable while this was a variable - unset parsed to zero providers
+    // - and is now only reachable by editing this file.
     expect(ENABLED_PROVIDERS.length).toBeGreaterThan(0)
   })
 })

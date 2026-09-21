@@ -302,10 +302,6 @@ jobs:
           VITE_DATA_BASE_URL: ${{ steps.data.outputs.url }}
           VITE_SUPABASE_URL: ${{ steps.supabase.outputs.url }}
           VITE_SUPABASE_ANON_KEY: ${{ steps.supabase.outputs.key }}
-          # Only the providers whose credentials actually exist in the Supabase
-          # dashboard. A name here without them is a button that reaches an
-          # error page. Unset means the client's own default (google,email).
-          VITE_AUTH_PROVIDERS: ${{ vars.AUTH_PROVIDERS }}
           # Where queued reports are sent. Empty until the backend is deployed
           # anywhere (#95), which is a supported state: reports stay in the
           # outbox with their authored timestamps rather than being lost, and

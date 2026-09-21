@@ -418,13 +418,7 @@ import type { AuthProvider } from './screens/SignInPrompt'
 import { ENABLED_PROVIDERS } from './lib/supabase'
 import { TRAILS } from './lib/trails'
 import { useAccount } from './lib/useAuth'
-import {
-  sendMagicLink,
-  signInWithEmail,
-  signInWithProvider,
-  signOut,
-  signUpWithEmail,
-} from './lib/auth'
+import { sendEmailCode, signInWithProvider, signOut, verifyEmailCode } from './lib/auth'
 import {
   amendQueuedReport,
   attachQueuedPhotos,
@@ -540,6 +534,8 @@ import './App.css'
 // can match a phone, which is how the WEBSITE.md §8 constraint is kept
 // structurally rather than by review.
 import './desktop.css'
+import { SignInWindow } from './chrome/SignInWindow'
+import { AccountPanel } from './chrome/AccountPanel'
 
 // OurHike hikes one trail today - see lib/trails.ts for why this is a lookup
 // and not just a string.
@@ -2271,7 +2267,12 @@ function App() {
   // hooks below need them, and hooks cannot sit under the render-time
   // branches that build the actual screens.
   const flowOpen =
-    authFlow !== null ||
+    // The sign-in ask is NOT here, since #1596 made it a window rather than a
+    // screen. `screenOver`'s note below states the rule it is following:
+    // "adding an overlay that leaves the map visible means touching neither
+    // [list], and adding one to `flowOpen` alone is how a deliberately-visible
+    // map ends up counted as hidden." It stays in `updateWouldCost`, because a
+    // half-typed address is exactly what that one guards.
     collectingIdentity ||
     reportingFailure ||
     reportingClosure !== null ||
@@ -8671,6 +8672,14 @@ function App() {
     [updatePreferences],
   )
 
+  /** Open the sign-in ask for its own sake, from the account button in the
+   *  header and in Today's chrome (#1596). `afterReport: false` is the whole
+   *  difference from the five contribution doors: nothing is waiting, so the
+   *  ask does not promise that a report is already saved. */
+  const openSignIn = useCallback(() => {
+    setAuthFlow({ screen: 'choose', afterReport: false })
+  }, [])
+
   const handleChooseProvider = useCallback((provider: AuthProvider) => {
     if (provider === 'email') {
       setAuthFlow((current) =>
@@ -9006,28 +9015,69 @@ function App() {
   /** The long report form, rendered as an overlay at the foot of this
    *  component rather than in `flowScreen` - see where it is assigned. */
   let reportFormNode: ReactNode = null
+  /** The sign-in ask, as a small window at the foot of this component rather
+   *  than a `flowScreen` (#1596) - see chrome/SignInWindow.tsx for why, and
+   *  `flowOpen` above for what that means for the map behind it. */
+  let authWindowNode: ReactNode = null
   if (authFlow !== null) {
-    flowScreen =
-      authFlow.screen === 'email' ? (
-        <EmailSignIn
-          onMagicLink={sendMagicLink}
-          onSignIn={signInWithEmail}
-          onSignUp={signUpWithEmail}
-          onCancel={() => setAuthFlow(null)}
-        />
-      ) : (
-        <SignInPrompt
-          providers={ENABLED_PROVIDERS}
-          reportSaved={authFlow.afterReport}
-          // #315: Google and Apple are a full off-origin navigation, so
-          // offline they take the hiker out of the app and away from the map
-          // rather than merely failing. The screen holds those two and says so.
-          online={online}
-          onSignIn={handleChooseProvider}
-          onCancel={() => setAuthFlow(null)}
-        />
-      )
-  } else if (collectingIdentity) {
+    // ONE WINDOW, THREE VIEWS. The email path's second step swaps the
+    // contents rather than opening a second window, which is what makes
+    // "send another code" and "use a different address" read as the same
+    // place - and a hiker who is already signed in gets a third view rather
+    // than the ask.
+    //
+    // THAT THIRD VIEW IS A FIX, not a feature: the button is one control in
+    // two states, and signed in BOTH states opened `SignInPrompt`, so the
+    // filled glyph led to "Continue with GitHub" for an account the hiker
+    // already had and to no way out. The review of #1596 found it.
+    // chrome/AccountPanel.tsx has the rest.
+    const signedIn = authFlow.screen !== 'email' && account !== null
+    authWindowNode = (
+      <SignInWindow
+        label={
+          authFlow.screen === 'email'
+            ? 'Sign in with email'
+            : signedIn
+              ? 'Your account'
+              : 'Sign in'
+        }
+        onClose={() => setAuthFlow(null)}
+      >
+        {signedIn ? (
+          <AccountPanel
+            account={account}
+            onSignOut={() => {
+              // Closed FIRST, so the window is gone by the time the account
+              // clears rather than re-rendering into the signed-out ask
+              // under the hiker's finger - which would read as the sign-out
+              // having failed and reopened the sign-in.
+              setAuthFlow(null)
+              void handleSignOut()
+            }}
+            onClose={() => setAuthFlow(null)}
+          />
+        ) : authFlow.screen === 'email' ? (
+          <EmailSignIn
+            onSendCode={sendEmailCode}
+            onVerifyCode={verifyEmailCode}
+            onCancel={() => setAuthFlow(null)}
+          />
+        ) : (
+          <SignInPrompt
+            providers={ENABLED_PROVIDERS}
+            reportSaved={authFlow.afterReport}
+            // #315: Google, Apple and GitHub are a full off-origin navigation,
+            // so offline they take the hiker out of the app and away from the
+            // map rather than merely failing. The screen holds them and says so.
+            online={online}
+            onSignIn={handleChooseProvider}
+            onCancel={() => setAuthFlow(null)}
+          />
+        )}
+      </SignInWindow>
+    )
+  }
+  if (collectingIdentity) {
     // After the report is saved and after sign-in, which is the order
     // contributionFlow.ts insists on: a trail name belongs to a profile, so
     // asking first collects something with nowhere to put it (#233).
@@ -9672,6 +9722,8 @@ function App() {
   // copies, so the forty-odd props feeding it cannot drift between layouts.
   const todayScreen = (
     <Today
+      account={account}
+      onOpenAccount={openSignIn}
       now={now}
       position={position}
       online={online}
@@ -10019,6 +10071,8 @@ function App() {
           onSelect={selectTab}
           modeSwitch={sidebarModeSwitch}
           hikeSwitch={sidebarHikeSwitch}
+          account={account}
+          onOpenAccount={openSignIn}
           {...modeReadout}
         />
       </div>
@@ -10168,6 +10222,8 @@ function App() {
             onSelect={selectTab}
             modeSwitch={sidebarModeSwitch}
             hikeSwitch={sidebarHikeSwitch}
+            account={account}
+            onOpenAccount={openSignIn}
             {...modeReadout}
           />
         </div>
@@ -10368,6 +10424,8 @@ function App() {
             onSelect={selectTab}
             modeSwitch={sidebarModeSwitch}
             hikeSwitch={sidebarHikeSwitch}
+            account={account}
+            onOpenAccount={openSignIn}
             {...modeReadout}
           />
         </div>
@@ -10502,6 +10560,8 @@ function App() {
             onSelect={selectTab}
             modeSwitch={isDesktop ? sidebarModeSwitch : undefined}
             hikeSwitch={sidebarHikeSwitch}
+            account={account}
+            onOpenAccount={openSignIn}
             {...modeReadout}
           />
         </div>
@@ -10540,11 +10600,19 @@ function App() {
             fallback={() => (
               <div className="app__screen">
                 <ScreenFailed what="The map" />
-                <TabBar active={activeTab} onSelect={selectTab} {...modeReadout} />
+                <TabBar
+                  active={activeTab}
+                  onSelect={selectTab}
+                  account={account}
+                  onOpenAccount={openSignIn}
+                  {...modeReadout}
+                />
               </div>
             )}
           >
             <MapScreen
+              account={account}
+              onOpenAccount={openSignIn}
               {...modeReadout}
               // First run (#721). Hides everything but the canvas and makes the
               // whole subtree inert, so the steps below are drawn over the map
@@ -11371,6 +11439,13 @@ function App() {
           onCancel={handleCancelReportPoint}
         />
       )}
+
+      {/* THE SIGN-IN WINDOW (#1596), last in the fragment so it stacks over
+          everything - including the keep-spot sheet above and the report
+          window both are raised from, since a report is saved first and this
+          asks how to send it. Its own z-index says the same thing; the order
+          here is what makes that true even if a later layer forgets to. */}
+      {authWindowNode}
     </>
   )
 }

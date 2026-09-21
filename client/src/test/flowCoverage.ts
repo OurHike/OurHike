@@ -577,20 +577,16 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     flow: { status: 'covered', spec: 'e2e/settingsRooms.spec.ts' },
   },
   'screens/IdentitySetup.tsx': { step: 'F13 More', flow: { status: 'planned' } },
-  'screens/EmailSignIn.tsx': {
-    step: 'F13 More',
-    flow: {
-      // Not "planned": no build this project ships can render it. Measured
-      // 2026-09-11 by driving More → You → Sign in, which offers "Continue
-      // with Google" and nothing else. lib/supabase.ts is why - email left
-      // ENABLED_PROVIDERS' default because Supabase's built-in sender "is
-      // not a delivery path this project can ship on", and this screen is
-      // only mounted when SignInPrompt offers the email provider. It comes
-      // back with a sender behind it, and a flow test comes back with it.
-      status: 'unit-only',
-      why: 'Unreachable in any shipped build: ENABLED_PROVIDERS defaults to google alone (lib/supabase.ts), and this screen is mounted only when the sign-in prompt offers email. EmailSignIn.test.tsx holds the form; a flow test would need a build flag no deployment sets.',
-    },
-  },
+  // Reachable in every build since #1572 put the provider list in code:
+  // ENABLED_PROVIDERS names email, so SignInPrompt offers it and this screen
+  // mounts behind that button. It was 'unit-only' while the deployed set came
+  // from a repository variable the preview build did not carry.
+  //
+  // 'planned' rather than 'covered' because the spec is not written yet. Its
+  // first step drives from the ask to the address field, which needs nothing;
+  // its second needs a code that a real email carried, so the code step waits
+  // on #1399's account. EmailSignIn.test.tsx holds both steps meanwhile.
+  'screens/EmailSignIn.tsx': { step: 'F13 More', flow: { status: 'planned' } },
   'screens/SignInPrompt.tsx': {
     step: 'F13 More',
     flow: { status: 'covered', spec: 'e2e/identityRooms.spec.ts' },
@@ -671,6 +667,28 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     flow: {
       status: 'unit-only',
       why: 'A glyph. ModeIcon.test.tsx draws it; a flow test would be a slower way to look at the same SVG.',
+    },
+  },
+  'chrome/AccountButton.tsx': {
+    step: 'shared',
+    flow: { status: 'covered', spec: 'e2e/identityRooms.spec.ts' },
+  },
+  'chrome/SignInWindow.tsx': {
+    step: 'shared',
+    flow: { status: 'covered', spec: 'e2e/identityRooms.spec.ts' },
+  },
+  'chrome/AccountPanel.tsx': {
+    step: 'shared',
+    flow: {
+      status: 'unit-only',
+      why: "What the account button opens once a hiker is SIGNED IN (#1596) - the address, a sign-out and a line saying the rest is in More. A flow spec cannot reach it: driving there means completing a real round trip at GitHub, Google or a mailbox, which is the same wall e2e/identityRooms.spec.ts stops at for the email code step and which waits on #1399's account. App.accountPanel.test.tsx drives it instead, from App with the auth module mocked signed in, and holds the two things the defect it was written for got wrong - that the window says 'Your account' and not 'Sign in', and that signing out closes it rather than swapping the ask in under the tap.",
+    },
+  },
+  'chrome/ProviderMark.tsx': {
+    step: 'shared',
+    flow: {
+      status: 'unit-only',
+      why: "A glyph per sign-in provider - Google's G, GitHub's mark, the OurHike icon - drawn inside SignInPrompt's buttons (#1572). SignInPrompt.test.tsx pins the colours and that each stays out of the accessible name; e2e/identityRooms.spec.ts finds the buttons by that name.",
     },
   },
   'chrome/PoiRow.tsx': {

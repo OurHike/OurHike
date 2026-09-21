@@ -791,6 +791,10 @@ export interface MapScreenProps {
    * different conclusion than the download window's own notice.
    */
   trailLinesMissing?: boolean
+  /** The account, passed straight through to the header's button (#1596).
+   *  Undefined draws no button; null draws the way in. */
+  account?: { email: string } | null
+  onOpenAccount?: () => void
   /** What the archive's own header says it covers, for the opening camera. */
   archiveZooms?: ArchiveZooms | null
   /** Room to leave around the opening box, per side - see MapViewProps. The
@@ -986,6 +990,8 @@ export function MapScreen({
   drawnCounts,
   belowPoiZoom = false,
   trailLinesMissing = false,
+  account,
+  onOpenAccount,
   archiveZooms = null,
   boundsPadding,
   entering = false,
@@ -1443,6 +1449,8 @@ export function MapScreen({
                 first run without a list of names (chrome.css). */}
             <div className="map-screen__float" ref={floatRef}>
               <Header
+                account={account}
+                onOpenAccount={onOpenAccount}
                 trailName={trailName}
                 trailLogo={trailLogo}
                 state={state}
@@ -1954,11 +1962,25 @@ export function MapScreen({
         {trailDataUpdate !== undefined && <TrailDataUpdate {...trailDataUpdate} />}
       </div>
 
+      {/* The same account and opener this screen already hands its Header
+          (#1596). BOTH get them and only one is ever drawn, because each
+          reads `useDesktop()` and decides - the Header above the breakpoint,
+          this bar below it. Handing it to one of them here instead would
+          mean this component working out which layout it is in, which is the
+          thing the two of them already know about themselves.
+
+          An earlier version of this comment described a `display: none` in
+          desktop.css. There is no such rule and there should not be: a
+          hidden button is still a button in the DOM, which is what put three
+          of them in front of App.flows.test.tsx. chrome/AccountButton.tsx
+          states the rule and the reasoning once. */}
       <TabBar
         active={activeTab}
         onSelect={onSelectTab}
         modeSwitch={modeSwitch}
         hikeSwitch={hikeSwitch}
+        account={account}
+        onOpenAccount={onOpenAccount}
         {...(mode === undefined ? {} : { mode, onOpenMode })}
       />
     </div>

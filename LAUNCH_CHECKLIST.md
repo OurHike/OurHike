@@ -231,23 +231,25 @@ SUPABASE_ANON_KEY=<publishable key, sb_publishable_...>
 
 **4.3 Configure OAuth providers** (Authentication → Providers). Each needs its own developer registration, and these are the slowest items on this list because they involve external approval:
 
-- **Google** — Google Cloud Console → OAuth 2.0 Client ID. Redirect URI is `https://<ref>.supabase.co/auth/v1/callback`.
-- **Apple** — Apple Developer Program, **$99/year**. Needs a Services ID and a signing key. If you want to defer cost, ship with Google + email and add Apple later; nothing in the code assumes all three.
-- **Email** — on by default, no setup.
+- **Google** — Google Cloud Console → OAuth 2.0 Client ID. Redirect URI is `https://<ref>.supabase.co/auth/v1/callback`. One client can carry both projects' callback URIs, so UA needs a second URI on the same client rather than a second client — as of 2026-09-17 UA's project has Google **not** enabled at all (#1572).
+- **GitHub** (#1572) — github.com → Settings → Developer settings → OAuth Apps → New OAuth App. Homepage URL `https://ourhike.org`; Authorization callback URL `https://<ref>.supabase.co/auth/v1/callback`. Paste the Client ID and a generated client secret into Authentication → Providers → GitHub and enable it. **One callback URL per GitHub app**, so production and UA each need an app of their own. Free. Supabase asks for the `user:email` scope and keys the account on the primary verified address; a GitHub account with no verified email is refused, and today that refusal is silent (#1573).
+- **Apple** — Apple Developer Program, **$99/year**. Needs a Services ID and a signing key. Deferred to v2 (#92); nothing in the code assumes all four.
+- **Email** — enabled by default in a new project, and **that is not the same as working**: a hiker gets a 6-digit code in an email, and nothing sends that email until 4.3c is done, nor puts a code in it until 4.3d is. Both projects.
 
 **4.3a Set the client's build variables** in **Settings → Secrets and variables → Actions → Variables** (the Variables tab, not Secrets — see why below). `.github/workflows/pages.yml` and `pr-preview.yml` read them and pass them to the build:
 
 ```
 SUPABASE_URL=https://<ref>.supabase.co
 SUPABASE_ANON_KEY=<anon public key>
-AUTH_PROVIDERS=google                # optional; defaults to google (#397)
 ```
+
+**There is no `AUTH_PROVIDERS` here any more, and its absence is the point.** Which buttons a build offers is `ENABLED_PROVIDERS` in `client/src/lib/supabase.ts` — a commit, reviewed like any other. It was a repository variable until 2026-09-20 (#1572), and it went because an unset one meant Google alone with nothing on screen or in the build log naming the cause. That module carries the other three reasons; the short one is that the same variable fed production, UA and every preview alike, so it never bought the per-deployment difference it appeared to.
 
 **Variables, not Secrets.** Neither is secret. The anon key is *designed* to be public — Vite inlines it into a JS bundle that anyone can read with view-source, so hiding it in a Secret buys nothing and costs a readable build log, exactly as the comment above `DATA_BASE_URL` in `pages.yml` explains. Both workflows accept either, and warn if you picked Secrets. What is **not** here, and must never be, is `SUPABASE_JWT_SECRET`: that one is real, it belongs only to the backend's runtime environment, and a `VITE_`-prefixed copy would be inlined into a public file.
 
 Prefer the **publishable** key (`sb_publishable_…`) over the legacy `anon` JWT if the project offers both — Supabase deprecates the legacy keys at the end of 2026.
 
-`AUTH_PROVIDERS` must list only providers actually configured in 4.3. A name here whose credentials do not exist is a button that reaches an error page. Leaving all of these unset is safe: the app builds, the map works, and the sign-in controls say the build has no project rather than offering a round trip that cannot finish.
+`ENABLED_PROVIDERS` must list only providers actually configured in 4.3. A name there whose credentials do not exist is a button that reaches an error page. Leaving the two variables above unset is safe: the app builds, the map works, and the sign-in controls say the build has no project rather than offering a round trip that cannot finish.
 
 **4.3b Allow the app's own URLs back** (Authentication → URL Configuration). The client redirects to the path it was served from, not the bare origin — a redirect to the origin lands on the project site with the code in its URL and no app there to read it.
 
@@ -265,7 +267,28 @@ Both local ports, because they are different servers: `npm run dev` is Vite on *
 
 Adding an entry per PR by hand is not a plan, and without a matching entry every provider round trip from a preview ends in a redirect mismatch. Supabase recommends pinning the exact path for the production **Site URL** even so — the generator prints it, and since #733 it is `https://ourhike.org/app/`.
 
-**4.3c Custom SMTP, before real traffic.** The magic-link sign-in and the account-confirmation email both go through Supabase's built-in sender, which is rate-limited to a handful of messages per hour and is explicitly not for production. Fine for testing; a hiker hitting "email me a sign-in link" and silently getting nothing is not. Configure real SMTP under Authentication → Emails when this stops being a test deployment.
+**4.3c A sender, before email is offered.** The sign-in code goes out through whatever Supabase's project is configured to send with, and the built-in sender is not a delivery path: **2 messages an hour, to the project's own team members only**, and every other address is refused with `Email address not authorized` (Supabase's SMTP guide, read 2026-09-17). Offered without this step, "Email me a code" is a button that tells every hiker email sign-in is not switched on — `lib/authMessages.ts` says so out loud rather than leaving them waiting, but the sentence is still a failure.
+
+The sender this project uses is **Resend**, chosen on cost and on Supabase listing it first among its compatible providers: the free plan is 3,000 emails a month and 100 a day (resend.com/pricing, read 2026-09-17), which is one email per email sign-in and nothing per Google or GitHub one; the next tier is $20/month for 50,000.
+
+1. Create the Resend account and **add a sending domain**. A subdomain — `mail.ourhike.org` — keeps the root domain's reputation out of it. Publish the DNS records Resend prints (DKIM, SPF, DMARC) where `ourhike.org`'s DNS lives, and wait for Resend to show the domain verified.
+2. Create an API key.
+3. In Supabase → Authentication → Emails → **SMTP Settings**, on **both** projects: enable custom SMTP; host `smtp.resend.com`, port `465`, username `resend`, password = the API key, sender email `no-reply@mail.ourhike.org`, sender name `OurHike`.
+4. Authentication → **Rate Limits** → "Rate limit for sending emails". Supabase drops it to **30 an hour** the moment custom SMTP is enabled. Set it deliberately; 100 an hour is inside Resend's free daily allowance and above any trail's Saturday.
+
+Custom SMTP is included on Supabase's Free plan; nothing here needs Pro.
+
+**4.3d The code in the email, on both projects.** `screens/EmailSignIn.tsx` asks for a **6-digit code** — not a link (#279: a link tapped in a mail app opens the browser, not the installed app, and the session lands where the app cannot see it). Whether the email carries a link or a code is the template, and there are two of them: a returning address gets **Magic Link**, a new address gets **Confirm sign up**, and `verifyOtp({ type: 'email' })` accepts either token. A code in one template and a link in the other is a sign-in that works for everyone but a new hiker.
+
+Authentication → Emails → **Templates**, both "Magic Link" and "Confirm sign up": subject `{{ .Token }} is your OurHike sign-in code`; body along the lines of
+
+```html
+<p><img src="https://ourhike.org/app/icons/icon-192.png" width="48" height="48" alt="OurHike"></p>
+<p>Your OurHike sign-in code is <strong>{{ .Token }}</strong>.</p>
+<p>Type it into the app. It expires in an hour. If you did not ask for it, ignore this email.</p>
+```
+
+The image is the app's own icon, served by the same deployment as the app (`client/public/icons/icon-192.png`, at that URL since #733; it answered `200 image/png` on 2026-09-17), so there is nothing to host and nothing to keep in step. Mail clients commonly hold remote images until the reader allows them, which is why the code line never depends on the image and the `alt` carries the name. No `{{ .ConfirmationURL }}` alongside it — that reintroduces the link. Leave "Email OTP expiration" at Supabase's default of 3,600 s (a hiker on one bar needs the hour, and the security advisor flags anything longer) and the length at 6, which `CODE_LENGTH` in `EmailSignIn.tsx` and the config check both assume.
 
 **4.4 The JWT verification method — settled.** This was the open question here, flagged as the one thing that could not be answered without a real project. There is one now, and it answered: a token it issued carries `{"alg": "ES256", "kid": "..."}` — **asymmetric, with the public half published as a JWKS.** A backend verifying HS256 against a shared secret would have returned 401 to every signed-in hiker, with the token, the signature and the secret all perfectly correct.
 
@@ -275,8 +298,11 @@ Adding an entry per PR by hand is not a plan, and without a matching entry every
 
 - whether `SUPABASE_URL` / `SUPABASE_ANON_KEY` are set and valid (and it names the no-`VITE_`-prefix trap, which is a real one — the prefix belongs on the build variable, not the repository variable);
 - whether the algorithm the project signs with is one the backend accepts;
-- whether every provider in `AUTH_PROVIDERS` is actually enabled in the dashboard — a mismatch there is a button that reaches an error page, and nothing else in the system compares those two lists;
-- whether the anon key is the legacy JWT rather than the publishable key.
+- whether every provider in `ENABLED_PROVIDERS` is actually enabled in the dashboard — the script reads that list out of `client/src/lib/supabase.ts` itself, so the two cannot drift; a mismatch is a button that reaches an error page, and nothing else in the system compares those two lists;
+- whether the anon key is the legacy JWT rather than the publishable key;
+- **with a `SUPABASE_ACCESS_TOKEN` secret** (#1572) — whether custom SMTP is configured, whether both email templates carry `{{ .Token }}`, the code's length and expiry, and whether each offered provider has a client id. Those live in the project's auth config, which only the management API serves, so without the token the check says which of them it could not see and runs the rest. Mint the token **fine-grained, with `auth_config_read` and nothing more** (supabase.com → Account → Access Tokens); a classic token is the whole account, and `.github/expected-settings.yml` says why that is the wrong thing to keep in Actions.
+
+**The ordering trap this paragraph used to describe is gone with the variable.** It is worth one sentence of history, because it is the shape of mistake that makes a green check mean nothing: while the shipped set came from `AUTH_PROVIDERS`, running this check before setting that variable made `check_auth_config` skip the sender and the templates entirely — they are examined only for providers the offered set names — so the check passed having looked at nothing 4.3c and 4.3d had just configured. Reading the list from the code removed the order, not just the trap: there is no longer a moment at which the check and the build disagree about which doors ship.
 
 Read-only, and safe to run any time. It does not itself check the redirect allow-list — that is not in the settings document it reads — but **the allow-list is checkable**: `.github/workflows/supabase-config-check.yml`'s `redirects` job runs `pipeline/check_auth_redirects.py` and fails when a sign-in cannot come back to the app.
 
@@ -373,11 +399,9 @@ An empty array or a permission error is what you want. Rows are the failure.
 
 It mattered because email/password was a real sign-in path here — `VITE_AUTH_PROVIDERS` defaulted to `google,email`, and `screens/EmailSignIn.tsx` offers a password as the fallback behind its magic-link default. Without the check, an account secured by a password reused from a breached site is exactly as reachable as that password, and these accounts can file `bad_hikers` reports about named people.
 
-**Since [#397](https://github.com/OurHike/OurHike/issues/397) that risk is deferred rather than accepted: v1 ships Google alone**, so a v1 build has no password path to protect and the advisor line is moot as well as unactionable. It is written in the past tense above and kept rather than deleted, because the risk returns in full the moment email is switched back on — and the person switching it on is the one who needs to read this paragraph. `EmailSignIn.tsx` stays in the tree for the same reason; it is unreachable in a Google-only build, not removed.
+**Since [#397](https://github.com/OurHike/OurHike/issues/397) that risk was deferred rather than accepted — v1 shipped Google alone — and since [#279](https://github.com/OurHike/OurHike/issues/279) landed with [#1572](https://github.com/OurHike/OurHike/issues/1572) it is gone rather than deferred: the email path is an emailed **6-digit code**, `EmailSignIn.tsx` has no password mode, and `lib/auth.ts` has no `signInWithPassword` call.** No OurHike build has ever shipped a password to a hiker. The advisor line stays flagged and stays moot: there is no password for a breached one to be reused as.
 
-**The mitigation that costs nothing is to have no passwords**, not to buy the check — and specifically an emailed **6-digit code**, not the magic link already sent. `EmailSignIn.tsx` keeps the password because a link "means leaving for an email client and coming back, and on a ridge with one bar that round trip is the fragile part"; that is an argument against links, not for passwords. A typed code has the one property the password was kept for — finishing without leaving the app — with nothing to remember, leak or reuse. It also sidesteps a real PWA mechanic: a link tapped in a mail client opens the browser, which on iOS may not share storage with the installed app, so the session can land where the app cannot see it.
-
-See [#279](https://github.com/OurHike/OurHike/issues/279) — `verifyOtp` is already in the installed SDK, so this is an email-template change plus one field, and it deletes more code than it adds. **#279 moved to `post-mvp` with email itself (#397), so it is now the shape the email path takes when it ships rather than a v1 task**; the argument above is unaffected by the deferral and is the reason to build it that way rather than restoring the password.
+**The mitigation that cost nothing was to have no passwords**, not to buy the check — and specifically a code, not the magic link the screen sent first. The screen had kept the password because a link "means leaving for an email client and coming back, and on a ridge with one bar that round trip is the fragile part"; that was an argument against links, not for passwords. A typed code has the one property the password was kept for — finishing without leaving the app — with nothing to remember, leak or reuse. It also sidesteps a real PWA mechanic: a link tapped in a mail client opens the browser, which on iOS may not share storage with the installed app, so the session can land where the app cannot see it. 4.3c and 4.3d are what make the code arrive.
 
 ---
 

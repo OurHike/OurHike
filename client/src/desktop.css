@@ -105,6 +105,19 @@
     border-left: 3px solid transparent;
   }
 
+  /* ---------- The account button: the head of the sidebar ---------- */
+
+  /* Only the sidebar layout draws this at all - chrome/TabBar.tsx renders it
+     behind `useDesktop()`, and chrome/AccountButton.tsx says why that is a
+     hook rather than a rule in here. So this block is placement, not a
+     switch: flush with the tab labels' own 16px, because the column has one
+     left edge and the tabs, the mode block and the wordmark all read off
+     it. */
+  .app__screen > .tab-bar .tab-bar__account,
+  .map-screen > .tab-bar .tab-bar__account {
+    padding: 0 var(--space-4, 16px) var(--space-3, 12px);
+  }
+
   /* ---------- Brand mark: the foot of the sidebar ---------- */
 
   /* The bottom-left corner of the page, which exists only in this layout - on a

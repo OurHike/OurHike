@@ -1,6 +1,6 @@
 fastapi
 uvicorn[standard]
-sqlalchemy>=2.0.52
+sqlalchemy>=2.0.54
 alembic
 pydantic-settings
 pyjwt[crypto]

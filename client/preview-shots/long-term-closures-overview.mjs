@@ -15,10 +15,12 @@
 // things put them there, both new on 2026-09-20 and both visible only at
 // this camera. The band carries a hard outline (CLOSURE_OUTLINE_WIDTH), so
 // what is left to recognise at four pixels is a shape rather than a texture;
-// and below the seam the tape steps to a half-scale cadence
+// and below z11 the tape steps to a half-scale cadence
 // (CLOSURE_TAPE_OVERVIEW_CADENCE), so a closure shorter than the navigation
 // tape's 12 px pitch still crosses a stripe instead of landing between two
-// and drawing as a blank slab of the sheet's paper. Against the previous
+// and drawing as a blank slab of the sheet's paper. z11 is where the
+// shortest closed run on this map first clears one near pitch, which is
+// three zooms in from this frame. Against the previous
 // build, where the same closures drew as 14 px white bands with, on most of
 // them, no red in them at all.
 //
@@ -31,7 +33,7 @@
 // The same seeding as long-term-closures.mjs - a remembered camera and a
 // reload - and the same rule: no location fix, no account, nobody's reports.
 export const caption =
-  'Bear Mountain and the lower Hudson from the opening camera, z8, Blaze colors off (the default): the same OPRHP closed trails long-term-closures.mjs photographs at z13, each three to seven pixels long here. Since #1598 a closure at this camera is a dark-edged red block rather than a blank white band — the outline is what survives being four pixels long, and the tape steps to a half-scale cadence below the seam so a short closure still crosses a stripe. Every trail line in the frame is #1597’s one red rather than the 45% tint it was until 2026-09-20'
+  'Bear Mountain and the lower Hudson from the opening camera, z8, Blaze colors off (the default): the same OPRHP closed trails long-term-closures.mjs photographs at z13, each three to seven pixels long here. Since #1598 a closure at this camera is a dark-edged red block rather than a blank white band — the outline is what survives being four pixels long, and the tape steps to a half-scale cadence below z11 — the zoom at which the shortest closed run first clears one pitch of the navigation cadence — so a short closure still crosses a stripe. Every trail line in the frame is #1597’s one red rather than the 45% tint it was until 2026-09-20'
 export const alt =
   'The map screen over the lower Hudson valley at zoom 8: a dense web of thin red trail lines across New York with the Appalachian Trail heavier among them, and around Bear Mountain several very short wide marks laid across individual trails, each a red block inside a dark outline, marking closed trails at a zoom where a whole closure is only a few pixels long'
 

@@ -59,8 +59,9 @@
 // four treatments drawn at z8, z13 and z16, they took the outlined one, "the
 // only one whose shape survives being 4 px long". So the band is now two
 // layers, carries 51% red rather than 28%, grows from CLOSURE_TAPE_FAR_WIDTH
-// to CLOSURE_TAPE_WIDTH across the zooms above the seam, and steps to a
-// half-scale cadence below it. Each of those constants says what it rests on.
+// to CLOSURE_TAPE_WIDTH across z11 to z13, and steps to a half-scale cadence
+// below z11 - the zoom at which the shortest closure this map draws first
+// clears a whole pitch. Each of those constants says what it rests on.
 
 import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec'
 
@@ -139,8 +140,8 @@ export const CLOSURE_TAPE_PIXEL_RATIO = 2
 export const CLOSURE_TAPE_WIDTH = 17
 
 /**
- * How wide the tape is drawn at and below the seam, in CSS pixels - the
- * bottom of the taper (#1598).
+ * How wide the tape is drawn at and below CLOSURE_TAPE_NEAR_MIN_ZOOM, in CSS
+ * pixels - the bottom of the taper (#1598).
  *
  * Narrower than the navigation weight rather than wider, which is the
  * opposite of what "make it more visible" sounds like and is the point: down
@@ -193,29 +194,41 @@ export const CLOSURE_CASING_COLOR = '#14130f'
 export const CLOSURE_STRIPE_EDGE = 1.25
 
 /**
- * The last zoom the overview cadence draws at (#1598).
+ * The first zoom the near cadence draws at, below which the tape steps to
+ * CLOSURE_TAPE_OVERVIEW_CADENCE (#1598).
  *
- * THE SEAM, and it has to be: this is the zoom where the map's own closure
- * layers already hand over - map/style.ts caps the network overview's band at
- * it and starts the nearby network's there, because it is where the map stops
- * being an overview and starts being something a hiker reads a position off.
- * Any zoom at which the cadence changes will show the change; this is the one
- * where every other layer is changing too, so it is the cheapest place to
- * spend it. closureStyle.test.ts holds it against map/poiLayers.ts's
- * POI_PIN_MIN_ZOOM rather than trusting the two nines to stay equal.
+ * DERIVED FROM THE CLOSURES' OWN LENGTHS, not from the seam. A pattern says
+ * nothing about a line shorter than one of its pitches, so the question this
+ * answers is: at what zoom is the SHORTEST closure on this map longer than
+ * the near cadence's 12 px? OPRHP's closed runs are 1.1 to 1.9 km (measured
+ * for `client/preview-shots/long-term-closures.mjs` against the pinned
+ * release's network overview), and at latitude 41 a zoom's metres per pixel
+ * is 117,610 / 2^z - so 1.1 km spans 2.4 px at z8, 4.8 at z9, 9.6 at z10 and
+ * 19.2 at z11. It first clears a whole pitch between z10 and z11, so z11 is
+ * the first zoom at which the near cadence is guaranteed to say something on
+ * every closure the map draws.
+ *
+ * THIS WAS THE SEAM UNTIL THE SEAM MOVED, and the move is why it is derived
+ * now. The first version of this constant was POI_PIN_MIN_ZOOM's 9, on the
+ * argument that a cadence change is cheapest where the map's own layers are
+ * already handing over. Then #1590 put the seam at 7 (`poiLayers.ts`), which
+ * would have left z8 to z10 drawing the near cadence over closures 2 to 10
+ * px long - the exact defect this constant exists to prevent. The tie to the
+ * seam was a convenience and the arithmetic is the reason, so the arithmetic
+ * is what the number follows.
  */
-export const CLOSURE_TAPE_OVERVIEW_MAX_ZOOM = 9
+export const CLOSURE_TAPE_NEAR_MIN_ZOOM = 11
 
 /**
  * The zoom the band reaches CLOSURE_TAPE_WIDTH at (#1598).
  *
- * Four zooms above the seam, so the band grows across the band of zooms
- * where a hiker moves from "which park is this" to "which side of the brook
- * am I on", and is at full weight for every zoom closer than that. z13 is
- * the park frame the closure recipe photographs and the frame the treatment
- * was chosen on, which is the only claim behind the number: `@unvalidated`,
- * and what would settle it is the same field look every other constant here
- * is waiting on.
+ * Two zooms above the cadence step, so the band grows across the band of
+ * zooms where a hiker moves from "which park is this" to "which side of the
+ * brook am I on", and is at full weight for every zoom closer than that. z13
+ * is the park frame the closure recipe photographs and the frame the
+ * treatment was chosen on, which is the only claim behind the number:
+ * `@unvalidated`, and what would settle it is the same field look every
+ * other constant here is waiting on.
  */
 export const CLOSURE_TAPE_FULL_WIDTH_ZOOM = 13
 
@@ -247,10 +260,12 @@ export const CLOSURE_OUTLINE_WIDTH = 1.5
 /**
  * The band's `line-width`, in CSS pixels, `outset` px wider on each side.
  *
- * CLOSURE_TAPE_FAR_WIDTH at and below the seam, CLOSURE_TAPE_WIDTH from
- * CLOSURE_TAPE_FULL_WIDTH_ZOOM in, linear between - the shape
- * map/style.ts's overviewTaper gives every line on this map, so the closure
- * band grows on the same schedule the lines under it do.
+ * CLOSURE_TAPE_FAR_WIDTH at and below CLOSURE_TAPE_NEAR_MIN_ZOOM,
+ * CLOSURE_TAPE_WIDTH from CLOSURE_TAPE_FULL_WIDTH_ZOOM in, linear between -
+ * the shape map/style.ts's overviewTaper gives every line on this map, so
+ * the closure band grows on the same schedule the lines under it do. One
+ * lower stop shared with the cadence step, so a closure at an overview
+ * camera changes weight and texture at one zoom rather than two.
  *
  * `outset` is what makes the outline one function rather than two that agree
  * today: the casing layer asks for the same taper CLOSURE_OUTLINE_WIDTH
@@ -262,7 +277,7 @@ export function closureTapeWidth(outset = 0): unknown[] {
     'interpolate',
     ['linear'],
     ['zoom'],
-    CLOSURE_TAPE_OVERVIEW_MAX_ZOOM,
+    CLOSURE_TAPE_NEAR_MIN_ZOOM,
     CLOSURE_TAPE_FAR_WIDTH + outset * 2,
     CLOSURE_TAPE_FULL_WIDTH_ZOOM,
     CLOSURE_TAPE_WIDTH + outset * 2,
@@ -288,7 +303,7 @@ export function tapePattern(
     'step',
     ['zoom'],
     imageId(ground, 'overview'),
-    CLOSURE_TAPE_OVERVIEW_MAX_ZOOM,
+    CLOSURE_TAPE_NEAR_MIN_ZOOM,
     imageId(ground, 'near'),
   ]
 }

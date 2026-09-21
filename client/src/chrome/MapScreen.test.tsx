@@ -947,15 +947,18 @@ describe('MapScreen safety overlays', () => {
   })
 })
 
-// --- Taking the alerts off the canvas (#1047) -------------------------------
+// --- The alert marks, at the canvas -----------------------------------------
 //
-// The first switch this app has ever offered over a safety layer, and every
-// test here is about the LINE it draws. What the switch may take is ink. What
-// it may never take is the app's word about what is in front of this hiker -
-// so the four banner assertions below are not a nicety, they are the condition
-// on which the control is allowed to exist at all.
+// #1047 put a switch over these and this block tested the LINE it drew: ink
+// could go, the app's word about what is in front of a hiker could not. The
+// maintainer removed the switch on 2026-09-20, so the line is no longer
+// anywhere to draw - the marks reach the map whatever anybody taps.
+//
+// What is left is the assertion that used to be the default case and is now
+// the only case, plus the two that say a mark cannot be withheld even by a
+// caller trying to.
 
-describe('the alerts switch, at the canvas (#1047)', () => {
+describe('the alert marks always reach the canvas', () => {
   const CLOSURES = [{ id: 'c1', lines: [[[-77.1, 39.3] as [number, number]]] }]
   const ATC_BANDS = [{ id: 'atc:helene', lines: [[[-77.3, 39.1] as [number, number]]] }]
   const ATC_POINTS = [{ id: 'atc:iron-mtn', at: [-77.4, 39.2] as [number, number] }]
@@ -979,9 +982,7 @@ describe('the alerts switch, at the canvas (#1047)', () => {
     return data?.features.length ?? 0
   }
 
-  it('draws every alert when nothing says otherwise', () => {
-    // The default a safety layer is allowed to have, asserted rather than
-    // assumed: a MapScreen handed no flag at all draws what it was given.
+  it('draws every alert it is given', () => {
     render(<MapScreen {...ALERTED} />)
     const [map] = MockMap.live
     loadStyle(map)
@@ -992,29 +993,52 @@ describe('the alerts switch, at the canvas (#1047)', () => {
     expect(featureCount(map, ATC_UPDATE_SOURCE_ID)).toBe(2)
   })
 
-  it('takes all three kinds of mark off at once', () => {
-    // All three or none. lib/atcUpdateStyle.ts draws an ATC band in the
-    // closure's exact colour and weight on purpose, so a switch that cleared
-    // one and left the other would leave a hiker looking at a barrier the
-    // legend claims is gone.
-    render(<MapScreen {...ALERTED} alertsShown={false} />)
+  it('takes no flag that could withhold them', () => {
+    // THE TEST THAT REPLACES THE SWITCH. `alertsShown` was an optional prop
+    // and `alertsShown={false}` emptied all three sources; a caller passing it
+    // now is passing a prop that does not exist, so the marks are drawn. Spread
+    // through an `as` because the point is precisely that TypeScript no longer
+    // admits the field - the assertion has to survive the type check to be
+    // able to fail at runtime.
+    const withDeadFlag = { ...ALERTED, alertsShown: false } as typeof ALERTED
+    render(<MapScreen {...withDeadFlag} />)
     const [map] = MockMap.live
     loadStyle(map)
 
-    expect(featureCount(map, CLOSURE_SOURCE_ID)).toBe(0)
-    expect(featureCount(map, WARNING_SOURCE_ID)).toBe(0)
-    expect(featureCount(map, ATC_UPDATE_SOURCE_ID)).toBe(0)
+    expect(featureCount(map, CLOSURE_SOURCE_ID)).toBe(1)
+    expect(featureCount(map, WARNING_SOURCE_ID)).toBe(1)
+    expect(featureCount(map, ATC_UPDATE_SOURCE_ID)).toBe(2)
+  })
+
+  it('offers nothing in the legend that could take them off', () => {
+    // The switch lived here, as a checkbox named "Alerts". An open legend
+    // beside a map drawing closures has no control over them at all now, and
+    // the safety rows say so rather than being greyed.
+    render(<MapScreen {...ALERTED} legendOpen />)
+
+    const legend = screen.getByRole('dialog', { name: /legend/i })
+    expect(within(legend).queryByRole('checkbox', { name: /alerts/i })).toBe(null)
+    expect(within(legend).queryByRole('switch', { name: /alerts/i })).toBe(null)
+  })
+
+  it('says nothing on the map about withholding them, because it never does', () => {
+    // chrome/StatusStrip.tsx printed "Alerts hidden" beside the connectivity
+    // flags. There is no state it could describe, so the flag is gone too - a
+    // strip that could still print it would be a second thing to keep true.
+    render(<MapScreen {...ALERTED} />)
+
+    expect(screen.queryByText('Alerts hidden')).toBe(null)
   })
 
   it('still tells the hiker what is in front of them', () => {
-    // THE WHOLE JUSTIFICATION FOR THE SWITCH. Hiding the bands is a
-    // decluttering of the canvas; it is not permission to go quiet about a
-    // closed trail three miles ahead. If this test ever has to change, the
-    // control should be removed rather than the assertion.
+    // Unchanged from when the switch existed, and kept for the reason it was
+    // written: these sentences arrive as finished strings on their own props
+    // and no flag on this screen has ever been able to reach them. That is
+    // still the guarantee, and it is worth a test that does not depend on any
+    // control existing.
     const { container } = render(
       <MapScreen
         {...ALERTED}
-        alertsShown={false}
         closureAhead="Trail closed 2.1 mi ahead · Storm damage · mi 1,409.3 – 1,412.0"
         warningsAhead="2 serious warnings on your route"
         advisoryAhead="Advisory along 398 mi of trail · Storm damage · mi 239.4 – 637.8"
@@ -1027,14 +1051,9 @@ describe('the alerts switch, at the canvas (#1047)', () => {
   })
 
   it('still announces them to a screen reader', () => {
-    // The hidden `aria-live` line, which is what a hiker walking with the
-    // screen off actually gets. Asserted separately from the visible band for
-    // the reason the top of this file gives: they are two surfaces and only
-    // one of them is read aloud.
     const { container } = render(
       <MapScreen
         {...ALERTED}
-        alertsShown={false}
         closureAhead="Trail closed 2.1 mi ahead"
         warningsAhead="2 serious warnings on your route"
       />,
@@ -1042,29 +1061,6 @@ describe('the alerts switch, at the canvas (#1047)', () => {
 
     const live = container.querySelector('.visually-hidden[aria-live="polite"]')
     expect(live).toHaveTextContent('Trail closure ahead. Serious warning ahead.')
-  })
-
-  it('says on the map itself that it is withholding them', () => {
-    // A map with the bands off and a map with no closure for forty miles are
-    // the same picture. The status strip is what separates them once the
-    // legend is shut - and it is shut whenever a hiker is actually walking.
-    render(<MapScreen {...ALERTED} alertsShown={false} />)
-
-    expect(screen.getByText('Alerts hidden')).toBeInTheDocument()
-  })
-
-  it('says nothing while they are drawn', () => {
-    render(<MapScreen {...ALERTED} />)
-
-    expect(screen.queryByText('Alerts hidden')).toBe(null)
-  })
-
-  it('puts the switch in the legend, where the hiker can reach it', () => {
-    const onToggleAlerts = vi.fn()
-    render(<MapScreen {...ALERTED} legendOpen onToggleAlerts={onToggleAlerts} />)
-
-    const legend = screen.getByRole('dialog', { name: /legend/i })
-    expect(within(legend).getByRole('checkbox', { name: /alerts/i })).toBeChecked()
   })
 })
 

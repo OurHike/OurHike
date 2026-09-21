@@ -213,11 +213,21 @@ describe('the context trails, which take that same red rather than a tint of it 
     expect(contrastRatio(PLAIN_TRAIL_COLOR, DAY_SHEET)).toBeGreaterThan(2.076)
     expect(contrastRatio(PLAIN_TRAIL_COLOR, NIGHT_SHEET)).toBeGreaterThan(2.66)
 
-    // The tint's own day figure, kept as the thing this replaced: it
-    // cleared the day bar, which is why the pink survived review for two
-    // days, and 1.5 on ink is what nobody had measured.
+    // EVERY TINT THAT WAS TRIED, measured, because two of them shipped and
+    // the third is what this replaces. 0.45 cleared the day bar - which is
+    // why the pink survived review - and 1.5 on ink is what nobody had
+    // measured. #1590 then raised it to 0.8 from another session an hour
+    // before this one, on the maintainer's "The trails look pink now, not
+    // red", and that test said in so many words that the night figure was
+    // "still under, still on purpose". It is 2.30 against a 2.66 bar, and
+    // this is where the two changes actually disagree: a context line is
+    // context, but no line on this map is exempt from the palette's own
+    // contrast floor, and only the full red clears it.
     expect(contrastRatio('#dca39a', DAY_SHEET)).toBeCloseTo(2.15, 1)
     expect(contrastRatio('#572217', NIGHT_SHEET)).toBeCloseTo(1.5, 1)
+    expect(contrastRatio('#c15b4c', DAY_SHEET)).toBeCloseTo(4.31, 1)
+    expect(contrastRatio('#912c1c', NIGHT_SHEET)).toBeCloseTo(2.3, 1)
+    expect(contrastRatio('#912c1c', NIGHT_SHEET)).toBeLessThan(2.66)
   })
 })
 

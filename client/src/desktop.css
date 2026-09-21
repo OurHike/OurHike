@@ -690,6 +690,26 @@
     flex-direction: row;
   }
 
+  /* THE CREDIT STRIP JOINS THE CANVAS HERE, and that is what moves the scale
+     bar. MapScreen.tsx renders <MapAttribution inline> when `useDesktop()` is
+     true - this same 900px, which is why the rule lives inside this block
+     rather than under (pointer: fine) - and .map-screen__canvas is a flex
+     column, so the strip is an in-flow row of it. The box's bottom edge is
+     then BELOW the map, while MapLibre's scale bar still floats off the MAP's
+     bottom, a strip's height higher than it does on a phone.
+
+     That is the maintainer's report of 2026-09-20 - "Show Points on desktop
+     overlaps with the zoom buttons" - surviving its own first fix. The switch
+     was moved out of MapLibre's bottom-right stack and landed on the scale
+     bar instead, because chrome.css's 30px was measured on a phone, where the
+     credit lives in the rail (#1054) and the canvas bottom IS the map bottom.
+
+     15px is the strip, the same figure .turn-card and .hikes-here--closed
+     already use for it. */
+  .map-screen__canvas {
+    --over-map-floor: calc(15px + var(--space-3, 12px) + 30px);
+  }
+
   /* ---------- Legend: a panel, not a sheet ---------- */
 
   .legend--persistent {

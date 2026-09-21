@@ -12,7 +12,7 @@
 // that the switch is not a PREFERENCE: this object syncs, so a key here
 // would mean a hiker who cleared the bands once in Virginia opening a new
 // phone in Maine with them already gone. The flag is a `useState` in
-// chrome/alertLayerPanel.ts, is written nowhere, and is back on at the next
+// a `useState` while it existed, is written nowhere, and is back on at the next
 // open.
 //
 // Keeping the invariant at the schema level rather than at the settings
@@ -205,7 +205,7 @@ export interface UserPreferences {
    * is the red. Flipping the default is this one line.
    *
    * A stored, synced preference like `drought_layer_shown` above, and
-   * deliberately unlike the legend's Alerts switch (chrome/alertLayerPanel.ts):
+   * deliberately unlike the legend's Alerts switch, removed 2026-09-20:
    * a hiker who finds the hues distracting today will find them distracting
    * on a second phone tomorrow, and nobody's safety turns on this the way it
    * turns on a closure band - the blaze is still named on the tapped line's

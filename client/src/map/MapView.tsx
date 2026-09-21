@@ -86,6 +86,7 @@ import {
 } from './dayHikeLayers'
 import { attachPoiLabels } from './poiLabels'
 import { attachLabelVisibility } from './labelVisibility'
+import { attachWaypointVisibility } from './waypointLayerVisibility'
 import type { MileTick } from '../lib/dayHikeCourse'
 import {
   attachRouteData,
@@ -298,6 +299,19 @@ export interface MapViewProps {
    * of them is a consequence of the same panel - and three effects reading
    * three props would re-push the label layer three times for one toggle.
    */
+  /**
+   * Whether the waypoint layers draw at all (2026-09-20).
+   *
+   * The waypoint gate, from chrome/MapScreen.tsx - the legend picker's
+   * "None" at the far end of it. Defaults to true so
+   * every existing caller and every fixture keeps the behaviour it had - the
+   * switch is a subtraction a hiker asks for, never a default this prop
+   * introduces by being forgotten.
+   *
+   * Independent of the seam: below map/poiLayers.ts's POI_PIN_MIN_ZOOM the
+   * layers' own floors draw nothing whatever this says.
+   */
+  waypointsShown?: boolean
   mapLabels?: {
     poiLabelsShown: boolean
     hiddenPoiLabelTypes: readonly string[]
@@ -571,6 +585,7 @@ export function MapView({
   routeDrawing = null,
   dayHikeDrawing = null,
   dayHikeTicks = EMPTY_TICKS,
+  waypointsShown = true,
   mapLabels,
   onRouteTap,
   onRouteStroke,
@@ -1239,6 +1254,16 @@ export function MapView({
       mapLabels.hiddenLabelLayerIds,
     )
   }, [map, mapLabels])
+
+  // The waypoint gate (2026-09-20). Its own effect, because it re-runs
+  // when the hiker taps a control and that has nothing to do with the POI
+  // source - re-pushing ~2,800 features to hide five layers would be the
+  // legend-tap rebuild all over again, for a property MapLibre changes in
+  // place.
+  useEffect(() => {
+    if (map === null) return
+    return attachWaypointVisibility(map, waypointsShown)
+  }, [map, waypointsShown])
 
   // Taps are their own effect for the same reason: this one re-binds when the
   // shell hands over a different handler, which has nothing to do with the

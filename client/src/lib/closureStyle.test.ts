@@ -7,7 +7,7 @@ import {
   CLOSURE_TAPE_FULL_WIDTH_ZOOM,
   CLOSURE_TAPE_OVERVIEW_CADENCE,
   CLOSURE_TAPE_OVERVIEW_EDGE,
-  CLOSURE_TAPE_OVERVIEW_MAX_ZOOM,
+  CLOSURE_TAPE_NEAR_MIN_ZOOM,
   CLOSURE_OUTLINE_WIDTH,
   CLOSURE_STRIPE_EDGE,
   CLOSURE_TAPE_CADENCE,
@@ -26,7 +26,6 @@ import {
   CASING_LINE_WIDTH,
   BLAZE_LAYER_ID,
 } from '../map/style'
-import { POI_PIN_MIN_ZOOM } from '../map/poiLayers'
 
 /** A zoom-dependent paint value, as MapLibre's own engine resolves it at
  *  `zoom` - compiled against the real `line-width` spec, so a taper this
@@ -197,14 +196,32 @@ describe('how much of the tape is red', () => {
 })
 
 describe('the two cadences and where the band swaps between them', () => {
-  it('swaps at the seam, which is where the map’s own closure layers hand over', () => {
-    // map/style.ts caps the network overview's band at POI_PIN_MIN_ZOOM and
-    // starts the nearby network's there. Any zoom at which the cadence
-    // changes will show the change, so it is spent at the one where every
-    // other layer is changing too - and this is what stops the two nines
-    // drifting apart, since lib/ cannot import the seam without dragging
-    // map/poiLayers.ts in behind it.
-    expect(CLOSURE_TAPE_OVERVIEW_MAX_ZOOM).toBe(POI_PIN_MIN_ZOOM)
+  it('swaps where the shortest closure on the map first clears one near pitch', () => {
+    // The arithmetic the step zoom is derived from, re-run here rather than
+    // trusted: a pattern says nothing about a line shorter than one of its
+    // pitches. OPRHP's shortest closed run is 1.1 km, and at latitude 41 a
+    // zoom covers 117,610 / 2^z metres per pixel - so the run is 2.4 px at
+    // z8 and 19.2 px at z11, first clearing the near cadence's 12 px
+    // between z10 and z11.
+    //
+    // This was POI_PIN_MIN_ZOOM's 9 until #1590 moved the seam to 7, which
+    // would have left three zooms drawing the near cadence over closures
+    // two to ten pixels long. The tie to the seam was a convenience; this
+    // is the reason, so this is what the constant follows.
+    const SHORTEST_CLOSED_RUN_M = 1100
+    const metresPerPixel = (zoom: number) => 117610 / 2 ** zoom
+    const runInPixels = (zoom: number) => SHORTEST_CLOSED_RUN_M / metresPerPixel(zoom)
+
+    expect(runInPixels(CLOSURE_TAPE_NEAR_MIN_ZOOM)).toBeGreaterThan(
+      CLOSURE_TAPE_CADENCE.pitch,
+    )
+    expect(runInPixels(CLOSURE_TAPE_NEAR_MIN_ZOOM - 1)).toBeLessThan(
+      CLOSURE_TAPE_CADENCE.pitch,
+    )
+    // And the overview cadence carries the zooms below it for the same
+    // reason: at z8 that run is 2.4 px, under even the halved pitch, but
+    // half as far under it.
+    expect(CLOSURE_TAPE_OVERVIEW_CADENCE.pitch).toBeLessThan(CLOSURE_TAPE_CADENCE.pitch)
   })
 
   it('keeps the same share of ink at both cadences, so the overview tape does not merge', () => {
@@ -259,7 +276,7 @@ describe('buildClosureLayers', () => {
     const casing = paintAt(0)
     const band = paintAt(1)
 
-    for (const zoom of [CLOSURE_TAPE_OVERVIEW_MAX_ZOOM, CLOSURE_TAPE_FULL_WIDTH_ZOOM]) {
+    for (const zoom of [CLOSURE_TAPE_NEAR_MIN_ZOOM, CLOSURE_TAPE_FULL_WIDTH_ZOOM]) {
       expect(widthAt(casing, zoom) - widthAt(band, zoom)).toBeCloseTo(
         CLOSURE_OUTLINE_WIDTH * 2,
         10,
@@ -274,7 +291,7 @@ describe('buildClosureLayers', () => {
     // as a property rather than two numbers: the band is monotonic across
     // every zoom the map draws, so no camera move can make a closure lighter.
     const band = paintAt(1)['line-width']
-    const widths = [0, 4, 8, 9, 11, 13, 16, 20].map((z) => evaluateZoom(band, z))
+    const widths = [0, 4, 7, 9, 11, 12, 13, 16, 20].map((z) => evaluateZoom(band, z))
 
     expect(widths).toEqual([...widths].sort((a, b) => a - b))
     expect(evaluateZoom(band, 8)).toBeCloseTo(CLOSURE_TAPE_FAR_WIDTH, 10)
@@ -291,7 +308,7 @@ describe('buildClosureLayers', () => {
     // The overview tape below the seam and the near one from it in (#1598),
     // read by evaluating the step rather than by matching its shape.
     expect(patternAt(paint, 8)).toBe(closureTapeImageId('#ffffff', 'overview'))
-    expect(patternAt(paint, CLOSURE_TAPE_OVERVIEW_MAX_ZOOM)).toBe(
+    expect(patternAt(paint, CLOSURE_TAPE_NEAR_MIN_ZOOM)).toBe(
       closureTapeImageId('#ffffff', 'near'),
     )
     expect(patternAt(paint, 16)).toBe(closureTapeImageId('#ffffff', 'near'))

@@ -192,6 +192,91 @@ def test_publish_preserves_previously_published_artifacts_not_present_in_this_ru
     assert remote["artifacts"]["elevation_profile.json"]["sha256"] == full_local_artifacts["elevation_profile.json"]["sha256"]
 
 
+def test_publish_drops_a_stale_elevation_sidecar_when_the_graph_republishes_without_it(s3_client, tmp_path):
+    """#1313: trail_graph_elevation.json and trail_graph_profile.json describe
+    trail_graph.json's edges BY POSITION, not by name - entry i is edge i's
+    climb/profile. The general carry-forward rule the test above pins (an
+    artifact absent from this run's local set keeps its last-published hash)
+    is right for every other pair of artifacts and wrong for this one: a run
+    that rebuilds the graph without also rebuilding its sidecars must not
+    let the OLD sidecar re-attach to the NEW graph's edge numbering. Measured
+    live on production: a 42,103-entry elevation sidecar stayed published
+    against a graph that had grown to 466,966 edges - #1313's own thread
+    found every known reader already refuses rather than trusts a mismatch
+    that size, so this is not a confidently-wrong-answer bug, but publish.py
+    was still keeping a sidecar published that nothing could safely read."""
+    graph_v1 = tmp_path / "trail_graph_v1.json"
+    graph_v1.write_text('{"edges": [1, 2]}')
+    elevation_v1 = tmp_path / "trail_graph_elevation_v1.json"
+    elevation_v1.write_text('{"climbs": [1, 2]}')
+    profile_v1 = tmp_path / "trail_graph_profile_v1.json"
+    profile_v1.write_text('{"profiles": [1, 2]}')
+
+    first = publish.publish(
+        {
+            "trail_graph.json": {"path": str(graph_v1), "sha256": publish.sha256_file(graph_v1)},
+            "trail_graph_elevation.json": {"path": str(elevation_v1), "sha256": publish.sha256_file(elevation_v1)},
+            "trail_graph_profile.json": {"path": str(profile_v1), "sha256": publish.sha256_file(profile_v1)},
+        },
+        s3_client=s3_client,
+        bucket=BUCKET,
+    )
+    assert set(first["uploaded"]) == {"trail_graph.json", "trail_graph_elevation.json", "trail_graph_profile.json"}
+
+    # Second run: the graph grew (new edges, new bytes) but this checkout
+    # only reran the graph build - `include_elevation: false`, the
+    # documented, legitimate way to skip the elevation steps.
+    graph_v2 = tmp_path / "trail_graph_v2.json"
+    graph_v2.write_text('{"edges": [1, 2, 3, 4, 5]}')
+
+    second = publish.publish(
+        {"trail_graph.json": {"path": str(graph_v2), "sha256": publish.sha256_file(graph_v2)}},
+        s3_client=s3_client,
+        bucket=BUCKET,
+    )
+    assert second["uploaded"] == ["trail_graph.json"]
+
+    remote = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())
+    assert remote["artifacts"]["trail_graph.json"]["sha256"] == publish.sha256_file(graph_v2)
+    # The stale sidecars are gone from the manifest entirely - "no figures
+    # for this hike", the case the client already treats as absent - rather
+    # than kept and silently mismatched against the new edge numbering.
+    assert "trail_graph_elevation.json" not in remote["artifacts"]
+    assert "trail_graph_profile.json" not in remote["artifacts"]
+
+
+def test_publish_keeps_the_elevation_sidecar_when_the_graph_is_unchanged(s3_client, tmp_path):
+    """The fix above must not fire when there is nothing to protect against:
+    an unchanged trail_graph.json still means its existing sidecar is still
+    correctly paired, and a run that only touched an unrelated artifact must
+    not lose elevation data it never rebuilt."""
+    graph = tmp_path / "trail_graph.json"
+    graph.write_text('{"edges": [1, 2]}')
+    elevation = tmp_path / "trail_graph_elevation.json"
+    elevation.write_text('{"climbs": [1, 2]}')
+    graph_entry = {"path": str(graph), "sha256": publish.sha256_file(graph)}
+    elevation_entry = {"path": str(elevation), "sha256": publish.sha256_file(elevation)}
+
+    publish.publish(
+        {"trail_graph.json": graph_entry, "trail_graph_elevation.json": elevation_entry},
+        s3_client=s3_client,
+        bucket=BUCKET,
+    )
+
+    # Second run: same graph bytes (a run that rebuilt the graph and got the
+    # same result), elevation absent from this run's local set entirely -
+    # the every-other-artifact carry-forward case.
+    second = publish.publish(
+        {"trail_graph.json": graph_entry},
+        s3_client=s3_client,
+        bucket=BUCKET,
+    )
+    assert second["uploaded"] == []
+
+    remote = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())
+    assert remote["artifacts"]["trail_graph_elevation.json"]["sha256"] == elevation_entry["sha256"]
+
+
 def test_publish_manifest_records_one_hash_per_artifact_not_one_hash_for_everything(s3_client, local_artifacts):
     publish.publish(local_artifacts, s3_client=s3_client, bucket=BUCKET)
 

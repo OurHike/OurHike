@@ -72,6 +72,8 @@ import {
   type WorkdayPoint,
 } from './workdayLayers'
 import { attachDisputeData, attachDisputeIcon, type DisputePoint } from './disputeLayers'
+import { attachPositionData, attachPositionImages } from './positionLayers'
+import type { GeolocationState } from '../lib/useGeolocation'
 import { attachLineTaps, type TappedLine } from './lineTaps'
 import { chosenSystemSources } from './nearbyTrails'
 import { attachTrailBadgeImages } from './trailBadges'
@@ -84,6 +86,7 @@ import {
 } from './dayHikeLayers'
 import { attachPoiLabels } from './poiLabels'
 import { attachLabelVisibility } from './labelVisibility'
+import { attachWaypointVisibility } from './waypointLayerVisibility'
 import type { MileTick } from '../lib/dayHikeCourse'
 import {
   attachRouteData,
@@ -100,6 +103,14 @@ import type {
   Theme,
 } from '../lib/userPreferences'
 import { openingZoomFloor, type ArchiveZooms } from '../lib/archiveCoverage'
+
+/** The fix a caller that passes none gets: no position, so no mark. One
+ *  object rather than a fresh literal per render, so the effects keyed on
+ *  `fix` do not re-run for a default that has not changed. */
+const IDLE_FIX: GeolocationState = { status: 'idle' }
+
+/** How often a stale mark's age is re-printed - lib/useClock.ts's minute. */
+const AGE_TICK_MS = 60_000
 
 export interface MapViewProps {
   /** `pmtiles://` URL for the downloaded topo archive. */
@@ -288,6 +299,19 @@ export interface MapViewProps {
    * of them is a consequence of the same panel - and three effects reading
    * three props would re-push the label layer three times for one toggle.
    */
+  /**
+   * Whether the waypoint layers draw at all (2026-09-20).
+   *
+   * The waypoint gate, from chrome/MapScreen.tsx - the legend picker's
+   * "None" at the far end of it. Defaults to true so
+   * every existing caller and every fixture keeps the behaviour it had - the
+   * switch is a subtraction a hiker asks for, never a default this prop
+   * introduces by being forgotten.
+   *
+   * Independent of the seam: below map/poiLayers.ts's POI_PIN_MIN_ZOOM the
+   * layers' own floors draw nothing whatever this says.
+   */
+  waypointsShown?: boolean
   mapLabels?: {
     poiLabelsShown: boolean
     hiddenPoiLabelTypes: readonly string[]
@@ -397,6 +421,21 @@ export interface MapViewProps {
    *  caller that has not thought about it does not open a GPS watch. */
   locationEnabled?: boolean
   /**
+   * Where the hiker is, as lib/useGeolocation.ts reports it (#1581) - the
+   * one watch the header reads, handed down so the canvas draws exactly
+   * what the mono line says. A live fix draws the mark; a lost signal that
+   * still carries its last fix draws it stale, with its age; every other
+   * state draws nothing. Defaults to idle, so a caller that has not thought
+   * about it draws no position it does not have.
+   */
+  fix?: GeolocationState
+  /**
+   * Puts the camera on the fix, for the locate button (map/mapChrome.ts).
+   * Undefined leaves the button off. Must be stable across renders
+   * (useCallback), for `onReport`'s reason.
+   */
+  onLocate?: (() => void) | undefined
+  /**
    * Opens the report window from the map's own chrome (#1438, D15). Undefined
    * leaves the control off - see mapChrome.ts for why a door with nowhere to
    * go is not drawn at all.
@@ -431,6 +470,15 @@ export interface MapViewProps {
    */
   mapStyle?: MapStyle
   redLight?: boolean
+  /**
+   * Whether the trail lines wear their blaze hues, or every one the same red
+   * (#1575, lib/userPreferences.ts's `blaze_colors_shown`). Handed down and
+   * applied exactly like `redLight`: seeded into the built style for a
+   * correct first frame, repainted in place on change. Defaults to the hues
+   * here as `redLight` defaults to off - the shipped default is the
+   * preference's, and MapScreen always passes it.
+   */
+  blazeColorsShown?: boolean
   /**
    * How much of the sheet to draw - see map/mapDetail.ts. Pure layer
    * visibility on the live sheet; the downloaded raster has no layers to
@@ -537,6 +585,7 @@ export function MapView({
   routeDrawing = null,
   dayHikeDrawing = null,
   dayHikeTicks = EMPTY_TICKS,
+  waypointsShown = true,
   mapLabels,
   onRouteTap,
   onRouteStroke,
@@ -552,11 +601,14 @@ export function MapView({
   showZoomButtons = false,
   units = 'imperial',
   locationEnabled = false,
+  fix = IDLE_FIX,
+  onLocate,
   onReport,
   theme = 'light',
   themeChoice = 'auto',
   mapStyle = 'field',
   redLight = false,
+  blazeColorsShown = true,
   detail = 'standard',
   onViewportChange,
   onTrailsInView,
@@ -679,6 +731,7 @@ export function MapView({
           themeChoice,
           mapStyle,
           redLight,
+          blazeColorsShown,
           // Read here, at creation, rather than passed as a prop: the trails
           // source's tolerance is fixed when the style is built, and the fact
           // deciding it is a property of the bytes in storage (recorded
@@ -740,7 +793,8 @@ export function MapView({
     // interval: switching to metric must not cost a WebGL context. The units
     // effect below re-points the contour source in place instead.
     //
-    // `theme`, `mapStyle` and `redLight` are omitted on exactly that pattern
+    // `theme`, `mapStyle`, `redLight` and `blazeColorsShown` are omitted on
+    // exactly that pattern
     // (MAP_STYLE_SPEC.md spells it as a requirement: appearance never rebuilds
     // the map). They seed the backdrop, the archive's dimming, the trail ink
     // and the sheet's palette so a cold start under a dark appearance is dark
@@ -800,6 +854,11 @@ export function MapView({
     if (floor !== null) map.setZoom(floor)
   }, [map, background, archiveZooms])
 
+  /** Whether the locate button has a fix to centre on (map/mapChrome.ts) -
+   *  a boolean rather than the fix itself, so the chrome effect re-attaches
+   *  its controls when the answer flips and not on every wobble. */
+  const fixAvailable = fix.status === 'located'
+
   // Chrome lives in its own effect so that a preference which only affects the
   // controls - the scale bar's units, the zoom buttons - re-attaches three
   // controls instead of tearing down and rebuilding the entire map underneath
@@ -814,17 +873,25 @@ export function MapView({
       showZoomButtons,
       units,
       locationEnabled,
+      onLocate,
+      fixAvailable,
       onReport,
     })
-  }, [map, showZoomButtons, units, locationEnabled, onReport])
+  }, [map, showZoomButtons, units, locationEnabled, onLocate, fixAvailable, onReport])
 
   // The appearance's half of the same promise, and the widest one: it
   // repaints the backdrop, the archive's dimming, the trail's ink and every
   // colour on the live sheet - see map/style.ts's attachMapAppearance.
   useEffect(() => {
     if (map === null) return
-    return attachMapAppearance(map, { theme, themeChoice, mapStyle, redLight })
-  }, [map, theme, themeChoice, mapStyle, redLight])
+    return attachMapAppearance(map, {
+      theme,
+      themeChoice,
+      mapStyle,
+      redLight,
+      blazeColorsShown,
+    })
+  }, [map, theme, themeChoice, mapStyle, redLight, blazeColorsShown])
 
   // And the detail level's: which of the sheet's layers are drawn at all.
   // Pure visibility (map/mapDetail.ts), so a hiker thinning the sheet keeps
@@ -1096,6 +1163,45 @@ export function MapView({
     return attachDisputeData(map, disputes)
   }, [map, disputes])
 
+  // The hiker's mark (#1581): the images once there is a position to draw,
+  // the fix whenever the watch moves it. Gated on a position rather than
+  // registered off `map` alone like the constant images above, because the
+  // six of them cost a measured 53 ms to rasterise (positionLayers.ts) and
+  // the first fix lands seconds after the map does - so the cost lands off
+  // the launch path, and never at all on a phone with location off. Declared
+  // before the data effect, so the images are on the map before a feature
+  // asks for one.
+  const havePosition =
+    fix.status === 'located' || (fix.status === 'unavailable' && fix.last !== undefined)
+  useEffect(() => {
+    if (map === null || !havePosition) return
+    return attachPositionImages(map)
+  }, [map, havePosition])
+
+  // A stale mark prints its age, and an age is a thing that changes with
+  // nothing else changing - so while (and only while) the signal is lost
+  // with a last fix in hand, a minute tick re-runs the data effect below.
+  // The same cadence lib/useClock.ts keeps for the status strip, for the
+  // same battery reason.
+  const staleSince =
+    fix.status === 'unavailable' && fix.last !== undefined
+      ? fix.last.fixedAt.getTime()
+      : null
+  const [ageTick, setAgeTick] = useState(0)
+  useEffect(() => {
+    if (staleSince === null) return
+    const id = setInterval(() => setAgeTick((tick) => tick + 1), AGE_TICK_MS)
+    return () => clearInterval(id)
+  }, [staleSince])
+
+  useEffect(() => {
+    if (map === null) return
+    return attachPositionData(map, fix, new Date())
+    // `ageTick` is the minute hand: it is in the list to re-run this, not
+    // because the data reads it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, fix, ageTick])
+
   useEffect(() => {
     // Not attached during route building, for attachRouteTaps' rule: one
     // interpreter per touch, and while a route is being drawn every tap on
@@ -1148,6 +1254,16 @@ export function MapView({
       mapLabels.hiddenLabelLayerIds,
     )
   }, [map, mapLabels])
+
+  // The waypoint gate (2026-09-20). Its own effect, because it re-runs
+  // when the hiker taps a control and that has nothing to do with the POI
+  // source - re-pushing ~2,800 features to hide five layers would be the
+  // legend-tap rebuild all over again, for a property MapLibre changes in
+  // place.
+  useEffect(() => {
+    if (map === null) return
+    return attachWaypointVisibility(map, waypointsShown)
+  }, [map, waypointsShown])
 
   // Taps are their own effect for the same reason: this one re-binds when the
   // shell hands over a different handler, which has nothing to do with the

@@ -912,7 +912,7 @@ export function SafetyPrivacySettings({
           What is promised now is what this screen can actually keep: nothing
           about the alert layers is a setting, nothing about them is saved, and
           the map opens with them on. That is a stronger claim than it sounds -
-          it is the whole reason chrome/alertLayerPanel.ts holds the flag in a
+          it is the whole reason #1047's own flag was held in a
           `useState` rather than in the object this screen edits. */}
       <p className="settings__locked" role="note">
         Closures and serious warnings are not a setting. The legend can take them off the

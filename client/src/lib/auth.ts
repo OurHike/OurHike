@@ -1,10 +1,11 @@
 // Signing in, signing out, and knowing which of the two is currently true.
 //
-// Supabase Auth owns the hard parts (features/AUTHENTICATION.md): password
-// hashing, the OAuth token exchange, refresh, and email verification all
-// happen there, and the backend only ever verifies the JWT that comes back
-// (backend/app/core/auth.py). Nothing in this file implements authentication;
-// it adapts Supabase's session to the one shape the screens need.
+// Supabase Auth owns the hard parts (features/AUTHENTICATION.md): the OAuth
+// token exchange with Google and GitHub, the 6-digit code it emails and
+// checks, refresh, and email verification all happen there, and the backend
+// only ever verifies the JWT that comes back (backend/app/core/auth.py).
+// Nothing in this file implements authentication; it adapts Supabase's
+// session to the one shape the screens need.
 //
 // The app stays usable signed out. Reading the map, the downloads, the
 // outbox and the preferences are all local-first, so every operation here can
@@ -24,10 +25,11 @@ export interface Account {
  * The account a session represents, or null for no account.
  *
  * A session carrying no email is treated as signed out rather than shown as a
- * blank account row. With Google and email - the two providers a default build
- * enables - a session always carries one, so this is a guard rather than a
- * routine path. Apple is the provider that can withhold it, via private relay,
- * and exercising that is #92.
+ * blank account row. With Google, GitHub and email a session always carries
+ * one - Supabase refuses a GitHub account with no verified address rather
+ * than minting a user without one (#1573) - so this is a guard rather than a
+ * routine path. Apple is the provider that can withhold it, via private
+ * relay, and exercising that is #92.
  */
 export function accountFromSession(session: Session | null): Account | null {
   const email = session?.user?.email
@@ -81,21 +83,30 @@ export async function signInWithProvider(
 }
 
 /**
- * Emails a sign-in link. One call covers both a returning hiker and a new
- * one: Supabase creates the user when the address is unknown, so there is no
- * separate sign-up to choose between first, and no password to forget on a
- * trail six weeks from the place it was set.
+ * Emails a 6-digit sign-in code (#279). One call covers both a returning
+ * hiker and a new one: Supabase creates the user when the address is
+ * unknown, so there is no separate sign-up to choose between first, and no
+ * password to forget on a trail six weeks from the place it was set.
+ *
+ * This is the same `signInWithOtp` call that used to send a link. Whether
+ * the email carries a link or a code is the project's email template -
+ * `{{ .Token }}` in both "Magic Link" and "Confirm sign up", because a new
+ * address gets the second (LAUNCH_CHECKLIST.md 4.3d) - so nothing here can
+ * tell which the hiker will receive; backend/check_supabase_config.py reads
+ * the templates back and says. `emailRedirectTo` stays set for a template
+ * that still carries a link: it then comes back to the app rather than to
+ * the project's Site URL.
  *
  * `shouldCreateUser` is passed explicitly rather than left to its default,
  * because "this also creates accounts" is the whole reason this path can
  * replace two others and should not be something a reader has to know the
  * library's defaults to discover.
  *
- * Following the link is itself the proof the address belongs to whoever
+ * Typing the code back is itself the proof the address belongs to whoever
  * asked, so this satisfies features/AUTHENTICATION.md's verification
  * requirement directly rather than by a second confirmation step.
  */
-export async function sendMagicLink(email: string): Promise<AuthOutcome> {
+export async function sendEmailCode(email: string): Promise<AuthOutcome> {
   const client = await getAuthClient()
   if (client === null) return NOT_CONFIGURED
 
@@ -106,33 +117,32 @@ export async function sendMagicLink(email: string): Promise<AuthOutcome> {
   return error === null ? { ok: true } : failed(error.message)
 }
 
-export async function signInWithEmail(
-  email: string,
-  password: string,
-): Promise<AuthOutcome> {
-  const client = await getAuthClient()
-  if (client === null) return NOT_CONFIGURED
-
-  const { error } = await client.auth.signInWithPassword({ email, password })
-  return error === null ? { ok: true } : failed(error.message)
-}
-
 /**
- * Creates an account. Supabase sends the verification email itself; until it
- * is confirmed there is no session, which is why this reports back rather
- * than assuming the caller is now signed in.
+ * Signs in with the code that email carried.
+ *
+ * `type: 'email'` rather than 'magiclink' or 'signup': supabase-js accepts
+ * either kind of token under that one type, and which kind was minted
+ * depends on whether the address was new - a distinction the hiker never
+ * sees and this function should not have to make.
+ *
+ * Whitespace is stripped because a code read off a phone's notification and
+ * typed with a thumb arrives as "123 456" often enough, and refusing it
+ * would read as a wrong code.
+ *
+ * On success supabase-js stores the session and fires the account
+ * subscription (subscribeToAccount), which is how the app learns it worked -
+ * the same event a provider redirect produces, so App.tsx closes the flow on
+ * one signal for every door. The outcome here is for the screen to show a
+ * refusal.
  */
-export async function signUpWithEmail(
-  email: string,
-  password: string,
-): Promise<AuthOutcome> {
+export async function verifyEmailCode(email: string, code: string): Promise<AuthOutcome> {
   const client = await getAuthClient()
   if (client === null) return NOT_CONFIGURED
 
-  const { error } = await client.auth.signUp({
+  const { error } = await client.auth.verifyOtp({
     email,
-    password,
-    options: { emailRedirectTo: redirectUrl() },
+    token: code.replace(/\s+/g, ''),
+    type: 'email',
   })
   return error === null ? { ok: true } : failed(error.message)
 }

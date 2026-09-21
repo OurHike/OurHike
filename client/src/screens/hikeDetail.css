@@ -9,7 +9,23 @@
  * straight for --sage-100, --forest-600 and the rest. themeTokens.test.ts
  * caught it. The screen draws the design system's own <Badge> instead, which
  * is where a fixed ramp belongs and where the same card component already
- * got it. */
+ * got it.
+ *
+ * AND SEVEN OF THE TOKENS IT NAMED WERE NOT TOKENS (fixed 2026-09-20). The
+ * paragraph above was true about colour and wrong about everything else: this
+ * file asked for --text-body-sm, --radius-md, --radius-lg and --text-title,
+ * and the real names are --text-body-s, --radius-m, --radius-l and the
+ * display scale. A var() with an undefined name and no fallback is invalid at
+ * computed-value time, so those seven declarations did not render at all -
+ * the hiker-note and the card had square corners rather than 8px and 14px,
+ * four paragraphs sat at inherited size rather than 0.875rem, and the <h1>
+ * carrying the hike's NAME was 1rem body text in a display face.
+ *
+ * Nothing in the suite could see it. themeTokens.test.ts caught a base-palette
+ * leak and a token with a hardcoded hex fallback; a name nothing defines and
+ * nothing falls back to matched neither, and jsdom resolves no custom
+ * properties, so no component test could tell either. The rule that finds it
+ * now is that file's 'no var() chain with nothing at the end of it'. */
 
 .hike-detail {
   display: flex;
@@ -82,7 +98,7 @@
   margin: 0;
   font-family: var(--font-display);
   font-weight: var(--weight-semibold);
-  font-size: var(--text-title);
+  font-size: var(--text-display-s);
   line-height: 1.2;
   color: var(--fg-1);
   text-wrap: pretty;
@@ -140,9 +156,9 @@
 .hike-detail__hiker-note {
   margin: 10px 0 0;
   padding: 10px 12px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-m);
   background: var(--bg-sunken);
-  font-size: var(--text-body-sm);
+  font-size: var(--text-body-s);
   line-height: 1.45;
   color: var(--fg-2);
   text-wrap: pretty;
@@ -150,7 +166,7 @@
 
 .hike-detail__walked {
   margin: 8px 0 0;
-  font-size: var(--text-body-sm);
+  font-size: var(--text-body-s);
   color: var(--fg-2);
 }
 
@@ -217,14 +233,14 @@
   gap: 6px;
   padding: 12px;
   border: 1px solid var(--border-1);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-l);
   background: var(--surface-card);
 }
 
 .hike-detail__coords {
   margin: 0;
   font-family: var(--font-mono);
-  font-size: var(--text-body-sm);
+  font-size: var(--text-body-s);
   color: var(--fg-1);
 }
 
@@ -311,7 +327,7 @@
 
 .hike-detail__provenance p {
   margin: 0;
-  font-size: var(--text-body-sm);
+  font-size: var(--text-body-s);
   line-height: 1.45;
   color: var(--fg-2);
   text-wrap: pretty;

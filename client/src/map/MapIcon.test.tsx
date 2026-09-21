@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, cleanup } from '@testing-library/react'
 import { MapIcon, TrailLineSwatch } from './MapIcon'
-import { blazePaintColor, NEUTRAL_BLAZE_COLOR } from '../lib/blaze'
+import { blazePaintColor, NEUTRAL_BLAZE_COLOR, PLAIN_TRAIL_COLOR } from '../lib/blaze'
 import { NEARBY_TRAIL_OPACITY } from './nearbyTrails'
 import {
   CASING_OVERHANG,
@@ -9,6 +9,8 @@ import {
   RED_LIGHT_BLAZE_COLOR,
   SIDE_TRAIL_WIDTH,
   trailCasingColor,
+  MAP_BACKDROP,
+  mapBackdrop,
 } from './style'
 import {
   glyphPath,
@@ -223,26 +225,46 @@ describe('MapIcon: a closure', () => {
     // THE DEFECT THIS SWATCH USED TO SHOW, held so it cannot come back. The
     // legend drew a filled casing rect with a dashed band over it - which was
     // honest, because that is what the map drew, and both were a near-black
-    // line with red ticks in it. There is no rect now, and the casing is a
-    // stroke wider than the stripe it outlines.
+    // line with red ticks in it. The one rect here now is the sheet's paper
+    // (#1575), never the casing, and the casing is a stroke wider than the
+    // stripe it outlines.
     const svg = draw(<MapIcon type="closure" />)
     const edge = Number(
       part(svg, 'map-icon__closure-casing').getAttribute('stroke-width'),
     )
+    const rects = svg.querySelectorAll('rect')
 
-    expect(svg.querySelector('rect')).toBeNull()
+    expect(rects).toHaveLength(1)
+    expect(rects[0]?.getAttribute('class')).toBe('map-icon__closure-ground')
+    expect(rects[0]?.getAttribute('fill')).not.toBe(CLOSURE_CASING_COLOR)
     expect(edge).toBe(CLOSURE_TAPE_CADENCE.stripe + CLOSURE_STRIPE_EDGE * 2)
   })
 
-  it('leaves the ground between the stripes alone', () => {
-    // What the map does, restated in the legend: the tape's gaps are
-    // transparent, so nothing here may paint them either. A fill anywhere in
-    // this swatch would be a legend claiming the map hides the trail.
-    const svg = draw(<MapIcon type="closure" />)
-
-    for (const node of svg.querySelectorAll('*')) {
+  it('lays the sheet’s paper under the stripes, in the map’s own colour (#1575)', () => {
+    // What the map does, restated in the legend: since option E the tape's
+    // gaps hold the sheet's paper, so the swatch holds it too - the field day
+    // sheet's by default, and night ink beside a night map. Nothing else in
+    // the swatch carries a fill; the stripes are strokes.
+    const day = draw(<MapIcon type="closure" />)
+    expect(part(day, 'map-icon__closure-ground').getAttribute('fill')).toBe(
+      mapBackdrop({ theme: 'light' }),
+    )
+    for (const node of day.querySelectorAll('*:not(.map-icon__closure-ground)')) {
       expect(node.getAttribute('fill')).toBeNull()
     }
+
+    // Beside a night map the ground is the day paper too, since 2026-09-18
+    // (closureTapeGround): red and white, never red on ink. Red light keeps
+    // its ink, and the swatch follows.
+    const night = draw(<MapIcon type="closure" appearance={{ theme: 'dark' }} />)
+    expect(part(night, 'map-icon__closure-ground').getAttribute('fill')).toBe(
+      MAP_BACKDROP.light,
+    )
+    const redLight = { mapStyle: 'night_hike', redLight: true } as const
+    const under = draw(<MapIcon type="closure" appearance={redLight} />)
+    expect(part(under, 'map-icon__closure-ground').getAttribute('fill')).toBe(
+      mapBackdrop(redLight),
+    )
   })
 })
 
@@ -339,6 +361,22 @@ describe('TrailLineSwatch: a trail line as the map draws it (#1283)', () => {
     const svg = swatch({ appearance: { mapStyle: 'night_hike', redLight: true } })
     expect(part(svg, 'map-icon__trail-blaze').getAttribute('stroke')).toBe(
       RED_LIGHT_BLAZE_COLOR,
+    )
+  })
+
+  it('keeps the blaze hue while the appearance has blaze colours off (#1575)', () => {
+    // The one place the swatch and the line disagree on purpose: the map
+    // draws every line PLAIN_TRAIL_COLOR with the switch off, and the row's
+    // swatch stays the blaze - "Changing the color option should only
+    // affect the map itself, not the other options" (the maintainer,
+    // 2026-09-17) - so the legend is where a named trail's blaze is read
+    // while the map is red.
+    const svg = swatch({ appearance: { theme: 'light', blazeColorsShown: false } })
+    expect(part(svg, 'map-icon__trail-blaze').getAttribute('stroke')).toBe(
+      blazePaintColor('Blue'),
+    )
+    expect(part(svg, 'map-icon__trail-blaze').getAttribute('stroke')).not.toBe(
+      PLAIN_TRAIL_COLOR,
     )
   })
 

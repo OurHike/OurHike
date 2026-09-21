@@ -15,21 +15,42 @@ away from happening while this was being built:
   Every signed-in request would have come back 401 with a perfectly valid
   token - and no test could have caught it, because the tests minted the
   algorithm the code expected.
-- `VITE_AUTH_PROVIDERS` can name a provider whose credentials do not exist in
-  the dashboard. That is a button which reaches an error page, and nothing
-  else in the system compares those two lists.
+- `ENABLED_PROVIDERS` in client/src/lib/supabase.ts can name a provider whose
+  credentials do not exist in the dashboard. That is a button which reaches an
+  error page, and nothing else in the system compares those two lists. This
+  script reads that constant out of the client's own source rather than taking
+  the list from its environment, because since #1572 the code is where the
+  shipped set is decided and a second copy here would be a second answer.
+- The email provider can be enabled with no sender behind it. Supabase's
+  built-in mailer sends 2 messages an hour, to the project's own team
+  members only, and answers everyone else `Email address not authorized`
+  (#397, #1572) - a button that is enabled, offered, and cannot finish.
+- The email templates can carry a link where the app asks for a code.
+  `screens/EmailSignIn.tsx` asks for the 6 digits `{{ .Token }}` puts in the
+  email; a template without it sends a link that opens the browser rather
+  than the installed app (#279).
 
-Read-only: it reads the project's public settings and its published keys, and
-writes nothing. Stdlib only, so running it costs no dependency install.
+The last two are not in the public settings document. They are in the
+project's auth config, which the management API serves to a personal access
+token - so this reads them only when `SUPABASE_ACCESS_TOKEN` is set, and says
+plainly what it could not check when it is not. A fine-grained token with
+`auth_config_read` and nothing else is enough, and is the one to mint.
+
+Read-only either way: it reads the project's public settings, its published
+keys and (with the token) its auth config, and writes nothing. Stdlib only,
+so running it costs no dependency install.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
+from pathlib import Path
 
 # What backend/app/core/auth.py will actually accept. Duplicated here rather
 # than imported so this stays a stdlib-only script with nothing to install -
@@ -37,16 +58,120 @@ import urllib.request
 # what stops the copy drifting into a lie.
 BACKEND_ACCEPTS = ("ES256", "RS256", "HS256")
 
+# The client module that decides which doors ship (#1572). Read rather than
+# duplicated: a copy here is exactly the drift this script exists to catch,
+# and the previous copy proved it - it said `google,email` for a month after
+# #397 changed the client to `google`, so the check was comparing the live
+# project against buttons no build had.
+CLIENT_SUPABASE_TS = Path(__file__).resolve().parent.parent / "client" / "src" / "lib" / "supabase.ts"
+
+# Matches the declaration, and only the declaration:
+#
+#     export const ENABLED_PROVIDERS: AuthProvider[] = ['google', 'github', 'email']
+#
+# `export const` anchors it, because that module mentions the name in prose
+# too and a pattern that matched a comment would read the wrong list. The
+# annotation between the name and the `=` carries its own brackets
+# (`AuthProvider[]`), so the span before the `=` may not exclude `[`.
+ENABLED_PROVIDERS_PATTERN = re.compile(r"export const ENABLED_PROVIDERS[^=]*=\s*\[([^\]]*)\]")
+
+# How many digits screens/EmailSignIn.tsx asks for (CODE_LENGTH there).
+EMAIL_CODE_LENGTH = 6
+
+# Supabase's own ceiling before its advisor flags the expiry as too long.
+EMAIL_CODE_MAX_EXPIRY_SECONDS = 3600
+
+MANAGEMENT_API = "https://api.supabase.com/v1"
+
+# `{{ .Token }}` in a Go template, with whatever spacing the dashboard kept.
+TOKEN_PLACEHOLDER = re.compile(r"\{\{\s*\.Token\s*\}\}")
+
+# The templates a code has to be in, and why both: a returning address gets
+# "Magic Link" and a new one gets "Confirm sign up", and
+# `verifyOtp({ type: 'email' })` accepts either token. One template carrying
+# the code and the other a link is a sign-in that works for everyone but a
+# new hiker - the worst half to lose.
+EMAIL_CODE_TEMPLATES = (
+    ("mailer_templates_magic_link_content", "Magic Link"),
+    ("mailer_templates_confirmation_content", "Confirm sign up"),
+)
+
 TIMEOUT_SECONDS = 15
 
 
-def _get(url: str, api_key: str) -> tuple[int, dict]:
-    request = urllib.request.Request(url, headers={"apikey": api_key})
+def _fetch(url: str, headers: dict[str, str]) -> tuple[int, dict]:
+    """One GET, returning (status, document) and never raising.
+
+    A STATUS OF 0 MEANS THE REQUEST NEVER HAPPENED - DNS, a refused proxy, a
+    socket timeout - as against an HTTP code, which means the server
+    answered. Both are reported rather than raised because this script's
+    whole output is the Report it prints at the end: an exception out of the
+    last check takes the provider mismatches and the signing algorithm found
+    by the earlier ones with it, and the job dies with a traceback where a
+    maintainer wanted a list. `URLError` was uncaught until the review of
+    #1572 pointed out that only `HTTPError` was.
+    """
+    request = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
             return response.status, json.loads(response.read())
     except urllib.error.HTTPError as error:
         return error.code, {}
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+        return 0, {}
+
+
+def _get(url: str, api_key: str) -> tuple[int, dict]:
+    return _fetch(url, {"apikey": api_key})
+
+
+def _get_as_owner(url: str, access_token: str) -> tuple[int, dict]:
+    """A management API read, which takes a personal access token rather than the anon key."""
+    return _fetch(url, {"Authorization": f"Bearer {access_token}"})
+
+
+def providers_in(source: str) -> set[str]:
+    """The provider names ENABLED_PROVIDERS lists, out of the client's source.
+
+    A pure function of the text so tests can exercise the parse without a
+    checkout shape, and so a restructure of that module fails here loudly
+    rather than quietly returning nothing - see the caller, which refuses an
+    empty answer instead of reporting a build with no doors as healthy.
+    """
+    match = ENABLED_PROVIDERS_PATTERN.search(source)
+    if match is None:
+        return set()
+    return {name.strip().strip("'\"") for name in match.group(1).split(",") if name.strip()}
+
+
+def offered_providers() -> set[str]:
+    """Which buttons the shipped app offers, read from client/src/lib/supabase.ts.
+
+    Raises rather than guessing. An unreadable or restructured module is a
+    reason to stop, not to check the live project against an empty list and
+    call everything fine.
+    """
+    try:
+        source = CLIENT_SUPABASE_TS.read_text(encoding="utf-8")
+    except OSError as error:
+        raise LookupError(f"could not read {CLIENT_SUPABASE_TS}: {error}") from error
+    offered = providers_in(source)
+    if not offered:
+        raise LookupError(
+            f"found no ENABLED_PROVIDERS list in {CLIENT_SUPABASE_TS}. It has been restructured, "
+            "and this check must be updated rather than left comparing the project against nothing."
+        )
+    return offered
+
+
+def project_ref(project_url: str) -> str:
+    """`fehctqdwdjwryzgxzywc` out of `https://fehctqdwdjwryzgxzywc.supabase.co`.
+
+    The management API addresses a project by this ref, and the URL is the
+    only place the repository variables carry it.
+    """
+    host = urllib.parse.urlparse(project_url).hostname or ""
+    return host.split(".")[0]
 
 
 class Report:
@@ -71,34 +196,132 @@ class Report:
         self.failed = True
 
 
-def check_providers(settings: dict, configured: str, report: Report) -> None:
-    """Compare the providers this build offers with the ones that can work.
+def check_providers(settings: dict, offered: set[str], report: Report) -> None:
+    """Compare the providers the shipped app offers with the ones that can work.
 
-    Nothing else compares these. A name in AUTH_PROVIDERS without credentials
-    behind it is a button that reaches an error page rather than an account,
-    and the app cannot discover the difference at runtime - Supabase's client
-    does not expose which providers a project has enabled.
+    Nothing else compares these. A name in ENABLED_PROVIDERS without
+    credentials behind it is a button that reaches an error page rather than
+    an account, and the app cannot discover the difference at runtime -
+    Supabase's client does not expose which providers a project has enabled.
     """
     external = settings.get("external") or {}
     enabled = {name for name, on in external.items() if on}
-
-    offered = {name.strip().lower() for name in configured.split(",") if name.strip()}
-    if not offered:
-        offered = {"google", "email"}
-        report.warn("AUTH_PROVIDERS is unset; the client's default of google,email applies.")
 
     for provider in sorted(offered):
         if provider in enabled:
             report.ok(f"Provider '{provider}' is offered and enabled in the project.")
         else:
             report.fail(
-                f"Provider '{provider}' is in AUTH_PROVIDERS but is NOT enabled in the "
+                f"Provider '{provider}' is in ENABLED_PROVIDERS but is NOT enabled in the "
                 "project - its button would reach an error page. Enable it under "
-                "Authentication -> Providers, or drop it from AUTH_PROVIDERS."
+                "Authentication -> Providers, or drop it from client/src/lib/supabase.ts."
             )
 
     for provider in sorted(enabled - offered - {"phone", "anonymous"}):
         report.warn(f"Provider '{provider}' is enabled in the project but not offered by this build.")
+
+
+def check_auth_config(config: dict, offered: set[str], report: Report) -> None:
+    """The dashboard state the public settings endpoint cannot show.
+
+    `check_providers` can see that email is enabled; it cannot see whether
+    anything will deliver the email, or what the email says. Both fail as a
+    hiker on the code step of screens/EmailSignIn.tsx waiting for a message -
+    one that was refused at the project's own mailer, or one that carries a
+    link where they were told to expect six digits. This is the half of the
+    check that can only be made with the owner's token, against the same
+    settings LAUNCH_CHECKLIST.md 4.3c and 4.3d tell a maintainer to set.
+
+    @unvalidated - EVERY FIELD NAME BELOW. `smtp_host`, `smtp_sender_name`,
+    `mailer_templates_magic_link_content`, `mailer_templates_confirmation_content`,
+    `mailer_otp_length`, `mailer_otp_exp`, `rate_limit_email_sent` and
+    `external_<provider>_client_id` were read off Supabase's management API
+    reference and have never been checked against a response from a live
+    project, because this half of the check is gated on a token nobody has
+    run it with yet. What would settle it is one `workflow_dispatch` of
+    supabase-config-check.yml with `SUPABASE_ACCESS_TOKEN` set, against
+    either project - the run either prints the settings or names the keys it
+    could not find, and after that this tag comes off.
+
+    A wrong name fails in two directions and neither is silent, which is the
+    reason for the `else` branches below rather than a bare `isinstance`: a
+    spelling this code has right and the API does not would otherwise make
+    `config.get` return None, skip the check, and print a section that passed
+    having looked at nothing - "the shape of mistake that makes a green check
+    mean nothing", as LAUNCH_CHECKLIST.md 4.5 puts it.
+    """
+    if "email" in offered:
+        host = (config.get("smtp_host") or "").strip()
+        if host:
+            sender = (config.get("smtp_sender_name") or "").strip() or "no sender name"
+            report.ok(f"Email is sent through custom SMTP at {host} ({sender}).")
+        else:
+            report.fail(
+                "Email is offered but the project has no custom SMTP host. Supabase's built-in "
+                "mailer sends 2 messages an hour, to the project's own team members only, and "
+                "answers everyone else 'Email address not authorized' - so the code step waits for "
+                "an email that was refused. Configure a sender under Authentication -> Emails -> "
+                "SMTP Settings (LAUNCH_CHECKLIST.md 4.3c)."
+            )
+
+        for key, template in EMAIL_CODE_TEMPLATES:
+            if TOKEN_PLACEHOLDER.search(config.get(key) or ""):
+                report.ok(f"The '{template}' email template carries {{{{ .Token }}}}, the code the app asks for.")
+            else:
+                report.fail(
+                    f"The '{template}' email template has no {{{{ .Token }}}}, so that email carries a "
+                    "link and no code - and screens/EmailSignIn.tsx asks for a code. Edit it under "
+                    "Authentication -> Emails -> Templates (LAUNCH_CHECKLIST.md 4.3d)."
+                )
+
+        length = config.get("mailer_otp_length")
+        if not isinstance(length, int):
+            report.warn(
+                "The project's auth config has no integer 'mailer_otp_length', so the code length "
+                f"was NOT checked against screens/EmailSignIn.tsx's {EMAIL_CODE_LENGTH} (CODE_LENGTH). "
+                "Either this script has the field name wrong - see the @unvalidated note on "
+                "check_auth_config - or the API stopped returning it."
+            )
+        elif length != EMAIL_CODE_LENGTH:
+            report.fail(
+                f"Email codes are {length} digits, and screens/EmailSignIn.tsx asks for {EMAIL_CODE_LENGTH} "
+                "(CODE_LENGTH). Set the length back under Authentication -> Providers -> Email."
+            )
+        else:
+            report.ok(f"Email codes are {EMAIL_CODE_LENGTH} digits, which is what the app asks for.")
+
+        expiry = config.get("mailer_otp_exp")
+        if not isinstance(expiry, int):
+            report.warn(
+                "The project's auth config has no integer 'mailer_otp_exp', so the code's lifetime "
+                "was NOT checked. Same two causes as the length above."
+            )
+        elif expiry > EMAIL_CODE_MAX_EXPIRY_SECONDS:
+            report.warn(
+                f"Email codes stay valid for {expiry} s, longer than the {EMAIL_CODE_MAX_EXPIRY_SECONDS} s "
+                "Supabase's security advisor allows before flagging it."
+            )
+        else:
+            report.ok(f"Email codes stay valid for {expiry} s.")
+
+        rate = config.get("rate_limit_email_sent")
+        if isinstance(rate, int):
+            report.ok(f"The project sends at most {rate} emails an hour (Authentication -> Rate Limits).")
+
+    for provider in sorted(offered - {"email", "phone", "anonymous"}):
+        if not config.get(f"external_{provider}_enabled"):
+            # check_providers has already failed this one from the public
+            # settings; saying it twice would bury the findings only this
+            # function can make.
+            continue
+        if (config.get(f"external_{provider}_client_id") or "").strip():
+            report.ok(f"Provider '{provider}' has a client id, so its round trip can start.")
+        else:
+            report.fail(
+                f"Provider '{provider}' is enabled with no client id, so its button starts a round "
+                "trip the provider will refuse. Paste the OAuth client's id and secret under "
+                "Authentication -> Providers (LAUNCH_CHECKLIST.md 4.3)."
+            )
 
 
 def check_signing_keys(algorithms: set[str], report: Report) -> None:
@@ -125,9 +348,14 @@ def check_signing_keys(algorithms: set[str], report: Report) -> None:
 def main() -> int:
     url = (os.environ.get("SUPABASE_URL") or "").rstrip("/")
     api_key = os.environ.get("SUPABASE_ANON_KEY") or ""
-    configured_providers = os.environ.get("AUTH_PROVIDERS") or ""
 
     report = Report()
+
+    try:
+        offered = offered_providers()
+    except LookupError as error:
+        print(f"  FAIL    {error}")
+        return 1
 
     print("Configuration")
     if not url or not api_key:
@@ -155,7 +383,8 @@ def main() -> int:
     report.ok("Auth settings endpoint answered - the URL and key are both valid.")
 
     print("\nProviders")
-    check_providers(settings, configured_providers, report)
+    print(f"  Offered by the shipped app: {', '.join(sorted(offered))} (client/src/lib/supabase.ts)")
+    check_providers(settings, offered, report)
 
     print("\nToken signing")
     status, jwks = _get(f"{url}/auth/v1/.well-known/jwks.json", api_key)
@@ -164,8 +393,27 @@ def main() -> int:
     else:
         check_signing_keys({key.get("alg") for key in jwks.get("keys", []) if key.get("alg")}, report)
 
+    print("\nThe sender and the templates")
+    access_token = os.environ.get("SUPABASE_ACCESS_TOKEN") or ""
+    if not access_token:
+        print(
+            "  Not checked: custom SMTP, {{ .Token }} in the email templates, the code's length and "
+            "expiry, and each provider's client id. Those are in the project's auth config, which only "
+            "a personal access token can read - set SUPABASE_ACCESS_TOKEN (fine-grained, "
+            "auth_config_read and nothing more) to check them. LAUNCH_CHECKLIST.md 4.5."
+        )
+    else:
+        status, config = _get_as_owner(f"{MANAGEMENT_API}/projects/{project_ref(url)}/config/auth", access_token)
+        if status != 200:
+            report.fail(
+                f"GET /v1/projects/{project_ref(url)}/config/auth returned {status}. The token is wrong, "
+                "lacks auth_config_read, or belongs to an account that cannot see this project."
+            )
+        else:
+            check_auth_config(config, offered, report)
+
     # Not checked HERE, but no longer unchecked. The redirect allow-list is
-    # not in the settings document this script reads - the public API does not
+    # not in either document this script reads - the public API does not
     # publish it - but it is observable in behaviour, and
     # pipeline/check_auth_redirects.py asks it that way, daily. It found the
     # allow-list still naming the pre-org-migration Pages host on its first

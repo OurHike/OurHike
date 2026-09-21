@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
+import { MAP_BACKDROP } from '../map/style'
 import { render, screen, cleanup, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Legend, NAMED_TRAILS_SHOWN } from './Legend'
@@ -8,6 +9,7 @@ import { typeLabel } from './legendLabels'
 import { glyphPath, poiGlyphPath } from '../map/poiIcons'
 import { WARNING_GLYPH } from '../map/warningPin'
 import { CLOSURE_COLOR } from '../lib/closureStyle'
+import { blazePaintColor } from '../lib/blaze'
 
 // WIREFRAMES.md §2 (Legend) plus TESTING.md item 7. Two rules carry real
 // weight beyond layout:
@@ -20,14 +22,13 @@ import { CLOSURE_COLOR } from '../lib/closureStyle'
 //    prose speaking for categories that are not there - so the empty-state
 //    sentences and the drop summary are still decided by the viewport alone,
 //    and are asserted here to be.
-//  - Closure and serious-warning rows have NO hide control OF THEIR OWN, and
-//    say which of two states they are in. The rule they used to carry - "there
-//    is no affordance to turn a safety layer off, here or anywhere in the app"
-//    - was narrowed by #1047: the panel now has an Alerts switch, and what
-//    survives is that nothing STORED can reach a closure. So a panel with no
-//    switch on it still reads "Always shown", because on that panel it is
-//    simply true; a panel with one names it instead and greys the rows with
-//    it. Both are asserted below, because the pair is the claim.
+//  - Closure and serious-warning rows have NO hide control of their own, and
+//    read "Always shown" unconditionally. That rule - "there is no affordance
+//    to turn a safety layer off, here or anywhere in the app" - was narrowed
+//    by #1047's Alerts switch to "nothing STORED can reach a closure", and is
+//    back at full strength since the maintainer removed that switch on
+//    2026-09-20. The block below asserts the absence three ways, because the
+//    ways a control could come back are not the same.
 
 const BBOX = { west: -78, south: 39, east: -77, north: 40 }
 
@@ -460,6 +461,17 @@ describe('legend icons are the map’s icons', () => {
     expect(icon?.querySelector('.map-icon__disc')).toBeNull()
   })
 
+  it('lays the closure swatch on the paper the tape takes beside it (#1575)', () => {
+    // The tape's ground follows closureTapeGround, so the swatch beside a
+    // night map is the day paper under red stripes since 2026-09-18 - red
+    // and white, the way the canvas draws it there now.
+    render(<Legend {...PROPS} sheetAppearance={{ theme: 'dark' }} />)
+
+    expect(
+      iconIn(rowFor('Closure'))?.querySelector('.map-icon__closure-ground'),
+    ).toHaveAttribute('fill', MAP_BACKDROP.light)
+  })
+
   it('draws a serious warning as the hazard triangle', () => {
     render(<Legend {...PROPS} />)
 
@@ -541,151 +553,260 @@ describe('the whole legend row is the hide control', () => {
   })
 })
 
-// --- The Alerts switch (#1047) ---------------------------------------------
+// --- Nothing on this panel can hide a closure -------------------------------
 //
-// The first control this app has ever put over a safety layer, and the tests
-// that matter are the ones about what it is NOT. It is not stored - that is
-// chrome/alertLayerPanel.test.ts's job. Here: it exists only where a shell
-// offers the handler, it says what it costs before the tap rather than after,
-// and the grid above it never goes on claiming a mark the map is not drawing.
+// #1047 put an Alerts switch here, the first and only control this app ever
+// offered over a safety layer. The maintainer removed it on 2026-09-20 after
+// being shown the table of every mechanism that could take a closure or a
+// serious warning off the map: five said no, and this said "yes, for one
+// view".
+//
+// So this block is the opposite of the one it replaces. It asserts an absence,
+// and it asserts it three ways rather than one, because the ways a control
+// could come back are not the same: a checkbox beside the drought row, a
+// per-row toggle inside the grid, or an entry in the stored type picker.
 
-describe('the Alerts switch (#1047)', () => {
-  const ALERTS = { ...PROPS, onToggleAlerts: vi.fn() }
-
-  function alertsSwitch() {
-    return screen.getByRole('checkbox', { name: /alerts/i })
-  }
-
-  it('is not drawn where the shell offers no handler for it', () => {
-    // The rule the verified toggle and the downloads link both keep: a control
-    // that goes nowhere is worse than one that is not there. It matters more
-    // here than anywhere else on the panel, because a switch that appears to
-    // clear the bands and does not is a hiker believing the map is telling
-    // them everything when it is not.
+describe('nothing on this panel can hide a closure or a serious warning', () => {
+  it('offers no alerts control, by any role a control could take', () => {
+    // A shell cannot bring one back either: there is no handler prop left for
+    // it to pass, so this holds for every panel this app renders rather than
+    // for the default one.
     render(<Legend {...PROPS} />)
 
     expect(screen.queryByRole('checkbox', { name: /alerts/i })).toBe(null)
-  })
-
-  it('starts checked - the alerts are on the map', () => {
-    render(<Legend {...ALERTS} />)
-
-    expect(alertsSwitch()).toBeChecked()
-  })
-
-  it('hands the tap back to the shell rather than deciding anything itself', async () => {
-    const user = userEvent.setup()
-    const onToggleAlerts = vi.fn()
-    render(<Legend {...ALERTS} onToggleAlerts={onToggleAlerts} />)
-
-    await user.click(alertsSwitch())
-
-    expect(onToggleAlerts).toHaveBeenCalledTimes(1)
-  })
-
-  it('reads unchecked while the marks are off', () => {
-    render(<Legend {...ALERTS} alertsShown={false} />)
-
-    expect(alertsSwitch()).not.toBeChecked()
-  })
-
-  it('says what it does not take away, BEFORE the tap', () => {
-    // The moment that matters is while a hiker is deciding. A control that
-    // only explains itself once it is off has already let somebody turn it off
-    // believing they were going quiet about a closed trail.
-    render(<Legend {...ALERTS} />)
-
-    expect(alertsSwitch().closest('label')).toHaveTextContent(
-      /what is ahead of you is called out at the top/i,
-    )
-  })
-
-  it('promises the marks back at the next open, once they are off', () => {
-    render(<Legend {...ALERTS} alertsShown={false} />)
-
-    expect(alertsSwitch().closest('label')).toHaveTextContent(
-      /hidden until you open the app again/i,
-    )
-    expect(alertsSwitch().closest('label')).toHaveTextContent(
-      /what is ahead of you is still called out at the top/i,
-    )
+    expect(screen.queryByRole('switch', { name: /alerts/i })).toBe(null)
+    expect(screen.queryByRole('button', { name: /alerts/i })).toBe(null)
   })
 
   it.each(['Closure', 'Serious warning'])(
-    'points the %s row at the switch rather than promising "always"',
+    'promises "Always shown" on the %s row, with nothing to qualify it',
     (label) => {
-      // The row and the switch are on the same panel, six lines apart. A row
-      // reading "Always shown" beside a switch that plainly is not always is
-      // the panel contradicting itself in one screenful.
-      render(<Legend {...ALERTS} />)
+      // The tag had three branches while the switch existed - "Alerts off",
+      // "Alerts", "Always shown" - because a row promising "always" beside a
+      // switch that plainly was not always would have been the panel
+      // contradicting itself in one screenful. There is one branch now, and
+      // this is the assertion that it is the true one.
+      render(<Legend {...PROPS} />)
 
-      expect(rowFor(label)).toHaveTextContent(/alerts/i)
-      expect(rowFor(label)).not.toHaveTextContent(/always shown/i)
+      expect(rowFor(label)).toHaveTextContent(/always shown/i)
+      expect(rowFor(label)).not.toHaveTextContent(/alerts off/i)
     },
   )
 
   it.each(['Closure', 'Serious warning'])(
-    'greys the %s row out when the marks come off the map',
+    'never greys the %s row, because nothing can take it off the map',
     (label) => {
-      // The one case the older "never grey a safety row" rule does not cover,
-      // and the reason it does not: that rule is about the stored category
-      // filter, which still cannot reach these. This is the map actually not
-      // drawing them, and a row that stayed lit would be the panel claiming a
-      // band that is not there.
-      render(<Legend {...ALERTS} alertsShown={false} />)
+      // `legend__row--hidden` is how this panel says "not on the map right
+      // now". A safety row wearing it would be the panel reporting a state
+      // that can no longer occur.
+      render(<Legend {...PROPS} />)
 
-      expect(rowFor(label)).toHaveClass('legend__row--hidden')
-      expect(rowFor(label)).toHaveTextContent(/alerts off/i)
+      expect(rowFor(label)).not.toHaveClass('legend__row--hidden')
     },
   )
 
-  it('leaves the safety rows without a toggle of their own, either way', () => {
-    // These rows are not category switches and must not grow into them: the
-    // stored preference is what could outlive the day, and #1047 keeps it out
-    // of reach on purpose.
-    render(<Legend {...ALERTS} alertsShown={false} />)
+  it.each(['Closure', 'Serious warning'])(
+    'leaves the %s row without a toggle of its own',
+    (label) => {
+      // These rows are not category switches and must not grow into them: a
+      // row toggle writes the stored preference, which is the one thing that
+      // could outlive the day and reach a second phone.
+      render(<Legend {...PROPS} />)
 
-    expect(within(rowFor('Closure')).queryByRole('button')).not.toBeInTheDocument()
-    expect(
-      within(rowFor('Serious warning')).queryByRole('button'),
-    ).not.toBeInTheDocument()
-  })
-
-  it('keeps "Always shown" on a panel that genuinely has no switch', () => {
-    // The other half of the pair. Where nothing on the panel can hide these
-    // marks, the original promise is the accurate one and stays.
-    render(<Legend {...PROPS} />)
-
-    expect(rowFor('Closure')).toHaveTextContent(/always shown/i)
-  })
-
-  it('never promises "always" over a map that is not drawing them', () => {
-    // A shell that draws no alerts and offers no way back is not a state this
-    // app produces, and the tag still may not read "Always shown" in it: what
-    // is on the screen decides this word, never what the panel can offer.
-    render(<Legend {...PROPS} alertsShown={false} />)
-
-    expect(rowFor('Closure')).not.toHaveTextContent(/always shown/i)
-    expect(rowFor('Closure')).toHaveClass('legend__row--hidden')
-  })
+      expect(within(rowFor(label)).queryByRole('button')).not.toBeInTheDocument()
+    },
+  )
 
   it('never offers alerts through the type picker', () => {
     // The picker writes `waypoint_types_shown`, which syncs to an account. An
-    // "Alerts" entry there would be the one shape #1047 rules out: a phone
-    // that OPENS with the bands already off, days later, on a different
-    // handset.
+    // "Alerts" entry there would be the one shape #1047 ruled out and the
+    // reason its own switch was a `useState`: a phone that OPENS with the
+    // bands already off, days later, on a different handset.
     render(
-      <Legend
-        {...ALERTS}
-        onOnlyType={vi.fn()}
-        onShowAllTypes={vi.fn()}
-        typesShown={[]}
-      />,
+      <Legend {...PROPS} onOnlyType={vi.fn()} onShowAllTypes={vi.fn()} typesShown={[]} />,
     )
 
     const picker = screen.getByRole('combobox', { name: /showing waypoint types/i })
     expect(within(picker).queryByRole('option', { name: /alert/i })).toBe(null)
     expect(within(picker).queryByRole('option', { name: /closure/i })).toBe(null)
+    expect(within(picker).queryByRole('option', { name: /warning/i })).toBe(null)
+  })
+})
+
+// --- The Blaze colors toggle (#1575) ----------------------------------------
+//
+// The map's lines are one red by default and this is where the hues come
+// back. What is tested: it exists only where the shell offers the handler,
+// it says which state the map is in before the tap, it is disabled under red
+// light with the reason, it is the first row under the head and above the
+// pin grid as a `role="switch"` (the maintainer's follow-up: "Move the blaze
+// color option up to be the first one, directly under the Pills ... Can it be
+// a toggle instead of a checkbox?"), and - the maintainer's second
+// instruction - the rows below it keep their blaze swatches whichever way it
+// is set.
+
+describe('the Blaze colors switch (#1575)', () => {
+  const BLAZES = { ...PROPS, onToggleBlazeColors: vi.fn() }
+  const NAMED_TRAILS = [
+    {
+      name: 'Appalachian Trail',
+      source: 'centerline',
+      blazeColor: 'White',
+      throughRoute: true,
+      takeable: true,
+      chosen: true,
+      anchor: [-74.1, 41.25] as [number, number],
+      badgeFit: 'full' as const,
+      badgeAnchor: 'left',
+      properties: {},
+    },
+    {
+      name: 'Long Path',
+      source: 'oprhp_trails',
+      blazeColor: 'Aqua',
+      throughRoute: false,
+      takeable: false,
+      chosen: false,
+      anchor: null,
+      badgeFit: 'full' as const,
+      badgeAnchor: 'left',
+      properties: {},
+    },
+  ]
+
+  /** By its role and its name: a `role="switch"` button, named by the row's
+   *  name span so the name opens "Blaze colors" and carries the sentence. */
+  function blazesSwitch() {
+    return screen.getByRole('switch', { name: /^Blaze colors/ })
+  }
+
+  function blazesRow() {
+    return blazesSwitch().closest('.legend__blazes')
+  }
+
+  it('is not drawn where the shell offers no handler for it', () => {
+    render(<Legend {...PROPS} blazeColorsShown={false} />)
+
+    expect(screen.queryByRole('switch', { name: /^Blaze colors/ })).toBe(null)
+  })
+
+  it('is a switch, not a checkbox, and reads off over a map drawn in one red', () => {
+    render(<Legend {...BLAZES} blazeColorsShown={false} />)
+
+    expect(blazesSwitch().tagName).toBe('BUTTON')
+    expect(screen.queryByRole('checkbox', { name: /^Blaze colors/ })).toBe(null)
+    expect(blazesSwitch()).not.toBeChecked()
+    expect(blazesRow()).toHaveTextContent(
+      'Every trail as one red line. Tap a line for its blaze.',
+    )
+  })
+
+  it('reads on over a map drawn in its hues, and says so', () => {
+    render(<Legend {...BLAZES} blazeColorsShown />)
+
+    expect(blazesSwitch()).toBeChecked()
+    expect(blazesRow()).toHaveTextContent('Each trail in the color of its blazes.')
+  })
+
+  it('hands the tap back to the shell rather than deciding anything itself', async () => {
+    const user = userEvent.setup()
+    const onToggleBlazeColors = vi.fn()
+    render(
+      <Legend
+        {...BLAZES}
+        blazeColorsShown={false}
+        onToggleBlazeColors={onToggleBlazeColors}
+      />,
+    )
+
+    await user.click(blazesSwitch())
+
+    expect(onToggleBlazeColors).toHaveBeenCalledTimes(1)
+  })
+
+  it('is disabled under red light, says why, and takes no tap', async () => {
+    // Red light draws every line one red-amber before the switch is
+    // consulted (map/style.ts's blazeLineColor), so a live switch here would
+    // be a control that visibly does nothing.
+    const user = userEvent.setup()
+    const onToggleBlazeColors = vi.fn()
+    render(
+      <Legend
+        {...BLAZES}
+        blazeColorsShown={false}
+        onToggleBlazeColors={onToggleBlazeColors}
+        sheetAppearance={{ mapStyle: 'night_hike', redLight: true }}
+      />,
+    )
+
+    expect(blazesSwitch()).toBeDisabled()
+    expect(blazesRow()).toHaveTextContent(
+      'Red light draws every trail in one color until it is off.',
+    )
+    await user.click(blazesSwitch())
+    expect(onToggleBlazeColors).not.toHaveBeenCalled()
+  })
+
+  it('is the first row under the head, above the pin grid and every other switch', () => {
+    // "Move the blaze color option up to be the first one, directly under
+    // the Pills. Have the most prominent thing in the legend." On the phone
+    // the head is the title row; on the desktop it is the rail's pills,
+    // handed in as `head`, and the row follows either.
+    const { container } = render(
+      <Legend
+        {...BLAZES}
+        onToggleDrought={vi.fn()}
+        blazeColorsShown={false}
+        trailsInView={NAMED_TRAILS}
+      />,
+    )
+
+    const head = container.querySelector('.legend__head')!
+    const blazes = container.querySelector('.legend__blazes')!
+    const firstPin = rowFor('Shelter')
+    const drought = container.querySelector('.legend__drought')!
+    const following = Node.DOCUMENT_POSITION_FOLLOWING
+    expect(head.compareDocumentPosition(blazes) & following).toBeTruthy()
+    expect(blazes.compareDocumentPosition(firstPin) & following).toBeTruthy()
+    expect(blazes.compareDocumentPosition(drought) & following).toBeTruthy()
+    // Nothing but the head sits above it.
+    expect(head.nextElementSibling).toBe(blazes)
+  })
+
+  it('follows the rail’s pills on a persistent panel', () => {
+    const { container } = render(
+      <Legend
+        {...BLAZES}
+        persistent
+        head={<div data-testid="pills">Legend · In view</div>}
+        blazeColorsShown={false}
+      />,
+    )
+
+    expect(screen.getByTestId('pills').nextElementSibling).toBe(
+      container.querySelector('.legend__blazes'),
+    )
+  })
+
+  it('keeps the "Trails in view" swatches in their blaze hues while the map is one red', () => {
+    // The maintainer, 2026-09-17: "Changing the color option should only
+    // affect the map itself, not the other options." With the switch off
+    // these rows are the key the removed blaze rows used to be, so a red
+    // swatch here would be the panel losing the one place a named trail's
+    // blaze is still read without a tap.
+    const { container } = render(
+      <Legend
+        {...BLAZES}
+        blazeColorsShown={false}
+        sheetAppearance={{ theme: 'light', blazeColorsShown: false }}
+        trailsInView={NAMED_TRAILS}
+      />,
+    )
+
+    const inks = [
+      ...container.querySelectorAll('.legend__swatch .map-icon__trail-blaze'),
+    ].map((path) => path.getAttribute('stroke'))
+    expect(inks).toEqual([blazePaintColor('White'), blazePaintColor('Aqua')])
   })
 })
 
@@ -1029,6 +1150,9 @@ describe('showing one category alone', () => {
     onOnlyType?: (type: string) => void
     onShowAllTypes?: () => void
     typesShown?: readonly string[]
+    waypointsShown?: boolean
+    onSetWaypointsShown?: (shown: boolean) => void
+    belowPoiZoom?: boolean
   }) {
     return render(
       <Legend
@@ -1175,6 +1299,157 @@ describe('showing one category alone', () => {
     expect(
       within(picker()).getByRole('option', { name: 'All types' }),
     ).toBeInTheDocument()
+  })
+
+  // --- "None", the far end of the same range (2026-09-20) ------------------
+  //
+  // The waypoint master gate was a "Show points" pill floating over the map
+  // for one day. The maintainer moved it here from three drawn frames:
+  // *"Maybe the show points should be part of the legend. Can this be
+  // integrated into the showing dropdown?"*
+  //
+  // What these assert is the join, which is the part a move like this gets
+  // wrong: the picker has to WRITE the gate, DISPLAY the gate over its own
+  // stored value, and LEAVE the gate when any other entry is chosen. A picker
+  // that could enter "None" and not come out of it is the same trap
+  // `onShowAllTypes` exists to avoid on the category axis.
+
+  it('offers None only where a shell has the gate to move', () => {
+    // The rule every optional control on this panel follows: no affordance
+    // without somewhere for it to go.
+    renderLegend(wired())
+    expect(within(picker()).queryByRole('option', { name: 'None' })).toBe(null)
+
+    cleanup()
+    renderLegend(wired({ waypointsShown: true, onSetWaypointsShown: vi.fn() }))
+    expect(within(picker()).getByRole('option', { name: 'None' })).toBeInTheDocument()
+  })
+
+  it('lists None last, so the range runs from most drawn to least', () => {
+    // All types, then the categories, then nothing. A hiker scanning the list
+    // passes everything they might have wanted before reaching the empty end.
+    renderLegend(wired({ waypointsShown: true, onSetWaypointsShown: vi.fn() }))
+
+    const options = within(picker())
+      .getAllByRole('option')
+      .map((option) => option.textContent)
+
+    expect(options[0]).toBe('All types')
+    expect(options.at(-1)).toBe('None')
+  })
+
+  it('turns the waypoints off when None is chosen', async () => {
+    const props = wired({ waypointsShown: true, onSetWaypointsShown: vi.fn() })
+    renderLegend(props)
+
+    await userEvent.selectOptions(picker(), 'None')
+
+    expect(props.onSetWaypointsShown).toHaveBeenCalledWith(false)
+  })
+
+  it('reads None over a map drawing no waypoints, whatever the stored filter says', () => {
+    // The picker says what the MAP is doing. A control reading "All types"
+    // over an empty map would be this panel disowning the screen - the same
+    // rule the safety rows follow.
+    renderLegend(
+      wired({ waypointsShown: false, onSetWaypointsShown: vi.fn(), typesShown: [] }),
+    )
+
+    expect(picker()).toHaveValue('\0none')
+  })
+
+  it('comes back out of None when a category is chosen', async () => {
+    // THE JOIN THIS BLOCK EXISTS FOR. A hiker at "None" choosing "Water" is
+    // asking for water on the map. A picker that wrote the category and left
+    // the gate shut would show them an empty screen and a control claiming
+    // otherwise - and there would be no way back, because every other entry
+    // does the same thing.
+    const props = wired({ waypointsShown: false, onSetWaypointsShown: vi.fn() })
+    renderLegend(props)
+
+    await userEvent.selectOptions(picker(), 'water')
+
+    expect(props.onSetWaypointsShown).toHaveBeenCalledWith(true)
+    expect(props.onOnlyType).toHaveBeenCalledWith('water')
+  })
+
+  it('comes back out of None for "All types" too', async () => {
+    const props = wired({ waypointsShown: false, onSetWaypointsShown: vi.fn() })
+    renderLegend(props)
+
+    await userEvent.selectOptions(picker(), 'All types')
+
+    expect(props.onSetWaypointsShown).toHaveBeenCalledWith(true)
+    expect(props.onShowAllTypes).toHaveBeenCalled()
+  })
+
+  it('leaves the gate alone when the picker is already showing points', async () => {
+    // No pointless write. `onSetWaypointsShown` marks the state as
+    // hiker-chosen (lib/showPoints.ts), so firing it on every category pick
+    // would make the auto-on rule unreachable after the first one.
+    const props = wired({ waypointsShown: true, onSetWaypointsShown: vi.fn() })
+    renderLegend(props)
+
+    await userEvent.selectOptions(picker(), 'water')
+
+    expect(props.onSetWaypointsShown).not.toHaveBeenCalled()
+    expect(props.onOnlyType).toHaveBeenCalledWith('water')
+  })
+
+  it('greys every category row under None, and says why above the grid', () => {
+    // THE GAP THE MOVE OPENS, closed. A pill floating over the map carried its
+    // own state where a hiker could see it; a picker three rows down a phone's
+    // legend does not, so the grid under it has to be honest by itself.
+    //
+    // Greyed rather than absent, for the reason the hidden-category rows are:
+    // the grid is the KEY - what a mark means - and a category that vanished
+    // when it was switched off would leave a hiker unable to find it again.
+    renderLegend(wired({ waypointsShown: false, onSetWaypointsShown: vi.fn() }))
+
+    expect(screen.getByRole('listitem', { name: 'Water' })).toHaveClass(
+      'legend__row--hidden',
+    )
+    expect(screen.getByText(/waypoints are off/i)).toBeInTheDocument()
+    // And the safety row is NOT greyed, because "None" cannot reach a closure.
+    expect(screen.getByRole('listitem', { name: 'Closure' })).not.toHaveClass(
+      'legend__row--hidden',
+    )
+  })
+
+  it('leaves the grid lit while the waypoints are drawing', () => {
+    // The other half, so the assertion above cannot pass on a panel that greys
+    // everything all the time.
+    renderLegend(wired({ waypointsShown: true, onSetWaypointsShown: vi.fn() }))
+
+    expect(screen.getByRole('listitem', { name: 'Water' })).not.toHaveClass(
+      'legend__row--hidden',
+    )
+    expect(screen.queryByText(/waypoints are off/i)).toBe(null)
+  })
+
+  it('says the seam’s sentence rather than the picker’s below the seam', () => {
+    // Both are true down there and only one is useful: the floor is why the
+    // map is empty and zooming in is the fix, so pointing a hiker at a picker
+    // that would not change what they are looking at is the wrong answer.
+    renderLegend(
+      wired({ waypointsShown: false, onSetWaypointsShown: vi.fn(), belowPoiZoom: true }),
+    )
+
+    expect(screen.getByText(/appear from a closer zoom/i)).toBeInTheDocument()
+    expect(screen.queryByText(/waypoints are off/i)).toBe(null)
+  })
+
+  it('never offers None as a category to the stored preference', () => {
+    // The sentinel is not a `poi_type`, and handing it to `onOnlyType` would
+    // write "\0none" into `waypoint_types_shown` - a value that syncs to an
+    // account and that no other client would understand.
+    const props = wired({ waypointsShown: true, onSetWaypointsShown: vi.fn() })
+    renderLegend(props)
+
+    return userEvent.selectOptions(picker(), 'None').then(() => {
+      expect(props.onOnlyType).not.toHaveBeenCalled()
+      expect(props.onShowAllTypes).not.toHaveBeenCalled()
+    })
   })
 })
 
@@ -1381,6 +1656,15 @@ describe('below the zoom waypoints are drawn at', () => {
     // describes (#528, then #603's dots, now the trails-only corridor view).
     // Both ranks stop at the seam again, so "appear from a closer zoom" is
     // the true sentence, and "pan or zoom out" stays the wrong direction.
+    // Both halves since #1585: the dots ARE drawn down here, the pins are
+    // not. "Appear from a closer zoom" alone was false about the first of
+    // them, and "pan or zoom out" is still the wrong direction.
+    // FIFTH WORDING (2026-09-20). Both ranks floor at the seam again, so the
+    // dots half of the #1585 sentence became the false half - and a legend
+    // promising dots over a map that has none is the failure the very first
+    // version of this line was written to end.
+    expect(screen.getByText(/appear from a closer zoom/i)).toBeInTheDocument()
+    expect(screen.queryByText(/show as dots at this zoom/i)).not.toBeInTheDocument()
     expect(screen.getByText(/appear from a closer zoom/i)).toBeInTheDocument()
     expect(screen.queryByText(/pan or zoom out/i)).not.toBeInTheDocument()
   })
@@ -1405,7 +1689,12 @@ describe('below the zoom waypoints are drawn at', () => {
       />,
     )
 
+    // FIFTH WORDING (2026-09-20). Both ranks floor at the seam again, so the
+    // dots half of the #1585 sentence became the false half - and a legend
+    // promising dots over a map that has none is the failure the very first
+    // version of this line was written to end.
     expect(screen.getByText(/appear from a closer zoom/i)).toBeInTheDocument()
+    expect(screen.queryByText(/show as dots at this zoom/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/fit at this zoom/i)).not.toBeInTheDocument()
     // Plain names, no "none of 1 shown" fractions: the fraction is the
     // collision engine's report, and it was not consulted. (Two shelter
@@ -1577,7 +1866,7 @@ describe('the "Trails in view" block (#1283)', () => {
 
   it('lists one row per trail the map is drawing, below the pin grid and its switches', () => {
     const { container } = render(
-      <Legend {...PROPS} trailsInView={TRAILS} onToggleAlerts={vi.fn()} />,
+      <Legend {...PROPS} trailsInView={TRAILS} onToggleVerifiedOnly={vi.fn()} />,
     )
 
     const block = screen.getByRole('region', { name: 'Trails in view' })
@@ -1594,12 +1883,16 @@ describe('the "Trails in view" block (#1283)', () => {
     // down ("takes up a lot of space") so the key a hiker opens the panel
     // for is what the panel opens on.
     const pinRow = rowFor('Water')
-    const alerts = container.querySelector('.legend__alerts')!
+    // The last switch under the grid, which was the Alerts row until
+    // 2026-09-20 and is the Verified? checkbox now that the Alerts row is
+    // gone. What the assertion is about has not changed: this block sits
+    // below everything the panel opens for.
+    const lastSwitch = container.querySelector('.legend__verified')!
     expect(
       pinRow.compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
     expect(
-      alerts.compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING,
+      lastSwitch.compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
   })
 

@@ -347,6 +347,24 @@
   color: var(--danger);
 }
 
+/* THE LOCATE BUTTON (#1581), built exactly as the report door above and
+ * inheriting everything the same way. Its glyph is the hiker's mark itself
+ * (map/mapChrome.ts's LOCATE_GLYPH, map/positionMark.ts's proportions), in
+ * `--fg-1` - stone-900 on the white chip, bone on the ink one - which is the
+ * ink the mark is drawn in on the sheet under it. Disabled while there is no
+ * fix to centre on: present and plainly off, at the same 0.4 the dark theme
+ * gives a disabled zoom button below, rather than absent. */
+.map-view .map-locate__button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-1);
+}
+.map-view .map-locate__button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* The same controls under the dark theme.
  *
  * maplibre-gl.css hardcodes a white group with dark glyphs, and nothing in it
@@ -499,6 +517,40 @@
   display: none;
 }
 
+/* Rendered only in the sidebar layout, and by chrome/TabBar.tsx rather than
+   by a rule in here - AccountButton.tsx carries the reasoning, which is that
+   a button hidden by `display: none` is still a button in the DOM and the
+   three places this app can draw one have to add up to exactly one. So
+   nothing here switches it off; desktop.css only places it. */
+.tab-bar__account {
+  display: flex;
+}
+
+.tab-bar__account-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--header-button-size, 38px);
+  height: var(--header-button-size, 38px);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  /* The chrome's own foreground, as the tab labels and the wordmark use -
+     this button only ever sits on `--bg-chrome`. */
+  color: var(--fg-chrome-1);
+  position: relative;
+}
+
+/* The same trick `.map-header__button` uses: a 38px circle a thumb can still
+   hit, by growing the hit area rather than the drawn one. */
+.tab-bar__account-button::before {
+  content: '';
+  position: absolute;
+  inset: calc((var(--header-button-size, 38px) - var(--min-touch-target, 44px)) / 2);
+}
+
 .tab-bar__brand-icon {
   display: block;
   width: 24px;
@@ -626,6 +678,26 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+
+  /* HOW FAR ABOVE THIS BOX'S BOTTOM EDGE ANYTHING OF OURS HAS TO SIT to clear
+     MapLibre's scale bar. map/mapChrome.ts puts the scale bar at
+     'bottom-left'; the compass, the locate button and the report door all go
+     'bottom-right'. So this corner is the one the app may float things in,
+     and the scale bar is the only thing already in it.
+
+     30px is measured rather than derived - the Harriman z12 render of
+     2026-09-10, where .map-screen__dropped at 12px drew across the "1000 ft"
+     bar - and covers the bar's box plus MapLibre's own 10px control margin.
+     --space-3 is the gap above it.
+
+     ONE FIGURE, NAMED ONCE, which is the same argument .turn-card's comment
+     makes about the other corner. Only .map-screen__dropped reads it today -
+     a Show points switch read it too for one day, before moving into the
+     legend - and it stays a token rather than a literal because the next
+     thing floated into this corner must not be a second guess at the same
+     clearance. src/desktop.css raises it where the credit strip joins this
+     box. */
+  --over-map-floor: calc(var(--space-3, 12px) + 30px);
 }
 
 /* A row of its own rather than an overlay in the corner, which is where it
@@ -1257,17 +1329,27 @@
    alert - the panel is where the per-category detail lives. */
 .map-screen__dropped {
   position: absolute;
-  /* Above the scale bar, not on it: MapLibre's bottom-left control sits in
-     the same corner (10px in, ~20px tall), and at 12px the chip drew across
-     the "1000 ft" bar (the Harriman z12 render of 2026-09-10). 30px clears
-     the bar's box with its own gap; measured on that render, not derived. */
-  bottom: calc(var(--space-3, 12px) + 30px);
+  /* Above the scale bar, not on it - .map-screen__canvas's --over-map-floor
+     is where that figure and its measurement live now.
+
+     A Show points switch sat between this and the scale bar for one day
+     (2026-09-20) and the chip was raised by that switch's 44 px plus a step.
+     The switch moved into the legend's Showing picker the same day, so the
+     chip is back on the floor itself - the one figure both controls in this
+     corner ever read. */
+  bottom: var(--over-map-floor);
   left: var(--space-3, 12px);
   z-index: 2;
   margin: 0;
   padding: 2px var(--space-2, 8px);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--bg-raised) 82%, transparent);
+  /* `--bg-raised` until 2026-09-20, and nothing has ever defined it - so this
+     declaration was invalid at computed-value time and the chip rendered with
+     no background at all from #528 onwards, map showing straight through the
+     figures. --surface-over-map is the token for exactly this surface and the
+     reason it exists (#336: a screen surface over the map came out at 1.06:1
+     against it). */
+  background: color-mix(in srgb, var(--surface-over-map) 82%, transparent);
   color: var(--fg-2);
   font-size: 12px;
   pointer-events: none;
@@ -1465,37 +1547,110 @@
   flex: 1;
 }
 
-/* The alerts switch (#1047, Legend.tsx). Shaped exactly like .legend__drought
-   above, down to the second line of smaller text, because it is the same kind
-   of thing and a hiker should not have to work out that it is: a map overlay,
-   named, with a sentence under the name and a checkbox at the end. The one
-   place it deliberately differs is the sentence itself, which on the drought
-   row carries numbers and here carries what the switch does NOT take away. */
-.legend__alerts {
+/* The blaze colours toggle (#1575, Legend.tsx): the first row under the
+   head and the most prominent thing on the panel, at the maintainer's ask of
+   2026-09-17 ("Move the blaze color option up to be the first one, directly
+   under the Pills. Have the most prominent thing in the legend. Can it be a
+   toggle instead of a checkbox?"). A name at the panel title's size with a
+   sentence under it, and a switch - a track and a knob - rather than the
+   13px checkbox the rows under the grid use, because on and off is what it
+   is. The row closes with a heavier rule than any row below carries, so the
+   panel reads as this control and then the key. */
+.legend__blazes {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-2, 8px);
+  gap: var(--space-3, 12px);
   min-height: var(--min-touch-target);
-  margin-top: var(--space-2, 8px);
-  padding-top: var(--space-2, 8px);
-  border-top: 1px solid var(--border-1);
-  font-size: 13px;
-  cursor: pointer;
+  margin: var(--space-2, 8px) 0;
+  padding-bottom: var(--space-2, 8px);
+  border-bottom: 2px solid var(--border-2);
 }
 
-.legend__alerts-name {
+.legend__blazes-name {
   flex: 1;
   display: flex;
   flex-direction: column;
   gap: 2px;
+  font-size: 15px;
+  font-weight: 600;
 }
 
-.legend__alerts-detail {
+.legend__blazes-detail {
   /* 12px: the #1054 floor under sun-read prose. --fg-2: #1057's fix -
      --text-2 was never declared, so the line inherited body colour. */
   font-size: 12px;
+  font-weight: 400;
   color: var(--fg-2);
+}
+
+/* The switch: a 52 by 30 track with a 24px knob that slides across it, in a
+   button no shorter than the touch floor. Brand green on and the mid grey
+   (--fg-3) off, with the knob in the surface colour, so the knob stands off
+   the track in both themes and both states - white on forest and on stone by
+   day, ink on moss and on bone at night - and the state reads from position
+   and colour together rather than from either alone: a colour-blind hiker,
+   or a sun-washed screen, still gets the position. Semantic tokens only,
+   which themeTokens.test.ts holds; the first cut read --paper-0 and failed
+   it. The sizes are the toggle's own rather than a token: nothing else in
+   the chrome draws one yet, and a second toggle is where a token would earn
+   its place. */
+.legend__switch {
+  position: relative;
+  flex: 0 0 auto;
+  width: 52px;
+  min-height: var(--min-touch-target);
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.legend__switch::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  box-sizing: border-box;
+  width: 52px;
+  height: 30px;
+  transform: translateY(-50%);
+  border: 1px solid var(--fg-3);
+  border-radius: 15px;
+  background: var(--fg-3);
+  transition: background 120ms ease;
+}
+
+.legend__switch-knob {
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 24px;
+  height: 24px;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  background: var(--bg-surface);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 30%);
+  transition: left 120ms ease;
+}
+
+.legend__switch[aria-checked='true']::before {
+  border-color: var(--brand-primary);
+  background: var(--brand-primary);
+}
+
+.legend__switch[aria-checked='true'] .legend__switch-knob {
+  left: 25px;
+}
+
+.legend__switch:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.legend__switch:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
 }
 
 /* A safety row spans the grid rather than sitting in one column of it.
@@ -2776,7 +2931,10 @@
   font-size: 13px;
   font-weight: 600;
   color: var(--fg-1);
-  background: var(--bg-raised, var(--bg-0));
+  /* `--bg-raised, --bg-0` until 2026-09-20 and neither has ever been defined,
+     so this button had no face - only its border. --bg-surface is what
+     .poi-card__observation, the other button on this card, already uses. */
+  background: var(--bg-surface);
   border: 1px solid var(--border-2, var(--bg-sunken));
   border-radius: var(--radius-pill, 999px);
   cursor: pointer;
@@ -3370,7 +3528,10 @@ a.poi-card__credit::after {
   font: inherit;
   font-size: 12px;
   color: var(--fg-1);
-  background: var(--bg-raised, var(--bg-0));
+  /* See .poi-card__expand: the token this reached for does not exist, so the
+     field was transparent. --bg-surface is what every other text input in the
+     app uses (.search__input, .legend's fields, reporting.css). */
+  background: var(--bg-surface);
   border: 1px solid var(--bg-sunken);
   border-radius: 8px;
   resize: vertical;
@@ -3416,7 +3577,9 @@ a.poi-card__credit::after {
 }
 
 .poi-card__observation:hover {
-  background: var(--bg-raised, var(--bg-0));
+  /* One step off the card rather than the undefined token this reached for,
+     which left the hover indistinguishable from the rest state. */
+  background: var(--surface-card-alt);
   color: var(--fg-1);
 }
 

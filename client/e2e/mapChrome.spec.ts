@@ -22,21 +22,21 @@
 // STATES.
 //
 //  - **The three switches**, each asserted at the default this build ships -
-//    Alerts on, Verified? off, Drought off - before anything is toggled. A
-//    persistence test that starts from the value it ends on proves nothing,
-//    and neither does a toggle test.
-//  - **What a toggle reaches.** Alerts is the switch with something to see:
-//    the legend's own safety rows re-tag themselves and the map's status strip
-//    prints "Alerts hidden" (chrome/StatusStrip.tsx). That is the mechanism -
-//    the panel and the map agreeing about the canvas - rather than a number.
-//  - **What each switch is allowed to remember**, which is a safety claim
-//    rather than a preference one. chrome/alertLayerPanel.ts keeps the alert
-//    flag in `useState` on the maintainer's constraint for #1047 ("the map
-//    should always open to the alerts being shown"), while
-//    chrome/waypointFiltersPanel.ts writes the drought tint through the stored
-//    preferences. A cold boot is what tells those two apart, so a cold boot is
-//    what this asserts - through bootFreshPage(), for the reload trap
-//    support/seed.ts documents.
+//    Verified? off, Drought off, Blaze colors off (#1575) - before anything is
+//    toggled. A persistence test that starts from the value it ends on proves
+//    nothing, and neither does a toggle test.
+//  - **That there is no fourth.** Alerts was one until 2026-09-20 and was the
+//    only control this app ever put over a safety layer; the maintainer
+//    removed it. What is asserted is the absence, on the running app, with
+//    the legend open - the state a hiker would have had to be in to reach it.
+//  - **What each switch is allowed to remember**, which is a preference claim
+//    now that the safety one has no control attached to it.
+//    chrome/waypointFiltersPanel.ts writes the drought tint and the blaze
+//    colours through the stored preferences, and Verified? is ephemeral
+//    because #530 moved the category filter into storage and left it out. A
+//    cold boot is what tells those apart, so a cold boot is what this asserts
+//    - through bootFreshPage(), for the reload trap support/seed.ts
+//    documents.
 //  - **Data freshness: which absence.** This environment publishes no
 //    waypoints, so both no-data sentences are reachable and they are not the
 //    same sentence. Below the pin seam the panel says the app is declining to
@@ -112,7 +112,7 @@ async function openLegend(page: Page) {
 }
 
 test.describe('the map’s chrome', () => {
-  test('entrance and exit: the legend’s three switches open on their shipped defaults, and go away with the sheet', async ({
+  test('entrance and exit: the legend’s four switches open on their shipped defaults, and go away with the sheet', async ({
     page,
   }) => {
     await openMap(page)
@@ -122,20 +122,32 @@ test.describe('the map’s chrome', () => {
     // 13x13 checkboxes a finger can land on - measured through
     // getBoundingClientRect while writing this - so the control itself is
     // both what is clicked and what is asserted. Their accessible names come
-    // from the wrapping <label>, which is why each is anchored: the alerts
-    // label folds its whole explanatory sentence into its name.
+    // from the wrapping <label>, which is why each is anchored: a label that
+    // folds an explanatory sentence into its name would not match exactly.
     const verified = legend.getByRole('checkbox', { name: /Verified/ })
-    const alerts = legend.getByRole('checkbox', { name: /^Alerts/ })
     const drought = legend.getByRole('checkbox', { name: /^Drought/ })
+    // A `role="switch"` button rather than a checkbox (#1575, the
+    // maintainer's "Can it be a toggle instead of a checkbox?"); Playwright
+    // reads its state off aria-checked exactly as it reads an input's.
+    const blazes = legend.getByRole('switch', { name: /^Blaze colors/ })
 
     // The defaults this build ships, each with a decision behind it:
-    // alerts on every launch (chrome/alertLayerPanel.ts, #1047), Verified?
-    // off because "an unconfirmed spring is still the best information
-    // anyone has" (chrome/waypointFiltersPanel.ts), drought off
-    // (lib/userPreferences.ts's DEFAULT_PREFERENCES).
-    await expect(alerts).toBeChecked()
+    // Verified? off because "an unconfirmed spring is still the best
+    // information anyone has" (chrome/waypointFiltersPanel.ts), drought off
+    // (lib/userPreferences.ts's DEFAULT_PREFERENCES), and blaze colours off
+    // for the same file's reason - every trail one red line until asked
+    // (#1575), so the switch reads unchecked over a map drawn that way.
+    //
+    // AND NO ALERTS SWITCH, asserted here rather than in a test of its own
+    // because this is the panel a hiker would have found it on. It was a
+    // checkbox named "Alerts" until 2026-09-20; both roles are checked,
+    // since a control could come back as either.
+    await expect(legend.getByRole('checkbox', { name: /^Alerts/ })).toHaveCount(0)
+    await expect(legend.getByRole('switch', { name: /^Alerts/ })).toHaveCount(0)
+    await expect(page.getByText('Alerts hidden')).toHaveCount(0)
     await expect(verified).not.toBeChecked()
     await expect(drought).not.toBeChecked()
+    await expect(blazes).not.toBeChecked()
 
     // Verified? is live, and its own state is ALL that can be asserted here:
     // the filter has nothing to filter, so no count and no sentence on this
@@ -151,64 +163,54 @@ test.describe('the map’s chrome', () => {
     // closed while leaving its checkboxes in the tree would leave a hiker
     // able to toggle a safety layer through a panel they cannot see.
     await page.getByRole('button', { name: 'Close legend' }).click()
-    await expect(alerts).toHaveCount(0)
     await expect(verified).toHaveCount(0)
     await expect(drought).toHaveCount(0)
+    await expect(blazes).toHaveCount(0)
   })
 
-  test('states: turning Alerts off is said by the legend’s safety rows and by the map’s own strip, both ways', async ({
+  test('states: the legend’s safety rows promise "Always shown", with nothing on the panel that could qualify it', async ({
     page,
   }) => {
+    // THIS TEST USED TO DRIVE #1047'S SWITCH and watch the two rows re-tag
+    // themselves from "Alerts" to "Alerts off" while the map's status strip
+    // printed "Alerts hidden". The maintainer removed the switch on
+    // 2026-09-20, so what is asserted is the one tag that is left and the
+    // absence of the two that were conditional on a control.
+    //
+    // The closure and serious-warning rows are a key rather than a tally
+    // (#1051) and carry no count in any state, so their TAG is what this
+    // reads. Two of them, and the count is the assertion. Case-insensitive
+    // because the tag is upper-cased by CSS.
     await openMap(page)
     const legend = await openLegend(page)
-    const alerts = legend.getByRole('checkbox', { name: /^Alerts/ })
 
-    // The closure and serious-warning rows are a key rather than a tally
-    // (#1051) and carry no count in any state, so their TAG is what moves.
-    // Two of them, and the count is the assertion: a row that stopped
-    // agreeing with the switch would be the panel contradicting the canvas
-    // beside it, which Legend.tsx's header calls the one thing a legend may
-    // never do. Case-insensitive because the tag is upper-cased by CSS.
-    await expect(legend.getByText(/^alerts$/i)).toHaveCount(2)
-    await expect(page.getByText('Alerts hidden')).toHaveCount(0)
-
-    await alerts.click()
-
-    await expect(alerts).not.toBeChecked()
-    await expect(legend.getByText(/^alerts off$/i)).toHaveCount(2)
-    // chrome/StatusStrip.tsx, on the plate above the sheet: the map saying
-    // for itself that ink is missing, which is what keeps the hide from
-    // being silent once the legend is shut.
-    await expect(page.getByText('Alerts hidden')).toBeVisible()
-
-    // Back on, which is the branch that matters most: a switch that cannot
-    // be undone has taken the marks away for good.
-    await alerts.click()
-
-    await expect(alerts).toBeChecked()
-    await expect(legend.getByText(/^alerts$/i)).toHaveCount(2)
+    await expect(legend.getByText(/^always shown$/i)).toHaveCount(2)
+    await expect(legend.getByText(/^alerts$/i)).toHaveCount(0)
+    await expect(legend.getByText(/^alerts off$/i)).toHaveCount(0)
     await expect(page.getByText('Alerts hidden')).toHaveCount(0)
   })
 
-  test('states: the drought tint is remembered across a cold boot and the alerts switch deliberately is not', async ({
+  test('states: the drought tint and the blaze colours are remembered across a cold boot, and Verified? deliberately is not', async ({
     page,
   }) => {
-    // The two halves of #1047's constraint, which only a restart can tell
-    // apart. Both switches look identical on the panel; one is a stored
-    // preference and the other is `useState` on purpose, and the difference
-    // is the whole reason a control over a safety layer was allowed to exist
-    // at all.
+    // Which switches are written down, which only a restart can tell apart.
+    // They look identical on the panel; two ride the stored preferences and
+    // one is `useState` on purpose.
+    //
+    // The alerts switch was the third half of this until 2026-09-20 and was
+    // the reason the test existed at all - its flag was held in memory on the
+    // maintainer's constraint ("the map should always open to the alerts
+    // being shown"). The switch is gone, so the claim it was proving is now
+    // unconditional and is asserted in the two tests above instead.
     await openMap(page)
     const legend = await openLegend(page)
 
     await legend.getByRole('checkbox', { name: /^Drought/ }).click()
-    await legend.getByRole('checkbox', { name: /^Alerts/ }).click()
+    await legend.getByRole('switch', { name: /^Blaze colors/ }).click()
+    await legend.getByRole('checkbox', { name: /Verified/ }).click()
     await expect(legend.getByRole('checkbox', { name: /^Drought/ })).toBeChecked()
-    await expect(legend.getByRole('checkbox', { name: /^Alerts/ })).not.toBeChecked()
-    // Observable proof the alert flip reached the map itself before anything
-    // is restarted - the strip is fed from the same state the next boot is
-    // being asked about.
-    await expect(page.getByText('Alerts hidden')).toBeVisible()
+    await expect(legend.getByRole('switch', { name: /^Blaze colors/ })).toBeChecked()
+    await expect(legend.getByRole('checkbox', { name: /Verified/ })).toBeChecked()
 
     // NOT page.reload(): support/seed.ts's init script re-runs on every
     // navigation and whole-record-puts the seeded preferences over whatever
@@ -224,13 +226,19 @@ test.describe('the map’s chrome', () => {
       await expect(second).toBeVisible()
 
       await expect(second.getByRole('checkbox', { name: /^Drought/ })).toBeChecked()
-      // The map opens on the alerts. Asserted positively rather than as the
-      // absence of a hide, so a boot that failed cannot pass this.
-      await expect(second.getByRole('checkbox', { name: /^Alerts/ })).toBeChecked()
-      await expect(rebooted.getByText('Alerts hidden')).toHaveCount(0)
-      // Verified? is ephemeral too, and for a different reason: #530 moved
-      // the category filter into storage and left this one out.
+      // The blaze switch is the same kind of thing as the drought row and
+      // rides the same store (#1575): a hiker who asked for the hues has them
+      // back on the next boot.
+      await expect(second.getByRole('switch', { name: /^Blaze colors/ })).toBeChecked()
+      // Verified? is ephemeral, and for its own reason: #530 moved the
+      // category filter into storage and left this one out. Toggled ON above,
+      // so a boot that carried it across would fail here rather than pass by
+      // starting where it ends.
       await expect(second.getByRole('checkbox', { name: /Verified/ })).not.toBeChecked()
+      // And the map still opens on the alerts, which is now a property of
+      // there being no way to close them rather than of a reset.
+      await expect(second.getByText(/^always shown$/i)).toHaveCount(2)
+      await expect(rebooted.getByText('Alerts hidden')).toHaveCount(0)
     } finally {
       await rebooted.close()
     }
@@ -255,7 +263,7 @@ test.describe('the map’s chrome', () => {
     await expect(legend.getByText(/affected · week of/)).toHaveCount(0)
   })
 
-  test('states: below the pin seam the legend says waypoints appear from a closer zoom, and the In view door is absent for want of points rather than zoom (D10)', async ({
+  test('states: below the pin seam the legend says waypoints show as dots, and the In view door is absent for want of points rather than zoom (D10)', async ({
     page,
   }) => {
     // The camera the app opens on is the whole corridor, which is below
@@ -263,6 +271,13 @@ test.describe('the map’s chrome', () => {
     // the true sentence wins over the general one", and the two sentences
     // have opposite remedies - zoom in, versus there is nothing here - so the
     // spec asserts which one is printed rather than the zeros beside it.
+    //
+    // THE SENTENCE SAYS BOTH HALVES SINCE #1585 (2026-09-18). It read
+    // "Waypoints appear from a closer zoom." while POI_DOT_MIN_ZOOM sat at
+    // the seam and the map down here really was bare. The dot rank went back
+    // to z0, so that sentence became false about the screen in front of the
+    // hiker - there are waypoints on it, drawn as dots - and the panel now
+    // names the rank rather than claiming an absence.
     await openMap(page)
 
     // The door D10 says must be absent rather than dead, with the two that
@@ -286,6 +301,11 @@ test.describe('the map’s chrome', () => {
 
     const legend = await openLegend(page)
     await expect(legend.getByText('Waypoints appear from a closer zoom.')).toBeVisible()
+    // And NOT the dots sentence, which this branch shipped for two days while
+    // the dot rank reached every zoom. Both ranks floor at the seam again, so
+    // a legend promising dots down here would be promising a map the hiker
+    // does not have.
+    await expect(legend.getByText(/show as dots at this zoom/)).toHaveCount(0)
     await expect(
       legend.getByText(/No waypoints on this part of the map yet/),
     ).toHaveCount(0)

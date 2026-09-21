@@ -61,6 +61,7 @@ import { POI_DOT_LAYER_ID, POI_LAYER_ID, POI_STALENESS_LAYER_ID } from './poiLay
 import { POI_LABEL_LAYER_ID } from './poiLabels'
 import { DAY_HIKE_TICK_LABEL_LAYER_ID } from './dayHikeLayers'
 import { WARNING_LAYER_ID } from './warningLayers'
+import { POSITION_ACCURACY_LAYER_ID, POSITION_LAYER_ID } from './positionLayers'
 import { WORKDAY_LAYER_ID } from './workdayLayers'
 import { DISPUTE_LAYER_ID } from './disputeLayers'
 import { COVERAGE_SEAM_LABEL_LAYER_ID, COVERAGE_SEAM_LAYER_ID } from './coverageLayers'
@@ -253,70 +254,49 @@ describe('the live topographic background', () => {
     expect(lastBackground).toBeLessThan(order.indexOf(POI_LAYER_ID))
   })
 
-  it('keeps our own pins last of all, so they win collisions against our labels', () => {
-    // Not only about what draws on top. The live sheet added four SYMBOL
-    // layers (peak, place, water and contour labels) to a style that had none,
-    // and MapLibre declutters symbols across the whole style, not per layer -
-    // so those labels and the pins now compete for the same space.
+  it('keeps every pin drawable whatever it collides with, now that it is not last', () => {
+    // THIS HELD THE OPPOSITE UNTIL 2026-09-20, and the reason it could change
+    // safely is worth the whole comment.
     //
-    // Which one loses is decided by layer order, and in a direction worth
-    // checking rather than assuming: PauseablePlacement starts at
-    // `order.length - 1` and decrements, so placement runs TOP-DOWN and the
-    // last layer has priority. Pins last therefore means a contour label can
-    // never suppress a water source - which is the way round it has to be,
-    // since water is the most safety-relevant thing on this map.
+    // The old rule was "our own pins last of all, so they win collisions
+    // against our labels". The live sheet adds four symbol layers - peak,
+    // place, water and contour labels - and MapLibre declutters symbols
+    // across the whole style, top-down: PauseablePlacement starts at
+    // `order.length - 1` and decrements, so the LAST layer has priority.
+    // Pins last therefore meant a contour label could never suppress a water
+    // source, which is the way round it has to be.
     //
-    // The serious-warning pins sit above the waypoints, which is the same rule
-    // applied one level further in: the only symbol on this map a moderator had
-    // to escalate by hand outranks the ones the pipeline published. It does not
-    // NEED the ordering - map/warningLayers.ts sets `icon-allow-overlap`, so it
-    // is never dropped whatever it competes with - but a warning drawn
-    // underneath a shelter pin is as unread as one that was decluttered away.
+    // The maintainer then asked for the trail line over the waypoints, which
+    // moves the pins early. That does not reopen the hazard, because the
+    // guarantee no longer rests on order: poiLayers.ts sets BOTH
+    // `icon-allow-overlap` (the pin draws even where it collides) and
+    // `icon-ignore-placement` (it suppresses nothing itself). A layer with
+    // both takes no part in the contest at either end.
     //
-    // The workday pins (#760) join that group between the two, and the tail
-    // is asserted as three rather than two because "our own pins" is what the
-    // guarantee is about: a contour label must not suppress any of them. Where
-    // the workdays sit WITHIN the group is a smaller claim, made in
-    // map/style.ts - over the waypoints because an invisible invitation is
-    // the state that layer exists to end, under the warnings because when a
-    // hazard and an invitation want the same pixels the hazard wins.
-    //
-    // Move any of the three and both guarantees are silently gone, which is
-    // why this is asserted rather than left to the ordering in buildMapStyle.
-    //
-    // SYMBOL layers, not all of them, and the distinction is the whole
-    // mechanism rather than a narrowing of the test. Placement only ever ranks
-    // symbols against symbols - a `circle` or a `line` takes no part in it, so
-    // the ATC's bands sit above these two in the style (that is
-    // src/test/atcAlertProminence.test.ts's subject) and cannot suppress a
-    // water pin no matter where they are drawn. Asserting on the raw tail
-    // would say the opposite: that appending any non-symbol layer costs the
-    // pins their priority, which is not true and would send the next person
-    // to fix a bug that is not there.
-    const symbols = live()
-      .layers.filter((layer) => layer.type === 'symbol')
-      .map((layer) => layer.id)
+    // So what is asserted is the property rather than the arrangement that
+    // used to imply it - which is the stronger test, because it goes red if
+    // somebody restores the collision pass no matter where the layer sits.
+    const layers = live().layers
+    const overlapOf = (id: string): unknown => {
+      const found = layers.find((layer) => layer.id === id)
+      expect(found, id).toBeDefined()
+      return ((found?.layout ?? {}) as Record<string, unknown>)['icon-allow-overlap']
+    }
 
-    expect(symbols.slice(-5)).toEqual([
-      POI_LAYER_ID,
-      // The dispute mark (#876) sits directly on the pin it annotates, so it
-      // joins this group between the waypoints and the workdays. It never
-      // loses a collision anyway - `icon-allow-overlap`, because §4's rule is
-      // that the pin is never suppressed - but a mark drawn under a contour
-      // label would be as unread as one decluttered away.
-      DISPUTE_LAYER_ID,
-      WORKDAY_LAYER_ID,
-      WARNING_LAYER_ID,
-      // AND THE ATC'S POINT NOTICE, which joined this list rather than being
-      // added to it (#1071). It was a `circle` and took no part in placement at
-      // all; drawing the burst needs an image, so it is a symbol now and it
-      // ranks against these four. Last, which is the only place it may be: it
-      // already sits over every one of them in the style, and a notice that
-      // could be decluttered away by a workday pin would be a notice nobody was
-      // shown. `icon-allow-overlap` is the belt to this braces - the layer
-      // cannot be suppressed even if a later edit moved it up this list.
-      ATC_UPDATE_POINT_LAYER_ID,
-    ])
+    // The three that must never be suppressed, whatever they land on.
+    for (const id of [POI_LAYER_ID, DISPUTE_LAYER_ID, WARNING_LAYER_ID]) {
+      expect({ id, overlap: overlapOf(id) }).toEqual({ id, overlap: true })
+    }
+    // The workday pin is the deliberate exception and stays one:
+    // map/workdayLayers.ts has it "submit to the collision engine rather than
+    // shoving a shelter aside", because an invitation is not a hazard. Its
+    // own order against the sheet's contour labels did not move.
+    expect(overlapOf(WORKDAY_LAYER_ID)).not.toBe(true)
+
+    // And the waypoints really are below the trail line now, which is the
+    // change that made the paragraph above necessary.
+    const order = layers.map((layer) => layer.id)
+    expect(order.indexOf(POI_LAYER_ID)).toBeLessThan(order.indexOf('trail-blaze'))
   })
 
   it('credits every licence the live sheet pulls in', () => {
@@ -696,7 +676,10 @@ describe('the offline-only background', () => {
       // closed-looking below the seam with no signal at all.
       // Its untaken half under its taken half (#1283): every line outside
       // the chosen system is on a layer of its own beneath the one the
-      // taken trail draws on.
+      // taken trail draws on - and under both, the casing its through-routes
+      // carry (#1586), which is what tells the Long Path from a park loop on
+      // an offline phone's opening camera.
+      'network-overview-casing',
       'network-overview-line-untaken',
       'network-overview-line',
       'network-overview-closure-band',
@@ -718,6 +701,29 @@ describe('the offline-only background', () => {
       // blaze. See map/dayHikeLayers.ts for why "over" was not available.
       'day-hike-route-outer-casing',
       'day-hike-route-casing',
+      // THE WAYPOINTS, UNDER EVERY TRAIL LINE (2026-09-20). The maintainer:
+      // "The Trail line should sit over the POI's." They were the last thing
+      // in this list until then.
+      //
+      // All three ranks (#597, and the staleness rings with #759), dots under
+      // rings under pins. The names come with them rather than staying above,
+      // so a place and its label are drawn in one plane.
+      //
+      // Being early no longer costs the pins anything: poiLayers.ts sets
+      // `icon-allow-overlap` and `icon-ignore-placement`, so they are drawn
+      // whatever they collide with and suppress nothing themselves. The
+      // names DO now lose to a trail label or badge, which is the cost of
+      // keeping them with their marks and is stated in style.ts.
+      POI_LABEL_LAYER_ID,
+      POI_DOT_LAYER_ID,
+      POI_STALENESS_LAYER_ID,
+      POI_LAYER_ID,
+      // The dispute marks (#876) ride the pins they annotate, so they moved
+      // with them. Drawn offline for the reason the closures are: a hiker
+      // with no signal is exactly the hiker who cannot look a place up any
+      // other way, and "somebody says this is not here" is what they most
+      // need before they walk to it counting on water.
+      DISPUTE_LAYER_ID,
       // The trails other organizations maintain (#950), and they survive the
       // subtraction for the same duller reason the sketch above does: the
       // source is empty unless the shell has a network artifact to put in it,
@@ -798,23 +804,10 @@ describe('the offline-only background', () => {
       // the comment at the top gives: it is a safety layer, so a hiker on the
       // offline background is exactly who must keep it.
       LONG_TERM_CLOSURE_LAYER_ID,
-      // All three waypoint ranks (#597, and the staleness rings with #759),
-      // dots under rings under pins - a waypoint that wins its collision
-      // hides its own dot, and one that loses still leaves it.
-      // Waypoint names and the walk's mile marks (#1194), and note WHERE:
-      // before the pins, for the same reason the trail labels above are early
-      // - placement runs top-down and a label at the end of this list would
-      // suppress a pin to print a name.
-      POI_LABEL_LAYER_ID,
+      // The walk's own mile marks stayed here when the waypoints went down
+      // the stack (2026-09-20): the hiker's route is drawn ON the map, not
+      // part of the ground it describes.
       DAY_HIKE_TICK_LABEL_LAYER_ID,
-      POI_DOT_LAYER_ID,
-      POI_STALENESS_LAYER_ID,
-      POI_LAYER_ID,
-      // The dispute marks (#876), drawn offline for the reason the closures
-      // are: a hiker with no signal is exactly the hiker who cannot look a
-      // place up any other way, and "somebody says this is not here" is what
-      // they most need before they walk to it counting on water.
-      DISPUTE_LAYER_ID,
       // The workday pins (#760), which the offline background draws for the
       // same reason it draws the closures: a hiker with no signal is exactly
       // the hiker who cannot look a workday up any other way. The layer is
@@ -822,6 +815,12 @@ describe('the offline-only background', () => {
       // drawing it here costs a phone with an out-of-date feed nothing.
       WORKDAY_LAYER_ID,
       WARNING_LAYER_ID,
+      // The hiker's mark and its accuracy ring (#1581), over every place and
+      // under the ATC's notices - drawn offline above all, because a phone
+      // with no signal is exactly the one whose owner is standing somewhere
+      // asking where. Empty until the shell hands a fix over.
+      POSITION_ACCURACY_LAYER_ID,
+      POSITION_LAYER_ID,
       // The ATC's own notices survive the subtraction for the same reason the
       // closures do, and arguably more so: their band is baked into a
       // published artifact rather than fetched live, so it is exactly the

@@ -26,6 +26,7 @@ import {
   buildMapStyle,
 } from './style'
 import { POI_PIN_MIN_ZOOM } from './poiLayers'
+import { NEARBY_TRAILS_TILES_MIN_ZOOM } from '../lib/config'
 
 const MILE_IN_DEGREES_LAT = 1 / 69.05
 const CASING = '#14130f'
@@ -142,7 +143,7 @@ describe('the corridor layers', () => {
   const layers = buildCorridorLayers(TRAIL_PAINT)
 
   it('stops every layer at the seam, where the map changes subject', () => {
-    // Above POI_PIN_MIN_ZOOM a hiker is navigating by the line. Nothing in the
+    // Above CORRIDOR_MAX_ZOOM a hiker is navigating by the line. Nothing in the
     // corridor view may follow them up there - which is the other half of
     // style.test.ts's "a blaze never changes colour where a hiker is
     // navigating by it".
@@ -150,10 +151,17 @@ describe('the corridor layers', () => {
     for (const layer of layers) {
       expect({ id: layer.id, maxzoom: layer.maxzoom }).toEqual({
         id: layer.id,
-        maxzoom: POI_PIN_MIN_ZOOM,
+        maxzoom: CORRIDOR_MAX_ZOOM,
       })
     }
-    expect(CORRIDOR_MAX_ZOOM).toBe(POI_PIN_MIN_ZOOM)
+    // Not the pin seam any more (#1585): this ceiling is where the tiled
+    // network begins, and it must equal that cut exactly - a ceiling one zoom
+    // under it leaves a band with no trails on it but the A.T.
+    expect(CORRIDOR_MAX_ZOOM).toBe(NEARBY_TRAILS_TILES_MIN_ZOOM)
+    // The waypoints arrive UNDER this ceiling now, so the sketch and the pins
+    // share a zoom. That is the intended overlap and not a gap: the sketch is
+    // the trails, the pins are the places on them.
+    expect(POI_PIN_MIN_ZOOM).toBeLessThanOrEqual(CORRIDOR_MAX_ZOOM)
   })
 
   it('spends no colour on a LINE beyond the neutral grey and the casing', () => {

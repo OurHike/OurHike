@@ -32,7 +32,8 @@
 // does not hold everything are the same requirement, not competing ones.
 
 import { useState } from 'react'
-import { isSafeLink, longDate, mile } from '../lib/atcNoticeText'
+import { longDate, mile } from '../lib/atcNoticeText'
+import { isSafeLink } from '../lib/safeLink'
 import {
   noticeBandId,
   noticeOrgLabel,

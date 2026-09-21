@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { atcTapeImageId } from '../lib/atcUpdateStyle'
+import { closureTapeImageId } from '../lib/closureStyle'
+import { tapeGrounds } from './closureTape'
 import { TRAILS } from '../lib/trails'
 import {
   CHOSEN_SYSTEM_SOURCES,
@@ -22,6 +25,7 @@ import {
   BLAZE_UNTAKEN_LAYER_ID,
   TRAIL_OVERVIEW_LAYER_ID,
   sketchWidthExpression,
+  plainLineColor,
 } from './style'
 import {
   blazeChipImageId,
@@ -53,6 +57,9 @@ import {
   type WarningPoint,
 } from './warningLayers'
 import { WARNING_ICON_ID } from './warningPin'
+import { POSITION_SOURCE_ID, type PositionFeatureCollection } from './positionLayers'
+import { positionMarkId } from './positionMark'
+import { LocateControl } from './mapChrome'
 import {
   CORRIDOR_KIND_PROPERTY,
   CORRIDOR_SOURCE_ID,
@@ -386,6 +393,40 @@ describe('MapView', () => {
     expect(map.paintProperties.get(`${BACKDROP_LAYER_ID}/background-color`)).toBe(
       TOPO_PALETTE_RED.labelHalo,
     )
+  })
+
+  it('repaints for a blaze-colours change without rebuilding the map (#1575)', () => {
+    // The switch rides the appearance effect, so flipping it in the legend
+    // repaints every blaze layer's line-color in place - the same promise
+    // red light keeps, and for the same reason: a hiker tapping a switch
+    // while walking must not lose the map they were reading.
+    const { rerender } = render(<MapView {...PROPS} blazeColorsShown />)
+    const builtInitially = MockMap.instances.length
+    const [map] = MockMap.live
+
+    act(() => map.emit('load'))
+    rerender(<MapView {...PROPS} blazeColorsShown={false} />)
+
+    expect(MockMap.instances).toHaveLength(builtInitially)
+    expect(MockMap.live).toHaveLength(1)
+    expect(map.paintProperties.get(`${BLAZE_LAYER_ID}/line-color`)).toEqual(
+      plainLineColor({ theme: 'light', blazeColorsShown: false }),
+    )
+  })
+
+  it('seeds a cold start with blaze colours off as one red in its first frame (#1575)', () => {
+    // The shipped default is off, so this is the frame every hiker sees on
+    // launch: seeded into the built style rather than left to the repaint,
+    // or the first frame would be a flash of hues.
+    render(<MapView {...PROPS} blazeColorsShown={false} />)
+    const [map] = MockMap.live
+    const style = map.options.style as {
+      layers: Array<{ id: string; paint?: Record<string, unknown> }>
+    }
+
+    expect(
+      style.layers.find((l) => l.id === BLAZE_LAYER_ID)?.paint?.['line-color'],
+    ).toEqual(plainLineColor({ theme: 'light', blazeColorsShown: false }))
   })
 
   it('rewires visibility for a detail change without rebuilding the map', () => {
@@ -815,7 +856,7 @@ describe('POI pins', () => {
     expect(map.filters.get(POI_LAYER_ID)).toEqual(poiFilter(new Set(['water'])))
   })
 
-  it('rebuilds the source when a legend tap hides a site’s anchor', () => {
+  it('never takes a waypoint out of the source when the legend hides its neighbour', () => {
     // THE WIRING HALF OF #607, and a failure the other two files cannot see.
     // composeSites can be perfectly right about which member carries the pin
     // and the map still draws nothing, because the source is only pushed when
@@ -854,12 +895,23 @@ describe('POI pins', () => {
     )
     const [map] = MockMap.live
     loadStyle(map)
-    // The precondition, asserted rather than assumed: the privy is folded away
-    // and the shelter's pin stands for both. That is #524 working.
+    // BACK TO #607's OWN QUESTION (2026-09-20), because folding is back and
+    // so is the bug it guards. For two days this asserted the opposite - both
+    // waypoints in the source from the first frame - which was true while
+    // nothing folded and is the weaker claim now that something does.
+    //
+    // Folded, the privy is NOT in the source: it rides the shelter's pin.
+    // Hide shelters and that pin goes, so the privy has to be promoted into
+    // the source by a REBUILD - and a rebuild only happens if the effect that
+    // builds it depends on the hidden set. That dependency is the whole of
+    // what this test catches, and dropping it is invisible in composeSites,
+    // which would be perfectly right about the promotion nobody asked for.
     expect(pinnedIds(map)).toEqual(['shelter'])
 
     rerender(<MapView {...PROPS} pois={site} hiddenTypes={new Set(['shelter'])} />)
 
+    // The privy takes the pin rather than the place going dark, which is
+    // #607's fix and the reason a fold is not a deletion.
     expect(pinnedIds(map)).toEqual(['privy'])
   })
 
@@ -942,6 +994,22 @@ describe('POI pins', () => {
 
     expect(imageWasThere).toBe(true)
     expect(map.images.has(WARNING_ICON_ID)).toBe(true)
+  })
+
+  it('registers the barrier tape on every paper the sheet can be, up front (#1575)', () => {
+    // A tape layer whose `line-pattern` names an image the map has not been
+    // given draws nothing, so a sheet change may never be the first time a
+    // paper's tape is asked for: every paper's closure tape and ATC tape are
+    // there once the style is ready.
+    render(<MapView {...PROPS} />)
+    const [map] = MockMap.live
+
+    loadStyle(map)
+
+    for (const ground of tapeGrounds()) {
+      expect(map.images.has(closureTapeImageId(ground)), ground).toBe(true)
+      expect(map.images.has(atcTapeImageId(ground)), ground).toBe(true)
+    }
   })
 
   it('draws the serious warnings it was given as pins', () => {
@@ -1297,5 +1365,55 @@ describe('the taken trail (#1306)', () => {
     expect(map.paintProperties.get(`${TRAIL_OVERVIEW_LAYER_ID}/line-width`)).toEqual(
       sketchWidthExpression(CHOSEN_SYSTEM_SOURCES),
     )
+  })
+})
+
+describe("the hiker's position (#1581)", () => {
+  const LOCATED = {
+    status: 'located' as const,
+    at: { lon: -73.9888, lat: 41.27444 },
+    accuracyFeet: 32.8,
+    accuracyM: 10,
+    fixedAt: new Date('2026-09-17T12:00:00Z'),
+  }
+
+  it('draws a live fix from the state the header reads, and nothing for none', () => {
+    const { rerender } = render(<MapView {...PROPS} fix={LOCATED} />)
+    const [map] = MockMap.live
+
+    const drawn = map.sourceData.get(POSITION_SOURCE_ID) as PositionFeatureCollection
+    expect(drawn.features).toHaveLength(1)
+    expect(drawn.features[0].geometry.coordinates).toEqual([-73.9888, 41.27444])
+    expect(drawn.features[0].properties.stale).toBe(false)
+
+    rerender(<MapView {...PROPS} fix={{ status: 'unavailable' }} />)
+
+    const gone = map.sourceData.get(POSITION_SOURCE_ID) as PositionFeatureCollection
+    expect(gone.features).toHaveLength(0)
+  })
+
+  it('registers the mark images when the first fix lands, and not before', () => {
+    // Six images cost a measured 53 ms to rasterise, and the map mounts
+    // seconds before the first fix - so the cost lands off the launch path,
+    // and never at all with location off.
+    const { rerender } = render(<MapView {...PROPS} />)
+    const [map] = MockMap.live
+
+    expect(map.images.has(positionMarkId('day', false))).toBe(false)
+
+    rerender(<MapView {...PROPS} fix={LOCATED} />)
+
+    expect(map.images.has(positionMarkId('day', false))).toBe(true)
+    expect(map.images.has(positionMarkId('night', true))).toBe(true)
+  })
+
+  it('hands the chrome a fix to wake the locate button on', () => {
+    const onLocate = vi.fn()
+    render(<MapView {...PROPS} locationEnabled fix={LOCATED} onLocate={onLocate} />)
+    const [map] = MockMap.live
+    const locate = map.controls.find((c) => c.control instanceof LocateControl)
+
+    const button = (locate?.control as LocateControl).container?.querySelector('button')
+    expect(button?.disabled).toBe(false)
   })
 })

@@ -4,11 +4,24 @@
 // forget one.
 //
 // What stays eager, and why: Today and the tab bar (the first frame),
-// Onboarding (a first run's first frame), the report window (it opens the
-// instant a report is saved, on a ridge, and its constant UNDO_WINDOW_MS is
-// read by the shell), and the map's own overlays that the shell composes
-// itself. Everything a hiker reaches by a tap on another tab or by starting
-// a flow is here.
+// Onboarding (a first run's first frame), and the map's own overlays that
+// the shell composes itself. Everything a hiker reaches by a tap on another
+// tab or by starting a flow is here.
+//
+// THE REPORT WINDOW IS HERE SINCE #1563, and it was kept out on purpose
+// before: it opens on a ridge the instant a hiker taps Report, and the shell
+// read its UNDO_WINDOW_MS. The second reason was the trap LAUNCH_BUDGET.md
+// §4.4 names - a constant read out of a screen brings the screen - and the
+// constant lives in reporting/undoWindow.ts now. The first holds for every
+// screen in this list: a chunk is a precache read on any phone that has
+// installed the app, and the idle preload below has fetched it within a
+// second of launch. What forced the move is the budget: the window's #1563
+// growth measured 256,121 eager bytes in CI against 256,000 (commit
+// 53315108, `check:build`), and deferring only its sheet and reporter block
+// left 232 bytes of headroom locally against a CI build that runs ~400
+// bytes larger. The sheet (Change, or a refused tap) and the block the
+// receipt signs with are deferred separately, because the long form and the
+// closure form render the same pair and one chunk serves all three hosts.
 
 import { deferredScreen, type DeferredScreen } from '../lib/deferredScreen'
 import type { ComponentType } from 'react'
@@ -63,6 +76,22 @@ export const ClosureForm = screen(
 export const ReportForm = screen(
   () => import('./ReportForm').then((m) => m.ReportForm),
   'ReportForm',
+)
+export const ReportWindow = screen(
+  () => import('../reporting/ReportWindow').then((m) => m.ReportWindow),
+  'ReportWindow',
+)
+export const LocationSheet = screen(
+  () => import('../reporting/LocationSheet').then((m) => m.LocationSheet),
+  'LocationSheet',
+)
+export const ReporterDetails = screen(
+  () => import('../reporting/ReporterDetails').then((m) => m.ReporterDetails),
+  'ReporterDetails',
+)
+export const KeepSpotSheet = screen(
+  () => import('../reporting/KeepSpotSheet').then((m) => m.KeepSpotSheet),
+  'KeepSpotSheet',
 )
 export const GroupScreen = screen(
   () => import('./GroupScreen').then((m) => m.GroupScreen),

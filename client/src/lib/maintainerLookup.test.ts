@@ -1,6 +1,16 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { lookupMaintainers, describeStewards } from './maintainerLookup'
 
+// The API lives on its own host in production (VITE_API_BASE_URL), so a
+// relative fetch would ask the static host that serves the page and read
+// its 404 as "nobody is assigned" (#1578). Stubbed here rather than set
+// through the environment because lib/api.ts reads the variable once at
+// import, and this is the one thing the test needs to see.
+vi.mock('./api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./api')>()),
+  apiUrl: (path: string) => `https://api.example${path}`,
+}))
+
 // Client side of features/SAYING_THANKS.md's "who do I thank?" resolution.
 //
 // This is a NICETY, not a dependency. The authoritative resolution happens
@@ -38,6 +48,16 @@ afterEach(() => {
 })
 
 describe('lookupMaintainers', () => {
+  it('asks the API host, never the page’s own origin', async () => {
+    const spy = mockFetch([ASSIGNMENT])
+
+    await lookupMaintainers(1043.2, new Date('2026-06-15T12:00:00Z'))
+
+    expect(String(spy.mock.calls[0][0])).toMatch(
+      /^https:\/\/api\.example\/maintainer-assignments\?/,
+    )
+  })
+
   it('asks about the mile it was given', async () => {
     const spy = mockFetch([ASSIGNMENT])
 

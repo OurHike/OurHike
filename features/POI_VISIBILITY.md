@@ -6,7 +6,40 @@ chrome), [POI_SITES.md](POI_SITES.md) (which owns several waypoints at one place
 [UX_CUSTOMIZATION.md](UX_CUSTOMIZATION.md) (which owns *why* `waypoint_types_shown` exists),
 [../WIREFRAMES.md](../WIREFRAMES.md) §1.4 and §2, and [../OurHikeValues.md](../OurHikeValues.md) #4.
 
-**This doc owns one question: what the map does when it cannot draw every waypoint as a pin.**
+> **Its question was answered by removing it, 2026-09-18
+> ([#1585](https://github.com/OurHike/OurHike/issues/1585)).** The maintainer:
+> *"never hide anything!!!!!!!"* — so the map now draws **every** waypoint as a pin, and this
+> doc's premise, that it sometimes cannot, no longer holds. Three separate mechanisms were
+> taking marks off the map, each defensible on its own and none of them the hiker's choice.
+> Measured against the identity ledger that day:
+>
+> | what removed it | how much | what it is now |
+> |---|---|---|
+> | **`DEFAULT_SHOWN_TYPES`** (#865) — five categories off on a fresh install | **7,082 of 8,469 waypoints, 84%** — 5,318 crossings, 1,223 viewpoints, 482 parking areas, 59 towns | every category on; the hiker's own toggle is the one subtraction left |
+> | **Site folding** (#524) — a co-located member removed from the source, riding an anchor's pin as a badge | **634 of the 1,387 then shown, 46%** — 284 privies, 144 campsites, **206 water points** | nothing folds; every member draws its own pin at its own coordinate |
+> | **`icon-allow-overlap: false`** — the collision engine dropping the loser | **59% of pins at z9, 81% at the seam** (they kept a 2.5 px dot) | overlap allowed and placement ignored: no pin is dropped, and no pin drops a label |
+>
+> **What replaces culling as the density answer is size, not absence.** `POI_ICON_SIZE_EXPRESSION`
+> is data-driven now: the categories at the top of `POI_PRIORITY` — water, shelter, campsite,
+> resupply, parking, trailhead — draw full size, and the tail draws at `SECONDARY_POI_SCALE`
+> (0.72, `@unvalidated`). The serious-warning pin was already exempt from all of it and stays so.
+> That is the maintainer's second sentence built: *"the warnings needs to stay large as well as
+> the other important classes."*
+>
+> **The honest cost, stated here because it is this doc's job to state it.** A phone frame holds
+> a median of **4 waypoints at z14** and 10 at the ninetieth percentile — at the zooms somebody
+> walks at, drawing everything is simply correct. At the seam it holds a median of **617**, and
+> 2,108 in the worst frame on the trail. That is a dense screen, and nothing in this change
+> pretends otherwise: the pin sizes and the hiker's own toggles are what a planning zoom has to
+> lean on. Whether it reads as a map or as a wall of ink at z7.5 has been looked at in a browser
+> and on no phone, which is the same gap [#105](https://github.com/OurHike/OurHike/issues/105)
+> closed without filling.
+>
+> Everything below is the design as it stood before that, and the two-rank principle it turns on
+> — *the absence of a pin is the strongest statement this map makes about a place, so do not make
+> it* — is what the change above follows to its end rather than abandons.
+
+**This doc owned one question: what the map does when it cannot draw every waypoint as a pin.**
 It does not own the pin artwork ([`client/src/map/poiIcons.ts`](../client/src/map/poiIcons.ts)),
 the collision ordering ([`client/src/map/poiLayers.ts`](../client/src/map/poiLayers.ts)'s
 `POI_PRIORITY`, which this doc treats as correct and builds on), or which waypoints the pipeline
@@ -140,6 +173,56 @@ One zoom, `POI_PIN_MIN_ZOOM`, replacing `POI_MIN_ZOOM`. Below it the map is abou
 is [CORRIDOR_VIEW.md](CORRIDOR_VIEW.md)'s; above it the map is about places and is this doc's.
 
 **`POI_PIN_MIN_ZOOM = 9`, with pins drawn at 0.8 rather than 0.6 to suit it.**
+
+> **Amended 2026-09-18 ([#1585 — A hundred-mile resupply carry fits a phone at z8, and the map
+> draws no waypoint until z9](https://github.com/OurHike/OurHike/issues/1585)) — the seam is
+> `7.5`, the dot rank reaches every zoom again, and the map hides nothing.** Three things, and
+> the last one is the rule the other two serve.
+>
+> **The seam.** A day's hike was the criterion and it is still a good one; it is not the only
+> walk. A thru-hiker plans one *resupply* at a time — five or six days at twenty miles, so
+> 100–120 trail miles. Measured 2026-09-17 on the calibrated mile axis the app's own mile
+> numbers come from (`export_elevation.calibrated_trail_axis`), every window of that length from
+> Springer to Katahdin, stepped every two miles, fitted the way `App.tsx` fits a stretch:
+>
+> | window | phone fit zoom, p10 / median / p90 | straight-line span, median |
+> |---|---|---|
+> | 100 mi | 7.82 / **8.39** / 8.95 | 54 mi |
+> | 110 mi | 7.73 / **8.26** / 8.77 | 59 mi |
+> | 120 mi | 7.61 / **8.14** / 8.59 | 65 mi |
+>
+> Fewer than one window in ten fitted at z9, so a section hiker could never see their section.
+> The maintainer took **7.5** rather than the median 8 from three drawn options: nine in ten
+> 120-mile windows fit at z7.61 or nearer, so 7.5 is where essentially *every* carry fits rather
+> than half of them. The cost was drawn beside it and taken knowingly — a z7.5 screen is
+> 80 × 144 miles and holds a median 64 waypoints against room for about 26 pins, so a smaller
+> share wear one. **The pin's size did not move with it**, from the same three options:
+> `POI_PIN_MIN_SCALE` stays 0.8, the figure #617 measured as the difference between a mark you
+> can identify and one you can only locate. A 0.6 ramp was offered — about a quarter more pins —
+> and not taken.
+>
+> **The dot rank goes back down to every zoom** (`POI_DOT_MIN_ZOOM = 0`), which is #603's floor
+> reinstated and #1135's reversed. Its objection is answered rather than overruled: #1135 removed
+> the stipple because #1097's 8,480 network waypoints were being drawn onto trails the view
+> refused to draw, and #1135 itself then put every organization's trails on that camera. A dot
+> down there now sits on a line the map draws.
+>
+> **And the rule both of those serve, which is this doc's own principle stated once more
+> and harder.** The first build of this change put a *type gate* below the seam — shelters,
+> water and towns drawn, campsites, privies, parking, crossings, viewpoints and trailheads not —
+> so a hiker at z8 saw no privy and nothing on the screen saying one was there. The maintainer,
+> 2026-09-18: *"Don't auto hide the POIs ever. It's a safety thing, hikers need to know that
+> info."* So **the seam decides where waypoints start and never which**: `poiFilter` carries no
+> zoom term at all, and the only thing that ever takes a category off this map is the hiker's own
+> toggle. `poiLayers.test.ts`'s *"the map never hides a category of its own accord"* block holds
+> it at thirteen zooms from 0 to 22, which is the half of this design that had no test until a
+> build shipped without it.
+>
+> Two things also recorded on the way: the z9 shelter figure in the table below (83%) was
+> measured on the five ATC layers *without* water, which its spike's docstring says — with the
+> 559 water points the app publishes taking the first claim on space it is **49%**; and the
+> corridor sketch's ceiling and the locate camera both stopped deriving from this seam, because a
+> planning zoom is the wrong number for a trail archive's cut and for *where am I*.
 
 A day on the A.T. is 16–24 miles, and the window is **twice that**, so the day has ground around
 it rather than filling the screen edge to edge. A 390 × 700 phone map covers **50.9 miles at z9**
@@ -314,6 +397,29 @@ to the dot source while their trails' lines draw only from the seam up — so th
 quietly become mostly places on trails the view refuses to draw.
 `client/src/map/poiLayers.ts`'s `POI_DOT_MIN_ZOOM` carries the full record, and nothing from the
 seam up is reopened: a pin or a dot and never as neither stands.
+
+**And the hiker can now switch the waypoints off above the seam, which nothing in this document
+previously allowed.** The maintainer, 2026-09-20, ending a branch that had twice tried to answer
+[#1585](https://github.com/OurHike/OurHike/issues/1585) by removing every hiding mechanism at
+once: *"We can keep a seam, and make it at zoom 7. Yes the POI's can be hidden above there. Add a
+toggle over the map to 'Show Points'. Toggle that on and off as you zoom in."*
+
+`client/src/lib/showPoints.ts` is the rule, and it is a three-field machine rather than a boolean
+because the maintainer's answer to "which of two readings did you mean" was both at once — *"Zoom
+sets it, hiker overrides. But only set for the hiker on first time zooming in (for that map
+view). Don't override a setting the hiker chose."* So: crossing the seam inward turns it on once
+per map view, a hiker's own choice is final for that view, and nothing is persisted, because a
+hiker who cleared the map to read the contours on one planning session must not find their
+shelters missing a week later on the trail.
+
+**Where the control lives moved once, the same day.** It shipped as a "Show points" pill floating
+over the map's bottom-left; the maintainer moved it into the legend, from three drawn frames:
+*"Maybe the show points should be part of the legend. Can this be integrated into the showing
+dropdown?"* It is the **"None"** entry at the far end of the Showing picker now — a range that
+already ran All types → several → one, with the empty end added rather than a second control
+beside it. `waypoint_types_shown` is untouched by it: "None" writes the per-view gate, never the
+stored preference, which is what keeps [UX_CUSTOMIZATION.md](UX_CUSTOMIZATION.md)'s account-sync
+argument true of the categories and silent about this.
 
 The legend's sentence for this band is now *"Waypoints appear from a closer zoom."* — its third
 flip, each time with the layer it describes. `Nothing on this part of the map yet — pan or zoom
@@ -536,6 +642,12 @@ affordance anywhere, and the way that rule is kept is that the affordance is nev
 [#1047](https://github.com/OurHike/OurHike/issues/1047) narrowed it to the half that bears on
 *this* document: **`waypoint_types_shown` cannot reach them.** `NEVER_HIDEABLE` in
 `legendContents.ts` is the existing guard, stays the only one, and now guards exactly that — no
-value anybody can save produces a phone that opens with the alerts off. The legend's Alerts
-switch does take those marks off the canvas and is deliberately not a category, not stored, and
-not routed through anything in this document.
+value anybody can save produces a phone that opens with the alerts off.
+
+**Restored in full 2026-09-20.** #1047's Alerts switch was the one thing that could still take
+those marks off the canvas, and the maintainer removed it — so the original rule, "closures and
+serious warnings have no hide affordance anywhere, and the way that rule is kept is that the
+affordance is never built", is the whole rule again rather than the half of it this document
+inherited. `NEVER_HIDEABLE` stays the guard here; what is new is that it no longer has a live
+exception sitting beside it, and `client/src/lib/safetyLayersNeverHidden.test.ts` is the table of
+all six mechanisms with no "yes" left in it.

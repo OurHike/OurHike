@@ -105,6 +105,19 @@
     border-left: 3px solid transparent;
   }
 
+  /* ---------- The account button: the head of the sidebar ---------- */
+
+  /* Only the sidebar layout draws this at all - chrome/TabBar.tsx renders it
+     behind `useDesktop()`, and chrome/AccountButton.tsx says why that is a
+     hook rather than a rule in here. So this block is placement, not a
+     switch: flush with the tab labels' own 16px, because the column has one
+     left edge and the tabs, the mode block and the wordmark all read off
+     it. */
+  .app__screen > .tab-bar .tab-bar__account,
+  .map-screen > .tab-bar .tab-bar__account {
+    padding: 0 var(--space-4, 16px) var(--space-3, 12px);
+  }
+
   /* ---------- Brand mark: the foot of the sidebar ---------- */
 
   /* The bottom-left corner of the page, which exists only in this layout - on a
@@ -688,6 +701,26 @@
      covers the map should need dismissing to see the map". */
   .map-screen__body {
     flex-direction: row;
+  }
+
+  /* THE CREDIT STRIP JOINS THE CANVAS HERE, and that is what moves the scale
+     bar. MapScreen.tsx renders <MapAttribution inline> when `useDesktop()` is
+     true - this same 900px, which is why the rule lives inside this block
+     rather than under (pointer: fine) - and .map-screen__canvas is a flex
+     column, so the strip is an in-flow row of it. The box's bottom edge is
+     then BELOW the map, while MapLibre's scale bar still floats off the MAP's
+     bottom, a strip's height higher than it does on a phone.
+
+     That is the maintainer's report of 2026-09-20 - "Show Points on desktop
+     overlaps with the zoom buttons" - surviving its own first fix. The switch
+     was moved out of MapLibre's bottom-right stack and landed on the scale
+     bar instead, because chrome.css's 30px was measured on a phone, where the
+     credit lives in the rail (#1054) and the canvas bottom IS the map bottom.
+
+     15px is the strip, the same figure .turn-card and .hikes-here--closed
+     already use for it. */
+  .map-screen__canvas {
+    --over-map-floor: calc(15px + var(--space-3, 12px) + 30px);
   }
 
   /* ---------- Legend: a panel, not a sheet ---------- */

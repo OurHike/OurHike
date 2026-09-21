@@ -69,7 +69,16 @@ is `lib/coverageCells.ts`'s `SeamEdge` and `seamMarginKm`, drawn by
 in both cells (`pipeline/cut_trail_graph.py`), so the cell whose own bounds hold a point
 answers for it. Sense 2 has a constant: `App.tsx`'s `belowSeam` is
 `camera.zoom < POI_PIN_MIN_ZOOM`, which is 9 (`map/poiLayers.ts`). Below it the map is a
-corridor view and above it the hiker is navigating.
+corridor view and above it the hiker is navigating. **It is 7.5 since #1585 — A hundred-mile
+resupply carry fits a phone at z8, and the map draws no waypoint until z9**, which moved it to
+the zoom a five-day resupply section fits a phone. Two things that used to be the same number
+are now deliberately not: `CORRIDOR_MAX_ZOOM` (`map/corridorLayers.ts`), where the corridor
+sketch hands the other organizations' trails to the tiled ones, and `LOCATE_MIN_ZOOM`, where a
+*where am I* tap lands. Both stayed at 9. Say which one you mean — "the seam" is the waypoints'.
+
+**The seam is not a filter, and never has been.** It decides where waypoints start, never which
+ones: every category the hiker has switched on is drawn at every zoom, as a pin where it fits
+and as a dot where it does not.
 
 `@unvalidated` — **the margin is 3 km and that number is picked, not found.**
 `pipeline/cut_cells.py` says so at the source: "`SEAM_MARGIN_KM = 3.0` is picked, not
@@ -151,12 +160,15 @@ about an in-memory index read identically.
 
 ### anchor
 
-1. **Where a report lands and how the header says so** — `ReportWindowAnchor` in
-   `reporting/ReportWindow.tsx`. `label` and `phrase` are required; `lat`, `lon`, `mile`
-   and `poiId` are all optional, because a build with no GPS fix anchors to "here".
-2. **The place a report is about** — `chrome/FieldNoteSection.tsx`'s `ReportAnchor`.
-   Sense 1's own docstring says these are **not the same thing**: "that one is the place
-   a report is ABOUT, and this one is that plus the words the header prints."
+1. **Where a report is, as the hiker chose it** — `LocationChoice` in
+   `lib/reportLocation.ts` (#1563): a named waypoint (`poi`), the phone's own fix
+   resolved at filing (`fix`), or a spot marked on the map (`point`). `locationWords`
+   turns one into the `label` and `phrase` the window's header and receipt print;
+   `ReportWindowAnchor`, which used to carry those words itself, is gone.
+2. **The place a report is about, as a card hands it over** —
+   `chrome/FieldNoteSection.tsx`'s `ReportAnchor`: a waypoint's id and coordinates, or
+   a pressed point's. The shell turns one into sense 1 (`choiceFromAnchor` in
+   `App.tsx`), looking the waypoint's name up on the way.
 3. **A POI type that can hold a site** — `pipeline/lib/poi_sites.py`'s
    `ANCHOR_TYPES = ("shelter", "campsite")`, and `map/poiIcons.ts`'s "a viewpoint never
    anchors a site".
@@ -247,6 +259,15 @@ screen. **A shot** is the picture it takes. Recipes are committed; pixels never 
 [`.claude/skills/pr-screenshot/SKILL.md`](.claude/skills/pr-screenshot/SKILL.md).
 
 For **the camera**, which is not one thing, see the dangerous list above.
+
+### mock
+
+**A rendered page of a screen as it would be**, drawn in the design system's tokens and
+sent to the maintainer's side panel before a poll about it — the default picture since
+**#1566 — A session's questions to the maintainer carry no wireframe or screenshot, so the
+plan cannot be seen from the words**. Not a shot: nothing in a mock was photographed, and
+its caption says so. See
+[`.claude/skills/visual-poll/SKILL.md`](.claude/skills/visual-poll/SKILL.md).
 
 ### UA
 

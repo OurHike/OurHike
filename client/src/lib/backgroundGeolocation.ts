@@ -16,10 +16,11 @@
 //
 // It is still a second path, so it is fenced: nothing outside the trace
 // recorder may use it. `useGeolocation` remains the app's single position
-// source for the blue dot and the mile readout, and MapLibre's
-// GeolocateControl runs a third watch internally that no plugin swap could
-// reach - a half-migrated app would have three sources disagreeing about where
-// somebody is, on the four paths that can hurt a hiker.
+// source for the hiker's mark and the mile readout. (MapLibre's
+// GeolocateControl used to run a third watch internally that no plugin swap
+// could reach; #1581 retired it, and the mark now draws from the same state
+// the header reads.) A half-migrated app would have sources disagreeing
+// about where somebody is, on the four paths that can hurt a hiker.
 //
 // THE NUMBER THIS PLUGIN REPORTS IS NOT THE NUMBER THE WEB API REPORTS.
 //

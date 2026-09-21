@@ -32,10 +32,33 @@
 // and starts at `closed`: somebody filing this is saying the trail is shut.
 // Reopening one, or confirming a reroute exists, is a maintainer's judgment -
 // see the column's own comment in backend/app/models/closure.py.
+//
+// THE NEAR END CAN BE PICKED AS A PLACE (#1563). The same control the report
+// window and the long form use (reporting/LocationPicker.tsx, in a sheet of
+// its own over this form) fills the "shut from" box from a named place's
+// mile or the fix's snapped mile, for the
+// hiker who knows the closure starts at the shelter and not what mile the
+// shelter is. Only places that CARRY a mile are offered, and the map is not:
+// a closure is two miles by definition, and a spot with no mile is a spot
+// this form would have to guess a mile for. The wire is unchanged - a
+// closure still travels as its two miles and the geometry those project to
+// (lib/closureDraft.ts); the place a hiker picked is how they arrived at the
+// number, not a field.
 
 import { useState } from 'react'
 import { CLOSURE_REASONS } from '../lib/closureDraft'
 import type { ClosureReason } from '../lib/closureBanner'
+import { placeWords } from '../lib/placement'
+import {
+  AT_THE_FIX,
+  chosenMile,
+  type FixSnapshot,
+  type LocationChoice,
+  type NearbyPlace,
+  type SearchPlacesOptions,
+} from '../lib/reportLocation'
+import type { UnitSystem } from '../lib/units'
+import { LocationSheet } from './deferred'
 import './reporting.css'
 
 export interface ClosureFormSubmission {
@@ -57,11 +80,39 @@ export interface ClosureFormProps {
    * does is prefill zero, which is Springer Mountain rather than "unknown".
    */
   hereMile: number | null
+  /**
+   * Where the report flow was when it left for this form - a waypoint's card,
+   * a pressed point - or null from a door that supplied nothing. A choice
+   * that carries a mile prefills "shut from" and names itself under the box;
+   * one without a mile is ignored, because a closure cannot start at a place
+   * with no mile.
+   */
+  startFrom?: LocationChoice | null
+  /** The phone's fix, for the picker's "where you are" - offered only when
+   *  the fix has a snapped mile, for the same reason. */
+  fix?: FixSnapshot | null
+  /** Named places worth offering, nearest first. Only those with a mile are
+   *  drawn. */
+  places?: readonly NearbyPlace[]
+  /** Search by name across the phone. Asked with `withMile`, so the rows
+   *  that come back are ones this form can use and the cap is applied to
+   *  those, not to a list the mile filter then empties (review of #1571). */
+  onSearchPlaces?: (
+    query: string,
+    options?: SearchPlacesOptions,
+  ) => readonly NearbyPlace[]
+  /** The hiker's unit system, for the picker's distances (lib/units.ts). */
+  units: UnitSystem
   onSubmit: (submission: ClosureFormSubmission) => void
   onCancel: () => void
   online?: boolean
   /** Injectable so the authoring stamp is testable. */
   now?: Date
+}
+
+/** Only a place with a mile can start a closure. */
+function withMile(places: readonly NearbyPlace[]): NearbyPlace[] {
+  return places.filter((place) => place.mile !== undefined)
 }
 
 /** A typed mile, or null when the box holds nothing usable.
@@ -79,6 +130,11 @@ function typedMile(raw: string): number | null {
 
 export function ClosureForm({
   hereMile,
+  startFrom = null,
+  fix = null,
+  places = [],
+  onSearchPlaces,
+  units,
   onSubmit,
   onCancel,
   online = true,
@@ -89,7 +145,24 @@ export function ClosureForm({
   // they saw the trail was shut.
   const [authoredAt] = useState(() => now ?? new Date())
   const [reason, setReason] = useState<ClosureReason>('storm_damage')
-  const [start, setStart] = useState(() => (hereMile === null ? '' : hereMile.toFixed(1)))
+  // The place the near end was picked from, when it was picked rather than
+  // typed - what the hint under the box names. Starts as the place the
+  // report flow arrived with, when that place has a mile to give.
+  const [startPlace, setStartPlace] = useState<LocationChoice | null>(() =>
+    startFrom !== null && startFrom.kind !== 'fix' && chosenMile(startFrom, fix) !== null
+      ? startFrom
+      : null,
+  )
+  const [start, setStart] = useState(() => {
+    const arrived = startFrom === null ? null : chosenMile(startFrom, fix)
+    const mile = arrived ?? hereMile
+    return mile === null ? '' : mile.toFixed(1)
+  })
+  const [pickingStart, setPickingStart] = useState(false)
+  // The fix is a place only when it has a mile; `AT_THE_FIX` with none would
+  // draw a row the picker cannot honour.
+  const fixWithMile = fix !== null && fix.mile !== undefined ? fix : null
+  const startChoice: LocationChoice = startPlace ?? AT_THE_FIX
   const [end, setEnd] = useState('')
   const [note, setNote] = useState('')
   const [refused, setRefused] = useState<string | null>(null)
@@ -148,23 +221,73 @@ export function ClosureForm({
         ))}
       </fieldset>
 
-      <label className="reporting__field">
-        <span className="reporting__field-label">Shut from mile</span>
-        <input
-          className="reporting__input reporting__input--mile"
-          // `inputMode` rather than `type="number"`: a number input on a
-          // phone hides the decimal point on some keyboards, and a mile
-          // without its tenth is a stretch a moderator has to guess at.
-          inputMode="decimal"
-          value={start}
-          onChange={(event) => setStart(event.target.value)}
-        />
-        <span className="reporting__meta">
-          {hereMile === null
-            ? 'No fix on the trail yet — read the mile off the sign or the map.'
-            : 'Where you are now. Change it if the closure starts somewhere else.'}
-        </span>
-      </label>
+      <div className="reporting__field">
+        <label className="reporting__field">
+          <span className="reporting__field-label">Shut from mile</span>
+          <input
+            className="reporting__input reporting__input--mile"
+            // `inputMode` rather than `type="number"`: a number input on a
+            // phone hides the decimal point on some keyboards, and a mile
+            // without its tenth is a stretch a moderator has to guess at.
+            inputMode="decimal"
+            value={start}
+            onChange={(event) => {
+              setStart(event.target.value)
+              // Typed over, so the box no longer says what the place said.
+              setStartPlace(null)
+            }}
+          />
+          <span className="reporting__meta" data-testid="closure-start-hint">
+            {startPlace !== null && startPlace.kind === 'poi'
+              ? `${startPlace.name} — ${placeWords(chosenMile(startPlace, fix), true, units)}`
+              : startPlace !== null
+                ? 'The spot you marked on the map.'
+                : hereMile === null
+                  ? 'No fix on the trail yet — read the mile off the sign or the map, or pick a place.'
+                  : 'Where you are now. Change it if the closure starts somewhere else.'}
+          </span>
+        </label>
+        {/* THE PLACE THE NEAR END IS AT, for the hiker who knows the closure
+            starts at the shelter rather than at mile 628.4 (#1563). Only
+            places with a mile, and no map row - see the header. */}
+        <p className="reporting__location">
+          <span className="reporting__meta">Or start it at a place</span>
+          <button
+            type="button"
+            className="reporting__change"
+            data-testid="closure-pick-place"
+            aria-haspopup="dialog"
+            onClick={() => setPickingStart(true)}
+          >
+            Pick a place ›
+          </button>
+        </p>
+        {pickingStart && (
+          <LocationSheet
+            choice={startChoice}
+            fix={fixWithMile}
+            places={withMile(places)}
+            onSearch={
+              onSearchPlaces === undefined
+                ? undefined
+                : (query) => withMile(onSearchPlaces(query, { withMile: true }))
+            }
+            units={units}
+            knowsTrail={true}
+            onChoose={(choice) => {
+              const mile = chosenMile(choice, fixWithMile)
+              // Every row drawn carries a mile, so this is the guard for a
+              // shape the picker cannot produce rather than a branch a hiker
+              // can reach.
+              if (mile === null) return
+              setStart(mile.toFixed(1))
+              setStartPlace(choice.kind === 'fix' ? null : choice)
+              setPickingStart(false)
+            }}
+            onClose={() => setPickingStart(false)}
+          />
+        )}
+      </div>
 
       <label className="reporting__field">
         <span className="reporting__field-label">To mile (if you know)</span>

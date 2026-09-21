@@ -6,7 +6,7 @@ import {
   PREFERENCE_KEYS,
   type UserPreferences,
 } from './userPreferences'
-import { DEFAULT_SHOWN_TYPES } from './waypointVisibility'
+import { DEFAULT_SHOWN_TYPES, HIDEABLE_TYPES } from './waypointVisibility'
 
 // TESTING.md invariant 16, asserted where it says to assert it: on the
 // SCHEMA, not the DOM. "No closures toggle rendered on the settings screen"
@@ -68,6 +68,7 @@ describe('UserPreferences schema', () => {
         'anonymity_window_days',
         'auto_rotate_enabled',
         'background_source',
+        'blaze_colors_shown',
         'contribute_conditions',
         'default_place',
         'download_choice_made',
@@ -79,6 +80,7 @@ describe('UserPreferences schema', () => {
         'map_style',
         'max_background_zoom',
         'onboarding_completed',
+        'real_name',
         'red_light_enabled',
         'reporter_type',
         'show_roads',
@@ -133,6 +135,15 @@ describe('the hiking sheet level (#276)', () => {
   })
 })
 
+describe('the blaze colours switch (#1575)', () => {
+  it('defaults blaze_colors_shown to false - one red line for every trail until the hiker asks', () => {
+    // The maintainer's default, quoted on the key itself. Flipping it is
+    // this one value, and this test is what makes that a decision rather
+    // than a drift.
+    expect(DEFAULT_PREFERENCES.blaze_colors_shown).toBe(false)
+  })
+})
+
 describe('map appearance (MAP_STYLE_SPEC.md)', () => {
   it('defaults to the field style with red light off - the reviewed day sheet, never the red one', () => {
     expect(DEFAULT_PREFERENCES.map_style).toBe('field')
@@ -154,9 +165,13 @@ describe('map appearance (MAP_STYLE_SPEC.md)', () => {
 })
 
 describe('waypoints shown by default (#865)', () => {
-  it('defaults to the curated subset, not every category', () => {
+  it('defaults to every category, because a default is the map deciding (#1585)', () => {
+    // It was the curated four of #865. A default is the one state no hiker
+    // ever chose, so a default that leaves 84% of the corridor's waypoints
+    // off the map is the map hiding them - which is what the maintainer
+    // ruled out on 2026-09-18. lib/waypointVisibility.ts carries the count.
     expect([...DEFAULT_PREFERENCES.waypoint_types_shown].sort()).toEqual(
-      ['campsite', 'privy', 'shelter', 'water'].sort(),
+      [...HIDEABLE_TYPES].sort(),
     )
   })
 

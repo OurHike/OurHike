@@ -195,11 +195,22 @@ describe('the publisher’s words', () => {
   it('links back to their page and never to Avenza', () => {
     show({ detail: DETAIL })
 
-    expect(screen.getByRole('link', { name: /Read it on their page/ })).toHaveAttribute(
-      'href',
-      DETAIL!.url,
-    )
+    const link = screen.getByRole('link', { name: /Read it on their page/ })
+    expect(link).toHaveAttribute('href', DETAIL!.url)
+    // Beside the app, as every other external link opens: the installed
+    // web app is the tab, and navigating it away loses the hike.
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noreferrer')
     expect(screen.queryByText(/Avenza/i)).not.toBeInTheDocument()
+  })
+
+  it('renders no source link when the publisher’s URL is not a web page (#1578)', () => {
+    // The URL is the publisher's own export, kept as any non-empty string by
+    // lib/suggestedHikesData.ts; the screen is where the scheme is checked.
+    show({ detail: { ...DETAIL!, url: 'data:text/html,<p>their page</p>' } })
+
+    expect(screen.queryByRole('link', { name: /Read it on their page/ })).toBeNull()
+    expect(screen.getByText(/route and words/)).toBeInTheDocument()
   })
 
   it('says the line on the map is ours, built from their description', () => {

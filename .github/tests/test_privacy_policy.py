@@ -54,21 +54,25 @@ def policy() -> str:
 
 @pytest.fixture(scope="module")
 def enabled_providers() -> set[str]:
-    """The sign-in providers a build ships when nothing overrides them.
+    """Every sign-in provider a build ships, read from the one place that says.
 
-    `VITE_AUTH_PROVIDERS` can widen this per build, but the default is what
-    every deployed build has unless somebody set it - so it is what the policy
-    has to describe.
+    THIS FIXTURE USED TO BE HALF A CHECK. The shipped set came from the
+    `AUTH_PROVIDERS` repository variable, which nothing in a checkout can see,
+    so this could only read the code default - and said so in its own
+    docstring, "can widen this per build". A policy checked against a list the
+    deployed build did not use is a disclosure nobody is holding to anything.
+    #1572 moved the list into `ENABLED_PROVIDERS`, so the gap closed: what this
+    reads is now exactly what ships.
     """
     source = (CLIENT_LIB / "supabase.ts").read_text(encoding="utf-8")
-    match = re.search(r"CONFIGURED_PROVIDERS\.trim\(\) === ''\s*\?\s*'([^']+)'", source)
+    match = re.search(r"export const ENABLED_PROVIDERS[^=]*=\s*\[([^\]]*)\]", source)
     if match is None:
         raise AssertionError(
-            "could not read the default provider set out of client/src/lib/supabase.ts. "
+            "could not read ENABLED_PROVIDERS out of client/src/lib/supabase.ts. "
             "It has been restructured, and this test must be updated rather than left "
             "asserting nothing."
         )
-    return {name.strip() for name in match.group(1).split(",") if name.strip()}
+    return {name.strip().strip("'\"") for name in match.group(1).split(",") if name.strip()}
 
 
 @pytest.fixture(scope="module")

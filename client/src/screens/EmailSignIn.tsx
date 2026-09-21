@@ -1,27 +1,25 @@
-// Signing in with an email address, the provider that needs no external
-// registration (features/AUTHENTICATION.md).
+// Signing in with an email address: a 6-digit code, typed into the app
+// (features/AUTHENTICATION.md, #279).
 //
-// Google and Apple need no screen at all - tapping the button leaves for the
-// provider and comes back with a session. Email is the one that has to ask
-// for something, which is why it is a screen rather than a branch inside
-// SignInPrompt.
+// Google, Apple and GitHub need no screen at all - tapping the button leaves
+// for the provider and comes back with a session. Email is the one that has
+// to ask for something, which is why it is a screen rather than a branch
+// inside SignInPrompt.
 //
-// **A link is the default, a password is the fallback.** A link is one field
-// and nothing to remember six weeks up the trail from where it was set, and
-// following it proves the address belongs to whoever asked - so it does the
-// verification job without a second confirmation step. It also creates the
-// account when the address is new, which is why there is no "sign up or sign
-// in?" question before the form.
+// A CODE, NOT A LINK AND NOT A PASSWORD. A link sends someone out to a mail
+// app and asks them to come back, and on a phone the link opens the browser
+// rather than the installed app, so the session can land where the app
+// cannot see it. A password is something to set now and recall six weeks up
+// the trail, and one reused from a breached site is exactly as safe as that
+// site (LAUNCH_CHECKLIST.md 5a). A code has the one property the password
+// was kept for - finishing without leaving the app - and none of the costs:
+// nothing to remember, nothing to leak, and the session lands in the app's
+// own storage because the request that earns it is made from here.
 //
-// The password path stays because a link has a real cost this app feels more
-// than most: it means leaving for an email client and coming back, and on a
-// ridge with one bar that round trip is the fragile part. Someone who set a
-// password can finish without ever leaving the app.
-//
-// Neither path signs anyone in from this screen alone. A link has to be
-// followed; a created account has to be confirmed. Both end here saying so,
-// because reporting either as "signed in" would leave someone waiting to send
-// a contribution that never would.
+// Two steps on one screen: the address, then the code. One screen so the
+// address is not typed twice and "send another code" is one tap. Neither
+// step claims a sign-in. The session arriving is what closes this screen
+// (App.tsx watches the account), so a refusal is the only outcome shown here.
 
 import { useState, type FormEvent } from 'react'
 import type { AuthOutcome } from '../lib/auth'
@@ -29,124 +27,186 @@ import { signInMessage } from '../lib/authMessages'
 import './reporting.css'
 
 export interface EmailSignInProps {
-  onMagicLink: (email: string) => Promise<AuthOutcome>
-  onSignIn: (email: string, password: string) => Promise<AuthOutcome>
-  onSignUp: (email: string, password: string) => Promise<AuthOutcome>
+  /** Emails a code to the address, creating the account when it is new. */
+  onSendCode: (email: string) => Promise<AuthOutcome>
+  /** Signs in with the code that email carried. */
+  onVerifyCode: (email: string, code: string) => Promise<AuthOutcome>
   onCancel: () => void
 }
 
-type Mode = 'link' | 'password' | 'create'
+/**
+ * How many digits the code has. Supabase's default, and what the field
+ * asks for. The project's own setting is not readable from here, so this
+ * and the email templates agree by LAUNCH_CHECKLIST.md 4.3d rather than by
+ * construction - backend/check_supabase_config.py is what reads them back.
+ */
+export const CODE_LENGTH = 6
+
+type Step = 'address' | 'code'
 
 type Status =
   | { kind: 'idle' }
   | { kind: 'working' }
   | { kind: 'error'; message: string }
-  | { kind: 'sent' }
+  /** A second code was asked for from the code step. Said, so a tap on
+   *  "Send another code" is not read as nothing having happened. */
+  | { kind: 'resent' }
 
-const TITLES: Record<Mode, string> = {
-  link: 'Sign in with email',
-  password: 'Sign in with a password',
-  create: 'Create an account',
-}
-
-const SUBMIT_LABELS: Record<Mode, string> = {
-  link: 'Email me a sign-in link',
-  password: 'Sign in',
-  create: 'Create account',
-}
-
-export function EmailSignIn({
-  onMagicLink,
-  onSignIn,
-  onSignUp,
-  onCancel,
-}: EmailSignInProps) {
-  const [mode, setMode] = useState<Mode>('link')
+export function EmailSignIn({ onSendCode, onVerifyCode, onCancel }: EmailSignInProps) {
+  const [step, setStep] = useState<Step>('address')
   const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [code, setCode] = useState('')
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
 
   const working = status.kind === 'working'
-  const needsPassword = mode !== 'link'
 
-  function switchTo(next: Mode) {
-    setMode(next)
-    // Otherwise a failure from the path just abandoned reads as the new one
-    // having already failed, before it has been tried.
-    setStatus({ kind: 'idle' })
-  }
-
-  async function submit(event: FormEvent) {
-    event.preventDefault()
+  /**
+   * Runs one of the two calls and turns whatever it does into a status.
+   *
+   * Wrapped since #315. Both handlers RETURN their failures rather than
+   * throwing, so the try existed for nothing - right up until one of them
+   * throws, which supabase-js does for a malformed response or a client it
+   * could not build. There is no catch above this screen: the button would
+   * say "Working…" for the rest of the session, disabled, with no way to try
+   * again short of leaving the screen. A stuck primary button is worse than
+   * an error, because an error is a thing a hiker can act on.
+   *
+   * A thrown failure goes through the same mapper the returned ones do, so
+   * the two read identically to the person in front of them - and a thrown
+   * "Failed to fetch", which is what no signal looks like here, still says
+   * "no signal" rather than falling to the general case.
+   */
+  async function attempt(call: () => Promise<AuthOutcome>): Promise<boolean> {
     setStatus({ kind: 'working' })
-
-    // Wrapped since #315. These three RETURN their failures rather than
-    // throwing, so the try existed for nothing — right up until one of them
-    // throws, which supabase-js does for a malformed response or a client it
-    // could not build. There is no catch above this: the button would say
-    // "Working…" for the rest of the session, disabled, with no way to try
-    // again short of leaving the screen. A stuck primary button is worse than
-    // an error, because an error is a thing a hiker can act on.
     let outcome: AuthOutcome
     try {
-      outcome =
-        mode === 'link'
-          ? await onMagicLink(email)
-          : mode === 'create'
-            ? await onSignUp(email, password)
-            : await onSignIn(email, password)
+      outcome = await call()
     } catch (error) {
-      // Through the same mapper the RETURNED failures go through, so a thrown
-      // one and a returned one read identically to the person in front of it
-      // — and a thrown "Failed to fetch", which is what no signal looks like
-      // here, still says "no signal" rather than falling to the general case.
       setStatus({
         kind: 'error',
         message: signInMessage(error instanceof Error ? error.message : String(error)),
       })
-      return
+      return false
     }
-
     if (!outcome.ok) {
       setStatus({ kind: 'error', message: outcome.message })
-      return
+      return false
     }
-    // A password sign-in navigates away by itself once the session lands. The
-    // other two are waiting on an email, and saying nothing would look like
-    // they had failed.
-    setStatus(mode === 'password' ? { kind: 'idle' } : { kind: 'sent' })
+    return true
   }
 
-  if (status.kind === 'sent') {
+  async function sendCode(event: FormEvent) {
+    event.preventDefault()
+    // Only the step moves on success. Saying "check your email" when nothing
+    // was sent leaves someone waiting on a message that is not coming.
+    if (await attempt(() => onSendCode(email))) {
+      setCode('')
+      setStatus({ kind: 'idle' })
+      setStep('code')
+    }
+  }
+
+  async function sendAnother() {
+    if (await attempt(() => onSendCode(email))) setStatus({ kind: 'resent' })
+  }
+
+  async function verify(event: FormEvent) {
+    event.preventDefault()
+    // On success the session lands and App.tsx closes this screen; nothing
+    // to say here. The field keeps its digits on a refusal so a hiker can
+    // see what they typed against what the email says.
+    if (await attempt(() => onVerifyCode(email, code))) setStatus({ kind: 'idle' })
+  }
+
+  function changeAddress() {
+    setStep('address')
+    setCode('')
+    // Otherwise a failure from the step just abandoned reads as the new one
+    // having already failed, before it has been tried.
+    setStatus({ kind: 'idle' })
+  }
+
+  if (step === 'code') {
     return (
       <main className="reporting">
         <h1 className="reporting__title">Check your email</h1>
         <p className="reporting__saved" role="status">
-          {mode === 'link'
-            ? `A sign-in link is on its way to ${email}. Following it signs you in — you can close this. Anything you have written is still saved on your phone in the meantime.`
-            : `A confirmation link is on its way to ${email}. Following it finishes the account. Anything you have written is still saved on your phone in the meantime.`}
+          {status.kind === 'resent'
+            ? `Another code is on its way to ${email}. `
+            : `A ${CODE_LENGTH}-digit code is on its way to ${email}. `}
+          Type it here — no need to leave the app. Anything you have written is still
+          saved on your phone in the meantime.
         </p>
-        <div className="reporting__actions">
-          <button type="button" className="reporting__secondary" onClick={onCancel}>
-            Done
-          </button>
-        </div>
+
+        <form className="reporting__form" onSubmit={(event) => void verify(event)}>
+          <label className="reporting__field">
+            <span className="reporting__field-label">Code</span>
+            <input
+              className="reporting__input"
+              // A numeric keypad, and the OS offering the code straight out
+              // of the notification: both come from these two attributes
+              // and neither from the type, which stays text so a leading
+              // zero survives.
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              pattern="[0-9 ]*"
+              maxLength={CODE_LENGTH + 1}
+              required
+              value={code}
+              onChange={(event) => setCode(event.target.value)}
+            />
+          </label>
+
+          {status.kind === 'error' && (
+            <p className="reporting__error" role="alert">
+              {status.message}
+            </p>
+          )}
+
+          <div className="reporting__actions">
+            <button type="submit" className="reporting__primary" disabled={working}>
+              {working ? 'Working…' : 'Sign in'}
+            </button>
+            <button
+              type="button"
+              className="reporting__secondary"
+              disabled={working}
+              onClick={() => void sendAnother()}
+            >
+              Send another code
+            </button>
+            <button
+              type="button"
+              className="reporting__secondary"
+              onClick={changeAddress}
+            >
+              Use a different address
+            </button>
+            <button type="button" className="reporting__secondary" onClick={onCancel}>
+              Not now
+            </button>
+          </div>
+        </form>
+
+        <p className="reporting__reassurance" role="note">
+          Reading the map never needs an account — water, shelters, closures and warnings
+          are all there whether you sign in or not.
+        </p>
       </main>
     )
   }
 
   return (
     <main className="reporting">
-      <h1 className="reporting__title">{TITLES[mode]}</h1>
+      <h1 className="reporting__title">Sign in with email</h1>
 
-      {mode === 'link' && (
-        <p className="reporting__saved" role="status">
-          No password to set or remember — we email you a link and following it signs you
-          in.
-        </p>
-      )}
+      <p className="reporting__saved" role="status">
+        No password to set or remember — we email you a {CODE_LENGTH}-digit code and you
+        type it in here. If you are new, that also creates your account.
+      </p>
 
-      <form className="reporting__form" onSubmit={(event) => void submit(event)}>
+      <form className="reporting__form" onSubmit={(event) => void sendCode(event)}>
         <label className="reporting__field">
           <span className="reporting__field-label">Email</span>
           <input
@@ -159,20 +219,6 @@ export function EmailSignIn({
           />
         </label>
 
-        {needsPassword && (
-          <label className="reporting__field">
-            <span className="reporting__field-label">Password</span>
-            <input
-              className="reporting__input"
-              type="password"
-              autoComplete={mode === 'create' ? 'new-password' : 'current-password'}
-              required
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-            />
-          </label>
-        )}
-
         {status.kind === 'error' && (
           <p className="reporting__error" role="alert">
             {status.message}
@@ -181,47 +227,8 @@ export function EmailSignIn({
 
         <div className="reporting__actions">
           <button type="submit" className="reporting__primary" disabled={working}>
-            {working ? 'Working…' : SUBMIT_LABELS[mode]}
+            {working ? 'Working…' : 'Email me a code'}
           </button>
-
-          {mode === 'link' ? (
-            <button
-              type="button"
-              className="reporting__secondary"
-              onClick={() => switchTo('password')}
-            >
-              Use a password instead
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="reporting__secondary"
-              onClick={() => switchTo('link')}
-            >
-              Email me a link instead
-            </button>
-          )}
-
-          {mode === 'password' && (
-            <button
-              type="button"
-              className="reporting__secondary"
-              onClick={() => switchTo('create')}
-            >
-              Create an account with a password
-            </button>
-          )}
-
-          {mode === 'create' && (
-            <button
-              type="button"
-              className="reporting__secondary"
-              onClick={() => switchTo('password')}
-            >
-              I already have an account
-            </button>
-          )}
-
           <button type="button" className="reporting__secondary" onClick={onCancel}>
             Not now
           </button>

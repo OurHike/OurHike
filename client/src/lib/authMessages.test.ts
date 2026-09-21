@@ -42,19 +42,39 @@ describe('the strings #315 found on screen', () => {
   })
 })
 
-describe('the failures worth telling apart', () => {
-  it('a wrong password points at the way round it', () => {
-    // A hiker who cannot remember a password has a sign-in link available,
-    // and this is the moment to say so.
-    expect(signInMessage('Invalid login credentials')).toMatch(/sign-in link/i)
+describe('the failures of the emailed code (#279)', () => {
+  it('"Token has expired or is invalid" says to check the digits or ask for a new code', () => {
+    // GoTrue's one string for a mistyped code and a code left an hour. The
+    // way out is the same for both, so the sentence does not guess which.
+    const said = signInMessage('Token has expired or is invalid')
+
+    expect(said).toMatch(/did not match, or it has expired/i)
+    expect(said).toMatch(/new code/i)
+    expect(said).not.toMatch(/token/i)
   })
 
-  it('an unconfirmed account says where the link is', () => {
-    expect(signInMessage('Email not confirmed')).toMatch(/follow the link/i)
+  it('"Email address not authorized" says this build cannot send email, and that the map still works', () => {
+    // What a project on Supabase's built-in mailer answers for any address
+    // outside its own team (LAUNCH_CHECKLIST.md 4.3c). Nothing a hiker can
+    // do about it, so the sentence is about what stays true for them.
+    const said = signInMessage('Email address not authorized')
+
+    expect(said).toMatch(/not switched on/i)
+    expect(said).toMatch(/map still works/i)
+    expect(said).not.toMatch(/authorized/i)
   })
 
-  it('an existing account says to sign in rather than sign up', () => {
-    expect(signInMessage('User already registered')).toMatch(/already an account/i)
+  it('"Error sending magic link email" is the sender failing now, so it says to try again later', () => {
+    // GoTrue's wording whether the email carries a link or a code.
+    const said = signInMessage('Error sending magic link email')
+
+    expect(said).toMatch(/could not be sent just now/i)
+    expect(said).toMatch(/on our side/i)
+    expect(said).not.toMatch(/magic link/i)
+  })
+
+  it('"Signups not allowed for otp" says accounts are not being created, without blaming the hiker', () => {
+    expect(signInMessage('Signups not allowed for otp')).toMatch(/not being created/i)
   })
 })
 

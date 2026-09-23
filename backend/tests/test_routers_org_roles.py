@@ -111,6 +111,9 @@ def test_a_retired_role_is_out_of_the_default_list_and_available_on_request(clie
 
 def test_a_supervisors_assignment_waits_for_an_admin(client, db_session):
     org, _ = _org_with_admin(db_session)
+    # A stretch has to sit inside one of the org's own sections (#1635);
+    # the factory's section is miles 11.0 to 14.3.
+    make_section(db_session, org)
     supervisor = _supervisor(db_session, org)
     volunteer = make_profile(db_session)
 
@@ -127,6 +130,9 @@ def test_a_supervisors_assignment_waits_for_an_admin(client, db_session):
 
 def test_an_admins_own_assignment_is_live_immediately(client, db_session):
     org, admin = _org_with_admin(db_session)
+    # A stretch has to sit inside one of the org's own sections (#1635);
+    # the factory's section is miles 11.0 to 14.3.
+    make_section(db_session, org)
     volunteer = make_profile(db_session)
 
     created = client.post(
@@ -141,11 +147,14 @@ def test_an_admins_own_assignment_is_live_immediately(client, db_session):
 
 def test_an_admin_confirms_a_supervisors_proposal(client, db_session):
     org, admin = _org_with_admin(db_session)
+    # A stretch has to sit inside one of the org's own sections (#1635);
+    # the factory's section is miles 11.0 to 14.3.
+    make_section(db_session, org)
     supervisor = _supervisor(db_session, org)
     volunteer = make_profile(db_session)
     proposal = client.post(
         "/clubs/ramapo-trail-conference/assignments",
-        json={"person_id": volunteer.id, "start_mile": 1.0, "end_mile": 2.0},
+        json={"person_id": volunteer.id, "start_mile": 11.0, "end_mile": 12.0},
         headers=auth_headers(supervisor.id),
     ).json()
 
@@ -356,10 +365,13 @@ def test_assigning_somebody_who_has_never_signed_in_says_what_to_do_instead(clie
     """#1169's problem 3 arriving at a screen: OurHike cannot create a user, so
     an admin typing a name gets the route that works rather than a 500."""
     org, admin = _org_with_admin(db_session)
+    # A stretch has to sit inside one of the org's own sections (#1635);
+    # the factory's section is miles 11.0 to 14.3.
+    make_section(db_session, org)
 
     response = client.post(
         "/clubs/ramapo-trail-conference/assignments",
-        json={"person_id": str(uuid.uuid4()), "start_mile": 1.0, "end_mile": 2.0},
+        json={"person_id": str(uuid.uuid4()), "start_mile": 11.0, "end_mile": 12.0},
         headers=auth_headers(admin.id),
     )
 

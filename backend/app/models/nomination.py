@@ -170,6 +170,15 @@ class NominationContact(Base):
     # rather than three clicks from one inbox.
     responded_at = Column(DateTime, nullable=True)
     approved = Column(Boolean, nullable=True)
+
+    # THIS CONTACT'S OWN LINK. Until #1635 - The organization console's new
+    # endpoints trust self-registered orgs with maintainer powers, seats and
+    # mail - one `proposal_token` went to every contact, and a decision
+    # counted "the first contact who has not answered", so one inbox could
+    # cast all three approvals. A decision is now recorded against the
+    # contact whose link was used, once. Null only on rows written before
+    # the column; those contacts can read the proposal and cannot decide.
+    decision_token = Column(String, nullable=True, unique=True, index=True)
     created_at = Column(DateTime, nullable=False, default=utc_now)
 
     __table_args__ = (UniqueConstraint("nomination_id", "email", name="uq_nomination_contact_email"),)

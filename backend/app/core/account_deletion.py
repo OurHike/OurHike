@@ -145,6 +145,11 @@ def scrub_profile(profile: Profile, now=None) -> None:
     the moderation queue reachable by whatever is left of the account.
     """
     profile.display_name = None
+    # A GitHub login names the person as surely as a display name does, and
+    # it is a CODEOWNERS entry while it stays (#1635). `github_login` is
+    # also unique, so leaving it here kept that account from being linked to
+    # anybody - including the same person signing up again.
+    profile.github_login = None
     profile.role = Role.hiker
     profile.deleted_at = now or utc_now()
 

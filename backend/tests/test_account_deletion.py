@@ -478,7 +478,13 @@ def test_the_scrub_clears_every_column_that_says_who_it_was(db_session, hiker):
     Spelled as "everything except the four columns that are allowed to
     survive" rather than as a list of what to clear, so a column added to
     `Profile` later fails here instead of quietly surviving a deletion.
+
+    `github_login` is filled first (#1635): a column that is already None
+    passes this loop without the scrub touching it, which is how the login
+    survived deletion while this test stayed green.
     """
+    hiker.github_login = "switchback-hikes"
+    db_session.commit()
     delete_account(db_session, hiker)
     db_session.commit()
     row = db_session.get(Profile, hiker.id)

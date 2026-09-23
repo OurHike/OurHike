@@ -62,6 +62,75 @@ from app.schemas.org_role import (
 router = APIRouter(prefix="/clubs", tags=["org-roles"])
 
 
+def _section_here_or_422(db: Session, club_id: str, section_id: str) -> OrgSection:
+    """A section of THIS organization's registry, or a refusal naming why.
+
+    #1635: `section_id` used to be stored as given, so a role or an
+    assignment could point at another organization's section - and the
+    roster and coverage report would then show one org's volunteer on the
+    other's trail. 422 rather than 404, because the org in the path exists
+    and it is the body that is wrong.
+    """
+    section = (
+        db.query(OrgSection)
+        .join(OrgTrail, OrgTrail.id == OrgSection.trail_id)
+        .join(OrgPark, OrgPark.id == OrgTrail.park_id)
+        .filter(OrgSection.id == section_id, OrgPark.club_id == club_id)
+        .one_or_none()
+    )
+    if section is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="That section is not in this organization's registry",
+        )
+    return section
+
+
+def _inside_our_own_sections_or_422(
+    db: Session, club_id: str, section: OrgSection | None, start_mile: float, end_mile: float
+) -> None:
+    """Refuse a stretch no section of this organization's registry contains.
+
+    #1635: an assignment's miles were stored as given, so an organization
+    could put somebody on miles 0 to 2,200 of a trail it has never
+    described. The stretch now has to fit inside one section the
+    organization has drawn - the named one when there is one, otherwise any
+    of theirs. A section whose miles are not filled in yet contains nothing,
+    because a stretch that cannot be checked is not one to take on trust.
+
+    This bounds what the console can SAY about an organization's own
+    volunteers. It is not what makes an assignment count for hikers - an
+    organization draws its own sections too - which is
+    `core/assignments.py`'s `stood_behind`.
+    """
+    if start_mile > end_mile:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="The stretch starts after it ends",
+        )
+    if section is not None:
+        candidates = [section]
+    else:
+        candidates = (
+            db.query(OrgSection)
+            .join(OrgTrail, OrgTrail.id == OrgSection.trail_id)
+            .join(OrgPark, OrgPark.id == OrgTrail.park_id)
+            .filter(OrgPark.club_id == club_id)
+            .all()
+        )
+    for candidate in candidates:
+        if candidate.start_mile is None or candidate.end_mile is None:
+            continue
+        if candidate.start_mile <= start_mile and end_mile <= candidate.end_mile:
+            return
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail=(
+            "That stretch is not inside any section of this organization's registry. Add the section, with its miles, first."
+        ),
+    )
+
+
 def _role_or_404(db: Session, club_id: str, role_id: str) -> OrgRole:
     role = db.query(OrgRole).filter(OrgRole.id == role_id, OrgRole.club_id == club_id).one_or_none()
     if role is None:
@@ -99,6 +168,8 @@ def create_role(
     """Define a role. Admin-only: the reporting line decides who confirms whom."""
     if payload.reports_to_role_id:
         _role_or_404(db, access.club.id, payload.reports_to_role_id)
+    if payload.section_id:
+        _section_here_or_422(db, access.club.id, payload.section_id)
     role = OrgRole(
         club_id=access.club.id,
         name=payload.name,
@@ -134,6 +205,8 @@ def update_role(
         )
     if fields.get("reports_to_role_id"):
         _role_or_404(db, access.club.id, fields["reports_to_role_id"])
+    if fields.get("section_id"):
+        _section_here_or_422(db, access.club.id, fields["section_id"])
 
     for field, value in fields.items():
         setattr(role, field, value)
@@ -241,6 +314,11 @@ def invite_volunteer(
     **Roles come later.** `role_id` is optional because an org adding a name
     at a meeting does not always know yet what that person will do, and
     refusing the row until they decide loses the name.
+
+    **Never a seat at the organization**, with or without a role. A
+    role-less invite used to BE an admin invitation (#1635), which let a
+    supervisor mint admins; `grants_admin_seat` is now the only thing that
+    offers a seat, and only `routers/clubs.py`'s admin paths set it.
     """
     if payload.role_id:
         _role_or_404(db, access.club.id, payload.role_id)
@@ -252,6 +330,7 @@ def invite_volunteer(
             RoleInvite.club_id == access.club.id,
             RoleInvite.email == email,
             RoleInvite.role_id == payload.role_id,
+            RoleInvite.grants_admin_seat.is_(False),
             RoleInvite.claimed_at.is_(None),
         )
         .one_or_none()
@@ -291,6 +370,8 @@ def create_assignment(
     """
     if payload.role_id:
         _role_or_404(db, access.club.id, payload.role_id)
+    section = _section_here_or_422(db, access.club.id, payload.section_id) if payload.section_id else None
+    _inside_our_own_sections_or_422(db, access.club.id, section, payload.start_mile, payload.end_mile)
 
     assignment = MaintainerAssignment(
         maintainer_id=payload.person_id,
@@ -453,6 +534,7 @@ def sync_roster(
                     RoleInvite.club_id == access.club.id,
                     RoleInvite.email == entry.email,
                     RoleInvite.role_id == (role.id if role else None),
+                    RoleInvite.grants_admin_seat.is_(False),
                     RoleInvite.claimed_at.is_(None),
                 )
                 .first()
@@ -482,6 +564,12 @@ def sync_roster(
                     start_mile=0.0,
                     end_mile=0.0,
                     effective_from=date.today(),
+                    # Stamped either way, as `create_assignment` does. A
+                    # supervisor's sync used to write neither stamp, which
+                    # is the shape only the reviewed-file loader may have
+                    # (`core/assignments.py`'s `stood_behind`, #1635) - so
+                    # a proposal nobody confirmed read as a maintainer's row.
+                    proposed_by=None if access.is_admin else access.person_id,
                     confirmed_by=access.person_id if access.is_admin else None,
                     confirmed_at=utc_now() if access.is_admin else None,
                 )

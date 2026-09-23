@@ -34,6 +34,7 @@ endpoint. Neither branch can be steered to the other's key material, and an
 `alg` naming anything else is refused outright rather than defaulted.
 """
 
+import re
 from collections.abc import Iterable
 from functools import lru_cache
 
@@ -284,6 +285,20 @@ def get_current_email(
     return email.strip().lower() if isinstance(email, str) and email.strip() else None
 
 
+# WHAT A GITHUB LOGIN LOOKS LIKE, lowercased: letters, digits and hyphens,
+# not starting with a hyphen, at most 39 characters. Reasoned from GitHub's
+# own sign-up rule rather than measured; slightly looser than it (a trailing
+# or doubled hyphen passes here), which is harmless - the point is that
+# nothing with whitespace, `@`, `/` or a newline in it ever becomes a
+# CODEOWNERS line (#1635).
+GITHUB_LOGIN = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,38})")
+
+
+def is_github_login(value: object) -> bool:
+    """Whether `value` has the shape of a lowercased GitHub login, and nothing more."""
+    return isinstance(value, str) and GITHUB_LOGIN.fullmatch(value) is not None
+
+
 def get_current_github_login(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> str | None:
@@ -307,6 +322,21 @@ def get_current_github_login(
     The provider is checked as well as the claim: a token from some other
     provider that happens to carry a `user_name` is not a GitHub identity,
     and reading one would link an account nobody proved they hold.
+
+    **`user_metadata` IS WRITABLE BY THE USER IT DESCRIBES, and that is the
+    gap #1635 - The organization console's new endpoints trust
+    self-registered orgs with maintainer powers, seats and mail - found and
+    this function only narrows.** Supabase's `updateUser({data: ...})`
+    rewrites it, and the token then carries the new value signed as if the
+    provider had said it. `app_metadata.provider` is not user-writable, so
+    "signed in with GitHub" still holds; "as THIS GitHub account" does not.
+    What is closed here is the worse half: a value that is not shaped like a
+    login - a newline and a second CODEOWNERS rule inside it - is refused
+    with a 422 rather than stored. What would close the rest is reading the
+    identity server-side, from `GET /auth/v1/user` with the caller's own
+    token, whose `identities[].identity_data` the user cannot edit. Nobody
+    has done that against the live project, for the reason the paragraph
+    above gives.
     """
     if credentials is None:
         return None
@@ -325,7 +355,13 @@ def get_current_github_login(
     for claim in ("user_name", "preferred_username"):
         value = user_metadata.get(claim)
         if isinstance(value, str) and value.strip():
-            return value.strip().lower()
+            login = value.strip().lower()
+            if not is_github_login(login):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="The GitHub account on this sign-in is not a valid GitHub username.",
+                )
+            return login
     return None
 
 

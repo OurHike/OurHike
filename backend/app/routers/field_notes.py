@@ -21,6 +21,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.assignments import stood_behind
 from app.core.auth import get_current_user, get_current_user_optional, require_role
 from app.core.disputes import DisputeInput, dispute_state
 from app.core.orm import commit_and_refresh, get_or_404
@@ -35,6 +36,7 @@ from app.core.photos import (
 )
 from app.core.time import to_naive_utc, utc_now
 from app.db.session import get_db
+from app.models.club import Club
 from app.models.field_note import FieldNote, NoteFlag, Observation
 from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.profile import MODERATOR_ROLES, Profile
@@ -296,10 +298,17 @@ def list_disputes(db: Session = Depends(get_db)) -> list[DisputeOut]:
     # maintainer's word outweighs the count and the covering test is a range
     # check, so the whole table is cheaper than N lookups and stays correct
     # as it grows to a few hundred rows.
+    #
+    # Only the assignments something other than their own organization
+    # stands behind (`core/assignments.py`'s `stood_behind`, #1635): one
+    # note from a covering maintainer is enough to put "reported missing" on
+    # a pin, so a self-registered organization's own row must not buy it.
     today = utc_now().date()
     assignments = (
         db.query(MaintainerAssignment)
+        .join(Club, Club.id == MaintainerAssignment.club_id)
         .filter(
+            stood_behind(),
             MaintainerAssignment.effective_from <= today,
             (MaintainerAssignment.effective_to.is_(None)) | (MaintainerAssignment.effective_to >= today),
         )

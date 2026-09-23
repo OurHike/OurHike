@@ -343,6 +343,23 @@ that until #1547's review, and the consequence was not a missing convenience: an
 through the product had exactly one admin, permanently, so the three-codeowner rule every registry
 change needs could not be satisfied by anybody.
 
+**An admin invitation is marked as one** (`RoleInvite.grants_admin_seat`), and only the two admin
+paths in `routers/clubs.py` — registering, and an admin inviting a colleague — set it. Until
+**#1635 — The organization console's new endpoints trust self-registered orgs with maintainer
+powers, seats and mail**, "no `role_id`" was the mark, and a supervisor's volunteer invite or a
+roster row whose role matched nothing wrote the same shape, so either could mint a seat. Accepting
+a seat is consent rather than authority: `approve_seat` refuses a seat with no admin invitation
+behind it.
+
+**What the console writes is not, by itself, what hikers are told.** A console assignment stays
+inside the organization's own sections and never names another organization's section, but the
+hiker-facing reads — the dispute pin, thanks resolution and the thanks inbox — count only rows a
+maintainer stands behind: loaded from the reviewed file by `load_assignments.py`, or confirmed at
+an organization a maintainer wrote. `core/assignments.py`'s `stood_behind` is the rule. An
+organization that registered itself gives its volunteers no weight with hikers until a maintainer
+puts the same stretch through that file (#1635), because registering proves an address at a
+domain, and anybody can type a free-mail domain.
+
 ```
 Park / TrailSystem          (new: org_parks)
   id · org_id · name · kind (park|system|forest)
@@ -751,6 +768,12 @@ data is a thing we make hard. `never_ask_again` is not a stronger word for decli
 a `nomination_refusals` row keyed by the club's own domain, and the next hiker to try is stopped
 before anybody there is written to a second time.
 
+**Each person asked gets their own link and one answer** (#1635). One shared link used to go to
+all of them, and a decision counted "the first contact who has not answered", so whoever held the
+link could be all three approvers. Contacts must be addresses at the organization's own domain,
+a never-again is kept only from one of them, and one hiker may submit three nominations a day —
+a number picked rather than measured, and marked `@unvalidated` where it is declared.
+
 ---
 
 ## The coverage badge, and the one it replaced
@@ -889,6 +912,17 @@ What this design does not answer, stated plainly.
   because nobody here has seen a real GitHub token from this project. **What would settle it:** one
   sign-in with the claims printed — after which the losing branch should be deleted rather than
   left as a guess that looks like breadth.
+- **The GitHub login on a token is one the user can rewrite.** Both claims above live in
+  `user_metadata`, which Supabase lets a signed-in user edit, so "signed in with GitHub" is proven
+  and "as this GitHub account" is not. Since #1635 a value that is not shaped like a login is
+  refused when linked and skipped when CODEOWNERS is generated, which closes injecting a rule and
+  leaves naming somebody else's account open. **What would settle it:** reading
+  `identities[].identity_data` from `GET /auth/v1/user` with the caller's own token, which the user
+  cannot edit.
+- **No console path lets a maintainer vouch for a self-registered organization.** Its
+  assignments carry no weight with hikers until a maintainer loads the same stretches from a
+  reviewed file (#1635). That is the fail-closed direction; a vouching step nobody has designed
+  is what would replace the file for it.
 - **Nobody has run the proof of work on a phone.** Every timing in the section above came off a
   desktop CPU. A mid-range phone is commonly two to four times slower at single-thread
   JavaScript, which would put the p90 between two and five seconds — tolerable next to a fetch

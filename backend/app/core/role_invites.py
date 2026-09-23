@@ -74,11 +74,13 @@ def apply_pending_invites(db: Session, profile: Profile, email: str | None) -> l
 def _seat_from(db: Session, invite: RoleInvite, profile: Profile, now: datetime) -> None:
     """Turn an admin invitation into the seat it was always promising.
 
-    **An invite with no `role_id` is an admin invitation.** A roster upload's
-    two hundred invites each name the `OrgRole` they grant; the ones
-    `routers/clubs.py` writes when an organization registers or invites a
-    colleague name none, because the thing being offered is a seat at the
-    org rather than a role within it.
+    **An invite with `grants_admin_seat` is an admin invitation, and nothing
+    else is.** `routers/clubs.py` sets it when an organization registers or
+    an admin invites a colleague. Until #1635 - The organization console's
+    new endpoints trust self-registered orgs with maintainer powers, seats
+    and mail - the test here was "no `role_id`", and a supervisor's
+    `invite_volunteer` or a roster row whose role matched nothing wrote that
+    same shape, so either could mint a seat.
 
     Nothing did this until #1547's review found it, and the consequence was
     not a missing convenience: an organization registered through the
@@ -91,7 +93,7 @@ def _seat_from(db: Session, invite: RoleInvite, profile: Profile, now: datetime)
     the same reason: the three codeowners are a decision the organization
     makes, not a side effect of being named on a form.
     """
-    if invite.role_id is not None:
+    if not invite.grants_admin_seat:
         return
     already = db.query(OrgAdmin).filter(OrgAdmin.club_id == invite.club_id, OrgAdmin.person_id == profile.id).one_or_none()
     if already is not None:

@@ -361,22 +361,27 @@ def sign_off_registry(
         )
         db.commit()
 
+    current_codeowners = {
+        seat.person_id
+        for seat in db.query(OrgAdmin).filter(
+            OrgAdmin.club_id == access.club.id,
+            OrgAdmin.is_codeowner.is_(True),
+            OrgAdmin.approved_at.isnot(None),
+            OrgAdmin.declined_at.is_(None),
+        )
+    }
+    codeowners = len(current_codeowners)
+    # A SIGNATURE COUNTS WHILE ITS SIGNER IS STILL A CODEOWNER (#1635). The
+    # rows are kept - who signed what, when, is the table's whole purpose -
+    # but somebody who has since declined their seat or stopped being a
+    # codeowner is not one of the three this organization's registry needs.
     signed_by = {
         row.person_id
         for row in db.query(RegistrySignoff).filter(
             RegistrySignoff.club_id == access.club.id,
             RegistrySignoff.fingerprint == fingerprint,
         )
-    }
-    codeowners = (
-        db.query(OrgAdmin)
-        .filter(
-            OrgAdmin.club_id == access.club.id,
-            OrgAdmin.is_codeowner.is_(True),
-            OrgAdmin.approved_at.isnot(None),
-        )
-        .count()
-    )
+    } & current_codeowners
     complete = len(signed_by) >= REGISTRY_APPROVALS_REQUIRED
 
     # THE THIRD SIGNATURE RAISES THE PULL REQUEST, which is the connection

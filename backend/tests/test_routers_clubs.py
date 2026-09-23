@@ -18,6 +18,7 @@ import uuid
 
 import pytest
 
+from app.core.time import utc_now
 from app.models.club import Club, OrgAdmin, OrgState, VerifiedBy
 from app.models.org_role import RoleInvite
 from app.models.volunteer_hours import HoursActivity, VolunteerHoursRecord
@@ -471,6 +472,18 @@ def test_approving_after_declining_clears_the_refusal(client, db_session):
     org = make_org(db_session, state=OrgState.claimed)
     invited = make_profile(db_session)
     seat = make_admin(db_session, org, invited, approved=False)
+    # The admin invitation the seat came from: accepting a seat needs one
+    # behind it (#1635), and an invited person is who this test is about.
+    db_session.add(
+        RoleInvite(
+            club_id=org.id,
+            email="invited@ramapotrails.org",
+            grants_admin_seat=True,
+            claimed_by=invited.id,
+            claimed_at=utc_now(),
+        )
+    )
+    db_session.commit()
     client.post(
         f"/clubs/ramapo-trail-conference/admins/{seat.id}/decline",
         json={"reason": "not now"},

@@ -521,6 +521,12 @@ describe('buildMapStyle', () => {
       ...CLOSURE_TAPE_LAYER_IDS.map(closureGroundId),
       WARNING_LAYER_ID,
     ]
+    // The one exception inside the safety group: the hiker's own mark, over
+    // the warning pins since the v1.3.2 release review, because a 44 px
+    // filled warning pin over the 36 px hollow mark hid the hiker entirely.
+    // It is a viewer, not a place, so it cannot hide a hazard's meaning - it
+    // is hollow, and the warning shows through it.
+    const mark = [POSITION_LAYER_ID]
     const atc = [
       ATC_UPDATE_CASING_LAYER_ID,
       closureGroundId(ATC_UPDATE_LAYER_ID),
@@ -532,7 +538,10 @@ describe('buildMapStyle', () => {
     expect(lowestSafety).toBeGreaterThan(-1)
     // Everything above the lowest safety mark is either a safety mark or the
     // ATC's.
-    expect(ids.slice(lowestSafety).filter((id) => !safety.includes(id))).toEqual(atc)
+    expect(ids.slice(lowestSafety).filter((id) => !safety.includes(id))).toEqual([
+      ...mark,
+      ...atc,
+    ])
   })
 
   it('caps the overview closure’s outline with the band it edges, not with a number', () => {
@@ -3061,7 +3070,7 @@ describe('the barrier tape lies on the sheet’s paper (#1575, option E)', () =>
 })
 
 describe("the hiker's mark, over everything (#1581)", () => {
-  it('sits over every place and directly under the ATC notices, ring then mark', () => {
+  it('draws its accuracy ring under the closure bands and the mark over the warning pins', () => {
     // Every other layer draws a place or a claim about one; this draws the
     // viewer, and a viewer under a place is a hiker who cannot find
     // themselves. The one thing above it is the ATC's notices, whose "nothing
@@ -3071,7 +3080,21 @@ describe("the hiker's mark, over everything (#1581)", () => {
     const ids = buildMapStyle(STYLE_OPTIONS).layers.map((layer) => layer.id)
     const mark = ids.indexOf(POSITION_LAYER_ID)
 
-    expect(ids[mark - 1]).toBe(POSITION_ACCURACY_LAYER_ID)
+    const ring = ids.indexOf(POSITION_ACCURACY_LAYER_ID)
+    // THE MARK OVER THE WARNING PINS, THE RING UNDER THE BANDS (v1.3.2
+    // release review, chosen by the maintainer from drawn frames). #1599's
+    // argument below - the mark is hollow, so what a safety mark covers is
+    // its centre - holds for a band and not for a warning pin: the pin is
+    // a 44 px filled disc over a 36 px mark, and covered all of it. So the
+    // mark moved above the pins; the ring, a wash hundreds of pixels wide,
+    // stayed where it was, under the bands, where it cannot tint them.
+    expect(ids[mark - 1]).toBe(WARNING_LAYER_ID)
+    expect(ids.slice(mark + 1)).toEqual([
+      closureCasingId(ATC_UPDATE_LAYER_ID),
+      closureGroundId(ATC_UPDATE_LAYER_ID),
+      ATC_UPDATE_LAYER_ID,
+      ATC_UPDATE_POINT_LAYER_ID,
+    ])
     // UNDER THE SAFETY MARKS SINCE #1599, where it used to be under the
     // ATC's notices alone: the maintainer asked for closures and warnings on
     // top, and #1581's own argument for letting a notice cover this mark -
@@ -3082,7 +3105,7 @@ describe("the hiker's mark, over everything (#1581)", () => {
       closureGroundId(bandId),
       bandId,
     ]
-    expect(ids.slice(mark + 1)).toEqual([
+    expect(ids.slice(ring + 1).filter((id) => id !== POSITION_LAYER_ID)).toEqual([
       ...bandLayers(NETWORK_OVERVIEW_CLOSURE_LAYER_ID),
       ...bandLayers(NEARBY_LONG_TERM_CLOSURE_LAYER_ID),
       ...bandLayers(CLOSURE_LAYER_ID),
@@ -3094,8 +3117,9 @@ describe("the hiker's mark, over everything (#1581)", () => {
     // Over every PLACE, still, which is what #1581 was about: the waypoint
     // pins, the workdays and the walk's own marks. What sits above it now is
     // the hazards, and only those.
+    expect(ring).toBeGreaterThan(ids.indexOf(POI_LAYER_ID))
     expect(mark).toBeGreaterThan(ids.indexOf(POI_LAYER_ID))
-    expect(mark).toBeLessThan(ids.indexOf(WARNING_LAYER_ID))
+    expect(ring).toBeLessThan(ids.indexOf(WARNING_LAYER_ID))
   })
 
   it('declares an empty position source for the shell to fill', () => {

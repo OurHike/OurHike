@@ -52,7 +52,11 @@ import {
   POI_SOURCE_ID,
   SECONDARY_POI_SCALE,
   buildPoiSource,
+  RING_LIFT_PROPERTY,
+  ringLift,
+  stalenessRingImages,
 } from './poiLayers'
+import { STALENESS_RING_RADIUS } from './stalenessRing'
 import { POI_PRIORITY } from './poiPriority'
 
 // These are EVALUATED rather than shape-asserted wherever MapLibre gives us
@@ -578,6 +582,10 @@ describe('poiFeatureCollection', () => {
       // (#256's maintainer decision, lib/stalenessDisplay.ts).
       staleness_ring: 'none',
       staleness_faded: false,
+      // How far above its coordinate the pin's disc is centred - half the
+      // 38 px pin, since this shelter carries no site badges. What the
+      // staleness ring is lifted by (v1.3.2 release review).
+      [RING_LIFT_PROPERTY]: 19,
     })
   })
 
@@ -740,11 +748,59 @@ describe('poiFeatureCollection', () => {
   })
 })
 
+describe('the staleness ring goes round the bottom-anchored pin (v1.3.2 release review)', () => {
+  // The jigger (2026-09-20) lifted every pin so its bottom edge touches the
+  // coordinate. The ring, a circle layer centred on the coordinate, stayed
+  // put and cut through the lower half of the disc. These hold it to the pin.
+  const layer = buildPoiStalenessLayer()
+  const layout = layer.layout as Record<string, unknown>
+
+  it('draws at the pin\u2019s own size, so a smaller pin gets a smaller ring', () => {
+    expect(layout['icon-size']).toBe(POI_ICON_SIZE_EXPRESSION)
+  })
+
+  it('is lifted by half the pin, so its centre is the disc\u2019s centre', () => {
+    const offset = evaluate(layout['icon-offset'] as unknown[], {
+      [RING_LIFT_PROPERTY]: 19,
+    })
+    expect(offset).toEqual([0, -19])
+  })
+
+  it('is lifted further for a site pin, whose image is padded for its badges', () => {
+    // A site pin's disc is its padding higher, because the padding is on the
+    // bottom of the image too and the image's bottom is what touches down.
+    for (const members of [1, 2, 3]) {
+      const lift = ringLift(members)
+      expect(lift).toBeGreaterThan(19)
+      expect(
+        evaluate(layout['icon-offset'] as unknown[], { [RING_LIFT_PROPERTY]: lift }),
+      ).toEqual([0, -lift])
+    }
+  })
+
+  it('still sits just outside a full-size pin', () => {
+    expect(STALENESS_RING_RADIUS).toBeGreaterThan(19)
+    expect(STALENESS_RING_RADIUS - 19).toBeLessThanOrEqual(4)
+  })
+
+  it.each(['green', 'grey-dotted', 'faint-invite'])(
+    'resolves the %s ring to an image that is registered',
+    (ring) => {
+      const ids = new Set(stalenessRingImages().map((image) => image.id))
+      expect(
+        ids.has(
+          evaluate(layout['icon-image'] as unknown[], { staleness_ring: ring }) as string,
+        ),
+      ).toBe(true)
+    },
+  )
+})
+
 describe('the staleness ring on crowded ground (#1536)', () => {
   /** The ring's stroke opacity as MapLibre would compute it. */
   function ringOpacity(ring: string, crowding: number): number {
     const paint = buildPoiStalenessLayer().paint as Record<string, unknown>
-    return evaluate(paint['circle-stroke-opacity'] as unknown[], {
+    return evaluate(paint['icon-opacity'] as unknown[], {
       staleness_ring: ring,
       [CROWDING_PROPERTY]: crowding,
     }) as number
@@ -1207,7 +1263,7 @@ describe('pushing all of it onto a live map', () => {
     await iconsBuilt()
 
     expect(addImage).not.toHaveBeenCalled()
-    expect(map.images.size).toBe(buildPoiIcons().length)
+    expect(map.images.size).toBe(buildPoiIcons().length + stalenessRingImages().length)
   })
 
   it('pushes the POIs into the source as GeoJSON', () => {

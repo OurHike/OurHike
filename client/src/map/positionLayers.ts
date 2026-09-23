@@ -30,8 +30,11 @@
 //    place, and the shelter under the hiker's feet is the pin they want).
 //
 // WHERE IT SITS: over every place, under the ATC's notices. map/style.ts
-// draws both layers after the pins, the warnings and the workdays, and
-// before buildAtcUpdateLayers - because "nothing on this map can cover" an
+// draws the accuracy disc after the pins and the workdays and under the
+// closure bands (#1599), and the mark itself after the closure bands and the
+// serious-warning pins (v1.3.2 release review: a 44 px filled warning pin
+// over the 36 px mark hid the hiker entirely), and both before
+// buildAtcUpdateLayers - because "nothing on this map can cover" an
 // ATC notice is a rule that was there first (src/test/atcAlertProminence
 // .test.ts holds it), and a hiker standing on a closed shelter is better
 // served by the closure drawn over their dot than by their dot drawn over

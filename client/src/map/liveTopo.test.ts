@@ -827,7 +827,6 @@ describe('the offline-only background', () => {
       // no signal is exactly the one whose owner is standing somewhere
       // asking where. Empty until the shell hands a fix over.
       POSITION_ACCURACY_LAYER_ID,
-      POSITION_LAYER_ID,
       // THE SAFETY MARKS, LAST (#1599, the maintainer: "Shouldn't closures
       // and warnings just be the top 2 layers?"). All four closure bands
       // together, each over its own outline, then the warning pins - a pin
@@ -843,6 +842,9 @@ describe('the offline-only background', () => {
       ...bandLayers(CLOSURE_LAYER_ID),
       ...bandLayers(LONG_TERM_CLOSURE_LAYER_ID),
       WARNING_LAYER_ID,
+      // The hiker's mark itself, over the warning pins (v1.3.2 release
+      // review): a 44 px filled warning pin hid the 36 px mark entirely.
+      POSITION_LAYER_ID,
       // The ATC's own notices survive the subtraction for the same reason the
       // closures do, and arguably more so: their band is baked into a
       // published artifact rather than fetched live, so it is exactly the

@@ -325,16 +325,40 @@ try {
     }
   }
 
+  // `usePlaces.ts` and `useSuggestedHikes.ts` both hold an `AbortController`
+  // for their own bucket fetch and call `.abort()` on it the moment the data
+  // stops being wanted (onboarding finishing while `places.json` is still in
+  // flight is the exact race this check's own onboarding loop above drives).
+  // That is by design - lib/placesData.ts: "NEVER FATAL […] the kept copy
+  // stands" - and Chromium reports it as a `requestfailed` with
+  // `net::ERR_ABORTED`, which this check cannot tell apart from a real outage
+  // without checking the reason. Measured against a local Chromium
+  // (2026-09-21): an aborted `fetch()` reports `net::ERR_ABORTED`, and a real
+  // cross-origin refusal (no CORS headers) reports `net::ERR_FAILED` - the two
+  // do not collide, so filtering only the former does not blind this check to
+  // the #427 CORS-refusal shape it was built to catch. This is #1595: every
+  // other row was green - the app drew its trail - and the one red row was a
+  // cancelled `places.json` prefetch, not a bucket refusal.
   const dataFailures = dataBase
     ? failures.filter((f) => f.url.startsWith(dataBase))
     : failures
+  const blocked = dataFailures.filter((f) => f.reason !== 'net::ERR_ABORTED')
+  const cancelled = dataFailures.filter((f) => f.reason === 'net::ERR_ABORTED')
   add(
     'no-blocked-requests',
-    dataFailures.length === 0 ? 'ok' : 'failed',
-    dataFailures.length === 0
+    blocked.length === 0 ? 'ok' : 'failed',
+    blocked.length === 0
       ? 'nothing the page asked for was refused'
-      : dataFailures.map((f) => `${f.reason} ${f.url}`).join(', '),
+      : blocked.map((f) => `${f.reason} ${f.url}`).join(', '),
   )
+  if (cancelled.length > 0) {
+    add(
+      'cancelled-requests',
+      'noted',
+      `${cancelled.length} request(s) cancelled by the app itself, not refused by the bucket: ` +
+        cancelled.map((f) => f.url).join(', '),
+    )
+  }
 
   // Reported, never failed. A third-party tile host having a moment is not an
   // outage of ours, and #431 is explicit that it must not be able to declare

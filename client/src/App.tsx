@@ -1961,7 +1961,18 @@ function App() {
     setPickingHike(false)
   }, [])
 
-  useOutboxSync(online && account !== null, handleSynced)
+  // OR AN APP-FAILURE REPORT IS WAITING (#1643). That report is the one write
+  // that needs no account (#848), and lib/outboxSync.ts's `run` already
+  // flushes a queue holding one when nobody is signed in - but keyed on the
+  // account alone, this hook never called it for a signed-out hiker, so a
+  // report saved with no signal was never sent when signal came back. Found
+  // by e2e/failurePaths.spec.ts's `@backend` test: 0 POSTs to /app-failures
+  // in 20 s after the signal returned. `queuedItems` is the same read of the
+  // queue the "waiting to send" count comes from, so the flag turns on when
+  // that report is saved and off again when handleSynced re-reads an empty
+  // queue.
+  const hasNoAccountWork = queuedItems.some((item) => item.appFailure !== undefined)
+  useOutboxSync(online && (account !== null || hasNoAccountWork), handleSynced)
 
   /**
    * Clears the refusal and sends, now - the escape hatch for a cause the
@@ -8092,9 +8103,17 @@ function App() {
       // and close for free can, which is what the test asserts.
       if (!filedAnything) return
 
+      // Both flushes report through `handleSynced`, not just `markSynced`
+      // (#1643). The window's close re-read the queue the moment it shut,
+      // which is BEFORE either of these sends - so a flush that only stamped
+      // the clock left the screen counting "1 waiting to send" for a report
+      // that had gone. Found by e2e/failurePaths.spec.ts's `@backend` outbox
+      // test: IndexedDB's queue empty, the status line still saying one.
+      // handleSynced re-reads the queue and the sent ledger when anything
+      // went, which is what the hook's own flush already did.
       void syncOutbox().then((result) => {
         if (result === null) return
-        if (result.sent > 0) markSynced()
+        handleSynced(result)
         // AND AGAIN ONCE THE UNDO WINDOW HAS SHUT (#1133), which is #640
         // re-opening quietly if this is left out.
         //
@@ -8115,7 +8134,7 @@ function App() {
         if (result.held > 0) {
           setTimeout(() => {
             void syncOutbox().then((later) => {
-              if (later !== null && later.sent > 0) markSynced()
+              if (later !== null) handleSynced(later)
             })
           }, UNDO_WINDOW_MS)
         }
@@ -8127,7 +8146,7 @@ function App() {
       if (next === 'sign-in') setAuthFlow({ screen: 'choose', afterReport: true })
       else if (next === 'identity') askForIdentity()
     },
-    [account, preferences.reporter_type, askForIdentity, markSynced],
+    [account, preferences.reporter_type, askForIdentity, handleSynced],
   )
 
   /**

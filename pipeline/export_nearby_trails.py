@@ -299,12 +299,26 @@ OVERVIEW_ARTIFACT_NAME = "network_overview.geojson"
 # line at, and it carries the continental view a laptop opens on. @unvalidated
 # against the widest camera a hiker actually reaches, which nothing records.
 #
-# WHAT IT COSTS THE ARCHIVE is four zooms of a nationwide network, each about
-# a quarter of the one below it: z9 alone is 9.65 MB (the cut_cells.py
-# docstring's own measurement), so z5-z8 together are a few megabytes against
-# the archive's 155 MB - and they are read by BYTE RANGE, so a phone pays for
-# the tiles in its viewport rather than for the file. That is #1257's whole
-# argument, applied one seam lower.
+# WHAT IT COSTS THE ARCHIVE, measured on the first cut rather than predicted.
+# UA release 2026-09-23-2, the run that made this floor real:
+#
+#   nearby_trails.pmtiles          155,229,297 -> 181,668,171   (+26.4 MB)
+#   nearby_trails_context.pmtiles  did not exist -> 22,176,121
+#
+# THE PREDICTION HERE WAS WRONG AND IS WORTH LEAVING VISIBLE. It read: "four
+# zooms of a nationwide network, each about a quarter of the one below it: z9
+# alone is 9.65 MB, so z5-z8 together are a few megabytes." That reasoning
+# runs the pyramid the wrong way. A coarse tile covers more ground and
+# therefore carries more of the network's geometry, so z5-z8 are each LARGER
+# than z9, not smaller - 22.2 MB against 9.65 MB, about nine times the "few
+# megabytes" guessed at.
+#
+# It does not change the decision, and that is the point of saying so rather
+# than quietly editing the figure: these tiles are read by BYTE RANGE, so a
+# phone pays for the tiles its viewport touches and never for the file. 22 MB
+# sitting in a bucket is not 22 MB on anybody's launch. That is #1257's whole
+# argument, applied one seam lower - and it is the argument that has to carry
+# the weight now that the size does not.
 #
 # 14 is where the Fine hiking sheet stops and MapLibre overzooms.
 TILES_ARTIFACT_NAME = "nearby_trails.pmtiles"

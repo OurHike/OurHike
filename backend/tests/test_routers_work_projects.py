@@ -17,7 +17,7 @@ from datetime import date, timedelta
 
 from app.models.club import OrgState
 from app.models.work_project import ProjectSource, SignupMode, SignupState, WorkProjectSignup
-from tests.factories import make_admin, make_org, make_profile, make_workday
+from tests.factories import make_admin, make_assignment, make_org, make_profile, make_section, make_workday
 from tests.tokens import auth_headers
 
 
@@ -255,6 +255,24 @@ def test_nobody_can_sign_up_to_a_workday_that_was_called_off(client, db_session)
     response = client.post(f"/workdays/{project.id}/signups", json={}, headers=auth_headers(volunteer.id))
 
     assert response.status_code == 409
+
+
+def test_a_volunteer_cannot_call_off_a_workday(client, db_session):
+    """A maintainer holds a section here and manages nobody, so `/cancel`
+    refuses them - and the workday is still upcoming afterwards, because a
+    refusal that had already written `cancelled` would still send everybody
+    who signed up a called-off Saturday."""
+    org, _ = _org_with_admin(db_session)
+    maintainer = make_profile(db_session)
+    make_assignment(db_session, org, maintainer, section=make_section(db_session, org))
+    project = make_workday(db_session, org)
+
+    response = client.post(f"/workdays/{project.id}/cancel", headers=auth_headers(maintainer.id))
+
+    assert response.status_code == 403
+    [listed] = client.get("/workdays", params={"org": org.slug}).json()
+    assert listed["id"] == project.id
+    assert listed["status"] == "upcoming"
 
 
 def test_who_signed_up_is_not_readable_by_a_stranger(client, db_session):

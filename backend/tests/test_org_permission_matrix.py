@@ -34,7 +34,12 @@ from __future__ import annotations
 
 import pytest
 
+from app.core.console_tokens import hash_secret, new_key_pair
 from app.models.club import OrgState
+from app.models.console_key import ConsoleKey
+from app.models.org_registry import OrgPark, OrgSection, OrgTrail
+from app.models.org_role import OrgRole
+from app.models.work_project import WorkProjectSignup
 from tests.factories import (
     make_admin,
     make_assignment,
@@ -42,6 +47,7 @@ from tests.factories import (
     make_profile,
     make_role,
     make_section,
+    make_workday,
 )
 from tests.tokens import auth_headers
 
@@ -82,7 +88,15 @@ def org_world(db_session):
     make_assignment(db_session, org, people[MAINTAINER], role=under, section=section)
     db_session.commit()
 
-    return {"org": org, "people": people, "section": section, "role": under}
+    trail = db_session.get(OrgTrail, section.trail_id)
+    return {
+        "org": org,
+        "people": people,
+        "section": section,
+        "role": under,
+        "trail_id": trail.id,
+        "park_id": trail.park_id,
+    }
 
 
 def _headers(world, who):
@@ -357,6 +371,193 @@ def test_who_agreed_to_the_assistant_is_not_a_public_reading(client, org_world, 
     expected = _expected({ADMIN, CODEOWNER}, who)
 
     assert response.status_code == (200 if expected is None else expected)
+
+
+# ------------------------------------------------------------------ #
+# The rows #1643 found missing
+#
+# The v1.3.2 release review's test-gap pass (#1643 - The org console's
+# permission matrix skips ten endpoints, and the position mark and outbox
+# drain have no end-to-end test) read the org writes in `app/routers/`
+# against this file and found these with no row. Each is written in the same
+# shape as the rows above: the exact success status for the people allowed,
+# and `_expected` for everybody else.
+# ------------------------------------------------------------------ #
+
+
+@pytest.mark.parametrize("who", EVERYBODY)
+def test_inviting_another_admin_is_an_admins_act(client, org_world, who):
+    """A seat is the whole of the organization's authority, so offering one is too."""
+    response = _call(client, org_world, who, "post", "/clubs/{slug}/admins", {"email": "secretary@example.org"})
+    expected = _expected({ADMIN, CODEOWNER}, who)
+
+    assert response.status_code == (201 if expected is None else expected)
+
+
+@pytest.mark.parametrize("who", EVERYBODY)
+def test_editing_a_role_is_an_admins_act(client, db_session, org_world, who):
+    """Editing a role can move its reporting line, so it has `POST /roles`'s
+    gate for `POST /roles`'s reason."""
+    role = make_role(db_session, org_world["org"], name="Corridor monitor")
+    response = _call(client, org_world, who, "patch", f"/clubs/{{slug}}/roles/{role.id}", {"name": "Boundary monitor"})
+    expected = _expected({ADMIN, CODEOWNER}, who)
+
+    assert response.status_code == (200 if expected is None else expected)
+
+
+@pytest.mark.parametrize("who", EVERYBODY)
+def test_retiring_a_role_is_an_admins_act(client, db_session, org_world, who):
+    role = make_role(db_session, org_world["org"], name="Corridor monitor")
+    response = _call(client, org_world, who, "delete", f"/clubs/{{slug}}/roles/{role.id}")
+    expected = _expected({ADMIN, CODEOWNER}, who)
+
+    assert response.status_code == (200 if expected is None else expected)
+
+
+@pytest.mark.parametrize("who", EVERYBODY)
+def test_adding_a_park_to_the_registry_is_an_admins_act(client, org_world, who):
+    """Every registry tier reaches a hiker's phone, the same as the
+    `gis-source` row above - so each tier gets its own row rather than being
+    assumed to share that one's guard."""
+    response = _call(client, org_world, who, "post", "/clubs/{slug}/registry/parks", {"name": "Harriman State Park"})
+    expected = _expected({ADMIN, CODEOWNER}, who)
+
+    assert response.status_code == (201 if expected is None else expected)
+
+
+@pytest.mark.parametrize("who", EVERYBODY)
+def test_adding_a_trail_to_the_registry_is_an_admins_act(client, org_world, who):
+    path = f"/clubs/{{slug}}/registry/parks/{org_world['park_id']}/trails"
+    response = _call(client, org_world, who, "post", path, {"name": "Suffern-Bear Mountain"})
+    expected = _expected({ADMIN, CODEOWNER}, who)
+
+    assert response.status_code == (201 if expected is None else expected)
+
+
+@pytest.mark.parametrize("who", EVERYBODY)
+def test_adding_a_section_to_the_registry_is_an_admins_act(client, org_world, who):
+    path = f"/clubs/{{slug}}/registry/trails/{org_world['trail_id']}/sections"
+    body = {"name": "Pine Meadow South", "start_mile": 14.3, "end_mile": 16.0}
+    response = _call(client, org_world, who, "post", path, body)
+    expected = _expected({ADMIN, CODEOWNER}, who)
+
+    assert response.status_code == (201 if expected is None else expected)
+
+
+@pytest.mark.parametrize("who", EVERYBODY)
+def test_putting_somebody_on_a_stretch_reaches_supervisors_too(client, org_world, who):
+    """Supervisors propose: the write is let through and lands unconfirmed,
+    and `test_confirming_an_assignment_is_an_admins_act_not_a_supervisors` is
+    the other half. A maintainer proposes nobody."""
+    body = {
+        "person_id": org_world["people"][MAINTAINER].id,
+        "section_id": org_world["section"].id,
+        "start_mile": 11.5,
+        "end_mile": 12.0,
+    }
+    response = _call(client, org_world, who, "post", "/clubs/{slug}/assignments", body)
+    expected = _expected({ADMIN, CODEOWNER, SUPERVISOR}, who)
+
+    assert response.status_code == (201 if expected is None else expected)
+
+
+@pytest.mark.parametrize("who", EVERYBODY)
+def test_loading_a_roster_reaches_supervisors_too(client, org_world, who):
+    """Roster loading is one of the crew jobs `test_running_crews_reaches_supervisors_too`
+    names. A maintainer allowed to load one could deactivate every colleague."""
+    body = {"source": "uploaded roster.csv", "entries": [{"email": "ana@ramapotrails.org"}]}
+    response = _call(client, org_world, who, "post", "/clubs/{slug}/roster/sync", body)
+    expected = _expected({ADMIN, CODEOWNER, SUPERVISOR}, who)
+
+    assert response.status_code == (200 if expected is None else expected)
+
+
+@pytest.mark.parametrize("who", EVERYBODY)
+def test_revoking_a_console_key_is_an_admins_act(client, db_session, org_world, who):
+    """Listing keys is admin-only (the row above); revoking one is the write
+    that switches off an organization's own embedded roster page."""
+    public_key, secret = new_key_pair()
+    key = ConsoleKey(club_id=org_world["org"].id, public_key=public_key, secret_hash=hash_secret(secret))
+    db_session.add(key)
+    db_session.commit()
+
+    response = _call(client, org_world, who, "delete", f"/clubs/{{slug}}/console-keys/{key.id}")
+    expected = _expected({ADMIN, CODEOWNER}, who)
+
+    assert response.status_code == (200 if expected is None else expected)
+
+
+@pytest.mark.parametrize("who", EVERYBODY)
+def test_calling_off_a_workday_reaches_supervisors_too(client, db_session, org_world, who):
+    """`/workdays/{id}/cancel` carries no slug, so its guard is resolved from
+    the workday's own organization inside the handler, not by the
+    `require_*` dependencies every slug route above goes through."""
+    project = make_workday(db_session, org_world["org"])
+
+    response = _call(client, org_world, who, "post", f"/workdays/{project.id}/cancel")
+    expected = _expected({ADMIN, CODEOWNER, SUPERVISOR}, who)
+
+    assert response.status_code == (200 if expected is None else expected)
+
+
+@pytest.mark.parametrize("who", EVERYBODY)
+def test_recording_attendance_reaches_supervisors_too(client, db_session, org_world, who):
+    """Attendance pre-fills an hours claim an organization reports onward, so a
+    volunteer recording their own is the case this row refuses."""
+    project = make_workday(db_session, org_world["org"])
+    signup = WorkProjectSignup(work_project_id=project.id, person_id=org_world["people"][MAINTAINER].id)
+    db_session.add(signup)
+    db_session.commit()
+
+    path = f"/workdays/{project.id}/signups/{signup.id}/attendance"
+    response = _call(client, org_world, who, "post", path, {"attended": 1})
+    expected = _expected({ADMIN, CODEOWNER, SUPERVISOR}, who)
+
+    assert response.status_code == (200 if expected is None else expected)
+
+
+def test_ids_from_another_organization_are_404_here(client, db_session, org_world):
+    """An admin of B, naming A's role, key, park or trail under B's own slug.
+
+    B's admin passes B's gate honestly - they ARE an admin there - so the
+    only thing standing between them and A's rows is each handler filtering
+    the id by `club_id`. 404 rather than 403, because a 403 would confirm the
+    id exists somewhere. A's rows are read back afterwards: a handler that
+    answered 404 after writing would pass the status check alone.
+    """
+    a = org_world["org"]
+    role = make_role(db_session, a, name="Corridor monitor")
+    public_key, secret = new_key_pair()
+    key = ConsoleKey(club_id=a.id, public_key=public_key, secret_hash=hash_secret(secret))
+    db_session.add(key)
+    db_session.commit()
+    role_id, key_id = role.id, key.id
+
+    b = make_org(db_session, slug="another-conference", state=OrgState.claimed)
+    b_admin = make_profile(db_session)
+    make_admin(db_session, b, b_admin, is_codeowner=True)
+    db_session.commit()
+
+    for method, path, body in (
+        ("patch", f"/clubs/{b.slug}/roles/{role_id}", {"name": "Taken over"}),
+        ("delete", f"/clubs/{b.slug}/roles/{role_id}", None),
+        ("delete", f"/clubs/{b.slug}/console-keys/{key_id}", None),
+        ("post", f"/clubs/{b.slug}/registry/parks/{org_world['park_id']}/trails", {"name": "Planted"}),
+        ("post", f"/clubs/{b.slug}/registry/trails/{org_world['trail_id']}/sections", {"name": "Planted"}),
+    ):
+        kwargs = {"headers": auth_headers(b_admin.id)}
+        if body is not None:
+            kwargs["json"] = body
+        assert getattr(client, method)(path, **kwargs).status_code == 404, f"{method} {path}"
+
+    db_session.expire_all()
+    role_after = db_session.get(OrgRole, role_id)
+    assert role_after is not None and role_after.name == "Corridor monitor"
+    assert role_after.retired_at is None
+    assert db_session.get(ConsoleKey, key_id).revoked_at is None
+    assert db_session.query(OrgTrail).filter(OrgTrail.park_id == org_world["park_id"]).count() == 1
+    assert db_session.query(OrgSection).filter(OrgSection.trail_id == org_world["trail_id"]).count() == 1
+    assert db_session.query(OrgPark).filter(OrgPark.club_id == b.id).count() == 0
 
 
 # ------------------------------------------------------------------ #

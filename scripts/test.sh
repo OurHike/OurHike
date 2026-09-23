@@ -383,6 +383,18 @@ if selected_has client; then
   step "client tests"   "${CLIENT_TEST[@]}"
   step "client build"   npm --prefix client run build
 
+  # site/'s own vitest suite, because client-tests.yml's `test` job runs it
+  # (#1643). Skipped out loud without site/node_modules, for the flow layer's
+  # reason below: a checkout that never ran `npm ci` in site/ is an
+  # environment gap, not a defect in the change.
+  if [ -d site/node_modules ]; then
+    step "site tests"   npm --prefix site test
+  else
+    echo "-- site tests: SKIPPED, site/node_modules is missing."
+    echo "   Run 'cd site && npm ci' once to turn them on. CI runs them"
+    echo "   regardless (.github/workflows/client-tests.yml's test job)."
+  fi
+
   # The flow layer (features/FLOW_TESTING.md), last because it is the slowest
   # and because it drives the app the build above just proved can be built.
   #

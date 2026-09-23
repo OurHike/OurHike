@@ -98,7 +98,9 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: client/package-lock.json
+          cache-dependency-path: |
+            client/package-lock.json
+            site/package-lock.json
 
       - name: Install dependencies
         if: steps.scope.outputs.run == 'true'
@@ -123,6 +125,22 @@ jobs:
       - name: Build
         if: steps.scope.outputs.run == 'true'
         run: npm run build
+
+      # site/ has its own package.json and its own vitest suite
+      # (src/lib/heroOrgs.test.mjs), and until #1643 - The org console's
+      # permission matrix skips ten endpoints, and the position mark and outbox
+      # drain have no end-to-end test - no workflow ran it. It rides this job
+      # because site/ is already in the scope list above, so no new required
+      # check is needed for it to gate a pull request.
+      - name: Install site dependencies
+        if: steps.scope.outputs.run == 'true'
+        working-directory: site
+        run: npm ci
+
+      - name: Run site tests
+        if: steps.scope.outputs.run == 'true'
+        working-directory: site
+        run: npm test
 
   # The flow layer (features/FLOW_TESTING.md), which until now was written and
   # never run on a pull request: #1386 built the suite, the pull request

@@ -66,8 +66,26 @@
 // repro at the foot of this file.
 
 import { test, expect, type Page } from '@playwright/test'
-import { seedPreferences, seedHikerMode, type HikerMode } from './support/seed'
+import {
+  seedPreferences,
+  seedHikerMode,
+  seedFixAtMile,
+  type HikerMode,
+} from './support/seed'
 import { setSignal } from './support/signal'
+import {
+  stubBackend,
+  seedSession,
+  setBackendSignal,
+  sent,
+  type Recorded,
+} from './support/backend'
+import { readIDBEntry } from './support/idb'
+
+/** lib/outbox.ts's OUTBOX_KEY, restated rather than imported for the reason
+ *  support/seed.ts gives for its keys: it is the wire contract with
+ *  idb-keyval, and nothing here needs the rest of that module. */
+const OUTBOX_KEY = 'ourhike:outbox'
 
 /** The fallback chrome/ErrorBoundary.tsx draws, whichever boundary drew it.
  *  `role="alert"` is the component's own contract, so the query is the role
@@ -453,5 +471,152 @@ test.describe('the report door', () => {
     const volunteerRow = page.getByRole('button', { name: /^Volunteer & report/ })
     await expect(volunteerRow).toBeVisible()
     await expect(volunteerRow).not.toContainText('waiting to send')
+  })
+})
+
+// THE OUTBOX'S SEND PATH, end to end (#1643 item 6). Everything above stops at
+// "the report waits in the outbox", because the hermetic build has no API base
+// and lib/outboxSync.ts returns before flushing when there is nothing to send
+// to. These run against the backend-shaped build (`@backend`,
+// e2e/support/backend.ts), where the send path is real code talking to a
+// `page.route` - so what is counted is the requests the app actually made.
+//
+// "EXACTLY ONCE" IS COUNTED, NOT INFERRED. `stubBackend` records every request
+// under the API prefix; the assertion is on that list. A flush that overlapped
+// another (lib/outboxSync.ts's `inFlight` guard) or an item not removed after
+// its send would show up here as a second POST.
+//
+// THE UNDO WINDOW IS IN THE WAY, AND THE TESTS WAIT IT OUT RATHER THAN FAKE IT.
+// A report filed from the window is held for `UNDO_WINDOW_MS` (8 s,
+// reporting/undoWindow.ts) before any flush may send it, and App.tsx's
+// `handleCloseWindow` schedules the follow-up flush that sends it once the
+// hold ends. So the POST can arrive up to eight seconds after signal returns,
+// and the poll below allows for that rather than seeding a report with no hold.
+
+/** The Contribute page's own count of the queue - the app's statement of what
+ *  is waiting, from the same queue More's row counts in the offline test above. */
+function waiting(page: Page) {
+  return page.getByRole('status').filter({ hasText: /waiting to send/ })
+}
+
+/** POSTs that reached the backend, polled - the window a send has to land in
+ *  is the undo hold plus a flush, so 20 s rather than the suite's 5. */
+async function expectPosts(seen: Recorded[], path: string, count: number) {
+  await expect
+    .poll(() => sent(seen, 'POST', path).length, {
+      message: `POST ${path} count`,
+      timeout: 20_000,
+    })
+    .toBe(count)
+}
+
+test.describe('the outbox, when signal comes back', { tag: '@backend' }, () => {
+  test('states: a report filed with no signal is sent exactly once when signal returns, and the outbox empties', async ({
+    page,
+    context,
+  }) => {
+    const backend = await stubBackend(page, {
+      'POST /reports': (request) => ({
+        status: 201,
+        body: { ...(request.postDataJSON() as object), status: 'submitted' },
+      }),
+    })
+    const seen = backend.seen
+    await seedSession(page)
+    // A stated reporter type, so closing the window does not open the
+    // identity question over the screen this test reads next.
+    await seedPreferences(page, { reporter_type: 'day' })
+    await seedFixAtMile(page, 5)
+    await page.goto('/')
+    await page.getByRole('tab', { name: 'More' }).click()
+    await page
+      .locator('.more__row')
+      .filter({ hasText: 'Volunteer & report' })
+      .first()
+      .click()
+    await expect(page.getByRole('heading', { name: 'Contribute' })).toBeVisible()
+
+    // The window's code is fetched while there is still signal, for the
+    // reason the offline test above opens its form first.
+    await page.getByRole('button', { name: 'Report a problem' }).click()
+    const window_ = page.getByTestId('report-window')
+    await expect(window_).toBeVisible()
+
+    await setBackendSignal(page, context, backend, { on: false })
+    await window_.getByRole('button', { name: /^Blow down/ }).click()
+    await expect(window_.getByText('Report · filed')).toBeVisible()
+    await window_.getByRole('button', { name: 'Close', exact: true }).click()
+    await expect(window_).toHaveCount(0)
+
+    // QUEUED, AND NOTHING WENT. The status line is the app's count; the list
+    // is ours.
+    await expect(waiting(page)).toContainText('1 waiting to send')
+    expect(sent(seen, 'POST', '/reports')).toHaveLength(0)
+
+    await setBackendSignal(page, context, backend, { on: true })
+
+    await expectPosts(seen, '/reports', 1)
+    // THE QUEUE ITSELF, read out of IndexedDB: the send removed the item.
+    await expect
+      .poll(
+        async () =>
+          ((await readIDBEntry(page, OUTBOX_KEY)) as unknown[] | undefined)?.length ?? 0,
+      )
+      .toBe(0)
+    await expect(waiting(page)).toHaveCount(0)
+
+    // What arrived is the report that was filed, with its idempotency key and
+    // the moment it was filed rather than the moment it was sent (#243).
+    const [post] = sent(seen, 'POST', '/reports')
+    expect(post.body).toMatchObject({ type: 'blowdown', reporter_type: 'day' })
+    expect(post.body).toHaveProperty('id')
+    expect(post.body).toHaveProperty('authored_at')
+
+    // Still one after the queue is empty. Three flushes can reach this report
+    // - the close's own, the one signal returning sets off, and the undo
+    // follow-up - and the item leaving the queue after its send is what keeps
+    // them from sending it twice.
+    expect(sent(seen, 'POST', '/reports')).toHaveLength(1)
+  })
+
+  test('states: a signed-out hiker’s app-failure report, saved with no signal, is sent once signal returns', async ({
+    page,
+    context,
+  }) => {
+    // The one write that needs no account (#848, lib/api.ts's
+    // `sendAppFailure`), so this is the hiker it was built for: never signed
+    // in, the app failed on them out of signal, and they wrote it down.
+    const backend = await stubBackend(page, {
+      'POST /app-failures': { status: 201, body: { ok: true } },
+    })
+    const seen = backend.seen
+    await boot(page)
+    await openSources(page)
+    await page.getByRole('button', { name: DOOR }).click()
+    await expect(
+      page.getByRole('heading', { name: 'It broke while I was out there' }),
+    ).toBeVisible()
+
+    await setBackendSignal(page, context, backend, { on: false })
+    await page
+      .getByRole('textbox', { name: /what happened/i })
+      .fill('It lost my position on the ridge and would not find it again.')
+    await page.getByRole('button', { name: 'Save to outbox' }).click()
+    await expect(
+      page.getByRole('heading', { name: /Thank you .* that is saved/ }),
+    ).toBeVisible()
+    await page.getByRole('button', { name: 'Done', exact: true }).click()
+    expect(sent(seen, 'POST', '/app-failures')).toHaveLength(0)
+
+    await setBackendSignal(page, context, backend, { on: true })
+
+    await expectPosts(seen, '/app-failures', 1)
+    await expect
+      .poll(
+        async () =>
+          ((await readIDBEntry(page, OUTBOX_KEY)) as unknown[] | undefined)?.length ?? 0,
+      )
+      .toBe(0)
+    expect(sent(seen, 'POST', '/app-failures')).toHaveLength(1)
   })
 })

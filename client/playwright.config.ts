@@ -7,6 +7,7 @@
 import { defineConfig } from '@playwright/test'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { BACKEND_BUILD_ENV, BACKEND_ORIGIN, BACKEND_PORT } from './e2e/support/backend'
 
 /**
  * Lifted from client/scripts/screenshot.mjs's launchChromium(): the agent
@@ -125,6 +126,37 @@ const DATA_MODE = process.env.FLOW_DATA === '1'
  */
 const BYO_ORIGIN = process.env.FLOW_DATA_ORIGIN ?? ''
 
+/**
+ * THE BACKEND-SHAPED BUILD, for the `@backend` tests (#1643).
+ *
+ * The hermetic build sets no `VITE_API_BASE_URL` and no `VITE_SUPABASE_URL`,
+ * so in it the outbox never sends, sign-in never reaches its code step, and
+ * the org console only has the demo organization. Those are real states and
+ * the rest of this suite keeps testing them. The paths that only exist once a
+ * backend is configured need a build that configured one - Vite inlines both
+ * variables at build time - so this is the same app built a second time with
+ * both pointing at its own origin, where `e2e/support/backend.ts` answers
+ * them with `page.route`. No backend runs; nothing leaves the browser.
+ *
+ * ALWAYS BUILT AND PREVIEWED, never the dev server, even locally. Two
+ * `vite` dev servers in one directory share `node_modules/.vite`'s dependency
+ * cache, and the second one re-optimising under the first is a failure that
+ * would read as a flaky test. A plain `vite build` - no `tsc -b`, no
+ * `check:build`, both of which the hermetic build already runs over the same
+ * source - took 5 seconds measured 2026-09-23 in the agent sandbox.
+ *
+ * CHROMIUM ONLY, at phone width. What these tests drive is the app's own
+ * network and storage logic, which `phone-webkit` already exercises in the
+ * hermetic build through every screen that does not need a backend; a
+ * WebKit leg here is worth adding when one of these paths turns out to fork
+ * by engine, and nothing has shown that yet.
+ */
+const BACKEND_MODE_AVAILABLE = !DATA_MODE && BYO_ORIGIN === ''
+const BACKEND_COMMAND = [
+  `npx vite build --outDir dist-e2e-backend --emptyOutDir`,
+  `npx vite preview --outDir dist-e2e-backend --port ${BACKEND_PORT} --strictPort`,
+].join(' && ')
+
 export default defineConfig({
   // The hermetic half by default; `e2e/data/` only in FLOW_DATA mode, and
   // never both, for the CORS reason above.
@@ -183,7 +215,7 @@ export default defineConfig({
   projects: [
     {
       name: 'phone',
-      grepInvert: /@desktop/,
+      grepInvert: /@desktop|@backend/,
       use: {
         viewport: { width: PHONE.width, height: PHONE.height },
         isMobile: PHONE.isMobile,
@@ -194,6 +226,7 @@ export default defineConfig({
     {
       name: 'desktop',
       grep: /@desktop/,
+      grepInvert: /@backend/,
       use: {
         viewport: { width: DESKTOP.width, height: DESKTOP.height },
         isMobile: DESKTOP.isMobile,
@@ -246,12 +279,31 @@ export default defineConfig({
     // who found something they could not explain. So the data half stays on
     // Chromium until that is understood, and the gap is filed as #1467 rather
     // than silently shipped.
+    // The `@backend` tests, against the backend-shaped build (see
+    // BACKEND_COMMAND above). Service workers blocked, so that every request
+    // the page makes reaches `page.route` rather than a precache.
+    ...(BACKEND_MODE_AVAILABLE
+      ? [
+          {
+            name: 'phone-backend',
+            grep: /@backend/,
+            use: {
+              baseURL: BACKEND_ORIGIN,
+              serviceWorkers: 'block' as const,
+              viewport: { width: PHONE.width, height: PHONE.height },
+              isMobile: PHONE.isMobile,
+              hasTouch: PHONE.hasTouch,
+              deviceScaleFactor: PHONE.deviceScaleFactor,
+            },
+          },
+        ]
+      : []),
     ...(DATA_MODE
       ? []
       : [
           {
             name: 'phone-webkit',
-            grepInvert: /@desktop/,
+            grepInvert: /@desktop|@backend/,
             use: {
               browserName: 'webkit' as const,
               launchOptions: {},
@@ -266,15 +318,34 @@ export default defineConfig({
   // None where the caller brought their own (the sandbox's proxy above);
   // otherwise the same build-and-serve as the hermetic half, carrying
   // VITE_DATA_BASE_URL through so the bundle knows which bucket to read.
+  //
+  // Plus, for the hermetic half, the backend-shaped build above on a port of
+  // its own.
   webServer:
     BYO_ORIGIN !== ''
       ? undefined
-      : {
-          command: COMMAND,
-          url: `http://localhost:${PORT}/`,
-          reuseExistingServer: !process.env.CI,
-          // The data build fetches 1,943 artifacts' worth of manifest before
-          // it draws anything, so it wants longer than a hermetic boot does.
-          timeout: DATA_MODE ? 180_000 : 60_000,
-        },
+      : [
+          {
+            command: COMMAND,
+            url: `http://localhost:${PORT}/`,
+            reuseExistingServer: !process.env.CI,
+            // The data build fetches 1,943 artifacts' worth of manifest before
+            // it draws anything, so it wants longer than a hermetic boot does.
+            timeout: DATA_MODE ? 180_000 : 60_000,
+          },
+          ...(BACKEND_MODE_AVAILABLE
+            ? [
+                {
+                  command: BACKEND_COMMAND,
+                  url: `${BACKEND_ORIGIN}/`,
+                  reuseExistingServer: !process.env.CI,
+                  timeout: 120_000,
+                  env: {
+                    ...(process.env as Record<string, string>),
+                    ...BACKEND_BUILD_ENV,
+                  },
+                },
+              ]
+            : []),
+        ],
 })

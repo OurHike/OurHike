@@ -942,3 +942,108 @@ megabytes" reasoning should expect to be wrong by an order of magnitude.
 **Still unpublished to production.** Everything above is UA
 (`environments/ua/`), which is what keeps `main` testable. Production is the
 release train's promotion and is the maintainer's.
+
+### 7.7 The map's own thread, source-mapped (#1631, #1632, #1633)
+
+§7.1 measured the worker. §7.5 measured the manifest. **This measures the main
+thread between the trail index landing and the shell acknowledging a map**, and
+it moves where the remaining work is: almost none of that window is MapLibre's.
+
+`main` at `212c9945`, built with `--sourcemap` against UA through
+`client/scripts/data-proxy.mjs`, served same-origin. Phone profile 390×844 at
+4× CPU, warm launch, `Profiler` sampling at 200 µs anchored to the launch marks
+by reading `performance.now()` at `Profiler.start`, frames resolved through
+`dist/assets/*.js.map`. **Four runs.** The §7.5 caveats all still hold: an agent
+sandbox, a server core, software WebGL, a proxied tile network, a throttle
+standing in for a phone.
+
+Window `ourhike:index` → `ourhike:map`: **1,800 / 1,836 / 1,887 ms** across the
+three runs analysed together. Self time, sorted by the median:
+
+| | run 2 | run 3 | run 4 |
+|---|---:|---:|---:|
+| `(program)` — native, unattributed | 387 | 448 | 459 |
+| **`lib/useArchiveDownload.ts:128`** | **322** | **159** | **184** |
+| `maplibre-gl-shared.mjs:5` | 230 | 266 | 295 |
+| **`map/poiCrowding.ts:222`** | **228** | **178** | **164** |
+| `maplibre-gl.mjs:805` | 130 | 123 | 113 |
+| **`map/poiCrowding.ts:264`** | **79** | **73** | **73** |
+| `maplibre-gl.mjs:803` | 69 | 62 | 70 |
+| `(garbage collector)` | 57 | 49 | 62 |
+
+The app's own code is **629 / 410 / 421 ms, 23–33% of the window**; MapLibre's
+main-thread work is 473 / 504 / 524 ms. For scale, `createMap` itself is **77
+ms** and `_setupPainter` under it shows as 24 ms. **MapLibre building a map has
+never been the problem**, and two estimates that said otherwise — an ~860 ms
+engine parse and an ~1,800 ms construction — were both wrong by an order of
+magnitude and are withdrawn (#1564's decomposition has them).
+
+**`poiCrowding.ts:222` is `crowdingByPoi`**, building a lat-sized grid over
+every drawn waypoint and counting neighbours within `CROWDING_RADIUS_M`, with
+`metresBetween` (`:264`) the inner loop: **237–307 ms per launch**, synchronous,
+on the thread building the map. §7.1 saw it on a laptop as one of "the app's own
+frames at 100 ms or less"; at 4× it is three times that and inside the window a
+hiker waits through. §7.3 item 4 mentions the module only as a reader that has
+to move when the pins become tiles — **it is a launch cost today, with the pins
+as they are.**
+
+**`useArchiveDownload.ts:128` is the state updater**
+`setStatuses((previous) => ({ ...previous, [packageKey]: status }))`, replayed
+by React during render: **159–322 ms**. This is *not* the cost §7.3 item 5
+measured and dismissed. That was batching the IndexedDB reads (`getMany` against
+2,415 `get`s, "a tenth of a second on a laptop"); this is the React state churn
+the sweep's *reporting* produces, which batching the reads would not touch.
+
+One run of four also had **263 ms in `crypto.subtle.digest`** under `sha256Of`
+(`trailData.ts:635`) and **150 ms in `readPois`** (`:431`); neither recurred, so
+it follows what the warm cache made the launch re-fetch. Worth recording because
+`sha256Of`'s own docstring already named the risk in 2026-08 — "all of the
+former synchronous on the thread that is also drawing the map. A phone is
+materially slower than the machine those numbers came from" — and this is the
+first phone-shaped number for it.
+
+**Reasoned:** getting `crowdingByPoi` off the critical path and batching the
+sweep's status updates is worth roughly **400–600 ms of the 1,800 ms**.
+**@unvalidated: that either is safe to defer** — `crowdingByPoi` feeds what the
+map draws, so deferring it means a frame of uncrowded pins that then re-draw,
+which is a question about what a hiker sees rather than about milliseconds, and
+what would settle it is a rendered frame of both to the maintainer before either
+is built.
+
+### 7.8 Two things the marks do not mean, which §1.4 and §7.4 read as if they did
+
+**`ourhike:map` is not "MapLibre handed back a map".** `onMapReady` is MapView's
+**last** effect (`MapView.tsx:1378`) and React runs effects in declaration
+order, so the mark fires only after all fifty-one have run. Every reading of it
+here — §1.4's "map built at 0.6–0.7 s", §7.5's 621 ms — has MapView's whole
+effect cascade inside it. The numbers are not wrong; what they are called is.
+
+**`ourhike:map-drawn` never fires at all on a profile with no corridor archive
+downloaded** (#1633). It hangs off MapLibre's `load`, and with terrain routed
+through the proxy so the sandbox's TLS failures on `elevation-tiles-prod` are
+out of the way:
+
+| profile | CPU | `ourhike:map` | `ourhike:map-drawn` |
+|---|---:|---:|---|
+| desktop 1440×900 | 1× | 829 ms | **never, in 25 s** |
+| phone 390×844 | 1× | 1,226 ms | **never, in 25 s** |
+| phone 390×844 | 4× | 3,877 ms | **never, in 25 s** |
+
+At the 25 s mark `isStyleLoaded()` is false, the map holds no source caches, and
+it has fired `ArchiveNotDownloadedError` for `ourhike:corridor-archive`
+(`map/pmtilesSource.ts:26`) plus three `Failed to fetch`. **Correlation across
+every run, not a demonstrated cause** — the three fetch failures have not been
+separated from the archive error, and no profile *with* a package downloaded has
+been run to watch the mark appear.
+
+This bears directly on **§7.4's own validation step**, which says what would
+settle the plan's arithmetic is "`ourhike:map` and `ourhike:map-drawn` read off
+the maintainer's laptop and phone". **Half of that instrument does not work as
+written**: a laptop that built a map in 829 ms reports no `map-drawn` at all. A
+reading taken today would show an absence and mean nothing by it.
+
+**And it is why nothing here is evidence about the ten seconds the maintainer
+reported.** A session (this one) took `map-drawn`'s absence for that ten seconds
+and said so; a mark missing at 829 ms on an unthrottled laptop is not reporting
+slowness, and the claim was withdrawn. What the ten seconds is remains open, and
+the instrument that would answer it does not exist yet.

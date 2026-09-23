@@ -33,9 +33,22 @@
 // surface at all while #600 leaves the production backend unbuilt. The org is
 // invented and every coordinate is the real park; `client/src/org/demoOrg.ts`
 // says so at length and the console says so on screen.
+//
+// NOT THE ONLY WAY SINCE #1643. The `@backend` block at the foot of this file
+// drives an invented live organization through the console's real fetches,
+// against the backend-shaped build playwright.config.ts serves to its
+// `phone-backend` project - still no network, because `page.route` answers
+// every request (e2e/support/backend.ts).
 
 import { expect, test, type Page } from '@playwright/test'
 import { seedPreferences } from './support/seed'
+import {
+  seedSession,
+  sent,
+  stubBackend,
+  type Reply,
+  type Routes,
+} from './support/backend'
 
 const DEMO = 'central-park-throughikers'
 
@@ -315,5 +328,141 @@ test.describe('the console at desk width', () => {
     // stacking would break.
     expect(map!.y).toBeLessThan(table!.y + table!.height)
     expect(table!.y).toBeLessThan(map!.y + map!.height)
+  })
+})
+
+// A REAL ORGANIZATION, not the demo one (#1643 item 8). Everything above runs
+// against `central-park-throughikers`, whose data `isDemoOrg` serves without
+// touching the network - so the console's own fetches, and what it does when
+// one of them is refused, had never been driven in a browser. These run
+// against the backend-shaped build (`@backend`, e2e/support/backend.ts), with
+// a signed-in admin whose organization's reads are answered by `page.route`.
+//
+// The organization is invented: a slug no registry carries, no admins listed,
+// no coordinates at all.
+const LIVE = 'e2e-hollow-ridge-club'
+
+function liveOrg() {
+  return {
+    id: 'org-e2e',
+    slug: LIVE,
+    name: 'Hollow Ridge Trail Club',
+    region: null,
+    domain: null,
+    website: null,
+    verified_by: null,
+    state: 'claimed',
+    registry_pr_url: null,
+    membership_url: null,
+    donation_url: null,
+    created_at: '2026-09-01T00:00:00Z',
+    admins: [],
+    assist_opted_in: false,
+  }
+}
+
+/** What `/access` says: an admin, allowed to read the roster. The server's
+ *  answer, which the console is told never to infer for itself. */
+const ADMIN_ACCESS = {
+  org_slug: LIVE,
+  is_admin: true,
+  is_codeowner: false,
+  is_supervisor: false,
+  is_volunteer: false,
+  can_manage_volunteers: true,
+  can_read_roster: true,
+  can_touch_registry: true,
+}
+
+/** Every read OrgConsole.tsx's `useOrgData` makes, answered - the roster by
+ *  whatever the test passes. */
+function consoleRoutes(roster: Reply): Routes {
+  return {
+    [`GET /clubs/${LIVE}`]: { status: 200, body: liveOrg() },
+    [`GET /clubs/${LIVE}/access`]: { status: 200, body: ADMIN_ACCESS },
+    [`GET /clubs/${LIVE}/registry`]: { status: 200, body: [] },
+    [`GET /clubs/${LIVE}/roles`]: { status: 200, body: [] },
+    [`GET /clubs/${LIVE}/roster`]: roster,
+    'GET /workdays': { status: 200, body: [] },
+    [`GET /clubs/${LIVE}/coverage`]: {
+      status: 200,
+      body: { club_id: 'org-e2e', region: null, sections_total: 0, gaps: [] },
+    },
+  }
+}
+
+test.describe('a live organization’s console', { tag: '@backend' }, () => {
+  test('states: the roster screen draws the rows the server returned', async ({
+    page,
+  }) => {
+    // The baseline the refusal below is measured against: the same org, the
+    // same seat, and a 200 - so the row arriving here and not there is the
+    // refusal's doing, not the route's.
+    const { seen } = await stubBackend(
+      page,
+      consoleRoutes({
+        status: 200,
+        body: [
+          {
+            person_id: 'person-e2e',
+            email: 'ana@example.org',
+            display_name: 'Ana',
+            full_name: 'Ana Reyes',
+            roles: [],
+            sections: [],
+            pending_invite: false,
+          },
+        ],
+      }),
+    )
+    await seedSession(page)
+    await openOrg(page, `/org/${LIVE}/volunteers?page=roster`)
+
+    await expect(page.getByRole('heading', { name: /your roster/i })).toBeVisible()
+    await expect(page.getByRole('cell', { name: 'ana@example.org' })).toBeVisible()
+    expect(sent(seen, 'GET', `/clubs/${LIVE}/roster`).length).toBeGreaterThan(0)
+  })
+
+  test.skip('known defect: a 403 on the roster fetch draws "The roster is empty" instead of saying the roster was refused', async ({
+    page,
+  }) => {
+    // FOUND BY THIS SPEC, 2026-09-23 (#1643 item 8), and skipped rather than
+    // weakened, by the convention failurePaths.spec.ts's known-defect test
+    // sets: un-skipping it is the verification of the fix.
+    //
+    // WHAT HAPPENS. OrgConsole.tsx's `useOrgData` wraps every read after the
+    // org and its access in `optional(run, fallback)`, whose catch returns
+    // the fallback for ANY failure - "a supervisor cannot read the registry,
+    // and that is a 403 rather than a broken console". The roster's fallback
+    // is `[]`, so a refused roster reaches screens/Roster.tsx as an empty
+    // one, and the screen says "The roster is empty. Add somebody by hand,
+    // upload a list, or connect a feed" - an instruction to an admin whose
+    // roster may hold three hundred people they are not being shown. The
+    // same `optional` covers the registry, roles, workdays and coverage, so
+    // this is one instance of a shape rather than the only one.
+    //
+    // WHY NOT FIXED HERE. What the screen should say instead is wording on
+    // an organization-facing screen, which goes to the maintainer with a
+    // picture (CLAUDE.md, "Show the maintainer what you mean") - not a
+    // choice a test-writing pull request makes on its own.
+    //
+    // MEASURED, unskipped, 2026-09-23: with the roster answered 403 and
+    // everything else as in the test above, the screen shows "Nobody matches
+    // that" over "The roster is empty. Add somebody by hand...", and nothing
+    // on it mentions a refusal.
+    await stubBackend(
+      page,
+      consoleRoutes({ status: 403, body: { detail: 'You cannot read this roster' } }),
+    )
+    await seedSession(page)
+    await openOrg(page, `/org/${LIVE}/volunteers?page=roster`)
+
+    await expect(page.getByRole('heading', { name: /your roster/i })).toBeVisible()
+    await expect(page.getByText(/The roster is empty/)).toHaveCount(0)
+    await expect(
+      page
+        .getByText(/roster/i)
+        .filter({ hasText: /could not|couldn.t|not allowed|permission|refused/i }),
+    ).toBeVisible()
   })
 })

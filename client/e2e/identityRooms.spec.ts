@@ -21,6 +21,7 @@
 
 import { test, expect, type Page } from '@playwright/test'
 import { seedPreferences, seedHikerMode, bootFreshPage } from './support/seed'
+import { fakeSession, sent, stubBackend } from './support/backend'
 
 /** More → You, which is where identity lives on this build. The row is
  *  matched by its text rather than by a role name, because the row's
@@ -269,6 +270,73 @@ test.describe('the sign-in ask', () => {
     await expect(page.getByRole('heading', { name: 'One thing first' })).toHaveCount(0)
     await expect(page.getByRole('heading', { name: 'Your hours' })).toBeVisible()
     await expect(page.getByText(/4 hours over 1 day/)).toBeVisible()
+  })
+})
+
+// SIGNING IN WITH AN EMAILED CODE, through to a signed-in app (#1643 item 7).
+// Only reachable against the backend-shaped build (`@backend`,
+// e2e/support/backend.ts): the hermetic build has no Supabase project, so its
+// email door can never reach the code step. The two Supabase calls the screen
+// makes - `POST /auth/v1/otp` and `POST /auth/v1/verify` - are answered by
+// `page.route`, and the verify is where the claim lives.
+//
+// EIGHT DIGITS, BECAUSE THAT IS WHAT SUPABASE SENDS. #1601 - Take the code
+// length Supabase actually sends, instead of assuming six - replaced a field
+// capped at seven characters, which silently dropped the last digit of every
+// eight-digit code the UA project mails. So the code is TYPED, key by key,
+// rather than filled: `pressSequentially` goes through the field's own
+// `maxLength` the way a thumb does, and the assertion is on the token the
+// app actually sent to Supabase rather than on what the field displays.
+test.describe('signing in with an emailed code', { tag: '@backend' }, () => {
+  test('states: an eight-digit code is sent to Supabase whole, and the hiker comes out signed in', async ({
+    page,
+  }) => {
+    const { seen } = await stubBackend(page, {
+      'POST /auth/v1/otp': { status: 200, body: {} },
+      'POST /auth/v1/verify': { status: 200, body: fakeSession('hiker@example.org') },
+    })
+    await seedPreferences(page)
+    await page.goto('/')
+    await page.getByRole('tab', { name: 'Map' }).click()
+    await expect(page.getByRole('region', { name: /trail map/i })).toBeVisible()
+
+    await page.getByRole('button', { name: 'Sign in' }).first().click()
+    const ask = page.getByRole('dialog', { name: 'Sign in' })
+    await ask.getByRole('button', { name: 'Continue with email' }).click()
+    await page.getByRole('textbox', { name: 'Email' }).fill('hiker@example.org')
+    await page.getByRole('button', { name: 'Email me a code' }).click()
+
+    await expect(page.getByRole('heading', { name: 'Check your email' })).toBeVisible()
+    expect(sent(seen, 'POST', '/auth/v1/otp')).toHaveLength(1)
+
+    const code = page.getByRole('textbox', { name: 'Code' })
+    await code.pressSequentially('12345678')
+    await expect(code).toHaveValue('12345678')
+    // The form's own submit, not the map header's account button behind the
+    // window, which carries the same name while nobody is signed in.
+    await page
+      .locator('form')
+      .getByRole('button', { name: 'Sign in', exact: true })
+      .click()
+
+    await expect.poll(() => sent(seen, 'POST', '/auth/v1/verify').length).toBe(1)
+    const [verify] = sent(seen, 'POST', '/auth/v1/verify')
+    expect(verify.body).toMatchObject({
+      email: 'hiker@example.org',
+      token: '12345678',
+      type: 'email',
+    })
+
+    // SIGNED IN, as the app itself tells it: the code step closes, and the
+    // map header's account button (chrome/AccountButton.tsx) names the
+    // address Supabase's session carries rather than offering to sign in.
+    await expect(page.getByRole('heading', { name: 'Check your email' })).toHaveCount(0)
+    await expect(
+      page.getByRole('button', { name: 'Account, signed in as hiker@example.org' }),
+    ).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toHaveCount(
+      0,
+    )
   })
 })
 

@@ -1350,6 +1350,32 @@ def test_a_kind_without_a_name_is_dropped_rather_than_stored(client, name):
     assert body["signed_name_kind"] is None
 
 
+def test_a_signed_name_over_the_cap_is_refused(client, db_session):
+    """`SIGNED_NAME_MAX_CHARS` is 200, and 201 characters is a 422 naming the
+    field - not a truncation, which would store a name the hiker never
+    signed. Nothing is written."""
+    user_id = str(uuid.uuid4())
+    payload = dict(_VALID_PAYLOAD, signed_name="x" * 201, signed_name_kind="trail")
+
+    response = client.post("/reports", json=payload, headers=auth_headers(user_id))
+
+    assert response.status_code == 422
+    assert "signed_name" in response.text
+    assert db_session.query(Report).count() == 0
+
+
+def test_a_signed_name_at_the_cap_is_accepted(client):
+    """The other side of the boundary, so the test above cannot pass on a cap
+    that has quietly moved below 200."""
+    user_id = str(uuid.uuid4())
+    payload = dict(_VALID_PAYLOAD, signed_name="x" * 200, signed_name_kind="trail")
+
+    response = client.post("/reports", json=payload, headers=auth_headers(user_id))
+
+    assert response.status_code == 201
+    assert response.json()["signed_name"] == "x" * 200
+
+
 def test_a_name_kind_the_server_does_not_know_is_refused(client):
     user_id = str(uuid.uuid4())
     payload = dict(_VALID_PAYLOAD, signed_name="Jane Doe", signed_name_kind="nickname")

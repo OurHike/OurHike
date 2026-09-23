@@ -582,11 +582,18 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   // mounts behind that button. It was 'unit-only' while the deployed set came
   // from a repository variable the preview build did not carry.
   //
-  // 'planned' rather than 'covered' because the spec is not written yet. Its
-  // first step drives from the ask to the address field, which needs nothing;
-  // its second needs a code that a real email carried, so the code step waits
-  // on #1399's account. EmailSignIn.test.tsx holds both steps meanwhile.
-  'screens/EmailSignIn.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  // Covered since #1643, both steps: e2e/identityRooms.spec.ts's `@backend`
+  // test drives the ask, the address, the code step and an eight-digit code
+  // through to a signed-in header. The code "a real email carried" this entry
+  // used to wait for is answered instead by a stubbed Supabase
+  // (e2e/support/backend.ts), so what is covered is the app's half of the
+  // exchange - the request it makes and what it does with the answer - and
+  // not the project's email template, which backend/check_supabase_config.py
+  // reads back.
+  'screens/EmailSignIn.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/identityRooms.spec.ts' },
+  },
   'screens/SignInPrompt.tsx': {
     step: 'F13 More',
     flow: { status: 'covered', spec: 'e2e/identityRooms.spec.ts' },

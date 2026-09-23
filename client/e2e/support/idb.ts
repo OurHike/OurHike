@@ -69,3 +69,32 @@ export async function writeIDBEntries(
     { database: DATABASE, store: STORE, rows: entries },
   )
 }
+
+/**
+ * Read one key out of idb-keyval's store as the page holds it NOW.
+ *
+ * The other direction from `writeIDBEntries`, and `page.evaluate` rather than
+ * an init script because the page has already navigated by the time anybody
+ * wants to read back what the app wrote. For a claim about storage itself -
+ * "the outbox is empty" - where a screen's count of it would be a second
+ * thing that could be wrong. `undefined` when the key was never written.
+ */
+export async function readIDBEntry(page: Page, key: string): Promise<unknown> {
+  return page.evaluate(
+    ({ database, store, wanted }) =>
+      new Promise<unknown>((done, fail) => {
+        const open = indexedDB.open(database)
+        open.onupgradeneeded = () => open.result.createObjectStore(store)
+        open.onerror = () => fail(open.error)
+        open.onsuccess = () => {
+          const read = open.result
+            .transaction(store, 'readonly')
+            .objectStore(store)
+            .get(wanted)
+          read.onsuccess = () => done(read.result)
+          read.onerror = () => fail(read.error)
+        }
+      }),
+    { database: DATABASE, store: STORE, wanted: key },
+  )
+}

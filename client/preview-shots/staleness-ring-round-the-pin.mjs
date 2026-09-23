@@ -13,7 +13,8 @@
 // fades to nothing on crowded ground (#1536) - which is why
 // waypoints-at-the-carry-zoom.mjs, a planning frame over thousands of
 // waypoints, shows none. So this is the walking zoom over quiet ground: the
-// A.T. through Shenandoah near Big Meadows, public land, with the legend's
+// A.T. through Shenandoah near Big Meadows (z14, centred on the springs
+// by Tanners Ridge, which a z13.5 first cut left under the top chrome), public land, with the legend's
 // Showing picker narrowed to water through the stored preference. That also
 // keeps campsites out of the frame altogether, which is one of the four things
 // .claude/skills/pr-screenshot/SKILL.md says a shot must never show at a
@@ -59,7 +60,7 @@ export default async function drive(page) {
   await page.evaluate(() => {
     sessionStorage.setItem(
       'ourhike:camera',
-      JSON.stringify({ center: [-78.43, 38.52], zoom: 13.5 }),
+      JSON.stringify({ center: [-78.439, 38.546], zoom: 14 }),
     )
   })
   await page.reload({ waitUntil: 'load' })

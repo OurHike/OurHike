@@ -27,6 +27,11 @@
 // stands on its point rather than being centred on it, so the line passes
 // under the artwork instead of through it.
 //
+// And the staleness rings go ROUND those raised pins (v1.3.2 release review,
+// #1636): the ring used to stay centred on the point the pin stands on, so it
+// cut through the lower half of every ringed pin. Unconfirmed water wears the
+// faint invite, so the water pins here are where to look.
+//
 // Harriman and the Hudson Highlands, where the A.T. runs through public land
 // thick enough that all four categories are in one frame. Public ground
 // throughout - no campsite readable at this zoom, nobody's report, nobody's

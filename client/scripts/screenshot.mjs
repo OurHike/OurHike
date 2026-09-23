@@ -395,6 +395,72 @@ async function skipFirstRun(context) {
   )
 }
 
+/** How chromium words a Content-Security-Policy report in the console, in both
+ *  the enforced and the report-only form ("[Report Only] Refused to load the
+ *  image ... violates the following Content Security Policy directive").
+ *  Matched loosely on the phrase because the rest of the sentence differs per
+ *  directive, and a pattern tied to one of them would silently stop matching
+ *  the others. */
+const CSP_CONSOLE = /Content.Security.Policy/i
+
+/** The directive a report names, or `unknown` when the message is a CSP report
+ *  in some form this pattern cannot place - `unknown` rather than dropping it,
+ *  because a report nobody can categorise is still a report somebody should
+ *  see. Null for a console message that is not about a policy at all. */
+export function cspDirective(message) {
+  if (typeof message !== 'string' || !CSP_CONSOLE.test(message)) return null
+  return /directive: "([a-z-]+)/i.exec(message)?.[1] ?? 'unknown'
+}
+
+/**
+ * The directives a run reported, each with how many times, most-reported
+ * first.
+ *
+ * Grouped by directive rather than listed per message on purpose: one map
+ * screen can refuse two hundred tiles from the same host, and two hundred
+ * identical lines in a job log is the same information as one line with a
+ * count, minus anybody reading it.
+ */
+export function summariseCspReports(messages) {
+  const counts = new Map()
+  for (const message of messages) {
+    const directive = cspDirective(message)
+    if (directive === null) continue
+    counts.set(directive, (counts.get(directive) ?? 0) + 1)
+  }
+  return [...counts.entries()]
+    .map(([directive, count]) => ({ directive, count }))
+    .sort((a, b) => b.count - a.count || a.directive.localeCompare(b.directive))
+}
+
+/**
+ * One GitHub Actions warning naming what a shot reported, or null when it
+ * reported nothing.
+ *
+ * WHY A WARNING AND NOT A FAILURE. The policy is served report-only
+ * (client/scripts/csp.mjs, #1602), so a report means the policy is wrong about
+ * this app and not that this app is broken - and the pull request that reveals
+ * it is usually not the pull request that caused it. A failing camera would
+ * also cost the preview its pictures, which are worth more than this signal.
+ *
+ * WHY AN ANNOTATION AND NOT A LOG LINE. Nothing collected these before. They
+ * appeared in the console of a browser in a CI job nobody opens, which is the
+ * same as nowhere - and "somebody will look" has repeatedly turned out to be
+ * nobody. An annotation is on the run's summary page without scrolling a log.
+ */
+export function cspAnnotation(name, summary) {
+  if (summary.length === 0) return null
+  const named = summary
+    .map(({ directive, count }) => `${directive} (${count})`)
+    .join(', ')
+  return (
+    `::warning::${name}: the Content-Security-Policy reported ${named}. ` +
+    'The policy is report-only, so nothing was blocked - but one of these is ' +
+    'wrong: either client/scripts/csp.mjs is missing something this app really ' +
+    'needs, or this app is reaching somewhere it should not. See #1602.'
+  )
+}
+
 export async function capture(options) {
   const {
     name,
@@ -425,6 +491,14 @@ export async function capture(options) {
     if (skipEntry) await skipFirstRun(context)
 
     const page = await context.newPage()
+    // Every Content-Security-Policy report this page makes. `vite preview`
+    // serves the policy (client/vite.config.ts), so with `--dist` this is the
+    // one browser in CI driving the real build under the real policy - and
+    // before this listener existed, what it saw went nowhere.
+    const cspMessages = []
+    page.on('console', (message) => {
+      if (cspDirective(message.text()) !== null) cspMessages.push(message.text())
+    })
     // A recipe's hand on the page BEFORE the app loads (client/preview-shots/
     // `before`, #1560): a route that holds a chunk back is the only way to
     // photograph a frame the launch passes through on its own, and a route
@@ -444,7 +518,25 @@ export async function capture(options) {
       await page.waitForTimeout(waitMs)
     }
     await page.screenshot({ path, fullPage })
-    return { path, bytes: statSync(path).size, displayWidth: Math.round(viewport.width) }
+    const cspReports = summariseCspReports(cspMessages)
+    const annotation = cspAnnotation(name, cspReports)
+    if (annotation !== null) {
+      console.log(annotation)
+      // The first of each, under the annotation, because the directive alone
+      // does not say which URL was refused and that is the whole of what a fix
+      // needs. One per directive rather than all of them - see
+      // summariseCspReports.
+      for (const { directive } of cspReports) {
+        const first = cspMessages.find((message) => cspDirective(message) === directive)
+        console.log(`  ${directive}: ${first?.replace(/\s+/g, ' ').slice(0, 240)}`)
+      }
+    }
+    return {
+      path,
+      bytes: statSync(path).size,
+      displayWidth: Math.round(viewport.width),
+      cspReports,
+    }
   } finally {
     await browser.close()
     server?.stop()

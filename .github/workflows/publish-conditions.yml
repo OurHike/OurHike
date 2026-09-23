@@ -195,6 +195,18 @@ on:
     # hourly publish would have landed in the bucket and reached nobody -
     # client/src/lib/useConditions.ts's CONDITIONS_REFRESH_MS is the other
     # half of this number and the two are commented as a pair.
+    #
+    # MEASURED, NOT ASSUMED, AS OF 2026-09-21: this fires roughly every
+    # 3h53m, not hourly. 30 scheduled runs (#391-#419) over 112.6 hours
+    # (2026-09-16 12:49Z - 2026-09-21 05:27Z): min gap 2h06m, median 3h26m,
+    # mean 3h53m, max 5h45m - about 6.2 runs/day against the 24 the cron
+    # declares. First measured on 2026-09-09 at a similar mean (4.14h,
+    # 6.3/day, **#1346 - Every cron in this repository fires about five
+    # times a day, whatever it declares — including the conditions bake**),
+    # so this is a stable platform behaviour, not a one-off. #1346 leaves
+    # both the cause and what to do about it open; this line only keeps the
+    # measured cadence beside the intended one, as that issue asks, so a
+    # reader is not left inferring hourly delivery from the cron alone.
     - cron: "40 * * * *"
   workflow_dispatch:
 

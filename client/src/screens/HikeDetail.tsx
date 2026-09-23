@@ -35,6 +35,13 @@
 //    creeps in.
 //  - No Avenza link, on the maintainer's instruction, though the publisher's
 //    own pages carry one.
+//
+// WHAT IS HERE SINCE #1574: the publisher's PAPER map for the park, where
+// the publisher is a steward this phone holds, their store block grants this
+// screen, and their own sheet index names the park (lib/paperMaps.ts). The
+// link is to their product on their own store, the title is their words,
+// and no price is printed - the store is the source for that. Nothing on
+// this screen is for sale by OurHike.
 
 import { useState } from 'react'
 import { Badge } from '../design-system/components'
@@ -49,6 +56,8 @@ import {
   type SuggestedHikeDetail,
 } from '../lib/suggestedHikes'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
+import { paperMapLead, paperMapsForPlace, stewardForSource } from '../lib/paperMaps'
+import { EMPTY_STEWARDS, type Stewards } from '../lib/stewards'
 import { useHikeDetail } from '../lib/useHikeDetail'
 import './hikeDetail.css'
 
@@ -78,6 +87,10 @@ export interface HikeDetailProps {
    *  shell's `showSavedHikeOnMap`. Absent is the honest state, not a
    *  degraded one: Save is the button beside it. */
   onShowOnMap?: (hike: SuggestedHike) => void
+  /** Who the map's data belongs to (lib/stewards.ts), for the publisher's
+   *  paper map (#1574). Empty on a phone with no download, and empty renders
+   *  no line - the honest state, not a degraded one. */
+  stewards?: Stewards
 }
 
 function figures(hike: SuggestedHike, pace: PaceProfile, units: UnitSystem): string {
@@ -153,6 +166,7 @@ export function HikeDetail({
   onSave,
   savedWalks,
   onShowOnMap,
+  stewards = EMPTY_STEWARDS,
 }: HikeDetailProps) {
   const [wholeDescription, setWholeDescription] = useState(false)
   // #1473: the shelf carries the figures, this fetches the prose for the one
@@ -166,6 +180,18 @@ export function HikeDetail({
 
   const facets = [detail?.routeType, detail?.park].filter(
     (part): part is string => part !== undefined,
+  )
+
+  // The publisher's paper map for the park (#1574). The publisher is found
+  // through the hike's own id - `nynjtc_hike_finder:7909` names the registry
+  // key it was published from - never by comparing display names, and the
+  // park is the publisher's own word for it (`detail.park`), matched against
+  // their own sheet index. Empty for a hike whose publisher is not a steward
+  // here, has no store, or names a park no sheet lists.
+  const paperMaps = paperMapsForPlace(
+    stewardForSource(stewards, hike.id.split(':')[0] ?? null),
+    'hike_detail',
+    detail?.park,
   )
 
   return (
@@ -332,6 +358,30 @@ export function HikeDetail({
             >
               Read it on their page ›
             </a>
+          )}
+          {/* Their paper map, on their store, where their sheet index names
+              the park. The lead names the sheet and the organization; the
+              product title, verbatim, is the only thing to tap. One line
+              per product, because a park can sit on two (the Pequannock
+              Watershed is on two NYNJTC sets). */}
+          {paperMaps.map((match) => (
+            <span key={match.map.handle} className="hike-detail__paper-map">
+              <p>{paperMapLead(match, 'The park')}</p>
+              <a
+                className="hike-detail__source"
+                href={match.map.url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {match.map.title} ›
+              </a>
+            </span>
+          ))}
+          {paperMaps.length > 0 && (
+            <p className="hike-detail__aside">
+              Their paper map, sold on their own store. OurHike takes no cut and holds no
+              money.
+            </p>
           )}
           <p className="hike-detail__aside">
             The line a map draws is OurHike’s, built from their description on the trail

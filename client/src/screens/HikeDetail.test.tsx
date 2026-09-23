@@ -331,3 +331,79 @@ describe('the publisher’s rating', () => {
     expect(screen.queryByText(/Moderate|Easy|Strenuous/)).not.toBeInTheDocument()
   })
 })
+
+describe('the publisher’s paper map (#1574)', () => {
+  /** NYNJTC as the stewards artifact carries it: the hike finder is one of
+   *  its registry keys, the store grants this screen, and one product lists
+   *  Harriman on two sheets. */
+  const NYNJTC = {
+    provider: 'NYNJTC',
+    name: 'New York-New Jersey Trail Conference',
+    trust: 'authoritative',
+    licence: null,
+    attribution: null,
+    terms: null,
+    termsSource: null,
+    layers: ['NYNJTC Hike Finder export'],
+    keys: ['nynjtc_hike_finder'],
+    support: null,
+    store: {
+      storeUrl: 'https://store.nynjtc.org/collections/maps',
+      storeCta: 'Trail Maps',
+      storeSurfaces: ['sources_screen', 'hike_detail'],
+      paperMaps: [
+        {
+          handle: 'harriman-bear-mountain-trails-map',
+          title: 'Harriman-Bear Mountain Trails Map',
+          url: 'https://store.nynjtc.org/products/harriman-bear-mountain-trails-map?utm_source=ourhike',
+          sheets: ['118', '119'],
+          covers: [],
+          sheetCovers: {
+            '118': ['Southern Harriman State Park'],
+            '119': ['Northern Harriman State Park', 'Bear Mountain State Park'],
+          },
+        },
+      ],
+    },
+  }
+  const IN_HARRIMAN = { ...DETAIL, park: 'Harriman State Park' }
+
+  it('links the park’s sheets to the publisher’s own store product, title verbatim', () => {
+    show({ id: 'nynjtc_hike_finder:1', detail: IN_HARRIMAN }, { stewards: [NYNJTC] })
+
+    const link = screen.getByRole('link', { name: 'Harriman-Bear Mountain Trails Map ›' })
+    expect(link).toHaveAttribute(
+      'href',
+      'https://store.nynjtc.org/products/harriman-bear-mountain-trails-map?utm_source=ourhike',
+    )
+    expect(
+      screen.getByText(
+        'The park is on sheets 118 and 119 of the New York-New Jersey Trail Conference’s',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/takes no cut and holds no money/)).toBeInTheDocument()
+  })
+
+  it('prints no map line for a park no sheet names', () => {
+    show({ id: 'nynjtc_hike_finder:1', detail: DETAIL }, { stewards: [NYNJTC] })
+
+    expect(screen.queryByText(/Trails Map ›/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/takes no cut/)).not.toBeInTheDocument()
+  })
+
+  it('prints no map line when the publisher is not a steward this phone holds', () => {
+    show({ id: 'nynjtc_hike_finder:1', detail: IN_HARRIMAN })
+
+    expect(screen.queryByText(/Trails Map ›/)).not.toBeInTheDocument()
+  })
+
+  it('prints no map line where the organization has not granted the hike detail', () => {
+    const elsewhere = {
+      ...NYNJTC,
+      store: { ...NYNJTC.store, storeSurfaces: ['sources_screen'] },
+    }
+    show({ id: 'nynjtc_hike_finder:1', detail: IN_HARRIMAN }, { stewards: [elsewhere] })
+
+    expect(screen.queryByText(/Trails Map ›/)).not.toBeInTheDocument()
+  })
+})

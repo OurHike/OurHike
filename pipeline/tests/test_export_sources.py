@@ -365,6 +365,170 @@ class TestTheSupportLine:
         assert "donate_blurb" not in out["stewards"][0]["support"]
 
 
+def paper_map_table(tmp_path, **over) -> str:
+    """A one-product table on disk, in the reviewed file's shape, and its
+    name - what a store block's `paper_maps` points at."""
+    table = {
+        "store": {"base": "https://store.example.invalid"},
+        "maps": [
+            {
+                "handle": "harriman-bear-mountain-trails-map",
+                "title": "Harriman-Bear Mountain Trails Map",
+                "sheets": ["118", "119"],
+                "covers": ["Harriman State Park"],
+                "sheet_covers": {"118": ["Southern Harriman State Park"], "119": ["Bear Mountain State Park"]},
+            }
+        ],
+    }
+    table.update(over)
+    (tmp_path / "table.json").write_text(json.dumps(table))
+    return "table.json"
+
+
+def store_block(table: str, **over) -> dict:
+    block = {
+        "author": "NJ DEP",
+        "store_url": "https://store.example.invalid/collections/maps",
+        "store_cta": "Trail Maps",
+        "store_surfaces": ["sources_screen", "hike_detail"],
+        "paper_maps": table,
+    }
+    block.update(over)
+    return block
+
+
+class TestStoreLine:
+    """`<x>_store` - where a hiker buys the organization's paper maps (#1574).
+
+    The same discipline as the support line, one block over: the org's own
+    words, a closed list of screens, nothing rendered where nothing is
+    recorded - and, new here, a reviewed table that has to be whole.
+    """
+
+    def test_publishes_the_store_and_its_products_from_a_block_matched_by_author(self, tmp_path):
+        table = paper_map_table(tmp_path)
+        out = export_sources.build_output(
+            registry(source("a", "NJDEP", True, steward="NJ DEP"), anything_store=store_block(table)),
+            reference_dir=tmp_path,
+        )
+
+        store = out["stewards"][0]["store"]
+        assert store["store_url"] == "https://store.example.invalid/collections/maps"
+        assert store["store_cta"] == "Trail Maps"
+        assert store["store_surfaces"] == ["hike_detail", "sources_screen"]
+        assert store["paper_maps"] == [
+            {
+                "handle": "harriman-bear-mountain-trails-map",
+                "title": "Harriman-Bear Mountain Trails Map",
+                "url": "https://store.example.invalid/products/harriman-bear-mountain-trails-map",
+                "sheets": ["118", "119"],
+                "covers": ["Harriman State Park"],
+                "sheet_covers": {"118": ["Southern Harriman State Park"], "119": ["Bear Mountain State Park"]},
+            }
+        ]
+
+    def test_a_steward_with_no_store_block_publishes_null(self, tmp_path):
+        out = export_sources.build_output(registry(source("a", "NJDEP", True, steward="NJ DEP")), reference_dir=tmp_path)
+
+        assert out["stewards"][0]["store"] is None
+
+    def test_the_referral_query_rides_on_the_store_and_on_every_product(self, tmp_path):
+        table = paper_map_table(tmp_path)
+        out = export_sources.build_output(
+            registry(
+                source("a", "NJDEP", True, steward="NJ DEP"),
+                x_store=store_block(table, referral="utm_source=ourhike"),
+            ),
+            reference_dir=tmp_path,
+        )
+
+        store = out["stewards"][0]["store"]
+        assert store["store_url"].endswith("/collections/maps?utm_source=ourhike")
+        assert store["paper_maps"][0]["url"].endswith("/products/harriman-bear-mountain-trails-map?utm_source=ourhike")
+
+    def test_refuses_a_store_block_with_no_surfaces(self, tmp_path):
+        table = paper_map_table(tmp_path)
+        block = store_block(table)
+        del block["store_surfaces"]
+
+        with pytest.raises(SystemExit, match="store_surfaces"):
+            export_sources.build_output(
+                registry(source("a", "NJDEP", True, steward="NJ DEP"), x_store=block), reference_dir=tmp_path
+            )
+
+    def test_the_map_is_not_a_surface_an_org_can_grant_a_shop_link_on(self, tmp_path):
+        table = paper_map_table(tmp_path)
+
+        assert "map" not in export_sources.STORE_SURFACES
+        with pytest.raises(SystemExit, match="surfaces that do not exist: map"):
+            export_sources.build_output(
+                registry(
+                    source("a", "NJDEP", True, steward="NJ DEP"),
+                    x_store=store_block(table, store_surfaces=["map"]),
+                ),
+                reference_dir=tmp_path,
+            )
+
+    def test_the_donate_and_store_vocabularies_are_separate_lists(self):
+        # Granting a donate line on the trail card grants nothing about a
+        # shop link, so the two lists are not one list under two names.
+        assert export_sources.STORE_SURFACES != export_sources.DONATE_SURFACES
+
+    def test_refuses_a_table_that_is_not_there(self, tmp_path):
+        with pytest.raises(SystemExit, match="is not a file"):
+            export_sources.build_output(
+                registry(source("a", "NJDEP", True, steward="NJ DEP"), x_store=store_block("missing.json")),
+                reference_dir=tmp_path,
+            )
+
+    def test_refuses_a_sheet_two_products_both_claim(self, tmp_path):
+        table = paper_map_table(
+            tmp_path,
+            maps=[
+                {"handle": "one", "title": "One", "sheets": ["118"], "covers": [], "sheet_covers": {"118": []}},
+                {"handle": "two", "title": "Two", "sheets": ["118"], "covers": [], "sheet_covers": {"118": []}},
+            ],
+        )
+
+        with pytest.raises(SystemExit, match="sheet 118 is listed by both one and two"):
+            export_sources.build_output(
+                registry(source("a", "NJDEP", True, steward="NJ DEP"), x_store=store_block(table)), reference_dir=tmp_path
+            )
+
+    def test_refuses_a_handle_that_is_not_a_product_path(self, tmp_path):
+        table = paper_map_table(
+            tmp_path,
+            maps=[{"handle": "Harriman Map", "title": "H", "sheets": ["118"], "covers": [], "sheet_covers": {"118": []}}],
+        )
+
+        with pytest.raises(SystemExit, match="not a Shopify handle"):
+            export_sources.build_output(
+                registry(source("a", "NJDEP", True, steward="NJ DEP"), x_store=store_block(table)), reference_dir=tmp_path
+            )
+
+    def test_refuses_sheet_covers_that_do_not_match_the_sheets(self, tmp_path):
+        table = paper_map_table(
+            tmp_path,
+            maps=[{"handle": "h", "title": "H", "sheets": ["118", "119"], "covers": [], "sheet_covers": {"118": []}}],
+        )
+
+        with pytest.raises(SystemExit, match="sheet_covers"):
+            export_sources.build_output(
+                registry(source("a", "NJDEP", True, steward="NJ DEP"), x_store=store_block(table)), reference_dir=tmp_path
+            )
+
+    def test_refuses_a_sheet_that_is_not_a_sheet_number(self, tmp_path):
+        table = paper_map_table(
+            tmp_path,
+            maps=[{"handle": "h", "title": "H", "sheets": ["Map 118"], "covers": [], "sheet_covers": {"Map 118": []}}],
+        )
+
+        with pytest.raises(SystemExit, match="not a sheet number"):
+            export_sources.build_output(
+                registry(source("a", "NJDEP", True, steward="NJ DEP"), x_store=store_block(table)), reference_dir=tmp_path
+            )
+
+
 class TestAgainstTheRealRegistry:
     """What the checked-in `sources.json` currently produces.
 
@@ -468,7 +632,7 @@ class TestAgainstTheRealRegistry:
         for key in held:
             assert "nothing exports this layer" in oprhp[key]["licence"] or "review" in oprhp[key]["licence"].lower(), key
 
-    def test_every_licence_and_support_block_joins_a_steward(self):
+    def test_every_licence_support_and_store_block_joins_a_steward(self):
         """The check that would have caught a two-year-old silent bug in one run.
 
         `_block` matches a block's `author` against the entries' `steward`, and
@@ -498,7 +662,7 @@ class TestAgainstTheRealRegistry:
             key: block["author"]
             for key, block in registry.items()
             if isinstance(block, dict)
-            and (key.endswith("_licence") or key.endswith("_support"))
+            and (key.endswith("_licence") or key.endswith("_support") or key.endswith("_store"))
             and block.get("author") not in stewards
         }
 
@@ -749,3 +913,44 @@ def test_both_new_york_city_agencies_carry_the_statutory_terms():
     for provider in ("NYC Parks", "NYC DOT"):
         assert provider in stewards, f"{provider} no longer ships (#1432)"
         assert statute in (stewards[provider]["licence"] or ""), f"{provider} lost its terms"
+
+
+class TestTheRealStoreLine:
+    """What sources.json and reference/nynjtc_paper_maps.json say today (#1574), dated."""
+
+    @staticmethod
+    def real() -> dict:
+        return json.loads((ROOT / "sources.json").read_text(encoding="utf-8"))
+
+    def test_nynjtc_has_a_store_and_no_other_steward_does(self):
+        out = export_sources.build_output(self.real())
+        with_store = sorted(s["provider"] for s in out["stewards"] if s["store"] is not None)
+
+        # 2026-09-17. A second entry here is an org that has been asked, or
+        # a block somebody joined to the wrong author.
+        assert with_store == ["NYNJTC"]
+
+    def test_nynjtcs_store_carries_twelve_products_and_no_price(self):
+        out = export_sources.build_output(self.real())
+        store = next(s["store"] for s in out["stewards"] if s["provider"] == "NYNJTC")
+
+        assert len(store["paper_maps"]) == 12
+        assert store["store_cta"] == "Trail Maps"
+        assert not any("price" in product for product in store["paper_maps"])
+
+    def test_every_nynjtc_product_link_opens_the_store_with_the_referral(self):
+        out = export_sources.build_output(self.real())
+        store = next(s["store"] for s in out["stewards"] if s["provider"] == "NYNJTC")
+
+        assert store["store_url"] == "https://store.nynjtc.org/collections/maps?utm_source=ourhike&utm_medium=app"
+        for product in store["paper_maps"]:
+            assert product["url"] == f"https://store.nynjtc.org/products/{product['handle']}?utm_source=ourhike&utm_medium=app"
+
+    def test_the_kittatinny_set_is_sheets_120_to_123(self):
+        # The maintainer's own example when asking for this (#1574).
+        out = export_sources.build_output(self.real())
+        store = next(s["store"] for s in out["stewards"] if s["provider"] == "NYNJTC")
+        kittatinny = next(p for p in store["paper_maps"] if p["handle"] == "delaware-water-gap-kittatinny-trails-map")
+
+        assert kittatinny["sheets"] == ["120", "121", "122", "123"]
+        assert "High Point State Park" in kittatinny["sheet_covers"]["123"]

@@ -317,6 +317,14 @@
   border-top: 1px solid var(--border-1);
 }
 
+/* The publisher's paper map (#1574): the lead sentence over the linked
+   product title, stacked like the provenance lines around it. */
+.hike-detail__paper-map {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .hike-detail__provenance p {
   margin: 0;
   font-size: var(--text-body-s);

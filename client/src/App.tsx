@@ -3551,6 +3551,7 @@ function App() {
     trailName: TRAIL_NAME,
     pace,
     trailSources,
+    stewards,
     walked,
     trailIndex,
     belowSeam,
@@ -9948,6 +9949,7 @@ function App() {
         pace={pace}
         units={units}
         online={online}
+        stewards={stewards}
         onBack={goBack}
         onSave={saveSuggestedHike}
         {...(savedCopy === undefined

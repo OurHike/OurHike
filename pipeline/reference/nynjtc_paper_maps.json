@@ -1,0 +1,507 @@
+{
+  "_comment": "Which of NYNJTC's paper maps covers what, as a join a person reviews row by row (#1574 - A hiker on NYNJTC ground has nowhere to buy the paper map for where they are). Three kinds of fact, each with its own source, and none of them measured by this project: `handle` and `title` are the store's product handle and title, read from store.nynjtc.org/collections/maps/products.json on 2026-09-17 (the store is Shopify, so a handle is the product's URL); `sheets` is the store's own list of sheet numbers in the product's description, cross-checked against the digital-maps page; `sheet_covers` is the per-sheet list of parks and trails NYNJTC publishes at nynjtc.org/digital-trail-maps-on-mobile-devices/, verbatim, read the same day - it is the key the hike-detail join matches a hike's park name against, so a name here is NYNJTC's spelling and never this project's paraphrase; `covers` adds the few park names the store's product description itself names, where it names any. `avenza` names the Avenza Map Store product that sells each sheet singly, which is where archive_nynjtc_sheet_extents.py read each sheet's georeferenced footprint ONCE - the footprints themselves are not in this file, deliberately: they are fetched numbers, and fetched numbers go in the bucket (archive/nynjtc_map_sheets.json), not in a commit (CONTRIBUTING.md, 'Data does not go in commits'). export_sources.py reads this file through sources.json's `nynjtc_store.paper_maps` and publishes it on the NYNJTC steward record. WHAT IS NOT HERE: a price. The store is the source for that and an offline phone showing a stale one would be the display outrunning its source.",
+  "store": {
+    "base": "https://store.nynjtc.org",
+    "collection": "https://store.nynjtc.org/collections/maps",
+    "read_date": "2026-09-17",
+    "read_how": "The collection's public products.json, read through a browser-shaped fetch; a bare curl from the sandbox got the store's 'verifying your connection' page and HTTP 429, which is why no script reads the store on a schedule."
+  },
+  "sheet_index": {
+    "url": "https://www.nynjtc.org/digital-trail-maps-on-mobile-devices/",
+    "read_date": "2026-09-17",
+    "note": "NYNJTC's own per-sheet listing: '<map name> - <year> | Map <n>' followed by the parks and trails on that sheet. Copied verbatim into sheet_covers."
+  },
+  "extents_archive": {
+    "key": "archive/nynjtc_map_sheets.json",
+    "written_by": "archive_nynjtc_sheet_extents.py",
+    "note": "One-time archive of each sheet's georeferenced footprint, read from the Avenza Map Store's product pages (data-bounds on each page). Avenza is a third party that may stop selling these; the archive is the surviving copy and nothing re-reads Avenza on a schedule."
+  },
+  "maps": [
+    {
+      "handle": "sterling-forest-trails-map",
+      "title": "Sterling Forest Trails Map",
+      "sheets": [
+        "100"
+      ],
+      "covers": [
+        "Sterling Forest State Park"
+      ],
+      "sheet_covers": {
+        "100": [
+          "Sterling Forest State Park",
+          "Appalachian Trail",
+          "Tranquility Ridge County Park",
+          "Highlands Trail"
+        ]
+      },
+      "avenza": {
+        "100": "sterling-forest-map-100-2020-trail-conference-new-york-new-jersey-trail-conference-map"
+      }
+    },
+    {
+      "handle": "east-hudson-trails-map",
+      "title": "East Hudson Trails Map",
+      "sheets": [
+        "101",
+        "102",
+        "103"
+      ],
+      "covers": [],
+      "sheet_covers": {
+        "101": [
+          "Hudson Highlands State Park Preserve",
+          "Hudson Highlands Gateway Park",
+          "Manitoga",
+          "Manitou Point Preserve",
+          "Appalachian Trail"
+        ],
+        "102": [
+          "Hudson Highlands State Park Preserve",
+          "Fishkill Ridge Conservation Area",
+          "Mount Beacon Park"
+        ],
+        "103": [
+          "Fahnestock State Park",
+          "Appalachian Trail"
+        ]
+      },
+      "avenza": {
+        "101": "east-hudson-hudson-highlands-south-map-101-2023-trail-conference-new-york-new-jersey-trail-conference-map",
+        "102": "east-hudson-hudson-highlands-north-map-102-2023-trail-conference-new-york-new-jersey-trail-conference-map",
+        "103": "east-hudson-fahnestock-map-103-2023-trail-conference-new-york-new-jersey-trail-conference-map"
+      }
+    },
+    {
+      "handle": "shawangunk-trails-map",
+      "title": "Shawangunk Trails Map",
+      "sheets": [
+        "104",
+        "105",
+        "106A",
+        "106B"
+      ],
+      "covers": [],
+      "sheet_covers": {
+        "104": [
+          "Minnewaska State Park Preserve",
+          "Sam's Point Preserve",
+          "Long Path"
+        ],
+        "105": [
+          "Mohonk Preserve",
+          "Mohonk Mountain House",
+          "Minnewaska State Park Preserve"
+        ],
+        "106A": [
+          "Mohonk Mountain House",
+          "Mohonk Preserve"
+        ],
+        "106B": [
+          "Shawangunk Ridge State Forest",
+          "Roosa Gap State Forest",
+          "Wurtsboro Ridge State Forest"
+        ]
+      },
+      "avenza": {
+        "104": "shawangunk-south-map-104-2023-trail-conference-new-york-new-jersey-trail-conference-map",
+        "105": "shawangunk-north-map-105-2023-trail-conference-new-york-new-jersey-trail-conference-map",
+        "106A": "shawangunk-mohonk-mountain-house-map-106a-2023-trail-conference-new-york-new-jersey-trail-conference-map",
+        "106B": "shawangunk-wurtsboro-map-106b-2023-trail-conference-new-york-new-jersey-trail-conference-map"
+      }
+    },
+    {
+      "handle": "south-taconic-trails-map",
+      "title": "South Taconic Trails Map",
+      "sheets": [
+        "107"
+      ],
+      "covers": [],
+      "sheet_covers": {
+        "107": [
+          "Taconic State Park",
+          "Mount Washington State Forest",
+          "Appalachian Trail"
+        ]
+      },
+      "avenza": {
+        "107": "south-taconic-map-107-2024-trail-conference-new-york-new-jersey-trail-conference-map"
+      }
+    },
+    {
+      "handle": "hudson-palisades-trails-map",
+      "title": "Hudson Palisades Trails Map",
+      "sheets": [
+        "108",
+        "109",
+        "110",
+        "111",
+        "112"
+      ],
+      "covers": [],
+      "sheet_covers": {
+        "108": [
+          "Palisades Interstate Park",
+          "Flat Rock Brook Nature Center",
+          "Tenafly Nature Center",
+          "Lost Brook Preserve",
+          "Long Path"
+        ],
+        "109": [
+          "Palisades Interstate Park",
+          "Tallman Mountain State Park",
+          "Blauvelt State Park",
+          "Clausland Mountain County Park",
+          "Buttermilk Falls County Park",
+          "Rockleigh Woods Sanctuary",
+          "Lamont Reserve",
+          "Long Path"
+        ],
+        "110": [
+          "Hook Mountain State Park",
+          "Nyack Beach State Park",
+          "Long Path"
+        ],
+        "111": [
+          "Rockland Lake State Park",
+          "Hook Mountain State Park",
+          "Haverstraw Beach State Park",
+          "Long Path"
+        ],
+        "112": [
+          "High Tor State Park",
+          "South Mountain County Park",
+          "Gurnee County Park",
+          "Long Path"
+        ]
+      },
+      "avenza": {
+        "108": "hudson-palisades-map-108-2023-trail-conference-new-york-new-jersey-trail-conference-map",
+        "109": "hudson-palisades-map-109-2023-trail-conference-new-york-new-jersey-trail-conference-map",
+        "110": "hudson-palisades-map-110-2023-trail-conference-new-york-new-jersey-trail-conference-map",
+        "111": "hudson-palisades-map-111-2023-trail-conference-new-york-new-jersey-trail-conference-map",
+        "112": "hudson-palisades-map-112-2023-trail-conference-new-york-new-jersey-trail-conference-map"
+      }
+    },
+    {
+      "handle": "west-hudson-trails-map",
+      "title": "West Hudson Trails Map",
+      "store_edition": "2019 - 8th edition",
+      "sheets": [
+        "113",
+        "114"
+      ],
+      "covers": [],
+      "sheet_covers": {
+        "113": [
+          "Storm King State Park",
+          "Black Rock Forest",
+          "Highlands Trail"
+        ],
+        "114": [
+          "Schunemunk State Park",
+          "Long Path",
+          "Highlands Trail"
+        ]
+      },
+      "avenza": {
+        "113": "west-hudson-storm-king-black-rock-forest-map-113-2019-trail-conference-new-york-new-jersey-trail-conference-map",
+        "114": "west-hudson-schunemunk-map-114-2019-trail-conference-new-york-new-jersey-trail-conference-map"
+      }
+    },
+    {
+      "handle": "harriman-bear-mountain-trails-map",
+      "title": "Harriman-Bear Mountain Trails Map",
+      "sheets": [
+        "118",
+        "119"
+      ],
+      "covers": [
+        "Harriman State Park",
+        "Bear Mountain State Park"
+      ],
+      "sheet_covers": {
+        "118": [
+          "Southern Harriman State Park",
+          "Long Path"
+        ],
+        "119": [
+          "Northern Harriman State Park",
+          "Bear Mountain State Park",
+          "Appalachian Trail",
+          "Long Path"
+        ]
+      },
+      "avenza": {
+        "118": "harriman-bear-mountain-south-map-118-2023-trail-conference-new-york-new-jersey-trail-conference-map",
+        "119": "harriman-bear-mountain-north-map-119-2023-trail-conference-new-york-new-jersey-trail-conference-map"
+      }
+    },
+    {
+      "handle": "delaware-water-gap-kittatinny-trails-map",
+      "title": "Delaware Water Gap & Kittatinny Trails Map",
+      "store_edition": "9th edition, 2026",
+      "sheets": [
+        "120",
+        "121",
+        "122",
+        "123"
+      ],
+      "covers": [
+        "Delaware Water Gap National Recreation Area"
+      ],
+      "sheet_covers": {
+        "120": [
+          "Southern Delaware Water Gap National Recreation Area",
+          "Worthington State Forest",
+          "Appalachian Trail"
+        ],
+        "121": [
+          "Southern Delaware Water Gap National Recreation Area",
+          "Appalachian Trail"
+        ],
+        "122": [
+          "Northern Delaware Water Gap National Recreation Area",
+          "Stokes State Forest",
+          "Appalachian Trail"
+        ],
+        "123": [
+          "Northern Delaware Water Gap National Recreation Area",
+          "High Point State Park",
+          "Huckleberry Ridge State Forest",
+          "Port Jervis Watershed Park",
+          "Appalachian Trail"
+        ]
+      },
+      "avenza": {
+        "120": "delaware-water-gap-kittatinny-south-1worthington-map-120-2021-trail-conference-new-york-new-jersey-trail-conference-map",
+        "121": "delaware-water-gap-kittatinny-south-2delaware-water-gap-map-121-2021-trail-conference-new-york-new-jersey-trail-conference-map",
+        "122": "delaware-water-gap-kittatinny-north-1stokes-map-122-2021-trail-conference-new-york-new-jersey-trail-conference-map",
+        "123": "delaware-water-gap-kittatinny-north-2high-point-map-123-2021-trail-conference-new-york-new-jersey-trail-conference-map"
+      },
+      "note": "The store's print edition is the 2026 ninth; the sheet footprints in the archive are Avenza's 2021 digital edition of the same four sheets, and whether the ninth edition moved a sheet edge is unchecked. The sheets are printed diagonal along the ridge; a footprint is an upright box around a diagonal sheet, so its corners claim ground the paper does not show."
+    },
+    {
+      "handle": "morris-county-highlands-trails-map",
+      "title": "Morris County Highlands Trails Map",
+      "sheets": [
+        "125",
+        "126",
+        "127",
+        "128"
+      ],
+      "covers": [],
+      "sheet_covers": {
+        "125": [
+          "Pyramid Mountain",
+          "Farny State Park",
+          "Wildcat Ridge Wildlife Management Area",
+          "Pequannock Watershed",
+          "Highlands Trail"
+        ],
+        "126": [
+          "Mahlon Dickerson Reservation",
+          "Mount Hope Historical Park",
+          "Rockaway River Wildlife Management Area",
+          "Highlands Trail"
+        ],
+        "127": [
+          "Allamuchy Mountain State Park",
+          "Stephens State Park",
+          "Highlands Trail",
+          "Morris Canal Greenway"
+        ],
+        "128": [
+          "High Mountain Park Preserve"
+        ]
+      },
+      "avenza": {
+        "125": "morris-county-highlands-east-map-125-2023-trail-conference-new-york-new-jersey-trail-conference-map",
+        "126": "morris-county-highlands-west-map-126-2023-trail-conference-new-york-new-jersey-trail-conference-map",
+        "127": "morris-county-highlands-allamuchystephens-map-127-2023-trail-conference-new-york-new-jersey-trail-conference-map",
+        "128": "morris-county-highlands-high-mountain-map-128-2023-trail-conference-new-york-new-jersey-trail-conference-map"
+      }
+    },
+    {
+      "handle": "westchester-trails-map",
+      "title": "Westchester Trails Map",
+      "sheets": [
+        "130",
+        "131",
+        "132",
+        "133"
+      ],
+      "covers": [],
+      "sheet_covers": {
+        "130": [
+          "Rockefeller State Park Preserve",
+          "Rockwood Hall Area",
+          "Peabody Preserve",
+          "Pocantico Park",
+          "Tarrytown Lakes Park",
+          "Westchester RiverWalk",
+          "Old Croton Aqueduct",
+          "North County Trail"
+        ],
+        "131": [
+          "Ward Pound Ridge Reservation",
+          "Armstrong Preserve",
+          "Lewisboro Town Park",
+          "Old Field Preserve",
+          "Richards Preserve"
+        ],
+        "132": [
+          "Teatown"
+        ],
+        "133": [
+          "Teatown",
+          "Teatown-Kitchawan Trail",
+          "Briarcliff-Peekskill Trail",
+          "Croton Gorge Park",
+          "Old Croton Aqueduct",
+          "North County Trail"
+        ]
+      },
+      "avenza": {
+        "130": "westchester-rockefeller-state-park-preserve-map-130-2025-trail-conference-new-york-new-jersey-trail-conference-map",
+        "131": "westchester-ward-pound-ridge-reservation-map-131-2025-trail-conference-new-york-new-jersey-trail-conference-map",
+        "132": "westchester-teatown-map-132-2025-trail-conference-new-york-new-jersey-trail-conference-map",
+        "133": "westchester-greater-teatown-map-133-2025-trail-conference-new-york-new-jersey-trail-conference-map"
+      }
+    },
+    {
+      "handle": "catskill-trails-map",
+      "title": "Catskill Trails Map",
+      "sheets": [
+        "140",
+        "141",
+        "142",
+        "143",
+        "144",
+        "145",
+        "146",
+        "147"
+      ],
+      "covers": [
+        "Catskill Park"
+      ],
+      "sheet_covers": {
+        "140": [
+          "North/South Lake Campground",
+          "Escarpment Trail",
+          "Kaaterskill Falls",
+          "Long Path",
+          "North Mountain"
+        ],
+        "141": [
+          "Blackhead Range",
+          "Hunter Mountain",
+          "Devil's Path",
+          "Escarpment Trail",
+          "Tremper Mountain",
+          "Overlook Mountain",
+          "Kaaterskill Falls",
+          "North/South Lake Area",
+          "Long Path"
+        ],
+        "142": [
+          "Panther Mountain",
+          "Balsam Mountain",
+          "Belleayre Mountain",
+          "Dry Brook Ridge",
+          "Balsam Lake Mountain",
+          "Halcott Mountain",
+          "Bearpen Mountain",
+          "Long Path"
+        ],
+        "143": [
+          "Slide Mountain",
+          "Burroughs Range",
+          "Peekamoose Mountain",
+          "Beaver Kill Range",
+          "Vernooy Falls",
+          "Long Path",
+          "Finger Lakes Trail"
+        ],
+        "144": [
+          "Delaware Wild Forest",
+          "Trout Pond",
+          "Little Pond",
+          "Mongaup Pond",
+          "Frick Pond",
+          "Finger Lakes Trail"
+        ],
+        "145": [],
+        "146": [],
+        "147": [
+          "Huntersfield Mountain",
+          "Ashland Pinnacle",
+          "Richmond Mountain",
+          "Mount Pisgah",
+          "Mount Hayden",
+          "Long Path"
+        ]
+      },
+      "avenza": {
+        "140": "catskill-north-lake-map-140-2023-trail-conference-new-york-new-jersey-trail-conference-map",
+        "141": "catskill-northeastern-map-141-2023-trail-conference-new-york-new-jersey-trail-conference-map",
+        "142": "catskill-central-map-142-2023-trail-conference-new-york-new-jersey-trail-conference-map",
+        "143": "catskill-southern-map-143-2023-trail-conference-new-york-new-jersey-trail-conference-map",
+        "144": "catskill-western-map-144-2023-trail-conference-new-york-new-jersey-trail-conference-map",
+        "145": null,
+        "146": null,
+        "147": "catskill-long-path-north-map-147-2023-trail-conference-new-york-new-jersey-trail-conference-map"
+      },
+      "note": "Three of NYNJTC's own pages disagree about which sheets this set holds: the store's product body lists 140 to 146, the digital-maps page lists 140 to 144 and 147, and the set's 2023 locator picture draws 141 to 146 with three insets. All eight are listed here so a sheet from any of the three readings joins this product. Sheets 145 and 146 are sold on Avenza neither singly nor named in the digital page's per-sheet index, so they carry no park list and no footprint: ground on those two sheets alone is NOT matched to this product by place, which is a miss rather than a wrong answer."
+    },
+    {
+      "handle": "northern-new-jersey-highlands-trails-map",
+      "title": "Northern New Jersey Highlands Trails Map",
+      "sheets": [
+        "150",
+        "151",
+        "152",
+        "153",
+        "154"
+      ],
+      "covers": [],
+      "sheet_covers": {
+        "150": [
+          "Campgaw Mountain County Reservation",
+          "Ramapo Mountain State Forest",
+          "Ramapo Valley County Reservation",
+          "Ringwood State Park"
+        ],
+        "151": [
+          "Long Pond Ironworks State Park",
+          "Norvin Green State Forest",
+          "Ringwood State Park",
+          "Tranquility Ridge County Park",
+          "Highlands Trail"
+        ],
+        "152": [
+          "Abram S. Hewitt State Forest",
+          "Appalachian Trail Corridor",
+          "Pequannock Watershed",
+          "Wawayanda State Park"
+        ],
+        "153": [
+          "Pequannock Watershed north of Route 23",
+          "portion of Wawayanda State Park",
+          "Highlands Trail"
+        ],
+        "154": [
+          "Appalachian National Scenic Trail",
+          "Wallkill River National Wildlife Refuge",
+          "Wawayanda State Park"
+        ]
+      },
+      "avenza": {
+        "150": "northern-new-jersey-highlands-ramapos-map-150-2021-trail-conference-new-york-new-jersey-trail-conference-map",
+        "151": "northern-new-jersey-highlands-wyanokies-map-151-2021-trail-conference-new-york-new-jersey-trail-conference-map",
+        "152": "northern-new-jersey-highlands-wawayanda-bearfort-ridge-map-152-2021-trail-conference-new-york-new-jersey-trail-conference-map",
+        "153": "northern-new-jersey-highlands-pequannock-watershed-map-153-2021-trail-conference-new-york-new-jersey-trail-conference-map",
+        "154": "northern-new-jersey-highlands-appalachian-trail-corridor-map-154-2021-trail-conference-new-york-new-jersey-trail-conference-map"
+      }
+    }
+  ]
+}

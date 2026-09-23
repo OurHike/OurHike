@@ -119,7 +119,12 @@ export const DATA_RELEASE = '2026-09-16-4'
  *
  * @see pipeline/lib/releases.py, pipeline/publish.py
  */
-const ROOT_SCOPED_PREFIXES = ['conditions/', 'photos/'] as const
+// `archive/` joined the root on 2026-09-17 (#1574): one-time snapshots of
+// third-party data a person writes by dispatching a workflow, never a
+// release build - pipeline/lib/r2_keys.py's declaration of the prefix is the
+// design record. Versioning one under a release would make a snapshot that
+// cannot be rebuilt look like an artifact that can.
+const ROOT_SCOPED_PREFIXES = ['conditions/', 'photos/', 'archive/'] as const
 const ROOT_SCOPED_KEYS = ['latest.json'] as const
 
 /** Whether `key` is served from the pinned release folder. */

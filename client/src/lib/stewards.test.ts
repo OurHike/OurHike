@@ -241,6 +241,32 @@ describe('the support and store records (#932, #1574)', () => {
     ],
   }
 
+  it('reads back what trailData.ts stored - the parsed shape - with its terms source, support and store intact', () => {
+    // trailData.ts stores the PARSED list, whose keys are camel case, and
+    // storedStewards re-reads it. Reading snake case alone returned
+    // termsSource, support and store as null after every relaunch that loaded
+    // from the phone: the donate and paper-map links vanished until the next
+    // download (#1639, found writing the v1.3.2 stored-shapes ledger).
+    const parsed = parseStewards({
+      stewards: [
+        {
+          ...ATC,
+          terms: 'The whole agreement.',
+          terms_source: 'https://example.org/terms',
+          support: { ...SUPPORT, donate_recipient: 'Natural Heritage Trust' },
+          store: STORE,
+        },
+      ],
+    })
+    expect(parsed[0].termsSource).toBe('https://example.org/terms')
+    expect(parsed[0].support).not.toBeNull()
+    expect(parsed[0].store?.paperMaps).toHaveLength(1)
+
+    const roundTripped = storedStewards(JSON.parse(JSON.stringify(parsed)))
+
+    expect(roundTripped).toEqual(parsed)
+  })
+
   it('reads a support record whole: the url, the org’s own button, the screens and the recipient', () => {
     const steward = only({
       stewards: [

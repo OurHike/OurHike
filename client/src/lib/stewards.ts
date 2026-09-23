@@ -167,14 +167,14 @@ function httpsUrl(value: unknown): string | null {
 function parseSupport(value: unknown): StewardSupport | null {
   const record = value as Record<string, unknown> | null | undefined
   if (record === null || record === undefined || typeof record !== 'object') return null
-  const donateUrl = httpsUrl(record.donate_url)
-  const donateCta = optionalString(record.donate_cta)
-  const donateSurfaces = stringList(record.donate_surfaces)
+  const donateUrl = httpsUrl(record.donate_url ?? record.donateUrl)
+  const donateCta = optionalString(record.donate_cta ?? record.donateCta)
+  const donateSurfaces = stringList(record.donate_surfaces ?? record.donateSurfaces)
   if (donateUrl === null || donateCta === null || donateSurfaces.length === 0) return null
   return {
     donateUrl,
     donateCta,
-    donateRecipient: optionalString(record.donate_recipient),
+    donateRecipient: optionalString(record.donate_recipient ?? record.donateRecipient),
     donateSurfaces,
   }
 }
@@ -188,7 +188,8 @@ function parsePaperMap(value: unknown): PaperMap | null {
   const sheets = stringList(record.sheets)
   if (handle === null || title === null || url === null || sheets.length === 0)
     return null
-  const rawCovers = record.sheet_covers as Record<string, unknown> | null | undefined
+  const rawCovers = (record.sheet_covers ?? record.sheetCovers) as
+    Record<string, unknown> | null | undefined
   const sheetCovers: Record<string, readonly string[]> = {}
   for (const sheet of sheets) {
     sheetCovers[sheet] = stringList(rawCovers?.[sheet])
@@ -202,11 +203,12 @@ function parsePaperMap(value: unknown): PaperMap | null {
 function parseStore(value: unknown): StewardStore | null {
   const record = value as Record<string, unknown> | null | undefined
   if (record === null || record === undefined || typeof record !== 'object') return null
-  const storeUrl = httpsUrl(record.store_url)
-  const storeCta = optionalString(record.store_cta)
-  const storeSurfaces = stringList(record.store_surfaces)
+  const storeUrl = httpsUrl(record.store_url ?? record.storeUrl)
+  const storeCta = optionalString(record.store_cta ?? record.storeCta)
+  const storeSurfaces = stringList(record.store_surfaces ?? record.storeSurfaces)
   if (storeUrl === null || storeCta === null || storeSurfaces.length === 0) return null
-  const rawMaps = Array.isArray(record.paper_maps) ? record.paper_maps : []
+  const rawMapsValue = record.paper_maps ?? record.paperMaps
+  const rawMaps = Array.isArray(rawMapsValue) ? rawMapsValue : []
   const paperMaps = rawMaps
     .map(parsePaperMap)
     .filter((map): map is PaperMap => map !== null)
@@ -240,9 +242,13 @@ export function parseStewards(value: unknown): Stewards {
       attribution: optionalString(record?.attribution),
       terms: optionalString(record?.terms),
       // Snake case on the wire, camel here - the exporter writes
-      // `terms_source` beside `terms`, and this is the one field in the
-      // record whose two spellings differ.
-      termsSource: optionalString(record?.terms_source),
+      // `terms_source` beside `terms`. Both spellings are read, here and in
+      // parseSupport, parsePaperMap and parseStore, because this parser also
+      // reads back what trailData.ts stored, which is the parsed (camel) shape.
+      // Reading snake case alone dropped termsSource (since v1.3.0) and
+      // support and store (v1.3.2) on every relaunch that loaded from the
+      // phone - found writing the v1.3.2 stored-shapes ledger (#1639).
+      termsSource: optionalString(record?.terms_source ?? record?.termsSource),
       layers: stringList(record?.layers),
       keys: stringList(record?.keys),
       support: parseSupport(record?.support),

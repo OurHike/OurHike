@@ -26,6 +26,9 @@ import {
   CAPTURE_SCALE,
   BYTE_BUDGET,
   DEFAULT_OUT_DIR,
+  cspDirective,
+  summariseCspReports,
+  cspAnnotation,
 } from '../../scripts/screenshot.mjs'
 
 const SCRIPT = resolve(process.cwd(), 'scripts/screenshot.mjs')
@@ -142,5 +145,82 @@ describe('the script itself', () => {
     }
     expect(status).toBe(2)
     expect(stderr).toContain(usage().split('\n')[0])
+  })
+})
+
+// The Content-Security-Policy the preview serves is report-only (#1602), so
+// every violation it finds is a console message and nothing else. Before the
+// camera listened for them they went to the console of a browser inside a CI
+// job that nobody opens, which is the same as nowhere.
+//
+// The browser half is not testable here - it needs a page under a real policy,
+// which is what pr-preview.yml's camera is. What is testable is the reading:
+// that a report is recognised, that two hundred refusals of the same kind
+// become one line, and that a clean run says nothing at all rather than an
+// empty warning nobody can act on.
+describe('reading a Content-Security-Policy report', () => {
+  const refusedImage =
+    "[Report Only] Refused to load the image 'http://localhost/app/favicon.svg' because " +
+    'it violates the following Content Security Policy directive: "img-src \'none\'".'
+  const refusedConnect =
+    "Refused to connect to 'https://example.org/' because it violates the following " +
+    'Content Security Policy directive: "connect-src \'self\'".'
+
+  it('names the directive a report blames', () => {
+    expect(cspDirective(refusedImage)).toBe('img-src')
+    expect(cspDirective(refusedConnect)).toBe('connect-src')
+  })
+
+  it('ignores a console message that is not about a policy', () => {
+    expect(
+      cspDirective('Failed to load resource: the server responded with 404'),
+    ).toBeNull()
+    expect(cspDirective('')).toBeNull()
+    expect(cspDirective(undefined)).toBeNull()
+  })
+
+  it('keeps a policy report it cannot place rather than dropping it', () => {
+    // A report nobody can categorise is still a report somebody should see -
+    // silently discarding it is how this signal would go quiet again.
+    expect(cspDirective('Content Security Policy: something new chromium says')).toBe(
+      'unknown',
+    )
+  })
+
+  it('counts repeats per directive, so one map screen is a line and not two hundred', () => {
+    const summary = summariseCspReports([
+      refusedImage,
+      refusedImage,
+      refusedImage,
+      refusedConnect,
+      'unrelated console noise',
+    ])
+    expect(summary).toEqual([
+      { directive: 'img-src', count: 3 },
+      { directive: 'connect-src', count: 1 },
+    ])
+  })
+
+  it('reports nothing for a run that reported nothing', () => {
+    expect(summariseCspReports([])).toEqual([])
+    expect(summariseCspReports(['a 404', 'a warning about an image size'])).toEqual([])
+  })
+
+  it('warns with the shot name and every directive, so the log says which screen', () => {
+    const annotation = cspAnnotation(
+      'trail-screen',
+      summariseCspReports([refusedImage, refusedConnect]),
+    )
+    expect(annotation).toContain('::warning::')
+    expect(annotation).toContain('trail-screen')
+    expect(annotation).toContain('img-src (1)')
+    expect(annotation).toContain('connect-src (1)')
+    // The reader has to know which of the two possible faults this is before
+    // they can act, and the annotation is the only place that fits.
+    expect(annotation).toContain('report-only')
+  })
+
+  it('says nothing at all when a shot was clean, rather than an empty warning', () => {
+    expect(cspAnnotation('trail-screen', [])).toBeNull()
   })
 })

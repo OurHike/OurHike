@@ -536,6 +536,18 @@ jobs:
           # here and photograph the deep link at the base production uses,
           # which is the shot this whole change is about.
           VITE_BASE_PATH: /app/
+          # AND IT NEEDS THE HOSTS, for the same shape of reason one line up.
+          # `vite preview` serves the Content-Security-Policy from
+          # client/scripts/csp.mjs (#1602), which reads these two variables at
+          # SERVE time - while the bundle it is serving had them baked in at
+          # BUILD time. Leave them out and the policy omits the very origins
+          # the built app fetches from, so every data and sign-in request the
+          # camera makes is reported as a violation of a rule that only looks
+          # broken because this step forgot to say where the app talks to.
+          # Report-only means those reports cost nothing but belief, which is
+          # the only thing a rehearsal has.
+          VITE_DATA_BASE_URL: ${{ steps.data.outputs.url }}
+          VITE_SUPABASE_URL: ${{ steps.supabase.outputs.url }}
         run: |
           node scripts/photograph-preview.mjs --dist --changed="$LIST"
           echo "taken=true" >> "$GITHUB_OUTPUT"
@@ -552,6 +564,14 @@ jobs:
       # comment linking at them.
       - name: Assemble the preview
         if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
+        # The same two hosts the build above was given, so the policy written
+        # below names the origins this preview actually talks to rather than a
+        # guess at them. VITE_API_BASE_URL stays unset here exactly as it does
+        # for the build - see that step's comment - and scripts/csp.mjs omits
+        # the source rather than naming a host nobody owns.
+        env:
+          VITE_DATA_BASE_URL: ${{ steps.data.outputs.url }}
+          VITE_SUPABASE_URL: ${{ steps.supabase.outputs.url }}
         run: |
           mkdir -p _site/app
           # The BUILT site, not the source tree - site/src would be shipped raw
@@ -615,6 +635,27 @@ jobs:
           # obstacle - a `pr-<n>` origin is on the bucket's allow-list
           # (.github/expected-origins.yml), so the checks would run if this
           # ever wanted them to.
+
+          # THE SECOND CLOUDFLARE-ONLY FILE, and it is here for the same
+          # reason `_redirects` is: Pages reads it, GitHub Pages ignores it, so
+          # production is untouched. It carries the app's
+          # Content-Security-Policy as REPORT-ONLY, which blocks nothing and
+          # collects what an enforced policy would have blocked (#1602).
+          #
+          # `_site/_headers`, not `client/public/_headers`. Pages reads the
+          # file at the ROOT of the upload only, and anything in client/public
+          # lands under `_site/app/` - where it would be a static file nobody
+          # requests rather than a rule. That mistake is what the first version
+          # of #1602 proposed, and it would have shipped a policy that did
+          # nothing while looking like it did.
+          #
+          # Written by client/scripts/csp.mjs rather than spelled out here,
+          # because vite.config.ts serves the same policy to `vite preview` -
+          # so the camera a few steps up drives every shot recipe under it -
+          # and two copies of a policy is a policy that is wrong in one of
+          # them. That file holds the directives and the evidence for each.
+          node client/scripts/csp.mjs --headers > _site/_headers
+          echo "Policy served on $(head -1 _site/_headers): $(sed -n '2p' _site/_headers | cut -c1-120)..."
           echo "Uploading $(find _site -type f | wc -l) files: $(find _site/app -type f | wc -l) of them the app."
 
       - name: Publish the preview

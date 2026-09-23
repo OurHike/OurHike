@@ -4,6 +4,7 @@ import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
+import { policyFromEnv } from './scripts/csp.mjs'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
@@ -120,6 +121,23 @@ export default defineConfig({
     // Falls back to whatever `require` resolved if upstream ever drops the
     // .mjs, so a future release can only cost the ESM build, never the app.
     alias: existsSync(CONTOUR_ESM) ? { 'maplibre-contour': CONTOUR_ESM } : {},
+  },
+  // THE ONE PLACE A BROWSER DRIVES THIS APP UNDER ITS OWN POLICY, which is
+  // what makes the policy a measurement rather than a guess. `vite preview` is
+  // what client/scripts/screenshot.mjs spawns for `--dist`, so pr-preview.yml's
+  // camera walks the standing shots and every recipe the pull request touches
+  // with these headers served - and a violation is a console message in the
+  // job log rather than something a reviewer has to go looking for.
+  //
+  // Report-only, so it blocks nothing here and nothing on the deployed preview
+  // either. scripts/csp.mjs is the policy and the whole argument for it: where
+  // it is served, why production cannot serve a header at all, and which two
+  // of its directives are still unvalidated.
+  //
+  // `npm run preview` by hand gets it too, deliberately - a developer checking
+  // a build locally is one of the two places a violation can be noticed.
+  preview: {
+    headers: { 'Content-Security-Policy-Report-Only': policyFromEnv() },
   },
   plugins: [
     react(),

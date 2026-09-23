@@ -164,6 +164,16 @@ pull request; take its branch over and finish it:
   **Here, not Phase 6** - `--write` serializes the working tree, so it must
   run on the branch that IS the release, before the merge. Run after the tag
   and it captures whatever `main` has become.
+- **Add this release's `RELEASE_SHAPES` entry, in the same pull request**
+  (RELEASING.md §8c): in `client/src/lib/storedShapes.fixtures.ts`, one entry
+  holding every IndexedDB and localStorage key whose written shape changed
+  since the previous tag, read off the writers
+  (`git diff v<previous>..HEAD -- client/src/lib`), then add the tag to the
+  list `storedShapes.releases.test.ts` asserts and a `describe` block that
+  runs the real readers over `phoneOn('v<version>')`. No step named this, so
+  v1.2.2, v1.3.0 and v1.3.1 shipped without an entry; the v1.3.2 release
+  review found the gap and wrote all four at once. A reader that fails on
+  an entry is a release finding - fix the reader, never the fixture.
 - `scripts/test.sh`, mark the pull request ready, hand it over - button 3.
 
 ## Phase 6 - draft, check the target, hand over

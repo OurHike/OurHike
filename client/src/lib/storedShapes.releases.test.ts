@@ -22,7 +22,7 @@ import { syncEnabled } from './syncStatus'
 import { tripSyncState } from './tripSyncState'
 import { dayHikeSyncState } from './dayHikeSyncState'
 import { loadHikerMode } from './hikerMode'
-import { loadDayHikes } from './dayHikes'
+import { loadDayHikes, walkedDates } from './dayHikes'
 import {
   ELEVATION_STORE_KEY,
   TRAILS_BLOB_KEY,
@@ -38,7 +38,18 @@ import { completedMarker, estimateAvailableBytes } from './storageHealth'
 import { ATC_SOURCE_KEY, readNoticeSilence } from './notices'
 import { readTrailsMerged } from './trailShape'
 import { createGpsTrace } from './gpsTrace'
-import { cellPackageKey, readStoredCellIndex } from './coverageCells'
+import {
+  DEM_CELLS,
+  NETWORK_CELLS,
+  cellPackageKey,
+  readStoredCellIndex,
+} from './coverageCells'
+import { loadTrips } from './trips'
+import { loadLastOnTrail } from './lastOnTrail'
+import { loadOpenWalk } from './openWalk'
+import { loadTakenTrail } from './takenTrail'
+import { listSentReports } from './sentReports'
+import { readLaunchMirror } from './launchMirror'
 import { readArchive, readComplete } from './archiveStore'
 import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
 import {
@@ -97,6 +108,10 @@ describe('the release ledger itself', () => {
       'v1.1.1',
       'v1.2.0',
       'v1.2.1',
+      'v1.2.2',
+      'v1.3.0',
+      'v1.3.1',
+      'v1.3.2',
     ])
     for (const release of RELEASE_SHAPES) {
       expect(release.commit).toMatch(/^[0-9a-f]{8}$/)
@@ -430,6 +445,175 @@ describe('a phone that stopped on v1.2.1', () => {
   })
 })
 
+describe('a phone that stopped on v1.2.2', () => {
+  beforeEach(() => installPhone('v1.2.2'))
+
+  it('still holds the network cell it downloaded, under its own family’s keys', async () => {
+    const index = await readStoredCellIndex(NETWORK_CELLS)
+
+    expect(index?.context).toBeNull()
+    expect(index?.cells.map((cell) => cell.name)).toEqual(['n41w074'])
+
+    const cell = cellPackageKey('n41w074', NETWORK_CELLS)
+    expect(cell).toBe('ourhike:network-cell:n41w074')
+    expect(await readComplete(cell)).toEqual({
+      generation: 0,
+      segments: 1,
+      totalBytes: 2,
+    })
+    expect((await readArchive(cell))?.size).toBe(2)
+    expect(completedMarker(cell)?.toISOString()).toBe('2026-09-08T22:05:00.000Z')
+    // The basemap cell of the same name is a different archive, untouched.
+    expect((await readArchive(cellPackageKey('n41w074')))?.size).toBe(7)
+  })
+})
+
+describe('a phone that stopped on v1.3.0', () => {
+  beforeEach(() => installPhone('v1.3.0'))
+
+  it('keeps the place the hiker named on first run', async () => {
+    const preferences = await loadPreferences()
+
+    expect(preferences.default_place?.id).toBe('oprhp_park_polygons:1')
+    expect(preferences.default_place?.kind).toBe('park')
+    expect(preferences.default_place?.bbox).toEqual([
+      -74.2021, 41.1558, -73.9829, 41.3363,
+    ])
+    expect(preferences.hiking_detail_level).toBe('light')
+  })
+
+  it('reads a long hike stored as points, paused, and still the active one', async () => {
+    const store = await loadTrips()
+
+    expect(store.activeHikeId).toBe('hike-0001')
+    const hike = store.hikes[0]
+    expect(hike.trailId).toBe('AT')
+    expect(hike.status).toBe('paused')
+    expect(hike.pausedAtMile).toBe(481.4)
+    expect(hike.pausedOn).toBe('2026-09-04')
+    expect(hike.points.map((point) => point.mile)).toEqual([470.8, 503.3, 486.2])
+    expect(hike.points[0].date).toBe('2026-09-01')
+    expect(hike.points[0].poiId).toBe('atc_shelter_0777')
+    expect(store.trips.map((trip) => trip.id)).toEqual(['trip-0001'])
+
+    const sync = await tripSyncState()
+    expect(sync.hikesDirty).toEqual(['hike-0001'])
+    expect(sync.hikesDeleted).toEqual(['hike-0002'])
+    expect(sync.activeHikeDirty).toBe(true)
+  })
+
+  it('reads a day hike saved from a published route, with its walks', async () => {
+    const store = await loadDayHikes()
+    const saved = store.hikes.find((hike) => hike.id === 'day-hike-0005')
+
+    expect(saved?.sourceId).toBe('nynjtc_hike_finder:77')
+    expect(saved?.sourceAuthor).toBe('New York-New Jersey Trail Conference')
+    expect(walkedDates(saved!)).toEqual(['2026-09-13', '2026-09-06'])
+    expect(saved?.walks?.[0].note).toBe('Lake was low.')
+    // Saved on an earlier release and never re-saved: no walks key at all.
+    expect('walks' in store.hikes[0]).toBe(false)
+  })
+
+  it('reads the four device-local records this release introduced', async () => {
+    expect(await loadLastOnTrail()).toBe('2026-09-04')
+    expect(await loadOpenWalk()).toEqual({ hikeId: 'day-hike-0005', day: '2026-09-13' })
+    expect(await loadTakenTrail()).toBe('LP')
+    const sent = await listSentReports()
+    expect(sent.map((report) => report.id)).toEqual([
+      '4b5c6d7e-9f00-4112-b3c4-d5e6f708192a',
+      '5f8e1b3a-0c4d-4a2e-9f1b-2c3d4e5f6a7b',
+    ])
+    expect(sent[0].poiId).toBeNull()
+    expect(sent[1].mile).toBeNull()
+  })
+
+  it('reads the launch mirror, so the first frame shows the mode and trail chosen', () => {
+    expect(readLaunchMirror()).toEqual({
+      onboardingCompleted: true,
+      theme: 'dark',
+      hikerMode: 'long',
+      takenTrail: 'LP',
+    })
+  })
+
+  it('reads a steward’s terms quoted whole', async () => {
+    const data = await loadTrailData()
+    const njdep = data?.stewards.find((steward) => steward.provider === 'NJDEP')
+
+    expect(njdep?.terms).toMatch(/^New Jersey Department of Environmental Protection/)
+    // `termsSource` is deliberately NOT asserted here. v1.3.0 stored it as
+    // camelCase and lib/stewards.ts's storedStewards re-parses the stored
+    // array with the wire's snake_case reader, so it reads back null. That
+    // is a finding against the reader, reported with this entry rather than
+    // hidden by editing the fixture.
+  })
+})
+
+describe('a phone that stopped on v1.3.1', () => {
+  beforeEach(() => installPhone('v1.3.1'))
+
+  it('still sends a report placed in words, with every photo it holds', async () => {
+    const queued = await listQueued()
+    const worded = queued.find((item) => item.payload?.place_words !== undefined)
+
+    expect(queued).toHaveLength(13)
+    expect(worded?.payload?.place_words).toMatch(/Fitzgerald Falls/)
+    expect(worded?.payload?.lat).toBeUndefined()
+    expect(worded?.payload?.mile).toBeUndefined()
+    expect(worded?.photos).toHaveLength(2)
+    expect(worded?.photos?.[0]).toBeInstanceOf(Blob)
+    // An earlier release's single-photo report is still that shape.
+    expect(queued[0].photo).toBeInstanceOf(Blob)
+    expect(queued[0].photos).toBeUndefined()
+  })
+
+  it('still holds the terrain cell, its context, and the covered box', async () => {
+    const index = await readStoredCellIndex(DEM_CELLS)
+
+    expect(index?.context).toBe('dem_context.pmtiles')
+    expect(index?.cells[0].covered).toEqual([-74, 41, -73.5, 41.6])
+
+    const cell = cellPackageKey('n41w074', DEM_CELLS)
+    expect(cell).toBe('ourhike:dem-cell:n41w074')
+    expect((await readArchive(cell))?.size).toBe(7)
+    expect((await readArchive(DEM_CELLS.contextPackageKey))?.size).toBe(4)
+    expect(completedMarker(cell)?.toISOString()).toBe('2026-09-16T20:45:00.000Z')
+  })
+})
+
+describe('a phone that stopped on v1.3.2', () => {
+  beforeEach(() => installPhone('v1.3.2'))
+
+  it('keeps the real name and the blaze-colour switch', async () => {
+    const preferences = await loadPreferences()
+
+    expect(preferences.real_name).toBe('Pat Example')
+    expect(preferences.blaze_colors_shown).toBe(true)
+    expect(preferences.default_place?.name).toBe('Harriman State Park')
+  })
+
+  it('still sends a report with its fix’s source, radius and age, and its signature', async () => {
+    const queued = await listQueued()
+    const signed = queued.find((item) => item.payload?.signed_name !== undefined)
+
+    expect(queued).toHaveLength(14)
+    expect(signed?.payload?.location_source).toBe('gps')
+    expect(signed?.payload?.location_accuracy_m).toBe(9.6)
+    expect(signed?.payload?.location_fix_age_s).toBe(4)
+    expect(signed?.payload?.signed_name_kind).toBe('real')
+    expect(signed?.payload?.contact_ok).toBe(true)
+  })
+
+  it('still reads everything the earlier releases wrote', async () => {
+    expect((await loadPreferences()).trail_name).toBe('Sprocket')
+    expect((await loadTrips()).activeHikeId).toBe('hike-0001')
+    expect(await readStoredCellIndex(NETWORK_CELLS)).not.toBeNull()
+    expect(await readStoredCellIndex(DEM_CELLS)).not.toBeNull()
+    expect((await loadTrailData())?.stewards).toHaveLength(3)
+    expect(readLaunchMirror()?.takenTrail).toBe('LP')
+  })
+})
+
 describe('a download that died between the lines and the waypoints', () => {
   it('reads as no trail data, so the launch fetch finishes the job', async () => {
     installPhone('v1.2.1', storedInterruptedRelease())
@@ -471,6 +655,10 @@ describe('the release ledger', () => {
     const { POI_PHOTOS_PREFIX } = await import('./poiPhotos')
     const { BASEMAP_CELLS } = await import('./coverageCells')
     const { completeKeyFor, segmentKeyFor } = await import('./archiveStore')
+    const { LAST_ON_TRAIL_KEY } = await import('./lastOnTrail')
+    const { OPEN_WALK_KEY } = await import('./openWalk')
+    const { TAKEN_TRAIL_KEY } = await import('./takenTrail')
+    const { SENT_REPORTS_KEY } = await import('./sentReports')
 
     const cell = cellPackageKey('n41w074', BASEMAP_CELLS)
     const required = [
@@ -496,6 +684,18 @@ describe('the release ledger', () => {
       completeKeyFor(cell),
       segmentKeyFor(BASEMAP_CELLS.contextPackageKey, 0, 0),
       completeKeyFor(BASEMAP_CELLS.contextPackageKey),
+      NETWORK_CELLS.indexStoreKey,
+      segmentKeyFor(cellPackageKey('n41w074', NETWORK_CELLS), 0, 0),
+      completeKeyFor(cellPackageKey('n41w074', NETWORK_CELLS)),
+      DEM_CELLS.indexStoreKey,
+      segmentKeyFor(cellPackageKey('n41w074', DEM_CELLS), 0, 0),
+      completeKeyFor(cellPackageKey('n41w074', DEM_CELLS)),
+      segmentKeyFor(DEM_CELLS.contextPackageKey, 0, 0),
+      completeKeyFor(DEM_CELLS.contextPackageKey),
+      LAST_ON_TRAIL_KEY,
+      OPEN_WALK_KEY,
+      TAKEN_TRAIL_KEY,
+      SENT_REPORTS_KEY,
     ]
 
     const covered = new Set([
@@ -512,6 +712,7 @@ describe('the release ledger', () => {
     const { RELEASED_KEY, completedMarkerKeyFor } = await import('./storageHealth')
     const { LEGACY_ATC_SILENCE_KEY } = await import('./notices')
     const { TRAILS_MERGED_STORAGE_KEY } = await import('./trailShape')
+    const { LAUNCH_MIRROR_KEY } = await import('./launchMirror')
 
     const required = [
       WALKED_STORAGE_KEY,
@@ -522,6 +723,9 @@ describe('the release ledger', () => {
       TRAILS_MERGED_STORAGE_KEY,
       completedMarkerKeyFor(CORRIDOR_ARCHIVE_KEY),
       completedMarkerKeyFor(cellPackageKey('n41w074')),
+      completedMarkerKeyFor(cellPackageKey('n41w074', NETWORK_CELLS)),
+      completedMarkerKeyFor(cellPackageKey('n41w074', DEM_CELLS)),
+      LAUNCH_MIRROR_KEY,
     ]
 
     const covered = new Set(

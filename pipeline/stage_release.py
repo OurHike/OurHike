@@ -57,6 +57,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import boto3
+from botocore.config import Config as BotocoreConfig
 
 import publish
 from lib import data_env, releases
@@ -179,6 +180,9 @@ def stage(
             endpoint_url=os.environ["R2_ENDPOINT_URL"],
             aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
             aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+            # The same server-side copies publish.py's release folder makes,
+            # so the same wait - see publish.PUBLISH_READ_TIMEOUT_S.
+            config=BotocoreConfig(read_timeout=publish.PUBLISH_READ_TIMEOUT_S),
         )
     if bucket is None:
         bucket = os.environ["R2_BUCKET"]

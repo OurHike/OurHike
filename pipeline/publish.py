@@ -353,6 +353,29 @@ PUBLISH_CONCURRENCY = 16
 # to size, pool included. 160, with the values above.
 PUBLISH_POOL_CONNECTIONS = PUBLISH_CONCURRENCY * TransferConfig().max_concurrency
 
+# How long a publish waits for R2 to answer one request, in seconds - five
+# minutes, against botocore's default of 60.
+#
+# THE REQUEST THIS IS FOR IS A SERVER-SIDE COPY. `_stage_release` copies every
+# artifact into `releases/<id>/` with one `copy_object` each, and R2 does not
+# send a byte of its response until the whole object has been copied. For the
+# large archives that is not a round trip, it is the copy. The v1.3.2
+# production publish (actions run 35921489619, 2026-09-23) died exactly there:
+# `ReadTimeoutError ... releases/2026-09-23-2/background_z13.pmtiles (read
+# timeout=60)`, after botocore's five retries each waited the same 60 s. It
+# failed safe - latest.json is written last, so hikers never saw a half-folder -
+# but it cost the release an hour and a re-dispatch.
+#
+# @unvalidated as a number. Nobody has timed how long R2 takes to copy
+# background_z13.pmtiles server side. Earlier publishes copied it inside 60 s
+# (production 2026-09-16 did), so the time is near that edge rather than far
+# past it, and 300 s gives five times the room. What would settle it is the
+# copy's wall clock, logged per artifact, on a few publishes. Raising only the
+# read timeout changes no request and no byte: a copy that was going to
+# succeed still succeeds, and one that was going to time out gets longer to
+# finish first.
+PUBLISH_READ_TIMEOUT_S = 300
+
 
 def _in_parallel(work: list) -> list:
     """Run every zero-argument callable in `work` at PUBLISH_CONCURRENCY and
@@ -1681,7 +1704,10 @@ def publish(
             # fans out to - see PUBLISH_POOL_CONNECTIONS for why the default
             # of 10 costs handshakes rather than queueing. Only the client
             # this function builds: one passed in belongs to its caller.
-            config=BotocoreConfig(max_pool_connections=PUBLISH_POOL_CONNECTIONS),
+            config=BotocoreConfig(
+                max_pool_connections=PUBLISH_POOL_CONNECTIONS,
+                read_timeout=PUBLISH_READ_TIMEOUT_S,
+            ),
         )
     if bucket is None:
         bucket = os.environ["R2_BUCKET"]

@@ -1734,6 +1734,45 @@ def publish(
     )
     changed = {name: entry for name, entry in artifacts.items() if name not in set(skipped)}
 
+    # INDEX-ALIGNMENT INVARIANT (#1313). trail_graph_elevation.json and
+    # trail_graph_profile.json describe trail_graph.json's edges BY
+    # POSITION - entry i is edge i's climb/profile, nothing names the edge
+    # itself (export_network_elevation.py, export_network_profile.py both
+    # say so directly). The merge below is additive by name, which is right
+    # for every other artifact but wrong for these two: when a run
+    # publishes a new graph without also rebuilding its sidecars
+    # (`include_elevation: false` in publish-vector-data.yml), the merge's
+    # own comment already says the OLD graph's sidecar "must survive into
+    # the new manifest untouched" - which silently re-attaches it to the
+    # NEW graph's edge numbering instead.
+    #
+    # #1313's own thread corrected its first, more alarming framing: no
+    # hiker-facing path reads this whole-artifact pair any more (the phone
+    # fetches per-cell companions keyed by edge id since #1257 stage 3, and
+    # `pipeline/lib/trail_graph_route.py` already refuses a length-mismatched
+    # pair rather than trusting it) - "That staleness is real; it is just
+    # not something the phone can act on." So this is not an active
+    # confidently-wrong-answer bug; it is publish.py silently keeping a
+    # sidecar published that every known reader already has to distrust and
+    # refuse. Not publishing it in the first place matches the workflow's
+    # own stated intent - "ships a graph with no elevation rather than no
+    # graph" - which the additive merge was not actually honouring.
+    #
+    # So: when trail_graph.json is about to publish NEW bytes this run
+    # (`in changed`, not merely present), a sidecar this run did not also
+    # rebuild is dropped from the carry-forward rather than kept stale -
+    # "no figures for this hike", the case every known reader already
+    # treats as absent rather than wrong.
+    if "trail_graph.json" in changed:
+        for stale_key in ("trail_graph_elevation.json", "trail_graph_profile.json"):
+            if stale_key not in artifacts and remote_artifacts.pop(stale_key, None) is not None:
+                print(
+                    f"  STALE PAIRING DROPPED: {stale_key} not carried forward - "
+                    f"trail_graph.json is publishing new bytes this run with no matching "
+                    f"rebuild, and the old entry is indexed against edges that no longer "
+                    f"exist (#1313)."
+                )
+
     # BEFORE the uploads below, and that ordering is the whole of it: these
     # descriptions are a diff against the bytes currently published, and the
     # first `upload_file` overwrites the side being diffed against (#919).

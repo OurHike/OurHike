@@ -99,6 +99,17 @@ def _base_url() -> str:
     return (settings.public_site_url or "https://ourhike.org").rstrip("/")
 
 
+def _link_token(nomination: OrgNomination, contact: NominationContact) -> str:
+    """The token this person's links carry: their own, so their answer is theirs.
+
+    #1635: one shared token went to every contact, and whoever held it could
+    cast every decision. A contact written before `decision_token` existed
+    has none and gets the shared one, which since then reads and cannot
+    decide - a link that shows the proposal is better than no link at all.
+    """
+    return contact.decision_token or nomination.proposal_token
+
+
 def compose(
     club: Club,
     nomination: OrgNomination,
@@ -113,7 +124,7 @@ def compose(
     a typeface.
     """
     base = _base_url()
-    read_it = base + PROPOSAL_PATH.format(token=nomination.proposal_token)
+    read_it = base + PROPOSAL_PATH.format(token=_link_token(nomination, contact))
     subject = f"A hiker has offered to put {club.name}'s trails on OurHike"
 
     found = "\n".join(f"  - {source.label}: {source.url}" for source in sources) or (
@@ -200,7 +211,7 @@ def ask_the_club(
                 purpose=MailPurpose.nomination_proposal,
                 subject=subject,
                 body_text=body,
-                unsubscribe_url=_base_url() + REFUSE_PATH.format(token=nomination.proposal_token),
+                unsubscribe_url=_base_url() + REFUSE_PATH.format(token=_link_token(nomination, contact)),
                 provider=provider,
                 enabled=enabled,
                 allowed=allowed,

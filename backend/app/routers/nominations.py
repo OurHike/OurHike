@@ -99,6 +99,17 @@ APPROVALS_REQUIRED = 3
 # stay live for a year.
 TOKEN_DAYS = 45
 
+# How many nominations one hiker may submit in a rolling day. Each one writes
+# to strangers at an organization, and until #1635 - The organization
+# console's new endpoints trust self-registered orgs with maintainer powers,
+# seats and mail - nothing bounded how fast one account could make us do it:
+# the proof of work and the budget guard the READING, and submitting needs no
+# reading. @unvalidated: three is picked, not measured - nobody has watched a
+# real hiker nominate. It is sized so a person offering the clubs along one
+# section in an evening is not refused, and what would settle it is the first
+# month of real submissions per account.
+NOMINATIONS_PER_DAY = 3
+
 
 def _challenge_secret() -> str:
     if not settings.nominate_challenge_secret:
@@ -241,6 +252,18 @@ def _domain_of(website: str) -> str:
     return (urlsplit(raw).hostname or "").lower().removeprefix("www.")
 
 
+def _at_domain(email: str, domain: str) -> bool:
+    """Whether `email` is an address at `domain` or one of its subdomains.
+
+    The same rule `routers/clubs.py` uses for an admin's address, and for the
+    same reason: organizations really do run mail on `trails.example.org`.
+    """
+    if not domain or "@" not in email:
+        return False
+    host = email.rsplit("@", 1)[1].strip().lower()
+    return host == domain or host.endswith("." + domain)
+
+
 def _slug_for(db: Session, name: str, domain: str) -> str:
     """A readable id nobody else has.
 
@@ -275,6 +298,41 @@ def submit_nomination(
     2026-09-17 condition implemented rather than displayed.
     """
     domain = _domain_of(payload.website)
+
+    # ONLY PEOPLE AT THE ORGANIZATION ARE ASKED (#1635). The contacts are
+    # the people who decide whether this organization's data goes on the map,
+    # and one of them can close the door for good; a list a hiker could fill
+    # with any twelve addresses let the hiker be all three approvers, or
+    # decline forever on behalf of an organization they are not part of.
+    # The reading already keeps only addresses published on the club's own
+    # pages; this is the same promise held at the point it is written down.
+    # An organization whose published contacts use a personal mail provider
+    # cannot be nominated this way and waits for a person, which is the
+    # honest outcome rather than a rule that bends for it.
+    off_domain = [str(contact.email) for contact in payload.contacts if not _at_domain(str(contact.email).lower(), domain)]
+    if off_domain:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Every contact has to be an address at {domain or 'the organization'}'s own domain, "
+                "because they are the people who decide."
+            ),
+        )
+
+    recent = (
+        db.query(OrgNomination)
+        .filter(
+            OrgNomination.nominated_by == current_user.id,
+            OrgNomination.created_at >= utc_now() - timedelta(days=1),
+        )
+        .count()
+    )
+    if recent >= NOMINATIONS_PER_DAY:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"You can nominate {NOMINATIONS_PER_DAY} organizations a day. Thank you - try again tomorrow.",
+        )
+
     if domain and db.query(NominationRefusal).filter(NominationRefusal.domain == domain).first():
         # Before anything is written and before anybody there is emailed a
         # second time. A refusal is a promise about every future hiker.
@@ -326,6 +384,7 @@ def submit_nomination(
                 email=str(contact.email).lower(),
                 source_page=contact.source_page,
                 proposed_by=ProposedBy(contact.proposed_by),
+                decision_token=secrets.token_urlsafe(32),
             )
         )
     # ASK THEM NOW, in the same transaction that wrote the nomination down.
@@ -356,14 +415,24 @@ def _nomination_out(db: Session, nomination: OrgNomination, club: Club) -> Nomin
     )
 
 
-def _by_token(db: Session, token: str) -> tuple[OrgNomination, Club]:
-    """The nomination this link addresses, or a 404 that says nothing else.
+def _by_token(db: Session, token: str) -> tuple[OrgNomination, Club, NominationContact | None]:
+    """The nomination this link addresses, whose link it is, or a 404 that says nothing else.
 
     One message for expired, withdrawn and never-existed alike: this endpoint
     takes a secret from anybody who has the URL, and a distinguishing error is
     an oracle for guessing tokens.
+
+    Two kinds of token open the same page. A contact's own `decision_token`
+    is what every message carries since #1635, and names the one person who
+    may answer through it. The nomination's shared `proposal_token` still
+    READS - it is what messages sent before that carried - and answers
+    nothing: the contact it returns is None.
     """
-    nomination = db.query(OrgNomination).filter(OrgNomination.proposal_token == token).first() if token else None
+    contact = db.query(NominationContact).filter(NominationContact.decision_token == token).first() if token else None
+    if contact is not None:
+        nomination = db.query(OrgNomination).filter(OrgNomination.id == contact.nomination_id).first()
+    else:
+        nomination = db.query(OrgNomination).filter(OrgNomination.proposal_token == token).first() if token else None
     if nomination is None or nomination.token_expires_at <= utc_now() or nomination.state == NominationState.withdrawn:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -372,7 +441,7 @@ def _by_token(db: Session, token: str) -> tuple[OrgNomination, Club]:
     club = db.query(Club).filter(Club.id == nomination.club_id).first()
     if club is None:  # pragma: no cover - a nomination always has its club
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="That link is not one of ours.")
-    return nomination, club
+    return nomination, club, contact
 
 
 @router.get("/nominations/{token}", response_model=ProposalOut)
@@ -383,7 +452,7 @@ def read_proposal(token: str, db: Session = Depends(get_db)) -> ProposalOut:
     organization's data should be able to read exactly what is proposed
     without making an account first.
     """
-    nomination, club = _by_token(db, token)
+    nomination, club, _ = _by_token(db, token)
     sources = db.query(NominationSource).filter(NominationSource.nomination_id == nomination.id).all()
     contacts = db.query(NominationContact).filter(NominationContact.nomination_id == nomination.id).all()
     return ProposalOut(
@@ -438,7 +507,14 @@ def decide_proposal(
     by the club's own domain, and the next hiker to try is stopped at
     `POST /clubs/nominations` before anybody there is written to a second time.
     """
-    nomination, club = _by_token(db, token)
+    nomination, club, answering = _by_token(db, token)
+    if answering is None:
+        # The shared link reads and never decides (#1635). Same words as a
+        # link that does not exist, for the reason `_by_token` gives.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="That link has expired or is not one of ours.",
+        )
 
     # LOCKED BEFORE THE STATE IS READ, because the link goes to three people
     # and nothing stops two of them answering in the same moment. Without the
@@ -465,28 +541,21 @@ def decide_proposal(
             detail="Somebody at your organization has already answered this one.",
         )
 
-    # WHICH OF THEM IS ANSWERING IS NOT ASKED, and cannot be. The link goes to
-    # three addresses and arrives in three inboxes that forward to each other;
-    # asking the opener to identify themselves from a list of their own
-    # colleagues is a question with an obvious wrong answer available. So an
-    # approval counts the first contact who has not answered, and the
-    # threshold means three separate openings of the link rather than three
-    # provable people. @unvalidated as a control: it is strictly weaker than
-    # per-recipient tokens, which is what would settle it, and it is not
-    # weaker than what an organization signing itself up does today.
-    pending = (
-        db.query(NominationContact)
-        .filter(
-            NominationContact.nomination_id == nomination.id,
-            NominationContact.responded_at.is_(None),
-        )
-        .order_by(NominationContact.created_at)
-        .first()
-    )
-    if pending is None:
+    # WHICH OF THEM IS ANSWERING IS THE LINK'S OWN CONTACT (#1635). This used
+    # to count "the first contact who has not answered", marked @unvalidated
+    # as strictly weaker than per-recipient tokens - and it was: one person
+    # holding the shared link could open it three times and be all three
+    # approvers. Each contact now has their own link and one answer. A
+    # forwarded link still carries its contact's single vote, which is the
+    # remaining weakness and is bounded by one.
+    #
+    # Re-read under the nomination's lock, so two submissions through the
+    # same link cannot both find it unanswered.
+    pending = db.query(NominationContact).filter(NominationContact.id == answering.id).populate_existing().with_for_update().one()
+    if pending.responded_at is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Everybody we asked has already answered this one.",
+            detail="You have already answered this one.",
         )
 
     now = utc_now()
@@ -497,7 +566,12 @@ def decide_proposal(
         nomination.state = NominationState.declined
         nomination.decided_at = now
         nomination.decided_note = payload.note
-        if payload.never_ask_again and club.domain:
+        # NEVER-AGAIN IS KEPT ONLY FROM SOMEBODY AT THE DOMAIN (#1635). It is
+        # permanent and it binds every future hiker, so it has to come from
+        # the organization. Submission now refuses contacts off the domain;
+        # this holds the line for contacts written before it did, whose
+        # decline still counts for this nomination and closes nothing else.
+        if payload.never_ask_again and club.domain and _at_domain(pending.email, club.domain):
             # `nomination_refusals.domain` is unique, and the gate that stops
             # a second nomination is checked when one is submitted rather
             # than when one is decided - so two nominations for one club can

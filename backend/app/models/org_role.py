@@ -29,7 +29,7 @@ three weeks ago - and a deleted row destroys the answer every time.
 import enum
 import uuid
 
-from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, String, Text, UniqueConstraint, false
 
 from app.core.time import utc_now
 from app.db.base import Base
@@ -133,6 +133,15 @@ class RoleInvite(Base):
     # out to hold something they should not.
     claimed_at = Column(DateTime, nullable=True)
     claimed_by = Column(String, ForeignKey("profiles.id"), nullable=True)
+
+    # WHETHER THIS INVITE OFFERS A SEAT AT THE ORGANIZATION. Explicit since
+    # #1635 - The organization console's new endpoints trust self-registered
+    # orgs with maintainer powers, seats and mail. Before it, "no `role_id`"
+    # meant "admin invitation", and `invite_volunteer` (reachable by a
+    # supervisor) and `sync_roster` (an unmatched role name) both wrote that
+    # shape, so an invitation meant as "a volunteer whose role is not decided
+    # yet" arrived as a seat. Only `routers/clubs.py`'s admin paths set this.
+    grants_admin_seat = Column(Boolean, nullable=False, default=False, server_default=false())
 
 
 class RosterSyncRun(Base):

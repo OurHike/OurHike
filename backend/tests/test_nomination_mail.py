@@ -143,9 +143,26 @@ class TestWhatItSays:
             assert "List-Unsubscribe:" in body
             assert "no-thank-you" in body
 
-    def test_it_carries_the_link_to_read_the_proposal(self, db_session, nomination):
-        for body in self._bodies(db_session, nomination):
-            assert nomination.proposal_token in body
+    def test_each_message_carries_its_own_contacts_link_and_never_the_shared_one(self, db_session, nomination):
+        """#1635: one shared link let whoever held it cast every decision.
+
+        Each person's message carries their own `decision_token`, so an
+        answer through it is theirs and counts once.
+        """
+        from app.models.nomination import NominationContact
+
+        provider = Provider()
+        ask_the_club(db_session, nomination, provider=provider, enabled=True)
+        db_session.commit()
+        tokens = {
+            contact.email: contact.decision_token
+            for contact in db_session.query(NominationContact).filter(NominationContact.nomination_id == nomination.id)
+        }
+        for call in provider.sent:
+            to = call["Destination"]["ToAddresses"][0]
+            body = call["Content"]["Raw"]["Data"].decode()
+            assert tokens[to] in body
+            assert nomination.proposal_token not in body
 
     def test_it_does_not_name_the_hiker_who_proposed_them(self, db_session, nomination):
         """The design is explicit in both directions.

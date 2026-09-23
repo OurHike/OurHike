@@ -317,6 +317,7 @@ def register_org(
                 note=admin.title,
                 invited_by=current_user.id,
                 invited_at=now,
+                grants_admin_seat=True,
             )
         )
     db.commit()
@@ -342,6 +343,11 @@ def invite_admin(
         .filter(
             RoleInvite.club_id == access.club.id,
             RoleInvite.email == payload.email,
+            # Only an admin invitation answers "already invited as an
+            # admin". A volunteer's waiting invite for the same address
+            # used to satisfy this, and the admin invitation was silently
+            # never written.
+            RoleInvite.grants_admin_seat.is_(True),
             RoleInvite.claimed_at.is_(None),
         )
         .one_or_none()
@@ -353,10 +359,27 @@ def invite_admin(
                 email=payload.email,
                 note=payload.title,
                 invited_by=current_user.id,
+                grants_admin_seat=True,
             )
         )
         db.commit()
     return _with_admins(db, access.club)
+
+
+def _an_admin_offered_it(db: Session, club: Club, seat: OrgAdmin) -> bool:
+    """Whether this seat rests on an invitation somebody was entitled to give."""
+    if club.created_by is not None and club.created_by == seat.person_id:
+        return True
+    return (
+        db.query(RoleInvite.id)
+        .filter(
+            RoleInvite.club_id == club.id,
+            RoleInvite.claimed_by == seat.person_id,
+            RoleInvite.grants_admin_seat.is_(True),
+        )
+        .first()
+        is not None
+    )
 
 
 @router.post("/{slug}/admins/{admin_id}/approve", response_model=OrgOut)
@@ -381,6 +404,19 @@ def approve_seat(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only the person invited can answer their own invitation",
+        )
+    # ACCEPTING IS CONSENT, NOT AUTHORITY (#1635). The authority is the
+    # invitation, so a seat nobody with the right to offer one offered cannot
+    # be accepted into power. Two sources count: an admin invitation this
+    # person claimed (`grants_admin_seat`, which only this file's admin paths
+    # write), and having registered or claimed the org, whose own seat is
+    # created approved and only reaches here after a decline. A seat minted
+    # before the flag existed - by a supervisor's role-less invite - has
+    # neither, and stays unapproved.
+    if seat.approved_at is None and not _an_admin_offered_it(db, club, seat):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Nobody at this organization invited you as an admin, so there is no seat to accept",
         )
 
     if seat.approved_at is None:

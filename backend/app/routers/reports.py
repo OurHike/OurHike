@@ -14,7 +14,7 @@ from sqlalchemy import and_, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.assignments import assignments_covering
+from app.core.assignments import assignments_covering, stood_behind
 from app.core.auth import get_current_user, get_current_user_optional
 from app.core.orm import commit_and_refresh, get_or_404
 from app.core.photos import (
@@ -32,6 +32,7 @@ from app.core.photos import (
 )
 from app.core.time import to_naive_utc, utc_now
 from app.db.session import get_db
+from app.models.club import Club
 from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.profile import MODERATOR_ROLES, Profile
 from app.models.report import Report, ReportStatus, ReportType, Visibility
@@ -433,7 +434,17 @@ def list_my_thanks(
     A hiker with no assignments gets an empty list, which is the true answer
     rather than a 403 about a resource that concerns them not at all.
     """
-    mine = db.query(MaintainerAssignment).filter(MaintainerAssignment.maintainer_id == current_user.id).all()
+    # Only assignments something other than their own organization stands
+    # behind (`core/assignments.py`'s `stood_behind`, #1635). A thanks is a
+    # hiker's private words to whoever looks after a stretch, and an
+    # organization that registered itself must not be able to read every
+    # one written along the trail by assigning itself the miles.
+    mine = (
+        db.query(MaintainerAssignment)
+        .join(Club, Club.id == MaintainerAssignment.club_id)
+        .filter(MaintainerAssignment.maintainer_id == current_user.id, stood_behind())
+        .all()
+    )
 
     # Named directly. Stands alone: somebody can be thanked by name without
     # holding any assignment at all - a maintainer between sections, or one

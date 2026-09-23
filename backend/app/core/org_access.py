@@ -107,7 +107,14 @@ def resolve_access(db: Session, club: Club, person_id: str) -> OrgAccess:
         )
         .all()
     )
-    held_role_ids = {a.role_id for a in live_assignments if a.role_id is not None}
+    # A proposal nobody has confirmed holds no role yet (#1635). Counting it
+    # let a supervisor propose a friend into a lead role and so make them a
+    # supervisor - able to invite, sync and propose in turn - with no admin
+    # having agreed to any of it. `is_volunteer` below still counts the
+    # proposal: it lets somebody step back from it, which grants nothing.
+    held_role_ids = {
+        a.role_id for a in live_assignments if a.role_id is not None and (a.proposed_by is None or a.confirmed_at is not None)
+    }
 
     # A supervisor is somebody a live role reports to. `retired_at is None`
     # on the reporting role, because a retired role's holders are history and

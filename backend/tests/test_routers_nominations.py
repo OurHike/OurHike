@@ -267,11 +267,26 @@ class TestSubmitting:
         assert db_session.query(OrgNomination).count() == 0
 
 
+def _contact_tokens(db_session, nomination) -> list[str]:
+    """Each contact's own link, in the order they were written (#1635)."""
+    return [
+        contact.decision_token
+        for contact in db_session.query(NominationContact)
+        .filter(NominationContact.nomination_id == nomination.id)
+        .order_by(NominationContact.created_at, NominationContact.email)
+    ]
+
+
 class TestTheClubsOwnScreen:
     def _submit(self, client, db_session):
         hiker = make_profile(db_session)
         client.post("/clubs/nominations", json=a_submission(), headers=auth_headers(hiker.id))
         return db_session.query(OrgNomination).one()
+
+    def _one(self, client, db_session):
+        """A nomination and the first contact's own link, which is what decides."""
+        nomination = self._submit(client, db_session)
+        return nomination, _contact_tokens(db_session, nomination)[0]
 
     def test_the_link_needs_no_account(self, client, db_session):
         nomination = self._submit(client, db_session)
@@ -290,29 +305,35 @@ class TestTheClubsOwnScreen:
         assert "@" not in body["proposed_by_display"]
 
     def test_three_approvals_are_needed(self, client, db_session):
+        """Three people, each through their own link (#1635)."""
         nomination = self._submit(client, db_session)
-        token = nomination.proposal_token
-        for expected in ("proposed", "proposed", "accepted"):
+        tokens = _contact_tokens(db_session, nomination)
+        for token, expected in zip(tokens, ("proposed", "proposed", "accepted"), strict=True):
             body = client.post(f"/nominations/{token}/decision", json={"approve": True}).json()
             assert body["state"] == expected
 
+    def test_the_shared_link_still_reads_the_proposal(self, client, db_session):
+        """Messages sent before #1635 carried it; it reads and decides nothing."""
+        nomination = self._submit(client, db_session)
+        assert client.get(f"/nominations/{nomination.proposal_token}").status_code == 200
+
     def test_one_refusal_stops_it(self, client, db_session):
         """Asymmetric on purpose: a club should not have to say no three times."""
-        nomination = self._submit(client, db_session)
-        body = client.post(f"/nominations/{nomination.proposal_token}/decision", json={"approve": False}).json()
+        nomination, token = self._one(client, db_session)
+        body = client.post(f"/nominations/{token}/decision", json={"approve": False}).json()
         assert body["state"] == "declined"
 
     def test_declining_puts_the_org_row_beyond_reach(self, client, db_session):
-        nomination = self._submit(client, db_session)
-        client.post(f"/nominations/{nomination.proposal_token}/decision", json={"approve": False})
+        nomination, token = self._one(client, db_session)
+        client.post(f"/nominations/{token}/decision", json={"approve": False})
         db_session.expire_all()
         club = db_session.query(Club).filter(Club.id == nomination.club_id).one()
         assert club.state == OrgState.deleted
 
     def test_never_ask_again_is_written_down_for_next_time(self, client, db_session):
-        nomination = self._submit(client, db_session)
+        nomination, token = self._one(client, db_session)
         client.post(
-            f"/nominations/{nomination.proposal_token}/decision",
+            f"/nominations/{token}/decision",
             json={"approve": False, "never_ask_again": True, "note": "Please do not"},
         )
         assert db_session.query(NominationRefusal).filter(NominationRefusal.domain == "carolinamountainclub.org").count() == 1
@@ -326,12 +347,12 @@ class TestTheClubsOwnScreen:
         rolls back the whole decision with it: the club said no twice and
         the nomination was still sitting at `proposed`.
         """
-        nomination = self._submit(client, db_session)
+        nomination, token = self._one(client, db_session)
         db_session.add(NominationRefusal(domain="carolinamountainclub.org"))
         db_session.commit()
 
         response = client.post(
-            f"/nominations/{nomination.proposal_token}/decision",
+            f"/nominations/{token}/decision",
             json={"approve": False, "never_ask_again": True, "note": "Still no"},
         )
 
@@ -341,8 +362,8 @@ class TestTheClubsOwnScreen:
 
     def test_declining_without_never_ask_again_leaves_the_door_open(self, client, db_session):
         """They said no to this proposal, not to the idea. Those differ."""
-        nomination = self._submit(client, db_session)
-        client.post(f"/nominations/{nomination.proposal_token}/decision", json={"approve": False})
+        nomination, token = self._one(client, db_session)
+        client.post(f"/nominations/{token}/decision", json={"approve": False})
         assert db_session.query(NominationRefusal).count() == 0
 
     def test_a_decision_locks_the_row_before_it_reads_the_state(self, client, db_session):
@@ -364,7 +385,7 @@ class TestTheClubsOwnScreen:
         from sqlalchemy import event
         from sqlalchemy.engine import Engine
 
-        nomination = self._submit(client, db_session)
+        nomination, token = self._one(client, db_session)
         statements: list[str] = []
 
         def record(conn, cursor, statement, parameters, context, executemany):  # noqa: ANN001, ANN202
@@ -372,7 +393,7 @@ class TestTheClubsOwnScreen:
 
         event.listen(Engine, "before_cursor_execute", record)
         try:
-            client.post(f"/nominations/{nomination.proposal_token}/decision", json={"approve": True})
+            client.post(f"/nominations/{token}/decision", json={"approve": True})
         finally:
             event.remove(Engine, "before_cursor_execute", record)
 
@@ -400,8 +421,7 @@ class TestTheClubsOwnScreen:
         assert not [s for s in statements if "FOR UPDATE" in s.upper()]
 
     def test_an_answered_proposal_cannot_be_answered_again(self, client, db_session):
-        nomination = self._submit(client, db_session)
-        token = nomination.proposal_token
+        nomination, token = self._one(client, db_session)
         client.post(f"/nominations/{token}/decision", json={"approve": False})
         again = client.post(f"/nominations/{token}/decision", json={"approve": True})
         assert again.status_code == 409

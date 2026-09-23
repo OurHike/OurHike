@@ -37,6 +37,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
+from app.core.auth import is_github_login
 from app.core.registry_file import org_dir
 from app.models.club import Club, OrgAdmin, OrgState
 from app.models.profile import Profile
@@ -77,6 +78,14 @@ def codeowners_block(db: Session) -> str:
 
     owners: dict[str, set[str]] = {}
     for slug, login in rows:
+        # Checked again here, not only where a login is linked (#1635). This
+        # function writes lines GitHub enforces, and a stored value with a
+        # newline in it is a second rule nobody reviewed. A row written
+        # before the link-time check, or by hand, is skipped: an organization
+        # one owner short is visible in the pull request, and a forged rule
+        # is not.
+        if not is_github_login(login):
+            continue
         owners.setdefault(slug, set()).add(login)
 
     lines = [f"/{org_dir(slug)}/ " + " ".join(f"@{login}" for login in sorted(logins)) for slug, logins in sorted(owners.items())]

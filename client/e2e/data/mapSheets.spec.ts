@@ -91,10 +91,18 @@ async function openMap(page: Page): Promise<void> {
   await expect(page.getByRole('region', { name: 'Trail map' })).toBeVisible()
 }
 
-/** Above the pin seam, where pins draw and the trail line is thick enough to
- *  touch. Seeded before the boot, so the app opens there rather than flying. */
-async function openMapOnTheTrail(page: Page): Promise<void> {
-  await seedCamera(page, ON_THE_TRAIL, ABOVE_THE_SEAM_ZOOM)
+/** Above the pin seam by default, where pins draw and the trail line is thick
+ *  enough to touch. Seeded before the boot, so the app opens there rather than
+ *  flying.
+ *
+ *  The zoom is a parameter because the notice sweep below needs a wider frame
+ *  than the line and card sweeps do, for a reason that is about the data
+ *  rather than about the app - see `tapANotice`. */
+async function openMapOnTheTrail(
+  page: Page,
+  zoom: number = ABOVE_THE_SEAM_ZOOM,
+): Promise<void> {
+  await seedCamera(page, ON_THE_TRAIL, zoom)
   await openMap(page)
   // WAIT ON SOMETHING THAT PROVES THE SEQUENCE COMPLETED, not on a timer
   // (CLAUDE.md). The In view door is not enough: it appears as soon as the
@@ -122,6 +130,20 @@ async function openMapOnTheTrail(page: Page): Promise<void> {
  * clears the pills at both phone heights this suite runs.
  */
 const HEADER_ROWS = 7
+
+/** Every dialog a tap on this map can open that is NOT the one a sweep is
+ *  hunting. Listed rather than matched by a pattern, so adding a sheet to the
+ *  app is a deliberate line here rather than a silent change in what a sweep
+ *  will click on. `Legend` is absent on purpose: the sweeps close it before
+ *  they begin, and a sweep that could reopen and re-close it would hide a real
+ *  regression in that opening. */
+const OTHER_SHEETS = ['Who maintains this trail', 'Which long hike?'] as const
+
+/** A dialog by its accessible name, which is how every sheet in this file is
+ *  found. */
+function sheetNamed(page: Page, name: string) {
+  return page.getByRole('dialog', { name })
+}
 
 async function frameOf(page: Page): Promise<{
   x: number
@@ -764,11 +786,33 @@ test.describe('an organization’s own trail notice', () => {
    * two mutually exclusive from outside and is why this sweeps for one and
    * closes the other rather than reusing `tapTheTrail`.
    *
-   * MEASURED 2026-09-11 against release 2026-09-10, at the shared camera: a
-   * full sweep of the frame below the header opens a notice sheet eight times
-   * and a trail line ten, so a band is comfortably findable here. The release
-   * publishes 38 ATC updates and 18 NYNJTC alerts; one of the ATC ones sits at
-   * mi 195.8 in the Smokies, which is why this camera has a band at all.
+   * THIS SWEEP RUNS BELOW THE SEAM, and that is the whole of what #1490's
+   * second symptom turned out to be. It used to run at ABOVE_THE_SEAM_ZOOM on
+   * a measurement taken 2026-09-11 against release 2026-09-10 - "eight notice
+   * sheets and ten trail lines" - and it went to zero notices on 2026-09-23
+   * without a line of client code changing. The same commit passed on
+   * 2026-09-21 and failed on 2026-09-23; only the published conditions moved,
+   * from 38 ATC updates to 36.
+   *
+   * Re-measured 2026-09-23 against the live UA bucket, sweeping this same
+   * camera at three zooms and counting what each tap opened:
+   *
+   *   z12.5 (above the seam)   0 notices, 10 waypoint cards, 5 line sheets
+   *   z9                       1 notice
+   *   z6.5 (below the seam)   15 notices, 27 line sheets
+   *
+   * The reason is in the style rather than in the release. A single mile
+   * marker draws as a POINT, and lib/atcUpdateStyle.ts only draws that point
+   * from ATC_UPDATE_POINT_MIN_ZOOM (7) up - so above the seam the sweep's
+   * whole target is whichever point notice happens to fall inside a frame a
+   * kilometre wide, which is a thing ATC controls and changes weekly. A
+   * stretch draws as a LINE with no zoom limit, and the long ones - the
+   * Smokies permit change at mi 167-239.4, Hurricane Helene at 239.4-637.8 -
+   * are in frame at the corridor zoom whatever ATC published this morning.
+   *
+   * So the sweep now aims at the geometry that keeps existing. It is not a
+   * weaker test: all three tests in this block assert on the SHEET's contents,
+   * and none of them is about the zoom it was opened from.
    */
   async function tapANotice(page: Page): Promise<Locator> {
     const box = await frameOf(page)
@@ -783,7 +827,18 @@ test.describe('an organization’s own trail notice', () => {
           box.y + (box.height * down) / 20,
         )
         if ((await notice.count()) > 0) return notice
-        for (const other of [line, card]) {
+        // WHATEVER IT OPENED, not the two dialogs somebody listed when this
+        // was written. A sheet left open covers the map, so every remaining
+        // tap of the sweep lands on it and the run reports "no notice
+        // anywhere" - which is the same symptom as a missing band and a
+        // completely different cause. Measured at this camera 2026-09-23: a
+        // sweep below the seam opens "Who maintains this trail" 15 times and
+        // "Which long hike?" 14 times, and neither was in the old list.
+        for (const other of [
+          line,
+          card,
+          ...OTHER_SHEETS.map((name) => sheetNamed(page, name)),
+        ]) {
           if ((await other.count()) > 0) {
             await other
               .getByRole('button', { name: /^Close/ })
@@ -796,14 +851,16 @@ test.describe('an organization’s own trail notice', () => {
     }
     throw new Error(
       'no tap on the whole frame opened a trail notice — either the release ' +
-        'stopped publishing one over this camera, or a tap on a band no longer opens it',
+        'stopped publishing a band over this camera, a tap on a band no ' +
+        'longer opens it, or a sheet this sweep does not know how to close ' +
+        'covered the map after the first tap that opened one (#1490)',
     )
   }
 
   test('entrance and states: the sheet is the organization’s notice, and says so rather than speaking for them', async ({
     page,
   }) => {
-    await openMapOnTheTrail(page)
+    await openMapOnTheTrail(page, BELOW_THE_SEAM_ZOOM)
     const sheet = await tapANotice(page)
 
     // WHOSE NOTICE, AND WHEN. The org is named and dated in the same line,
@@ -822,7 +879,7 @@ test.describe('an organization’s own trail notice', () => {
   test('states: it refuses to be read as OurHike’s advice, in as many words', async ({
     page,
   }) => {
-    await openMapOnTheTrail(page)
+    await openMapOnTheTrail(page, BELOW_THE_SEAM_ZOOM)
     const sheet = await tapANotice(page)
 
     // THE SENTENCE THAT MAKES THE WHOLE SHEET SAFE, and the reason this test
@@ -841,7 +898,7 @@ test.describe('an organization’s own trail notice', () => {
   test('exit: closing it leaves the map, and never leaves a second sheet behind', async ({
     page,
   }) => {
-    await openMapOnTheTrail(page)
+    await openMapOnTheTrail(page, BELOW_THE_SEAM_ZOOM)
     const sheet = await tapANotice(page)
 
     await sheet.getByRole('button', { name: /^Close/ }).click()

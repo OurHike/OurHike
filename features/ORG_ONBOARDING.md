@@ -195,8 +195,13 @@ natively, so this is a Cloud-side registration plus a `VITE_AUTH_PROVIDERS` entr
   still registers, approves and publishes. They are simply not the commit author.
 - **Unlinking must not orphan the account**, so it is refused when GitHub is the only linked identity.
 
-A pull request opened under a service identity credits nobody and puts nobody on the hook, so the
-commit is authored by the person's own GitHub account. That is the whole point of the moment.
+**Opening a pull request and approving one need different access, and running the two together is
+what made one objection look like it settled both.** Opening needs write access to this repository,
+so it cannot be a person's — which is why `core/registry_pr.py` holds a service identity's token.
+Approving needs no write access at all: on a public repository any account may submit a review. So
+an organization's codeowners approve with **their own** accounts, which is the moment that matters,
+and none of them becomes a committer here. **The registry pull request, and who signs it** below is
+the whole of it.
 
 **Note against [#397](https://github.com/OurHike/OurHike/issues/397), which is closed.** That issue
 shipped Google *alone* in v1, deliberately, so that the sign-in screen offered nothing that could not
@@ -273,6 +278,7 @@ Org                         (repo: clubs — the table keeps its name, conflict 
   state (unclaimed|pending|claimed|frozen|deleted)
   membership_url · donation_url · created_by
   assist_opted_in_at · assist_opted_in_by · assist_opted_out_at
+  registry_pr_number · registry_pr_url
 ```
 
 Renamed from Club **in the UI only** — not every org is a club, and the ones that are not are land
@@ -312,7 +318,17 @@ See **The assist panels** below.
 OrgAdmin                    (new: club_admins)
   org_id · person_id · title · is_codeowner
   approved_at · declined_at · decline_reason
+
+Person                      (repo: profiles — existing table, one column added)
+  … · github_login
 ```
+
+`github_login` is stored **where the email deliberately is not**, and the reason is mechanical
+rather than a change of mind about addresses: `.github/CODEOWNERS` is generated when nobody is
+making a request, so there is no token to read a login off and it has to be on a row to be
+readable at all. It is written by `POST /profiles/me/github` from the **verified token and never
+the request body** — same rule and reason as the registration domain check, because a caller who
+could name the account would be naming whose approval counts on somebody else's organization.
 
 At least one must hold an email at the org domain — and whether that one is the *registrant* or
 somebody they named decides `claimed` against `pending`, above. One admin registers; three
@@ -784,21 +800,95 @@ same defect as a heading claiming a reading nobody did.
 
 ---
 
+## The registry pull request, and who signs it
+
+The maintainer's decision of 2026-09-21, taken from a drawing of both wirings: **org admins get
+GitHub accounts and approve the registry pull request directly.** Building it resolved a
+contradiction this design had been carrying, and the resolution is the part worth keeping.
+
+**Opening and approving are different questions.** Opening a pull request needs write access to
+this repository, so it cannot be an admin's credentials — giving one the power to cause a push
+would make every org admin a committer to a public repository, which is the objection §1 was
+written against and it still stands. Approving needs no write access at all: on a public
+repository any account may submit a review. So a service identity opens, the organization's own
+codeowners approve, and neither half gives anybody access the other half was protecting against.
+
+### What carries it
+
+| Piece | What it does |
+| --- | --- |
+| `Profile.github_login`, `POST /profiles/me/github` | The linked account, read off the verified token and never the request body. |
+| `pipeline/reference/orgs/<slug>/` | The registry as files, because CODEOWNERS maps paths to people and the registry had no path here at all. |
+| `core/registry_file.py` | Renders an org's tiers as that directory's contents — sorted at every tier, no ids, no timestamps, no geometry. |
+| `core/codeowners.py` | One line per claimed org, naming its directory and its approved codeowners' linked accounts, inside a generated fence. |
+| `core/registry_pr.py` | Opens the pull request from the service identity, one commit through the git data API rather than one per file. |
+| `clubs.registry_pr_number`, `clubs.registry_pr_url` | Where it went, so the console can stop describing a pull request nothing opened. |
+
+`reference/`'s stated exception in [CONTRIBUTING.md](../CONTRIBUTING.md) is "a join that encodes
+judgement somebody reviews row by row", which is what a sign-off **is** rather than a description
+stretched to fit.
+
+### Three decisions worth disagreeing with on the merits
+
+**A directory per organization, a file per park, and the split is measured.** A section serializes
+to 9 lines, so one file per organization would hold about 1,330 of them before
+`MAX_REFERENCE_LINES` (12,000). Ample for a club on a stretch of the A.T. and **not** ample for one
+maintaining a whole trail system — which is the organization whose registry matters most, so a
+format that fails exactly there is the wrong format. A test pins the 9 lines, because a field added
+later shrinks the headroom silently until a real organization's pull request is refused by a guard.
+
+**The reviewed file is the manifest, not the map.** No row ids, no timestamps, no geometry. A
+linestring per section would bury the names, mileages and blaze words a person is actually
+approving under megabytes nobody reads — defeating the review the file exists for — and it is
+derived data, whose home is `pipeline/data/` and not a commit. The shapes keep coming from the
+organization's own GIS, which is authoritative for them anyway.
+
+**Containment is the guard with teeth, because it is the one this process can actually make.**
+Scoping the token GitHub-side is a console setting no code here can assert. What code can assert,
+before anything is written, is that no path leaves the organization's own directory — a write
+outside it is a change to this repository that no organization's codeowners review. It **refuses
+rather than filters**: a writer producing a bad path has gone wrong, and dropping those paths would
+commit the rest as though nothing had happened.
+
+### The branch-protection gate is off, and that was a decision too
+
+`.github/CODEOWNERS`'s catch-all `* @jaimito-asuntos-gringuenos` matches every file. With "Require
+review from Code Owners" enabled it would require the maintainer's approval on **every** pull
+request, and GitHub has no toggle letting an author approve their own —
+`expected-protections.yml` already records that platform rule. Nothing in this repository would be
+mergeable again, including the pull request making the change.
+
+Verified against GitHub's documentation rather than assumed: **code-owner review is its own
+requirement, independent of the approval count**, so `required_approving_review_count: 0` is not
+what stands in the way. The catch-all is.
+
+So the gate stays off and the codeowner lines still do real work: last-match-wins means a pull
+request touching an organization's registry requests review from *that* organization rather than
+only the maintainer, which is how its people find it at all. Their approval **requests rather than
+requires**, and a maintainer still merges having seen it. `registry_signoffs` therefore stays —
+with nothing enforcing the three, deleting the backend's count would leave no in-product record of
+approval at all. The recipe for turning the gate on later is written into `.github/CODEOWNERS`
+rather than left to be rediscovered.
+
 ## Known gaps
 
 What this design does not answer, stated plainly.
 
-- **The pull request at sign-off still has nobody's credentials behind it, and the nominate flow
-  now depends on the same answer.** The maintainer chose on 2026-09-17 that it must be the
-  hiker's own GitHub account, through OAuth, so no OurHike token ever touches a public repository
-  on somebody else's behalf and the pull request honestly carries their name. Supabase Auth is
-  where that provider would be enabled and `session.provider_token` is where the token would
-  arrive — in the browser, never here — which is the shape that keeps this backend out of it
-  entirely. **None of that is built.** A nomination that three people at a club approve
-  currently reaches `accepted` and stops there: the club owns the row, and nothing opens a pull
-  request against `pipeline/sources.json` yet. **What would settle it:** enabling the provider
-  on the real Supabase project, which is the maintainer's to do, and then the narrowest scope
-  that can fork and open a pull request.
+- **The registry pull request is built and inert, because all three things it needs are settings
+  outside this repository.** The code is above, under **The registry pull request, and who signs
+  it**; what it waits on is the GitHub OAuth provider enabled on Supabase, a service identity's
+  token with write scoped to `pipeline/reference/orgs/`, and `registry_pr_enabled`. Until all
+  three land, every sign-off takes the "could not be opened" branch — correctly, and saying so on
+  the screen rather than pretending. Tracked as
+  [#1623](https://github.com/OurHike/OurHike/issues/1623). **A nomination is the half that is
+  still genuinely unbuilt:** three approvals reach `accepted` and stop there, and nothing opens a
+  pull request against `pipeline/sources.json` — the registry opener writes an organization's own
+  directory, which is a different path and a different act.
+- **Which claim carries a GitHub login is `@unvalidated`.** `core/auth.py` reads both
+  `user_metadata.user_name`, the documented place, and `preferred_username`, the OIDC spelling,
+  because nobody here has seen a real GitHub token from this project. **What would settle it:** one
+  sign-in with the claims printed — after which the losing branch should be deleted rather than
+  left as a guess that looks like breadth.
 - **Nobody has run the proof of work on a phone.** Every timing in the section above came off a
   desktop CPU. A mid-range phone is commonly two to four times slower at single-thread
   JavaScript, which would put the p90 between two and five seconds — tolerable next to a fetch
@@ -838,13 +928,13 @@ What this design does not answer, stated plainly.
   design. An organization auditing a month of use can see how much and on which screens, and cannot
   see what was said. That is the trade taken deliberately — a transcript we kept would be a
   transcript we would then have to protect — and it is worth stating rather than discovering.
-- **Whose credentials open the pull request at registry sign-off is undecided, and the endpoint no
-  longer pretends otherwise.** Three codeowners signing produces three rows in `registry_signoffs`
-  and nothing else; no code in this repository opens a pull request. It must not be an admin's
-  credentials — an org admin has no GitHub account here, and giving one the power to cause a push
-  would make every org admin a committer to a public repository. The shape that survives review is
-  a service identity with write scoped to the registry path and a person still merging, but that is
-  a decision rather than a detail.
+- **Nobody has watched a real organization approve a registry pull request, because none has been
+  opened.** The chain has tests at every joint and no end-to-end run: the three signatures, the
+  generated codeowner line, the opener's containment refusal, and a GitHub review arriving from an
+  account this product linked. **What would settle it** is #1623's three settings and one
+  organization walking it — which is also the only way to learn whether a trails chair will make a
+  GitHub account at all, the assumption the whole wiring rests on and the one thing no test here
+  can reach.
 - **No screen has ever rendered a real API response.** Every one of the seventeen renders from
   `client/src/org/demoOrg.ts` and `demoVolunteer.ts`, because #600 leaves the production backend
   unbuilt. The endpoints have their own tests and the screens have theirs; what nothing on this

@@ -827,3 +827,77 @@ run here is one run on a server core with software WebGL and a sandbox's tile
 network. What would settle the plan's arithmetic is `ourhike:map` and
 `ourhike:map-drawn` read off the maintainer's laptop and phone from Settings →
 About build, before and after item 1.
+
+### 7.5 What 2026-09-21 measured, and the one thing §7.3 got wrong (#1613, #1612)
+
+The maintainer, 2026-09-21: *"The time it takes to open and load the map has
+slowed down again."* Three things came out of looking, and the first is a
+correction to the section above rather than a new finding.
+
+**§7.3 item 1 rests on an artifact that does not exist.** It says the z≤8 tiles
+*"exist (`nearby_trails_context.pmtiles`)"*. They do not: the key is absent
+from release `2026-09-16-4`'s manifest and `HEAD` on it returns **404**. The
+two context archives that publish are `dem_context.pmtiles` and
+`at_basemap_context.pmtiles`.
+
+The reason is circular and worth naming, because it is the kind that survives a
+plan. `publish-vector-data.yml` cuts the network family with `--context-zoom 8`
+and `export_nearby_trails.py` cut the archive from **z9**, so no tile was ever
+at or under the context zoom and `cut_cells.py` wrote no context artifact. The
+workflow's own comment said why: *"a zoom the sketch already draws below"*.
+The sketch existed, so the tiles were not cut; the tiles were not cut, so the
+sketch could not be replaced. **#1613** breaks the circle at the cut —
+`TILES_MIN_ZOOM` is 5 — and the same `--context-zoom 8` then splits the archive
+the way it was always shaped to.
+
+**What the sketch costs, measured against `main` at c9f3a1e.** Two runs, same
+machine, same driver, release `2026-09-16-4` served from local disk so the
+manifest's own latency is out of both columns, differing in one thing: whether
+`network_overview.geojson` is named in the manifest. A returning hiker's
+launch, 1728×1080, 1× CPU, in an agent sandbox. One run per column.
+
+| | sketch on the launch | sketch dropped |
+|---|---:|---:|
+| the map is built (`ourhike:map`) | 621 ms | 574 ms |
+| the sketch is cut into tiles | 4,591 ms | never fetched |
+| **the A.T. line's tiles are cut** | **4,926 ms** | **2,456 ms** |
+| the basemap tiles land | 5,581 ms | 2,318 ms |
+| everything the launch draws is done | 5,578 ms | 2,699 ms |
+
+The line lands **2,470 ms earlier** and the map settles **2,879 ms earlier**.
+That is §7.1's finding again from the other side — §7.1 took the sketch out of
+the *style*, this takes it out of the *manifest*, so the fetch goes with it —
+and it is the second measurement to rank item 1 first.
+
+**The honest cost, and why the order is what it is.** Below z9 the sketch is
+the only drawing of the other organizations' trails, so dropping it before the
+context archive publishes leaves the A.T. alone on the camera a laptop opens
+on. The maintainer chose the pipeline first, from those screenshots, on
+2026-09-21. The client half of #1613 — pointing the sketch's layers at the
+context tiles and stopping the 12 MB fetch — waits for that publish.
+
+**The third thing is not the worker at all, and §7 could not have seen it,**
+because §7 was measuring the wrong half of the launch. The release manifest —
+`releases/<id>/manifest.json`, the object every launch fetches — was being read
+**seven times per launch at 412,128 bytes**, uncompressed: 2,884,896 bytes on
+the connection the first frame and the map's own artifacts share. It was 27,450
+bytes on 2026-09-10 and served compressed at 6,772. Both halves moved in the
+same week the coverage-cell families landed, and nothing was watching. **#1612**
+has the arithmetic and both fixes; the measured result of the client half is
+seven fetches down to three, the remainder being callers that do not overlap.
+
+**Where the stopwatch does not look.** `check-launch-speed.mjs`'s four rows are
+`shell_frame`, `first_tap`, `longest_task` and `total_blocking`. None of them
+is the map. The scheduled job was green every morning through all of the above,
+correctly, because a blank map pane for five seconds is not a busy main thread
+— §7.1 measured it 73–75 % idle. `ourhike:map` and `ourhike:map-drawn` exist
+and are printed; nothing compares them to a budget. That is the gap that let
+this be reported by a person rather than by a check, twice.
+
+**Unvalidated, on the same terms as §7.4:** one run per column, a server core,
+software WebGL, a proxied tile network, and a manifest served from local disk
+in about 8 ms where production takes hundreds — which if anything *understates*
+the sharing fix, since callers that do not overlap here would overlap on a real
+connection. The instrument was a scratch Playwright driver wrapping
+`Worker.prototype.postMessage` to recover §7.1's per-source timeline without an
+instrumented build; it is not in the tree.

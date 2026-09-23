@@ -1568,10 +1568,40 @@ def _stage_release(
 
     # The folder's own manifest, written last of the folder's contents, so it
     # never describes bytes that have not landed yet.
+    #
+    # WITH A CONTENT TYPE, BECAUSE THAT IS WHAT DECIDES WHETHER IT COMPRESSES
+    # (#1612). This call carried none, and the object every launch fetches -
+    # client/src/lib/dataRelease.ts's RELEASE_MANIFEST_PATH is this key, not
+    # `latest.json` - was served raw. Measured against production 2026-09-21,
+    # two objects of near-identical size in the same bucket:
+    #
+    #   latest.json                            413,343 stored, ContentType set
+    #                                          -> 105,331 on the wire, zstd
+    #   releases/2026-09-16-4/manifest.json    412,128 stored, no ContentType
+    #                                          -> 412,128 on the wire, no encoding
+    #
+    # So it is the header and nothing else. The stored bytes do not change and
+    # no reader of them does either: this is Cloudflare compressing in front of
+    # R2 at request time, which is also why lib/content_types.py's "R2 does not
+    # compress on the fly" stays true as written about the bucket itself.
+    #
+    # NOT GZIPPED AT REST the way upload_args does it for the text artifacts,
+    # and deliberately: a stored ContentEncoding is a change to the bytes every
+    # reader of this key gets back, including verify_release.py's gate and
+    # anything reading it through boto3, where `upload_args`'s compression is
+    # already understood by the one helper that needs it. A header costs
+    # nothing and breaks nothing.
+    #
+    # The saving is about 4x, not the order of magnitude a small manifest
+    # suggests: this file is 2,158 artifacts of highly repetitive JSON in
+    # release 2026-09-16-4, and 412 KB compresses to roughly 105 KB. Worth
+    # having, and not the whole of #1612 - the client fetching it seven times
+    # a launch is the other half, and the larger one.
     s3_client.put_object(
         Bucket=bucket,
         Key=f"{prefix}{releases.release_key(release_id, releases.RELEASE_MANIFEST_NAME)}",
         Body=json.dumps(manifest, indent=2).encode("utf-8"),
+        ContentType="application/json",
     )
     return staged
 
@@ -1895,8 +1925,17 @@ def publish(
         # Never a stale manifest. This file is what says which version is
         # current, so a cached copy would have a client verify freshly
         # downloaded bytes against a superseded hash and throw away a good
-        # download. Left uncompressed too - it is 3.5 KB, and it is the one
-        # object every other check reads before it can do anything.
+        # download.
+        #
+        # It used to add "left uncompressed too - it is 3.5 KB", and both
+        # halves of that had stopped being true (#1612). It is 413,343 bytes
+        # in release 2026-09-16-4, measured 2026-09-21 - 118x what the
+        # sentence rested on, because the coverage-cell cut put 2,158
+        # artifacts in it - and the `ContentType` above has Cloudflare serve
+        # it zstd at 105,331, which is where the figure for the staged release
+        # manifest in _stage_release came from. Nothing was decided by the
+        # removed clause; it was a measurement that nobody re-took while the
+        # object grew underneath it.
         CacheControl=MANIFEST_CACHE_CONTROL,
     )
 

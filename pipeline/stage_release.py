@@ -224,10 +224,19 @@ def stage(
 
     # Last of the folder's contents, so it never describes bytes that have not
     # landed.
+    #
+    # `ContentType` for the reason publish._stage_release's own copy of this
+    # write gives at length (#1612): this key is what every launch fetches,
+    # Cloudflare compresses in front of R2 by content type, and a manifest with
+    # none was served raw at 412,128 bytes. Two writers of one key is the
+    # reason it is said in both places rather than one - a folder staged here
+    # and a folder staged there have to be the same object, and the test that
+    # holds it (tests/test_stage_release.py) drives this path.
     s3_client.put_object(
         Bucket=bucket,
         Key=data_env.scope_key(environment, releases.release_key(release_id, releases.RELEASE_MANIFEST_NAME)),
         Body=json.dumps({"release": release_id, "artifacts": manifest_artifacts}, indent=2).encode("utf-8"),
+        ContentType="application/json",
     )
 
     # The index last of all, because it is what advertises the folder as

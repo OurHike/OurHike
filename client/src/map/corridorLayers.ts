@@ -86,7 +86,6 @@ import { clubBoundaryMiles, clubTimeline, type ClubSections } from '../lib/clubS
 import { PROFILED_TRAIL } from '../lib/highlightDetail'
 import type { Highlight } from '../lib/highlights'
 import { trailPointAtMile, trailSlice, type TrailIndex } from '../lib/trailPosition'
-import { NEARBY_TRAILS_TILES_MIN_ZOOM } from '../lib/config'
 import { whenStyleReady } from './styleReady'
 
 export const CORRIDOR_SOURCE_ID = 'corridor'
@@ -114,21 +113,39 @@ export const HIGHLIGHT_ID_PROPERTY = 'highlight_id'
  * Where the corridor view's drawn trails give way to the tiled ones.
  *
  * THEY HAVE STOPPED BEING THE SAME NUMBER (#1585, 2026-09-18), which is what
- * the previous version of this docstring said would eventually happen: "the
+ * an earlier version of this docstring said would eventually happen: "the
  * two are the same number for one reason and could stop being". The waypoint
- * seam moved out to z8, where a hundred-mile resupply carry fits a phone
+ * seam moved out, to where a hundred-mile resupply carry fits a phone
  * (map/poiLayers.ts's POI_PIN_MIN_ZOOM); this ceiling did not move, and must
  * not, because it is answering a different question.
  *
  * WHAT IT IS ANSWERING is where the SKETCH hands the other organizations'
  * trails over to the real tiles. `nearby_trails.pmtiles` is cut from
  * NEARBY_TRAILS_TILES_MIN_ZOOM (lib/config.ts) and a vector source asked for a
- * zoom its archive does not hold draws nothing, silently - so a ceiling one
- * zoom below the cut would leave a whole band of ground with no trails on it
- * but the A.T.'s. That is the failure this constant now exists to refuse, and
- * it is why it is keyed to the publish contract rather than to a number.
+ * zoom its archive does not hold draws nothing, silently - so a ceiling BELOW
+ * the cut would leave a whole band of ground with no trails on it but the
+ * A.T.'s. That is the failure this constant exists to refuse.
+ *
+ * IT WAS `= NEARBY_TRAILS_TILES_MIN_ZOOM` AND IS A LITERAL AGAIN (#1613),
+ * because that spelling made it follow the cut DOWNWARDS as well as up, and
+ * only one of those two directions is safe. Lowering the cut to z5 so a
+ * context archive gets written moved this ceiling to 5 with it, which handed
+ * the corridor view over to tiles at z5 - tiles no published release holds
+ * until the cut has run, and would not hold on any phone carrying an older
+ * release ever. corridorLayers.test.ts caught it on the pin seam: the sketch
+ * would have stopped at z5 while the pins start at z7.
+ *
+ * So the rule is the inequality rather than the equality, and the test below
+ * holds it that way: **the archive may hold zooms coarser than this ceiling,
+ * never fewer.** A cut that reaches further down than the layers ask for
+ * costs some archive bytes nobody reads; a ceiling under the cut costs a
+ * hiker the other organizations' trails on the camera the app opens on.
+ *
+ * 9 is where it has been since #1257 and is not a new decision. It moves when
+ * the sketch's layers are pointed at the context tiles - #1613's client half,
+ * which waits for a release that carries them.
  */
-export const CORRIDOR_MAX_ZOOM = NEARBY_TRAILS_TILES_MIN_ZOOM
+export const CORRIDOR_MAX_ZOOM = 9
 
 /**
  * The dash rhythm on an unattributed run, in multiples of the line's width -

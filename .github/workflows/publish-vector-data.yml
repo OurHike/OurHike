@@ -551,12 +551,26 @@ jobs:
       # stretch download carries the network above the seam and not only the
       # ground under it. Cut here rather than in the basemap or DEM builds
       # because the archive it cuts is written by the step above, in this
-      # job, and hands off to nothing. `--context-zoom 8` is one below the
-      # archive's minimum zoom: no shared context, z9 rides in the cells -
-      # cut_cells.py's docstring carries the measurement (9.65 MB of z9
-      # nationwide, for a zoom the sketch already draws below and the cells
-      # draw above). publish.py collects the result inside the lines' own
-      # reaches_hikers gate, never through the ungated sheet loop.
+      # job, and hands off to nothing. publish.py collects the result inside
+      # the lines' own reaches_hikers gate, never through the ungated sheet
+      # loop.
+      #
+      # `--context-zoom 8` IS UNCHANGED AND NOW MEANS SOMETHING ELSE (#1613),
+      # which is worth saying rather than leaving a reader to infer. It used
+      # to be "one below the archive's minimum zoom: no shared context, z9
+      # rides in the cells" - true while export_nearby_trails.py cut from z9,
+      # and the reason `nearby_trails_context.pmtiles` has never existed on
+      # the bucket. That floor is 5 now, so the same flag splits the archive
+      # where it was always meant to: z5-z8 into one shared context artifact
+      # the corridor camera reads whole, z9-z14 into the cells. z9 still rides
+      # in the cells and cut_cells.py's measurement for it still holds
+      # (9.65 MB nationwide).
+      #
+      # THE FIRST RUN OF THIS AFTER #1613 IS WHAT MAKES THE CONTEXT ARCHIVE
+      # EXIST. Until it publishes, the client asks z5-z8 of an archive that
+      # holds neither and gets empty tiles, which is the state #1257 designed
+      # for; after it, the sketch's layers can be pointed at those tiles and
+      # the 12 MB network_overview.geojson can leave the launch.
       - name: Cut the network tiles into coverage cells
         run: python cut_cells.py data/processed/nearby_trails.pmtiles --family nearby_trails --context-zoom 8
 

@@ -2997,15 +2997,16 @@ export function buildMapStyle({
       // reported a fault with is how a fix turns into two.
       // THE HIKER, OVER EVERY PLACE (#1581). Every layer above draws a place
       // or a claim about one; this draws the viewer, and a viewer under a
-      // place is a hiker who cannot find themselves. So it sits over the pins,
-      // the warnings and the workdays - the accuracy ring first, the mark
-      // over it - and UNDER the ATC's notices below, whose rule ("nothing on
+      // place is a hiker who cannot find themselves. So it sits over the pins
+      // and the workdays - the accuracy ring here, the mark further down,
+      // over the warning pins - and UNDER the ATC's notices below, whose rule ("nothing on
       // this map can cover one", held by src/test/atcAlertProminence.test.ts)
       // outranks it. The mark is hollow and 36 px, so a notice drawn over it
       // hides its centre and nothing else: the ring and the ticks still say
       // where the hiker is, and the notice says what is there.
       buildPositionAccuracyLayer(positionInkFor(appearance)),
-      buildPositionLayer(positionInkFor(appearance)),
+      // The mark itself is not here any more - it draws above the warning
+      // pins, below. See the note there (v1.3.2 release review).
       // THE SAFETY MARKS, LAST (#1599, the maintainer: "Shouldn't closures
       // and warnings just be the top 2 layers?").
       //
@@ -3058,6 +3059,23 @@ export function buildMapStyle({
       // mark where a pin over a band hides a stripe of it. The same argument
       // that puts the ATC's dot above its own band, one group down.
       buildWarningLayer(),
+      // THE HIKER'S MARK, OVER THE WARNING PINS (v1.3.2 release review; the
+      // maintainer chose it by poll, 2026-09-23, from drawn frames). #1599's
+      // argument for putting the safety marks over the mark was about BANDS:
+      // the mark is hollow, so a band crossing it hides the centre and the
+      // ring and ticks still show. A warning pin is not a band. It is a 44 px
+      // filled disc over a 36 px mark, so a hiker standing within a few
+      // pixels of one was not on the map at all. Drawn above it, the hollow
+      // mark lets the warning show through its middle, which is the same
+      // trade #1599 accepted, the other way up.
+      //
+      // Only the mark moved. Its accuracy disc stays under the bands, where
+      // #1581 put it: that disc is a wash hundreds of pixels wide and would
+      // tint every band it touched. The mark now also draws over a closure
+      // band it sits on, and the band shows through its hollow centre. That
+      // was not the case #1599 argued about, and it is the price of one layer
+      // for the mark rather than two.
+      buildPositionLayer(positionInkFor(appearance)),
       // The ATC's notices remain last of all, and that is not this change's
       // to move: "nothing on this map can cover one" is #461's rule, held as
       // a property by src/test/atcAlertProminence.test.ts, which asserts the

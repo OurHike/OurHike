@@ -1,7 +1,7 @@
 """organization onboarding
 
 Revision ID: d1c4f8a06b93
-Revises: b1e4c7a9d2f6
+Revises: d2f5a8c17b64
 Create Date: 2026-09-17 03:40:00.000000
 
 The twelve tables behind ../../../features/ORG_ONBOARDING.md, plus the
@@ -93,12 +93,22 @@ RLS_TABLES: tuple[str, ...] = (
 # the row's own id appended where two names would collide - a slug is unique
 # and "Ramapo Trail Conference" appearing twice is likelier than it sounds
 # once orgs are claiming rows a maintainer created. Appending rather than
-# refusing means the migration cannot fail on real data; the duplicate gets an
-# ugly slug and an admin renames it.
+# refusing means the duplicate gets an ugly slug and an admin renames it.
+#
+# The collision test compares the DERIVED SLUG, not the name. It used to
+# compare `lower(name)`, so "Ramapo Trail Conf." and "Ramapo Trail Conf" -
+# different names, one slug - both got the bare slug and `ix_clubs_slug`
+# refused to build (reproduced against local Postgres during the v1.3.2
+# release review, 2026-09-23). UA applied the old form on its own rows without
+# tripping it; production holds different rows, so the old form was never
+# proven safe there. Rows whose slug is already set are counted too, so a
+# backfilled slug cannot land on one a club already holds.
 _SLUG_BACKFILL = """
 update clubs c set slug = base.candidate || case
         when (select count(*) from clubs o where o.name is not null
-              and lower(o.name) = lower(c.name)) > 1
+              and coalesce(o.slug, trim(both '-' from
+                  regexp_replace(lower(o.name), '[^a-z0-9]+', '-', 'g')))
+                  = base.candidate) > 1
         then '-' || left(c.id, 8)
         else ''
     end

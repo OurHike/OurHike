@@ -57,12 +57,15 @@ import { POI_PRIORITY } from './poiPriority'
 import { poiIconImages } from './poiIconImages'
 import {
   PIN_HALO_COLOR,
+  POI_PIN_SIZE,
   poiColor,
   poiIconId,
   siteMemberCombinations,
+  sitePinPadding,
   UNKNOWN_POI_TYPE,
   type PoiConfidence,
 } from './poiIcons'
+import { buildStalenessRingImage, STALENESS_RING_PIXEL_RATIO } from './stalenessRing'
 import {
   RING_GONE_NEIGHBOURS,
   CROWDING_PROPERTY,
@@ -562,20 +565,62 @@ const RING_OPACITIES: Record<string, number> = {
   'faint-invite': 0.35,
 }
 
+/** The image id the ring layer asks for, one per ring colour. */
+export function stalenessRingImageId(ring: string): string {
+  return `poi-staleness-ring-${ring}`
+}
+
+/** Every ring image the layer can ask for, for {@link attachPoiIcons}. */
+export function stalenessRingImages(): Array<{
+  id: string
+  image: ReturnType<typeof buildStalenessRingImage>
+  pixelRatio: number
+}> {
+  return Object.entries(RING_COLORS).map(([ring, color]) => ({
+    id: stalenessRingImageId(ring),
+    image: buildStalenessRingImage(color),
+    pixelRatio: STALENESS_RING_PIXEL_RATIO,
+  }))
+}
+
 /**
- * Sized to sit just outside the pin at every zoom: half the 38 px pin box
- * times the same 0.8 -> 1.0 ramp the icons ride
- * ({@link POI_ICON_SIZE_EXPRESSION}), plus 3 px of air.
+ * How far above its coordinate a waypoint's pin disc is centred, in CSS px at
+ * icon-size 1 - what the ring is lifted by so it goes round the pin rather
+ * than through it (map/stalenessRing.ts has the history).
+ *
+ * The pin is bottom-anchored (the jigger, in {@link buildPoiLayer}), so its
+ * disc centre sits half its image's height above the coordinate. That image
+ * is the 38 px pin plus, for a site pin, `sitePinPadding` on every side for
+ * its badges - so a site pin's disc is lifted by that padding too.
  */
-const RING_RADIUS_EXPRESSION: unknown[] = [
-  'interpolate',
-  ['linear'],
-  ['zoom'],
-  POI_PIN_MIN_ZOOM,
-  19 * POI_PIN_MIN_SCALE + 3,
-  13,
-  22,
-]
+export const RING_LIFT_PROPERTY = 'ring_lift'
+
+export function ringLift(memberCount: number): number {
+  return POI_PIN_SIZE / 2 + sitePinPadding(memberCount)
+}
+
+/** Member counts up to this get an exact lift; past it (no site carries
+ *  this many today - siteMemberCombinations) the ring falls back to the
+ *  largest. */
+const MAX_LIFTED_MEMBERS = 8
+
+/**
+ * `icon-offset` per lift. A `match` over the handful of values
+ * {@link ringLift} can produce, because an expression cannot build an array
+ * from a number - each output is a literal pair. Multiplied by `icon-size`
+ * by MapLibre, so the lift scales with the pin it is measured from.
+ */
+const RING_OFFSET_EXPRESSION: unknown[] = (() => {
+  const lifts = [
+    ...new Set(Array.from({ length: MAX_LIFTED_MEMBERS + 1 }, (_, n) => ringLift(n))),
+  ]
+  return [
+    'match',
+    ['get', RING_LIFT_PROPERTY],
+    ...lifts.flatMap((lift) => [lift, ['literal', [0, -lift]]]),
+    ['literal', [0, -Math.max(...lifts)]],
+  ]
+})()
 
 /**
  * The ring fades out on ground too crowded for it to be telling the truth
@@ -632,7 +677,7 @@ export function buildPoiStalenessLayer(
 ): LayerSpecification {
   return {
     id: POI_STALENESS_LAYER_ID,
-    type: 'circle',
+    type: 'symbol',
     source: sourceId,
     // Rings exist to invite a tap, and only a pin can be tapped - so they
     // start where the pins do, not where the dots do. See
@@ -640,23 +685,31 @@ export function buildPoiStalenessLayer(
     // cannot express.
     minzoom: POI_PIN_MIN_ZOOM,
     filter: ['!=', ['get', 'staleness_ring'], NO_RING] as never,
-    paint: {
-      'circle-radius': RING_RADIUS_EXPRESSION as unknown as number,
-      // The ring is a rim, not a disc: the fill is fully transparent so the
-      // map underneath stays readable inside it.
-      'circle-opacity': 0,
-      'circle-stroke-width': 2,
-      'circle-stroke-color': [
+    layout: {
+      // The ring is a rim, not a disc: the image is transparent inside it, so
+      // the map underneath stays readable.
+      'icon-image': [
         'match',
         ['get', 'staleness_ring'],
-        ...Object.entries(RING_COLORS).flat(),
-        RING_COLORS.green,
+        ...Object.keys(RING_COLORS).flatMap((ring) => [ring, stalenessRingImageId(ring)]),
+        stalenessRingImageId('green'),
       ] as unknown as string,
+      // THE PIN'S OWN SIZE AND THE PIN'S OWN LIFT, so the ring goes round the
+      // pin at every zoom and for every tier - see map/stalenessRing.ts for
+      // why this stopped being a circle layer.
+      'icon-size': POI_ICON_SIZE_EXPRESSION as unknown as number,
+      'icon-offset': RING_OFFSET_EXPRESSION as unknown as [number, number],
+      // A ring is never culled and culls nothing, for the pins' own reasons
+      // (#1585): it is part of the pin it surrounds.
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+    },
+    paint: {
       // The ring's own opacity, scaled by how crowded its ground is. A
       // product rather than a second `match`, so the per-tier values above
       // stay the one home for "how loud is this tier" and this only ever
       // turns them down.
-      'circle-stroke-opacity': [
+      'icon-opacity': [
         '*',
         ['match', ['get', 'staleness_ring'], ...Object.entries(RING_OPACITIES).flat(), 0],
         RING_CROWDING_FADE,
@@ -853,6 +906,9 @@ export interface PoiFeatureCollection {
       /** How many other drawn marks sit within map/poiCrowding.ts's radius -
        *  what `icon-padding` interpolates on (#1536). */
       [CROWDING_PROPERTY]: number
+      /** How far above the coordinate the pin's disc is centred - what the
+       *  staleness ring is lifted by. See {@link RING_LIFT_PROPERTY}. */
+      [RING_LIFT_PROPERTY]: number
     }
   }>
 }
@@ -953,6 +1009,7 @@ export function poiFeatureCollection(
           staleness_ring: condition.ring,
           staleness_faded: condition.faded,
           [CROWDING_PROPERTY]: crowding.get(poi.id) ?? 0,
+          [RING_LIFT_PROPERTY]: ringLift(membersFor.get(poi.id)?.length ?? 0),
         },
       }
     }),
@@ -1011,7 +1068,7 @@ export function attachPoiIcons(map: MapLibreMap): () => void {
       // question to ask: an image is not addressable until it has been added.
       () => map.getLayer(POI_LAYER_ID) !== undefined,
       () => {
-        for (const { id, image, pixelRatio } of icons) {
+        for (const { id, image, pixelRatio } of [...icons, ...stalenessRingImages()]) {
           // Images outlive a style reload, and re-adding one throws.
           if (!map.hasImage(id)) map.addImage(id, image, { pixelRatio })
         }

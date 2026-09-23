@@ -62,6 +62,7 @@ import {
   seedPreferences,
   bootFreshPage,
   seedCamera,
+  seedFixAtMile,
   ON_THE_TRAIL,
   ABOVE_THE_SEAM_ZOOM,
 } from './support/seed'
@@ -536,5 +537,66 @@ test.describe('the day hike that starts where you are', () => {
     await expect(
       page.getByRole('button', { name: 'A day hike starts here' }),
     ).toHaveCount(0)
+  })
+})
+
+// THE POSITION MARK'S DOM HALF, driven by a real fix coming and going (#1643
+// item 5). #1580 - Draw four marks for the hiker's position, and build the one
+// that was picked - shipped the mark with unit tests only, every one of them
+// against a mocked `navigator.geolocation`. This drives the real API through
+// Playwright's `context.setGeolocation`, the same way support/seed.ts's
+// seedFixAtMile() does.
+//
+// WHAT IS ASSERTED AND WHAT IS NOT. The reticle itself is drawn on the WebGL
+// canvas (map/positionLayers.ts), which a DOM query cannot see. What this
+// asserts is the three things a hiker reads off the chrome as the fix comes and
+// goes, all fed by the one `useGeolocation` watch the mark is drawn from:
+// the status strip's "No GPS fix" flag (chrome/StatusStrip.tsx), the header's
+// position line (lib/positionLine.ts), and the locate button
+// (map/mapChrome.ts's LocateControl), which is disabled and named
+// LOCATE_WAITING_LABEL while there is nothing to centre on.
+//
+// `setGeolocation(null)` is Playwright's "position unavailable". Measured
+// 2026-09-23 in the sandbox's Chromium: an active watch receives it as an
+// error that is not PERMISSION_DENIED, which useGeolocation.ts turns into
+// `unavailable` - the lost-fix state, rather than `denied`.
+test.describe('the position mark, as a real fix comes and goes', () => {
+  test('states: a real fix clears "No GPS fix" and arms the locate button, and losing it brings both back', async ({
+    page,
+    context,
+  }) => {
+    await context.grantPermissions(['geolocation'])
+    await context.setGeolocation(null)
+    await seedPreferences(page)
+    await page.goto('/')
+    await page.getByRole('tab', { name: 'Map' }).click()
+    await expect(page.getByRole('region', { name: 'Trail map' })).toBeVisible()
+
+    const flag = page.getByText('No GPS fix', { exact: true })
+    const waiting = page.getByRole('button', { name: 'No GPS fix yet' })
+    const locate = page.getByRole('button', { name: 'Center the map on me' })
+
+    // BEFORE: no fix, so the flag is up and the button is present but off.
+    await expect(flag).toBeVisible()
+    await expect(waiting).toBeDisabled()
+    await expect(page.getByText(/Looking for GPS…|No GPS signal/)).toBeVisible()
+
+    // A REAL FIX. "No trail data" is the rung of positionLine's ladder that
+    // only a `located` status reaches in this hermetic suite (see the day-hike
+    // test above), so it proves the fix landed rather than that the flag
+    // merely failed to render.
+    await seedFixAtMile(page, 5)
+    await expect(page.getByText(/No trail data/)).toBeVisible()
+    await expect(flag).toHaveCount(0)
+    await expect(locate).toBeEnabled()
+
+    // LOST. The flag comes back and the button goes off again. A mark that
+    // kept claiming a fix after the watch had lost it is how a hiker ends up
+    // trusting a position they no longer have.
+    await context.setGeolocation(null)
+    await expect(page.getByText('No GPS signal')).toBeVisible()
+    await expect(flag).toBeVisible()
+    await expect(waiting).toBeDisabled()
+    await expect(locate).toHaveCount(0)
   })
 })

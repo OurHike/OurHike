@@ -62,11 +62,11 @@ import {
   seedPreferences,
   bootFreshPage,
   seedCamera,
-  seedFixAtMile,
   ON_THE_TRAIL,
   ABOVE_THE_SEAM_ZOOM,
 } from './support/seed'
 import { writeIDBEntries } from './support/idb'
+import { installGeolocationShim, shimFixAtMile, shimLoseFix } from './support/geolocation'
 // Untyped on purpose: a shot fixture is plain JavaScript, and its shape is the
 // app's contract with IndexedDB rather than a type this spec restates.
 import { DAY_HIKES } from '../preview-shots/fixtures/dayHike.mjs'
@@ -540,12 +540,21 @@ test.describe('the day hike that starts where you are', () => {
   })
 })
 
-// THE POSITION MARK'S DOM HALF, driven by a real fix coming and going (#1643
-// item 5). #1580 - Draw four marks for the hiker's position, and build the one
-// that was picked - shipped the mark with unit tests only, every one of them
-// against a mocked `navigator.geolocation`. This drives the real API through
-// Playwright's `context.setGeolocation`, the same way support/seed.ts's
-// seedFixAtMile() does.
+// THE POSITION MARK'S DOM HALF, driven by a fix coming and going (#1643 item
+// 5). #1580 - Draw four marks for the hiker's position, and build the one that
+// was picked - shipped the mark with unit tests only, rendered in jsdom. This
+// drives the real bundle in a real browser, with the fix handed to the app's
+// own `useGeolocation` watch by support/geolocation.ts's stand-in
+// `navigator.geolocation`.
+//
+// WHY A STAND-IN AND NOT `context.setGeolocation`. The first version of this
+// test took the fix away with `context.setGeolocation(null)`, and that call
+// does different things per engine: Chromium reports POSITION_UNAVAILABLE to
+// the watch, while Playwright's WebKit clears the override instead - and on
+// #1645's CI run 35927130277 `phone-webkit` had a fix at boot that no step had
+// given it, so "No GPS fix" was never on screen to find. support/geolocation.ts
+// holds the evidence. The stand-in sends the same callbacks in every engine,
+// which is what makes this one test rather than two.
 //
 // WHAT IS ASSERTED AND WHAT IS NOT. The reticle itself is drawn on the WebGL
 // canvas (map/positionLayers.ts), which a DOM query cannot see. What this
@@ -556,17 +565,14 @@ test.describe('the day hike that starts where you are', () => {
 // (map/mapChrome.ts's LocateControl), which is disabled and named
 // LOCATE_WAITING_LABEL while there is nothing to centre on.
 //
-// `setGeolocation(null)` is Playwright's "position unavailable". Measured
-// 2026-09-23 in the sandbox's Chromium: an active watch receives it as an
-// error that is not PERMISSION_DENIED, which useGeolocation.ts turns into
-// `unavailable` - the lost-fix state, rather than `denied`.
-test.describe('the position mark, as a real fix comes and goes', () => {
-  test('states: a real fix clears "No GPS fix" and arms the locate button, and losing it brings both back', async ({
+// A lost fix is POSITION_UNAVAILABLE, not PERMISSION_DENIED, which is what
+// makes useGeolocation.ts keep the watch and report `unavailable` - the
+// lost-fix state - rather than `denied`, a setting.
+test.describe('the position mark, as a fix comes and goes', () => {
+  test('states: a fix clears "No GPS fix" and arms the locate button, and losing it brings both back', async ({
     page,
-    context,
   }) => {
-    await context.grantPermissions(['geolocation'])
-    await context.setGeolocation(null)
+    await installGeolocationShim(page)
     await seedPreferences(page)
     await page.goto('/')
     await page.getByRole('tab', { name: 'Map' }).click()
@@ -576,16 +582,17 @@ test.describe('the position mark, as a real fix comes and goes', () => {
     const waiting = page.getByRole('button', { name: 'No GPS fix yet' })
     const locate = page.getByRole('button', { name: 'Center the map on me' })
 
-    // BEFORE: no fix, so the flag is up and the button is present but off.
+    // BEFORE: the watch is registered and nothing has answered it, so the
+    // flag is up, the button is present but off, and the header is looking.
     await expect(flag).toBeVisible()
     await expect(waiting).toBeDisabled()
-    await expect(page.getByText(/Looking for GPS…|No GPS signal/)).toBeVisible()
+    await expect(page.getByText('Looking for GPS…')).toBeVisible()
 
-    // A REAL FIX. "No trail data" is the rung of positionLine's ladder that
-    // only a `located` status reaches in this hermetic suite (see the day-hike
-    // test above), so it proves the fix landed rather than that the flag
-    // merely failed to render.
-    await seedFixAtMile(page, 5)
+    // A FIX. "No trail data" is the rung of positionLine's ladder that only a
+    // `located` status reaches in this hermetic suite (see the day-hike test
+    // above), so it proves the fix landed rather than that the flag merely
+    // failed to render.
+    await shimFixAtMile(page, 5)
     await expect(page.getByText(/No trail data/)).toBeVisible()
     await expect(flag).toHaveCount(0)
     await expect(locate).toBeEnabled()
@@ -593,7 +600,7 @@ test.describe('the position mark, as a real fix comes and goes', () => {
     // LOST. The flag comes back and the button goes off again. A mark that
     // kept claiming a fix after the watch had lost it is how a hiker ends up
     // trusting a position they no longer have.
-    await context.setGeolocation(null)
+    await shimLoseFix(page)
     await expect(page.getByText('No GPS signal')).toBeVisible()
     await expect(flag).toBeVisible()
     await expect(waiting).toBeDisabled()

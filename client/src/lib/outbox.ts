@@ -833,7 +833,17 @@ export async function flushOutbox(
     // delete (review of #1571).
     inFlight.add(item.id)
     try {
-      await send(item)
+      // Sent as it is stored NOW, not as it was when this pass read the
+      // queue. An amendment or photo attached to this item while an earlier
+      // item was sending was accepted and written (it was not in flight
+      // then), and sending the snapshot would deliver the report without it
+      // and then delete the row that held it - the hiker's added detail
+      // gone, with the receipt having said it was kept (v1.3.2 release
+      // review). Re-read after `inFlight.add`, so anything accepted before
+      // this line is in the row and anything after it is refused.
+      const current = (await readQueue()).find((queued) => queued.id === item.id)
+      if (current === undefined) continue
+      await send(current)
       // Removed one at a time, and this is the fix rather than a tidy-up.
       // The old loop collected survivors and wrote the whole key at the end
       // (`set(OUTBOX_KEY, unsent)`), so a report written DURING a flush was

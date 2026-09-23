@@ -808,6 +808,29 @@ describe('amending a report still in the queue (#1563)', () => {
     expect(await listQueued()).toEqual([])
   })
 
+  it('sends the second report with the note added to it while the first report was sending', async () => {
+    // flushOutbox used to read the queue once and send each item from that
+    // snapshot. An amendment to report two, accepted while report one's
+    // request was out, was written to the stored row and then lost: report
+    // two went out as it was at the start of the pass, and its row - the only
+    // copy of the added note - was deleted on success (v1.3.2 release review).
+    await enqueue({ ...DRAFT, note: 'first' }, WRITTEN)
+    await enqueue({ ...DRAFT, note: 'second' }, WRITTEN)
+    const [, second] = await listQueued()
+    const sentNotes: Array<string | undefined> = []
+    let amended: boolean | null = null
+
+    await flushOutbox(async (item) => {
+      if (item.payload?.note === 'first') {
+        amended = await amendQueuedReport(second.id, { note: 'ADDED DETAIL' })
+      }
+      sentNotes.push(item.payload?.note)
+    })
+
+    expect(amended).toBe(true)
+    expect(sentNotes).toEqual(['first', 'ADDED DETAIL'])
+  })
+
   it('takes an amendment again once a failed send has left the report queued', async () => {
     // The guard is the request, not the item: a report a flush could not
     // send is back in the queue and back to being amendable.

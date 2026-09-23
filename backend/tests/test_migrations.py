@@ -258,3 +258,34 @@ def test_the_flag_constraint_revision_collapses_duplicates_keeping_the_earliest(
             .all()
         )
     assert constraints == []
+
+
+def test_the_slug_backfill_suffixes_two_names_that_share_one_slug(migration_engine):
+    """d1c4f8a06b93 backfills `clubs.slug` and then builds the unique
+    `ix_clubs_slug` over it, so any two rows the backfill gives the same slug
+    fail the whole upgrade. Its collision test used to compare `lower(name)`,
+    which calls "Ramapo Trail Conf." and "Ramapo Trail Conf" different while
+    the slug rule turns both into `ramapo-trail-conf` - found in the v1.3.2
+    release review, where this exact pair failed `upgrade head`.
+    """
+    config = _alembic_config()
+    command.upgrade(config, "d2f5a8c17b64")
+    with migration_engine.begin() as connection:
+        connection.execute(
+            sqlalchemy.text(
+                "insert into clubs (id, name) values "
+                "('aaaaaaaa-1', 'Ramapo Trail Conf.'), "
+                "('bbbbbbbb-2', 'Ramapo Trail Conf'), "
+                "('cccccccc-3', 'Solo Club')"
+            )
+        )
+
+    command.upgrade(config, "head")
+
+    with migration_engine.connect() as connection:
+        slugs = dict(connection.execute(sqlalchemy.text("select id, slug from clubs")).tuples().all())
+    assert slugs == {
+        "aaaaaaaa-1": "ramapo-trail-conf-aaaaaaaa",
+        "bbbbbbbb-2": "ramapo-trail-conf-bbbbbbbb",
+        "cccccccc-3": "solo-club",
+    }

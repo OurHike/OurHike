@@ -901,3 +901,44 @@ the sharing fix, since callers that do not overlap here would overlap on a real
 connection. The instrument was a scratch Playwright driver wrapping
 `Worker.prototype.postMessage` to recover §7.1's per-source timeline without an
 instrumented build; it is not in the tree.
+
+### 7.6 The first cut with the context archive in it (#1613, #1612)
+
+**#1615 merged 2026-09-23** and `publish-vector-data.yml` run #139 published UA
+release **2026-09-23-2** from it — the first release cut with
+`export_nearby_trails.TILES_MIN_ZOOM = 5`. Two things §7.5 said would follow,
+checked against the bucket rather than assumed:
+
+**`nearby_trails_context.pmtiles` exists.** 22,176,121 bytes, `HTTP 206` on a
+range request with a valid `PMTiles` header. The key §7.3 item 1 planned
+against — and which returned 404 for as long as the plan has existed — is
+published. #1613's client half now has something to point at.
+
+**The release manifest is compressed.** `content-type: application/json` and
+`content-encoding: zstd`, 609,205 bytes identity against **154,163 on the
+wire** — 3.95×, which is the ~4× §7.5 predicted from `latest.json`. That is
+#1612's pipeline half working on a real object.
+
+| | before | after |
+|---|---:|---:|
+| `nearby_trails.pmtiles` | 155,229,297 | 181,668,171 |
+| `nearby_trails_context.pmtiles` | **did not exist** | 22,176,121 |
+| release manifest, on the wire | 412,128 (no encoding) | 154,163 (zstd) |
+
+**One number in §7.5's own reasoning was wrong, and the correction is more
+useful than the figure.** `export_nearby_trails.py` predicted z5–z8 would come
+to "a few megabytes", from "each zoom about a quarter of the one below it".
+That runs the pyramid backwards: a coarse tile covers more ground and carries
+more geometry, so z5–z8 are each *larger* than z9's 9.65 MB, not smaller. The
+real figure is 22.2 MB — about nine times the guess.
+
+It does not change the decision, because these tiles are read by byte range: a
+phone pays for the tiles its viewport touches, never for the file. But it does
+move which argument is load-bearing. The cut was justified partly on being
+cheap; it is not cheap in the bucket, and #1257's range-reading is now the
+whole of the case for it. A future seam moved on the same "it is only a few
+megabytes" reasoning should expect to be wrong by an order of magnitude.
+
+**Still unpublished to production.** Everything above is UA
+(`environments/ua/`), which is what keeps `main` testable. Production is the
+release train's promotion and is the maintainer's.

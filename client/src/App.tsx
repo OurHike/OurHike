@@ -2016,6 +2016,12 @@ function App() {
   // me" (#1284). Null is the honest answer everywhere else the app gives
   // one - never a stale point, never Springer.
   const fixAt = gps.status === 'located' ? gps.at : null
+  // The latest fix for callbacks the map's chrome holds. `gps` is a new object
+  // on every moved fix, so a callback depending on it changes identity about
+  // once a second while walking, and MapView re-attaches every control on the
+  // map each time it does - the locate button a hiker is mid-tap on included.
+  const gpsRef = useRef(gps)
+  gpsRef.current = gps
 
   const detailLevel: DetailLevel = detailLevelForZoom(preferences.max_background_zoom)
   // The hiking sheet's own level (#276) - a separate dial from the USGS
@@ -7490,12 +7496,15 @@ function App() {
    */
   const handleLocate = useCallback(() => {
     setMapTaken(false)
-    if (map === null || gps.status !== 'located') return
+    const fix = gpsRef.current
+    if (map === null || fix.status !== 'located') return
     map.jumpTo({
-      center: [gps.at.lon, gps.at.lat],
+      center: [fix.at.lon, fix.at.lat],
       zoom: Math.max(map.getZoom(), LOCATE_MIN_ZOOM),
     })
-  }, [map, gps])
+    // Read through gpsRef, not closed over, so this stays one function for
+    // the map's life: MapView's `onLocate` "Must be stable across renders".
+  }, [map])
 
   const handleMapReady = useCallback((next: MapLibreMap | null) => {
     setMap(next)

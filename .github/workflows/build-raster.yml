@@ -348,6 +348,13 @@ jobs:
     # build-dem.yml, build-basemap.yml): publish() does a read-modify-write
     # of the manifest, and two concurrent publishes could interleave and
     # clobber each other's entries.
+    #
+    # `environment:` and `concurrency:` on the same job means a run left
+    # `waiting` on the reviewer above holds this group for as long as it
+    # waits - the same shape as `publish-vector-data.yml`'s `publish` job
+    # (#1271), moot here in practice while this workflow stays withdrawn
+    # (#855) but worth fixing consistently with the other three if it is
+    # ever revived.
     concurrency:
       group: publish-data
       cancel-in-progress: false

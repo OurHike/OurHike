@@ -1260,6 +1260,23 @@ jobs:
   # its coalescing race against, per #838 finding 1) however long THIS job
   # takes, not however long the whole build does. Minutes, not two hours -
   # the actual latency the investigation behind #1265 was answering.
+  #
+  # WHAT IT DOES NOT BUY: a dispatch nobody approves promptly. `environment:`
+  # and `concurrency:` are both on this one job (see the reasoning at each
+  # key below), so a run that reaches `waiting` on the reviewer holds the
+  # group for as long as it sits there, not for however long the job itself
+  # takes once approved - measured 2026-09-08 (#1271): run #84 sat `waiting`
+  # for 92 minutes overnight, and `publish-conditions.yml`'s cron queued
+  # `pending` behind it the whole time rather than running. That is the
+  # safety layer - closures, serious warnings, field notes - stalled by an
+  # unattended dispatch, not merely a maintainer's re-dispatch chore.
+  # `build-basemap.yml`, `build-dem.yml` and `build-raster.yml`'s `publish`
+  # jobs share the identical shape and are equally capable of holding this
+  # group open. #1271 names three possible fixes - splitting the approval
+  # into its own job that owns no concurrency, a watchdog that cancels a
+  # long `waiting` run, or (this comment) documenting the risk - and leaves
+  # the choice open rather than picking one. Until it is picked: dispatch a
+  # real publish only when somebody can approve it within the hour.
   publish:
     needs: build
     # Unconditional on inputs.publish alone would run this job - and wait on

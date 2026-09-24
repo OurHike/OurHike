@@ -84,6 +84,24 @@ def test_nobody_can_register_an_organization_they_have_no_address_at(client):
     assert "ramapotrails.org" in response.json()["detail"]
 
 
+def test_a_public_webmail_domain_cannot_be_registered_as_an_organizations_own(client):
+    """#1641 finding 3: `gmail.com` passed the domain proof, because anybody
+    can get an address there - the registrant's own gmail.com address
+    trivially "held" gmail.com, which proves nothing about who runs an
+    organization. This has to fail before the domain-holds check ever runs,
+    because a registrant with a gmail.com address always holds gmail.com."""
+    response = _register(
+        client,
+        str(uuid.uuid4()),
+        email="somebody@gmail.com",
+        domain="gmail.com",
+        admins=[],
+    )
+
+    assert response.status_code == 422
+    assert "public email provider" in response.json()["detail"][0]["msg"]
+
+
 def test_an_invited_admin_on_the_domain_gets_the_registration_accepted(client):
     """The caller does not personally have to hold the address - one of the
     three does, which is what an org whose chair uses a personal email needs.
@@ -376,11 +394,16 @@ def test_the_real_organization_can_still_claim_a_held_registration(client, db_se
     A stranger registering somebody else's organization does not lock them
     out of it: `pending` is not `claimed`, so the ordinary claim flow is open
     to anybody who holds an address at the domain, and taking it makes them a
-    codeowner of the org that was sitting in their name.
+    codeowner of the org that was sitting in their name - and #1641 finding
+    3's third bullet is why the squatter's own seat has to be gone by the
+    time this returns, not merely outnumbered: a permanent, unverified
+    codeowner seat over somebody else's organization is exactly what
+    `pending` existed to prevent.
     """
+    squatter = str(uuid.uuid4())
     _register(
         client,
-        str(uuid.uuid4()),
+        squatter,
         email="squatter@gmail.com",
         admins=[{"email": "secretary@ramapotrails.org"}],
     )
@@ -397,6 +420,59 @@ def test_the_real_organization_can_still_claim_a_held_registration(client, db_se
     club = db_session.query(Club).one()
     assert club.state == OrgState.claimed
     seat = db_session.query(OrgAdmin).filter(OrgAdmin.person_id == maria.id).one()
+    assert seat.is_codeowner is True
+    assert db_session.query(OrgAdmin).filter(OrgAdmin.person_id == squatter).one_or_none() is None
+
+
+def test_approving_an_invited_admins_seat_also_revokes_the_squatters(client, db_session):
+    """The other door to the same release - #1641 finding 3's third bullet,
+    reached through `approve_seat` rather than `claim_org`. The invited
+    secretary saying yes is what the codebase already calls "the one thing
+    that releases a held registration" (see the comment in approve_seat);
+    the registrant's own codeowner seat, granted at registration with no
+    domain check at all, has to go the same moment - not stay a permanent,
+    unverified admin over an organization they never proved anything about.
+    """
+    squatter = str(uuid.uuid4())
+    _register(
+        client,
+        squatter,
+        email="squatter@gmail.com",
+        admins=[{"email": "secretary@ramapotrails.org"}],
+    )
+    secretary = make_profile(db_session)
+    headers = auth_headers(secretary.id, email="secretary@ramapotrails.org")
+    client.get("/clubs/ramapo-trail-conference/access", headers=headers)
+    seat = db_session.query(OrgAdmin).filter(OrgAdmin.person_id == secretary.id).one()
+
+    response = client.post(f"/clubs/ramapo-trail-conference/admins/{seat.id}/approve", headers=headers)
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    club = db_session.query(Club).one()
+    assert club.state == OrgState.claimed
+    assert db_session.query(OrgAdmin).filter(OrgAdmin.person_id == squatter).one_or_none() is None
+    remaining = db_session.query(OrgAdmin).filter(OrgAdmin.person_id == secretary.id).one()
+    assert remaining.approved_at is not None
+
+
+def test_a_registrant_who_really_does_hold_the_domain_keeps_their_own_seat(client, db_session):
+    """The guard that stops the fix from punishing the ordinary case: an org
+    whose own founder signs up, invites a colleague, and later proves the
+    domain themselves - nothing here revokes the seat of the person who just
+    did the proving."""
+    founder = str(uuid.uuid4())
+    _register(
+        client,
+        founder,
+        email="chair@ramapotrails.org",
+        admins=[{"email": "secretary@ramapotrails.org"}],
+    )
+    club = db_session.query(Club).one()
+    assert club.state == OrgState.claimed  # the registrant's own address already proved it
+
+    seat = db_session.query(OrgAdmin).filter(OrgAdmin.person_id == founder).one_or_none()
+    assert seat is not None
     assert seat.is_codeowner is True
 
 

@@ -257,14 +257,15 @@ def check_auth_config(config: dict, offered: set[str], report: Report) -> None:
 
     @unvalidated - EVERY FIELD NAME BELOW. `smtp_host`, `smtp_sender_name`,
     `mailer_templates_magic_link_content`, `mailer_templates_confirmation_content`,
-    `mailer_otp_length`, `mailer_otp_exp`, `rate_limit_email_sent` and
-    `external_<provider>_client_id` were read off Supabase's management API
-    reference and have never been checked against a response from a live
-    project, because this half of the check is gated on a token nobody has
-    run it with yet. What would settle it is one `workflow_dispatch` of
-    supabase-config-check.yml with `SUPABASE_ACCESS_TOKEN` set, against
-    either project - the run either prints the settings or names the keys it
-    could not find, and after that this tag comes off.
+    `mailer_otp_length`, `mailer_otp_exp`, `rate_limit_email_sent`,
+    `mailer_autoconfirm` and `external_<provider>_client_id` were read off
+    Supabase's management API reference and have never been checked against a
+    response from a live project, because this half of the check is gated on
+    a token nobody has run it with yet. What would settle it is one
+    `workflow_dispatch` of supabase-config-check.yml with
+    `SUPABASE_ACCESS_TOKEN` set, against either project - the run either
+    prints the settings or names the keys it could not find, and after that
+    this tag comes off.
 
     A wrong name fails in two directions and neither is silent, which is the
     reason for the `else` branches below rather than a bare `isinstance`: a
@@ -273,6 +274,36 @@ def check_auth_config(config: dict, offered: set[str], report: Report) -> None:
     having looked at nothing - "the shape of mistake that makes a green check
     mean nothing", as LAUNCH_CHECKLIST.md 4.5 puts it.
     """
+    # Checked unconditionally, not only when "email" is offered - #1641
+    # finding 2. `register_org` and `get_current_email` (app/core/auth.py)
+    # both trust the JWT's `email` claim as a Provider fact once Supabase
+    # calls it verified, and the org email-domain gate stands entirely on
+    # that trust. The anon key is public - it ships in every client bundle -
+    # so a direct `signUp({ email, password })` against Supabase's REST API
+    # reaches this project whether or not this app's own screens offer a
+    # password field. With autoconfirm on, that sign-up returns a CONFIRMED
+    # session with no OTP and no proof anybody read the mailbox: the domain
+    # gate would accept `chair@ramapotrails.org` from whoever typed it.
+    autoconfirm = config.get("mailer_autoconfirm")
+    if autoconfirm is True:
+        report.fail(
+            "The project's auth config has mailer_autoconfirm = true. A direct password "
+            "sign-up against Supabase's REST API - reachable with the public anon key whether "
+            "or not this app offers a password field - then returns a CONFIRMED session with "
+            "no OTP and no proof of mailbox control. app/core/auth.py's get_current_email and "
+            "the org email-domain gate both trust a verified 'email' claim as a Provider fact; "
+            "this setting is what makes that fact true for real. Turn it off under "
+            "Authentication -> Providers -> Email."
+        )
+    elif autoconfirm is False:
+        report.ok("mailer_autoconfirm is off, so a password sign-up still needs a confirmed email.")
+    else:
+        report.warn(
+            "The project's auth config has no boolean 'mailer_autoconfirm', so autoconfirm was "
+            "NOT checked. Either this script has the field name wrong - see the @unvalidated "
+            "note on check_auth_config - or the API stopped returning it."
+        )
+
     if "email" in offered:
         host = (config.get("smtp_host") or "").strip()
         if host:

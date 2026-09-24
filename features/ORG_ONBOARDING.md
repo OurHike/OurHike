@@ -305,6 +305,15 @@ it agreement. A sign-in alone would prove only the first, and an organization "c
 secretary who opened OurHike to look at a trail has confirmed nothing. The registrant approving
 their own seat releases nothing, because theirs is the address that failed the check.
 
+**Releasing it also revokes the registrant's own seat** (`_revoke_the_registrants_unverified_seat`,
+both here and in Claim your org, added after #1641 found the gap). Registering grants an approved
+codeowner seat on the spot, whatever `state` says — checked against nothing until this moment, so
+a stranger who typed a real employee's address as an admin invite kept a permanent, unverified
+codeowner seat over that employee's own organization once the employee did the honest thing and
+approved it. The registrant keeps their seat only when they are the one whose address just proved
+the domain; otherwise "the authority is the invitation" (#1635) applies to them too, and the
+now-verified admin can invite them again if they really do work there.
+
 **The real organization is never locked out.** `pending` is not `claimed`, so Claim your org stays
 open to anybody holding an address at the domain, and taking it makes them a codeowner of the org
 that was sitting in their name. That recourse is why holding is enough.
@@ -978,6 +987,11 @@ What this design does not answer, stated plainly.
   `client_fingerprint(null)` hashes the word "unknown", so they share a day. It fails in the safe
   direction — the spend stays bounded — and it means one person can exhaust the free lookup for
   everybody behind that proxy. The nominate form works without the panel.
+- **A deployment-wide ceiling caps every caller together, added after #1641.** Each org and each
+  public caller already had its own budget, but `register_org` lets anybody create an org, so the
+  number of budgets was unbounded even though each one was capped — `assist_global_daily_token_budget`
+  (`app/config.py`, `@unvalidated` for the same reason the per-org number is) is the total the
+  Anthropic key is on the hook for across the whole deployment in a rolling 24 hours.
 
 - **The 10% deactivation hold is `@unvalidated`.** Picked, not measured. What would settle it: one
   real roster sync against an org's live feed, and the distribution of how much a normal run actually

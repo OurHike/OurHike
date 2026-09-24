@@ -35,6 +35,46 @@ RESERVED_SLUGS = frozenset(
     {"new", "claim", "nominate", "nominations", "demo", "setup", "volunteers", "admins", "admin", "api", "org"}
 )
 
+# Domains that hand an address to any stranger who signs up, so an email
+# there proves nothing about who runs an organization - #1641 finding 3.
+# `register_org`'s whole domain-proof design is "this person holds an
+# address at the org's own domain"; a free webmail domain makes that
+# sentence true for anybody on the internet, so `gmail.com` passed the proof
+# exactly as if it named a real club's mail server.
+#
+# @unvalidated: a hand-picked list of the providers likely to actually be
+# typed into this form, not a maintained public-email-domain dataset (the
+# kind services like Mailgun or Kickbox publish and update). What would
+# settle it: real registration attempts naming a domain outside this list
+# that turns out to be public mail anyway - none have happened yet, because
+# this gate did not exist before now.
+PUBLIC_EMAIL_DOMAINS = frozenset(
+    {
+        "gmail.com",
+        "googlemail.com",
+        "yahoo.com",
+        "ymail.com",
+        "hotmail.com",
+        "outlook.com",
+        "live.com",
+        "msn.com",
+        "icloud.com",
+        "me.com",
+        "mac.com",
+        "aol.com",
+        "protonmail.com",
+        "proton.me",
+        "gmx.com",
+        "gmx.net",
+        "mail.com",
+        "zoho.com",
+        "yandex.com",
+        "qq.com",
+        "163.com",
+        "126.com",
+    }
+)
+
 
 def slugify(name: str) -> str:
     """A candidate slug for `name` - the same shape the migration backfills.
@@ -251,6 +291,12 @@ class OrgCreate(BaseModel):
         cleaned = value.strip().lower().removeprefix("https://").removeprefix("http://").strip("/")
         if "." not in cleaned or " " in cleaned:
             raise ValueError("give the bare domain, e.g. ramapotrails.org")
+        if cleaned in PUBLIC_EMAIL_DOMAINS:
+            raise ValueError(
+                f"{cleaned} is a public email provider, not an organization's own domain - "
+                "anybody can get an address there, so it cannot prove who runs a club. "
+                "Give the domain your organization's own website and mail run on."
+            )
         return cleaned
 
 

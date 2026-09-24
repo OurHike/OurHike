@@ -146,6 +146,7 @@ CONFIGURED_AUTH = {
     "mailer_otp_length": check.EMAIL_CODE_MIN_LENGTH,
     "mailer_otp_exp": check.EMAIL_CODE_MAX_EXPIRY_SECONDS,
     "rate_limit_email_sent": 100,
+    "mailer_autoconfirm": False,
     "external_google_enabled": True,
     "external_google_client_id": "123.apps.googleusercontent.com",
     "external_github_enabled": True,
@@ -266,6 +267,55 @@ def test_check_auth_config_does_not_demand_a_sender_when_email_is_not_offered():
     check.check_auth_config({"external_google_enabled": True, "external_google_client_id": "x"}, {"google"}, report)
 
     assert not report.failed
+
+
+def test_check_auth_config_fails_when_mailer_autoconfirm_is_on():
+    # #1641 finding 2. Autoconfirm on means a direct password sign-up against
+    # Supabase's own REST API - reachable with the public anon key regardless
+    # of whether this app offers a password field - returns a confirmed
+    # session with no proof anybody read the mailbox, and the org
+    # email-domain gate (app/core/auth.py's get_current_email) trusts that
+    # confirmation as fact.
+    report = check.Report()
+
+    check.check_auth_config({**CONFIGURED_AUTH, "mailer_autoconfirm": True}, ALL_THREE, report)
+
+    assert report.failed
+
+
+def test_check_auth_config_passes_when_mailer_autoconfirm_is_off():
+    report = check.Report()
+
+    check.check_auth_config(CONFIGURED_AUTH, ALL_THREE, report)
+
+    assert not report.failed
+
+
+def test_check_auth_config_only_warns_when_mailer_autoconfirm_is_missing():
+    # The same two-directions-of-failure shape every field in this function
+    # has: a wrong field name must not read as "off" and pass silently.
+    report = check.Report()
+    config = dict(CONFIGURED_AUTH)
+    del config["mailer_autoconfirm"]
+
+    check.check_auth_config(config, ALL_THREE, report)
+
+    assert not report.failed
+
+
+def test_check_auth_config_checks_autoconfirm_even_when_email_is_not_offered():
+    # The anon key can reach Supabase's REST API directly, whatever this
+    # app's own build offers - so a Google-only build with autoconfirm on
+    # is still a real hole in the org domain gate, not a moot setting.
+    report = check.Report()
+
+    check.check_auth_config(
+        {"external_google_enabled": True, "external_google_client_id": "x", "mailer_autoconfirm": True},
+        {"google"},
+        report,
+    )
+
+    assert report.failed
 
 
 def test_EMAIL_CODE_TEMPLATES_are_the_one_a_returning_address_gets_and_the_one_a_new_one_gets():

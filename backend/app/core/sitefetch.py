@@ -39,7 +39,9 @@ from typing import Callable
 from urllib import robotparser
 from urllib.parse import urljoin, urlsplit
 
+import httpcore
 import httpx
+from httpx._config import create_ssl_context
 
 from app.core.urlguard import Resolver, SafeTarget, UrlRefused, follow, inspect, system_resolver
 
@@ -180,6 +182,98 @@ class Page:
 #: fetcher's decisions can be tested without a socket.
 PeerReader = Callable[[httpx.Response], "str | None"]
 
+#: The attribute `reader()` hangs its pin table on, and `read_page` writes to
+#: before every send. A plain attribute rather than a new return type, so
+#: `reader()` still hands back an ordinary `httpx.Client` and every existing
+#: caller and test that builds its own `httpx.Client(transport=...)` keeps
+#: working unchanged - `getattr` below is a no-op for either.
+PIN_ATTRIBUTE = "ourhike_pinned_addresses"
+
+
+class PinnedBackend(httpcore.NetworkBackend):
+    """Connects to an address `urlguard.py` already approved, never to one DNS
+    hands back fresh.
+
+    **THIS IS THE HALF THE PEER CHECK COULD NOT BE, per #1641 finding 5.**
+    `peer_is_expected` below proves what a connection reached only after the
+    connection is open and the GET already sent - so a name that rebinds
+    between `inspect()`'s check and the socket still received a blind
+    request before anybody noticed. Pinning closes the window instead of
+    reporting on it: `connect_tcp` is handed the hostname exactly as
+    `httpcore` always hands it, and rather than resolving it again - which is
+    the step a rebinding attacker is waiting on - it looks the host up in
+    `pins`, the addresses `inspect()`/`follow()` already validated as public,
+    and dials one of those directly. DNS is asked exactly once per address,
+    by `urlguard.inspect`, and never again for the same fetch.
+
+    **AN UNPINNED HOST IS REFUSED, NOT RESOLVED.** Every request this module
+    sends goes through `inspect()` or `follow()` first and `read_page` pins
+    the result before calling `client.send`, so `pins` missing a host is a
+    bug elsewhere in this module - falling back to ordinary DNS at that point
+    would silently reopen the exact hole this class exists to close, so it
+    raises instead.
+
+    TLS is unaffected: `server_hostname` for certificate validation comes
+    from the request's own URL further up the httpcore stack, never from
+    this method, so connecting by IP here does not relax which certificate
+    is accepted.
+    """
+
+    def __init__(self, pins: dict[str, tuple[str, ...]], *, backend: httpcore.NetworkBackend | None = None) -> None:
+        self._pins = pins
+        # Injectable so tests can prove the substitution happens without a
+        # real socket; production always gets a real one.
+        self._backend = backend if backend is not None else httpcore.SyncBackend()
+
+    def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options=None,
+    ) -> httpcore.NetworkStream:
+        addresses = self._pins.get(host)
+        if not addresses:
+            raise httpcore.ConnectError(
+                f"No approved address is pinned for {host!r} - refusing to let the network resolve it fresh."
+            )
+        last_error: Exception | None = None
+        for address in addresses:
+            try:
+                return self._backend.connect_tcp(
+                    address,
+                    port,
+                    timeout=timeout,
+                    local_address=local_address,
+                    socket_options=socket_options,
+                )
+            except httpcore.ConnectError as exc:
+                last_error = exc
+        assert last_error is not None  # `addresses` was non-empty, so the loop ran at least once.
+        raise last_error
+
+
+class PinnedHTTPTransport(httpx.HTTPTransport):
+    """`httpx.HTTPTransport`, except its connections can only reach a pinned
+    address - see `PinnedBackend`.
+
+    `httpx.HTTPTransport` builds its own `httpcore.ConnectionPool` and takes
+    no `network_backend` argument, so this builds the same pool a second time
+    with one added. `create_ssl_context` is the same call `HTTPTransport`
+    makes internally (`httpx._config`, a private module but a stable one -
+    `check_supabase_config.py` already leans on this backend's pinned
+    version); duplicating it here is cheaper than exposing a constructor
+    parameter upstream does not offer.
+    """
+
+    def __init__(self, pins: dict[str, tuple[str, ...]], *, trust_env: bool = False) -> None:
+        super().__init__(trust_env=trust_env)
+        self._pool = httpcore.ConnectionPool(
+            ssl_context=create_ssl_context(verify=True, cert=None, trust_env=trust_env),
+            network_backend=PinnedBackend(pins),
+        )
+
 
 def reader(*, trust_env: bool = False) -> httpx.Client:
     """The client this module is meant to be driven with.
@@ -191,18 +285,29 @@ def reader(*, trust_env: bool = False) -> httpx.Client:
     that moment, and the peer this module checks becomes the proxy rather than
     the site. A deployment that genuinely must egress through a proxy turns
     this on and turns `site_fetch_require_peer_match` off, and knows it has
-    traded away the rebinding guarantee.
+    traded away the rebinding guarantee - and turning `trust_env` on also
+    means `PinnedHTTPTransport` cannot help: the proxy resolves the name, not
+    this process, so there is nothing here to pin.
 
     Redirects are not followed by the client, because `read_page` follows them
     itself through `urlguard.follow` - a client that followed them would check
     the first address and open the rest.
+
+    The pin table lives on the client as `PIN_ATTRIBUTE` rather than in a
+    second object `read_page` also has to be handed, so this stays a plain
+    `httpx.Client` from every caller's point of view - `with reader() as
+    client:` in app/routers/nominations.py is unchanged.
     """
-    return httpx.Client(
+    pins: dict[str, tuple[str, ...]] = {}
+    client = httpx.Client(
+        transport=PinnedHTTPTransport(pins, trust_env=trust_env),
         timeout=TIMEOUT,
         follow_redirects=False,
         trust_env=trust_env,
         headers={"user-agent": USER_AGENT},
     )
+    setattr(client, PIN_ATTRIBUTE, pins)
+    return client
 
 
 def peer_unchecked(response: httpx.Response) -> str | None:
@@ -448,13 +553,27 @@ def read_page(
                 "accept-language": "en",
             },
         )
+        # Pinned before the send, not after: PinnedBackend.connect_tcp reads
+        # this dict at connect time, so the addresses have to be there before
+        # `client.send` opens the socket. A client with no pin table (every
+        # test in this file, which drives an `httpx.MockTransport` instead of
+        # a real one) just gets a no-op here - see PIN_ATTRIBUTE.
+        pins = getattr(client, PIN_ATTRIBUTE, None)
+        if pins is not None:
+            pins[target.host] = target.addresses
+
         try:
             response = client.send(request, stream=True, follow_redirects=False)
         except httpx.HTTPError as exc:
             raise FetchRefused(f"We could not reach {target.host}.") from exc
 
-        # Before the body. Every hop, not only the first: a chain whose first
-        # host is real and whose second has rebound is the shape this catches.
+        # Still checked even though PinnedBackend now makes it structural
+        # rather than the only defence: this is what proves the pin was
+        # honoured, and it is the one check a deployment with
+        # site_fetch_require_peer_match off (an egress proxy, see reader())
+        # still has, because that setting turns trust_env on and pinning
+        # cannot reach through a proxy either. Every hop, not only the
+        # first.
         if not peer_is_expected(target, read_peer(response)):
             response.close()
             raise FetchRefused(

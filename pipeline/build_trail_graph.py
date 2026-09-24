@@ -98,9 +98,7 @@ import argparse
 import bisect
 import json
 import math
-import os
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -110,6 +108,7 @@ from shapely.geometry import LineString, MultiLineString, Point, shape
 from shapely.ops import transform
 from shapely.strtree import STRtree
 
+from lib.cores import across_cores
 from lib.hashing import sha256_file
 from lib.manifest_paths import to_manifest_path
 
@@ -270,27 +269,6 @@ def _split_at(line: LineString, points: list[Point]) -> list[LineString]:
     return _split_all([line], [points])[0]
 
 
-def _across_cores(function, geometries: np.ndarray, values: np.ndarray, chunks: int = 64) -> np.ndarray:
-    """`function(geometries, values)` computed in chunks on a thread per core.
-
-    For shapely's `line_locate_point` and `line_interpolate_point`, which
-    walk a line from its start for every point they are asked about, so the
-    real network's long Forest Service lines make them the bulk of
-    `_split_all` (26.6 s and 10.1 s single-threaded, measured 2026-09-24).
-    Shapely releases the GIL inside them, so four threads ran the same calls
-    in 7.9 s and 5.0 s. The answers are identical to the single call's: the
-    same GEOS function sees the same inputs, and the chunks are rejoined in
-    their original order.
-    """
-    if len(geometries) == 0:
-        return function(geometries, values)
-    workers = min(8, os.cpu_count() or 1)
-    parts = np.array_split(np.arange(len(geometries)), min(chunks, len(geometries)))
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        results = list(pool.map(lambda part: function(geometries[part], values[part]), parts))
-    return np.concatenate(results)
-
-
 def _split_all(lines: list[LineString], cut_points: list[list[Point]]) -> list[list[LineString]]:
     """Every line cut at its points, as `_split_at` describes, in one batch.
 
@@ -326,7 +304,7 @@ def _split_all(lines: list[LineString], cut_points: list[list[Point]]) -> list[l
     point_array[:] = [point for points in cut_points for point in points]
     owner_array = np.asarray(owners)
     # line.project(point) and line.length, for every cut point at once.
-    distances = _across_cores(shapely.line_locate_point, line_array[owner_array], point_array).tolist()
+    distances = across_cores(shapely.line_locate_point, line_array[owner_array], point_array).tolist()
     lengths = shapely.length(line_array).tolist()
 
     cuts_by_line: dict[int, list[float]] = defaultdict(list)
@@ -351,10 +329,10 @@ def _split_all(lines: list[LineString], cut_points: list[list[Point]]) -> list[l
 
     interval_lines = line_array[np.asarray(interval_line)]
     starts = shapely.get_coordinates(
-        _across_cores(shapely.line_interpolate_point, interval_lines, np.asarray(interval_start))
+        across_cores(shapely.line_interpolate_point, interval_lines, np.asarray(interval_start))
     ).tolist()
     ends = shapely.get_coordinates(
-        _across_cores(shapely.line_interpolate_point, interval_lines, np.asarray(interval_end))
+        across_cores(shapely.line_interpolate_point, interval_lines, np.asarray(interval_end))
     ).tolist()
 
     piece_coordinates: list[list[float]] = []

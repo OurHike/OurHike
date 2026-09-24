@@ -52,6 +52,7 @@ from export_elevation import calibrated_trail_axis
 from lib.arcgis import get_field_coded_domain
 from lib.blaze import load_blaze_mapping, map_source_blaze, normalize_blaze_color
 from lib.completeness import count_problems, fail_if_incomplete
+from lib.cores import across_cores
 from lib.corridor import build_corridor
 from lib.feature_id import resolve_feature_id
 from lib.hashing import sha256_file
@@ -817,42 +818,54 @@ def vertex_miles(
 
     Projected onto `calibrated_trail_axis` the way `export_poi.attach_miles`
     projects a POI: nearest calibrated piece by STRtree, then that piece's
-    own `mile_at`. Vectorised per piece rather than one `project()` per
-    vertex - 216,759 vertices is a few seconds this way and minutes the
-    other."""
+    own `mile_at`. Every vertex of every part goes through each step as one
+    array (#1660), and the two GEOS steps run on every core through
+    `lib.cores.across_cores`. Both walk long lines - 687,353 axis vertices
+    over 562 pieces - so they were 186.1 s of this function's 198 s when
+    they ran once per part and piece. This way the function takes 59.4 s on
+    4 cores: 22.4 s nearest, 27.3 s locating, and 9.3 s building the axis,
+    which is not threaded (measured 2026-09-24 against the real centerline's
+    216,767 vertices; the file came out byte-identical). Every vertex's
+    answer is the same GEOS call on the same inputs either way, and
+    test_batched_vertex_miles_equal_the_one_part_at_a_time_miles_to_the_bit
+    compares the two to the bit."""
     calibrated = calibrated_trail_axis(con, centerline_path, markers_path)
-    tree = STRtree([cal.line for cal in calibrated])
+    axis_lines = np.array([cal.line for cal in calibrated], dtype=object)
+    tree = STRtree(axis_lines)
     to_metric = Transformer.from_crs(GEOGRAPHIC_CRS, PROJECTED_CRS, always_xy=True)
 
+    chained = [record for record in records if record["source"] in CHAIN_MERGED_SOURCES]
+    geoms = [shapely_wkt.loads(record["wkt"]) for record in chained]
+    parts_of = [[geom] if geom.geom_type == "LineString" else list(geom.geoms) for geom in geoms]
+    parts = [part for record_parts in parts_of for part in record_parts]
+
+    coords = shapely.get_coordinates(parts)
+    xs, ys = to_metric.transform(coords[:, 0], coords[:, 1])
+    points = shapely.points(xs, ys)
+    nearest = across_cores(tree.nearest, points)
+    along_m = across_cores(shapely.line_locate_point, axis_lines[nearest], points)
+    miles = np.empty(len(points))
+    for piece in np.unique(nearest):
+        mask = nearest == piece
+        miles[mask] = calibrated[int(piece)].mile_at(along_m[mask])
+    miles = np.round(miles, TRAIL_MILE_DECIMALS)
+
     miles_by_id: dict[str, list] = {}
-    vertex_count = 0
     breaks = 0
     features_with_breaks = 0
-
-    def miles_of(line) -> np.ndarray:
-        coords = np.asarray(line.coords)[:, :2]
-        xs, ys = to_metric.transform(coords[:, 0], coords[:, 1])
-        points = shapely.points(xs, ys)
-        nearest = tree.nearest(points)
-        out = np.empty(len(points))
-        for piece in np.unique(nearest):
-            mask = nearest == piece
-            cal = calibrated[int(piece)]
-            out[mask] = cal.mile_at(shapely.line_locate_point(cal.line, points[mask]))
-        return np.round(out, TRAIL_MILE_DECIMALS)
-
-    for record in records:
-        if record["source"] not in CHAIN_MERGED_SOURCES:
-            continue
-        geom = shapely_wkt.loads(record["wkt"])
-        parts = [geom] if geom.geom_type == "LineString" else list(geom.geoms)
+    ends = np.cumsum(shapely.get_num_coordinates(parts)).tolist()
+    start = 0
+    part_index = 0
+    for record, geom, record_parts in zip(chained, geoms, parts_of):
         per_part = []
         record_breaks = 0
-        for part in parts:
-            miles = miles_of(part)
-            vertex_count += len(miles)
-            record_breaks += _monotonic_breaks(miles)
-            per_part.append([float(m) for m in miles])
+        for _ in record_parts:
+            end = ends[part_index]
+            part_miles = miles[start:end]
+            record_breaks += _monotonic_breaks(part_miles)
+            per_part.append(part_miles.tolist())
+            start = end
+            part_index += 1
         breaks += record_breaks
         if record_breaks:
             features_with_breaks += 1
@@ -860,7 +873,7 @@ def vertex_miles(
 
     stats = {
         "feature_count": len(miles_by_id),
-        "vertex_count": vertex_count,
+        "vertex_count": len(points),
         "monotonic_breaks": breaks,
         "features_with_breaks": features_with_breaks,
     }

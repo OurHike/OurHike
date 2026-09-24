@@ -42,17 +42,18 @@ Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHN
 
 **"Responsibly," answered directly: relay, don't originate.** OurHike shouldn't try to interpret raw weather data into its own severe-weather judgment - it should show NWS's own already-issued alerts (headline, effective/expiry window, official text), clearly labeled as a relayed NWS alert. This is the same principle FEATURES.md's Water Reliability Prediction section already commits to: "a confidently wrong prediction is more dangerous than an honest unknown" - the authority and the liability both stay with NWS, where they belong.
 
-**Architecture: proxy and cache through OurHike's own backend, don't have every phone call NWS directly.** NWS's docs explicitly note point-to-zone mappings "don't change very often" and ask callers to cache them - many hikers within the same few trail miles resolve to the same forecast zone, so a shared cache at the Phase 2+ backend (already planned, FastAPI/Postgres) avoids redundant load on a free public service. This is what "responsibly" means here in the same sense OSM's tile policy already shaped the background-tile decision in Map Options: be a good citizen of a free public resource, don't just consume it at max volume because it's technically reachable.
+**Architecture — superseded 2026-09-24 by [WEATHER.md](WEATHER.md) §2 and §6.** This paragraph used to route alerts through a proxy and cache on OurHike's own backend. The maintainer chose a scheduled publish to R2 instead, the road closures already take ([CONDITIONS_DELIVERY.md](CONDITIONS_DELIVERY.md)), and it turned out to be one request: `/alerts/active` returns every active US alert at once (596 of them, 2.8 MB, measured 2026-09-24), so the job asks NWS once an hour and no phone asks at all. The good-citizen reasoning this paragraph gave still holds, and is better served by one call an hour than by a cache in front of many.
 
 **Geographic scope:** ties to the hiker's live GPS position (already MVP) or a planned Segment's location (Trip Planning) - either resolves to the same NWS zone lookup, no separate mechanism needed per source.
 
 **Notification - a genuine open tension, not resolved here.** OurHike sends no push notification of any kind today (section 5 below records the wrong-way alert's removal). A tornado warning or flash-flood alert is arguably as time-critical as being lost - it's a real question whether weather alerts would be worth building push infrastructure for at all, or whether they stay in-app-only like serious warnings above. Flagging this directly rather than picking one side quietly.
 
-## 4. Weather conditions (daily temperature)
+## 4. Weather conditions (daily temperature) — moved to [WEATHER.md](WEATHER.md), 2026-09-24
 
-**Checked [atweather.org](https://www.atweather.org/) directly, since you pointed at it specifically.** It's a real, well-targeted hobby project (run by an individual, Pat Jones, NWS/NOAA-sourced, per-shelter and per-waypoint forecasts with elevation listed for each) - genuinely the right shape of feature, and worth a courtesy outreach the same way ROADMAP.md already plans for opentrail.org's maintainer, both as reciprocity and because they've clearly already thought about this problem. **But it has no public API or data feed** - there's nothing to integrate against as a live dependency, the same "inspirational prior art, not a technical dependency" situation as opentrail.org before its own outreach happens.
+Forecasts now have their own doc, which owns the source, the precision, the cadence, the delivery and what a hiker sees when the phone has been out of signal for hours. Two things this section used to say are corrected there rather than left standing here:
 
-**The actual buildable path: replicate the approach directly on the same underlying free data, using what this project already has.** Same NWS point-lookup plumbing as section 3's alerts (literally the same API call, different response fields - current conditions/forecast instead of alerts - not a second integration). The elevation-sensitivity the user is right to flag ("weather changes a lot based on elevation") is exactly what the already-MVP dense 1-meter DEM elevation data (see [TRIP_PLANNING.md](TRIP_PLANNING.md)'s design history) is for - and it's a real opportunity to do this *better* than atweather.org's own approach, which is necessarily limited to named shelters/waypoints: OurHike's continuous elevation coverage means a forecast/current-temp reading could be offered at any point along the trail a hiker actually is, not just at a fixed list of named locations.
+- **"It has no public API or data feed" was about atweather.org, and it is not true of the field.** longtrailsweather.net, a separate project by OpenLongTrails.org, publishes JSON for 90 A.T. points ([#1056](https://github.com/OurHike/OurHike/issues/1056) — *v2: weather on Today, on a waypoint, and along a planned route*). It is still not the source OurHike should ship, for reasons WEATHER.md §2 and §7 give, but the door this section described as shut was not.
+- **"A forecast at any point along the trail" using the DEM is right for one model and wrong for the other.** Correcting NOAA's NBM forecast for elevation made tomorrow's high *worse* at Mount Washington (2.8 °F off became 4.5 °F) and on average across eight stations; correcting HRRR's made it the best in the table. So the design corrects HRRR for the first two days' temperature and leaves NBM as published. WEATHER.md §3 has the table and its limits.
 
 ## 5. Wrong-way / off-trail alert — removed 2026-09-08
 
@@ -82,7 +83,7 @@ Report                       (extends REPORT_A_PROBLEM.md's existing model)
             else report.timestamp (exact)
   }
 
-WeatherAlert                  (relayed + briefly cached server-side, not owned data)
+WeatherAlert                  (relayed; published hourly to R2 - WEATHER.md §2; not owned data)
   nws_alert_id, zone, headline, effective, expires, relayed_at
 ```
 

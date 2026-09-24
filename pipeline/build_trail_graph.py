@@ -95,14 +95,17 @@ default below is a starting point and not a finding.
 from __future__ import annotations
 
 import argparse
+import bisect
 import json
 import math
 from collections import defaultdict
 from pathlib import Path
 
+import numpy as np
+import shapely
 from pyproj import Transformer
 from shapely.geometry import LineString, MultiLineString, Point, shape
-from shapely.ops import substring, transform
+from shapely.ops import transform
 from shapely.strtree import STRtree
 
 from lib.hashing import sha256_file
@@ -262,28 +265,100 @@ def _split_at(line: LineString, points: list[Point]) -> list[LineString]:
     A cut at the very start or end makes a zero-length piece and no new
     junction - the endpoint is already a node - so those are dropped.
     """
-    if not points:
-        return [line]
+    return _split_all([line], [points])[0]
 
-    cuts = []
-    for point in points:
-        distance = line.project(point)
-        if distance <= NODE_QUANT_M or distance >= line.length - NODE_QUANT_M:
+
+def _split_all(lines: list[LineString], cut_points: list[list[Point]]) -> list[list[LineString]]:
+    """Every line cut at its points, as `_split_at` describes, in one batch.
+
+    WHY A BATCH (#1659). Cutting one piece at a time with
+    `shapely.ops.substring` was 235.3 of this step's 378.6 s on the real
+    network (measured 2026-09-24 on latest.json 6eb20e3e: 156,283 lines,
+    656,621 edges). `substring` is pure Python and walks the line's
+    coordinates on every call, so a long line cut k times paid for its length
+    k times. Here every cut point is projected in one GEOS call, every piece's
+    two ends are interpolated in another, and each line's coordinates are
+    walked once.
+
+    THE PIECES ARE THE ONES `substring` MADE, TO THE BIT, which is the
+    requirement rather than a nicety: edge geometry and length feed the day
+    hike's distance. For a cut 0 <= start < end <= length, `substring`
+    returns `interpolate(start)`, then every vertex before the last whose
+    running distance d satisfies start < d < end, then `interpolate(end)`.
+    The interpolations below are the same GEOS function. The running
+    distances are summed in the same order with the same expression,
+    `((dx) ** 2 + (dy) ** 2) ** 0.5`, deliberately not numpy's, whose power
+    and square-root loops can take a different code path from the one
+    `substring` used and move a vertex across a cut. `tests/
+    test_build_trail_graph.py` holds this module to `substring` directly.
+    """
+    result: list[list[LineString]] = [[line] for line in lines]
+    owners = [index for index, points in enumerate(cut_points) for _ in points]
+    if not owners:
+        return result
+
+    line_array = np.empty(len(lines), dtype=object)
+    line_array[:] = lines
+    point_array = np.empty(len(owners), dtype=object)
+    point_array[:] = [point for points in cut_points for point in points]
+    owner_array = np.asarray(owners)
+    # line.project(point) and line.length, for every cut point at once.
+    distances = shapely.line_locate_point(line_array[owner_array], point_array).tolist()
+    lengths = shapely.length(line_array).tolist()
+
+    cuts_by_line: dict[int, list[float]] = defaultdict(list)
+    for owner, distance in zip(owners, distances):
+        if distance <= NODE_QUANT_M or distance >= lengths[owner] - NODE_QUANT_M:
             continue
-        cuts.append(distance)
+        cuts_by_line[owner].append(distance)
 
-    if not cuts:
-        return [line]
+    interval_line: list[int] = []
+    interval_start: list[float] = []
+    interval_end: list[float] = []
+    for index, cuts in cuts_by_line.items():
+        bounds = [0.0] + sorted(cuts) + [lengths[index]]
+        for start, end in zip(bounds, bounds[1:]):
+            if end - start <= NODE_QUANT_M:
+                continue
+            interval_line.append(index)
+            interval_start.append(start)
+            interval_end.append(end)
+    if not interval_line:
+        return result
 
-    bounds = [0.0] + sorted(cuts) + [line.length]
-    pieces = []
-    for start, end in zip(bounds, bounds[1:]):
-        if end - start <= NODE_QUANT_M:
-            continue
-        piece = substring(line, start, end)
-        if isinstance(piece, LineString) and piece.length > 0:
-            pieces.append(piece)
-    return pieces or [line]
+    interval_lines = line_array[np.asarray(interval_line)]
+    starts = shapely.get_coordinates(shapely.line_interpolate_point(interval_lines, np.asarray(interval_start))).tolist()
+    ends = shapely.get_coordinates(shapely.line_interpolate_point(interval_lines, np.asarray(interval_end))).tolist()
+
+    piece_coordinates: list[list[float]] = []
+    piece_index: list[int] = []
+    running: dict[int, tuple[list, list[float]]] = {}
+    for piece, (index, start, end) in enumerate(zip(interval_line, interval_start, interval_end)):
+        if index not in running:
+            coordinates = shapely.get_coordinates(lines[index]).tolist()
+            walked, distance = [], 0
+            for (x1, y1), (x2, y2) in zip(coordinates, coordinates[1:]):
+                walked.append(distance)
+                distance += ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
+            running[index] = (coordinates, walked)
+        coordinates, walked = running[index]
+        # `walked` holds the distance at every vertex but the last - the ones
+        # substring's loop compares - so the interior vertices are one slice.
+        first = bisect.bisect_right(walked, start)
+        last = bisect.bisect_left(walked, end)
+        vertices = [starts[piece], *coordinates[first:last], ends[piece]]
+        piece_coordinates.extend(vertices)
+        piece_index.extend([piece] * len(vertices))
+
+    pieces = shapely.linestrings(np.asarray(piece_coordinates), indices=np.asarray(piece_index))
+    piece_lengths = shapely.length(pieces).tolist()
+    kept: dict[int, list[LineString]] = defaultdict(list)
+    for piece, index in enumerate(interval_line):
+        if piece_lengths[piece] > 0:
+            kept[index].append(pieces[piece])
+    for index in cuts_by_line:
+        result[index] = kept.get(index) or [lines[index]]
+    return result
 
 
 def node_lines(lines: list[dict], endpoint_snap_m: float) -> tuple[list[dict], dict]:
@@ -337,8 +412,8 @@ def node_lines(lines: list[dict], endpoint_snap_m: float) -> tuple[list[dict], d
                         welds.append(((endpoint.x, endpoint.y), (landing.x, landing.y)))
 
     pieces: list[dict] = []
-    for index, entry in enumerate(lines):
-        for piece in _split_at(entry["line"], cut_points[index]):
+    for entry, line_pieces in zip(lines, _split_all([entry["line"] for entry in lines], cut_points)):
+        for piece in line_pieces:
             pieces.append({"properties": entry["properties"], "line": piece})
 
     return pieces, stats, welds
@@ -400,6 +475,33 @@ def _node_id(x: float, y: float, quant_m: float, buckets: dict, points: list) ->
     return node_id
 
 
+def _geographic_vertices(lines: list[LineString], to_geographic: Transformer) -> list[list[list[float]]]:
+    """Each line's vertices in WGS84, rounded to six decimals, from ONE
+    transform call for all of them (#1659).
+
+    It was one `to_geographic.transform(x, y)` per vertex: 9,579,458 calls on
+    the real network, 16.5 s against 2.7 s for a single array call (measured
+    2026-09-24). The array call runs the same PROJ pipeline on the same
+    coordinates. The rounding is Python's own `round`, not numpy's, whose
+    multiply-round-divide can land on a different last digit and change a
+    published coordinate.
+    """
+    if not lines:
+        return []
+    line_array = np.empty(len(lines), dtype=object)
+    line_array[:] = lines
+    coordinates = shapely.get_coordinates(line_array)
+    lons, lats = to_geographic.transform(coordinates[:, 0], coordinates[:, 1])
+    lons = [round(value, 6) for value in np.asarray(lons).tolist()]
+    lats = [round(value, 6) for value in np.asarray(lats).tolist()]
+    vertices: list[list[list[float]]] = []
+    cursor = 0
+    for count in shapely.get_num_coordinates(line_array).tolist():
+        vertices.append([[lon, lat] for lon, lat in zip(lons[cursor : cursor + count], lats[cursor : cursor + count])])
+        cursor += count
+    return vertices
+
+
 def build_graph(
     pieces: list[dict],
     welds: list[tuple[tuple[float, float], tuple[float, float]]],
@@ -411,9 +513,9 @@ def build_graph(
     node_points: list[tuple[float, float]] = []
     raw_edges: list[dict] = []
 
+    kept: list[tuple[dict, list[int]]] = []
     for piece in pieces:
         line = piece["line"]
-        properties = piece["properties"]
         ends = [
             _node_id(coordinate[0], coordinate[1], quant_m, buckets, node_points)
             for coordinate in (line.coords[0], line.coords[-1])
@@ -423,12 +525,16 @@ def build_graph(
         # float noise, not a walkable circuit.
         if ends[0] == ends[1] and line.length <= quant_m:
             continue
+        kept.append((piece, ends))
 
-        # The piece's own vertices, back in WGS84 - the client draws the
-        # highlight from these and projects taps onto them. Without them an
-        # edge is a straight chord between its junctions, and a chord across a
-        # switchback is a picture of a trail that does not exist.
-        edge_geometry = [[round(lon, 6), round(lat, 6)] for lon, lat in (to_geographic.transform(x, y) for x, y in line.coords)]
+    # The pieces' own vertices, back in WGS84 - the client draws the highlight
+    # from these and projects taps onto them. Without them an edge is a straight
+    # chord between its junctions, and a chord across a switchback is a picture
+    # of a trail that does not exist.
+    geometries = _geographic_vertices([piece["line"] for piece, _ in kept], to_geographic)
+    for (piece, ends), edge_geometry in zip(kept, geometries):
+        line = piece["line"]
+        properties = piece["properties"]
         raw_edges.append(
             {
                 "from": ends[0],

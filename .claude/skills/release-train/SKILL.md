@@ -92,17 +92,36 @@ After each publish completes, dispatch `verify-release.yml` against the
 environment just written (gate 6) - its `base` input for UA, its default for
 production - and read the battery's summary rather than assuming green.
 
-**The backend needs no step here, and that is a fact worth knowing rather than
-an omission.** Render tracks `main`, so it redeploys on every merge and is
-always ahead of the app the tag ships
-([../../../backend/HOSTING.md](../../../backend/HOSTING.md)). The skew that
-would hurt - a new client against an old backend, which 422s the whole
-preferences document and can strand a field note in the outbox for the life of
-the build - cannot happen in that direction. If that tracking setting ever
-changes, this phase gains a step: deploy, confirm `/openapi.json` carries the
-new fields, then continue.
+**The backend needs no step here once it exists, and that is a fact worth
+knowing rather than an omission - but it does not exist yet.**
+[../../../backend/HOSTING.md](../../../backend/HOSTING.md) is the one place
+this is current: Render tracking `main`, so it redeploys on every merge and
+stays ahead of the app the tag ships, is the maintainer's decision
+(2026-08-28) for when a service is created, and **no Render service exists
+yet** ([#600](https://github.com/OurHike/OurHike/issues/600), confirmed with
+the maintainer 2026-09-09) - this phase used to say the setting was live, and
+that read as a fact to anyone who had not seen the dashboard, so it was fixed
+here as well as in HOSTING.md itself (#1641).
+
+So: until #600 lands, this phase truly needs no step, for the trivial reason
+that there is nothing deployed to be ahead or behind of - the app talks to no
+production backend at all. Once #600 creates the service **with the tracking
+setting on**, the ordering above holds by construction and this paragraph's
+first sentence becomes true without anything here changing. If it is created
+*without* that setting, or the setting changes later, this phase gains a
+step: deploy the backend, confirm `/openapi.json` carries the new fields,
+then continue - HOSTING.md's own "What it buys" section has the reasoning in
+full, including the specific 422 (`PreferencesIn` is `extra="forbid"`) that
+skew in the wrong direction produces.
 
 ## Phase 2 - migrations
+
+This phase orders the *tagged release's own* migration ahead of the code that
+needs it. It does not protect an ordinary merge to `main` outside a release
+cut that carries both in the same pull request - once #600 gives Render a
+service tracking `main`, that is a different, undecided gap, documented
+where it is gated: [../../../backend/HOSTING.md](../../../backend/HOSTING.md)'s
+"The gap this does not close".
 
 New revisions under `backend/alembic/versions/` since the last tag mean a
 production migration. **The timing is a judgement no workflow can make**

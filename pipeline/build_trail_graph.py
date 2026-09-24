@@ -98,7 +98,9 @@ import argparse
 import bisect
 import json
 import math
+import os
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -268,6 +270,27 @@ def _split_at(line: LineString, points: list[Point]) -> list[LineString]:
     return _split_all([line], [points])[0]
 
 
+def _across_cores(function, geometries: np.ndarray, values: np.ndarray, chunks: int = 64) -> np.ndarray:
+    """`function(geometries, values)` computed in chunks on a thread per core.
+
+    For shapely's `line_locate_point` and `line_interpolate_point`, which
+    walk a line from its start for every point they are asked about, so the
+    real network's long Forest Service lines make them the bulk of
+    `_split_all` (26.6 s and 10.1 s single-threaded, measured 2026-09-24).
+    Shapely releases the GIL inside them, so four threads ran the same calls
+    in 7.9 s and 5.0 s. The answers are identical to the single call's: the
+    same GEOS function sees the same inputs, and the chunks are rejoined in
+    their original order.
+    """
+    if len(geometries) == 0:
+        return function(geometries, values)
+    workers = min(8, os.cpu_count() or 1)
+    parts = np.array_split(np.arange(len(geometries)), min(chunks, len(geometries)))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        results = list(pool.map(lambda part: function(geometries[part], values[part]), parts))
+    return np.concatenate(results)
+
+
 def _split_all(lines: list[LineString], cut_points: list[list[Point]]) -> list[list[LineString]]:
     """Every line cut at its points, as `_split_at` describes, in one batch.
 
@@ -303,7 +326,7 @@ def _split_all(lines: list[LineString], cut_points: list[list[Point]]) -> list[l
     point_array[:] = [point for points in cut_points for point in points]
     owner_array = np.asarray(owners)
     # line.project(point) and line.length, for every cut point at once.
-    distances = shapely.line_locate_point(line_array[owner_array], point_array).tolist()
+    distances = _across_cores(shapely.line_locate_point, line_array[owner_array], point_array).tolist()
     lengths = shapely.length(line_array).tolist()
 
     cuts_by_line: dict[int, list[float]] = defaultdict(list)
@@ -327,8 +350,12 @@ def _split_all(lines: list[LineString], cut_points: list[list[Point]]) -> list[l
         return result
 
     interval_lines = line_array[np.asarray(interval_line)]
-    starts = shapely.get_coordinates(shapely.line_interpolate_point(interval_lines, np.asarray(interval_start))).tolist()
-    ends = shapely.get_coordinates(shapely.line_interpolate_point(interval_lines, np.asarray(interval_end))).tolist()
+    starts = shapely.get_coordinates(
+        _across_cores(shapely.line_interpolate_point, interval_lines, np.asarray(interval_start))
+    ).tolist()
+    ends = shapely.get_coordinates(
+        _across_cores(shapely.line_interpolate_point, interval_lines, np.asarray(interval_end))
+    ).tolist()
 
     piece_coordinates: list[list[float]] = []
     piece_index: list[int] = []
@@ -482,9 +509,8 @@ def _geographic_vertices(lines: list[LineString], to_geographic: Transformer) ->
     It was one `to_geographic.transform(x, y)` per vertex: 9,579,458 calls on
     the real network, 16.5 s against 2.7 s for a single array call (measured
     2026-09-24). The array call runs the same PROJ pipeline on the same
-    coordinates. The rounding is Python's own `round`, not numpy's, whose
-    multiply-round-divide can land on a different last digit and change a
-    published coordinate.
+    coordinates, and the rounding is `_round6`, which answers what Python's
+    `round(value, 6)` answers.
     """
     if not lines:
         return []
@@ -492,14 +518,38 @@ def _geographic_vertices(lines: list[LineString], to_geographic: Transformer) ->
     line_array[:] = lines
     coordinates = shapely.get_coordinates(line_array)
     lons, lats = to_geographic.transform(coordinates[:, 0], coordinates[:, 1])
-    lons = [round(value, 6) for value in np.asarray(lons).tolist()]
-    lats = [round(value, 6) for value in np.asarray(lats).tolist()]
+    rounded = np.column_stack((_round6(np.asarray(lons, dtype=float)), _round6(np.asarray(lats, dtype=float)))).tolist()
     vertices: list[list[list[float]]] = []
     cursor = 0
     for count in shapely.get_num_coordinates(line_array).tolist():
-        vertices.append([[lon, lat] for lon, lat in zip(lons[cursor : cursor + count], lats[cursor : cursor + count])])
+        vertices.append(rounded[cursor : cursor + count])
         cursor += count
     return vertices
+
+
+def _round6(values: np.ndarray) -> np.ndarray:
+    """`round(value, 6)` for every value, as Python would round it, without
+    20 million calls to Python's `round` (11.6 s against 2.6 s on the real
+    network, measured 2026-09-24).
+
+    WHY NOT JUST `np.round`. Python rounds the exact decimal value of the
+    float. Numpy multiplies by 1e6 first, and the product is itself rounded,
+    so a value whose exact product lies within a hair of a half can be
+    pushed across it and come out one millionth of a degree different - a
+    changed coordinate in a published artifact. Everywhere else the two
+    agree exactly: the integer is the same, and dividing it by 1e6 gives
+    the nearest double to that decimal, which is also what Python returns.
+    So the values whose product lands within 1e-6 of a half are handed to
+    Python's `round` itself. On the real network that is 76 of 20,579,500,
+    and the test suite holds the result to `round` on values built to sit on
+    that edge.
+    """
+    scaled = values * 1e6
+    rounded = np.rint(scaled) / 1e6
+    near_half = np.abs((scaled - np.floor(scaled)) - 0.5) < 1e-6
+    if near_half.any():
+        rounded[near_half] = [round(value, 6) for value in values[near_half].tolist()]
+    return rounded
 
 
 def build_graph(

@@ -766,6 +766,14 @@ the most important issue on this list that no session has taken — likely becau
 needs the maintainer's accounts, which is a reason to schedule it with them, not a
 reason to leave it.*
 
+## Z. Weather along every trail
+
+**#1056 — v2: weather on Today, on a waypoint, and along a planned route — 90 forecast points cannot map to 8,469 waypoints, so forecast the coordinate rather than match it**
+
+**Why alone:** one issue carrying [features/WEATHER.md](features/WEATHER.md)'s whole design. Placed 2026-09-24, when it was claimed; it had been open since 2026-08-26 without a group.
+
+**Where this collides.** The job is a new leg beside `publish-conditions.yml` and joins its `publish-data` concurrency group; the client half reads through `lib/useConditions.ts` and draws on the waypoint card, Today and Plan — group **Y**'s screens. The build is five phases, filed once the doc's three open questions are answered.
+
 ## Questions that need answering before the work does
 
 These are the decisions a session cannot take for itself, gathered so they can be answered

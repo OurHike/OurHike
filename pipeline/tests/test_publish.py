@@ -2382,3 +2382,30 @@ class TestTheConfirmFileHasNoSchema:
         monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
 
         assert publish.archive_photos_awaiting_review(cleared_path=tmp_path / "absent.json") == (set(), 0)
+
+
+def test_the_client_publish_builds_waits_long_enough_for_a_server_side_copy(monkeypatch, s3_client, local_artifacts):
+    """`_stage_release`'s `copy_object` returns only once R2 has copied the
+    whole object, so botocore's default 60 s read timeout is a limit on how big
+    an artifact the release folder can hold. The v1.3.2 production publish
+    (run 35921489619) died on background_z13.pmtiles at exactly that limit.
+    This pins the client publish() builds to PUBLISH_READ_TIMEOUT_S, and pins
+    that value above the default it replaced."""
+    built: list = []
+
+    def capture(*args, **kwargs):
+        built.append(kwargs.get("config"))
+        return s3_client
+
+    monkeypatch.setattr(publish.boto3, "client", capture)
+    monkeypatch.setenv("R2_BUCKET", BUCKET)
+    monkeypatch.setenv("R2_ENDPOINT_URL", "https://unused.invalid")
+    monkeypatch.setenv("R2_ACCESS_KEY_ID", "unused")
+    monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "unused")
+
+    publish.publish(local_artifacts, sidecars={}, photos={})
+
+    assert built and built[0] is not None
+    assert built[0].read_timeout == publish.PUBLISH_READ_TIMEOUT_S
+    assert publish.PUBLISH_READ_TIMEOUT_S > 60
+    assert built[0].max_pool_connections == publish.PUBLISH_POOL_CONNECTIONS

@@ -29,6 +29,19 @@ Taken in session by poll, against the first mock of the three surfaces:
 
 Every section below answers one of those.
 
+## What the maintainer decided, 2026-09-24, second poll
+
+Taken against the offline mock (one card at three ages) and §3's accuracy table:
+
+- **The offline rules in §5, as drawn.**
+- **Temperature for the first two days from HRRR corrected for elevation, NBM after that** —
+  chosen over NBM uncorrected throughout, which §3 had recommended. §3 says what that choice
+  means field by field.
+- **GitHub's scheduler as it is, ~4 hours** — over an outside hourly trigger and over moving
+  the job off GitHub. §4 says what age a hiker will actually see.
+- **#1056 stays open as the program issue** until the build is done; the build order at the
+  foot of this doc is its checklist rather than a set of new issues.
+
 ---
 
 ## 1. What "along each trail" means, measured
@@ -60,7 +73,7 @@ bucket"**, because that is the shape the maintainer chose.
 
 | Source | Republish from our bucket? | Volume | Resolution | Cadence |
 |---|---|---|---|---|
-| **NOAA NBM on AWS** (`noaa-nbm-grib2-pds`) | **Yes** — NOAA open data, "can be used as desired" | **No quota** — whole grids | 2.5 km, CONUS (Alaska, Hawaii and Puerto Rico are separate NBM grids) | hourly cycles |
+| **NOAA NBM on AWS** (`noaa-nbm-pds` as tiled GeoTIFF, `noaa-nbm-grib2-pds` as GRIB2) | **Yes** — NOAA open data, "can be used as desired" | **No quota** — whole grids | 2.5 km, CONUS (Alaska, Hawaii and Puerto Rico are separate NBM grids) | hourly cycles |
 | **NOAA NDFD on AWS** (`noaa-ndfd-pds`) | **Yes** — same terms | No quota | 2.5 km | "as often as once every half hour" |
 | NWS `api.weather.gov` | **Yes** — public domain | unpublished rate limit; one grid square per call; an API key is announced but "not ready to flip that switch yet" (NWS, 2025-11-27) | 2.5 km | as forecasters edit; `Cache-Control: max-age=3600` (measured) |
 | **Pirate Weather** | **Unclear** — its terms never mention redistribution, and say it "should not be used for life or property critical applications" | Free plan 10,000 calls/**month** "for personal use" ≈ 14 points an hour; the largest listed plan, $350/month, is 5M/month ≈ 164k/day | docs say both 3 km (HRRR) and "the closest 13 km model square" | NBM/HRRR hourly |
@@ -107,13 +120,14 @@ line that runs just south of the Catskills, with Harriman on one side and Slide 
 on the other. A source that switches models mid-map is a source
 whose forecast can jump at a line nobody drew on purpose.
 
-### The recommendation: NBM, downloaded from NOAA
+### The source: NOAA's NBM, with HRRR for the first two days' temperature
 
 **NOAA's National Blend of Models**, fetched from its AWS open-data bucket and sampled by our
-own job. Reasons, each resting on something in this doc:
+own job, is the forecast. **HRRR**, from the same place, supplies temperature for the first 48
+hours (the maintainer's call; §3). Reasons for NBM, each resting on something in this doc:
 
-- **It is the only kind of source that fits the volume** (§1): whole grids, no quota,
-  public domain.
+- **It is the only kind of source that fits the volume** (§1): whole grids, no quota, and
+  NOAA's open-data terms — "can be used as desired" (§9).
 - **It scored best of the full-range models** in the spike (§3): 2.7 °F mean error on
   tomorrow's high, uncorrected, against 4.0 °F for GFS and 2.8 °F for ECMWF *after*
   correction.
@@ -122,10 +136,34 @@ own job. Reasons, each resting on something in this doc:
   and NBM's separate Alaska and Puerto Rico grids for the rest (32 cells in Alaska, one in
   Puerto Rico, counted from line endpoints on the same release).
 
+**How the job reads it, measured 2026-09-23/24:**
+
+- **From the Cloud-Optimized GeoTIFF bucket, `noaa-nbm-pds`, not the GRIB2 one.** A COG is
+  tiled (256 × 256 cells, 70 tiles per CONUS field), so the job downloads only the tiles
+  over trail. Temperature, precipitation probability, wind, gust, sky cover and thunder
+  probability out to seven days came to **54 MB per cycle** for the seven tiles over the
+  A.T., New York and New Jersey, against 565–680 MB for the same fields as GRIB2 byte
+  ranges. The whole-CONUS COG set is 384 MB; the national network touches most of CONUS's
+  tiles, so expect the job to sit nearer that figure than the 54 MB one (reasoned).
+- **Every hourly cycle reaches 259–264 hours**, stepping hourly to hour 48, then 3-hourly to
+  about hour 190, then 6-hourly — so the five-day card never runs out of NBM.
+- **Cycles land 36 minutes to 2 hours after their nominal time**, with outliers to 2 h 37 m
+  and one cycle still missing at 90 minutes. The job takes the newest complete cycle rather
+  than the one the clock says should exist.
+- **The COG path carries the model version** (`blendv5.0/`, since NBM v5.0 went operational
+  on 2026-05-05; it was `blendv4.3/` before). The job discovers it rather than hard-coding it.
+- **HRRR** (`noaa-hrrr-bdp-pds`, 3 km) runs hourly but reaches 48 hours only from the 00, 06,
+  12 and 18 UTC cycles; the others stop at 18. Its temperature subset for a 48-hour cycle is
+  ~409 MB as GRIB2 byte ranges. **It carries no probabilities**, which is why HRRR can only
+  ever be the temperature half of the first two days.
+
 The alternative a reviewer should weigh is **NDFD**, the forecaster-edited grid behind
 `api.weather.gov`: same resolution, same terms, and a human in the loop. The spike could not
 score it — Open-Meteo does not archive it — so preferring NBM over it is **reasoned, not
-measured** (§3's limits say what would settle it).
+measured** (§3's limits say what would settle it). Two things measured on 2026-09-24 count
+against it anyway: its bulk files carry **no hourly precipitation probability** (only
+12-hour) and **no thunder probability** outside a text weather field, and at one hour's
+comparison it sat within 0–4 °F of NBM at the seven sample points.
 
 **Warnings come from `api.weather.gov/alerts/active`, and it is one call.** Measured
 2026-09-24 00:23 UTC: 596 active alerts nationwide in one response, 2.8 MB (193 KB
@@ -174,29 +212,61 @@ doubtful. The full table, including daily lows and ECMWF, is what the script pri
 - **Correction rescues the coarse models, and HRRR** — GFS at Mount Washington goes from
   16.1 °F wrong to 5.1; HRRR from 6.6 to 2.1, the best day-1 score in the table. But HRRR
   forecasts only 18–48 hours ahead, so it cannot fill a five-day card on its own.
-- **So "along each trail" means every trail point reads its own 2.5 km square, uncorrected.**
-  Finer than that is not more precise; on this evidence it is less accurate. That is a
-  weaker answer than "more precise than the grid squares" asked for, and it is the one the
-  measurement supports. Compared with what #1056 started from — 90 points, a median
-  3.8 miles from the waypoint — a 2.5 km square puts every point within about 1.1 miles of
-  its forecast's centre.
+- **This doc recommended NBM uncorrected throughout; the maintainer chose HRRR corrected for
+  the first two days' temperature.** The case for that choice is the best day-1 high in the
+  table, 2.3 °F against NBM's 2.7. The case against, recorded so the build does not rediscover
+  it: **the win is on highs only** — tomorrow's low scored 2.8 °F both ways — and it buys a
+  second model, a correction step, and a seam at hour 48 where the temperature source changes.
+
+**What that decision means, field by field:**
+
+| | Hours 0–48 | After hour 48 |
+|---|---|---|
+| Temperature (hourly, high, low) | **HRRR, corrected** from its grid cell's height to the trail point's height | NBM, uncorrected |
+| Precipitation and thunder probability, sky, wind, gust | NBM, uncorrected — HRRR has no probabilities | NBM, uncorrected |
+
+**The seam is per hour, not at a day boundary.** HRRR reaches 48 hours only from its
+six-hourly cycles, so on GitHub's ~4-hour clock (§4) the HRRR run in a publish can already be
+~8 hours old (reasoned: six hours between 48-hour cycles plus up to ~2 hours to land) and
+cover only ~40 of the next 48 hours. The job uses HRRR for each hour it covers and NBM for
+every hour after, so "the first two days" is a ceiling, not a promise.
+
+So "along each trail" becomes genuinely finer than the grid for the first two days'
+temperature — every trail point gets its own correction from its own height — and stays at
+NBM's 2.5 km square for everything else. Compared with what #1056 started from — 90 points, a
+median 3.8 miles from the waypoint — even the uncorrected square puts every point within about
+1.1 miles of its forecast's centre.
+
+**Three things the build owes this decision**, because the spike measured something close to
+it rather than it:
+
+- **The spike scored Open-Meteo's correction, not ours.** Ours will be a lapse rate applied
+  from HRRR's cell height to the height in our own DEM. Until the spike is re-run with that
+  exact arithmetic, the 2.3 °F is **@unvalidated** for the thing we ship. The re-run is
+  cheap: the archive and the stations are already in the script.
+- **The seam at hour 48 must not draw a step.** Day 2's high from HRRR and day 3's from NBM
+  are different models; a hiker comparing them is comparing two sources without being
+  told. The card says which days are "adjusted for elevation" (§9 requires saying it anyway).
+- **A corrected value is our number, not NOAA's**, and NOAA's terms say a modified value may
+  not be presented as unaltered NOAA data (§9).
 
 **What the spike cannot say**, and a reader should not borrow its confidence for:
 
 - **Only temperature.** Precipitation, wind and thunderstorms have no correction to test,
   and scoring whether a shower was forecast takes more than one summer.
 - **Only summer.** A fixed lapse rate is at its worst in winter inversions, when a valley is
-  colder than the ridge above it. Whether NBM-uncorrected still wins in January is
-  **@unvalidated**; re-running the script over a December–February window settles it.
+  colder than the ridge above it — which now matters more, since HRRR's first two days are
+  corrected with one. Whether the correction still helps in January is **@unvalidated**;
+  re-running the script over a December–February window settles it, and that re-run is in
+  the build order below.
 - **Eight stations**, chosen for relief rather than at random, and 51–61 days each.
 - **No NDFD** — the one plausible rival to NBM is the one it could not score.
 
 ## 4. How often
 
-**The forecast itself changes about hourly.** NBM runs a new cycle every hour; nothing a
-hiker reads can usefully be fresher than the model behind it, so **hourly is the right
-ceiling for the publish** — faster buys bytes, not information. That matches the maintainer's
-"every hour" exactly, and it is derived rather than picked.
+**The forecast itself changes about hourly.** NBM and HRRR each run a new cycle every hour;
+nothing a hiker reads can usefully be fresher than the model behind it, so **hourly is the
+right ceiling for the publish** — faster buys bytes, not information.
 
 **Three things stand between an hourly model and an hourly phone**, and only the first is
 code:
@@ -209,10 +279,15 @@ code:
 2. **GitHub's scheduler does not fire hourly.** `publish-conditions.yml` declares
    `40 * * * *` and, measured 2026-09-21, fires every **3 h 53 m** on average (30 runs over
    112.6 hours, max gap 5 h 45 m) — **#1346 — Every cron in this repository fires about five
-   times a day, whatever it declares — including the conditions bake**. A weather job on
-   the same scheduler would deliver a forecast up to six hours old *at publish*, which is
-   not what "every hour" meant. **How the job gets a real hourly clock is an open question
-   for the maintainer** — see the end of this doc.
+   times a day, whatever it declares — including the conditions bake**. **The maintainer
+   accepted that for weather, 2026-09-24.** What it means for a hiker in signal, reasoned
+   from the two measurements: a cycle lands up to ~2 hours after its nominal time, and the
+   published file then waits up to 5 h 45 m for the next run, so **the forecast a phone reads
+   in signal is typically 2–4 hours old and at worst about 7½**. The age line shows the
+   cycle's own time, so the hiker sees that rather than infers it. One consequence worth
+   knowing: at the worst gaps that age passes §5's 6-hour mark for the hour-by-hour row, so
+   the row will sometimes grey while the phone has signal. That is §5's rule working —
+   the timing *is* that old — not a bug to suppress.
 3. **A phone in a pocket does not refresh.** A PWA cannot run on a timer while it is closed:
    Periodic Background Sync is "not Baseline" (MDN, read 2026-09-24), and even in Chrome is
    granted only to an installed app and paced by how much it is used. So the forecast a
@@ -263,7 +338,32 @@ still holds only what it last fetched.
 closures ("Conditions as of 3h ago"): *"Forecast from 7:40 am · checked 12 min ago"* in
 signal, *"Forecast from yesterday 5:40 pm · no signal since"* out of it.
 
-## 6. How it reaches a phone
+## 6. Two ways the job can print a plausible wrong number
+
+Found by the NOAA survey, 2026-09-24, and both belong in the job's tests before anything
+reaches a card — a number that looks right and is not is the failure
+[CLAUDE.md](../CLAUDE.md)'s safety section exists for:
+
+- **Half the NBM grid comes back mirrored if it is decoded the obvious way.** NBM (and NDFD)
+  use GRIB scanning mode 80: alternate rows run in opposite directions.
+  `eccodes.codes_get_values` does not un-reverse them, while the latitude and longitude arrays
+  come back normalised — so values and coordinates disagree silently. Measured: Springer
+  Mountain read **89.5 °F instead of 62.9 °F**, and Slide Mountain 72.4 °F instead of 46.3 °F.
+  cfgrib, pygrib and Herbie handle it; the COG files do not have the problem. A test pins a
+  known point against a known value.
+- **The nearest grid cell can be water.** Bear Mountain's published coordinate sits by the
+  Hudson, and its nearest NBM cell's terrain height is **0 m** — a river cell, 391 m below
+  the summit. Corrected from there, the summit would be credited with 391 m of lapse; left
+  uncorrected, it reads a river-moderated temperature. The job picks the nearest *land* cell
+  and a test pins Bear Mountain.
+
+**Where the heights come from.** The correction needs HRRR's cell height, which rides in
+HRRR's own files — at Mount Washington, 1,306 m against a real 1,917 — and each trail point's
+real height, from the DEM the app already ships. Picking a *land* cell on NBM's grid needs
+NBM's terrain, which NBM does not publish; **URMA's surface-height field** is on the identical
+2.5 km grid (verified to 10⁻⁴°), so it is fetched once and cached.
+
+## 7. How it reaches a phone
 
 **One file per 1° cell, per publish**, under `conditions/weather/`, carrying every 2.5 km
 grid square in that cell that trail touches. The cell is
@@ -275,9 +375,13 @@ knows the phone's cells.
 plus the cell it is standing in — never all 469. A hiker who has not set a hike gets the
 cell under them and its neighbours.
 
-**What a trail point reads:** its grid square, found by the same projection the job used.
-The mapping from trail points (and waypoints) to grid squares is static and rides with the
-data release, so the hourly file carries only numbers.
+**What a trail point reads:** its NBM grid square, found by the same projection the job
+used — and, for the hours HRRR covers, its HRRR cell's temperature and that cell's height,
+from which the phone applies the lapse to the point's own height. Everything that does not
+change hourly rides with the data release rather than the hourly file: which squares and
+cells each trail point and waypoint falls in, and each point's height. So the hourly file
+carries one row of numbers per square or cell and stays per-square in size, while the
+correction is still per point.
 
 **Sizes (reasoned, not measured):** 48 hourly steps × ~6 fields, plus 5 daily summaries,
 at a byte each, is ~310 bytes per grid square; ~158 squares per trail cell on average
@@ -287,11 +391,16 @@ five-cell stretch downloads a few hundred KB an hour at most. The job's own R2 w
 Class A operations a month (Cloudflare's pricing page, read 2026-09-24), which the other
 publishes already draw on, and $4.50 a million past it.
 
+**What the job downloads each run** (§2's measurements): NBM's COG tiles over trail, up to
+~384 MB, plus a 48-hour HRRR temperature subset, ~409 MB, plus one alerts request — about
+0.8 GB a run, ~5 GB a day at the measured six runs a day. That is AWS open-data egress, which
+costs this project nothing, and GitHub-hosted runner time.
+
 **UA and production publish separately**, like every other conditions artifact
 ([DATA_ENVIRONMENTS.md](DATA_ENVIRONMENTS.md)). Weather does not differ between the two, but
 the publishing path does, and UA is where it rehearses.
 
-## 7. What longtrailsweather.net is still for
+## 8. What longtrailsweather.net is still for
 
 Recommending against it as the source is not recommending ignoring it, and #1056 says why:
 it is **a validation oracle** (90 independently produced forecasts to check ours against —
@@ -300,34 +409,42 @@ presentation**, and a project with a mission close to ours
 ([OurHikeValues.md](../OurHikeValues.md) #3 and #6). Its own data comes from Pirate Weather,
 so everything §2 says about republishing Pirate Weather applies to republishing it.
 
-## 8. Licence and attribution
+## 9. Licence and attribution
 
-NBM, NDFD and NWS alerts are US Government work in the public domain; nothing needs asking.
-`sources.json` gets a row saying so, in the shape the other public-domain sources use, and
-the card credits "NWS / NOAA" because a hiker deciding whether to trust a forecast deserves
-to know whose it is — not because the licence demands it.
+NOAA's open-data terms for NBM, HRRR and NDFD on AWS, read 2026-09-24 at
+[registry.opendata.aws/noaa-nbm](https://registry.opendata.aws/noaa-nbm/): *"open to the
+public and can be used as desired. … NOAA requests attribution for the use or dissemination
+of unaltered NOAA data. However, it is not permissible to state or imply endorsement by or
+affiliation with NOAA. If you modify NOAA data, you may not state or imply that it is
+original, unaltered NOAA data."* NWS alerts are public domain by the
+[weather.gov disclaimer](https://www.weather.gov/disclaimer). Nothing needs asking.
+
+**That last sentence of NOAA's governs the card.** HRRR temperature corrected for elevation is
+modified data, so days 1–2 cannot be credited plainly to NOAA: they say *"NOAA forecast,
+adjusted for elevation by OurHike"*, and days 3 onward, unmodified, say *"NOAA forecast"*.
+`sources.json` gets a row for each, in the shape the other open sources use.
 
 ---
 
-## Open questions for the maintainer
+## Still open
 
-1. **Where does the hourly clock come from?** GitHub's scheduler measures at ~3 h 53 m
-   (#1346). Options: accept it; trigger the workflow from an outside hourly timer (a
-   Cloudflare Worker's cron calling `workflow_dispatch`, which needs a GitHub token stored
-   in Cloudflare — account work); or run the job somewhere other than GitHub Actions.
-2. **NBM or NDFD?** Recommended NBM on measurement; NDFD is the forecaster-edited
-   alternative this spike could not score.
-3. **The offline card** — the rules in §5, as drawn for the maintainer in session.
+- **NBM or NDFD** for everything but the first two days' temperature. NBM is recommended on
+  measurement and on fields; NDFD is the forecaster-edited alternative the spike could not
+  score. Not put to the maintainer yet.
 
 ## Build order
 
-Each phase is useful alone, and is filed as an issue once the questions above are answered:
+#1056 carries these as its checklist (maintainer, 2026-09-24). Each is useful alone:
 
-1. **The job** — fetch NBM and active alerts, sample the trail grid squares, publish per-cell
-   files and the alerts list to UA. No client change.
-2. **The waypoint card** — the five days at the waypoint's grid square, with the age line and
-   §5's rules.
-3. **Today** — start and end of the day, and the warnings line.
-4. **The plan** — each day's forecast at that night's camp.
-5. **The winter re-run** of the spike, before the first winter, to see whether §3's answer
-   holds in inversions.
+1. **The job** — fetch NBM's COG tiles, HRRR's 48-hour temperature and active alerts; sample
+   the trail grid squares, correcting HRRR temperature from its cell height to each trail
+   point's; publish per-cell files and the alerts list to UA. §6's two tests come with it.
+   No client change.
+2. **The spike re-run with our own correction** (§3) — before phase 3 puts a corrected
+   number in front of a hiker.
+3. **The waypoint card** — the five days at the waypoint's grid square, with the age line,
+   §5's rules and §9's credit lines.
+4. **Today** — start and end of the day, and the warnings line.
+5. **The plan** — each day's forecast at that night's camp.
+6. **The winter re-run** of the spike, before the first winter, to see whether the
+   correction still helps in inversions.

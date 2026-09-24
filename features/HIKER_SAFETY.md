@@ -53,7 +53,7 @@ Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHN
 Forecasts now have their own doc, which owns the source, the precision, the cadence, the delivery and what a hiker sees when the phone has been out of signal for hours. Two things this section used to say are corrected there rather than left standing here:
 
 - **"It has no public API or data feed" was about atweather.org, and it is not true of the field.** longtrailsweather.net, a separate project by OpenLongTrails.org, publishes JSON for 90 A.T. points ([#1056](https://github.com/OurHike/OurHike/issues/1056) — *v2: weather on Today, on a waypoint, and along a planned route*). It is still not the source OurHike should ship, for reasons WEATHER.md §2 and §7 give, but the door this section described as shut was not.
-- **"A forecast at any point along the trail" using the 1-meter DEM turned out to be the wrong instinct for the best source.** Correcting NOAA's NBM forecast for elevation made tomorrow's high *worse* at Mount Washington (2.8 °F off became 4.5 °F) and on average across eight stations, measured over 61 summer days. WEATHER.md §3 has the table and its limits.
+- **"A forecast at any point along the trail" using the DEM is right for one model and wrong for the other.** Correcting NOAA's NBM forecast for elevation made tomorrow's high *worse* at Mount Washington (2.8 °F off became 4.5 °F) and on average across eight stations; correcting HRRR's made it the best in the table. So the design corrects HRRR for the first two days' temperature and leaves NBM as published. WEATHER.md §3 has the table and its limits.
 
 ## 5. Wrong-way / off-trail alert — removed 2026-09-08
 

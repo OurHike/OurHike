@@ -772,7 +772,7 @@ reason to leave it.*
 
 **Why alone:** one issue carrying [features/WEATHER.md](features/WEATHER.md)'s whole design. Placed 2026-09-24, when it was claimed; it had been open since 2026-08-26 without a group.
 
-**Where this collides.** The job is a new leg beside `publish-conditions.yml` and joins its `publish-data` concurrency group; the client half reads through `lib/useConditions.ts` and draws on the waypoint card, Today and Plan — group **Y**'s screens. The build is five phases, filed once the doc's three open questions are answered.
+**Where this collides.** The job is a new leg beside `publish-conditions.yml` and joins its `publish-data` concurrency group; the client half reads through `lib/useConditions.ts` and draws on the waypoint card, Today and Plan — group **Y**'s screens. #1056 stays open as the program issue and carries the doc's six-phase build order as its checklist (maintainer, 2026-09-24), rather than being split into new issues.
 
 ## Questions that need answering before the work does
 

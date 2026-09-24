@@ -110,14 +110,17 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+import numpy as np
+import shapely
 from pyproj import Transformer
 from shapely import STRtree
-from shapely import wkt as shapely_wkt
 from shapely.geometry import LineString, MultiLineString
 from shapely.ops import linemerge, unary_union
 from shapely.ops import transform as shapely_transform
 
+from lib.batch_geometry import from_wkt_all, reproject
 from lib.blaze import NEUTRAL_MEMBERS
+from lib.cores import across_cores
 from lib.corridor import GEOGRAPHIC_CRS, PROJECTED_CRS
 
 # Both measured - see the module docstring before changing either.
@@ -228,27 +231,32 @@ def find_shared_ground(
     # than from the order two exports happened to be concatenated in.
     keyed.sort(key=lambda item: (_rank(item[0], item[1]), str(item[0].get("id"))))
 
-    geoms = [shapely_transform(_TO_METRIC, shapely_wkt.loads(record["wkt"])) for record, _ in keyed]
+    # One parse, one reprojection and one tree query for every record
+    # (lib/batch_geometry.py, #1661) rather than one of each per record. The
+    # query answers the same (record, neighbour) pairs either way, and what
+    # is built from them below is sets, so their order changes nothing.
+    geoms = reproject(from_wkt_all([record["wkt"] for record, _ in keyed]), _TO_METRIC)
     tree = STRtree(geoms)
+    ranks = [_rank(record, key) for record, key in keyed]
 
     # (donor trail, partner trail) -> the records of each that come within
     # the tolerance of the other. The donor is the lower-ranked trail: the
     # A.T.'s centerline, else the name that sorts first.
     near: dict[tuple[str, str], tuple[set[int], set[int]]] = defaultdict(lambda: (set(), set()))
-    for i, (record, key) in enumerate(keyed):
-        rank = _rank(record, key)
-        for j in tree.query(geoms[i], predicate="dwithin", distance=tolerance_m):
-            other, other_key = keyed[j]
-            if other_key == key:
-                continue
-            if rank < _rank(other, other_key):
-                donors, partners = near[(key, other_key)]
-                donors.add(i)
-                partners.add(int(j))
-            else:
-                donors, partners = near[(other_key, key)]
-                donors.add(int(j))
-                partners.add(i)
+    record_indices, neighbour_indices = tree.query(geoms, predicate="dwithin", distance=tolerance_m).tolist()
+    for i, j in zip(record_indices, neighbour_indices):
+        key = keyed[i][1]
+        other_key = keyed[j][1]
+        if other_key == key:
+            continue
+        if ranks[i] < ranks[j]:
+            donors, partners = near[(key, other_key)]
+            donors.add(i)
+            partners.add(j)
+        else:
+            donors, partners = near[(other_key, key)]
+            donors.add(j)
+            partners.add(i)
 
     pairs: list[dict] = []
     stretches = 0
@@ -257,11 +265,27 @@ def find_shared_ground(
     dropped_same_blaze = 0
     shared_m = 0.0
 
-    for donor_key, partner_key in sorted(near):
+    # Every pair's union first, then every pair's buffer and intersection as
+    # two batch calls on a thread per core (#1661). The buffers were 119.5 s
+    # of this function's 171.5 s when they ran one pair at a time, and the
+    # function takes 60.7 s this way, ~33 s of it buffering (4 cores; real
+    # network, 57,143 pairs, 2026-09-24). `quad_segs=16` is spelled
+    # out because it is what `partner_geom.buffer(tolerance_m)` used - the
+    # geometry method's default - and `shapely.buffer`'s own default is 8,
+    # which would round every buffer's ends more coarsely and move the shared
+    # stretches' end vertices.
+    ordered = sorted(near)
+    donor_geoms = np.empty(len(ordered), dtype=object)
+    partner_geoms = np.empty(len(ordered), dtype=object)
+    for index, pair in enumerate(ordered):
+        donor_indices, partner_indices = near[pair]
+        donor_geoms[index] = _merged(unary_union([geoms[i] for i in sorted(donor_indices)]))
+        partner_geoms[index] = unary_union([geoms[j] for j in sorted(partner_indices)])
+    buffers = across_cores(lambda partners: shapely.buffer(partners, tolerance_m, quad_segs=16), partner_geoms)
+    pieces = across_cores(shapely.intersection, donor_geoms, buffers)
+
+    for (donor_key, partner_key), piece in zip(ordered, pieces):
         donor_indices, partner_indices = near[(donor_key, partner_key)]
-        donor_geom = _merged(unary_union([geoms[i] for i in sorted(donor_indices)]))
-        partner_geom = unary_union([geoms[j] for j in sorted(partner_indices)])
-        piece = donor_geom.intersection(partner_geom.buffer(tolerance_m))
         for n, part in enumerate(_line_parts(piece)):
             if part.length < min_length_m:
                 dropped_short += 1

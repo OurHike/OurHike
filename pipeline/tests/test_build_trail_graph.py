@@ -550,25 +550,3 @@ def test_split_all_matches_shapely_ops_substring_to_the_bit_on_awkward_lines():
     for line, points, pieces in zip(lines, cut_points, batched):
         expected = _split_one_piece_at_a_time(line, points)
         assert [list(piece.coords) for piece in pieces] == [list(piece.coords) for piece in expected]
-
-
-def test_round6_answers_what_pythons_round_answers_including_at_the_half():
-    import random
-
-    import numpy as np
-
-    rng = random.Random(1659)
-    values = [rng.uniform(-180, 180) for _ in range(200_000)]
-    # Values built to sit on the edge the fast path hands back to Python:
-    # an exact six-decimal half, nudged a few ulps either way.
-    for _ in range(20_000):
-        half = (rng.randrange(-180_000_000, 180_000_000) + 0.5) / 1e6
-        # float(), because Python's round on a numpy float uses numpy's rounding,
-        # which would make the reference below the thing under test.
-        values.extend([half, float(np.nextafter(half, 1e9)), float(np.nextafter(half, -1e9))])
-    values.extend([0.0, -0.0, 4e-7, -4e-7, 5e-7, -5e-7, 1.5e-6, -74.1234565, 41.2500005])
-
-    rounded = graph_builder._round6(np.asarray(values, dtype=float)).tolist()
-
-    assert rounded == [round(value, 6) for value in values]
-    assert [str(value) for value in rounded] == [str(round(value, 6)) for value in values], "including the sign of zero"

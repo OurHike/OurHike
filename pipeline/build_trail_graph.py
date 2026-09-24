@@ -108,6 +108,7 @@ from shapely.geometry import LineString, MultiLineString, Point, shape
 from shapely.ops import transform
 from shapely.strtree import STRtree
 
+from lib.batch_geometry import round_like_python
 from lib.cores import across_cores
 from lib.hashing import sha256_file
 from lib.manifest_paths import to_manifest_path
@@ -487,8 +488,8 @@ def _geographic_vertices(lines: list[LineString], to_geographic: Transformer) ->
     It was one `to_geographic.transform(x, y)` per vertex: 9,579,458 calls on
     the real network, 16.5 s against 2.7 s for a single array call (measured
     2026-09-24). The array call runs the same PROJ pipeline on the same
-    coordinates, and the rounding is `_round6`, which answers what Python's
-    `round(value, 6)` answers.
+    coordinates, and the rounding is `lib.batch_geometry.round_like_python`,
+    which answers what Python's `round(value, 6)` answers.
     """
     if not lines:
         return []
@@ -496,38 +497,15 @@ def _geographic_vertices(lines: list[LineString], to_geographic: Transformer) ->
     line_array[:] = lines
     coordinates = shapely.get_coordinates(line_array)
     lons, lats = to_geographic.transform(coordinates[:, 0], coordinates[:, 1])
-    rounded = np.column_stack((_round6(np.asarray(lons, dtype=float)), _round6(np.asarray(lats, dtype=float)))).tolist()
+    rounded = np.column_stack(
+        (round_like_python(np.asarray(lons, dtype=float), 6), round_like_python(np.asarray(lats, dtype=float), 6))
+    ).tolist()
     vertices: list[list[list[float]]] = []
     cursor = 0
     for count in shapely.get_num_coordinates(line_array).tolist():
         vertices.append(rounded[cursor : cursor + count])
         cursor += count
     return vertices
-
-
-def _round6(values: np.ndarray) -> np.ndarray:
-    """`round(value, 6)` for every value, as Python would round it, without
-    20 million calls to Python's `round` (11.6 s against 2.6 s on the real
-    network, measured 2026-09-24).
-
-    WHY NOT JUST `np.round`. Python rounds the exact decimal value of the
-    float. Numpy multiplies by 1e6 first, and the product is itself rounded,
-    so a value whose exact product lies within a hair of a half can be
-    pushed across it and come out one millionth of a degree different - a
-    changed coordinate in a published artifact. Everywhere else the two
-    agree exactly: the integer is the same, and dividing it by 1e6 gives
-    the nearest double to that decimal, which is also what Python returns.
-    So the values whose product lands within 1e-6 of a half are handed to
-    Python's `round` itself. On the real network that is 76 of 20,579,500,
-    and the test suite holds the result to `round` on values built to sit on
-    that edge.
-    """
-    scaled = values * 1e6
-    rounded = np.rint(scaled) / 1e6
-    near_half = np.abs((scaled - np.floor(scaled)) - 0.5) < 1e-6
-    if near_half.any():
-        rounded[near_half] = [round(value, 6) for value in values[near_half].tolist()]
-    return rounded
 
 
 def build_graph(

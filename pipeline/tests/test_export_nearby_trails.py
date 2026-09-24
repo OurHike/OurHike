@@ -2023,3 +2023,72 @@ def test_load_boundary_refuses_a_missing_layer(tmp_path, monkeypatch):
     source = _drives_source(boundary_source="nyc_park_polygons")
     with pytest.raises(FileNotFoundError, match="boundary_source"):
         ex.load_boundary(source)
+
+
+# --- the batch forms (#1661) -----------------------------------------------------
+#
+# records_to_geojson, _named_lengths and write_overview (here and in
+# export_trails.py) now round, measure and cut every record in array calls.
+# The artifacts are compared by hash, so these hold each array form to the
+# per-record function it replaced, to the character of the JSON.
+
+
+def _awkward_geometries():
+    """Lines at full precision, a line and a MultiLineString part the
+    six-decimal cut collapses (two vertices ~1 cm apart), a negative zero,
+    a line with Z, and empties - every branch of _rounded_geometry."""
+    import random
+
+    import numpy as np
+    from shapely.geometry import LineString, MultiLineString
+
+    rng = random.Random(1661)
+
+    def wander(steps):
+        lon, lat = rng.uniform(-74.3, -73.9), rng.uniform(41.0, 41.4)
+        coords = [(lon, lat)]
+        for _ in range(steps):
+            lon += rng.uniform(-0.0005, 0.0005)
+            lat += rng.uniform(-0.0005, 0.0005)
+            coords.append((lon, lat))
+        return LineString(coords)
+
+    sliver = LineString([(-74.1000001, 41.1000001), (-74.10000012, 41.10000012)])
+    geoms = [wander(rng.randint(1, 80)) if n % 4 else MultiLineString([wander(20), wander(5)]) for n in range(300)]
+    geoms += [
+        sliver,
+        MultiLineString([wander(10), sliver]),
+        LineString([(-0.0000001, 41.0), (0.5, 41.5)]),
+        LineString([(-74.0, 41.0, 300.0), (-74.01, 41.01, 320.0)]),
+        LineString(),
+        MultiLineString(),
+    ]
+    return np.array(geoms, dtype=object)
+
+
+def test_rounded_geometries_write_what_rounded_geometry_wrote():
+    geoms = _awkward_geometries()
+
+    batched = ex._rounded_geometries(geoms)
+
+    assert json.dumps(batched) == json.dumps([ex._rounded_geometry(geom) for geom in geoms])
+    # The fixture reaches the fallback it exists for: the sliver keeps its
+    # full-precision vertices rather than collapsing onto one grid point.
+    assert batched[300]["coordinates"][0][0] == -74.1000001
+
+
+def test_miles_all_measures_what_miles_measured():
+    geoms = _awkward_geometries()
+
+    assert ex._miles_all(geoms) == [ex._miles({"wkt": geom.wkt}) for geom in geoms]
+
+
+def test_overview_coordinates_all_cuts_what_overview_coordinates_cut():
+    import numpy as np
+
+    import export_trails
+
+    geoms = [geom for geom in _awkward_geometries() if not geom.has_z]
+    for decimals in (export_trails.OVERVIEW_COORDINATE_DECIMALS, 6):
+        batched = export_trails._overview_coordinates_all(np.array(geoms, dtype=object), decimals)
+        assert json.dumps(batched) == json.dumps([export_trails._overview_coordinates(g, decimals) for g in geoms])

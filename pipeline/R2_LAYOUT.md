@@ -67,6 +67,13 @@ segments, the banned word `latest`, the closed extension set — are all consequ
 key being a permanent public URL, and none of them describes a private store, so the raw
 store gets a small validator of its own rather than these rules loosened for both.
 
+**Since 2026-09-24 that design has a second private bucket**, the step cache: the output
+of each expensive pipeline step, stored under a hash of its inputs, plus a read-only
+`.duckdb` copy for people to query (INCREMENTAL.md, "Three tiers, and a step cache between
+them"). It is a separate bucket so the build job can write it without being able to write
+raw. Everything this section says about the raw store is true of it too: never a public
+domain, never these key rules.
+
 ## Top-level prefixes
 
 These are the places an object can be, and a new one is a design decision — recorded in

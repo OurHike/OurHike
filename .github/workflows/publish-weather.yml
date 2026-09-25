@@ -1,0 +1,152 @@
+# Publishes the NBM forecast for every trail square to UA's bucket, one file
+# per 1-degree cell (#1056, features/WEATHER.md build step 1).
+#
+# WHY ITS OWN WORKFLOW, AND NOT A LEG OF publish-conditions.yml. That job's
+# ten minutes are already spent, deliberately: its header sizes four step
+# ceilings to 4 + 1 + 2 + 1 minutes against 32 s of set-up and 6-8 s of
+# publish, because a slow upstream there once ate the whole budget and
+# cancelled every closure publish for both environments (#1318). Weather
+# downloads ~240 MB a run (measured 2026-09-25: 315 files in 20 s here, then
+# 19 s to bake), and putting that inside the closures job is putting a new
+# way to be slow in front of the safety data.
+#
+# WHY TWO JOBS. Every writer of latest.json shares `publish-data`, and a
+# group coalesces rather than queues - one pending entrant, and a newer one
+# cancels it (publish-conditions.yml's header, #645). So the less time
+# weather holds the group, the less often a closures bake finds it held. The
+# `build` job downloads and bakes outside the group; only `publish` joins
+# it, for as long as publish.py takes to upload ~440 small files. The same
+# split publish-vector-data.yml made in #1265, for the same reason.
+#
+# UA ONLY, BY DESIGN FOR NOW. Nothing a hiker runs reads these files yet -
+# the card is build step 3 - so production would be publishing to nobody.
+# UA carries no environment gate (#1330), which is why no `environment:` is
+# set: a UA publish needs no approval, the same as publish-conditions.yml's
+# UA leg. Production is a promotion and belongs to the release train.
+#
+# THE CLOCK IS GITHUB'S, AND IT IS NOT HOURLY. `55 * * * *` declares hourly
+# because NBM runs a new cycle every hour (WEATHER.md §4); measured on the
+# conditions bake, this scheduler actually fires about every 3 h 53 m
+# (#1346), and the maintainer accepted that for weather on 2026-09-24. Every
+# file carries the cycle it came from, so the card states the age rather
+# than implying a freshness the clock never delivered. `:55` is a minute no
+# other workflow here uses (.github/workflows/README.md's table).
+name: Publish weather
+
+on:
+  schedule:
+    - cron: "55 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  build:
+    name: Build the forecast files
+    runs-on: ubuntu-latest
+    # Measured 2026-09-25: squares 49 s when the release changed (skipped
+    # otherwise), fetch 20 s, bake 19 s. Fifteen minutes is room for a slow
+    # NOAA day, not a target.
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # The squares under trail, and URMA's terrain, change with a data
+      # release rather than with the forecast. build_weather_squares.py
+      # rebuilds only when UA's release id differs from the one cached, so a
+      # warm run spends one latest.json request here and nothing else.
+      - name: Restore the trail squares
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            pipeline/data/raw/weather/squares.json
+            pipeline/data/raw/weather/urma_terrain.grb2
+          key: weather-squares-${{ github.run_id }}
+          restore-keys: weather-squares-
+
+      - name: Find the squares under UA's trails
+        timeout-minutes: 8
+        env:
+          OURHIKE_DATA_ENV: ua
+          DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
+        run: python build_weather_squares.py
+
+      - name: Save the trail squares
+        if: always() && hashFiles('pipeline/data/raw/weather/squares.json', 'pipeline/data/raw/weather/urma_terrain.grb2') != ''
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            pipeline/data/raw/weather/squares.json
+            pipeline/data/raw/weather/urma_terrain.grb2
+          key: weather-squares-${{ hashFiles('pipeline/data/raw/weather/squares.json', 'pipeline/data/raw/weather/urma_terrain.grb2') }}
+
+      - name: Fetch the newest complete NBM cycle
+        timeout-minutes: 5
+        run: python fetch_weather.py
+
+      - name: Bake one file per trail cell
+        run: python export_weather.py
+
+      - name: Upload data for the publish job
+        uses: actions/upload-artifact@v4
+        with:
+          name: weather-build-output
+          path: pipeline/data/processed/
+          retention-days: 1
+
+  publish:
+    name: Publish (ua)
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: publish-data
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Extracted to exactly where it was uploaded from - the upload names
+      # one directory, so that directory is the archive's root (#1347,
+      # .github/tests/test_artifact_handoff_paths.py).
+      - uses: actions/download-artifact@v8
+        with:
+          name: weather-build-output
+          path: pipeline/data/processed/
+
+      - name: Publish to R2
+        env:
+          R2_WRITE_ENABLED: "true"
+          OURHIKE_DATA_ENV: ua
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: python publish.py

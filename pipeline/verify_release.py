@@ -1320,6 +1320,12 @@ def release_checks(base: str, manifest: dict, session=None, hash_artifacts: bool
 CELL_FAMILIES = ("at_basemap", "dem", "nearby_trails", "trail_graph")
 
 
+def _has_area(box: list[float]) -> bool:
+    """Whether a `[west, south, east, north]` box encloses any ground - the
+    same test client/src/lib/coverageCells.ts applies before keeping a cell."""
+    return box[0] < box[2] and box[1] < box[3]
+
+
 def check_cell_coverage(base: str, manifest: dict, session=None) -> list[dict]:
     """20. Every coverage cell the index names is really in the release, and
     every cell it names is a whole graticule square (#1175).
@@ -1395,15 +1401,33 @@ def check_cell_coverage(base: str, manifest: dict, session=None) -> list[dict]:
         # - the margin turned into a promise, which cut_cells.py's index
         # comment has refused since the family existed. Absent is ordinary:
         # every index cut before #1458 carries none.
+        #
+        # TWO FAULTS, NAMED APART (#1561), because they fail in opposite
+        # directions. A box with no area - west at or past east, or south at
+        # or past north - encloses no ground, so it UNDER-claims: the app
+        # leaves the cell out of its index (coverageCells.ts, #1559) and
+        # cut_cells.covered_bounds() refuses to build one. A box with area
+        # that reaches past `bounds` OVER-claims. The old single test caught
+        # the first only because its chained comparison also breaks on an
+        # inverted box, and then printed the second's sentence - so the 15
+        # empty boxes in release 2026-09-16-4 were reported as cells reaching
+        # into their neighbours, and nobody found anything wrong with them.
+        empty = [entry["name"] for entry in cells if entry.get("covered") and not _has_area(entry["covered"])]
         overreaching = [
             entry["name"]
             for entry in cells
             if entry.get("covered")
+            and _has_area(entry["covered"])
             and not (
                 entry["bounds"][0] <= entry["covered"][0] <= entry["covered"][2] <= entry["bounds"][2]
                 and entry["bounds"][1] <= entry["covered"][1] <= entry["covered"][3] <= entry["bounds"][3]
             )
         ]
+        if empty:
+            problems.append(
+                f"{len(empty)} cell(s) carry a covered box with no area (west at or past east, or south at or "
+                f"past north), so they claim no ground at all and the app leaves them out: {', '.join(empty[:4])}"
+            )
         if overreaching:
             problems.append(f"{len(overreaching)} cell(s) claim coverage outside their own square: {', '.join(overreaching[:4])}")
 

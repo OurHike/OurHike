@@ -29,7 +29,7 @@ SCOPES = REPO_ROOT / "scripts" / "pipeline_scopes.py"
 
 #: The publishing paths that exist today. The script derives the roster from
 #: which workflows invoke publish.py; this pins that the derivation finds
-#: exactly these five, so a rename or a refactor that drops one out of the
+#: exactly these, so a rename or a refactor that drops one out of the
 #: report fails here instead of silently shrinking the answer - and a
 #: workflow that only MENTIONS the publisher fails here instead of being
 #: handed dispatch advice for inputs it does not have (#1552). A real sixth
@@ -40,6 +40,11 @@ PUBLISHING_PATHS = {
     "build-raster.yml",
     "publish-conditions.yml",
     "publish-vector-data.yml",
+    # The sixth, from #1666 (features/WEATHER.md): its `publish` job runs
+    # `python publish.py` on its own schedule. Found by this set becoming
+    # exact (#1552). Under "at least these five" it had joined the roster on
+    # main without anyone writing it down here.
+    "publish-weather.yml",
 }
 
 

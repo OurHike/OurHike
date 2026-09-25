@@ -14,13 +14,14 @@ HOW A SCOPE IS DERIVED, never hand-kept (the same one-home argument as
 scripts/suite_scopes.py - a hand copy is exactly the half that goes stale):
 
 1. A workflow is a *publishing path* iff one of its steps' `run:` scripts
-   invokes `publish.py` with a Python interpreter. Today that is five files,
-   and a sixth joins this report by existing rather than by being remembered.
+   invokes `publish.py` with a Python interpreter. Today that is six files
+   (publish-weather.yml was the sixth, 2026-09-25), and the next joins this
+   report by existing rather than by being remembered.
    Only the invocation counts, not a mention (#1552): matching the file's
    whole text counted `nynjtc-archive-recovery.yml` and
    `propose-atc-updates.yml`, whose comments explain why they do NOT publish,
    and handed out dispatch advice for inputs neither workflow has.
-   test_pipeline_scopes.py pins the roster at exactly five, so the next
+   test_pipeline_scopes.py pins the roster exactly, so the next
    misclassification fails a test instead of reaching a PR body.
 2. Its direct scope is every `<name>.py` its text mentions that exists under
    pipeline/ - the same deliberately loose filename-mention rule as

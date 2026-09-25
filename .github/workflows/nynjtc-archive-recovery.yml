@@ -17,9 +17,9 @@
 #     hike side of the join is reachable here and nowhere else.
 #
 # NOTHING HERE PUBLISHES, and that is load-bearing rather than an oversight.
-# It invokes no publisher, so scripts/pipeline_scopes.py keeps finding exactly
-# five publishing paths and this does not quietly become a sixth -
-# .github/tests/test_pipeline_scopes.py pins that roster.
+# It invokes no publisher, so scripts/pipeline_scopes.py keeps finding only
+# the workflows that do (six as of 2026-09-25) and this does not quietly join
+# them - .github/tests/test_pipeline_scopes.py pins that roster exactly.
 #
 # Until #1552 the roster was derived by matching the publisher's filename
 # anywhere in a workflow's text, comments included, so a comment further down

@@ -38,6 +38,7 @@ from lib.freshness_state import (
     drop_unrecorded,
     load_state,
     state_age_days,
+    summarise,
 )
 
 
@@ -191,6 +192,39 @@ def test_an_unmentioned_source_is_unknown_not_stale():
     assert by_source["topo_quads"]["freshness"] is Freshness.UNKNOWN
     assert by_source["elevation"]["freshness"] is Freshness.UNKNOWN
     assert by_source["opentrail"]["freshness"] is Freshness.UNKNOWN
+
+
+def test_a_withdrawn_source_absent_from_the_state_reads_withdrawn_not_unknown():
+    """#1665. Only the named source moves, and only off UNKNOWN - every other
+    absent source keeps the verdict the test above holds."""
+    reports = compare_state({"atc": {}}, {}, {"topo_quads": "build-raster.yml is withdrawn (#855)"})
+
+    by_source = {r["source"]: r for r in reports}
+    assert by_source["topo_quads"]["freshness"] is Freshness.WITHDRAWN
+    assert by_source["topo_quads"]["detail"] == "build-raster.yml is withdrawn (#855)"
+    assert by_source["elevation"]["freshness"] is Freshness.UNKNOWN
+    assert by_source["opentrail"]["freshness"] is Freshness.UNKNOWN
+
+
+def test_a_withdrawn_source_somebody_recorded_is_compared_like_any_other():
+    """A deliberate revival run records topo quads; its answer is then real."""
+    recorded = {"topo_quads": {}}
+    reports = compare_state(recorded, {}, {"topo_quads": "build-raster.yml is withdrawn (#855)"})
+
+    by_source = {r["source"]: r for r in reports}
+    assert by_source["topo_quads"]["freshness"] is Freshness.STALE
+
+
+def test_withdrawn_is_listed_but_does_not_fail_the_check():
+    reports = [
+        {"source": "atc", "freshness": Freshness.FRESH},
+        {"source": "topo_quads", "freshness": Freshness.WITHDRAWN},
+    ]
+    summary = summarise(reports)
+
+    assert summary["withdrawn"] == ["topo_quads"]
+    assert summary["unknown"] == []
+    assert summary["exit_code"] == 0
 
 
 def test_a_source_that_was_checked_and_holds_nothing_is_still_stale():

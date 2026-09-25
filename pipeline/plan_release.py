@@ -33,6 +33,14 @@ reason that module states in its own header: the failure that matters is a
 false FRESH. An upstream nobody could reach is not an upstream that did not
 move, and the cost of being wrong is asymmetric - a needless build against a
 map that quietly stopped tracking the trail.
+
+WHY WITHDRAWN DOES NOT (#1665). WITHDRAWN is only ever topo quads while
+build-raster.yml is switched off (#855), and topo quads feed only the raster
+leg - the leg build-data-release.yml's own header says this planner does not
+plan. A build this job recommends cannot consume them, so their absence
+cannot make one worth running. Before #1665 that source read UNKNOWN on every
+run, which made every weekly plan say "rebuild" for a reason no build could
+act on. Reasoned from the two workflow files, not measured.
 """
 
 from __future__ import annotations
@@ -45,10 +53,13 @@ from pathlib import Path
 
 from lib import freshness_state, releases
 
-# The freshness verdicts that mean "build". Spelled as a set rather than
-# `!= FRESH` so a fourth verdict added later fails loudly here rather than
-# being silently swept into one side or the other.
+# The freshness verdicts that mean "build", and the ones that do not. Two
+# sets rather than `!= FRESH`, and tests/test_plan_release.py holds that they
+# cover every Freshness value exactly once, so a verdict added later fails a
+# test until somebody puts it on one side rather than being swept silently
+# into either.
 REBUILD_ON = frozenset({freshness_state.Freshness.STALE.value, freshness_state.Freshness.UNKNOWN.value})
+SKIP_ON = frozenset({freshness_state.Freshness.FRESH.value, freshness_state.Freshness.WITHDRAWN.value})
 
 
 def load_index(index_url: str | None) -> dict | None:

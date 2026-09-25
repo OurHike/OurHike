@@ -145,6 +145,45 @@ describe('applyRhythm', () => {
     expect(planDayViews(both)[2].end.name).toBe('Reachable')
   })
 
+  it('walks a nearo to the furthest place to sleep inside the window (#1053)', () => {
+    // The maintainer's choice, 2026-09-25: of two shelters inside the six
+    // miles, the far one. Every other test here has one stop per window, so
+    // until this one the near and far answers never differed.
+    const after = applyRhythm(plan(4, { everyDays: 2, kind: 'nearo' }), [
+      poi(21.2, 'Near One'),
+      poi(25.4, 'Far One'),
+    ])
+    const nearo = planDayViews(after)[2]
+
+    expect(nearo.zero).toBe(false)
+    expect(nearo.end.name).toBe('Far One')
+    expect(Math.abs(nearo.end.mile - nearo.start.mile)).toBeCloseTo(5.4)
+  })
+
+  it('takes the stop short of tomorrow rather than refusing the nearo over one past it (#1053)', () => {
+    // Rest at 23, tomorrow at 26: 27 is inside the window and past
+    // tomorrow, 24 is inside and short of it. Before #1053 the far edge
+    // picked 27, the past-tomorrow check refused it, and the day printed a
+    // zero while 24 was a real 1-mile nearo.
+    const short = buildPlan(
+      [
+        { mile: 20, resupply: false },
+        { mile: 23, resupply: false },
+        { mile: 26, resupply: false },
+        { mile: 29, resupply: false },
+      ],
+      { miles: 3 },
+    )
+    const after = applyRhythm({ ...short, rhythm: { everyDays: 1, kind: 'nearo' } }, [
+      poi(24, 'Short Of Tomorrow'),
+      poi(27, 'Past Tomorrow'),
+    ])
+    const nearo = planDayViews(after)[1]
+
+    expect(nearo.zero).toBe(false)
+    expect(nearo.end.name).toBe('Short Of Tomorrow')
+  })
+
   it('keeps a nearo inside its own window', () => {
     // The nearest stop beyond is real but far; the window is what makes a
     // nearo a nearo rather than an ordinary day with a label on it.

@@ -21,14 +21,19 @@ scripts/suite_scopes.py - a hand copy is exactly the half that goes stale):
    .github/tests/test_exporters_are_published.py, and the same trade: a
    refactor of *how* a step invokes a script cannot break the derivation,
    at the price of a filename that appears only in a comment counting.
-3. Plus the transitive import closure over pipeline/'s top-level modules,
-   because the mention rule alone misses real edges - measured 2026-08-27:
-   the closure adds export_elevation.py to build-basemap's scope,
-   extract_package.py to build-dem's, and build_water_distance.py to
-   publish-vector-data's, every one a module a workflow runs code from
-   without ever naming it.
+3. Plus the transitive import closure over pipeline/'s top-level modules and
+   pipeline/lib/'s submodules alike, because the mention rule alone misses
+   real edges - measured 2026-08-27: the closure adds export_elevation.py to
+   build-basemap's scope, extract_package.py to build-dem's, and
+   build_water_distance.py to publish-vector-data's, every one a module a
+   workflow runs code from without ever naming it. lib/ joined the closure
+   under #1624, replacing a blanket SHARED_ROOTS entry that had every path
+   go STALE on any lib/ change, including a change no publishing path's own
+   import graph could reach - measured 2026-09-23: two DEM builds ran 26
+   minutes on a change to pipeline/lib/work_projects.py, a module neither
+   build imports.
 4. Plus the workflow file itself, and the SHARED_ROOTS below that feed every
-   exporter at once.
+   exporter at once regardless of what imports what.
 
 THE CONSERVATIVE DIRECTION IS "STALE". A false STALE costs somebody a
 minute deciding not to dispatch; a false fresh is the #1123 failure - a
@@ -61,12 +66,15 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 PIPELINE = ROOT / "pipeline"
 
 #: Changes that stale every publishing path at once, because every exporter
-#: reads them: the shared library, the source registry, the reviewed
-#: reference joins, the dbt layer, and the pins the runners install.
+#: reads them and nothing here has an import to chase: the source registry,
+#: the reviewed reference joins (data, not code - no import graph reaches
+#: them), the dbt layer, and the pins the runners install. pipeline/lib/
+#: used to live here too; #1624 moved it to the import closure instead,
+#: because unlike these, lib/'s submodules are code with real edges the
+#: closure can (and, before #1624, should have) followed.
 #: Directional bias argued in the module docstring - when in doubt a path
 #: belongs here, because the false-fresh is the expensive mistake.
 SHARED_ROOTS = (
-    "pipeline/lib/",
     "pipeline/sources.json",
     "pipeline/reference/",
     "pipeline/dbt/",
@@ -85,21 +93,42 @@ INVOKES_PUBLISH_RE = re.compile(r"(?<![\w.])publish\.py\b")
 SCRIPT_MENTION_RE = re.compile(r"(?<![\w.])([A-Za-z0-9_]+\.py)\b")
 IMPORT_RE = re.compile(r"^\s*(?:from|import)\s+([A-Za-z0-9_]+)", re.M)
 
+#: `from lib.x import y` or `import lib.x` - the submodule is the part after
+#: the dot, which IMPORT_RE can't see: it stops at "lib" itself.
+LIB_SUBMODULE_RE = re.compile(r"^\s*(?:from\s+lib\.([A-Za-z0-9_]+)\s+import|import\s+lib\.([A-Za-z0-9_]+))", re.M)
+#: `from lib import x, y as z` - one or more submodules named on one line.
+LIB_PACKAGE_IMPORT_RE = re.compile(r"^\s*from\s+lib\s+import\s+([^#\n]+)", re.M)
+
+
+def lib_imports(text: str) -> set[str]:
+    """Every pipeline/lib/ submodule this file's own text imports directly -
+    the edges IMPORT_RE can't see because `lib` is a package, not a module.
+    `lib/__init__.py` is empty, so a name after `from lib import` always
+    names a submodule, never something re-exported from the package itself."""
+    names = {a or b for a, b in LIB_SUBMODULE_RE.findall(text)}
+    for line in LIB_PACKAGE_IMPORT_RE.findall(text):
+        for part in line.split(","):
+            token = part.strip().split()
+            if token:
+                names.add(token[0])
+    return {f"lib/{name}.py" for name in names}
+
 
 def publishing_workflows() -> list[Path]:
     return [p for p in sorted(WORKFLOWS.glob("*.yml")) if INVOKES_PUBLISH_RE.search(p.read_text())]
 
 
 def import_closure(scripts: set[str]) -> set[str]:
-    """The scripts plus every pipeline/ top-level module they import,
-    transitively. `from lib.x import y` resolves to no top-level module and
-    is deliberately not chased - SHARED_ROOTS already carries all of lib/."""
+    """The scripts plus every pipeline/ module they import, transitively -
+    top-level modules and pipeline/lib/ submodules alike, so a lib/ module
+    only reachable from one publishing path's own import graph stales only
+    that path (#1624), rather than all of them via SHARED_ROOTS."""
     seen = set(scripts)
     queue = list(scripts)
     while queue:
         text = (PIPELINE / queue.pop()).read_text()
-        for module in IMPORT_RE.findall(text):
-            name = f"{module}.py"
+        found = {f"{module}.py" for module in IMPORT_RE.findall(text)} | lib_imports(text)
+        for name in found:
             if name not in seen and (PIPELINE / name).is_file():
                 seen.add(name)
                 queue.append(name)

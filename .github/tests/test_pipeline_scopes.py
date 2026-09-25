@@ -88,9 +88,35 @@ def test_an_import_stales_the_workflow_that_never_names_it():
 
 
 def test_a_shared_root_stales_every_path():
-    verdict = _verdict(["pipeline/lib/anything_at_all.py"])
+    """pipeline/reference/ is data with no import graph for the closure to
+    walk, so it stays a blanket SHARED_ROOTS entry rather than joining
+    pipeline/lib/ in the closure (#1624)."""
+    verdict = _verdict(["pipeline/reference/anything_at_all.json"])
     for workflow in PUBLISHING_PATHS:
-        assert f"STALE  {workflow}" in verdict, f"{workflow} did not go stale on a lib/ change"
+        assert f"STALE  {workflow}" in verdict, f"{workflow} did not go stale on a reference/ change"
+
+
+def test_a_lib_module_every_path_imports_stales_every_path():
+    """publish.py imports lib.data_env directly, and every publishing path's
+    text names publish.py - so this is a real edge, not SHARED_ROOTS, and it
+    reaches every path the same way #1624's fix means a narrower lib/ change
+    should not."""
+    verdict = _verdict(["pipeline/lib/data_env.py"])
+    for workflow in PUBLISHING_PATHS:
+        assert f"STALE  {workflow}" in verdict, f"{workflow} did not go stale on a lib/data_env.py change"
+
+
+def test_a_lib_module_only_one_path_imports_stales_only_that_path():
+    """#1624. pipeline/lib/work_projects.py is imported by export_work_projects.py
+    alone, which only publish-conditions.yml runs - so a change to it must not
+    stale build-dem.yml, which is what cost two 26-minute DEM builds nothing
+    on 2026-09-23 when pipeline/lib/ was still a blanket SHARED_ROOTS entry."""
+    verdict = _verdict(["pipeline/lib/work_projects.py"])
+    assert "STALE  publish-conditions.yml" in verdict
+    assert "fresh  build-dem.yml" in verdict
+    assert "fresh  build-basemap.yml" in verdict
+    assert "fresh  build-raster.yml" in verdict
+    assert "fresh  publish-vector-data.yml" in verdict
 
 
 def test_tests_and_prose_stale_nothing():
@@ -109,7 +135,7 @@ def test_the_self_healing_and_withdrawn_paths_say_so():
     from main), and a stale raster build is #855's deliberate withdrawal -
     both read out of the workflow files, so flipping either behaviour there
     changes this answer in the same edit."""
-    verdict = _verdict(["pipeline/lib/anything_at_all.py"])
+    verdict = _verdict(["pipeline/lib/data_env.py"])
     assert "nothing to dispatch" in _note_after(verdict, "publish-conditions.yml")
     assert "withdrawn" in _note_after(verdict, "build-raster.yml")
     assert "data_environment=ua" in _note_after(verdict, "publish-vector-data.yml")
@@ -122,7 +148,7 @@ def test_a_variant_taking_path_says_it_is_one_dispatch_per_variant():
     and nothing 404s. Read from the workflow's own input rather than keyed on
     the file's name, so a second variant-taking path answers correctly with no
     edit here."""
-    verdict = _verdict(["pipeline/lib/anything_at_all.py"])
+    verdict = _verdict(["pipeline/lib/data_env.py"])
     dem = _note_after(verdict, "build-dem.yml")
 
     assert "ONCE PER VARIANT" in dem

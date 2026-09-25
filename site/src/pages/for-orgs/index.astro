@@ -51,8 +51,14 @@ const description =
          The contours stay underneath. They are what draws while the photo
          decodes, and on the home page they are the whole artwork - a hero
          that flashes empty before an image arrives is worse than one that
-         never had an image. */
+         never had an image.
+
+         "Underneath" is DOCUMENT ORDER, which is why <Contours /> comes
+         first. Both layers are positioned with no z-index between them, so
+         the later one paints on top; until #1663 the contours came second
+         and drew their moss lines straight across the headline. */
     }
+    <Contours />
     <div class="hero__photo">
       <Image
         src={heroPhoto}
@@ -64,7 +70,6 @@ const description =
       />
       <span class="hero__credit">Evelyn Mostrom · CC0</span>
     </div>
-    <Contours />
     <div class="wrap">
       <div class="hero__inner">
         <span class="eyebrow"

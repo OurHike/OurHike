@@ -76,6 +76,25 @@ def test_a_shared_stretch_becomes_two_features_on_one_geometry_with_opposite_sid
     assert stats["shared_m"] == round(length, 1)
 
 
+def test_the_batched_buffer_draws_the_stretch_the_geometry_method_drew():
+    """#1661 buffers every pair in one threaded shapely.buffer call. That
+    function's default is quad_segs=8 where the geometry method's was 16, and
+    the stretch ends where the donor leaves the partner's round join - a
+    point on an arc the two defaults approximate differently. So this holds
+    the stretch to the per-pair expression it replaced, to the character."""
+    from shapely.ops import unary_union
+
+    a = _record("oprhp:1", [(0, 0), (1000, 0)], "Ramapo-Dunderberg Trail", blaze="Red")
+    b = _record("oprhp:2", [(300, 200), (350, 8), (650, 8), (700, 200)], "Suffern-Bear Mountain Trail", blaze="Yellow")
+
+    pairs, _ = concurrency.find_shared_ground([a, b])
+
+    donor = shapely_transform(_TO_METRIC, shapely_wkt.loads(a["wkt"]))
+    partner = unary_union([shapely_transform(_TO_METRIC, shapely_wkt.loads(b["wkt"]))])
+    (part,) = concurrency._line_parts(donor.intersection(partner.buffer(concurrency.SHARED_GROUND_TOLERANCE_M)))
+    assert [pair["wkt"] for pair in pairs] == [shapely_transform(_TO_GEOGRAPHIC, part).wkt] * 2
+
+
 def test_a_crossing_is_not_a_shared_stretch():
     # Square-on, the piece within 10 m of the other line is ~20 m long -
     # the crossing signature the minimum length exists to drop.

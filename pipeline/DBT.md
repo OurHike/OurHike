@@ -30,6 +30,23 @@ dbt adds a real **T** to this pipeline's data flow, turning it into a proper **e
 
 **Deliberately excluded: raster pixel data.** USGS topo quad GeoTIFFs (~14GB across ~1,654 files) stay exactly where they are — files on disk, handled by `fetch_topo_quads.py`/`fix_corrupted_quads.py`/`render_cell_tiles.py`/`assemble_raster.py` unchanged. Loading raster bytes into DuckDB would buy nothing dbt needs (dbt's job here is tabular/attribute cleaning, not raster processing) and would work directly against value #8 (boring, low-maintenance — a multi-gigabyte DuckDB file is a much heavier thing to move around and back up than one that holds only attribute/vector data). Only a lightweight *metadata* table (quad URL, local path, last-modified — no pixels) was ever planned to load, and it still has not been built — nothing in Phases A–D needed it, so dbt can document/test *coverage* ("every registered quad has a manifest entry") without the warehouse ever holding raster bytes.
 
+**Re-asked 2026-09-24 for the elevation data, and the answer held, with numbers now** (#1653 — Write down where processed pipeline data lives between runs). The maintainer's question was a fair one, having loaded rasters into PostGIS before, and PostGIS's raster type (`ST_Value`, `ST_Clip`, an index over tile footprints) is good tooling. Four things make it the wrong move here:
+
+1. **DuckDB's spatial extension has no raster type.** At the pinned 1.5.5 it has 166 `ST_` functions and none of them reads a pixel (listed from `duckdb_functions()`, 2026-09-24). A raster in the warehouse would be a blob no query could open.
+2. **The DEM is already stored the way a raster database would store it.** `fetch_elevation.py` indexes 476 USGS 3DEP 1/3 arc-second tiles, and each is a Cloud-Optimized GeoTIFF: split into 512 × 512 blocks, compressed, with overviews and an internal index. `export_elevation.ElevationSampler` reads only the blocks a trail crosses, with HTTP range requests; run #140's log says "No rasters downloaded". Loading the tiles into a database would rebuild that block index inside the database.
+3. **Loading means downloading all of it.** A tile is 10,812 × 10,812 float32 pixels, ~470 MB uncompressed, so ~220 GB for the 476. That is arithmetic, not a measurement of the compressed files, and today a build reads a small fraction of it.
+4. **PostGIS's own answer at this size is out-of-database rasters.** `raster2pgsql -R` records paths and footprints and leaves pixels in the files. That is the metadata table this paragraph already plans.
+
+Two DuckDB community extensions now read rasters, and both were measured on 2026-09-24. The test tile was synthetic but shaped like a 3DEP tile (5,412 × 5,412 px, EPSG:4269, float32, 512-px blocks, deflate), and each sampler was checked against the pixel read straight out of the array:
+
+| sampler | time | returns USGS's own pixel? |
+|---|---|---|
+| `export_elevation.ElevationSampler` (rasterio, block-grouped) | 1,000,000 points in 4.1 s | yes. One point differed from the reference: it lay 0.003 px from a pixel edge, and the sampler's lon/lat → EPSG:4269 transform and the reference's plain arithmetic landed on either side of it |
+| `raster` extension 1.6.1, `RT_CoordValues` | 1,000,000 points in 200 s | yes, all 1,000,000 |
+| `raquet` extension (build `b6e348b`), `read_raster` then `ST_RasterValue` | 26 s to convert the tile, which grew from 98 MB to 150 MB | **no: 736 of 2,000 points differ, p95 1.3 m, max 3.0 m** |
+
+**`raquet` is ruled out for anything a climb is computed from.** Its converter re-grids the raster onto Web Mercator QUADBIN tiles; the converted file's own metadata reads `"crs":"EPSG:3857"`, with `max_zoom` 14. The values it returns are then no longer USGS's pixels, and its worst error is the same size as the 3.0 m dead band `lib/elevation_gain.py` sums climb against. Its sampling time was not measured fairly (a query per point) and is not quoted. **`raster` is correct and about fifty times slower than the sampler** on a local file. A remote tile was not tried. That makes it a reasonable tool for a one-off question in SQL ("elevation at every shelter") and not a replacement for the exporter's reads.
+
 ## Project structure
 
 The layout as built, following dbt's standard staging/intermediate/marts convention. `models/staging/` now holds one directory per source system — `atc/`, `opentrail/`, and Phase D's `nynjtc/`, `oprhp/`, `mohonk/`, `dec/` — each with its own `_<source>__sources.yml`:

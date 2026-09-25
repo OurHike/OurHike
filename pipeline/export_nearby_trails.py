@@ -209,6 +209,8 @@ import json
 from pathlib import Path
 
 import duckdb
+import numpy as np
+import shapely
 from pmtiles.reader import MmapSource, Reader
 from shapely import wkt as shapely_wkt
 from shapely.geometry import MultiLineString, shape
@@ -219,7 +221,8 @@ from export_trails import (
     _TO_METRIC,
     OVERVIEW_COORDINATE_DECIMALS,
     OVERVIEW_SIMPLIFY_TOLERANCE_M,
-    _overview_coordinates,
+    _flat_lines,
+    _overview_coordinates_all,
     build_trail_records,
     geometry_to_wkt,
     load_features,
@@ -227,6 +230,7 @@ from export_trails import (
     normalize_source_features,
     simplify_records,
 )
+from lib.batch_geometry import from_wkt_all, reproject, round_like_python
 from lib.blaze import NEUTRAL_FALLBACK, load_blaze_mapping, map_source_blaze
 from lib.completeness import count_problems, fail_if_incomplete
 from lib.concurrency import AT_CENTERLINE_SOURCE, find_shared_ground
@@ -405,6 +409,13 @@ def _miles(record: dict) -> float:
     return shapely_transform(_TO_METRIC, shapely_wkt.loads(record["wkt"])).length / METERS_PER_MILE
 
 
+def _miles_all(geoms: np.ndarray) -> list[float]:
+    """`_miles` for every parsed geometry, as one reprojection and one length
+    call (#1661): the same GEOS length of the same reprojected coordinates,
+    divided the same way, so the same floats."""
+    return (shapely.length(reproject(geoms, _TO_METRIC)) / METERS_PER_MILE).tolist()
+
+
 def _named_lengths(records: list[dict]) -> dict[tuple[str, str], float]:
     """Total real-world length per (source, name), for every record whose
     name is more than whitespace.
@@ -417,13 +428,11 @@ def _named_lengths(records: list[dict]) -> dict[tuple[str, str], float]:
     happen to share a name are never summed together - the same restraint
     suppressed_by_owner takes on the same two fields, for the same reason.
     """
+    named = [record for record in records if record.get("name") is not None and str(record["name"]).strip()]
     totals: dict[tuple[str, str], float] = {}
-    for record in records:
-        name = record.get("name")
-        if name is None or not str(name).strip():
-            continue
-        key = (record["source"], name)
-        totals[key] = totals.get(key, 0.0) + _miles(record)
+    for record, miles in zip(named, _miles_all(from_wkt_all([record["wkt"] for record in named]))):
+        key = (record["source"], record["name"])
+        totals[key] = totals.get(key, 0.0) + miles
     return totals
 
 
@@ -1063,15 +1072,58 @@ def _rounded_geometry(geometry) -> dict:
     return {"type": geo["type"], "coordinates": walk(geo["coordinates"], cut=False)}
 
 
+def _rounded_geometries(geoms: np.ndarray) -> list[dict]:
+    """`_rounded_geometry` for every geometry (#1661): one rounding pass over
+    every coordinate and one drawability test per part, where the
+    per-record function walked `__geo_interface__` and called `round` twice
+    per vertex. On the real network records_to_geojson spent 54.1 s doing
+    that record by record - a parse, `_miles`, this walk - and 16.3 s this
+    way, under the profiler (2026-09-24).
+
+    Only non-empty 2D LineStrings and MultiLineStrings take the array path
+    (export_trails._flat_lines); anything else is handed to
+    `_rounded_geometry` itself."""
+    out: list = [None] * len(geoms)
+    flat = _flat_lines(geoms)
+    for index in np.flatnonzero(~flat).tolist():
+        out[index] = _rounded_geometry(geoms[index])
+    selected = np.flatnonzero(flat)
+    parts, owner = shapely.get_parts(geoms[selected], return_index=True)
+    counts = shapely.get_num_coordinates(parts)
+    coords = shapely.get_coordinates(parts)
+    decimals = NEARBY_COORDINATE_DECIMALS
+    rounded = np.column_stack((round_like_python(coords[:, 0], decimals), round_like_python(coords[:, 1], decimals)))
+    # _drawable_after_cut, for every part at once: two distinct vertices once
+    # cut is the same as some vertex differing from the part's first. A
+    # geometry is cut only if every one of its parts survives the cut.
+    part_of = np.repeat(np.arange(len(parts)), counts)
+    first = np.cumsum(counts) - counts
+    survives = np.zeros(len(parts), dtype=bool)
+    survives[part_of[(rounded != rounded[first[part_of]]).any(axis=1)]] = True
+    cut = np.bincount(owner[~survives], minlength=len(selected)) == 0
+    chosen = np.where(np.repeat(cut[owner], counts)[:, None], rounded, coords).tolist()
+
+    is_multi = (shapely.get_type_id(geoms[selected]) == 5).tolist()
+    start = 0
+    for position, end in zip(owner.tolist(), np.cumsum(counts).tolist()):
+        index = int(selected[position])
+        if is_multi[position]:
+            if out[index] is None:
+                out[index] = {"type": "MultiLineString", "coordinates": []}
+            out[index]["coordinates"].append(chosen[start:end])
+        else:
+            out[index] = {"type": "LineString", "coordinates": chosen[start:end]}
+        start = end
+    return out
+
+
 def records_to_geojson(records: list[dict]) -> dict:
     """The FeatureCollection the client draws. Properties only - no geometry
     re-derivation - so what is written is what was clipped and simplified,
     at the precision NEARBY_COORDINATE_DECIMALS caps."""
-    from shapely import wkt as shapely_wkt
-
+    geoms = from_wkt_all([record["wkt"] for record in records])
     features = []
-    for record in records:
-        geometry = shapely_wkt.loads(record["wkt"])
+    for record, length_miles, geometry in zip(records, _miles_all(geoms), _rounded_geometries(geoms)):
         features.append(
             {
                 "type": "Feature",
@@ -1104,8 +1156,9 @@ def records_to_geojson(records: list[dict]) -> dict:
                     # `_miles` is export_trails.py's EPSG:5070 transform, the
                     # one this file already names a trail and merges a
                     # duplicate on either side of - one way of measuring
-                    # distance, not a second.
-                    "length_miles": round(_miles(record), 2),
+                    # distance, not a second. `_miles_all` is it for every
+                    # record at once.
+                    "length_miles": round(length_miles, 2),
                     # Every record this export builds carries a status. A
                     # shared-ground pair's A.T. half (#1384) carries none,
                     # because trails.geojson publishes none for the A.T. -
@@ -1147,7 +1200,7 @@ def records_to_geojson(records: list[dict]) -> dict:
                     **({"concurrent_source": record["concurrent_source"]} if record.get("concurrent_source") else {}),
                     **({"concurrent_side": record["concurrent_side"]} if record.get("concurrent_side") else {}),
                 },
-                "geometry": _rounded_geometry(geometry),
+                "geometry": geometry,
             }
         )
     return {"type": "FeatureCollection", "features": features}
@@ -1170,7 +1223,7 @@ def exported_bbox(records: list[dict]) -> list[float] | None:
     """
     if not records:
         return None
-    bounds = [shapely_wkt.loads(record["wkt"]).bounds for record in records]
+    bounds = shapely.bounds(from_wkt_all([record["wkt"] for record in records])).tolist()
     return [
         min(b[0] for b in bounds),
         min(b[1] for b in bounds),
@@ -1235,11 +1288,11 @@ def write_overview(records: list[dict]) -> dict:
     # reads the sentinel back into "omit name and through_route entirely",
     # this export's existing convention for closure_kind above.
     groups: dict[tuple[str, str, str, str], list[list[list[float]]]] = {}
-    for record in coarse:
+    coarse_lines = _overview_coordinates_all(from_wkt_all([record["wkt"] for record in coarse]), OVERVIEW_COORDINATE_DECIMALS)
+    for record, lines in zip(coarse, coarse_lines):
         name = record.get("name")
         qualifies = name is not None and (record["source"], name) in qualifying
         key = (record["source"], name if qualifies else "", record["blaze_color"], record["trail_status"])
-        lines = _overview_coordinates(shapely_wkt.loads(record["wkt"]), OVERVIEW_COORDINATE_DECIMALS)
         groups.setdefault(key, []).extend(lines)
 
     def feature_properties(key: tuple[str, str, str, str]) -> dict:

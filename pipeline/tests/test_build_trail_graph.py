@@ -484,3 +484,69 @@ def test_write_artifact_splits_geometry_out_and_the_manifest_binds_the_pair(tmp_
     # The licence gate travels with the derivation - publish.py holds BOTH
     # halves back on the same reaches_hikers check as their parent's.
     assert sidecar["sources"] == {"oprhp_trails": {"reaches_hikers": False}}
+
+
+def _split_one_piece_at_a_time(line, points):
+    """The cutter as it was before #1659, kept here as the reference: one
+    `shapely.ops.substring` call per piece. `_split_all` has to reproduce it
+    exactly, because edge geometry and length feed a day hike's distance."""
+    from shapely.geometry import LineString
+    from shapely.ops import substring
+
+    cuts = [
+        distance
+        for distance in (line.project(point) for point in points)
+        if graph_builder.NODE_QUANT_M < distance < line.length - graph_builder.NODE_QUANT_M
+    ]
+    if not cuts:
+        return [line]
+    bounds = [0.0] + sorted(cuts) + [line.length]
+    pieces = []
+    for start, end in zip(bounds, bounds[1:]):
+        if end - start <= graph_builder.NODE_QUANT_M:
+            continue
+        piece = substring(line, start, end)
+        if isinstance(piece, LineString) and piece.length > 0:
+            pieces.append(piece)
+    return pieces or [line]
+
+
+def test_split_all_matches_shapely_ops_substring_to_the_bit_on_awkward_lines():
+    import random
+
+    from shapely.geometry import LineString, Point
+
+    rng = random.Random(1659)
+    lines, cut_points = [], []
+    for _ in range(300):
+        x, y = rng.uniform(0, 1e5), rng.uniform(0, 1e5)
+        coordinates = [(x, y)]
+        for _ in range(rng.randint(1, 40)):
+            if rng.random() < 0.1:
+                coordinates.append(coordinates[-1])  # a zero-length segment
+            else:
+                x, y = x + rng.uniform(-60, 60), y + rng.uniform(-60, 60)
+                coordinates.append((x, y))
+        line = LineString(coordinates)
+        points = []
+        for _ in range(rng.randint(0, 8)):
+            kind = rng.random()
+            if kind < 0.5:
+                points.append(line.interpolate(rng.uniform(0, line.length)))
+            elif kind < 0.6:
+                points.append(Point(line.coords[rng.randrange(len(line.coords))]))  # a cut on a vertex
+            elif kind < 0.7:
+                points.append(line.interpolate(rng.uniform(0, graph_builder.NODE_QUANT_M)))  # inside the end margin
+            elif kind < 0.8 and points:
+                points.append(points[-1])  # the same cut twice
+            else:
+                points.append(Point(x + rng.uniform(-30, 30), y + rng.uniform(-30, 30)))  # off the line
+        lines.append(line)
+        cut_points.append(points)
+
+    batched = graph_builder._split_all(lines, cut_points)
+
+    assert len(batched) == len(lines)
+    for line, points, pieces in zip(lines, cut_points, batched):
+        expected = _split_one_piece_at_a_time(line, points)
+        assert [list(piece.coords) for piece in pieces] == [list(piece.coords) for piece in expected]

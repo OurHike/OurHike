@@ -50,8 +50,10 @@ from shapely.ops import transform as shapely_transform
 
 from export_elevation import calibrated_trail_axis
 from lib.arcgis import get_field_coded_domain
+from lib.batch_geometry import from_wkt_all, reproject, round_like_python
 from lib.blaze import load_blaze_mapping, map_source_blaze, normalize_blaze_color
 from lib.completeness import count_problems, fail_if_incomplete
+from lib.cores import across_cores
 from lib.corridor import build_corridor
 from lib.feature_id import resolve_feature_id
 from lib.hashing import sha256_file
@@ -350,27 +352,26 @@ def simplify_records(records: list[dict], tolerance_m: float = DEFAULT_SIMPLIFY_
     if not records or tolerance_m == 0:
         return [dict(record) for record in records]
 
-    simplified: list[dict] = []
-    for record in records:
-        geom = shapely_wkt.loads(record["wkt"])
-        projected = shapely_transform(_TO_METRIC, geom)
-        reduced = shapely_transform(
-            _TO_GEOGRAPHIC,
-            # preserve_topology=False is correct for lines: the flag guards
-            # against self-intersection when simplifying polygons, and the
-            # faster algorithm still keeps both endpoints.
-            projected.simplify(tolerance_m, preserve_topology=False),
-        )
+    # Every record's parse, reprojection, simplification and WKT as one array
+    # call each (#1661), rather than one of each per record: on the real
+    # network's 142,892 records the per-record loop took 68.3 s and this
+    # takes 26.8 s, 12.2 s of it parsing the WKT (measured 2026-09-24). The
+    # batch calls are the per-record ones applied to every element - see
+    # lib/batch_geometry.py for why that is exact rather than close.
+    geoms = from_wkt_all([record["wkt"] for record in records])
+    reduced = reproject(
+        # preserve_topology=False is correct for lines: the flag guards
+        # against self-intersection when simplifying polygons, and the
+        # faster algorithm still keeps both endpoints.
+        shapely.simplify(reproject(geoms, _TO_METRIC), tolerance_m, preserve_topology=False),
+        _TO_GEOGRAPHIC,
+    )
 
-        # A line reduced below two points renders as nothing at all - the
-        # worst kind of failure, because the output still looks clean. Keep
-        # the original instead.
-        if reduced.is_empty or not _has_drawable_geometry(reduced):
-            reduced = geom
-
-        simplified.append({**record, "wkt": reduced.wkt})
-
-    return simplified
+    # A line reduced below two points renders as nothing at all - the worst
+    # kind of failure, because the output still looks clean. Keep the
+    # original instead.
+    wkts = shapely.to_wkt(np.where(_drawable_all(reduced), reduced, geoms), rounding_precision=-1)
+    return [{**record, "wkt": wkt} for record, wkt in zip(records, wkts.tolist())]
 
 
 def _drawable_part(part) -> bool:
@@ -411,6 +412,40 @@ def _has_drawable_geometry(geom) -> bool:
     # be a trail with a gap in it, which is a worse thing to publish than a
     # trail carrying a few more vertices than it needed.
     return bool(geom.geoms) and all(_drawable_part(part) for part in geom.geoms)
+
+
+def _drawable_all(geoms: np.ndarray) -> np.ndarray:
+    """`_has_drawable_geometry` for every non-empty geometry in `geoms`, as a
+    bool array (#1661) - False for an empty one, which simplify_records
+    replaces before the question arises.
+
+    Two distinct coordinates is the same as some coordinate differing from
+    the first, which numpy can ask of every part at once instead of building
+    a Python set of each part's coordinate tuples (10.7 s of simplify_records'
+    37.8 s on the real network, 2026-09-24). Only 2D LineStrings and
+    MultiLineStrings take the array path. Anything else - a third dimension,
+    which a 2D comparison would ignore and the set would not - is asked
+    `_has_drawable_geometry` itself."""
+    out = np.zeros(len(geoms), dtype=bool)
+    candidates = ~shapely.is_empty(geoms)
+    type_ids = shapely.get_type_id(geoms)
+    flat_lines = candidates & ((type_ids == 1) | (type_ids == 5)) & ~shapely.has_z(geoms)
+    others = np.flatnonzero(candidates & ~flat_lines)
+    out[others] = [_has_drawable_geometry(geom) for geom in geoms[others]]
+
+    lines = np.flatnonzero(flat_lines)
+    parts, owner = shapely.get_parts(geoms[lines], return_index=True)
+    counts = shapely.get_num_coordinates(parts)
+    coords = shapely.get_coordinates(parts)
+    part_of = np.repeat(np.arange(len(parts)), counts)
+    first = np.cumsum(counts) - counts
+    part_drawable = np.zeros(len(parts), dtype=bool)
+    part_drawable[part_of[(coords != coords[first[part_of]]).any(axis=1)]] = True
+    # ALL parts - _has_drawable_geometry's own rule. Its "and at least one"
+    # needs no test here: an empty geometry never reaches this line, and a
+    # non-empty line has a part.
+    out[lines] = np.bincount(owner[~part_drawable], minlength=len(lines)) == 0
+    return out
 
 
 """Centerline chain merging (#161).
@@ -686,6 +721,37 @@ def _overview_coordinates(geom, decimals: int) -> list[list[list[float]]]:
     return [[[round(x, decimals), round(y, decimals)] for x, y in line.coords] for line in _component_lines(geom)]
 
 
+def _flat_lines(geoms: np.ndarray) -> np.ndarray:
+    """Which geometries the array forms below handle themselves: non-empty 2D
+    LineStrings and MultiLineStrings. Everything else goes to the per-record
+    function, so an unusual geometry gets exactly the old answer - or the old
+    error - rather than a new one."""
+    type_ids = shapely.get_type_id(geoms)
+    return ~shapely.is_empty(geoms) & ~shapely.has_z(geoms) & ((type_ids == 1) | (type_ids == 5))
+
+
+def _overview_coordinates_all(geoms: np.ndarray, decimals: int) -> list[list[list[list[float]]]]:
+    """`_overview_coordinates` for every geometry (#1661): one rounding pass
+    over every coordinate, through lib.batch_geometry.round_like_python,
+    rather than two calls to `round` per vertex."""
+    out: list = [None] * len(geoms)
+    flat = _flat_lines(geoms)
+    for index in np.flatnonzero(~flat).tolist():
+        out[index] = _overview_coordinates(geoms[index], decimals)
+    selected = np.flatnonzero(flat)
+    parts, owner = shapely.get_parts(geoms[selected], return_index=True)
+    coords = shapely.get_coordinates(parts)
+    rounded = np.column_stack((round_like_python(coords[:, 0], decimals), round_like_python(coords[:, 1], decimals))).tolist()
+    start = 0
+    for position, end in zip(owner.tolist(), np.cumsum(shapely.get_num_coordinates(parts)).tolist()):
+        index = int(selected[position])
+        if out[index] is None:
+            out[index] = []
+        out[index].append(rounded[start:end])
+        start = end
+    return out
+
+
 def write_overview(records: list[dict]) -> dict:
     """Write the corridor-view centerline to OUT_DIR, and return its manifest
     entry.
@@ -700,8 +766,9 @@ def write_overview(records: list[dict]) -> dict:
     coarse = simplify_records(centerline, OVERVIEW_SIMPLIFY_TOLERANCE_M)
 
     lines: list[list[list[float]]] = []
-    for record in coarse:
-        lines.extend(_overview_coordinates(shapely_wkt.loads(record["wkt"]), OVERVIEW_COORDINATE_DECIMALS))
+    coarse_geoms = from_wkt_all([record["wkt"] for record in coarse])
+    for record_lines in _overview_coordinates_all(coarse_geoms, OVERVIEW_COORDINATE_DECIMALS):
+        lines.extend(record_lines)
 
     # One feature, and the two properties the client's line styling reads
     # (map/style.ts keys width and sort order off `source`, colour off
@@ -817,42 +884,54 @@ def vertex_miles(
 
     Projected onto `calibrated_trail_axis` the way `export_poi.attach_miles`
     projects a POI: nearest calibrated piece by STRtree, then that piece's
-    own `mile_at`. Vectorised per piece rather than one `project()` per
-    vertex - 216,759 vertices is a few seconds this way and minutes the
-    other."""
+    own `mile_at`. Every vertex of every part goes through each step as one
+    array (#1660), and the two GEOS steps run on every core through
+    `lib.cores.across_cores`. Both walk long lines - 687,353 axis vertices
+    over 562 pieces - so they were 186.1 s of this function's 198 s when
+    they ran once per part and piece. This way the function takes 59.4 s on
+    4 cores: 22.4 s nearest, 27.3 s locating, and 9.3 s building the axis,
+    which is not threaded (measured 2026-09-24 against the real centerline's
+    216,767 vertices; the file came out byte-identical). Every vertex's
+    answer is the same GEOS call on the same inputs either way, and
+    test_batched_vertex_miles_equal_the_one_part_at_a_time_miles_to_the_bit
+    compares the two to the bit."""
     calibrated = calibrated_trail_axis(con, centerline_path, markers_path)
-    tree = STRtree([cal.line for cal in calibrated])
+    axis_lines = np.array([cal.line for cal in calibrated], dtype=object)
+    tree = STRtree(axis_lines)
     to_metric = Transformer.from_crs(GEOGRAPHIC_CRS, PROJECTED_CRS, always_xy=True)
 
+    chained = [record for record in records if record["source"] in CHAIN_MERGED_SOURCES]
+    geoms = [shapely_wkt.loads(record["wkt"]) for record in chained]
+    parts_of = [[geom] if geom.geom_type == "LineString" else list(geom.geoms) for geom in geoms]
+    parts = [part for record_parts in parts_of for part in record_parts]
+
+    coords = shapely.get_coordinates(parts)
+    xs, ys = to_metric.transform(coords[:, 0], coords[:, 1])
+    points = shapely.points(xs, ys)
+    nearest = across_cores(tree.nearest, points)
+    along_m = across_cores(shapely.line_locate_point, axis_lines[nearest], points)
+    miles = np.empty(len(points))
+    for piece in np.unique(nearest):
+        mask = nearest == piece
+        miles[mask] = calibrated[int(piece)].mile_at(along_m[mask])
+    miles = np.round(miles, TRAIL_MILE_DECIMALS)
+
     miles_by_id: dict[str, list] = {}
-    vertex_count = 0
     breaks = 0
     features_with_breaks = 0
-
-    def miles_of(line) -> np.ndarray:
-        coords = np.asarray(line.coords)[:, :2]
-        xs, ys = to_metric.transform(coords[:, 0], coords[:, 1])
-        points = shapely.points(xs, ys)
-        nearest = tree.nearest(points)
-        out = np.empty(len(points))
-        for piece in np.unique(nearest):
-            mask = nearest == piece
-            cal = calibrated[int(piece)]
-            out[mask] = cal.mile_at(shapely.line_locate_point(cal.line, points[mask]))
-        return np.round(out, TRAIL_MILE_DECIMALS)
-
-    for record in records:
-        if record["source"] not in CHAIN_MERGED_SOURCES:
-            continue
-        geom = shapely_wkt.loads(record["wkt"])
-        parts = [geom] if geom.geom_type == "LineString" else list(geom.geoms)
+    ends = np.cumsum(shapely.get_num_coordinates(parts)).tolist()
+    start = 0
+    part_index = 0
+    for record, geom, record_parts in zip(chained, geoms, parts_of):
         per_part = []
         record_breaks = 0
-        for part in parts:
-            miles = miles_of(part)
-            vertex_count += len(miles)
-            record_breaks += _monotonic_breaks(miles)
-            per_part.append([float(m) for m in miles])
+        for _ in record_parts:
+            end = ends[part_index]
+            part_miles = miles[start:end]
+            record_breaks += _monotonic_breaks(part_miles)
+            per_part.append(part_miles.tolist())
+            start = end
+            part_index += 1
         breaks += record_breaks
         if record_breaks:
             features_with_breaks += 1
@@ -860,7 +939,7 @@ def vertex_miles(
 
     stats = {
         "feature_count": len(miles_by_id),
-        "vertex_count": vertex_count,
+        "vertex_count": len(points),
         "monotonic_breaks": breaks,
         "features_with_breaks": features_with_breaks,
     }

@@ -6,7 +6,10 @@ forecast the coordinate rather than match it**. That issue's measurements are th
 doc exists and are not repeated here; read it for why matching a forecast feed to waypoints
 tops out at 0.8% of them.
 
-**Status, 2026-09-24: designed, with a spike run; not built.** This doc owns **forecasts** —
+**Status, 2026-09-25: designed and spiked; build step 1's NBM slice built** —
+`publish-weather.yml` publishes NBM's forecast for every trail square to UA, one file per
+1° cell. Warnings and HRRR's two days are step 1's other two slices, still to come; nothing a
+hiker runs reads any of it yet (step 3). This doc owns **forecasts** —
 where they come from, how precise they are, how often they change, how they reach a phone,
 and what a hiker sees when the phone has not heard anything for a while. It also owns how a
 relayed **NWS warning** is *displayed* as it ages, because a forecast card and a warning
@@ -41,6 +44,16 @@ Taken against the offline mock (one card at three ages) and §3's accuracy table
   the job off GitHub. §4 says what age a hiker will actually see.
 - **#1056 stays open as the program issue** until the build is done; the build order at the
   foot of this doc is its checklist rather than a set of new issues.
+
+## What the maintainer decided, 2026-09-25, before step 1
+
+Taken against a drawing of the real squares in the Damascus, VA cell, three ways:
+
+- **Each cell's file carries the squares under a trail or a waypoint, and no others** — over
+  those squares grown by one, and over the whole cell. A spot more than a square from any
+  trail or waypoint has no forecast, and the card says so (§7).
+- **NBM, not NDFD**, for everything but HRRR's two days — the open question below this doc's
+  first version, closed.
 
 ---
 
@@ -354,8 +367,25 @@ reaches a card — a number that looks right and is not is the failure
 - **The nearest grid cell can be water.** Bear Mountain's published coordinate sits by the
   Hudson, and its nearest NBM cell's terrain height is **0 m** — a river cell, 391 m below
   the summit. Corrected from there, the summit would be credited with 391 m of lapse; left
-  uncorrected, it reads a river-moderated temperature. The job picks the nearest *land* cell
-  and a test pins Bear Mountain.
+  uncorrected, it reads a river-moderated temperature. **Built as:** a trail square whose URMA
+  terrain is at or below 0 m reads its nearest square above 0 m within two squares, and the
+  cell file lists it under `borrowed` — measured on UA release 2026-09-24-4, 182 of 72,720
+  squares borrow (Bear Mountain's (712, 2007) reads (711, 2007), at 41 m) and one, with no land
+  within two squares, keeps its own. `tests/test_export_weather.py` pins it.
+  **@unvalidated, and narrower than "land":** 0 m finds sea-level water — the ocean, the tidal
+  Hudson — and a lake surface at its own height passes as land. NBM's sea-surface field is no
+  help (it marks the ocean only; the Hudson, Lake Champlain and Lake George read as land in
+  it, measured 2026-09-25). HRRR's `LAND` field, arriving with the HRRR slice, is the real
+  mask; what would settle whether lake squares matter is a lake-shore square's forecast
+  against its landward neighbour's over a season.
+
+**The first trap is avoided rather than handled:** the job reads NBM's GeoTIFFs, which have no
+scanning-mode rows to mirror, and refuses any file whose grid differs from the one pinned in
+`lib/nbm_grid.py`. Two checks catch a misread anyway: the terrain grid must put a mountain
+under Mount Washington's square (1,702 m, measured), and every forecast value must fall in its
+field's physical range (−80 to 140 °F, 0–100 %) or the bake stops. The tests use synthetic
+full-grid rasters whose every value encodes its own row and column, so a mirrored read
+returns the wrong number rather than a plausible one.
 
 **Where the heights come from.** The correction needs HRRR's cell height, which rides in
 HRRR's own files — at Mount Washington, 1,306 m against a real 1,917 — and each trail point's
@@ -365,40 +395,49 @@ NBM's terrain, which NBM does not publish; **URMA's surface-height field** is on
 
 ## 7. How it reaches a phone
 
-**One file per 1° cell, per publish**, under `conditions/weather/`, carrying every 2.5 km
-grid square in that cell that trail touches. The cell is
+**One file per 1° cell, per publish**, under `conditions/weather/<cell>.json`, carrying every
+2.5 km grid square in that cell that a trail or a waypoint touches, beside
+`conditions/weather_index.json`, which names the cells, the run and the grid. The cell is
 [OFFLINE_COVERAGE.md](OFFLINE_COVERAGE.md)'s grid, so "which weather does this phone hold"
 has the same answer as "which map does this phone hold", and `lib/coverageCells.ts` already
 knows the phone's cells.
 
 **Which cells a phone fetches:** the cells under its planned hike and its current stretch,
-plus the cell it is standing in — never all 469. A hiker who has not set a hike gets the
+plus the cell it is standing in — never all 475. A hiker who has not set a hike gets the
 cell under them and its neighbours.
 
-**What a trail point reads:** its NBM grid square, found by the same projection the job
-used — and, for the hours HRRR covers, its HRRR cell's temperature and that cell's height,
-from which the phone applies the lapse to the point's own height. Everything that does not
-change hourly rides with the data release rather than the hourly file: which squares and
-cells each trail point and waypoint falls in, and each point's height. So the hourly file
-carries one row of numbers per square or cell and stays per-square in size, while the
-correction is still per point.
+**What a trail point reads:** its NBM grid square. Which square a point is in is arithmetic —
+`lib/nbm_grid.py`'s projection, whose parameters the index carries as `grid` — so no mapping
+artifact rides with the release; each cell file lists its squares, and the phone looks its
+point's square up in that list, or finds it absent and says there is no forecast there. For
+the hours HRRR covers (the HRRR slice), the file will also carry HRRR's cell temperature and
+that cell's height, from which the phone applies the lapse to the point's own height from the
+DEM it already holds.
 
-**Sizes (reasoned, not measured):** 48 hourly steps × ~6 fields, plus 5 daily summaries,
-at a byte each, is ~310 bytes per grid square; ~158 squares per trail cell on average
-(74,330 ÷ 469) is ~50 KB per cell per hour before compression, and a hiker holding a
-five-cell stretch downloads a few hundred KB an hour at most. The job's own R2 writes are
-469 objects an hour, ~340,000 a month — a third of R2's free allowance of one million
-Class A operations a month (Cloudflare's pricing page, read 2026-09-24), which the other
-publishes already draw on, and $4.50 a million past it.
+**Sizes, measured 2026-09-25** on NBM cycle 11Z against UA release 2026-09-24-4: 442 cell
+files, gzipped (as `publish.py` stores JSON) a median of **10 KB**, mean 23 KB, 95th percentile
+88 KB, largest 141 KB (`n45w116`); all 442 together 10.3 MB. A five-cell stretch is typically
+well under 250 KB a refresh. The job's R2 writes are 443 objects a run — at the measured ~6
+runs a day, ~80,000 a month, inside R2's free allowance of one million Class A operations a
+month (Cloudflare's pricing page, read 2026-09-24), which the other publishes also draw on.
 
-**What the job downloads each run** (§2's measurements): NBM's COG tiles over trail, up to
-~384 MB, plus a 48-hour HRRR temperature subset, ~409 MB, plus one alerts request — about
-0.8 GB a run, ~5 GB a day at the measured six runs a day. That is AWS open-data egress, which
-costs this project nothing, and GitHub-hosted runner time.
+**What the job downloads each run**, measured 2026-09-25: NBM's GeoTIFFs whole, 315 files and
+240.6 MB in 20 s from this sandbox — whole rather than tile ranges, because the national
+network touches most of CONUS's tiles anyway and one GET per file is simpler than seventy.
+HRRR's 48-hour temperature (~409 MB, §2) and one alerts request join it with their slices.
+That is AWS open-data egress, which costs this project nothing, and GitHub-hosted runner time.
 
-**UA and production publish separately**, like every other conditions artifact
-([DATA_ENVIRONMENTS.md](DATA_ENVIRONMENTS.md)). Weather does not differ between the two, but
-the publishing path does, and UA is where it rehearses.
+**UA only, for now.** Nothing a hiker runs reads these files until step 3, so production
+would be publishing to nobody; `publish-weather.yml` writes UA's tree, which needs no
+approval (#1330), and production is a promotion for the release train when the card ships
+([DATA_ENVIRONMENTS.md](DATA_ENVIRONMENTS.md)). Its own workflow rather than a leg of
+`publish-conditions.yml`, whose ten-minute budget is already spent on the closures (#1318),
+and in two jobs so only the upload holds the shared `publish-data` group.
+
+**Cells off the CONUS grid have no forecast yet.** 33 of the 475 trail cells — 32 in Alaska,
+one in Puerto Rico — are on NBM's separate Alaska and Puerto Rico grids, which this slice does
+not read. The index lists them under `outside_grid`, so a phone there can say "no forecast
+here" rather than "not downloaded".
 
 ## 8. What longtrailsweather.net is still for
 
@@ -428,18 +467,19 @@ adjusted for elevation by OurHike"*, and days 3 onward, unmodified, say *"NOAA f
 
 ## Still open
 
-- **NBM or NDFD** for everything but the first two days' temperature. NBM is recommended on
-  measurement and on fields; NDFD is the forecaster-edited alternative the spike could not
-  score. Not put to the maintainer yet.
+- **Lake squares** (§6): the water rule catches sea-level water only.
+- **Alaska and Puerto Rico** (§7): 33 trail cells on NBM grids this build does not read.
 
 ## Build order
 
 #1056 carries these as its checklist (maintainer, 2026-09-24). Each is useful alone:
 
-1. **The job** — fetch NBM's COG tiles, HRRR's 48-hour temperature and active alerts; sample
-   the trail grid squares, correcting HRRR temperature from its cell height to each trail
-   point's; publish per-cell files and the alerts list to UA. §6's two tests come with it.
-   No client change.
+1. **The job**, in three slices. No client change in any of them.
+   - **NBM — built, 2026-09-25.** `build_weather_squares.py`, `fetch_weather.py`,
+     `export_weather.py`, `publish-weather.yml`; §6's two traps tested.
+   - **Warnings** — the active-alerts list and NWS's forecast-zone outlines it needs.
+   - **HRRR** — its 48-hour temperature and cell heights beside NBM's fields, and its `LAND`
+     mask for the water rule.
 2. **The spike re-run with our own correction** (§3) — before phase 3 puts a corrected
    number in front of a hiker.
 3. **The waypoint card** — the five days at the waypoint's grid square, with the age line,

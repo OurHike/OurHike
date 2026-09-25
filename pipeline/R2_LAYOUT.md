@@ -82,7 +82,7 @@ data a phone is pinned to.
 | `_internal/` | build intermediates, keyed by release | rewritten per build | no |
 | `photos/` | POI photos, one object per image, content-addressed | mutable: objects are added and deleted, never rewritten | yes |
 | `originals/` | full-resolution originals of the photos above, content-addressed | mutable: objects are added and deleted, never rewritten | **no** |
-| `conditions/` | published safety data — verified closures, verified reports, and the ATC's own trail updates | mutable: rewritten in place, daily | yes |
+| `conditions/` | published safety data — verified closures, verified reports, and the ATC's own trail updates — and, since #1056, the NBM forecast for every trail square: `weather_index.json` plus one `weather/<cell>.json` per 1° cell (features/WEATHER.md §7) | mutable: rewritten in place, hourly by schedule (about every four hours as GitHub actually fires it, #1346) | yes |
 | `archive/` | one-time snapshots of third-party data read once and possibly never again — today the footprint of each NYNJTC paper map sheet | mutable only by a person dispatching the one-off workflow that wrote it | yes |
 | `archive__nynjtc_photos__do_not_delete/` | the whole Internet Archive recovery of NYNJTC's Drupal-era photographs, content-addressed | written once, never rewritten, never pruned | **no** |
 | `environments/` | one subtree per non-production environment, each holding a whole copy of this layout | as whatever it holds | to that environment's audience |

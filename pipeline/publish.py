@@ -78,6 +78,7 @@ CONDITIONS_MANIFESTS = (
     "nynjtc_alerts_manifest.json",
     "drought_manifest.json",
     "work_projects_manifest.json",
+    "weather_manifest.json",
 )
 WRITE_ENABLED_ENV_VAR = "R2_WRITE_ENABLED"
 

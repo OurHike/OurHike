@@ -18,16 +18,15 @@
 #
 # NOTHING HERE PUBLISHES, and that is load-bearing rather than an oversight.
 # It invokes no publisher, so scripts/pipeline_scopes.py keeps finding exactly
-# five publishing paths and this does not quietly become a sixth.
+# five publishing paths and this does not quietly become a sixth -
+# .github/tests/test_pipeline_scopes.py pins that roster.
 #
-# That sentence is deliberately phrased without naming the publisher's
-# filename, and the reason is worth a line because the first draft got it
-# wrong: the roster is derived by matching that literal name ANYWHERE in a
-# workflow's text, comments included - a trade pipeline_scopes.py documents
-# ("a filename that appears only in a comment counting"). A comment saying
-# this workflow does not publish was therefore enough to classify it as one,
-# and scripts/pipelines.sh duly told a reader to dispatch it with an input it
-# does not have.
+# Until #1552 the roster was derived by matching the publisher's filename
+# anywhere in a workflow's text, comments included, so a comment further down
+# this file explaining where the recovered photographs go was enough to
+# classify it as a publisher, and scripts/pipelines.sh told a reader to
+# dispatch it with two inputs it does not have. Only a `run:` script that
+# invokes the publisher counts now, so a comment here is free to name it.
 #
 # What it produces is a REVIEW SHEET and the caches behind it, uploaded
 # as artifacts for a person to work through. CONTRIBUTING.md reserves

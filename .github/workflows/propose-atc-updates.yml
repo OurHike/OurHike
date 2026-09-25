@@ -10,13 +10,11 @@
 # page, and types the row into reference/atc_updates.json by hand if it is
 # right. That is the same reviewed-file path #460 proved, not a new one.
 #
-# DELIBERATELY NEVER SAYS "publish.py" ANYWHERE IN THIS FILE, spelled out
-# rather than left for the next reader to rediscover: scripts/pipeline_scopes.py
-# classifies a workflow as a publishing path by searching its own text for
-# that literal token, with no way to tell code from a comment. This workflow
-# never calls it and must not be classified as if it did - see
-# propose_atc_updates.py's own docstring for what avoiding that
-# misclassification costs on the pipeline/lib/ side too.
+# NEVER RUNS THE PUBLISHER, and scripts/pipeline_scopes.py knows it: since
+# #1552 a workflow is a publishing path only if a `run:` script invokes
+# publish.py, so this header can name it. (Before #1552 the match was on the
+# whole file's text, and the sentence here warning against naming it was
+# itself the match.) .github/tests/test_pipeline_scopes.py pins the roster.
 #
 # THE MECHANISM IS COPIED FROM release-notes.yml RATHER THAN INVENTED - the
 # same "a second producer, not a second mechanism" argument #463 itself

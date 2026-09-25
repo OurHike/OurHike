@@ -13,9 +13,15 @@ change to the latter stales a workflow that never names it.
 HOW A SCOPE IS DERIVED, never hand-kept (the same one-home argument as
 scripts/suite_scopes.py - a hand copy is exactly the half that goes stale):
 
-1. A workflow is a *publishing path* iff its text invokes `publish.py`. Today
-   that is five files, and a sixth joins this report by existing rather than
-   by being remembered.
+1. A workflow is a *publishing path* iff one of its steps' `run:` scripts
+   invokes `publish.py` with a Python interpreter. Today that is five files,
+   and a sixth joins this report by existing rather than by being remembered.
+   Only the invocation counts, not a mention (#1552): matching the file's
+   whole text counted `nynjtc-archive-recovery.yml` and
+   `propose-atc-updates.yml`, whose comments explain why they do NOT publish,
+   and handed out dispatch advice for inputs neither workflow has.
+   test_pipeline_scopes.py pins the roster at exactly five, so the next
+   misclassification fails a test instead of reaching a PR body.
 2. Its direct scope is every `<name>.py` its text mentions that exists under
    pipeline/ - the same deliberately loose filename-mention rule as
    .github/tests/test_exporters_are_published.py, and the same trade: a
@@ -89,7 +95,10 @@ SHARED_ROOTS = (
 #: prose produces nothing.
 NEVER_STALE_RE = re.compile(r"^pipeline/tests/|\.md$")
 
-INVOKES_PUBLISH_RE = re.compile(r"(?<![\w.])publish\.py\b")
+#: `python publish.py`, `python3 pipeline/publish.py`, `python -m publish`.
+#: Searched only in `run:` scripts with their comment lines dropped - see
+#: run_scripts() - because an echo or a comment can name the publisher too.
+INVOKES_PUBLISH_RE = re.compile(r"(?<![\w.])python3?\s+(?:(?:[\w./-]*/)?publish\.py\b|-m\s+publish\b)")
 SCRIPT_MENTION_RE = re.compile(r"(?<![\w.])([A-Za-z0-9_]+\.py)\b")
 IMPORT_RE = re.compile(r"^\s*(?:from|import)\s+([A-Za-z0-9_]+)", re.M)
 
@@ -114,8 +123,21 @@ def lib_imports(text: str) -> set[str]:
     return {f"lib/{name}.py" for name in names}
 
 
+def run_scripts(workflow: Path) -> str:
+    """Every step's `run:` script in the workflow, shell comment lines
+    removed. What the runner would actually execute, give or take an echo."""
+    parsed = yaml.safe_load(workflow.read_text()) or {}
+    lines = []
+    for job in (parsed.get("jobs") or {}).values():
+        for step in job.get("steps") or []:
+            script = step.get("run") if isinstance(step, dict) else None
+            if isinstance(script, str):
+                lines += [line for line in script.splitlines() if not line.lstrip().startswith("#")]
+    return "\n".join(lines)
+
+
 def publishing_workflows() -> list[Path]:
-    return [p for p in sorted(WORKFLOWS.glob("*.yml")) if INVOKES_PUBLISH_RE.search(p.read_text())]
+    return [p for p in sorted(WORKFLOWS.glob("*.yml")) if INVOKES_PUBLISH_RE.search(run_scripts(p))]
 
 
 def import_closure(scripts: set[str]) -> set[str]:

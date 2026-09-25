@@ -23,13 +23,20 @@
 // the widgets.
 import Base from '../../layouts/Base.astro'
 import OrgNav from '../../components/OrgNav.astro'
+import TreadCard from '../../components/TreadCard.astro'
 import { DEMO_API_BASE } from '../../lib/demoApi'
+import { DEMO_VOLUNTEER } from '../../../../client/src/org/demoVolunteer'
 
 const title = 'OurHike — Central Park Throughikers, a demo org'
 const description =
   'A whole published organization to walk through before you type anything: six routes, an invented roster, and the same widgets your own org would get.'
 
 const ORG_SLUG = 'central-park-throughikers'
+const TREAD_HREF = `/app/my/tread?org=${ORG_SLUG}`
+// The volunteer the prose names is the one the card and the full view show:
+// the app's demo fixture, not a name typed here (see TreadCard.astro).
+// No pronoun is stated in the fixture, so the prose uses "they".
+const VOLUNTEER = DEMO_VOLUNTEER.displayName.split(' ')[0]
 ---
 
 <Base title={title} description={description}>
@@ -65,30 +72,44 @@ const ORG_SLUG = 'central-park-throughikers'
         <span class="blaze"></span>
         <h2>The view that matters most</h2>
       </div>
-      <p class="lede">
-        <strong>This is what a volunteer actually opens.</strong> Every admin
-        screen in this tool exists to produce this one. Sam is a Throughiker who
-        looks after the Ramble — she never sees a registry or a pull request,
-        only her own paths, what hikers said about them, and the three things she
-        can do today.
-      </p>
-      <ul class="checks" style="margin-top: 16px">
-        <li><strong>No second login.</strong> She signed into the Throughikers' own site and arrived here.</li>
-        <li><strong>No jargon.</strong> Her section has a name, not an OBJECTID.</li>
-        <li>
-          <strong>Works with no signal.</strong> Reports queue and go when she gets
-          back — on her laptop or her phone.
-        </li>
-      </ul>
-      <p style="margin-top: 18px">
-        <a class="btn" href={`/app/my/tread?org=${ORG_SLUG}`}
-          >Open the full volunteer view</a
-        >
-      </p>
-      <p class="org-help">
-        Lives at <code class="mono">/my/tread</code> — its own address, so the welcome
-        email and the org's own members area can both link straight to it.
-      </p>
+      {
+        /* THE VIEW, SHOWN. Until #1663 this section was the prose and the
+           button alone; TreadCard.astro says what the card is and where its
+           data comes from. On a phone the card follows the lede, so the
+           promise and the picture sit together; on a desktop it takes the
+           right-hand column beside the words. */
+      }
+      <div class="org-view">
+        <div class="org-view__words">
+          <p class="lede">
+            <strong>This is what a volunteer actually opens.</strong> Every admin
+            screen in this tool exists to produce this one. {VOLUNTEER} is a
+            Throughiker who looks after {DEMO_VOLUNTEER.sectionName.replace(/^The /, 'the ')}
+            — they never see a registry or a pull request, only their own paths,
+            what hikers said about them, and what they can do today.
+          </p>
+        </div>
+        <div class="org-view__card">
+          <TreadCard href={TREAD_HREF} />
+        </div>
+        <div class="org-view__more">
+          <ul class="checks">
+            <li><strong>No second login.</strong> They signed into the Throughikers' own site and arrived here.</li>
+            <li><strong>No jargon.</strong> Their section has a name, not an OBJECTID.</li>
+            <li>
+              <strong>Works with no signal.</strong> Reports queue and go when they
+              get back — on their laptop or their phone.
+            </li>
+          </ul>
+          <p style="margin-top: 18px">
+            <a class="btn" href={TREAD_HREF}>Open the full volunteer view</a>
+          </p>
+          <p class="org-help">
+            Lives at <code class="mono">/my/tread</code> — its own address, so the welcome
+            email and the org's own members area can both link straight to it.
+          </p>
+        </div>
+      </div>
     </div>
   </section>
 

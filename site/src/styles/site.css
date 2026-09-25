@@ -1407,6 +1407,42 @@ a:hover {
   color: var(--fg-2);
 }
 
+/* "The view that matters most" on the demo page (#1663): the words, the
+ * Tread card, then the checks and the button. One column on a phone, in that
+ * order, so the card sits right under the sentence promising it; two on a
+ * desktop, the card in the right-hand column beside all of the words. */
+.org-view {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "words" "card" "more";
+}
+
+.org-view__words {
+  grid-area: words;
+}
+
+.org-view__card {
+  grid-area: card;
+}
+
+.org-view__more {
+  grid-area: more;
+}
+
+@media (min-width: 880px) {
+  .org-view {
+    grid-template-columns: minmax(0, 1fr) 380px;
+    /* `auto 1fr`: the card spans both rows and is the taller column, so its
+       extra height goes under the checks rather than being split into a gap
+       between the lede and them. */
+    grid-template-rows: auto 1fr;
+    grid-template-areas: "words card" "more card";
+    align-items: start;
+    column-gap: 40px;
+  }
+}
+
 /* The demo banner. It is the first thing on the page on purpose: a page that
  * renders like a real organization's and is not one has to be labelled rather
  * than qualified in a footer. */

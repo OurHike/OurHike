@@ -222,7 +222,7 @@ export function Workdays({
                     ) : null}
                     <p className="org-mono">
                       {mirrored
-                        ? 'Read-only here. Edit it on your own site and we pick the change up within the hour.'
+                        ? 'Read-only here. Edit it on your own site and we pick the change up within a few hours.'
                         : 'Made here because it did not exist on your site. Nothing there needed changing.'}
                     </p>
                     {canEdit ? (

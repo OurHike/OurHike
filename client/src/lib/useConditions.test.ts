@@ -86,9 +86,11 @@ describe('the refresh clock', () => {
     expect(drought).toHaveBeenLastCalledWith(undefined, { online: false })
   })
 
-  it('matches the pipeline cadence rather than beating it', () => {
+  it('re-reads on the hour publish-conditions.yml’s cron declares, not faster', () => {
     // The pairing publish-conditions.yml's cron comment names. A shorter
     // interval spends battery re-reading bytes that cannot have changed.
+    // The cron's hour is what it ASKS for; GitHub runs it about every four
+    // hours (#1316, measured 2026-09-25), which the maintainer accepted.
     expect(CONDITIONS_REFRESH_MS).toBe(60 * 60 * 1000)
   })
 })

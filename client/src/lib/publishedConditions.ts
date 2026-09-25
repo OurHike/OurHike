@@ -69,9 +69,10 @@ export interface PublishedConditions<T> {
    *
    * The drought bands are the case, and they are `reviewedAt`'s problem in a
    * different costume: the U.S. Drought Monitor publishes one map per week,
-   * on a Thursday, for the Tuesday-to-Monday week just gone. Baking that
-   * hourly is right - it is how the new release is picked up within an hour -
-   * but it means `generatedAt` moves twenty-four times a day while the claim
+   * on a Thursday, for the Tuesday-to-Monday week just gone. Baking that on
+   * every conditions run is right - it is how the new release is picked up
+   * within a few hours (the cron asks hourly; GitHub runs it about every four,
+   * #1316) - but it means `generatedAt` moves several times a day while the claim
    * underneath does not move at all. A hiker told "drought as of 20 minutes
    * ago" would be reading the bake's clock as if it were NDMC's.
    *

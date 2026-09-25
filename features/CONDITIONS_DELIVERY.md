@@ -102,11 +102,16 @@ warning, and then via the stable-indirection option, not a longer signature.
 ### 2. How it is produced
 
 A scheduled job reads verified rows from Postgres and writes the artifacts — the same
-shape as `publish-vector-data.yml`, on a daily schedule.
+shape as `publish-vector-data.yml`. Its cron asks for **hourly** (since 2026-08-15, #720).
+GitHub's scheduler delivers about **every four hours**, measured on 2026-09-25 (#1316):
+40 scheduled runs, 2026-09-18 16:42Z to 2026-09-25 08:10Z, all successful: median gap 4.0 h, mean 4.1 h, max 6.3 h. So a closure verified just after a run can take around six hours to reach the bucket,
+not one. The maintainer accepted that cadence rather than adding an outside trigger (poll,
+2026-09-25), the same answer given for weather on 2026-09-24 (`features/WEATHER.md`).
 
-**Daily is the maintainer's stated tolerance** (2026-08-08): *"a closure can be latent by a
+**A day is still the maintainer's stated tolerance** (2026-08-08): *"a closure can be latent by a
 day. we won't be adjusting minute by minute."* Recorded here because it is the number the
-whole design rests on, and because a future reader will otherwise assume it was guessed.
+whole design rests on, and because a future reader will otherwise assume it was guessed. The
+measured cadence sits well inside it.
 
 **It needs a read-only database credential, distinct from the two that already exist.**
 The repository already draws this distinction twice — `*_MIGRATION_DATABASE_URL` is not

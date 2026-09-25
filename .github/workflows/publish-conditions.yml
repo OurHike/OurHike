@@ -186,9 +186,12 @@ on:
     # file's header. That header quoted the maintainer, 2026-08-08: "a closure
     # can be latent by a day. we won't be adjusting minute by minute." The
     # call was revisited on 2026-08-15 and moved to hourly, which is neither
-    # of those extremes: a closure a moderator verifies at lunchtime reaches a
-    # hiker's phone the same afternoon, and nothing here polls minute by
-    # minute.
+    # of those extremes: a closure a moderator verifies at lunchtime was meant
+    # to reach a hiker's phone the same afternoon, and nothing here polls
+    # minute by minute. The measurement below says the afternoon is not
+    # promised - a verification just after a run can wait ~6 h - and the
+    # maintainer accepted that rather than add an outside trigger (poll,
+    # 2026-09-25, #1316).
     #
     # It only means anything because the client re-reads on the same clock.
     # Both condition reads used to run once per online transition, so an

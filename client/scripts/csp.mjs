@@ -73,7 +73,9 @@ export const SPOTIFY_API_ORIGINS = [
  *
  *  `import.meta.env` is read in exactly four places in `client/src` (measured
  *  2026-09-21 against main at 79bc78b8); these are the three that name a host,
- *  the fourth being `BASE_URL`, which is a path. `policyFromEnv` reads the
+ *  the fourth being `BASE_URL`, which is a path. A fifth arrived with #1683,
+ *  `VITE_SPOTIFY_CLIENT_ID`, and it is an id rather than a host - the Spotify
+ *  hosts it talks to are fixed, `SPOTIFY_API_ORIGINS` above. `policyFromEnv` reads the
  *  environment through this map rather than naming the variables again, so
  *  adding a fourth host is one edit and not two that can disagree. */
 export const HOST_VARIABLES = {

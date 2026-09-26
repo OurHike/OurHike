@@ -132,6 +132,18 @@ def test_a_failed_check_stops_the_session_rather_than_warning(hook_text):
     assert "exit 1" in gate
 
 
+def test_a_missing_webkit_is_said_and_never_fatal(hook_text):
+    """#1537. The image has no WebKit, and a session should learn that from
+    the hook's own output rather than from 147 failed launches - but the gap
+    must not stop a session whose change never touches the flow suite."""
+    block = hook_text[hook_text.index("WebKit, said rather than gated") :]
+    block = block[: block.index('echo "[session-start] ready"')]
+
+    assert "webkit.executablePath()" in block
+    assert "gap   flow suite WebKit" in block
+    assert "exit" not in block.replace("process.exit", "")
+
+
 def test_postgres_staying_down_is_a_warning_and_not_fatal(hook_text):
     """The one thing that must NOT be fatal, kept honest in the other
     direction: only the backend suite needs a database, and a hook that aborted

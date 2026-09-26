@@ -166,7 +166,9 @@ pull request; take its branch over and finish it:
 - Bump `client/package.json` to the version **in the same pull request** -
   it is the version gate's single source (§4), and the v1.1.1 precedent is
   the two landing together, because a tag that disagrees with that file
-  refuses to deploy.
+  refuses to deploy. Then run `npm run shell:version` in `client/` so both
+  native shells carry it too (#1397); the client suite fails the pull
+  request if you don't.
 - **Add the API baseline, in the same pull request** (#1146):
   `cd backend && python scripts/check_openapi_compat.py --write v<version>`,
   then add its entry to `openapi_baselines/retained.json` and set

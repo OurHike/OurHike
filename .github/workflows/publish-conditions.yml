@@ -186,9 +186,12 @@ on:
     # file's header. That header quoted the maintainer, 2026-08-08: "a closure
     # can be latent by a day. we won't be adjusting minute by minute." The
     # call was revisited on 2026-08-15 and moved to hourly, which is neither
-    # of those extremes: a closure a moderator verifies at lunchtime reaches a
-    # hiker's phone the same afternoon, and nothing here polls minute by
-    # minute.
+    # of those extremes: a closure a moderator verifies at lunchtime was meant
+    # to reach a hiker's phone the same afternoon, and nothing here polls
+    # minute by minute. The measurement below says the afternoon is not
+    # promised - a verification just after a run can wait ~6 h - and the
+    # maintainer accepted that rather than add an outside trigger (poll,
+    # 2026-09-25, #1316).
     #
     # It only means anything because the client re-reads on the same clock.
     # Both condition reads used to run once per online transition, so an
@@ -196,14 +199,15 @@ on:
     # client/src/lib/useConditions.ts's CONDITIONS_REFRESH_MS is the other
     # half of this number and the two are commented as a pair.
     #
-    # MEASURED, NOT ASSUMED, AS OF 2026-09-21: this fires roughly every
-    # 3h53m, not hourly. 30 scheduled runs (#391-#419) over 112.6 hours
-    # (2026-09-16 12:49Z - 2026-09-21 05:27Z): min gap 2h06m, median 3h26m,
-    # mean 3h53m, max 5h45m - about 6.2 runs/day against the 24 the cron
-    # declares. First measured on 2026-09-09 at a similar mean (4.14h,
-    # 6.3/day, **#1346 - Every cron in this repository fires about five
-    # times a day, whatever it declares — including the conditions bake**),
-    # so this is a stable platform behaviour, not a one-off. #1346 leaves
+    # MEASURED, NOT ASSUMED, AS OF 2026-09-25: this fires roughly every four
+    # hours, not hourly. 40 scheduled runs, 2026-09-18 16:42Z to 2026-09-25
+    # 08:10Z, all successful: min gap 2.1 h, median 4.0 h, mean 4.1 h, max
+    # 6.3 h - about 5.7 runs/day against the 24 the cron declares. That max is
+    # the "~6 h" above. Two earlier measurements agree: 2026-09-21, 30 runs
+    # (#391-#419), mean 3h53m, max 5h45m; and 2026-09-09, mean 4.14h, 6.3/day
+    # (**#1346 - Every cron in this repository fires about five times a day,
+    # whatever it declares — including the conditions bake**), so this is a
+    # stable platform behaviour, not a one-off. #1346 leaves
     # both the cause and what to do about it open; this line only keeps the
     # measured cadence beside the intended one, as that issue asks, so a
     # reader is not left inferring hourly delivery from the cron alone.

@@ -1351,6 +1351,38 @@ class TestCellCoverage:
         assert report["state"] == "failed"
         assert "outside their own square" in report["detail"]
 
+    def test_an_empty_covered_box_is_named_as_empty_not_as_overreaching(self, requests_mock):
+        """#1561. n38w082 as release 2026-09-16-4 published it: south above
+        north by 0.004 deg. It encloses no ground, so it under-claims - the
+        opposite fault to reaching past the square - and the check used to
+        print the over-claim's sentence for it."""
+        from verify_release import check_cell_coverage
+
+        cells = self._published()
+        west, south, east, _ = cells[1]["bounds"]
+        cells[1]["covered"] = [west + 0.79, south, east, south - 0.003837]
+        requests_mock.get(f"{BASE}/at_basemap_cells.json", json=self._index(cells))
+
+        report = next(r for r in check_cell_coverage(BASE, self._manifest()) if r["key"] == "at_basemap_cells.json")
+
+        assert report["state"] == "failed"
+        assert "no area" in report["detail"]
+        assert cells[1]["name"] in report["detail"]
+        assert "outside their own square" not in report["detail"]
+
+    def test_an_empty_box_and_an_overreaching_one_are_both_reported(self, requests_mock):
+        from verify_release import check_cell_coverage
+
+        cells = self._published()
+        cells[0]["covered"] = [cells[0]["bounds"][0] - 0.5, *cells[0]["bounds"][1:]]
+        cells[1]["covered"] = [cells[1]["bounds"][2], cells[1]["bounds"][1], cells[1]["bounds"][2], cells[1]["bounds"][3]]
+        requests_mock.get(f"{BASE}/at_basemap_cells.json", json=self._index(cells))
+
+        report = next(r for r in check_cell_coverage(BASE, self._manifest()) if r["key"] == "at_basemap_cells.json")
+
+        assert "1 cell(s) carry a covered box with no area" in report["detail"]
+        assert "1 cell(s) claim coverage outside their own square" in report["detail"]
+
     def test_an_index_with_no_covered_key_still_passes(self, requests_mock):
         """Every index cut before #1458 carries none, and they are the ones
         already on hikers' phones."""

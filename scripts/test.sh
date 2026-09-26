@@ -207,6 +207,8 @@ matched_files() {
 base="$(resolve_base)"
 reason=""
 selected=()
+# What could not run, for the closing line - see its note.
+skipped=()
 
 if $run_all; then
   reason="--all"
@@ -393,6 +395,7 @@ if selected_has client; then
     echo "-- site tests: SKIPPED, site/node_modules is missing."
     echo "   Run 'cd site && npm ci' once to turn them on. CI runs them"
     echo "   regardless (.github/workflows/client-tests.yml's test job)."
+    skipped+=("site tests (no site/node_modules)")
   fi
 
   # The flow layer (features/FLOW_TESTING.md), last because it is the slowest
@@ -413,6 +416,7 @@ if selected_has client; then
   # for a loop where the browser is not the thing being changed.
   if [ "$skip_flow" = true ]; then
     echo "-- client flow tests: skipped (--no-flow)"
+    skipped+=("client flow tests (--no-flow)")
   elif npm --prefix client exec -- playwright --version >/dev/null 2>&1 &&
        { [ -n "${CHROMIUM_PATH:-}" ] ||
          [ -d "${PLAYWRIGHT_BROWSERS_PATH:-/nonexistent}" ] ||
@@ -423,14 +427,36 @@ if selected_has client; then
     # client/; `exec` does not, so Playwright resolved no config, fell back to
     # scanning the repository from its root, and tried to parse App.css and a
     # PNG as test files. The suite it then reported on was not this one.
-    step "client flow tests" npm --prefix client run test:e2e
+    #
+    # WEBKIT IS ASKED ABOUT SEPARATELY (#1537). An agent sandbox ships Chromium
+    # and nothing else, so `phone-webkit` failed all 147 of its specs at launch
+    # while every Chromium project passed - an environment gap that read as a
+    # catastrophic regression. Asked of Playwright itself, so this looks where
+    # the pinned version will look. Only this project is left out; the rest of
+    # the suite still runs, and the skip is printed here and in the last line.
+    flow_env=()
+    if ! (cd client && node -e "process.exit(require('fs').existsSync(require('@playwright/test').webkit.executablePath()) ? 0 : 1)") >/dev/null 2>&1; then
+      echo "-- client flow tests: phone-webkit SKIPPED, no WebKit build on this machine."
+      echo "   The other projects run. CI's flow job has WebKit and runs it regardless."
+      flow_env=(FLOW_SKIP_WEBKIT=1)
+      skipped+=("phone-webkit flow project (no WebKit)")
+    fi
+    step "client flow tests" env "${flow_env[@]}" npm --prefix client run test:e2e
   else
     echo "-- client flow tests: SKIPPED, no Playwright browser on this machine."
     echo "   Run 'cd client && npx playwright install chromium' once to turn"
     echo "   them on. CI runs them on every pull request regardless"
     echo "   (.github/workflows/client-tests.yml's flow job)."
+    skipped+=("client flow tests (no browser)")
   fi
 fi
 
 echo
-echo "== all green: ${selected[*]}"
+# A skip is part of the answer, so it is in the line a reader actually reads
+# (#1537): "all green" with a browser's worth of coverage missing would be the
+# quiet pass this script exists not to give.
+if [ "${#skipped[@]}" -gt 0 ]; then
+  echo "== all green: ${selected[*]} - but SKIPPED: $(IFS=';'; echo "${skipped[*]}" | sed 's/;/; /g')"
+else
+  echo "== all green: ${selected[*]}"
+fi

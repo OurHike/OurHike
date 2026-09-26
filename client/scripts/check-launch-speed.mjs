@@ -22,33 +22,8 @@
 // where the phone's own number comes from, and it is not this.
 
 import { readFileSync, writeFileSync } from 'node:fs'
-
-const argv = process.argv.slice(2)
-const flag = (name, fallback = null) => {
-  const found = argv.find((arg) => arg.startsWith(`--${name}=`))
-  return found === undefined ? fallback : found.slice(name.length + 3)
-}
-
-const measured = flag('measured')
-const out = flag('json')
-/**
- * Report rather than gate.
- *
- * Without it, a row over budget exits 1 - which is what somebody running this
- * by hand after a change wants, and what makes the flag mean something rather
- * than decorate the workflow. With it, non-zero is RESERVED for this script
- * itself crashing, which is the distinction .github/workflows/*.yml's
- * `| tee` steps are built to read (#514, and see
- * .github/tests/test_pipe_to_tee_does_not_mask_failure.py).
- */
-const exitZero = argv.includes('--exit-zero')
-if (measured === null) {
-  console.error(
-    'usage: node scripts/check-launch-speed.mjs --measured=<stopwatch json> ' +
-      '[--json=<verdict json>] [--exit-zero]',
-  )
-  process.exit(2)
-}
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 /**
  * What a launch may cost on a runner, and where each number comes from.
@@ -58,10 +33,13 @@ if (measured === null) {
  * shared CI core whose own speed moves between mornings. A threshold that
  * fired on that movement would be a check nobody reads.
  */
-const BUDGET = [
+export const BUDGET = [
   {
     key: 'shell_frame',
     what: 'the tab bar rendered',
+    /** The stopwatch's label for the mark this row reads, so a build that
+     *  does not declare the mark at all can be told apart (#1488). */
+    mark: 'tab bar rendered',
     /** §3's shell-frame row is 500 ms. Tripled here: the doc's number is the
      *  target on a phone profile, and what this is watching for is the class
      *  of regression where the shell waited on storage or on a chunk it did
@@ -96,50 +74,110 @@ const BUDGET = [
   },
 ]
 
-const run = JSON.parse(readFileSync(measured, 'utf8'))
-
-const rows = BUDGET.map((row) => {
-  const value = row.read(run)
+/**
+ * One stopwatch run against the budget: every row, the ones over it, and the
+ * ones this build cannot answer.
+ *
+ * THREE ANSWERS, NOT TWO (#1488). A row with a number is inside or over. A
+ * row with no number used to be "never reached" and nothing else, which
+ * covered two opposite situations: a launch that did not get there (the
+ * worst outcome, and still reported as over) and a deployed build that
+ * predates the mark and so cannot emit it. The second is "not in this
+ * build" - shown, never counted as over - and only when the stopwatch read
+ * the bundle and found the mark's name absent (`declared_marks[mark] ===
+ * false`). A run with no `declared_marks`, or one that could not read the
+ * bundle, falls to "never reached": the loud side, as before.
+ */
+export function judge(run, now = new Date()) {
+  const rows = BUDGET.map((row) => {
+    const value = row.read(run)
+    const undeclared =
+      value === null && row.mark !== undefined && run.declared_marks?.[row.mark] === false
+    return {
+      check: row.key,
+      what: row.what,
+      measured_ms: value,
+      limit_ms: row.limit,
+      // A moment the run never reached is NOT a pass. It is the one answer a
+      // check like this must not round down: a launch whose tab bar never
+      // appeared is the worst outcome available, and reporting it as "no
+      // number, no problem" is how a monitor goes quiet on a real outage.
+      over: value === null ? !undeclared : value > row.limit,
+      reason:
+        value === null ? (undeclared ? 'not in this build' : 'never reached') : null,
+    }
+  })
   return {
-    check: row.key,
-    what: row.what,
-    measured_ms: value,
-    limit_ms: row.limit,
-    // A moment the run never reached is NOT a pass. It is the one answer a
-    // check like this must not round down: a launch whose tab bar never
-    // appeared is the worst outcome available, and reporting it as "no
-    // number, no problem" is how a monitor goes quiet on a real outage.
-    over: value === null ? true : value > row.limit,
-    reason: value === null ? 'never reached' : null,
+    checked_at: now.toISOString().replace('T', ' ').slice(0, 16) + ' UTC',
+    url: run.url ?? null,
+    mode: run.mode ?? null,
+    rows,
+    failed: rows.filter((row) => row.over),
+    not_in_build: rows.filter((row) => row.reason === 'not in this build'),
   }
-})
-
-const failed = rows.filter((row) => row.over)
-const verdict = {
-  checked_at: new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC',
-  url: run.url ?? null,
-  mode: run.mode ?? null,
-  rows,
-  failed,
 }
 
-const width = Math.max(...rows.map((row) => row.what.length))
-console.log(`launch budget, ${verdict.mode} launch against ${verdict.url}`)
-for (const row of rows) {
-  const value = row.measured_ms === null ? 'never reached' : `${row.measured_ms} ms`
+function main(argv) {
+  const flag = (name, fallback = null) => {
+    const found = argv.find((arg) => arg.startsWith(`--${name}=`))
+    return found === undefined ? fallback : found.slice(name.length + 3)
+  }
+  const measured = flag('measured')
+  const out = flag('json')
+  /**
+   * Report rather than gate.
+   *
+   * Without it, a row over budget exits 1 - which is what somebody running this
+   * by hand after a change wants, and what makes the flag mean something rather
+   * than decorate the workflow. With it, non-zero is RESERVED for this script
+   * itself crashing, which is the distinction .github/workflows/*.yml's
+   * `| tee` steps are built to read (#514, and see
+   * .github/tests/test_pipe_to_tee_does_not_mask_failure.py).
+   */
+  const exitZero = argv.includes('--exit-zero')
+  if (measured === null) {
+    console.error(
+      'usage: node scripts/check-launch-speed.mjs --measured=<stopwatch json> ' +
+        '[--json=<verdict json>] [--exit-zero]',
+    )
+    return 2
+  }
+
+  const verdict = judge(JSON.parse(readFileSync(measured, 'utf8')))
+  const { rows, failed } = verdict
+
+  const width = Math.max(...rows.map((row) => row.what.length))
+  console.log(`launch budget, ${verdict.mode} launch against ${verdict.url}`)
+  for (const row of rows) {
+    const value = row.measured_ms === null ? row.reason : `${row.measured_ms} ms`
+    const status = row.over
+      ? 'OVER'
+      : row.reason === 'not in this build'
+        ? 'n/a '
+        : ' ok '
+    console.log(
+      `  ${status}  ${row.what.padEnd(width)}  ${value.padStart(17)}  (budget ${row.limit_ms} ms)`,
+    )
+  }
   console.log(
-    `  ${row.over ? 'OVER' : ' ok '}  ${row.what.padEnd(width)}  ${value.padStart(13)}  (budget ${row.limit_ms} ms)`,
+    failed.length === 0
+      ? '\nEvery row inside its budget.'
+      : `\n${failed.length} row(s) over budget. features/LAUNCH_BUDGET.md §3 is what they are measured against.`,
   )
-}
-console.log(
-  failed.length === 0
-    ? '\nEvery row inside its budget.'
-    : `\n${failed.length} row(s) over budget. features/LAUNCH_BUDGET.md §3 is what they are measured against.`,
-)
+  if (verdict.not_in_build.length > 0) {
+    console.log(
+      `${verdict.not_in_build.length} row(s) not in this build: the deployed bundle does not declare the mark, so it predates it. Not counted as over.`,
+    )
+  }
 
-if (out !== null) {
-  writeFileSync(out, `${JSON.stringify(verdict, null, 2)}\n`)
-  console.log(`wrote ${out}`)
+  if (out !== null) {
+    writeFileSync(out, `${JSON.stringify(verdict, null, 2)}\n`)
+    console.log(`wrote ${out}`)
+  }
+
+  return failed.length > 0 && !exitZero ? 1 : 0
 }
 
-if (failed.length > 0 && !exitZero) process.exit(1)
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  process.exit(main(process.argv.slice(2)))
+}

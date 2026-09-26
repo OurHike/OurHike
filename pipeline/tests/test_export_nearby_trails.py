@@ -130,9 +130,10 @@ def _usfs_source(**overrides):
 def _granit_source(**overrides):
     """The shape of the real nh_granit_trails entry, minus the prose.
 
-    The only source using `excluded_when`: its PED column cannot be an
-    allowlist (blank means unrecorded, not no), so it filters on GRANIT's
-    positive motorized flags instead.
+    GRANIT's September 2026 schema (#1646): its HIKING column cannot be an
+    allowlist (blank and 'NA' mean unrecorded, not no), so the entry filters on
+    positive use flags instead and lets HIKING 'Y' overrule them. It publishes
+    no blaze column any more, hence `blaze_default`.
     """
     source = {
         "key": "nh_granit_trails",
@@ -141,9 +142,10 @@ def _granit_source(**overrides):
         "url": "https://example.test/granit",
         "steward": "NH GRANIT, Earth Systems Research Center, University of New Hampshire",
         "attribution": "NH GRANIT, University of New Hampshire",
-        "blaze_field": "BLAZE",
+        "blaze_default": "Unknown",
         "name_field": "TRAILNAME",
-        "excluded_when": {"SNOWMBL": ["1"], "ATV": ["1"]},
+        "excluded_when": {"HIKING": ["N"], "SNOWMACHIN": ["Y"], "OHRV": ["Y"], "ALPINESKI": ["Y"], "PADDLE": ["Y"]},
+        "excluded_unless": {"HIKING": ["Y"]},
         "reaches_hikers": True,
     }
     source.update(overrides)
@@ -1423,104 +1425,157 @@ def test_a_usfs_trail_with_no_hiker_season_still_ships(tmp_path, monkeypatch):
     assert [f["properties"]["name"] for f in body["features"]] == ["SEASONED", "UNRECORDED"]
 
 
-def test_granit_drops_motorized_corridors_on_a_positive_flag(tmp_path, monkeypatch):
-    # Measured in the Whites 2026-09-02: 1,209 blank-PED rows are flagged
-    # SNOWMBL '1' and 124 ATV '1'. Those are positive assertions about what a
-    # corridor is FOR, and acting on one is sound where acting on an absence
-    # is not.
+def _granit_properties(**overrides):
+    """One row of GRANIT's 2026-09 layer with every use flag unrecorded, the
+    way 'NA' reads on 4,022 of the live 15,791 HIKING values."""
+    props = {"TRAILNAME": "Air Line", "HIKING": "NA", "SNOWMACHIN": "NA", "OHRV": "NA", "ALPINESKI": "NA", "PADDLE": "NA"}
+    props.update(overrides)
+    return props
+
+
+def test_granit_drops_snowmobile_ohrv_ski_and_paddle_rows_that_are_not_flagged_for_hiking(tmp_path, monkeypatch):
+    # The maintainer's filter of 2026-09-26 (#1646). Measured over the live
+    # layer that day, these four keys drop 3,151 rows / 2,939 mi: snowmobile
+    # corridors like CORRIDOR 11 TRL, ski runs at Loon and Cannon, and the
+    # Connecticut River Paddlers' Trail drawn as a hiking trail.
     manifest, body = _run(
         tmp_path,
         monkeypatch,
         [_granit_source()],
         {
             "nh_granit_trails": [
-                _feature(HARRIMAN, {"TRAILNAME": "Air Line", "BLAZE": " ", "PED": "1"}, feature_id=1),
-                _feature(HARRIMAN, {"TRAILNAME": "Camp 7 Snowmobile", "BLAZE": " ", "PED": " ", "SNOWMBL": "1"}, feature_id=2),
-                _feature(HARRIMAN, {"TRAILNAME": "An OHV run", "BLAZE": " ", "PED": " ", "ATV": "1"}, feature_id=3),
+                _feature(HARRIMAN, _granit_properties(TRAILNAME="Air Line", HIKING="Y"), feature_id=1),
+                _feature(HARRIMAN, _granit_properties(TRAILNAME="CORRIDOR 11 TRL", HIKING=" ", SNOWMACHIN="Y"), feature_id=2),
+                _feature(HARRIMAN, _granit_properties(TRAILNAME="An OHRV run", OHRV="Y"), feature_id=3),
+                _feature(HARRIMAN, _granit_properties(TRAILNAME="BOOM RUN TRL", ALPINESKI="Y"), feature_id=4),
+                _feature(HARRIMAN, _granit_properties(TRAILNAME="CONNECTICUT RIVER PADDLERS' TRAIL", PADDLE="Y"), feature_id=5),
             ]
         },
-        mapping={"nh_granit_trails": {"mapped": {" ": "None", "White": "White"}}},
     )
 
     assert [f["properties"]["name"] for f in body["features"]] == ["Air Line"]
     assert manifest["sources"]["nh_granit_trails"]["dropped"] == {
-        "excluded use: SNOWMBL='1'": 1,
-        "excluded use: ATV='1'": 1,
+        "excluded use: SNOWMACHIN='Y'": 1,
+        "excluded use: OHRV='Y'": 1,
+        "excluded use: ALPINESKI='Y'": 1,
+        "excluded use: PADDLE='Y'": 1,
     }
 
 
-def test_a_granit_trail_with_blank_ped_and_no_other_flag_still_ships(tmp_path, monkeypatch):
-    # The counterpart, and the reason PED is not a foot_field. 2,541 of the
-    # 3,760 blank-PED rows in the Whites carry NO use flag of any kind and are
-    # ordinary hiking trails - one of them literally named "Appalachian Trail
-    # - road link". A PED allowlist would delete them.
+def test_granit_keeps_a_snowmobile_corridor_that_is_also_flagged_for_hiking(tmp_path, monkeypatch):
+    # `excluded_unless`: 633 live rows (560 mi) read HIKING 'Y' AND a
+    # snowmobile or OHRV flag. The steward saying a hiker may walk it outranks
+    # the flag saying sleds use it in winter - shared ground, not a corridor.
+    _, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_granit_source()],
+        {"nh_granit_trails": [_feature(HARRIMAN, _granit_properties(TRAILNAME="Shared Woods Road", HIKING="Y", SNOWMACHIN="Y"))]},
+    )
+
+    assert [f["properties"]["name"] for f in body["features"]] == ["Shared Woods Road"]
+
+
+def test_granit_drops_a_row_flagged_hiking_n_even_with_no_other_flag(tmp_path, monkeypatch):
+    # HIKING 'N' is the one negative GRANIT states - 48 live rows - so it is
+    # acted on; `excluded_unless` cannot spare it because 'N' is not 'Y'.
+    manifest, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_granit_source()],
+        {
+            "nh_granit_trails": [
+                _feature(HARRIMAN, _granit_properties(TRAILNAME="Air Line", HIKING="Y"), feature_id=1),
+                _feature(HARRIMAN, _granit_properties(TRAILNAME="ANDROSCOGGIN RIVER", HIKING="N"), feature_id=2),
+            ]
+        },
+    )
+
+    assert [f["properties"]["name"] for f in body["features"]] == ["Air Line"]
+    assert manifest["sources"]["nh_granit_trails"]["dropped"] == {"excluded use: HIKING='N'": 1}
+
+
+def test_a_granit_trail_with_hiking_unrecorded_and_no_other_flag_still_ships(tmp_path, monkeypatch):
+    # The reason HIKING is not a foot_field. GRANIT's A.T. rows, the Wapack
+    # and the Monadnock-Sunapee Greenway carry no HIKING 'Y' (measured
+    # 2026-09-26: 'NA', blank or 'UNKNOWN'); a
+    # {'Y'} allowlist would delete 5,037 of NH's 8,990 published GRANIT miles
+    # with them. PED had the same trap before the 2026-09 schema.
     _, body = _run(
         tmp_path,
         monkeypatch,
         [_granit_source()],
         {
             "nh_granit_trails": [
-                _feature(HARRIMAN, {"TRAILNAME": "Appalachian Trail - road link", "BLAZE": " ", "PED": " "}, feature_id=1),
+                _feature(HARRIMAN, _granit_properties(TRAILNAME="APPALACHIAN TRL", HIKING="NA"), feature_id=1),
+                _feature(HARRIMAN, _granit_properties(TRAILNAME="Wapack Trail", HIKING=" "), feature_id=2),
             ]
         },
-        mapping={"nh_granit_trails": {"mapped": {" ": "None"}}},
     )
 
-    assert [f["properties"]["name"] for f in body["features"]] == ["Appalachian Trail - road link"]
+    assert [f["properties"]["name"] for f in body["features"]] == ["APPALACHIAN TRL", "Wapack Trail"]
 
 
-def test_an_unblazed_whites_trail_draws_as_unblazed_not_unknown(tmp_path, monkeypatch):
-    # The maintainer's correction of 2026-09-02: the Whites largely do not use
-    # paint blazes, so GRANIT's blank BLAZE - 7,574 of 7,643 rows - is the
-    # ground rather than a gap. reference/blaze_mapping.json keys the literal
-    # ' ' to "None", which the client renders as "Unblazed"; "Unknown" would
-    # print a hedge in place of a true fact. The A.T. is the one white line
-    # through the range (61 of the 62 White rows carry TRAILSYS 'Appalachian
-    # Trail').
-    _, body = _run(
-        tmp_path,
-        monkeypatch,
-        [_granit_source()],
-        {
-            "nh_granit_trails": [
-                _feature(HARRIMAN, {"TRAILNAME": "Air Line", "BLAZE": " ", "PED": "1"}, feature_id=1),
-                _feature(HARRIMAN, {"TRAILNAME": "Appalachian Trail", "BLAZE": "White", "PED": "1"}, feature_id=2),
-            ]
-        },
-        mapping={"nh_granit_trails": {"mapped": {" ": "None", "White": "White"}}},
-    )
+def test_granit_and_usfs_both_draw_blaze_not_recorded_now_granit_has_no_blaze_column(tmp_path, monkeypatch):
+    """Both Whites sources read "Unknown" ("Blaze not recorded") since #1646.
 
-    blazes = {f["properties"]["name"]: f["properties"]["blaze_color"] for f in body["features"]}
-    assert blazes == {"Air Line": "None", "Appalachian Trail": "White"}
-
-
-def test_the_two_whites_sources_report_two_different_absences(tmp_path, monkeypatch):
-    """GRANIT's blank is "Unblazed"; USFS's silence is "Blaze not recorded".
-
-    Both cover the same White Mountains ground and neither paints most of it,
-    which makes it tempting to treat the two absences as one. They are not.
-    GRANIT records a blaze where one exists - the A.T.'s white - so its blank
-    is evidence that a trail is unblazed. USFS publishes no blaze column at
-    all, so it has said nothing. Collapsing them would tell a hiker the Forest
-    Service had checked.
-
-    Pinned together in one test because the distinction only exists in the
-    comparison, and a future simplification would erase it by making both
-    sources agree.
+    Until GRANIT's September 2026 republish, its blank BLAZE drew "None"
+    ("Unblazed") - the Whites largely are not paint-blazed, and 61 of 62 White
+    rows were the A.T. - while USFS, which never had a blaze column, drew
+    "Unknown". GRANIT dropped the column. "Unblazed" with no column behind it
+    would tell a hiker the A.T.'s white-blazed ridges carry no paint, so both
+    sources now say the one thing they know: nothing.
     """
     _, body = _run(
         tmp_path,
         monkeypatch,
         [_granit_source(), _usfs_source()],
         {
-            "nh_granit_trails": [_feature(HARRIMAN, {"TRAILNAME": "Air Line", "BLAZE": " ", "PED": "1"}, feature_id=1)],
+            "nh_granit_trails": [_feature(HARRIMAN, _granit_properties(TRAILNAME="Air Line", HIKING="Y"), feature_id=1)],
             "usfs_trails": [_feature(HARRIMAN, {"trail_name": "JEWELL", "trail_type": "TERRA"}, feature_id=1)],
         },
-        mapping={"nh_granit_trails": {"mapped": {" ": "None"}}},
     )
 
     blazes = {f["properties"]["name"]: f["properties"]["blaze_color"] for f in body["features"]}
-    assert blazes == {"Air Line": "None", "JEWELL": "Unknown"}
+    assert blazes == {"Air Line": "Unknown", "JEWELL": "Unknown"}
+
+
+def test_a_registry_field_absent_from_every_fetched_feature_fails_the_run(tmp_path, monkeypatch):
+    """#1646's failure, pinned: a renamed column must stop the run.
+
+    GRANIT's 2026-09 republish renamed SNOWMBL/ATV to SNOWMACHIN/OHRV. The
+    registry still named the old columns, `properties.get` returned None on
+    every row, the exclusion matched nothing, and every snowmobile corridor in
+    New Hampshire shipped as a hiking trail from a green run. The old entry
+    over the new layer's rows is exactly that situation.
+    """
+    stale_entry = _granit_source(excluded_when={"SNOWMBL": ["1"], "ATV": ["1"]}, excluded_unless=None)
+    with pytest.raises(SystemExit, match=r"nh_granit_trails: sources.json names \['SNOWMBL', 'ATV'\]"):
+        _run(
+            tmp_path,
+            monkeypatch,
+            [stale_entry],
+            {"nh_granit_trails": [_feature(HARRIMAN, _granit_properties(TRAILNAME="CORRIDOR 11 TRL", SNOWMACHIN="Y"))]},
+        )
+
+
+def test_a_registry_field_null_on_every_feature_is_not_a_schema_change():
+    """The guard asks whether a column EXISTS, not whether it is populated.
+
+    A steward publishing a column and leaving it empty is a data question the
+    filters already answer (an absent blaze draws "Unknown"); only a column
+    missing from every row means the registry describes a different layer.
+    """
+    source = _granit_source()
+    features = [{"properties": _granit_properties(HIKING=None, SNOWMACHIN=None)}]
+    assert ex.missing_declared_fields(source, features) == []
+    assert ex.missing_declared_fields(source, [{"properties": {"TRAILNAME": "Air Line"}}]) == [
+        "HIKING",
+        "SNOWMACHIN",
+        "OHRV",
+        "ALPINESKI",
+        "PADDLE",
+    ]
 
 
 # --------------------------------------------------------------------------

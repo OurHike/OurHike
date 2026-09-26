@@ -1,0 +1,94 @@
+# Publishes the podcast episodes picked for each hike to `podcasts/episodes.json`
+# at the bucket root (#1683 - Offer podcast episodes picked for the hike, with a
+# one-tap Spotify save and an in-app player).
+#
+# ON DEMAND ONLY. No schedule and no push trigger, like every publishing
+# workflow here: a merged edit to pipeline/reference/podcast_episodes.json
+# reaches nobody until a person dispatches this.
+#
+# WHY THE ROOT AND NOT A RELEASE FOLDER. The maintainer chose a live list
+# (2026-09-26, on #1683): a release folder is pinned by the client's
+# DATA_RELEASE, so an episode published there would reach no phone until an app
+# release moved the pin. At the root, beside `conditions/` and `archive/`, a
+# phone sees the new list on its next fetch (client/src/lib/podcasts.ts).
+#
+# TWO INPUTS, named as the other publishing workflows name them. `publish:
+# false` (the default) checks the list, writes the file and attaches it to the
+# run - a rehearsal that touches no bucket. `publish: true` also uploads it.
+# UA carries no environment gate (#1330); production needs its approval,
+# exactly as the vector publish does.
+#
+# The publish-data concurrency group is NOT joined: this writes one key nothing
+# else writes and never touches latest.json, so the race that group exists for
+# (#645) cannot happen here - archive-nynjtc-sheets.yml's reasoning, which
+# applies unchanged.
+
+name: Publish podcast episodes
+
+on:
+  workflow_dispatch:
+    inputs:
+      data_environment:
+        description: "Which data environment's tree to write (features/DATA_ENVIRONMENTS.md)"
+        type: choice
+        default: ua
+        options:
+          - ua
+          - production
+      publish:
+        description: "Upload the list. Off: check it, write the file, attach it to the run."
+        type: boolean
+        default: false
+
+concurrency:
+  group: publish-podcasts-${{ inputs.data_environment }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ${{ inputs.data_environment == 'production' && 'production' || inputs.data_environment }}
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Fails, and uploads nothing, if any row of the reviewed list cannot be
+      # published - a list that quietly shrank would replace a good one
+      # already on phones. The script refuses to upload unless
+      # R2_WRITE_ENABLED is exactly "true", which only the next step sets.
+      - name: Check the list and write it
+        if: ${{ !inputs.publish }}
+        run: python export_podcasts.py
+
+      - name: Check the list, write it and upload it
+        if: ${{ inputs.publish }}
+        env:
+          R2_WRITE_ENABLED: "true"
+          OURHIKE_DATA_ENV: ${{ inputs.data_environment }}
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: python export_podcasts.py --upload
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ always() }}
+        with:
+          name: podcast-episodes-${{ inputs.data_environment }}
+          path: pipeline/data/podcasts/episodes.json
+          if-no-files-found: warn

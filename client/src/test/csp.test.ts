@@ -21,6 +21,8 @@ import {
   headersFile,
   policyFromEnv,
   BASEMAP_ORIGIN,
+  SPOTIFY_API_ORIGINS,
+  SPOTIFY_PLAYER_ORIGIN,
   HOST_VARIABLES,
   HEADERS_PATH,
   HEADER_NAME,
@@ -86,7 +88,8 @@ describe('buildPolicy', () => {
     // The API host is the one pr-preview.yml leaves unset, so connect-src must
     // be the two hosts it does know plus self - not three with a hole in it.
     expect(directive(policy, 'connect-src')).toBe(
-      "'self' https://tiles.openfreemap.org https://data.example.org https://project.supabase.co",
+      "'self' https://tiles.openfreemap.org https://data.example.org https://project.supabase.co" +
+        ' https://accounts.spotify.com https://api.spotify.com',
     )
   })
 
@@ -99,13 +102,18 @@ describe('buildPolicy', () => {
       }),
       'connect-src',
     )
-    expect(connect).toBe("'self' https://tiles.openfreemap.org https://one.example.org")
+    expect(connect).toBe(
+      "'self' https://tiles.openfreemap.org https://one.example.org" +
+        ' https://accounts.spotify.com https://api.spotify.com',
+    )
   })
 
   it('still produces a usable policy when no host is configured at all', () => {
     const policy = buildPolicy({})
     expect(policy).not.toContain('undefined')
-    expect(directive(policy, 'connect-src')).toBe("'self' https://tiles.openfreemap.org")
+    expect(directive(policy, 'connect-src')).toBe(
+      "'self' https://tiles.openfreemap.org https://accounts.spotify.com https://api.spotify.com",
+    )
     expect(directive(policy, 'default-src')).toBe("'self'")
   })
 
@@ -144,9 +152,17 @@ describe('buildPolicy', () => {
   it('refuses to be framed and refuses plugins, neither of which this app uses', () => {
     const policy = buildPolicy(PREVIEW_HOSTS)
     expect(directive(policy, 'frame-ancestors')).toBe("'none'")
-    expect(directive(policy, 'frame-src')).toBe("'none'")
     expect(directive(policy, 'object-src')).toBe("'none'")
     expect(directive(policy, 'base-uri')).toBe("'none'")
+  })
+
+  it('frames Spotify’s episode player and nothing else (#1683)', () => {
+    expect(directive(buildPolicy(PREVIEW_HOSTS), 'frame-src')).toBe(SPOTIFY_PLAYER_ORIGIN)
+  })
+
+  it('lets the Spotify save reach Spotify’s token and library hosts', () => {
+    const connect = directive(buildPolicy({}), 'connect-src')
+    for (const origin of SPOTIFY_API_ORIGINS) expect(connect).toContain(origin)
   })
 
   it('produces the same string twice for the same hosts, so two servers cannot disagree', () => {

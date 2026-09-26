@@ -1458,3 +1458,46 @@ describe('crews while you are walking', () => {
     expect(screen.queryByText('A crew on your walk today')).toBeNull()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Podcast episodes for today's leg (#1683, the maintainer's frame 3).
+
+describe('the podcast episodes for today’s leg', () => {
+  const EPISODE = {
+    spotifyId: '0aBcDeFgHiJkLmNoPqRsTu',
+    title: 'This section',
+    show: 'A show',
+    hikes: [],
+    atMiles: [[480, 512]] as const,
+  }
+
+  it('sits directly under “Today on your hike”, titled with the leg', () => {
+    const { container } = render(
+      <Today
+        {...props({ mode: 'long', longHike: LONG_HIKE, podcastEpisodes: [EPISODE] })}
+      />,
+    )
+
+    const card = screen.getByRole('region', {
+      name: 'Picked for Pine Swamp Branch → Bailey Gap',
+    })
+    const hikeSection = container
+      .querySelector('.today__card--hike')
+      ?.closest('.today__section')
+    expect(hikeSection?.nextElementSibling?.contains(card)).toBe(true)
+    expect(screen.getByText('♪ For today’s stretch')).toBeInTheDocument()
+  })
+
+  it('draws nothing with no leg planned today, since the episodes were matched to the leg', () => {
+    render(
+      <Today
+        {...props({
+          mode: 'long',
+          longHike: { ...LONG_HIKE, day: null },
+          podcastEpisodes: [EPISODE],
+        })}
+      />,
+    )
+    expect(screen.queryByText('This section')).not.toBeInTheDocument()
+  })
+})

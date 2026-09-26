@@ -135,7 +135,13 @@ export const DATA_RELEASE = '2026-09-24-2'
 // release build - pipeline/lib/r2_keys.py's declaration of the prefix is the
 // design record. Versioning one under a release would make a snapshot that
 // cannot be rebuilt look like an artifact that can.
-const ROOT_SCOPED_PREFIXES = ['conditions/', 'photos/', 'archive/'] as const
+// `podcasts/` joined on 2026-09-26 (#1683): the episodes picked for each hike,
+// written by pipeline/export_podcasts.py on a person's dispatch. The
+// maintainer chose a LIVE list - an episode added to the reviewed file
+// reaches a phone on its next fetch - and a list inside the pinned folder
+// would reach nobody until this file's DATA_RELEASE moved, which is an app
+// release per episode.
+const ROOT_SCOPED_PREFIXES = ['conditions/', 'photos/', 'archive/', 'podcasts/'] as const
 const ROOT_SCOPED_KEYS = ['latest.json'] as const
 
 /** Whether `key` is served from the pinned release folder. */

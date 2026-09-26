@@ -407,3 +407,34 @@ describe('the publisher’s paper map (#1574)', () => {
     expect(screen.queryByText(/Trails Map ›/)).not.toBeInTheDocument()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Podcast episodes picked for the hike (#1683).
+
+describe('the podcast episodes picked for this hike', () => {
+  const EPISODE = {
+    spotifyId: '0aBcDeFgHiJkLmNoPqRsTu',
+    title: 'The park’s history',
+    show: 'A show',
+    minutes: 48,
+    hikes: ['nynjtc_favorite_hikes:hike-vista-loop-trail'],
+    atMiles: [],
+  }
+
+  it('is the last thing on the screen, below the provenance (the maintainer, 2026-09-26)', () => {
+    const { container } = show({ detail: DETAIL }, { podcastEpisodes: [EPISODE] })
+
+    const body = container.querySelector('.hike-detail__body') as HTMLElement
+    const last = body.lastElementChild as HTMLElement
+    expect(last.querySelector('.hike-detail__rule')?.textContent).toBe(
+      'Listen before you go',
+    )
+    expect(last.textContent).toContain('The park’s history')
+    expect(last.previousElementSibling?.tagName).toBe('FOOTER')
+  })
+
+  it('draws no section for a hike nobody picked an episode for', () => {
+    show({ detail: DETAIL })
+    expect(screen.queryByText('Listen before you go')).not.toBeInTheDocument()
+  })
+})

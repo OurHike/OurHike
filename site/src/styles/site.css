@@ -55,14 +55,28 @@
 
 /* The site has no theme JS, so the tokens' `data-theme` dark block never
  * matches here; this mirrors its choices for the aliases THIS SURFACE reads,
- * behind the OS preference. Kept deliberately short, and kept in step with
- * tokens/colors.css's dark block by hand - if an alias is added below, check
- * it against that block first. */
+ * behind the OS preference. Kept in step with tokens/colors.css's dark block
+ * by hand - and by src/styles/siteCss.test.mjs, which fails when this file
+ * reads an alias that block re-points and this one does not.
+ *
+ * "Kept deliberately short" was this comment's own instruction until #1663 -
+ * The /for-orgs/ pages are unreadable in dark mode and misaligned on a phone.
+ * Short is how the org pages came to read `--bg-canvas`, `--bg-sunken`,
+ * `--surface-warning` and `--border-2` without any of them being listed here:
+ * light text flipped, the surfaces under it did not, and the reason cards and
+ * every form field measured 1.21:1 on a phone in dark mode (2026-09-24). */
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
     --bg-page: var(--ink-900);
+    --bg-canvas: var(--ink-850);
     --bg-surface: var(--ink-850);
+    --bg-sunken: var(--ink-950);
+    --surface-card-alt: var(--ink-800);
+    --surface-warning: var(--amber-900);
+    --border-2: var(--ink-600);
+    --success: var(--moss-400);
+    --danger: var(--blaze-orange-light);
     --fg-1: var(--bone-100);
     --fg-2: var(--bone-300);
     --fg-3: var(--bone-500);
@@ -142,11 +156,16 @@ a:hover {
 
 /* ---------- Navigation ---------- */
 
+/* `padding-block`, never the `padding` shorthand: this element is also a
+ * `.wrap`, and a shorthand here zeroes the 24px gutter `.wrap` gives it. It
+ * did until #1663, on every page - invisible on a desktop, where the
+ * container centres itself, and the logo touching the edge of a phone while
+ * every row beneath it sat 24px in. */
 .nav {
   display: flex;
   align-items: center;
   gap: 28px;
-  padding: 18px 0;
+  padding-block: 18px;
 }
 
 .nav__brand {
@@ -191,29 +210,105 @@ a:hover {
   color: var(--bg-surface);
 }
 
+/* Two rows on a phone: the mark and the call to action, then the links.
+ * Written when the row held two links; with three and the CTA it wrapped into
+ * a first row of one logo and a second of three links with the button pushed
+ * to the end, 200px of header before a word of the page at 390px (#1663).
+ * `order` puts the CTA beside the mark without moving it in the markup, so
+ * the tab order still reads mark, links, button; the zero-height `::after`
+ * is the line break that sends the links to row two. */
 @media (max-width: 720px) {
   .nav {
     flex-wrap: wrap;
-    gap: 14px 18px;
-    padding: 14px 0;
+    gap: 6px 20px;
+    padding-block: 12px 4px;
   }
 
   .nav__brand {
+    order: 0;
+  }
+
+  .nav__cta {
+    order: 1;
+    padding: 8px 14px;
+  }
+
+  .nav::after {
+    content: "";
+    order: 2;
     flex-basis: 100%;
+    height: 0;
+  }
+
+  .nav__link {
+    order: 3;
+    padding-block: 10px;
+  }
+}
+
+/* ---------- Phone targets ----------
+ *
+ * 44px on a phone for every link that is not a word inside a sentence - the
+ * handoff's own minimum (HANDOFF_README.md, Responsive: "44-56px hit
+ * targets"), which client/e2e/sitePages.spec.ts now holds every page to.
+ * Measured before (390px, 2026-09-25): footer links and card "->" links
+ * 22px, the mark 34px, the nav CTA 42px, small buttons 38px (#1663).
+ * Desktop keeps its tighter rhythm; a pointer does not need the room. */
+@media (max-width: 720px) {
+  .nav__brand {
+    min-height: 44px;
+  }
+
+  .nav__cta {
+    padding: 10px 14px;
+  }
+
+  .card__link {
+    display: inline-block;
+    padding-block: 11px;
+  }
+
+  .btn--small {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  .footer__col {
+    gap: 0;
+  }
+
+  /* 12px: the column's 13.5px type at 1.6 line height is a 21.6px line,
+     so 11px came to 43.6px - just under. */
+  .footer__col a {
+    display: block;
+    padding-block: 12px;
+  }
+
+  .footer__heading {
+    margin-bottom: 2px;
   }
 }
 
 /* ---------- Buttons ---------- */
 
+/* Written for `<a>` and used on `<button>` too, so it resets what a button
+ * brings with it: the browser's own border (a dark bevel round "Read their
+ * site" and "This one is mine" until #1663), its system font and its line
+ * height. `.btn--ghost` sets its border after this and still wins. */
 .btn {
   display: inline-block;
   background: var(--brand-primary);
   color: var(--bg-surface);
+  font-family: var(--font-body);
   font-size: 16px;
   font-weight: 600;
+  line-height: 1.6;
   padding: 13px 26px;
+  border: 0;
   border-radius: 10px;
   text-decoration: none;
+  cursor: pointer;
 }
 
 .btn:hover {
@@ -318,7 +413,10 @@ a:hover {
   z-index: 100;
   padding: 10px 16px;
   border-radius: 8px;
-  background: var(--bg-chrome);
+  /* Surface and ink from the same pair. It sat on `--bg-chrome` with `--fg-1`
+     until #1663 - pine under stone ink, 1.13:1 in light mode, a link that
+     appeared on focus and could not be read. */
+  background: var(--bg-surface);
   color: var(--fg-1);
   border: 1px solid var(--brand-primary);
   text-decoration: none;
@@ -403,9 +501,14 @@ a:hover {
   color: var(--fg-chrome-1);
 }
 
+/* Baseline, not centre: the blaze belongs to the heading's first line. On a
+ * phone "What registering actually involves" wraps to two, and a centred
+ * blaze sat halfway down beside neither of them (#1663). An empty
+ * inline-block's baseline is its bottom edge, so the chip stands on the
+ * first line the way a blaze stands on a tree at eye height. */
 .band__head {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 10px;
   margin-bottom: 16px;
 }
@@ -641,9 +744,10 @@ a:hover {
   font-weight: 600;
 }
 
+/* Baseline for the reason `.band__head` gives. */
 .section__head {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 10px;
   margin-bottom: 16px;
 }
@@ -677,6 +781,7 @@ a:hover {
 
 .hero__credit {
   position: absolute;
+  z-index: 1;
   right: 12px;
   bottom: 12px;
   font-family: var(--font-mono);
@@ -699,8 +804,29 @@ a:hover {
   color: var(--fg-on-dark);
 }
 
+/* Full-strength on-dark ink, not `--fg-on-dark-muted`. The muted sage
+ * measured 3.18:1 against the median pixel behind the tagline at 390px and
+ * 2.06:1 at the 90th percentile (2026-09-24, #1663) - the photo is brightest
+ * exactly where a phone stacks the copy, in the sky above the ridges. */
 .hero--org .hero__tagline {
-  color: var(--fg-on-dark-muted);
+  color: var(--fg-on-dark);
+}
+
+/* A scrim over the photograph, heaviest at the top where the copy sits and
+ * gone by the ridges at the bottom. Still the image being darkened rather
+ * than the text being shadowed - the rule `.hero__photo img` states - only
+ * unevenly, because the sky is the part that needed it. The one literal
+ * colour here is the same ink the credit pill below already uses. */
+.hero__photo::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgb(20 19 15 / 45%) 0%,
+    rgb(20 19 15 / 30%) 60%,
+    rgb(20 19 15 / 0%) 100%
+  );
 }
 
 /* The ghost button sits ON the photograph here, where the light-background
@@ -719,9 +845,51 @@ a:hover {
 }
 
 /* Above the photograph. The ridge is the cut between the hero and the pine
- * band below it, and a photograph at `inset: 0` covers it otherwise. */
+ * band below it, and a photograph at `inset: 0` covers it otherwise.
+ * `position: relative` is what makes the z-index do anything: without it,
+ * which is how this rule shipped, the ridge was static, the index was
+ * ignored, and the photograph ended in a straight edge (#1663). */
 .hero--org .ridge {
+  position: relative;
   z-index: 1;
+}
+
+/* The credit pill clears the ridge. Once the ridge actually drew (#1663) it
+ * sat on top of the pill, and the pill is a licence condition rather than a
+ * courtesy - `client/src/lib/heroPhotos.ts` renders it ON the frame it
+ * licenses, and index.astro says it must stay. Under the pill at 390px the
+ * ridge path peaks at 64% of its own height (the point at x=566 of the
+ * viewBox's 800), so the pill sits 0.65 of the ridge up plus its 12px margin:
+ * a 110px ridge on a desktop, 56px on a phone below. Reasoned from the path
+ * in index.astro, and checked by eye in 390px and 1280px renders. */
+.hero--org .hero__credit {
+  bottom: calc(110px * 0.65 + 12px);
+}
+
+/* A phone stacks everything the desktop hero sets side by side, and the org
+ * hero came out 1,010px tall on an 844px screen - the beta promise, the one
+ * paragraph the page most needs read, started below the first screen. */
+@media (max-width: 720px) {
+  .hero--org {
+    padding-top: 40px;
+  }
+
+  .hero--org .hero__inner {
+    gap: 18px;
+  }
+
+  .hero--org .hero__tagline {
+    font-size: 17px;
+  }
+
+  .hero--org .ridge {
+    height: 56px;
+    margin-top: 28px;
+  }
+
+  .hero--org .hero__credit {
+    bottom: calc(56px * 0.65 + 12px);
+  }
 }
 
 /* ---------- For orgs (features/ORG_ONBOARDING.md, #1539) ----------
@@ -748,8 +916,13 @@ a:hover {
 
 .card--on-pine {
   /* On the pine band, where `--bg-surface` would be invisible. The band sets
-   * its own text colour and the card has to opt back out of it. */
-  background: var(--paper-0);
+   * its own text colour and the card has to opt back out of it.
+   *
+   * `--surface-card-alt` rather than `--paper-0`, which this rule named until
+   * #1663: it is the same paper in light, but a base colour never flips, so in
+   * dark mode the card stayed paper while `--fg-1` on it went to bone - 1.21:1,
+   * four headings nobody could read. */
+  background: var(--surface-card-alt);
   border-color: transparent;
   color: var(--fg-1);
 }
@@ -766,13 +939,20 @@ a:hover {
   font-size: 13.5px;
 }
 
+/* `--fg-2`, not the `--fg-3` it shipped in, for this and every small grey
+ * run on the org pages (.org-help, .org-source__verdict, .org-remove, the
+ * claim results): stone-500 measured 3.44:1 on the page, 3.81:1 on a white
+ * card and 3.13:1 on the sage panel - under WCAG AA's 4.5:1 for text this
+ * size - when client/e2e/sitePages.spec.ts first ran (#1663, 2026-09-25).
+ * The token itself is the app's, used 229 times there, and is its own
+ * question: #1663's pull request names the issue that carries it. */
 .org-eyebrow {
   display: block;
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: var(--fg-3);
+  color: var(--fg-2);
 }
 
 /* ---------- The demo-org invitation ---------- */
@@ -801,6 +981,16 @@ a:hover {
   width: 100%;
   height: auto;
   fill: none;
+}
+
+/* Dropped on a phone rather than wrapped. At 390px the 120px sketch fell
+ * onto its own line above the words, left-aligned beside empty space, and
+ * read as an image that had failed to load (#1663). It is aria-hidden
+ * decoration; nothing is lost with it. */
+@media (max-width: 560px) {
+  .org-demo__map {
+    display: none;
+  }
 }
 
 .org-demo__words {
@@ -934,22 +1124,28 @@ a:hover {
 .org-help {
   font-size: 13px;
   line-height: 1.55;
-  color: var(--fg-3);
+  color: var(--fg-2);
 }
 
 .org-help--centred {
   text-align: center;
 }
 
+/* 16px, not the 14.5px it shipped at: iOS Safari zooms the whole page into
+ * any field set smaller than 16px the moment it is tapped, and leaves it
+ * zoomed. Reasoned from WebKit's documented behaviour, not tested on a
+ * device here (#1663). */
 .org-input {
   width: 100%;
   font-family: var(--font-body);
-  font-size: 14.5px;
+  font-size: 16px;
   color: var(--fg-1);
   background: var(--bg-canvas);
   border: 1px solid var(--border-2);
   border-radius: 9px;
-  padding: 11px 13px;
+  /* 12px, which with the 16px type above makes a 45px field - over the
+     44px phone target, where 11px left it at 43px. */
+  padding: 12px 13px;
 }
 
 .org-input:focus-visible {
@@ -966,17 +1162,32 @@ a:hover {
   flex: 0 1 150px;
 }
 
+/* On a phone the email takes the first line of an admin row, and a title
+ * that would not grow left "remove" stranded in the gap after it. */
+@media (max-width: 560px) {
+  .org-input--title {
+    flex-grow: 1;
+  }
+}
+
 .org-field {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  flex: 1 1 220px;
 }
 
 .org-pair {
   display: flex;
   gap: 14px;
   flex-wrap: wrap;
+}
+
+/* The 220px basis is a WIDTH, and only means one inside a row. It sat on
+ * `.org-field` itself until #1663, so a field placed straight in a
+ * fieldset - a column - took it as a height: Nominate's website field
+ * carried a 220px blank box under it. */
+.org-pair > .org-field {
+  flex: 1 1 220px;
 }
 
 .org-admins {
@@ -1026,9 +1237,12 @@ a:hover {
   font-weight: 600;
   background: none;
   border: 0;
-  color: var(--fg-3);
+  color: var(--fg-2);
   cursor: pointer;
   padding: 4px 2px;
+  /* 44px, the handoff's phone minimum for a target (HANDOFF_README.md,
+     Responsive); these were 23px text buttons. */
+  min-height: 44px;
 }
 
 .org-add {
@@ -1085,8 +1299,17 @@ a:hover {
   gap: 9px;
 }
 
+/* A closed <details> still counts its hidden content as a flex item, so the
+ * gap left a blank band under the summary line. */
+.org-note:not([open]) {
+  gap: 0;
+}
+
 .org-note summary {
   cursor: pointer;
+  /* Two lines of 13.5px on a phone came to 43px; the handoff's target is
+     44px. Padding rather than `display: flex`, which drops the marker. */
+  padding-block: 2px;
   font-size: 13.5px;
   color: var(--fg-1);
 }
@@ -1106,8 +1329,13 @@ a:hover {
   align-self: flex-start;
 }
 
+/* A resting control, not a faded one. Half opacity turned the brand green
+ * into a washed-out sage block that read as broken rather than waiting
+ * (#1663); a sunken surface with quiet ink reads as "not yet" in both
+ * themes. */
 .org-form__submit[disabled] {
-  opacity: 0.5;
+  background: var(--bg-sunken);
+  color: var(--fg-3);
   cursor: not-allowed;
 }
 
@@ -1180,7 +1408,7 @@ a:hover {
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.04em;
-  color: var(--fg-3);
+  color: var(--fg-2);
   align-self: center;
 }
 
@@ -1213,7 +1441,7 @@ a:hover {
 }
 
 .org-result--note {
-  color: var(--fg-3);
+  color: var(--fg-2);
   font-size: 13px;
 }
 
@@ -1223,7 +1451,7 @@ a:hover {
 }
 
 .org-result__where {
-  color: var(--fg-3);
+  color: var(--fg-2);
   font-size: 13px;
 }
 
@@ -1236,6 +1464,52 @@ a:hover {
   font-size: 14.5px;
   line-height: 1.6;
   color: var(--fg-2);
+}
+
+/* "The view that matters most" on the demo page (#1663): the words, the
+ * Tread card, then the checks and the button. One column on a phone, in that
+ * order, so the card sits right under the sentence promising it; two on a
+ * desktop, the card in the right-hand column beside all of the words. */
+.org-view {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "words" "card" "more";
+}
+
+.org-view__words {
+  grid-area: words;
+}
+
+.org-view__card {
+  grid-area: card;
+}
+
+.org-view__more {
+  grid-area: more;
+}
+
+@media (min-width: 880px) {
+  .org-view {
+    grid-template-columns: minmax(0, 1fr) 380px;
+    /* `auto 1fr`: the card spans both rows and is the taller column, so its
+       extra height goes under the checks rather than being split into a gap
+       between the lede and them. */
+    grid-template-rows: auto 1fr;
+    grid-template-areas: "words card" "more card";
+    align-items: start;
+    column-gap: 40px;
+  }
+}
+
+/* "Leave the demo" in dark mode: moss-400 on amber-900 measured 3.78:1
+ * (client/e2e/sitePages.spec.ts, #1663). The banner's own ink instead; the
+ * light theme's brand green on amber-100 passes and is left alone. */
+@media (prefers-color-scheme: dark) {
+  .org-demo-banner .btn--ghost {
+    color: var(--fg-1);
+    border-color: var(--fg-2);
+  }
 }
 
 /* The demo banner. It is the first thing on the page on purpose: a page that

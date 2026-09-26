@@ -1,0 +1,246 @@
+---
+// The volunteer's own section, drawn on /for-orgs/demo/ under "The view that
+// matters most" - #1663 - The /for-orgs/ pages are unreadable in dark mode and
+// misaligned on a phone. Until then that section was prose and a button: a
+// heading promising a view, and no view under it, where the design handoff
+// (features/org-onboarding-handoff/copy/demo.txt) draws Sam's Tread card.
+//
+// THE DATA IS THE APP'S, NOT THIS FILE'S. Every name and figure below is read
+// at build time from `client/src/org/demoVolunteer.ts`, the fixture the app's
+// own /my/tread renders the demo organization from - the pattern
+// src/lib/demoApi.ts already uses for demoOrg.ts. The maintainer chose this by
+// poll on 2026-09-24 over the handoff's exact words, because the button under
+// this card opens that full view: a card saying "Sam, 1.2 miles, 1 report"
+// above a view saying "Alex, 3.3 miles, 4 reports" would be the demo
+// contradicting itself one tap later. A second copy of the volunteer here
+// would be the same mistake demoApi.ts's header describes, one fixture over.
+//
+// THE MARKUP IS A COPY, AND THAT IS THE COST. The app's `TreadCard`
+// (client/src/org/components.tsx) is React and this site has none to mount
+// it with. So the layout is drawn again here; the words and numbers are not.
+//
+// NOTHING ON IT ACTS. "Mark resolved", "Report something" and "Log hours" are
+// links to the full volunteer view, where the same controls exist. A marketing
+// page that looked like it could resolve a report would be lying about where
+// the work happens.
+import {
+  DEMO_ISSUES,
+  DEMO_POIS,
+  DEMO_THANKS,
+  DEMO_VOLUNTEER,
+} from '../../../client/src/org/demoVolunteer'
+
+interface Props {
+  /** Where the full volunteer view lives - the demo page's own deep link. */
+  href: string
+}
+
+const { href } = Astro.props
+const open = DEMO_ISSUES.filter((issue) => issue.open)
+// Newest first in the fixture, as the app lists them; the card shows the head
+// of each list and counts the rest.
+const newestThanks = DEMO_THANKS[0]
+const newestReport = open[0]
+const pois = DEMO_POIS.slice(0, 3)
+const plural = (count: number, one: string, many: string) =>
+  `${count} ${count === 1 ? one : many}`
+// The fixture writes "reported by a hiker" to follow a date in the app; here
+// it opens a sentence.
+const sentence = (words: string) => words.charAt(0).toUpperCase() + words.slice(1)
+---
+
+<article class="tread" aria-label={`${DEMO_VOLUNTEER.displayName}'s section, ${DEMO_VOLUNTEER.sectionName}`}>
+  <span class="tread__eyebrow">
+    YOUR TREAD · {DEMO_VOLUNTEER.anchors} · {DEMO_VOLUNTEER.miles} MI
+  </span>
+  <h3 class="tread__name">{DEMO_VOLUNTEER.sectionName}</h3>
+  <p class="tread__sub">{DEMO_VOLUNTEER.displayName} · {DEMO_VOLUNTEER.standing}</p>
+
+  {
+    newestThanks && (
+      <div class="tread__block tread__block--thanks">
+        <p class="tread__head">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" />
+          </svg>
+          {DEMO_THANKS.length} thanks on your paths
+        </p>
+        <p class="tread__quote">“{newestThanks.words}”</p>
+        <p class="tread__meta">{newestThanks.on}</p>
+      </div>
+    )
+  }
+
+  {
+    newestReport && (
+      <div class="tread__block tread__block--report">
+        <p class="tread__head">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 21V4h11l-2 4 2 4H5" />
+          </svg>
+          {plural(open.length, 'open report', 'open reports')}
+        </p>
+        <p class="tread__title">
+          {newestReport.title} · {newestReport.where}
+        </p>
+        <p class="tread__meta">
+          {newestReport.detail} {sentence(newestReport.reportedBy)}, {newestReport.on}.
+        </p>
+        <a class="tread__chip" href={href}>Mark resolved</a>
+      </div>
+    )
+  }
+
+  <div class="tread__pois">
+    <p class="tread__head tread__head--plain">
+      Points of interest · {DEMO_POIS.length} on your miles
+    </p>
+    <ul>
+      {
+        pois.map((poi) => (
+          <li>
+            <span>{poi.name}</span>
+            <span class="tread__meta">{poi.age === 'current' ? poi.checked : poi.age}</span>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+
+  <div class="tread__acts">
+    <a class="btn tread__act" href={href}>Report something</a>
+    <a class="btn btn--ghost tread__act" href={href}>Log hours</a>
+  </div>
+</article>
+
+<style>
+  .tread {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-1);
+    border-radius: 14px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  /* `--fg-2`, for the contrast reason site.css's `.org-eyebrow` gives. */
+  .tread__eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--fg-2);
+  }
+
+  .tread__name {
+    font-size: 22px;
+    font-weight: 600;
+  }
+
+  .tread__sub,
+  .tread__meta {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--fg-2);
+  }
+
+  .tread__block {
+    border-left: 3px solid var(--border-2);
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: var(--bg-canvas);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .tread__block--thanks {
+    border-left-color: var(--success);
+  }
+
+  .tread__block--report {
+    border-left-color: var(--warning);
+    background: var(--surface-warning);
+  }
+
+  .tread__head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--fg-1);
+  }
+
+  .tread__head svg {
+    width: 16px;
+    height: 16px;
+    flex: none;
+    fill: none;
+    stroke: var(--brand-primary);
+    stroke-width: 1.7;
+    stroke-linejoin: round;
+  }
+
+  .tread__quote {
+    font-size: 14.5px;
+    line-height: 1.5;
+    color: var(--fg-1);
+  }
+
+  .tread__title {
+    font-size: 14.5px;
+    font-weight: 600;
+    color: var(--fg-1);
+  }
+
+  /* 44px tall, the handoff's phone minimum for a target (HANDOFF_README.md,
+     Responsive) - it is a link, and a phone is where this page is read. */
+  .tread__chip {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    margin-top: 2px;
+    padding: 0 14px;
+    border: 1px solid var(--border-2);
+    border-radius: 999px;
+    background: var(--bg-surface);
+    color: var(--brand-primary);
+    font-size: 13.5px;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .tread__pois ul {
+    list-style: none;
+    margin: 4px 0 0;
+    padding: 0;
+  }
+
+  .tread__pois li {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 7px 0;
+    border-top: 1px solid var(--border-1);
+    font-size: 14px;
+  }
+
+  .tread__pois li .tread__meta {
+    text-align: right;
+  }
+
+  .tread__acts {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+  }
+
+  .tread__act {
+    flex: 1;
+    text-align: center;
+    padding-inline: 10px;
+    font-size: 15px;
+  }
+</style>

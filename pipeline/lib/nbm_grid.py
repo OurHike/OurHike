@@ -54,17 +54,55 @@ SQUARE_TOLERANCE_M = 1e-3
 _TO_GRID = pyproj.Transformer.from_crs("EPSG:4326", PROJ4, always_xy=True)
 
 
+def grid_coords(lons, lats) -> tuple[np.ndarray, np.ndarray]:
+    """(cols, rows) as fractions: a point in square (r, c) comes back with
+    c <= col < c + 1 and r <= row < r + 1. Unbounded - a point off the grid
+    returns numbers outside it rather than an error."""
+    x, y = _TO_GRID.transform(np.asarray(lons, dtype=float), np.asarray(lats, dtype=float))
+    return (np.asarray(x) - ORIGIN_X) / SQUARE_M, (ORIGIN_Y - np.asarray(y)) / SQUARE_M
+
+
 def squares(lons, lats) -> tuple[np.ndarray, np.ndarray]:
     """(rows, cols) of the square containing each point, `-1` for both where
     the point is off the grid - Alaska, Puerto Rico and Hawaii are separate
     NBM grids this module does not describe."""
-    x, y = _TO_GRID.transform(np.asarray(lons, dtype=float), np.asarray(lats, dtype=float))
-    cols = np.floor((np.asarray(x) - ORIGIN_X) / SQUARE_M).astype(np.int64)
-    rows = np.floor((ORIGIN_Y - np.asarray(y)) / SQUARE_M).astype(np.int64)
-    off = (rows < 0) | (rows >= HEIGHT) | (cols < 0) | (cols >= WIDTH) | ~np.isfinite(x) | ~np.isfinite(y)
+    fcols, frows = grid_coords(lons, lats)
+    finite = np.isfinite(fcols) & np.isfinite(frows)
+    cols = np.floor(np.where(finite, fcols, -1)).astype(np.int64)
+    rows = np.floor(np.where(finite, frows, -1)).astype(np.int64)
+    off = (rows < 0) | (rows >= HEIGHT) | (cols < 0) | (cols >= WIDTH) | ~finite
     rows = np.where(off, -1, rows)
     cols = np.where(off, -1, cols)
     return rows, cols
+
+
+def _to_grid_units(xy: np.ndarray) -> np.ndarray:
+    cols, rows = grid_coords(xy[:, 0], xy[:, 1])
+    return np.column_stack([cols, rows])
+
+
+def overlapping(geometries, square_list) -> list[list[int]]:
+    """For each lon/lat shapely geometry, the indices into `square_list`
+    ([row, col] pairs) of the squares whose area it overlaps.
+
+    A square counts when any part of it is inside the geometry. Touching
+    along an edge or at a corner does not count - no ground is shared. This
+    is the rule for NWS warnings (features/WEATHER.md §6): the phone knows a
+    hiker only to the square, so a warning reaching any part of that square
+    might be reaching the hiker."""
+    import shapely  # deferred: the forecast path of this module needs only numpy and pyproj
+
+    rows = np.array([sq[0] for sq in square_list], dtype=float)
+    cols = np.array([sq[1] for sq in square_list], dtype=float)
+    boxes = shapely.box(cols, rows, cols + 1, rows + 1)
+    tree = shapely.STRtree(boxes)
+    shapes = shapely.transform(np.asarray(geometries, dtype=object), _to_grid_units)
+    shape_ix, box_ix = tree.query(shapes, predicate="intersects")
+    touching = shapely.touches(shapes[shape_ix], boxes[box_ix])
+    found: list[list[int]] = [[] for _ in range(len(shapes))]
+    for s, b in zip(shape_ix[~touching].tolist(), box_ix[~touching].tolist(), strict=True):
+        found[s].append(b)
+    return [sorted(f) for f in found]
 
 
 def matches(transform, crs, width: int, height: int) -> bool:

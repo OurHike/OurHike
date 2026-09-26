@@ -3,21 +3,28 @@ import { POI_TYPES } from '../lib/config'
 import { CLOSURE_COLOR } from '../lib/closureStyle'
 import { WORKDAY_COLOR } from './workdayPin'
 import { SITE_ANCHOR_TYPES, SITE_MEMBER_TYPES } from './poiSites'
+import { LOUD_POI_TYPES } from './poiPriority'
 import {
   badgeCenters,
   buildPoiIcon,
   buildPoiIcons,
+  parseHex,
   poiColor,
   poiGlyphPath,
-  pinGeometry,
   poiIconId,
+  poiTier,
   siteMemberCombinations,
   sitePinPadding,
+  waypointPinGeometry,
+  waypointPinInks,
+  MEMBER_BADGE_SIZE,
   POI_COLORS,
   POI_FALLBACK_COLOR,
+  POI_PIN_INK_SIZE,
   POI_PIN_PIXEL_RATIO,
   POI_PIN_SIZE,
   PIN_HALO_COLOR,
+  QUIET_TINT,
   UNKNOWN_POI_TYPE,
   type PoiConfidence,
 } from './poiIcons'
@@ -29,8 +36,9 @@ import {
 //     for colour-coded categories at WCAG AA, and WIREFRAMES.md `9d` requires
 //     the map to survive a greyscale pass - which is what a phone in direct
 //     sun approximates. Both hold only if the glyphs differ.
-//  2. Confidence is the RIM. A pin nobody has verified must look provisional
-//     without looking like a different category (WIREFRAMES.md §11).
+//  2. Confidence is the FILL. A pin nobody has verified is drawn hollow, and
+//     must look provisional without looking like a different category
+//     (WIREFRAMES.md §11, which was a broken rim until #1682).
 //
 // Contrast ratios are computed here rather than asserted from a comment, so a
 // palette change that breaks AA fails the suite instead of shipping.
@@ -77,6 +85,8 @@ function hueDistance(a: string, b: string): number {
 
 const PIXELS = POI_PIN_SIZE * POI_PIN_PIXEL_RATIO
 const CENTER = PIXELS / 2
+/** The drawn pin's proportions in this image's pixels (#1682). */
+const G = waypointPinGeometry(PIXELS, POI_PIN_INK_SIZE * POI_PIN_PIXEL_RATIO)
 
 interface Pixel {
   r: number
@@ -96,6 +106,11 @@ function radius(x: number, y: number): number {
   return Math.hypot(x + 0.5 - CENTER, y + 0.5 - CENTER)
 }
 
+function rgbDistance(pixel: Pixel, hex: string): number {
+  const [r, g, b] = parseHex(hex)
+  return Math.hypot(pixel.r - r, pixel.g - g, pixel.b - b)
+}
+
 /**
  * Rasterised pins, kept between calls.
  *
@@ -109,24 +124,34 @@ function radius(x: number, y: number): number {
 const MASK_CACHE = new Map<string, Set<string>>()
 
 /**
- * The glyph as a set of "x,y" keys: the near-white pixels well inside the
- * disc, which is the shape and nothing else.
+ * The glyph as a set of "x,y" keys: the pixels inside the disc that are
+ * nearer the glyph's ink than the disc's, which is the shape and nothing else.
  *
- * Sampling comfortably inside the disc rather than up to its edge keeps the
- * halo out of the set, so this measures the glyph and not the pin.
+ * By NEAREST INK rather than by "near-white" since #1682, because the glyph is
+ * paper on a loud pin and the accent on a quiet or hollow one. A pixel a glyph
+ * edge half covers is nearer the glyph on exactly the same pixels either way,
+ * so a type's mask is the same whatever it is drawn in. Sampled a pixel inside
+ * any ring a pin can carry, so this measures the glyph and not the pin.
  */
 function glyphMask(type: string, confidence: PoiConfidence = 'high'): Set<string> {
   const cached = MASK_CACHE.get(`${type}:${confidence}`)
   if (cached !== undefined) return cached
 
   const { data } = buildPoiIcon(type, confidence)
+  const inks = waypointPinInks(type, confidence)
+  const inner = G.rDisc - G.hollowRing - POI_PIN_PIXEL_RATIO
   const mask = new Set<string>()
 
   for (let y = 0; y < PIXELS; y += 1) {
     for (let x = 0; x < PIXELS; x += 1) {
-      if (radius(x, y) > CENTER - 10) continue
-      const { r, g, b, a } = pixelAt(data, x, y)
-      if (a > 200 && r > 200 && g > 200 && b > 200) mask.add(`${x},${y}`)
+      if (radius(x, y) > inner) continue
+      const pixel = pixelAt(data, x, y)
+      if (
+        pixel.a > 200 &&
+        rgbDistance(pixel, inks.glyph) < rgbDistance(pixel, inks.fill)
+      ) {
+        mask.add(`${x},${y}`)
+      }
     }
   }
 
@@ -241,24 +266,55 @@ describe('shape as the primary channel', () => {
   })
 
   it('keeps the glyph inside the disc, never spilling onto the rim', () => {
-    // The glyph box is sized so its corners stay within the disc. If that ever
-    // stops being true a glyph bleeds into the halo and the pin loses its edge.
+    // The glyph box is sized so its corners stay within the disc - and inside
+    // the faint ring a quiet pin draws there, which is the tighter of the two.
+    // Checked as the geometry rather than off the pixels, because on a loud pin
+    // the glyph and the hairline are the same paper and no pixel test can tell
+    // one from the other.
+    const halfDiagonal = (G.glyphBox / 2) * Math.SQRT2
+    expect(halfDiagonal).toBeLessThan(G.rDisc - G.quietRing)
+    const badgeHalfDiagonal = (G.badge.glyphBox / 2) * Math.SQRT2
+    expect(badgeHalfDiagonal).toBeLessThan(G.badge.rDisc)
+  })
+})
+
+describe('loud and quiet (#1682)', () => {
+  it('keeps exactly the maintainer’s top tiers in full colour', () => {
+    // "Shelters/Campsites, Water, Trailheads, Everything else" (2026-09-26,
+    // #1676) - and "everything else" is quiet, parking included by the
+    // maintainer's choice.
+    expect([...LOUD_POI_TYPES].sort()).toEqual([
+      'campsite',
+      'shelter',
+      'trailhead',
+      'water',
+    ])
+    for (const type of ALL_TYPES) {
+      expect(poiTier(type), type).toBe(LOUD_POI_TYPES.includes(type) ? 'loud' : 'quiet')
+    }
+  })
+
+  it('fills a loud pin with its accent and a quiet one with a pale tint of it', () => {
     for (const type of ALL_TYPES) {
       const { data } = buildPoiIcon(type, 'high')
-
-      for (let y = 0; y < PIXELS; y += 1) {
-        for (let x = 0; x < PIXELS; x += 1) {
-          if (radius(x, y) <= CENTER - 7) continue
-          const { r, g, b, a } = pixelAt(data, x, y)
-          // Outside the disc only the halo and the dark edge may appear, and
-          // the halo is continuous - so any near-white pixel here belongs to
-          // the rim, never to a glyph that escaped.
-          if (a > 200 && r > 200 && g > 200 && b > 200) {
-            expect(radius(x, y)).toBeGreaterThan(CENTER - 8)
-          }
-        }
-      }
+      // Just inside the disc on the left, clear of every glyph's box.
+      const x = Math.round(CENTER - G.rDisc + G.quietRing + POI_PIN_PIXEL_RATIO * 1.5)
+      const pixel = pixelAt(data, x, Math.round(CENTER))
+      const expected = waypointPinInks(type, 'high').fill
+      expect(rgbDistance(pixel, expected), type).toBeLessThan(12)
+      if (poiTier(type) === 'loud') expect(expected).toBe(poiColor(type))
+      else expect(expected).not.toBe(poiColor(type))
     }
+  })
+
+  it('draws a quiet glyph in its accent at WCAG AA on its own tint', () => {
+    // The glyph is the full accent on a disc mixed QUIET_TINT of the way to
+    // paper. Resupply's orange is the tightest pair, measured at 4.61.
+    for (const type of ALL_TYPES.filter((t) => poiTier(t) === 'quiet')) {
+      const inks = waypointPinInks(type, 'high')
+      expect(contrastRatio(inks.glyph, inks.fill), type).toBeGreaterThanOrEqual(4.5)
+    }
+    expect(QUIET_TINT).toBeGreaterThan(0.5)
   })
 })
 
@@ -272,24 +328,39 @@ describe('confidence as a second, independent channel', () => {
     }
   })
 
-  it('breaks the rim of an unverified pin, and leaves a verified one solid', () => {
-    const verified = buildPoiIcon('water', 'high')
-    const unverified = buildPoiIcon('water', 'low')
+  it('draws an unverified pin hollow, and a verified one filled', () => {
+    for (const type of ALL_TYPES) {
+      const verified = buildPoiIcon(type, 'high')
+      const unverified = buildPoiIcon(type, 'low')
+      const x = Math.round(CENTER - G.rDisc + G.hollowRing + POI_PIN_PIXEL_RATIO * 1.5)
+      const y = Math.round(CENTER)
 
-    let solidRim = 0
-    let brokenRim = 0
-    for (let y = 0; y < PIXELS; y += 1) {
-      for (let x = 0; x < PIXELS; x += 1) {
-        if (radius(x, y) <= CENTER - 6 || radius(x, y) > CENTER - 1) continue
-        if (pixelAt(verified.data, x, y).a > 200) solidRim += 1
-        if (pixelAt(unverified.data, x, y).a > 200) brokenRim += 1
-      }
+      // Paper inside, where the verified pin has its fill.
+      expect(
+        rgbDistance(pixelAt(unverified.data, x, y), PIN_HALO_COLOR),
+        type,
+      ).toBeLessThan(12)
+      expect(
+        rgbDistance(pixelAt(verified.data, x, y), waypointPinInks(type, 'high').fill),
+        type,
+      ).toBeLessThan(12)
     }
+  })
 
-    expect(solidRim).toBeGreaterThan(0)
-    // Half the rim, give or take the anti-aliased ends of each dash.
-    expect(brokenRim).toBeLessThan(solidRim * 0.75)
-    expect(brokenRim).toBeGreaterThan(solidRim * 0.25)
+  it('rings a hollow pin all the way round in its accent, never broken', () => {
+    // The ring is what says "this category" once the fill is gone; a broken
+    // one would be the old rhythm meaning something new.
+    const { data } = buildPoiIcon('water', 'low')
+    const middle = G.rDisc - G.hollowRing / 2
+    for (let step = 0; step < 32; step += 1) {
+      const angle = (step / 32) * Math.PI * 2
+      const x = Math.floor(CENTER + Math.cos(angle) * middle)
+      const y = Math.floor(CENTER + Math.sin(angle) * middle)
+      expect(
+        rgbDistance(pixelAt(data, x, y), poiColor('water')),
+        `step ${step}`,
+      ).toBeLessThan(60)
+    }
   })
 })
 
@@ -390,57 +461,56 @@ describe('buildPoiIcons', () => {
   it('draws a member glyph big enough to read, at every member count', () => {
     // 5.7 CSS px was reported as hard to read on a real screen, which is the
     // review features/POI_SITES.md said this decision needed, and 7 is the floor
-    // that came out of it. The badge now clears it by half again, because 7.1
-    // was reported as too quiet on the same screen - so the floor is asserted
-    // here and the ACTUAL size below it, which is what would catch a badge
-    // quietly shrinking back towards the bar it stays clear of.
+    // that came out of it. The floor is asserted here and the ACTUAL size below
+    // it, which is what would catch a badge quietly shrinking back towards it.
     //
-    // A badge is the SAME SIZE whatever a pin carries, which is most of what
-    // moving off the band bought: the strip's cell had to divide a fixed span
-    // between the members, so a third member shrank all three. Asserted for all
-    // three counts anyway, because the loop is what would catch a future layout
-    // going back to dividing something.
-    const g = pinGeometry(POI_PIN_SIZE * POI_PIN_PIXEL_RATIO)
-
+    // 17 px across on the 26 px pin (#1682), chosen by the maintainer from the
+    // app built three ways - 14, 17 and 21 - on Limestone Spring Shelter (poll,
+    // 2026-09-26). Its glyph is 9.1 px.
     for (const count of [1, 2, 3]) {
       expect(
-        g.badge.glyphBox / POI_PIN_PIXEL_RATIO,
+        G.badge.glyphBox / POI_PIN_PIXEL_RATIO,
         `${count} member(s)`,
       ).toBeGreaterThanOrEqual(7)
-      expect(badgeCenters(count, g.badge)).toHaveLength(count)
+      expect(badgeCenters(count, G.badge)).toHaveLength(count)
     }
-
-    // Bigger than the footer strip managed at its most generous (9.6 px at one
-    // member), which is the bar this layout has to beat to have been worth it.
-    expect(g.badge.glyphBox / POI_PIN_PIXEL_RATIO).toBeGreaterThan(9.6)
+    expect(MEMBER_BADGE_SIZE).toBe(17)
+    expect(G.badge.glyphBox / POI_PIN_PIXEL_RATIO).toBeCloseTo(9.09, 1)
   })
 
   it('leaves the anchor own glyph exactly the size a plain pin draws it', () => {
     // The whole of #611. The footer band could only be made by shrinking the
-    // anchor's own glyph to 11.1 CSS px, so a shelter carrying a privy was a
-    // less legible shelter than one carrying nothing - and every site pin paid
-    // it, including the 57% carrying a single member.
-    const g = pinGeometry(POI_PIN_SIZE * POI_PIN_PIXEL_RATIO)
-
-    expect(g.glyphBox / POI_PIN_PIXEL_RATIO).toBeCloseTo(17.72, 2)
-    // And still the biggest thing on the pin. The margin has narrowed - 17.7
-    // against 10.7, where the first badge size made it 17.7 against 7.1 - which
-    // is the real cost of a badge a hiker can read: a site pin now says two
-    // things loudly rather than one loudly and one quietly. It is a shelter
-    // first, and this is where that stops being true if a badge grows again.
-    expect(g.glyphBox).toBeGreaterThan(g.badge.glyphBox)
+    // anchor's own glyph, so a shelter carrying a privy was a less legible
+    // shelter than one carrying nothing. Badges on the rim cost the anchor
+    // nothing, and the anchor's glyph is still the biggest thing on the pin.
+    expect(G.glyphBox / POI_PIN_PIXEL_RATIO).toBeCloseTo(13.99, 1)
+    expect(G.glyphBox).toBeGreaterThan(G.badge.glyphBox)
+    // And byte for byte: with three badges on, every pixel of the disc is the
+    // pixel the plain pin draws there.
+    const plain = buildPoiIcon('shelter', 'high')
+    const sited = buildPoiIcon('shelter', 'high', [...SITE_MEMBER_TYPES])
+    const pad = (sited.width - PIXELS) / 2
+    let compared = 0
+    for (let y = 0; y < PIXELS; y += 1) {
+      for (let x = 0; x < PIXELS; x += 1) {
+        if (radius(x, y) > G.rDisc) continue
+        const from = (y * PIXELS + x) * 4
+        const to = ((y + pad) * sited.width + (x + pad)) * 4
+        for (let c = 0; c < 4; c += 1)
+          expect(sited.data[to + c]).toBe(plain.data[from + c])
+        compared += 1
+      }
+    }
+    expect(compared).toBeGreaterThan(1000)
   })
 
   it('never lets a badge reach the disc', () => {
     // The invariant that keeps the anchor's glyph whole, and the one thing the
-    // badge ring distance exists to buy. A badge crossing the disc would sit on
-    // top of the silhouette this pin is mostly there to show.
-    const g = pinGeometry(POI_PIN_SIZE * POI_PIN_PIXEL_RATIO)
-
+    // badge ring distance exists to buy.
     for (const count of [1, 2, 3]) {
-      for (const { x, y } of badgeCenters(count, g.badge)) {
-        expect(Math.hypot(x, y) - g.badge.radius, `${count} member(s)`).toBeGreaterThan(
-          g.rDisc,
+      for (const { x, y } of badgeCenters(count, G.badge)) {
+        expect(Math.hypot(x, y) - G.badge.radius, `${count} member(s)`).toBeGreaterThan(
+          G.rDisc,
         )
       }
     }
@@ -450,13 +520,11 @@ describe('buildPoiIcons', () => {
     // The fan's pitch is derived from the badge size, so this catches a badge
     // grown without the spacing following it - which would draw two members as
     // one smudge and lose a category silently.
-    const g = pinGeometry(POI_PIN_SIZE * POI_PIN_PIXEL_RATIO)
-
     for (const count of [2, 3]) {
-      const spots = badgeCenters(count, g.badge)
+      const spots = badgeCenters(count, G.badge)
       for (let i = 1; i < spots.length; i += 1) {
         const apart = Math.hypot(spots[i].x - spots[i - 1].x, spots[i].y - spots[i - 1].y)
-        expect(apart, `${count} member(s)`).toBeGreaterThan(g.badge.radius * 2)
+        expect(apart, `${count} member(s)`).toBeGreaterThan(G.badge.radius * 2)
       }
     }
   })
@@ -474,15 +542,15 @@ describe('buildPoiIcons', () => {
     // is a consequence of the size, not a drift: what has to hold is that every
     // badge stays on the upper-right side of the pin, which is the anti-diagonal
     // below, and that none of them wanders more than 55 degrees off the corner.
-    const g = pinGeometry(POI_PIN_SIZE * POI_PIN_PIXEL_RATIO)
+    // On the slim pin (#1682) the 17 px badges fan 53 degrees either side.
     const AXIS = -Math.PI / 4
 
     // One member is exactly in the corner: as far right as it is up.
-    const only = badgeCenters(1, g.badge)[0]
+    const only = badgeCenters(1, G.badge)[0]
     expect(only.x).toBeCloseTo(-only.y, 6)
 
     for (const count of [1, 2, 3]) {
-      const spots = badgeCenters(count, g.badge)
+      const spots = badgeCenters(count, G.badge)
 
       for (const { x, y } of spots) {
         // Upper-right of the anti-diagonal through the pin's centre.
@@ -503,9 +571,9 @@ describe('buildPoiIcons', () => {
   })
 
   it('pads a site pin symmetrically, and pads a plain pin not at all', () => {
-    // Symmetry is what lets map/poiLayers.ts stay as it is: the disc is at the
-    // centre of the image, so MapLibre's default anchor puts it on the hiker's
-    // coordinate without an `icon-offset` to keep in step with the padding.
+    // Symmetry keeps the pin at the centre of its image, so map/poiLayers.ts's
+    // PIN_OFFSET_EXPRESSION can put its bottom edge on the coordinate from the
+    // image's half-height alone.
     expect(sitePinPadding(0)).toBe(0)
     expect(buildPoiIcon('shelter', 'high').width).toBe(POI_PIN_SIZE * POI_PIN_PIXEL_RATIO)
 

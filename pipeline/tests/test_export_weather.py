@@ -56,6 +56,13 @@ SQUARES = {
     "borrowed": [[[712, 2007], [711, 2007]]],
     "water_kept": [],
     "outside_grid": ["n61w150"],
+    "zones": {
+        "county/NHC007": [[562, 2074], [563, 2076]],
+        "fire/NHZ021": [[562, 2074]],
+        "fire/NHZ022": [[563, 2076]],
+        "forecast/NHZ002": [[562, 2074], [563, 2076]],
+    },
+    "known_zones": {"forecast": ["NHZ002"], "fire": ["NHZ021", "NHZ022"], "county": ["NHC007"]},
 }
 
 
@@ -144,6 +151,25 @@ def test_the_index_names_every_cell_and_the_ones_nothing_forecasts(tmp_path, cyc
     assert index["cycle"] == "2026-09-25T11:00Z"
     assert index["source"] == "NOAA National Blend of Models (NBM) v5.0"
     assert documents["n44w072"]["units"] == {"temp": "F", "tstm01": "%"}
+
+
+def test_each_square_carries_the_nws_zones_a_phone_would_ask_about(tmp_path, cycle):
+    _, documents = bake(tmp_path, cycle)
+
+    whites = documents["n44w072"]
+    zones = dict(zip(map(tuple, whites["squares"]), whites["zones"], strict=True))
+    assert zones[(562, 2074)] == ["county/NHC007", "fire/NHZ021", "forecast/NHZ002"]
+    assert zones[(563, 2076)] == ["county/NHC007", "fire/NHZ022", "forecast/NHZ002"]
+    # No zone outline reaches this square: an empty list, so the phone knows
+    # it has nothing to ask NWS about rather than guessing a neighbour's.
+    assert documents["n41w074"]["zones"] == [[]]
+
+
+def test_a_squares_file_from_before_zones_is_refused(tmp_path, cycle):
+    old = {k: v for k, v in SQUARES.items() if k not in ("zones", "known_zones")}
+
+    with pytest.raises(RuntimeError, match="zones"):
+        bake(tmp_path, cycle, squares=old)
 
 
 def test_a_field_the_export_has_no_range_for_is_refused(tmp_path, cycle):

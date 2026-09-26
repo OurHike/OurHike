@@ -643,14 +643,12 @@ class TestVectorContent:
 
         assert {r["check"]: r["state"] for r in check_vector(BASE, ["poi_shelter.geojson"])}[15] == FAILED
 
-    def test_an_empty_type_fails_its_minimum_but_crossing_may_be_empty(self, requests_mock):
+    def test_an_empty_type_fails_its_minimum(self, requests_mock):
         """export_poi.py's own exception, kept in step: every POI type must be
-        non-empty except `crossing`, which legitimately is for the real AT."""
-        requests_mock.get(f"{BASE}/poi_crossing.geojson", json=self._collection([]))
+        non-empty except the ones ALLOWED_EMPTY_POI_TYPES names. `crossing`
+        was the example here until #1674 withdrew it; test_trailhead_may_be_
+        empty_too below is the allowed case now."""
         requests_mock.get(f"{BASE}/poi_water.geojson", json=self._collection([]))
-
-        states = [r for r in check_vector(BASE, ["poi_crossing.geojson"]) if r["check"] == 14]
-        assert states[0]["state"] == OK
 
         states = [r for r in check_vector(BASE, ["poi_water.geojson"]) if r["check"] == 14]
         assert states[0]["state"] == FAILED
@@ -1026,6 +1024,30 @@ class TestNothingLostSinceTheLastRelease:
         now = _release_manifest("2026-08-13", {"trails.geojson": "a", "club_sections.json": "c"})
 
         assert check_nothing_lost("2026-08-12", before, now)["state"] == OK
+
+    def test_a_withdrawn_poi_type_leaving_is_reported_not_failed(self):
+        """#1674 withdrew crossings on purpose. A build that asks for
+        poi_crossing.* pins a release that still holds it, so the 404 this
+        check guards against cannot reach anybody - and the check says which
+        artifacts left and why, rather than going quiet about them."""
+        before = _release_manifest("2026-09-24", {"trails.geojson": "a", "poi_crossing.geojson": "c", "poi_crossing.fgb": "d"})
+        now = _release_manifest("2026-09-26", {"trails.geojson": "a"})
+
+        report = check_nothing_lost("2026-09-24", before, now)
+
+        assert report["state"] == OK
+        assert "poi_crossing.geojson" in report["detail"]
+        assert "withdrawn" in report["detail"]
+
+    def test_a_withdrawal_does_not_excuse_an_ordinary_loss_beside_it(self):
+        before = _release_manifest("2026-09-24", {"poi_crossing.geojson": "c", "poi_water.geojson": "b"})
+        now = _release_manifest("2026-09-26", {})
+
+        report = check_nothing_lost("2026-09-24", before, now)
+
+        assert report["state"] == FAILED
+        assert "poi_water.geojson" in report["detail"]
+        assert "poi_crossing" not in report["detail"]
 
 
 class TestTheReleaseBeforeThisOne:

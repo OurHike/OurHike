@@ -232,14 +232,18 @@ describe('composeSites under the legend’s filters', () => {
     }
   })
 
-  it('promotes by POI_PRIORITY, so water outranks campsite outranks privy', () => {
-    // The same safety ordering that decides collisions, asked the same question:
-    // of these, which does a hiker most need to see.
+  it('promotes by POI_PRIORITY, so campsite outranks water outranks privy', () => {
+    // The same ordering that decides collisions, asked the same question: of
+    // these, which does a hiker most need to see. Water led it until the
+    // maintainer's order of 2026-09-26 (#1676) put shelters and campsites
+    // first; a promoted campsite still carries the water as a badge, which a
+    // promoted water pin could not carry back (only anchor types have badged
+    // artwork).
     const site = [SHELTER, PRIVY, CAMPSITE, WATER]
 
-    expect(carriers(site, { hiddenTypes: new Set(['shelter']) })).toEqual([WATER.id])
-    expect(carriers(site, { hiddenTypes: new Set(['shelter', 'water']) })).toEqual([
-      CAMPSITE.id,
+    expect(carriers(site, { hiddenTypes: new Set(['shelter']) })).toEqual([CAMPSITE.id])
+    expect(carriers(site, { hiddenTypes: new Set(['shelter', 'campsite']) })).toEqual([
+      WATER.id,
     ])
     expect(
       carriers(site, { hiddenTypes: new Set(['shelter', 'water', 'campsite']) }),

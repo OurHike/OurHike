@@ -25,6 +25,15 @@
 // features/POI_VISIBILITY.md's "a pin or a dot and never as neither" is
 // untouched.
 //
+// AND SINCE #1682 (2026-09-26) THE FOUNTAINS ARE HOLLOW AND UNRINGED. Every
+// fountain here ships at `confidence: low` (NYC's `featuresta` reads Active on
+// all 3,849 rows, #1534), so each is drawn hollow - paper inside a blue ring,
+// the droplet in blue - and the restrooms, in the quiet tier, are pale plum.
+// The faint invite ring #1676 painted round each fountain is not drawn round a
+// hollow pin, where the two read as a bullseye (the maintainer's call, poll,
+// 2026-09-26). What to look for: the same pins place as before, with far less
+// ink each.
+//
 // WHAT IT CANNOT PROMISE YET, and a thin frame here is an answer rather than
 // a broken recipe - network-above-the-seam.mjs makes the same distinction for
 // the same reason. Two of the three things in this picture come from the
@@ -58,13 +67,22 @@
 // nothing in the frame depends on anything being taken.
 
 export const caption =
-  'Brooklyn at zoom 12, Red Hook to Prospect Park — the densest 390×700 window in the five boroughs, 638 waypoints in it, where the collision engine used to pack 63 pins edge to edge across 30% of the phone. Each pin now claims room in proportion to how crowded its own ground is (map/poiCrowding.ts), so the pins have paper between them and everything that loses one is still a dot at its true coordinate. Fountains carrying a site’s worth of parts appear once publish-vector-data.yml has run since the merge; until then every fountain is its own mark and this is the padding alone'
+  'Brooklyn at zoom 12, Red Hook to Prospect Park — the densest 390×700 window in the five boroughs, 638 waypoints in it, where the collision engine used to pack 63 pins edge to edge across 30% of the phone. Each pin now claims room in proportion to how crowded its own ground is (map/poiCrowding.ts), so the pins have paper between them and everything that loses one is still a dot at its true coordinate. Since #1682 each pin is drawn 26 px inside its 38 px footprint: the unverified fountains hollow, the restrooms pale. Fountains carrying a site’s worth of parts appear once publish-vector-data.yml has run since the merge; until then every fountain is its own mark and this is the padding alone'
 export const alt =
-  'The map screen over Brooklyn at zoom 12, from Red Hook up to Prospect Park, with NYC Parks’ green property shapes under it: blue water-drop pins for public drinking fountains and plum pins for public restrooms, spaced apart with map paper visible between them, and a scatter of small blue dots marking the waypoints that did not take a pin'
+  'The map screen over Brooklyn at zoom 12, from Red Hook up to Prospect Park, with NYC Parks’ green property shapes under it: hollow blue water-drop pins for public drinking fountains and pale plum pins for public restrooms, spaced apart with map paper visible between them, and a scatter of small blue dots marking the waypoints that did not take a pin'
 
 /** POIs arrive from IndexedDB after the map is built, and the pins are
- *  rasterised off the main thread (#857) - both land a beat after chrome. */
-export const wait = 6000
+ *  rasterised off the main thread (#857) - both land a beat after chrome.
+ *
+ * 22000, as the Hudson Highlands desktop recipes wait, since #1676's first
+ * preview (built from 698274a7): at the old wait all three waypoint recipes
+ * photographed the map mid-load - the carry frame with its dots drawn but no
+ * pin and no trail line, the Brooklyn and Shenandoah frames with neither. The trail
+ * line is not something #1676 touches, so the frame was early rather than
+ * wrong. Measured in the agent sandbox the same day, through
+ * scripts/data-proxy.mjs: at 6 s `main` and #1676's branch were both still
+ * blank at the carry camera, and at 15-20 s both had drawn everything. */
+export const wait = 22000
 
 export default async function drive(page) {
   // lib/cameraMemory.ts's contract: { center: [lon, lat], zoom }, read back

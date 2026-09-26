@@ -28,7 +28,13 @@ the index as `grid`) finds that point's whole forecast in one lookup.
 - **No elevation correction.** Measured, NBM corrected for height scored worse
   than NBM as published (WEATHER.md §3). HRRR's corrected first two days are
   the next slice of this step, and arrive as their own fields beside these.
-- **No warnings.** Those need NWS's zone outlines and are their own slice.
+- **No warnings, but each square's NWS zones.** The alerts themselves are
+  their own artifact (`export_weather_alerts.py`). What this file adds is
+  `zones[i]`: every NWS forecast zone, fire weather zone and county whose
+  outline overlaps square `i`, as "<kind>/<id>" ("forecast/NHZ010"). A phone
+  with signal asks NWS for exactly those zones' alerts - the maintainer's
+  choice of 2026-09-26 (WEATHER.md §5) - and an empty list means NWS's
+  outlines put no zone there, so the phone has nothing to ask about.
 
     python export_weather.py
 """
@@ -115,7 +121,13 @@ def sample(array: np.ndarray, nodata: float | None, rows: np.ndarray, cols: np.n
 
 def bake(squares_doc: dict, cycle_doc: dict, raw_dir: Path, generated_at: datetime) -> tuple[dict, dict[str, dict]]:
     """(index document, {cell: cell document}), with nothing written."""
+    if "zones" not in squares_doc:
+        raise RuntimeError("squares.json predates each square's NWS zones; rerun build_weather_squares.py")
     cells = squares_doc["cells"]
+    zones_of: dict[tuple[int, int], list[str]] = {}
+    for key, zone_squares in sorted(squares_doc["zones"].items()):
+        for sq in zone_squares:
+            zones_of.setdefault(tuple(sq), []).append(key)
     order = sorted({tuple(sq) for sq_list in cells.values() for sq in sq_list})
     position = {sq: i for i, sq in enumerate(order)}
     read_from = {tuple(water): tuple(land) for water, land in squares_doc.get("borrowed", [])}
@@ -153,6 +165,7 @@ def bake(squares_doc: dict, cycle_doc: dict, raw_dir: Path, generated_at: dateti
             "cell": cell,
             "units": {field: FIELDS[field][0] for field in series},
             "squares": cell_squares,
+            "zones": [zones_of.get(tuple(sq), []) for sq in cell_squares],
             "borrowed": borrowed,
             "fields": {
                 field: {"times": data["times"], "values": [list(data["by_square"][i]) for i in indices]}

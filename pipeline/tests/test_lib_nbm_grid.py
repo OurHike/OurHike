@@ -5,6 +5,7 @@ GeoTIFF on 2026-09-24, so this pins our projection arithmetic to the
 reader's - the agreement the phone and the job both depend on."""
 
 import pytest
+import shapely
 from rasterio.transform import Affine
 
 from lib import nbm_grid
@@ -74,3 +75,58 @@ def test_a_square_one_metre_bigger_is_refused():
 def test_a_different_shape_or_projection_is_refused():
     assert not nbm_grid.matches(PINNED, nbm_grid.PROJ4, nbm_grid.WIDTH - 1, nbm_grid.HEIGHT)
     assert not nbm_grid.matches(PINNED, "EPSG:4326", nbm_grid.WIDTH, nbm_grid.HEIGHT)
+
+
+# --------------------------------------------------------------------------
+# overlapping: which squares an NWS warning's outline reaches (the warnings
+# slice). The predicate tests hand it shapes already in grid units, by
+# replacing the projection with the identity, so "touches an edge" can be
+# drawn exactly; the last test goes through the real projection.
+
+
+@pytest.fixture
+def grid_units(monkeypatch):
+    monkeypatch.setattr(nbm_grid, "_to_grid_units", lambda xy: xy)
+
+
+def test_grid_coords_floor_to_the_square_squares_returns():
+    (lon, lat), (row, col) = PINNED_BY_GDAL["Mount Washington summit"]
+
+    cols, rows = nbm_grid.grid_coords([lon], [lat])
+
+    assert (int(rows[0] // 1), int(cols[0] // 1)) == (row, col)
+
+
+def test_a_shape_reaching_any_part_of_a_square_reaches_it(grid_units):
+    squares = [[10, 10], [10, 11], [10, 12]]
+    # Covers the first square and one hundredth of the second's width.
+    sliver = shapely.box(9.5, 9.5, 11.01, 10.5)
+
+    assert nbm_grid.overlapping([sliver], squares) == [[0, 1]]
+
+
+def test_a_shape_that_only_touches_an_edge_or_corner_does_not_reach(grid_units):
+    squares = [[10, 10], [10, 11]]
+    edge = shapely.box(12, 10, 13, 11)  # shares square (10, 11)'s east edge
+    corner = shapely.box(9, 9, 10, 10)  # shares square (10, 10)'s north-west corner
+
+    assert nbm_grid.overlapping([edge, corner], squares) == [[], []]
+
+
+def test_each_shape_gets_its_own_answer_in_order(grid_units):
+    squares = [[0, 0], [5, 5]]
+
+    found = nbm_grid.overlapping([shapely.box(5.2, 5.2, 5.8, 5.8), shapely.box(40, 40, 41, 41)], squares)
+
+    assert found == [[1], []]
+
+
+def test_a_small_outline_around_a_summit_reaches_the_summits_square():
+    (lon, lat), expected = PINNED_BY_GDAL["Mount Washington summit"]
+    neighbours = [[expected[0] + dr, expected[1] + dc] for dr in (-1, 0, 1) for dc in (-1, 0, 1)]
+    # ~100 m across, well inside one 2.5 km square.
+    outline = shapely.Point(lon, lat).buffer(0.0005)
+
+    (found,) = nbm_grid.overlapping([outline], neighbours)
+
+    assert [neighbours[i] for i in found] == [list(expected)]

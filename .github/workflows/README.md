@@ -108,7 +108,7 @@ never interleave. All are dispatch-only except `publish-conditions.yml` and
 | `build-raster.yml` | raster background → `disabled`, `compute-cells`, `render`, `assemble`, `publish` — **switched off for v2** (#855): the `disabled` job refuses every dispatch in seconds unless `run_despite_withdrawal` is ticked |
 | `publish-vector-data.yml` | trails, POIs and the manifest hikers download → `build`, `publish` |
 | `publish-conditions.yml` | closures and warnings, on an hourly schedule as well as dispatch |
-| `publish-weather.yml` | the NBM forecast for every trail square, one file per cell, to UA only → `build`, `publish` — hourly as well as dispatch, and only `publish` holds the group (#1056) |
+| `publish-weather.yml` | the NBM forecast for every trail square, one file per cell, and the active NWS alerts over trail squares, to UA only → `build`, `publish` — hourly as well as dispatch, only `publish` holds the group, and either half publishes without the other (#1056) |
 
 `publish-vector-data.yml`'s `publish` job and `migrate.yml`'s production job
 both run under the `production` environment whenever they will actually
@@ -235,7 +235,7 @@ gathered rather than restated.
 | `10 8 * * *` | daily | `schema-drift.yml` |
 | `50 8 * * *` | daily | `propose-atc-updates.yml` — reads the same cache `publish-conditions.yml`'s hourly leg does, so a slot near it rather than far from it |
 | `40 * * * *` | hourly | `publish-conditions.yml` — moved off daily by #720; still shown here at its :40-past-the-hour slot, which is what keeps it clear of `check-pending-approvals.yml` above |
-| `55 * * * *` | hourly | `publish-weather.yml` — NBM runs a new cycle every hour; `:55` is a minute nothing else here uses, and like every cron in this table it fires about five times a day in practice (#1346) |
+| `55 * * * *` | hourly | `publish-weather.yml` — NBM runs a new cycle every hour and NWS alerts change by the minute; `:55` is a minute nothing else here uses, and like every cron in this table it fires about five times a day in practice (#1346) |
 | `15 9 * * *` | daily | `check-deployment.yml` — after `publish-conditions`, so a publish that breaks something is noticed the same day |
 | `30 9 * * *` | daily | `check-deployed-app.yml` |
 | `45 9 * * *` | daily | `check-auth-redirects.yml` — after `check-deployed-app`, so an already-broken app is not a second alarm for the same cause |

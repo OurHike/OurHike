@@ -1038,22 +1038,22 @@ describe('the parts of one site', () => {
     expect(chips()[0]).toHaveAccessibleName('Shelter')
   })
 
-  it('carries each part’s own rim, broken where nobody has checked', () => {
-    // The chip's rim is a fact about ONE privy - which is where it parts company
+  it('draws each part hollow or filled by its own confidence', () => {
+    // The chip's pin is a fact about ONE privy - which is where it parts company
     // with the legend, whose pins carry no confidence at all because a key says
     // what a category's symbol is. Drop the prop and every chip claims the same
     // confidence: an unverified privy looks surveyed until you tap it, which is
     // the honesty-about-uncertainty channel (OurHikeValues.md #4) this card is
-    // built around, silently gone. Assertable because MapIcon gives a verified
-    // pin no `stroke-dasharray` attribute at all rather than a solid-looking
-    // one - see the comment on `broken` there.
+    // built around, silently gone. Hollow since #1682, a broken rim before it;
+    // MapIcon states which on the svg itself.
     renderSite()
 
-    const rim = (chip: HTMLElement) => chip.querySelector('.map-icon__halo')
+    const confidence = (chip: HTMLElement) =>
+      chip.querySelector('svg')?.getAttribute('data-confidence')
 
-    expect(rim(chips()[1])).toHaveAttribute('stroke-dasharray')
-    expect(rim(chips()[0])).not.toHaveAttribute('stroke-dasharray')
-    expect(rim(chips()[2])).not.toHaveAttribute('stroke-dasharray')
+    expect(confidence(chips()[1])).toBe('low')
+    expect(confidence(chips()[0])).toBe('high')
+    expect(confidence(chips()[2])).toBe('high')
   })
 
   it('lets a thumbless hiker reach every part and open one', async () => {

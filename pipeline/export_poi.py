@@ -92,21 +92,16 @@ inspection, 2026-07-28):
     town drinking fountain eight miles east draw a pin that says *there is
     water here*. Unlike the fetch, a MISSING verdict file is not tolerated -
     read_sources refuses rather than export the ungated set.
-  - trail_water.json: the two sources below, and the reason `crossing`
-    stopped being an empty-but-present layer after shipping as one since it
-    was declared.
+  - trail_water.json: the site water below.
 
-Where the trail meets water (#529, fetch_trail_water.py): two more sources,
-both read from data/raw/trail_water.json, both derived by
+Which sites have water they can reach (#529, fetch_trail_water.py): one more
+source, read from data/raw/trail_water.json and derived by
 fetch_trail_water.py from USGS's hydrography and the OSM state extracts this
-pipeline already downloads.
+pipeline already downloads. The same file carried stream CROSSINGS, published
+as the `crossing` poi_type, until #1674 removed them at the maintainer's
+request; a file written before that still holds a `crossings` array, and
+nothing here reads it.
 
-  - CROSSINGS fill `crossing`, the poi_type declared in lib/poi_schema.py and
-    empty since it was declared. Each is an exact geometric intersection of
-    ATC's centerline with a stream line from either hydrography - the two
-    lines cross, so a hiker walking the trail walks through the water. Not a
-    proximity guess, which is what #97 measured overshooting into thousands
-    of near-misses.
   - SITE WATER folds into `water`: for each shelter and campsite, the nearest
     point on a stream, published ONLY where a hiker could reach it - inside
     100 ft and under a 15% grade, measured from real USGS elevations at both
@@ -114,7 +109,7 @@ pipeline already downloads.
     close the map says it is. fetch_trail_water.py holds both gates and every
     rejection's numbers.
 
-Neither needs a matching rule here: a published point sits at its real
+It needs no matching rule here: a published point sits at its real
 coordinates, so lib/poi_sites.py's 60 m proximity fold attaches the site's
 water to its pin exactly as it does an opentrail or OSM point, and #694's
 synthesized CSI member yields to it automatically.
@@ -256,7 +251,6 @@ from lib.poi_description import (
     describe_parking,
     describe_privy,
     describe_shelter,
-    describe_stream_point,
     describe_viewpoint,
     describe_water,
     nearby_parts,
@@ -518,29 +512,17 @@ OSM_WATER_SOURCE = "osm_water"
 OSM_WATER_FILENAME = "osm_water.geojson"
 OSM_WATER_FIELD_MAP = {"id_field": "osm_id", "name_field": "name", "confidence": CONFIDENCE_LOW}
 
-# fetch_trail_water.py's two products (#529). Both CONFIDENCE_LOW, and for
-# the same reason as OSM's points rather than a weaker one: nobody stood at
-# either. A crossing is where two independently digitised lines meet, and a
-# site's water is where geometry says a stream runs nearest a shelter - both
-# are derivations, and the dashed rim plus the card's "Unverified" line is
-# exactly what a derivation is worth until somebody walks it.
-NHD_CROSSING_SOURCE = "nhd_crossing"
+# fetch_trail_water.py's product (#529). CONFIDENCE_LOW, and for the same
+# reason as OSM's points rather than a weaker one: nobody stood there. A site's
+# water is where geometry says a stream runs nearest a shelter - a derivation,
+# and the dashed rim plus the card's "Unverified" line is exactly what a
+# derivation is worth until somebody walks it.
+#
+# Its sibling `nhd_crossing` went with the crossing type (#1674). The name
+# stays in lib/source_registry.UNREGISTERED_POI_SOURCES, because the identity
+# ledger keeps those rows as tombstones forever and a dispute raised against
+# one must still read as an expected source.
 NHD_STREAM_SOURCE = "nhd_stream"
-
-# A crossing's identity is WHERE it is, not which reach it belongs to: NHD
-# splits reaches at confluences, so one reach can cross the trail twice and
-# a reach id alone would collide. Five decimal places is about a metre -
-# finer than the geometry, coarse enough that the id is stable while BOTH
-# lines that make the point hold still. The stream half does: the NHD
-# snapshot is frozen forever (fetch_trail_water.py). The trail half does not
-# - a re-measure of the centerline moves the meeting point, and #1028 found
-# the one such move the 2026-08-25 ledger recorded had re-minted an unnamed
-# crossing 24.7 m from its retired self, because a nameless point had no
-# other evidence to be carried on. That is why the stream's own id rides
-# RAW_PROPERTIES_KEY below: reconcile_poi_identity.py carries a moved
-# crossing on the half of the meeting that cannot have moved
-# (SCORE_STREAM_INTACT there).
-CROSSING_ID_PRECISION = 5
 
 # How close an OSM water point must sit to an opentrail one to be its twin.
 # Measured before choosing (2026-08-13, 174 opentrail water points against
@@ -785,7 +767,6 @@ DESCRIBERS = {
     # flow class); an opentrail point has an icon and a title and composes
     # None, exactly as before this entry existed.
     "water": lambda properties, _capacity, _note: describe_water(properties),
-    "crossing": lambda properties, _capacity, _note: describe_stream_point(properties),
 }
 
 
@@ -1060,12 +1041,13 @@ def unify_all_sources(trail_id: str = TRAIL_ID, skipped: list[str] | None = None
 
 
 def load_trail_water(path: Path, trail_id: str = TRAIL_ID) -> list[dict]:
-    """fetch_trail_water.py's crossings and site water, as unified POIs.
+    """fetch_trail_water.py's site water, as unified `water` POIs.
 
-    Two poi_types out of one file because they answer the same question in
-    two places: where the walking route meets water, and which overnight
-    sites have water they can reach. Both are derived from the same frozen
-    NHD snapshot and both enter at CONFIDENCE_LOW.
+    Derived from the frozen NHD snapshot and the OSM extracts, and entered at
+    CONFIDENCE_LOW. The file's `crossings` array, which a file written before
+    #1674 still carries, is deliberately not read: crossings are withdrawn
+    (lib/poi_schema.WITHDRAWN_POI_TYPES), and reading it here would publish
+    them under a type no release serves.
 
     A record whose `water` is null is a site the gates REFUSED - too far, too
     steep, or no stream at all - and it publishes nothing here. Its reason
@@ -1073,49 +1055,13 @@ def load_trail_water(path: Path, trail_id: str = TRAIL_ID) -> list[dict]:
     a gate is wrong, which is the whole point of writing rejections down.
 
     A missing file is a normal state, exactly as it is for capacities,
-    distances and photos: the export ships without crossings rather than
+    distances and photos: the export ships without site water rather than
     failing.
     """
     if not path.exists():
         return []
     document = json.loads(path.read_text(encoding="utf-8"))
     records = []
-
-    for crossing in document.get("crossings", []):
-        lat, lon = crossing["lat"], crossing["lon"]
-        feature = {
-            "geometry": {"type": "Point", "coordinates": [lon, lat]},
-            "properties": {
-                "crossing_id": f"{lat:.{CROSSING_ID_PRECISION}f},{lon:.{CROSSING_ID_PRECISION}f}",
-                # The stream the crossing is made of - NHD's permanent
-                # identifier where USGS saw it, the OSM way id otherwise. Not
-                # a column (write_poi_type never publishes it); it rides
-                # RAW_PROPERTIES_KEY so reconcile_poi_identity.py can carry a
-                # nameless crossing across a trail re-measure on the one half
-                # of the intersection that cannot have moved (#1028).
-                "stream_id": crossing.get("stream_id"),
-                "sources": crossing.get("sources"),
-                "name": crossing.get("name"),
-                "flow": crossing.get("flow"),
-                "flow_source": crossing.get("flow_source"),
-                # Which trail the stream crosses (#1016). Absent on every
-                # crossing derived before that landed, which is why this reads
-                # `.get` and why False is the right reading of absence here:
-                # the only trail this file held until then was the A.T.
-                "on_network_trail": bool(crossing.get("on_network")),
-                "network_source": crossing.get("network_source"),
-                "trail_name": crossing.get("trail_name"),
-            },
-        }
-        record = unify_poi(
-            feature,
-            "crossing",
-            NHD_CROSSING_SOURCE,
-            trail_id,
-            {"id_field": "crossing_id", "name_field": "name", "confidence": CONFIDENCE_LOW},
-        )
-        record[RAW_PROPERTIES_KEY] = {**feature["properties"], "crossing": True}
-        records.append(record)
 
     for site in document.get("sites", []):
         water = site.get("water")
@@ -1128,8 +1074,10 @@ def load_trail_water(path: Path, trail_id: str = TRAIL_ID) -> list[dict]:
                 # id stable: one reachable stream point per site by
                 # construction, so the site's own GlobalID names it.
                 "site_global_id": site["atc_global_id"],
-                # The same passport a crossing carries, for the same reader
-                # (#1028): a site's water point is derived from a stream too.
+                # The stream it is on, as a passport for the identity ledger
+                # (#1028): reconcile_poi_identity.py carries a derived point
+                # across a re-measure on the stream id when nothing else
+                # about it survives. Crossings carried it first, until #1674.
                 "stream_id": water.get("stream_id"),
                 "sources": water.get("sources"),
                 "name": water.get("name"),
@@ -1235,13 +1183,10 @@ def mark_off_trail_records(records: list[dict], anchors: dict[str, str]) -> int:
         anchor = None
         if record["poi_type"] == "water" and record["source"] == OSM_WATER_SOURCE:
             anchor = anchors.get(str(record["source_feature_id"]))
-        elif record.get(RAW_PROPERTIES_KEY, {}).get("on_network_trail"):
-            # fetch_trail_water.py's own answer for a crossing: this stream
-            # crosses somebody else's trail, not the A.T. The fallback keeps
-            # the value a string in the one case the artifact carried the flag
-            # without a source key, so a caller counting by organization never
-            # has to handle a bool among the names.
-            anchor = record[RAW_PROPERTIES_KEY].get("network_source") or "an unnamed network source"
+        # fetch_trail_water.py's crossings were the other kind of record this
+        # marked - a stream crossing somebody else's trail - until #1674
+        # removed them. Its site water hangs off an ATC shelter or campsite
+        # and never carried the flag, so it was never marked here either.
         if anchor:
             record[NOT_ON_AT_KEY] = anchor
             marked += 1
@@ -1368,7 +1313,9 @@ def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[
 
     The example used to be `crossing, pending NHD ingestion`. That ingestion
     landed: production release 2026-09-04 publishes 5,318 crossings (measured
-    off the live artifact, PR #1247). `trailhead` is the empty one now, at 0
+    off the live artifact, PR #1247), and #1674 later withdrew the type
+    altogether (lib/poi_schema.WITHDRAWN_POI_TYPES). `trailhead` is the empty
+    one now, at 0
     features on that same release, for the reason #1218 gives - USFS's 7,358
     trailheads ship as parking pins. The rule is unchanged; only which
     poi_type is currently demonstrating it."""

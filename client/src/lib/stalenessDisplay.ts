@@ -4,10 +4,12 @@
 // purpose:
 //   - staleness  = when a human was last here, whatever
 //                  they said                              -> ring + fade
-//   - confidence = was it ever verified to exist          -> dashed outline
+//   - confidence = was it ever verified to exist          -> hollow pin
+//                                                           (#1682; a dashed
+//                                                           rim before)
 //
-// A dashed pin that is Fresh means "we're not certain this spring exists, but
-// someone checked recently." A solid pin that is Stale means "it definitely
+// A hollow pin that is Fresh means "we're not certain this spring exists, but
+// someone checked recently." A filled pin that is Stale means "it definitely
 // exists, but nobody has looked in months." Those are different things to
 // tell a hiker who is deciding whether to carry two more litres, and merging
 // the channels would collapse them into one vague signal.
@@ -51,7 +53,7 @@ export interface StalenessTreatment {
 }
 
 export interface ConfidenceTreatment {
-  outline: 'solid' | 'dashed'
+  outline: 'solid' | 'hollow'
 }
 
 const TREATMENTS: Record<StalenessTier, StalenessTreatment> = {
@@ -110,7 +112,7 @@ function lastConfirmedWord(tier: StalenessTier): string {
 }
 
 export function confidenceTreatment(confidence: 'high' | 'low'): ConfidenceTreatment {
-  return { outline: confidence === 'low' ? 'dashed' : 'solid' }
+  return { outline: confidence === 'low' ? 'hollow' : 'solid' }
 }
 
 /**
@@ -125,15 +127,35 @@ export function confidenceTreatment(confidence: 'high' | 'low'): ConfidenceTreat
  */
 export function pinConditionFor(
   lastConfirmedFor: (poiId: string) => Date | null,
-): (poiId: string, poiType: string) => { ring: string; faded: boolean } {
-  return (poiId, poiType) => {
+): (
+  poiId: string,
+  poiType: string,
+  confidence?: 'high' | 'low',
+) => { ring: string; faded: boolean } {
+  return (poiId, poiType, confidence = 'high') => {
     const presentation = stalenessPresentation(
       poiType,
       stalenessTier(lastConfirmedFor(poiId)),
     )
     if (presentation === null) return { ring: 'none', faded: false }
+    const { ring } = presentation.treatment
     return {
-      ring: presentation.treatment.ring,
+      // NO INVITE ROUND A HOLLOW PIN (#1682). An unverified waypoint is drawn
+      // hollow now - paper inside an accent ring - and water's faint invite
+      // round that read as a bullseye on the 26 px pin. The maintainer, shown
+      // it on a real frame (poll, 2026-09-26): "Drop the ring on hollow
+      // water". The hollow pin already says "provisional"; the card still
+      // says "No recent word" in words, which is where the invite's meaning
+      // is stated anyway. Only the invite: a green or grey ring on a hollow
+      // pin reports something a hiker actually said, and stays.
+      //
+      // IT IS MOST OF THE WATER, and the call was put again with that number:
+      // 3,598 of the 3,740 water sources in release 2026-09-24-2 are
+      // `confidence: low` (417 of 559 on the A.T., all 3,181 nearby), so the
+      // invite now rings only verified water nobody has reported on. The
+      // maintainer, shown Brooklyn with and without it (poll, 2026-09-26):
+      // "Keep it off (as built)".
+      ring: ring === 'faint-invite' && confidence === 'low' ? 'none' : ring,
       faded: presentation.treatment.opacity < 1,
     }
   }

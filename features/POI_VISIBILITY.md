@@ -39,6 +39,14 @@ chrome), [POI_SITES.md](POI_SITES.md) (which owns several waypoints at one place
 > — *the absence of a pin is the strongest statement this map makes about a place, so do not make
 > it* — is what the change above follows to its end rather than abandons.
 
+> **One category has since left the map by leaving the data, 2026-09-26
+> ([#1674](https://github.com/OurHike/OurHike/issues/1674)).** The maintainer: *"Crossings are
+> cluttering the map. Remove the crossing from the legend and do not show on the map."* That is
+> not the map deciding to hide something, which #1585 forbids — it is the `crossing` type (the
+> stream crossings `pipeline/fetch_trail_water.py` derived, the 5,318 in the table above) removed
+> from `POI_TYPES` on both sides, from the legend, from Settings, and from the pipeline that made
+> them. No toggle brings them back, because there is nothing left to toggle.
+
 **This doc owned one question: what the map does when it cannot draw every waypoint as a pin.**
 It does not own the pin artwork ([`client/src/map/poiIcons.ts`](../client/src/map/poiIcons.ts)),
 the collision ordering ([`client/src/map/poiLayers.ts`](../client/src/map/poiLayers.ts)'s

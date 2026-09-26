@@ -65,7 +65,6 @@ export const POI_COLORS: Record<PoiType, string> = {
   shelter: '#284029',
   campsite: '#47784b',
   resupply: '#994e15',
-  crossing: '#6a4a8f',
   // The three added with ATC's vista/parking/privy layers, and the first
   // accents here that are not lifted verbatim from tokens/colors.css. Not for
   // want of looking: a pin's disc has to clear 4.5:1 against the near-white
@@ -120,13 +119,21 @@ export const POI_COLORS: Record<PoiType, string> = {
   //
   // ITS 24 DEGREES ARE THE TIGHTEST PAIR IN THIS TABLE BAR ONE, and saying so
   // is more use than the number alone. Hue is not the only channel: crossing
-  // is a muted grey-violet (saturation 0.32, contrast 6.91) and this is a
+  // was a muted grey-violet (saturation 0.32, contrast 6.91) and this is a
   // clearer magenta-violet (0.42, 5.52), which is the same two-channel
   // separation shelter and campsite already ship on 2.4 degrees of hue. The
   // family is deliberate too - parking (229) and this are the two gateway
   // classes and the two ways in, both cool, both off the terrain's own
   // greens and browns. But a ninth accent leans harder on the glyph than the
   // first did, and "shape as the primary channel" is doing real work here.
+  //
+  // CROSSING HAS SINCE GONE (#1674), so the 268 above is a hue nothing draws
+  // any more and the tight pair it made with this one no longer exists. The
+  // nearest neighbour now is privy, 24.5 degrees round the other side
+  // (316.0 against 291.5, computed from the two hexes), which is the gap the
+  // choice of 292 always left there. Left where it was rather than re-centred:
+  // moving an accent every hiker has already learned buys nothing a test asks
+  // for.
   trailhead: '#9944a7',
 }
 
@@ -372,16 +379,6 @@ function arc(
   return points
 }
 
-/** A zigzag band: a wave that still reads as a wave in silhouette. */
-function chevron(top: number, amplitude: number, thickness: number): Point[] {
-  const xs = [0.04, 0.27, 0.5, 0.73, 0.96]
-  const ys = xs.map((_, i) => top + (i % 2 === 0 ? amplitude : 0))
-  return [
-    ...xs.map((x, i): Point => [x, ys[i]]),
-    ...xs.map((x, i): Point => [x, ys[i] + thickness]).reverse(),
-  ]
-}
-
 /**
  * The silhouettes, in a 0-1 box with y running down the screen.
  *
@@ -441,9 +438,6 @@ const GLYPHS: Record<string, Glyph> = {
     ],
     [...arc(0.5, 0.38, 0.23, 180, 360), ...arc(0.5, 0.38, 0.15, 360, 180)],
   ],
-  // Running water, as two bands - a stream to be crossed, not a stream to drink
-  // from, which is what the droplet says.
-  crossing: [chevron(0.1, 0.14, 0.15), chevron(0.52, 0.14, 0.15)],
   // Two peaks with a valley between them, and a sun clear of the left one.
   //
   // The peaks alone are the obvious drawing and were not enough: a solid

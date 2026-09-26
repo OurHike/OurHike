@@ -74,10 +74,22 @@
 // preview's phone has neither, so that row is absent here on purpose;
 // Legend.test.tsx holds it. Whether the fold shows depends on how many
 // named lines the preview's viewport draws.
+// Re-pointed 2026-09-26 (#1674): the Crossing row is gone - the maintainer
+// had the crossing type taken off the map, the legend and the pipeline. The
+// drive does not move; touching this file is what re-photographs it. What
+// the caption has to name is the ABSENCE, for the reason the 2026-08-25
+// re-pointing gave: nobody sees a missing row without being told it was
+// there. It claims only the grid's last two rows, which sit directly above
+// the safety rows this drive already frames, so the claim survives CI's
+// taller sheet as well as the sandbox's (the lesson of PR #1217 above).
+//
+// The earlier captions' struck-through rows and "4 of 9 types" are two
+// states back: #1585 turned every category on by default, so the control
+// reads "All types" and no row is struck through.
 export const caption =
-  'The legend — a ninth waypoint category, and it arrives switched off (#1197)'
+  'The legend — no Crossing row any more; the category grid is eight long (#1674)'
 export const alt =
-  'The legend sheet over the trail screen, scrolled to the foot: a ninth waypoint row labelled Trailhead sits alone in the last grid row, its signpost pin and label greyed and struck through like Resupply, Crossing, Viewpoint and Parking above it, and below the Closure and Serious warning rows the "Read all trail notices" door (directly under the safety rows since 2026-09-10) and then the Showing control reading 4 of 9 types'
+  'The legend sheet over the trail screen, scrolled to the foot: the waypoint category grid ends with Viewpoint and Parking, then Privy and Trailhead, directly above the Closure and Serious warning rows, and there is no Crossing row anywhere in it - Crossing used to sit between Resupply and Viewpoint. Below the safety rows the Showing control reads All types'
 
 export default async function drive(page) {
   // The map first: the app opens on Today since #1054, and the legend's

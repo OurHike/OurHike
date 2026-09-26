@@ -295,6 +295,18 @@ describe('every hideable category has a row, in view or not', () => {
     }
   })
 
+  it('has no Crossing row among the padded categories (#1674)', () => {
+    // The maintainer, 2026-09-26: "Crossings are cluttering the map. Remove
+    // the crossing from the legend and do not show on the map." The grid pads
+    // from HIDEABLE_TYPES, so the row goes when the type leaves POI_TYPES.
+    // A crossing a phone stored under an older build never gets this far:
+    // loadTrailData drops it (storedShapes.compat.test.ts).
+    render(<Legend {...PROPS} />)
+
+    expect(HIDEABLE_TYPES).not.toContain('crossing')
+    expect(screen.queryByRole('listitem', { name: /crossing/i })).toBeNull()
+  })
+
   it('turns off a category with nothing of it in view', async () => {
     // The whole point. `privy` appears nowhere in POINTS, so before this it had
     // no row and this tap had nothing to land on.
@@ -386,7 +398,7 @@ describe('every hideable category has a row, in view or not', () => {
     },
   )
 
-  it('still says the map is empty here, with eight rows of zero on screen', () => {
+  it('still says the map is empty here, with a row of zero for every category on screen', () => {
     // `isEmpty` is decided by the viewport, not by the grid. Decided by the grid
     // it would never be true again, and the sentence would be dead code that
     // still reads as live.

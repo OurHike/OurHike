@@ -42,7 +42,6 @@ export const POI_PRIORITY: readonly string[] = [
   // somebody already walking, where water and a roof outrank the way in.
   'trailhead',
   'privy',
-  'crossing',
   // Last, and the ordering earns its keep here for the first time. Vistas are
   // the densest layer ATC publishes - 1,223 of them, half again as many as
   // every other POI put together - so at any zoom where pins collide, they

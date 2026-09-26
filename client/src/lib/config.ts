@@ -692,18 +692,20 @@ export const suggestedHikeDetailKey = (id: string): string =>
 // "nothing to search yet" and never as a failed download.
 export const PLACES_KEY = 'places.json'
 
-// 'crossing' was listed here while it was still an empty FeatureCollection, so
-// that it would start working the day the pipeline filled it rather than
-// needing a client release to notice. IT WORKED, and the comment outlived the
-// fact: NHD ingestion has landed and production release 2026-09-04 publishes
-// **5,318** crossings, measured off the live artifact (PR #1247).
+// 'crossing' IS GONE, AND ON PURPOSE (#1674). It was the stream crossings
+// pipeline/fetch_trail_water.py derived by intersecting every walking route
+// with both hydrographies - 5,318 of them on production release 2026-09-04,
+// measured off the live artifact (PR #1247), 4,192 of those on somebody
+// else's trail. The maintainer, 2026-09-26: "Crossings are cluttering the
+// map. Remove the crossing from the legend and do not show on the map." So
+// this build neither downloads poi_crossing.geojson nor draws one, and the
+// pipeline no longer derives them. Nothing here ever counted a crossing as a
+// water source, so no distance a hiker reads moved with it.
 //
-// 1,126 of those carry an A.T. mile and sit a median of 0 ft from the
-// centerline - they are line intersections, so they are as on-trail as a
-// waypoint gets. The other 4,192 carry `mile: null`, which is
-// export_poi.mark_off_trail_records (#1016) withholding it on purpose: a
-// crossing on somebody else's trail must not become a candidate stop in an
-// A.T. itinerary. Both halves draw; only the first can be planned around.
+// A phone still running an older build asks for poi_crossing.geojson and
+// fails its whole download on a 404, which is why publish.py keeps writing
+// that key as an empty FeatureCollection. Delete that shim, not this comment,
+// once no supported build asks for it.
 //
 // `trailhead` is the empty-but-present layer now (0 features on that same
 // release), and #1218 is why - USFS's 7,358 trailheads ship as parking pins
@@ -730,17 +732,16 @@ export const PLACES_KEY = 'places.json'
 // out here instead.
 //
 // 'trailhead' (#1197) is where a hiker STARTS, and it is empty on the A.T.
-// today exactly as 'crossing' is: ATC publishes no trailhead layer, and the
-// 287 that ship are OPRHP's, which arrive inside `nearby_poi.geojson` rather
-// than as a per-type artifact. It is listed anyway for 'crossing's reason -
-// so it starts working the day ATC fills it, rather than needing a client
-// release to notice.
+// today: ATC publishes no trailhead layer, and the 287 that ship are OPRHP's,
+// which arrive inside `nearby_poi.geojson` rather than as a per-type
+// artifact. It is listed anyway so it starts working the day ATC fills it,
+// rather than needing a client release to notice - the reason 'crossing' was
+// listed before its data existed, which did pay off (above).
 export const POI_TYPES = [
   'shelter',
   'water',
   'campsite',
   'resupply',
-  'crossing',
   'viewpoint',
   'parking',
   'privy',

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  ATC_UPDATE_BAND_LAYER_IDS,
   ATC_NOTICE_CASING_WIDTH,
   ATC_NOTICE_GLYPH_BOX,
   ATC_UPDATE_LAYER_ID,
@@ -228,11 +229,11 @@ describe('and nothing on the map is drawn over it', () => {
     // Asserted on the live sheet too, which splices seventeen OSM layers into
     // the same array - a new one appended rather than inserted would cover
     // exactly the mark this whole file is about.
+    // The whole group: the band's four layers (#1677, the closure's own
+    // crossed-out mark) and then the point notice, last of all.
+    const group = [...ATC_UPDATE_BAND_LAYER_IDS, ATC_UPDATE_POINT_LAYER_ID]
     for (const sheet of SHEETS) {
-      expect(drawOrder(sheet).slice(-2)).toEqual([
-        ATC_UPDATE_LAYER_ID,
-        ATC_UPDATE_POINT_LAYER_ID,
-      ])
+      expect(drawOrder(sheet).slice(-group.length)).toEqual(group)
     }
   })
 })

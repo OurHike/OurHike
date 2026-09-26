@@ -67,21 +67,18 @@ import { DISPUTE_LAYER_ID } from './disputeLayers'
 import { COVERAGE_SEAM_LABEL_LAYER_ID, COVERAGE_SEAM_LAYER_ID } from './coverageLayers'
 import { ATC_UPDATE_LAYER_ID, ATC_UPDATE_POINT_LAYER_ID } from '../lib/atcUpdateStyle'
 import {
-  closureCasingId,
-  closureGroundId,
+  closureCrossesId,
+  closureLayerIds,
+  closureMarkId,
   CLOSURE_LAYER_ID,
   LONG_TERM_CLOSURE_LAYER_ID,
 } from '../lib/closureStyle'
 
-/** One closure band's three layers, bottom to top (#1599): the dark edge,
- *  the sheet's paper, the red ticks. Spelled once because the list below
- *  names five bands and a hand-written triple per band is five chances to
- *  get the order wrong. */
-const bandLayers = (bandId: string) => [
-  closureCasingId(bandId),
-  closureGroundId(bandId),
-  bandId,
-]
+/** One closure feed's four layers, bottom to top (#1677): the sheet's paper,
+ *  the dotted trace, the chain of crosses, the far mark. Spelled once
+ *  because the list below names five feeds and a hand-written list per feed
+ *  is five chances to get the order wrong. */
+const bandLayers = (bandId: string) => closureLayerIds(bandId)
 import {
   ROUTE_CASING_LAYER_ID,
   ROUTE_LINE_LAYER_ID,
@@ -332,8 +329,17 @@ describe('the live topographic background', () => {
       // Workdays have outranked waypoint pins since #760 - they were above
       // the pins before 2026-09-20 too.
       WORKDAY_LAYER_ID,
-      // The hazards: a warning or an ATC notice wins the pixels outright.
+      // The hazards: a closure's far mark, a warning or an ATC notice wins
+      // the pixels outright. The far marks (#1677) are the one closure layer
+      // that collides - so a closed network reads as a few crosses rather
+      // than a scribble - and a pin under one falls back to its dot, as a
+      // pin under a warning does.
+      closureMarkId('network-overview-closure-band'),
+      closureMarkId('nearby-long-term-closure-band'),
+      closureMarkId(CLOSURE_LAYER_ID),
+      closureMarkId(LONG_TERM_CLOSURE_LAYER_ID),
       WARNING_LAYER_ID,
+      closureMarkId(ATC_UPDATE_LAYER_ID),
       ATC_UPDATE_POINT_LAYER_ID,
     ])
 
@@ -874,10 +880,13 @@ describe('the offline-only background', () => {
       // whole mark. A hiker with no signal is exactly who must keep these,
       // which is why this list has always ended with them; what changed is
       // that the walk's own marks, the workdays and the hiker's mark are
-      // now below rather than above. Each band is three plain lines since
-      // #1599 - a dark edge, the sheet's paper, red ticks - which is what
-      // bandLayers spells, and there is no image behind any of them.
-      ...bandLayers('network-overview-closure-band'),
+      // now below rather than above. Each is the crossed-out mark since
+      // #1677 - paper, dotted trace, chain of crosses, far mark - which is
+      // what bandLayers spells. The corridor sketch's has no chain: the
+      // sketch ends at the seam, below the zoom the chain starts at.
+      ...bandLayers('network-overview-closure-band').filter(
+        (id) => id !== closureCrossesId('network-overview-closure-band'),
+      ),
       ...bandLayers('nearby-long-term-closure-band'),
       ...bandLayers(CLOSURE_LAYER_ID),
       ...bandLayers(LONG_TERM_CLOSURE_LAYER_ID),
@@ -895,9 +904,8 @@ describe('the offline-only background', () => {
       // organisation that maintains it, underneath OurHike's own pin for that
       // shelter, is not a picture anybody wants. src/test/atcAlertProminence.test.ts
       // holds that ordering as a property; this case only has to agree with it.
-      // Over its own outline, like every closure band above (#1598): one mark
-      // for "do not walk this" means the ATC's band grew an edge the day the
-      // closures' did.
+      // The closure's own mark, like every closure feed above (#1677): one
+      // mark for "do not walk this".
       ...bandLayers(ATC_UPDATE_LAYER_ID),
       // And the dots, which is what most ATC notices actually are - five of
       // the six reviewed on 2026-08-12 name a single mile marker.

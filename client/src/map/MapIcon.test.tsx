@@ -28,11 +28,14 @@ import {
 import { WARNING_GLYPH } from './warningPin'
 import { WARNING_PIN } from '../lib/seriousWarnings'
 import {
-  CLOSURE_CASING_COLOR,
   CLOSURE_COLOR,
-  CLOSURE_OUTLINE_WIDTH,
-  CLOSURE_DASH,
-  CLOSURE_TAPE_WIDTH,
+  CLOSURE_CROSS_ARM,
+  CLOSURE_CROSS_HALO_WIDTH,
+  CLOSURE_CROSS_STROKE,
+  CLOSURE_INK,
+  CLOSURE_PAPER_WIDTH,
+  CLOSURE_TRACE_OPACITY,
+  CLOSURE_TRACE_WIDTH,
 } from '../lib/closureStyle'
 
 // The map's pins, drawn in the DOM for the legend (#572).
@@ -197,105 +200,82 @@ describe('MapIcon: a serious warning', () => {
 })
 
 describe('MapIcon: a closure', () => {
-  it('is the barrier tape the map draws, not a pin', () => {
+  // The legend's half of #1677: the swatch is the crossed-out mark the map
+  // draws, at the map's own full-zoom sizes, so a hiker who learns it here
+  // recognises it there.
+
+  it('is the crossed-out trail the map draws, not a pin', () => {
     const svg = draw(<MapIcon type="closure" />)
 
-    expect(part(svg, 'map-icon__closure-band').getAttribute('fill')).toBe(CLOSURE_COLOR)
-    expect(part(svg, 'map-icon__closure-outline').getAttribute('fill')).toBe(
-      CLOSURE_CASING_COLOR,
-    )
+    expect(part(svg, 'map-icon__closure-cross').getAttribute('stroke')).toBe(CLOSURE_INK)
+    expect(svg.querySelectorAll('.map-icon__closure-trace').length).toBeGreaterThan(1)
     expect(svg.querySelector('.map-icon__disc')).toBeNull()
   })
 
-  it('draws the ticks at the map’s own rhythm, in the map’s own units', () => {
-    // The swatch's viewBox is in CSS pixels at the band's width, so every
-    // number here resolves from a constant the map ships - no conversion, and
-    // nothing for the legend to drift from the map by. The map writes its
-    // rhythm in LINE WIDTHS (a `line-dasharray`), so a tick is that fraction
-    // of the band's width.
+  it('draws no closure red, as the map no longer does', () => {
+    // Every trail is that red by default (#1575); a swatch in it would teach
+    // the red-on-red mark the map stopped drawing.
     const svg = draw(<MapIcon type="closure" />)
-    const ticks = svg.querySelectorAll('.map-icon__closure-band')
+    for (const node of svg.querySelectorAll('*')) {
+      expect(node.getAttribute('fill')).not.toBe(CLOSURE_COLOR)
+      expect(node.getAttribute('stroke')).not.toBe(CLOSURE_COLOR)
+    }
+  })
 
-    expect(ticks.length).toBeGreaterThan(1)
-    expect(Number(ticks[0]?.getAttribute('width'))).toBeCloseTo(
-      CLOSURE_DASH.tick * CLOSURE_TAPE_WIDTH,
-      6,
+  it('draws every part at the map\u2019s own size, in the map\u2019s own units', () => {
+    // The swatch's viewBox is in CSS pixels, so each number resolves from a
+    // constant the map ships - nothing for the legend to drift from.
+    const svg = draw(<MapIcon type="closure" />)
+
+    expect(Number(part(svg, 'map-icon__closure-paper').getAttribute('height'))).toBe(
+      CLOSURE_PAPER_WIDTH,
     )
+    const dot = part(svg, 'map-icon__closure-trace')
+    expect(Number(dot.getAttribute('r'))).toBe(CLOSURE_TRACE_WIDTH / 2)
+    expect(Number(dot.getAttribute('fill-opacity'))).toBe(CLOSURE_TRACE_OPACITY)
+    expect(
+      Number(part(svg, 'map-icon__closure-cross').getAttribute('stroke-width')),
+    ).toBe(CLOSURE_CROSS_STROKE)
+    expect(Number(part(svg, 'map-icon__closure-halo').getAttribute('stroke-width'))).toBe(
+      CLOSURE_CROSS_STROKE + CLOSURE_CROSS_HALO_WIDTH * 2,
+    )
+    // Both diagonals, each CLOSURE_CROSS_ARM out from the centre.
+    const d = part(svg, 'map-icon__closure-cross').getAttribute('d') ?? ''
+    expect(d.match(/M/g)).toHaveLength(2)
+    const numbers = d.match(/-?[\d.]+/g)?.map(Number) ?? []
+    expect(Math.abs(numbers[2] - numbers[0])).toBeCloseTo(CLOSURE_CROSS_ARM * 2, 6)
   })
 
-  it('stands its ticks square to the band, as the map does since #1599', () => {
-    // The legend taught a 55-degree lean while the map drew one; the map
-    // stopped, because that lean was what tore at every bend. A swatch that
-    // kept it would be teaching a mark the map does not draw, which is this
-    // file's whole rule.
-    const svg = draw(<MapIcon type="closure" />)
-
-    expect(svg.querySelectorAll('line')).toHaveLength(0)
-    for (const tick of svg.querySelectorAll('.map-icon__closure-band')) {
-      expect(Number(tick.getAttribute('height'))).toBe(CLOSURE_TAPE_WIDTH)
-    }
-  })
-
-  it('edges the band rather than laying a casing behind it', () => {
-    // THE DEFECT THIS SWATCH USED TO SHOW, held so it cannot come back. The
-    // legend drew a filled casing rect with a dashed band over it - which was
-    // honest, because that is what the map drew, and both were a near-black
-    // line with red ticks in it. The casing is a stroke wider than the stripe
-    // it outlines, and no rect behind them is the casing: the ground rect is
-    // the sheet's paper (#1575), and the two dark rects since #1598 are the
-    // band's own outline, each one CLOSURE_OUTLINE_WIDTH tall at an edge of
-    // the tape rather than the full height behind it.
-    const svg = draw(<MapIcon type="closure" />)
-    const rects = [...svg.querySelectorAll('rect')]
-
-    expect(rects.map((r) => r.getAttribute('class'))).toEqual([
-      'map-icon__closure-ground',
-      ...rects.slice(1, -2).map(() => 'map-icon__closure-band'),
-      'map-icon__closure-outline',
-      'map-icon__closure-outline',
-    ])
-    expect(rects[0]?.getAttribute('fill')).not.toBe(CLOSURE_CASING_COLOR)
-    for (const outline of rects.slice(-2)) {
-      expect(outline.getAttribute('fill')).toBe(CLOSURE_CASING_COLOR)
-      expect(Number(outline.getAttribute('height'))).toBe(CLOSURE_OUTLINE_WIDTH)
-      // An EDGE and not a band: whatever the band's own height, an outline
-      // that ever grew to a share of it would be the filled casing rect
-      // back under a new name.
-      expect(Number(outline.getAttribute('height'))).toBeLessThan(CLOSURE_TAPE_WIDTH / 4)
-    }
-  })
-
-  it('lays the sheet’s paper under the ticks, in the map’s own colour (#1575)', () => {
-    // What the map does, restated in the legend: since option E the tape's
-    // gaps hold the sheet's paper, so the swatch holds it too - the field day
-    // sheet's by default, and night ink beside a night map. Nothing else in
-    // the swatch carries a fill; the stripes are strokes.
+  it('lays the map\u2019s own paper and ink for the sheet, red light included', () => {
+    // The paper is the field day sheet's by default, the same white beside a
+    // night map (closureTapeGround, 2026-09-18), and red light's own ink with
+    // the mark in red light's one hue.
     const day = draw(<MapIcon type="closure" />)
-    expect(part(day, 'map-icon__closure-ground').getAttribute('fill')).toBe(
+    expect(part(day, 'map-icon__closure-paper').getAttribute('fill')).toBe(
       mapBackdrop({ theme: 'light' }),
     )
-    // Every other fill in the swatch is the closure red or the sheet's
-    // darkest ink - the ticks and the two edges - and nothing carries a
-    // stroke at all, which is the swatch's half of "no diagonals left".
-    for (const node of day.querySelectorAll('*:not(.map-icon__closure-ground)')) {
-      expect(node.getAttribute('stroke')).toBeNull()
-    }
+    expect(part(day, 'map-icon__closure-halo').getAttribute('stroke')).toBe(
+      mapBackdrop({ theme: 'light' }),
+    )
 
-    // Beside a night map the ground is the day paper too, since 2026-09-18
-    // (closureTapeGround): red and white, never red on ink. Red light keeps
-    // its ink, and the swatch follows.
     const night = draw(<MapIcon type="closure" appearance={{ theme: 'dark' }} />)
-    expect(part(night, 'map-icon__closure-ground').getAttribute('fill')).toBe(
+    expect(part(night, 'map-icon__closure-paper').getAttribute('fill')).toBe(
       MAP_BACKDROP.light,
     )
+    expect(part(night, 'map-icon__closure-cross').getAttribute('stroke')).toBe(
+      CLOSURE_INK,
+    )
+
     const redLight = { mapStyle: 'night_hike', redLight: true } as const
     const under = draw(<MapIcon type="closure" appearance={redLight} />)
-    expect(part(under, 'map-icon__closure-ground').getAttribute('fill')).toBe(
+    expect(part(under, 'map-icon__closure-paper').getAttribute('fill')).toBe(
       mapBackdrop(redLight),
+    )
+    expect(part(under, 'map-icon__closure-cross').getAttribute('stroke')).toBe(
+      RED_LIGHT_BLAZE_COLOR,
     )
   })
 })
-
 describe('TrailLineSwatch: a trail line as the map draws it (#1283)', () => {
   // Same rule as the pins above: fidelity, not appearance. Every number is
   // checked against the constants the map's own layers are built from.

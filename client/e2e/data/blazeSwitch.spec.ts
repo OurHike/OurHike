@@ -20,8 +20,8 @@
 // before this spec existed: before the fix, switching on went grey after 14
 // of 18 taps; switching off drew red again but threw 2 to 3 errors per tap
 // first. After it, 12 of 12 taps drew the right lines with no error. This
-// spec itself failed 3 of 3 runs on the build before the fix and passed 3
-// of 3 on the build with it.
+// spec itself, run locally, failed every run on the build before the fix
+// (5 of 5) and passed every run on the build with it (9 of 9).
 
 import { test, expect, type Page } from '@playwright/test'
 import { seedPreferences, seedCamera } from '../support/seed'
@@ -97,7 +97,15 @@ test.describe('the Blaze colors switch on a drawn map', { tag: '@desktop' }, () 
     page.on('pageerror', (error) => errors.push(error.message))
 
     await seedCamera(page, HUDSON_HIGHLANDS, HUDSON_HIGHLANDS_ZOOM)
-    await seedPreferences(page)
+    // THE DOWNLOADED BACKGROUND, with nothing downloaded: plain paper under
+    // the trails, and no network request for background tiles. The live
+    // sheet draws the Hudson, its creeks and its reservoirs in blues that
+    // `drawnInk` counts as a blue blaze - measured on this spec's first CI
+    // run, 2026-09-26: 388 `hues` pixels on the default sheet before any
+    // tap, against a bar of 50. The defect is in the trail layers, which
+    // draw the same over either background, so the paper costs this test
+    // nothing and makes the count mean only the trails.
+    await seedPreferences(page, { background_source: 'usgs_topo_offline' })
     await page.goto('/')
     await page.getByRole('tab', { name: 'Map' }).click()
     await expect(page.getByRole('region', { name: 'Trail map' })).toBeVisible()

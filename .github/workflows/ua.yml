@@ -195,6 +195,10 @@ jobs:
           VITE_SUPABASE_URL: ${{ steps.supabase.outputs.url }}
           VITE_SUPABASE_ANON_KEY: ${{ steps.supabase.outputs.key }}
           VITE_API_BASE_URL: ${{ steps.api.outputs.url }}
+          # The same Spotify app as production (#1683): one client id can
+          # carry a redirect URI per origin, and UA's is registered beside
+          # production's.
+          VITE_SPOTIFY_CLIENT_ID: ${{ vars.SPOTIFY_CLIENT_ID }}
         run: npm run build
 
       # The same proof pages.yml makes about production, for the same reason:

@@ -111,3 +111,12 @@ describe('the archive prefix (#1574)', () => {
     )
   })
 })
+
+describe('the podcasts prefix (#1683)', () => {
+  it('leaves podcasts/episodes.json at the root, outside the pinned release', () => {
+    // The maintainer chose a live list: inside the pinned folder a new
+    // episode would reach nobody until DATA_RELEASE moved.
+    expect(isReleaseScoped('podcasts/episodes.json')).toBe(false)
+    expect(releasePath('podcasts/episodes.json')).toBe('podcasts/episodes.json')
+  })
+})

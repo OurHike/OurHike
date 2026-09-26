@@ -167,6 +167,8 @@ import type { TrailInView } from './map/trailsInView'
 import { useAvailableBytes } from './lib/useAvailableBytes'
 import { usePublishedSizes } from './lib/usePublishedSizes'
 import { useSuggestedHikes } from './lib/useSuggestedHikes'
+import { usePodcastEpisodes } from './lib/usePodcastEpisodes'
+import { NO_PODCAST_EPISODES, episodesForHike, episodesForMiles } from './lib/podcasts'
 import {
   authorLine,
   hikePlaces,
@@ -2451,6 +2453,9 @@ function App() {
   // there is signal, empty until an exporter writes any - see
   // lib/useSuggestedHikes.ts and config.ts's SUGGESTED_HIKES_KEY.
   const suggestedHikes = useSuggestedHikes(online, afterFirstFrame)
+  // The podcast episodes picked for hikes (#1683) - a live list at the
+  // bucket root, matched to a hike or a day's miles on this phone.
+  const podcastEpisodes = usePodcastEpisodes(online, afterFirstFrame)
 
   /** One sheet as one state, however many archives are behind it. */
   const sheetStatus = useCallback(
@@ -4510,6 +4515,21 @@ function App() {
       at === undefined ? from : Math.min(Math.max(at, ends.low.mile), ends.high.mile)
     return { start, end: finish }
   }, [hikerMode, activeHike, pois, heading, fix?.mile])
+
+  // Today's leg's podcast episodes (#1683): the ones whose A.T. range
+  // overlaps the leg planned for today. A.T. only, because the reference
+  // file's miles are A.T. miles and only the A.T. has a mile axis here
+  // (lib/hikes.ts, trailHasMileAxis) - a leg on another trail matches
+  // nothing rather than being compared against the wrong trail's numbers.
+  const todayPodcasts = useMemo(() => {
+    if (activeHike === null || hikerMode !== 'long') return NO_PODCAST_EPISODES
+    if (!trailHasMileAxis(activeHike.trailId)) return NO_PODCAST_EPISODES
+    const at = hikeDayToday(tripStore.trips, activeHike.tripIds, localDay(now))
+    if (at === null) return NO_PODCAST_EPISODES
+    const from = at.trip.plan.stops[at.index].mile
+    const to = at.trip.plan.stops[at.index + 1].mile
+    return episodesForMiles(podcastEpisodes, Math.min(from, to), Math.max(from, to))
+  }, [activeHike, hikerMode, tripStore.trips, now, podcastEpisodes])
 
   const longHikeToday = useMemo((): LongHikeToday | null => {
     if (activeHike === null || hikerMode !== 'long') return null
@@ -9878,6 +9898,7 @@ function App() {
       onFinishOpenWalk={finishOpenWalk}
       onDropOpenWalk={dropOpenWalk}
       longHike={longHikeToday}
+      podcastEpisodes={todayPodcasts}
       pois={searchablePois}
       currentMile={fix?.mile}
       direction={direction?.direction}
@@ -9978,6 +9999,7 @@ function App() {
         units={units}
         online={online}
         stewards={stewards}
+        podcastEpisodes={episodesForHike(podcastEpisodes, openHike.id)}
         onBack={goBack}
         onSave={saveSuggestedHike}
         {...(savedCopy === undefined

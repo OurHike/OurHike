@@ -92,6 +92,7 @@ data a phone is pinned to.
 | `conditions/` | published safety data — verified closures, verified reports, and the ATC's own trail updates — and, since #1056, the NBM forecast for every trail square (`weather_index.json` plus one `weather/<cell>.json` per 1° cell) and every active NWS alert that reaches one (`weather_alerts.json`) (features/WEATHER.md §7) | mutable: rewritten in place, hourly by schedule (about every four hours as GitHub actually fires it, #1346) | yes |
 | `archive/` | one-time snapshots of third-party data read once and possibly never again — today the footprint of each NYNJTC paper map sheet | mutable only by a person dispatching the one-off workflow that wrote it | yes |
 | `archive__nynjtc_photos__do_not_delete/` | the whole Internet Archive recovery of NYNJTC's Drupal-era photographs, content-addressed | written once, never rewritten, never pruned | **no** |
+| `podcasts/` | one object, `episodes.json`: the podcast episodes picked for each hike | mutable only by a person dispatching `publish-podcasts.yml` | yes |
 | `environments/` | one subtree per non-production environment, each holding a whole copy of this layout | as whatever it holds | to that environment's audience |
 
 **`archive__nynjtc_photos__do_not_delete/` is a park, not a store anything reads** (#1567).
@@ -182,6 +183,16 @@ rebuilt from the code, and this cannot be rebuilt once the store is gone — and
 beside `conditions/` (`client/src/lib/mapSheets.ts`, `lib/dataRelease.ts`'s
 `ROOT_SCOPED_PREFIXES`). Retention is `conditions/`'s: one object per snapshot, overwritten in
 place by the next deliberate dispatch, never accumulating, so no prune job is needed.
+
+`podcasts/` holds the podcast episodes the maintainer picked for each hike
+([#1683](https://github.com/OurHike/OurHike/issues/1683)), as one object,
+`podcasts/episodes.json`, written by `export_podcasts.py` from the reviewed
+`reference/podcast_episodes.json` when a person dispatches `publish-podcasts.yml`. It is not
+under `releases/` because the maintainer chose a live list (2026-09-26): a release folder is
+pinned by the client's `DATA_RELEASE`, so an episode added there would reach nobody until an
+app release moved the pin. The client reads it at the root (`client/src/lib/podcasts.ts`,
+`lib/dataRelease.ts`'s `ROOT_SCOPED_PREFIXES`). Retention is `conditions/`'s: one object,
+overwritten in place, never accumulating.
 
 `environments/` is the one prefix that holds no objects of its own. `environments/ua/` is this
 whole page again — root keys, `releases/`, `photos/`, `conditions/`, all of it — belonging to

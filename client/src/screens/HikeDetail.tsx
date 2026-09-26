@@ -42,8 +42,15 @@
 // link is to their product on their own store, the title is their words,
 // and no price is printed - the store is the source for that. Nothing on
 // this screen is for sale by OurHike.
+//
+// AND SINCE #1683, podcast episodes somebody picked for this hike
+// (chrome/PodcastCard.tsx), as THE LAST THING ON THE SCREEN - below the
+// provenance, on the maintainer's word (poll, 2026-09-26): "should be the
+// last thing you see". Deciding and getting there come first; listening is
+// what a hiker does once they have decided.
 
 import { useState } from 'react'
+import { PodcastCard } from '../chrome/PodcastCard'
 import { Badge } from '../design-system/components'
 import { shortDate } from '../lib/hikeText'
 import type { PaceProfile } from '../lib/pace'
@@ -59,6 +66,7 @@ import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
 import { paperMapLead, paperMapsForPlace, stewardForSource } from '../lib/paperMaps'
 import { EMPTY_STEWARDS, type Stewards } from '../lib/stewards'
 import { useHikeDetail } from '../lib/useHikeDetail'
+import { NO_PODCAST_EPISODES, type PodcastEpisode } from '../lib/podcasts'
 import './hikeDetail.css'
 
 /** How many paragraphs of the turn-by-turn show before the button. Two is
@@ -91,6 +99,9 @@ export interface HikeDetailProps {
    *  paper map (#1574). Empty on a phone with no download, and empty renders
    *  no line - the honest state, not a degraded one. */
   stewards?: Stewards
+  /** The podcast episodes picked for this hike (lib/podcasts.ts,
+   *  `episodesForHike`), or none - and none draws nothing. */
+  podcastEpisodes?: readonly PodcastEpisode[]
 }
 
 function figures(hike: SuggestedHike, pace: PaceProfile, units: UnitSystem): string {
@@ -167,6 +178,7 @@ export function HikeDetail({
   savedWalks,
   onShowOnMap,
   stewards = EMPTY_STEWARDS,
+  podcastEpisodes = NO_PODCAST_EPISODES,
 }: HikeDetailProps) {
   const [wholeDescription, setWholeDescription] = useState(false)
   // #1473: the shelf carries the figures, this fetches the prose for the one
@@ -388,6 +400,17 @@ export function HikeDetail({
             data this phone holds — not a track anybody walked with a GPS.
           </p>
         </footer>
+
+        {podcastEpisodes.length > 0 && (
+          <section className="hike-detail__section">
+            <h2 className="hike-detail__rule">Listen before you go</h2>
+            <PodcastCard
+              episodes={podcastEpisodes}
+              heading="Picked for this hike"
+              online={online}
+            />
+          </section>
+        )}
       </div>
     </div>
   )

@@ -7,8 +7,9 @@
 // hands any off-origin scheme to an `ACTION_VIEW` intent, and loads a tapped
 // `data:` link in place of the app. A policy makes that check the second line
 // rather than the only one. It is defence in depth and nothing more: there is
-// no untrusted script on the page and no third-party frame. #1602 carries the
-// argument and the staging.
+// no untrusted script on the page, and one third-party frame - Spotify's
+// episode player (#1683), loaded only when a hiker taps Play, only in a
+// browser. #1602 carries the argument and the staging.
 //
 // WHERE IT IS SERVED, AND WHERE IT CANNOT BE. Only the pull request preview
 // carries it, as `Content-Security-Policy-Report-Only`, from two mouths that
@@ -55,6 +56,18 @@
  *  is taken rather than the path because the style document it returns points
  *  at tiles, glyphs and sprites on that same host. */
 export const BASEMAP_ORIGIN = 'https://tiles.openfreemap.org'
+
+/** Spotify, fixed in the source for the same reason (#1683). The player is
+ *  Spotify's own embed, `src/lib/podcasts.ts`'s `spotifyEmbedUrl`, framed by
+ *  chrome/PodcastCard.tsx only once a hiker taps Play and only in a browser -
+ *  never in the Capacitor shells, whose Android bridge (`useLegacyBridge` in
+ *  capacitor.config.ts) is exposed to any frame the WebView holds. The two
+ *  API hosts are `src/lib/spotify.ts`'s token exchange and library save. */
+export const SPOTIFY_PLAYER_ORIGIN = 'https://open.spotify.com'
+export const SPOTIFY_API_ORIGINS = [
+  'https://accounts.spotify.com',
+  'https://api.spotify.com',
+]
 
 /** Which environment variable each host comes from, and the only list of them.
  *
@@ -134,9 +147,12 @@ function sources(...values) {
  *                           cross-origin CSS, 10 UI font file(s) vendored and
  *                           precached" on every build, so a remote stylesheet
  *                           or font would already be failing that check.
- *   frame-ancestors 'none'  nothing in client/src or site/src renders an
- *                           `<iframe>`. An organization's embed is a `<script>`
- *                           tag on their own page, governed by their policy.
+ *   frame-ancestors 'none'  nothing frames this app. An organization's
+ *                           embed is a `<script>` tag on their own page,
+ *                           governed by their policy.
+ *   frame-src Spotify only  the one `<iframe>` in client/src is Spotify's
+ *                           episode player (#1683), from open.spotify.com
+ *                           and nowhere else. It was `'none'` until then.
  *
  * Two are `@unvalidated`, and are the reason the preview runs report-only
  * rather than this being pasted straight into an enforced tag:
@@ -181,7 +197,14 @@ export function buildPolicy({ dataBase, supabaseUrl, apiBase } = {}) {
     ['img-src', sources("'self'", 'data:', 'blob:', BASEMAP_ORIGIN, dataOrigin)],
     [
       'connect-src',
-      sources("'self'", BASEMAP_ORIGIN, dataOrigin, supabaseOrigin, apiOrigin),
+      sources(
+        "'self'",
+        BASEMAP_ORIGIN,
+        dataOrigin,
+        supabaseOrigin,
+        apiOrigin,
+        ...SPOTIFY_API_ORIGINS,
+      ),
     ],
     ['worker-src', sources("'self'")],
     ['child-src', sources("'self'")],
@@ -189,7 +212,7 @@ export function buildPolicy({ dataBase, supabaseUrl, apiBase } = {}) {
     ['form-action', sources("'self'")],
     ['base-uri', sources("'none'")],
     ['object-src', sources("'none'")],
-    ['frame-src', sources("'none'")],
+    ['frame-src', sources(SPOTIFY_PLAYER_ORIGIN)],
     ['frame-ancestors', sources("'none'")],
   ]
 

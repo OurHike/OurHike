@@ -1,0 +1,170 @@
+/* The podcast card (#1683), drawn to the mock the maintainer chose on
+   2026-09-26. Tokens only; the hike detail screen's own card and the Today
+   card are the two neighbours it has to sit beside without looking foreign. */
+
+.podcast-card {
+  background: var(--surface-card);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-l, 14px);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.podcast-card__head {
+  padding: 12px 14px 8px;
+}
+
+.podcast-card__eyebrow {
+  margin: 0 0 6px;
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--brand-primary);
+}
+
+.podcast-card__heading {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-body-l);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+  color: var(--fg-1);
+}
+
+.podcast-card__lede {
+  margin: 4px 0 0;
+  font-size: var(--text-body-s);
+  color: var(--fg-2);
+}
+
+.podcast-card__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 14px 10px;
+  padding: 6px 6px 6px 10px;
+  border-radius: var(--radius-m, 8px);
+  background: var(--bg-sunken);
+  font-size: var(--text-body-s);
+  color: var(--fg-2);
+}
+
+.podcast-card__status .podcast-card__button {
+  margin-left: auto;
+}
+
+.podcast-card__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.podcast-card__episode {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--border-1);
+}
+
+.podcast-card__show,
+.podcast-card__title,
+.podcast-card__length {
+  margin: 0;
+}
+
+.podcast-card__show {
+  font-size: var(--text-caption);
+  color: var(--fg-3);
+}
+
+.podcast-card__title {
+  font-size: var(--text-body);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+  color: var(--fg-1);
+}
+
+.podcast-card__length {
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  color: var(--fg-3);
+}
+
+.podcast-card__player {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  border: 0;
+  border-radius: 12px;
+}
+
+.podcast-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.podcast-card__button {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 14px;
+  border: 1.5px solid var(--brand-primary);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--brand-primary);
+  font-family: var(--font-body);
+  font-size: var(--text-body-s);
+  font-weight: var(--weight-semibold);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.podcast-card__button--solid {
+  background: var(--brand-primary);
+  color: var(--fg-on-brand);
+}
+
+.podcast-card__button--solid:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.podcast-card__button--done,
+.podcast-card__button--quiet {
+  border-color: var(--border-2);
+  color: var(--fg-2);
+}
+
+.podcast-card__button--quiet {
+  min-height: 36px;
+  padding: 0 10px;
+  font-size: var(--text-caption);
+}
+
+.podcast-card__warning {
+  margin: 8px 0 0;
+  padding: 6px 10px;
+  border-left: 3px solid var(--brand-secondary);
+  border-radius: 0 var(--radius-m, 8px) var(--radius-m, 8px) 0;
+  background: var(--bg-sunken);
+  font-size: var(--text-body-s);
+  color: var(--fg-2);
+}
+
+.podcast-card__warning a {
+  color: var(--brand-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.podcast-card__foot {
+  margin: 0;
+  padding: 8px 14px 12px;
+  border-top: 1px solid var(--border-1);
+  font-size: var(--text-caption);
+  color: var(--fg-3);
+}

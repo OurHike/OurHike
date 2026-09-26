@@ -8,7 +8,11 @@
 // The button under it wore the browser's own dark bevel. What to look for:
 // the field matches every other org form field, the help text follows it
 // directly, and "Read their site" is a flat green button.
-import { openSitePage, serveMarketingSite } from './fixtures/marketingSite.mjs'
+import {
+  openSitePage,
+  scrollToTop,
+  serveMarketingSite,
+} from './fixtures/marketingSite.mjs'
 
 export const caption =
   'Nominate on a phone: the website field styled like every other org field, with no blank box under it, and a flat "Read their site" button'
@@ -21,5 +25,5 @@ export default async function drive(page) {
   await openSitePage(page, '/for-orgs/nominate/')
   const label = page.getByText('STEP 1 · THEIR WEBSITE')
   await label.waitFor()
-  await label.evaluate((node) => node.closest('form').scrollIntoView({ block: 'start' }))
+  await scrollToTop(page.locator('form.org-form'), 0)
 }

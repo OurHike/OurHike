@@ -7,7 +7,11 @@
 // to bone: four headings at 1.21:1, measured at 390px on 2026-09-24. What to
 // look for is simply that they can be read - dark cards, light headings,
 // the same on the registration form further down.
-import { openSitePage, serveMarketingSite } from './fixtures/marketingSite.mjs'
+import {
+  openSitePage,
+  scrollToTop,
+  serveMarketingSite,
+} from './fixtures/marketingSite.mjs'
 
 export const caption =
   'The four reasons on /for-orgs/ in dark mode: ink cards with bone headings, where each card used to stay paper under bone text at 1.21:1'
@@ -21,8 +25,5 @@ export default async function drive(page) {
   await openSitePage(page, '/for-orgs/')
   const band = page.getByRole('heading', { name: 'Four reasons orgs register' })
   await band.waitFor()
-  await band.evaluate((heading) => {
-    heading.scrollIntoView({ block: 'start' })
-    window.scrollBy(0, -24)
-  })
+  await scrollToTop(band)
 }

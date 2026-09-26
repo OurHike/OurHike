@@ -7,7 +7,11 @@
 // right under the lede, drawn from the app's own demo volunteer
 // (client/src/org/demoVolunteer.ts), so the name, the 3.3 miles and the four
 // open reports are the ones "Open the full volunteer view" lands on.
-import { openSitePage, serveMarketingSite } from './fixtures/marketingSite.mjs'
+import {
+  openSitePage,
+  scrollToTop,
+  serveMarketingSite,
+} from './fixtures/marketingSite.mjs'
 
 export const caption =
   'The demo org’s “view that matters most” on a phone: the volunteer’s Tread card under the lede, from the same demo data the full volunteer view opens on'
@@ -20,8 +24,5 @@ export default async function drive(page) {
   await openSitePage(page, '/for-orgs/demo/')
   const heading = page.getByRole('heading', { name: 'The view that matters most' })
   await heading.waitFor()
-  await heading.evaluate((node) => {
-    node.scrollIntoView({ block: 'start' })
-    window.scrollBy(0, -24)
-  })
+  await scrollToTop(heading)
 }

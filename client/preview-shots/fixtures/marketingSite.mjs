@@ -79,3 +79,22 @@ export async function serveMarketingSite(page) {
 export async function openSitePage(page, pathname) {
   await page.goto(new URL(pathname, page.url()).href, { waitUntil: 'networkidle' })
 }
+
+/**
+ * Bring `locator` to `offset` px below the top of the viewport, in one
+ * instant jump.
+ *
+ * ONE JUMP, AND INSTANT, because site.css sets `scroll-behavior: smooth` on
+ * <html>. A recipe that called scrollIntoView and then scrollBy(0, -24)
+ * started a smooth scroll and interrupted it a frame later with a second
+ * one, from wherever the first had got to - which on CI's runner was the
+ * top of the page. site-for-orgs-reasons-dark and site-demo-tread-phone
+ * both went out photographing the header they were meant to scroll past
+ * (#1672's first preview comment).
+ */
+export async function scrollToTop(locator, offset = 24) {
+  await locator.evaluate((node, gap) => {
+    const top = node.getBoundingClientRect().top + window.scrollY - gap
+    window.scrollTo({ top, behavior: 'instant' })
+  }, offset)
+}

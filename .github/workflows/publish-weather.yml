@@ -132,7 +132,7 @@ jobs:
       - name: Upload data for the publish job
         id: upload
         if: ${{ !cancelled() && hashFiles('pipeline/data/processed/*_manifest.json') != '' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: weather-build-output
           path: pipeline/data/processed/

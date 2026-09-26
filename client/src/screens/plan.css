@@ -1652,10 +1652,12 @@
    Negative margins bleed it to the screen edges through .plan's padding.
 
    Measured 2026-08-25, WCAG contrast of each pairing below against its own
-   band, in both themes - the lowest is the trips link at night:
+   band, in both themes - the lowest is the day band's text at night:
      trips band text  paper-0/pine-900 16.60:1 · bone-100/ink-900 14.94:1
-     trips link       moss-300/pine-900 7.73:1 · bone-500/ink-900  4.96:1
+     trips link       moss-300/pine-900 7.73:1 · bone-400/ink-900  6.35:1
      day band text    paper-0/forest-600 7.53:1 · ink-950/moss-400 5.59:1
+   The trips link's night figure was bone-500's 4.96:1, and the lowest here,
+   until #1670 moved `--fg-chrome-3` to bone-400 (re-measured 2026-09-26).
    Re-runnable from the hexes in tokens/colors.css; every one clears 4.5:1,
    which is why these bands take no per-theme overrides of their own. */
 .plan-band {

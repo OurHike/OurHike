@@ -60,6 +60,24 @@ describe("the dark-mode block", () => {
     );
     expect(missing).toEqual([]);
   });
+
+  it("points each alias it mirrors where the tokens' dark block points it", () => {
+    // The first test catches an alias left out; this one catches an alias
+    // left behind. #1670 - --fg-3 text is under WCAG AA contrast on every
+    // light surface, and the app uses it 229 times - moved the dark `--fg-3`
+    // and `--fg-chrome-3` from bone-500 to bone-400 in colors.css, and a
+    // mirror that kept bone-500 would still have listed both names.
+    const values = (body) =>
+      new Map(
+        [...body.matchAll(/^\s*(--[\w-]+)\s*:\s*([^;]+);/gm)].map((m) => [m[1], m[2].trim()]),
+      );
+    const site = values(block(css, "@media (prefers-color-scheme: dark)"));
+    const theirs = values(block(tokens, ":root[data-theme='dark']"));
+    const drifted = [...site]
+      .filter(([alias, value]) => theirs.has(alias) && theirs.get(alias) !== value)
+      .map(([alias, value]) => `${alias}: site ${value}, tokens ${theirs.get(alias)}`);
+    expect(drifted).toEqual([]);
+  });
 });
 
 describe("classes the org pages use", () => {

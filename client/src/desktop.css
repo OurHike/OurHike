@@ -95,9 +95,10 @@
     text-align: left;
     padding: var(--space-3, 12px) var(--space-4, 16px);
     font-size: 14px;
-    /* Worth a number: chrome.css's resting label is stone-500 on white,
-       3.6:1 - under WCAG AA's 4.5:1 floor. Sage on pine is 11.4:1, so the
-       sidebar fixes in passing what the phone bar still owes. */
+    /* Worth a number: chrome.css's resting label is `--fg-3` on white,
+       5.51:1 since #1670 re-pointed it to stone-600 (it was stone-500, under
+       WCAG AA's 4.5:1). Sage on pine is 11.4:1, so the sidebar's label is
+       the stronger of the two, not the only readable one. */
     color: var(--fg-chrome-2);
     border-top: 0;
     /* The selected marker moves to the inside edge, where the eye already is

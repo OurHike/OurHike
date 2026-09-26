@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  ATC_UPDATE_CASING_LAYER_ID,
+  ATC_UPDATE_BAND_LAYER_IDS,
   ATC_UPDATE_LAYER_ID,
   ATC_UPDATE_POINT_LAYER_ID,
 } from '../lib/atcUpdateStyle'
@@ -94,7 +94,8 @@ import {
   TRAIL_CASING_WIDTH_EXPRESSION,
   solidTrailWidthExpression,
   DARK_INKED_BLAZE_LAYER_IDS,
-  CLOSURE_TAPE_LAYER_IDS,
+  CLOSURE_BAND_IDS,
+  closureInk,
 } from './style'
 import {
   POSITION_ACCURACY_LAYER_ID,
@@ -117,11 +118,12 @@ import { CORRIDOR_MAX_ZOOM } from './corridorLayers'
 import { CLOSURE_SOURCE_ID } from './closureLayers'
 import { WARNING_LAYER_ID, WARNING_SOURCE_ID } from './warningLayers'
 import {
-  closureCasingId,
-  CLOSURE_DASH,
-  CLOSURE_OVERVIEW_DASH,
-  closureGroundId,
-  dashArray,
+  CLOSURE_CROSS_ICON_ID,
+  CLOSURE_INK,
+  closureCrossesId,
+  closureLayerIds,
+  closureMarkId,
+  closureTraceId,
   CLOSURE_LAYER_ID,
   LONG_TERM_CLOSED_FILTER,
   LONG_TERM_CLOSURE_LAYER_ID,
@@ -240,21 +242,6 @@ function widthFor(
 /** A paint property of one layer, evaluated by MapLibre's own engine for
  *  one feature - the way the renderer will, rather than by reading the
  *  array back. `spec` is the property's entry in the style spec. */
-/** A band's `line-dasharray` at one zoom, resolved by MapLibre's own engine
- *  - the band names two rhythms and steps between them at
- *  CLOSURE_TAPE_NEAR_MIN_ZOOM, so a test that compared the property to one
- *  array would be asking the wrong question. */
-function dashAt(paint: Record<string, unknown>, zoom: number): number[] {
-  const compiled = createExpression(
-    paint['line-dasharray'] as never,
-    latest.paint_line['line-dasharray'] as never,
-  )
-  if (compiled.result === 'error') {
-    throw new Error('line-dasharray is not a valid expression')
-  }
-  return [...(compiled.value.evaluate({ zoom }, {} as never) as number[])]
-}
-
 function paintFor(
   built: ReturnType<typeof buildMapStyle>,
   layerId: string,
@@ -306,13 +293,9 @@ function sortKeyFor(layerId: string, source: string): number {
  * are drawn, do not reach it. Its own rules are lib/closureStyle.ts's and are
  * tested there.
  */
-const CLOSURE_OVERLAY_LAYER_IDS: readonly string[] = [
+const CLOSURE_OVERLAY_LAYER_IDS: readonly string[] = closureLayerIds(
   LONG_TERM_CLOSURE_LAYER_ID,
-  // And its outline and its paper, which draw from the same source and are a
-  // barrier rather than a trail line for exactly the reason the band is.
-  closureCasingId(LONG_TERM_CLOSURE_LAYER_ID),
-  closureGroundId(LONG_TERM_CLOSURE_LAYER_ID),
-]
+)
 
 /** Every trail layer bound to the trail source - casing and blaze alike. */
 function trailLayerIds(): string[] {
@@ -454,55 +437,61 @@ describe('buildMapStyle', () => {
     ])
   })
 
-  it('keeps the long-term closure TAPE, which is the exception the rule above allows', () => {
+  it('keeps the long-term closure crossed out, which is the exception the rule above allows', () => {
     // The other half of the exception. A long-term closure that lost its
-    // texture would be a wide red line over a trail - which reads as a route,
-    // and is the confident false statement lib/closureStyle.ts exists to
-    // prevent.
-    const band = layer(LONG_TERM_CLOSURE_LAYER_ID).paint as Record<string, unknown>
-    const ground = layer(closureGroundId(LONG_TERM_CLOSURE_LAYER_ID)).paint as Record<
-      string,
-      unknown
-    >
+    // crosses and its dotted trace would be a line over a trail - which reads
+    // as a route, and is the confident false statement lib/closureStyle.ts
+    // exists to prevent. On the paper of the sheet this style was built for:
+    // the field day sheet, which is what a build with no appearance draws.
+    const crosses = layer(closureCrossesId(LONG_TERM_CLOSURE_LAYER_ID))
+    const trace = layer(closureTraceId(LONG_TERM_CLOSURE_LAYER_ID))
 
-    // Ticks at both of the rhythms the band steps between since #1598 - a
-    // texture that survives only above the seam is not a texture at the
-    // camera this map opens on - over the paper of the sheet this style was
-    // built for: the field day sheet, which is what a build with no
-    // appearance draws (#1575).
-    expect(dashAt(band, 8)).toEqual(dashArray(CLOSURE_OVERVIEW_DASH))
-    expect(dashAt(band, 10)).toEqual(dashArray(CLOSURE_OVERVIEW_DASH))
-    expect(dashAt(band, 13)).toEqual(dashArray(CLOSURE_DASH))
-    expect(ground['line-color']).toBe(mapBackdrop({ theme: 'light' }))
+    expect((crosses.layout as Record<string, unknown>)['icon-image']).toBe(
+      CLOSURE_CROSS_ICON_ID,
+    )
+    expect((trace.paint as Record<string, unknown>)['line-dasharray']).toBeDefined()
+    expect(
+      (layer(LONG_TERM_CLOSURE_LAYER_ID).paint as Record<string, unknown>)['line-color'],
+    ).toBe(mapBackdrop({ theme: 'light' }))
   })
 
-  it('gives every closure band in the style its own paper and outline, and only those', () => {
-    // ONE TREATMENT ACROSS FOUR SOURCES (#1598), as a property of the built
-    // style rather than four assertions that currently agree: every band
-    // lib/closureStyle.ts's buildClosureLayers produces has its outline
-    // immediately beneath it, whichever feed it draws. A fifth closure
-    // source added without one would fail here, which is the whole reason
-    // this is a sweep and not a list.
+  it('gives every closure feed in the style the whole crossed-out mark, in order', () => {
+    // ONE TREATMENT ACROSS FOUR SOURCES, as a property of the built style
+    // rather than four assertions that currently agree: every feed has its
+    // paper, trace, chain and far mark together, whichever source it draws
+    // from. The corridor sketch alone has no chain, because it ends at the
+    // seam and the chain starts above it. A fifth closure source added
+    // without the whole mark would fail here.
     const ids = style().layers.map((l) => l.id)
 
-    for (const bandId of CLOSURE_TAPE_LAYER_IDS) {
-      const band = ids.indexOf(bandId)
-      expect(band, bandId).toBeGreaterThan(-1)
-      expect(ids.slice(band - 2, band + 1), bandId).toEqual([
-        closureCasingId(bandId),
-        closureGroundId(bandId),
-        bandId,
-      ])
+    for (const bandId of CLOSURE_BAND_IDS) {
+      const expected = closureLayerIds(bandId).filter(
+        (id) =>
+          bandId !== NETWORK_OVERVIEW_CLOSURE_LAYER_ID || id !== closureCrossesId(bandId),
+      )
+      const at = ids.indexOf(bandId)
+      expect(at, bandId).toBeGreaterThan(-1)
+      expect(ids.slice(at, at + expected.length), bandId).toEqual(expected)
     }
-    // And nothing else in the style is named like one, so the sweep above
-    // is over the whole set rather than over the four it happens to know.
-    const casings = ids.filter((id) => id.endsWith('-casing') && id.includes('closure'))
-    expect([...casings].sort()).toEqual(
-      [...CLOSURE_TAPE_LAYER_IDS.map(closureCasingId)].sort(),
+    // And nothing else in the style places the cross along a line, so the
+    // sweep above is over the whole set rather than the four it knows.
+    const chains = style()
+      .layers.filter(
+        (l) =>
+          l.type === 'symbol' &&
+          (l.layout as Record<string, unknown> | undefined)?.['icon-image'] ===
+            CLOSURE_CROSS_ICON_ID,
+      )
+      .map((l) => l.id)
+    expect([...chains].sort()).toEqual(
+      [...CLOSURE_BAND_IDS, ATC_UPDATE_LAYER_ID]
+        .flatMap((id) => [closureCrossesId(id), closureMarkId(id)])
+        .filter((id) => id !== closureCrossesId(NETWORK_OVERVIEW_CLOSURE_LAYER_ID))
+        .sort(),
     )
   })
 
-  it('lets nothing but the ATC’s notices draw over a closure or a warning', () => {
+  it('lets nothing but the ATC\u2019s notices draw over a closure or a warning', () => {
     // THE PROPERTY THE MAINTAINER ASKED FOR (#1599): "Shouldn't closures and
     // warnings just be the top 2 layers?" Held as "nothing is above them"
     // rather than as a list of the four things that were, because the four
@@ -515,25 +504,17 @@ describe('buildMapStyle', () => {
     // src/test/atcAlertProminence.test.ts, which asserts the last two layers
     // by name.
     const ids = style().layers.map((l) => l.id)
-    const safety = [
-      ...CLOSURE_TAPE_LAYER_IDS,
-      ...CLOSURE_TAPE_LAYER_IDS.map(closureCasingId),
-      ...CLOSURE_TAPE_LAYER_IDS.map(closureGroundId),
-      WARNING_LAYER_ID,
-    ]
+    const safety = [...CLOSURE_BAND_IDS.flatMap(closureLayerIds), WARNING_LAYER_ID]
     // The one exception inside the safety group: the hiker's own mark, over
     // the warning pins since the v1.3.2 release review, because a 44 px
     // filled warning pin over the 36 px hollow mark hid the hiker entirely.
     // It is a viewer, not a place, so it cannot hide a hazard's meaning - it
     // is hollow, and the warning shows through it.
     const mark = [POSITION_LAYER_ID]
-    const atc = [
-      ATC_UPDATE_CASING_LAYER_ID,
-      closureGroundId(ATC_UPDATE_LAYER_ID),
-      ATC_UPDATE_LAYER_ID,
-      ATC_UPDATE_POINT_LAYER_ID,
-    ]
-    const lowestSafety = Math.min(...safety.map((id) => ids.indexOf(id)))
+    const atc = [...ATC_UPDATE_BAND_LAYER_IDS, ATC_UPDATE_POINT_LAYER_ID]
+    const lowestSafety = Math.min(
+      ...safety.filter((id) => ids.includes(id)).map((id) => ids.indexOf(id)),
+    )
 
     expect(lowestSafety).toBeGreaterThan(-1)
     // Everything above the lowest safety mark is either a safety mark or the
@@ -544,31 +525,35 @@ describe('buildMapStyle', () => {
     ])
   })
 
-  it('caps the overview closure’s outline with the band it edges, not with a number', () => {
-    // The network overview's band stops at CORRIDOR_MAX_ZOOM, where the
-    // nearby network's own tape takes over. An outline that outlived its
-    // band would draw a dark line along a closed trail with no tape on it,
-    // which reads as a trail rather than a barrier - the one thing a
-    // closure may never look like.
+  it('ends every layer of the overview\u2019s closure where the sketch ends', () => {
+    // The network overview's closure stops at CORRIDOR_MAX_ZOOM, where the
+    // nearby network's own takes over. A paper or trace that outlived the
+    // sketch would knock out a trail the nearby network is also drawing a
+    // closure on - two marks from two geometries - and a far mark that did
+    // would double the one from the tiles.
     //
-    // Asserted against the BAND rather than against a constant, because the
-    // two ceilings this could have been keyed to have already come apart:
-    // CORRIDOR_MAX_ZOOM is the publish contract's (#1585) and
-    // POI_PIN_MIN_ZOOM is the waypoint seam's, and #1590 moved the second to
-    // 7 while the first stayed at 9.
-    const overviewCasing = layer(closureCasingId(NETWORK_OVERVIEW_CLOSURE_LAYER_ID))
-
-    expect(overviewCasing.maxzoom).toBe(layer(NETWORK_OVERVIEW_CLOSURE_LAYER_ID).maxzoom)
-    expect(overviewCasing.maxzoom).toBe(CORRIDOR_MAX_ZOOM)
+    // Keyed to CORRIDOR_MAX_ZOOM, the publish contract's (#1585), and not to
+    // POI_PIN_MIN_ZOOM, the waypoint seam's: #1590 moved the second to 7
+    // while the first stayed at 9.
+    const built = style().layers.map((l) => l.id)
+    const present = closureLayerIds(NETWORK_OVERVIEW_CLOSURE_LAYER_ID).filter((id) =>
+      built.includes(id),
+    )
+    expect(present).not.toContain(closureCrossesId(NETWORK_OVERVIEW_CLOSURE_LAYER_ID))
+    for (const id of present) expect(layer(id).maxzoom, id).toBe(CORRIDOR_MAX_ZOOM)
     expect(CORRIDOR_MAX_ZOOM).not.toBe(POI_PIN_MIN_ZOOM)
   })
 
-  it('draws the long-term closure with exactly the temporary closure’s treatment', () => {
+  it('draws the long-term closure with exactly the temporary closure\u2019s treatment', () => {
     // §3's "one vocabulary for 'do not walk this'". Asserted as byte equality
-    // of the paint rather than as matching constants, so a change to either
-    // feed's appearance that forgets the other fails here - the two kinds of
-    // closed are told apart by the SHEET, never by the line.
-    expect(layer(LONG_TERM_CLOSURE_LAYER_ID).paint).toEqual(layer(CLOSURE_LAYER_ID).paint)
+    // of every layer's paint and layout rather than as matching constants, so
+    // a change to either feed's appearance that forgets the other fails here
+    // - the two kinds of closed are told apart by the SHEET, never by the line.
+    const longTerm = closureLayerIds(LONG_TERM_CLOSURE_LAYER_ID)
+    closureLayerIds(CLOSURE_LAYER_ID).forEach((id, index) => {
+      expect(layer(longTerm[index]).paint, id).toEqual(layer(id).paint)
+      expect(layer(longTerm[index]).layout, id).toEqual(layer(id).layout)
+    })
   })
 
   it('draws the barrier only on lines their steward marks closed, and reads the status case-insensitively', () => {
@@ -3013,44 +2998,59 @@ describe('the default sheet: light dashed context trails, plain solid through-ro
   })
 })
 
-describe('the barrier tape lies on the sheet’s paper (#1575, option E)', () => {
+describe('a closure lies on the sheet\u2019s paper, in the sheet\u2019s ink (#1575, #1677)', () => {
   const LIVE = { ...STYLE_OPTIONS, background: 'hiking_topo_live' as const }
   const paintOf = (
     built: { layers: Array<{ id: string; paint?: unknown }> },
     id: string,
   ) => (built.layers.find((l) => l.id === id)?.paint ?? {}) as Record<string, unknown>
+  const FEEDS = [...CLOSURE_BAND_IDS, ATC_UPDATE_LAYER_ID]
 
-  it('grounds every band on the paper closureTapeGround picks for the appearance', () => {
-    // Four closure bands and the ATC's, all on one paper. A night build that
-    // grounded one of them on another paper would draw a different band on
-    // that layer alone. Since 2026-09-18 the night paper is the day sheet's
-    // white, not the sheet's ink (closureTapeGround).
+  it('knocks every closure out to the paper closureTapeGround picks for the appearance', () => {
+    // Four closure feeds and the ATC's, all on one paper. Since 2026-09-18
+    // the night paper is the day sheet's white, not the sheet's ink
+    // (closureTapeGround), and the crosses' halo is that same paper.
     const night = buildMapStyle({ ...LIVE, theme: 'dark' })
     const ground = closureTapeGround({ theme: 'dark' })
 
-    for (const id of [...CLOSURE_TAPE_LAYER_IDS, ATC_UPDATE_LAYER_ID]) {
-      expect(paintOf(night, closureGroundId(id))['line-color'], id).toBe(ground)
+    for (const id of FEEDS) {
+      expect(paintOf(night, id)['line-color'], id).toBe(ground)
+      expect(paintOf(night, closureMarkId(id))['icon-halo-color'], id).toBe(ground)
     }
     expect(ground).toBe(MAP_BACKDROP.light)
     expect(ground).not.toBe(mapBackdrop({ theme: 'dark' }))
-    // And parchment's band is on parchment: the day sheets keep their own.
+    // And parchment's closure is on parchment: the day sheets keep their own.
     const parchment = buildMapStyle({ ...LIVE, mapStyle: 'parchment' })
-    expect(paintOf(parchment, closureGroundId(CLOSURE_LAYER_ID))['line-color']).toBe(
+    expect(paintOf(parchment, CLOSURE_LAYER_ID)['line-color']).toBe(
       mapBackdrop({ mapStyle: 'parchment' }),
     )
   })
 
-  it('repaints every band\u2019s paper on a sheet change', async () => {
-    // The badge plate's rule, applied to the band: the paper is per sheet, so
-    // a sheet switch that left a band on the previous one would keep a day
-    // band on a night map. It was an image to re-point until #1599 and is a
-    // `line-color` now, which is the whole of this test's simplification.
+  it('inks the mark in the closure ink, and in red light\u2019s one hue under red light', () => {
+    const redLight = { mapStyle: 'night_hike', redLight: true } as const
+    expect(closureInk({ theme: 'light' })).toBe(CLOSURE_INK)
+    expect(closureInk({ theme: 'dark' })).toBe(CLOSURE_INK)
+    expect(closureInk(redLight)).toBe(RED_LIGHT_BLAZE_COLOR)
+
+    const built = buildMapStyle({ ...LIVE, ...redLight })
+    for (const id of FEEDS) {
+      expect(paintOf(built, closureTraceId(id))['line-color'], id).toBe(
+        RED_LIGHT_BLAZE_COLOR,
+      )
+      expect(paintOf(built, closureMarkId(id))['icon-color'], id).toBe(
+        RED_LIGHT_BLAZE_COLOR,
+      )
+    }
+  })
+
+  it('repaints every closure\u2019s paper, trace and crosses on a sheet change', async () => {
+    // The paper and the ink are per sheet, so a sheet switch that left a
+    // closure on the previous one would keep a day mark on a night map. The
+    // crosses are a distance-field image (map/closureCross.ts), so they are
+    // repainted rather than swapped, like the lines.
     const { MockMap } = await import('../test/mocks/maplibre-gl')
     const m = new MockMap({})
-    m.layerIds = [
-      BACKDROP_LAYER_ID,
-      ...[...CLOSURE_TAPE_LAYER_IDS, ATC_UPDATE_LAYER_ID].map(closureGroundId),
-    ]
+    m.layerIds = [BACKDROP_LAYER_ID, ...FEEDS.flatMap(closureLayerIds)]
 
     for (const appearance of [
       { theme: 'dark' } as const,
@@ -3059,10 +3059,14 @@ describe('the barrier tape lies on the sheet’s paper (#1575, option E)', () =>
     ]) {
       attachMapAppearance(m as never, appearance)
       const ground = closureTapeGround(appearance)
-      for (const id of [...CLOSURE_TAPE_LAYER_IDS, ATC_UPDATE_LAYER_ID]) {
-        expect(m.paintProperties.get(`${closureGroundId(id)}/line-color`), id).toBe(
-          ground,
-        )
+      const ink = closureInk(appearance)
+      for (const id of FEEDS) {
+        expect(m.paintProperties.get(`${id}/line-color`), id).toBe(ground)
+        expect(m.paintProperties.get(`${closureTraceId(id)}/line-color`), id).toBe(ink)
+        for (const symbol of [closureCrossesId(id), closureMarkId(id)]) {
+          expect(m.paintProperties.get(`${symbol}/icon-color`), symbol).toBe(ink)
+          expect(m.paintProperties.get(`${symbol}/icon-halo-color`), symbol).toBe(ground)
+        }
       }
     }
     expect(m.styles).toEqual([])
@@ -3090,9 +3094,7 @@ describe("the hiker's mark, over everything (#1581)", () => {
     // stayed where it was, under the bands, where it cannot tint them.
     expect(ids[mark - 1]).toBe(WARNING_LAYER_ID)
     expect(ids.slice(mark + 1)).toEqual([
-      closureCasingId(ATC_UPDATE_LAYER_ID),
-      closureGroundId(ATC_UPDATE_LAYER_ID),
-      ATC_UPDATE_LAYER_ID,
+      ...ATC_UPDATE_BAND_LAYER_IDS,
       ATC_UPDATE_POINT_LAYER_ID,
     ])
     // UNDER THE SAFETY MARKS SINCE #1599, where it used to be under the
@@ -3100,13 +3102,11 @@ describe("the hiker's mark, over everything (#1581)", () => {
     // top, and #1581's own argument for letting a notice cover this mark -
     // it is hollow, so what is covered is its centre and not the ring or
     // the ticks - holds for a closure band and a warning pin unchanged.
-    const bandLayers = (bandId: string) => [
-      closureCasingId(bandId),
-      closureGroundId(bandId),
-      bandId,
-    ]
+    const bandLayers = (bandId: string) => closureLayerIds(bandId)
     expect(ids.slice(ring + 1).filter((id) => id !== POSITION_LAYER_ID)).toEqual([
-      ...bandLayers(NETWORK_OVERVIEW_CLOSURE_LAYER_ID),
+      ...bandLayers(NETWORK_OVERVIEW_CLOSURE_LAYER_ID).filter(
+        (id) => id !== closureCrossesId(NETWORK_OVERVIEW_CLOSURE_LAYER_ID),
+      ),
       ...bandLayers(NEARBY_LONG_TERM_CLOSURE_LAYER_ID),
       ...bandLayers(CLOSURE_LAYER_ID),
       ...bandLayers(LONG_TERM_CLOSURE_LAYER_ID),

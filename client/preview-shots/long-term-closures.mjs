@@ -1,3 +1,14 @@
+// CROSSED OUT SINCE 2026-09-26 (#1677), and that is what this frame now
+// shows. Everything below this block describes the red bands that came
+// before and is kept as the record of why they went. The maintainer: "The
+// route closure is not readable. The alternating colors just aren't
+// working." Every band was red on red, because every trail is that red by
+// default. WHAT TO LOOK FOR NOW: each closed trail knocked out to a white
+// band with a dotted grey trace on it and a chain of small dark x marks
+// along it. No red on a closure anywhere, and the chain unbroken through
+// every bend - the crosses are symbols placed along the line, not a texture
+// stretched over it (lib/closureStyle.ts's header).
+//
 // Long-term closed trails at Bear Mountain and Doodletown, on a phone at
 // z13 (#1575, option E): barrier tape on an opaque band of the sheet's paper
 // over the red trail lines. The one photographed screen that reaches a
@@ -65,9 +76,9 @@
 // long-term-closures-overview.mjs is the same closures from the opening
 // camera, which is the zoom the complaint was actually about.
 export const caption =
-  'Bear Mountain and Doodletown on a phone, z13, Blaze colors off (the default): OPRHP’s long-term closed trails drawn as a barred band on an opaque band of the sheet’s paper (#1575, the maintainer’s option E) over the lines — 14 px, 41% of its length red, inside a hard dark outline. Two things to check here, both read off this frame’s own predecessor: the band is no longer barrier tape (#1599 — the diagonals tore into zigzags at every bend, so the ticks are square to the trail now and drawn from a dasharray rather than an image), and it is 14 px rather than the 17 it carried for one day. The lines beneath are the park’s trails dashed and the A.T. solid, both in the one red since #1597 took the tint off them, so the tape is the one heavy mark on this frame without a second hue helping it. Seven closed runs of 1.1 to 1.9 km sit in this frame, placed by measuring the pinned release’s network overview, with the A.T. crossing it over Bear Mountain'
+  'Bear Mountain and Doodletown on a phone, z13, Blaze colors off (the default): OPRHP’s long-term closed trails crossed out (#1677) - each closed trail knocked out of the red to a white band, with a dotted grey trace on it and a chain of small dark x marks along it. Check two things. First, no closure is red any more: every earlier band was red on red, because every trail here is that red by default. Second, the chain holds through every bend, because each cross is placed along the line rather than stretched over it. The open trails around them stay red: the A.T. solid, the park’s trails dashed. Seven closed runs of 1.1 to 1.9 km sit in this frame, placed by measuring the pinned release’s network overview.'
 export const alt =
-  'The map screen over Bear Mountain State Park at zoom 13: the Appalachian Trail a plain solid red line, the park’s trails thinner red dashed lines, and along several of them a wide white band inside a dark outline carrying evenly spaced red bars square to the trail, following each bend without breaking, the barred band marking a closed trail'
+  'The map screen over Bear Mountain State Park at zoom 13: the Appalachian Trail a plain solid red line and the park’s trails thinner red dashed lines. Along several trails the red line gives way to a white band carrying a dotted grey line with a row of small dark x marks spaced along it, following each bend, marking a closed trail.'
 
 /** Vector tiles from the bucket plus generated contours over a park at z13,
  *  the same allowance hudson-highlands-desktop.mjs makes. */

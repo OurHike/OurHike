@@ -1,142 +1,96 @@
-// How a closure is drawn (WIREFRAMES.md §7).
+// How a closure is drawn (WIREFRAMES.md §7): CROSSED OUT (#1677).
 //
-// A closure is a LINE, not a pin: a barred band laid along the closed
-// geometry - red ticks across an opaque band of the sheet's own paper, inside
-// a dark edge. Its whole job is to be unmistakable for a red blaze, which is
-// a thinner SOLID line with a hairline casing.
+// A closure is a LINE, not a pin: the closed trail itself, drawn so it
+// cannot be read as a trail somebody may walk. Four layers per feed, bottom
+// to top:
 //
-// That distinction is safety-critical and is deliberately structural rather
-// than chromatic. Colour alone vanishes in greyscale, in direct sun on a
-// phone screen, and for a red-green colour-blind hiker - between them, a
-// large share of the moments when "do not walk down there" most needs to
-// land. So a closure differs in width and in texture, and tests hold both.
+//  1. THE PAPER - an opaque line of the sheet's paper along the closed run,
+//     wide enough to cover the trail line under it. It takes the trail's red
+//     off the map for the length of the closure.
+//  2. THE TRACE - a fine dotted line in the closure ink on that paper, so the
+//     path stays traceable ("there is a trail here") without being drawn in
+//     any trail's voice.
+//  3. THE CROSSES - a chain of small ✕ marks along the trace, from
+//     CLOSURE_NEAR_MIN_ZOOM in. Each is a symbol placed along the line, not
+//     a texture mapped onto it.
+//  4. THE MARK - one larger ✕ per closed run below CLOSURE_NEAR_MIN_ZOOM,
+//     where the run is too short on screen to carry a chain.
 //
-// THE PAPER UNDER-BAND IS THE MAINTAINER'S CHOICE OF 2026-09-17 (#1575), and
-// it is the one thing here that has survived every rebuild. From 2026-08-27
-// there was nothing at all between the marks, so the trail stayed visible
-// through its own closure. Then every trail line became one red by default
-// (lib/blaze.ts's PLAIN_TRAIL_COLOR - the same hex as CLOSURE_COLOR), and a
-// red line showing through the gaps read as more of the same red. Shown five
-// rendered treatments, the maintainer chose this one: "I think I like option
-// E the best". The ground is the paper map/style.ts's closureTapeGround picks
-// for the sheet, and it is swapped with the sheet: the sheet's own by day, so
-// on parchment it is parchment - and, since 2026-09-18, the field day sheet's
-// white on every dark sheet but red light's, because "the sheet's paper"
-// built for night_hike put red on near-black ink over a near-black map ("it's
-// really hard to tell it's a closure when the background is black"). Red
-// light keeps its ink, and closureTapeGround's docstring says why that is a
-// question left open rather than answered. What option E costs is the
-// sentence it replaced: the trail is not visible through its closure any
-// more.
+// THE MAINTAINER'S CHOICE OF 2026-09-26, after four earlier spellings of the
+// band had failed: "The route closure is not readable. The alternating colors
+// just aren't working." Shown four treatments rendered at z9, z12 and z15 over
+// Bear Mountain - no-entry signs along the line, a black band lettered CLOSED,
+// signs at the ends only, and this one - they answered "I prefer crossed out
+// design wise. I'm curious if it will work well or not." The last sentence is
+// the honest status: @unvalidated beyond those renders, and what would settle
+// it is a hiker spotting a closure on a phone in sun without being told to
+// look.
 //
-// THREE SPELLINGS OF THAT BAND, AND THE THIRD IS THIS ONE. Reading them in
-// order is the fastest way to understand why the code looks like this:
+// WHAT EVERY EARLIER BAND HAD IN COMMON, which is the part to keep reading
+// before anybody reaches for red again. All four were red marks alternating
+// with something else along the line: red dashes over a dark casing (a
+// railway, to 2026-08-27), red diagonal tape on the sheet's paper (tore at
+// every bend - MapLibre maps a `line-pattern` by distance, and the outside of
+// a wide band travels farther than the inside), then red square ticks on the
+// paper inside a dark outline (#1599). And since #1575 every trail line is
+// that same red by default (lib/blaze.ts's PLAIN_TRAIL_COLOR), so each band
+// was red on red: rendered 2026-09-26 in MapLibre 6.7.0 over the pinned
+// release 2026-09-24-2, the closures at Bear Mountain merged into one red blob
+// at z9 and read as candy-cane ropes at z12. None of that was a wrong number;
+// the colour was doing the work and the colour was shared.
 //
-//  1. A BARRED BAND, to 2026-08-27. A dashed 10px red line over a SOLID 14px
-//     casing, so the casing showed through every gap: 5px of red, then 3.5px
-//     of #14130f, the whole way along. 41% of the band's length was the
-//     darkest ink on a sheet whose contours are hairlines, and what it drew
-//     was a black rope with red ticks - the standard cartographic mark for a
-//     railway. Measured off the shipped constants, rendered 2026-08-27 in
-//     MapLibre 6.4.1.
+// SO THIS MARK DOES NOT USE THE CLOSURE RED AT ALL. The distinction is
+// structural, which has been this file's rule since it was written: colour
+// vanishes in greyscale, in direct sun and for a red-green colour-blind hiker.
+// A ✕ is a shape no trail line has, and a trail that has lost its colour to a
+// dotted grey trace is a texture no open trail has.
 //
-//  2. BARRIER TAPE, to 2026-09-21. One `line-pattern` layer: red diagonals at
-//     55 degrees, each carrying its own dark edge, on the paper. That fixed
-//     the railway by construction - there was no casing under a gap to show
-//     through, because the edge was on the marks themselves - and #1598 gave
-//     it an outline, more red, and a width that grows with the zoom.
+// WHY A SYMBOL AND NOT A PATTERN, which is what lets it survive a bend. A
+// symbol placed along a line (`symbol-placement: line`) is a whole image put
+// down at an anchor; nothing is stretched between anchors, so there is no
+// shear to tear it. The trace is a `line-dasharray`, which MapLibre draws from
+// distance in the shader and cannot shear either - the reason #1599 moved to a
+// dash, and still true.
 //
-//  3. A BARRED BAND AGAIN, from 2026-09-21 (#1599) - but with the paper in
-//     it, which is the whole difference from (1). The maintainer, on the
-//     frame CI photographed at Bear Mountain: "The closure lines still look
-//     horrible when going around turns."
+// WHY THE FAR MARK EXISTS, in one measurement. A 1.1 km closure (OPRHP's
+// shortest runs are 1.1 to 1.9 km, measured for
+// client/preview-shots/long-term-closures.mjs) is 4.8 px long at z9. No mark
+// ALONG the line can be read at that length, so below CLOSURE_NEAR_MIN_ZOOM a
+// closure is one ✕ at the middle of its run instead.
 //
-// WHY THE TAPE HAD TO GO, which is the part worth keeping. MapLibre maps a
-// `line-pattern` along a line BY DISTANCE, and at a bend the outer side of a
-// wide band travels farther than the inner side - so the image is sheared
-// across the join. A mark running DIAGONALLY across that shear breaks: every
-// white stripe arrived at a bend straight and left it as a zigzag, and the
-// 1.25px dark edge each stripe carried, being a diagonal mark too, smeared
-// into dark bars across the red. Both faults a hiker could see were that one
-// cause. OPRHP's closed geometry bends constantly, so this was not an edge
-// case; it was most of the mark.
-//
-// A DASH CANNOT DO THAT. MapLibre computes `line-dasharray` from distance
-// along the line in the shader and draws each tick square to it, so there is
-// no diagonal for the shear to break and no image to keep in register across
-// a join. The map's own context trails are dashed through the same bends
-// without a mark out of place, which is the evidence this was chosen on.
-//
-// WHAT THAT COSTS, named rather than glossed: the 55-degree lean is gone, and
-// with it the read of hazard tape. A barred band is a weaker metaphor. What
-// it is not is (1): the gaps here hold the SHEET'S PAPER, opaque, so the
-// darkest ink on the map appears only at the band's two edges and never
-// between the ticks. The railway came from what filled the gaps, not from the
-// ticks being square.
-//
-// SO EVERY LAYER IS A PLAIN LINE and there is no generated image anywhere in
-// this treatment. map/closureTape.ts - the rasteriser, its pixel ratio, the
-// per-paper image registration and the stripe geometry - was deleted with the
-// tape, and the sheet's paper is a `line-color` a sheet change repaints
-// rather than an image it re-points.
+// ONE TREATMENT, FOUR FEEDS, AND THE ATC'S. map/style.ts calls
+// buildClosureLayers once per source that can carry a closed line - the
+// closures feed, the A.T.'s long-term-closed lines, the nearby network's, and
+// the corridor sketch's - and lib/atcUpdateStyle.ts calls it for the ATC's
+// band at twice the spacing. Only the id, the source, the filter and the
+// spacing may differ.
 
 import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec'
 
+/**
+ * The paper layer's id, and the layer a tap on a closure is tested against
+ * (map/closureLayers.ts's closureIdAt). The paper is the one layer that covers
+ * the whole closed run at a width, so it is the one a finger can hit anywhere
+ * along it. The other three layers' ids are derived from it.
+ */
 export const CLOSURE_LAYER_ID = 'closure-band'
 
 /**
- * How wide the band is drawn where a hiker is navigating by it, in CSS
- * pixels - the top of the taper closureTapeWidth builds (#1598).
- *
- * It was 14 and flat at every zoom from 2026-08-27. The maintainer read the
- * result on 2026-09-20: *"The trail closures are not easily visible. Adjust
- * the settings so that the closures are readily apparent at all the zoom
- * levels."* One flat number is the half of that complaint this constant
- * owns: the same band over a 1.5 px sketch line at the opening camera and
- * over a 4.5 px A.T. at navigation zoom, saying nothing about how close the
- * hiker is looking.
- *
- * IT WENT TO 17 AND CAME BACK, which is the useful part of this note. The
- * first cut of #1598 raised it, and the frame CI photographed - Bear
- * Mountain, the densest closure cell in the release - showed what 17 plus a
- * 1.5 px outline plus half its length in red actually draws at z13: ropes,
- * with the trails under them gone. The maintainer, 2026-09-21, off that
- * frame: take the navigation band back, keep the outline and the overview
- * rhythm. So the zoom that was broken (z8, CLOSURE_TAPE_FAR_WIDTH) keeps
- * every part of the fix and the zoom that was not goes back to the width it
- * had, carrying only the edge.
- *
- * Wide enough that the band reads as a barrier rather than a route, which
- * means comfortably more than twice the widest blaze on the map: 14 against
- * BLAZE_LINE_WIDTH's 4.5 is 3.1x, where the 2026-08-27 band's own line was
- * 2.2x - and the outline puts 3 px more on top of that, which the blaze has
- * no answer to at all. closureStyle.test.ts holds that ratio against
- * map/style.ts rather than against a number restated here, so widening a
- * through-route still has to widen this with it.
- *
- * `@unvalidated` as a number: 14 is where it was before any of this, and
- * what would settle it is a closure getting spotted on a screen somebody was
- * not told to search.
+ * The closure red. THE CROSSED-OUT MARK DOES NOT PAINT WITH IT (#1677), and
+ * the header says why: every trail is this red by default. It stays exported
+ * because other marks are held against it - the ATC notice triangle is drawn
+ * in it (lib/atcUpdateStyle.ts), and the drought and pin suites assert their
+ * own colours differ from it.
  */
-export const CLOSURE_TAPE_WIDTH = 14
+export const CLOSURE_COLOR = '#b2321f'
 
 /**
- * How wide the band is drawn at and below CLOSURE_TAPE_NEAR_MIN_ZOOM, in CSS
- * pixels - the bottom of the taper (#1598).
- *
- * Narrower than the navigation weight rather than wider, which is the
- * opposite of what "make it more visible" sounds like and is the point: down
- * here the trail lines themselves taper to 1.5 px (map/style.ts's
- * NETWORK_OVERVIEW_FAR_WIDTH), and a band three times the navigation line's
- * width over a sketch line would be a blob whose LENGTH still says nothing.
- * What makes a closure findable at this camera is the outline below, not
- * more fill.
- *
- * Still wider than the navigation-zoom BLAZE_LINE_WIDTH, so the "markedly
- * wider than any blaze" rule holds at the bottom of the taper too, which is
- * what closureStyle.test.ts asserts.
+ * The ink the trace and the crosses are drawn in, on every sheet but red
+ * light (map/style.ts's closureInk swaps it there). The darkest ink on the
+ * map, on the sheet's paper, which is the highest contrast the map can make
+ * and does not depend on hue.
  */
-export const CLOSURE_TAPE_FAR_WIDTH = 11
+export const CLOSURE_INK = '#14130f'
 
 /**
  * The casing weight the 2026-08-27 band carried, in CSS pixels.
@@ -147,314 +101,324 @@ export const CLOSURE_TAPE_FAR_WIDTH = 11
  * to be lighter than. lib/atcUpdateStyle.ts's `atcNoticeRimWidths` names it
  * as the failure case in so many words - "put `CLOSURE_CASING_WIDTH` back and
  * the test goes red on 2.9px" - and its ATC_NOTICE_CASING_WIDTH is asserted
- * under it, as CLOSURE_OUTLINE_WIDTH is.
+ * under it.
  */
 export const CLOSURE_CASING_WIDTH = 2
 
-export const CLOSURE_COLOR = '#b2321f'
-export const CLOSURE_CASING_COLOR = '#14130f'
+/**
+ * The pin seam: the zoom the far mark first draws at, going in.
+ *
+ * map/poiLayers.ts's POI_PIN_MIN_ZOOM, repeated as a literal because `lib/`
+ * does not import from `map/` (lib/atcUpdateStyle.ts's
+ * ATC_UPDATE_POINT_MIN_ZOOM makes the same trade), and closureStyle.test.ts
+ * holds the two equal. Below the seam the map draws trail lines only - the
+ * maintainer's call of 2026-09-08 (#1292), after two dozen point marks along
+ * the corridor read as a rash. A closure there is still knocked out of the
+ * trail and traced, which is the most that can be said about a run a pixel
+ * or two long.
+ */
+export const CLOSURE_MARK_MIN_ZOOM = 7
 
 /**
- * The first zoom the near rhythm draws at, below which the band steps to
- * CLOSURE_OVERVIEW_DASH (#1598).
+ * The zoom the chain of crosses takes over from the far mark, going in.
  *
- * DERIVED FROM THE CLOSURES' OWN LENGTHS, not from the seam. A rhythm says
- * nothing about a line shorter than one of its pitches, so the question this
- * answers is: at what zoom is the SHORTEST closure on this map longer than
- * the near rhythm's pitch? OPRHP's closed runs are 1.1 to 1.9 km (measured
- * for `client/preview-shots/long-term-closures.mjs` against the pinned
- * release's network overview), and at latitude 41 a zoom's metres per pixel
- * is 117,610 / 2^z - so 1.1 km spans 2.4 px at z8, 4.8 at z9, 9.6 at z10 and
- * 19.2 at z11. It first clears a whole pitch between z10 and z11, so z11 is
- * the first zoom at which the near rhythm is guaranteed to say something on
- * every closure the map draws.
+ * DERIVED FROM THE SHORTEST CLOSURE AND THE CROSS'S OWN SIZE. MapLibre puts a
+ * symbol on a line only where the line is at least as long as the symbol's
+ * image, so the question is: at what zoom is the shortest closure on this map
+ * longer than one cross? OPRHP's closed runs are 1.1 to 1.9 km, and at
+ * latitude 41 a zoom's metres per pixel is 117,610 / 2^z - so 1.1 km spans
+ * 9.6 px at z10 and 19.2 px at z11. The cross's image is
+ * closureCrossImageSize() = 14 CSS px at full size and CLOSURE_CROSS_SIZE's
+ * 0.8 of that here, 11.2 px. z10 is short of it and z11 clears it, so z11 is
+ * the first zoom at which every closure on the map is guaranteed a cross.
  *
- * THIS WAS THE SEAM UNTIL THE SEAM MOVED, and the move is why it is derived
- * now. The first version of this constant was POI_PIN_MIN_ZOOM's 9, on the
- * argument that a texture change is cheapest where the map's own layers are
- * already handing over. Then #1590 put the seam at 7 (`poiLayers.ts`), which
- * would have left z8 to z10 drawing the near rhythm over closures 2 to 10 px
- * long - the exact defect this constant exists to prevent. The tie to the
- * seam was a convenience and the arithmetic is the reason, so the arithmetic
- * is what the number follows.
+ * The same 11 the #1598 band stepped its rhythm at, by the same argument
+ * (does the shortest closure hold one pitch), which is why it is the same
+ * number and not a coincidence.
  */
-export const CLOSURE_TAPE_NEAR_MIN_ZOOM = 11
+export const CLOSURE_NEAR_MIN_ZOOM = 11
 
 /**
- * The zoom the band reaches CLOSURE_TAPE_WIDTH at (#1598).
+ * How wide the paper is where a hiker navigates by it, in CSS pixels, reached
+ * at CLOSURE_FULL_WIDTH_ZOOM.
  *
- * Two zooms above the rhythm step, so the band grows across the band of
- * zooms where a hiker moves from "which park is this" to "which side of the
- * brook am I on", and is at full weight for every zoom closer than that. z13
- * is the park frame the closure recipe photographs and the frame the
- * treatment was chosen on, which is the only claim behind the number:
- * `@unvalidated`, and what would settle it is the same field look every
- * other constant here is waiting on.
+ * DERIVED, NOT PICKED: the widest trail line the map draws with its casing
+ * (map/style.ts's CASING_LINE_WIDTH, 6.5 - the A.T. at 4.5 plus a 1 px
+ * hairline each side, drawn when blaze colours are on) plus half a pixel
+ * each side, so no red or casing shows past the paper's edge.
+ * closureStyle.test.ts holds this against map/style.ts rather than against a
+ * number restated here, so widening a through-route widens the paper with it.
  */
-export const CLOSURE_TAPE_FULL_WIDTH_ZOOM = 13
+export const CLOSURE_PAPER_WIDTH = 7.5
 
 /**
- * The dark outline the whole band carries, in CSS pixels per side (#1598).
+ * How wide the paper is at CLOSURE_MARK_MIN_ZOOM, in CSS pixels - the bottom
+ * of the taper.
  *
- * THE MAINTAINER'S CHOICE OF 2026-09-20, off four treatments drawn at z8, z13
- * and z16: *"the only one whose shape survives being 4 px long"*. A closure
- * at the opening camera is a handful of pixels long, and at that size a
- * texture is not resolvable by anybody - what is left to recognise is a
- * silhouette, and a band with a hard edge has one where a band without one
- * does not.
- *
- * IT IS A REAL LINE UNDER A REAL LINE NOW, which is what the 2026-09-21
- * rebuild bought. Under the tape it was a wider layer beneath a `line-pattern`
- * one, and at a bend the sheared image let it read as bars ACROSS the band
- * rather than an edge along it. Two opaque solid lines cannot do that: the
- * band covers every pixel of the casing but the overhang, at a join as
- * anywhere else, because coverage is a union and neither is a texture.
- *
- * 1.5 rather than 2: lighter than CLOSURE_CASING_WIDTH, the reference weight
- * this map used to outline a safety mark with, which both of its successors
- * are held under.
+ * Out there the trail lines themselves are 1.2 to 3 px (map/style.ts's
+ * overview widths), so 4 covers any of them. A full-width paper at the seam
+ * would draw every closure as a white worm wider than the trail it closes,
+ * and the far mark is what carries the closure at that zoom anyway.
+ * @unvalidated as a number: picked off the 2026-09-26 renders.
  */
-export const CLOSURE_OUTLINE_WIDTH = 1.5
+export const CLOSURE_PAPER_FAR_WIDTH = 4
 
-/** A band's rhythm: how long a red tick is and how long the gap after it,
- *  both in LINE WIDTHS, which is what MapLibre's `line-dasharray` counts in.
- *  Measuring in widths rather than pixels is what makes the rhythm scale
- *  with closureTapeWidth's taper, so the mark is one shape at every zoom
- *  rather than a rhythm that drifts against its own band. */
-export interface BandDash {
-  /** The red tick, across the band. */
-  tick: number
-  /** The paper after it. */
-  gap: number
+/** The zoom the paper and the trace reach full width at. z13 is the park
+ *  frame the closure recipe photographs, where the #1598 band also reached
+ *  full weight. */
+export const CLOSURE_FULL_WIDTH_ZOOM = 13
+
+/** The trace's width at the seam and at full zoom, in CSS pixels. With round
+ *  caps this is also the diameter of each dot. @unvalidated: the 2026-09-26
+ *  renders. */
+export const CLOSURE_TRACE_FAR_WIDTH = 1.4
+export const CLOSURE_TRACE_WIDTH = 2.2
+
+/**
+ * The trace's rhythm, in line widths as `line-dasharray` counts them: a
+ * near-zero dash with round caps is a dot one width across, and the gap puts
+ * the next one a little over two widths on.
+ */
+export const CLOSURE_TRACE_DASH: readonly [number, number] = [0.1, 2.2]
+
+/**
+ * How much of the ink the trace carries. Less than the crosses, so the
+ * crosses read first and the trace reads as the path they sit on. On the
+ * field sheet's white this puts the dots at about #6b6a67, a mid grey.
+ */
+export const CLOSURE_TRACE_OPACITY = 0.65
+
+/**
+ * The cross, in CSS pixels at full size: each stroke runs from the centre
+ * CLOSURE_CROSS_ARM along both diagonals, is CLOSURE_CROSS_STROKE wide with
+ * round ends, and the image carries CLOSURE_CROSS_PADDING of room past the ink
+ * for the paper-coloured halo. map/closureCross.ts turns these into pixels.
+ *
+ * The image is a signed distance field (`sdf: true`) rather than coloured
+ * pixels, so the ink and the halo are paint properties and a sheet change
+ * repaints them in place - the same thing the paper's `line-color` gets.
+ */
+export const CLOSURE_CROSS_ICON_ID = 'closure-cross'
+export const CLOSURE_CROSS_ARM = 2.5
+export const CLOSURE_CROSS_STROKE = 2.2
+export const CLOSURE_CROSS_PADDING = 3
+
+/** The image's side in CSS pixels: the ink's reach plus the padding, rounded
+ *  up to a whole pixel so it rasterises onto a whole number of device
+ *  pixels. */
+export function closureCrossImageSize(): number {
+  const reach = CLOSURE_CROSS_ARM + CLOSURE_CROSS_STROKE / 2
+  return Math.ceil(2 * (reach + CLOSURE_CROSS_PADDING))
 }
 
-/** `dash` with both numbers multiplied, which keeps dashRedFraction exactly
- *  where it was - the property both the overview rhythm and the ATC's
- *  slower one are built on. */
-export function scaleDash(dash: BandDash, scale: number): BandDash {
-  return { tick: dash.tick * scale, gap: dash.gap * scale }
-}
+/** The paper-coloured ring round each cross in the chain, in CSS pixels. It
+ *  sits on the paper already, so this only has to part a cross from the
+ *  trace's dots either side of it. */
+export const CLOSURE_CROSS_HALO_WIDTH = 1.2
+
+/** The chain's `icon-size`: a little smaller where it first draws, full size
+ *  from CLOSURE_FULL_WIDTH_ZOOM in. */
+export const CLOSURE_CROSS_SIZE: ReadonlyArray<[zoom: number, scale: number]> = [
+  [CLOSURE_NEAR_MIN_ZOOM, 0.8],
+  [CLOSURE_FULL_WIDTH_ZOOM, 1],
+]
 
 /**
- * The closure's own rhythm, at the zooms a hiker navigates by.
+ * Where the next cross goes along the line, in CSS pixels between anchors.
  *
- * RED COVERS 41% OF THE BAND'S LENGTH here, and that number has a history
- * worth reading before anybody moves it. The tape carried 28% from
- * 2026-08-27, and the direction was written into the constant: less red was
- * the answer to the railway, where the non-red half of the band's length was
- * the darkest ink on the sheet. The maintainer read 28% on the map and asked
- * for the opposite on 2026-09-20 - *"the closures are not easily visible"* -
- * and it went to 51%; photographed at Bear Mountain the band read as a rope,
- * and the navigation weight came back on 2026-09-21. 41% is where it landed:
- * half again what it carried, rather than nearly double.
- *
- * The two directions are not in conflict, and #1575 is what separates them.
- * What August was refusing was ink over a TRANSPARENT band. Here the gap is
- * the sheet's own paper, so 41% red on white is a different mark from 41%
- * red on black rather than more of it.
- *
- * `0.35` and `0.51` rather than a rounder pair because the tick lands on
- * 4.9 px at the full width - which is what the tape's own 4 px stripe
- * covered ALONG the line once its 55-degree lean was accounted for, so the
- * rebuild changed the mark's angle and not its weight. `@unvalidated` as a
- * threshold: "reads as a barrier" is nobody's measurement yet.
+ * MapLibre will not space symbols closer than 1.25 of their own length, so
+ * the floor here is about 14 px at z11 and 17.5 px at full size; these sit a
+ * little above it, so the chain reads as a run of separate marks rather than
+ * a rope. `@unvalidated`: picked off the 2026-09-26 renders, where the
+ * maintainer chose this look.
  */
-export const CLOSURE_DASH: BandDash = { tick: 0.35, gap: 0.51 }
+export const CLOSURE_CROSS_SPACING: ReadonlyArray<[zoom: number, spacing: number]> = [
+  [CLOSURE_NEAR_MIN_ZOOM, 18],
+  [CLOSURE_FULL_WIDTH_ZOOM, 24],
+]
 
 /**
- * What the overview rhythm scales the near one by, on both numbers (#1598).
- *
- * WHY A SECOND RHYTHM EXISTS AT ALL, in one measurement, is
- * CLOSURE_TAPE_NEAR_MIN_ZOOM's docstring: below z11 a closed run is shorter
- * than one near pitch, so which part of the rhythm it lands on decides
- * whether a hiker sees a red tick or a blank slab of paper. Halving the
- * pitch halves the length a closure has to reach before it is guaranteed to
- * carry one.
- *
- * BOTH NUMBERS BY THE SAME FACTOR, which is lib/atcUpdateStyle.ts's
- * ATC_UPDATE_DASH_SCALE argument run the other way and for the same reason:
- * scaling only the gap would change how much of the band is red, and the
- * overview band must be the same mark at a smaller size rather than a
- * different claim. dashRedFraction is identical for the two by construction,
- * and closureStyle.test.ts holds that equality rather than these numbers.
+ * The far mark's `icon-size` - the same cross image, 2.2 times over, so the
+ * mark a hiker learns from far out is the mark the chain is made of when they
+ * zoom in. About 16 px of ink (the cross's 7.2 px reach, 2.2 times).
  */
-export const CLOSURE_DASH_OVERVIEW_SCALE = 0.5
+export const CLOSURE_MARK_SIZE = 2.2
 
-/** The closure's rhythm below CLOSURE_TAPE_NEAR_MIN_ZOOM: the near one at
- *  CLOSURE_DASH_OVERVIEW_SCALE. */
-export const CLOSURE_OVERVIEW_DASH: BandDash = scaleDash(
-  CLOSURE_DASH,
-  CLOSURE_DASH_OVERVIEW_SCALE,
-)
+/** The far mark's paper ring, in CSS pixels. Wider than the chain's, because
+ *  far out the mark sits on the map rather than on the paper, often over the
+ *  red of the very trails it closes. */
+export const CLOSURE_MARK_HALO_WIDTH = 2.5
 
 /**
- * What fraction of the band's length is red, for a given rhythm.
+ * The far mark's collision padding, in CSS pixels.
  *
- * A tick square to the line covers exactly its own length, so this is the
- * tick over the pitch and nothing else - where the tape's own
- * `tapeRedFraction` had to divide by the sine of the stripe's lean first.
- * That simplification is the rebuild in one function: the mark stopped being
- * something whose coverage depended on its angle.
+ * THE FAR MARK IS THE ONE CLOSURE LAYER THAT TAKES PART IN COLLISION, and on
+ * purpose: a closed network like Bear Mountain's is a hundred line parts, and
+ * each part's middle is a candidate. Placed with `icon-allow-overlap: false`,
+ * the first mark in an area keeps it and the rest are dropped, so the area
+ * reads as a few crosses rather than a scribble. It cannot hide a waypoint:
+ * the pins set `icon-ignore-placement` and are never dropped for anything
+ * (map/poiLayers.ts, 2026-09-18).
  */
-export function dashRedFraction(dash: BandDash): number {
-  return dash.tick / (dash.tick + dash.gap)
+export const CLOSURE_MARK_PADDING = 6
+
+/** A list of [zoom, value] stops as a linear `interpolate` on zoom. */
+function zoomRamp(stops: ReadonlyArray<readonly [number, number]>): unknown[] {
+  return ['interpolate', ['linear'], ['zoom'], ...stops.flat()]
 }
 
-/** A rhythm as MapLibre's `line-dasharray` wants it. */
-export function dashArray(dash: BandDash): [number, number] {
-  return [dash.tick, dash.gap]
+/** The paper's `line-width`: CLOSURE_PAPER_FAR_WIDTH at the seam,
+ *  CLOSURE_PAPER_WIDTH from CLOSURE_FULL_WIDTH_ZOOM in. */
+export function closurePaperWidth(): unknown[] {
+  return zoomRamp([
+    [CLOSURE_MARK_MIN_ZOOM, CLOSURE_PAPER_FAR_WIDTH],
+    [CLOSURE_FULL_WIDTH_ZOOM, CLOSURE_PAPER_WIDTH],
+  ])
 }
 
-/**
- * The band's `line-dasharray`: the overview rhythm below
- * CLOSURE_TAPE_NEAR_MIN_ZOOM, the near one from it in (#1598).
- *
- * A `step` rather than an `interpolate` because a dash array is not
- * interpolatable - the style spec says so, and style.test.ts validates the
- * built style against it. `near` is a parameter so lib/atcUpdateStyle.ts can
- * hand in its own slower rhythm and get the same step at the same zoom: one
- * treatment, two feeds, which is the guarantee that file exists to keep.
- */
-export function closureDashExpression(
-  near: BandDash = CLOSURE_DASH,
-  overview: BandDash = CLOSURE_OVERVIEW_DASH,
-): unknown[] {
-  return [
-    'step',
-    ['zoom'],
-    ['literal', dashArray(overview)],
-    CLOSURE_TAPE_NEAR_MIN_ZOOM,
-    ['literal', dashArray(near)],
-  ]
+/** The trace's `line-width`, on the paper's schedule. */
+export function closureTraceWidth(): unknown[] {
+  return zoomRamp([
+    [CLOSURE_MARK_MIN_ZOOM, CLOSURE_TRACE_FAR_WIDTH],
+    [CLOSURE_FULL_WIDTH_ZOOM, CLOSURE_TRACE_WIDTH],
+  ])
 }
 
-/**
- * The band's `line-width`, in CSS pixels, `outset` px wider on each side.
- *
- * CLOSURE_TAPE_FAR_WIDTH at and below CLOSURE_TAPE_NEAR_MIN_ZOOM,
- * CLOSURE_TAPE_WIDTH from CLOSURE_TAPE_FULL_WIDTH_ZOOM in, linear between -
- * the shape map/style.ts's overviewTaper gives every line on this map, so
- * the closure band grows on the same schedule the lines under it do. One
- * lower stop shared with the rhythm step, so a closure at an overview camera
- * changes weight and texture at one zoom rather than two.
- *
- * `outset` is what makes the outline one function rather than two that agree
- * today: the casing layer asks for the same taper CLOSURE_OUTLINE_WIDTH
- * wider on each side, so a change to either stop cannot move the band
- * without moving its edge with it.
- */
-export function closureTapeWidth(outset = 0): unknown[] {
-  return [
-    'interpolate',
-    ['linear'],
-    ['zoom'],
-    CLOSURE_TAPE_NEAR_MIN_ZOOM,
-    CLOSURE_TAPE_FAR_WIDTH + outset * 2,
-    CLOSURE_TAPE_FULL_WIDTH_ZOOM,
-    CLOSURE_TAPE_WIDTH + outset * 2,
-  ]
+/** The chain's `symbol-spacing`, every stop multiplied by `scale` - the ATC
+ *  band's slower cadence is this at 2. */
+export function closureCrossSpacing(scale = 1): unknown[] {
+  return zoomRamp(CLOSURE_CROSS_SPACING.map(([zoom, spacing]) => [zoom, spacing * scale]))
 }
 
-/** The id of the outline drawn under the band `bandId` - derived rather
- *  than spelled per call site, so a fifth closure source cannot end up with
- *  a band and no edge. */
-export function closureCasingId(bandId: string): string {
-  return `${bandId}-casing`
+/** The id of the dotted trace drawn over the paper `bandId`. Derived rather
+ *  than spelled per call site, so a fifth feed cannot end up with a paper and
+ *  no trace. */
+export function closureTraceId(bandId: string): string {
+  return `${bandId}-trace`
 }
 
-/** The id of the sheet's paper drawn between `bandId`'s ticks. Derived for
- *  closureCasingId's reason, and named separately because map/style.ts
- *  repaints exactly these on a sheet change. */
-export function closureGroundId(bandId: string): string {
-  return `${bandId}-ground`
+/** The id of the chain of crosses along `bandId`. */
+export function closureCrossesId(bandId: string): string {
+  return `${bandId}-crosses`
+}
+
+/** The id of the one far-out cross per run of `bandId`. */
+export function closureMarkId(bandId: string): string {
+  return `${bandId}-mark`
+}
+
+/** Every layer id one feed's closure draws with, bottom to top - what
+ *  map/style.ts repaints on a sheet change and what the tests walk. */
+export function closureLayerIds(bandId: string): string[] {
+  return [bandId, closureTraceId(bandId), closureCrossesId(bandId), closureMarkId(bandId)]
 }
 
 export interface ClosureLayerOptions {
-  /** The paper the band's ticks sit on, as a `#rrggbb` hex - what
-   *  map/style.ts's closureTapeGround picks for the appearance the style is
-   *  built for. Required rather than defaulted, because this module cannot
-   *  know which sheet a caller is drawing, and a band on the wrong paper is
-   *  the wrong mark on every closure. */
+  /** The paper under the trace, as a `#rrggbb` hex - what map/style.ts's
+   *  closureTapeGround picks for the sheet. Also the crosses' halo. Required,
+   *  because this module cannot know which sheet a caller is drawing. */
   ground: string
+  /** The trace's and the crosses' ink - map/style.ts's closureInk. */
+  ink: string
   /** A distinct id, for a second instance over a different source. Defaults
    *  to the temporary-closure layer's own. */
   bandId?: string
-  /** Restricts the layer to part of its source. Omitted for the closures
+  /** Restricts the layers to part of their source. Omitted for the closures
    *  feed, where every feature IS a closure. */
   filter?: unknown[]
+  /** Multiplies the chain's spacing. 1 for a closure; the ATC band's slower
+   *  cadence (lib/atcUpdateStyle.ts). */
+  spacingScale?: number
 }
 
 /**
- * THREE LAYERS, ALL PLAIN LINES, bottom to top: the dark edge, the sheet's
- * paper, the red ticks. The header has why there is no image left in any of
- * them; what matters at the call site is that none of the three carries a
- * texture, so none of them can shear at a join.
+ * The four layers of one feed's closure, bottom to top: paper, trace, the
+ * chain of crosses, the far mark. The header has what each is for.
  *
- * The paper is a LAYER now rather than pixels baked into an image, and that
- * is #1575's decision read the other way round: it made the ground opaque,
- * and the only reason it lived in the image was that a `line-pattern` layer
- * has no colour of its own. Nothing here is a pattern, so the ground is a
- * `line-color` - which a sheet change repaints in place rather than
- * re-pointing at another image.
- *
- * Still an array, and still built by one function for every source that needs
- * it: ONE TREATMENT, NOT TWO THAT CURRENTLY AGREE. map/style.ts calls this
- * once per source that can carry a closed line - four today: the closures
- * feed, the A.T.'s long-term-closed lines, the nearby network's, and the
- * corridor-view sketch's below the seam (#869) - and the only things that may
- * differ between them are the id, the source and the filter.
- *
- * The count is the part of this sentence that rots; the fourth call arrived
- * and it still read "three times". Nothing here needs the number, so a fifth
- * source is a call site and not an edit to this comment - what holds the
- * guarantee is the byte-identical construction below, which the tests assert
- * as a property rather than by counting layers.
+ * Built by one function for every feed, so the instances are byte-identical
+ * apart from id, source, filter and spacing - the property the tests assert,
+ * rather than four layer lists that currently agree.
  */
 export function buildClosureLayers(
   sourceId: string,
   options: ClosureLayerOptions,
 ): LayerSpecification[] {
-  const { ground, bandId = CLOSURE_LAYER_ID, filter } = options
-  // Spread rather than a conditional key so the instances produce byte-
-  // identical layer objects apart from id, source and filter - the property
-  // that lets the tests assert "one treatment" rather than "two that currently
-  // agree".
+  const { ground, ink, bandId = CLOSURE_LAYER_ID, filter, spacingScale = 1 } = options
   const restrict = filter === undefined ? {} : { filter: filter as never }
-  const layout = { 'line-cap': 'butt', 'line-join': 'round' } as const
-  const line = (id: string, paint: Record<string, unknown>): LayerSpecification =>
-    ({
-      id,
+  const line = { 'line-cap': 'round', 'line-join': 'round' } as const
+  return [
+    {
+      id: bandId,
       type: 'line',
       source: sourceId,
       ...restrict,
-      layout,
-      paint,
-    }) as LayerSpecification
-  return [
-    // The outline, FIRST so it is underneath. The band above covers all of
-    // it but the CLOSURE_OUTLINE_WIDTH showing past each side, which is what
-    // a hiker sees as the edge - and it covers it at a join too, because two
-    // opaque solid lines cover by union.
-    line(closureCasingId(bandId), {
-      'line-color': CLOSURE_CASING_COLOR,
-      'line-width': closureTapeWidth(CLOSURE_OUTLINE_WIDTH),
-    }),
-    // The sheet's paper, opaque along the whole run (#1575, option E). This
-    // is the layer that stops the band being the railway the 2026-08-27 one
-    // was: without it the casing below would show through every gap between
-    // the ticks, which is exactly what that band did.
-    line(closureGroundId(bandId), {
-      'line-color': ground,
-      'line-width': closureTapeWidth(),
-    }),
-    // The ticks. A flat colour, never an expression off blaze_color - a
-    // closure must not inherit the hue of the trail it sits on.
-    line(bandId, {
-      'line-color': CLOSURE_COLOR,
-      'line-width': closureTapeWidth(),
-      'line-dasharray': closureDashExpression(),
-    }),
-  ]
+      layout: line,
+      paint: { 'line-color': ground, 'line-width': closurePaperWidth() as never },
+    },
+    {
+      id: closureTraceId(bandId),
+      type: 'line',
+      source: sourceId,
+      ...restrict,
+      layout: line,
+      paint: {
+        // A flat colour, never an expression off blaze_color - a closure must
+        // not inherit the hue of the trail it sits on.
+        'line-color': ink,
+        'line-opacity': CLOSURE_TRACE_OPACITY,
+        'line-width': closureTraceWidth() as never,
+        'line-dasharray': [...CLOSURE_TRACE_DASH],
+      },
+    },
+    {
+      id: closureCrossesId(bandId),
+      type: 'symbol',
+      source: sourceId,
+      ...restrict,
+      minzoom: CLOSURE_NEAR_MIN_ZOOM,
+      layout: {
+        'symbol-placement': 'line',
+        'symbol-spacing': closureCrossSpacing(spacingScale) as never,
+        'icon-image': CLOSURE_CROSS_ICON_ID,
+        'icon-size': zoomRamp(CLOSURE_CROSS_SIZE) as never,
+        'icon-rotation-alignment': 'map',
+        // Drawn wherever the line reaches, and never displacing a trail
+        // name or a pin: a chain that took part in collision would lose
+        // crosses to every label near it, and a gap in the chain reads as a
+        // gap in the closure.
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+      },
+      paint: {
+        'icon-color': ink,
+        'icon-halo-color': ground,
+        'icon-halo-width': CLOSURE_CROSS_HALO_WIDTH,
+      },
+    },
+    {
+      id: closureMarkId(bandId),
+      type: 'symbol',
+      source: sourceId,
+      ...restrict,
+      minzoom: CLOSURE_MARK_MIN_ZOOM,
+      maxzoom: CLOSURE_NEAR_MIN_ZOOM,
+      layout: {
+        'symbol-placement': 'line-center',
+        'icon-image': CLOSURE_CROSS_ICON_ID,
+        'icon-size': CLOSURE_MARK_SIZE,
+        'icon-rotation-alignment': 'viewport',
+        // CLOSURE_MARK_PADDING's docstring: the one closure layer that
+        // collides, so a closed network reads as a few marks.
+        'icon-allow-overlap': false,
+        'icon-padding': CLOSURE_MARK_PADDING,
+      },
+      paint: {
+        'icon-color': ink,
+        'icon-halo-color': ground,
+        'icon-halo-width': CLOSURE_MARK_HALO_WIDTH,
+      },
+    },
+  ] as LayerSpecification[]
 }
 
 /**

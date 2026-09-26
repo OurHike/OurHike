@@ -58,15 +58,20 @@ import {
   SIDE_TRAIL_WIDTH,
   redLightActive,
   trailCasingColor,
+  closureInk,
   closureTapeGround,
 } from './style'
 import { WARNING_PIN } from '../lib/seriousWarnings'
 import {
-  CLOSURE_CASING_COLOR,
-  CLOSURE_COLOR,
-  CLOSURE_DASH,
-  CLOSURE_OUTLINE_WIDTH,
-  CLOSURE_TAPE_WIDTH,
+  CLOSURE_CROSS_ARM,
+  CLOSURE_CROSS_HALO_WIDTH,
+  CLOSURE_CROSS_SPACING,
+  CLOSURE_CROSS_STROKE,
+  CLOSURE_PAPER_WIDTH,
+  CLOSURE_TRACE_DASH,
+  CLOSURE_TRACE_OPACITY,
+  CLOSURE_TRACE_WIDTH,
+  closureCrossImageSize,
 } from '../lib/closureStyle'
 
 /** The one type here that is a line rather than a pin. Paired with
@@ -284,96 +289,95 @@ function Tile({
   )
 }
 
-/** The swatch's viewBox is drawn in CSS pixels, at the band's own width - so
- *  every number below is a number lib/closureStyle.ts ships, and the legend
- *  cannot drift from the map by someone editing one of them. */
-const CLOSURE_HEIGHT = CLOSURE_TAPE_WIDTH
-/** The swatch's full height: the band plus the outline showing past each
- *  side (#1598). The band's own width grows with the zoom on the map, and
- *  this swatch draws the top of that taper - the weight a hiker learns the
- *  mark at, which is the zoom they are reading the legend from. */
-const CLOSURE_BOX_HEIGHT = CLOSURE_HEIGHT + CLOSURE_OUTLINE_WIDTH * 2
+/** The swatch is drawn in CSS pixels at the map's own full-zoom sizes, so
+ *  every number below is one lib/closureStyle.ts ships and the legend cannot
+ *  drift from the map by someone editing one of them (#1677). One pitch of
+ *  the chain wide - one cross with the trace running out either side of it -
+ *  and the cross image's height, which letterboxes into chrome.css's 24px
+ *  slot at the map's own scale. */
+const CLOSURE_SWATCH_WIDTH = CLOSURE_CROSS_SPACING[CLOSURE_CROSS_SPACING.length - 1][1]
+const CLOSURE_SWATCH_HEIGHT = closureCrossImageSize()
+const CLOSURE_MID_X = CLOSURE_SWATCH_WIDTH / 2
+const CLOSURE_MID_Y = CLOSURE_SWATCH_HEIGHT / 2
 
-/** One tick and the paper after it, in CSS pixels: the map's rhythm, which
- *  is written in line widths, resolved at the width above. */
-const CLOSURE_TICK = CLOSURE_DASH.tick * CLOSURE_HEIGHT
-const CLOSURE_PITCH = (CLOSURE_DASH.tick + CLOSURE_DASH.gap) * CLOSURE_HEIGHT
-
-/**
- * How many pitches of band the swatch shows.
- *
- * Four, and the number was chosen by looking rather than by arithmetic: the
- * legend's slot is 24px square (chrome.css's .legend__icon) and the viewBox
- * letterboxes into it, so this trades the strip's height against how much
- * rhythm it shows. At two the swatch is a pair of fat ticks with no rhythm
- * to read; at four it is a run of bars, which is the thing a hiker has to
- * recognise again on the map.
- */
-const CLOSURE_TILES = 4
-const CLOSURE_WIDTH = CLOSURE_PITCH * CLOSURE_TILES
-/** One tick per pitch, plus one past each end: an SVG clips to its own
- *  viewBox, so a tick that starts off the left edge still draws the part of
- *  itself that is inside - which is what keeps the swatch from beginning and
- *  ending on a half tick. */
-const CLOSURE_TICKS = Array.from(
-  { length: CLOSURE_TILES + 2 },
-  (_, index) => (index - 1) * CLOSURE_PITCH,
+/** The trace's dots: one per dash pitch, measured in line widths as the map's
+ *  `line-dasharray` is, and left out under the cross and its halo - where the
+ *  map's halo covers them too. */
+const CLOSURE_DOT_PITCH =
+  (CLOSURE_TRACE_DASH[0] + CLOSURE_TRACE_DASH[1]) * CLOSURE_TRACE_WIDTH
+const CLOSURE_CROSS_REACH =
+  CLOSURE_CROSS_ARM + CLOSURE_CROSS_STROKE / 2 + CLOSURE_CROSS_HALO_WIDTH
+const CLOSURE_DOTS = Array.from(
+  { length: Math.floor(CLOSURE_SWATCH_WIDTH / CLOSURE_DOT_PITCH) + 1 },
+  (_, index) => CLOSURE_DOT_PITCH / 2 + index * CLOSURE_DOT_PITCH,
+).filter(
+  (x) => x < CLOSURE_SWATCH_WIDTH && Math.abs(x - CLOSURE_MID_X) > CLOSURE_CROSS_REACH,
 )
 
-function ClosureBand({ className, ground }: { className?: string; ground: string }) {
-  /** The outline, drawn as the two edges it actually is (#1598). Two rects
-   *  over the ticks rather than one behind them, which is the same picture
-   *  the map makes: the band is opaque, so the line under it shows only past
-   *  its two sides. */
-  const outline = (y: number) => (
-    <rect
-      key={`outline-${y}`}
-      className="map-icon__closure-outline"
-      x={0}
-      y={y}
-      width={CLOSURE_WIDTH}
-      height={CLOSURE_OUTLINE_WIDTH}
-      fill={CLOSURE_CASING_COLOR}
-    />
-  )
+/** The cross's two strokes, centred in the swatch, as one SVG path. */
+const CLOSURE_CROSS_PATH = (() => {
+  const a = CLOSURE_CROSS_ARM
+  const [x, y] = [CLOSURE_MID_X, CLOSURE_MID_Y]
+  return `M${x - a} ${y - a}L${x + a} ${y + a}M${x + a} ${y - a}L${x - a} ${y + a}`
+})()
 
+function ClosureCrossedOut({
+  className,
+  ground,
+  ink,
+}: {
+  className?: string
+  ground: string
+  ink: string
+}) {
   return (
     <svg
       className={className}
-      viewBox={`0 0 ${CLOSURE_WIDTH} ${CLOSURE_BOX_HEIGHT}`}
+      viewBox={`0 0 ${CLOSURE_SWATCH_WIDTH} ${CLOSURE_SWATCH_HEIGHT}`}
       aria-hidden="true"
       focusable="false"
     >
-      {/* The sheet's paper under the ticks, exactly as the map draws it
-          (#1575, option E). There was no rect here from 2026-08-27, when the
-          band's gaps were transparent and the legend's own paper showed
-          through; now the map's paper does, in the map's own colour, which on
-          a dark sheet is ink - a legend that drew the panel's surface instead
-          would be teaching a mark the map does not draw. */}
+      {/* The paper the closed trail is knocked out to, in the map's own
+          colour for this sheet - on a dark sheet the panel's surface would
+          be the wrong ground, and a legend should teach the mark the map
+          draws. */}
       <rect
-        className="map-icon__closure-ground"
+        className="map-icon__closure-paper"
         x={0}
-        y={CLOSURE_OUTLINE_WIDTH}
-        width={CLOSURE_WIDTH}
-        height={CLOSURE_HEIGHT}
+        y={CLOSURE_MID_Y - CLOSURE_PAPER_WIDTH / 2}
+        width={CLOSURE_SWATCH_WIDTH}
+        height={CLOSURE_PAPER_WIDTH}
         fill={ground}
       />
-      {/* The ticks, SQUARE TO THE BAND since #1599, which is the whole of
-          that change: a mark leaning at 55 degrees was what tore at every
-          bend on the real map, so the legend leans no more than the map
-          does. */}
-      {CLOSURE_TICKS.map((x) => (
-        <rect
-          key={`tick-${x}`}
-          className="map-icon__closure-band"
-          x={x}
-          y={CLOSURE_OUTLINE_WIDTH}
-          width={CLOSURE_TICK}
-          height={CLOSURE_HEIGHT}
-          fill={CLOSURE_COLOR}
+      {CLOSURE_DOTS.map((x) => (
+        <circle
+          key={`dot-${x}`}
+          className="map-icon__closure-trace"
+          cx={x}
+          cy={CLOSURE_MID_Y}
+          r={CLOSURE_TRACE_WIDTH / 2}
+          fill={ink}
+          fillOpacity={CLOSURE_TRACE_OPACITY}
         />
       ))}
-      {[0, CLOSURE_HEIGHT + CLOSURE_OUTLINE_WIDTH].map(outline)}
+      {/* The cross: its paper-coloured halo, then the ink, as the map's
+          `icon-halo-width` and `icon-color` draw it. */}
+      <path
+        className="map-icon__closure-halo"
+        d={CLOSURE_CROSS_PATH}
+        stroke={ground}
+        strokeWidth={CLOSURE_CROSS_STROKE + CLOSURE_CROSS_HALO_WIDTH * 2}
+        strokeLinecap="round"
+        fill="none"
+      />
+      <path
+        className="map-icon__closure-cross"
+        d={CLOSURE_CROSS_PATH}
+        stroke={ink}
+        strokeWidth={CLOSURE_CROSS_STROKE}
+        strokeLinecap="round"
+        fill="none"
+      />
     </svg>
   )
 }
@@ -484,7 +488,7 @@ export interface MapIconProps {
    *  tile form - a warning is its pin, a closure is its tape. */
   variant?: 'pin' | 'tile'
   /** Which sheet the map is drawn in - read by the closure swatch alone, for
-   *  the paper its tape lies on (#1575). Defaults to the field day sheet, as
+   *  its paper and ink (#1575, #1677). Defaults to the field day sheet, as
    *  TrailLineSwatch does for the same reason; the pins ignore it. */
   appearance?: SheetAppearance
 }
@@ -498,7 +502,13 @@ export function MapIcon({
   appearance = { theme: 'light' },
 }: MapIconProps) {
   if (type === CLOSURE_TYPE) {
-    return <ClosureBand className={className} ground={closureTapeGround(appearance)} />
+    return (
+      <ClosureCrossedOut
+        className={className}
+        ground={closureTapeGround(appearance)}
+        ink={closureInk(appearance)}
+      />
+    )
   }
 
   if (type === WARNING_ICON_ID) {

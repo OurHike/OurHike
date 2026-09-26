@@ -134,8 +134,11 @@ import { BLAZE_MATCH_EXPRESSION, PLAIN_TRAIL_COLOR } from '../lib/blaze'
 import { ATC_UPDATE_LAYER_ID, buildAtcUpdateLayers } from '../lib/atcUpdateStyle'
 import {
   buildClosureLayers,
+  CLOSURE_INK,
   CLOSURE_LAYER_ID,
-  closureGroundId,
+  closureCrossesId,
+  closureMarkId,
+  closureTraceId,
   LONG_TERM_CLOSED_FILTER,
   LONG_TERM_CLOSURE_LAYER_ID,
 } from '../lib/closureStyle'
@@ -308,14 +311,13 @@ export const NETWORK_OVERVIEW_LAYER_ID = 'network-overview-line'
 export const NETWORK_OVERVIEW_CLOSURE_LAYER_ID = 'network-overview-closure-band'
 
 /**
- * Every layer painting barrier tape from the closure image: the closures
- * feed's band, the A.T.'s long-term-closed lines, the nearby network's and the
- * corridor-view sketch's. The tape's ground is the sheet's paper, baked into
- * a layer of its own since #1599 (closureGroundId), so a sheet change
- * repaints each of these bands' ground - attachMapAppearance walks this list
- * and the ATC band's id beside it.
+ * The paper layer of every closure feed: the closures feed's, the A.T.'s
+ * long-term-closed lines, the nearby network's and the corridor-view
+ * sketch's. Each is the id lib/closureStyle.ts derives the feed's other three
+ * layers from, so a sheet change repaints all four of each -
+ * attachMapAppearance walks this list and the ATC band's id beside it.
  */
-export const CLOSURE_TAPE_LAYER_IDS: readonly string[] = [
+export const CLOSURE_BAND_IDS: readonly string[] = [
   CLOSURE_LAYER_ID,
   LONG_TERM_CLOSURE_LAYER_ID,
   NEARBY_LONG_TERM_CLOSURE_LAYER_ID,
@@ -599,6 +601,22 @@ export function mapBackdrop(appearance: SheetAppearance): string {
 export function closureTapeGround(appearance: SheetAppearance): string {
   if (sheetIsDark(appearance) && !redLightActive(appearance)) return MAP_BACKDROP.light
   return mapBackdrop(appearance)
+}
+
+/**
+ * The ink a closure's trace and crosses are drawn in, per appearance (#1677).
+ *
+ * lib/closureStyle.ts's CLOSURE_INK on every sheet whose closure paper is
+ * light - which, through closureTapeGround above, is every sheet but red
+ * light. Under red light the paper is the sheet's own near-black ink, so the
+ * mark takes the one hue the mode permits (RED_LIGHT_BLAZE_COLOR), as every
+ * trail line does there. What separates a closure from a trail under red
+ * light is then entirely structural - the crosses and the dotted trace -
+ * which is the same claim the mark makes on every other sheet.
+ * @unvalidated on a phone under red light at night.
+ */
+export function closureInk(appearance: SheetAppearance): string {
+  return redLightActive(appearance) ? RED_LIGHT_BLAZE_COLOR : CLOSURE_INK
 }
 
 /**
@@ -956,17 +974,22 @@ export function attachMapAppearance(
         map.setLayoutProperty(layerId, 'visibility', casingVisibility(appearance))
       }
 
-      // The band's ground is the paper closureTapeGround picks for the sheet
-      // (#1575, option E). It was baked into a tape image and re-pointed here
-      // by name; since #1599 every band is three plain lines, so the paper is
-      // a `line-color` on a layer of its own and a sheet change simply
-      // repaints it - no images to have registered first, and no step
-      // expression to flatten by writing a bare value over it.
+      // Every closure's paper, ink and halo (#1677): the paper is the one
+      // closureTapeGround picks for the sheet, and the crosses' halo is that
+      // same paper. The crosses are one signed-distance image, so their
+      // colours are paint properties like the lines' and a sheet change
+      // repaints them in place - there is no image per sheet to swap.
       const tapeGround = closureTapeGround(appearance)
-      for (const bandId of [...CLOSURE_TAPE_LAYER_IDS, ATC_UPDATE_LAYER_ID]) {
-        const groundId = closureGroundId(bandId)
-        if (map.getLayer(groundId) === undefined) continue
-        map.setPaintProperty(groundId, 'line-color', tapeGround as never)
+      const ink = closureInk(appearance)
+      for (const bandId of [...CLOSURE_BAND_IDS, ATC_UPDATE_LAYER_ID]) {
+        if (map.getLayer(bandId) === undefined) continue
+        map.setPaintProperty(bandId, 'line-color', tapeGround as never)
+        map.setPaintProperty(closureTraceId(bandId), 'line-color', ink as never)
+        for (const symbolId of [closureCrossesId(bandId), closureMarkId(bandId)]) {
+          if (map.getLayer(symbolId) === undefined) continue
+          map.setPaintProperty(symbolId, 'icon-color', ink as never)
+          map.setPaintProperty(symbolId, 'icon-halo-color', tapeGround as never)
+        }
       }
 
       // The through-route badge (#1283): its plate is an image per sheet
@@ -2330,9 +2353,10 @@ export function buildMapStyle({
     redLight,
     blazeColorsShown,
   }
-  // The paper every barrier tape lies on (#1575, option E): this sheet's
-  // backdrop, which is what map/closureTape.ts bakes under the stripes.
+  // The paper every closure is knocked out to, and the ink its trace and
+  // crosses are drawn in, for this sheet (#1677).
   const tapeGround = closureTapeGround(appearance)
+  const closureInkColor = closureInk(appearance)
   // Asked for, and that is the whole question. Terrain used to be half of it -
   // `background === 'hiking_topo_live' && terrain !== undefined` - on the
   // reasoning that a style must not reference sources resolving to nothing.
@@ -3035,22 +3059,38 @@ export function buildMapStyle({
       // for the ATC's notices and for the same reason: the mark is hollow,
       // so a band crossing it hides its centre and nothing else, and the
       // ring and the ticks still say where the hiker is.
+      //
+      // THE SKETCH'S CLOSURE ENDS WHERE THE SKETCH DOES, so a layer of it
+      // that would only start above the seam - the chain of crosses, from
+      // lib/closureStyle.ts's CLOSURE_NEAR_MIN_ZOOM - is left out rather
+      // than given a zoom range that is empty.
       ...buildClosureLayers(NETWORK_OVERVIEW_SOURCE_ID, {
         ground: tapeGround,
+        ink: closureInkColor,
         bandId: NETWORK_OVERVIEW_CLOSURE_LAYER_ID,
         filter: LONG_TERM_CLOSED_FILTER,
-      }).map((layer) => ({ ...layer, maxzoom: CORRIDOR_MAX_ZOOM })),
+      })
+        .filter((layer) => (layer.minzoom ?? 0) < CORRIDOR_MAX_ZOOM)
+        .map((layer) => ({
+          ...layer,
+          maxzoom: Math.min(layer.maxzoom ?? CORRIDOR_MAX_ZOOM, CORRIDOR_MAX_ZOOM),
+        })),
       ...onSourceLayer(
         buildClosureLayers(NEARBY_TRAILS_SOURCE_ID, {
           ground: tapeGround,
+          ink: closureInkColor,
           bandId: NEARBY_LONG_TERM_CLOSURE_LAYER_ID,
           filter: LONG_TERM_CLOSED_FILTER,
         }),
         NETWORK_TILES_LAYER,
       ),
-      ...buildClosureLayers(CLOSURE_SOURCE_ID, { ground: tapeGround }),
+      ...buildClosureLayers(CLOSURE_SOURCE_ID, {
+        ground: tapeGround,
+        ink: closureInkColor,
+      }),
       ...buildClosureLayers(TRAILS_SOURCE_ID, {
         ground: tapeGround,
+        ink: closureInkColor,
         bandId: LONG_TERM_CLOSURE_LAYER_ID,
         filter: LONG_TERM_CLOSED_FILTER,
       }),
@@ -3081,7 +3121,7 @@ export function buildMapStyle({
       // a property by src/test/atcAlertProminence.test.ts, which asserts the
       // last two layers by name. So the maintainer's "top 2" is the top two
       // OurHike layers; the upstream authority on the A.T. keeps the roof.
-      ...buildAtcUpdateLayers(ATC_UPDATE_SOURCE_ID, tapeGround),
+      ...buildAtcUpdateLayers(ATC_UPDATE_SOURCE_ID, tapeGround, closureInkColor),
     ],
   }
 }

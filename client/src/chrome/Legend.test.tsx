@@ -8,7 +8,7 @@ import { HIDEABLE_TYPES } from '../lib/waypointVisibility'
 import { typeLabel } from './legendLabels'
 import { glyphPath, poiGlyphPath } from '../map/poiIcons'
 import { WARNING_GLYPH } from '../map/warningPin'
-import { CLOSURE_COLOR } from '../lib/closureStyle'
+import { CLOSURE_INK } from '../lib/closureStyle'
 import { blazePaintColor } from '../lib/blaze'
 
 // WIREFRAMES.md §2 (Legend) plus TESTING.md item 7. Two rules carry real
@@ -450,29 +450,26 @@ describe('legend icons are the map’s icons', () => {
     )
   })
 
-  it('draws a closure as the barred band it is, not as a pin it never was', () => {
+  it('draws a closure as the crossed-out trail it is, not as a pin it never was', () => {
     render(<Legend {...PROPS} />)
     const icon = iconIn(rowFor('Closure'))
 
-    // A FILL RATHER THAN A STROKE SINCE #1599: the swatch's ticks are rects
-    // square to the band, because the map's are - it drew leaning strokes
-    // while the map drew barrier tape, and the tape went when its diagonals
-    // tore at every bend.
-    expect(icon?.querySelector('.map-icon__closure-band')).toHaveAttribute(
-      'fill',
-      CLOSURE_COLOR,
+    // The ✕ on a dotted trace, in the closure ink (#1677) - the swatch
+    // draws what the map draws, and the map no longer bands a closure in red.
+    expect(icon?.querySelector('.map-icon__closure-cross')).toHaveAttribute(
+      'stroke',
+      CLOSURE_INK,
     )
     expect(icon?.querySelector('.map-icon__disc')).toBeNull()
   })
 
-  it('lays the closure swatch on the paper the band takes beside it (#1575)', () => {
-    // The band's ground follows closureTapeGround, so the swatch beside a
-    // night map is the day paper under red ticks since 2026-09-18 - red
-    // and white, the way the canvas draws it there now.
+  it('lays the closure swatch on the paper the map knocks a closure out to (#1575)', () => {
+    // The paper follows closureTapeGround, so the swatch beside a night map
+    // is the day paper since 2026-09-18, the way the canvas draws it there.
     render(<Legend {...PROPS} sheetAppearance={{ theme: 'dark' }} />)
 
     expect(
-      iconIn(rowFor('Closure'))?.querySelector('.map-icon__closure-ground'),
+      iconIn(rowFor('Closure'))?.querySelector('.map-icon__closure-paper'),
     ).toHaveAttribute('fill', MAP_BACKDROP.light)
   })
 

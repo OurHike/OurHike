@@ -1,10 +1,11 @@
 // How an ATC trail update is drawn, and why it is not a second colour.
 //
 // The band's job is identical to a closure's - "do not walk down there, go
-// around" - so it is drawn with identical weight: the same width, the same
-// barrier tape, the same colour. Only the CADENCE differs, the identical tape
-// at twice the scale, so that the two read as the same kind of thing from the
-// same distance while still being distinguishable side by side.
+// around" - so it is drawn with the closure's own mark: crossed out (#1677),
+// by lib/closureStyle.ts's buildClosureLayers. Only the CADENCE differs, the
+// chain of crosses at twice the spacing, so that the two read as the same
+// kind of thing from the same distance while still being distinguishable side
+// by side.
 //
 // THE COLOUR IS DELIBERATELY NOT DIFFERENT, and this is the decision worth
 // recording because the obvious move is to make it different. #461 asks that
@@ -21,7 +22,8 @@
 // The same reasoning lib/closureStyle.ts applies to blazes applies here in
 // miniature: the distinction that matters is structural rather than
 // chromatic, because colour is the first thing to go in greyscale, in direct
-// sun, and for a red-green colour-blind hiker.
+// sun, and for a red-green colour-blind hiker. Since #1677 neither band is
+// red at all; the point notice below still is.
 //
 // WHAT CHANGED, AND WHY IT IS NOT A SECOND SEVERITY EITHER. The point notice
 // used to be a 10px dot drawn under the waypoint pins, which made the ATC's
@@ -56,31 +58,19 @@
 
 import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec'
 import {
-  CLOSURE_CASING_COLOR,
   CLOSURE_CASING_WIDTH,
   CLOSURE_COLOR,
-  CLOSURE_DASH,
-  CLOSURE_DASH_OVERVIEW_SCALE,
-  CLOSURE_OUTLINE_WIDTH,
-  CLOSURE_TAPE_WIDTH,
-  closureCasingId,
-  closureDashExpression,
-  closureGroundId,
-  closureTapeWidth,
-  dashRedFraction,
-  scaleDash,
-  type BandDash,
+  CLOSURE_INK,
+  buildClosureLayers,
+  closureLayerIds,
 } from './closureStyle'
 
 export const ATC_UPDATE_LAYER_ID = 'atc-update-band'
 
-/** The band's outline, under the ticks (#1598). Named through
- *  closureCasingId so the two feeds' edges cannot be named differently. */
-export const ATC_UPDATE_CASING_LAYER_ID = closureCasingId(ATC_UPDATE_LAYER_ID)
-
-/** The sheet's paper between this band's ticks (#1599), named through
- *  closureGroundId for the same reason. */
-export const ATC_UPDATE_GROUND_LAYER_ID = closureGroundId(ATC_UPDATE_LAYER_ID)
+/** Every layer the ATC band draws with, bottom to top - the paper, the
+ *  trace, the chain and the far mark, named through closureLayerIds so the
+ *  two feeds' layers cannot be named differently. */
+export const ATC_UPDATE_BAND_LAYER_IDS = closureLayerIds(ATC_UPDATE_LAYER_ID)
 export const ATC_UPDATE_POINT_LAYER_ID = 'atc-update-point'
 
 /**
@@ -323,118 +313,47 @@ export const ATC_NOTICE_GLYPH_BOX =
 // shape of the fault this change is fixing.
 
 /**
- * Longer ticks, further apart - literally the closure's rhythm at twice the
- * scale.
+ * The chain's spacing, as a multiple of the closure's - the same crosses,
+ * twice as far apart.
  *
- * DERIVED FROM THE CLOSURE'S RHYTHM RATHER THAN PICKED, and multiplied on
- * both numbers by the same factor, which is what makes "the same band,
- * slower" true rather than merely intended: doubling only the gap would thin
- * the ATC's band to a third of the closure's red and read as a softer claim,
- * which is the severity distinction this module exists to refuse. Scaling
- * both keeps dashRedFraction identical for the two - the tests hold that
- * equality rather than these numbers.
+ * THE CROSSES ARE THE SAME SIZE, and only the spacing moves, which is what
+ * makes "the same mark, slower" true rather than merely intended: smaller or
+ * fainter crosses would read as a softer claim, which is the severity
+ * distinction this module exists to refuse. The #1598 band made the same
+ * trade with its dash, doubling tick and gap together.
  *
  * At a glance the two are one treatment, and only a close look separates
  * them. That is the intended reading order, since what a hiker must register
  * instantly is "barrier", and only then "whose".
  */
-export const ATC_UPDATE_DASH_SCALE = 2
+export const ATC_UPDATE_SPACING_SCALE = 2
 
-export const ATC_UPDATE_DASH: BandDash = scaleDash(CLOSURE_DASH, ATC_UPDATE_DASH_SCALE)
-
-/** The ATC band at and below the closure's own step zoom: this file's
- *  doubling applied to the closure's overview rhythm, so the ATC band steps
- *  where the closure band steps and stays twice its scale on both sides of
- *  the step (#1598). */
-export const ATC_UPDATE_OVERVIEW_DASH: BandDash = scaleDash(
-  ATC_UPDATE_DASH,
-  CLOSURE_DASH_OVERVIEW_SCALE,
-)
-
-/** The share of this band's length that is red - asserted equal to the
- *  closure's, which is the whole of "one treatment, two feeds". */
-export const ATC_UPDATE_RED_FRACTION = dashRedFraction(ATC_UPDATE_DASH)
-
-/** Re-exported so a test can hold the equality rather than the numbers, and
- *  so the coupling to lib/closureStyle.ts is visible from this file. An ATC
- *  band that quietly drifted narrower than a closure band would be exactly
- *  the severity distinction this module refuses to draw. Since #1598 the
- *  width is a taper rather than a number, and the equality is the same
- *  claim: both feeds grow with the zoom on one schedule. */
-export const ATC_UPDATE_LINE_WIDTH = closureTapeWidth()
-
-/** The full weight at the top of that taper - the number
- *  ATC_UPDATE_LINE_WIDTH used to be, kept because
- *  atcUpdateStyle.test.ts compares this band's weight against a blaze's and
- *  against the closure's, and a comparison needs a number. */
-export const ATC_UPDATE_FULL_LINE_WIDTH = CLOSURE_TAPE_WIDTH
 /** The old band casing, which nothing paints with now - see the constant's own
  *  note in lib/closureStyle.ts. Kept re-exported because ATC_NOTICE_CASING_WIDTH
  *  is asserted lighter than it, and a comparison needs both sides. */
 export const ATC_UPDATE_CASING_WIDTH = CLOSURE_CASING_WIDTH
+/** The point notice's colours: the closure red, with the closure ink as its
+ *  hairline (map/atcNoticeMark.ts). */
 export const ATC_UPDATE_COLOR = CLOSURE_COLOR
-export const ATC_UPDATE_CASING_COLOR = CLOSURE_CASING_COLOR
+export const ATC_UPDATE_CASING_COLOR = CLOSURE_INK
 
-/** `ground` is the sheet's paper the tape lies on, as lib/closureStyle.ts's
- *  ClosureLayerOptions describes it (#1575). */
+/** `ground` and `ink` are the sheet's paper and the mark's ink, as
+ *  lib/closureStyle.ts's ClosureLayerOptions describes them. */
 export function buildAtcUpdateLayers(
   sourceId: string,
   ground: string,
+  ink: string,
 ): LayerSpecification[] {
   return [
-    // The band's outline, first so it is underneath - see buildClosureLayers,
-    // which makes the same pair for the same reason and whose header has the
-    // argument. Both feeds got one on 2026-09-20 (#1598): an edge is what is
-    // left to recognise at a zoom where a texture cannot be resolved, and
-    // ONE mark for "do not walk this" means the ATC's band grows an edge the
-    // day the closure's does.
-    {
-      id: ATC_UPDATE_CASING_LAYER_ID,
-      type: 'line',
-      source: sourceId,
-      layout: { 'line-cap': 'butt', 'line-join': 'round' },
-      paint: {
-        'line-color': ATC_UPDATE_CASING_COLOR,
-        'line-width': closureTapeWidth(CLOSURE_OUTLINE_WIDTH) as never,
-      },
-    },
-    // The sheet's paper between the ticks (#1575's option E, as a layer
-    // since #1599) - see buildClosureLayers, which makes the same three for
-    // the same reasons and whose header has the argument. Without it the
-    // casing below would show through every gap, which is the black rope
-    // with red ticks both feeds stopped being on 2026-08-27.
-    {
-      id: ATC_UPDATE_GROUND_LAYER_ID,
-      type: 'line',
-      source: sourceId,
-      layout: { 'line-cap': 'butt', 'line-join': 'round' },
-      paint: {
-        'line-color': ground,
-        'line-width': ATC_UPDATE_LINE_WIDTH as never,
-      },
-    },
-    // And the ticks, at this feed's own slower rhythm.
-    //
-    // THE GLOW THAT USED TO OPEN THIS LIST IS GONE, and it went for a reason
-    // this change shares rather than contradicts. #1071 removed it with the
-    // solid disc it surrounded: opaque ink covers the ground a mark is about,
-    // and a translucent wash around it was the softer half of the same fault.
-    // The burst below and the band here are the same answer at two scales -
-    // let the ground read through the mark instead of around it.
-    {
-      id: ATC_UPDATE_LAYER_ID,
-      type: 'line',
-      source: sourceId,
-      layout: { 'line-cap': 'butt', 'line-join': 'round' },
-      paint: {
-        'line-color': ATC_UPDATE_COLOR,
-        'line-width': ATC_UPDATE_LINE_WIDTH as never,
-        'line-dasharray': closureDashExpression(
-          ATC_UPDATE_DASH,
-          ATC_UPDATE_OVERVIEW_DASH,
-        ) as never,
-      },
-    },
+    // The band: the closure's four layers, at this feed's own slower cadence.
+    // Point features are ignored by all four - a `line` layer draws no
+    // points, and a symbol placed along a line or at its centre needs a line.
+    ...buildClosureLayers(sourceId, {
+      ground,
+      ink,
+      bandId: ATC_UPDATE_LAYER_ID,
+      spacingScale: ATC_UPDATE_SPACING_SCALE,
+    }),
     // Points, from the same source. A `line` layer ignores Point features and
     // a `symbol` layer ignores lines, so one source can carry both geometries
     // and the tap has one place to look - which is why this is a third layer

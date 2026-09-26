@@ -48,6 +48,7 @@ import {
   attachAtcUpdateTaps,
   type AtcUpdatePoint,
 } from './atcUpdateLayers'
+import { attachClosureCrossIcon } from './closureCross'
 import { attachClosureData, attachClosureTaps, type ClosureBand } from './closureLayers'
 import {
   attachCorridorData,
@@ -1026,11 +1027,14 @@ export function MapView({
     return attachWarningIcon(map)
   }, [map, haveWarnings])
 
-  // No barrier-tape images to register any more (#1599). The closure band
-  // and the ATC's own are three plain lines each now - a dark edge, the
-  // sheet's paper, red ticks on a dasharray - so there is nothing to
-  // rasterise and no window in which a band names an image the map has not
-  // been given. lib/closureStyle.ts's header has why the tape went.
+  // The closure's cross (#1677), for every closure feed and the ATC's band.
+  // Not gated on closures arriving: the long-term closures come inside the
+  // network tiles with no data effect of their own, and a chain whose image
+  // is missing draws nothing (map/closureCross.ts).
+  useEffect(() => {
+    if (map === null) return
+    return attachClosureCrossIcon(map)
+  }, [map])
 
   // The ATC point-notice mark, on the same reasoning as the warning pin above
   // and NOT gated on there being any notices (#1071). The image is one 80px

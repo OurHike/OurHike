@@ -1,3 +1,15 @@
+// CROSSED OUT SINCE 2026-09-26 (#1677), and at this camera that means
+// something new: below z11 a closure is one large dark x per closed run,
+// placed at the run's middle, rather than any mark along the line. A closure
+// here is nine to sixteen pixels long, too short to carry a chain. The runs
+// themselves are knocked out of the red to thin white bands with a dotted
+// trace. The notes below describe the red blocks this frame used to show,
+// and why. WHAT TO LOOK FOR NOW: a few bold x marks over Bear Mountain and
+// Doodletown, not one per closed trail. Far marks thin each other out by
+// collision, so a park with two dozen closed trails reads as a handful of
+// crosses rather than a scribble. And against the ~800 waypoints in this
+// frame: the crosses draw above the pins, and cannot hide one.
+//
 // The same closed trails as long-term-closures.mjs, from an overview camera:
 // Bear Mountain and Doodletown at z10, below the zoom where the band's near
 // rhythm draws, where a closure is a few pixels long and the mark has to say
@@ -56,9 +68,9 @@
 // The same seeding as long-term-closures.mjs - a remembered camera and a
 // reload - and the same rule: no location fix, no account, nobody's reports.
 export const caption =
-  'Bear Mountain and the lower Hudson at z10, below the zoom the band’s near rhythm draws at, Blaze colors off (the default): the same OPRHP closed trails long-term-closures.mjs photographs at z13, nine to sixteen pixels long here. Since #1598 a closure at this camera is a dark-edged red block rather than a blank white band — the outline is what survives at that length, and the band steps to a half-scale rhythm below z11 so a short closure still carries a tick. On a run that stands alone that reads as a distinct block; at Doodletown it does not — magnified 4× the merged cell is a red mass carrying white wedges rather than blocks, because each band’s ticks splay where the bends are this tight against an 11 px width and neighbouring casings cut across one another. That is what two dozen closed trails come to at this camera rather than a fault, and the mass is still the most findable thing in the frame — but the block is a claim about the isolated runs only. This frame was z8 until 2026-09-21, where it photographed 6,677 waypoint pins with the closures lost among them; that density is a real question about the opening camera and it is raised in the pull request rather than answered here'
+  'Bear Mountain and the lower Hudson at z10, Blaze colors off (the default), crossed out (#1677): below z11 a closure is one bold dark x per closed run, at its middle, over the run knocked out of the red to a thin white band with a dotted trace. A closure here is nine to sixteen pixels long, too short to carry the chain of small crosses the z13 frame shows. Far marks thin each other out by collision, so the two dozen closed trails around Doodletown read as a handful of crosses rather than a scribble. They draw above the waypoint pins, and the pins ignore collision, so no pin is hidden by one. Whether they outshout the pins is the question this frame is here to answer.'
 export const alt =
-  'The map screen over Bear Mountain State Park and the lower Hudson at zoom 10: a web of thin red trail lines with the Appalachian Trail heavier among them, and around Bear Mountain a dense cluster of short wide marks laid across the lines, each a red and white block inside a dark outline where a closure runs alone, and over Doodletown a single red mass shot through with white wedges where two dozen trails are closed at once'
+  'The map screen over Bear Mountain State Park and the lower Hudson at zoom 10: a web of thin red trail lines with the Appalachian Trail heavier among them, waypoint pins, and around Bear Mountain a few bold dark x marks with white edges, each over a short white dotted line where a trail is closed.'
 
 /** Vector tiles from the bucket plus generated contours across a park and
  *  its valley, the same allowance the z13 frame makes. */

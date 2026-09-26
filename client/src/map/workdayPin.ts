@@ -11,9 +11,9 @@
 //
 // poiIcons.ts's rule is that shape is the primary channel and colour the
 // second - a pin has to survive glare, greyscale, and a hiker who is
-// colour-blind. The eight waypoint glyphs are a drop, a house, a tent, a bag,
-// two chevrons, a summit, a P and a privy door; warningPin.ts adds a hollow
-// triangle. A shovel is a T over a stem over a blade, which is none of those
+// colour-blind. The waypoint glyphs are a drop, a house, a tent, a bag, a
+// summit, a P and a privy door (a crossing's two chevrons went with the
+// crossing type, #1674); warningPin.ts adds a hollow triangle. A shovel is a T over a stem over a blade, which is none of those
 // in silhouette: the only glyph here with a narrow waist between two wider
 // ends.
 //

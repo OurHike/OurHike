@@ -315,7 +315,10 @@ POI_SOURCE_KEYS = {
 #:     when a steward exists for the layer they were derived from. A hiker
 #:     saying "there is no water here" about a derived crossing is telling
 #:     this project its derivation is wrong, which is an issue here rather
-#:     than an ask of USGS.
+#:     than an ask of USGS. Nothing mints `nhd_crossing` since #1674
+#:     withdrew crossings; it stays because the identity ledger keeps those
+#:     5,318 rows as tombstones forever, and a dispute against one of them
+#:     must still resolve to "no steward" rather than to an unknown source.
 UNREGISTERED_POI_SOURCES = frozenset({"atc_csi", "opentrail_at", "nhd_crossing", "nhd_stream"})
 
 

@@ -215,7 +215,12 @@ def fetch_column(layer_url: str, fields: list[str], cache: Path, refetch: bool) 
 def tally(rows: list[dict], spec: dict) -> dict:
     """Bucket one org's rows into poi_types, splitting each by the org's public flag."""
     type_field, public_field, public_yes = spec["type_field"], spec["public_field"], spec["public_yes"]
-    result = {t: {"total": 0, "public": 0, "values": collections.Counter()} for t in POI_TYPES}
+    # POI_TYPES plus whatever the buckets still count. `crossing` left
+    # POI_TYPES in #1674 but stays a bucket here: this is a survey of what an
+    # org PUBLISHES, and a withdrawn type is still something they publish.
+    result = {
+        t: {"total": 0, "public": 0, "values": collections.Counter()} for t in dict.fromkeys([*POI_TYPES, *spec["buckets"]])
+    }
     unmapped: collections.Counter = collections.Counter()
     proposed: collections.Counter = collections.Counter()
     for row in rows:

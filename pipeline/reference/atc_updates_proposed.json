@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-17T07:37:45.378624Z",
+  "generated_at": "2026-09-26T13:23:57.574188Z",
   "reviewed_at": "2026-08-24",
   "candidates": [
     {
@@ -47,48 +47,29 @@
       "reason_not_auto_published": "5 mile references that do not agree on one place"
     },
     {
-      "atc_id": "nc-tn-elk-river-area-debris-removal",
-      "title": "NC/TN: Elk River Area Debris Removal",
-      "category": "Construction",
+      "atc_id": "shenandoah-national-park-backcountry-camping-closure",
+      "title": "Shenandoah National Park: Backcountry Camping Closure",
+      "category": "Closure",
       "states": [
-        "NC",
-        "TN"
+        "VA"
       ],
       "mile_references": [
         {
           "direction": "NOBO",
-          "start": 401.7,
+          "start": 918.7,
           "end": null,
-          "raw": "NOBO mile 401.7"
+          "raw": "NOBO mile 918.7"
         },
         {
           "direction": "NOBO",
-          "start": 402.0,
+          "start": 927.5,
           "end": null,
-          "raw": "NOBO mile 402"
-        },
-        {
-          "direction": "NOBO",
-          "start": 401.6,
-          "end": null,
-          "raw": "NOBO mile 401.6"
+          "raw": "NOBO mile 927.5"
         }
       ],
-      "updated_at": "2026-09-15T13:28:30Z",
-      "source_url": "https://appalachiantrail.org/trail-updates/nc-tn-elk-river-area-debris-removal/",
-      "reason_not_auto_published": "3 mile references that do not agree on one place"
-    },
-    {
-      "atc_id": "pennsylvania-missing-person-2",
-      "title": "Pennsylvania: Missing Person",
-      "category": "Alert",
-      "states": [
-        "PA"
-      ],
-      "mile_references": [],
-      "updated_at": "2026-09-03T12:57:04Z",
-      "source_url": "https://appalachiantrail.org/trail-updates/pennsylvania-missing-person-2/",
-      "reason_not_auto_published": "0 mile references that do not agree on one place"
+      "updated_at": "2026-09-25T22:11:34Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/shenandoah-national-park-backcountry-camping-closure/",
+      "reason_not_auto_published": "2 mile references that do not agree on one place"
     }
   ]
 }

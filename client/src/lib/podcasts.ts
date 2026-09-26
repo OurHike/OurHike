@@ -182,8 +182,11 @@ export async function fetchPodcastEpisodes(
   online: boolean,
   signal?: AbortSignal,
 ): Promise<PodcastEpisode[] | null> {
-  if (!DATA_CONFIGURED) return null
+  // The kept copy first and unconditionally, like useSuggestedHikes' recall:
+  // a copy this phone holds is an answer whether or not this build could
+  // fetch a fresh one.
   if (!online) return recalled()
+  if (!DATA_CONFIGURED) return null
   try {
     const response = await fetch(dataUrl(PODCAST_EPISODES_KEY), { signal })
     if (!response.ok) return recalled()

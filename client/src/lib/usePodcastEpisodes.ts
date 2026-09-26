@@ -24,7 +24,7 @@ export function usePodcastEpisodes(
   const fetched = useRef(false)
 
   useEffect(() => {
-    if (!DATA_CONFIGURED || !ready) return
+    if (!ready) return
     let wanted = true
     // Guarded like useSuggestedHikes: idb-keyval throws synchronously where
     // there is no IndexedDB at all, and either way the answer is "nothing".

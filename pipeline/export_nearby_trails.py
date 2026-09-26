@@ -713,8 +713,16 @@ def keep_reason(source: dict, properties: dict, geometry, owned: dict[str, str],
     # "It's OurHike, not OurBike" applied with the only evidence the layer
     # offers. sources.json's `excluded_when_comment` on that entry carries the
     # measurement and says why MTNBIKE, HORSE and XCSKI are NOT in the set.
+    #
+    # `excluded_unless` is the exception to it (#1646), and it exists because
+    # GRANIT's 2026-09 schema can say both things about one row: 633 rows read
+    # HIKING 'Y' AND a snowmobile or OHRV flag (560 mi, measured 2026-09-26).
+    # The steward saying "you may walk this" outranks a motorized flag on the
+    # same row, so a row matching `excluded_unless` is never dropped by
+    # `excluded_when` - it is shared ground, not a snowmobile corridor.
+    spared = any(properties.get(field) in values for field, values in (source.get("excluded_unless") or {}).items())
     for field, values in (source.get("excluded_when") or {}).items():
-        if properties.get(field) in values:
+        if properties.get(field) in values and not spared:
             return f"excluded use: {field}={properties.get(field)!r}"
 
     status_field = source.get("status_field")
@@ -726,6 +734,32 @@ def keep_reason(source: dict, properties: dict, geometry, owned: dict[str, str],
         return f"route owned by {owned[str(properties.get(name_field)).strip()]}"
 
     return None
+
+
+def missing_declared_fields(source: dict, features: list[dict]) -> list[str]:
+    """The fields a registry entry names that appear on NO fetched feature.
+
+    WHY THIS EXISTS (#1646). Every filter in keep_reason() reads a column by
+    the name sources.json gives it, and `properties.get(name)` on a column
+    that does not exist returns None rather than failing. So when NH GRANIT
+    republished its trails layer in September 2026 and renamed SNOWMBL/ATV
+    to SNOWMACHIN/OHRV, `excluded_when` matched nothing, every snowmobile
+    corridor in the state shipped as a hiking trail, and the run was green -
+    measured 2026-09-26, 2,375 mi of motorized-only corridor in the
+    published release, and the #1646 mileage jump nobody could explain. A
+    column that is null on every row is a data question; a column that is
+    ABSENT from every row is the registry describing a layer that no longer
+    exists, and that is a stop.
+
+    Only the keys the entry states are checked - `name_field`'s "Name"
+    default is not, because a source that never declared it never claimed
+    the column."""
+    declared = [source.get(key) for key in ("name_field", "foot_field", "blaze_field", "status_field")]
+    declared += list(source.get("excluded_when") or {}) + list(source.get("excluded_unless") or {})
+    present: set[str] = set()
+    for feature in features:
+        present.update((feature.get("properties") or {}).keys())
+    return [field for field in dict.fromkeys(declared) if field and field not in present]
 
 
 def declared_name(source: dict, properties: dict):
@@ -1476,6 +1510,16 @@ def main() -> dict:
                 f"({key} is registered as an external layer, so it is not part of fetch_all.py's A.T. fetch.)"
             )
         features = json.loads(raw_path.read_text(encoding="utf-8")).get("features", [])
+        # Before any filter runs, so a renamed column fails the run rather
+        # than turning its filter into a no-op (#1646). An empty layer is
+        # fail_if_incomplete()'s question, not this one.
+        missing = missing_declared_fields(source, features) if features else []
+        if missing:
+            raise SystemExit(
+                f"{key}: sources.json names {missing}, and none of the {len(features):,} fetched features carries "
+                f"{'it' if len(missing) == 1 else 'them'}. The layer's schema has changed - re-read its fields "
+                f"at {source.get('url')} and update the registry entry before exporting."
+            )
         records, stats = build_records(source, features, owned, load_boundary(source))
 
         print(f"  {key}: {stats['kept']} of {len(features)} features kept")

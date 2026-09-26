@@ -571,8 +571,16 @@
       "licence_basis": "stated_by_org",
       "attribution": "© Pacific Crest Trail Association, CC BY 4.0",
       "load": "ship",
-      "why": "The cleanest row in the catalogue: a named licence an org chose, on a live FeatureServer, for a 2,650-mile National Scenic Trail. CC BY 4.0's attribution can be met by the sources screen export_sources.py already builds.",
-      "already": null
+      "why": "The cleanest row in the catalogue: a named licence an org chose, on a live FeatureServer, for a 2,650-mile National Scenic Trail. CC BY 4.0's attribution can be met by the sources screen export_sources.py already builds. ARCGIS ONLINE: `PCTA_Admin` is this organization's own account and publishes 'PCTA's own administrative account'. THIS BRANCH FIRST REPORTED THAT ONLY TWO ORGANIZATIONS PUBLISH THEIR OWN TRAILS FROM THEIR OWN ACCOUNT, AND THAT WAS WRONG - the matcher missed account spellings like this one. Six do.",
+      "already": null,
+      "agol": {
+        "owned": true,
+        "title": "PCTA's own administrative account",
+        "owner": "PCTA_Admin",
+        "features": null,
+        "url": null,
+        "note": "An organization-official account, found on the 2026-09-26 sweep and MISSED BY ITS FIRST PASS because the owner-name matcher did not recognise the account spelling."
+      }
     },
     {
       "slug": "cdtc",
@@ -666,8 +674,16 @@
       "licence_basis": "public_domain",
       "attribution": "USDA Forest Service / Florida Trail Association",
       "load": "via",
-      "why": "FTA relies on USFS Region 8 for the authoritative centerline rather than publishing its own, so the Forest Service row already carries it.",
-      "already": null
+      "why": "FTA relies on USFS Region 8 for the authoritative centerline rather than publishing its own, so the Forest Service row already carries it. ARCGIS ONLINE: `FloridaTrailAssociation` is this organization's own account and publishes 'Florida National Scenic Trail Line'. THIS BRANCH FIRST REPORTED THAT ONLY TWO ORGANIZATIONS PUBLISH THEIR OWN TRAILS FROM THEIR OWN ACCOUNT, AND THAT WAS WRONG - the matcher missed account spellings like this one. Six do.",
+      "already": null,
+      "agol": {
+        "owned": true,
+        "title": "Florida National Scenic Trail Line",
+        "owner": "FloridaTrailAssociation",
+        "features": null,
+        "url": null,
+        "note": "An organization-official account, found on the 2026-09-26 sweep and MISSED BY ITS FIRST PASS because the owner-name matcher did not recognise the account spelling."
+      }
     },
     {
       "slug": "ata",
@@ -685,8 +701,16 @@
       "licence_basis": "public_domain",
       "attribution": "Arizona Trail Association",
       "load": "via",
-      "why": "Distributed through AZGeo and USFS Region 3, both already rows here.",
-      "already": null
+      "why": "Distributed through AZGeo and USFS Region 3, both already rows here. ARCGIS ONLINE: `AzTrailsAssn_official_azgeo` is this organization's own account and publishes 'Arizona National Scenic Trail, the association's own'. THIS BRANCH FIRST REPORTED THAT ONLY TWO ORGANIZATIONS PUBLISH THEIR OWN TRAILS FROM THEIR OWN ACCOUNT, AND THAT WAS WRONG - the matcher missed account spellings like this one. Six do.",
+      "already": null,
+      "agol": {
+        "owned": true,
+        "title": "Arizona National Scenic Trail, the association's own",
+        "owner": "AzTrailsAssn_official_azgeo",
+        "features": null,
+        "url": null,
+        "note": "An organization-official account, found on the 2026-09-26 sweep and MISSED BY ITS FIRST PASS because the owner-name matcher did not recognise the account spelling."
+      }
     },
     {
       "slug": "pnta",
@@ -1241,11 +1265,19 @@
       "licence_basis": "maintainer_authorisation",
       "load": "via",
       "already": null,
-      "why": "One of the thirty clubs whose sections consolidate into the ATC centerline this repository already fetches. ATC's trail_club_sections layer carries one polygon per club, so the club is already on the map as a maintainer even though it publishes no geometry of its own.",
+      "why": "One of the thirty clubs whose sections consolidate into the ATC centerline this repository already fetches. ATC's trail_club_sections layer carries one polygon per club, so the club is already on the map as a maintainer even though it publishes no geometry of its own. ARCGIS ONLINE: `RMC_cartographer` is this organization's own account and publishes 'Randolph Mountain Club's cartographer account'. THIS BRANCH FIRST REPORTED THAT ONLY TWO ORGANIZATIONS PUBLISH THEIR OWN TRAILS FROM THEIR OWN ACCOUNT, AND THAT WAS WRONG - the matcher missed account spellings like this one. Six do.",
       "endpoint": null,
       "endpoint_kind": null,
       "confidence": "inferred",
-      "attribution": null
+      "attribution": null,
+      "agol": {
+        "owned": true,
+        "title": "Randolph Mountain Club's cartographer account",
+        "owner": "RMC_cartographer",
+        "features": null,
+        "url": null,
+        "note": "An organization-official account, found on the 2026-09-26 sweep and MISSED BY ITS FIRST PASS because the owner-name matcher did not recognise the account spelling."
+      }
     },
     {
       "slug": "doc",
@@ -1790,21 +1822,13 @@
       "licence": "unstated",
       "licence_basis": "unstated",
       "load": "hold",
-      "why": "No open dataset found by the research pass. A ski trail rather than a hiking trail, which is a scope question before it is a data one. ARCGIS ONLINE: A personal account, 68 features. A lead, not a source. ArcGIS Online item search, swept 2026-09-26 by this repository across all 172 rows.",
+      "why": "No open dataset found by the research pass. A ski trail rather than a hiking trail, which is a scope question before it is a data one. ARCGIS ONLINE: an item exists under `jnugent` and IS NOT USED - a bare personal handle. EXCLUDED BY THE PERSONAL-ACCOUNT RULE (maintainer, 2026-09-26): an ArcGIS Online item is evidence only when an institution published it - the organization itself, or a government, agency or university account. A bare personal handle is not. It carries no licence anybody stated, nobody is accountable for it, and it vanishes with the account.",
       "endpoint": null,
       "endpoint_kind": null,
       "confidence": "inferred",
       "via": null,
       "attribution": null,
-      "already": null,
-      "agol": {
-        "owned": false,
-        "title": "CT_area_FootTrails",
-        "owner": "jnugent",
-        "features": 68,
-        "url": null,
-        "note": "A personal account, 68 features. A lead, not a source."
-      }
+      "already": null
     },
     {
       "slug": "cohos",
@@ -2541,16 +2565,8 @@
       "licence_basis": "unstated",
       "attribution": "Tahoe Rim Trail Association",
       "load": "hold",
-      "why": "The research calls this best-in-class self-publishing: shapefile, GPX and KMZ, free, behind an email form. The email gate is the problem, not the terms — a form-gated download is not a URL a nightly freshness check can poll, so it fails SOURCE_REGISTRY.md's re-readability test the same way a flat file does. Worth one email asking for a stable URL. ARCGIS ONLINE: THE LAYER IS LITERALLY NAMED TRT_System_Shapefile and holds 236 features - the same system shapefile the association releases only behind an email form. The owner is Esri's own JS API team, so this is a third party mirroring it rather than the association publishing it, and asking them remains the honest route. ArcGIS Online item search, swept 2026-09-26 by this repository across all 172 rows.",
-      "already": null,
-      "agol": {
-        "owned": false,
-        "title": "Tahoe Rim Trail",
-        "owner": "jsapi_team",
-        "features": 236,
-        "url": "https://services.arcgis.com/V6ZHFr6zdgNZuVG0/arcgis/rest/services/Tahoe_Rim_Trail/FeatureServer",
-        "note": "THE LAYER IS LITERALLY NAMED TRT_System_Shapefile and holds 236 features - the same system shapefile the association releases only behind an email form. The owner is Esri's own JS API team, so this is a third party mirroring it rather than the association publishing it, and asking them remains the honest route."
-      }
+      "why": "The research calls this best-in-class self-publishing: shapefile, GPX and KMZ, free, behind an email form. The email gate is the problem, not the terms — a form-gated download is not a URL a nightly freshness check can poll, so it fails SOURCE_REGISTRY.md's re-readability test the same way a flat file does. Worth one email asking for a stable URL. ARCGIS ONLINE: an item exists under `jsapi_team` and IS NOT USED - Esri's JavaScript API demo team - not personal, but not the data owner either, and a sample mirror is not a publication. EXCLUDED BY THE PERSONAL-ACCOUNT RULE (maintainer, 2026-09-26): an ArcGIS Online item is evidence only when an institution published it - the organization itself, or a government, agency or university account. A bare personal handle is not. It carries no licence anybody stated, nobody is accountable for it, and it vanishes with the account.",
+      "already": null
     },
     {
       "slug": "wta",
@@ -2943,21 +2959,13 @@
       "licence": null,
       "licence_basis": null,
       "load": "none",
-      "why": "A published route stitched across trails other organizations maintain. There is no maintaining organization and no geometry of its own to load, now or later. Steve Roper's guidebook route; cross-country travel. ARCGIS ONLINE: a 'Sierra High Route Line' layer exists (1 feature(s), owner gdurkee_gis_cc), and this row stays `none` BECAUSE A DRAWN LINE IS NOT A MAINTAINED TRAIL. Nobody maintains this route, so shipping somebody's traced line as a trail would make exactly the claim the route-only verdict exists to refuse. ArcGIS Online item search, swept 2026-09-26 by this repository across all 172 rows.",
+      "why": "A published route stitched across trails other organizations maintain. There is no maintaining organization and no geometry of its own to load, now or later. Steve Roper's guidebook route; cross-country travel. ARCGIS ONLINE: an item exists under `gdurkee_gis_cc` and IS NOT USED - a personal handle. EXCLUDED BY THE PERSONAL-ACCOUNT RULE (maintainer, 2026-09-26): an ArcGIS Online item is evidence only when an institution published it - the organization itself, or a government, agency or university account. A bare personal handle is not. It carries no licence anybody stated, nobody is accountable for it, and it vanishes with the account.",
       "endpoint": null,
       "endpoint_kind": null,
       "confidence": "inferred",
       "via": null,
       "attribution": null,
-      "already": null,
-      "agol": {
-        "owned": false,
-        "title": "Sierra High Route Line",
-        "owner": "gdurkee_gis_cc",
-        "features": 1,
-        "url": null,
-        "note": "Geometry exists and the verdict does not change."
-      }
+      "already": null
     },
     {
       "slug": "lowest-highest",
@@ -3357,5 +3365,18 @@
     }
   ],
   "_probe_pass": "A second pass on 2026-09-17 probed the endpoints live from this repository rather than inferring them. It moved 11 rows to `via` on measured feature counts, corrected the COTREX endpoint from a Hub page to a queryable layer, ruled the Cohos Trail out of NH GRANIT by measurement, and added five organizations the research pass omitted ENTIRELY THOUGH OURHIKE ALREADY SHIPS THEIR DATA - NYS DEC, NH GRANIT, Mohonk Preserve, NYC Parks and NYC DOT. Every count in a `why` that says 'counted live 2026-09-17' is this pass's and is re-runnable. A SECOND ROUND probed eight state clearinghouses and added four more organizations the research pass omitted - MassGIS, CT DEEP, PASDA and North Carolina's own Mountains-to-Sea layer - moving nine more rows off `hold`. It also ruled two cheap answers out by measurement: the Superior Hiking Trail is not in MN DNR's state trails layer, and NC OneMap's recreation service holds only paddle trails.",
-  "_agol_sweep": "All 172 rows searched against the ArcGIS Online public item catalogue on 2026-09-26, after the maintainer observed that the Appalachian Mountain Club publishes no map on outdoors.org and has trail data on ArcGIS Online. 39 of 172 rows have a trail-shaped item. ONLY TWO ARE THE ORGANIZATION'S OWN ACCOUNT publishing its own trails - Alaska Trails and Mohonk Preserve - and the rest are third parties, counties, agencies or individuals, which is a lead rather than a grant and is recorded as such. The distinction matters: an item somebody else uploaded is not the organization choosing to publish, and the licence question has not been asked of anybody."
+  "_agol_sweep": "All 172 rows searched against the ArcGIS Online public item catalogue on 2026-09-26, after the maintainer observed that the Appalachian Mountain Club publishes no map on outdoors.org and has trail data on ArcGIS Online. 39 rows have a trail-shaped item. SIX ORGANIZATIONS PUBLISH THEIR OWN TRAILS FROM THEIR OWN ACCOUNT - Alaska Trails, Mohonk Preserve, the Appalachian Mountain Club, the Florida Trail Association, the Arizona Trail Association and PCTA - plus Randolph Mountain Club's cartographer account. The first pass said two, which was wrong: the owner-name matcher did not recognise spellings like `FloridaTrailAssociation` or `PCTA_Admin`. EXCLUDED BY THE PERSONAL-ACCOUNT RULE (maintainer, 2026-09-26): an ArcGIS Online item is evidence only when an institution published it - the organization itself, or a government, agency or university account. A bare personal handle is not. It carries no licence anybody stated, nobody is accountable for it, and it vanishes with the account. Three items were dropped under it: `jnugent` (Catamount), `gdurkee_gis_cc` (Sierra High Route) and `jsapi_team` (Tahoe Rim, Esri's demo team rather than the association). Everything kept is an organization, a county, an agency or a university account, and an institutional account is still a lead rather than a grant - the licence question has been asked of nobody.",
+  "_agol_accepted_owners": {
+    "_comment": "The ONLY ArcGIS Online accounts whose items this catalogue will cite, and why each is an institution rather than a person (maintainer's rule, 2026-09-26). Adding a name here is a deliberate, reviewed act, which is the point - the same shape as org_marks. test_trail_orgs.py fails on an `agol.owner` that is not listed.",
+    "alaskatrails": "Alaska Trails' own organizational account.",
+    "epestone@mohonkpreserve.org": "A named person at the mohonkpreserve.org domain - the org's own.",
+    "cpoppenwimer_AMC": "The `_AMC` suffix is the Appalachian Mountain Club's ArcGIS organization.",
+    "FloridaTrailAssociation": "The Florida Trail Association's own account.",
+    "AzTrailsAssn_official_azgeo": "The Arizona Trail Association's official account in AZGeo.",
+    "PCTA_Admin": "The Pacific Crest Trail Association's own administrative account.",
+    "RMC_cartographer": "Randolph Mountain Club's cartographer account - a role, not a person.",
+    "amy.lewis_lakecountymn": "A named county employee's work account in Lake County, Minnesota's ArcGIS organization - government, and the county the Superior Hiking Trail's north half runs through.",
+    "jlrooks_cesamusace": "A named employee's work account in the US Army Corps of Engineers' organization (`cesamusace` - South Atlantic Division, Mobile District). Federal.",
+    "MRWMgis": "A water management district's GIS account. Government."
+  }
 }

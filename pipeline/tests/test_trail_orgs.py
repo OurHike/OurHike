@@ -145,3 +145,33 @@ def test_nothing_in_the_catalogue_is_registered_as_shipping_by_this_file_alone(o
     assert not any("reaches_hikers" in org for org in orgs), (
         "trail_orgs.json must not carry reaches_hikers - that field belongs to sources.json, where a merge is what sets it"
     )
+
+
+def test_no_arcgis_evidence_comes_from_a_personal_account(catalogue, orgs):
+    """The maintainer's rule of 2026-09-26: an institution, or it is not evidence.
+
+    An item under a bare personal handle carries no licence anybody stated,
+    leaves nobody accountable for it, and vanishes with the account. Three were
+    dropped when the rule landed - `jnugent` on the Catamount Trail,
+    `gdurkee_gis_cc` on the Sierra High Route, and `jsapi_team` on the Tahoe Rim
+    Trail, that last one being Esri's own demo team rather than a person and
+    still not the association publishing its map.
+
+    The allowlist is explicit rather than pattern-matched because "is this
+    account an institution" is a judgement, and a regex that guessed it would
+    be the kind of confident wrong answer the evidence standard exists to stop.
+    """
+    accepted = {k for k in catalogue["_agol_accepted_owners"] if not k.startswith("_")}
+    cited = {o["agol"]["owner"] for o in orgs if o.get("agol")}
+    unvetted = sorted(cited - accepted)
+    assert unvetted == [], (
+        f"these ArcGIS Online accounts are cited but not vetted as institutional: {unvetted}. "
+        "Add the account to _agol_accepted_owners with the reason it is an institution, or "
+        "drop the citation."
+    )
+
+
+def test_every_accepted_arcgis_owner_says_why_it_is_an_institution(catalogue):
+    """An allowlist entry with no reason is an allowlist nobody can review."""
+    thin = sorted(k for k, v in catalogue["_agol_accepted_owners"].items() if not k.startswith("_") and len(str(v).strip()) < 25)
+    assert thin == [], f"accepted owners with no stated reason: {thin}"

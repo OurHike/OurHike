@@ -271,57 +271,78 @@ did so on a feature count anybody can re-run.**
 
 ### Round three: the ArcGIS Online catalogue, not the organization's website
 
-The maintainer's observation of 2026-09-26 is the whole reason for this round: *"AMC has no map on
-its website. But that is available in arcgis."* Both halves are true, and the second one was never
-checked — the first two rounds probed each organization's **own server root**, which finds nothing
-when an organization has no server of its own but does have an ArcGIS Online account.
+The maintainer's observation of 2026-09-26 is the reason for this round: *"AMC has no map on its
+website. But that is available in arcgis."* Both halves are true, and the second was never checked —
+the first two rounds probed each organization's **own server root**, which finds nothing when an
+organization has no server of its own but does have an ArcGIS Online account.
 
-All 172 rows searched against the public ArcGIS Online item catalogue. **39 of 172 have a
-trail-shaped item.** The finding that matters is how few of those are the organization itself:
+All 172 rows searched against the public ArcGIS Online item catalogue. **39 have a trail-shaped
+item.**
 
-**Only two organizations publish their own trails from their own account.**
+**Six organizations publish their own trails from their own account:**
 
-| org | item | features | was |
-| --- | --- | ---: | --- |
-| **Alaska Trails** | `Alaska_Trail_Database`, owner `alaskatrails` | **1,602** | `hold` — "no findable data" |
-| Mohonk Preserve | `Mohonk Preserve: Trails and Carriage Roads` | 304 | already registered |
+| org | account | item |
+| --- | --- | --- |
+| **Alaska Trails** | `alaskatrails` | `Alaska_Trail_Database` — **1,602 features** |
+| Mohonk Preserve | `epestone@mohonkpreserve.org` | Trails and Carriage Roads — 304 |
+| Appalachian Mountain Club | `cpoppenwimer_AMC` | 702 items, incl. `HT_entire_trail_network` |
+| Florida Trail Association | `FloridaTrailAssociation` | Florida National Scenic Trail Line |
+| Arizona Trail Association | `AzTrailsAssn_official_azgeo` | Arizona National Scenic Trail |
+| Pacific Crest Trail Association | `PCTA_Admin` | its own administrative account |
 
-Alaska Trails is the verdict this round moves. It was recorded as advocacy-only with nothing to
-fetch; it has a 1,602-feature trail database, plus `AKLT Trail Segments` (286) and four regional
-layers, published from its own account.
+Alaska Trails is the one verdict this round moves: recorded as advocacy-only with nothing to fetch,
+it has a 1,602-feature trail database and publishes it itself.
 
-**AMC is the case that prompted the round, and it is stranger than expected.** 702 items under
-`cpoppenwimer_AMC` — `HT_entire_trail_network`, `PA Highlands Land Trails`, `AMC Destinations`,
-`AMC Properties and Landscapes`, `Appalachian Trail Mid Atlantic Region`, `AMC Chapter Boundaries`.
+**This round first reported that only *two* organizations did, and that was wrong.** The owner-name
+matcher did not recognise account spellings like `FloridaTrailAssociation` or `PCTA_Admin`, so four
+organization-official accounts were filed as third parties. The correction is recorded in each row
+rather than quietly swapped, because "only two clubs publish their own data" is exactly the kind of
+too-tidy finding that would have been repeated.
+
+**AMC is the case that prompted the round, and it is stranger than expected.** 702 items —
+`HT_entire_trail_network`, `PA Highlands Land Trails`, `AMC Destinations`, `AMC Chapter Boundaries`.
 But that is AMC's **Highlands and mid-Atlantic conservation programme**, not the White Mountain trail
 inventory the row was held for. So "no findable data" was wrong and the White Mountains question is
-still open — which is a more useful state than either "no data" or "solved".
+still open — a more useful state than either "no data" or "solved".
 
-**Three leads that change a reason without changing a verdict:**
+**Two institutional leads change a reason without changing a verdict:**
 
-- **Superior Hiking Trail** — Lake County, Minnesota publishes `Superior_Hiking`, **576 features**.
-  That is the first lead on the 267 miles MN DNR's state trails layer does not carry. A county, not
-  the association.
-- **Tahoe Rim Trail** — a layer literally named `TRT_System_Shapefile`, **236 features**: the same
-  system shapefile the association releases only behind an email form. The owner is Esri's own JS API
-  team, so this is a third party mirroring it, and asking the association is still the honest route.
-- **USACE** — a Corps district account publishes 149 recreational-trail features. One district
-  rather than the nationwide centerline, so the row stays held and its reason improves from "nothing
-  found" to "found one district".
+- **Superior Hiking Trail** — Lake County, Minnesota publishes `Superior_Hiking`, **576 features**:
+  the first lead on the 267 miles MN DNR's state trails layer does not carry. A county, not the
+  association.
+- **USACE** — a Corps district account publishes 149 recreational-trail features. One district rather
+  than the nationwide centerline, so the row stays held and its reason improves from "nothing found"
+  to "found one district".
 
-**Two route-only trails have geometry and stay `none`, which is the point.** A `Sierra High Route
-Line` (1 feature, a personal account) and `The Grand Enchantment Trail` (41 features, a water
-management district) both exist. Nobody maintains either route, so shipping a traced line as a trail
-would make exactly the claim the route-only verdict refuses. Geometry existing is not a trail
-existing.
+### An item from a personal account is not evidence
 
-**Why "found on ArcGIS Online" is weaker evidence than it looks.** Thirty-seven of the 39 hits belong
-to somebody other than the organization — counties, state agencies, university accounts, Esri
-itself, private individuals. An item a third party uploaded is not the organization choosing to
-publish, carries no licence anybody stated, and can vanish when its uploader's account does. Each is
-recorded in the row's `agol` field as a lead with its owner named, and none of them moves a row to
-`ship` on its own.
+The maintainer's rule, 2026-09-26: **an ArcGIS Online item counts only when an institution published
+it** — the organization itself, or a government, agency or university account. A bare personal handle
+does not. It carries no licence anybody stated, leaves nobody accountable for it, and vanishes with
+the account.
 
+Three citations were dropped under it, having been recorded earlier in this branch:
+
+| org | account | why it went |
+| --- | --- | --- |
+| Catamount Trail | `jnugent` | a bare personal handle |
+| Sierra High Route | `gdurkee_gis_cc` | a personal handle |
+| Tahoe Rim Trail | `jsapi_team` | Esri's JavaScript API **demo team** — not personal, and not the data owner either. A sample mirror of `TRT_System_Shapefile` is not the association publishing its map, and asking them is still the honest route. |
+
+`_agol_accepted_owners` in the catalogue lists every account that survives, with the reason each is an
+institution, and `test_no_arcgis_evidence_comes_from_a_personal_account` fails on a citation that is
+not listed. **The allowlist is explicit rather than pattern-matched** because "is this account an
+institution" is a judgement, and a regex guessing it would be the confident wrong answer this
+project's evidence standard exists to stop.
+
+**An institutional account is still a lead rather than a grant.** Lake County publishing the Superior
+Hiking Trail is not the association choosing to publish it, and the licence question has been asked
+of nobody.
+
+**Two route-only trails have geometry and stay `none`, which is the point.** `The Grand Enchantment
+Trail` is 41 features from a water management district. Nobody maintains the route, so shipping a
+traced line as a trail would make exactly the claim the route-only verdict refuses. Geometry existing
+is not a trail existing.
 
 ## Filling the form: one run, not 172 people typing
 

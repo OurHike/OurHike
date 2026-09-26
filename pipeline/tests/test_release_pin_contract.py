@@ -117,12 +117,17 @@ def test_the_root_scoped_lists_stay_short(source):
     The rule is an exclusion so that a new artifact is versioned by default
     (lib/releases.is_release_artifact's own reasoning). That property is only
     worth anything while the exclusion list is something a reader can hold in
-    their head. Three today - the third, `archive/`, arrived with #1574 as a
-    one-time snapshot a release cannot rebuild - and this fails on the fourth,
-    which is the moment to ask whether the rule has stopped being an
-    exclusion.
+    their head. The third, `archive/`, arrived with #1574 as a one-time
+    snapshot a release cannot rebuild.
+
+    The fourth, `podcasts/`, arrived with #1683, and this test did its job on
+    it: the question it asks was put to the maintainer before the prefix was
+    added, and answered (poll, 2026-09-26) with a live episode list outside
+    the pin, chosen over a release-scoped one knowing it was a new exception.
+    Four is still a list a reader holds in their head; this fails on the
+    fifth, which is the moment to ask again.
     """
     prefixes, root_keys = _root_scoped(source)
 
-    assert sorted(prefixes) == ["archive/", "conditions/", "photos/"]
+    assert sorted(prefixes) == ["archive/", "conditions/", "photos/", "podcasts/"]
     assert root_keys == ["latest.json"]

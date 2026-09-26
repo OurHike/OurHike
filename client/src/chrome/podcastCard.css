@@ -62,11 +62,22 @@
 }
 
 .podcast-card__episode {
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--border-1);
+}
+
+.podcast-card__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.podcast-card__meta {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 10px 14px 12px;
-  border-top: 1px solid var(--border-1);
 }
 
 .podcast-card__show,
@@ -96,54 +107,79 @@
 .podcast-card__player {
   display: block;
   width: 100%;
-  margin-top: 8px;
+  margin-top: 10px;
   border: 0;
   border-radius: 12px;
 }
 
 .podcast-card__actions {
+  flex: none;
   display: flex;
-  flex-wrap: wrap;
   gap: 8px;
-  margin-top: 8px;
 }
 
-.podcast-card__button {
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-  padding: 0 14px;
+/* Icons beside the title, the maintainer's pick (poll, 2026-09-26) after
+   44px pills and then 32px ones. The circle is 36px; the tap target is 44px,
+   carried by the ::after, because a smaller button is not a licence for a
+   smaller thumb. */
+.podcast-card__icon {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
   border: 1.5px solid var(--brand-primary);
-  border-radius: var(--radius-pill);
+  border-radius: 50%;
   background: transparent;
   color: var(--brand-primary);
-  font-family: var(--font-body);
-  font-size: var(--text-body-s);
-  font-weight: var(--weight-semibold);
-  text-decoration: none;
   cursor: pointer;
 }
 
-.podcast-card__button--solid {
+.podcast-card__icon::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+}
+
+.podcast-card__icon--solid {
   background: var(--brand-primary);
   color: var(--fg-on-brand);
 }
 
-.podcast-card__button--solid:disabled {
+.podcast-card__icon--solid:disabled {
   opacity: 0.6;
   cursor: progress;
 }
 
-.podcast-card__button--done,
-.podcast-card__button--quiet {
+.podcast-card__icon--done {
   border-color: var(--border-2);
   color: var(--fg-2);
+  cursor: default;
 }
 
-.podcast-card__button--quiet {
-  min-height: 36px;
+/* The one text button left: Disconnect, in the status line. */
+.podcast-card__button {
+  position: relative;
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
   padding: 0 10px;
+  border: 1.5px solid var(--border-2);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--fg-2);
+  font-family: var(--font-body);
   font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.podcast-card__button::after {
+  content: '';
+  position: absolute;
+  inset: -8px -2px;
 }
 
 .podcast-card__warning {

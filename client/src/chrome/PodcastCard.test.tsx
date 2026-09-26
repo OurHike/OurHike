@@ -70,7 +70,9 @@ describe('PodcastCard, first look (frame 1)', () => {
     expect(within(row('The geology here')).getByText('1 h 12 min')).toBeTruthy()
     expect(container.querySelector('iframe')).toBeNull()
     expect(
-      screen.getByText('The first Save asks you to connect Spotify, once.'),
+      screen.getByText(
+        '▶ plays it here. + saves it to your Spotify; the first time asks you to connect, once.',
+      ),
     ).toBeTruthy()
   })
 
@@ -133,7 +135,11 @@ describe('PodcastCard, saving', () => {
     )
 
     expect(spotify.saveEpisodeToSpotify).toHaveBeenCalledWith(HISTORY.spotifyId)
-    expect(within(row('The park’s history')).getByText('✓ Saved')).toBeTruthy()
+    expect(
+      within(row('The park’s history')).getByRole('img', {
+        name: '“The park’s history” is saved to Spotify',
+      }),
+    ).toBeTruthy()
     expect(
       within(row('The geology here')).getByRole('button', { name: /Save/ }),
     ).toBeTruthy()
@@ -142,7 +148,11 @@ describe('PodcastCard, saving', () => {
   it('remembers an episode this phone saved before', () => {
     spotify.savedFromHere.mockReturnValue(new Set([GEOLOGY.spotifyId]))
     show()
-    expect(within(row('The geology here')).getByText('✓ Saved')).toBeTruthy()
+    expect(
+      within(row('The geology here')).getByRole('img', {
+        name: '“The geology here” is saved to Spotify',
+      }),
+    ).toBeTruthy()
   })
 
   it('tells an account Spotify has not approved to tap + in Spotify instead (frame 4)', async () => {
@@ -238,7 +248,9 @@ describe('PodcastCard, when a control cannot work', () => {
     expect(container.querySelector('iframe')).toBeNull()
     expect(screen.getAllByRole('link', { name: /in Spotify$/ })).toHaveLength(2)
     expect(
-      screen.getByText('Playing and saving here work in OurHike in a browser.'),
+      screen.getByText(
+        '↗ opens it in Spotify. Playing and saving here work in OurHike in a browser.',
+      ),
     ).toBeTruthy()
   })
 })

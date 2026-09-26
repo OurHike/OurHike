@@ -129,3 +129,108 @@ def test_a_cached_index_is_reused_only_for_its_own_release_and_schema(tmp_path, 
 
     path.write_text(json.dumps({"schema": squares_mod.SCHEMA - 1, "release": "2026-09-24-4"}))
     assert squares_mod.cached_release() is None
+
+
+# --------------------------------------------------------------------------
+# Each square's NWS zones (the warnings slice).
+
+WHITES = [[562, 2074], [563, 2076], [563, 2073]]  # Mount Washington, Pinkham Notch, Lakes of the Clouds
+
+
+def lonlat_box(west, south, east, north):
+    import shapely
+
+    return shapely.box(west, south, east, north)
+
+
+def test_a_square_lists_every_zone_whose_outline_reaches_it():
+    # Two made-up zones split at 71.27 W, which runs between Mount Washington's
+    # and Pinkham Notch's squares; a county covering all three.
+    layers = {
+        "forecast": (["NHZ901", "NHZ902"], [lonlat_box(-71.6, 44.0, -71.27, 44.5), lonlat_box(-71.27, 44.0, -71.0, 44.5)]),
+        "county": (["NHC007"], [lonlat_box(-71.6, 44.0, -71.0, 44.5)]),
+    }
+
+    zones = squares_mod.zones_by_square(WHITES, layers)
+
+    assert zones["county/NHC007"] == sorted(WHITES)
+    assert [562, 2074] in zones["forecast/NHZ901"] and [562, 2074] not in zones["forecast/NHZ902"]
+    assert [563, 2076] in zones["forecast/NHZ902"]
+
+
+def test_a_forecast_zone_and_a_fire_zone_with_one_id_stay_apart():
+    # NWS reuses ids across kinds: forecast zone NHZ010 and fire weather zone
+    # NHZ010 can be different outlines, and a Red Flag Warning names the fire one.
+    layers = {
+        "forecast": (["NHZ010"], [lonlat_box(-71.6, 44.0, -71.27, 44.5)]),
+        "fire": (["NHZ010"], [lonlat_box(-71.27, 44.0, -71.0, 44.5)]),
+    }
+
+    zones = squares_mod.zones_by_square(WHITES, layers)
+
+    assert set(zones) == {"forecast/NHZ010", "fire/NHZ010"}
+    assert zones["forecast/NHZ010"] != zones["fire/NHZ010"]
+
+
+def test_a_zone_drawn_as_two_rows_is_one_entry_and_far_zones_are_absent():
+    # c_16ap26 draws a county split between two forecast offices as two rows.
+    layers = {
+        "county": (
+            ["NHC007", "NHC007", "GAC111"],
+            [lonlat_box(-71.6, 44.0, -71.27, 44.5), lonlat_box(-71.27, 44.0, -71.0, 44.5), lonlat_box(-84.4, 34.5, -84.0, 34.8)],
+        )
+    }
+
+    assert squares_mod.zones_by_square(WHITES, layers) == {"county/NHC007": sorted(WHITES)}
+
+
+def test_a_zone_file_whose_md5_is_not_the_pinned_one_is_refused(tmp_path, monkeypatch):
+    monkeypatch.setattr(squares_mod, "ZONES_DIR", tmp_path)
+    url, _, id_sql = squares_mod.ZONE_FILES["county"]
+    monkeypatch.setitem(squares_mod.ZONE_FILES, "county", (url, "0" * 32, id_sql))
+    monkeypatch.setattr(squares_mod, "download_with_retry", lambda url, dest, **kw: dest.write_bytes(b"a different file"))
+
+    with pytest.raises(RuntimeError, match="MD5"):
+        squares_mod.fetch_zone_file("county")
+    assert not (tmp_path / url.rsplit("/", 1)[-1]).exists()
+
+
+def test_a_zone_file_already_on_disk_with_the_pinned_md5_is_not_downloaded_again(tmp_path, monkeypatch):
+    import hashlib
+
+    body = b"shapefile bytes"
+    url, _, id_sql = squares_mod.ZONE_FILES["fire"]
+    monkeypatch.setattr(squares_mod, "ZONES_DIR", tmp_path)
+    monkeypatch.setitem(squares_mod.ZONE_FILES, "fire", (url, hashlib.md5(body).hexdigest(), id_sql))
+    (tmp_path / url.rsplit("/", 1)[-1]).write_bytes(body)
+    monkeypatch.setattr(squares_mod, "download_with_retry", lambda *a, **kw: pytest.fail("downloaded a file it had"))
+
+    assert squares_mod.fetch_zone_file("fire").read_bytes() == body
+
+
+def test_a_county_id_is_spelled_the_way_nws_alerts_spell_it(tmp_path):
+    # A real round trip through the zip reader, on a one-row shapefile shaped
+    # like c_16ap26's: FIPS 24031 must come back as MDC031, the id in
+    # api.weather.gov/zones/county/MDC031.
+    import zipfile
+
+    import duckdb
+
+    folder = tmp_path / "c_test"
+    folder.mkdir()
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    con.execute(
+        "COPY (SELECT 'MD' AS STATE, '24031' AS FIPS, ST_GeomFromText('POLYGON((-77.5 39.0, -77.0 39.0, -77.0 39.3, -77.5 39.3, -77.5 39.0))') AS geom) "
+        f"TO '{folder / 'c_test.shp'}' WITH (FORMAT GDAL, DRIVER 'ESRI Shapefile')"
+    )
+    con.close()
+    archive = tmp_path / "c_test.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        for part in folder.iterdir():
+            zf.write(part, part.name)
+
+    ids, geometries = squares_mod.read_zone_file(archive, squares_mod.ZONE_FILES["county"][2])
+
+    assert ids == ["MDC031"]
+    assert geometries[0].bounds == pytest.approx((-77.5, 39.0, -77.0, 39.3))

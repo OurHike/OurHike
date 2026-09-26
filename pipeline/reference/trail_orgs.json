@@ -105,10 +105,18 @@
       "licence": "public domain",
       "licence_basis": "public_domain",
       "load": "hold",
-      "why": "RIDB carries facilities, not trail centerlines. Recorded so the next person does not re-run this search; nothing here draws a trail.",
+      "why": "RIDB carries facilities, not trail centerlines. Recorded so the next person does not re-run this search; nothing here draws a trail. ARCGIS ONLINE: A Corps district account (Mobile) publishes 149 recreational-trail features. One district rather than the nationwide centerline this row was held for, so the row stays held and the reason changes from 'nothing found' to 'found one district'. ArcGIS Online item search, swept 2026-09-26 by this repository across all 172 rows.",
       "miles": null,
       "attribution": null,
-      "already": null
+      "already": null,
+      "agol": {
+        "owned": true,
+        "title": "Trails_Public View",
+        "owner": "jlrooks_cesamusace",
+        "features": 149,
+        "url": "https://services2.arcgis.com/sdTb0lsRURdKFejG/arcgis/rest/services/Trails_Public_View/FeatureServer",
+        "note": "A Corps district account (Mobile) publishes 149 recreational-trail features. One district rather than the nationwide centerline this row was held for, so the row stays held and the reason changes from 'nothing found' to 'found one district'."
+      }
     },
     {
       "slug": "usgs-tnm",
@@ -730,12 +738,20 @@
       "licence": "unstated",
       "licence_basis": "unstated",
       "load": "hold",
-      "why": "The most valuable missing dataset in the Northeast and the one the White Mountains work already ran into: nh_granit_trails' notes record MAINTORG as a coded integer with no published domain, and say that if one of those codes is AMC it is the closest thing to an AMC trail inventory any public service offers. That lookup table is the cheapest way to answer this row.",
+      "why": "The most valuable missing dataset in the Northeast and the one the White Mountains work already ran into: nh_granit_trails' notes record MAINTORG as a coded integer with no published domain, and say that if one of those codes is AMC it is the closest thing to an AMC trail inventory any public service offers. That lookup table is the cheapest way to answer this row. ARCGIS ONLINE: AMC PUBLISHES NOTHING DOWNLOADABLE ON outdoors.org AND HAS 702 ARCGIS ONLINE ITEMS, which is the maintainer's own observation of 2026-09-26 and the reason this sweep exists. Among them: HT_entire_trail_network, PA Highlands Land Trails, AMC Destinations, AMC Properties and Landscapes, Appalachian Trail Mid Atlantic Region, AMC Chapter Boundaries. IT IS THEIR HIGHLANDS AND MID-ATLANTIC CONSERVATION PROGRAM RATHER THAN THE WHITE MOUNTAIN TRAIL INVENTORY this row was held for, so the White Mountains question is still open - but 'no findable data' was wrong. ArcGIS Online item search, swept 2026-09-26 by this repository across all 172 rows.",
       "endpoint": null,
       "endpoint_kind": null,
       "confidence": "inferred",
       "attribution": null,
-      "already": null
+      "already": null,
+      "agol": {
+        "owned": true,
+        "title": "(702 items under cpoppenwimer_AMC)",
+        "owner": "cpoppenwimer_AMC",
+        "features": null,
+        "url": "https://www.arcgis.com/home/user.html?user=cpoppenwimer_AMC",
+        "note": "AMC PUBLISHES NOTHING DOWNLOADABLE ON outdoors.org AND HAS 702 ARCGIS ONLINE ITEMS, which is the maintainer's own observation of 2026-09-26 and the reason this sweep exists. Among them: HT_entire_trail_network, PA Highlands Land Trails, AMC Destinations, AMC Properties and Landscapes, Appalachian Trail Mid Atlantic Region, AMC Chapter Boundaries. IT IS THEIR HIGHLANDS AND MID-ATLANTIC CONSERVATION PROGRAM RATHER THAN THE WHITE MOUNTAIN TRAIL INVENTORY this row was held for, so the White Mountains question is still open - but 'no findable data' was wrong."
+      }
     },
     {
       "slug": "pohe",
@@ -1774,13 +1790,21 @@
       "licence": "unstated",
       "licence_basis": "unstated",
       "load": "hold",
-      "why": "No open dataset found by the research pass. A ski trail rather than a hiking trail, which is a scope question before it is a data one.",
+      "why": "No open dataset found by the research pass. A ski trail rather than a hiking trail, which is a scope question before it is a data one. ARCGIS ONLINE: A personal account, 68 features. A lead, not a source. ArcGIS Online item search, swept 2026-09-26 by this repository across all 172 rows.",
       "endpoint": null,
       "endpoint_kind": null,
       "confidence": "inferred",
       "via": null,
       "attribution": null,
-      "already": null
+      "already": null,
+      "agol": {
+        "owned": false,
+        "title": "CT_area_FootTrails",
+        "owner": "jnugent",
+        "features": 68,
+        "url": null,
+        "note": "A personal account, 68 features. A lead, not a source."
+      }
     },
     {
       "slug": "cohos",
@@ -2305,14 +2329,22 @@
       "miles": null,
       "licence": "unstated",
       "licence_basis": "unstated",
-      "load": "hold",
-      "why": "No open dataset found by the research pass. Recorded so nobody searches again; the licence question has not been reached because there is nothing to licence.",
-      "endpoint": null,
-      "endpoint_kind": null,
-      "confidence": "inferred",
-      "via": null,
-      "attribution": null,
-      "already": null
+      "load": "ship",
+      "why": "No open dataset found by the research pass. Recorded so nobody searches again; the licence question has not been reached because there is nothing to licence. ARCGIS ONLINE: THE ORGANIZATION'S OWN ACCOUNT publishes it, plus AKLT Trail Segments (286) and four regional segment layers. Alaska Trails was recorded as advocacy-only with no findable data; it has a 1,602-feature trail database and publishes it itself. ArcGIS Online item search, swept 2026-09-26 by this repository across all 172 rows.",
+      "endpoint": "https://services.arcgis.com/E4aLbdRuC2azR6Sw/arcgis/rest/services/Alaska_Trail_Database/FeatureServer",
+      "endpoint_kind": "external_arcgis_layer",
+      "confidence": "verified",
+      "via": "self",
+      "attribution": "Alaska Trails",
+      "already": null,
+      "agol": {
+        "owned": true,
+        "title": "Alaska Trail Database",
+        "owner": "alaskatrails",
+        "features": 1602,
+        "url": "https://services.arcgis.com/E4aLbdRuC2azR6Sw/arcgis/rest/services/Alaska_Trail_Database/FeatureServer",
+        "note": "THE ORGANIZATION'S OWN ACCOUNT publishes it, plus AKLT Trail Segments (286) and four regional segment layers. Alaska Trails was recorded as advocacy-only with no findable data; it has a 1,602-feature trail database and publishes it itself."
+      }
     },
     {
       "slug": "nmvfo",
@@ -2444,8 +2476,16 @@
       "licence_basis": "public_domain",
       "attribution": "Superior Hiking Trail Association / City of Duluth",
       "load": "via",
-      "why": "Feeds the City of Duluth hub and MN DNR rather than publishing itself. The Duluth row covers 42 of the 309 miles; the MN DNR path for the rest was not located, so this trail is partially loaded and the catalogue says which part. THE REST OF THE TRAIL IS NOT IN MN DNR'S STATE TRAILS LAYER, checked rather than assumed: zero features match SUPERIOR across its 978 rows. Counted live 2026-09-17 by this repository. So the 42 Duluth miles remain the only published portion anybody here has found, and the other 267 are a real gap rather than an unexamined one.",
-      "already": null
+      "why": "Feeds the City of Duluth hub and MN DNR rather than publishing itself. The Duluth row covers 42 of the 309 miles; the MN DNR path for the rest was not located, so this trail is partially loaded and the catalogue says which part. THE REST OF THE TRAIL IS NOT IN MN DNR'S STATE TRAILS LAYER, checked rather than assumed: zero features match SUPERIOR across its 978 rows. Counted live 2026-09-17 by this repository. So the 42 Duluth miles remain the only published portion anybody here has found, and the other 267 are a real gap rather than an unexamined one. ARCGIS ONLINE: LAKE COUNTY, MINNESOTA publishes 576 features - the county the trail's north half runs through. This is the first lead on the 267 miles MN DNR's state trails layer does not carry, and it is a county rather than the association, so it is a lead and not a grant. ArcGIS Online item search, swept 2026-09-26 by this repository across all 172 rows.",
+      "already": null,
+      "agol": {
+        "owned": false,
+        "title": "Superior Hiking",
+        "owner": "amy.lewis_lakecountymn",
+        "features": 576,
+        "url": "https://services1.arcgis.com/NlvHF2FHoAfPIDvG/arcgis/rest/services/Superior_Hiking/FeatureServer",
+        "note": "LAKE COUNTY, MINNESOTA publishes 576 features - the county the trail's north half runs through. This is the first lead on the 267 miles MN DNR's state trails layer does not carry, and it is a county rather than the association, so it is a lead and not a grant."
+      }
     },
     {
       "slug": "ota",
@@ -2501,8 +2541,16 @@
       "licence_basis": "unstated",
       "attribution": "Tahoe Rim Trail Association",
       "load": "hold",
-      "why": "The research calls this best-in-class self-publishing: shapefile, GPX and KMZ, free, behind an email form. The email gate is the problem, not the terms — a form-gated download is not a URL a nightly freshness check can poll, so it fails SOURCE_REGISTRY.md's re-readability test the same way a flat file does. Worth one email asking for a stable URL.",
-      "already": null
+      "why": "The research calls this best-in-class self-publishing: shapefile, GPX and KMZ, free, behind an email form. The email gate is the problem, not the terms — a form-gated download is not a URL a nightly freshness check can poll, so it fails SOURCE_REGISTRY.md's re-readability test the same way a flat file does. Worth one email asking for a stable URL. ARCGIS ONLINE: THE LAYER IS LITERALLY NAMED TRT_System_Shapefile and holds 236 features - the same system shapefile the association releases only behind an email form. The owner is Esri's own JS API team, so this is a third party mirroring it rather than the association publishing it, and asking them remains the honest route. ArcGIS Online item search, swept 2026-09-26 by this repository across all 172 rows.",
+      "already": null,
+      "agol": {
+        "owned": false,
+        "title": "Tahoe Rim Trail",
+        "owner": "jsapi_team",
+        "features": 236,
+        "url": "https://services.arcgis.com/V6ZHFr6zdgNZuVG0/arcgis/rest/services/Tahoe_Rim_Trail/FeatureServer",
+        "note": "THE LAYER IS LITERALLY NAMED TRT_System_Shapefile and holds 236 features - the same system shapefile the association releases only behind an email form. The owner is Esri's own JS API team, so this is a third party mirroring it rather than the association publishing it, and asking them remains the honest route."
+      }
     },
     {
       "slug": "wta",
@@ -2895,13 +2943,21 @@
       "licence": null,
       "licence_basis": null,
       "load": "none",
-      "why": "A published route stitched across trails other organizations maintain. There is no maintaining organization and no geometry of its own to load, now or later. Steve Roper's guidebook route; cross-country travel.",
+      "why": "A published route stitched across trails other organizations maintain. There is no maintaining organization and no geometry of its own to load, now or later. Steve Roper's guidebook route; cross-country travel. ARCGIS ONLINE: a 'Sierra High Route Line' layer exists (1 feature(s), owner gdurkee_gis_cc), and this row stays `none` BECAUSE A DRAWN LINE IS NOT A MAINTAINED TRAIL. Nobody maintains this route, so shipping somebody's traced line as a trail would make exactly the claim the route-only verdict exists to refuse. ArcGIS Online item search, swept 2026-09-26 by this repository across all 172 rows.",
       "endpoint": null,
       "endpoint_kind": null,
       "confidence": "inferred",
       "via": null,
       "attribution": null,
-      "already": null
+      "already": null,
+      "agol": {
+        "owned": false,
+        "title": "Sierra High Route Line",
+        "owner": "gdurkee_gis_cc",
+        "features": 1,
+        "url": null,
+        "note": "Geometry exists and the verdict does not change."
+      }
     },
     {
       "slug": "lowest-highest",
@@ -3066,13 +3122,21 @@
       "licence": null,
       "licence_basis": null,
       "load": "none",
-      "why": "A published route stitched across trails other organizations maintain. There is no maintaining organization and no geometry of its own to load, now or later. Its own publisher states there is no trail association.",
+      "why": "A published route stitched across trails other organizations maintain. There is no maintaining organization and no geometry of its own to load, now or later. Its own publisher states there is no trail association. ARCGIS ONLINE: a 'The Grand Enchantment Trail' layer exists (41 feature(s), owner MRWMgis), and this row stays `none` BECAUSE A DRAWN LINE IS NOT A MAINTAINED TRAIL. Nobody maintains this route, so shipping somebody's traced line as a trail would make exactly the claim the route-only verdict exists to refuse. ArcGIS Online item search, swept 2026-09-26 by this repository across all 172 rows.",
       "endpoint": null,
       "endpoint_kind": null,
       "confidence": "inferred",
       "via": null,
       "attribution": null,
-      "already": null
+      "already": null,
+      "agol": {
+        "owned": false,
+        "title": "The Grand Enchantment Trail",
+        "owner": "MRWMgis",
+        "features": 41,
+        "url": null,
+        "note": "Geometry exists and the verdict does not change."
+      }
     },
     {
       "slug": "mogollon",
@@ -3167,7 +3231,15 @@
       "attribution": "Mohonk Preserve",
       "load": "ship",
       "already": "Mohonk Preserve (1 layer)",
-      "why": "ALREADY REGISTERED AND SHIPPING, and absent from the research pass. A land trust whose trails a hiker can already see; its endpoint is recorded in sources.json. The endpoint here is `mohonk_trails`, one of the 1 already registered under this provider."
+      "why": "ALREADY REGISTERED AND SHIPPING, and absent from the research pass. A land trust whose trails a hiker can already see; its endpoint is recorded in sources.json. The endpoint here is `mohonk_trails`, one of the 1 already registered under this provider. ARCGIS ONLINE: Already a registered provider; this names the item behind it and confirms 304 features. ArcGIS Online item search, swept 2026-09-26 by this repository across all 172 rows.",
+      "agol": {
+        "owned": true,
+        "title": "Mohonk Preserve: Trails and Carriage Roads",
+        "owner": "epestone@mohonkpreserve.org",
+        "features": 304,
+        "url": "https://services8.arcgis.com/cQ05sucxF4UWabFF/arcgis/rest/services/Mohonk_Preserve_Trails_and_Carriage_Roads/FeatureServer",
+        "note": "Already a registered provider; this names the item behind it and confirms 304 features."
+      }
     },
     {
       "slug": "nycparks",
@@ -3284,5 +3356,6 @@
       "why": "NOT IN THE RESEARCH PASS, which recorded the Mountains-to-Sea Trail as blocked on a URL nobody had found. Counted live 2026-09-17 by this repository. 328 polyline features carrying SYSTEMNAME, OWNER, MANAGER, TRAILNAME and TRAILSTAT. NC OneMap's own recreation service holds only paddle trails, which is why looking there first would have confirmed the gap rather than closed it."
     }
   ],
-  "_probe_pass": "A second pass on 2026-09-17 probed the endpoints live from this repository rather than inferring them. It moved 11 rows to `via` on measured feature counts, corrected the COTREX endpoint from a Hub page to a queryable layer, ruled the Cohos Trail out of NH GRANIT by measurement, and added five organizations the research pass omitted ENTIRELY THOUGH OURHIKE ALREADY SHIPS THEIR DATA - NYS DEC, NH GRANIT, Mohonk Preserve, NYC Parks and NYC DOT. Every count in a `why` that says 'counted live 2026-09-17' is this pass's and is re-runnable. A SECOND ROUND probed eight state clearinghouses and added four more organizations the research pass omitted - MassGIS, CT DEEP, PASDA and North Carolina's own Mountains-to-Sea layer - moving nine more rows off `hold`. It also ruled two cheap answers out by measurement: the Superior Hiking Trail is not in MN DNR's state trails layer, and NC OneMap's recreation service holds only paddle trails."
+  "_probe_pass": "A second pass on 2026-09-17 probed the endpoints live from this repository rather than inferring them. It moved 11 rows to `via` on measured feature counts, corrected the COTREX endpoint from a Hub page to a queryable layer, ruled the Cohos Trail out of NH GRANIT by measurement, and added five organizations the research pass omitted ENTIRELY THOUGH OURHIKE ALREADY SHIPS THEIR DATA - NYS DEC, NH GRANIT, Mohonk Preserve, NYC Parks and NYC DOT. Every count in a `why` that says 'counted live 2026-09-17' is this pass's and is re-runnable. A SECOND ROUND probed eight state clearinghouses and added four more organizations the research pass omitted - MassGIS, CT DEEP, PASDA and North Carolina's own Mountains-to-Sea layer - moving nine more rows off `hold`. It also ruled two cheap answers out by measurement: the Superior Hiking Trail is not in MN DNR's state trails layer, and NC OneMap's recreation service holds only paddle trails.",
+  "_agol_sweep": "All 172 rows searched against the ArcGIS Online public item catalogue on 2026-09-26, after the maintainer observed that the Appalachian Mountain Club publishes no map on outdoors.org and has trail data on ArcGIS Online. 39 of 172 rows have a trail-shaped item. ONLY TWO ARE THE ORGANIZATION'S OWN ACCOUNT publishing its own trails - Alaska Trails and Mohonk Preserve - and the rest are third parties, counties, agencies or individuals, which is a lead rather than a grant and is recorded as such. The distinction matters: an item somebody else uploaded is not the organization choosing to publish, and the licence question has not been asked of anybody."
 }

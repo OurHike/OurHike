@@ -27,12 +27,12 @@ Measured against the catalogue, 2026-09-17, across its 172 rows:
 | `load` verdict | rows | what it costs to load |
 | --- | ---: | --- |
 | `via` — geometry arrives through another row | 79 | **nothing.** No entry, no fetch, no bytes. |
-| `hold` — recorded, `reaches_hikers: false` | 40 | nothing. A row in a file. |
+| `hold` — recorded, `reaches_hikers: false` | 39 | nothing. A row in a file. |
 | `none` — no geometry exists, now or later | 25 | nothing. |
 | `refuse` — stated commercial or waiver-gated terms | 4 | nothing. |
-| `ship` — open terms and a usable endpoint | 24 | a fetch, a clip, and download budget |
+| `ship` — open terms and a usable endpoint | 25 | a fetch, a clip, and download budget |
 
-Of the 24 `ship` rows, **9 are already registered** — USFS, ATC, OpenStreetMap and NJDEP all have
+Of the 25 `ship` rows, **9 are already registered** — USFS, ATC, OpenStreetMap and NJDEP all have
 entries in `sources.json` today. So the work this whole catalogue produces is:
 
 > **11 new endpoints.**
@@ -273,6 +273,60 @@ have confirmed the Mountains-to-Sea gap rather than closed it.
 **The load after both rounds: 103 organizations reachable, against 15 new fetches** — up from 74
 reachable when the catalogue was first written. `hold` fell from 58 to 40, and **every row that moved
 did so on a feature count anybody can re-run.**
+
+
+### Round three: the ArcGIS Online catalogue, not the organization's website
+
+The maintainer's observation of 2026-09-26 is the whole reason for this round: *"AMC has no map on
+its website. But that is available in arcgis."* Both halves are true, and the second one was never
+checked — the first two rounds probed each organization's **own server root**, which finds nothing
+when an organization has no server of its own but does have an ArcGIS Online account.
+
+All 172 rows searched against the public ArcGIS Online item catalogue. **39 of 172 have a
+trail-shaped item.** The finding that matters is how few of those are the organization itself:
+
+**Only two organizations publish their own trails from their own account.**
+
+| org | item | features | was |
+| --- | --- | ---: | --- |
+| **Alaska Trails** | `Alaska_Trail_Database`, owner `alaskatrails` | **1,602** | `hold` — "no findable data" |
+| Mohonk Preserve | `Mohonk Preserve: Trails and Carriage Roads` | 304 | already registered |
+
+Alaska Trails is the verdict this round moves. It was recorded as advocacy-only with nothing to
+fetch; it has a 1,602-feature trail database, plus `AKLT Trail Segments` (286) and four regional
+layers, published from its own account.
+
+**AMC is the case that prompted the round, and it is stranger than expected.** 702 items under
+`cpoppenwimer_AMC` — `HT_entire_trail_network`, `PA Highlands Land Trails`, `AMC Destinations`,
+`AMC Properties and Landscapes`, `Appalachian Trail Mid Atlantic Region`, `AMC Chapter Boundaries`.
+But that is AMC's **Highlands and mid-Atlantic conservation programme**, not the White Mountain trail
+inventory the row was held for. So "no findable data" was wrong and the White Mountains question is
+still open — which is a more useful state than either "no data" or "solved".
+
+**Three leads that change a reason without changing a verdict:**
+
+- **Superior Hiking Trail** — Lake County, Minnesota publishes `Superior_Hiking`, **576 features**.
+  That is the first lead on the 267 miles MN DNR's state trails layer does not carry. A county, not
+  the association.
+- **Tahoe Rim Trail** — a layer literally named `TRT_System_Shapefile`, **236 features**: the same
+  system shapefile the association releases only behind an email form. The owner is Esri's own JS API
+  team, so this is a third party mirroring it, and asking the association is still the honest route.
+- **USACE** — a Corps district account publishes 149 recreational-trail features. One district
+  rather than the nationwide centerline, so the row stays held and its reason improves from "nothing
+  found" to "found one district".
+
+**Two route-only trails have geometry and stay `none`, which is the point.** A `Sierra High Route
+Line` (1 feature, a personal account) and `The Grand Enchantment Trail` (41 features, a water
+management district) both exist. Nobody maintains either route, so shipping a traced line as a trail
+would make exactly the claim the route-only verdict refuses. Geometry existing is not a trail
+existing.
+
+**Why "found on ArcGIS Online" is weaker evidence than it looks.** Thirty-seven of the 39 hits belong
+to somebody other than the organization — counties, state agencies, university accounts, Esri
+itself, private individuals. An item a third party uploaded is not the organization choosing to
+publish, carries no licence anybody stated, and can vanish when its uploader's account does. Each is
+recorded in the row's `agol` field as a lead with its owner named, and none of them moves a row to
+`ship` on its own.
 
 
 ## Filling the form: one run, not 172 people typing

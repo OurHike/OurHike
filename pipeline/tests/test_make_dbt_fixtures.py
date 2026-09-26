@@ -69,8 +69,7 @@ def test_fixtures_load_through_the_real_loader(tmp_path):
         markers = {row[0] for row in con.execute('select "MARKER" from raw.raw_dec__dec_hiking_trails').fetchall()}
         blazes = {row[0] for row in con.execute('select "Blaze" from raw.raw_mohonk__mohonk_trails').fetchall()}
         publicuse = {row[0] for row in con.execute('select "PUBLICUSE" from raw.raw_dec__dec_lean_tos').fetchall()}
-        granit_blazes = {row[0] for row in con.execute('select "BLAZE" from raw.raw_granit__nh_granit_trails').fetchall()}
-        granit_ped = {row[0] for row in con.execute('select "PED" from raw.raw_granit__nh_granit_trails').fetchall()}
+        granit_hiking = {row[0] for row in con.execute('select "HIKING" from raw.raw_granit__nh_granit_trails').fetchall()}
         usfs_types = {row[0] for row in con.execute("select trail_type from raw.raw_usfs__usfs_trails").fetchall()}
         usfs_designations = {
             row[0]
@@ -100,18 +99,10 @@ def test_fixtures_load_through_the_real_loader(tmp_path):
     assert publicuse == {"Y", "N"}, (
         "the public flag the staging models carry through has nothing to say unless both sides are present"
     )
-    assert " " in granit_blazes, (
-        "GRANIT's BLAZE is a blank STRING on 7,574 of the live 7,643 Whites rows - 99.1% - because the Whites "
-        "largely are not blazed. reference/blaze_mapping.json keys that literal ' ' to \"None\" (Unblazed), so a "
-        "fixture that dropped it would stop exercising the row the whole mapping turns on"
-    )
-    assert "White" in granit_blazes, (
-        "the A.T. is the one white-blazed line through the Whites - 61 of the live 62 White rows carry TRAILSYS "
-        "'Appalachian Trail' - so the colour that IS present has to be exercised too"
-    )
-    assert granit_ped == {"1", " "}, (
-        "PED splits 3,883 '1' against 3,760 blank on the live rows, and blank means UNRECORDED rather than no - "
-        "a fixture with only '1' would make a PED filter look lossless when it drops half the layer"
+    assert granit_hiking == {"Y", "NA", " ", "UNKNOWN", "N"}, (
+        "GRANIT's HIKING reads 'Y' on 8,312 of the live 15,791 rows and blank, 'NA' or 'UNKNOWN' on most of the "
+        "rest - unrecorded, not no - and 'N' on 48. A fixture with only 'Y' would make a HIKING filter look lossless when it drops "
+        "the A.T.'s own GRANIT rows"
     )
     assert usfs_types == {"TERRA", "SNOW"}, (
         "549 of the live 2,093 WMNF rows are snowmobile and water corridors; a TERRA-only fixture would let the "

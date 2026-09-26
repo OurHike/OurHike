@@ -15,6 +15,10 @@ and `nh_granit_trails` is statewide. The Whites are where they were found and wh
 field distribution below was measured; they are not the extent of what ships. §7 is the
 nationwide picture and the one holdback it forced.
 
+> **GRANIT's layer changed on 2026-09-21–23, and §3, §7a and §7c describe the old one.** GRANIT
+> republished its trails layer with new columns, and the filter this survey specified
+> silently stopped matching. §8 has what the layer holds now and what ships from it.
+
 Written 2026-09-02 from live probes. **Every count and every field distribution below was
 read from the layer itself that day**, by query, not from a page's claim about itself. Where
 a service exposes no `editingInfo`, the substitute marker is named. Where a number came from
@@ -202,6 +206,9 @@ what §1 says the WMNF boundary leaves out.
 
 ### 3a. `BLAZE` is blank almost everywhere, and that is the ground, not a gap
 
+*Superseded 2026-09-26: the `BLAZE` column no longer exists, and GRANIT rows draw "Blaze not
+recorded". See §8.*
+
 **This section said the opposite for a few hours on 2026-09-02 and was wrong.** The
 correction is kept visible rather than swapped, because the mistake is the instructive part.
 
@@ -252,6 +259,8 @@ and not the publisher's own word.
 **This also re-opened §2b**, which is where the correction pays for itself twice — see there.
 
 ### 3b. The other columns
+
+*Superseded 2026-09-26: `PED`, `SNOWMBL`, `ATV` and `MAINTORG` no longer exist. See §8.*
 
 `PED` splits 3,883 rows `'1'` against 3,760 blank in the Whites bbox — so **blank is not
 "no"**, it is unrecorded, and this layer gets **no `foot_field`** as a result. The evidence,
@@ -404,7 +413,7 @@ exporters do with them — every count measured live 2026-09-02.
 | source | filter | keeps | drops |
 |---|---|---:|---|
 | `usfs_trails` | `trail_type = TERRA` | **78,101** | SNOW 8,152, WATER 76 |
-| `nh_granit_trails` | motorized exclusion | 19,877 less the flagged | `SNOWMBL` and `ATV` corridors |
+| `nh_granit_trails` | motorized exclusion | 19,877 less the flagged | `SNOWMBL` and `ATV` corridors — **superseded, §8** |
 
 **USFS's `foot_field` is `trail_type`, which is not a foot column**, and the reason is the
 trap here. The obvious candidate is `hiker_pedestrian_managed` — and it is a *season string*
@@ -470,6 +479,9 @@ hikers made — which is a material difference from ATC's case. That is an issue
 
 ### 7c. Two absences that must not be collapsed
 
+*Superseded 2026-09-26: GRANIT no longer publishes a blaze column, so both sources now draw
+"Blaze not recorded". See §8.*
+
 Both sources cover the same ground and neither paints most of it. They are not saying the same
 thing, and the export keeps them apart:
 
@@ -479,3 +491,76 @@ thing, and the export keeps them apart:
   has said nothing.
 
 Collapsing them would tell a hiker the Forest Service had checked.
+
+---
+
+## 8. GRANIT's September republish — what changed, and what ships now
+
+Found 2026-09-26, when the maintainer asked why New Hampshire looked so much denser than
+anywhere else ([#1646](https://github.com/OurHike/OurHike/issues/1646)). Every number here
+is **measured**: the live layer read that day, and the published `nearby_trails.geojson`
+from release `2026-09-24-2` joined to it on `OBJECTID` (all 15,791 published ids matched).
+
+**The layer was republished with different columns between 2026-09-21 and 2026-09-23.** It
+now holds 15,791 segments, not 19,877. `PED`, `SNOWMBL`, `ATV`, `BLAZE`, `TRAILSYS` and
+`MAINTORG` are gone. The use matrix is now `HIKING`, `SNOWMACHIN`, `OHRV`, `SNOW_CORRI`,
+`OHRV_CORRI`, `MTNBIKE`, `XCSKI`, `ALPINESKI`, `HORSE`, `PADDLE` and `ADA`, and each one
+reads `Y`, `N`, `NA`, `UNKNOWN` or a blank. The layer's description says it was
+"extracted from USGS Digital Line Graph data".
+
+**§7a's exclusion stopped working, and nothing noticed.** `excluded_when` named `SNOWMBL`
+and `ATV`. `properties.get` returned `None` for both on every row, so the release shipped all
+15,791 rows, snowmobile corridors included. That made New Hampshire the densest state in
+the dataset by a wide margin:
+
+| state | trail-miles per 100 sq mi of land | sources |
+|---|---:|---|
+| NH | **111.5** | GRANIT 8,990 mi, USFS 994 mi |
+| NJ | 63.8 | NJ statewide, NJDEP parks |
+| NY | 17.6 | DEC, OPRHP, NYC, NYNJTC, Mohonk |
+| VT | 7.2 | USFS |
+
+**It was not USFS.** Only 1 of the White Mountain National Forest's 1,077 `TERRA` miles is
+motorized. Its road-named rows (`MOOSILAUKE CARRIAGE RD`, `OLD JACKSON ROAD`) are hiking
+trails on old grades, and 1,446 of its 1,544 `TERRA` segments carry a
+`hiker_pedestrian_managed` or `hiker_pedestrian_accpt` season.
+
+**What ships now** is the maintainer's choice of 2026-09-26, made from a map of three
+candidate filters. A row is dropped if it is flagged `SNOWMACHIN`, `OHRV`, `ALPINESKI` or
+`PADDLE` and is **not** flagged `HIKING = Y`, and every `HIKING = N` row is dropped. Run over
+the whole live layer by `keep_reason()`:
+
+| dropped by | rows | miles | what they are |
+|---|---:|---:|---|
+| `SNOWMACHIN = Y` | 1,858 | 2,240 | `CORRIDOR 11 TRL`, `PRIMARY 396 TRL`, `INDIAN STREAM RD TRL`, most maintained by snowmobile clubs |
+| `OHRV = Y` | 148 | 140 | OHRV corridors |
+| `ALPINESKI = Y` | 970 | 259 | runs at Loon, Cannon, Bretton Woods, Wildcat, Attitash |
+| `PADDLE = Y` | 175 | 300 | the Connecticut River Paddlers' Trail alone is 222 |
+| `HIKING = N` | 48 | 95 | mostly Androscoggin and Umbagog water routes |
+| **kept** | **12,592** | **6,171** | |
+
+**633 rows (560 mi) read `HIKING = Y` as well as a snowmobile or OHRV flag, and those ship.**
+The new `excluded_unless` registry key lets the steward's "you may walk this" outrank a
+motorized flag on the same row. After the change, New Hampshire is about 7,100 miles, or
+79 per 100 sq mi. It is still the densest state, because GRANIT is the only statewide
+layer this project carries in New England; Vermont and Maine have USFS alone.
+
+**Why `HIKING` is not an allowlist either:** it reads `Y` on only 8,312 of 15,791 rows.
+Keeping only those would drop 5,037 of New Hampshire's 8,990 GRANIT miles, including 29 mi
+named `APPALACHIAN TRL`, the Monadnock-Sunapee Greenway, the Wapack and the
+Metacomet-Monadnock, none of which carries a `HIKING = Y`. This is §3b's `PED` lesson again,
+under a new column name.
+
+**Blazes:** with `BLAZE` gone, `nh_granit_trails` declares `blaze_default: "Unknown"`, and
+its `reference/blaze_mapping.json` table is removed. §3a's "Unblazed" reading was sound for
+the column it described. Keeping it with no column behind it would tell a hiker that the
+A.T.'s white-blazed ridges carry no paint.
+
+**The guard:** `export_nearby_trails.missing_declared_fields()` now fails the export when a
+field named in `sources.json` is absent from every fetched feature. It would have stopped
+the 2026-09-24 build. All twelve other trail sources' declared fields were checked against
+their live layers the same day, and every one is present.
+
+**Still open:** 1,948 kept NH miles carry no use flag of any kind. They include the A.T. and
+the long trails, so they ship, and they also include whatever of the layer's USGS Digital
+Line Graph lines are old woods roads. Nothing in the schema tells the two apart.

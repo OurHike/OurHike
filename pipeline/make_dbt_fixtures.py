@@ -452,61 +452,67 @@ def _usfs_rec_sites_layer():
 
 
 def _nh_granit_trails_layer():
-    """nh_granit_trails' measured field list and value shapes, 2026-09-02.
+    """nh_granit_trails' field list and value shapes as republished in
+    September 2026, read live 2026-09-26 (#1646).
 
-    THE POINT OF THIS FIXTURE IS THE BLANK BLAZE, WHICH IS A REAL VALUE AND
-    NOT A HOLE. Across the live 7,643 segments in the Whites, BLAZE reads a
-    literal blank on 7,574 of them - 99.1% - against White 62, Yellow 4, Red 2,
-    Blue 1. That is not an unpopulated column: the White Mountains largely do
-    not use paint blazes, so a Whites trail having none is the normal case, and
-    61 of the 62 White rows carry TRAILSYS 'Appalachian Trail' - the A.T. being
-    the one white-blazed line through the range. reference/blaze_mapping.json
-    maps the blank to "None" ("Unblazed") rather than to "Unknown" ("Blaze not
-    recorded") for exactly that reason.
+    THE POINT OF THIS FIXTURE IS THAT THE USE FLAGS SAY FOUR THINGS, NOT TWO.
+    Every use column - HIKING, SNOWMACHIN, OHRV, ALPINESKI, PADDLE and the rest -
+    reads 'Y', 'N', 'NA', 'UNKNOWN' or a blank STRING, and only 'Y' and 'N' are
+    statements. HIKING is 'Y' on 8,312 of 15,791 rows, 'NA' on 4,022, blank on
+    3,255, 'UNKNOWN' on 154 and 'N' on 48, and the A.T.'s own GRANIT rows are
+    among the unrecorded - so a staging model that read HIKING as a boolean
+    would delete them. The fixture carries one row of each shape the
+    exporter's filter decides differently: flagged for hiking, unrecorded,
+    a snowmobile corridor, a corridor ALSO flagged for hiking (kept), an alpine
+    ski run and a paddle route.
 
-    It is a blank STRING and not a null, which is the distinction a staging
-    model would get wrong first and which the mapping table's key depends on,
-    so the majority of rows here carry `' '` verbatim. A fixture that populated
-    the column would misrepresent the region.
-
-    `PED` is the opposite case and needs its own row shapes: blank is
-    UNRECORDED, not "no" (3,883 rows '1' against 3,760 blank), and 2,541 of
-    those blanks carry no use flag at all while 1,209 are snowmobile corridors.
-    So the fixture carries all three shapes - PED '1', blank-with-no-flags, and
-    blank-with-SNOWMBL - because a `PED == '1'` filter would drop the middle one
-    and that is the mistake nh_granit_trails' foot_comment exists to prevent.
-    `MAINTORG` is a coded integer whose domain GRANIT does not publish - the
-    codes here are live values, and what any of them means is unknown."""
-    common = {"TRAIL": "Trail", "ACCURACY": "Unknown", "COMMUNITY": "Fixture Township"}
+    The 2026-09-02 version of this fixture carried BLAZE, PED, SNOWMBL and
+    MAINTORG. GRANIT dropped all four; a fixture keeping them would let a
+    staging model be written against columns the live layer does not have."""
+    common = {
+        "ACCURACY": "2",
+        "TOWNNAME": "FIXTURE TOWNSHIP",
+        "COUNTY": "COOS",
+        "SEASONAL": "UNKNOWN",
+        "SURFACE": "UNKNOWN",
+        "MAINTAINED": " ",
+        "PUBLICDOMA": "Y",
+        "SOURCE": "GRANIT",
+        "HIKING": "NA",
+        "SNOWMACHIN": "NA",
+        "OHRV": "NA",
+        "SNOW_CORRI": "NA",
+        "OHRV_CORRI": "NA",
+        "ALPINESKI": "NA",
+        "PADDLE": "NA",
+    }
     return _features(
         [
-            {**common, "TRAILNAME": "Fixture Ridge Path", "BLAZE": " ", "MAINTORG": 22000, "PED": "1", "MILES": 2.2},
-            # Blank PED and NO use flag of any kind - the 2,541-row shape, a
-            # hiking trail a PED=='1' filter would silently delete.
-            {**common, "TRAILNAME": "Fixture Brook Trail", "BLAZE": " ", "MAINTORG": 50110, "PED": " ", "MILES": 1.4},
-            # Blank PED because it is a snowmobile corridor - the 1,209-row
-            # shape, and the one a motorized filter SHOULD drop.
+            {**common, "TRAILNAME": "Fixture Ridge Path", "HIKING": "Y", "Shape_Length": 11616.0},
+            # Unrecorded, and a hiking trail anyway - the shape the A.T.'s own
+            # GRANIT rows take, and the one a HIKING == 'Y' filter would delete.
+            {**common, "TRAILNAME": "APPALACHIAN TRL", "HIKING": " ", "Shape_Length": 16368.0},
+            # A snowmobile corridor not flagged for hiking - dropped.
             {
                 **common,
-                "TRAILNAME": "Fixture Camp Snowmobile Corridor",
-                "BLAZE": " ",
-                "MAINTORG": 0,
-                "PED": " ",
-                "SNOWMBL": "1",
-                "MILES": 4.0,
+                "TRAILNAME": "FIXTURE CORRIDOR 11 TRL",
+                "SNOWMACHIN": "Y",
+                "SNOW_CORRI": "Y",
+                "MAINTAINED": "FIXTURE SNOWMOBILE CLUB",
+                "SOURCE": "DESC",
+                "Shape_Length": 21120.0,
             },
-            # The A.T.: the one white-blazed line through the Whites.
+            # The same flag on a row GRANIT also opens to hikers - kept.
+            {**common, "TRAILNAME": "Fixture Woods Road", "HIKING": "Y", "SNOWMACHIN": "Y", "Shape_Length": 7392.0},
             {
                 **common,
-                "TRAILNAME": "Appalachian Trail",
-                "TRAILSYS": "Appalachian Trail",
-                "BLAZE": "White",
-                "MAINTORG": 0,
-                "PED": "1",
-                "MILES": 3.1,
+                "TRAILNAME": "FIXTURE SKI RUN",
+                "HIKING": "UNKNOWN",
+                "ALPINESKI": "Y",
+                "SEASONAL": "WINTER_ONLY",
+                "Shape_Length": 3168.0,
             },
-            # Not a trail at all - the live layer holds rows like 'adj to Rt 118'.
-            {**common, "TRAILNAME": "adj to Rt 118", "BLAZE": " ", "MAINTORG": 0, "PED": " ", "MILES": 0.2},
+            {**common, "TRAILNAME": "FIXTURE RIVER PADDLERS' TRAIL", "HIKING": "N", "PADDLE": "Y", "Shape_Length": 52800.0},
         ],
         _white_mountains_line,
     )

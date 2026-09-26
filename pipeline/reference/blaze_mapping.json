@@ -175,50 +175,6 @@
         }
       }
     },
-    "nh_granit_trails": {
-      "_note": [
-        "NH GRANIT, Recreation Resources / Trails. BLAZE is a plain string, not",
-        "an ArcGIS coded domain - the nynjtc_long_path shape rather than the",
-        "mohonk_trails one. Counts are the live values across all 7,643 rows in",
-        "the White Mountains bbox, measured 2026-09-02 by group-by statistics",
-        "(not a page): blank 7,574, White 62, Yellow 4, Red 2, Blue 1.",
-        "",
-        "THE BLANK IS THE INTERESTING ROW, AND IT MAPS TO \"None\" ON PURPOSE.",
-        "99.1% blank looks like an unpopulated column and is not one: the White",
-        "Mountains largely do not use paint blazes - AMC's convention is cairns",
-        "above treeline and unmarked tread below - so a Whites trail having no",
-        "blaze is the normal case. This is the maintainer's correction of",
-        "2026-09-02, and the data carries it: 61 of the 62 White rows have",
-        "TRAILSYS 'Appalachian Trail' and are the A.T.'s own route through the",
-        "range (Franconia Ridge, Garfield Ridge, Crawford Path, Gulfside,",
-        "Kinsman Ridge, Carter-Moriah...), while the 7 non-white blazes are all",
-        "in lowland wildlife sanctuaries and conservation easements rather than",
-        "in the mountains. The A.T. is white-blazed through the Whites and",
-        "almost nothing else up there is blazed at all - which is what this",
-        "column says.",
-        "",
-        "So blank is a CONFIRMED unblazed trail, which is what \"None\" means",
-        "(client/src/lib/blaze.ts: \"None\" renders 'Unblazed', \"Unknown\"",
-        "renders 'Blaze not recorded'). Mapping it to Unknown instead would",
-        "throw away a true fact about the region and print a hedge in its",
-        "place. THE LIMIT ON THAT: GRANIT does not document whether blank means",
-        "unblazed or merely unrecorded, so this row rests on the maintainer's",
-        "knowledge of the ground plus the A.T. correlation above - sound, and",
-        "not the publisher's own word. sources.json's nh_granit_trails",
-        "blaze_comment carries the full argument.",
-        "",
-        "The key really is a single SPACE: lib/blaze.map_source_blaze looks the",
-        "raw value up verbatim with no trimming, and the live rows read ' '",
-        "rather than an empty string or null."
-      ],
-      "mapped": {
-        " ": "None",
-        "White": "White",
-        "Yellow": "Yellow",
-        "Red": "Red",
-        "Blue": "Blue"
-      }
-    },
     "njdep_park_trails": {
       "_note": [
         "NJDEP Bureau of GIS, NJ State Park Service Trails (mapsdep.nj.gov, Features/Land/MapServer/63),",
@@ -240,8 +196,8 @@
         "Post 555, Metal Blaze 395, Plastic Blaze 240) says HOW a trail is marked and is not a colour.",
         "",
         "'Unmarked' maps to None - the client's 'Unblazed' - because BLAZE_TYPE says 'Unmarked' on 856",
-        "rows: NJDEP records unmarked tread deliberately, which is the nh_granit_trails reading and",
-        "not the dec_hiking_trails one."
+        "rows: NJDEP records unmarked tread deliberately - the reading nh_granit_trails' blank BLAZE",
+        "got until GRANIT dropped that column (#1646) - and not the dec_hiking_trails one."
       ],
       "mapped": {
         "Blue": "Blue",

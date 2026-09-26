@@ -169,8 +169,15 @@
     '.ourhike__field{display:flex;flex-direction:column;gap:4px}',
     '.ourhike__label{font-size:.78em;letter-spacing:.04em;text-transform:uppercase;opacity:.7}',
     '.ourhike select,.ourhike button{font:inherit;color:inherit;background:transparent;' +
-      'border:1px solid rgba(128,128,128,.4);border-radius:6px;padding:6px 10px;cursor:pointer}',
+      'border:1px solid rgba(128,128,128,.4);border-radius:6px;padding:6px 10px;cursor:pointer;' +
+      'min-height:44px}',
     '.ourhike button[disabled]{opacity:.45;cursor:default}',
+    // A standalone action link - "Join", "Support this work", "Sign up on
+    // our site" - has no border or padding to lean on for its tap target the
+    // way a button does, so the 44px floor (#1671, the design handoff's phone
+    // minimum) is set on the box itself: centred content, invisible outside
+    // a touch device.
+    '.ourhike__actionlink{display:inline-flex;align-items:center;min-height:44px}',
     '.ourhike__name{font-weight:600}',
     '.ourhike__meta{font-size:.85em;opacity:.72}',
     // No colour value of ours: the whole embed inherits the host page's,
@@ -232,7 +239,7 @@
     var any = false
     var joinAt = safeHref(org.membership_url)
     if (joinAt) {
-      var join = el('a', null, 'Join ' + (org.name || 'us'))
+      var join = el('a', 'ourhike__actionlink', 'Join ' + (org.name || 'us'))
       join.href = joinAt
       join.rel = 'noopener'
       wrap.appendChild(join)
@@ -240,7 +247,7 @@
     }
     var giveAt = safeHref(org.donation_url)
     if (giveAt) {
-      var give = el('a', null, 'Support this work')
+      var give = el('a', 'ourhike__actionlink', 'Support this work')
       give.href = giveAt
       give.rel = 'noopener'
       wrap.appendChild(give)
@@ -251,6 +258,25 @@
 
   function number(value, digits) {
     return typeof value === 'number' ? value.toFixed(digits === undefined ? 1 : digits) : '—'
+  }
+
+  /** "Oct 7, 2026" from a `YYYY-MM-DD` date, never the raw ISO string a
+   *  visitor has no reason to parse (#1671).
+   *
+   *  Parsed and formatted in UTC throughout, `client/src/lib/planDisplay.ts`'s
+   *  reason: a date-only string has no time of day, so reading it in the
+   *  visitor's local zone can print the day before or after the one the
+   *  organization published.
+   */
+  function formatDate(isoDate) {
+    var date = new Date(isoDate + 'T00:00:00Z')
+    if (isNaN(date.getTime())) return isoDate
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'UTC',
+    })
   }
 
   /* ------------------------------------------------------------------ *
@@ -508,9 +534,9 @@
             var workday = workdays[i]
             var card = el('div', 'ourhike__card')
             card.appendChild(el('div', 'ourhike__name', workday.title))
-            var meta = workday.starts_on
+            var meta = formatDate(workday.starts_on)
             if (workday.ends_on && workday.ends_on !== workday.starts_on) {
-              meta += ' – ' + workday.ends_on
+              meta += ' – ' + formatDate(workday.ends_on)
             }
             if (workday.meet_point) meta += ' · ' + workday.meet_point
             card.appendChild(el('div', 'ourhike__meta', meta))
@@ -548,7 +574,7 @@
               var mirrored = workday.source === 'mirrored' || workday.signup_mode === 'contact'
               var where = safeHref(workday.signup_url)
               if (mirrored && where) {
-                var out = el('a', null, 'Sign up on our site')
+                var out = el('a', 'ourhike__actionlink', 'Sign up on our site')
                 out.href = where
                 out.rel = 'noopener'
                 card.appendChild(out)

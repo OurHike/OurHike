@@ -55,8 +55,17 @@ export const alt =
   'The map screen over the Hudson Highlands at zoom 7.8: the Appalachian Trail as a red line drawn over the waypoints along it, a few dozen pins spaced apart with map paper between them, and small coloured dots along the trails for every waypoint that did not take a pin'
 
 /** Vector tiles from the bucket plus the waypoint source landing take longer
- *  than chrome. */
-export const wait = 6000
+ *  than chrome.
+ *
+ * 22000, as the Hudson Highlands desktop recipes wait, since #1676's first
+ * preview (built from 698274a7): at the old wait all three waypoint recipes
+ * photographed the map mid-load - the carry frame with its dots drawn but no
+ * pin and no trail line, the Brooklyn and Shenandoah frames with neither. The trail
+ * line is not something #1676 touches, so the frame was early rather than
+ * wrong. Measured in the agent sandbox the same day, through
+ * scripts/data-proxy.mjs: at 6 s `main` and #1676's branch were both still
+ * blank at the carry camera, and at 15-20 s both had drawn everything. */
+export const wait = 22000
 
 export default async function drive(page) {
   // lib/cameraMemory.ts's contract: { center: [lon, lat], zoom }, read back

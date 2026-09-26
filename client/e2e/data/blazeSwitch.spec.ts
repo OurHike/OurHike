@@ -19,9 +19,11 @@
 // against release 2026-09-24-2, at this file's camera, with a probe script
 // before this spec existed: before the fix, switching on went grey after 14
 // of 18 taps; switching off drew red again but threw 2 to 3 errors per tap
-// first. After it, 12 of 12 taps drew the right lines with no error. This
-// spec itself, run locally, failed every run on the build before the fix
-// (5 of 5) and passed every run on the build with it (9 of 9).
+// first. After it, 12 of 12 taps drew the right lines with no error. Every
+// version of this spec, run locally, failed on the build before the fix and
+// passed on the build with it; this one failed 1 of 1 and passed 3 of 3.
+// The agent sandbox cannot draw the live topo sheet, so what these local
+// runs cannot show is the background - drawnInk says how that was settled.
 
 import { test, expect, type Page } from '@playwright/test'
 import { seedPreferences, seedCamera } from '../support/seed'
@@ -37,18 +39,25 @@ const HUDSON_HIGHLANDS_ZOOM = 13
 /**
  * What the map frame is drawing, counted in pixels of two kinds:
  *
- *  - `hues`: clearly a yellow or a blue blaze - the two hues lib/blaze.ts
- *    gives #dcae1b and #1f5fa8. Nothing on the default sheet is either,
- *    every line there being lib/blaze.ts's red, so these can only be on
- *    screen if the hues are drawn;
- *  - `red`: clearly that red, #b2321f - the default sheet's lines.
+ *  - `hues`: a yellow or a blue blaze - within INK_TOLERANCE of the two hexes
+ *    lib/blaze.ts gives them, #dcae1b and #1f5fa8. Nothing on the default
+ *    sheet is either, every line there being lib/blaze.ts's red, so these
+ *    can only be on screen if the hues are drawn;
+ *  - `red`: within the same tolerance of that red, #b2321f - the default
+ *    sheet's lines.
  *
- * Measured 2026-09-26 by this function at this camera, release 2026-09-24-2:
- * 2 `hues` and 4,480 `red` on the default sheet, 4,114 and 1,068 with the
- * hues on, and 2 `hues` on the grey frame the defect left (three runs before
- * the fix, all three failing at the first poll below). The thresholds sit
- * well inside both ends, so one trail changing in a release does not move
- * the verdict.
+ * TIGHT TO THE PALETTE'S OWN HEXES, AND THAT IS WHAT MAKES IT A TRAIL COUNT.
+ * The first version counted any strong blue or yellow, and the live topo
+ * sheet under the trails is full of blue water: CI read 388 `hues` pixels on
+ * the default sheet before any tap (2026-09-26, bar 50), and 405 on the
+ * downloaded background it was then moved to, from something drawn late that
+ * this spec never identified. Matched within 10 of each hex instead, the
+ * preview's own hues-on frame of this camera over the live sheet (CI,
+ * release 2026-09-24-2) counted 2,326 yellow and 1,060 blue, against 2,343
+ * and 1,084 for the same frame on bare paper in the agent sandbox - within
+ * 2%, so at this tolerance the background adds nothing, and the default
+ * sheet counted 0 of either. INK_TOLERANCE is 12: past 16, blue water starts
+ * to count (1,598 on the CI frame at 24).
  *
  * Read off a Playwright screenshot rather than the canvas, because MapLibre
  * does not keep its drawing buffer and reading the WebGL canvas back returns
@@ -57,36 +66,45 @@ const HUDSON_HIGHLANDS_ZOOM = 13
  */
 async function drawnInk(page: Page): Promise<{ hues: number; red: number }> {
   const shot = await page.getByRole('region', { name: 'Trail map' }).screenshot()
-  return page.evaluate(async (base64) => {
-    const image = new Image()
-    image.src = `data:image/png;base64,${base64}`
-    await image.decode()
-    const canvas = document.createElement('canvas')
-    canvas.width = image.width
-    canvas.height = image.height
-    const context = canvas.getContext('2d')
-    if (context === null) return { hues: -1, red: -1 }
-    context.drawImage(image, 0, 0)
-    const data = context.getImageData(0, 0, canvas.width, canvas.height).data
-    let hues = 0
-    let red = 0
-    for (let i = 0; i < data.length; i += 4) {
-      const [r, g, b] = [data[i], data[i + 1], data[i + 2]]
-      const yellow = r > 190 && g > 140 && g < 200 && b < 80
-      const blue = r < 70 && g > 70 && g < 120 && b > 140
-      if (yellow || blue) hues++
-      if (r > 150 && g < 80 && b < 60) red++
-    }
-    return { hues, red }
-  }, shot.toString('base64'))
+  return page.evaluate(
+    async ({ base64, tolerance }) => {
+      const image = new Image()
+      image.src = `data:image/png;base64,${base64}`
+      await image.decode()
+      const canvas = document.createElement('canvas')
+      canvas.width = image.width
+      canvas.height = image.height
+      const context = canvas.getContext('2d')
+      if (context === null) return { hues: -1, red: -1 }
+      context.drawImage(image, 0, 0)
+      const data = context.getImageData(0, 0, canvas.width, canvas.height).data
+      const near = (i: number, hex: readonly [number, number, number]) =>
+        Math.abs(data[i] - hex[0]) <= tolerance &&
+        Math.abs(data[i + 1] - hex[1]) <= tolerance &&
+        Math.abs(data[i + 2] - hex[2]) <= tolerance
+      let hues = 0
+      let red = 0
+      for (let i = 0; i < data.length; i += 4) {
+        if (near(i, [0xdc, 0xae, 0x1b]) || near(i, [0x1f, 0x5f, 0xa8])) hues++
+        if (near(i, [0xb2, 0x32, 0x1f])) red++
+      }
+      return { hues, red }
+    },
+    { base64: shot.toString('base64'), tolerance: INK_TOLERANCE },
+  )
 }
+
+/** How far, per channel, a pixel may sit from a palette hex and still count
+ *  as that ink. drawnInk's comment has the measurement it was picked from. */
+const INK_TOLERANCE = 12
 
 /** More than this many `hues` pixels and the hues are on the map. */
 const HUES_DRAWN = 300
 /** Fewer than this many and they are not. */
 const HUES_GONE = 50
 /** More than this many `red` pixels on the default sheet and its lines are
- *  drawn - the wait before the first tap. */
+ *  drawn - the wait before the first tap. The frame measured 3,527 at a
+ *  tolerance of 10 in the agent sandbox. */
 const DEFAULT_RED_DRAWN = 1_000
 
 test.describe('the Blaze colors switch on a drawn map', { tag: '@desktop' }, () => {
@@ -97,15 +115,7 @@ test.describe('the Blaze colors switch on a drawn map', { tag: '@desktop' }, () 
     page.on('pageerror', (error) => errors.push(error.message))
 
     await seedCamera(page, HUDSON_HIGHLANDS, HUDSON_HIGHLANDS_ZOOM)
-    // THE DOWNLOADED BACKGROUND, with nothing downloaded: plain paper under
-    // the trails, and no network request for background tiles. The live
-    // sheet draws the Hudson, its creeks and its reservoirs in blues that
-    // `drawnInk` counts as a blue blaze - measured on this spec's first CI
-    // run, 2026-09-26: 388 `hues` pixels on the default sheet before any
-    // tap, against a bar of 50. The defect is in the trail layers, which
-    // draw the same over either background, so the paper costs this test
-    // nothing and makes the count mean only the trails.
-    await seedPreferences(page, { background_source: 'usgs_topo_offline' })
+    await seedPreferences(page)
     await page.goto('/')
     await page.getByRole('tab', { name: 'Map' }).click()
     await expect(page.getByRole('region', { name: 'Trail map' })).toBeVisible()

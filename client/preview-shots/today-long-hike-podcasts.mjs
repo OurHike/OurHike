@@ -18,7 +18,7 @@ import { seedPodcastEpisodes } from './fixtures/podcasts.mjs'
 export const caption =
   'Today, on a long hike — the episode picked for today’s stretch (#1683)'
 export const alt =
-  'The Today screen in long-hike mode, scrolled to the card headed "Today on your hike" for Low Gap Shelter to Tray Mountain Shelter, with a card directly below it reading "For today’s stretch" and "Picked for Low Gap Shelter → Tray Mountain Shelter", listing one invented episode with a round play icon and a round plus icon beside its title'
+  'The Today screen in long-hike mode, scrolled to the card headed "Today on your hike" for Low Gap Shelter to Tray Mountain Shelter, with a card directly below it reading "For today’s stretch" and "Picked for Low Gap Shelter → Tray Mountain Shelter", listing one invented episode with a round play icon and a Save button carrying the Spotify icon beside its title'
 
 export default async function drive(page) {
   await seedPodcastEpisodes(page)

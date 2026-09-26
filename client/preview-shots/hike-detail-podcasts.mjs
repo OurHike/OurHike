@@ -21,7 +21,7 @@ import { seedSuggestedHikes } from './fixtures/suggestedHikes.mjs'
 export const caption =
   'Podcast episodes picked for a hike, the last thing on its detail screen (#1683)'
 export const alt =
-  'The bottom of the Wapiti to Docs Knob detail screen: the provenance footer, then a "Listen before you go" rule over a card headed "Picked for this hike", listing two invented episodes with their show, title and length, each with a round play icon and a round plus icon beside the title, and a line under the list saying the play icon plays it here, the plus saves it to Spotify, and the first time asks to connect once'
+  'The bottom of the Wapiti to Docs Knob detail screen: the provenance footer, then a "Listen before you go" rule over a card headed "Picked for this hike", listing two invented episodes with their show, title and length, each with a round play icon and a Save button carrying the Spotify icon beside the title, and a line under the list saying the play icon plays it here, Save puts it in Spotify, and the first time asks to connect once'
 
 export default async function drive(page) {
   // Before seedSuggestedHikes, which reloads: the route and the kept copy

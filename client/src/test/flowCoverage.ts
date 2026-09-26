@@ -100,6 +100,13 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   // answered the way preview-shots/fixtures/podcasts.mjs answers it. Save is
   // not - it leaves for Spotify's sign-in, which no flow test should reach.
   'chrome/PodcastCard.tsx': { step: 'F2 Today', flow: { status: 'planned' } },
+  'chrome/SpotifyIcon.tsx': {
+    step: 'F2 Today',
+    flow: {
+      status: 'unit-only',
+      why: 'A drawn mark with no state: its size and colour are pinned in PodcastCard.test.tsx, and a browser driven to it would prove the same thing slower.',
+    },
+  },
   // SAME BLOCKER AS THE RIBBON BELOW, read from the source rather than
   // measured (2026-09-11): chrome/MapScreen.tsx renders the rail only when
   // `waypoints !== undefined && elevation !== undefined`, and App.tsx's

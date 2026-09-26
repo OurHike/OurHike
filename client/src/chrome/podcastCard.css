@@ -118,10 +118,10 @@
   gap: 8px;
 }
 
-/* Icons beside the title, the maintainer's pick (poll, 2026-09-26) after
-   44px pills and then 32px ones. The circle is 36px; the tap target is 44px,
-   carried by the ::after, because a smaller button is not a licence for a
-   smaller thumb. */
+/* The play circle beside the title, the maintainer's pick (poll, 2026-09-26)
+   after 44px pills and then 32px ones. The circle is 36px; the tap target is
+   44px, carried by the ::after, because a smaller button is not a licence for
+   a smaller thumb. */
 .podcast-card__icon {
   position: relative;
   width: 36px;
@@ -143,18 +143,44 @@
   inset: -4px;
 }
 
-.podcast-card__icon--solid {
-  background: var(--brand-primary);
-  color: var(--fg-on-brand);
+/* The Spotify buttons: Save, Saved, and Listen on Spotify (#1683). The
+   maintainer asked for the Spotify icon on them (2026-09-26), and Spotify's
+   design guidelines decide the shape: the icon beside a word rather than
+   inside our + circle, at 21px, with clear space of half its height - the
+   11px of padding before it and the 10px gap after. Same 36px height as the
+   play circle, same 44px tap target. */
+.podcast-card__spotify {
+  position: relative;
+  height: 36px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px 0 11px;
+  border: 1.5px solid var(--border-2);
+  border-radius: var(--radius-pill);
+  background: var(--surface-card);
+  color: var(--fg-1);
+  font-family: var(--font-body);
+  font-size: var(--text-body-s);
+  font-weight: var(--weight-semibold);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
 }
 
-.podcast-card__icon--solid:disabled {
+.podcast-card__spotify::after {
+  content: '';
+  position: absolute;
+  inset: -4px -2px;
+}
+
+.podcast-card__spotify:disabled {
   opacity: 0.6;
   cursor: progress;
 }
 
-.podcast-card__icon--done {
-  border-color: var(--border-2);
+.podcast-card__spotify--done {
   color: var(--fg-2);
   cursor: default;
 }

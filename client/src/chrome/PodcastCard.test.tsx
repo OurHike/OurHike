@@ -71,7 +71,7 @@ describe('PodcastCard, first look (frame 1)', () => {
     expect(container.querySelector('iframe')).toBeNull()
     expect(
       screen.getByText(
-        '▶ plays it here. + saves it to your Spotify; the first time asks you to connect, once.',
+        '▶ plays it here. Save puts it in your Spotify; the first time asks you to connect, once.',
       ),
     ).toBeTruthy()
   })
@@ -218,6 +218,26 @@ describe('PodcastCard, saving', () => {
   })
 })
 
+describe('PodcastCard, the Spotify icon on its buttons', () => {
+  it('puts Spotify’s icon, in Spotify Green at its 21px minimum, beside the word Save', () => {
+    show()
+    const save = screen.getByRole('button', {
+      name: 'Save “The park’s history” to Spotify',
+    })
+    expect(save.textContent).toBe('Save')
+    const icon = save.querySelector('svg')
+    expect(icon?.getAttribute('width')).toBe('21')
+    expect(icon?.querySelector('path')?.getAttribute('fill')).toBe('#1ED760')
+  })
+
+  it('says “Listen on Spotify”, Spotify’s own words, where the card opens Spotify', () => {
+    show({ native: true })
+    const links = screen.getAllByRole('link', { name: /in Spotify$/ })
+    expect(links[0].textContent).toBe('Listen on Spotify')
+    expect(links[0].querySelector('svg path')?.getAttribute('fill')).toBe('#1ED760')
+  })
+})
+
 describe('PodcastCard, when a control cannot work', () => {
   it('offers no Play and no Save with no signal, and says why', () => {
     show({ online: false })
@@ -249,7 +269,7 @@ describe('PodcastCard, when a control cannot work', () => {
     expect(screen.getAllByRole('link', { name: /in Spotify$/ })).toHaveLength(2)
     expect(
       screen.getByText(
-        '↗ opens it in Spotify. Playing and saving here work in OurHike in a browser.',
+        'Listen on Spotify opens it in the Spotify app. Playing and saving here work in OurHike in a browser.',
       ),
     ).toBeTruthy()
   })

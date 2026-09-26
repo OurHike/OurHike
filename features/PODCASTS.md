@@ -19,6 +19,7 @@ first build, a photograph of the running app:
 | the phone apps | a link to the episode in Spotify, nothing else | the same card as the web |
 | where the list lives | live, at the bucket root, so a new episode needs no app release | in the app code; in the pinned trail data |
 | the buttons | icons beside each title | 44px pills, then 32px pills |
+| the Spotify buttons | the maintainer asked for Spotify's icon on them; drawn as the icon beside a word ("Save", "Saved", "Listen on Spotify"), the shape Spotify's design guidelines allow | the icon inside our + circle, which the guidelines forbid (no combining the mark with another symbol); the icon alone in a white circle, which reads as "open Spotify" rather than "save" |
 
 "Should be the last thing you see" is the maintainer's own line about the hike detail
 placement. The alternatives are written down so the next reader knows they were considered,

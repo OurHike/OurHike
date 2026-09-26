@@ -39,6 +39,7 @@ import {
   saveEpisodeToSpotify,
   savedFromHere,
 } from '../lib/spotify'
+import { SpotifyIcon } from './SpotifyIcon'
 import './podcastCard.css'
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'not_approved' | 'failed'
@@ -162,51 +163,20 @@ function footLine(
   connected: boolean,
 ) {
   if (native)
-    return '↗ opens it in Spotify. Playing and saving here work in OurHike in a browser.'
+    return 'Listen on Spotify opens it in the Spotify app. Playing and saving here work in OurHike in a browser.'
   if (!online) return 'Playing and saving need signal.'
-  if (!canSave) return '▶ plays it here. ↗ opens it in Spotify.'
+  if (!canSave) return '▶ plays it here. Listen on Spotify opens it in Spotify.'
   return connected
-    ? '▶ plays it here. + saves it to your Spotify.'
-    : '▶ plays it here. + saves it to your Spotify; the first time asks you to connect, once.'
+    ? '▶ plays it here. Save puts it in your Spotify.'
+    : '▶ plays it here. Save puts it in your Spotify; the first time asks you to connect, once.'
 }
 
-/** 16px glyphs, drawn rather than typed: a typed ▶ is an emoji on iOS, and
- *  an emoji in a brand-coloured circle is a different button. */
-function Glyph({ shape }: { shape: 'play' | 'plus' | 'check' | 'out' }) {
-  const paths = {
-    play: <path d="M5 3.5v9l7.5-4.5z" fill="currentColor" />,
-    plus: (
-      <path
-        d="M8 3v10M3 8h10"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-    ),
-    check: (
-      <path
-        d="M3.5 8.5l3 3 6-7"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    ),
-    out: (
-      <path
-        d="M6 3.5h6.5V10M12.5 3.5L4 12"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    ),
-  }
+/** The play triangle, drawn rather than typed: a typed ▶ is an emoji on iOS,
+ *  and an emoji in a brand-coloured circle is a different button. */
+function PlayGlyph() {
   return (
     <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
-      {paths[shape]}
+      <path d="M5 3.5v9l7.5-4.5z" fill="currentColor" />
     </svg>
   )
 }
@@ -233,16 +203,18 @@ function EpisodeRow({
   onSave,
 }: EpisodeRowProps) {
   const length = formatMinutes(episode.minutes)
+  // Spotify's own wording for a button that opens Spotify ("LISTEN ON
+  // SPOTIFY", its design guidelines), with its icon beside the words.
   const openLink = (
     <a
-      className="podcast-card__icon"
+      className="podcast-card__spotify"
       href={spotifyEpisodeUrl(episode)}
       target="_blank"
       rel="noreferrer"
       aria-label={`Open “${episode.title}” in Spotify`}
-      title="Open in Spotify"
     >
-      <Glyph shape="out" />
+      <SpotifyIcon />
+      <span>Listen on Spotify</span>
     </a>
   )
 
@@ -258,30 +230,30 @@ function EpisodeRow({
           aria-label={`Play “${episode.title}” here`}
           title="Play here"
         >
-          <Glyph shape="play" />
+          <PlayGlyph />
         </button>
       )}
       {!canSave ? (
         openLink
       ) : save === 'saved' ? (
         <span
-          className="podcast-card__icon podcast-card__icon--done"
+          className="podcast-card__spotify podcast-card__spotify--done"
           role="img"
           aria-label={`“${episode.title}” is saved to Spotify`}
-          title="Saved to Spotify"
         >
-          <Glyph shape="check" />
+          <SpotifyIcon />
+          <span>Saved</span>
         </span>
       ) : save === 'not_approved' ? null : (
         <button
           type="button"
-          className="podcast-card__icon podcast-card__icon--solid"
+          className="podcast-card__spotify"
           onClick={onSave}
           disabled={save === 'saving'}
           aria-label={`Save “${episode.title}” to Spotify`}
-          title="Save to Spotify"
         >
-          <Glyph shape="plus" />
+          <SpotifyIcon />
+          <span>{save === 'saving' ? 'Saving…' : 'Save'}</span>
         </button>
       )}
     </>

@@ -707,9 +707,10 @@ FLOW_WORDS = {"perennial": "year-round", "intermittent": "seasonal", "ephemeral"
 
 
 def describe_stream_point(properties: dict) -> str:
-    """One sentence about a point on a stream - the site water and the trail
-    crossings fetch_trail_water.py derives from USGS's and OSM's hydrography
-    (#529).
+    """One sentence about a point on a stream - the site water
+    fetch_trail_water.py derives from USGS's and OSM's hydrography (#529).
+    It described that file's trail crossings too, as "Where the trail
+    crosses ...", until #1674 removed them.
 
     NO DISTANCE IN IT, deliberately (#625). These points sit at real
     coordinates, so a site's own `nearby` measures the walk and the phone
@@ -730,11 +731,8 @@ def describe_stream_point(properties: dict) -> str:
     """
     name = properties.get("name")
     sources = list(properties.get("sources") or [])
-    if properties.get("crossing"):
-        opening = f"Where the trail crosses {name}." if name else "Where the trail crosses a stream."
-    else:
-        subject = name if name else "A stream"
-        opening = f"{subject}, where it runs closest to the site."
+    subject = name if name else "A stream"
+    opening = f"{subject}, where it runs closest to the site."
 
     flow_word = FLOW_WORDS.get(properties.get("flow") or "")
     claimant = properties.get("flow_source") if flow_word else None

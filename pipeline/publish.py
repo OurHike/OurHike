@@ -61,6 +61,7 @@ from lib.hashing import sha256_file
 from lib.manifest_paths import from_manifest_path, to_manifest_path
 from lib.photo_screen import load_decisions, unpublishable_digests
 from lib.photo_store import PHOTO_EXTENSION, PHOTO_PREFIX, PHOTOS_DIRNAME, photo_key
+from lib.poi_schema import WITHDRAWN_POI_TYPES
 from lib.r2_keys import assert_valid_keys
 
 ROOT = Path(__file__).parent
@@ -79,6 +80,7 @@ CONDITIONS_MANIFESTS = (
     "drought_manifest.json",
     "work_projects_manifest.json",
     "weather_manifest.json",
+    "weather_alerts_manifest.json",
 )
 WRITE_ENABLED_ENV_VAR = "R2_WRITE_ENABLED"
 
@@ -1630,6 +1632,19 @@ def _stage_release(
     return staged
 
 
+def withdrawn_poi_keys(remote_artifacts: dict, artifacts: dict) -> list[str]:
+    """The live manifest entries of a withdrawn poi_type that this run did not
+    produce, sorted - the ones publish() drops rather than carries forward.
+
+    A name this run DID collect is left alone whatever its type: that would be
+    an exporter still writing a type the schema says is withdrawn, and
+    test_poi_schema.py's disjointness test is what rules that out, not a
+    silent drop here.
+    """
+    withdrawn = {f"poi_{poi_type}.{kind}" for poi_type in WITHDRAWN_POI_TYPES for kind in ("geojson", "fgb")}
+    return sorted(name for name in remote_artifacts if name in withdrawn and name not in artifacts)
+
+
 def publish(
     artifacts: dict[str, dict] | None = None,
     *,
@@ -1800,6 +1815,34 @@ def publish(
                     f"exist (#1313)."
                 )
 
+    # WITHDRAWN POI TYPES LEAVE THE MANIFEST (#1674), the second exception to
+    # the additive merge below after #1313's. A type taken out of POI_TYPES
+    # stops being exported, so this run collects no `poi_<type>.*` - and the
+    # merge's own rule ("any remote name with no local counterpart this run is
+    # preserved as-is") would then carry the last one forward into every new
+    # latest.json and every release folder staged from it, forever. For
+    # crossings that is the 5,318 pins the maintainer asked to have off the
+    # map, still served, and carrying ids the identity ledger has retired -
+    # which verify_release's check 21 fails as ids published both live and
+    # retired.
+    #
+    # Only the manifest entry goes. The flat object stays in the bucket, as
+    # every object does (R2_LAYOUT.md), and every release folder that already
+    # holds it keeps it. That is what makes the drop safe for both kinds of
+    # build still asking for poi_crossing.geojson:
+    #   - a pinned build (v1.3.0 on) reads its own release folder, which
+    #     still holds the file and its manifest entry;
+    #   - an unpinned build (v1.0.0 to v1.2.2) reads THIS manifest at the
+    #     root, finds no entry, and treats that as "no hash to check"
+    #     (client/src/lib/dataManifest.ts's lookupInto returns null, read at
+    #     the v1.2.2 tag) - so it downloads the flat object, the last
+    #     crossings published, unchecked, rather than failing. Stale, and
+    #     nothing this pipeline can reach any more; never a failed download.
+    withdrawn = withdrawn_poi_keys(remote_artifacts, artifacts)
+    for stale_key in withdrawn:
+        remote_artifacts.pop(stale_key)
+        print(f"  WITHDRAWN: {stale_key} not carried forward - its poi_type is in lib/poi_schema.WITHDRAWN_POI_TYPES.")
+
     # BEFORE the uploads below, and that ordering is the whole of it: these
     # descriptions are a diff against the bytes currently published, and the
     # first `upload_file` overwrites the side being diffed against (#919).
@@ -1837,7 +1880,10 @@ def publish(
         changed[name]["transfer_bytes"] = transfer_bytes
     uploaded: list[str] = [name for name, _ in transfers]
 
-    if not uploaded:
+    # A withdrawal is a change to what the manifest serves even when no byte
+    # was uploaded, so it writes a version on its own - otherwise the stale
+    # entries above would be dropped from a manifest that is never written.
+    if not uploaded and not withdrawn:
         return {
             "environment": environment,
             "uploaded": [],
@@ -1846,6 +1892,7 @@ def publish(
             "photos_uploaded": sorted(uploaded_photos),
             "version_written": False,
             "version": remote_manifest["version"] if remote_manifest else None,
+            "withdrawn": [],
         }
 
     new_version = str(uuid.uuid4())
@@ -2015,6 +2062,7 @@ def publish(
         "version": new_version,
         "release": release_id,
         "release_artifacts": staged,
+        "withdrawn": withdrawn,
     }
 
 

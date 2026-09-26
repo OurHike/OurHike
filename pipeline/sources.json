@@ -674,7 +674,7 @@
       "public_field": "PUBLICUSE",
       "public_value": "Y",
       "discovered_via": "NYC_SOURCE_SURVEY.md §3 named this layer on 2026-08-18 and left it unregistered; POI_COVERAGE_SURVEY.md §1 measured what is actually in it on 2026-08-27, and #1097 registers it for the two POI types DEC publishes no per-type service for. Registered by hand.",
-      "notes": "21,468 points, counted live 2026-08-27. REGISTERED FOR EXACTLY TWO POI TYPES - privy and crossing - and deliberately not for the four DEC publishes per-type services for, which are registered separately above. THIS IS NOT A POI LAYER and must not be read as one: DEC's own description calls it 'Point data locating and differentiating assets on state lands... man-made items, which require periodic maintenance or inspection', its largest single value is CULVERT at 4,290 features, and 68% of it is things no hiker wants a pin for. export_nearby_poi.py takes it through a value allowlist plus PUBLICUSE, never a type-prefix match. `ASSET` is free text with 234 values as stored and 223 after trimming - the 12 whitespace variants include 'FORD ' beside 'FORD' and a bare ' ' on 86 rows - and carries DEC's own misspellings ('PRIMATIVE CAMPSITE'), so any match on it is case-insensitive and stripped. PUBLICUSE splits the layer 7,645 Y / 13,823 N and is the only reason this layer is publishable at all. WHAT IS EXCLUDED AND WHY IT STAYS EXCLUDED: 98 rows across 27 values are PROPOSED assets ('PROPOSED LEAN-TO' x11, 'PROPOSED PIT PRIVY' x5) and are dropped - a hiker who walks to a proposed lean-to finds trees; the 4,290 culverts are not crossings, being pipes under the tread rather than things anyone walks over; and NO WATER SHIPS FROM THIS LAYER OR ANY DEC LAYER, which is a measured refusal rather than an omission - see dec_water_holdback below.",
+      "notes": "21,468 points, counted live 2026-08-27. REGISTERED FOR EXACTLY TWO POI TYPES - privy and crossing, and since #1674 withdrew the crossing type, only privy ships from it - and deliberately not for the four DEC publishes per-type services for, which are registered separately above. THIS IS NOT A POI LAYER and must not be read as one: DEC's own description calls it 'Point data locating and differentiating assets on state lands... man-made items, which require periodic maintenance or inspection', its largest single value is CULVERT at 4,290 features, and 68% of it is things no hiker wants a pin for. export_nearby_poi.py takes it through a value allowlist plus PUBLICUSE, never a type-prefix match. `ASSET` is free text with 234 values as stored and 223 after trimming - the 12 whitespace variants include 'FORD ' beside 'FORD' and a bare ' ' on 86 rows - and carries DEC's own misspellings ('PRIMATIVE CAMPSITE'), so any match on it is case-insensitive and stripped. PUBLICUSE splits the layer 7,645 Y / 13,823 N and is the only reason this layer is publishable at all. WHAT IS EXCLUDED AND WHY IT STAYS EXCLUDED: 98 rows across 27 values are PROPOSED assets ('PROPOSED LEAN-TO' x11, 'PROPOSED PIT PRIVY' x5) and are dropped - a hiker who walks to a proposed lean-to finds trees; the 4,290 culverts are not crossings, being pipes under the tread rather than things anyone walks over; and NO WATER SHIPS FROM THIS LAYER OR ANY DEC LAYER, which is a measured refusal rather than an omission - see dec_water_holdback below.",
       "freshness": {
         "kind": "arcgis_max_field",
         "field": "UPDATED",
@@ -1372,7 +1372,7 @@
     "orgs": {
       "ATC": {
         "probed_date": "2026-08-27",
-        "note": "The baseline every other row is measured against, and it is not as tidy as 'ATC ships all eight' would suggest. Two of the eight are not ATC's data at all: `water` is dominated by opentrail.org and OSM points, with ATC contributing synthesized low-confidence points from the Campsite_Sustainability_Index distances (export_poi.py's atc_csi), and `crossing` is USGS NHD's entirely. ATC's own bridge layer is registered and unread - see the crossing row.",
+        "note": "The baseline every other row is measured against, and it is not as tidy as 'ATC ships all eight' would suggest. Two of the eight it was measured against were not ATC's data at all: `water` is dominated by opentrail.org and OSM points, with ATC contributing synthesized low-confidence points from the Campsite_Sustainability_Index distances (export_poi.py's atc_csi), and `crossing` was USGS NHD's entirely until #1674 withdrew the type (ATC's own bridge layer is registered and still unread).",
         "types": {
           "shelter": {
             "status": "shipping",
@@ -1392,15 +1392,6 @@
             "status": "shipping",
             "source_key": "communities",
             "note": "ATC's Communities layer, published at CONFIDENCE_LOW because an 'official A.T. Community' town is a proxy for resupply rather than a tagged resupply point."
-          },
-          "crossing": {
-            "status": "available",
-            "source_key": "bridges",
-            "measured": {
-              "features": 409,
-              "date": "2026-08-27"
-            },
-            "note": "ATC's OWN bridges - 409 features, dataLastEditDate 2026-08-14T12:06:49Z, registered since 2026-07-25 with reaches_hikers false and read by nothing. The `crossing` layer a hiker sees today is USGS NHD's stream crossings (see the USGS row), which answers a different question: where water crosses the trail, not where there is a structure to get across it. Fields include Status, Type, Super_Stru and Length__fe. So ATC is the one org here with an un-ingested POI type of its own, which is worth an issue rather than a line in a survey about everybody else."
           },
           "viewpoint": {
             "status": "shipping",
@@ -1495,27 +1486,6 @@
               }
             },
             "note": "Still unjudged, and still not shipped by #1097 for exactly the reason recorded below. 109 - 91 'Concession' and 18 'Store'. Whether a park concession stand is resupply in the sense a thru-hiker means is exactly what #806 got wrong about opentrail's 'r' tag (0 of 72 points named for a store), so the count is recorded and the judgement is not made here."
-          },
-          "crossing": {
-            "status": "shipping",
-            "source_key": "oprhp_facilities",
-            "layer": "https://services.arcgis.com/1xFZPtKn1wKC6POA/arcgis/rest/services/NY_State_Park_Facilities/FeatureServer/0",
-            "measured": {
-              "features": 1222,
-              "date": "2026-08-27",
-              "org_flags_public": 413,
-              "values": {
-                "Trail Bridge": 793,
-                "Stairs": 414,
-                "Vehicle Bridge": 15
-              }
-            },
-            "note": "SHIPPING since 2026-08-27 (#1097), 793 features via export_nearby_poi.py. 793 trail bridges. NOT the 414 'Stairs' or the 15 'Vehicle Bridge' rows the survey counted here - a staircase is not a stream crossing and a road bridge is not a hiker's. 1,222 - 793 'Trail Bridge', 414 'Stairs', 15 'Vehicle Bridge'. Only 413 are in OPRHP's app, which fits these being maintenance assets first. Stairs are bucketed as crossings because they are a built thing a walker traverses; a reviewer may reasonably want them separated.",
-            "published": {
-              "features": 793,
-              "date": "2026-08-27",
-              "artifact": "nearby_poi.geojson"
-            }
           },
           "viewpoint": {
             "status": "shipping",
@@ -1663,29 +1633,6 @@
             "status": "absent",
             "note": "Nothing store-shaped anywhere in DEC's dil folder or in the backcountry layer: no store, outfitter, hostel or concession asset type among the 223 values, and no service of that kind beside the others."
           },
-          "crossing": {
-            "status": "shipping",
-            "layer": "https://gisservices.dec.ny.gov/arcgis/rest/services/dec_backcountry_features/MapServer/0",
-            "measured": {
-              "features": 1182,
-              "date": "2026-08-27",
-              "org_flags_public": 247,
-              "values": {
-                "BRIDGE": 1088,
-                "BOARDWALK": 55,
-                "FORD": 36,
-                "FOOT BRIDGE": 1,
-                "HARDENED CROSSING": 1
-              }
-            },
-            "note": "SHIPPING since 2026-08-27 (#1097), 246 features via export_nearby_poi.py. 246 bridges, foot bridges, boardwalks and hardened crossings, PUBLICUSE='Y'. NOT the 36 FORD rows (an unbridged crossing is a hazard, not an amenity) and not the 4,290 culverts. 1,182 - 1,088 'BRIDGE', 55 'BOARDWALK', 36 'FORD', 1 'FOOT BRIDGE', 1 'HARDENED CROSSING'; only 247 flagged public, which fits a maintenance inventory. DEC's 4,290 CULVERTs are deliberately NOT counted: a culvert is a pipe under the tread, not a thing a hiker crosses. The 36 FORDs are the interesting ones - an unbridged crossing is a hazard, not an amenity, and would need HIKER_SAFETY.md's treatment rather than a pin.",
-            "source_key": "dec_backcountry_features",
-            "published": {
-              "features": 246,
-              "date": "2026-08-27",
-              "artifact": "nearby_poi.geojson"
-            }
-          },
           "viewpoint": {
             "status": "shipping",
             "layer": "https://gisservices.dec.ny.gov/arcgis/rest/services/dec_backcountry_features/MapServer/0",
@@ -1796,10 +1743,6 @@
             "status": "absent",
             "note": "No layer carries one, and the section guide names food only in passing ('a gas station (water, vending machines, food, phone)', a snack bar 'open all year') - prose that nothing here reads as resupply, on #806's precedent that a plausible read of an uncounted column ships wrong data quietly. Re-probed 2026-09-08."
           },
-          "crossing": {
-            "status": "absent",
-            "note": "No layer carries one. The section guide says 'cross a stream on a wooden bridge' and the like throughout, and nothing here reads a bridge out of prose: the crossings that ship are USGS NHD's stream crossings and the agencies' bridge assets, both of them geometry rather than sentences. Re-probed 2026-09-08."
-          },
           "viewpoint": {
             "status": "shipping",
             "source_key": "nynjtc_long_path_guide",
@@ -1858,10 +1801,6 @@
             "status": "absent",
             "note": "No point layer on Mohonk Preserve's AGOL org; the three real layers are trails, the preserve boundary and deer-management zones."
           },
-          "crossing": {
-            "status": "absent",
-            "note": "No point layer on Mohonk Preserve's AGOL org; the three real layers are trails, the preserve boundary and deer-management zones."
-          },
           "viewpoint": {
             "status": "absent",
             "note": "No point layer on Mohonk Preserve's AGOL org; the three real layers are trails, the preserve boundary and deer-management zones."
@@ -1905,10 +1844,6 @@
             "status": "absent",
             "note": "GATC's registered source is one water PDF; it carries nothing of this type."
           },
-          "crossing": {
-            "status": "absent",
-            "note": "GATC's registered source is one water PDF; it carries nothing of this type."
-          },
           "viewpoint": {
             "status": "absent",
             "note": "GATC's registered source is one water PDF; it carries nothing of this type."
@@ -1948,10 +1883,6 @@
             "status": "unprobed",
             "note": "OSM tags of this kind exist over this ground and nobody here has counted them. #771 is the runnable place for that measurement."
           },
-          "crossing": {
-            "status": "unprobed",
-            "note": "OSM tags of this kind exist over this ground and nobody here has counted them. #771 is the runnable place for that measurement."
-          },
           "viewpoint": {
             "status": "unprobed",
             "note": "OSM tags of this kind exist over this ground and nobody here has counted them. #771 is the runnable place for that measurement."
@@ -1972,13 +1903,8 @@
       },
       "USGS": {
         "probed_date": "2026-08-27",
-        "note": "A terrain and hydrography publisher, not a facilities one - which is why seven rows read absent rather than unprobed: the question was asked and USGS does not publish shelters. Its one POI contribution is real and already shipping.",
+        "note": "A terrain and hydrography publisher, not a facilities one - which is why seven rows read absent rather than unprobed: the question was asked and USGS does not publish shelters. Its one POI contribution is real and already shipping: site water, since #1674 withdrew the stream crossings.",
         "types": {
-          "crossing": {
-            "status": "shipping",
-            "unregistered_source": "FOUND BY tests/test_poi_coverage.py WHILE WRITING THIS BLOCK, and left as a finding rather than fixed here. USGS's only registered entry is usgs_3dhp, kind watched_only, reaches_hikers false - a deliberate WATCH on the successor dataset, explicitly 'nothing fetches this'. The data that actually ships is the retired NHD, pulled as bulk HU4 GeoPackages from prd-tnm.s3.amazonaws.com/StagedProducts/Hydrography/NHD/ by fetch_trail_water.py, and it has no entry in `sources` at all. So the registry cannot say USGS reaches hikers, and export_sources.py cannot name them, even though NHD geometry is behind both the crossings and part of the water layer. reaches_hikers_comment calls that field the record of 'which registered sources actually SHIP'; this is data that ships without being registered, which is the one case the field cannot express. Not fixed inside #1092 because registering a fetched source is a licence-and-freshness change with its own review - the licence is the easy half (federal public domain, already stated on usgs_3dhp and already on the client's credits screen).",
-            "note": "NHD stream crossings, cut against the A.T. centerline by fetch_trail_water.py and exported as the `crossing` poi_type - the only POI type on a hiker's phone that no ATC layer contributes."
-          },
           "shelter": {
             "status": "absent",
             "note": "USGS publishes elevation (3DEP), hydrography (NHD/3DHP) and topo rasters. None of them is a facilities inventory."
@@ -1988,8 +1914,9 @@
             "note": "USGS publishes elevation (3DEP), hydrography (NHD/3DHP) and topo rasters. None of them is a facilities inventory."
           },
           "water": {
-            "status": "absent",
-            "note": "USGS publishes elevation (3DEP), hydrography (NHD/3DHP) and topo rasters. None of them is a facilities inventory."
+            "status": "shipping",
+            "unregistered_source": "MOVED HERE FROM THE crossing CELL when #1674 withdrew that type: the finding outlived it, because the same unregistered NHD download is behind site water. FOUND BY tests/test_poi_coverage.py WHILE WRITING THIS BLOCK, and left as a finding rather than fixed here. USGS's only registered entry is usgs_3dhp, kind watched_only, reaches_hikers false - a deliberate WATCH on the successor dataset, explicitly 'nothing fetches this'. The data that actually ships is the retired NHD, pulled as bulk HU4 GeoPackages from prd-tnm.s3.amazonaws.com/StagedProducts/Hydrography/NHD/ by fetch_trail_water.py, and it has no entry in `sources` at all. So the registry cannot say USGS reaches hikers, and export_sources.py cannot name them, even though NHD geometry is behind part of the water layer. reaches_hikers_comment calls that field the record of 'which registered sources actually SHIP'; this is data that ships without being registered, which is the one case the field cannot express. Not fixed inside #1092 because registering a fetched source is a licence-and-freshness change with its own review - the licence is the easy half (federal public domain, already stated on usgs_3dhp and already on the client's credits screen).",
+            "note": "Site water: for each ATC shelter and campsite, the nearest point on an NHD or OSM stream that a hiker can reach (within 100 ft, under a 15% grade), derived by fetch_trail_water.py and exported as `water` with source nhd_stream - 39 live nhd_stream rows in reference/poi_identity.json on 2026-09-26. USGS's only POI contribution since #1674 withdrew the stream crossings this row used to share with it; before that it was recorded as absent, which was already inaccurate about site water."
           },
           "resupply": {
             "status": "absent",
@@ -2009,7 +1936,7 @@
           },
           "trailhead": {
             "status": "absent",
-            "note": "The USGS data that ships is NHD hydrography, behind crossings and part of water. It carries nothing of this type."
+            "note": "The USGS data that ships is NHD hydrography, behind part of water (and behind crossings until #1674 withdrew them). It carries nothing of this type."
           }
         }
       },
@@ -2046,10 +1973,6 @@
           "resupply": {
             "status": "absent",
             "note": "Nothing in the 31,405 is a resupply point. The closest by name are 164 'HOTEL, LODGE, RESORT' and 97 'INTERPRETIVE VISITOR CENTER (MINOR)', and neither is a place to buy four days of food. The lodge rows are separately interesting - they are where AMC's hut system would appear if it is in any public dataset - and are unprobed (pipeline/WHITE_MOUNTAINS_SOURCE_SURVEY.md section 6(f)). Counts are nationwide by group-by statistics on site_type over the layer's 31,405 rows, measured 2026-09-02; the White Mountains subset that prompted the registration is in usfs_rec_sites' notes."
-          },
-          "crossing": {
-            "status": "absent",
-            "note": "Neither registered USFS layer publishes crossings. The recreation-sites layer has no crossing site_type, and the trails layer is polylines carrying no bridge or ford column anywhere in its 100-odd fields, checked against the live field list 2026-09-02."
           },
           "viewpoint": {
             "status": "shipping",
@@ -2103,10 +2026,6 @@
             "status": "unprobed",
             "note": "UNPROBED rather than absent, and the distinction is the whole point of this cell. #1207's scope was TRAILS, so only layer 2 of CSD/RecreationResources was opened. The service holds three further layers that are exactly where POIs would live - 'Access Sites to Public Waters' (0), 'Recreation Inventory: Points' (1) and 'Recreation Inventory: Areas' (3) - and not one of them has been queried. Their names were read from the service metadata on 2026-09-02 and nothing else about them is known. This is the cheapest open question in pipeline/WHITE_MOUNTAINS_SOURCE_SURVEY.md (section 6(c)): one probe of an already-registered service."
           },
-          "crossing": {
-            "status": "unprobed",
-            "note": "UNPROBED rather than absent, and the distinction is the whole point of this cell. #1207's scope was TRAILS, so only layer 2 of CSD/RecreationResources was opened. The service holds three further layers that are exactly where POIs would live - 'Access Sites to Public Waters' (0), 'Recreation Inventory: Points' (1) and 'Recreation Inventory: Areas' (3) - and not one of them has been queried. Their names were read from the service metadata on 2026-09-02 and nothing else about them is known. This is the cheapest open question in pipeline/WHITE_MOUNTAINS_SOURCE_SURVEY.md (section 6(c)): one probe of an already-registered service."
-          },
           "viewpoint": {
             "status": "unprobed",
             "note": "UNPROBED rather than absent, and the distinction is the whole point of this cell. #1207's scope was TRAILS, so only layer 2 of CSD/RecreationResources was opened. The service holds three further layers that are exactly where POIs would live - 'Access Sites to Public Waters' (0), 'Recreation Inventory: Points' (1) and 'Recreation Inventory: Areas' (3) - and not one of them has been queried. Their names were read from the service metadata on 2026-09-02 and nothing else about them is known. This is the cheapest open question in pipeline/WHITE_MOUNTAINS_SOURCE_SURVEY.md (section 6(c)): one probe of an already-registered service."
@@ -2142,10 +2061,6 @@
             "note": "UNPROBED rather than absent, on the nh_granit_trails precedent: #1293's scope was the two TRAIL layers, and the NJDEP service holds a sibling layer that is exactly where POIs would live - 62, 'Open Space (State Owned) Points of Interest', its name read from the service metadata on 2026-09-09 and nothing else about it known, its count not even probed. The Forum layer is lines only. Registering the org obliges an answer to the POI question, and the answer today is that nobody has looked; #1293 itself says the POI layer is a separate registration once the trails are in."
           },
           "resupply": {
-            "status": "unprobed",
-            "note": "UNPROBED rather than absent, on the nh_granit_trails precedent: #1293's scope was the two TRAIL layers, and the NJDEP service holds a sibling layer that is exactly where POIs would live - 62, 'Open Space (State Owned) Points of Interest', its name read from the service metadata on 2026-09-09 and nothing else about it known, its count not even probed. The Forum layer is lines only. Registering the org obliges an answer to the POI question, and the answer today is that nobody has looked; #1293 itself says the POI layer is a separate registration once the trails are in."
-          },
-          "crossing": {
             "status": "unprobed",
             "note": "UNPROBED rather than absent, on the nh_granit_trails precedent: #1293's scope was the two TRAIL layers, and the NJDEP service holds a sibling layer that is exactly where POIs would live - 62, 'Open Space (State Owned) Points of Interest', its name read from the service metadata on 2026-09-09 and nothing else about it known, its count not even probed. The Forum layer is lines only. Registering the org obliges an answer to the POI question, and the answer today is that nobody has looked; #1293 itself says the POI layer is a separate registration once the trails are in."
           },
@@ -2207,10 +2122,6 @@
             "status": "absent",
             "note": "Probed 2026-09-15: absent in the sense this survey means. 'FRESH Food Stores Zoning Boundaries' and 'Recognized Shop Healthy Stores' exist and are a zoning instrument and a public-health programme, neither a shop directory a hiker could resupply from."
           },
-          "crossing": {
-            "status": "absent",
-            "note": "Probed 2026-09-15: nothing returned for any spelling. City paths cross roads at signalised intersections, not streams at fords."
-          },
           "viewpoint": {
             "status": "absent",
             "note": "Probed 2026-09-15: nothing returned for 'viewpoint' or 'overlook'. No surveyed vista layer."
@@ -2259,10 +2170,6 @@
             "note": "Probed 2026-09-15: DOT's registered dataset is a line network of bicycle facilities with no point layer in it, and nothing else of DOT's on the portal is POI-shaped for a hiker."
           },
           "resupply": {
-            "status": "absent",
-            "note": "Probed 2026-09-15: DOT's registered dataset is a line network of bicycle facilities with no point layer in it, and nothing else of DOT's on the portal is POI-shaped for a hiker."
-          },
-          "crossing": {
             "status": "absent",
             "note": "Probed 2026-09-15: DOT's registered dataset is a line network of bicycle facilities with no point layer in it, and nothing else of DOT's on the portal is POI-shaped for a hiker."
           },

@@ -560,8 +560,7 @@ export const POI_PIN_MIN_SCALE = 0.8
  * displayed full size? Shelters/Campsites, Water, Trailheads, Everything
  * else." Asked, from two real frames of Harriman and the carry zoom, whether
  * "Everything else" meant smaller as well as later, they chose smaller: towns
- * and parking joined the privies, fords and overlooks at
- * {@link SECONDARY_POI_SCALE}. They had been full size since #1585 as "the
+ * and parking joined the privies and overlooks at {@link SECONDARY_POI_SCALE}. They had been full size since #1585 as "the
  * ways off the trail"; the trailhead is the one of those still drawn full
  * size, which is where a way off the trail reaches a road (#1197).
  *

@@ -4,7 +4,8 @@ export_poi.py's subject is the A.T.: ATC's own facility layers plus
 opentrail.org and OSM water, clipped to a 30-mile corridor around ATC's
 centerline and carrying a NOBO mile from Springer. This module's subject is
 everything else already on the ground - the lean-tos, campsites, privies,
-vistas, parking areas and bridges two New York State agencies maintain.
+vistas, parking areas and trailheads two New York State agencies maintain.
+(Their bridges shipped too, as `crossing`, until #1674 withdrew that type.)
 
 A SECOND EXPORT RATHER THAN A BRANCH INSIDE THE FIRST, for the three reasons
 export_nearby_trails.py already gives for doing the same thing with trail
@@ -24,9 +25,11 @@ absent as "no mile" rather than as zero.
 
 WHAT SHIPS, MEASURED 2026-08-27 BY spike_org_poi_coverage.py
 
-Six of the eight POI types, from both orgs. The counts each org publishes, and
-what this module actually emits, are in POI_COVERAGE_SURVEY.md §0; the
-per-source totals are printed by every run and written into the manifest.
+Six of the eight POI types, from both orgs - five since #1674 withdrew
+`crossing`, which was their bridges. The counts each org publishes, and what
+this module actually emits, are in POI_COVERAGE_SURVEY.md §0 (as measured,
+bridges included); the per-source totals are printed by every run and written
+into the manifest.
 
 A THIRD INPUT SINCE 2026-09-08 (#1288), AND THE FIRST THAT IS NOT A LAYER:
 NYNJTC's Long Path section guide, forty web pages fetch_nynjtc_long_path_guide.py
@@ -88,7 +91,12 @@ WHAT DOES NOT SHIP, AND WHY EACH ONE IS A DECISION RATHER THAN AN OVERSIGHT
     Stairs under `crossing` for counting and flagged that a reviewer might want
     them separated - shipping is where that matters, so they are separated: a
     staircase is not a stream crossing, and a road bridge is not a hiker's.
-    Only `Trail Bridge` ships as `crossing` from OPRHP.
+    `Trail Bridge` was the one OPRHP value that shipped as `crossing`.
+  - **Every bridge, since #1674.** The maintainer had the `crossing` type
+    taken off the map ("Crossings are cluttering the map"), and DEC's
+    BRIDGE, FOOT BRIDGE, BOARDWALK and HARDENED CROSSING rows and OPRHP's
+    Trail Bridge were that type here. They drop with a named reason, like
+    every other refusal, rather than falling through as unknown values.
   - **OPRHP's 109 resupply rows** (91 'Concession', 18 'Store'). Whether a park
     concession stand is resupply in the sense a thru-hiker means is exactly
     what #806 got wrong about opentrail's 'r' tag, where 0 of 72 published
@@ -192,12 +200,8 @@ DEC_ASSET_TYPES = {
     "PORT-A-JOHN": "privy",
     "RESTROOM": "privy",
     "BATHROOM": "privy",
-    # crossing - a built thing a walker gets across on. 'FORD' is deliberately
-    # absent (see the module docstring), and so is 'CULVERT' at 4,290 rows.
-    "BRIDGE": "crossing",
-    "FOOT BRIDGE": "crossing",
-    "BOARDWALK": "crossing",
-    "HARDENED CROSSING": "crossing",
+    # BRIDGE, FOOT BRIDGE, BOARDWALK and HARDENED CROSSING mapped to
+    # `crossing` here until #1674 withdrew the type - see NAMED_EXCLUSIONS.
 }
 
 # OPRHP's Sub_Asset values. One layer carries all seven types; 'Water Spigot',
@@ -221,7 +225,7 @@ OPRHP_SUB_ASSET_TYPES = {
     "Parking Area": "parking",
     "Pull Off": "parking",
     "Accessible Parking Area": "parking",
-    "Trail Bridge": "crossing",
+    # 'Trail Bridge' was `crossing` until #1674 - see NAMED_EXCLUSIONS.
     # Where the walking starts (#1197). Kept apart from the three `parking`
     # values above rather than folded into them, which is the whole reason
     # the ninth type was worth adding: OPRHP publishes both, and a lot and
@@ -342,11 +346,21 @@ TYPED_LAYERS_FOLDED = {
 # dropped and why rather than silently emitting less. Not a filter - the
 # allowlists above already exclude everything not in them - but a named reason
 # for the four exclusions somebody would otherwise re-litigate from scratch.
+WITHDRAWN_CROSSING = "the crossing type was withdrawn (#1674, lib/poi_schema.WITHDRAWN_POI_TYPES)"
+
 NAMED_EXCLUSIONS = {
     "FORD": "unbridged crossing - a hazard, not an amenity (HIKER_SAFETY.md, POI_COVERAGE_SURVEY.md 8e)",
     "CULVERT": "a pipe under the tread, not a thing anyone crosses",
     "Stairs": "a staircase is not a stream crossing",
     "Vehicle Bridge": "a road bridge is not a hiker's crossing",
+    # The five values that were `crossing` until the maintainer withdrew that
+    # type (#1674). Named rather than dropped from the allowlists alone, so a
+    # run still says it held back the bridges on purpose.
+    "BRIDGE": WITHDRAWN_CROSSING,
+    "FOOT BRIDGE": WITHDRAWN_CROSSING,
+    "BOARDWALK": WITHDRAWN_CROSSING,
+    "HARDENED CROSSING": WITHDRAWN_CROSSING,
+    "Trail Bridge": WITHDRAWN_CROSSING,
     "Water Spigot": "water holdback - no seasonal shutoff recorded (sources.json oprhp_water_holdback)",
     "Drinking Fountain": "water holdback - see oprhp_water_holdback",
     "WATER SUPPLY SYSTEM": "DEC water refused - see sources.json dec_water_holdback",
@@ -521,8 +535,8 @@ def compose_description(source: dict, properties: dict) -> str | None:
 
     That matters most on OPRHP, where `Name` is populated on 18% of rows: a pin
     reading "Unnamed" with no card line at all would be the whole feature for
-    3,676 of these, and "Trail Bridge in Beaver Island State Park." is two facts
-    OPRHP publishes rather than anything composed here.
+    3,676 of these, and "Lean-to in Allegany State Park." is two facts OPRHP
+    publishes rather than anything composed here.
 
     Every clause is the org's word. The only editorialising is `.title()` on
     DEC's ALL-CAPS asset values, which is formatting rather than meaning, and it

@@ -1,5 +1,14 @@
 # Publishes the NBM forecast for every trail square to UA's bucket, one file
-# per 1-degree cell (#1056, features/WEATHER.md build step 1).
+# per 1-degree cell, and every active NWS alert that reaches a trail square
+# (#1056, features/WEATHER.md build step 1).
+#
+# TWO HALVES, AND EITHER PUBLISHES WITHOUT THE OTHER. NBM stalling must not
+# hold back the warnings, and NWS not answering must not hold back the
+# forecast. Each half writes its own manifest only when it has succeeded
+# (`weather_manifest.json`, `weather_alerts_manifest.json`), so the publish
+# job uploads whichever halves came back, and publish.py carries the other's
+# last good copy forward, stamped with its own age. The job still goes red
+# when either half failed, so a failure is not hidden by the half that worked.
 #
 # WHY ITS OWN WORKFLOW, AND NOT A LEG OF publish-conditions.yml. That job's
 # ten minutes are already spent, deliberately: its header sizes four step
@@ -19,7 +28,8 @@
 # split publish-vector-data.yml made in #1265, for the same reason.
 #
 # UA ONLY, BY DESIGN FOR NOW. Nothing a hiker runs reads these files yet -
-# the card is build step 3 - so production would be publishing to nobody.
+# the card is build step 3, the warnings line step 4 - so production would be
+# publishing to nobody.
 # UA carries no environment gate (#1330), which is why no `environment:` is
 # set: a UA publish needs no approval, the same as publish-conditions.yml's
 # UA leg. Production is a promotion and belongs to the release train.
@@ -46,12 +56,15 @@ env:
 
 jobs:
   build:
-    name: Build the forecast files
+    name: Build the forecast and warnings files
     runs-on: ubuntu-latest
-    # Measured 2026-09-25: squares 49 s when the release changed (skipped
-    # otherwise), fetch 20 s, bake 19 s. Fifteen minutes is room for a slow
-    # NOAA day, not a target.
+    # Measured 2026-09-25/26: squares 49 s when the release changed (skipped
+    # otherwise; NWS zones add ~10 s to that, measured in a sandbox rather
+    # than on a runner), alerts 1 s, fetch 20 s, bake 19 s.
+    # Fifteen minutes is room for a slow NOAA day, not a target.
     timeout-minutes: 15
+    outputs:
+      uploaded: ${{ steps.upload.outcome }}
     defaults:
       run:
         working-directory: pipeline
@@ -80,7 +93,8 @@ jobs:
           key: weather-squares-${{ github.run_id }}
           restore-keys: weather-squares-
 
-      - name: Find the squares under UA's trails
+      - name: Find the squares under UA's trails, and their NWS zones
+        id: squares
         timeout-minutes: 8
         env:
           OURHIKE_DATA_ENV: ua
@@ -96,14 +110,28 @@ jobs:
             pipeline/data/raw/weather/urma_terrain.grb2
           key: weather-squares-${{ hashFiles('pipeline/data/raw/weather/squares.json', 'pipeline/data/raw/weather/urma_terrain.grb2') }}
 
+      # First, because it is one request and a second of work: a slow NBM
+      # day that runs into the fetch step's ceiling cannot delay it.
+      - name: Fetch NWS's active alerts and place them on trail squares
+        timeout-minutes: 3
+        run: python export_weather_alerts.py
+
       - name: Fetch the newest complete NBM cycle
+        id: fetch
+        if: ${{ !cancelled() && steps.squares.outcome == 'success' }}
         timeout-minutes: 5
         run: python fetch_weather.py
 
       - name: Bake one file per trail cell
+        if: ${{ !cancelled() && steps.fetch.outcome == 'success' }}
         run: python export_weather.py
 
+      # Whatever came back. Each export writes its manifest last, after its
+      # files, and not at all when it fails, so a manifest here is a half
+      # that worked.
       - name: Upload data for the publish job
+        id: upload
+        if: ${{ !cancelled() && hashFiles('pipeline/data/processed/*_manifest.json') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: weather-build-output
@@ -113,6 +141,9 @@ jobs:
   publish:
     name: Publish (ua)
     needs: build
+    # Runs when the build uploaded anything, including when one half failed;
+    # skipped only when neither half produced a file.
+    if: ${{ !cancelled() && needs.build.outputs.uploaded == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:

@@ -37,8 +37,12 @@ export interface RouteStopChoice {
  * Communities layer, which is a real distinction the export records and the
  * hiker cares about (a town is where you sleep in a bed; an outfitter is
  * where you buy a stove).
+ *
+ * There was a sixth chip, "Roads", and it filtered on `poi_type = 'crossing'`
+ * - which the pipeline filled with STREAM crossings, so the label was wrong
+ * about everything it found. It went with the crossing type itself (#1674).
  */
-type StopFilter = 'all' | 'town' | 'shelter' | 'campsite' | 'water' | 'crossing'
+type StopFilter = 'all' | 'town' | 'shelter' | 'campsite' | 'water'
 
 const FILTERS: { key: StopFilter; label: string }[] = [
   { key: 'all', label: 'All' },
@@ -46,7 +50,6 @@ const FILTERS: { key: StopFilter; label: string }[] = [
   { key: 'shelter', label: 'Shelters' },
   { key: 'campsite', label: 'Camps' },
   { key: 'water', label: 'Water' },
-  { key: 'crossing', label: 'Roads' },
 ]
 
 function matchesFilter(poi: RouteStopChoice, filter: StopFilter): boolean {

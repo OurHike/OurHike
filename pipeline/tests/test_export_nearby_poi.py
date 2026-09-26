@@ -151,14 +151,28 @@ def test_a_proposed_asset_is_not_a_feature():
     assert kept_types(DEC_BIG, features) == ["privy"]
 
 
-def test_a_ford_is_a_hazard_and_does_not_draw_as_a_crossing():
+def test_a_ford_is_a_hazard_and_does_not_draw():
     """DEC's 36 unbridged crossings, kept off the map until HIKER_SAFETY.md has them."""
     features = [
         feature(ASSET="FORD", PUBLICUSE="Y", OBJECTID=1),
         feature(ASSET="FORD ", PUBLICUSE="Y", OBJECTID=2),  # the trailing-space twin
-        feature(ASSET="BRIDGE", PUBLICUSE="Y", OBJECTID=3),
     ]
-    assert kept_types(DEC_BIG, features) == ["crossing"]
+    assert kept_types(DEC_BIG, features) == []
+
+
+def test_no_bridge_ships_since_the_crossing_type_was_withdrawn():
+    """#1674: every value that shipped as `crossing` - DEC's four and OPRHP's
+    Trail Bridge - now drops, and the run names the withdrawal as the reason
+    rather than calling them unknown values."""
+    dec = [
+        feature(ASSET=asset, PUBLICUSE="Y", OBJECTID=index)
+        for index, asset in enumerate(["BRIDGE", "FOOT BRIDGE", "BOARDWALK", "HARDENED CROSSING"])
+    ]
+    assert kept_types(DEC_BIG, dec) == []
+    assert kept_types(OPRHP, [feature(Sub_Asset="Trail Bridge", ParksApp="Y", OBJECTID=9)]) == []
+
+    _, stats = export_nearby_poi.build_records(DEC_BIG, dec[:1])
+    assert any("#1674" in label for label in stats["dropped"]), stats["dropped"]
 
 
 def test_culverts_are_not_crossings():
@@ -176,9 +190,8 @@ def test_oprhp_stairs_and_road_bridges_are_not_crossings():
     features = [
         feature(Sub_Asset="Stairs", ParksApp="Y", OBJECTID=1),
         feature(Sub_Asset="Vehicle Bridge", ParksApp="Y", OBJECTID=2),
-        feature(Sub_Asset="Trail Bridge", ParksApp="Y", OBJECTID=3),
     ]
-    assert kept_types(OPRHP, features) == ["crossing"]
+    assert kept_types(OPRHP, features) == []
 
 
 def test_the_allowlist_matches_whole_values_not_prefixes():
@@ -390,9 +403,9 @@ def test_dec_null_sentinels_never_reach_a_name():
 def test_a_description_is_composed_from_the_orgs_own_two_columns():
     """OPRHP names 18% of its rows; without this the other 82% carry nothing at all."""
     records, _ = export_nearby_poi.build_records(
-        OPRHP, [feature(Sub_Asset="Trail Bridge", Facility="Beaver Island State Park", ParksApp="Y", OBJECTID=1)]
+        OPRHP, [feature(Sub_Asset="Lean-to", Facility="Beaver Island State Park", ParksApp="Y", OBJECTID=1)]
     )
-    assert records[0]["description"] == "Trail Bridge in Beaver Island State Park."
+    assert records[0]["description"] == "Lean-to in Beaver Island State Park."
     assert records[0]["name"] is None
 
 
@@ -420,9 +433,9 @@ def test_a_surveyors_note_never_reaches_the_description():
     """
     records, _ = export_nearby_poi.build_records(
         DEC_BIG,
-        [feature(ASSET="BRIDGE", FACILITY="Hunts Pond State Forest", DESCRIP='18" X 24 Metal', PUBLICUSE="Y", OBJECTID=1)],
+        [feature(ASSET="PIT PRIVY", FACILITY="Hunts Pond State Forest", DESCRIP='18" X 24 Metal', PUBLICUSE="Y", OBJECTID=1)],
     )
-    assert records[0]["description"] == "Bridge in Hunts Pond State Forest."
+    assert records[0]["description"] == "Pit Privy in Hunts Pond State Forest."
 
 
 def test_a_point_with_no_coordinates_is_dropped_rather_than_published_at_null_island():

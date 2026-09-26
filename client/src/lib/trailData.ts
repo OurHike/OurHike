@@ -1250,6 +1250,24 @@ export async function haveTrailData(): Promise<boolean> {
   return (await get(TRAIL_DATA_PARTIAL_KEY)) !== true
 }
 
+/**
+ * Waypoint types a phone may still hold from an older build, which this build
+ * must not draw.
+ *
+ * `crossing` left POI_TYPES in #1674 (lib/config.ts has why), so nothing this
+ * build downloads is one. But a phone that stored a release under the build
+ * before it keeps those 5,318 stream crossings in IndexedDB until a refresh
+ * rewrites the waypoints, and a refresh only rewrites them when the published
+ * hashes move. Until then they would draw as the unknown-type pin and give the
+ * legend a lowercase `crossing` row - the clutter the removal was for, back
+ * again on exactly the phones that already had it.
+ *
+ * Named apart from POI_TYPES on purpose: verify_release.py reads that array
+ * with a regex, and a second `..._POI_TYPES = [` would be read as a list of
+ * artifacts a release must serve.
+ */
+const WITHDRAWN_WAYPOINT_TYPES: ReadonlySet<string> = new Set(['crossing'])
+
 export async function loadTrailData(): Promise<TrailData | null> {
   const trails = await loadTrailLines()
   if (trails === null) return null
@@ -1288,7 +1306,9 @@ export async function loadTrailData(): Promise<TrailData | null> {
   // build that wrote something different there - is "no miles", never a
   // parse attempt on a value nobody stands behind.
   const trailMiles = storedMiles instanceof Blob ? storedMiles : null
-  const pois = (storedPois as StoredPoi[] | undefined) ?? []
+  const pois = ((storedPois as StoredPoi[] | undefined) ?? []).filter(
+    (poi) => !WITHDRAWN_WAYPOINT_TYPES.has(poi.type),
+  )
   const spurs = (storedSpurs as Record<string, SpurRecord> | undefined) ?? {}
   // Undefined and null both mean "no ribbon". They arrive from different
   // places - nothing stored at all, versus a release that published no profile

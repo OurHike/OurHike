@@ -58,7 +58,6 @@ export const POI_PRIORITY: readonly string[] = [
   // the pin a hiker looks for when the weather turns or an ankle goes.
   'parking',
   'privy',
-  'crossing',
   // Last. Vistas are the densest layer ATC publishes - 1,223 of them, half
   // again as many as every other POI put together - so at any zoom where pins
   // collide, they are what would win by sheer count if nothing decided

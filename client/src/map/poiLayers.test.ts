@@ -11,6 +11,7 @@ import { hiddenTypesFrom, onlyType, showAllTypes } from '../lib/waypointVisibili
 import {
   buildPoiIcons,
   POI_FALLBACK_COLOR,
+  POI_PIN_INK_SIZE,
   POI_PIN_SIZE,
   poiColor,
   poiIconId,
@@ -62,7 +63,7 @@ import {
   ringImageAlpha,
   ringLift,
 } from './poiLayers'
-import { STALENESS_RING_RADIUS } from './stalenessRing'
+import { STALENESS_RING_HALF_PX, STALENESS_RING_RADIUS } from './stalenessRing'
 import { stalenessPresentation, stalenessTreatment } from '../lib/stalenessDisplay'
 import { POI_PRIORITY } from './poiPriority'
 
@@ -853,8 +854,9 @@ describe('the staleness ring is part of its pin (#1676)', () => {
       return [data[i], data[i + 1], data[i + 2], data[i + 3]]
     }
 
-    // Larger than the pin, because the ring reaches past it.
-    expect(width).toBeGreaterThan(pin.image.width)
+    // The same size as the pin: the ring round the 26 px drawn pin fits
+    // inside its 38 px footprint (#1682), so ringing a pin grows nothing.
+    expect(width).toBe(pin.image.width)
     // The ring's ink, on its radius beside the disc, in the ring's green at
     // the strength it is painted at.
     const [r, g, b, a] = at(width / 2 + STALENESS_RING_RADIUS * ratio, height / 2)
@@ -868,10 +870,10 @@ describe('the staleness ring is part of its pin (#1676)', () => {
   })
 
   it('keeps the pin\u2019s own bottom edge on the point, ringed or not', () => {
-    // The jigger anchors the IMAGE's bottom on the coordinate. A ring makes a
-    // plain pin's image reach 5 px below the pin, so without the offset a
-    // ringed pin would stand higher than its unringed neighbour - a pin
-    // drawn off its place, which the anchor note refuses.
+    // The jigger anchors the IMAGE's bottom on the coordinate. The drawn pin
+    // stops short of that bottom by the footprint's margin (#1682), and a
+    // ring that outgrew the footprint would reach below it - so without the
+    // offset a pin would stand off its place, which the anchor note refuses.
     for (const members of [0, 1, 2, 3]) {
       const lift = ringLift(members)
       for (const ring of [NO_RING, ...RINGS]) {
@@ -879,14 +881,10 @@ describe('the staleness ring is part of its pin (#1676)', () => {
           staleness_ring: ring,
           [RING_LIFT_PROPERTY]: lift,
         }) as [number, number]
-        // The image this feature draws: a plain pin is 2 x lift tall.
-        const plainHeight = 2 * lift
-        const drawnHeight =
-          ring === NO_RING
-            ? plainHeight
-            : Math.max(plainHeight, 2 * (STALENESS_RING_RADIUS + 2))
-        // Where the pin's bottom edge lands, below the coordinate, in CSS px.
-        const pinBottom = offset[1] - (drawnHeight - plainHeight) / 2
+        // Half the image this feature draws, in CSS px.
+        const drawnHalf = ring === NO_RING ? lift : Math.max(lift, STALENESS_RING_HALF_PX)
+        // Where the drawn pin's bottom edge lands, below the coordinate.
+        const pinBottom = offset[1] - (drawnHalf - POI_PIN_INK_SIZE / 2)
         expect({ members, ring, offsetX: offset[0], pinBottom }).toEqual({
           members,
           ring,
@@ -899,24 +897,31 @@ describe('the staleness ring is part of its pin (#1676)', () => {
 
   it('measures the offset off the images it will actually draw', () => {
     // The test above works from the geometry; this one from the pixels, so a
-    // ring redrawn at another size cannot leave the offset describing the
-    // old one.
+    // pin or ring redrawn at another size cannot leave the offset describing
+    // the old one.
     for (const members of [[], ['privy'], ['privy', 'water', 'campsite']]) {
       const base = byId.get(poiIconId('shelter', 'high', members))!
       const withRing = byId.get(ringedPinIconId(base.id, 'faint-invite'))!
-      const overhang =
-        (withRing.image.height - base.image.height) / 2 / withRing.pixelRatio
-      const offset = evaluate(PIN_OFFSET_EXPRESSION, {
-        staleness_ring: 'faint-invite',
-        [RING_LIFT_PROPERTY]: ringLift(members.length),
-      }) as [number, number]
-      expect({ members, offset: offset[1] }).toEqual({ members, offset: overhang })
+      for (const image of [base, withRing]) {
+        const drawnHalf = image.image.height / 2 / image.pixelRatio
+        const offset = evaluate(PIN_OFFSET_EXPRESSION, {
+          staleness_ring: image === base ? NO_RING : 'faint-invite',
+          [RING_LIFT_PROPERTY]: ringLift(members.length),
+        }) as [number, number]
+        expect({ members, id: image.id, offset: offset[1] }).toEqual({
+          members,
+          id: image.id,
+          offset: drawnHalf - POI_PIN_INK_SIZE / 2,
+        })
+      }
     }
   })
 
   it('still sits just outside a full-size pin', () => {
-    expect(STALENESS_RING_RADIUS).toBeGreaterThan(19)
-    expect(STALENESS_RING_RADIUS - 19).toBeLessThanOrEqual(4)
+    // Round the DRAWN pin, not its footprint (#1682): 3 px of air, as the
+    // circle layer first drew it round the coin.
+    expect(STALENESS_RING_RADIUS).toBeGreaterThan(POI_PIN_INK_SIZE / 2)
+    expect(STALENESS_RING_RADIUS - POI_PIN_INK_SIZE / 2).toBeLessThanOrEqual(4)
   })
 
   it('lands each ring at the strength the ring layer drew it at', () => {
@@ -1654,9 +1659,11 @@ describe('the zoom ladder (2026-09-20)', () => {
     // screen and would be the app drawing a waypoint where it is not.
     const layout = buildPoiLayer().layout as Record<string, unknown>
     expect(layout['icon-anchor']).toBe('bottom')
-    // The one offset there is (#1676) gives back a ring's overhang and is
-    // nothing at all for a pin with no ring, at every lift a pin can have -
-    // the ringed case is held in 'the staleness ring is part of its pin'.
+    // The one offset there is moves the artwork back ONTO the place: the pin
+    // is drawn 26 px across inside a 38 px footprint (#1682), and the offset
+    // is exactly the footprint's margin below it, at every lift a pin can
+    // have - the ringed case is held in 'the staleness ring is part of its
+    // pin'.
     expect(layout['icon-offset']).toBe(PIN_OFFSET_EXPRESSION)
     for (const members of [0, 1, 2, 3]) {
       expect(
@@ -1664,7 +1671,7 @@ describe('the zoom ladder (2026-09-20)', () => {
           staleness_ring: NO_RING,
           [RING_LIFT_PROPERTY]: ringLift(members),
         }),
-      ).toEqual([0, 0])
+      ).toEqual([0, ringLift(members) - POI_PIN_INK_SIZE / 2])
     }
     // No zoom term, so the pin stands on its point at every zoom rather than
     // at the two somebody checked.

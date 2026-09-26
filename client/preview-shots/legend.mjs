@@ -86,8 +86,11 @@
 // The earlier captions' struck-through rows and "4 of 9 types" are two
 // states back: #1585 turned every category on by default, so the control
 // reads "All types" and no row is struck through.
+// Since #1682 every waypoint row draws the slim pin: full colour for shelter,
+// campsite, water and trailhead, a pale tint for the rest - the same inks the
+// map uses (map/MapIcon.tsx's WaypointPin).
 export const caption =
-  'The legend — no Crossing row any more; the category grid is eight long (#1674)'
+  'The legend — no Crossing row any more; the category grid is eight long (#1674), each row drawn in the slim pin, pale for resupply, parking, privy and viewpoint (#1682)'
 export const alt =
   'The legend sheet over the trail screen, scrolled to the foot: the waypoint category grid ends with Viewpoint and Parking, then Privy and Trailhead, directly above the Closure and Serious warning rows, and there is no Crossing row anywhere in it - Crossing used to sit between Resupply and Viewpoint. Below the safety rows the Showing control reads All types'
 

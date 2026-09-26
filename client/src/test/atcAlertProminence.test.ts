@@ -13,7 +13,8 @@ import {
   POI_LAYER_ID,
   POI_PIN_MIN_ZOOM,
 } from '../map/poiLayers'
-import { POI_PIN_SIZE } from '../map/poiIcons'
+import { POI_PIN_INK_SIZE, POI_PIN_SIZE } from '../map/poiIcons'
+import { buildWorkdayIcon } from '../map/workdayPin'
 import { WARNING_LAYER_ID } from '../map/warningLayers'
 import { WARNING_PIN } from '../lib/seriousWarnings'
 import { buildMapStyle } from '../map/style'
@@ -63,11 +64,16 @@ describe('the ATC’s point notice sits just above every pin on the map', () => 
   // (`pinGeometry`). Comparing the spec value to the pin's drawn size made the
   // dot a size larger than every assertion here claimed - which is exactly how
   // a version that had already been cut once still read too big.
+  //
+  // THE THIRD TIME IT WOULD HAVE GONE WRONG (#1682): the pin is now drawn 26px
+  // across inside a 38px footprint (`POI_PIN_INK_SIZE` against
+  // `POI_PIN_SIZE`). The footprint is what collides and what a thumb hits; the
+  // ink is what an eye compares, so the ink is what this file measures.
   it('is wider than a waypoint pin, drawn edge to drawn edge', () => {
-    // 38px. The dot was 10px, so a closed shelter reported by the organisation
+    // The dot was once 10px, so a closed shelter reported by the organisation
     // that maintains it was a quarter of the width of OurHike's own pin for
     // the same shelter.
-    expect(ATC_UPDATE_POINT_DRAWN_WIDTH).toBeGreaterThan(POI_PIN_SIZE)
+    expect(ATC_UPDATE_POINT_DRAWN_WIDTH).toBeGreaterThan(POI_PIN_INK_SIZE)
   })
 
   it('clears it by as little as the scale allows, and no more', () => {
@@ -75,7 +81,7 @@ describe('the ATC’s point notice sits just above every pin on the map', () => 
     // (map/style.ts) is what stops a notice being hidden; the pixels only have
     // to make an eye land here rather than on the pin beside it. Two passes
     // spent more than that and both looked wrong on a phone.
-    expect(ATC_UPDATE_POINT_DRAWN_WIDTH - POI_PIN_SIZE).toBeLessThanOrEqual(4)
+    expect(ATC_UPDATE_POINT_DRAWN_WIDTH - POI_PIN_INK_SIZE).toBeLessThanOrEqual(4)
   })
 
   it('keeps that clearance at every zoom a waypoint pin is drawn at', () => {
@@ -140,7 +146,7 @@ describe('the ATC’s point notice sits just above every pin on the map', () => 
     for (let zoom = POI_PIN_MIN_ZOOM; zoom <= 22; zoom += 0.5) {
       const dot =
         ATC_UPDATE_POINT_DRAWN_WIDTH * scaleAt(ATC_UPDATE_POINT_ZOOM_STOPS, zoom)
-      const pin = POI_PIN_SIZE * scaleAt(pinStops, zoom)
+      const pin = POI_PIN_INK_SIZE * scaleAt(pinStops, zoom)
       expect(dot, `ATC dot must outsize a waypoint pin at z${zoom}`).toBeGreaterThan(pin)
     }
   })
@@ -150,6 +156,21 @@ describe('the ATC’s point notice sits just above every pin on the map', () => 
     // map/; this file is the one place both sides are in scope.
     expect(ATC_UPDATE_POINT_MIN_ZOOM).toBe(POI_PIN_MIN_ZOOM)
     expect(ATC_UPDATE_POINT_ZOOM_STOPS[0][0]).toBe(ATC_UPDATE_POINT_MIN_ZOOM)
+  })
+
+  it('outsizes the workday pin too, which went slim with the waypoints (#1682)', () => {
+    // A volunteer workday drawn bigger than the trail maintainer's own notice
+    // had the order backwards; the maintainer slimmed it rather than leave it
+    // (poll, 2026-09-26). Measured off the workday's pixels, ink edge to ink
+    // edge along its middle row, so it cannot drift from the art.
+    const ratio = 2
+    const icon = buildWorkdayIcon(POI_PIN_SIZE, ratio)
+    const row = Math.floor(icon.height / 2)
+    let inked = 0
+    for (let x = 0; x < icon.width; x += 1) {
+      if (icon.data[(row * icon.width + x) * 4 + 3] > 127) inked += 1
+    }
+    expect(ATC_UPDATE_POINT_DRAWN_WIDTH).toBeGreaterThan(inked / ratio)
   })
 
   it('does NOT outgrow the serious-warning pin as a disc', () => {

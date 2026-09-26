@@ -16,11 +16,13 @@ import {
   glyphPath,
   pinGeometry,
   poiGlyphPath,
+  poiTier,
+  waypointPinGeometry,
+  waypointPinInks,
   POI_COLORS,
   POI_FALLBACK_COLOR,
   PIN_EDGE_COLOR,
   PIN_HALO_COLOR,
-  RIM_DASHES,
   UNKNOWN_POI_TYPE,
 } from './poiIcons'
 import { WARNING_GLYPH } from './warningPin'
@@ -37,12 +39,14 @@ import {
 //
 // The whole value of this component is that it is not a second drawing of the
 // pin, so what is tested is fidelity rather than appearance: every number in
-// the SVG is checked against pinGeometry(), the colours against POI_COLORS,
-// the silhouettes against GLYPHS, and the broken rim against RIM_DASHES. A
-// test that only asserted "renders a circle" would pass just as happily over
-// a legend teaching a symbol the map does not use.
+// the SVG is checked against the geometry the rasteriser uses -
+// waypointPinGeometry() for a waypoint since #1682, pinGeometry() for the
+// warning's coin - the inks against waypointPinInks(), and the silhouettes
+// against GLYPHS. A test that only asserted "renders a circle" would pass just
+// as happily over a legend teaching a symbol the map does not use.
 
 const PIN = pinGeometry(1)
+const WAYPOINT = waypointPinGeometry(1, 1)
 
 afterEach(cleanup)
 
@@ -65,43 +69,26 @@ function num(element: Element, attribute: string): number {
 
 describe('MapIcon: a waypoint pin', () => {
   it('takes its disc straight from the pin geometry, in a unit box', () => {
+    // The unit is the DRAWN pin, not its 38 px footprint: a legend slot is a
+    // key, and the footprint's margin would only shrink the pin in it.
     const svg = draw(<MapIcon type="water" />)
 
     expect(svg.getAttribute('viewBox')).toBe('0 0 1 1')
-    expect(num(part(svg, 'map-icon__disc'), 'r')).toBeCloseTo(PIN.rDisc)
-    expect(num(part(svg, 'map-icon__disc'), 'cx')).toBeCloseTo(PIN.center)
+    expect(num(part(svg, 'map-icon__disc'), 'r')).toBeCloseTo(WAYPOINT.rDisc)
+    expect(num(part(svg, 'map-icon__disc'), 'cx')).toBeCloseTo(WAYPOINT.center)
   })
 
-  it('puts the dark hairline exactly where the rasteriser puts it', () => {
-    // buildPinImage inks the outermost `edgeWidth` of the rim dark, so a
-    // stroke of that width centred half of it inside rOuter is the same band.
-    const svg = draw(<MapIcon type="water" />)
-    const edge = part(svg, 'map-icon__edge')
-
-    expect(num(edge, 'r')).toBeCloseTo(PIN.rOuter - PIN.edgeWidth / 2)
-    expect(num(edge, 'stroke-width')).toBeCloseTo(PIN.edgeWidth)
-    expect(edge.getAttribute('stroke')).toBe(PIN_EDGE_COLOR)
-  })
-
-  it('overlaps the halo under both its neighbours, so no seam can show', () => {
-    // The rasteriser picks one colour per pixel and its bands simply abut.
-    // SVG antialiases each shape against what is behind it, so two shapes that
-    // merely touch leave a hairline of page between them. Asserted as bounds
-    // rather than as exact numbers - how much bleed is a tuning question, that
-    // there is some is not.
+  it('puts the paper hairline exactly where the rasteriser puts it', () => {
+    // buildSlimPinImage inks paper between rDisc and rInk; a paper disc of
+    // radius rInk under the coloured one is the same band, with no seam.
     const svg = draw(<MapIcon type="water" />)
     const halo = part(svg, 'map-icon__halo')
-    const inner = num(halo, 'r') - num(halo, 'stroke-width') / 2
-    const outer = num(halo, 'r') + num(halo, 'stroke-width') / 2
 
-    expect(inner).toBeLessThan(PIN.rDisc)
-    expect(outer).toBeGreaterThanOrEqual(PIN.rOuter - PIN.edgeWidth)
-    expect(halo.getAttribute('stroke')).toBe(PIN_HALO_COLOR)
+    expect(num(halo, 'r')).toBeCloseTo(WAYPOINT.rInk)
+    expect(halo.getAttribute('fill')).toBe(PIN_HALO_COLOR)
   })
 
   it('draws the glyph in the box the rasteriser samples it in', () => {
-    // Which is what keeps a glyph's corners off the halo: glyphBox is derived
-    // from rDisc so its half-diagonal stays inside the disc.
     const svg = draw(<MapIcon type="shelter" />)
     const glyph = part(svg, 'map-icon__glyph')
     const numbers = (glyph.closest('g')?.getAttribute('transform') ?? '')
@@ -110,9 +97,9 @@ describe('MapIcon: a waypoint pin', () => {
 
     expect(numbers).toHaveLength(3)
     const [tx, ty, scale] = numbers ?? []
-    expect(scale).toBeCloseTo(PIN.glyphBox)
-    expect(tx).toBeCloseTo(PIN.center - PIN.glyphBox / 2)
-    expect(ty).toBeCloseTo(PIN.center - PIN.glyphBox / 2)
+    expect(scale).toBeCloseTo(WAYPOINT.glyphBox)
+    expect(tx).toBeCloseTo(WAYPOINT.center - WAYPOINT.glyphBox / 2)
+    expect(ty).toBeCloseTo(WAYPOINT.center - WAYPOINT.glyphBox / 2)
   })
 
   it('fills the glyph even-odd, which is what keeps the doorway open', () => {
@@ -121,13 +108,17 @@ describe('MapIcon: a waypoint pin', () => {
     expect(part(svg, 'map-icon__glyph').getAttribute('fill-rule')).toBe('evenodd')
   })
 
-  it.each(Object.keys(POI_COLORS))('draws %s in its own map colour and shape', (type) => {
+  it.each(Object.keys(POI_COLORS))('draws %s in its own map inks and shape', (type) => {
     const svg = draw(<MapIcon type={type} />)
+    const inks = waypointPinInks(type, 'high')
 
-    expect(part(svg, 'map-icon__disc').getAttribute('fill')).toBe(
-      POI_COLORS[type as keyof typeof POI_COLORS],
-    )
+    expect(part(svg, 'map-icon__disc').getAttribute('fill')).toBe(inks.fill)
+    expect(part(svg, 'map-icon__glyph').getAttribute('fill')).toBe(inks.glyph)
     expect(part(svg, 'map-icon__glyph').getAttribute('d')).toBe(poiGlyphPath(type))
+    // A loud pin is its accent; a quiet one a pale tint with the accent on it.
+    const accent = POI_COLORS[type as keyof typeof POI_COLORS]
+    if (poiTier(type) === 'loud') expect(inks.fill).toBe(accent)
+    else expect(inks.glyph).toBe(accent)
   })
 
   it('falls back to the neutral diamond for a type this build never heard of', () => {
@@ -136,7 +127,7 @@ describe('MapIcon: a waypoint pin', () => {
     // instead of silently missing a row's icon.
     const svg = draw(<MapIcon type="hot_springs" />)
 
-    expect(part(svg, 'map-icon__disc').getAttribute('fill')).toBe(POI_FALLBACK_COLOR)
+    expect(part(svg, 'map-icon__glyph').getAttribute('fill')).toBe(POI_FALLBACK_COLOR)
     expect(part(svg, 'map-icon__glyph').getAttribute('d')).toBe(
       poiGlyphPath(UNKNOWN_POI_TYPE),
     )
@@ -150,36 +141,43 @@ describe('MapIcon: a waypoint pin', () => {
   })
 })
 
-describe('MapIcon: the rim says whether anyone has verified the waypoint', () => {
-  it('leaves a verified rim solid, with no dash pattern at all', () => {
-    // Absent rather than a solid-looking pattern, so "unbroken" is visible in
-    // the DOM instead of being a number someone has to evaluate.
+describe('MapIcon: hollow says nobody has verified the waypoint (#1682)', () => {
+  it('fills a verified loud pin with its accent and draws no ring', () => {
     const svg = draw(<MapIcon type="water" confidence="high" />)
 
-    expect(part(svg, 'map-icon__edge')).not.toHaveAttribute('stroke-dasharray')
-    expect(part(svg, 'map-icon__halo')).not.toHaveAttribute('stroke-dasharray')
+    expect(part(svg, 'map-icon__disc').getAttribute('fill')).toBe(POI_COLORS.water)
+    expect(svg.querySelector('.map-icon__ring')).toBeNull()
   })
 
-  it.each(['map-icon__edge', 'map-icon__halo'])(
-    'breaks %s into the rasteriser’s own rhythm when nobody has verified it',
-    (className) => {
-      // buildPinImage inks the rim where floor(turns * RIM_DASHES * 2) is
-      // even: sixteen equal arcs, alternating, around the full turn. Checked
-      // against this ring's own circumference rather than against a literal,
-      // which is what makes it the same rhythm and not a similar one.
-      const svg = draw(<MapIcon type="water" confidence="low" />)
-      const ring = part(svg, className)
-      const [dash, gap] = (ring.getAttribute('stroke-dasharray') ?? '')
-        .split(' ')
-        .map(Number)
+  it('draws an unverified pin hollow: paper inside a solid accent ring', () => {
+    const svg = draw(<MapIcon type="water" confidence="low" />)
+    const ring = part(svg, 'map-icon__ring')
 
-      expect(dash).toBeCloseTo(gap)
-      expect(dash * RIM_DASHES * 2).toBeCloseTo(2 * Math.PI * num(ring, 'r'))
-    },
-  )
+    expect(part(svg, 'map-icon__disc').getAttribute('fill')).toBe(PIN_HALO_COLOR)
+    expect(ring.getAttribute('stroke')).toBe(POI_COLORS.water)
+    expect(num(ring, 'stroke-width')).toBeCloseTo(WAYPOINT.hollowRing)
+    expect(num(ring, 'r') + num(ring, 'stroke-width') / 2).toBeCloseTo(WAYPOINT.rDisc)
+    // Never broken: the old rim's rhythm belongs to the coin now.
+    expect(ring).not.toHaveAttribute('stroke-dasharray')
+    expect(part(svg, 'map-icon__glyph').getAttribute('fill')).toBe(POI_COLORS.water)
+  })
 })
 
 describe('MapIcon: a serious warning', () => {
+  it('is the coin, from pinGeometry, in a unit box', () => {
+    const svg = draw(<MapIcon type="serious-warning" />)
+
+    expect(svg.getAttribute('viewBox')).toBe('0 0 1 1')
+    expect(num(part(svg, 'map-icon__disc'), 'r')).toBeCloseTo(PIN.rDisc)
+    const edge = part(svg, 'map-icon__edge')
+    expect(num(edge, 'r')).toBeCloseTo(PIN.rOuter - PIN.edgeWidth / 2)
+    expect(num(edge, 'stroke-width')).toBeCloseTo(PIN.edgeWidth)
+    expect(edge.getAttribute('stroke')).toBe(PIN_EDGE_COLOR)
+    const halo = part(svg, 'map-icon__halo')
+    expect(num(halo, 'r') - num(halo, 'stroke-width') / 2).toBeLessThan(PIN.rDisc)
+    expect(halo.getAttribute('stroke')).toBe(PIN_HALO_COLOR)
+  })
+
   it('is the hollow hazard triangle, in the warning pin’s own red', () => {
     const svg = draw(<MapIcon type="serious-warning" />)
 

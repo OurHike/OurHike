@@ -30,9 +30,16 @@
 // .claude/skills/pr-screenshot/SKILL.md says a shot must never show at a
 // readable zoom. Nobody's report, nobody's fix.
 //
+// ROUND THE SLIM PIN SINCE #1682: the pin is drawn 26 px across inside its
+// 38 px footprint and the ring sits 3 px outside the DRAWN pin, at 16 px. The
+// springs by Blackrock are all `confidence: high` in the pinned release, so
+// they are filled and keep the invite; an unverified spring is hollow and
+// wears none (lib/stalenessDisplay.ts's pinConditionFor).
+//
 // WHEN IT SHOWS LESS. No ring on a pin that is drawn means the note roll-up
-// says somebody confirmed it (no ring is the middle state, on purpose); no
-// pins at all means the waypoints had not landed by the wait.
+// says somebody confirmed it (no ring is the middle state, on purpose), or
+// that the spring is unverified and hollow; no pins at all means the
+// waypoints had not landed by the wait.
 export const caption =
   'The staleness ring is part of its pin (#1676): water on the A.T. by Blackrock in Shenandoah at walking zoom, waypoints narrowed to water, each never-confirmed spring wearing its faint invite ring around the pin that stands on its point, and any spring that fell back to a dot wearing no ring at all'
 export const alt =

@@ -214,7 +214,11 @@ export interface MapScreenProps {
   /** Which staleness ring each waypoint wears (#759's nudge surface, #256's
    *  consumer). Passed straight through to MapView; the policy lives in
    *  lib/stalenessDisplay.ts's `pinConditionFor`. */
-  pinCondition?: (poiId: string, poiType: string) => { ring: string; faded: boolean }
+  pinCondition?: (
+    poiId: string,
+    poiType: string,
+    confidence: 'high' | 'low',
+  ) => { ring: string; faded: boolean }
   /** The card's conditions section, passed straight through to PoiCard -
    *  the shell is what holds the notes and the write path. */
   noteContext?: FieldNoteContext

@@ -178,7 +178,11 @@ export interface MapViewProps {
    * from the field-note roll-up. Absent means no notes have arrived, which
    * renders exactly as the day-one map: no rings, no fades (#256, #759).
    */
-  pinCondition?: (poiId: string, poiType: string) => { ring: string; faded: boolean }
+  pinCondition?: (
+    poiId: string,
+    poiType: string,
+    confidence: 'high' | 'low',
+  ) => { ring: string; faded: boolean }
   /**
    * POI categories the hiker has hidden from the legend. Applied as a filter
    * on the pin layer, so hiding a category costs a filter, not a rebuild.

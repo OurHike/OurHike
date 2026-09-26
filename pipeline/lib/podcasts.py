@@ -12,8 +12,8 @@ refuses to upload a list that dropped anything, and
 tests/test_export_podcasts.py fails on the committed file for the same
 reason. A typo becomes a red pull request, not an episode that never shows.
 
-WHAT IS PUBLISHED, AND WHAT IS NOT. The id, title, show, length and the two
-anchors. `note` and `reviewed` stay in the reference file: they are for the
+WHAT IS PUBLISHED, AND WHAT IS NOT. The id, title, show, length, the two
+anchors, and each other app's link for the episode (#1690). `note` and `reviewed` stay in the reference file: they are for the
 person reviewing the diff, and a phone has no use for either.
 
 NOTHING HERE CHECKS THAT A HIKE ID EXISTS. The suggested hikes are exported
@@ -27,6 +27,7 @@ from __future__ import annotations
 import datetime as dt
 import re
 from dataclasses import dataclass, field
+from urllib.parse import urlparse
 
 #: Spotify's base-62 ids are 22 characters. Reasoned from every episode link
 #: Spotify prints (`open.spotify.com/episode/<22 chars>`), not from a spec
@@ -43,7 +44,24 @@ MAX_AT_MILE = 2300.0
 
 #: Every field a row may carry. Anything else is a misspelling of one of
 #: these, and a misspelt `at_miles` would silently anchor nothing.
-ROW_FIELDS = frozenset({"spotify_id", "title", "show", "minutes", "hikes", "at_miles", "reviewed", "note"})
+ROW_FIELDS = frozenset({"spotify_id", "title", "show", "minutes", "hikes", "at_miles", "links", "reviewed", "note"})
+
+#: The other podcast apps a hiker can pick (#1690 - Let a hiker pick their
+#: podcast app once), and the hosts each app's own "copy link" hands out.
+#: There is no shared episode-link format across podcast apps, so each link is
+#: the one that app gives for that episode, pasted in by whoever picked it.
+#: Checked against its host because a phone opens it: a Pocket Casts slot
+#: holding an Overcast link would open the wrong app under the wrong name.
+#: The hosts are read off each app's own share links, 2026-09-26; a new host
+#: an app starts using is a one-line addition here, reviewed like any other.
+#: Spotify is not here: every episode already names its Spotify id, which
+#: the player and the save both need.
+APP_LINK_HOSTS: dict[str, frozenset[str]] = {
+    "apple_podcasts": frozenset({"podcasts.apple.com"}),
+    "pocket_casts": frozenset({"pca.st", "pocketcasts.com", "play.pocketcasts.com"}),
+    "overcast": frozenset({"overcast.fm"}),
+    "youtube_music": frozenset({"music.youtube.com"}),
+}
 
 
 @dataclass(frozen=True)
@@ -54,6 +72,8 @@ class Episode:
     minutes: int | None
     hikes: tuple[str, ...]
     at_miles: tuple[tuple[float, float], ...]
+    #: App key -> that app's link for this episode, for the apps it has one in.
+    links: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass
@@ -104,6 +124,23 @@ def _ranges(value: object) -> tuple[tuple[tuple[float, float], ...], str | None]
     return tuple(ranges), None
 
 
+def _links(value: object) -> tuple[tuple[tuple[str, str], ...], str | None]:
+    if value is None:
+        return (), None
+    if not isinstance(value, dict):
+        return (), f"links must be an object of app -> link, not {value!r}"
+    links = []
+    for app, url in sorted(value.items()):
+        hosts = APP_LINK_HOSTS.get(app)
+        if hosts is None:
+            return (), f"links has an unknown app {app!r}; known: {', '.join(sorted(APP_LINK_HOSTS))}"
+        parsed = urlparse(url) if isinstance(url, str) else None
+        if parsed is None or parsed.scheme != "https" or parsed.hostname not in hosts:
+            return (), f"links.{app} must be an https link on {' or '.join(sorted(hosts))}, not {url!r}"
+        links.append((app, url))
+    return tuple(links), None
+
+
 def _reviewed(value: object) -> str | None:
     if not isinstance(value, str):
         return "reviewed must be a date, YYYY-MM-DD"
@@ -143,11 +180,14 @@ def validate(rows: list[object]) -> Validation:
             continue
         hikes: tuple[str, ...] = ()
         at_miles: tuple[tuple[float, float], ...] = ()
+        links: tuple[tuple[str, str], ...] = ()
         minutes, why = _minutes(row.get("minutes"))
         if why is None:
             hikes, why = _hikes(row.get("hikes"))
         if why is None:
             at_miles, why = _ranges(row.get("at_miles"))
+        if why is None:
+            links, why = _links(row.get("links"))
         if why is None:
             why = _reviewed(row.get("reviewed"))
         if why is None and not hikes and not at_miles:
@@ -157,7 +197,7 @@ def validate(rows: list[object]) -> Validation:
             continue
 
         seen.add(spotify_id)
-        result.episodes.append(Episode(spotify_id, title, show, minutes, hikes, at_miles))
+        result.episodes.append(Episode(spotify_id, title, show, minutes, hikes, at_miles, links))
     return result
 
 
@@ -171,6 +211,7 @@ def as_published(episode: Episode) -> dict:
         "show": episode.show,
         "hikes": list(episode.hikes),
         "at_miles": [list(pair) for pair in episode.at_miles],
+        "links": dict(episode.links),
     }
     if episode.minutes is not None:
         record["minutes"] = episode.minutes

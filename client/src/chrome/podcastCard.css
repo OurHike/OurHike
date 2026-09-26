@@ -66,14 +66,18 @@
   border-top: 1px solid var(--border-1);
 }
 
+/* The buttons sit beside the title and drop below it when they do not fit
+   - "Listen on Apple Podcasts" beside a two-line title would squeeze the
+   title into a column a word wide (the #1690 mock showed exactly that). */
 .podcast-card__row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 8px 12px;
 }
 
 .podcast-card__meta {
-  flex: 1;
+  flex: 1 1 180px;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -113,8 +117,10 @@
 }
 
 .podcast-card__actions {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -143,13 +149,13 @@
   inset: -4px;
 }
 
-/* The Spotify buttons: Save, Saved, and Listen on Spotify (#1683). The
+/* The app buttons: Save, Saved, and "Listen on <app>" (#1683, #1690). The
    maintainer asked for the Spotify icon on them (2026-09-26), and Spotify's
    design guidelines decide the shape: the icon beside a word rather than
    inside our + circle, at 21px, with clear space of half its height - the
    11px of padding before it and the 10px gap after. Same 36px height as the
    play circle, same 44px tap target. */
-.podcast-card__spotify {
+.podcast-card__pill {
   position: relative;
   height: 36px;
   flex: none;
@@ -169,18 +175,18 @@
   cursor: pointer;
 }
 
-.podcast-card__spotify::after {
+.podcast-card__pill::after {
   content: '';
   position: absolute;
   inset: -4px -2px;
 }
 
-.podcast-card__spotify:disabled {
+.podcast-card__pill:disabled {
   opacity: 0.6;
   cursor: progress;
 }
 
-.podcast-card__spotify--done {
+.podcast-card__pill--done {
   color: var(--fg-2);
   cursor: default;
 }
@@ -229,4 +235,57 @@
   border-top: 1px solid var(--border-1);
   font-size: var(--text-caption);
   color: var(--fg-3);
+}
+
+.podcast-card__note {
+  margin: 6px 0 0;
+  font-size: var(--text-caption);
+  color: var(--fg-3);
+}
+
+/* "Which app do you listen in?" - in the card (frame 2) and in Settings. */
+.podcast-card__picker {
+  border-top: 1px solid var(--border-1);
+}
+
+.podcast-card__picker-heading {
+  margin: 0;
+  padding: 10px 14px 4px;
+  font-family: var(--font-display);
+  font-size: var(--text-body);
+  font-weight: var(--weight-semibold);
+  color: var(--fg-1);
+}
+
+.podcast-app-picker {
+  list-style: none;
+  margin: 0;
+  padding: 0 14px 6px;
+}
+
+.podcast-app-picker__app {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 4px;
+  border: 0;
+  border-top: 1px solid var(--border-1);
+  background: transparent;
+  color: var(--fg-1);
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  text-align: left;
+  cursor: pointer;
+}
+
+.podcast-app-picker li:first-child .podcast-app-picker__app {
+  border-top: 0;
+}
+
+.podcast-app-picker__chosen {
+  margin-left: auto;
+  color: var(--brand-primary);
+  font-weight: var(--weight-bold);
 }

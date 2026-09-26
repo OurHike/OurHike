@@ -38,6 +38,8 @@ import { HIDEABLE_TYPES, hiddenTypesFrom, toggleType } from '../lib/waypointVisi
 import { MapStylePicker } from './MapStylePicker'
 import { ThemePicker } from './ThemePicker'
 import { UnitPicker } from './UnitPicker'
+import { PODCAST_APPS, PODCAST_APP_NAMES, type PodcastApp } from '../lib/podcasts'
+import { usePodcastApp, writePodcastApp } from '../lib/podcastApp'
 import './settings.css'
 
 /** The full prop bag every group below draws from - kept as one interface,
@@ -832,7 +834,42 @@ export function DisplaySettings({ preferences, onChange }: DisplaySettingsProps)
         value={preferences.unit_system}
         onChange={(unit_system) => onChange({ unit_system })}
       />
+
+      <PodcastAppRow />
     </section>
+  )
+}
+
+/**
+ * Which podcast app the podcast cards open episodes in (#1690, the
+ * maintainer's frame 4). Kept on this phone like the mode and the default
+ * place, never a UserPreferences key (lib/podcastApp.ts says why). "Ask me"
+ * is offered only while nothing is picked, the reporter row's rule: an app
+ * that keeps offering to un-say an answer invites it.
+ */
+function PodcastAppRow() {
+  const app = usePodcastApp()
+  return (
+    <label className="settings__row">
+      <span className="settings__label">Podcast app</span>
+      <select
+        className="settings__value"
+        name="podcast_app"
+        value={app ?? ''}
+        onChange={(event) =>
+          writePodcastApp(
+            event.target.value === '' ? null : (event.target.value as PodcastApp),
+          )
+        }
+      >
+        {app === null && <option value="">Ask me</option>}
+        {PODCAST_APPS.map((option) => (
+          <option key={option} value={option}>
+            {PODCAST_APP_NAMES[option]}
+          </option>
+        ))}
+      </select>
+    </label>
   )
 }
 

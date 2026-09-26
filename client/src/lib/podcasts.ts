@@ -29,6 +29,52 @@ import { recallPublished, rememberPublished } from './conditionsCache'
  *  together, as it does for every other key the app fetches. */
 export const PODCAST_EPISODES_KEY = 'podcasts/episodes.json'
 
+/**
+ * The podcast apps a hiker can pick (#1690 - Let a hiker pick their podcast
+ * app once). The order is the picker's. Spotify first because every episode
+ * is on it: the reference file requires a Spotify id, which the ▶ player and
+ * the one-tap save both need, so Spotify is also the app an episode falls
+ * back to when it has no link for the hiker's own.
+ *
+ * WHY THE APP ASKS RATHER THAN DETECTS. Nothing on a phone tells a web page
+ * or an app which podcast player its owner uses: iPhone has no default
+ * podcast app setting (Apple's list of changeable defaults names none, read
+ * 2026-09-26), Android's old default, Google Podcasts, is shut down, and
+ * browsers hide which apps are installed on purpose.
+ */
+export const PODCAST_APPS = [
+  'spotify',
+  'apple_podcasts',
+  'pocket_casts',
+  'overcast',
+  'youtube_music',
+] as const
+
+export type PodcastApp = (typeof PODCAST_APPS)[number]
+
+/** Each app's name as the app itself spells it. Buttons read "Listen on
+ *  <name>": Apple's identity guidelines ask for "on Apple Podcasts", and
+ *  Spotify's for "Listen on Spotify" (both read 2026-09-26). */
+export const PODCAST_APP_NAMES: Readonly<Record<PodcastApp, string>> = {
+  spotify: 'Spotify',
+  apple_podcasts: 'Apple Podcasts',
+  pocket_casts: 'Pocket Casts',
+  overcast: 'Overcast',
+  youtube_music: 'YouTube Music',
+}
+
+/** The hosts each app's own share link uses - the same table as
+ *  pipeline/lib/podcasts.py's APP_LINK_HOSTS, checked again here because a
+ *  phone opens these. Spotify's link is built from the id, never read. */
+const APP_LINK_HOSTS: Readonly<
+  Record<Exclude<PodcastApp, 'spotify'>, readonly string[]>
+> = {
+  apple_podcasts: ['podcasts.apple.com'],
+  pocket_casts: ['pca.st', 'pocketcasts.com', 'play.pocketcasts.com'],
+  overcast: ['overcast.fm'],
+  youtube_music: ['music.youtube.com'],
+}
+
 export interface PodcastEpisode {
   /** Spotify's 22-character episode id - the tail of its open.spotify.com
    *  link. */
@@ -46,6 +92,9 @@ export interface PodcastEpisode {
    *  two against this phone's own axis - which an overlap test absorbs and a
    *  podcast can afford. */
   readonly atMiles: readonly (readonly [number, number])[]
+  /** The episode's own link in each other app that has one (#1690). An app
+   *  missing here is an app nobody has linked it for yet. */
+  readonly links: Readonly<Partial<Record<Exclude<PodcastApp, 'spotify'>, string>>>
 }
 
 export const NO_PODCAST_EPISODES: readonly PodcastEpisode[] = []
@@ -70,6 +119,28 @@ function milesPair(value: unknown): readonly [number, number] | null {
 }
 
 /** One published row, or null. Junk costs the row, never the list. */
+/** The other apps' links that are https on the app's own host; the rest are
+ *  dropped one by one, never the episode. */
+function parseLinks(value: unknown): PodcastEpisode['links'] {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {}
+  const links: Partial<Record<Exclude<PodcastApp, 'spotify'>, string>> = {}
+  for (const [app, hosts] of Object.entries(APP_LINK_HOSTS) as [
+    Exclude<PodcastApp, 'spotify'>,
+    readonly string[],
+  ][]) {
+    const url = (value as Record<string, unknown>)[app]
+    if (typeof url !== 'string') continue
+    try {
+      const parsed = new URL(url)
+      if (parsed.protocol === 'https:' && hosts.includes(parsed.hostname))
+        links[app] = url
+    } catch {
+      /* not a URL: this app has no link for the episode */
+    }
+  }
+  return links
+}
+
 function parseEpisode(value: unknown): PodcastEpisode | null {
   if (typeof value !== 'object' || value === null) return null
   const record = value as Record<string, unknown>
@@ -95,6 +166,7 @@ function parseEpisode(value: unknown): PodcastEpisode | null {
       ? record.minutes
       : undefined
   return {
+    links: parseLinks(record.links),
     spotifyId,
     title,
     show,
@@ -153,6 +225,11 @@ export function episodesForMiles(
  *  the link is handed to the system, or the web player. */
 export function spotifyEpisodeUrl(episode: PodcastEpisode): string {
   return `https://open.spotify.com/episode/${episode.spotifyId}`
+}
+
+/** The episode in `app`, or null when nobody has linked it for that app. */
+export function episodeUrlIn(episode: PodcastEpisode, app: PodcastApp): string | null {
+  return app === 'spotify' ? spotifyEpisodeUrl(episode) : (episode.links[app] ?? null)
 }
 
 /** Spotify's own embedded player for the episode (chrome/PodcastCard.tsx

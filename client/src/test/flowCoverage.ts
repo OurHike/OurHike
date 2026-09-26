@@ -100,6 +100,17 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   // answered the way preview-shots/fixtures/podcasts.mjs answers it. Save is
   // not - it leaves for Spotify's sign-in, which no flow test should reach.
   'chrome/PodcastCard.tsx': { step: 'F2 Today', flow: { status: 'planned' } },
+  'chrome/PodcastAppIcon.tsx': {
+    step: 'F2 Today',
+    flow: {
+      status: 'unit-only',
+      why: 'Drawn marks with no state, the same as SpotifyIcon.tsx: size and colour are pinned in PodcastCard.test.tsx.',
+    },
+  },
+  // The "which app do you listen in?" list (#1690), inside the podcast card
+  // and behind More → Settings. Planned with the card: the first-tap ask is
+  // a flow worth driving once the card's flow test exists.
+  'chrome/PodcastAppPicker.tsx': { step: 'F2 Today', flow: { status: 'planned' } },
   'chrome/SpotifyIcon.tsx': {
     step: 'F2 Today',
     flow: {

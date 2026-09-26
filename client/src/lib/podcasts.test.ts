@@ -8,6 +8,7 @@ import {
   formatMinutes,
   parsePodcastEpisodes,
   spotifyEmbedUrl,
+  episodeUrlIn,
   spotifyEpisodeUrl,
   type PodcastEpisode,
 } from './podcasts'
@@ -42,7 +43,15 @@ const DOCUMENT = {
 }
 
 function episode(overrides: Partial<PodcastEpisode>): PodcastEpisode {
-  return { spotifyId: ID_A, title: 't', show: 's', hikes: [], atMiles: [], ...overrides }
+  return {
+    spotifyId: ID_A,
+    title: 't',
+    show: 's',
+    hikes: [],
+    atMiles: [],
+    links: {},
+    ...overrides,
+  }
 }
 
 describe('the podcasts key', () => {
@@ -61,6 +70,7 @@ describe('parsePodcastEpisodes', () => {
         minutes: 48,
         hikes: [HIKE],
         atMiles: [],
+        links: {},
       },
       {
         spotifyId: ID_B,
@@ -68,6 +78,7 @@ describe('parsePodcastEpisodes', () => {
         show: 'A show',
         hikes: [],
         atMiles: [[480, 512]],
+        links: {},
       },
     ])
     expect(parsePodcastEpisodes(DOCUMENT)?.[1]).not.toHaveProperty('minutes')
@@ -122,6 +133,35 @@ describe('parsePodcastEpisodes', () => {
       episodes: [DOCUMENT.episodes[0], { ...DOCUMENT.episodes[0], title: 'second' }],
     })
     expect(parsed?.map((e) => e.title)).toEqual(['The park’s history'])
+  })
+})
+
+describe('each other app’s link (#1690)', () => {
+  const apple = 'https://podcasts.apple.com/us/podcast/a-show/id1?i=2'
+
+  it('keeps a link on its own app’s host, and drops one that is not, one link at a time', () => {
+    const parsed = parsePodcastEpisodes({
+      episodes: [
+        {
+          ...DOCUMENT.episodes[0],
+          links: {
+            apple_podcasts: apple,
+            overcast: 'http://overcast.fm/+AbC',
+            pocket_casts: 'https://overcast.fm/+AbC',
+            youtube_music: 'javascript:alert(1)',
+            castbox: 'https://castbox.fm/x',
+          },
+        },
+      ],
+    })
+    expect(parsed?.[0].links).toEqual({ apple_podcasts: apple })
+  })
+
+  it('opens an episode in the app asked for, Spotify always, and the rest only where linked', () => {
+    const one = episode({ spotifyId: ID_A, links: { apple_podcasts: apple } })
+    expect(episodeUrlIn(one, 'spotify')).toBe(`https://open.spotify.com/episode/${ID_A}`)
+    expect(episodeUrlIn(one, 'apple_podcasts')).toBe(apple)
+    expect(episodeUrlIn(one, 'overcast')).toBeNull()
   })
 })
 

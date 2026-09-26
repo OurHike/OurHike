@@ -24,6 +24,9 @@ export const PODCAST_EPISODES_DOCUMENT = {
       minutes: 48,
       hikes: ['nynjtc_hike_finder:7909'],
       at_miles: [],
+      links: {
+        apple_podcasts: 'https://podcasts.apple.com/us/podcast/show-name/id1?i=1',
+      },
     },
     {
       spotify_id: 'Fixture1GeologyEpisode',
@@ -40,6 +43,9 @@ export const PODCAST_EPISODES_DOCUMENT = {
       minutes: 36,
       hikes: [],
       at_miles: [[31.7, 69.6]],
+      links: {
+        apple_podcasts: 'https://podcasts.apple.com/us/podcast/show-name/id1?i=2',
+      },
     },
   ],
 }
@@ -82,4 +88,13 @@ export async function seedPodcastEpisodes(page, document = PODCAST_EPISODES_DOCU
       }),
     document,
   )
+}
+
+/**
+ * Pick the hiker's podcast app (#1690) the way the card's picker does - one
+ * localStorage key - before the seed that reloads. The episode ids above are
+ * invented, and so are the Apple Podcasts links: `id1?i=1` names nobody's show.
+ */
+export async function pickPodcastApp(page, app) {
+  await page.evaluate((app) => localStorage.setItem('ourhike:podcast-app', app), app)
 }

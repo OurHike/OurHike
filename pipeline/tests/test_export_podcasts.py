@@ -56,6 +56,7 @@ def test_a_complete_row_publishes_without_its_review_fields():
             "minutes": 48,
             "hikes": ["nynjtc_hike_finder:7909"],
             "at_miles": [[480.0, 512.5]],
+            "links": {},
         }
     ]
 
@@ -152,3 +153,39 @@ def test_refuses_a_key_the_layout_would_refuse(tmp_path, monkeypatch):
     path.write_text("{}")
     with pytest.raises(SystemExit):
         export_podcasts.upload(path, key="podcasts/Episodes_v2.json")
+
+
+# ---------------------------------------------------------------------------
+# Each other app's link for the episode (#1690).
+
+
+def test_each_apps_own_link_is_published_beside_the_spotify_id():
+    links = {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/a-show/id1?i=2",
+        "pocket_casts": "https://pca.st/episode/abc",
+        "overcast": "https://overcast.fm/+AbCdEf",
+        "youtube_music": "https://music.youtube.com/watch?v=abc",
+    }
+    document, dropped = export_podcasts.build_document({"episodes": [row(links=links)]})
+    assert dropped == []
+    assert document["episodes"][0]["links"] == links
+
+
+def test_an_episode_with_no_other_app_links_publishes_an_empty_set():
+    document, _ = export_podcasts.build_document({"episodes": [row()]})
+    assert document["episodes"][0]["links"] == {}
+
+
+@pytest.mark.parametrize(
+    ("links", "reason_fragment"),
+    [
+        ({"castbox": "https://castbox.fm/x"}, "unknown app"),
+        ({"overcast": "http://overcast.fm/+AbC"}, "https link on overcast.fm"),
+        ({"pocket_casts": "https://overcast.fm/+AbC"}, "pca.st"),
+        ({"apple_podcasts": "javascript:alert(1)"}, "podcasts.apple.com"),
+        ({"apple_podcasts": 7}, "podcasts.apple.com"),
+        (["https://podcasts.apple.com/x"], "object of app -> link"),
+    ],
+)
+def test_a_link_for_the_wrong_app_or_host_is_dropped_with_its_reason(links, reason_fragment):
+    assert reason_fragment in dropped_reason(row(links=links))

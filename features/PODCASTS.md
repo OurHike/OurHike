@@ -20,6 +20,11 @@ first build, a photograph of the running app:
 | where the list lives | live, at the bucket root, so a new episode needs no app release | in the app code; in the pinned trail data |
 | the buttons | icons beside each title | 44px pills, then 32px pills |
 | the Spotify buttons | the maintainer asked for Spotify's icon on them; drawn as the icon beside a word ("Save", "Saved", "Listen on Spotify"), the shape Spotify's design guidelines allow | the icon inside our + circle, which the guidelines forbid (no combining the mark with another symbol); the icon alone in a white circle, which reads as "open Spotify" rather than "save" |
+| other apps ([#1690](https://github.com/OurHike/OurHike/issues/1690)) | the hiker picks their podcast app once - Spotify, Apple Podcasts, Pocket Casts, Overcast or YouTube Music - and each episode opens in it | one pod.link link that asks which app; playing the podcast's own audio inside OurHike |
+| before a pick | a plain Listen, and the first tap (or ↓) asks | assuming Spotify until changed |
+| an episode with no link for the hiker's app | still shown, with Spotify's button and "Not linked for <app> yet." | hidden |
+| ▶ | Spotify's player for everyone, whatever app they picked | only for hikers who picked Spotify |
+| download | a ↓ circle like ▶ that opens the episode in the hiker's app, one tap from that app's own download | keeping the audio in OurHike for no-signal play; saving an .mp3 to the phone |
 
 "Should be the last thing you see" is the maintainer's own line about the hike detail
 placement. The alternatives are written down so the next reader knows they were considered,
@@ -33,6 +38,19 @@ have Premium; Spotify grants more ("extended quota") only to a registered organi
 least 250,000 monthly users (Spotify's quota-modes page, read 2026-09-26). Every other account
 gets a 403 from the save, and the card sends that hiker to the episode in Spotify to tap +
 there. Nothing in this repository can change that.
+
+**Nothing can tell which podcast app a phone uses, so OurHike asks.** iPhone has no default
+podcast app setting (Apple's list of changeable defaults names none, read 2026-09-26),
+Android's old default, Google Podcasts, is shut down, and browsers hide which apps are
+installed on purpose. The pick is kept on the phone (`lib/podcastApp.ts`), never in the
+account, and More → Settings changes it.
+
+**No podcast app lets another app start a download,** Spotify included: its API can save an
+episode but has no download call, and the others offer no API at all. So ↓ opens the episode
+in the hiker's app, and the line under the list says so.
+
+**One-tap Save is Spotify's alone,** for the same reason: no other app lets another add an
+episode to a listener's library.
 
 **The phone apps get a link.** A sign-in redirect does not return into the Capacitor shells
 today ([AUTHENTICATION.md](AUTHENTICATION.md)), and the Android shell's `useLegacyBridge`
@@ -60,8 +78,11 @@ button needs a Spotify app:
 ## Adding an episode
 
 1. Add a row to `pipeline/reference/podcast_episodes.json` - its README says what each field
-   is - and open a pull request. `pipeline/tests/test_export_podcasts.py` fails on a row the
-   exporter would drop.
+   is. For each other app it is in, copy that app's own share link into `links`
+   (`apple_podcasts`, `pocket_casts`, `overcast`, `youtube_music`); there is no shared
+   episode-link format across podcast apps, and an app left out sends its listeners to
+   Spotify with a line saying so. Then open a pull request.
+   `pipeline/tests/test_export_podcasts.py` fails on a row the exporter would drop.
 2. After the merge, dispatch `publish-podcasts.yml` with `publish: true` and
    `data_environment: ua`, check it on UA, then again with `production`.
 
@@ -79,4 +100,5 @@ edit to the list stales is `publish-podcasts.yml`.
 | the phone's copy and the matching | `client/src/lib/podcasts.ts`, `client/src/lib/usePodcastEpisodes.ts` |
 | Spotify | `client/src/lib/spotify.ts`, `client/spotify-callback.html`, `client/src/spotifyCallback/` |
 | the card | `client/src/chrome/PodcastCard.tsx`, on `screens/HikeDetail.tsx` and `screens/Today.tsx` |
-| the pictures | `client/preview-shots/hike-detail-podcasts.mjs`, `today-long-hike-podcasts.mjs` |
+| the hiker's app | `client/src/lib/podcastApp.ts`, `client/src/chrome/PodcastAppPicker.tsx`, `PodcastAppIcon.tsx`, and the Podcast app row in `screens/Settings.tsx` |
+| the pictures | `client/preview-shots/hike-detail-podcasts.mjs`, `podcast-app-picker.mjs`, `today-long-hike-podcasts.mjs` |

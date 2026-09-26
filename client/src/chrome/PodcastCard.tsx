@@ -12,25 +12,43 @@
 // only by "Save to Spotify". So Spotify never learns which hikes a hiker
 // opens, and with no signal the card still says what was picked.
 //
-// THE PHONE APPS GET A LINK (frame 2A). In a Capacitor shell each episode is
-// "Open in Spotify ↗" and nothing else: the Android shell's bridge is exposed
+// THE PHONE APPS GET LINKS (#1683's frame 2A). In a Capacitor shell each
+// episode is ↓ and "Listen on <app>", with no player and no save: the Android shell's bridge is exposed
 // to any frame the WebView holds (capacitor.config.ts, `useLegacyBridge`),
 // and a sign-in redirect does not return into either shell today
-// (features/AUTHENTICATION.md). The link goes through the system, which
-// hands open.spotify.com to the Spotify app where one is installed.
+// (features/AUTHENTICATION.md). A link goes through the system, which hands
+// it to the app it names where one is installed.
+//
+// THE HIKER'S OWN PODCAST APP (#1690 - Let a hiker pick their podcast app
+// once). Nothing tells a page which podcast player a phone uses, so the card
+// asks: before a pick, Listen and ↓ open "Which app do you listen in?"
+// (frame 1A), and afterwards each episode opens in that app. An episode
+// nobody linked for that app still shows, with Spotify's button and a line
+// saying so (2A). ▶ stays Spotify's player for everyone (3A). One-tap Save
+// is Spotify's alone - no other app has an API to add an episode.
+//
+// ↓ OPENS THE EPISODE IN THAT APP, TO DOWNLOAD THERE (the maintainer's D1,
+// 2026-09-26). No podcast app lets another app start its download, so the
+// circle is one tap from the app's own download button, and the line under
+// the list says so rather than letting the arrow promise more.
 //
 // A CONTROL THAT CANNOT DO ITS JOB IS NOT OFFERED (chrome/LineSheet.tsx's
 // rule). No signal: no Play, no Save, one line saying why. A build with no
 // Spotify client id: no Save, and the episode opens in Spotify instead.
 
 import { Capacitor } from '@capacitor/core'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import {
+  PODCAST_APP_NAMES,
+  episodeUrlIn,
   formatMinutes,
   spotifyEmbedUrl,
   spotifyEpisodeUrl,
+  type PodcastApp,
   type PodcastEpisode,
 } from '../lib/podcasts'
+import { usePodcastApp, writePodcastApp } from '../lib/podcastApp'
+import { isSafeLink } from '../lib/safeLink'
 import {
   SPOTIFY_CONFIGURED,
   beginSpotifyConnect,
@@ -39,7 +57,8 @@ import {
   saveEpisodeToSpotify,
   savedFromHere,
 } from '../lib/spotify'
-import { SpotifyIcon } from './SpotifyIcon'
+import { PodcastAppIcon } from './PodcastAppIcon'
+import { PodcastAppPicker } from './PodcastAppPicker'
 import './podcastCard.css'
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'not_approved' | 'failed'
@@ -67,6 +86,8 @@ export function PodcastCard({
   native = Capacitor.isNativePlatform(),
   spotifyConfigured = SPOTIFY_CONFIGURED,
 }: PodcastCardProps) {
+  const app = usePodcastApp()
+  const [picking, setPicking] = useState(false)
   const [playing, setPlaying] = useState<ReadonlySet<string>>(() => new Set())
   const [saves, setSaves] = useState<Readonly<Record<string, SaveState>>>(() =>
     Object.fromEntries([...savedFromHere()].map((id) => [id, 'saved' as const])),
@@ -75,7 +96,9 @@ export function PodcastCard({
 
   if (episodes.length === 0) return null
 
-  const canSave = !native && spotifyConfigured
+  // One-tap Save needs a browser (no redirect returns into the shells), a
+  // Spotify app this build was given, and a hiker who listens in Spotify.
+  const canSave = !native && spotifyConfigured && app === 'spotify'
 
   const save = async (episode: PodcastEpisode) => {
     if (!isSpotifyConnected()) {
@@ -97,92 +120,142 @@ export function PodcastCard({
     setSaves((current) => ({ ...current, [episode.spotifyId]: outcome }))
   }
 
-  const lede = native
-    ? 'Download them in Spotify before you lose signal.'
-    : canSave
-      ? 'Save them to Spotify and download them there before you lose signal.'
-      : null
+  const lede = canSave
+    ? 'Save them to Spotify and download them there before you lose signal.'
+    : 'Download them in your podcast app before you lose signal.'
 
   return (
     <section className="podcast-card" aria-label={heading}>
       <div className="podcast-card__head">
         {eyebrow !== undefined && <p className="podcast-card__eyebrow">{eyebrow}</p>}
         <h3 className="podcast-card__heading">{heading}</h3>
-        {lede !== null && <p className="podcast-card__lede">{lede}</p>}
+        {!picking && <p className="podcast-card__lede">{lede}</p>}
       </div>
 
-      {canSave && connected && (
-        <p className="podcast-card__status">
-          Spotify connected
-          <button
-            type="button"
-            className="podcast-card__button"
-            onClick={() => {
-              disconnectSpotify()
-              setConnected(false)
+      {picking ? (
+        // Frame 2: asked once, in the card that needed the answer. Picking
+        // returns to the list with that app's buttons rather than opening
+        // the episode unasked - the next tap is the hiker's.
+        <div className="podcast-card__picker">
+          <p className="podcast-card__picker-heading">Which app do you listen in?</p>
+          <PodcastAppPicker
+            value={app}
+            onPick={(next) => {
+              writePodcastApp(next)
+              setPicking(false)
             }}
-          >
-            Disconnect
-          </button>
-        </p>
-      )}
-
-      <ul className="podcast-card__list">
-        {episodes.map((episode) => (
-          <EpisodeRow
-            key={episode.spotifyId}
-            episode={episode}
-            online={online}
-            native={native}
-            canSave={canSave}
-            playing={playing.has(episode.spotifyId)}
-            save={saves[episode.spotifyId] ?? 'idle'}
-            onPlay={() =>
-              setPlaying((current) => new Set(current).add(episode.spotifyId))
-            }
-            onSave={() => void save(episode)}
           />
-        ))}
-      </ul>
+          <p className="podcast-card__foot">
+            Kept on this phone. Change it in More → Settings.
+          </p>
+        </div>
+      ) : (
+        <>
+          {canSave && connected && (
+            <p className="podcast-card__status">
+              Spotify connected
+              <button
+                type="button"
+                className="podcast-card__button"
+                onClick={() => {
+                  disconnectSpotify()
+                  setConnected(false)
+                }}
+              >
+                Disconnect
+              </button>
+            </p>
+          )}
 
-      <p className="podcast-card__foot">{footLine(native, online, canSave, connected)}</p>
+          <ul className="podcast-card__list">
+            {episodes.map((episode) => (
+              <EpisodeRow
+                key={episode.spotifyId}
+                episode={episode}
+                app={app}
+                online={online}
+                native={native}
+                canSave={canSave}
+                playing={playing.has(episode.spotifyId)}
+                save={saves[episode.spotifyId] ?? 'idle'}
+                onPlay={() =>
+                  setPlaying((current) => new Set(current).add(episode.spotifyId))
+                }
+                onSave={() => void save(episode)}
+                onAsk={() => setPicking(true)}
+              />
+            ))}
+          </ul>
+
+          <p className="podcast-card__foot">
+            {footLine(app, native, online, canSave, connected)}
+          </p>
+        </>
+      )}
     </section>
   )
 }
 
 /**
- * The one line under the list, which is also the key to the icons: the
- * buttons are icons beside each title (the maintainer's pick, poll
- * 2026-09-26, over 32px pills and text links), so the words that used to be
- * on them are said once here instead of on every row.
+ * The one line under the list, which is also the key to the icons: ▶ and ↓
+ * are icons beside each title (the maintainer's pick, poll 2026-09-26), so
+ * what they do is said once here instead of on every row - and ↓ in
+ * particular says it opens the app, because an arrow alone would promise a
+ * download OurHike cannot start.
  */
 function footLine(
+  app: PodcastApp | null,
   native: boolean,
   online: boolean,
   canSave: boolean,
   connected: boolean,
-) {
-  if (native)
-    return 'Listen on Spotify opens it in the Spotify app. Playing and saving here work in OurHike in a browser.'
-  if (!online) return 'Playing and saving need signal.'
-  if (!canSave) return '▶ plays it here. Listen on Spotify opens it in Spotify.'
-  return connected
-    ? '▶ plays it here. Save puts it in your Spotify.'
-    : '▶ plays it here. Save puts it in your Spotify; the first time asks you to connect, once.'
+): string {
+  const yours =
+    app === null
+      ? ''
+      : ` Your app is ${PODCAST_APP_NAMES[app]}; change it in More → Settings.`
+  if (native) {
+    return app === null
+      ? 'Listen or ↓ asks which podcast app you use, once. Playing and saving here work in OurHike in a browser.'
+      : `↓ opens it in ${PODCAST_APP_NAMES[app]} to download it there.${yours}`
+  }
+  if (!online) return 'Playing and downloading need signal.'
+  if (app === null)
+    return '▶ plays it here. Listen or ↓ asks which podcast app you use, once.'
+  if (canSave) {
+    const save = connected
+      ? 'Save puts it in your Spotify.'
+      : 'Save puts it in your Spotify; the first time asks you to connect, once.'
+    return `▶ plays it here. ↓ opens it in Spotify to download it there. ${save}${yours}`
+  }
+  return `▶ plays it here. ↓ opens it in ${PODCAST_APP_NAMES[app]} to download it there.${yours}`
 }
 
-/** The play triangle, drawn rather than typed: a typed ▶ is an emoji on iOS,
- *  and an emoji in a brand-coloured circle is a different button. */
-function PlayGlyph() {
+/** The play triangle and the download arrow, drawn rather than typed: a
+ *  typed ▶ is an emoji on iOS, and an emoji in a brand-coloured circle is a
+ *  different button. */
+function Glyph({ shape }: { shape: 'play' | 'down' }) {
   return (
     <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
-      <path d="M5 3.5v9l7.5-4.5z" fill="currentColor" />
+      {shape === 'play' ? (
+        <path d="M5 3.5v9l7.5-4.5z" fill="currentColor" />
+      ) : (
+        <path
+          d="M8 2.5v8M4.5 7.5L8 11l3.5-3.5M3 13.5h10"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      )}
     </svg>
   )
 }
 
 interface EpisodeRowProps {
   episode: PodcastEpisode
+  app: PodcastApp | null
   online: boolean
   native: boolean
   canSave: boolean
@@ -190,10 +263,12 @@ interface EpisodeRowProps {
   save: SaveState
   onPlay: () => void
   onSave: () => void
+  onAsk: () => void
 }
 
 function EpisodeRow({
   episode,
+  app,
   online,
   native,
   canSave,
@@ -201,63 +276,112 @@ function EpisodeRow({
   save,
   onPlay,
   onSave,
+  onAsk,
 }: EpisodeRowProps) {
   const length = formatMinutes(episode.minutes)
-  // Spotify's own wording for a button that opens Spotify ("LISTEN ON
-  // SPOTIFY", its design guidelines), with its icon beside the words.
-  const openLink = (
-    <a
-      className="podcast-card__spotify"
-      href={spotifyEpisodeUrl(episode)}
-      target="_blank"
-      rel="noreferrer"
-      aria-label={`Open “${episode.title}” in Spotify`}
+
+  // Where this episode opens for this hiker: their app when somebody linked
+  // it there, otherwise Spotify, which every episode is on (2A). Every href
+  // here is from the published list and passes the same gate as every other
+  // link the app fills from data (lib/safeLink.ts).
+  const linked = app === null ? null : episodeUrlIn(episode, app)
+  const opensIn: PodcastApp =
+    linked !== null && isSafeLink(linked) ? (app ?? 'spotify') : 'spotify'
+  const href = opensIn === 'spotify' ? spotifyEpisodeUrl(episode) : (linked as string)
+  const name = PODCAST_APP_NAMES[opensIn]
+
+  const play = !native && online && !playing && (
+    <button
+      type="button"
+      className="podcast-card__icon"
+      onClick={onPlay}
+      aria-label={`Play “${episode.title}” here`}
+      title="Play here"
     >
-      <SpotifyIcon />
-      <span>Listen on Spotify</span>
-    </a>
+      <Glyph shape="play" />
+    </button>
   )
 
-  const actions = native ? (
-    openLink
-  ) : !online ? null : (
-    <>
-      {!playing && (
-        <button
-          type="button"
-          className="podcast-card__icon"
-          onClick={onPlay}
-          aria-label={`Play “${episode.title}” here`}
-          title="Play here"
-        >
-          <PlayGlyph />
-        </button>
-      )}
-      {!canSave ? (
-        openLink
-      ) : save === 'saved' ? (
-        <span
-          className="podcast-card__spotify podcast-card__spotify--done"
-          role="img"
-          aria-label={`“${episode.title}” is saved to Spotify`}
-        >
-          <SpotifyIcon />
-          <span>Saved</span>
-        </span>
-      ) : save === 'not_approved' ? null : (
-        <button
-          type="button"
-          className="podcast-card__spotify"
-          onClick={onSave}
-          disabled={save === 'saving'}
-          aria-label={`Save “${episode.title}” to Spotify`}
-        >
-          <SpotifyIcon />
-          <span>{save === 'saving' ? 'Saving…' : 'Save'}</span>
-        </button>
-      )}
-    </>
-  )
+  let actions: ReactNode = null
+  if (native || online) {
+    if (app === null) {
+      // Frame 1A: nothing assumed; both doors ask first.
+      actions = (
+        <>
+          {play}
+          <button
+            type="button"
+            className="podcast-card__icon"
+            onClick={onAsk}
+            aria-label={`Download “${episode.title}” in your podcast app`}
+            title="Download in your podcast app"
+          >
+            <Glyph shape="down" />
+          </button>
+          <button
+            type="button"
+            className="podcast-card__pill"
+            onClick={onAsk}
+            aria-label={`Listen to “${episode.title}” in your podcast app`}
+          >
+            <span>Listen</span>
+          </button>
+        </>
+      )
+    } else {
+      actions = (
+        <>
+          {play}
+          <a
+            className="podcast-card__icon"
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            aria-label={`Download “${episode.title}” in ${name}`}
+            title={`Download in ${name}`}
+          >
+            <Glyph shape="down" />
+          </a>
+          {canSave ? (
+            save === 'saved' ? (
+              <span
+                className="podcast-card__pill podcast-card__pill--done"
+                role="img"
+                aria-label={`“${episode.title}” is saved to Spotify`}
+              >
+                <PodcastAppIcon app="spotify" />
+                <span>Saved</span>
+              </span>
+            ) : save === 'not_approved' ? null : (
+              <button
+                type="button"
+                className="podcast-card__pill"
+                onClick={onSave}
+                disabled={save === 'saving'}
+                aria-label={`Save “${episode.title}” to Spotify`}
+              >
+                <PodcastAppIcon app="spotify" />
+                <span>{save === 'saving' ? 'Saving…' : 'Save'}</span>
+              </button>
+            )
+          ) : (
+            // Each app's own wording: "Listen on Spotify" (Spotify's
+            // guidelines), "on Apple Podcasts" (Apple's).
+            <a
+              className="podcast-card__pill"
+              href={href}
+              target="_blank"
+              rel="noreferrer"
+              aria-label={`Open “${episode.title}” in ${name}`}
+            >
+              <PodcastAppIcon app={opensIn} />
+              <span>Listen on {name}</span>
+            </a>
+          )}
+        </>
+      )
+    }
+  }
 
   return (
     <li className="podcast-card__episode">
@@ -269,6 +393,10 @@ function EpisodeRow({
         </div>
         {actions !== null && <div className="podcast-card__actions">{actions}</div>}
       </div>
+
+      {app !== null && opensIn !== app && (
+        <p className="podcast-card__note">Not linked for {PODCAST_APP_NAMES[app]} yet.</p>
+      )}
 
       {playing && (
         // Spotify's own player, framed only after a tap and only here - the

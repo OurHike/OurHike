@@ -490,6 +490,21 @@ describe('MapSettings', () => {
   })
 })
 
+describe('the podcast app row (#1690)', () => {
+  it('offers “Ask me” only until an app is picked, and keeps the pick on this phone', async () => {
+    localStorage.removeItem('ourhike:podcast-app')
+    render(<DisplaySettings {...PROPS} />)
+
+    const select = screen.getByRole('combobox', { name: 'Podcast app' })
+    expect((select as HTMLSelectElement).value).toBe('')
+    await userEvent.selectOptions(select, 'Overcast')
+
+    expect(localStorage.getItem('ourhike:podcast-app')).toBe('overcast')
+    expect(screen.queryByRole('option', { name: 'Ask me' })).toBeNull()
+    localStorage.removeItem('ourhike:podcast-app')
+  })
+})
+
 describe('DisplaySettings', () => {
   // #619. Units was the standing example of the "Later" treatment - a disabled
   // checkbox over a preference key that had a backend column, a sync payload

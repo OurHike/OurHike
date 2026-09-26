@@ -702,10 +702,15 @@ export const PLACES_KEY = 'places.json'
 // pipeline no longer derives them. Nothing here ever counted a crossing as a
 // water source, so no distance a hiker reads moved with it.
 //
-// A phone still running an older build asks for poi_crossing.geojson and
-// fails its whole download on a 404, which is why publish.py keeps writing
-// that key as an empty FeatureCollection. Delete that shim, not this comment,
-// once no supported build asks for it.
+// A phone still running an older build keeps asking for poi_crossing.geojson
+// and keeps getting it. A pinned build reads its own release folder
+// (lib/dataRelease.ts's DATA_RELEASE), and those folders are immutable and
+// never pruned. A build from before pinning reads the bucket root, where the
+// flat object is never deleted either - pipeline/publish.py's withdrawn-type
+// comment has why its missing manifest entry is not a failure. Nothing on the
+// pipeline side has to keep publishing the key; what a newer release must do
+// instead is STOP carrying it. A phone upgraded onto this build with
+// crossings already stored is lib/trailData.ts's WITHDRAWN_WAYPOINT_TYPES.
 //
 // `trailhead` is the empty-but-present layer now (0 features on that same
 // release), and #1218 is why - USFS's 7,358 trailheads ship as parking pins

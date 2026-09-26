@@ -130,3 +130,20 @@ def test_unify_poi_rejects_an_unknown_poi_type():
     feature = copy.deepcopy(SHELTER_FEATURE)
     with pytest.raises(ValueError):
         unify_poi(feature, "not_a_real_poi_type", "atc_shelters", "AT", SHELTER_FIELD_MAP)
+
+
+def test_a_withdrawn_type_is_not_also_a_published_one():
+    """WITHDRAWN_POI_TYPES is what lets publish, verify_release and the
+    identity ledger let a category go. A type in both lists would be exported
+    by one half of the pipeline and dropped from the release by the other."""
+    from lib.poi_schema import POI_TYPES, WITHDRAWN_POI_TYPES
+
+    assert not set(WITHDRAWN_POI_TYPES) & set(POI_TYPES)
+
+
+def test_crossing_is_withdrawn_rather_than_published():
+    """#1674 - the maintainer had stream crossings taken off the map."""
+    from lib.poi_schema import POI_TYPES, WITHDRAWN_POI_TYPES
+
+    assert "crossing" not in POI_TYPES
+    assert "#1674" in WITHDRAWN_POI_TYPES["crossing"]

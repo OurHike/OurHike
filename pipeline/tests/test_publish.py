@@ -245,6 +245,73 @@ def test_publish_drops_a_stale_elevation_sidecar_when_the_graph_republishes_with
     assert "trail_graph_profile.json" not in remote["artifacts"]
 
 
+def _entry(path, text):
+    path.write_text(text)
+    return {"path": str(path), "sha256": publish.sha256_file(path)}
+
+
+def test_publish_stops_carrying_a_withdrawn_poi_type_forward(s3_client, tmp_path):
+    """#1674: crossing left POI_TYPES, so export_poi.py stops writing
+    poi_crossing.* - and the additive merge would otherwise keep the last
+    5,318 crossings in every future manifest. They are dropped by name, and
+    everything else absent from this run still carries forward as before."""
+    first = publish.publish(
+        {
+            "poi_crossing.geojson": _entry(tmp_path / "crossing.geojson", '{"features": [{"properties": {"id": "c1"}}]}'),
+            "poi_crossing.fgb": _entry(tmp_path / "crossing.fgb", "fgb bytes"),
+            "poi_shelter.geojson": _entry(tmp_path / "shelter.geojson", '{"features": [{"properties": {"id": "s1"}}]}'),
+            "elevation_profile.json": _entry(tmp_path / "elevation.json", '{"profile": [1]}'),
+        },
+        s3_client=s3_client,
+        bucket=BUCKET,
+    )
+    assert "poi_crossing.geojson" in first["uploaded"]
+
+    second = publish.publish(
+        {"poi_shelter.geojson": _entry(tmp_path / "shelter_v2.geojson", '{"features": [{"properties": {"id": "s2"}}]}')},
+        s3_client=s3_client,
+        bucket=BUCKET,
+    )
+
+    assert second["withdrawn"] == ["poi_crossing.fgb", "poi_crossing.geojson"]
+    remote = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())
+    assert "poi_crossing.geojson" not in remote["artifacts"]
+    assert "poi_crossing.fgb" not in remote["artifacts"]
+    assert "elevation_profile.json" in remote["artifacts"], "an ordinary absent artifact still carries forward"
+
+
+def test_a_withdrawal_alone_writes_a_version(s3_client, tmp_path):
+    """Nothing uploaded would otherwise mean no new latest.json, and the drop
+    above would happen to a manifest that is never written - leaving the
+    crossings served until some unrelated change happened to publish."""
+    shelter = _entry(tmp_path / "shelter.geojson", '{"features": [{"properties": {"id": "s1"}}]}')
+    publish.publish(
+        {
+            "poi_crossing.geojson": _entry(tmp_path / "crossing.geojson", '{"features": [{"properties": {"id": "c1"}}]}'),
+            "poi_shelter.geojson": shelter,
+        },
+        s3_client=s3_client,
+        bucket=BUCKET,
+    )
+
+    second = publish.publish({"poi_shelter.geojson": shelter}, s3_client=s3_client, bucket=BUCKET)
+
+    assert second["uploaded"] == []
+    assert second["version_written"] is True
+    remote = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())
+    assert set(remote["artifacts"]) == {"poi_shelter.geojson"}
+
+
+def test_nothing_withdrawn_and_nothing_changed_still_writes_no_version(s3_client, tmp_path):
+    shelter = _entry(tmp_path / "shelter.geojson", '{"features": [{"properties": {"id": "s1"}}]}')
+    publish.publish({"poi_shelter.geojson": shelter}, s3_client=s3_client, bucket=BUCKET)
+
+    second = publish.publish({"poi_shelter.geojson": shelter}, s3_client=s3_client, bucket=BUCKET)
+
+    assert second["version_written"] is False
+    assert second["withdrawn"] == []
+
+
 def test_publish_keeps_the_elevation_sidecar_when_the_graph_is_unchanged(s3_client, tmp_path):
     """The fix above must not fire when there is nothing to protect against:
     an unchanged trail_graph.json still means its existing sidecar is still

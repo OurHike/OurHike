@@ -328,7 +328,6 @@ def _minted_poi_sources() -> set[str]:
         export_poi.CSI_WATER_SOURCE,
         export_poi.OPENTRAIL_SOURCE,
         export_poi.OSM_WATER_SOURCE,
-        export_poi.NHD_CROSSING_SOURCE,
         export_poi.NHD_STREAM_SOURCE,
         *(source for _, _, source, _ in export_poi.DIRECT_SOURCES),
     }

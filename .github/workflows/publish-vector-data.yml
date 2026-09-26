@@ -80,7 +80,7 @@ on:
         type: boolean
         default: true
       include_trail_water:
-        description: "Derive trail crossings and reachable site water (~5.7 GB of USGS subregions / ~30 min, plus the ~3.5 GB OSM extracts when this run has not already fetched them). Untick to reuse the last run's."
+        description: "Derive reachable site water for shelters and campsites (~5.7 GB of USGS subregions / ~30 min, plus the ~3.5 GB OSM extracts when this run has not already fetched them). Untick to reuse the last run's."
         type: boolean
         default: false
       regenerate_identity_ledger:
@@ -257,7 +257,7 @@ jobs:
 
       # The other half of #812: the cache is an optimisation again, not the
       # only copy. These three are DERIVED - fetch_osm_water.py's scan,
-      # build_osm_water_reach.py's verdicts, fetch_trail_water.py's crossings -
+      # build_osm_water_reach.py's verdicts, fetch_trail_water.py's site water -
       # and until publish.py started shipping them as sidecars they existed
       # nowhere else. Not in the repository (data/ is gitignored, and
       # CONTRIBUTING's "data does not go in commits" is right about that), and
@@ -266,10 +266,14 @@ jobs:
       #
       # A miss is silent and it is a hiker's problem, not a build one:
       # export_poi.read_sources() reads what is on disk, so the run publishes a
-      # map short ~1,100 crossings and every reachable spring, with nothing
-      # saying so. Since #825 it is also a blocked publish, because those rows
-      # are live ledger rows - 1,247 of 4,230, 29.5% against a 20% retirement
-      # ceiling - so losing them trips the mass-retirement refusal too.
+      # map short every reachable spring, with nothing saying so (and, until
+      # #1674 withdrew them, ~1,100 crossings). Since #825 it is also a
+      # blocked publish, because those rows are live ledger rows - 1,247 of
+      # 4,230, 29.5% against a 20% retirement ceiling when #825 measured it,
+      # nearly all of them crossings - so losing them tripped the
+      # mass-retirement refusal too. With crossings withdrawn the rows at
+      # stake are the OSM points and the 39 site-water points; whether their
+      # loss alone still trips the ceiling has not been re-measured.
       #
       # BEFORE THE PREFLIGHT, unlike the photo restore below, and the ordering
       # is load-bearing in two directions. `export_poi.py --check` refuses when
@@ -504,10 +508,12 @@ jobs:
           echo "Carried $(find "$store" -type f | wc -l) recovered image(s) into $store."
 
       # BEFORE THE THREE WATER STEPS, and that ordering is load-bearing
-      # rather than tidy (#1016). All three read this export's artifact:
-      # build_osm_water_reach.py measures OSM water against these lines,
-      # fetch_trail_water.py intersects streams with them, and export_poi.py
-      # widens its corridor around them. Below the water steps - where these
+      # rather than tidy (#1016). Two of them read this export's artifact:
+      # build_osm_water_reach.py measures OSM water against these lines, and
+      # export_poi.py widens its corridor around them. (fetch_trail_water.py
+      # was the third, intersecting streams with them, until #1674 withdrew
+      # crossings; its site water is measured against ATC's shelters and
+      # campsites, not against any trail line.) Below the water steps - where these
       # two sat until #1016 - every one of those reads an absent file and
       # gates exactly the A.T., which is the defect rather than a degraded
       # mode of it: it is what shipped four organizations' trails with no
@@ -692,13 +698,13 @@ jobs:
             echo "No osm_water.geojson - nothing to gate, and export_poi.py will not ask for it."
           fi
 
-      # Where the trail meets water, and which sites have water a hiker can
-      # reach (#529). Off by default, unlike the OSM points: it downloads
-      # ~5.7 GB of USGS subregions on top of reading the extracts, and its
-      # answer barely moves - NHD is a frozen snapshot and the trail does not
-      # often change where it fords a creek. The output rides FETCH_OUTPUTS,
-      # so an unticked run exports the last derivation's crossings rather
-      # than none, exactly as the photo fetches behave. Its elevation cache
+      # Which sites have water a hiker can reach (#529) - and, until #1674
+      # withdrew them, where the trail meets water. Off by default, unlike
+      # the OSM points: it downloads ~5.7 GB of USGS subregions on top of
+      # reading the extracts, and its answer barely moves - NHD is a frozen
+      # snapshot and ATC's shelters do not often move. The output rides
+      # FETCH_OUTPUTS, so an unticked run exports the last derivation's site
+      # water rather than none, exactly as the photo fetches behave. Its elevation cache
       # rides along too, so a re-run after a threshold change pays for the
       # hydrography and not for several hundred more EPQS round trips.
       #

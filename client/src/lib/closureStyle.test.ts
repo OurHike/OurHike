@@ -29,6 +29,7 @@ import {
   BLAZE_LINE_WIDTH,
   CASING_LINE_WIDTH,
   RED_LIGHT_BLAZE_COLOR,
+  solidDashExpression,
 } from '../map/style'
 import { PLAIN_TRAIL_COLOR } from './blaze'
 import { POI_DOT_LAYER_ID, POI_LAYER_ID, POI_PIN_MIN_ZOOM } from '../map/poiLayers'
@@ -151,10 +152,11 @@ describe('closure vs blaze, as structural difference', () => {
 
   it('traces the closed trail dotted, where the trail a hiker takes is solid', () => {
     // A BLAZE IS SOLID UNDER THE HUES, which is the appearance blazePaint
-    // builds with; the default sheet dashes its context trails (#1588), and
-    // the dots differ from those too, in rhythm and in colour.
+    // builds with - spelled as SOLID_DASH on every feature rather than as no
+    // dash since #1698; the default sheet dashes its context trails (#1588),
+    // and the dots differ from those too, in rhythm and in colour.
     const blaze = builtLayers().find((l) => l.id === BLAZE_LAYER_ID)
-    expect(blaze?.paint?.['line-dasharray']).toBeUndefined()
+    expect(blaze?.paint?.['line-dasharray']).toEqual(solidDashExpression())
     expect(TRACE.paint?.['line-dasharray']).toBeDefined()
     expect(TRACE.layout?.['line-cap']).toBe('round')
   })

@@ -23,6 +23,7 @@ import {
   TRAIL_OVERVIEW_LAYER_ID,
   sketchWidthExpression,
   plainLineColor,
+  solidDashExpression,
 } from './style'
 import {
   blazeChipImageId,
@@ -1331,8 +1332,9 @@ describe('the taken trail (#1306)', () => {
     }
     const sketch = style.layers.find((layer) => layer.id === TRAIL_OVERVIEW_LAYER_ID)
     const taken = style.layers.find((layer) => layer.id === BLAZE_LAYER_ID)
-    // Solid either way since 2026-09-10 (map/style.ts's header, rule 2).
-    expect(sketch?.paint?.['line-dasharray']).toBeUndefined()
+    // Solid either way since 2026-09-10 (map/style.ts's header, rule 2),
+    // spelled as SOLID_DASH per feature rather than as no dash (#1698).
+    expect(sketch?.paint?.['line-dasharray']).toEqual(solidDashExpression())
     expect(sketch?.paint?.['line-width']).toEqual(sketchWidthExpression([]))
     expect(taken?.filter).toEqual(chosenSystemFilter([]))
   })

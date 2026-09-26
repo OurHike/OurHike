@@ -90,7 +90,9 @@
 //     `line-dasharray` has allowed since the split below was built (the
 //     style spec lists `feature` among its parameters now), so the split's
 //     layers stay exactly as they are and the sort key still decides who is
-//     painted last. The 2026-09-10 sentence stands for the trails the map
+//     painted last. It stays per feature on every sheet, solid ones too -
+//     a switch that took it away drew every trail grey (#1698,
+//     blazeDashArray). The 2026-09-10 sentence stands for the trails the map
 //     is about: a through-route is solid, on every sheet, in every mode.
 //
 //  3. A side trail is never drawn over the through-route it hangs off. One
@@ -825,25 +827,84 @@ export function plainLineColor(_appearance: SheetAppearance): string {
  *  style spec allows for this property since MapLibre 4 - the split's
  *  layers stay as they are. */
 export function contextDashExpression(): unknown[] {
+  return throughRouteSolidDash(CONTEXT_TRAIL_DASH)
+}
+
+/** `line-dasharray` wherever every line is solid - the hues and red light:
+ *  SOLID_DASH on a through-route's feature and on everything else alike.
+ *  Evaluates to the one constant on every feature, and is spelled per
+ *  feature anyway; blazeDashArray says why that is the whole point. */
+export function solidDashExpression(): unknown[] {
+  return throughRouteSolidDash(SOLID_DASH)
+}
+
+function throughRouteSolidDash(otherTrails: readonly [number, number]): unknown[] {
   return [
     'case',
     THROUGH_ROUTE_SOURCE_CONDITION,
     ['literal', [...SOLID_DASH]],
-    ['literal', [...CONTEXT_TRAIL_DASH]],
+    ['literal', [...otherTrails]],
   ]
 }
 
-/** The `line-dasharray` a blaze layer carries for the appearance: the
- *  context dash under the default, nothing otherwise - a solid line has no
- *  dasharray at all, and a sheet change restores that absence
- *  (attachMapAppearance writes `undefined`). */
-export function blazeDashArray(appearance: SheetAppearance): unknown[] | undefined {
-  return plainRedActive(appearance) ? contextDashExpression() : undefined
+/**
+ * The `line-dasharray` a blaze layer carries for the appearance: the context
+ * dash under the default, solidDashExpression under the hues and red light.
+ *
+ * ALWAYS PER FEATURE, AND NEVER ABSENT (#1698). A solid line used to carry no
+ * dasharray at all, and attachMapAppearance wrote `undefined` to get back to
+ * one. Changing a blaze layer's `line-dasharray` between per-feature and
+ * absent is what drew every trail grey when the hiker switched "Blaze colors"
+ * on, until a zoom. Measured 2026-09-26 in headless Chromium on a local
+ * build against UA release 2026-09-24-2, Hudson Highlands at z13 on a
+ * desktop: grey after 14 of 18 taps, and every grey tap that was watched for
+ * errors logged one uncaught `TypeError: Cannot read properties of undefined
+ * (reading '0')` from MapLibre's `drawLine`. Why, read from MapLibre 6.7.0's
+ * source:
+ *
+ *   - `line-dasharray` transitions over the style's 300 ms, and from a
+ *     per-feature value to a constant one MapLibre keeps evaluating the OLD
+ *     per-feature dash until the transition ends;
+ *   - the same write re-lays out every tile, and the worker builds the new
+ *     buckets with no dash at all;
+ *   - a frame inside those 300 ms draws with the dashed shader against a
+ *     bucket that has no dash positions, and `CrossFadedConstantBinder`
+ *     hands `undefined` to a vec4 uniform, which throws;
+ *   - the throw leaves `Map._render` before the line that keeps a transition
+ *     running, so the transition never ends and every later frame throws at
+ *     the same layer. The casings draw first, so what the hiker sees is the
+ *     casing: a grey line. A zoom restarts the style, which is why it cleared.
+ *
+ * Switching off goes the other way: it snaps straight to the per-feature
+ * dash, and threw 2 to 3 times per tap against the old dashless tiles,
+ * recovering when the new ones landed. A zero-length dash transition alone
+ * fixed switching on and left those. Keeping the dash per feature on every
+ * sheet fixed both: 12 of 12 taps drew correctly with no error, on the same
+ * camera and release, with a stand-in for this function patched into the
+ * running map; with this function built in, e2e/data/blazeSwitch.spec.ts
+ * (three taps a run) passed 6 of 6 runs where the build before failed 3 of
+ * 3.
+ *
+ * Red light makes the same two changes of kind - coming on from the default
+ * is the grey direction, going off is the other - so it was exposed to both,
+ * and is fixed by the same rule. That is reasoned from the code, not tried:
+ * red light is set on the Settings screen, away from the map, and nobody
+ * has watched the switch-over on a real map.
+ *
+ * WHAT IT COSTS: every blaze line now draws through MapLibre's dash shader,
+ * where the hues and red light used the plain one. The switched-on frame
+ * matched the no-dash one to the eye; a strict yellow-pixel count on it came
+ * out 3% lower (2,456 against 2,530, stable across three runs each, taken
+ * with the stand-in above), which is most likely edge antialiasing. Nobody
+ * has isolated that, or looked at it on a phone. A through-route has drawn
+ * this way under the default since #1588.
+ */
+export function blazeDashArray(appearance: SheetAppearance): unknown[] {
+  return plainRedActive(appearance) ? contextDashExpression() : solidDashExpression()
 }
 
 function blazeDashPaint(appearance: SheetAppearance): Record<string, unknown> {
-  const dash = blazeDashArray(appearance)
-  return dash === undefined ? {} : { 'line-dasharray': dash }
+  return { 'line-dasharray': blazeDashArray(appearance) }
 }
 
 /** Whether the casing layers draw: hidden under the default, where the
@@ -953,9 +1014,11 @@ export function attachMapAppearance(
               )) as never,
         )
         // The default's vocabulary follows the switch (#1588): the context
-        // dash on every blaze layer, or none - `undefined` puts the
-        // property back to the solid line the hues draw - and the mode's
-        // tiers on the layers whose width the mode changes.
+        // dash on every blaze layer, or the same `case` solid on every
+        // feature - never `undefined`, because a write that changes this
+        // property between per-feature and absent is what drew every trail
+        // grey (#1698, blazeDashArray) - and the mode's tiers on the layers
+        // whose width the mode changes.
         map.setPaintProperty(
           layerId,
           'line-dasharray',
@@ -1447,7 +1510,8 @@ function buildTrailLineLayers(
         // (NEAR_WHITE_BLAZES).
         'line-color': blazeLineColor(appearance, true) as unknown as string,
         // Dashed on the context trails under the default, solid on a
-        // through-route, absent otherwise (#1588, blazeDashArray).
+        // through-route, and solid per feature everywhere otherwise (#1588,
+        // #1698 - blazeDashArray).
         ...blazeDashPaint(appearance),
         // Its own tier, except on the untaken side below the seam, where
         // the tier is a rope and the network's far weight is what the
@@ -2733,8 +2797,9 @@ export function buildMapStyle({
           // real line differ, and the frame #1291 is about.
           'line-color': blazeLineColor(appearance, false) as unknown as string,
           // Every feature here is the A.T.'s, so this is the no-gap dash on
-          // each of them under the default: carried for the uniformity the
-          // sheet repaint relies on, not for anything it draws (#1588).
+          // each of them on every sheet: carried because the sheet repaint
+          // must never take a per-feature dash away (#1588, #1698), not for
+          // anything it draws.
           ...blazeDashPaint(appearance),
           // The one departure, and only while the A.T. is not taken: the
           // network's taper rather than the line's own tier, because 4.5 px

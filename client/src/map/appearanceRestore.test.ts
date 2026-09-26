@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { Map as MapLibreMap } from 'maplibre-gl'
+import { createPropertyExpression, latest } from '@maplibre/maplibre-gl-style-spec'
 import {
   attachMapAppearance,
   buildMapStyle,
@@ -28,6 +29,14 @@ import {
  * written as a diff rather than as a list of properties, so a NEW
  * appearance-dependent property added to buildMapStyle fails here on the day
  * it is added rather than on the day a hiker reports it.
+ *
+ * THE REPORT CAME BACK ON 2026-09-26, and the diff below was not where it
+ * lived (#1698). Every write was correct; what drew the grey was MapLibre
+ * itself, throwing mid-frame when a blaze layer's `line-dasharray` changed
+ * between per-feature and absent (map/style.ts's blazeDashArray has the
+ * trace). A mock map cannot throw the way a renderer does, so the last block
+ * here pins the rule that keeps the renderer out of that state, and
+ * e2e/data/blazeSwitch.spec.ts taps the switch on a real one.
  */
 
 /** The least map `attachMapAppearance` can be driven against. */
@@ -132,5 +141,85 @@ describe('turning the blaze colours on restores what buildMapStyle would draw', 
         visibility: 'visible',
       })
     }
+  })
+})
+
+describe('no appearance change alters what kind of dash a blaze layer carries (#1698)', () => {
+  /** Every sheet the switch, the theme and red light can reach. */
+  const SHEETS = {
+    'day, default red': { theme: 'light', blazeColorsShown: false },
+    'day, hues': { theme: 'light', blazeColorsShown: true },
+    'night, default red': { theme: 'dark', blazeColorsShown: false },
+    'night, hues': { theme: 'dark', blazeColorsShown: true },
+    'red light over the default': {
+      theme: 'dark',
+      mapStyle: 'night_hike',
+      redLight: true,
+      blazeColorsShown: false,
+    },
+    'red light over the hues': {
+      theme: 'dark',
+      mapStyle: 'night_hike',
+      redLight: true,
+      blazeColorsShown: true,
+    },
+  } as const
+
+  /** What MapLibre makes of a `line-dasharray` value: `source` when it is
+   *  decided per feature, `constant` for a plain array, and nothing at all
+   *  for an absent one. The kind, not the value, is what this is about. */
+  function dashKind(value: unknown): string {
+    if (value === undefined) return 'absent'
+    const parsed = createPropertyExpression(
+      value as never,
+      'paint.line-dasharray',
+      latest.paint_line['line-dasharray'] as never,
+    )
+    if (parsed.result === 'error') return 'invalid'
+    return parsed.value.kind
+  }
+
+  it('builds every blaze layer with a per-feature dash on every sheet', () => {
+    // The kind has to be the SAME on every sheet, not merely present:
+    // MapLibre 6.7.0 draws a frame between a change of kind and the tiles
+    // re-laid out for it, and that frame is the one that threw. `source` on
+    // every sheet is the one answer that never changes.
+    const kinds: string[] = []
+    for (const [sheet, appearance] of Object.entries(SHEETS)) {
+      const built = buildMapStyle({ background: 'offline_topo', ...appearance } as never)
+      for (const id of BLAZE_LINE_LAYER_IDS) {
+        const found = built.layers.find((layer) => layer.id === id)
+        if (found === undefined) continue
+        const dash = (found.paint as Record<string, unknown> | undefined)?.[
+          'line-dasharray'
+        ]
+        kinds.push(`${sheet} / ${id}: ${dashKind(dash)}`)
+      }
+    }
+    expect(kinds.length).toBeGreaterThan(0)
+    expect(kinds.filter((row) => !row.endsWith(': source'))).toEqual([])
+  })
+
+  it('repaints every blaze layer with a per-feature dash, from every sheet to every other', () => {
+    const wrong: string[] = []
+    let writes = 0
+    for (const [from, start] of Object.entries(SHEETS)) {
+      for (const [to, next] of Object.entries(SHEETS)) {
+        if (from === to) continue
+        const shipped = buildMapStyle({ background: 'offline_topo', ...start } as never)
+        const { map, paint } = mockMap(shipped)
+        attachMapAppearance(map, next as never)
+        for (const id of BLAZE_LINE_LAYER_IDS) {
+          const written = paint.get(id)
+          if (written === undefined || !('line-dasharray' in written)) continue
+          writes++
+          const kind = dashKind(written['line-dasharray'])
+          if (kind !== 'source') wrong.push(`${from} -> ${to} / ${id}: ${kind}`)
+        }
+      }
+    }
+    // A repaint that wrote no dash at all would pass the loop above.
+    expect(writes).toBeGreaterThan(0)
+    expect(wrong).toEqual([])
   })
 })

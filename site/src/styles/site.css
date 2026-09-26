@@ -246,6 +246,50 @@ a:hover {
   }
 }
 
+/* ---------- Phone targets ----------
+ *
+ * 44px on a phone for every link that is not a word inside a sentence - the
+ * handoff's own minimum (HANDOFF_README.md, Responsive: "44-56px hit
+ * targets"), which client/e2e/sitePages.spec.ts now holds every page to.
+ * Measured before (390px, 2026-09-25): footer links and card "->" links
+ * 22px, the mark 34px, the nav CTA 42px, small buttons 38px (#1663).
+ * Desktop keeps its tighter rhythm; a pointer does not need the room. */
+@media (max-width: 720px) {
+  .nav__brand {
+    min-height: 44px;
+  }
+
+  .nav__cta {
+    padding: 10px 14px;
+  }
+
+  .card__link {
+    display: inline-block;
+    padding-block: 11px;
+  }
+
+  .btn--small {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  .footer__col {
+    gap: 0;
+  }
+
+  /* 12px: the column's 13.5px type at 1.6 line height is a 21.6px line,
+     so 11px came to 43.6px - just under. */
+  .footer__col a {
+    display: block;
+    padding-block: 12px;
+  }
+
+  .footer__heading {
+    margin-bottom: 2px;
+  }
+}
+
 /* ---------- Buttons ---------- */
 
 /* Written for `<a>` and used on `<button>` too, so it resets what a button
@@ -895,13 +939,20 @@ a:hover {
   font-size: 13.5px;
 }
 
+/* `--fg-2`, not the `--fg-3` it shipped in, for this and every small grey
+ * run on the org pages (.org-help, .org-source__verdict, .org-remove, the
+ * claim results): stone-500 measured 3.44:1 on the page, 3.81:1 on a white
+ * card and 3.13:1 on the sage panel - under WCAG AA's 4.5:1 for text this
+ * size - when client/e2e/sitePages.spec.ts first ran (#1663, 2026-09-25).
+ * The token itself is the app's, used 229 times there, and is its own
+ * question: #1663's pull request names the issue that carries it. */
 .org-eyebrow {
   display: block;
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: var(--fg-3);
+  color: var(--fg-2);
 }
 
 /* ---------- The demo-org invitation ---------- */
@@ -1073,7 +1124,7 @@ a:hover {
 .org-help {
   font-size: 13px;
   line-height: 1.55;
-  color: var(--fg-3);
+  color: var(--fg-2);
 }
 
 .org-help--centred {
@@ -1092,7 +1143,9 @@ a:hover {
   background: var(--bg-canvas);
   border: 1px solid var(--border-2);
   border-radius: 9px;
-  padding: 11px 13px;
+  /* 12px, which with the 16px type above makes a 45px field - over the
+     44px phone target, where 11px left it at 43px. */
+  padding: 12px 13px;
 }
 
 .org-input:focus-visible {
@@ -1184,9 +1237,12 @@ a:hover {
   font-weight: 600;
   background: none;
   border: 0;
-  color: var(--fg-3);
+  color: var(--fg-2);
   cursor: pointer;
   padding: 4px 2px;
+  /* 44px, the handoff's phone minimum for a target (HANDOFF_README.md,
+     Responsive); these were 23px text buttons. */
+  min-height: 44px;
 }
 
 .org-add {
@@ -1251,6 +1307,9 @@ a:hover {
 
 .org-note summary {
   cursor: pointer;
+  /* Two lines of 13.5px on a phone came to 43px; the handoff's target is
+     44px. Padding rather than `display: flex`, which drops the marker. */
+  padding-block: 2px;
   font-size: 13.5px;
   color: var(--fg-1);
 }
@@ -1349,7 +1408,7 @@ a:hover {
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.04em;
-  color: var(--fg-3);
+  color: var(--fg-2);
   align-self: center;
 }
 
@@ -1382,7 +1441,7 @@ a:hover {
 }
 
 .org-result--note {
-  color: var(--fg-3);
+  color: var(--fg-2);
   font-size: 13px;
 }
 
@@ -1392,7 +1451,7 @@ a:hover {
 }
 
 .org-result__where {
-  color: var(--fg-3);
+  color: var(--fg-2);
   font-size: 13px;
 }
 
@@ -1440,6 +1499,16 @@ a:hover {
     grid-template-areas: "words card" "more card";
     align-items: start;
     column-gap: 40px;
+  }
+}
+
+/* "Leave the demo" in dark mode: moss-400 on amber-900 measured 3.78:1
+ * (client/e2e/sitePages.spec.ts, #1663). The banner's own ink instead; the
+ * light theme's brand green on amber-100 passes and is left alone. */
+@media (prefers-color-scheme: dark) {
+  .org-demo-banner .btn--ghost {
+    color: var(--fg-1);
+    border-color: var(--fg-2);
   }
 }
 

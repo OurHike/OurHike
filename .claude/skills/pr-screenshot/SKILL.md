@@ -162,6 +162,19 @@ Three consequences worth knowing before writing one:
 - **A `client/src/` change with no recipe gets nudged.** The comment says no
   shot above is the pull request's own. If the change genuinely has no screen,
   answer the nudge in `## Screenshot`; it is a question, not a failure.
+- **The marketing site is reachable too, at phone width and in dark mode.**
+  Until #1663 — The /for-orgs/ pages are unreadable in dark mode and
+  misaligned on a phone — the camera served only the app, so no recipe could
+  open a `site/` page and the org pages shipped with "seven recipes, all
+  desktop", none of the site. A recipe with
+  `export const before = serveMarketingSite` from
+  `preview-shots/fixtures/marketingSite.mjs` answers every non-app path from
+  `site/dist` (CI builds it first); `site-for-orgs-phone.mjs` is the worked
+  example, `page.emulateMedia({ colorScheme: 'dark' })` included. A `site/`
+  change a hiker can see gets one, same as a `client/src/` one. The pixels
+  are also audited: `client/e2e/sitePages.spec.ts` fails a site page on
+  contrast, a crowded edge, a small tap target or an unstyled control, at
+  390px and 1280px, light and dark.
 
 Check the drive locally before pushing — it either reaches the screen or it
 does not, and CI should not be the first to find out:

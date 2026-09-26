@@ -4,13 +4,15 @@ import {
   stalenessPresentation,
   lastConfirmedText,
   confidenceTreatment,
+  pinConditionFor,
 } from './stalenessDisplay'
 
 // WIREFRAMES.md §11. Staleness is a THIRD visual channel, independent of
 // confidence:
 //   - staleness  = when a human was last here, whatever they said
-//   - confidence = whether it was ever verified to exist (a dashed pin)
-// A dashed (unverified) pin can still be Fresh; a verified pin can go Stale.
+//   - confidence = whether it was ever verified to exist (a hollow pin since
+//     #1682, a dashed one before)
+// A hollow (unverified) pin can still be Fresh; a verified pin can go Stale.
 // Conflating them would tell someone a spring is unreliable when the real
 // situation is that nobody has checked recently - a different claim.
 //
@@ -112,8 +114,8 @@ describe('stalenessPresentation', () => {
 })
 
 describe('confidenceTreatment', () => {
-  it('dashes the outline of something never verified to exist', () => {
-    expect(confidenceTreatment('low')).toMatchObject({ outline: 'dashed' })
+  it('draws something never verified to exist hollow', () => {
+    expect(confidenceTreatment('low')).toMatchObject({ outline: 'hollow' })
   })
 
   it('leaves a verified pin solid', () => {
@@ -157,5 +159,31 @@ describe('lastConfirmedText', () => {
     expect(lastConfirmedText(new Date('2024-01-01T12:00:00Z'), NOW)).toMatch(
       /\d+ days ago/,
     )
+  })
+})
+
+describe('pinConditionFor', () => {
+  const never = pinConditionFor(() => null)
+  const fresh = pinConditionFor(() => new Date())
+
+  it('rings never-confirmed water with the faint invite when the pin is filled', () => {
+    expect(never('spring', 'water', 'high')).toEqual({
+      ring: 'faint-invite',
+      faded: false,
+    })
+    // A caller that says nothing about confidence gets the filled pin's ring.
+    expect(never('spring', 'water')).toEqual({ ring: 'faint-invite', faded: false })
+  })
+
+  it('draws no invite round a hollow pin, which already says provisional (#1682)', () => {
+    // The maintainer, shown the bullseye the two rings made on the 26 px pin
+    // (poll, 2026-09-26): "Drop the ring on hollow water".
+    expect(never('spring', 'water', 'low')).toEqual({ ring: 'none', faded: false })
+  })
+
+  it('keeps a ring a hiker earned, hollow pin or not', () => {
+    // Green is somebody's recent word about the water. That is not the
+    // invite, and a hollow pin does not make it untrue.
+    expect(fresh('spring', 'water', 'low')).toEqual({ ring: 'green', faded: false })
   })
 })

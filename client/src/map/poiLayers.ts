@@ -53,12 +53,13 @@ import {
   siteMembersKey,
   type SiteVisibility,
 } from './poiSites'
-import { POI_PRIORITY } from './poiPriority'
+import { LOUD_POI_TYPES, POI_PRIORITY } from './poiPriority'
 
 import { poiIconImages } from './poiIconImages'
 import {
   PIN_HALO_COLOR,
   POI_PIN_PIXEL_RATIO,
+  POI_PIN_INK_SIZE,
   POI_PIN_SIZE,
   poiColor,
   poiIconId,
@@ -400,17 +401,17 @@ export function ringedPinImage(pin: RegisteredPoiIcon, ring: string): Registered
 }
 
 /**
- * How far above its coordinate a waypoint's pin disc is centred, in CSS px at
- * icon-size 1.
+ * Half a waypoint pin's image height, in CSS px at icon-size 1.
  *
- * The pin is bottom-anchored (the jigger, in {@link buildPoiLayer}), so its
- * disc centre sits half its image's height above the coordinate. That image
- * is the 38 px pin plus, for a site pin, `sitePinPadding` on every side for
- * its badges - so a site pin's disc is lifted by that padding too.
+ * The pin is bottom-anchored (the jigger, in {@link buildPoiLayer}), so this is
+ * how far above its coordinate the image is centred before
+ * {@link PIN_OFFSET_EXPRESSION} moves it. The image is the 38 px footprint
+ * plus, for a site pin, `sitePinPadding` on every side - which has been zero
+ * since the members became pips on the rim (#1682), and is still read here so
+ * a pip that one day outgrows the footprint cannot silently float its pin.
  *
- * It used to lift the ring layer onto the pin. It now says how far a ringed
- * image overhangs the pin below, which is what {@link PIN_OFFSET_EXPRESSION}
- * gives back.
+ * Carried per feature as {@link RING_LIFT_PROPERTY}, the name it had when it
+ * lifted the ring layer onto the pin.
  */
 export const RING_LIFT_PROPERTY = 'ring_lift'
 
@@ -418,41 +419,51 @@ export function ringLift(memberCount: number): number {
   return POI_PIN_SIZE / 2 + sitePinPadding(memberCount)
 }
 
-/** Member counts up to this get an exact lift; past it (no site carries
- *  this many today - siteMemberCombinations) the offset falls back to the
- *  largest lift's, which is none. */
+/** Member counts up to this get an exact offset; past it (no site carries
+ *  this many today - siteMemberCombinations) the offset falls back to a plain
+ *  pin's. */
 const MAX_LIFTED_MEMBERS = 8
 
 /**
- * `icon-offset` for the pin layer: nothing for a plain pin, and for a ringed
- * one the distance its ring reaches below the pin's own bottom edge.
+ * How far to move a pin's image down so the DRAWN pin's bottom edge lands on
+ * the coordinate, in CSS px at icon-size 1, for an image `lift` px from centre
+ * to bottom edge.
+ *
+ * Two things sit between the image's bottom and the pin's (#1682): the
+ * footprint is 38 px and the pin is drawn 26 px across in the middle of it, so
+ * 6 px of transparent footprint; and a ring round a pin whose image is smaller
+ * than the ring's own reaches below the image - zero at today's sizes, where
+ * the 16 px ring fits inside the footprint.
+ */
+export function pinDrop(lift: number, ringed: boolean): number {
+  return lift - POI_PIN_INK_SIZE / 2 + (ringed ? ringOverhang(lift) : 0)
+}
+
+/**
+ * `icon-offset` for the pin layer: {@link pinDrop}, per image size and ring.
  *
  * NOT A MOVE OFF THE PLACE, which is what {@link buildPoiLayer}'s jigger note
- * refuses. The anchor puts the IMAGE's bottom on the coordinate; a ring round
- * a plain pin makes that image 5 px taller below the pin, so without this a
- * ringed pin would stand 5 px higher than its unringed neighbour. This puts
- * the pin's own bottom edge back on the point, which is where the place is.
+ * refuses. The anchor puts the IMAGE's bottom on the coordinate; the pin
+ * drawn inside that image stops short of it, and this puts the pin's own
+ * bottom edge back on the point, which is where the place is.
  *
  * A `match` per lift, because an expression cannot build an array from a
- * number - each output is a literal pair. Multiplied by `icon-size` by
- * MapLibre, so the correction scales with the pin.
+ * number - each output is a literal pair. Every lift gets an arm, even where
+ * two produce the same pair, so the `match` always has one (MapLibre rejects
+ * a `match` with none). Multiplied by `icon-size` by MapLibre, so the
+ * correction scales with the pin.
  */
 export const PIN_OFFSET_EXPRESSION: unknown[] = (() => {
   const lifts = [
     ...new Set(Array.from({ length: MAX_LIFTED_MEMBERS + 1 }, (_, n) => ringLift(n))),
   ]
-  const overhangs = lifts.filter((lift) => ringOverhang(lift) > 0)
-  return [
-    'case',
-    ['==', RING_SUFFIX_EXPRESSION, ''],
-    ['literal', [0, 0]],
-    [
-      'match',
-      ['get', RING_LIFT_PROPERTY],
-      ...overhangs.flatMap((lift) => [lift, ['literal', [0, ringOverhang(lift)]]]),
-      ['literal', [0, 0]],
-    ],
+  const byLift = (ringed: boolean): unknown[] => [
+    'match',
+    ['get', RING_LIFT_PROPERTY],
+    ...lifts.flatMap((lift) => [lift, ['literal', [0, pinDrop(lift, ringed)]]]),
+    ['literal', [0, pinDrop(ringLift(0), ringed)]],
   ]
+  return ['case', ['==', RING_SUFFIX_EXPRESSION, ''], byLift(false), byLift(true)]
 })()
 
 function iconMatch(
@@ -530,10 +541,13 @@ export const POI_SORT_KEY_EXPRESSION: unknown[] = [
 /**
  * How small a pin gets at the seam, as a fraction of {@link POI_PIN_SIZE}.
  *
- * 0.8, raised from 0.6 when the seam moved out to z9 (#617). A pin at 0.6 is
- * 22.8 px carrying a 10.6 px glyph; at 0.8 it is 30.4 px carrying 14.2 px,
+ * 0.8, raised from 0.6 when the seam moved out to z9 (#617). A pin at 0.6 was
+ * 22.8 px carrying a 10.6 px glyph; at 0.8 it was 30.4 px carrying 14.2 px,
  * which is the difference between a mark you can identify and one you can only
- * locate. `poiIcons.test.ts` holds a 7 px floor on a glyph and neither figure
+ * locate. Those are the coin's numbers. Since #1682 the pin is drawn 26 px
+ * across inside its 38 px footprint, so at 0.8 a loud pin is 20.8 px carrying
+ * an 11.2 px glyph, and a quiet one at SECONDARY_POI_SCALE on top is 15 px
+ * carrying 8.1 px - the smallest glyph this map draws, above the 7 px floor. `poiIcons.test.ts` holds a 7 px floor on a glyph and neither figure
  * is near it - this is about comfort at arm's length in sun, not about a
  * minimum.
  *
@@ -564,8 +578,10 @@ export const POI_PIN_MIN_SCALE = 0.8
  * ways off the trail"; the trailhead is the one of those still drawn full
  * size, which is where a way off the trail reaches a road (#1197).
  *
- * Taken from POI_PRIORITY rather than listed again, so there is one ordering
- * here rather than two that can disagree.
+ * Taken from POI_PRIORITY rather than listed again (map/poiPriority.ts's
+ * LOUD_POI_TYPES), so there is one ordering here rather than two that can
+ * disagree - and the same four are the ones map/poiIcons.ts keeps in full
+ * colour while the rest go quiet (#1682).
  *
  * The maintainer, 2026-09-18: "the warnings needs to stay large as well as
  * the other important classes." The warning pin was already exempt from all
@@ -573,17 +589,15 @@ export const POI_PIN_MIN_SCALE = 0.8
  * never lets it be culled - so this is the same rule reaching the waypoints
  * that sit beside it.
  */
-export const FULL_SIZE_POI_TYPES: readonly string[] = POI_PRIORITY.slice(
-  0,
-  POI_PRIORITY.indexOf('trailhead') + 1,
-)
+export const FULL_SIZE_POI_TYPES: readonly string[] = LOUD_POI_TYPES
 
 /**
  * What the rest are drawn at, as a fraction of a full-size pin.
  *
  * NOT A WAY OF HIDING THEM, and the difference is the whole point: a vista at
- * 0.72 is 27 px carrying a 13 px glyph, which is a mark a hiker can see, name
- * and tap. It is smaller than a spring because a spring is the one somebody
+ * 0.72 is 18.7 px drawn carrying a 10 px glyph (27 px and 13 px on the coin,
+ * before #1682), which is a mark a hiker can see, name and tap - and its
+ * 27 px footprint is what a thumb hits. It is smaller than a spring because a spring is the one somebody
  * is looking for when the weather turns, and with nothing culled any more
  * size is the only channel left that can say so.
  *
@@ -732,11 +746,12 @@ export function buildPoiLayer(sourceId: string = POI_SOURCE_ID): LayerSpecificat
       // floating, the fix is a stem on the artwork rather than a different
       // anchor.
       //
-      // A RINGED PIN IS THE ONE PLACE AN OFFSET APPEARS, and it moves the
-      // artwork back ONTO the place rather than off it: the ring painted
-      // round the pin (#1676) makes the image reach 5 px below the pin's
-      // bottom edge, and PIN_OFFSET_EXPRESSION returns exactly that, so the
-      // pin's own bottom edge is still what touches the coordinate.
+      // THE OFFSET MOVES THE ARTWORK BACK ONTO THE PLACE rather than off it.
+      // The pin is drawn 26 px across inside a 38 px footprint (#1682), so
+      // the image's bottom stops 6 px short of the pin's; PIN_OFFSET_EXPRESSION
+      // gives exactly that back (and, if a ring ever outgrew the footprint,
+      // the ring's overhang as well), so the pin's own bottom edge is still
+      // what touches the coordinate.
       'icon-anchor': 'bottom',
       'icon-offset': PIN_OFFSET_EXPRESSION as unknown as [number, number],
       // No `text-field` anywhere in this layer, and the reason has shifted
@@ -964,7 +979,11 @@ const NO_CONDITION: PinCondition = { ring: NO_RING, faded: false }
 export function poiFeatureCollection(
   pois: readonly MapPoint[],
   visibility: SiteVisibility = {},
-  pinCondition: (poiId: string, poiType: string) => PinCondition = () => NO_CONDITION,
+  pinCondition: (
+    poiId: string,
+    poiType: string,
+    confidence: PoiConfidence,
+  ) => PinCondition = () => NO_CONDITION,
 ): PoiFeatureCollection {
   // ONE FEATURE PER SITE, not per POI (#524). The members are removed here
   // rather than filtered in the style, which is the whole mechanism: a style
@@ -1021,7 +1040,7 @@ export function poiFeatureCollection(
   return {
     type: 'FeatureCollection',
     features: drawn.map((poi) => {
-      const condition = pinCondition(poi.id, poi.type)
+      const condition = pinCondition(poi.id, poi.type, poi.confidence)
       return {
         type: 'Feature',
         id: poi.id,
@@ -1164,7 +1183,11 @@ export function attachPoiData(
   map: MapLibreMap,
   pois: readonly MapPoint[],
   visibility: SiteVisibility = {},
-  pinCondition?: (poiId: string, poiType: string) => PinCondition,
+  pinCondition?: (
+    poiId: string,
+    poiType: string,
+    confidence: PoiConfidence,
+  ) => PinCondition,
 ): () => void {
   return whenStyleReady(
     map,

@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { POI_COLORS, PIN_HALO_COLOR, POI_PIN_SIZE, poiGlyphPath } from './poiIcons'
+import {
+  POI_COLORS,
+  PIN_HALO_COLOR,
+  POI_PIN_INK_SIZE,
+  POI_PIN_SIZE,
+  poiGlyphPath,
+} from './poiIcons'
 import { WARNING_PIN } from '../lib/seriousWarnings'
 import {
   WORKDAY_COLOR,
@@ -131,6 +137,20 @@ describe('the workday pin image', () => {
     expect(icon.width).toBe(POI_PIN_SIZE * 2)
     expect(icon.height).toBe(POI_PIN_SIZE * 2)
     expect(WORKDAY_ICON_ID.startsWith('poi-')).toBe(false)
+  })
+
+  it('is drawn slim, 26 px across inside that footprint, like a waypoint (#1682)', () => {
+    // The maintainer, 2026-09-26: "Slim the workday pin in this PR" - left as
+    // the coin, it would have been the bigger mark beside the ATC's notice.
+    const ratio = 2
+    const icon = buildWorkdayIcon(POI_PIN_SIZE, ratio)
+    const alphaAt = (cssFromCentre: number) => {
+      const x = Math.floor(icon.width / 2 + cssFromCentre * ratio)
+      return icon.data[(Math.floor(icon.height / 2) * icon.width + x) * 4 + 3]
+    }
+    // Ink just inside the drawn edge, nothing just outside it.
+    expect(alphaAt(POI_PIN_INK_SIZE / 2 - 1)).toBe(255)
+    expect(alphaAt(POI_PIN_INK_SIZE / 2 + 1.5)).toBe(0)
   })
 
   it('draws something in the middle of the disc', () => {

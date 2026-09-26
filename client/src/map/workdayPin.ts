@@ -48,8 +48,11 @@
 // among the things that are still there next month.
 
 import {
-  buildPinImage,
+  buildSlimPinImage,
+  PIN_HALO_COLOR,
+  POI_PIN_INK_SIZE,
   POI_PIN_PIXEL_RATIO,
+  POI_PIN_SIZE,
   type Glyph,
   type PoiIconImage,
 } from './poiIcons'
@@ -62,7 +65,8 @@ export const WORKDAY_ICON_ID = 'work-project'
 export const WORKDAY_COLOR = '#556011'
 
 /**
- * The pin's drawn size, in CSS pixels.
+ * The pin's footprint, in CSS pixels - drawn 26 px across inside it, like a
+ * waypoint (#1682).
  *
  * `POI_PIN_SIZE` exactly, unlike the serious warning, which is larger. A
  * workday is an invitation rather than a hazard, and a pin drawn bigger than
@@ -117,19 +121,30 @@ export const WORKDAY_GLYPH: Glyph = [
   ],
 ]
 
-/** The pin image, ready for `map.addImage`. */
+/**
+ * The pin image, ready for `map.addImage`.
+ *
+ * THE SLIM PIN SINCE #1682: drawn 26 px across inside the 38 px footprint,
+ * like every waypoint. It was the coin until the waypoints went slim and the
+ * ATC's own notice shrank to 30 px to just clear them; left as the coin, a
+ * workday would have been the bigger mark beside a notice from the trail's
+ * maintainer. The maintainer, shown the four at real size (poll, 2026-09-26):
+ * "Slim the workday pin in this PR."
+ */
 export function buildWorkdayIcon(
   sizePx: number,
   pixelRatio = POI_PIN_PIXEL_RATIO,
 ): PoiIconImage {
-  return buildPinImage({
+  return buildSlimPinImage({
     sizePx,
+    // The same proportion of the footprint a waypoint is drawn at, so a
+    // caller asking for a different footprint gets the same pin, scaled.
+    inkPx: POI_PIN_INK_SIZE * (sizePx / POI_PIN_SIZE),
     pixelRatio,
     glyph: WORKDAY_GLYPH,
-    color: WORKDAY_COLOR,
-    // A solid rim. `confidence` says whether anybody has verified the PLACE,
-    // and a workday is not a place - the club that posted it is the source,
-    // and the broken rim would be claiming a doubt about the wrong thing.
-    confidence: 'high',
+    // Filled, never hollow. Hollow says nobody has verified the PLACE, and a
+    // workday is not a place - the club that posted it is the source, and a
+    // hollow pin would be claiming a doubt about the wrong thing.
+    inks: { fill: WORKDAY_COLOR, ring: null, ringWidth: null, glyph: PIN_HALO_COLOR },
   })
 }

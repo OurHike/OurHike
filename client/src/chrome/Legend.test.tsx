@@ -448,18 +448,20 @@ describe('legend icons are the map’s icons', () => {
     )
   })
 
-  it('draws the solid-rimmed pin even where the row counts an unverified point', () => {
+  it('draws the filled pin even where the row counts an unverified point', () => {
     // A key says what a category's symbol IS. Now that a row counts both
-    // confidences, a rim that broke whenever the points in view happened to be
-    // unconfirmed would change the symbol as the hiker panned - and this
+    // confidences, a pin that went hollow whenever the points in view happened
+    // to be unconfirmed would change the symbol as the hiker panned - and this
     // fixture's water row holds an unverified spring, so the assertion has
-    // something to catch. The broken rim still means what it means on the map,
-    // one pin at a time, where it is a fact about a place.
+    // something to catch. Hollow (#1682, the broken rim before it) still means
+    // what it means on the map, one pin at a time, where it is a fact about a
+    // place.
     render(<Legend {...PROPS} />)
 
-    expect(iconIn(rowFor('Water'))?.querySelector('.map-icon__edge')).not.toHaveAttribute(
-      'stroke-dasharray',
-    )
+    // The row's icon IS the pin's svg (it carries .legend__icon).
+    const icon = iconIn(rowFor('Water'))
+    expect(icon).toHaveAttribute('data-confidence', 'high')
+    expect(icon?.querySelector('.map-icon__ring')).toBeNull()
   })
 
   it('draws a closure as the barred band it is, not as a pin it never was', () => {

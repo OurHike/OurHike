@@ -108,7 +108,7 @@ export const ATC_NOTICE_ICON_ID = 'atc-notice'
  *
  * IT WAS FIRST SIZED TO THE BAND'S WIDTH - a 10px dot, "a barrier seen end-on"
  * - and that was still too quiet by a long way. The dot came out SMALLER than
- * every pin it competes with on the same screen: a waypoint pin is 38px
+ * every pin it competes with on the same screen: a waypoint pin was 38px
  * (`POI_PIN_SIZE`, itself `--space-9`) and a serious-warning pin is 44px, so
  * the one mark on the map carrying the trail's own maintainer's word about the
  * trail was the smallest thing on it, and drawn UNDER both of them besides
@@ -144,8 +144,24 @@ export const ATC_NOTICE_ICON_ID = 'atc-notice'
  * that all 1,257 px² of it were opaque, not that it reached 40px - the reach is
  * what makes an eye land here rather than on the shelter pin beside it, and
  * src/test/atcAlertProminence.test.ts holds it against both pins.
+ *
+ * 30 SINCE THE WAYPOINT PIN WAS DRAWN 26 PX ACROSS (#1682). Everything above
+ * was argued against a 38 px pin; the pin's ink shrank to 26 inside the same
+ * 38 px footprint, and a 40 px notice stood 14 px clear of it where the whole
+ * derivation asks for "as little as the scale allows". The maintainer, shown
+ * the notice at 40 beside the new pins (poll, 2026-09-26), chose "Shrink it to
+ * just clear the pin". 30 rather than the token step 32, which clears by 6 and
+ * fails the test's 4 px ceiling; 30 rather than 28, which would repeat the old
+ * 2 px clearance but thin the triangle's red band to 2.6 px at walking zoom
+ * (it is 2.8 at 30, and was 3.7 at 40). Measured against the pin's INK, not
+ * its footprint, for the reason the next paragraph up gives about measuring
+ * ink against ink.
+ *
+ * @unvalidated Nobody has looked at a 30 px notice beside a 26 px pin on a
+ * phone. What would settle it: the same look that settled 40 against 38 - a
+ * real frame at walking zoom with a notice and a shelter pin side by side.
  */
-export const ATC_UPDATE_POINT_DRAWN_WIDTH = 40
+export const ATC_UPDATE_POINT_DRAWN_WIDTH = 30
 
 /**
  * The zooms the dot grows between, and what fraction of full size it is at
@@ -161,7 +177,7 @@ export const ATC_UPDATE_POINT_DRAWN_WIDTH = 40
  * The stops are read off the two things this dot shares a screen with:
  *
  *  - **z13 and up, full size.** Where map/poiLayers.ts stops interpolating and
- *    a waypoint pin is its whole 38px. This is the comparison every bound in
+ *    a waypoint pin is its whole 26px of ink (#1682). This is the comparison every bound in
  *    src/test/atcAlertProminence.test.ts is about, so it has to be the zoom
  *    both are at full size.
  *  - **At the seam, 0.8.** Where waypoint pins first appear (`POI_PIN_MIN_ZOOM`), at

@@ -6,6 +6,23 @@ chrome), [POI_SITES.md](POI_SITES.md) (which owns several waypoints at one place
 [UX_CUSTOMIZATION.md](UX_CUSTOMIZATION.md) (which owns *why* `waypoint_types_shown` exists),
 [../WIREFRAMES.md](../WIREFRAMES.md) §1.4 and §2, and [../OurHikeValues.md](../OurHikeValues.md) #4.
 
+> **The pin is drawn slimmer and the tail goes quiet, 2026-09-26
+> ([#1682](https://github.com/OurHike/OurHike/issues/1682)); nothing about which pins place
+> changed.** The maintainer: *"Having so many icons display on the map at once can be difficult to
+> read."* From five drawings of the same 301 waypoints at Harriman z10, then the app built and
+> photographed against the UA bucket, they chose: every waypoint drawn **26 px across inside its
+> 38 px footprint** with a paper hairline in place of the coin's dark edge and cream halo; the
+> tiers below trailheads (resupply, parking, privy, viewpoint) **quiet** — a pale tint of their
+> accent with the glyph in the accent; **unverified drawn hollow** rather than with a broken rim;
+> a site's members as **17 px glyph badges** (38 → 46 / 56 / 58 px for one to three members, from
+> 58 / 70 / 72). The footprint is what collides and what a thumb hits, so `POI_PIN_SIZE`, the
+> collision spacing and the tap target are unchanged and every table below still holds; what moved
+> is `POI_PIN_INK_SIZE`, `QUIET_TINT` and `MEMBER_BADGE_SIZE` in `client/src/map/poiIcons.ts`.
+> Measured on the drawings, not on the app: pin ink 32% of the screen → 18%, dark-or-saturated ink
+> 20% → 5%. The same poll shrank the ATC notice to 30 px to just clear the new pin, slimmed the
+> workday pin to match, and took water's faint invite ring off a hollow pin, where the two rings
+> read as a bullseye.
+
 > **The collision drop is back, 2026-09-26
 > ([#1676](https://github.com/OurHike/OurHike/issues/1676)), and it is the third row of the table
 > below reversed.** The maintainer: *"What happened to the small pins for the POIs? I really liked
@@ -165,7 +182,7 @@ in the viewport.
 | corridor length | 2,197 mi | [../WIREFRAMES.md](../WIREFRAMES.md) |
 | waypoints published | **2,778** | measured against the live ATC FeatureServer and opentrail.org, 2026-08-12 ([POI_SITES.md](POI_SITES.md)) |
 | of which vistas | 1,194 in corridor, of 1,223 | [../pipeline/README.md](../pipeline/README.md) |
-| pin size | 38 px + 2 px padding each side = 42 px | `POI_PIN_SIZE`, `icon-padding` |
+| pin size | 38 px + 2 px padding each side = 42 px (the footprint; drawn 26 px inside it since #1682) | `POI_PIN_SIZE`, `icon-padding` |
 
 Simulating MapLibre's placement over the whole corridor — symbols considered in `symbol-sort-key`
 order, a box skipped when it overlaps one already placed — the share of each type drawn at all:

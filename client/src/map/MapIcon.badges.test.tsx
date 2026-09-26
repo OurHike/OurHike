@@ -1,13 +1,13 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, cleanup } from '@testing-library/react'
 import { MapIcon } from './MapIcon'
-import { badgeCenters, pinGeometry, POI_COLORS, sitePinPadding } from './poiIcons'
+import { badgeCenters, POI_COLORS, sitePinPadding, waypointPinGeometry } from './poiIcons'
 
 // A site pin's badges and the bare tile (#1373), tested the way MapIcon.test.tsx
 // tests the pin: against the geometry the map itself draws from, never against
 // a second set of numbers.
 
-const PIN = pinGeometry(1)
+const PIN = waypointPinGeometry(1, 1)
 
 afterEach(cleanup)
 

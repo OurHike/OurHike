@@ -148,6 +148,13 @@ export function pinConditionFor(
       // says "No recent word" in words, which is where the invite's meaning
       // is stated anyway. Only the invite: a green or grey ring on a hollow
       // pin reports something a hiker actually said, and stays.
+      //
+      // IT IS MOST OF THE WATER, and the call was put again with that number:
+      // 3,598 of the 3,740 water sources in release 2026-09-24-2 are
+      // `confidence: low` (417 of 559 on the A.T., all 3,181 nearby), so the
+      // invite now rings only verified water nobody has reported on. The
+      // maintainer, shown Brooklyn with and without it (poll, 2026-09-26):
+      // "Keep it off (as built)".
       ring: ring === 'faint-invite' && confidence === 'low' ? 'none' : ring,
       faded: presentation.treatment.opacity < 1,
     }

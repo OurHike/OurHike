@@ -257,8 +257,11 @@ export const CLOSURE_MARK_HALO_WIDTH = 2.5
  * each part's middle is a candidate. Placed with `icon-allow-overlap: false`,
  * the first mark in an area keeps it and the rest are dropped, so the area
  * reads as a few crosses rather than a scribble. It cannot hide a waypoint:
- * the pins set `icon-ignore-placement` and are never dropped for anything
- * (map/poiLayers.ts, 2026-09-18).
+ * the far marks draw above the pins and so are placed first, and a pin that
+ * loses its place to one falls back to its 2.5 px dot, the `circle` layer
+ * under the pins that takes no part in collision (map/poiLayers.ts, #597 and
+ * #1676). That is the standing a serious-warning pin already has over a
+ * waypoint.
  */
 export const CLOSURE_MARK_PADDING = 6
 

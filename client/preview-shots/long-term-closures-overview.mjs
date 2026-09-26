@@ -9,7 +9,8 @@
 // collision, so a park with two dozen closed trails reads as a handful of
 // crosses rather than a scribble. And against the waypoints in this frame
 // - 426 in view on CI's first photograph of it, at 3453b43 - the crosses
-// draw above the pins, and cannot hide one.
+// draw above the pins and win the pixels, and a pin under one falls back to
+// its dot (#1676) rather than disappearing.
 //
 // The same closed trails as long-term-closures.mjs, from an overview camera:
 // Bear Mountain and Doodletown at z10, below the zoom where the band's near
@@ -69,7 +70,7 @@
 // The same seeding as long-term-closures.mjs - a remembered camera and a
 // reload - and the same rule: no location fix, no account, nobody's reports.
 export const caption =
-  'Bear Mountain and the lower Hudson at z10, Blaze colors off (the default), crossed out (#1677): below z11 a closure is one bold dark x per closed run, at its middle, over the run knocked out of the red to a thin white band with a dotted trace. A closure here is nine to sixteen pixels long, too short to carry the chain of small crosses the z13 frame shows. Far marks thin each other out by collision, so the two dozen closed trails around Doodletown read as a handful of crosses rather than a scribble. They draw above the waypoint pins, and the pins ignore collision, so no pin is hidden by one. Whether they outshout the pins is the question this frame is here to answer.'
+  'Bear Mountain and the lower Hudson at z10, Blaze colors off (the default), crossed out (#1677): below z11 a closure is one bold dark x per closed run, at its middle, over the run knocked out of the red to a thin white band with a dotted trace. A closure here is nine to sixteen pixels long, too short to carry the chain of small crosses the z13 frame shows. Far marks thin each other out by collision, so the two dozen closed trails around Doodletown read as a handful of crosses rather than a scribble. They draw above the waypoint pins and win the pixels; a pin under one falls back to its dot (#1676), so no waypoint is hidden. Whether they outshout the pins is the question this frame is here to answer.'
 export const alt =
   'The map screen over Bear Mountain State Park and the lower Hudson at zoom 10: a web of thin red trail lines with the Appalachian Trail heavier among them, waypoint pins, and around Bear Mountain a few bold dark x marks with white edges, each over a short white dotted line where a trail is closed.'
 

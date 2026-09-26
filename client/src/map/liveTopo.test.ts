@@ -69,6 +69,7 @@ import { ATC_UPDATE_LAYER_ID, ATC_UPDATE_POINT_LAYER_ID } from '../lib/atcUpdate
 import {
   closureCrossesId,
   closureLayerIds,
+  closureMarkId,
   CLOSURE_LAYER_ID,
   LONG_TERM_CLOSURE_LAYER_ID,
 } from '../lib/closureStyle'
@@ -328,8 +329,17 @@ describe('the live topographic background', () => {
       // Workdays have outranked waypoint pins since #760 - they were above
       // the pins before 2026-09-20 too.
       WORKDAY_LAYER_ID,
-      // The hazards: a warning or an ATC notice wins the pixels outright.
+      // The hazards: a closure's far mark, a warning or an ATC notice wins
+      // the pixels outright. The far marks (#1677) are the one closure layer
+      // that collides - so a closed network reads as a few crosses rather
+      // than a scribble - and a pin under one falls back to its dot, as a
+      // pin under a warning does.
+      closureMarkId('network-overview-closure-band'),
+      closureMarkId('nearby-long-term-closure-band'),
+      closureMarkId(CLOSURE_LAYER_ID),
+      closureMarkId(LONG_TERM_CLOSURE_LAYER_ID),
       WARNING_LAYER_ID,
+      closureMarkId(ATC_UPDATE_LAYER_ID),
       ATC_UPDATE_POINT_LAYER_ID,
     ])
 

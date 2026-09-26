@@ -31,7 +31,7 @@ import {
   RED_LIGHT_BLAZE_COLOR,
 } from '../map/style'
 import { PLAIN_TRAIL_COLOR } from './blaze'
-import { POI_LAYER_ID, POI_PIN_MIN_ZOOM } from '../map/poiLayers'
+import { POI_DOT_LAYER_ID, POI_LAYER_ID, POI_PIN_MIN_ZOOM } from '../map/poiLayers'
 
 // WIREFRAMES.md §7 and its Load-bearing values: a closure is the closed trail
 // crossed out, a blaze is the trail.
@@ -301,12 +301,25 @@ describe('buildClosureLayers', () => {
 
   it('lets far marks thin each other out, and cannot hide a waypoint doing it', () => {
     // CLOSURE_MARK_PADDING's docstring: a closed network is a hundred line
-    // parts, and the far marks collide so it reads as a few. That is only
-    // safe because the pins ignore placement - read off the built style.
+    // parts, and the far marks collide so it reads as a few. A pin a far
+    // mark displaces is not hidden: every waypoint is also drawn by the dot
+    // layer under the pins (#597), a `circle` layer, which takes no part in
+    // collision - so the waypoint falls back to its dot. Read off the built
+    // style, over the pins' own source and filter.
     expect(MARK.layout?.['icon-allow-overlap']).toBe(false)
     expect(MARK.layout?.['symbol-placement']).toBe('line-center')
-    const pins = builtLayers().find((l) => l.id === POI_LAYER_ID)
-    expect(pins?.layout?.['icon-ignore-placement']).toBe(true)
+    const built = builtLayers()
+    const pins = built.find((l) => l.id === POI_LAYER_ID)
+    const dots = built.find((l) => l.id === POI_DOT_LAYER_ID)
+    expect(dots?.type).toBe('circle')
+    expect(dots?.source).toBe(pins?.source)
+    expect(dots?.filter).toEqual(pins?.filter)
+    // And the far marks are placed first, so they win the pixels: MapLibre
+    // places the top layer first, and every closure draws over the pins.
+    const ids = built.map((l) => l.id)
+    expect(ids.indexOf(closureMarkId(CLOSURE_LAYER_ID))).toBeGreaterThan(
+      ids.indexOf(POI_LAYER_ID),
+    )
   })
 
   it('does not data-drive colour off blaze_color - a closure is not a blaze', () => {

@@ -43,8 +43,8 @@ import { SITE_ANCHOR_TYPES, SITE_MEMBER_TYPES } from './poiSites'
  *
  * The cost of drawing pins bigger is that fewer of them survive
  * `icon-allow-overlap: false` at a given zoom. That is a trade the collision
- * ordering was built to absorb: POI_PRIORITY in poiLayers.ts decides who
- * survives, and water is first in it.
+ * ordering was built to absorb: POI_PRIORITY (map/poiPriority.ts) decides
+ * who is drawn as a pin and who falls back to a dot.
  */
 export const POI_PIN_SIZE = 38
 

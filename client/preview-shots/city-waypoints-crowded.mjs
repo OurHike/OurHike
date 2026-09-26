@@ -25,6 +25,12 @@
 // features/POI_VISIBILITY.md's "a pin or a dot and never as neither" is
 // untouched.
 //
+// AND SINCE #1676 (2026-09-26) THE RINGS GO WITH THE PINS. Every fountain
+// here is never-confirmed water, so every one carries the faint invite ring.
+// The ring is painted into the pin's own image now, so it sits round the
+// pins that placed and nowhere else - the restored collision engine without
+// that drew pale rings round empty air across Manhattan.
+//
 // WHAT IT CANNOT PROMISE YET, and a thin frame here is an answer rather than
 // a broken recipe - network-above-the-seam.mjs makes the same distinction for
 // the same reason. Two of the three things in this picture come from the

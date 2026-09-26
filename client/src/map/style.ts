@@ -182,7 +182,6 @@ import {
   buildPoiDotLayer,
   buildPoiLayer,
   buildPoiSource,
-  buildPoiStalenessLayer,
   POI_SOURCE_ID,
 } from './poiLayers'
 import { buildPoiLabelLayer } from './poiLabels'
@@ -2790,11 +2789,9 @@ export function buildMapStyle({
       // map/labelLadder.ts and a waypoint they did not choose is tier 4.
       buildPoiLabelLayer(),
       buildPoiDotLayer(),
-      // The staleness rings between the two ranks (#759's nudge surface):
-      // over the dots, so a ring is never sliced by its own waypoint's dot,
-      // and under the pins, so the pin's artwork stays whole and the ring
-      // reads as a rim around it rather than a wash over it.
-      buildPoiStalenessLayer(),
+      // No ring layer between the ranks since #1676: the staleness ring is
+      // painted into the pin's own image, so it goes wherever the collision
+      // engine sends the pin - see poiLayers.ts's ringedPinImages.
       buildPoiLayer(),
       // THE DISPUTE MARK MOVED WITH THE PINS (2026-09-20). Its own rule is
       // that it sits ON the waypoint it annotates, so leaving it behind when

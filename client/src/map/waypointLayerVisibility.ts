@@ -23,7 +23,7 @@
  */
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { whenStyleReady } from './styleReady'
-import { POI_DOT_LAYER_ID, POI_LAYER_ID, POI_STALENESS_LAYER_ID } from './poiLayers'
+import { POI_DOT_LAYER_ID, POI_LAYER_ID } from './poiLayers'
 import { POI_LABEL_LAYER_ID } from './poiLabels'
 import { DISPUTE_LAYER_ID } from './disputeLayers'
 
@@ -38,7 +38,6 @@ import { DISPUTE_LAYER_ID } from './disputeLayers'
 export const WAYPOINT_LAYER_IDS: readonly string[] = [
   POI_LABEL_LAYER_ID,
   POI_DOT_LAYER_ID,
-  POI_STALENESS_LAYER_ID,
   POI_LAYER_ID,
   DISPUTE_LAYER_ID,
 ]

@@ -1977,10 +1977,11 @@
   border-radius: 10px;
 }
 
+/* A trust line (#1670): `--fg-2`, not the faint `--fg-3` - test/trustLines.test.ts. */
 .closure-sheet__age {
   margin: 0;
   font-size: 12px;
-  color: var(--fg-3);
+  color: var(--fg-2);
 }
 
 /* ---------- Route entrance sheet (RouteEntranceSheet.tsx, #755) ---------- */
@@ -3401,10 +3402,13 @@ a.poi-card__credit::after {
   font-family: var(--font-mono, ui-monospace, monospace);
 }
 
+/* A trust line (#1670): `--fg-2`, not the faint `--fg-3` - test/trustLines.test.ts.
+   The coordinates are what a hiker reads out when lost, and they carry
+   `.poi-card__source` on the same line. */
 .poi-card__coords {
   margin: 0;
   font-size: 12px;
-  color: var(--fg-3);
+  color: var(--fg-2);
 }
 
 /* Body text. Sits between the meta line and the unverified block at a size
@@ -3508,9 +3512,10 @@ a.poi-card__credit::after {
   border-radius: var(--radius-pill, 999px);
 }
 
+/* A trust line (#1670): `--fg-2`, not the faint `--fg-3` - test/trustLines.test.ts. */
 .poi-card__note-when {
   font-size: 12px;
-  color: var(--fg-3);
+  color: var(--fg-2);
 }
 
 /* A paragraph of its own since #941, rather than a span beside the tag: a
@@ -3796,10 +3801,12 @@ a.poi-card__credit::after {
 
    Body face, against the mono the coordinates inherit: a source name is a
    name, and setting it in the figures' typeface would invite it to be read as
-   part of the number. */
+   part of the number.
+
+   A trust line (#1670): `--fg-2`, not the faint `--fg-3` - test/trustLines.test.ts. */
 .poi-card__source {
   font-family: var(--font-body);
-  color: var(--fg-3);
+  color: var(--fg-2);
 }
 
 /* Keep-or-discard over a just-picked photo's preview (PoiCard.tsx, #571).

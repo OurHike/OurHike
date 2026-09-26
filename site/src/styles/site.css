@@ -79,7 +79,7 @@
     --danger: var(--blaze-orange-light);
     --fg-1: var(--bone-100);
     --fg-2: var(--bone-300);
-    --fg-3: var(--bone-500);
+    --fg-3: var(--bone-400);
     --border-1: var(--ink-700);
     --brand-primary: var(--moss-400);
     --brand-primary-hover: var(--moss-300);
@@ -88,7 +88,7 @@
     --bg-chrome: var(--ink-900);
     --fg-chrome-1: var(--bone-100);
     --fg-chrome-2: var(--bone-300);
-    --fg-chrome-3: var(--bone-500);
+    --fg-chrome-3: var(--bone-400);
     --border-chrome: var(--ink-700);
   }
 }
@@ -944,8 +944,10 @@ a:hover {
  * claim results): stone-500 measured 3.44:1 on the page, 3.81:1 on a white
  * card and 3.13:1 on the sage panel - under WCAG AA's 4.5:1 for text this
  * size - when client/e2e/sitePages.spec.ts first ran (#1663, 2026-09-25).
- * The token itself is the app's, used 229 times there, and is its own
- * question: #1663's pull request names the issue that carries it. */
+ * The token itself was re-pointed to stone-600 afterwards (#1670 - --fg-3
+ * text is under WCAG AA contrast on every light surface, and the app uses it
+ * 229 times), which clears 4.5:1 on all three, so the reason above no longer
+ * holds. These runs stay on `--fg-2` because #1670 did not re-decide them. */
 .org-eyebrow {
   display: block;
   font-family: var(--font-mono);

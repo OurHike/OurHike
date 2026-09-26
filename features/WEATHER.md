@@ -6,10 +6,11 @@ forecast the coordinate rather than match it**. That issue's measurements are th
 doc exists and are not repeated here; read it for why matching a forecast feed to waypoints
 tops out at 0.8% of them.
 
-**Status, 2026-09-25: designed and spiked; build step 1's NBM slice built** —
+**Status, 2026-09-26: designed and spiked; build step 1's NBM and warnings slices built** —
 `publish-weather.yml` publishes NBM's forecast for every trail square to UA, one file per
-1° cell. Warnings and HRRR's two days are step 1's other two slices, still to come; nothing a
-hiker runs reads any of it yet (step 3). This doc owns **forecasts** —
+1° cell, and every active NWS alert that reaches a trail square, in one file. HRRR's two days
+are step 1's last slice, still to come; nothing a hiker runs reads any of it yet (steps 3
+and 4). This doc owns **forecasts** —
 where they come from, how precise they are, how often they change, how they reach a phone,
 and what a hiker sees when the phone has not heard anything for a while. It also owns how a
 relayed **NWS warning** is *displayed* as it ages, because a forecast card and a warning
@@ -54,6 +55,21 @@ Taken against a drawing of the real squares in the Damascus, VA cell, three ways
   trail or waypoint has no forecast, and the card says so (§7).
 - **NBM, not NDFD**, for everything but HRRR's two days — the open question below this doc's
   first version, closed.
+
+## What the maintainer decided, 2026-09-26, before the warnings slice
+
+Taken against a page of real data: this hour's alerts over the trail squares around
+Harriman and New York, and a day of real storm warnings drawn against the job's clock (§4):
+
+- **Warnings reach a phone two ways.** The published list is the offline copy, and **a phone
+  with signal also asks NWS itself**, for the zones of the square it is in (§5). Chosen over
+  the published list alone, which misses most storm warnings (§4), and over a 10-minute
+  Cloudflare Worker writing the list to R2, which would be new infrastructure. This reverses
+  the 2026-09-24 choice of "no phone calls a weather service itself" **for warnings only**;
+  forecasts still reach a phone only from R2.
+- **Relay every NWS alert that reaches a trail square**, beach and marine kinds included
+  (a Rip Current Statement on a beach-side square), over leaving those kinds out. OurHike does
+  not choose which of NWS's alerts matter ([HIKER_SAFETY.md](HIKER_SAFETY.md) §3).
 
 ---
 
@@ -180,10 +196,12 @@ comparison it sat within 0–4 °F of NBM at the seven sample points.
 
 **Warnings come from `api.weather.gov/alerts/active`, and it is one call.** Measured
 2026-09-24 00:23 UTC: 596 active alerts nationwide in one response, 2.8 MB (193 KB
-compressed). Only 69 carry their own polygon; the rest name NWS forecast zones — 664
-distinct zones that hour — so the zone outlines are static data that ship with a data
-release, and the hourly job publishes only the list. Most of those 596 are marine; the job
-keeps the ones whose zone or polygon touches one of the 469 trail cells.
+compressed); 2026-09-25 20:54 UTC: 486. Only about one in seven carries its own polygon (69,
+then 67); the rest name NWS zones — forecast zones, fire weather zones or counties — so
+placing them needs NWS's zone outlines. **Built as** (§7): the outlines are resolved once per
+data release into each trail square's list of zones, and the job then places each alert on
+the squares its polygon or zones reach. Most alerts are marine and reach no trail square: 68
+of the 486 did, 50 of 437 the next morning.
 
 ## 3. How precise — and what "finer than the grid" actually buys
 
@@ -313,6 +331,20 @@ code:
 The third point is why §5 matters more than the cadence does: **what a hiker carries into
 the backcountry is whatever the app last saw.**
 
+**Warnings cannot live on this clock, and that is why the phone asks NWS itself.** Storm
+warnings are short. Measured from Iowa Environmental Mesonet's archive of every warning NWS
+issued, 2026-06-01 to 09-01, from issue to scheduled expiry: severe thunderstorm warnings a
+median of **43 minutes** (15,238 of them), tornado warnings **31** (1,311), flash flood
+warnings **179** (4,189). The share live at one publish or more, when a publish comes every
+3 h 53 m: **18%, 14% and 74%**. Hourly would be 70%, 53% and 100%; every ten minutes, all of
+them. Those shares are generous, because a warning cancelled early is live for less than its
+scheduled time. So the published list is honest about its age and still blind to most
+storms; a phone with signal asking NWS directly is not (§5, the maintainer's choice of
+2026-09-26). Long warnings (wind, flood watches, red flag, heat, winter storms) last hours,
+and the published list carries them fine. The weather job's own clock, once it merged: its
+first four scheduled runs came at 21:52, 00:13, 05:36 and 10:19 UTC (2026-09-25/26), gaps of
+2 h 21 m, 5 h 23 m and 4 h 43 m after the first — #1346's pattern again.
+
 ## 5. After 12 hours without signal — and after three days
 
 The maintainer was shown these rules drawn as one card at three ages (a mock, not committed
@@ -330,6 +362,18 @@ showing the last answer as if it were current and says **"No word on weather war
 5:40 pm"** — and never **"No warnings"**. This is the rule `useConditions.ts` already
 applies to closures ("Null means 'we have not managed to ask', not 'there are none'"),
 carried to weather.
+
+**When the phone last heard is the newer of two answers** (the maintainer's choice of
+2026-09-26, and step 4's work, not yet built). With signal, the phone asks NWS directly —
+`api.weather.gov/alerts/active?zone=…` for the zones its cell file lists under its square
+(§7) — and that answer is as fresh as the moment it asked. Without signal, or when NWS does
+not answer, it has the published `conditions/weather_alerts.json`, whose `fetched_at` is when
+the job last asked. The warnings line shows whichever is newer, and its age. What the phone
+sends NWS is a list of county-sized zone ids and its IP address, never its position. NWS
+allows the request from a browser (`Access-Control-Allow-Origin: *`, a 5-second cache,
+measured 2026-09-25), and it stops working if NWS ever requires a key, which NWS has said
+it will do eventually ([HIKER_SAFETY.md](HIKER_SAFETY.md) §3). The published list is what is
+left when it does.
 
 **The timing of showers and storms is where a forecast is least trustworthy, so the
 hour-by-hour row is the first thing to go grey.** Reasoned, not measured — the spike scores
@@ -414,6 +458,43 @@ the hours HRRR covers (the HRRR slice), the file will also carry HRRR's cell tem
 that cell's height, from which the phone applies the lapse to the point's own height from the
 DEM it already holds.
 
+**Every square also lists its NWS zones**, as `zones[i]` beside `squares[i]`: each public
+forecast zone, fire weather zone and county whose outline overlaps that square, spelled the
+way NWS's alert URLs end (`forecast/NHZ002`, `fire/NHZ021`, `county/NHC007` at Mount
+Washington). They are what a phone with signal asks NWS about (§5). An empty list means no
+outline reaches the square, three of 72,720 of them, all in the sea. Checked against NWS's
+own point lookup (`api.weather.gov/zones?point=`) at eight points from Springer to Katahdin
+on 2026-09-26: our list held NWS's answer at every one, plus the neighbours across a
+boundary inside the same square (Clingmans Dome's square, on the state line, also lists
+Tennessee's zones). The lists add 929 bytes gzipped to the largest cell file.
+
+**Warnings are one file, not one per cell**: `conditions/weather_alerts.json`, written by
+`export_weather_alerts.py`. It carries every alert NWS marks `Actual` that reaches a trail
+square, in NWS's own words (event, headline, description, instruction, severity, urgency,
+certainty, the times), each with the `[row, col]` squares it reaches and whether its polygon
+or its zones placed it. **An alert reaches a square when its area overlaps any part of the
+square**, because the phone knows a hiker only to the square. The area is the alert's own
+polygon when it has one: storm and flood warnings are drawn by the forecaster, and list the
+counties the drawing touches only for systems that broadcast by county. Otherwise it is the
+zones the alert names, and a zone's kind is part of its name, because forecast zone NHZ022
+and fire weather zone NHZ022 are different outlines. On 2026-09-26 13:39 UTC: 50 of 437
+alerts reached 3,798 squares, 161 KB (26 KB gzipped); the day before, 68 alerts reached
+6,723 squares, where warning each whole cell they touched would have reached 22,079. One
+file because a phone needs the list for wherever it is, and one request covers that. At 26 KB
+gzipped it is smaller than the largest cell's forecast file (141 KB).
+
+**If NWS does not answer, the job publishes the forecast and not the warnings**, and publish.py
+carries the last warnings file forward with its own `fetched_at`. It never writes an empty
+list for a request that failed, which would read as "no warnings". The same holds the other
+way: an NBM stall does not hold back the warnings (`publish-weather.yml`'s header).
+
+**The zone outlines are NWS's shapefiles, pinned**: the 16 April 2026 forecast zone, fire
+zone and county files (68 MB together), each checked against the MD5 NWS publishes beside it.
+They are read once per data release, when the squares are rebuilt, and never reach a phone.
+NWS replaces them a few times a year; an alert naming a zone the pinned files do not know
+lands in the file's `unknown_zones` and as a warning on the run, and a newer file is a
+one-line change to `ZONE_FILES` in `build_weather_squares.py`.
+
 **Sizes, measured 2026-09-25** on NBM cycle 11Z against UA release 2026-09-24-4: 442 cell
 files, gzipped (as `publish.py` stores JSON) a median of **10 KB**, mean 23 KB, 95th percentile
 88 KB, largest 141 KB (`n45w116`); all 442 together 10.3 MB. A five-cell stretch is typically
@@ -424,7 +505,8 @@ month (Cloudflare's pricing page, read 2026-09-24), which the other publishes al
 **What the job downloads each run**, measured 2026-09-25: NBM's GeoTIFFs whole, 315 files and
 240.6 MB in 20 s from this sandbox — whole rather than tile ranges, because the national
 network touches most of CONUS's tiles anyway and one GET per file is simpler than seventy.
-HRRR's 48-hour temperature (~409 MB, §2) and one alerts request join it with their slices.
+One alerts request (2.6 MB) joins it; HRRR's 48-hour temperature (~409 MB, §2) will join it
+with its slice.
 That is AWS open-data egress, which costs this project nothing, and GitHub-hosted runner time.
 
 **UA only, for now.** Nothing a hiker runs reads these files until step 3, so production
@@ -468,7 +550,11 @@ adjusted for elevation by OurHike"*, and days 3 onward, unmodified, say *"NOAA f
 ## Still open
 
 - **Lake squares** (§6): the water rule catches sea-level water only.
-- **Alaska and Puerto Rico** (§7): 33 trail cells on NBM grids this build does not read.
+- **Alaska and Puerto Rico** (§7): 33 trail cells on NBM grids this build does not read. Their
+  squares are not in the trail list either, so no warning is placed there yet.
+- **The phone's own ask to NWS** (§5) is step 4's. It will need the privacy policy to say
+  that zone ids and an IP address go to NWS, the polygon test against the phone's square for
+  alerts NWS answers with a drawn area, and a plan for the day NWS requires a key.
 
 ## Build order
 
@@ -477,7 +563,8 @@ adjusted for elevation by OurHike"*, and days 3 onward, unmodified, say *"NOAA f
 1. **The job**, in three slices. No client change in any of them.
    - **NBM — built, 2026-09-25.** `build_weather_squares.py`, `fetch_weather.py`,
      `export_weather.py`, `publish-weather.yml`; §6's two traps tested.
-   - **Warnings** — the active-alerts list and NWS's forecast-zone outlines it needs.
+   - **Warnings — built, 2026-09-26.** `export_weather_alerts.py`, each square's zones in
+     `build_weather_squares.py` and the cell files; either half publishes without the other.
    - **HRRR** — its 48-hour temperature and cell heights beside NBM's fields, and its `LAND`
      mask for the water rule.
 2. **The spike re-run with our own correction** (§3) — before phase 3 puts a corrected

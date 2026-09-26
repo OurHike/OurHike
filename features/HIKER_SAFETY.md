@@ -42,7 +42,7 @@ Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHN
 
 **"Responsibly," answered directly: relay, don't originate.** OurHike shouldn't try to interpret raw weather data into its own severe-weather judgment - it should show NWS's own already-issued alerts (headline, effective/expiry window, official text), clearly labeled as a relayed NWS alert. This is the same principle FEATURES.md's Water Reliability Prediction section already commits to: "a confidently wrong prediction is more dangerous than an honest unknown" - the authority and the liability both stay with NWS, where they belong.
 
-**Architecture — superseded 2026-09-24 by [WEATHER.md](WEATHER.md) §2 and §6.** This paragraph used to route alerts through a proxy and cache on OurHike's own backend. The maintainer chose a scheduled publish to R2 instead, the road closures already take ([CONDITIONS_DELIVERY.md](CONDITIONS_DELIVERY.md)), and it turned out to be one request: `/alerts/active` returns every active US alert at once (596 of them, 2.8 MB, measured 2026-09-24), so the job asks NWS once an hour and no phone asks at all. The good-citizen reasoning this paragraph gave still holds, and is better served by one call an hour than by a cache in front of many.
+**Architecture — superseded 2026-09-24 by [WEATHER.md](WEATHER.md) §2 and §7, and changed again 2026-09-26.** This paragraph used to route alerts through a proxy and cache on OurHike's own backend. The maintainer chose a scheduled publish to R2 instead, the road closures already take ([CONDITIONS_DELIVERY.md](CONDITIONS_DELIVERY.md)), and it turned out to be one request: `/alerts/active` returns every active US alert at once (596 of them, 2.8 MB, measured 2026-09-24). That publish is built (`export_weather_alerts.py`). But storm warnings last a median of 31 to 43 minutes, and GitHub runs the job about every four hours, so the published list alone would miss most of them (WEATHER.md §4). On 2026-09-26 the maintainer chose to add a direct ask: **a phone with signal also asks NWS itself**, for its square's zones, and falls back to the published list without signal. The good-citizen reasoning still holds: the request names county-sized zones rather than a position, and NWS's own 5-second cache and open CORS header (measured 2026-09-25) say this is a use it expects.
 
 **Geographic scope:** ties to the hiker's live GPS position (already MVP) or a planned Segment's location (Trip Planning) - either resolves to the same NWS zone lookup, no separate mechanism needed per source.
 
@@ -83,8 +83,10 @@ Report                       (extends REPORT_A_PROBLEM.md's existing model)
             else report.timestamp (exact)
   }
 
-WeatherAlert                  (relayed; published hourly to R2 - WEATHER.md §2; not owned data)
-  nws_alert_id, zone, headline, effective, expires, relayed_at
+WeatherAlert                  (relayed; conditions/weather_alerts.json - WEATHER.md §7; not owned data)
+  id, event, headline, description, instruction, severity, urgency, certainty,
+  sent, effective, onset, expires, ends, sender_name, area_desc,
+  placed_by (polygon | zones), squares [[row, col]]      + the file's fetched_at
 ```
 
 (`WrongWayCheck`, the wrong-way alert's client-side ephemeral computation, is gone with section 5 above.)

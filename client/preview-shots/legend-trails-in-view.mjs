@@ -47,6 +47,15 @@
 // with the switch off, these rows are where a named trail's blaze is read.
 // A frame with red swatches would be map/MapIcon.tsx's TrailLineSwatch
 // following the switch, which it deliberately does not.
+//
+// AND SINCE #1696 THE BLOCK DOES NOT WAIT FOR `idle`. map/trailsInView.ts
+// re-measured only on `idle` and `moveend`, and `idle` never fires while one
+// basemap tile hangs - so a cold start with one stalled tile left this block
+// absent from the panel, and the through-route badges off the map, until the
+// hiker moved it. It now also re-measures once the map has drawn no frame for
+// 300 ms (map/settle.ts). CI's tiles normally all arrive, so this frame shows
+// the block present rather than the stall it now survives; the stall was
+// traced in the agent sandbox with one tile's request left hanging.
 import { seedLongHike } from './fixtures/longHike.mjs'
 
 // WHAT THE FRAME ACTUALLY HOLDS, checked against the photographed PNG
@@ -63,7 +72,7 @@ import { seedLongHike } from './fixtures/longHike.mjs'
 // rows were solid against dotted until then, and the word `taken` and the
 // ghosting are what separate them now.
 export const caption =
-  'The legend over Harriman at zoom 12 — the "Trails in view" block, at the foot of the panel under the pin grid and its switches since 2026-09-10 (it opened the panel from #1283 until the maintainer moved it down: "takes up a lot of space"), with an active A.T. hike seeded and NOTHING TAPPED: since #1352 the row reads "taken" because the hiker is on that hike, which is the whole of the change in one word. Beside it the A.T.’s own Fingerboard Shelter side trail draws at full strength rather than ghosted, because a spur of the taken system is part of it (map/nearbyTrails.ts). Every swatch is a solid line — the dotted rows went with the map’s dot rhythm (2026-09-10). Since #1575 the "Blaze colors" toggle heads the panel, off (the shipped default, every trail on the map one red line), and the swatches down here are STILL white and blue: the switch changes the map and not this panel, so these rows are the blaze key while the map is red. The other organizations’ trails are absent, not ghosted — this preview’s bucket has no nearby_trails.pmtiles yet'
+  'The legend over Harriman at zoom 12 — the "Trails in view" block, at the foot of the panel under the pin grid and its switches since 2026-09-10 (it opened the panel from #1283 until the maintainer moved it down: "takes up a lot of space"), with an active A.T. hike seeded and NOTHING TAPPED: since #1352 the row reads "taken" because the hiker is on that hike, which is the whole of the change in one word. Beside it the A.T.’s own Fingerboard Shelter side trail draws at full strength rather than ghosted, because a spur of the taken system is part of it (map/nearbyTrails.ts). Every swatch is a solid line — the dotted rows went with the map’s dot rhythm (2026-09-10). Since #1575 the "Blaze colors" toggle heads the panel, off (the shipped default, every trail on the map one red line), and the swatches down here are STILL white and blue: the switch changes the map and not this panel, so these rows are the blaze key while the map is red. The other organizations’ trails are absent, not ghosted — this preview’s bucket has no nearby_trails.pmtiles yet. Since #1696 the block fills once the map stops drawing, rather than waiting for every basemap tile to arrive'
 export const alt =
   'The legend sheet over the map screen: a Blaze colors row with its toggle switch off directly under the title, then the waypoint category grid, ending on its Closure and Serious warning rows with the "Read all trail notices" door directly under them, then the Showing, Verified, Alerts and Drought switches, and at the foot a "Trails in view" heading over two rows - a solid white line swatch inside its dark casing beside "Appalachian Trail" with "taken" on the right, and a solid blue swatch beside "Fingerboard Shelter Side Trail" - above the downloaded-map block'
 

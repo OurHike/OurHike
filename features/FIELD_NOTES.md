@@ -154,8 +154,8 @@ question. So existence takes a third value rather than the map taking a fourth c
 | existence | means | treatment |
 | --- | --- | --- |
 | verified | upstream has it, nobody disputes it | solid pin |
-| unverified | `confidence: low` — never confirmed to exist | dashed pin |
-| **reported missing** | corroborated `not_found` notes | the pin it already has, plus a distinct mark beside it |
+| unverified | `confidence: low` — never confirmed to exist | dashed pin (hollow since #1684) |
+| **reported missing** | corroborated `not_found` notes | the pin it already has, plus a distinct mark on its upper-left edge |
 
 *"Dashed pin, distinct marker" is what this row said until the build
 ([#876](https://github.com/OurHike/OurHike/issues/876)), and the dashed half could not be
@@ -168,6 +168,16 @@ That says **more** rather than less, and it is the distinction the card's senten
 already make: a solid pin with the mark is a place ATC surveyed that hikers say is gone; a
 dashed pin with the mark is a place nobody ever confirmed that hikers also say is gone.
 Collapsing both into one dashed pin would have thrown that distinction away.
+
+*Amended 2026-09-26 ([#1687](https://github.com/OurHike/OurHike/issues/1687)) — where the
+mark sits.* It was a fixed offset from the waypoint's coordinate, aimed at a pin centred on
+it, and it stopped being "beside" the pin once pins stood on their point and were drawn
+26 px across: it covered the glyph. It now sits centred on the drawn pin's **upper-left
+edge**, at the pin's own size by zoom and tier (`DISPUTE_MARK_OFFSET_EXPRESSION`). Upper
+left because a site pin's member badges fan out on the upper right. On the edge rather than
+just outside the coloured disc, the maintainer's choice from five real pins drawn both ways,
+knowing the 18 px mark then hides the viewpoint's sun and clips the parking P and the
+privy's roof.
 
 The legend already treats confidence as something a hiker filters on (its *"Verified?"* toggle,
 `WIREFRAMES.md` §2 — it carried *"Unverified · 1"* rows until

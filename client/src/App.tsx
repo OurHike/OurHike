@@ -3620,7 +3620,7 @@ function App() {
     const disputed = new Set(disputes.map((dispute) => dispute.poi_id))
     return pois
       .filter((poi) => disputed.has(poi.id))
-      .map((poi) => ({ poiId: poi.id, lon: poi.lon, lat: poi.lat }))
+      .map((poi) => ({ poiId: poi.id, poiType: poi.type, lon: poi.lon, lat: poi.lat }))
     // `mapMounted` IS a dependency, and was missing until #1374's review -
     // the guard on the first line reads it. On a phone it flips true only when
     // the hiker opens the Map tab, which is normally AFTER `pois` and

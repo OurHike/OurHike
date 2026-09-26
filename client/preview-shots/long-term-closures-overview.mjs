@@ -7,8 +7,9 @@
 // and why. WHAT TO LOOK FOR NOW: a few bold x marks over Bear Mountain and
 // Doodletown, not one per closed trail. Far marks thin each other out by
 // collision, so a park with two dozen closed trails reads as a handful of
-// crosses rather than a scribble. And against the ~800 waypoints in this
-// frame: the crosses draw above the pins, and cannot hide one.
+// crosses rather than a scribble. And against the waypoints in this frame
+// - 426 in view on CI's first photograph of it, at 3453b43 - the crosses
+// draw above the pins, and cannot hide one.
 //
 // The same closed trails as long-term-closures.mjs, from an overview camera:
 // Bear Mountain and Doodletown at z10, below the zoom where the band's near

@@ -1772,6 +1772,15 @@
   color: var(--fg-chrome-3);
 }
 
+/* The crumb on the same ground, for the same reason. The Ten Essentials page
+   (#1689) is the first trips-band screen with a "‹ Plan" crumb, and the
+   page's --link and --fg-3 were both close to invisible on the pine band in
+   its first frame. */
+.plan__head--trips .plan__crumb,
+.plan__head--trips .plan__crumb-up {
+  color: var(--fg-chrome-3);
+}
+
 .plan__head--day {
   background: var(--brand-primary);
   color: var(--fg-on-brand);

@@ -137,60 +137,54 @@ recorded, and deliberately absent from every hiker's screen until their licence 
 `export_sources.py` names both organizations and says why in its own docstring. The bulk load is that
 arrangement at scale.
 
-## What the nominate form needs, to do this well
+## What the nominate form needs — re-checked against the built form
 
-The maintainer's question. Checked against [ORG_ONBOARDING.md](ORG_ONBOARDING.md)'s
-`/for-orgs/nominate/` — *"Any signed-in hiker submits an org's trails on its behalf"* — and against
-the `Org` model beside it.
+**This section was written against `ORG_ONBOARDING.md`'s design on 2026-09-17. The form shipped in
+the nine days since, so on 2026-09-26 it was re-checked against the code** —
+`site/src/pages/for-orgs/nominate.astro`, `backend/app/core/nominate.py` and
+`backend/app/schemas/nomination.py` on `main` at 46148d70. Two of the five gaps are closed, one of
+them better than this document proposed, and the largest one is still open.
 
-### Three things it already gets right
+### Two are closed, and the contacts answer is better than the ask
 
-- **`Org.state = unclaimed | claimed | frozen | deleted`.** An unclaimed org has live trails and no
-  admins, which is exactly what all 163 of these rows are. The design already says this is "the
-  migration path for the registry we already have", and a bulk load is the same shape. **No change.**
-- **`POST /clubs/:id/gis-source` refuses flat files.** Correct, and it refuses the right six rows —
-  the Avenza and paid-app tier fails re-readability before it fails licensing.
-- **A thin top tier is legitimate.** "An org with one park has one row at the top, and that is thin
-  rather than wrong" is what lets a state clearinghouse row exist without inventing a hierarchy.
+- **Contacts: solved, and solved harder.** This document reported *0 contacts of 163* and argued that
+  163 plausible coordinator names would be worse than none *"because they would be believed"*.
+  `nominate.py` reaches the same conclusion from the other direction and enforces it: it reads the
+  organization's own pages, asks a model, then **grounds every address and URL back against the
+  literal page text and drops whatever is absent.** Its own docstring names the failure exactly —
+  `president@carolinamountainclub.org` is *"precisely the shape of thing that gets invented - correct
+  domain, obvious role, no such mailbox"*. `ProposedContact.source_page` is NOT NULL, and a citation
+  naming a page nobody opened is corrected or the contact goes. That is a better answer than leaving
+  the field empty, and it is this project's own "never let a display outrun its source" applied to
+  the one path where the display is about a named person.
+- **Membership and donation links: solved.** `NominateReading` carries `membership_url` and
+  `donation_url`, and `for-orgs/index.astro` collects both at registration. This document reported
+  both as 0 of 163.
 
-### Five things it needs
+### One is half-closed
 
-1. **Provenance that is not a person.** The form records the nominating hiker. 163 rows nominated by
-   one account is a false record of how they arrived — and every session here authenticates as the
-   same identity, so the field would not even distinguish sessions. Needs a submission kind
-   (`org_self | hiker_nomination | maintainer_research`) beside the submitter.
-   `sources.json`'s `discovered_via` is the existing free-text home for exactly this and should
-   become structured rather than being replaced.
+- **Provenance.** `KeptSource` and `KeptContact` both carry `proposed_by: Literal["reading",
+  "hiker"]`, which is the distinction this document asked for — a submission's origin recorded as a
+  kind rather than as a person. **What it has no value for is a bulk research load**, so a catalogue
+  row still has nowhere honest to sit. One more enum member.
 
-2. **A `via` pointer — the single largest saving, and the form has no field for it.** 59 of 163 rows
-   are a real organization whose geometry arrives through somebody else's endpoint. Today the form
-   can express "here is my endpoint" and cannot express "I am real, my trails are on the map, and
-   that row over there is where they come from." Without it those 59 either invent an endpoint or
-   never register, and the Maine Appalachian Trail Club is absent from a product that has been
-   drawing its 267 miles since v1.
+### Two are still open, and the first is the largest saving in the plan
 
-3. **Licence evidence, kept apart from a licence claim.** SOURCE_REGISTRY.md requires a licence and
-   an attribution string at submission and says a registration without them cannot be approved. The
-   catalogue shows what that produces at scale: **54 of 163 rows are `unstated`**, and a required
-   field would get 54 guesses. Needs `licence_basis` as a closed vocabulary — the four values
-   `sources.json` already uses in practice (`public_domain`, `stated_by_org`,
-   `maintainer_authorisation`, `unstated`) — plus `licence_evidence_url` and `licence_read_date`, so
-   that *nobody has read the terms* is a recordable state rather than a blank box or a lie.
-
-4. **A geographic scope, required at registration.** #1231 is this field not existing. A nationwide
-   endpoint registered without one costs 228 MB and 68,622 out-of-corridor features, and the
-   catalogue adds two more nationwide federal layers plus eight state-scale ones. The probe already
-   reports transfer size; the scope is what makes that number mean something at review.
-
-5. **A dedupe identity, decided now rather than in week three.** #1539 already flags slug collision
-   handling as undecided, and at 163 rows it is load-bearing rather than theoretical: the Appalachian
-   Mountain Club legitimately needs two rows resolving to different upstreams, the Great Western
-   Trail collides by name with two unrelated rail-trails, and NJGIN and NY State Parks both
-   redistribute data already registered here under other providers. A bulk load without a dedupe key
-   writes duplicates into the one file the build reads.
-
-None of the five is a redesign. Four are fields, and the fifth is a decision the design already
-flagged.
+- **There is still no `via` pointer.** `NominationSubmit` takes `website`, `org_name`, `region`,
+  `sources` and `contacts`. **79 of the 172 catalogue rows hold no geometry of their own**, and the
+  form can express "here is my endpoint" but not "I am real, my trails are on the map, and that row
+  over there is where they come from". Those 79 either invent an endpoint or never register, and the
+  Maine Appalachian Trail Club stays absent from a product that has drawn its 267 miles since v1.
+- **`region` is free text, not an extent.** `region: ShortName | None` is a reviewer's note. #1231 is
+  what that field not being geographic costs: 228 MB and 68,622 out-of-corridor features from one
+  nationwide source. COTREX at 96,897 features and Utah at 47,986 are the next two.
+- **Licence evidence is prose.** `licence_note` is a `Detail`, and `nominate.py` is explicit that
+  prose is *deliberately* not grounded the way an address is — right for a summary, and not the same
+  thing as `licence_basis` plus a `licence_evidence_url` and a read date. **54 of 172 rows are
+  `unstated`**, which a free-text note cannot distinguish from "nobody looked".
+- **Dedupe.** `NominationOut` carries a `club_slug`, so a slug exists. Whether two submissions for one
+  organization collide is not visible from the schema and was not tested here — recorded as unchecked
+  rather than as either answer.
 
 ## The probe pass, and what inference had missed
 

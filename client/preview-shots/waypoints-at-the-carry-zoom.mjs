@@ -19,13 +19,16 @@
 // rule survived the seam moving: it is about WHICH categories the map may
 // decide for a hiker, and the seam decides only WHERE waypoints begin.
 //
-// What the frame should hold, as of 2026-09-20: shelters, water, campsites
-// and privies, with the privies and campsites RIDING their shelters' pins as
-// badges rather than stacking beside them - the nesting came back the same
-// day ("You need to nest the Shelters, Campsites, Privies & Water as we did
-// before this PR"). The trail line draws OVER the pins now, and each pin
-// stands on its point rather than being centred on it, so the line passes
-// under the artwork instead of through it.
+// What the frame should hold, as of 2026-09-26 (#1676): pins where there is
+// room and small coloured dots everywhere else - the two ranks of #597, back
+// after eight days with the collision engine off, when this frame drew 7,123
+// full-size pins on top of each other. Where two pins would overlap, the one
+// the maintainer's order ranks first keeps its pin: shelters and campsites,
+// then water, then trailheads, then the rest. The privies and campsites
+// still RIDE their shelters' pins as badges (the nesting, 2026-09-20). The
+// trail line draws OVER the pins, and each pin stands on its point rather
+// than being centred on it, so the line passes under the artwork instead of
+// through it.
 //
 // Harriman and the Hudson Highlands, where the A.T. runs through public land
 // thick enough that all four categories are in one frame. Public ground
@@ -43,16 +46,26 @@
 // is shut in this frame, so which of the two it is has to be read off the
 // zoom rather than off a control; the waypoint gate lives in the legend's
 // Showing picker now ("None" at the far end of it), not over the map. Both
-// ranks share one floor, so dots without pins is no longer a state this
-// frame can be in - if it ever is, the two floors have drifted apart.
+// ranks share one floor, so a frame of dots with no pins at all means the
+// two floors have drifted apart; a frame of pins with no dots between them
+// means the collision engine is off again.
 export const caption =
-  'Every waypoint at the zoom a resupply carry fits (#1585): the A.T. through the Hudson Highlands at zoom 7.8, just above the z7 seam — shelters and campsites as pins with their privies and water riding them as badges, the trail line drawing over the top, and no category the map decided to leave off'
+  'Every waypoint at the zoom a resupply carry fits, as a pin or a dot (#1676): the A.T. through the Hudson Highlands at zoom 7.8, just above the z7 seam — pins where there is room, shelters and campsites first, small coloured dots for the waypoints that lost their pin to a neighbour, the trail line drawing over the top, and no category the map decided to leave off'
 export const alt =
-  'The map screen over the Hudson Highlands at zoom 7.8: the Appalachian Trail as a red line drawn over the waypoints along it, with dark-green shelter pins standing on their points, each wearing a small strip of badges for the privy, water and campsite that belong to the same place, and no control floating over the map'
+  'The map screen over the Hudson Highlands at zoom 7.8: the Appalachian Trail as a red line drawn over the waypoints along it, a few dozen pins spaced apart with map paper between them, and small coloured dots along the trails for every waypoint that did not take a pin'
 
 /** Vector tiles from the bucket plus the waypoint source landing take longer
- *  than chrome. */
-export const wait = 6000
+ *  than chrome.
+ *
+ * 22000, as the Hudson Highlands desktop recipes wait, since #1676's first
+ * preview (built from 698274a7): at the old wait all three waypoint recipes
+ * photographed the map mid-load - the carry frame with its dots drawn but no
+ * pin and no trail line, the Brooklyn and Shenandoah frames with neither. The trail
+ * line is not something #1676 touches, so the frame was early rather than
+ * wrong. Measured in the agent sandbox the same day, through
+ * scripts/data-proxy.mjs: at 6 s `main` and #1676's branch were both still
+ * blank at the carry camera, and at 15-20 s both had drawn everything. */
+export const wait = 22000
 
 export default async function drive(page) {
   // lib/cameraMemory.ts's contract: { center: [lon, lat], zoom }, read back

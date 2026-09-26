@@ -17,37 +17,51 @@
 /**
  * Who wins a collision, best first.
  *
- * This is a safety ordering, not a visual one. When two pins cannot both be
- * placed, the one that stays is the one a hiker most needs: water, then
- * somewhere to sleep, then supplies. WIREFRAMES.md's lanes make the same call
- * in the same order.
+ * THE MAINTAINER'S ORDER SINCE 2026-09-26 (#1676): "Can we put a priority to
+ * what gets displayed full size? Shelters/Campsites, Water, Trailheads,
+ * Everything else." Given with the collision engine back on the pins, shown
+ * against real frames of what wins and what falls back to a dot, so where two
+ * pins cannot both be placed the one that stays is the one this list names
+ * first, and the other is drawn as its dot.
+ *
+ * It was water first until then - "water, then somewhere to sleep, then
+ * supplies", the order this note said WIREFRAMES.md's lanes use too - and the change is a
+ * safety-adjacent one, so it is said plainly rather than tidied away: a spring
+ * whose pin would overlap a shelter's or a campsite's is now the one drawn as
+ * a dot. It is still on the map, at its own coordinate, in water's colour;
+ * and the water that belongs to a shelter mostly never competes at all,
+ * because it is folded onto the shelter's pin as a badge (poiSites.ts).
+ *
+ * @unvalidated How many water pins the reorder turns into dots has not been
+ * counted. What would settle it: spike_poi_seam.py's placement model run with
+ * both orders over the carry and walking zooms, water pins placed under each.
+ *
+ * "Everything else" keeps the order it already had among itself: towns, then
+ * parking, then the tail.
  */
 export const POI_PRIORITY: readonly string[] = [
-  'water',
+  // "Shelters/Campsites" is one tier in the maintainer's list. The shelter
+  // goes first within it because a roof is the stronger claim, and because a
+  // tie in `symbol-sort-key` would leave the winner to whatever order the
+  // features happen to sit in the source.
   'shelter',
   'campsite',
-  'resupply',
-  // Parking above the rest of the tail because it is the way off the trail:
-  // the pin a hiker looks for when the weather turns or an ankle goes, which
-  // is the same argument water and shelter win on.
-  'parking',
-  // A trailhead is the same argument again and one step further along it: it
-  // is where the way off the trail actually reaches a road (#1197). Below
-  // parking rather than above it only because a lot is where a car is, and a
-  // car is what a hiker in trouble is trying to reach.
+  'water',
+  // A trailhead is where the way off the trail reaches a road (#1197), and
+  // the maintainer put it next, ahead of parking and towns.
   //
-  // NOTE THIS IS NOT map/labelLadder.ts's ORDER, and the difference is
-  // deliberate on both sides. That ladder ranks LABELS for somebody choosing
-  // where to start, so a trailhead sits at its top rung. This ranks PINS for
-  // somebody already walking, where water and a roof outrank the way in.
+  // NOTE THIS IS STILL NOT map/labelLadder.ts's ORDER. That ladder ranks
+  // LABELS for somebody choosing where to start; this ranks PINS.
   'trailhead',
+  'resupply',
+  // Parking above the rest of the tail because it is a way off the trail:
+  // the pin a hiker looks for when the weather turns or an ankle goes.
+  'parking',
   'privy',
-  // Last, and the ordering earns its keep here for the first time. Vistas are
-  // the densest layer ATC publishes - 1,223 of them, half again as many as
-  // every other POI put together - so at any zoom where pins collide, they
-  // are what would win by sheer count if nothing decided otherwise. A hiker
-  // losing a spring to an overlook is the exact trade this list exists to
-  // refuse.
+  // Last. Vistas are the densest layer ATC publishes - 1,223 of them, half
+  // again as many as every other POI put together - so at any zoom where pins
+  // collide, they are what would win by sheer count if nothing decided
+  // otherwise.
   'viewpoint',
 ]
 

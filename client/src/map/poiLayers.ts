@@ -16,7 +16,8 @@
 //
 // What survives from that choice: which pin wins a collision is a decision
 // someone has to make rather than an accident of layer order. It is
-// {@link POI_PRIORITY}, and water is first in it.
+// {@link POI_PRIORITY}: shelters and campsites, then water, then trailheads,
+// then the rest (the maintainer's order, 2026-09-26).
 //
 // THE SECOND LAYER, AND WHY IT DOES NOT BREAK THE ARGUMENT ABOVE (#597)
 //
@@ -57,6 +58,7 @@ import { POI_PRIORITY } from './poiPriority'
 import { poiIconImages } from './poiIconImages'
 import {
   PIN_HALO_COLOR,
+  POI_PIN_PIXEL_RATIO,
   POI_PIN_SIZE,
   poiColor,
   poiIconId,
@@ -64,13 +66,12 @@ import {
   sitePinPadding,
   UNKNOWN_POI_TYPE,
   type PoiConfidence,
+  type RegisteredPoiIcon,
 } from './poiIcons'
-import { buildStalenessRingImage, STALENESS_RING_PIXEL_RATIO } from './stalenessRing'
+import { buildStalenessRingImage, composeRingedPin, ringOverhang } from './stalenessRing'
 import {
-  RING_GONE_NEIGHBOURS,
   CROWDING_PROPERTY,
   POI_ICON_PADDING_EXPRESSION,
-  QUIET_NEIGHBOURS,
   crowdingByPoi,
 } from './poiCrowding'
 import { whenStyleReady } from './styleReady'
@@ -249,6 +250,211 @@ export const LOCATE_MIN_ZOOM = 9
 // carries a pin whose anchor has been filtered out (#607) - one home, and not
 // re-exported from here, so there is one path to it rather than two.
 
+/**
+ * The staleness ring: DATA_NUDGES.md's passive prominence, drawn (#759).
+ *
+ * PAINTED INTO THE PIN'S OWN IMAGE SINCE 2026-09-26 (#1676), so a pin that
+ * loses its collision takes its ring with it. It was a layer of its own - a
+ * circle layer until 2026-09-23, then a symbol layer lifted onto the pin - and
+ * neither could follow the pin once the collision engine came back: a layer
+ * cannot ask MapLibre which of another layer's symbols were placed. The
+ * restored build, photographed against the UA bucket that day, drew pale
+ * rings round empty air right across Manhattan at z11, where 44 of the 1,570
+ * waypoints in view had placed a pin. The maintainer chose the ring riding the pin from three drawn
+ * alternatives (poll, 2026-09-26); map/stalenessRing.ts has the compositor.
+ *
+ * What that settles, which the old layer's own docstring asked for in as many
+ * words - "If MapLibre ever exposes placement results per feature, this is
+ * the expression that should be replaced by the real question": a ring is
+ * drawn exactly where its pin is drawn. So the fade the ring layer did on
+ * crowded ground (#1536, RING_GONE_NEIGHBOURS) is gone with it. It was the
+ * layer's guess at "is this waypoint a pin or a dot", and the guess cost a pin
+ * that DID place on crowded ground its ring along with its neighbours'.
+ *
+ * WHICH RING A WAYPOINT WEARS IS NOT DECIDED HERE. lib/stalenessDisplay.ts
+ * owns the whole policy - the tier treatments, and the maintainer's
+ * day-one decision (2026-08-20, #256) that never-confirmed water alone
+ * carries a faint invite while everything else unconfirmed stays neutral.
+ * The shell precomputes `staleness_ring` and `staleness_faded` per feature
+ * through that module ({@link poiFeatureCollection}), and the pin layer just
+ * draws what the property says: policy in one home, paint in another.
+ */
+
+/** No ring. Ageing and never-confirmed both land here on purpose: the
+ *  absence IS the middle state (stalenessDisplay.ts). */
+export const NO_RING = 'none'
+
+// The ring colours, one per stalenessDisplay ring name. Green reads as
+// "somebody said fine, recently" against every sheet; the stale grey is the
+// treatment's fade taken to the rim; the invite is water's own accent worn
+// faintly, so the nudge points at the category it is about.
+const RING_COLORS: Record<string, string> = {
+  green: '#2e7d32',
+  'grey-dotted': '#757575',
+  'faint-invite': poiColor('water'),
+}
+
+/** How strongly each ring reads on screen. */
+export const RING_OPACITIES: Record<string, number> = {
+  green: 0.9,
+  'grey-dotted': 0.55,
+  // Subtle is the decision, not a compromise: on day one this is most of
+  // the water on the map, and a loud ring on all of it would be the
+  // "nothing here is trustworthy" opening #256 warns about, one channel
+  // over.
+  'faint-invite': 0.35,
+}
+
+/**
+ * The opacity of the pin each ring is painted onto: lib/stalenessDisplay.ts
+ * pairs every ring with one tier, and only the stale tier - the grey ring's -
+ * fades its pin, to {@link POI_ICON_OPACITY_EXPRESSION}'s 0.5.
+ *
+ * Written out rather than imported because this module is in the eager chunk
+ * (see {@link LOCATE_MIN_ZOOM}) and that one is not; poiLayers.test.ts holds
+ * the two in step.
+ */
+export const PIN_OPACITY_UNDER_RING: Record<string, number> = {
+  green: 1,
+  'grey-dotted': 0.5,
+  'faint-invite': 1,
+}
+
+/**
+ * The alpha a ring is painted at inside its pin's image.
+ *
+ * The layer's `icon-opacity` fades the whole image, ring and all, so the ring
+ * is painted at its on-screen strength divided by the pin's. The grey ring
+ * wants 0.55 on a pin drawn at 0.5, which would be 1.1 - so it is painted
+ * solid and lands at 0.5 on screen, five points under what the ring layer
+ * drew. Accepted rather than chased: the difference is one step of a grey on
+ * a pin already faded to half.
+ */
+export function ringImageAlpha(ring: string): number {
+  return Math.min(1, (RING_OPACITIES[ring] ?? 0) / (PIN_OPACITY_UNDER_RING[ring] ?? 1))
+}
+
+/** The rings that have artwork. Anything else a feature carries draws the
+ *  plain pin - see {@link RING_SUFFIX_EXPRESSION}. */
+export const RINGS: readonly string[] = Object.keys(RING_COLORS)
+
+/** The id of a pin image with a ring painted round it. */
+export function ringedPinIconId(pinId: string, ring: string): string {
+  return `${pinId}--ring-${ring}`
+}
+
+/**
+ * What {@link POI_ICON_EXPRESSION} appends to a pin's id for its ring.
+ *
+ * A `match` over the rings that have artwork rather than a `concat` of the
+ * property itself: a ring name this build does not know - a newer
+ * stalenessDisplay, a typo - lands on the plain pin rather than on an image
+ * nobody registered, which MapLibre would draw as nothing at all.
+ */
+const RING_SUFFIX_EXPRESSION: unknown[] = [
+  'match',
+  ['get', 'staleness_ring'],
+  ...RINGS.flatMap((ring) => [ring, ringedPinIconId('', ring)]),
+  '',
+]
+
+/** The ring and pin a ringed id names, or null for any other image id. */
+export function parseRingedPinIconId(id: string): { pinId: string; ring: string } | null {
+  for (const ring of RINGS) {
+    const suffix = ringedPinIconId('', ring)
+    if (id.endsWith(suffix)) return { pinId: id.slice(0, -suffix.length), ring }
+  }
+  return null
+}
+
+/** One ring image per colour, drawn once per page. */
+const ringArtwork = new Map<string, ReturnType<typeof buildStalenessRingImage>>()
+
+/** Ringed pins already composited, once per page - see {@link attachPoiIcons}. */
+const ringedPinCache = new Map<string, RegisteredPoiIcon>()
+
+/**
+ * One pin with one ring painted round it.
+ *
+ * Composited from pixels the worker already built rather than rasterised
+ * again, and only when the map first asks for it - see the note at
+ * {@link attachPoiIcons} for the measured cost of building them all.
+ */
+export function ringedPinImage(pin: RegisteredPoiIcon, ring: string): RegisteredPoiIcon {
+  const id = ringedPinIconId(pin.id, ring)
+  const cached = ringedPinCache.get(id)
+  if (cached !== undefined) return cached
+
+  let artwork = ringArtwork.get(ring)
+  if (artwork === undefined) {
+    artwork = buildStalenessRingImage(RING_COLORS[ring], POI_PIN_PIXEL_RATIO)
+    ringArtwork.set(ring, artwork)
+  }
+  const built = {
+    id,
+    image: composeRingedPin(pin.image, artwork, ringImageAlpha(ring)),
+    pixelRatio: pin.pixelRatio,
+  }
+  ringedPinCache.set(id, built)
+  return built
+}
+
+/**
+ * How far above its coordinate a waypoint's pin disc is centred, in CSS px at
+ * icon-size 1.
+ *
+ * The pin is bottom-anchored (the jigger, in {@link buildPoiLayer}), so its
+ * disc centre sits half its image's height above the coordinate. That image
+ * is the 38 px pin plus, for a site pin, `sitePinPadding` on every side for
+ * its badges - so a site pin's disc is lifted by that padding too.
+ *
+ * It used to lift the ring layer onto the pin. It now says how far a ringed
+ * image overhangs the pin below, which is what {@link PIN_OFFSET_EXPRESSION}
+ * gives back.
+ */
+export const RING_LIFT_PROPERTY = 'ring_lift'
+
+export function ringLift(memberCount: number): number {
+  return POI_PIN_SIZE / 2 + sitePinPadding(memberCount)
+}
+
+/** Member counts up to this get an exact lift; past it (no site carries
+ *  this many today - siteMemberCombinations) the offset falls back to the
+ *  largest lift's, which is none. */
+const MAX_LIFTED_MEMBERS = 8
+
+/**
+ * `icon-offset` for the pin layer: nothing for a plain pin, and for a ringed
+ * one the distance its ring reaches below the pin's own bottom edge.
+ *
+ * NOT A MOVE OFF THE PLACE, which is what {@link buildPoiLayer}'s jigger note
+ * refuses. The anchor puts the IMAGE's bottom on the coordinate; a ring round
+ * a plain pin makes that image 5 px taller below the pin, so without this a
+ * ringed pin would stand 5 px higher than its unringed neighbour. This puts
+ * the pin's own bottom edge back on the point, which is where the place is.
+ *
+ * A `match` per lift, because an expression cannot build an array from a
+ * number - each output is a literal pair. Multiplied by `icon-size` by
+ * MapLibre, so the correction scales with the pin.
+ */
+export const PIN_OFFSET_EXPRESSION: unknown[] = (() => {
+  const lifts = [
+    ...new Set(Array.from({ length: MAX_LIFTED_MEMBERS + 1 }, (_, n) => ringLift(n))),
+  ]
+  const overhangs = lifts.filter((lift) => ringOverhang(lift) > 0)
+  return [
+    'case',
+    ['==', RING_SUFFIX_EXPRESSION, ''],
+    ['literal', [0, 0]],
+    [
+      'match',
+      ['get', RING_LIFT_PROPERTY],
+      ...overhangs.flatMap((lift) => [lift, ['literal', [0, ringOverhang(lift)]]]),
+      ['literal', [0, 0]],
+    ],
+  ]
+})()
+
 function iconMatch(
   confidence: PoiConfidence,
   members: readonly string[] = [],
@@ -301,13 +507,19 @@ function siteAwareIconMatch(confidence: PoiConfidence): unknown[] {
 }
 
 export const POI_ICON_EXPRESSION: unknown[] = [
-  'case',
-  ['==', ['get', 'confidence'], 'high'],
-  siteAwareIconMatch('high'),
-  siteAwareIconMatch('low'),
+  'concat',
+  [
+    'case',
+    ['==', ['get', 'confidence'], 'high'],
+    siteAwareIconMatch('high'),
+    siteAwareIconMatch('low'),
+  ],
+  // The staleness ring is part of the pin's image (#1676) - see
+  // ringedPinImages - so a ringed waypoint asks for its pin's ringed twin.
+  RING_SUFFIX_EXPRESSION,
 ]
 
-/** Water first, unknown types last. */
+/** {@link POI_PRIORITY}'s order - shelter first - and unknown types last. */
 export const POI_SORT_KEY_EXPRESSION: unknown[] = [
   'match',
   ['get', 'poi_type'],
@@ -341,15 +553,19 @@ export const POI_SORT_KEY_EXPRESSION: unknown[] = [
 export const POI_PIN_MIN_SCALE = 0.8
 
 /**
- * The categories drawn at full size, and it is POI_PRIORITY's own top rather
- * than a second opinion about what matters (#1585).
+ * The categories drawn at full size: the top of POI_PRIORITY, down to and
+ * including trailheads - the maintainer's four tiers and nothing under them.
  *
- * That list is already the repository's argued ordering of what a hiker
- * reaches for - water and a roof first, then the ways off the trail, with the
- * privies, fords and overlooks behind them - and it carries the reasoning at
- * each step. Taking the size tiers from it means there is one ordering here
- * rather than two that can disagree, and the boundary falls where its own
- * comments stop talking about getting somebody off a mountain.
+ * The maintainer, 2026-09-26 (#1676): "Can we put a priority to what gets
+ * displayed full size? Shelters/Campsites, Water, Trailheads, Everything
+ * else." Asked, from two real frames of Harriman and the carry zoom, whether
+ * "Everything else" meant smaller as well as later, they chose smaller: towns
+ * and parking joined the privies and overlooks at {@link SECONDARY_POI_SCALE}. They had been full size since #1585 as "the
+ * ways off the trail"; the trailhead is the one of those still drawn full
+ * size, which is where a way off the trail reaches a road (#1197).
+ *
+ * Taken from POI_PRIORITY rather than listed again, so there is one ordering
+ * here rather than two that can disagree.
  *
  * The maintainer, 2026-09-18: "the warnings needs to stay large as well as
  * the other important classes." The warning pin was already exempt from all
@@ -359,7 +575,7 @@ export const POI_PIN_MIN_SCALE = 0.8
  */
 export const FULL_SIZE_POI_TYPES: readonly string[] = POI_PRIORITY.slice(
   0,
-  POI_PRIORITY.indexOf('privy'),
+  POI_PRIORITY.indexOf('trailhead') + 1,
 )
 
 /**
@@ -442,40 +658,48 @@ export function buildPoiLayer(sourceId: string = POI_SOURCE_ID): LayerSpecificat
       'icon-image': POI_ICON_EXPRESSION as unknown as string,
       'icon-size': POI_ICON_SIZE_EXPRESSION as unknown as number,
       'symbol-sort-key': POI_SORT_KEY_EXPRESSION as unknown as number,
-      // NOTHING IS EVER CULLED (#1585, 2026-09-18). This was `false` - the
-      // spec default, left explicit because it was "the entire density
-      // story" - and the story it told was that MapLibre dropped every pin
-      // that would have overlapped one already placed. Measured against the
-      // identity ledger that day: at z9, 59% of the waypoints reaching this
-      // layer were dropped; at the seam, 81%. They kept a 2.5 px dot, which
-      // is what the two ranks bought (#597), and a dot is not the pin a
-      // hiker scans for.
+      // THE DECLUTTER, BACK (#1676, 2026-09-26). Where two pins would overlap,
+      // the one POI_PRIORITY ranks higher is drawn and the other falls back
+      // to its 2.5 px dot (#597) - drawn smaller, never absent. This is the
+      // spec default and is written out because a `true` added for one
+      // screenshot would silently undo it.
       //
-      // The maintainer, 2026-09-18: "never hide anything!!!!!!! ... we had
-      // worked so hard to get the small pins to show. always show the pins."
+      // It was `true` from 2026-09-18 to 2026-09-26, with
+      // `icon-ignore-placement` beside it, answering the maintainer's "Don't
+      // auto hide the POIs ever ... we had worked so hard to get the small
+      // pins to show. always show the pins." That message was objecting to a
+      // TYPE GATE - #1585's first build drew no campsite, privy, parking or
+      // crossing below the seam - and "the small pins" in it read most
+      // plausibly as the dots themselves. Taking the collision engine out
+      // drew every pin full size on top of its own dot: 7,123 waypoints in
+      // view on the Hudson Highlands carry frame, every one a full-size pin, photographed against the
+      // UA bucket on 2026-09-26. The maintainer, that day: "What happened to
+      // the small pins for the POIs? I really liked all that reduced
+      // clutter." Shown that frame beside this setting's, they confirmed
+      // this one: "Yes that's right."
       //
-      // features/POI_VISIBILITY.md had already written the release note for
-      // this line: "a setting that only governs legibility can be revisited
-      // ... without anything true or false hanging on it". This is that
-      // revision. What replaces culling as the density answer is SIZE -
-      // POI_ICON_SIZE_EXPRESSION draws the categories a hiker's day depends
-      // on at full size and the tail smaller - and the honest cost is stated
-      // where it belongs, in that doc: at planning zooms this is a dense
-      // screen, and at the zooms somebody walks at it is four to ten marks.
-      'icon-allow-overlap': true,
-      // AND IT EVICTS NOTHING EITHER. With overlap allowed, a pin that still
-      // took part in placement would be drawn and would go on displacing the
-      // symbols around it - the trail names, the waypoint labels, the trail
-      // badges - so "hide nothing" would have held for pins by taking the
-      // names off the map instead. Ignoring placement is what makes this
-      // layer neither hidden nor hiding.
-      'icon-ignore-placement': true,
-      // Padding is inert while nothing collides (#1585) and is kept rather
-      // than deleted, because what it encodes is a measurement - how crowded
-      // the ground under each waypoint is (#1536, map/poiCrowding.ts) - and
-      // the staleness ring still reads that same property to fade itself on
-      // crowded ground. A future change that reinstates any placement pass
-      // finds the air it needs already computed.
+      // WHAT THE 2026-09-18 RULE STILL HOLDS, and nothing here touches it:
+      // the map never decides WHICH categories a hiker sees. poiFilter has
+      // no zoom term, every category the hiker has switched on is drawn from
+      // the seam in, and every waypoint is a pin or a dot, never neither.
+      //
+      // WHAT IT COSTS NOW THAT THE PINS SIT UNDER THE TRAIL LINES
+      // (2026-09-20): MapLibre places symbols top layer first, so a trail
+      // name or through-route badge above this layer claims its spot before
+      // a pin does, and a shelter beside its own trail's name can fall back
+      // to a dot until the hiker zooms in. Names only draw with signal (they
+      // need the live background's glyphs). The maintainer chose that over
+      // moving the pins back above the lines, from two drawn sketches (poll,
+      // 2026-09-26) - the same reasoning as their "The user can zoom in to
+      // see the POI" of 2026-09-20, reaching the names.
+      'icon-allow-overlap': false,
+      // How much air each pin claims, per feature (#1536): a waypoint on
+      // quiet ground claims 2 px, one on crowded ground more, so the
+      // collision engine stops packing pins edge to edge in a city.
+      // map/poiCrowding.ts owns every number in it and the measurement each
+      // rests on. Inert from 2026-09-18 to 2026-09-26 while nothing collided,
+      // and kept through that for exactly this day.
+      'icon-padding': POI_ICON_PADDING_EXPRESSION as unknown as number,
       // THE JIGGER (2026-09-20). The maintainer put the trail line over the
       // waypoints - "The Trail line should sit over the POI's" - and asked
       // what stops the line swallowing a pin that sits on it: "If that would
@@ -507,8 +731,14 @@ export function buildPoiLayer(sourceId: string = POI_SOURCE_ID): LayerSpecificat
       // camera at exactly that, which is why it exists. If it reads as
       // floating, the fix is a stem on the artwork rather than a different
       // anchor.
+      //
+      // A RINGED PIN IS THE ONE PLACE AN OFFSET APPEARS, and it moves the
+      // artwork back ONTO the place rather than off it: the ring painted
+      // round the pin (#1676) makes the image reach 5 px below the pin's
+      // bottom edge, and PIN_OFFSET_EXPRESSION returns exactly that, so the
+      // pin's own bottom edge is still what touches the coordinate.
       'icon-anchor': 'bottom',
-      'icon-padding': POI_ICON_PADDING_EXPRESSION as unknown as number,
+      'icon-offset': PIN_OFFSET_EXPRESSION as unknown as [number, number],
       // No `text-field` anywhere in this layer, and the reason has shifted
       // slightly rather than gone away. It used to be that the style had no
       // `glyphs` URL at all; the live background added one (map/style.ts), so
@@ -517,203 +747,6 @@ export function buildPoiLayer(sourceId: string = POI_SOURCE_ID): LayerSpecificat
       // is worse than no pin label: it would be missing exactly when the map
       // is the only thing a hiker has. Names stay in search and the legend,
       // which work the same either way.
-    },
-  }
-}
-
-/**
- * The staleness ring: DATA_NUDGES.md's passive prominence, drawn (#759).
- *
- * A `circle` layer under the pins, for exactly the reason the dot rank is
- * one: circles join no collision pass, so a ring can never cost a
- * neighbouring pin its placement. It reads the same source as both other
- * ranks and takes the same legend filter, so a hidden category's rings go
- * with its pins.
- *
- * WHICH RING A WAYPOINT WEARS IS NOT DECIDED HERE. lib/stalenessDisplay.ts
- * owns the whole policy - the tier treatments, and the maintainer's
- * day-one decision (2026-08-20, #256) that never-confirmed water alone
- * carries a faint invite while everything else unconfirmed stays neutral.
- * The shell precomputes `staleness_ring` and `staleness_faded` per feature
- * through that module ({@link poiFeatureCollection}), and this layer just
- * draws what the property says: policy in one home, paint in another.
- */
-export const POI_STALENESS_LAYER_ID = 'poi-staleness-rings'
-
-/** No ring - the property value that filters a feature out of the ring
- *  layer entirely. Ageing and never-confirmed both land here on purpose:
- *  the absence IS the middle state (stalenessDisplay.ts). */
-export const NO_RING = 'none'
-
-// The ring colours, one per stalenessDisplay ring name. Green reads as
-// "somebody said fine, recently" against every sheet; the stale grey is the
-// treatment's fade taken to the rim; the invite is water's own accent worn
-// faintly, so the nudge points at the category it is about.
-const RING_COLORS: Record<string, string> = {
-  green: '#2e7d32',
-  'grey-dotted': '#757575',
-  'faint-invite': poiColor('water'),
-}
-
-const RING_OPACITIES: Record<string, number> = {
-  green: 0.9,
-  'grey-dotted': 0.55,
-  // Subtle is the decision, not a compromise: on day one this is most of
-  // the water on the map, and a loud ring on all of it would be the
-  // "nothing here is trustworthy" opening #256 warns about, one channel
-  // over.
-  'faint-invite': 0.35,
-}
-
-/** The image id the ring layer asks for, one per ring colour. */
-export function stalenessRingImageId(ring: string): string {
-  return `poi-staleness-ring-${ring}`
-}
-
-/** Every ring image the layer can ask for, for {@link attachPoiIcons}. */
-export function stalenessRingImages(): Array<{
-  id: string
-  image: ReturnType<typeof buildStalenessRingImage>
-  pixelRatio: number
-}> {
-  return Object.entries(RING_COLORS).map(([ring, color]) => ({
-    id: stalenessRingImageId(ring),
-    image: buildStalenessRingImage(color),
-    pixelRatio: STALENESS_RING_PIXEL_RATIO,
-  }))
-}
-
-/**
- * How far above its coordinate a waypoint's pin disc is centred, in CSS px at
- * icon-size 1 - what the ring is lifted by so it goes round the pin rather
- * than through it (map/stalenessRing.ts has the history).
- *
- * The pin is bottom-anchored (the jigger, in {@link buildPoiLayer}), so its
- * disc centre sits half its image's height above the coordinate. That image
- * is the 38 px pin plus, for a site pin, `sitePinPadding` on every side for
- * its badges - so a site pin's disc is lifted by that padding too.
- */
-export const RING_LIFT_PROPERTY = 'ring_lift'
-
-export function ringLift(memberCount: number): number {
-  return POI_PIN_SIZE / 2 + sitePinPadding(memberCount)
-}
-
-/** Member counts up to this get an exact lift; past it (no site carries
- *  this many today - siteMemberCombinations) the ring falls back to the
- *  largest. */
-const MAX_LIFTED_MEMBERS = 8
-
-/**
- * `icon-offset` per lift. A `match` over the handful of values
- * {@link ringLift} can produce, because an expression cannot build an array
- * from a number - each output is a literal pair. Multiplied by `icon-size`
- * by MapLibre, so the lift scales with the pin it is measured from.
- */
-const RING_OFFSET_EXPRESSION: unknown[] = (() => {
-  const lifts = [
-    ...new Set(Array.from({ length: MAX_LIFTED_MEMBERS + 1 }, (_, n) => ringLift(n))),
-  ]
-  return [
-    'match',
-    ['get', RING_LIFT_PROPERTY],
-    ...lifts.flatMap((lift) => [lift, ['literal', [0, -lift]]]),
-    ['literal', [0, -Math.max(...lifts)]],
-  ]
-})()
-
-/**
- * The ring fades out on ground too crowded for it to be telling the truth
- * (#1536).
- *
- * THE LAYER ALREADY STATED THIS RULE AND ONLY HALF-KEPT IT. Its own comment
- * reads "rings exist to invite a tap, and only a pin can be tapped - so they
- * start where the pins do, not where the dots do", and the `minzoom` below is
- * the zoom half of that. The other half - WHICH waypoints - was never
- * enforceable, because a circle layer joins no placement pass and cannot ask
- * MapLibre which symbols won. On the corridor that never showed: almost every
- * waypoint above the seam IS a pin, so ringing them all was very nearly
- * ringing the pins.
- *
- * New York City is where it shows. Photographed from the preview on
- * 2026-09-17 (client/preview-shots/city-waypoints-crowded.mjs), the z12 frame
- * over Brooklyn holds 660 waypoints and draws 24 pins - and all 660 wore a
- * 42 px ring. Every New York fountain is unconfirmed, so every one of them
- * takes the `faint-invite`, and the result is the exact failure
- * {@link RING_OPACITIES} is written to avoid: "a loud ring on all of it would
- * be the 'nothing here is trustworthy' opening #256 warns about". Subtle per
- * ring is not subtle six hundred times over.
- *
- * So the ring rides the same measurement the pins do, and the two stay in
- * step by construction: full strength where a waypoint is drawn as a pin, out
- * by the count at which the ground is crowded enough that it is almost
- * certainly a dot. A ramp rather than a switch, because that is what passive
- * prominence means and because a cliff would put a hard edge across a park.
- *
- * WHAT IT COSTS, and it is a real cost rather than a free win: a pin that IS
- * drawn on crowded ground loses its invitation to confirm along with its
- * neighbours' - the property cannot tell them apart. That is accepted against
- * six hundred rings nobody can read. If MapLibre ever exposes placement
- * results per feature, this is the expression that should be replaced by the
- * real question.
- */
-const RING_CROWDING_FADE: unknown[] = [
-  'interpolate',
-  ['linear'],
-  ['coalesce', ['get', CROWDING_PROPERTY], QUIET_NEIGHBOURS],
-  QUIET_NEIGHBOURS,
-  1,
-  // RING_GONE_NEIGHBOURS rather than CROWDED_NEIGHBOURS since 2026-09-20:
-  // the padding ramp and this one answer different questions, and reusing
-  // one number for both left the median New York City mark drawing three
-  // quarters of a ring it shared with hundreds of others. See that
-  // constant's docstring for the frame this was measured on.
-  RING_GONE_NEIGHBOURS,
-  0,
-]
-
-export function buildPoiStalenessLayer(
-  sourceId: string = POI_SOURCE_ID,
-): LayerSpecification {
-  return {
-    id: POI_STALENESS_LAYER_ID,
-    type: 'symbol',
-    source: sourceId,
-    // Rings exist to invite a tap, and only a pin can be tapped - so they
-    // start where the pins do, not where the dots do. See
-    // RING_CROWDING_FADE above for the half of that rule this `minzoom`
-    // cannot express.
-    minzoom: POI_PIN_MIN_ZOOM,
-    filter: ['!=', ['get', 'staleness_ring'], NO_RING] as never,
-    layout: {
-      // The ring is a rim, not a disc: the image is transparent inside it, so
-      // the map underneath stays readable.
-      'icon-image': [
-        'match',
-        ['get', 'staleness_ring'],
-        ...Object.keys(RING_COLORS).flatMap((ring) => [ring, stalenessRingImageId(ring)]),
-        stalenessRingImageId('green'),
-      ] as unknown as string,
-      // THE PIN'S OWN SIZE AND THE PIN'S OWN LIFT, so the ring goes round the
-      // pin at every zoom and for every tier - see map/stalenessRing.ts for
-      // why this stopped being a circle layer.
-      'icon-size': POI_ICON_SIZE_EXPRESSION as unknown as number,
-      'icon-offset': RING_OFFSET_EXPRESSION as unknown as [number, number],
-      // A ring is never culled and culls nothing, for the pins' own reasons
-      // (#1585): it is part of the pin it surrounds.
-      'icon-allow-overlap': true,
-      'icon-ignore-placement': true,
-    },
-    paint: {
-      // The ring's own opacity, scaled by how crowded its ground is. A
-      // product rather than a second `match`, so the per-tier values above
-      // stay the one home for "how loud is this tier" and this only ever
-      // turns them down.
-      'icon-opacity': [
-        '*',
-        ['match', ['get', 'staleness_ring'], ...Object.entries(RING_OPACITIES).flat(), 0],
-        RING_CROWDING_FADE,
-      ] as unknown as number,
     },
   }
 }
@@ -964,14 +997,13 @@ export function poiFeatureCollection(
   // removes 634 of 1,387 marks, which unfolded is 634 pins piled on the 753
   // that anchor them.
   //
-  // AND IT IS NOT THE CULLING COMING BACK WITH IT, which is the distinction
-  // that lets this sit beside the 2026-09-18 rule rather than against it.
-  // `icon-allow-overlap` stays `true`: nothing is dropped by the collision
-  // engine, and nothing is dropped for being the loser of anything. A folded
-  // member is not deleted - it rides its anchor's pin as a badge, it is
-  // listed on the card behind that pin, and the hiker steps between the
-  // parts from there. The one mechanism that removed a place with no way
-  // back is still gone.
+  // A folded member is not deleted - it rides its anchor's pin as a badge,
+  // it is listed on the card behind that pin, and the hiker steps between
+  // the parts from there. Folding and the collision engine (back on since
+  // 2026-09-26, #1676) are different mechanisms and both stay: the fold
+  // puts a shelter's privy ON the shelter's pin, and the collision engine
+  // decides which of two neighbouring pins is drawn full size and which
+  // falls back to its dot. Neither takes a place off the map.
   //
   // WHICH IS WHY `visibility` IS READ AGAIN (#607): the removal is only safe
   // while the pin that replaces the member is on the map, so a site whose
@@ -1053,10 +1085,43 @@ export function poiFilter(
  * The detach has to cover both waits, because either can be outstanding when
  * the map screen goes away: the images may still be building, or they may
  * have arrived and be waiting on a style that is mid tile fetch.
+ *
+ * THE RINGED PINS ARE BUILT ON DEMAND (#1676), when MapLibre first asks for
+ * one it does not have (`styleimagemissing`). A ringed pin is its pin's
+ * pixels with a ring painted under them (map/stalenessRing.ts), so it can
+ * only be made once the pins have arrived; one asked for before then waits
+ * for them, and MapLibre re-lays out the tile when it lands, for the reason
+ * above.
+ *
+ * NOT ALL 144 UP FRONT, measured 2026-09-26 in this repository's test runner
+ * (Node, a 2.8 GHz Xeon): compositing every pin with every ring took 32-51 ms
+ * over seven runs and 7,967,232 bytes of RGBA, against 2,380,544 for the 48
+ * pins themselves - main-thread time and memory for rings almost nobody is
+ * wearing. What a map actually asks for is whatever rings its waypoints
+ * carry, which on day one is the water invite on two images.
  */
 export function attachPoiIcons(map: MapLibreMap): () => void {
   let detached = false
   let stopWaitingForStyle: (() => void) | null = null
+  // The pins by id once they are registered, and the ringed ids asked for
+  // before they were.
+  let pins: ReadonlyMap<string, RegisteredPoiIcon> | null = null
+  const waiting = new Set<string>()
+
+  const addRinged = (id: string) => {
+    const parsed = parseRingedPinIconId(id)
+    const pin = parsed === null ? undefined : pins?.get(parsed.pinId)
+    if (parsed === null || pin === undefined || map.hasImage(id)) return
+    const { image, pixelRatio } = ringedPinImage(pin, parsed.ring)
+    map.addImage(id, image, { pixelRatio })
+  }
+
+  const onMissing = (event: { id?: unknown }) => {
+    if (typeof event.id !== 'string' || parseRingedPinIconId(event.id) === null) return
+    if (pins === null) waiting.add(event.id)
+    else addRinged(event.id)
+  }
+  map.on('styleimagemissing', onMissing)
 
   void poiIconImages().then((icons) => {
     if (detached) return
@@ -1068,10 +1133,13 @@ export function attachPoiIcons(map: MapLibreMap): () => void {
       // question to ask: an image is not addressable until it has been added.
       () => map.getLayer(POI_LAYER_ID) !== undefined,
       () => {
-        for (const { id, image, pixelRatio } of [...icons, ...stalenessRingImages()]) {
+        for (const { id, image, pixelRatio } of icons) {
           // Images outlive a style reload, and re-adding one throws.
           if (!map.hasImage(id)) map.addImage(id, image, { pixelRatio })
         }
+        pins = new Map(icons.map((icon) => [icon.id, icon]))
+        for (const id of waiting) addRinged(id)
+        waiting.clear()
       },
       'POI pin images',
     )
@@ -1079,6 +1147,7 @@ export function attachPoiIcons(map: MapLibreMap): () => void {
 
   return () => {
     detached = true
+    map.off('styleimagemissing', onMissing)
     stopWaitingForStyle?.()
   }
 }
@@ -1130,25 +1199,19 @@ export function attachPoiFilter(
   hiddenTypes: ReadonlySet<string>,
   verifiedOnly = false,
 ): () => void {
-  const layers = [POI_LAYER_ID, POI_DOT_LAYER_ID, POI_STALENESS_LAYER_ID]
+  const layers = [POI_LAYER_ID, POI_DOT_LAYER_ID]
   return whenStyleReady(
     map,
     // setFilter throws outright on a layer the style does not hold, so the
-    // layers' presence is exactly the precondition. All three, because a
-    // style mid-reload can hold some and not the rest.
+    // layers' presence is exactly the precondition. Both, because a style
+    // mid-reload can hold one and not the other.
     () => layers.every((layer) => map.getLayer(layer) !== undefined),
     () => {
       const filter = poiFilter(hiddenTypes, verifiedOnly)
       map.setFilter(POI_LAYER_ID, filter as never)
       map.setFilter(POI_DOT_LAYER_ID, filter as never)
-      // The ring rank keeps its own membership clause AND takes the legend's:
-      // a hidden category's rings must go with its pins, and a shown one must
-      // still only ring what has a ring to wear.
-      map.setFilter(POI_STALENESS_LAYER_ID, [
-        'all',
-        filter,
-        ['!=', ['get', 'staleness_ring'], NO_RING],
-      ] as never)
+      // No third layer since #1676: a ring is part of its pin's image, so a
+      // hidden category's rings go with its pins by construction.
     },
     'POI visibility',
   )

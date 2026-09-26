@@ -57,7 +57,7 @@ import {
   DEM_SOURCE_ID,
   ELEVATION_ATTRIBUTION,
 } from './terrain'
-import { POI_DOT_LAYER_ID, POI_LAYER_ID, POI_STALENESS_LAYER_ID } from './poiLayers'
+import { POI_DOT_LAYER_ID, POI_LAYER_ID } from './poiLayers'
 import { POI_LABEL_LAYER_ID } from './poiLabels'
 import { DAY_HIKE_TICK_LABEL_LAYER_ID } from './dayHikeLayers'
 import { WARNING_LAYER_ID } from './warningLayers'
@@ -269,49 +269,89 @@ describe('the live topographic background', () => {
     expect(lastBackground).toBeLessThan(order.indexOf(POI_LAYER_ID))
   })
 
-  it('keeps every pin drawable whatever it collides with, now that it is not last', () => {
-    // THIS HELD THE OPPOSITE UNTIL 2026-09-20, and the reason it could change
-    // safely is worth the whole comment.
+  it('lets a pin lose its place only to the layers above it, never to the sheet', () => {
+    // MapLibre declutters symbols across the whole style, top-down:
+    // PauseablePlacement starts at `order.length - 1` and decrements, so the
+    // LAST layer has priority. With the collision engine back on the pins
+    // (#1676, 2026-09-26) a pin that loses falls back to its dot - and which
+    // layers can make it lose is exactly the set drawn above it.
     //
-    // The old rule was "our own pins last of all, so they win collisions
-    // against our labels". The live sheet adds four symbol layers - peak,
-    // place, water and contour labels - and MapLibre declutters symbols
-    // across the whole style, top-down: PauseablePlacement starts at
-    // `order.length - 1` and decrements, so the LAST layer has priority.
-    // Pins last therefore meant a contour label could never suppress a water
-    // source, which is the way round it has to be.
-    //
-    // The maintainer then asked for the trail line over the waypoints, which
-    // moves the pins early. That does not reopen the hazard, because the
-    // guarantee no longer rests on order: poiLayers.ts sets BOTH
-    // `icon-allow-overlap` (the pin draws even where it collides) and
-    // `icon-ignore-placement` (it suppresses nothing itself). A layer with
-    // both takes no part in the contest at either end.
-    //
-    // So what is asserted is the property rather than the arrangement that
-    // used to imply it - which is the stronger test, because it goes red if
-    // somebody restores the collision pass no matter where the layer sits.
+    // THE HALF THAT MATTERS: the live sheet adds four symbol layers - peak,
+    // road, water and place labels - and all of them sit below the pins, so
+    // a road name can never take a water source's place. That was
+    // the reason the pins were last of all until 2026-09-20; it still holds
+    // with the pins under the trail lines, because the sheet is under them
+    // too.
     const layers = live().layers
-    const overlapOf = (id: string): unknown => {
+    const order = layers.map((layer) => layer.id)
+    const pins = order.indexOf(POI_LAYER_ID)
+    const layoutOf = (id: string): Record<string, unknown> => {
       const found = layers.find((layer) => layer.id === id)
       expect(found, id).toBeDefined()
-      return ((found?.layout ?? {}) as Record<string, unknown>)['icon-allow-overlap']
+      return (found?.layout ?? {}) as Record<string, unknown>
     }
+
+    expect(layoutOf(POI_LAYER_ID)['icon-allow-overlap']).toBe(false)
+    // Every symbol layer the sheet brings is under the pins, so each is
+    // placed after them and yields to them.
+    const sheetSymbols = layers.filter(
+      (layer) => layer.type === 'symbol' && 'source' in layer && layer.source === 'osm',
+    )
+    expect(sheetSymbols.map((layer) => layer.id)).toEqual([
+      'topo-peak',
+      'topo-road-label',
+      'topo-water-label',
+      'topo-place',
+    ])
+    for (const layer of sheetSymbols) {
+      expect({ id: layer.id, belowPins: order.indexOf(layer.id) < pins }).toEqual({
+        id: layer.id,
+        belowPins: true,
+      })
+    }
+
+    // THE LAYERS ABOVE THAT CAN TAKE A PIN'S PLACE, spelled out so a new one
+    // is a decision somebody makes rather than something the order does
+    // silently. A layer that ignores placement claims no space and is not in
+    // this list.
+    const claimsSpace = (layout: Record<string, unknown>) =>
+      layout['icon-ignore-placement'] !== true && layout['text-ignore-placement'] !== true
+    const above = layers
+      .slice(pins + 1)
+      .filter((layer) => layer.type === 'symbol' && claimsSpace(layoutOf(layer.id)))
+      .map((layer) => layer.id)
+    expect(above).toEqual([
+      // The trail names and the through-route badge: the maintainer's pick of
+      // 2026-09-26 (poll, two drawn sketches), names over pins, so a shelter
+      // beside its own trail's name is a dot until the hiker zooms in.
+      'nearby-trail-label',
+      'trail-label',
+      'trail-badge',
+      // The day-hike builder's mile ticks, which the hiker is placing.
+      DAY_HIKE_TICK_LABEL_LAYER_ID,
+      // Workdays have outranked waypoint pins since #760 - they were above
+      // the pins before 2026-09-20 too.
+      WORKDAY_LAYER_ID,
+      // The hazards: a warning or an ATC notice wins the pixels outright.
+      WARNING_LAYER_ID,
+      ATC_UPDATE_POINT_LAYER_ID,
+    ])
 
     // The three that must never be suppressed, whatever they land on.
-    for (const id of [POI_LAYER_ID, DISPUTE_LAYER_ID, WARNING_LAYER_ID]) {
-      expect({ id, overlap: overlapOf(id) }).toEqual({ id, overlap: true })
+    for (const id of [DISPUTE_LAYER_ID, WARNING_LAYER_ID]) {
+      expect({ id, overlap: layoutOf(id)['icon-allow-overlap'] }).toEqual({
+        id,
+        overlap: true,
+      })
     }
     // The workday pin is the deliberate exception and stays one:
-    // map/workdayLayers.ts has it "submit to the collision engine rather than
-    // shoving a shelter aside", because an invitation is not a hazard. Its
-    // own order against the sheet's contour labels did not move.
-    expect(overlapOf(WORKDAY_LAYER_ID)).not.toBe(true)
+    // map/workdayLayers.ts has it submit to the collision engine because an
+    // invitation is not a hazard.
+    expect(layoutOf(WORKDAY_LAYER_ID)['icon-allow-overlap']).not.toBe(true)
 
-    // And the waypoints really are below the trail line now, which is the
-    // change that made the paragraph above necessary.
-    const order = layers.map((layer) => layer.id)
-    expect(order.indexOf(POI_LAYER_ID)).toBeLessThan(order.indexOf('trail-blaze'))
+    // And the waypoints really are below the trail line, which is why the
+    // names above can outrank them.
+    expect(pins).toBeLessThan(order.indexOf('trail-blaze'))
   })
 
   it('credits every licence the live sheet pulls in', () => {
@@ -719,18 +759,18 @@ describe('the offline-only background', () => {
       // "The Trail line should sit over the POI's." They were the last thing
       // in this list until then.
       //
-      // All three ranks (#597, and the staleness rings with #759), dots under
-      // rings under pins. The names come with them rather than staying above,
-      // so a place and its label are drawn in one plane.
+      // Both ranks (#597), dots under pins, with each pin's staleness ring
+      // painted into its own image since #1676. The names come with them
+      // rather than staying above, so a place and its label are drawn in one
+      // plane.
       //
-      // Being early no longer costs the pins anything: poiLayers.ts sets
-      // `icon-allow-overlap` and `icon-ignore-placement`, so they are drawn
-      // whatever they collide with and suppress nothing themselves. The
-      // names DO now lose to a trail label or badge, which is the cost of
-      // keeping them with their marks and is stated in style.ts.
+      // Being early costs the pins a contest they used to win: with the
+      // collision engine back on them (#1676), a trail label or badge above
+      // them claims its spot first, and a pin it lands on falls back to its
+      // dot. The maintainer chose that over moving the pins back up (poll,
+      // 2026-09-26); the placement test above lists every layer that can.
       POI_LABEL_LAYER_ID,
       POI_DOT_LAYER_ID,
-      POI_STALENESS_LAYER_ID,
       POI_LAYER_ID,
       // The dispute marks (#876) ride the pins they annotate, so they moved
       // with them. Drawn offline for the reason the closures are: a hiker

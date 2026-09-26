@@ -139,8 +139,9 @@ function isPointDrawn(point: SitePoint, visibility: SiteVisibility = {}): boolea
  * The anchor, whenever the anchor is drawn - that is the ordinary case and the
  * whole of #524. Otherwise the highest-priority DRAWN member, by the same
  * POI_PRIORITY that decides collisions, because "which of these does a hiker
- * most need" is the same question here as it is there: a promoted water source
- * outranks a promoted campsite outranks a promoted privy.
+ * most need" is the same question here as it is there: a promoted campsite
+ * outranks a promoted water source outranks a promoted privy (the maintainer's
+ * order since 2026-09-26, #1676).
  *
  * NOT every drawn member getting its own pin back. Hide shelters with campsites
  * and privies both shown and that hands the collision engine a campsite and a

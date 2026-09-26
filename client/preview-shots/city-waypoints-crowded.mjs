@@ -25,6 +25,12 @@
 // features/POI_VISIBILITY.md's "a pin or a dot and never as neither" is
 // untouched.
 //
+// AND SINCE #1676 (2026-09-26) THE RINGS GO WITH THE PINS. Every fountain
+// here is never-confirmed water, so every one carries the faint invite ring.
+// The ring is painted into the pin's own image now, so it sits round the
+// pins that placed and nowhere else - the restored collision engine without
+// that drew pale rings round empty air across Manhattan.
+//
 // WHAT IT CANNOT PROMISE YET, and a thin frame here is an answer rather than
 // a broken recipe - network-above-the-seam.mjs makes the same distinction for
 // the same reason. Two of the three things in this picture come from the
@@ -63,8 +69,17 @@ export const alt =
   'The map screen over Brooklyn at zoom 12, from Red Hook up to Prospect Park, with NYC Parks’ green property shapes under it: blue water-drop pins for public drinking fountains and plum pins for public restrooms, spaced apart with map paper visible between them, and a scatter of small blue dots marking the waypoints that did not take a pin'
 
 /** POIs arrive from IndexedDB after the map is built, and the pins are
- *  rasterised off the main thread (#857) - both land a beat after chrome. */
-export const wait = 6000
+ *  rasterised off the main thread (#857) - both land a beat after chrome.
+ *
+ * 22000, as the Hudson Highlands desktop recipes wait, since #1676's first
+ * preview (built from 698274a7): at the old wait all three waypoint recipes
+ * photographed the map mid-load - the carry frame with its dots drawn but no
+ * pin and no trail line, the Brooklyn and Shenandoah frames with neither. The trail
+ * line is not something #1676 touches, so the frame was early rather than
+ * wrong. Measured in the agent sandbox the same day, through
+ * scripts/data-proxy.mjs: at 6 s `main` and #1676's branch were both still
+ * blank at the carry camera, and at 15-20 s both had drawn everything. */
+export const wait = 22000
 
 export default async function drive(page) {
   // lib/cameraMemory.ts's contract: { center: [lon, lat], zoom }, read back

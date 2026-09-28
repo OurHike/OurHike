@@ -123,7 +123,9 @@ import duckdb
 
 from lib.completeness import count_problems, fail_if_incomplete
 from lib.corridor import (
+    GEOGRAPHIC_CRS,
     NETWORK_BUFFER_FEET,
+    PROJECTED_CRS,
     inside_boundary_sql,
     load_boundary_polygons,
     load_network_lines,
@@ -176,6 +178,40 @@ METERS_PER_FOOT = 0.3048
 #: annotation on a start, never a precondition", so the type whose whole
 #: purpose is to sit off the tread is the wrong one to measure against tread.
 NETWORK_RING_EXEMPT_TYPES = frozenset({"parking", "trailhead"})
+
+#: How near a trail line has to be to count as one of a trailhead's trails, in
+#: metres (#1695). Nothing in any layer says which trails a trailhead serves,
+#: so "its trails" is every published line within this distance.
+#:
+#: THE MAINTAINER'S PICK, 2026-09-28, by poll off this table, measured
+#: 2026-09-26 against the UA release 2026-09-24-2 (7,651 trailheads, 142,620
+#: nearby lines, 224 of them closed):
+#:
+#:     radius   every line closed   some closed   all open   no line within
+#:      50 m           4                 4          4,875        2,768
+#:     100 m           4                 5          5,807        1,835
+#:     200 m           2                11          6,391        1,247
+#:
+#: 100 m rather than 50 because a trailhead is often set back from the tread,
+#: and rather than 200 because at 200 m a trailhead picks up trails it does not
+#: serve. @unvalidated as a distance: what would settle it is the four
+#: trailheads it marks today, looked at on the ground or on the steward's own
+#: map - three on Storm King's Route 9W side, where the only line within 100 m
+#: is a short closed connector, and one on the Genesee Valley Greenway.
+TRAILHEAD_TRAIL_RADIUS_M = 100
+
+#: The A.T.'s own lines, which `nearby_trails.geojson` does not carry: the
+#: A.T. ships as `trails.geojson`, and export_trails.py runs after this script.
+#: fetch_all.py writes these raw layers before it. They count as OPEN lines -
+#: nothing in them marks a closure - so a trailhead beside the A.T. is never
+#: marked closed because of a closed side path next to it.
+AT_LINE_PATHS = (ROOT / "data" / "raw" / "centerline.geojson", ROOT / "data" / "raw" / "side_trails.geojson")
+
+#: The property a trailhead carries when every trail line within
+#: TRAILHEAD_TRAIL_RADIUS_M is closed. Absent otherwise, never `false`: the
+#: client draws the ordinary pin for absent, and an artifact that carried
+#: `false` on 7,000 trailheads would only be bigger.
+TRAILS_CLOSED_PROPERTY = "trails_closed"
 
 # `trail_id` per org rather than export_poi.py's "AT". Nothing on the client
 # reads this field today; it is the pipeline's own record of which system a row
@@ -791,6 +827,87 @@ def clip_to_network(
     return kept, stats
 
 
+def mark_closed_trailheads(
+    records: list[dict],
+    network_path: Path,
+    at_line_paths: tuple[Path, ...] = AT_LINE_PATHS,
+) -> dict:
+    """Set TRAILS_CLOSED_PROPERTY on every trailhead whose trail lines within
+    TRAILHEAD_TRAIL_RADIUS_M are all closed (#1695), in place, and say what it
+    did.
+
+    The client draws such a trailhead as a pin in the closure's ink with a
+    white cross (the maintainer's pick of 2026-09-28). A trailhead with no line
+    within the radius is NOT marked: "no trail here" is not "every trail here
+    is closed".
+
+    MISS RATHER THAN CRY WOLF, and every uncertain state takes that direction.
+    A missing network marks nothing. A missing A.T. file marks nothing either:
+    without the A.T.'s lines a trailhead beside the open A.T. and a closed side
+    path would read as closed. A network with no `trail_status` column marks
+    nothing, because there is no closure in it to read.
+    """
+    stats: dict = {
+        "ran": False,
+        "radius_m": TRAILHEAD_TRAIL_RADIUS_M,
+        "trailheads": 0,
+        "marked": 0,
+        "marked_ids": [],
+    }
+    trailheads = [(at, record) for at, record in enumerate(records) if record["poi_type"] == "trailhead"]
+    stats["trailheads"] = len(trailheads)
+    if not trailheads:
+        return stats
+    if not network_path.exists():
+        stats["reason"] = f"{network_path.name} is missing, so there is no closure to read"
+        return stats
+    missing_at = [path.name for path in at_line_paths if not path.exists()]
+    if missing_at:
+        stats["reason"] = f"{', '.join(missing_at)} missing, so a trailhead beside the open A.T. cannot be told apart"
+        return stats
+
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    columns = {row[0] for row in con.execute(f"DESCRIBE SELECT * FROM ST_Read('{network_path.as_posix()}')").fetchall()}
+    if "trail_status" not in columns:
+        stats["reason"] = f"{network_path.name} carries no trail_status, so no line in it is closed"
+        return stats
+
+    def projected(column: str) -> str:
+        return f"ST_Transform({column}, '{GEOGRAPHIC_CRS}', '{PROJECTED_CRS}', always_xy := true)"
+
+    con.execute("CREATE TABLE trailhead_line (g GEOMETRY, closed BOOLEAN)")
+    con.execute(f"""
+        INSERT INTO trailhead_line
+        SELECT {projected("geom")}, lower(coalesce(CAST(trail_status AS VARCHAR), '')) = 'closed'
+        FROM ST_Read('{network_path.as_posix()}')
+    """)
+    for path in at_line_paths:
+        con.execute(f"INSERT INTO trailhead_line SELECT {projected('geom')}, false FROM ST_Read('{path.as_posix()}')")
+    con.execute("CREATE INDEX trailhead_line_rtree ON trailhead_line USING RTREE (g)")
+
+    con.execute("CREATE TABLE trailhead_point (idx INTEGER, lon DOUBLE, lat DOUBLE)")
+    con.executemany(
+        "INSERT INTO trailhead_point VALUES (?, ?, ?)",
+        [(at, record["lon"], record["lat"]) for at, record in trailheads],
+    )
+    rows = con.execute(f"""
+        SELECT p.idx, count(*) AS lines, count(*) FILTER (WHERE l.closed) AS closed
+        FROM trailhead_point p
+        JOIN trailhead_line l
+          ON ST_Intersects(l.g, ST_Buffer({projected("ST_Point(p.lon, p.lat)")}, {TRAILHEAD_TRAIL_RADIUS_M}))
+        GROUP BY p.idx
+    """).fetchall()
+
+    for at, lines, closed in rows:
+        if lines > 0 and closed == lines:
+            records[at][TRAILS_CLOSED_PROPERTY] = True
+            stats["marked_ids"].append(records[at]["id"])
+    stats["marked_ids"].sort()
+    stats.update(ran=True, marked=len(stats["marked_ids"]))
+    return stats
+
+
 def guide_records(registry: dict, raw_dir: Path = GUIDE_RAW_DIR, lines_dir: Path = RAW_DIR) -> tuple[list[dict], dict | None]:
     """NYNJTC's Long Path section guide, read as waypoints - and whether they may ship.
 
@@ -868,7 +985,13 @@ def records_to_geojson(records: list[dict]) -> dict:
     }
 
 
-def write_artifact(records: list[dict], per_source: dict, ring: dict | None = None, held_back: dict | None = None) -> dict:
+def write_artifact(
+    records: list[dict],
+    per_source: dict,
+    ring: dict | None = None,
+    held_back: dict | None = None,
+    closed_trailheads: dict | None = None,
+) -> dict:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     path = OUT_DIR / ARTIFACT_NAME
     path.write_text(json.dumps(records_to_geojson(records), separators=(",", ":")))
@@ -888,6 +1011,9 @@ def write_artifact(records: list[dict], per_source: dict, ring: dict | None = No
         # (see main), so without this block the manifest's per-source figures
         # and its feature_count would disagree with no way to see why.
         **({"network_ring": ring} if ring is not None else {}),
+        # Which trailheads carry TRAILS_CLOSED_PROPERTY, and why none do when
+        # the step could not run (#1695).
+        **({"closed_trailheads": closed_trailheads} if closed_trailheads is not None else {}),
         # Sources read and NOT carried, with why - outside `sources` so that
         # publish.py's all-or-nothing gate over that dict sees only what the
         # artifact actually holds (see guide_records).
@@ -994,6 +1120,20 @@ def main() -> dict:
     else:
         print(f"\n  ring: not applied - {ring.get('reason', 'no network artifact')}")
 
+    # Trailheads whose every nearby trail is closed (#1695). After the ring so
+    # it reads the records that ship; trailheads are exempt from the ring, so
+    # the order changes nothing about which trailheads are asked.
+    closed_trailheads = mark_closed_trailheads(all_records, OUT_DIR / NETWORK_ARTIFACT_NAME)
+    if closed_trailheads["ran"]:
+        print(
+            f"\n  closed trailheads: {closed_trailheads['marked']:,} of {closed_trailheads['trailheads']:,} "
+            f"have every trail line within {closed_trailheads['radius_m']} m closed"
+        )
+        for record_id in closed_trailheads["marked_ids"][:12]:
+            print(f"      {record_id}")
+    else:
+        print(f"\n  closed trailheads: not marked - {closed_trailheads.get('reason', 'no trailheads')}")
+
     # AFTER the ring, and the order is the argument again: a site must be
     # composed of waypoints that actually ship. Folding first would anchor a
     # site on a fountain the ring then removed, and the client would draw
@@ -1015,7 +1155,7 @@ def main() -> dict:
         largest = max(sites, key=lambda s: s.size())
         print(f"      largest: {largest.size()} at {largest.site_name!r}")
 
-    manifest = write_artifact(all_records, per_source, ring, held_back_sources)
+    manifest = write_artifact(all_records, per_source, ring, held_back_sources, closed_trailheads)
     size = Path(manifest["path"]).stat().st_size
     print(f"\n  {manifest['feature_count']:,} features -> {manifest['path']} ({size:,} bytes)")
     print(f"  by type: {manifest['by_type']}")

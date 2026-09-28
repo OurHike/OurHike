@@ -198,6 +198,15 @@ export interface StoredPoi {
    *  normalisation matched on. Carried for the waypoint card (#526) rather than
    *  for the pin, which shows the anchor's own name. */
   siteName?: string
+  /**
+   * Every trail line within {@link CLOSED_TRAILHEAD_RADIUS_M} of this
+   * trailhead is closed (#1695) - pipeline/export_nearby_poi.py's
+   * `trails_closed`, set only on trailheads. The map draws such a trailhead
+   * as a pin in the closure's ink with a white cross, and the card says why.
+   * Absent on every other waypoint, and on any release cut before the field
+   * existed, which reads as "not known to be closed".
+   */
+  trailsClosed?: boolean
   photoUrl?: string
   /** The Commons file page, where the full licence terms and history live. */
   photoPage?: string
@@ -303,7 +312,17 @@ interface PoiProperties {
   site_role?: unknown
   site_name?: unknown
   nearby?: unknown
+  trails_closed?: unknown
 }
+
+/**
+ * How near a trail line has to be to count as one of a trailhead's trails, in
+ * metres - pipeline/export_nearby_poi.py's TRAILHEAD_TRAIL_RADIUS_M, the
+ * maintainer's pick of 2026-09-28 (#1695). Repeated here because the card
+ * states it; trailData.test.ts reads the pipeline's own line and holds the
+ * two equal.
+ */
+export const CLOSED_TRAILHEAD_RADIUS_M = 100
 
 /** The property when it is a non-empty string, else nothing - the artifact
  *  writes null for absent values, and neither null nor "" is a fact worth
@@ -505,6 +524,12 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
       // above: an empty list and an absent field would render identically, and
       // storing the empty one would put an array on 40,000 POIs to say nothing.
       ...(nearby.length > 0 ? { nearby } : {}),
+      // Only an explicit `true` counts (#1695), and only on a trailhead: a
+      // cross on the map is a claim that every trail there is shut, so a
+      // value this build does not recognise reads as the ordinary pin.
+      ...(props.trails_closed === true && props.poi_type === 'trailhead'
+        ? { trailsClosed: true }
+        : {}),
       // Photo fields ride only behind a photo URL: an author or licence with
       // no photo is a credit for nothing, and would render as one.
       ...(photoUrl !== undefined

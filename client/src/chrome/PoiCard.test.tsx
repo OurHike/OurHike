@@ -160,6 +160,29 @@ describe('PoiCard', () => {
     expect(screen.getByText(/nobody has confirmed/i)).toBeInTheDocument()
   })
 
+  it('says in words why a trailhead wears the closed pin (#1695)', () => {
+    const trailhead: PoiDetail = {
+      ...SHELTER,
+      id: 'oprhp_facilities:10073',
+      name: 'Wilkonson Memorial',
+      type: 'trailhead',
+      trailsClosed: true,
+    }
+
+    // On the peek, not only behind the expand: a hiker picking a start needs
+    // it before anything else on the card.
+    renderPeek(trailhead)
+    expect(screen.getByRole('note', { name: '' })).toHaveTextContent(
+      'Every trail within 328 ft of this trailhead is closed.',
+    )
+  })
+
+  it('never says it of a waypoint that is not a trailhead, whatever it carries', () => {
+    renderCard({ ...SHELTER, trailsClosed: true })
+
+    expect(screen.queryByText(/of this trailhead is closed/)).not.toBeInTheDocument()
+  })
+
   it('does not cast doubt on a waypoint that came from facility data', () => {
     renderCard(SHELTER)
 

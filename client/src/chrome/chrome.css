@@ -3433,6 +3433,20 @@ a.poi-card__credit::after {
 /* Called out rather than set in fine print. This is the line that says the app
    cannot vouch for the pin someone just tapped, and it earns the same weight as
    the sunken block the closure sheet uses to say what it will not do. */
+/* A trailhead whose trails are all closed (#1695): the unverified line's
+   panel, in the closure's ink along its edge and at full weight, because it
+   is the reason the pin is a cross. */
+.poi-card__trails-closed {
+  margin: var(--space-1, 4px) 0;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-1);
+  background: var(--bg-sunken);
+  border-left: 4px solid #14130f;
+  border-radius: 10px;
+}
+
 .poi-card__unverified {
   margin: var(--space-1, 4px) 0;
   padding: var(--space-2, 8px) var(--space-3, 12px);

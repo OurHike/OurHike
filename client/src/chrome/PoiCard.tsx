@@ -111,7 +111,13 @@ import { describeNearby, type NearbyPart } from '../lib/nearbyClause'
 import { waypointDistance } from '../lib/waypointDistance'
 import { isSafeLink } from '../lib/safeLink'
 import type { HikeDirection } from './Header'
-import { formatShortDistance, MIN_STATED_FEET, type UnitSystem } from '../lib/units'
+import {
+  feetFromMetres,
+  formatShortDistance,
+  MIN_STATED_FEET,
+  type UnitSystem,
+} from '../lib/units'
+import { CLOSED_TRAILHEAD_RADIUS_M } from '../lib/trailData'
 import { PhotoUnusable, preparePhoto } from '../lib/reportPhoto'
 import { exifCaptureDate } from '../lib/exifDate'
 import { CARD_PHOTO_EDGE, photoFrame, type OwnPhotoSource } from '../lib/poiPhotos'
@@ -131,6 +137,9 @@ export interface PoiDetail {
   lat: number
   lon: number
   confidence: 'high' | 'low'
+  /** Every trail near this trailhead is closed (#1695) - lib/trailData.ts's
+   *  StoredPoi.trailsClosed. The card says so above everything else. */
+  trailsClosed?: boolean
   /**
    * Which published source listed it - see poiSources.ts.
    *
@@ -1090,6 +1099,17 @@ export function PoiCard({
      It is never behind the expand. A hiker cannot act on "nobody has confirmed
      this spring exists" if they have to pull the card open to find it, and
      OurHikeValues.md #4 is the whole argument for printing it at all. */
+  /* A trailhead whose every trail within CLOSED_TRAILHEAD_RADIUS_M is closed
+     (#1695): the reason its pin on the map is a cross, said in words. Above
+     the unverified line and never behind the expand, for that line's own
+     reason - a hiker picking a start needs this before anything else here. */
+  const closedLine =
+    shown.type === 'trailhead' && shown.trailsClosed === true ? (
+      <p className="poi-card__trails-closed" role="note">
+        {`Every trail within ${formatShortDistance(feetFromMetres(CLOSED_TRAILHEAD_RADIUS_M), units)} of this trailhead is closed.`}
+      </p>
+    ) : null
+
   const unverifiedLine =
     shown.confidence === 'low' ? (
       <p className="poi-card__unverified" role="note">
@@ -1783,9 +1803,10 @@ export function PoiCard({
                   gets the band with no heading, because "Conditions" is a
                   promise about water, shelter, campsites and resupply and
                   this file must not make it about anything else. */}
-              {(notesShown || unverifiedLine !== null) && (
+              {(notesShown || unverifiedLine !== null || closedLine !== null) && (
                 <section className="poi-card__section">
                   {notesShown && <h3 className="poi-card__section-title">Conditions</h3>}
+                  {closedLine}
                   {unverifiedLine}
                   {conditions('open')}
                 </section>
@@ -1857,6 +1878,7 @@ export function PoiCard({
             </div>
           </div>
 
+          {closedLine}
           {unverifiedLine}
           {conditions('peek')}
 

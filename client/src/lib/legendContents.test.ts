@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   computeLegendContents,
   legendDropSummary,
+  mapPointsFrom,
   SAFETY_LAYERS,
   withEveryType,
   withSafetyKey,
@@ -25,6 +26,25 @@ function point(overrides: Partial<MapPoint>): MapPoint {
     ...overrides,
   }
 }
+
+describe('mapPointsFrom', () => {
+  const stored = {
+    id: 't',
+    type: 'trailhead',
+    lat: 41.4,
+    lon: -73.9,
+    confidence: 'low' as const,
+    name: 'Wilkonson Memorial',
+  }
+
+  it('carries a trailhead\u2019s closed flag to the map, for its pin (#1695)', () => {
+    expect(mapPointsFrom([{ ...stored, trailsClosed: true }])[0].trailsClosed).toBe(true)
+  })
+
+  it('leaves the key off a waypoint that does not carry it', () => {
+    expect('trailsClosed' in mapPointsFrom([stored])[0]).toBe(false)
+  })
+})
 
 describe('computeLegendContents', () => {
   it('includes only points within the viewport bounding box', () => {

@@ -1,10 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { POI_TYPES } from '../lib/config'
-import { CLOSURE_COLOR } from '../lib/closureStyle'
+import { CLOSURE_COLOR, CLOSURE_INK } from '../lib/closureStyle'
 import { WORKDAY_COLOR } from './workdayPin'
 import { SITE_ANCHOR_TYPES, SITE_MEMBER_TYPES } from './poiSites'
 import { LOUD_POI_TYPES } from './poiPriority'
-import { CLOSURE_INK } from '../lib/closureStyle'
 import {
   badgeCenters,
   buildClosedTrailheadIcon,
@@ -635,7 +634,7 @@ describe('buildPoiIcons', () => {
 })
 
 describe('the closed trailhead (#1695)', () => {
-  // The maintainer's pick of 2026-09-26: the waypoint pin's size and shape,
+  // The maintainer's pick of 2026-09-28: the waypoint pin's size and shape,
   // in the closure's ink, with a white cross for the signpost.
   const image = buildClosedTrailheadIcon()
   const colours = new Set<string>()

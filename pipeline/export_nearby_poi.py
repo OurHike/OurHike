@@ -208,10 +208,13 @@ TRAILHEAD_TRAIL_RADIUS_M = 100
 AT_LINE_PATHS = (ROOT / "data" / "raw" / "centerline.geojson", ROOT / "data" / "raw" / "side_trails.geojson")
 
 #: The property a trailhead carries when every trail line within
-#: TRAILHEAD_TRAIL_RADIUS_M is closed. Absent otherwise, never `false`: the
-#: client draws the ordinary pin for absent, and an artifact that carried
-#: `false` on 7,000 trailheads would only be bigger.
-TRAILS_CLOSED_PROPERTY = "trails_closed"
+#: TRAILHEAD_TRAIL_RADIUS_M is closed, and its value IS that radius in metres.
+#: Its presence is the flag. Its value is what the card prints, so the phone
+#: states the distance this release was computed with rather than a copy of
+#: the constant built into whichever client it runs. Absent otherwise, never
+#: `false` or 0: the client draws the ordinary pin for absent, and an artifact
+#: that carried a value on 7,000 trailheads would only be bigger.
+TRAILS_CLOSED_PROPERTY = "trails_closed_within_m"
 
 # `trail_id` per org rather than export_poi.py's "AT". Nothing on the client
 # reads this field today; it is the pipeline's own record of which system a row
@@ -845,7 +848,9 @@ def mark_closed_trailheads(
     A missing network marks nothing. A missing A.T. file marks nothing either:
     without the A.T.'s lines a trailhead beside the open A.T. and a closed side
     path would read as closed. A network with no `trail_status` column marks
-    nothing, because there is no closure in it to read.
+    nothing, because there is no closure in it to read. And a line with no
+    status of its own counts as NOT closed, so one nearby is enough to keep
+    the ordinary pin: an unknown status is not evidence of a closure.
     """
     stats: dict = {
         "ran": False,
@@ -866,42 +871,48 @@ def mark_closed_trailheads(
         stats["reason"] = f"{', '.join(missing_at)} missing, so a trailhead beside the open A.T. cannot be told apart"
         return stats
 
-    con = duckdb.connect()
-    con.execute("INSTALL spatial; LOAD spatial;")
-    columns = {row[0] for row in con.execute(f"DESCRIBE SELECT * FROM ST_Read('{network_path.as_posix()}')").fetchall()}
-    if "trail_status" not in columns:
-        stats["reason"] = f"{network_path.name} carries no trail_status, so no line in it is closed"
-        return stats
-
     def projected(column: str) -> str:
         return f"ST_Transform({column}, '{GEOGRAPHIC_CRS}', '{PROJECTED_CRS}', always_xy := true)"
 
-    con.execute("CREATE TABLE trailhead_line (g GEOMETRY, closed BOOLEAN)")
-    con.execute(f"""
-        INSERT INTO trailhead_line
-        SELECT {projected("geom")}, lower(coalesce(CAST(trail_status AS VARCHAR), '')) = 'closed'
-        FROM ST_Read('{network_path.as_posix()}')
-    """)
-    for path in at_line_paths:
-        con.execute(f"INSERT INTO trailhead_line SELECT {projected('geom')}, false FROM ST_Read('{path.as_posix()}')")
-    con.execute("CREATE INDEX trailhead_line_rtree ON trailhead_line USING RTREE (g)")
+    with duckdb.connect() as con:
+        con.execute("INSTALL spatial; LOAD spatial;")
+        # One read of the network: only the two columns this step needs,
+        # selected by pattern so a file with no `trail_status` still loads
+        # and the check below can say so.
+        con.execute(f"""
+            CREATE TABLE network_status AS
+            SELECT COLUMNS('^(geom|trail_status)$') FROM ST_Read('{network_path.as_posix()}')
+        """)
+        columns = {row[0] for row in con.execute("DESCRIBE network_status").fetchall()}
+        if "trail_status" not in columns:
+            stats["reason"] = f"{network_path.name} carries no trail_status, so no line in it is closed"
+            return stats
 
-    con.execute("CREATE TABLE trailhead_point (idx INTEGER, lon DOUBLE, lat DOUBLE)")
-    con.executemany(
-        "INSERT INTO trailhead_point VALUES (?, ?, ?)",
-        [(at, record["lon"], record["lat"]) for at, record in trailheads],
-    )
-    rows = con.execute(f"""
-        SELECT p.idx, count(*) AS lines, count(*) FILTER (WHERE l.closed) AS closed
-        FROM trailhead_point p
-        JOIN trailhead_line l
-          ON ST_Intersects(l.g, ST_Buffer({projected("ST_Point(p.lon, p.lat)")}, {TRAILHEAD_TRAIL_RADIUS_M}))
-        GROUP BY p.idx
-    """).fetchall()
+        con.execute(f"""
+            CREATE TABLE trailhead_line AS
+            SELECT {projected("geom")} AS g, lower(coalesce(CAST(trail_status AS VARCHAR), '')) = 'closed' AS closed
+            FROM network_status
+        """)
+        for path in at_line_paths:
+            con.execute(f"INSERT INTO trailhead_line SELECT {projected('geom')}, false FROM ST_Read('{path.as_posix()}')")
+        con.execute("CREATE INDEX trailhead_line_rtree ON trailhead_line USING RTREE (g)")
+
+        con.execute("CREATE TABLE trailhead_point (idx INTEGER, lon DOUBLE, lat DOUBLE)")
+        con.executemany(
+            "INSERT INTO trailhead_point VALUES (?, ?, ?)",
+            [(at, record["lon"], record["lat"]) for at, record in trailheads],
+        )
+        rows = con.execute(f"""
+            SELECT p.idx, count(*) AS lines, count(*) FILTER (WHERE l.closed) AS closed
+            FROM trailhead_point p
+            JOIN trailhead_line l
+              ON ST_Intersects(l.g, ST_Buffer({projected("ST_Point(p.lon, p.lat)")}, {TRAILHEAD_TRAIL_RADIUS_M}))
+            GROUP BY p.idx
+        """).fetchall()
 
     for at, lines, closed in rows:
         if lines > 0 and closed == lines:
-            records[at][TRAILS_CLOSED_PROPERTY] = True
+            records[at][TRAILS_CLOSED_PROPERTY] = TRAILHEAD_TRAIL_RADIUS_M
             stats["marked_ids"].append(records[at]["id"])
     stats["marked_ids"].sort()
     stats.update(ran=True, marked=len(stats["marked_ids"]))

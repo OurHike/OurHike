@@ -166,21 +166,41 @@ describe('PoiCard', () => {
       id: 'oprhp_facilities:10073',
       name: 'Wilkonson Memorial',
       type: 'trailhead',
-      trailsClosed: true,
+      trailsClosedWithinM: 100,
     }
 
     // On the peek, not only behind the expand: a hiker picking a start needs
-    // it before anything else on the card.
+    // it before anything else on the card. 100 m is 328 ft, stated as "about
+    // 330" because the radius is a round pick nobody surveyed.
     renderPeek(trailhead)
     expect(screen.getByRole('note', { name: '' })).toHaveTextContent(
-      'Every trail within 328 ft of this trailhead is closed.',
+      'Every trail OurHike tracks within about 330 ft of this trailhead is marked closed.',
     )
   })
 
-  it('never says it of a waypoint that is not a trailhead, whatever it carries', () => {
-    renderCard({ ...SHELTER, trailsClosed: true })
+  it('states the radius the data carries, in the hiker\u2019s unit', () => {
+    render(
+      <PoiCard
+        poi={{ ...SHELTER, type: 'trailhead', trailsClosedWithinM: 150 }}
+        map={null}
+        onClose={vi.fn()}
+        units="metric"
+      />,
+    )
 
-    expect(screen.queryByText(/of this trailhead is closed/)).not.toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Every trail OurHike tracks within about 150 m of this trailhead is marked closed.',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('never says it of a waypoint that is not a trailhead, whatever it carries', () => {
+    renderCard({ ...SHELTER, trailsClosedWithinM: 100 })
+
+    expect(
+      screen.queryByText(/of this trailhead is marked closed/),
+    ).not.toBeInTheDocument()
   })
 
   it('does not cast doubt on a waypoint that came from facility data', () => {

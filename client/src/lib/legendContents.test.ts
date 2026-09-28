@@ -38,7 +38,9 @@ describe('mapPointsFrom', () => {
   }
 
   it('carries a trailhead\u2019s closed flag to the map, for its pin (#1695)', () => {
-    expect(mapPointsFrom([{ ...stored, trailsClosed: true }])[0].trailsClosed).toBe(true)
+    expect(mapPointsFrom([{ ...stored, trailsClosedWithinM: 100 }])[0].trailsClosed).toBe(
+      true,
+    )
   })
 
   it('leaves the key off a waypoint that does not carry it', () => {

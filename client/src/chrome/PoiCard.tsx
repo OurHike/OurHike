@@ -113,11 +113,11 @@ import { isSafeLink } from '../lib/safeLink'
 import type { HikeDirection } from './Header'
 import {
   feetFromMetres,
+  formatRoundShortDistance,
   formatShortDistance,
   MIN_STATED_FEET,
   type UnitSystem,
 } from '../lib/units'
-import { CLOSED_TRAILHEAD_RADIUS_M } from '../lib/trailData'
 import { PhotoUnusable, preparePhoto } from '../lib/reportPhoto'
 import { exifCaptureDate } from '../lib/exifDate'
 import { CARD_PHOTO_EDGE, photoFrame, type OwnPhotoSource } from '../lib/poiPhotos'
@@ -137,9 +137,10 @@ export interface PoiDetail {
   lat: number
   lon: number
   confidence: 'high' | 'low'
-  /** Every trail near this trailhead is closed (#1695) - lib/trailData.ts's
-   *  StoredPoi.trailsClosed. The card says so above everything else. */
-  trailsClosed?: boolean
+  /** Every trail line within this many metres of this trailhead is closed
+   *  (#1695) - lib/trailData.ts's StoredPoi.trailsClosedWithinM, the radius
+   *  the release was computed with. The card says so above everything else. */
+  trailsClosedWithinM?: number
   /**
    * Which published source listed it - see poiSources.ts.
    *
@@ -1092,6 +1093,28 @@ export function PoiCard({
     </p>
   )
 
+  /* A trailhead whose every trail line within its radius is closed (#1695):
+     the reason its pin on the map is a cross, said in words. Above the
+     unverified line and never behind the expand, for that line's own reason
+     below - a hiker picking a start needs this before anything else here.
+
+     The sentence claims no more than the pipeline checked. "Trails OurHike
+     tracks" because only the published trail lines and the A.T. were read,
+     and the basemap's pale footpaths were not. "Marked closed" because the
+     status is the steward's. And "about", rounded to 10 of the hiker's unit,
+     because the radius is a round pick nobody surveyed
+     (lib/units.ts's formatRoundShortDistance). */
+  const closedWithinM = shown.type === 'trailhead' ? shown.trailsClosedWithinM : undefined
+  const closedLine =
+    closedWithinM !== undefined ? (
+      <p className="poi-card__trails-closed" role="note">
+        {`Every trail OurHike tracks within about ${formatRoundShortDistance(
+          feetFromMetres(closedWithinM),
+          units,
+        )} of this trailhead is marked closed.`}
+      </p>
+    ) : null
+
   /* The existence claim, and the reason this card is worth having (see the
      header of this file). Hoisted for `metaLine`'s reason, and placed by the
      same rule in both heights: as high as the card goes.
@@ -1099,17 +1122,6 @@ export function PoiCard({
      It is never behind the expand. A hiker cannot act on "nobody has confirmed
      this spring exists" if they have to pull the card open to find it, and
      OurHikeValues.md #4 is the whole argument for printing it at all. */
-  /* A trailhead whose every trail within CLOSED_TRAILHEAD_RADIUS_M is closed
-     (#1695): the reason its pin on the map is a cross, said in words. Above
-     the unverified line and never behind the expand, for that line's own
-     reason - a hiker picking a start needs this before anything else here. */
-  const closedLine =
-    shown.type === 'trailhead' && shown.trailsClosed === true ? (
-      <p className="poi-card__trails-closed" role="note">
-        {`Every trail within ${formatShortDistance(feetFromMetres(CLOSED_TRAILHEAD_RADIUS_M), units)} of this trailhead is closed.`}
-      </p>
-    ) : null
-
   const unverifiedLine =
     shown.confidence === 'low' ? (
       <p className="poi-card__unverified" role="note">

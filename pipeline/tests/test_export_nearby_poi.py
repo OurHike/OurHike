@@ -1024,8 +1024,9 @@ class TestTrailheadsWhoseTrailsAreAllClosed:
     TRAILHEAD_TRAIL_RADIUS_M - and every state the step cannot read marks
     nothing, because a cross on an open trailhead is the worse mistake."""
 
-    # 0.0005 deg of latitude is ~55 m, inside the 100 m radius; 0.0015 deg is
-    # ~167 m, outside it.
+    # Offsets in LONGITUDE, at 44 N where a degree of longitude is about
+    # 80,100 m: 0.0005 deg is about 40 m, inside the 100 m radius, and 0.0015
+    # deg about 120 m, outside it by about 20 m.
     NEAR = 0.0005
     FAR = 0.0015
 
@@ -1071,7 +1072,7 @@ class TestTrailheadsWhoseTrailsAreAllClosed:
 
         stats = self._mark(tmp_path, [trailhead], [[[-74.0, 43.99], [-74.0, 44.01]]], ["closed"])
 
-        assert trailhead[export_nearby_poi.TRAILS_CLOSED_PROPERTY] is True
+        assert trailhead[export_nearby_poi.TRAILS_CLOSED_PROPERTY] == export_nearby_poi.TRAILHEAD_TRAIL_RADIUS_M
         assert stats["ran"] is True
         assert stats["marked"] == 1
         assert stats["marked_ids"] == [trailhead["id"]]
@@ -1088,12 +1089,26 @@ class TestTrailheadsWhoseTrailsAreAllClosed:
 
         assert export_nearby_poi.TRAILS_CLOSED_PROPERTY not in trailhead
 
+    def test_a_nearby_line_with_no_status_keeps_the_ordinary_pin(self, tmp_path):
+        """An unknown status is not evidence of a closure, so it counts
+        against the cross the way an open line does."""
+        trailhead = self._trailhead(-74.0 + self.NEAR, 44.0)
+
+        self._mark(
+            tmp_path,
+            [trailhead],
+            [[[-74.0, 43.99], [-74.0, 44.01]], [[-73.99, 44.0], [-74.0 + 2 * self.NEAR, 44.0]]],
+            ["closed", None],
+        )
+
+        assert export_nearby_poi.TRAILS_CLOSED_PROPERTY not in trailhead
+
     def test_the_status_is_read_whatever_case_the_steward_writes(self, tmp_path):
         trailhead = self._trailhead(-74.0 + self.NEAR, 44.0)
 
         self._mark(tmp_path, [trailhead], [[[-74.0, 43.99], [-74.0, 44.01]]], ["CLOSED"])
 
-        assert trailhead[export_nearby_poi.TRAILS_CLOSED_PROPERTY] is True
+        assert trailhead[export_nearby_poi.TRAILS_CLOSED_PROPERTY] == export_nearby_poi.TRAILHEAD_TRAIL_RADIUS_M
 
     def test_a_closed_trail_beyond_the_radius_is_not_one_of_its_trails(self, tmp_path):
         """No line within the radius is "no trail here", which is not "every
@@ -1157,14 +1172,14 @@ class TestTrailheadsWhoseTrailsAreAllClosed:
         assert stats["ran"] is False
         assert export_nearby_poi.TRAILS_CLOSED_PROPERTY not in trailhead
 
-    def test_the_artifact_carries_the_flag_only_where_it_is_true(self, tmp_path):
+    def test_the_artifact_carries_the_radius_only_where_the_trailhead_is_marked(self, tmp_path):
         closed = self._trailhead(-74.0 + self.NEAR, 44.0)
         open_ = self._trailhead(-74.0 + self.FAR, 44.0)
         self._mark(tmp_path, [closed, open_], [[[-74.0, 43.99], [-74.0, 44.01]]], ["closed"])
 
         features = export_nearby_poi.records_to_geojson([closed, open_])["features"]
 
-        assert features[0]["properties"][export_nearby_poi.TRAILS_CLOSED_PROPERTY] is True
+        assert features[0]["properties"][export_nearby_poi.TRAILS_CLOSED_PROPERTY] == export_nearby_poi.TRAILHEAD_TRAIL_RADIUS_M
         assert export_nearby_poi.TRAILS_CLOSED_PROPERTY not in features[1]["properties"]
 
     def test_the_radius_is_the_one_the_maintainer_chose(self):

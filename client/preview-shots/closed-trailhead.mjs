@@ -14,7 +14,7 @@
 // out are open - which is the case to judge the rule on.
 //
 // THIS FRAME IS ONLY THE X ONCE THE DATA CARRIES IT. The pin reads
-// `trails_closed` off nearby_poi.geojson, which the bucket holds only after
+// `trails_closed_within_m` off nearby_poi.geojson, which the bucket holds only after
 // publish-vector-data runs from a build with this change in it. Before that,
 // the camera finds an ordinary purple trailhead pin and a peek with no closed
 // line: a true picture of the data it was given, and the caption says both.
@@ -22,9 +22,9 @@
 // Search reaches the trailhead by name, the same drive as
 // waypoint-quick-answers.mjs. No location fix, no account, nobody's reports.
 export const caption =
-  'Storm King State Park on a phone: the Wilkonson Memorial trailhead’s peek (#1695). Where the data carries trails_closed, the trailhead is a dark pin with a white x in place of the signpost, and the peek says “Every trail within 328 ft of this trailhead is closed.” Until publish-vector-data has run with this change, the same trailhead is an ordinary purple pin with no such line: the shot shows what the bucket holds.'
+  'Storm King State Park on a phone: the Wilkonson Memorial trailhead’s peek (#1695). Where the data carries trails_closed_within_m, the trailhead is a dark pin with a white x in place of the signpost, and the peek says “Every trail OurHike tracks within about 330 ft of this trailhead is marked closed.” Until publish-vector-data has run with this change, the same trailhead is an ordinary purple pin with no such line: the shot shows what the bucket holds.'
 export const alt =
-  'The map over Storm King State Park with a waypoint card open for the Wilkonson Memorial trailhead. Either its pin is dark with a white x and the card carries a boxed line saying every trail within 328 feet is closed; or, before the data is republished, it is an ordinary purple trailhead pin and card. Or, where this build has no waypoint data, the search panel reading “Nothing here by that name.”'
+  'The map over Storm King State Park with a waypoint card open for the Wilkonson Memorial trailhead. Either its pin is dark with a white x and the card carries a boxed line saying every trail OurHike tracks within about 330 feet is marked closed; or, before the data is republished, it is an ordinary purple trailhead pin and card. Or, where this build has no waypoint data, the search panel reading “Nothing here by that name.”'
 
 /** Vector tiles and the network waypoints over a park at z15. */
 export const wait = 12000
@@ -58,8 +58,10 @@ export default async function drive(page) {
   if ((await first.count()) === 0) return
 
   await first.click()
+  // The peek itself: a trailhead carries no conditions section
+  // (lib/fieldNotes.ts's NOTE_SCOPED_TYPES), so that test id never mounts.
   await page
-    .getByTestId('poi-card-peek-conditions')
+    .getByTestId('poi-card-peek')
     .waitFor({ timeout: 15000 })
     .catch(() => {})
 }

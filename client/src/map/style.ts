@@ -800,9 +800,39 @@ export const CONTEXT_TRAIL_WIDTH_SCALE = 0.8
  */
 export const CONTEXT_TRAIL_DASH: readonly [number, number] = [3, 2.5]
 
-/** A dash pattern with no gap: how a through-route's feature stays solid on
- *  a layer whose other features dash (#1588). */
-export const SOLID_DASH: readonly [number, number] = [1, 0]
+/**
+ * A dash pattern with no gap: how a line stays solid on a layer whose
+ * `line-dasharray` is per feature - a through-route's feature among dashed
+ * ones (#1588), and every feature under the hues and red light (#1698).
+ *
+ * A THOUSAND LINE WIDTHS, NOT ONE. Blaze lines have round caps, and MapLibre
+ * 6.7.0 draws a round-capped dash as pills laid end to end
+ * (`LineAtlas.addRoundDash`), so the line's edges pinch wherever one copy of
+ * the pattern meets the next - and a zero-length gap does not remove the
+ * pinch, only the gap. At `[1, 0]` that came once per line width, which on a
+ * thin line is most of its edge. Measured 2026-09-28 in headless Chromium,
+ * one yellow line drawn plain beside the same line through this dash, share
+ * of ink lost against the plain line:
+ *
+ *     width  dpr   [1, 0]   [100, 0]   [1000, 0]
+ *     1.5    1     10.1%     0.1%       0.0%
+ *     2.5    1      2.5%    -0.1%      -0.1%
+ *     1.5    2      1.6%    -0.1%      -0.1%
+ *     4.5    1-3   ≤ 0.4%   within 0.2% either way
+ *
+ * so `[1, 0]` drew the 1.5 px sketches about a tenth fainter on a laptop
+ * screen, and the through-routes had carried it under the default since
+ * #1588. At a thousand widths the pinch comes once every 1,500 px of a
+ * 1.5 px line, and the table cannot find it.
+ *
+ * And on the app itself, same day, against UA release 2026-09-24-2: loaded
+ * fresh with the hues on over the Hudson Highlands, this build's frame and
+ * one whose solid lines carry no dash at all differed in 0 pixels by more
+ * than 16 levels - at DPR 1 and 2 at z13, DPR 1 at z8, and a DPR 3 phone.
+ * At `[1, 0]` the same comparison had 257 pixels off at z13 and 1,318 at
+ * z8. The PR that made this change (#1700) has both harnesses.
+ */
+export const SOLID_DASH: readonly [number, number] = [1000, 0]
 
 /**
  * `line-color` under the default: PLAIN_TRAIL_COLOR on every feature, on
@@ -881,23 +911,30 @@ function throughRouteSolidDash(otherTrails: readonly [number, number]): unknown[
  * fixed switching on and left those. Keeping the dash per feature on every
  * sheet fixed both: 12 of 12 taps drew correctly with no error, on the same
  * camera and release, with a stand-in for this function patched into the
- * running map; with this function built in, e2e/data/blazeSwitch.spec.ts
- * (three taps a run) passed 6 of 6 runs where the build before failed 3 of
- * 3.
+ * running map. With this function built in, e2e/data/blazeSwitch.spec.ts
+ * failed on every local run against the build before and passed on every
+ * local run against this one, through each version of that spec.
+ *
+ * Then it was attacked, 2026-09-28, same setup: about 190 page loads of
+ * rapid taps (down to 25 ms apart), taps during flyTo, easeTo, drag and
+ * wheel zoom, z7 to z18 and across the seam, the hues on from a fresh load,
+ * the night sheet, red light, a map-style change, the phone's legend sheet,
+ * and a taken trail. None drew grey and none threw; main's code went grey
+ * or threw in all but two of those scenarios.
  *
  * Red light makes the same two changes of kind - coming on from the default
  * is the grey direction, going off is the other - so it was exposed to both,
- * and is fixed by the same rule. That is reasoned from the code, not tried:
- * red light is set on the Settings screen, away from the map, and nobody
- * has watched the switch-over on a real map.
+ * and is fixed by the same rule. Measured in that run: switching red light
+ * on and off in Settings over the default sheet threw in 3 of 3 runs on
+ * main's code and 0 of 3 on this. Nobody has watched it on a phone.
  *
  * WHAT IT COSTS: every blaze line now draws through MapLibre's dash shader,
- * where the hues and red light used the plain one. The switched-on frame
- * matched the no-dash one to the eye; a strict yellow-pixel count on it came
- * out 3% lower (2,456 against 2,530, stable across three runs each, taken
- * with the stand-in above), which is most likely edge antialiasing. Nobody
- * has isolated that, or looked at it on a phone. A through-route has drawn
- * this way under the default since #1588.
+ * where the hues and red light used the plain one. The first version of
+ * this rule spelled solid as `[1, 0]`, and that drew thin lines visibly
+ * fainter - SOLID_DASH has the measurement and why a thousand widths does
+ * not. Whether the dash shader costs frame time on a phone has not been
+ * measured. A through-route has drawn this way under the default since
+ * #1588.
  */
 export function blazeDashArray(appearance: SheetAppearance): unknown[] {
   return plainRedActive(appearance) ? contextDashExpression() : solidDashExpression()
@@ -2799,7 +2836,7 @@ export function buildMapStyle({
           // Every feature here is the A.T.'s, so this is the no-gap dash on
           // each of them on every sheet: carried because the sheet repaint
           // must never take a per-feature dash away (#1588, #1698), not for
-          // anything it draws.
+          // anything it draws - SOLID_DASH says why it draws as no dash.
           ...blazeDashPaint(appearance),
           // The one departure, and only while the A.T. is not taken: the
           // network's taper rather than the line's own tier, because 4.5 px

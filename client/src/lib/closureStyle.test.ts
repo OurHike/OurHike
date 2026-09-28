@@ -28,7 +28,9 @@ import {
   BLAZE_LAYER_ID,
   BLAZE_LINE_WIDTH,
   CASING_LINE_WIDTH,
+  CONTEXT_TRAIL_DASH,
   RED_LIGHT_BLAZE_COLOR,
+  SOLID_DASH,
   solidDashExpression,
 } from '../map/style'
 import { PLAIN_TRAIL_COLOR } from './blaze'
@@ -157,16 +159,29 @@ describe('closure vs blaze, as structural difference', () => {
     // and the dots differ from those too, in rhythm and in colour.
     const blaze = builtLayers().find((l) => l.id === BLAZE_LAYER_ID)
     expect(blaze?.paint?.['line-dasharray']).toEqual(solidDashExpression())
-    expect(TRACE.paint?.['line-dasharray']).toBeDefined()
+    expect(traceIsItsOwnTexture()).toBe(true)
     expect(TRACE.layout?.['line-cap']).toBe('round')
   })
+
+  /** Whether the trace's dash has a real gap and is neither dash a blaze
+   *  layer can draw. HAVING a dasharray stopped meaning anything in #1700,
+   *  when every blaze layer started carrying one on every sheet. */
+  function traceIsItsOwnTexture(): boolean {
+    const dash = TRACE.paint?.['line-dasharray']
+    if (!Array.isArray(dash)) return false
+    const hasGap = dash.some((part, i) => i % 2 === 1 && (part as number) > 0)
+    const blazeDashes = [SOLID_DASH, CONTEXT_TRAIL_DASH].map((d) =>
+      JSON.stringify([...d]),
+    )
+    return hasGap && !blazeDashes.includes(JSON.stringify(dash))
+  }
 
   it('stays distinguishable with hue removed entirely', () => {
     // The greyscale test: strip colour and the two must still differ on at
     // least two independent channels. A shape (the crosses) and a texture
     // (the dotted trace), neither of which is a colour.
     const differsOnShape = CROSSES.layout?.['icon-image'] !== undefined
-    const differsOnTexture = TRACE.paint?.['line-dasharray'] !== undefined
+    const differsOnTexture = traceIsItsOwnTexture()
     const differsOnWidth = (CLOSURE_PAPER_WIDTH as number) !== BLAZE_LINE_WIDTH
 
     expect(

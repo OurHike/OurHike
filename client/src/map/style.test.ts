@@ -373,19 +373,28 @@ describe('buildMapStyle', () => {
     // away drew every trail grey. So a casing carries none, and a blaze
     // layer's dash is asked of the engine, for a through-route's feature and
     // for a context trail's.
-    const dashSpec = latest.paint_line['line-dasharray']
+    const built = style()
+    const painted = (id: string) =>
+      built.layers.find((l) => l.id === id)?.paint as Record<string, unknown> | undefined
     for (const id of TRAIL_CASING_LAYER_IDS) {
-      expect(
-        (layer(id).paint as Record<string, unknown>)['line-dasharray'],
-        id,
-      ).toBeUndefined()
+      expect(painted(id)?.['line-dasharray'], id).toBeUndefined()
     }
     for (const id of BLAZE_LINE_LAYER_IDS) {
+      // Parsed with the property's root key, so the engine type-checks it as
+      // an array of numbers; paintFor passes no root key, and would accept
+      // ['1000', '0'] and stringify it to the same thing.
+      const compiled = createExpression(
+        painted(id)?.['line-dasharray'] as never,
+        'paint.line-dasharray',
+        latest.paint_line['line-dasharray'] as never,
+      )
+      if (compiled.result === 'error')
+        throw new Error(`line-dasharray on ${id} is not valid`)
       for (const source of ['centerline', 'oprhp_trails']) {
-        expect(
-          paintFor(style(), id, 'line-dasharray', dashSpec, { source }),
-          `${id} / ${source}`,
-        ).toBe(String([...SOLID_DASH]))
+        const dash = compiled.value.evaluate({ zoom: 12 }, {
+          properties: { source },
+        } as never)
+        expect([...(dash as number[])], `${id} / ${source}`).toEqual([...SOLID_DASH])
       }
     }
     for (const id of [TRAIL_CASING_LAYER_ID, BLAZE_LAYER_ID]) {
@@ -2814,6 +2823,7 @@ describe('the default sheet: light dashed context trails, plain solid through-ro
     const found = built.layers.find((l) => l.id === id)
     const compiled = createExpression(
       (found?.paint as Record<string, unknown>)['line-dasharray'] as never,
+      'paint.line-dasharray',
       dashSpec as never,
     )
     if (compiled.result === 'error')
@@ -2857,7 +2867,10 @@ describe('the default sheet: light dashed context trails, plain solid through-ro
     }
     expect(CONTEXT_TRAIL_WIDTH_SCALE).toBe(0.8)
     expect(CONTEXT_TRAIL_DASH).toEqual([3, 2.5])
-    expect(SOLID_DASH).toEqual([1, 0])
+    // Long, not [1, 0]: a round-capped dash pinches the line's edges once a
+    // pattern, and at one width a pattern that took a tenth of a thin
+    // line's ink (#1700; SOLID_DASH has the measurement).
+    expect(SOLID_DASH).toEqual([1000, 0])
   })
 
   it('draws the same dash at every zoom, on every blaze layer, both kinds of line', () => {

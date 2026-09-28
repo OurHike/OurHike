@@ -103,14 +103,26 @@ const HUES_DRAWN = 300
 /** Fewer than this many and they are not. */
 const HUES_GONE = 50
 /** More than this many `red` pixels on the default sheet and its lines are
- *  drawn - the wait before the first tap. The frame measured 3,527 at a
- *  tolerance of 10 in the agent sandbox. */
+ *  drawn - the wait before the first tap, and the check that switching off
+ *  brought them back. The frame measured 3,527 at a tolerance of 10 in the
+ *  agent sandbox. Not the trails' alone: the 44 px serious-warning pin is
+ *  the same hex, so a frame with a few of those and no trail lines could
+ *  meet this bar (reasoned from the palette; not measured) - which is why
+ *  the switch-on checks count hues, and red is only ever asked of the
+ *  default sheet. */
 const DEFAULT_RED_DRAWN = 1_000
+
+/** The waits below, added up: 60 s for the first lines, then four 15 s
+ *  polls. The data suite's 90 s default is shorter than that, and a slow
+ *  first load would then fail as a timeout on whichever poll it reached
+ *  rather than on the one that saw the map stay grey. */
+const SPEC_TIMEOUT_MS = 180_000
 
 test.describe('the Blaze colors switch on a drawn map', { tag: '@desktop' }, () => {
   test('switching the hues on and off repaints the lines each time, with no render error', async ({
     page,
   }) => {
+    test.setTimeout(SPEC_TIMEOUT_MS)
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
 
@@ -142,11 +154,16 @@ test.describe('the Blaze colors switch on a drawn map', { tag: '@desktop' }, () 
     expect(errors).toEqual([])
 
     // And off again. This direction always recovered, but threw on the way.
+    // The hues going is not enough on its own: a frame with no trail lines
+    // at all has none either, so the default's red has to come back too.
     await blazes.click()
     await expect(blazes).not.toBeChecked()
     await expect
       .poll(async () => (await drawnInk(page)).hues, { timeout: 15_000 })
       .toBeLessThan(HUES_GONE)
+    await expect
+      .poll(async () => (await drawnInk(page)).red, { timeout: 15_000 })
+      .toBeGreaterThan(DEFAULT_RED_DRAWN)
     expect(errors).toEqual([])
 
     // On a second time: the first tap cannot be the only one that works.

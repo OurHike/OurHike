@@ -21,17 +21,59 @@ tile_compression unchanged and never re-encodes anything.
 The region walk descends the tile quadtree - a tile's children can only
 intersect the region if the tile does - so the corridor's huge bounding box
 never turns into millions of point tests at z14.
+
+## Cutting from more than one source (#248)
+
+BASEMAP.md's sharded continental build splits at z9: one national archive
+for z0-9, one archive per Geofabrik sub-region for z10-14. A package whose
+corridor crosses a sub-region boundary needs tiles from more than one
+archive, so `source` takes one or more paths in priority order.
+
+That is only safe because #225 already measured what a multi-source cut has
+to account for: the shards are **not tile-disjoint** - 593 tiles in one pair
+of regions alone were written by more than one shard, at every zoom from z0
+up through the seam. Concatenating sources verbatim would pick whichever
+source happened to stream a seam tile first, silently, with no record of
+which half of the tile a hiker got.
+
+The rule chosen here is the third of the three BASEMAP.md's own #248 weighed:
+**the source whose own build polygon contains the tile's centre wins.**
+Not a real per-feature merge - that needs vector-tile surgery, which this
+module avoids on purpose (tile bytes are copied verbatim, never
+re-encoded) - but cheap, deterministic, and it makes the *same* seam tile
+resolve the *same* way on every rebuild, which first-source-wins-by-argument-
+order does not (it depends on nothing but the order the shards happen to be
+listed in, invisible to anyone reading the output). A source's centre-
+containment claim is registered with `--source-region`, paired with every
+`source` after the first; the first is the low-zoom base archive, which by
+construction is the only source for its zooms and never needs a tie broken.
+A tile no `--source-region` claims - no polygon given at all, or a centre
+that falls in nobody's polygon - falls back to first-source-wins, the same
+convention `compare_shards.py`'s own overlap merge already uses.
+
+This is still "wrong" at the exact seam in the sense BASEMAP.md's #248
+already named: each shard saw only its own side of a boundary tile, so
+whichever shard's polygon claims it is still rendering half a tile's worth
+of context truncated at its own edge. What centre-containment buys over
+first-source-wins is that the half kept is *predictable* - the shard whose
+ground the tile centre actually sits on - rather than an accident of
+argument order. BASEMAP.md's 2026-08-06 decision already accepted this class
+of seam drift for the *build* comparison (compare_shards.py); this is the
+same acceptance applied to *extraction*, not a new concession.
 """
 
 import argparse
 import json
+from contextlib import ExitStack
+from heapq import merge as heap_merge
+from itertools import groupby
 from pathlib import Path
 
 from pmtiles.reader import Reader, all_tiles
 from pmtiles.tile import deserialize_header, zxy_to_tileid
 from pmtiles.writer import write
 from pyproj import Transformer
-from shapely.geometry import box, shape
+from shapely.geometry import Point, box, shape
 from shapely.ops import transform
 from shapely.prepared import prep
 
@@ -94,6 +136,87 @@ def tiles_intersecting(region_merc, min_zoom: int, max_zoom: int) -> dict[int, l
     return hits
 
 
+def tile_center_merc(z: int, x: int, y: int) -> tuple[float, float]:
+    """EPSG:3857 centre point of tile (z, x, y), for the seam-tile rule below."""
+    minx, miny, maxx, maxy = tile_bounds_merc(z, x, y)
+    return (minx + maxx) / 2, (miny + maxy) / 2
+
+
+def choose_seam_winner(
+    tile: tuple[int, int, int],
+    candidates: list[tuple[int, bytes]],
+    source_polygons: dict[int, object],
+) -> bytes:
+    """Which source's bytes survive for one tile more than one source wrote.
+
+    `candidates` is `[(source_index, data), ...]` for the sources that
+    produced this tile, in `--source` order - one entry means no seam
+    question at all, and that is the overwhelming common case (a single
+    source, or a tile only one shard's ground reaches). `source_polygons`
+    maps a source's index to its prepared `--source-region` geometry in
+    EPSG:3857, present only for sources after the first (see the module
+    docstring's "#248" section for why the base source needs none).
+
+    First match wins, checked in `--source` order, so a tile whose centre
+    sits inside more than one polygon (an overlap the shards' own build
+    polygons drew, not merely the tile grid) still resolves to one answer
+    rather than an unordered set pick. A tile no polygon claims - because it
+    has none, or because the centre falls in the gap BASEMAP.md's #225 found
+    between imperfectly-adjacent shards - keeps the earliest candidate,
+    matching compare_shards.py's own first-wins convention for the same
+    finding."""
+    if len(candidates) == 1:
+        return candidates[0][1]
+    center = Point(*tile_center_merc(*tile))
+    for source_index, data in candidates:
+        polygon = source_polygons.get(source_index)
+        if polygon is not None and polygon.intersects(center):
+            return data
+    return candidates[0][1]
+
+
+def merged_tile_stream(source_getters: list, predicate):
+    """Every tile worth carrying into the package, once per tile id, across
+    every source - `((z, x, y), [(source_index, data), ...])` in the
+    archives' own tile-id order.
+
+    Grouped on the tile id itself (`zxy_to_tileid`) rather than the (z, x, y)
+    tuple, because that is the only key every source's stream is already
+    sorted on. BASEMAP.md records that PMTiles orders ids zoom-major; within
+    one zoom the id follows a Hilbert curve, not (x, y) order, so a source's
+    own all_tiles() stream is NOT sorted by the tuple - only by the id, which
+    is a pure function of (z, x, y) and therefore the same numbering in every
+    archive. `heapq.merge` needs each input sorted by whatever key it is
+    given; the id is the one that qualifies, which is why it is the key
+    rather than a convenience.
+
+    `predicate(z, x, y)` is the existing is-context-or-wanted test, applied
+    per source before the merge - so a tile no output would keep is dropped
+    at the cheapest point rather than carried through the merge only to be
+    discarded per source, which for a single source is exactly the loop this
+    replaces."""
+
+    # A nested function, not a generator expression built inline inside the
+    # list comprehension below: `source_index` has to be bound eagerly, per
+    # call, or every stream reports whichever index the comprehension's loop
+    # variable last held by the time anything actually reads from it - the
+    # tiles would still come from the right file (all_tiles(get_bytes) IS
+    # evaluated eagerly, being the genexpr's outermost iterable), but every
+    # candidate would carry the SAME source_index, and choose_seam_winner's
+    # tie-break reads that index to find a source's --source-region polygon.
+    def indexed(source_index, get_bytes):
+        return (
+            (zxy_to_tileid(z, x, y), (z, x, y), source_index, data)
+            for (z, x, y), data in all_tiles(get_bytes)
+            if predicate(z, x, y)
+        )
+
+    streams = [indexed(source_index, get_bytes) for source_index, get_bytes in enumerate(source_getters)]
+    for _tile_id, group in groupby(heap_merge(*streams, key=lambda item: item[0]), key=lambda item: item[0]):
+        items = list(group)
+        yield items[0][1], [(source_index, data) for _, _, source_index, data in items]
+
+
 def package_header(source_header: dict, region_4326, min_zoom: int) -> dict:
     """The package's header: the source's format facts (tile type and
     compression - the bytes are copied verbatim, so these MUST carry over),
@@ -141,29 +264,66 @@ DEFAULT_CONTEXT_ZOOM = 9
 
 
 def extract(
-    source_path: Path,
+    sources: list[Path],
     region_path: Path,
     out_path: Path,
     min_zoom: int | None,
     max_zoom: int | None,
     name: str,
     context_zoom: int | None = DEFAULT_CONTEXT_ZOOM,
+    source_regions: list[Path] | None = None,
 ):
+    """`sources` is one or more archives, in priority order. A single source
+    behaves exactly as this function always has; more than one is #248's
+    sharded-build cut (see the module docstring). `source_regions` pairs a
+    `--source-region` GeoJSON with every source AFTER THE FIRST, in the same
+    order - the polygon each of those sources' own build was clipped to,
+    which `choose_seam_winner` uses to settle a tile more than one source
+    wrote. Longer than `len(sources) - 1` is almost certainly a source and a
+    region talked past each other on the command line, so it is refused
+    rather than silently ignoring the extra entries."""
+    source_regions = source_regions or []
+    if len(source_regions) > len(sources) - 1:
+        raise SystemExit(
+            f"{len(source_regions)} --source-region given for only {len(sources)} --source "
+            f"archives (at most {len(sources) - 1} make sense: the first source is the base "
+            "and never needs one)."
+        )
+
     region = load_region(region_path)
     region_merc = to_mercator(region)
+    # Index 0 (the base source) is deliberately absent: it is the only
+    # source for its own zooms by construction, so no tile it produces is
+    # ever a candidate for a seam tie.
+    source_polygons = {i + 1: prep(to_mercator(load_region(p))) for i, p in enumerate(source_regions)}
 
-    with open(source_path, "rb") as f:
+    with ExitStack() as stack:
+        files = [stack.enter_context(open(source, "rb")) for source in sources]
 
-        def get_bytes(offset, length):
-            f.seek(offset)
-            return f.read(length)
+        def get_bytes_for(f):
+            def get_bytes(offset, length):
+                f.seek(offset)
+                return f.read(length)
 
-        source_header = deserialize_header(get_bytes(0, 127))
-        reader = Reader(get_bytes)
-        metadata = reader.metadata()
+            return get_bytes
 
-        lo = source_header["min_zoom"] if min_zoom is None else min_zoom
-        hi = source_header["max_zoom"] if max_zoom is None else max_zoom
+        source_getters = [get_bytes_for(f) for f in files]
+        headers = [deserialize_header(get_bytes(0, 127)) for get_bytes in source_getters]
+        base_header = headers[0]
+        # Bytes are copied verbatim across every source below - never
+        # decompressed, never re-encoded - so a mismatch here would silently
+        # mix incompatible tiles into one archive rather than fail loudly.
+        for source, header in zip(sources[1:], headers[1:], strict=True):
+            if header["tile_type"] != base_header["tile_type"] or header["tile_compression"] != base_header["tile_compression"]:
+                raise SystemExit(
+                    f"{source} has tile_type/tile_compression {header['tile_type']}/{header['tile_compression']}, "
+                    f"but {sources[0]} has {base_header['tile_type']}/{base_header['tile_compression']} - "
+                    "sources must be built the same way to be cut together."
+                )
+        metadata = Reader(source_getters[0]).metadata()
+
+        lo = min(h["min_zoom"] for h in headers) if min_zoom is None else min_zoom
+        hi = max(h["max_zoom"] for h in headers) if max_zoom is None else max_zoom
         # Zooms at or under this take every source tile; the region walk only
         # has to answer for the zooms above it.
         context = min(context_zoom, hi) if context_zoom is not None else lo - 1
@@ -176,11 +336,15 @@ def extract(
             hits = {}
         wanted = {(z, x, y) for z, tiles in hits.items() for x, y in tiles}
 
-        # One streaming pass over the source rather than one Reader.get() per
+        def keep(z, x, y):
+            return lo <= z <= context or (z, x, y) in wanted
+
+        # One streaming pass per source rather than one Reader.get() per
         # wanted tile: get() re-reads and re-parses the directory tree on
         # every call, which at package scale (~10^5 tiles) turns minutes into
         # hours. all_tiles() walks each directory exactly once, in tile-id
-        # order - which also keeps the output clustered for free.
+        # order - which also keeps the output clustered for free, and is what
+        # makes merged_tile_stream's k-way merge valid across sources.
         # Written to a temp name and renamed into place only after finalize
         # (#659): the wrong-region guard below raises inside the writer's
         # context, and doing that directly on out_path left a truncated
@@ -192,12 +356,12 @@ def extract(
         context_written = 0
         try:
             with write(str(tmp_path)) as writer:
-                for (z, x, y), data in all_tiles(get_bytes):
+                for (z, x, y), candidates in merged_tile_stream(source_getters, keep):
+                    data = choose_seam_winner((z, x, y), candidates, source_polygons)
                     is_context = lo <= z <= context
-                    if is_context or (z, x, y) in wanted:
-                        writer.write_tile(zxy_to_tileid(z, x, y), data)
-                        written += 1
-                        context_written += is_context
+                    writer.write_tile(zxy_to_tileid(z, x, y), data)
+                    written += 1
+                    context_written += is_context
                 # The guard asks about REGION tiles, not the total: context tiles
                 # come from the source's own footprint and arrive for any region
                 # whatsoever, so a wrong region file with context on would
@@ -205,35 +369,53 @@ def extract(
                 region_written = written - context_written
                 if written == 0 or (region_lo <= hi and region_written == 0):
                     raise SystemExit("Region intersects no tiles in the source archive - wrong region file, or wrong source?")
-                writer.finalize(package_header(source_header, region, lo), {**metadata, "name": name})
+                writer.finalize(package_header(base_header, region, lo), {**metadata, "name": name})
         except BaseException:
             tmp_path.unlink(missing_ok=True)
             raise
         tmp_path.replace(out_path)
 
-    # A region tile absent from the source is normal, not an error: the
-    # source was itself clipped (ocean, sparse low zooms), and PMTiles has no
-    # empty-tile entries - so absence is reported, never failed on.
+    # A region tile absent from every source is normal, not an error: the
+    # sources were themselves clipped (ocean, sparse low zooms), and PMTiles
+    # has no empty-tile entries - so absence is reported, never failed on.
     print(
         f"{written} tiles written ({context_written} source-wide context tiles through z{context}), "
-        f"{len(wanted) - (written - context_written)} region tiles absent from source"
+        f"{len(wanted) - (written - context_written)} region tiles absent from every source"
     )
-    print(f"Source: {source_path.stat().st_size / 1e6:.1f} MB -> package: {out_path.stat().st_size / 1e6:.1f} MB")
+    source_bytes = sum(source.stat().st_size for source in sources)
+    print(f"Source(s): {source_bytes / 1e6:.1f} MB -> package: {out_path.stat().st_size / 1e6:.1f} MB")
 
 
 def main(args: argparse.Namespace):
     context_zoom = None if args.context_zoom < 0 else args.context_zoom
-    extract(args.source, args.region, args.out, args.min_zoom, args.max_zoom, args.name, context_zoom)
+    extract(args.source, args.region, args.out, args.min_zoom, args.max_zoom, args.name, context_zoom, args.source_region)
     report_archive(args.out)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("source", type=Path, help="The built archive to cut from (export_basemap.py's output)")
+    parser.add_argument(
+        "source",
+        type=Path,
+        nargs="+",
+        help="The built archive to cut from (export_basemap.py's output). More than one, in priority order, cuts "
+        "from a sharded build (#248) - a national low-zoom archive followed by one or more regional high-zoom "
+        "shards; pair each one after the first with a --source-region.",
+    )
     parser.add_argument("--region", type=Path, required=True, help="GeoJSON polygon to cut (e.g. basemap_region.geojson)")
+    parser.add_argument(
+        "--source-region",
+        type=Path,
+        action="append",
+        default=[],
+        help="The build polygon each `source` AFTER THE FIRST was clipped to, in the same order as `source`. "
+        "Breaks ties where more than one source provides the same tile (#248): the source whose polygon "
+        "contains the tile's centre wins, and a tile no polygon claims falls back to first-source-wins. "
+        "Irrelevant with a single source.",
+    )
     parser.add_argument("--out", type=Path, required=True, help="Output package .pmtiles path")
-    parser.add_argument("--min-zoom", type=int, default=None, help="Default: the source archive's own min zoom")
-    parser.add_argument("--max-zoom", type=int, default=None, help="Default: the source archive's own max zoom")
+    parser.add_argument("--min-zoom", type=int, default=None, help="Default: the lowest min zoom among the source archives")
+    parser.add_argument("--max-zoom", type=int, default=None, help="Default: the highest max zoom among the source archives")
     parser.add_argument(
         "--context-zoom",
         type=int,

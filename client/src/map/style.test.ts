@@ -30,7 +30,6 @@ import {
   TRAIL_CASING_UNTAKEN_LAYER_ID,
   TRAIL_CASING_LAYER_IDS,
   TAPPABLE_BLAZE_LAYER_IDS,
-  TRAIL_LINE_LAYER_IDS,
   NEARBY_BLAZE_UNTAKEN_LAYER_ID,
   NEARBY_TRAIL_CASING_UNTAKEN_LAYER_ID,
   NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
@@ -80,6 +79,7 @@ import {
   plainRedActive,
   plainLineColor,
   contextDashExpression,
+  solidDashExpression,
   blazeDashArray,
   blazeWidthExpressionFor,
   casingVisibility,
@@ -367,11 +367,35 @@ describe('buildMapStyle', () => {
     // The closure overlay is excluded and is the exception WIREFRAMES.md §3
     // states: the barrier tape is a barrier drawn over the trail, not the
     // trail - and the test below pins it patterned.
-    for (const id of TRAIL_LINE_LAYER_IDS) {
-      expect(
-        (layer(id).paint as Record<string, unknown>)['line-dasharray'],
-        id,
-      ).toBeUndefined()
+    //
+    // Solid is SOLID_DASH on every feature of a blaze layer rather than no
+    // dasharray at all (#1698): a switch that took the per-feature dash
+    // away drew every trail grey. So a casing carries none, and a blaze
+    // layer's dash is asked of the engine, for a through-route's feature and
+    // for a context trail's.
+    const built = style()
+    const painted = (id: string) =>
+      built.layers.find((l) => l.id === id)?.paint as Record<string, unknown> | undefined
+    for (const id of TRAIL_CASING_LAYER_IDS) {
+      expect(painted(id)?.['line-dasharray'], id).toBeUndefined()
+    }
+    for (const id of BLAZE_LINE_LAYER_IDS) {
+      // Parsed with the property's root key, so the engine type-checks it as
+      // an array of numbers; paintFor passes no root key, and would accept
+      // ['1000', '0'] and stringify it to the same thing.
+      const compiled = createExpression(
+        painted(id)?.['line-dasharray'] as never,
+        'paint.line-dasharray',
+        latest.paint_line['line-dasharray'] as never,
+      )
+      if (compiled.result === 'error')
+        throw new Error(`line-dasharray on ${id} is not valid`)
+      for (const source of ['centerline', 'oprhp_trails']) {
+        const dash = compiled.value.evaluate({ zoom: 12 }, {
+          properties: { source },
+        } as never)
+        expect([...(dash as number[])], `${id} / ${source}`).toEqual([...SOLID_DASH])
+      }
     }
     for (const id of [TRAIL_CASING_LAYER_ID, BLAZE_LAYER_ID]) {
       expect((layer(id) as { filter?: unknown }).filter).toEqual(chosenSystemFilter())
@@ -2137,9 +2161,15 @@ describe('the network overview and the nearby network split like the trail sourc
     )
     const untaken = layer(NETWORK_OVERVIEW_UNTAKEN_LAYER_ID)
     const taken = layer(NETWORK_OVERVIEW_LAYER_ID)
-    // Solid on both halves since 2026-09-10; the halves differ in filter
-    // alone here, since the sketch's taper is one expression either side.
-    expect((untaken.paint as Record<string, unknown>)['line-dasharray']).toBeUndefined()
+    // Solid on both halves since 2026-09-10 - SOLID_DASH per feature since
+    // #1698 - and the halves differ in filter alone here, since the dash and
+    // the sketch's taper are one expression each either side.
+    expect((untaken.paint as Record<string, unknown>)['line-dasharray']).toEqual(
+      solidDashExpression(),
+    )
+    expect((untaken.paint as Record<string, unknown>)['line-dasharray']).toEqual(
+      (taken.paint as Record<string, unknown>)['line-dasharray'],
+    )
     expect((untaken.paint as Record<string, unknown>)['line-width']).toEqual(
       (taken.paint as Record<string, unknown>)['line-width'],
     )
@@ -2205,11 +2235,12 @@ describe('nothing taken (#1306)', () => {
 
   it("draws the A.T.'s own sketch solid whether or not it is taken", () => {
     // It was dotted while untaken until 2026-09-10, to match the real line
-    // it stands in for; that line is solid now, and so is this.
+    // it stands in for; that line is solid now, and so is this - spelled as
+    // SOLID_DASH per feature rather than as no dash (#1698).
     for (const built of [untaken, taken]) {
-      expect(
-        layerIn(built, TRAIL_OVERVIEW_LAYER_ID)?.paint?.['line-dasharray'],
-      ).toBeUndefined()
+      expect(layerIn(built, TRAIL_OVERVIEW_LAYER_ID)?.paint?.['line-dasharray']).toEqual(
+        solidDashExpression(),
+      )
     }
   })
 
@@ -2685,7 +2716,7 @@ describe('one red line for every trail while blaze colours are off (#1575)', () 
         } = (other.paint ?? {}) as Record<string, unknown>
         expect(redInk, layer.id).toEqual(plainLineColor({ theme: 'light' }))
         expect(hueInk, layer.id).not.toEqual(redInk)
-        expect(hueDash, layer.id).toBeUndefined()
+        expect(hueDash, layer.id).toEqual(solidDashExpression())
         expect(redDash, layer.id).toEqual(contextDashExpression())
         // The width moves on the layers whose tier the mode changes; the
         // A.T.'s sketch and the shared halves keep theirs.
@@ -2750,8 +2781,8 @@ describe('one red line for every trail while blaze colours are off (#1575)', () 
     }
 
     // Back on is a true restore: every layer takes exactly what buildMapStyle
-    // spells for it, the sketches' dark ink included, no dash, and every
-    // casing shown again.
+    // spells for it, the sketches' dark ink included, the dash solid on
+    // every feature (never absent - #1698), and every casing shown again.
     attachMapAppearance(m as never, { theme: 'light', blazeColorsShown: true })
     for (const id of BLAZE_LINE_LAYER_IDS) {
       expect(m.paintProperties.get(`${id}/line-color`), id).toEqual(
@@ -2759,7 +2790,9 @@ describe('one red line for every trail while blaze colours are off (#1575)', () 
           ? sketchLineColor({ theme: 'light' })
           : blazeLineColor({ theme: 'light' }, !DARK_INKED_BLAZE_LAYER_IDS.includes(id)),
       )
-      expect(m.paintProperties.get(`${id}/line-dasharray`), id).toBeUndefined()
+      expect(m.paintProperties.get(`${id}/line-dasharray`), id).toEqual(
+        solidDashExpression(),
+      )
       const width = blazeWidthExpressionFor(id, { theme: 'light' })
       if (width !== undefined) {
         expect(m.paintProperties.get(`${id}/line-width`), id).toEqual(width)
@@ -2790,6 +2823,7 @@ describe('the default sheet: light dashed context trails, plain solid through-ro
     const found = built.layers.find((l) => l.id === id)
     const compiled = createExpression(
       (found?.paint as Record<string, unknown>)['line-dasharray'] as never,
+      'paint.line-dasharray',
       dashSpec as never,
     )
     if (compiled.result === 'error')
@@ -2833,7 +2867,10 @@ describe('the default sheet: light dashed context trails, plain solid through-ro
     }
     expect(CONTEXT_TRAIL_WIDTH_SCALE).toBe(0.8)
     expect(CONTEXT_TRAIL_DASH).toEqual([3, 2.5])
-    expect(SOLID_DASH).toEqual([1, 0])
+    // Long, not [1, 0]: a round-capped dash pinches the line's edges once a
+    // pattern, and at one width a pattern that took a tenth of a thin
+    // line's ink (#1700; SOLID_DASH has the measurement).
+    expect(SOLID_DASH).toEqual([1000, 0])
   })
 
   it('draws the same dash at every zoom, on every blaze layer, both kinds of line', () => {
@@ -2900,7 +2937,7 @@ describe('the default sheet: light dashed context trails, plain solid through-ro
     const built = buildMapStyle({ ...LIVE, blazeColorsShown: false })
     expect(validateStyleMin(built, latest)).toEqual([])
     expect(blazeDashArray(OFF)).toEqual(contextDashExpression())
-    expect(blazeDashArray({ theme: 'light' })).toBeUndefined()
+    expect(blazeDashArray({ theme: 'light' })).toEqual(solidDashExpression())
     for (const id of BLAZE_LINE_LAYER_IDS) {
       expect(dashFor(built, id, { source: 'centerline' }), id).toEqual([...SOLID_DASH])
       expect(dashFor(built, id, { source: LONG_PATH_SOURCE }), id).toEqual([
@@ -2986,14 +3023,16 @@ describe('the default sheet: light dashed context trails, plain solid through-ro
       expect(layoutOf(red, id).visibility, id).toBe('none')
       expect(layoutOf(redLight, id).visibility, id).toBe('visible')
     }
-    // Red light draws no dash either: one hue, solid, cased, as before.
+    // Red light dashes nothing either: one hue, solid, cased, as before -
+    // with the solid spelled per feature, since red light coming on from the
+    // default is the same change of kind that drew the grey (#1698).
     for (const id of BLAZE_LINE_LAYER_IDS) {
       expect(
         (redLight.layers.find((l) => l.id === id)?.paint as Record<string, unknown>)[
           'line-dasharray'
         ],
         id,
-      ).toBeUndefined()
+      ).toEqual(solidDashExpression())
     }
   })
 })

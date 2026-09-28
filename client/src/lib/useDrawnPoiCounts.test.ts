@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
-import { SETTLE_MS, useDrawnPoiCounts } from './useDrawnPoiCounts'
+import { useDrawnPoiCounts } from './useDrawnPoiCounts'
+import { SETTLE_MS } from '../map/settle'
 import {
   POI_ID_PROPERTY,
   POI_LAYER_ID,

@@ -10,8 +10,11 @@
 // sentence, for the same reason.
 //
 // SHAPED ON map/drawnPois.ts, TRAPS INCLUDED. `queryRenderedFeatures`
-// answers for the LAST RENDERED FRAME, so this recomputes on `idle` (and on
-// `moveend`, for a quick first answer while tiles are still landing). And a
+// answers for the LAST RENDERED FRAME, so this recomputes when the map
+// settles - map/settle.ts's rule, `idle` or 300 ms without a frame, because
+// `idle` alone never came while one basemap tile hung and left the list and
+// the badges empty (#1696) - and on `moveend`, for a quick first answer while
+// tiles are still landing. And a
 // GeoJSON source is tiled internally, so one trail crossing a tile boundary
 // comes back once per tile, with its geometry clipped to each: the A.T.
 // across a z12 screen is three or four pieces. Deduplicated by NAME rather
@@ -81,6 +84,7 @@ import { ATC_UPDATE_POINT_LAYER_ID } from '../lib/atcUpdateStyle'
 import { displayTrailName } from '../lib/trails'
 import { CHOSEN_SYSTEM_SOURCES } from './nearbyTrails'
 import { POI_LAYER_ID } from './poiLayers'
+import { onSettled } from './settle'
 import { TAPPABLE_BLAZE_LAYER_IDS } from './style'
 import { whenStyleReady } from './styleReady'
 import {
@@ -838,9 +842,10 @@ export function badgeFeatures(trails: readonly TrailInView[]): GeoJSON.FeatureCo
  * Keeps the badge source and the caller current with the camera, and
  * returns a detach.
  *
- * Writes only on change: `idle` fires after every render, including the one
- * a `setData` here causes, so an unconditional write would chase its own
- * tail. Compared as the serialised list, which is what both consumers read.
+ * Writes only on change: the map settles again after every render,
+ * including the one a `setData` here causes, so an unconditional write would
+ * chase its own tail. Compared as the serialised list, which is what both
+ * consumers read.
  */
 export function attachTrailsInView(
   map: TrailsInViewMap,
@@ -849,7 +854,7 @@ export function attachTrailsInView(
   chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
 ): () => void {
   let last = ''
-  let listening = false
+  let stopSettling: (() => void) | null = null
 
   const update = () => {
     const trails = trailsInView(map, insets, chosen)
@@ -868,18 +873,17 @@ export function attachTrailsInView(
     map,
     () => map.getSource(TRAIL_BADGE_SOURCE_ID) !== undefined,
     () => {
-      listening = true
       update()
       map.on('moveend', update)
-      map.on('idle', update)
+      stopSettling = onSettled(map, update)
     },
     'Trail badges',
   )
 
   return () => {
     stopWaiting()
-    if (!listening) return
+    if (stopSettling === null) return
     map.off('moveend', update)
-    map.off('idle', update)
+    stopSettling()
   }
 }

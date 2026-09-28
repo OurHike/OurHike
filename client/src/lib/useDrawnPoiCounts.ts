@@ -24,9 +24,8 @@
 // So two things changed:
 //
 //  - The map counts as settled when it has drawn no frame for SETTLE_MS, as
-//    well as on `idle`. That is the question the count actually asks - is the
-//    frame on screen the one the map will keep showing - and it does not
-//    depend on a tile that may never arrive.
+//    well as on `idle`. That rule lives in map/settle.ts now, shared with
+//    map/trailsInView.ts, which had the same stuck reading (#1696).
 //  - A count is only published when it could be true: the pin layer is in the
 //    style, the waypoint source has loaded, and the pin artwork is
 //    registered. Before that the answer is unmeasured, which shows no chip,
@@ -38,23 +37,7 @@ import { drawsNearbyTrails } from '../map/drawnBlazes'
 import { CHOSEN_SYSTEM_SOURCES } from '../map/nearbyTrails'
 import { POI_LAYER_ID, POI_PIN_MIN_ZOOM, POI_SOURCE_ID } from '../map/poiLayers'
 import { poiIconId } from '../map/poiIcons'
-
-/**
- * How long the map has to go without drawing a frame before the frame on
- * screen counts as settled, in milliseconds.
- *
- * Reasoned rather than measured: MapLibre draws a frame about every 16 ms
- * while anything is moving or fading, and its symbol fade - the one animation
- * that runs after the camera stops, while new pins are placed - is 300 ms by
- * default, so a silence as long as a whole fade is not a gap between frames.
- *
- * @unvalidated on a slow phone. A device drawing a frame every 300 ms or more
- * while still busy would be measured mid-settle; the next quiet spell measures
- * again, so the cost is a count that is briefly one frame stale, never a
- * count that sticks. What would settle it: the longest gap between `render`
- * events during a pan on the slowest phone this app supports.
- */
-export const SETTLE_MS = 300
+import { onSettled } from '../map/settle'
 
 /** Any one pin image, as the sign that pin artwork has arrived at all: the
  *  pins are registered together in one pass (poiLayers.ts's attachPoiIcons),
@@ -143,25 +126,11 @@ export function useDrawnPoiCounts(
         ghostedTrailsDrawn: drawsNearbyTrails(map, chosen),
       })
 
-    // The quiet-spell half of "settled". Each frame only pushes the timer
-    // back, so a pan is one measurement after it ends, not one per frame.
-    let settle: ReturnType<typeof setTimeout> | undefined
-    const onRender = () => {
-      clearTimeout(settle)
-      settle = setTimeout(measure, SETTLE_MS)
-    }
-
     // Once up front: the map may already be settled by the time this runs,
     // and waiting for the next frame would leave the panel unmeasured until
     // the hiker happened to move.
     measure()
-    map.on('idle', measure)
-    map.on('render', onRender)
-    return () => {
-      clearTimeout(settle)
-      map.off('idle', measure)
-      map.off('render', onRender)
-    }
+    return onSettled(map, measure)
   }, [map, chosen])
 
   return drawn

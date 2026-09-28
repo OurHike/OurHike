@@ -1,13 +1,15 @@
 import { describe, it, expect } from 'vitest'
 import { POI_TYPES } from '../lib/config'
-import { CLOSURE_COLOR } from '../lib/closureStyle'
+import { CLOSURE_COLOR, CLOSURE_INK } from '../lib/closureStyle'
 import { WORKDAY_COLOR } from './workdayPin'
 import { SITE_ANCHOR_TYPES, SITE_MEMBER_TYPES } from './poiSites'
 import { LOUD_POI_TYPES } from './poiPriority'
 import {
   badgeCenters,
+  buildClosedTrailheadIcon,
   buildPoiIcon,
   buildPoiIcons,
+  CLOSED_TRAILHEAD_ICON_ID,
   parseHex,
   poiColor,
   poiGlyphPath,
@@ -407,7 +409,9 @@ describe('buildPoiIcons', () => {
     // sum rather than as 46, so adding a POI type or a member category moves
     // this by construction instead of by someone remembering to.
     const sited = SITE_ANCHOR_TYPES.length * 2 * (2 ** SITE_MEMBER_TYPES.length - 1)
-    expect(ids).toHaveLength(ALL_TYPES.length * 2 + sited)
+    // Plus the one closed trailhead (#1695), which is one image for both
+    // confidences.
+    expect(ids).toHaveLength(ALL_TYPES.length * 2 + sited + 1)
     for (const type of ALL_TYPES) {
       expect(ids).toContain(poiIconId(type, 'high'))
       expect(ids).toContain(poiIconId(type, 'low'))
@@ -626,6 +630,34 @@ describe('buildPoiIcons', () => {
     // biggest thing on the map. A water pin drawn larger, or merely drawn the
     // same, would outshout the one thing here that must never be outshouted.
     expect(POI_PIN_SIZE).toBeLessThan(44)
+  })
+})
+
+describe('the closed trailhead (#1695)', () => {
+  // The maintainer's pick of 2026-09-28: the waypoint pin's size and shape,
+  // in the closure's ink, with a white cross for the signpost.
+  const image = buildClosedTrailheadIcon()
+  const colours = new Set<string>()
+  for (let i = 0; i < image.data.length; i += 4) {
+    if (image.data[i + 3] === 255)
+      colours.add(`${image.data[i]},${image.data[i + 1]},${image.data[i + 2]}`)
+  }
+  const hex = (value: string) => parseHex(value).join(',')
+
+  it('is registered, once, whichever confidence', () => {
+    const ids = buildPoiIcons().map((icon) => icon.id)
+    expect(ids.filter((id) => id === CLOSED_TRAILHEAD_ICON_ID)).toHaveLength(1)
+  })
+
+  it('is the ordinary waypoint pin\u2019s size', () => {
+    const plain = buildPoiIcon('trailhead', 'high')
+    expect([image.width, image.height]).toEqual([plain.width, plain.height])
+  })
+
+  it('is inked in the closure ink and white, and none of the trailhead\u2019s purple', () => {
+    expect(colours.has(hex(CLOSURE_INK))).toBe(true)
+    expect(colours.has(hex(PIN_HALO_COLOR))).toBe(true)
+    expect(colours.has(hex(poiColor('trailhead')))).toBe(false)
   })
 })
 

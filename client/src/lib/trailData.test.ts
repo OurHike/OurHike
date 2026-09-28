@@ -557,6 +557,40 @@ describe('trail data', () => {
     expect(pois[0].siteName).toBe('Mt. Algo Shelter')
   })
 
+  // #1695: pipeline/export_nearby_poi.py marks a trailhead whose every trail
+  // line within its radius is closed, and publishes that radius as the
+  // value. Only a positive number of metres on a trailhead counts, because
+  // the map draws it as a cross and the card prints the number.
+  it('reads the radius a closed trailhead was computed with, and nothing else as one', async () => {
+    const at = (id: string, poi_type: string, trails_closed_within_m: unknown) => ({
+      id,
+      poi_type,
+      name: id,
+      lat: 41.4,
+      lon: -73.9,
+      confidence: 'low',
+      trails_closed_within_m,
+    })
+    serve(
+      poiCollection([
+        at('closed', 'trailhead', 100),
+        at('wider', 'trailhead', 150),
+        at('stringly', 'trailhead', '100'),
+        at('boolean', 'trailhead', true),
+        at('zero', 'trailhead', 0),
+        at('parking', 'parking', 100),
+      ]),
+    )
+    await downloadTrailData()
+
+    const byId = new Map((store.get(POIS_KEY) as StoredPoi[]).map((poi) => [poi.id, poi]))
+    expect(byId.get('closed')?.trailsClosedWithinM).toBe(100)
+    expect(byId.get('wider')?.trailsClosedWithinM).toBe(150)
+    for (const id of ['stringly', 'boolean', 'zero', 'parking']) {
+      expect(byId.get(id)?.trailsClosedWithinM).toBeUndefined()
+    }
+  })
+
   // The anchor's nearby parts (#614, #625). Published as JSON rather than as
   // the finished sentence it used to be, which is the whole of the fix: prose
   // composed in the pipeline cannot be in the units a hiker picks afterwards.

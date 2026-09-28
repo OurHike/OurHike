@@ -31,6 +31,7 @@
 // the workday pin - keeps the broken rim, and neither ever draws one.
 
 import { POI_TYPES, type PoiType } from '../lib/config'
+import { CLOSURE_INK } from '../lib/closureStyle'
 import { LOUD_POI_TYPES } from './poiPriority'
 import { SITE_ANCHOR_TYPES, SITE_MEMBER_TYPES } from './poiSites'
 
@@ -1014,6 +1015,59 @@ export function buildPoiIcon(
 }
 
 /**
+ * The image a trailhead whose trails are all closed is drawn with (#1695).
+ * One id for both confidences: the pin says "closed" in the closure's ink, and
+ * a broken rim round it would be a second claim a hiker has to parse at a
+ * glance. The card still says, in words, when the trailhead is unverified.
+ */
+export const CLOSED_TRAILHEAD_ICON_ID = 'poi-trailhead-closed'
+
+/**
+ * A cross as ONE ring: a plus sign rotated 45 degrees, in the glyph's 0-1 box.
+ * One ring rather than two bars because {@link insideGlyph} fills by even-odd
+ * crossing count, and two overlapping bars would cancel where they cross,
+ * leaving a hole in the middle of the cross.
+ */
+export const CLOSED_GLYPH: Glyph = (() => {
+  const arm = 0.47
+  const half = 0.13
+  const plus: Point[] = [
+    [half, arm],
+    [half, half],
+    [arm, half],
+    [arm, -half],
+    [half, -half],
+    [half, -arm],
+    [-half, -arm],
+    [-half, -half],
+    [-arm, -half],
+    [-arm, half],
+    [-half, half],
+    [-half, arm],
+  ]
+  const c = Math.SQRT1_2
+  return [plus.map(([x, y]): Point => [0.5 + (x - y) * c, 0.5 + (x + y) * c])]
+})()
+
+/**
+ * A trailhead whose every trail within 100 m is closed (#1695): the ordinary
+ * waypoint pin's size and shape, filled with the closure's ink
+ * (lib/closureStyle.ts's CLOSURE_INK), with a white cross where the signpost
+ * was. The maintainer's pick of 2026-09-28, from three drawn over Storm King
+ * on UA data: this, the trailhead's own purple with a cross, and the
+ * closure's bare cross with no pin.
+ */
+export function buildClosedTrailheadIcon(): PoiIconImage {
+  return buildSlimPinImage({
+    sizePx: POI_PIN_SIZE,
+    inkPx: POI_PIN_INK_SIZE,
+    pixelRatio: POI_PIN_PIXEL_RATIO,
+    glyph: CLOSED_GLYPH,
+    inks: { fill: CLOSURE_INK, ring: null, ringWidth: null, glyph: PIN_HALO_COLOR },
+  })
+}
+
+/**
  * Every member combination a site pin can carry, as the style will ask for it.
  *
  * The non-empty subsets of SITE_MEMBER_TYPES in that array's own order, which is
@@ -1085,6 +1139,13 @@ export function buildPoiIcons(): RegisteredPoiIcon[] {
     ),
   )
 
-  cachedPoiIcons = [...plain, ...sited]
+  // The closed trailhead (#1695): one image, whichever confidence.
+  const closed = {
+    id: CLOSED_TRAILHEAD_ICON_ID,
+    image: buildClosedTrailheadIcon(),
+    pixelRatio: POI_PIN_PIXEL_RATIO,
+  }
+
+  cachedPoiIcons = [...plain, ...sited, closed]
   return cachedPoiIcons
 }

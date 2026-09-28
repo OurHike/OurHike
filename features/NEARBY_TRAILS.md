@@ -220,6 +220,14 @@ closure's says its reason and reporting date as today (ClosureSheet). `Proposed`
 blank/Unknown (24) segments do not ship at all — a proposed trail is not ground, and an
 unknown status drawn as walkable is a guess (omit rather than guess).
 
+**A trailhead is crossed out when every trail in reach is** (2026-09-28,
+[#1695 — Draw a trailhead whose trails are all closed with a ✕](https://github.com/OurHike/OurHike/issues/1695)).
+`export_nearby_poi.mark_closed_trailheads` reads this section's `trail_status` back off
+`nearby_trails.geojson`. It flags a trailhead `trails_closed_within_m` when every line within
+`TRAILHEAD_TRAIL_RADIUS_M` (100 m) is closed and there is at least one. The A.T.'s raw
+lines count as open, and both kinds of closure count the same. WIREFRAMES.md §7 has the
+pin, the maintainer's choice and the caveat. The radius table lives on the constant.
+
 ## 4. Blazes beyond seven — the palette grows, under governance
 
 The maintainer's decision, verbatim: _"we will need to bring in more colors for the blazes.

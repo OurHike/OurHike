@@ -27,23 +27,27 @@ Measured against the catalogue, 2026-09-17, across its 172 rows:
 | `load` verdict | rows | what it costs to load |
 | --- | ---: | --- |
 | `via` — geometry arrives through another row | 79 | **nothing.** No entry, no fetch, no bytes. |
-| `hold` — recorded, `reaches_hikers: false` | 39 | nothing. A row in a file. |
+| `hold` — recorded, `reaches_hikers: false` | 38 | nothing. A row in a file. |
 | `none` — no geometry exists, now or later | 25 | nothing. |
 | `refuse` — stated commercial or waiver-gated terms | 4 | nothing. |
-| `ship` — open terms and a usable endpoint | 25 | a fetch, a clip, and download budget |
+| `ship` — open terms and a usable endpoint | 26 | a fetch, a clip, and download budget |
 
-Of the 25 `ship` rows, **9 are already registered** — USFS, ATC, OpenStreetMap and NJDEP all have
-entries in `sources.json` today. So the work this whole catalogue produces is:
+Of the 26 `ship` rows, **9 are already registered** — USFS, ATC, OpenStreetMap, NJGIN, NYSDEC,
+NH GRANIT, Mohonk, NYC Parks and NYC DOT all have entries in `sources.json` today. So the work this
+whole catalogue produces is:
 
-> **11 new endpoints.**
+> **17 new endpoints.**
 >
 > National Park Service · Bureau of Land Management · Colorado COTREX · Washington RCO ·
 > Utah SGID · Wisconsin DNR · AZGeo · City of Duluth · Pacific Crest Trail Association ·
-> Continental Divide Trail Coalition · North Country Trail Association
+> Continental Divide Trail Coalition · North Country Trail Association · Alaska Trails ·
+> MassGIS · Connecticut DEEP · PASDA · NC Mountains-to-Sea · Tahoe Rim Trail Association
 
-Eight are public domain, one is CC BY 4.0, and two are published openly with no stated terms.
+Twelve are public domain, one states its own terms, and four are published openly with none stated.
+The last five arrived in the second probe round below and the figure moved with them; an earlier
+draft of this section said eleven and was left behind by its own evidence.
 
-**The 59 `via` rows are where the leverage is, and they are the reason a club-shaped form would have
+**The 79 `via` rows are where the leverage is, and they are the reason a club-shaped form would have
 produced 400 pull requests.** All 30 A.T. maintaining clubs consolidate into the ATC centerline this
 repository already fetches — the Maine Appalachian Trail Club publishes nothing, and its 267 miles
 are already on the map. Twenty-three National Historic Trail and National Scenic Trail stewards hold
@@ -51,7 +55,7 @@ no geometry and point at the National Park Service; **one NPS registration answe
 Trail and Arizona Trail resolve to USFS and AZGeo. Washington Trails Association and The Mountaineers
 both defer to WA RCO.
 
-A form that asks each organization for its endpoint gets 59 organizations inventing one, or 59
+A form that asks each organization for its endpoint gets 79 organizations inventing one, or 79
 organizations bouncing. A catalogue that lets a row say *"real organization, geometry lives there"*
 gets the same map for eleven fetches.
 
@@ -298,8 +302,8 @@ Duluth miles remain the only published portion anybody here has found and the ot
 gap. And NC OneMap's own recreation service holds only paddle trails, so looking there first would
 have confirmed the Mountains-to-Sea gap rather than closed it.
 
-**The load after both rounds: 103 organizations reachable, against 15 new fetches** — up from 74
-reachable when the catalogue was first written. `hold` fell from 58 to 40, and **every row that moved
+**The load after all four rounds: 105 organizations reachable, against 17 new fetches** — up from
+74 reachable when the catalogue was first written. `hold` fell from 58 to 40, and **every row that moved
 did so on a feature count anybody can re-run.**
 
 
@@ -393,19 +397,23 @@ repository — the reviewed artifact is the catalogue, and the run is what turns
 It prints the review table rather than a diff:
 
 ```
-163 nominations built, none reaching a hiker.
+172 nominations built, none reaching a hiker.
 
   verdict     orgs   what it costs to load
-  ship          15   a fetch, a clip and download budget
-  via           59   nothing - another row already carries it
-  hold          58   nothing - a row in a file
-  refuse         6   nothing - stated terms refuse it
+  ---------- -----   ----------------------------------------
+  ship          26   a fetch, a clip and download budget
+  via           79   nothing - another row already carries it
+  hold          38   nothing - a row in a file
+  refuse         4   nothing - stated terms refuse it
   none          25   nothing - no geometry exists
+
+  26 endpoints to register. Contacts collected: 0
+  Badged trails attached to an organization: 54 of 67.
 ```
 
 **Two gaps the run makes visible, and neither is filled with a guess.**
 
-- **Contacts: 0 of 163.** The form asks for a named human and a role address, and SOURCE_REGISTRY.md
+- **Contacts: 0 of 172.** The form asks for a named human and a role address, and SOURCE_REGISTRY.md
   makes a verified contact the thing that stops a broken layer going unnoticed. The research pass
   collected none. Every nomination carries an empty list and the reason, because 163 plausible
   coordinator names would be worse than none — they would be believed.
@@ -425,20 +433,26 @@ spurs off it. That document also says exactly how long that holds:
 > It answers it for exactly as long as that stays true: […] a second through-route on the map turns
 > the question width answers into "through-route or spur".
 
-The 11 new endpoints above are that second through-route arriving several times over. Width will
+The 16 new endpoints above are that second through-route arriving several times over. Width will
 still say *this is a through-route* and will no longer say *which*.
 
 **The client already has the mechanism, and it already has this gap written down.**
 `client/src/map/trailBadges.ts` draws one badge per through-route in view — mark, plate, name — and
 takes the mark from `BADGE_MARK_BY_SOURCE`, which has **two entries**: `centerline` (the A.T.) and
-`nynjtc_long_path` (the Long Path). Its own header says what happens to everything else — *"every
-other source falls through to the OurHike blaze chip in the trail's own blaze hue"* — and what would
-change that: *"When a `trail_id` arrives, `BADGE_MARK_BY_SOURCE` becomes a lookup against the
-registry and nothing else here changes."*
+`nynjtc_long_path` (the Long Path). Its own header says what happens to everything else — *"EVERY
+OTHER SOURCE DRAWS NO MARK AT ALL, and the badge is the plate and the name"* — and what would change
+that: *"When a `trail_id` arrives, `BADGE_MARK_BY_SOURCE` becomes a lookup against the registry and
+nothing else here changes."*
 
 [`pipeline/reference/trail_emblems.json`](../pipeline/reference/trail_emblems.json) is the list that
 tier grows to: **67 long-distance trails** — the 11 National Scenic Trails, 43 named regional long
-trails, and the 13 route-only trails — each with its steward and the blaze its chip takes.
+trails, and the 13 route-only trails — each with its steward and its blaze.
+
+**67 is a floor, not a census**, and the file says so rather than implying otherwise. The 172 org
+rows between them name trails this list does not carry: every National Historic Trail, CFPA's
+825-mile Connecticut Blue-Blazed system, and a long tail of state and club through-trails at or
+above the mileage of routes already here. Closing that is its own pass, and the load tiers above
+do not depend on it — a trail with no emblem row still reaches a hiker as a named line.
 
 ### What it does not contain
 
@@ -454,17 +468,59 @@ there, per organization, and nowhere else.** A later draft of the emblem file mi
 vocabulary per trail — 67 rows all saying the same thing, tracking nothing `org_marks` did not
 already track — and it is gone. One record, in one place.
 
-What a trail without a mark wears is **the blaze chip**, already built and already shipping: a fact
-about paint on a tree rather than something invented about an organization. The emblem file carries
-the trail, its steward and its blaze, and `test_no_trail_carries_a_drawn_emblem` keeps it from
-becoming a place somebody draws a mark from.
+What a trail without a mark wears is **nothing at all**. It wore a blaze chip until 2026-09-29 —
+an OurHike-drawn square in the trail's own hue, defended here as a fact about paint on a tree
+rather than something invented about an organization. That defence was wrong on its own terms: the
+chip sat in the mark's slot, and a generated shape in the slot where an identity goes is the exact
+thing `org_marks` forbids. `map/trailBadges.ts` now draws the plate and the name and leaves the
+slot empty, and the blaze reaches a hiker where it always did — on the line, and on the tapped
+trail's sheet. The emblem file still carries the trail, its steward and its blaze, and
+`test_no_trail_carries_a_drawn_emblem` still keeps it from becoming a place somebody draws a mark
+from.
+
+`pipeline/reference/trail_marks.json` is the other half: 35 steward marks found on the
+organisations' own sites, each measured at 18 px against the A.T.'s own ink, with the source URL
+for every one. No bytes ship with it, because 33 of the 35 have no recorded basis and
+`test_org_marks.py` requires one. It is what a grant turns into a shipped mark.
+
+## The fourth round: a wall on the website is not a wall on the data
+
+The first three rounds all asked an organization's WEBSITE what it published and took a refusal as
+an answer. Reviewing this pull request broke that assumption twice, and both breaks were things a
+hiker would have wanted.
+
+**The Tahoe Rim Trail Association was `hold` for the wrong reason.** Its shapefile, GPX and KMZ do
+sit behind an email form — that part was right — and the row concluded the data was out of reach.
+It is not: TRTA publishes a public ArcGIS web map on its own `trta.maps.arcgis.com` domain carrying
+the same centerline plus **126 water sources, 228 points of interest, 170 mile markers, 22
+trailheads and 6 campgrounds**, with no form in front of any of it. The row is now `ship`, and the
+correction is written into its `why` rather than quietly swapped.
+
+**PCTA's website blocks this session and its ArcGIS Online organization does not.** The 403 that
+stopped the PCT's mark from being fetched says nothing about its data: `PCTA_Admin` publishes
+**5,328 mile markers** openly. A mark and a dataset are two different asks of two different systems,
+and the earlier rounds ran them together.
+
+The same sweep found the Ice Age Trail Alliance publishing **80 live trail conditions** and **39
+dispersed camping areas** as feature services, and the Potomac Appalachian Trail Club — one of the
+30 A.T. maintaining clubs, and the only one publishing its own GIS — carrying **2,101 features**.
+All of it is in `trail_orgs.json`'s `_poi_layers_found` block with a count anybody can re-run, and
+the ArcGIS owner of every layer is named and listed in `_agol_accepted_owners`.
+
+**What this changes about the catalogue's shape.** Every count above is POINT data: shelters, water,
+parking, conditions. The load tiers in this document are about CENTERLINES, and they answer a
+different question from the one a hiker asks at four in the afternoon with two litres left. Nothing
+here proposes loading any of it — `licence_basis` still governs that — but the gap between what the
+A.T. gives a hiker and what every other trail gives them is now measured rather than assumed.
 
 ## What this plan deliberately does not do
 
-- **It does not fetch anything.** No endpoint here has been probed by this repository. Every
-  `verified` mark is the research pass's, and its own caveat is that `inferred` rows were never
-  opened. Re-validating federal service URLs before a production load is recommendation 5 of the
-  research and is pull request 2's job, not this one's.
+- **It does not fetch anything a hiker downloads.** It does probe: the three rounds below opened
+  every endpoint the research claimed, swept ArcGIS Online, and read all 46 steward websites for
+  `org_channels.json`. What none of that does is put a byte in a map package — no exporter runs, no
+  `sources.json` row flips `reaches_hikers`, and nothing here reaches a phone. An earlier draft of
+  this line said "No endpoint here has been probed by this repository", which was true when it was
+  written and stopped being true in the first probe round two sections up.
 - **It does not ship a single byte to a hiker.** See the four-pull-request table.
 - **It does not settle the corridor question.** #1231 is named, quantified and left open, because the
   answer is a maintainer's policy call about what a hiker downloads, not a data question.

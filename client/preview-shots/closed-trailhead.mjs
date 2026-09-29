@@ -13,18 +13,24 @@
 // 100 m of each is a short closed connector, while the park's trails further
 // out are open - which is the case to judge the rule on.
 //
-// THIS FRAME IS ONLY THE X ONCE THE DATA CARRIES IT. The pin reads
-// `trails_closed_within_m` off nearby_poi.geojson, which the bucket holds only after
-// publish-vector-data runs from a build with this change in it. Before that,
-// the camera finds an ordinary purple trailhead pin and a peek with no closed
-// line: a true picture of the data it was given, and the caption says both.
+// THIS FRAME IS ONLY THE X ONCE THE PINNED RELEASE CARRIES IT. The pin reads
+// `trails_closed_within_m` off nearby_poi.geojson, and nearby_poi.geojson is
+// read from the release folder DATA_RELEASE names (lib/dataRelease.ts), never
+// from the bucket's flat keys. A publish alone does not move that. UA's
+// publish-vector-data run #148 (2026-09-28, from the merge of #1705) wrote
+// the flag onto all four trailheads in UA's releases/2026-09-28/, while the
+// pin stayed at 2026-09-24-2, which carries none. The pin moves with a
+// release train, because the id must exist in both data environments. Until
+// then the camera finds an ordinary purple trailhead pin and a peek with no
+// closed line: a true picture of the data the build reads, and the caption
+// says both.
 //
 // Search reaches the trailhead by name, the same drive as
 // waypoint-quick-answers.mjs. No location fix, no account, nobody's reports.
 export const caption =
-  'Storm King State Park on a phone: the Wilkonson Memorial trailhead’s peek (#1695). Where the data carries trails_closed_within_m, the trailhead is a dark pin with a white x in place of the signpost, and the peek says “Every trail OurHike tracks within about 330 ft of this trailhead is marked closed.” Until publish-vector-data has run with this change, the same trailhead is an ordinary purple pin with no such line: the shot shows what the bucket holds.'
+  'Storm King State Park on a phone: the Wilkonson Memorial trailhead’s peek (#1695). Where the data carries trails_closed_within_m, the trailhead is a dark pin with a white x in place of the signpost, and the peek says “Every trail OurHike tracks within about 330 ft of this trailhead is marked closed.” Until DATA_RELEASE names a release carrying that field, the same trailhead is an ordinary purple pin with no such line: the shot shows what the pinned release holds.'
 export const alt =
-  'The map over Storm King State Park with a waypoint card open for the Wilkonson Memorial trailhead. Either its pin is dark with a white x and the card carries a boxed line saying every trail OurHike tracks within about 330 feet is marked closed; or, before the data is republished, it is an ordinary purple trailhead pin and card. Or, where this build has no waypoint data, the search panel reading “Nothing here by that name.”'
+  'The map over Storm King State Park with a waypoint card open for the Wilkonson Memorial trailhead. Either its pin is dark with a white x and the card carries a boxed line saying every trail OurHike tracks within about 330 feet is marked closed; or, while the pinned data release predates the field, it is an ordinary purple trailhead pin and card. Or, where this build has no waypoint data, the search panel reading “Nothing here by that name.”'
 
 /** Vector tiles and the network waypoints over a park at z15. */
 export const wait = 12000

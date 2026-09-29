@@ -12,9 +12,31 @@ refuses to upload a list that dropped anything, and
 tests/test_export_podcasts.py fails on the committed file for the same
 reason. A typo becomes a red pull request, not an episode that never shows.
 
-WHAT IS PUBLISHED, AND WHAT IS NOT. The id, title, show, length, the two
-anchors, and each other app's link for the episode (#1690). `note` and `reviewed` stay in the reference file: they are for the
-person reviewing the diff, and a phone has no use for either.
+WHAT IS PUBLISHED, AND WHAT IS NOT. The id, title, show, length, the three
+anchors, and each other app's link for the episode (#1690). `note`,
+`reviewed` and `places` stay in the reference file: they are for the person
+reviewing the diff, and a phone has no use for any of them.
+
+THE THIRD ANCHOR, THE PLACES AN EPISODE TALKS ABOUT (#1718 - Tag podcast
+episodes to the places they talk about). `pois` holds published POI ids and
+`places` the same POIs' names, in the same order, so a diff can be read
+without looking ids up - the shape reference/highlights.json's `anchors`
+block already has. Both are checked against reference/poi_identity.json, the
+ledger of every POI ever published: an id that was never published, or has
+been retired, costs the row, and so does a name that is not the ledger's
+name for that id. The exporter's rule for a mismatch is to drop, and a pull
+request that fails its test is the warning (#1718 leaves open whether a
+rename should only warn).
+
+WHAT THE GATE CANNOT CHECK: THE 500-MILE RULE. The maintainer, 2026-09-29:
+the places on one episode are at least 500 trail miles apart. The ledger
+holds coordinates and no trail mile, and a straight line cannot stand in
+for one: the trail winds, so a pair under 500 miles apart as the crow flies
+can be well over 500 on foot. Tumbling Run Shelter 1 and Kinsman Notch, both
+on "Give Me Shelter", are 413 miles apart in a straight line and 732 apart
+by export_poi.py's miles (measured 2026-09-29 against the Podcast desk's
+copy of them). The desk, which has those miles, enforces the rule where
+tags are made; a hand edit to the reference file is on its honour.
 
 NOTHING HERE CHECKS THAT A HIKE ID EXISTS. The suggested hikes are exported
 by the vector publish into a release folder this script never reads, so an id
@@ -26,6 +48,7 @@ from __future__ import annotations
 
 import datetime as dt
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
@@ -44,7 +67,9 @@ MAX_AT_MILE = 2300.0
 
 #: Every field a row may carry. Anything else is a misspelling of one of
 #: these, and a misspelt `at_miles` would silently anchor nothing.
-ROW_FIELDS = frozenset({"spotify_id", "title", "show", "minutes", "hikes", "at_miles", "links", "reviewed", "note"})
+ROW_FIELDS = frozenset(
+    {"spotify_id", "title", "show", "minutes", "hikes", "at_miles", "pois", "places", "links", "reviewed", "note"}
+)
 
 #: The other podcast apps a hiker can pick (#1690 - Let a hiker pick their
 #: podcast app once), and the hosts each app's own "copy link" hands out.
@@ -74,6 +99,8 @@ class Episode:
     at_miles: tuple[tuple[float, float], ...]
     #: App key -> that app's link for this episode, for the apps it has one in.
     links: tuple[tuple[str, str], ...] = ()
+    #: Published POI ids the episode talks about (#1718), in the list's order.
+    pois: tuple[str, ...] = ()
 
 
 @dataclass
@@ -124,6 +151,31 @@ def _ranges(value: object) -> tuple[tuple[tuple[float, float], ...], str | None]
     return tuple(ranges), None
 
 
+def _pois(pois: object, places: object, ledger: Mapping[str, dict] | None) -> tuple[tuple[str, ...], str | None]:
+    """The row's POI ids, each one live in the ledger under the name beside it."""
+    if pois is None and places is None:
+        return (), None
+    if not isinstance(pois, list) or not pois or not all(_text(item) for item in pois):
+        return (), f"pois must be a list of published POI ids, not {pois!r}"
+    if not isinstance(places, list) or len(places) != len(pois) or not all(_text(item) for item in places):
+        return (), "places must name each of pois, in the same order, so a diff can be read"
+    if len(set(pois)) != len(pois):
+        return (), "the same POI is listed twice in pois"
+    if ledger is None:
+        return (), "pois cannot be checked without the POI ledger (reference/poi_identity.json)"
+    for poi_id, name in zip(pois, places, strict=True):
+        known = ledger.get(poi_id)
+        if known is None:
+            return (), f"{poi_id} has never been a published POI"
+        if "retired" in known:
+            successor = known.get("superseded_by")
+            then = f"; it was superseded by {successor}" if successor else ""
+            return (), f"{poi_id} ({known.get('name')}) was retired on {known['retired']}{then}"
+        if known.get("name") != name.strip():
+            return (), f"{poi_id} is {known.get('name')!r} in the POI ledger, not {name.strip()!r}"
+    return tuple(item.strip() for item in pois), None
+
+
 def _links(value: object) -> tuple[tuple[tuple[str, str], ...], str | None]:
     if value is None:
         return (), None
@@ -151,8 +203,11 @@ def _reviewed(value: object) -> str | None:
     return None
 
 
-def validate(rows: list[object]) -> Validation:
-    """Every row that can be published, and why each other one cannot."""
+def validate(rows: list[object], ledger: Mapping[str, dict] | None = None) -> Validation:
+    """Every row that can be published, and why each other one cannot.
+
+    `ledger` is reference/poi_identity.json's `pois` map, which a row with
+    `pois` is checked against; export_podcasts.py always passes it."""
     result = Validation()
     seen: set[str] = set()
     for at, row in enumerate(rows):
@@ -181,23 +236,26 @@ def validate(rows: list[object]) -> Validation:
         hikes: tuple[str, ...] = ()
         at_miles: tuple[tuple[float, float], ...] = ()
         links: tuple[tuple[str, str], ...] = ()
+        pois: tuple[str, ...] = ()
         minutes, why = _minutes(row.get("minutes"))
         if why is None:
             hikes, why = _hikes(row.get("hikes"))
         if why is None:
             at_miles, why = _ranges(row.get("at_miles"))
         if why is None:
+            pois, why = _pois(row.get("pois"), row.get("places"), ledger)
+        if why is None:
             links, why = _links(row.get("links"))
         if why is None:
             why = _reviewed(row.get("reviewed"))
-        if why is None and not hikes and not at_miles:
-            why = "needs at least one of hikes or at_miles, or it shows nowhere"
+        if why is None and not hikes and not at_miles and not pois:
+            why = "needs at least one of hikes, at_miles or pois, or it shows nowhere"
         if why is not None:
             result.dropped.append((label, why))
             continue
 
         seen.add(spotify_id)
-        result.episodes.append(Episode(spotify_id, title, show, minutes, hikes, at_miles, links))
+        result.episodes.append(Episode(spotify_id, title, show, minutes, hikes, at_miles, links, pois))
     return result
 
 
@@ -211,6 +269,7 @@ def as_published(episode: Episode) -> dict:
         "show": episode.show,
         "hikes": list(episode.hikes),
         "at_miles": [list(pair) for pair in episode.at_miles],
+        "pois": list(episode.pois),
         "links": dict(episode.links),
     }
     if episode.minutes is not None:

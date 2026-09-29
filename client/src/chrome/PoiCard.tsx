@@ -97,6 +97,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type ReactNode,
   type RefObject,
 } from 'react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
@@ -291,6 +292,17 @@ export interface PoiCardProps {
    * gets rather than a guess.
    */
   direction?: HikeDirection
+  /**
+   * The podcast episodes tagged to a place (#1718 - Tag podcast episodes to
+   * the places they talk about, and show them last on each place's card), as
+   * the shell renders them for one POI id, or null where none is tagged.
+   *
+   * A function of the id rather than a node, because a chip swap is a
+   * different place with its own tags, exactly as it has its own notes.
+   * Absent means the shell has not wired podcasts, and the card renders as it
+   * did before they existed.
+   */
+  listenHere?: (poiId: string) => ReactNode
   onClose: () => void
   /** Where the share sheet's portal lands - the map screen's root, so the
    *  sheet hides with the held map instead of floating over another tab
@@ -611,6 +623,7 @@ export function PoiCard({
   noteContext,
   hikerMile,
   direction,
+  listenHere,
   onClose,
   sheetContainer,
 }: PoiCardProps) {
@@ -1122,6 +1135,8 @@ export function PoiCard({
         context={noteContext}
       />
     )
+
+  const listening = open ? (listenHere?.(shown.id) ?? null) : null
 
   return (
     <div
@@ -1828,6 +1843,17 @@ export function PoiCard({
                   )}
                 </p>
               </section>
+
+              {/* "Listen here" (#1718), the maintainer's frame P1: the
+                  episodes tagged to this place, LAST - under the facts that
+                  keep a hiker safe and under where the pin came from, never
+                  above either. `shown`, for the reason `conditions` gives. */}
+              {listening !== null && (
+                <section className="poi-card__section" data-testid="poi-card-listen">
+                  <h3 className="poi-card__section-title">Listen here</h3>
+                  {listening}
+                </section>
+              )}
             </div>
           </div>
         </>

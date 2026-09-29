@@ -56,6 +56,7 @@ def test_a_complete_row_publishes_without_its_review_fields():
             "minutes": 48,
             "hikes": ["nynjtc_hike_finder:7909"],
             "at_miles": [[480.0, 512.5]],
+            "pois": [],
             "links": {},
         }
     ]
@@ -84,7 +85,7 @@ def test_an_unknown_length_is_left_out_rather_than_published_as_zero():
         (row(at_miles=[480, 512]), "[start, end]"),
         (row(reviewed=None), "reviewed"),
         (row(reviewed="26/09/2026"), "reviewed"),
-        (row(hikes=None), "at least one of hikes or at_miles"),
+        (row(hikes=None), "at least one of hikes, at_miles or pois"),
         (row(at_mile=[[1, 2]]), "unknown field"),
     ],
 )
@@ -189,3 +190,65 @@ def test_an_episode_with_no_other_app_links_publishes_an_empty_set():
 )
 def test_a_link_for_the_wrong_app_or_host_is_dropped_with_its_reason(links, reason_fragment):
     assert reason_fragment in dropped_reason(row(links=links))
+
+
+# ---------------------------------------------------------------------------
+# The places an episode talks about (#1718 - Tag podcast episodes to the
+# places they talk about, and show them last on each place's card).
+
+SHELTER = "atc_shelters:00000000-0000-0000-0000-000000000001"
+TOWN = "atc_communities:00000000-0000-0000-0000-000000000002"
+GONE = "atc_shelters:00000000-0000-0000-0000-000000000003"
+
+#: The ledger's shape (reference/poi_identity.json's `pois`), cut to what the
+#: gate reads: a name, and a `retired` stamp on a POI no longer published.
+LEDGER = {
+    SHELTER: {"name": "Manassas Gap Shelter", "poi_type": "shelter"},
+    TOWN: {"name": "Damascus", "poi_type": "resupply"},
+    GONE: {"name": "Old Shelter", "poi_type": "shelter", "retired": "2026-08-19", "superseded_by": SHELTER},
+}
+
+
+def test_a_row_anchored_only_to_places_publishes_their_ids_and_not_their_names():
+    tagged = row(hikes=None, pois=[SHELTER, TOWN], places=["Manassas Gap Shelter", "Damascus"])
+    document, dropped = export_podcasts.build_document({"episodes": [tagged]}, LEDGER)
+    assert dropped == []
+    assert document["episodes"][0]["pois"] == [SHELTER, TOWN]
+    assert "places" not in document["episodes"][0]
+
+
+@pytest.mark.parametrize(
+    ("pois", "places", "reason_fragment"),
+    [
+        ([SHELTER], None, "places must name each of pois"),
+        ([SHELTER, TOWN], ["Manassas Gap Shelter"], "places must name each of pois"),
+        (None, ["Damascus"], "pois must be a list"),
+        ([], [], "pois must be a list"),
+        (SHELTER, "Manassas Gap Shelter", "pois must be a list"),
+        ([SHELTER, SHELTER], ["Manassas Gap Shelter", "Manassas Gap Shelter"], "listed twice"),
+        (["atc_shelters:never"], ["Nowhere"], "never been a published POI"),
+        ([GONE], ["Old Shelter"], f"retired on 2026-08-19; it was superseded by {SHELTER}"),
+        ([TOWN], ["Damascus, Virginia"], "is 'Damascus' in the POI ledger"),
+    ],
+)
+def test_a_place_the_ledger_does_not_stand_behind_costs_the_row(pois, places, reason_fragment):
+    tagged = row(hikes=None, pois=pois, places=places)
+    result = validate([tagged], LEDGER)
+    assert result.episodes == []
+    assert reason_fragment in result.dropped[0][1]
+
+
+def test_places_cannot_be_checked_without_the_ledger():
+    result = validate([row(pois=[TOWN], places=["Damascus"])])
+    assert "without the POI ledger" in result.dropped[0][1]
+
+
+def test_every_tagged_place_in_the_committed_list_is_a_live_poi_under_its_own_name():
+    """The committed list against the committed ledger, one assertion per row
+    so a failure names the episode and the place."""
+    reference = json.loads(export_podcasts.REFERENCE_PATH.read_text(encoding="utf-8"))
+    ledger = export_podcasts.load_ledger()
+    for entry in reference["episodes"]:
+        for poi_id, name in zip(entry.get("pois", []), entry.get("places", []), strict=True):
+            assert ledger[poi_id]["name"] == name, entry["title"]
+            assert "retired" not in ledger[poi_id], entry["title"]

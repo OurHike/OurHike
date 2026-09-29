@@ -1703,3 +1703,62 @@ describe('how far ahead the place is (#953)', () => {
     expect(screen.getByText('480 m ahead')).toBeInTheDocument()
   })
 })
+
+describe('Listen here (#1718 - Tag podcast episodes to the places they talk about)', () => {
+  // The shell's renderer, reduced to what the card needs from it: something
+  // for an id that has episodes, and null for one that has none.
+  const listenHere = (poiId: string) =>
+    poiId === SHELTER.id ? <p>An episode about {poiId}</p> : null
+
+  it('is the last section on the opened card, below where the pin came from', () => {
+    render(<PoiCard poi={SHELTER} map={null} listenHere={listenHere} onClose={vi.fn()} />)
+    open()
+
+    const sections = screen
+      .getAllByRole('heading', { level: 3 })
+      .map((h) => h.textContent)
+    expect(sections.at(-1)).toBe('Listen here')
+    expect(sections.indexOf('About this place')).toBe(sections.length - 2)
+    expect(screen.getByText(`An episode about ${SHELTER.id}`)).toBeInTheDocument()
+  })
+
+  it('is absent where no episode is tagged, heading and all', () => {
+    const elsewhere = { ...SHELTER, id: 'atc_shelters:untagged' }
+    render(
+      <PoiCard poi={elsewhere} map={null} listenHere={listenHere} onClose={vi.fn()} />,
+    )
+    open()
+
+    expect(screen.queryByRole('heading', { name: 'Listen here' })).toBeNull()
+    expect(screen.queryByTestId('poi-card-listen')).toBeNull()
+  })
+
+  it('stays off the peek, which holds only what a hiker standing there needs', () => {
+    render(<PoiCard poi={SHELTER} map={null} listenHere={listenHere} onClose={vi.fn()} />)
+
+    expect(screen.queryByTestId('poi-card-listen')).toBeNull()
+  })
+
+  it('follows a chip to the part it names, whose tags are its own', () => {
+    const summit: PoiDetail = {
+      ...SHELTER,
+      id: 'atc_viewpoints:summit',
+      name: 'Summit',
+      type: 'viewpoint',
+    }
+    render(
+      <PoiCard
+        poi={SHELTER}
+        site={[SHELTER, summit]}
+        map={null}
+        listenHere={listenHere}
+        onClose={vi.fn()}
+      />,
+    )
+    open()
+    expect(screen.getByTestId('poi-card-listen')).toBeInTheDocument()
+
+    fireEvent.click(screen.getAllByTestId('poi-card-chip')[1]!)
+    expect(screen.queryByTestId('poi-card-listen')).toBeNull()
+  })
+})

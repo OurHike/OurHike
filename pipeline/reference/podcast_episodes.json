@@ -20,6 +20,14 @@
     "              overlaps a range). Typed by hand from a guidebook, so loose by",
     "              a mile or two against the app's own axis - which is fine for a",
     "              podcast and would not be for anything a hiker's safety rests on",
+    "  pois        published POI ids the episode talks about (#1718 - Tag podcast",
+    "              episodes to the places they talk about), e.g. atc_shelters:<uuid>.",
+    "              The episode shows last on each of those places' cards, under",
+    "              \"Listen here\"",
+    "  places      the same POIs' names, in the same order, so a diff can be read",
+    "              without looking ids up. Checked against reference/",
+    "              poi_identity.json: a POI never published or since retired, or a",
+    "              name that is not the ledger's, costs the row",
     "  links       optional: the episode's link in the other podcast apps a hiker can",
     "              pick (#1690), each one copied from that app's own Share / Copy",
     "              Link: {\"apple_podcasts\": \"https://podcasts.apple.com/...\",",
@@ -30,15 +38,878 @@
     "  reviewed    the date somebody last looked at this row (YYYY-MM-DD)",
     "  note        optional: why it fits. Kept here for review, never published",
     "",
-    "A row needs at least one of `hikes` or `at_miles`, or it shows nowhere.",
+    "A row needs at least one of `hikes`, `at_miles` or `pois`, or it shows nowhere.",
     "tests/test_export_podcasts.py fails on any row export_podcasts.py would drop,",
     "so a typo here is a red pull request rather than an episode that silently",
     "never appears.",
+    "",
+    "WHERE THE PLACES COME FROM: the Podcast desk, a private claude.ai page",
+    "(features/PODCASTS.md). Claude proposes the places an episode's notes and",
+    "transcript mention and shows the words it matched; a person decides. The",
+    "places on one episode are at least 500 trail miles apart (the maintainer,",
+    "2026-09-29). The desk enforces that with export_poi.py's miles; nothing",
+    "here can, because this file holds no miles (lib/podcasts.py says why), so",
+    "a hand edit keeps the rule on its honour.",
+    "",
+    "THE GREEN TUNNEL ROWS (48 of the show's 51 episodes, 2026-09-29): places",
+    "proposed on the desk by Claude Code, pushed by the maintainer as one list",
+    "(\"push the list\"). Titles are the show's feed's, which a Spotify search",
+    "matched to each id. A note beginning \"Mentioned in passing\" is a place the",
+    "episode names without spending time on it, given to an episode that had no",
+    "other place and only where that place had no other episode; \"Added at the",
+    "maintainer's request\" is a place the episode does not name. The three left",
+    "out are two trailers that name no place and \"Music of the Mountains\", whose",
+    "places are all off the trail.",
     "",
     "PUBLISHING: .github/workflows/publish-podcasts.yml, dispatched by hand. It",
     "writes podcasts/episodes.json at the bucket root, outside any release",
     "folder, so a phone sees a new list on its next fetch with no app release",
     "(maintainer's decision, 2026-09-26, on #1683)."
   ],
-  "episodes": []
+  "episodes": [
+    {
+      "spotify_id": "3gGiuSSN5OWGlpoOKmqCjJ",
+      "title": "Founding the Trail",
+      "show": "The Green Tunnel",
+      "minutes": 34,
+      "pois": [
+        "atc_viewpoints:34e28cfe-d221-497d-85a8-713dca2dcca6"
+      ],
+      "places": [
+        "Katahdin Summit (W)"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/founding-the-trail/id1585683274?i=1000537687419"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Katahdin Summit (W): Myron Avery's Katahdin, which became the northern terminus largely to his credit, and Baxter State Park's rules today."
+    },
+    {
+      "spotify_id": "0fgeFahmLpNWByRngyefYE",
+      "title": "What Came Before",
+      "show": "The Green Tunnel",
+      "minutes": 44,
+      "pois": [
+        "atc_shelters:15fdb720-8858-4708-95d7-4190d42a05be"
+      ],
+      "places": [
+        "Rausch Gap Shelter"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/what-came-before/id1585683274?i=1000539840821"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Rausch Gap Shelter: Rausch Gap, Pennsylvania, the coal-mining and railroad town the trail passes through; named 12 times in the transcript. Bluff Mountain (the lost boy, 1891) is left off: it is 383 miles away, inside the 500-mile rule."
+    },
+    {
+      "spotify_id": "0WfVLC8ZG4DogtAY3DkULa",
+      "title": "Iconic Locations: McAfee Knob",
+      "show": "The Green Tunnel",
+      "minutes": 7,
+      "pois": [
+        "atc_viewpoints:95a18f95-b78f-43bb-843a-4b9b82fecb76"
+      ],
+      "places": [
+        "McAfee Knob Summit"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/iconic-locations-mcafee-knob/id1585683274?i=1000541071932"
+      },
+      "reviewed": "2026-09-29",
+      "note": "McAfee Knob Summit: The whole episode, including the nine years the trail was routed off the Knob."
+    },
+    {
+      "spotify_id": "2TfXmfqoDNuU0eeGRZpk5v",
+      "title": "Changemakers",
+      "show": "The Green Tunnel",
+      "minutes": 37,
+      "pois": [
+        "atc_campsites:ca58d5b2-d640-4085-a29d-322671e02384"
+      ],
+      "places": [
+        "Blackburn Trail Center Group Campsite"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/changemakers/id1585683274?i=1000542173215"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Blackburn Trail Center Group Campsite: The Blackburn Trail Center is named for Ruth and Fred Blackburn; Sandi Marra's first volunteer job was managing it."
+    },
+    {
+      "spotify_id": "5CgQ7gg0PvY3kSkos58eI5",
+      "title": "Iconic Locations: The Lemon Squeezer",
+      "show": "The Green Tunnel",
+      "minutes": 6,
+      "pois": [
+        "atc_viewpoints:3df9b37d-fb6c-43c7-99bd-12ae1525e2eb"
+      ],
+      "places": [
+        "Island Pond"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/iconic-locations-the-lemon-squeezer/id1585683274?i=1000543577769"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Island Pond: The Lemon Squeezer is on the A.T. in Harriman at about mile 1391 (OpenStreetMap puts it 0.1 mi from ATC's mile-1391 marker). ATC's list has no point named for it; Island Pond, 0.4 mi away, is the nearest."
+    },
+    {
+      "spotify_id": "6vpi9EQ9r3uY64FmRK0nnq",
+      "title": "Danger!",
+      "show": "The Green Tunnel",
+      "minutes": 30,
+      "pois": [
+        "atc_viewpoints:78732b54-36d8-47ff-bfcf-01d470d94e5d"
+      ],
+      "places": [
+        "Washington Monument Vista"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/danger/id1585683274?i=1000544278679"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Washington Monument Vista: The two sisters struck by lightning while sheltering inside Maryland's Washington Monument."
+    },
+    {
+      "spotify_id": "2guzk6CI9KJNVePz6oFPly",
+      "title": "Trail Food",
+      "show": "The Green Tunnel",
+      "minutes": 34,
+      "pois": [
+        "atc_parking:25f1a956-e791-4754-bea3-2e271dfd3fc0"
+      ],
+      "places": [
+        "Pine Grove Furnace State Park Parking Area 1"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/trail-food/id1585683274?i=1000548307864"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Pine Grove Furnace State Park Parking Area 1: The camp store's Half Gallon Challenge, begun in 1980 near the halfway point. Maupin Field Shelter is left off: 262 miles away."
+    },
+    {
+      "spotify_id": "0BIKUSlJPI8LGbET6EDfYq",
+      "title": "Iconic Locations: Maryland's Washington Monument",
+      "show": "The Green Tunnel",
+      "minutes": 6,
+      "pois": [
+        "atc_viewpoints:78732b54-36d8-47ff-bfcf-01d470d94e5d"
+      ],
+      "places": [
+        "Washington Monument Vista"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/iconic-locations-marylands-washington-monument/id1585683274?i=1000549734950"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Washington Monument Vista: The whole episode."
+    },
+    {
+      "spotify_id": "14MGLWYfc32aVUTPCyWwV6",
+      "title": "Leave Only Footprints",
+      "show": "The Green Tunnel",
+      "minutes": 34,
+      "pois": [
+        "atc_viewpoints:dc8def94-5fc2-4f55-ae16-5d150f8f1f5f",
+        "atc_viewpoints:34e28cfe-d221-497d-85a8-713dca2dcca6"
+      ],
+      "places": [
+        "Max Patch Mtn Summit Vista",
+        "Katahdin Summit (W)"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/leave-only-footprints/id1585683274?i=1000550514879"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Max Patch Mtn Summit Vista: The 2020 overcrowding and trash on Max Patch; named 24 times in the transcript. | Katahdin Summit (W): Baxter State Park's rules for hikers finishing on Katahdin."
+    },
+    {
+      "spotify_id": "2xMosMJYcmNIYdSPy21DTy",
+      "title": "Iconic Locations: Mount Washington",
+      "show": "The Green Tunnel",
+      "minutes": 8,
+      "pois": [
+        "atc_viewpoints:233f512c-cb09-49f8-b473-7540800859b8"
+      ],
+      "places": [
+        "Mt Washington Summit Vista"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/iconic-locations-mount-washington/id1585683274?i=1000552074327"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Mt Washington Summit Vista: The whole episode."
+    },
+    {
+      "spotify_id": "1oBjrCLKfkJTYVeBq2mnzP",
+      "title": "Give Me Shelter",
+      "show": "The Green Tunnel",
+      "minutes": 34,
+      "pois": [
+        "atc_shelters:0bc4d198-44f9-41f2-a4f3-93aa475d9b98",
+        "atc_parking:34ba06e3-f096-4901-9b4c-4c68b45e619e"
+      ],
+      "places": [
+        "Tumbling Run Shelter 1",
+        "Kinsman Notch (NH Rte 112) Parking Area"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/give-me-shelter/id1585683274?i=1000552891163"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Tumbling Run Shelter 1: The Tumbling Run Shelters' snoring and non-snoring pair, maintained by Curt and Tawnya Finney since 1989. | Kinsman Notch (NH Rte 112) Parking Area: Serena Ryan's Notch Hostel in North Woodstock, New Hampshire. The hostel is not an ATC point; Kinsman Notch, on NH 112 toward town, is the nearest trail point."
+    },
+    {
+      "spotify_id": "2M4L54AwG4ETwbWnSXmjGX",
+      "title": "Iconic Locations: Oglethorpe Monument",
+      "show": "The Green Tunnel",
+      "minutes": 7,
+      "pois": [
+        "atc_viewpoints:3f45ce01-0943-4700-8ba6-097ec8e74586"
+      ],
+      "places": [
+        "Springer Mtn Summit Vista"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/iconic-locations-oglethorpe-monument/id1585683274?i=1000555109625"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Springer Mtn Summit Vista: Where the southern terminus moved from Mount Oglethorpe. Oglethorpe itself is off today's trail, so it is not among ATC's points."
+    },
+    {
+      "spotify_id": "27X31nj9rORL0jnH5qafPB",
+      "title": "Helloooo!",
+      "show": "The Green Tunnel",
+      "minutes": 29,
+      "pois": [
+        "atc_viewpoints:34e28cfe-d221-497d-85a8-713dca2dcca6"
+      ],
+      "places": [
+        "Katahdin Summit (W)"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/helloooo/id1585683274?i=1000556376120"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Katahdin Summit (W): Eiler Larsen began the first recorded thru-hike attempt on Katahdin in August 1930."
+    },
+    {
+      "spotify_id": "7tM1nSbcsjiCpQ5EH1h3vQ",
+      "title": "Hiking McAfee Knob with Virginia Outdoor Adventures",
+      "show": "The Green Tunnel",
+      "minutes": 45,
+      "pois": [
+        "atc_viewpoints:95a18f95-b78f-43bb-843a-4b9b82fecb76"
+      ],
+      "places": [
+        "McAfee Knob Summit"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/hiking-mcafee-knob-with-virginia-outdoor-adventures/id1585683274?i=1000567937642"
+      },
+      "reviewed": "2026-09-29",
+      "note": "McAfee Knob Summit: The whole episode; named 17 times in the transcript. Tinker Cliffs and the trailhead are within a few miles, so they are left off."
+    },
+    {
+      "spotify_id": "1QVO1ISXCBP3UUlJaEOStG",
+      "title": "Craving Community",
+      "show": "The Green Tunnel",
+      "minutes": 15,
+      "pois": [
+        "atc_communities:ab421f6f-2419-460f-bf06-4f7f4216be93",
+        "atc_communities:11f300ae-3e56-4878-b66d-9176523b5441",
+        "atc_communities:5af4f547-e26c-4f9e-a916-49ad8c0ba0e6"
+      ],
+      "places": [
+        "Hot Springs",
+        "Delaware Water Gap",
+        "Monson"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/craving-community/id1585683274?i=1000576207208"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Hot Springs: The Smoky Mountain Diner and its owner, Genia Peterson. | Delaware Water Gap: Susan Cooper's Village Farmer and Bakery, run for 45 years. | Monson: Shaw's Hiker Hostel and Monson as an official Trail Town; named 13 times. Roan Mountain (Bob's Dairyland) is left off: 138 miles from Hot Springs."
+    },
+    {
+      "spotify_id": "1xBUlnJ2F1itOqHmq2UjTB",
+      "title": "Gear Up",
+      "show": "The Green Tunnel",
+      "minutes": 30,
+      "pois": [
+        "atc_parking:4dd46f91-82f8-426d-a7ef-6966d5122187",
+        "atc_parking:25f1a956-e791-4754-bea3-2e271dfd3fc0"
+      ],
+      "places": [
+        "Walasi Yi Center (Neels Gap, US 19 & US 129) Parking Area",
+        "Pine Grove Furnace State Park Parking Area 1"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/gear-up/id1585683274?i=1000581496852"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Walasi Yi Center (Neels Gap, US 19 & US 129) Parking Area: Mountain Crossings at Neels Gap, the outfitter known for pack shakedowns. Added at the maintainer's request; the episode does not name it. | Pine Grove Furnace State Park Parking Area 1: The Appalachian Trail Museum at Pine Grove Furnace, whose gear collection the episode visits: Grandma Gatewood's shoes and old packs."
+    },
+    {
+      "spotify_id": "5N8oywx37Hb0TorBGb2yfC",
+      "title": "Iconic Locations: Mount Greylock",
+      "show": "The Green Tunnel",
+      "minutes": 7,
+      "pois": [
+        "atc_viewpoints:2e474c00-97dd-42df-9db4-c9c672d1901f"
+      ],
+      "places": [
+        "Mt Greylock Summit Observation Tower Vista"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/iconic-locations-mount-greylock/id1585683274?i=1000582977378"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Mt Greylock Summit Observation Tower Vista: The summit and its lighthouse-shaped memorial tower."
+    },
+    {
+      "spotify_id": "1ApHRWo4tc0iTGBgSJxslC",
+      "title": "Uprooted",
+      "show": "The Green Tunnel",
+      "minutes": 30,
+      "pois": [
+        "atc_parking:821abcb0-6578-495e-9f61-10e28e36571d"
+      ],
+      "places": [
+        "SHEN - Skyland South Parking Area"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/uprooted/id1585683274?i=1000584601632"
+      },
+      "reviewed": "2026-09-29",
+      "note": "SHEN - Skyland South Parking Area: Skyland, named 7 times, beside the hollows whose families were removed for the park. Nicholson Hollow, the episode's main community, is not an ATC point."
+    },
+    {
+      "spotify_id": "548ZMEhGDL4cUe5oi1jr4l",
+      "title": "Iconic Locations: Monson, Maine",
+      "show": "The Green Tunnel",
+      "minutes": 8,
+      "pois": [
+        "atc_communities:5af4f547-e26c-4f9e-a916-49ad8c0ba0e6"
+      ],
+      "places": [
+        "Monson"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/iconic-locations-monson-maine/id1585683274?i=1000586207827"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Monson: The whole episode."
+    },
+    {
+      "spotify_id": "39y6pEhWY6DEyH0S7RHxlU",
+      "title": "Crappalachian Trail",
+      "show": "The Green Tunnel",
+      "minutes": 30,
+      "pois": [
+        "atc_shelters:3c87c470-88aa-4ea2-be34-4445f6dff72c",
+        "atc_shelters:580f203c-937b-49aa-a708-2081143bf6c3"
+      ],
+      "places": [
+        "Roan High Knob Shelter",
+        "Little Rock Pond Shelter"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/crappalachian-trail/id1585683274?i=1000587853876"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Roan High Knob Shelter: The host's 2019 visit after the bubble passed: the highest shelter on the trail, in the one state with no privies at shelters. | Little Rock Pond Shelter: Where the first moldering privy was built, in 1997."
+    },
+    {
+      "spotify_id": "1PwZNL4QVzwMZq1MKJ1dlF",
+      "title": "Iconic Locations: Roller Coaster",
+      "show": "The Green Tunnel",
+      "minutes": 9,
+      "pois": [
+        "atc_parking:cbcaa395-8504-4c9d-b200-53008b51c82a"
+      ],
+      "places": [
+        "Ashby Gap (VA Rte 601) Parking Area"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/iconic-locations-roller-coaster/id1585683274?i=1000589984852"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Ashby Gap (VA Rte 601) Parking Area: The Roller Coaster runs 13 miles from Ashby Gap to Snickers Gap; one end is enough under the 500-mile rule."
+    },
+    {
+      "spotify_id": "60AWMCmIMs0aqLuev1opdR",
+      "title": "Native Persistence",
+      "show": "The Green Tunnel",
+      "minutes": 27,
+      "pois": [
+        "atc_viewpoints:288915b1-d985-4bf6-9d5f-863bf14395f7"
+      ],
+      "places": [
+        "Clingmans Dome Summit Lookout Tower Vista"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/native-persistence/id1585683274?i=1000596202069"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Clingmans Dome Summit Lookout Tower Vista: The episode opens on settler names like Clingmans Dome replacing Indigenous ones; the Cherokee are reclaiming its name, Kuwahi. The episode's main place, the Monacan Nation's Bear Mountain, is not on the A.T."
+    },
+    {
+      "spotify_id": "7xyB70QAtVUHsI9qiuWLIc",
+      "title": "Iconic Locations: Damascus, Virginia",
+      "show": "The Green Tunnel",
+      "minutes": 11,
+      "pois": [
+        "atc_communities:70620d62-6b5b-4cd2-bc86-0ce2baf0950d"
+      ],
+      "places": [
+        "Damascus"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/iconic-locations-damascus-virginia/id1585683274?i=1000598388423"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Damascus: The whole episode."
+    },
+    {
+      "spotify_id": "4R0FGxGWqMqah4o83sZo9I",
+      "title": "The Lost AT",
+      "show": "The Green Tunnel",
+      "minutes": 34,
+      "pois": [
+        "atc_communities:70620d62-6b5b-4cd2-bc86-0ce2baf0950d"
+      ],
+      "places": [
+        "Damascus"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/the-lost-at/id1585683274?i=1000600726388"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Damascus: The southern end of the lost 300-mile section, which ran from Damascus to McAfee Knob by a different route. McAfee Knob is left off: 244 miles away."
+    },
+    {
+      "spotify_id": "4QP4SAbuoNB0XsXYuMm0HS",
+      "title": "Finding Virginia's Lost AT with Dakota Jackson and Mills Kelly",
+      "show": "The Green Tunnel",
+      "minutes": 32,
+      "pois": [
+        "atc_communities:70620d62-6b5b-4cd2-bc86-0ce2baf0950d"
+      ],
+      "places": [
+        "Damascus"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/finding-virginias-lost-at-with-dakota-jackson-and/id1585683274?i=1000603092549"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Damascus: The same lost section as \"The Lost AT\", which ran from Damascus to McAfee Knob."
+    },
+    {
+      "spotify_id": "0M8MTMnD98kwhUHc63m3QM",
+      "title": "Iconic Locations: Center Point Knob",
+      "show": "The Green Tunnel",
+      "minutes": 8,
+      "pois": [
+        "atc_viewpoints:0237fb92-07ec-4f30-8980-da6575632055"
+      ],
+      "places": [
+        "Center Point Knob Vista"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/iconic-locations-center-point-knob/id1585683274?i=1000605103637"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Center Point Knob Vista: The whole episode."
+    },
+    {
+      "spotify_id": "1k9XYTrc0GPaWfzrvWuD3g",
+      "title": "The Call of the Trail",
+      "show": "The Green Tunnel",
+      "minutes": 21,
+      "pois": [
+        "atc_viewpoints:c100ea28-3e42-40b7-bf2e-347e7fb5ec36",
+        "atc_viewpoints:34e28cfe-d221-497d-85a8-713dca2dcca6"
+      ],
+      "places": [
+        "Bears Den Rocks",
+        "Katahdin Summit (W)"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/the-call-of-the-trail/id1585683274?i=1000607277602"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Bears Den Rocks: Where a guest's section hike south from Bears Den led to the conversation that changed her life. | Katahdin Summit (W): The same guest's finish on Katahdin after 207 days."
+    },
+    {
+      "spotify_id": "5qRxX0VolVSBLp9QDYV9EZ",
+      "title": "Iconic Locations: Harpers Ferry",
+      "show": "The Green Tunnel",
+      "minutes": 13,
+      "pois": [
+        "atc_communities:60bcf556-71db-4084-8895-79a9c199612a"
+      ],
+      "places": [
+        "Bolivar/Harpers Ferry"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/iconic-locations-harpers-ferry/id1585683274?i=1000609422849"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Bolivar/Harpers Ferry: The whole episode: John Brown's raid and the landscape hikers pass through."
+    },
+    {
+      "spotify_id": "50iwzo166BYex6Xcv5Hg3W",
+      "title": "The Weight of History",
+      "show": "The Green Tunnel",
+      "minutes": 40,
+      "pois": [
+        "atc_shelters:69f6f980-5a58-4ed6-8331-7c6ebe10a874",
+        "atc_communities:60bcf556-71db-4084-8895-79a9c199612a"
+      ],
+      "places": [
+        "Tray Mtn Shelter",
+        "Bolivar/Harpers Ferry"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/the-weight-of-history/id1585683274?i=1000611388977"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Tray Mtn Shelter: A 1981 threat against Black hikers written in the shelter register, which the episode discusses. | Bolivar/Harpers Ferry: Where the host found the story in ATC's archives, and a guest walks into town thinking about its history."
+    },
+    {
+      "spotify_id": "62ny8bsjykda8whTItb4UF",
+      "title": "Iconic Locations: Fontana Dam",
+      "show": "The Green Tunnel",
+      "minutes": 13,
+      "pois": [
+        "atc_communities:b5551504-6ad9-4241-8dfb-ef99c99499b0"
+      ],
+      "places": [
+        "Fontana Dam"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/iconic-locations-fontana-dam/id1585683274?i=1000613173741"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Fontana Dam: The whole episode: the dam and the towns under Fontana Lake."
+    },
+    {
+      "spotify_id": "6sEa4p3C8zDtT98pQvTbXb",
+      "title": "50/50",
+      "show": "The Green Tunnel",
+      "minutes": 21,
+      "pois": [
+        "atc_communities:70620d62-6b5b-4cd2-bc86-0ce2baf0950d"
+      ],
+      "places": [
+        "Damascus"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/50-50/id1585683274?i=1000614942919"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Damascus: Added at the maintainer's request; the episode does not name Damascus."
+    },
+    {
+      "spotify_id": "72Go6JXAjNrD8bB2NdZDID",
+      "title": "A Life Crafted for the Outdoors with Orange Blaze",
+      "show": "The Green Tunnel",
+      "minutes": 64,
+      "pois": [
+        "atc_viewpoints:3f45ce01-0943-4700-8ba6-097ec8e74586"
+      ],
+      "places": [
+        "Springer Mtn Summit Vista"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/a-life-crafted-for-the-outdoors-with-orange-blaze/id1585683274?i=1000621469329"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Springer Mtn Summit Vista: The A.T.'s southern terminus, the end nearest Florida. Added at the maintainer's request; the episode is about the Florida Trail, not the A.T."
+    },
+    {
+      "spotify_id": "7cwA8omWpFMWCUH60BYLnD",
+      "title": "Hiking Connecticut with \"Jester\" Section Hiker",
+      "show": "The Green Tunnel",
+      "minutes": 30,
+      "pois": [
+        "atc_viewpoints:f7814ed0-e089-414f-9d3f-fcf5d39241c7"
+      ],
+      "places": [
+        "Bear Mtn Summit (CT) Vista"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/hiking-connecticut-with-jester-section-hiker/id1585683274?i=1000625216423"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Bear Mtn Summit (CT) Vista: Bear Mountain in Connecticut, after Sage's Ravine; named 11 times."
+    },
+    {
+      "spotify_id": "78aXR6HMdAoBOdMP28wKvn",
+      "title": "Season Three: The Natural History of the Trail",
+      "show": "The Green Tunnel",
+      "minutes": 2,
+      "pois": [
+        "atc_viewpoints:db91e68b-f616-4457-b8b5-c23c3d813bd5"
+      ],
+      "places": [
+        "West Kennebec River"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/season-three-the-natural-history-of-the-trail/id1585683274?i=1000630000962"
+      },
+      "reviewed": "2026-09-29",
+      "note": "West Kennebec River: Mentioned in passing: the trailer names the Kennebec River Ferry as one of season three's iconic locations. ATC lists both banks; the west bank, where a northbound hiker waits for the canoe, is a guess between them. The Priest, the trailer's other place, already has an episode."
+    },
+    {
+      "spotify_id": "6e5EtBfOli5PbjWfOD0p4N",
+      "title": "Geological Time",
+      "show": "The Green Tunnel",
+      "minutes": 25,
+      "pois": [
+        "atc_viewpoints:d2f74c6f-a8bb-461a-a164-0d20c1ccc6c2",
+        "atc_viewpoints:6c049258-9b01-4097-b193-f1a8e3117db0"
+      ],
+      "places": [
+        "Massie Gap Vista",
+        "Clarendon Gorge"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/geological-time/id1585683274?i=1000631561109"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Massie Gap Vista: The Grayson Highlands, whose rocks come from ancient volcanoes near Mount Rogers and Whitetop. | Clarendon Gorge: A geologist's favorite place on the trail, near Clarendon, Vermont."
+    },
+    {
+      "spotify_id": "5sWAtVCZPU7c2KHqnBKAvZ",
+      "title": "Iconic Locations: Dragon's Tooth",
+      "show": "The Green Tunnel",
+      "minutes": 9,
+      "pois": [
+        "atc_viewpoints:3cadebda-9d7d-4373-88f6-b240420eb958"
+      ],
+      "places": [
+        "Dragons Tooth Peak"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/iconic-locations-dragons-tooth/id1585683274?i=1000633175467"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Dragons Tooth Peak: The whole episode."
+    },
+    {
+      "spotify_id": "7z7Fyf46hoA7hQzVBp9qFo",
+      "title": "The Perfect Tree",
+      "show": "The Green Tunnel",
+      "minutes": 36,
+      "pois": [
+        "atc_shelters:bd32f6c6-7282-4f03-be31-25eed8cc06a0"
+      ],
+      "places": [
+        "Manassas Gap Shelter"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/the-perfect-tree/id1585683274?i=1000634727793"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Manassas Gap Shelter: Mentioned in passing: the host maintains this shelter, one of the first the CCC built, from chestnut logs cut on the mountain nearby and still sound almost 90 years on."
+    },
+    {
+      "spotify_id": "6mLAWBhOah01Qe7yeWunrn",
+      "title": "Iconic Locations: Charlies Bunion",
+      "show": "The Green Tunnel",
+      "minutes": 13,
+      "pois": [
+        "atc_viewpoints:54000c1b-42a4-497f-a98e-f7015569484c"
+      ],
+      "places": [
+        "Charlies Bunion Vista"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/iconic-locations-charlies-bunion/id1585683274?i=1000636738959"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Charlies Bunion Vista: The whole episode."
+    },
+    {
+      "spotify_id": "2EKjEhnlrLkR42kYTdpZlF",
+      "title": "Constructing the Trail",
+      "show": "The Green Tunnel",
+      "minutes": 32,
+      "pois": [
+        "atc_shelters:ea54c5a7-d95a-4e6d-8416-fe10df6d90c2",
+        "atc_parking:821abcb0-6578-495e-9f61-10e28e36571d",
+        "atc_viewpoints:c78476f8-e162-41df-85e9-4855ba2e3acd"
+      ],
+      "places": [
+        "Blood Mtn Shelter",
+        "SHEN - Skyland South Parking Area",
+        "Sugarloaf Summit (NE)"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/constructing-the-trail/id1585683274?i=1000638270068"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Blood Mtn Shelter: The stone shelter a CCC crew built on Blood Mountain. | SHEN - Skyland South Parking Area: Shenandoah, where CCC crews built the stone huts and moved the trail around Skyline Drive; a 1930s hike to Skyland lodge. | Sugarloaf Summit (NE): The last two miles of the trail, finished by the CCC between Spaulding and Sugarloaf on August 14, 1937."
+    },
+    {
+      "spotify_id": "5lmg4t0Zc3cJvuxxqJVu8u",
+      "title": "Iconic Locations: Bear Mountain Bridge",
+      "show": "The Green Tunnel",
+      "minutes": 10,
+      "pois": [
+        "atc_viewpoints:8845390f-9955-4b41-b1b1-63a771205930"
+      ],
+      "places": [
+        "Bear Mountain Bridge"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/iconic-locations-bear-mountain-bridge/id1585683274?i=1000641795219"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Bear Mountain Bridge: The whole episode."
+    },
+    {
+      "spotify_id": "6jZhoo0yNJiqZOz1YzU5MF",
+      "title": "Wayfinding",
+      "show": "The Green Tunnel",
+      "minutes": 31,
+      "pois": [
+        "atc_shelters:8ef2113a-5a05-4ce3-a0af-df38164e0dd5"
+      ],
+      "places": [
+        "Poplar Ridge Lean-to Shelter"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/wayfinding/id1585683274?i=1000643474601"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Poplar Ridge Lean-to Shelter: The 1969 Maine guidebook's turn-by-turn passage the episode reads, past the Poplar Ridge Lean-to toward Saddleback Junior."
+    },
+    {
+      "spotify_id": "6dGYetvGGlkae2DB3D23TT",
+      "title": "Iconic Locations: Delaware Water Gap",
+      "show": "The Green Tunnel",
+      "minutes": 9,
+      "pois": [
+        "atc_communities:11f300ae-3e56-4878-b66d-9176523b5441"
+      ],
+      "places": [
+        "Delaware Water Gap"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/iconic-locations-delaware-water-gap/id1585683274?i=1000645128519"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Delaware Water Gap: The whole episode."
+    },
+    {
+      "spotify_id": "1o2NlZ8duIgMC1CSWZJrmT",
+      "title": "Becoming a National Park",
+      "show": "The Green Tunnel",
+      "minutes": 28,
+      "pois": [
+        "atc_viewpoints:3f45ce01-0943-4700-8ba6-097ec8e74586",
+        "atc_communities:9e0a9550-9d80-4cc2-b271-f3f69ecd626c"
+      ],
+      "places": [
+        "Springer Mtn Summit Vista",
+        "Boiling Springs"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/becoming-a-national-park/id1585683274?i=1000647184745"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Springer Mtn Summit Vista: The 1957 move of the southern terminus to Springer Mountain, as development closed in on the last 37 miles. | Boiling Springs: The Cumberland (\"Carlisle\") Valley, where land for the trail's cornfield miles was taken in court. Boiling Springs is the valley's trail town; the episode names the valley, not the town."
+    },
+    {
+      "spotify_id": "4DJZW8kgthex5gthLatPSY",
+      "title": "Iconic Locations: Priest Mountain Shelter",
+      "show": "The Green Tunnel",
+      "minutes": 12,
+      "pois": [
+        "atc_shelters:e90877f7-1669-4ddf-adce-2a920ee0ba22"
+      ],
+      "places": [
+        "The Priest Shelter"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/iconic-locations-priest-mountain-shelter/id1585683274?i=1000648855470"
+      },
+      "reviewed": "2026-09-29",
+      "note": "The Priest Shelter: The whole episode: the confessions in the shelter's logbook."
+    },
+    {
+      "spotify_id": "0L1MCGTBGFS3cjLlT1omuC",
+      "title": "Trail Writing",
+      "show": "The Green Tunnel",
+      "minutes": 31,
+      "pois": [
+        "atc_communities:14d1e3b6-bc8b-4a49-9e73-d0fb11ffbac0"
+      ],
+      "places": [
+        "Pearisburg"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/trail-writing/id1585683274?i=1000650446113"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Pearisburg: Mentioned in passing: Mary Draper Ingles followed the New River home after her 1755 escape, as a novel retells it. The A.T. crosses the New River beside Pearisburg; ATC's list has no point for the bridge, so the town stands in. Hot Springs, the episode's other trail place, already has an episode."
+    },
+    {
+      "spotify_id": "5ePzS07G19rdheVTWrVapi",
+      "title": "Iconic Locations: The Katahdin Sign",
+      "show": "The Green Tunnel",
+      "minutes": 14,
+      "pois": [
+        "atc_viewpoints:34e28cfe-d221-497d-85a8-713dca2dcca6"
+      ],
+      "places": [
+        "Katahdin Summit (W)"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/iconic-locations-the-katahdin-sign/id1585683274?i=1000651846817"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Katahdin Summit (W): The whole episode: the sign on the summit. ATC lists two summit points; this one is a guess between them."
+    },
+    {
+      "spotify_id": "1Thj5ztH1csXVwezcu9PNf",
+      "title": "Hogs, Chipmunks, and Bears, Oh My!",
+      "show": "The Green Tunnel",
+      "minutes": 33,
+      "pois": [
+        "atc_viewpoints:9f76c274-78cc-454c-b803-ca1c295f56ae",
+        "atc_communities:2d9e3aaa-f318-4601-89fb-cc5067240eb8"
+      ],
+      "places": [
+        "Newfound Gap Vista",
+        "Front Royal/Warren County"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/hogs-chipmunks-and-bears-oh-my/id1585683274?i=1000653285830"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Newfound Gap Vista: The feral hogs of the Smokies. The episode names the park, not a point; Newfound Gap stands in for it. | Front Royal/Warren County: The Smithsonian's research center at the north tip of Shenandoah, which the trail runs through."
+    },
+    {
+      "spotify_id": "6OyRuvj19VmLV6xaxkpyRa",
+      "title": "The End of the Trail",
+      "show": "The Green Tunnel",
+      "minutes": 27,
+      "pois": [
+        "atc_shelters:14252a5c-0d4f-46f2-a189-42a487572bd1",
+        "atc_viewpoints:7c910160-1267-497f-9152-bbc0dbde3d45"
+      ],
+      "places": [
+        "Cornelius Creek Shelter",
+        "Saddleback Summit"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/the-end-of-the-trail/id1585683274?i=1000654819968"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Cornelius Creek Shelter: The host's own green-tunnel moment, just north of Cornelius Creek Shelter. | Saddleback Summit: David Field's favorite stretch of the whole trail: the Saddleback alpine ridge."
+    }
+  ]
 }

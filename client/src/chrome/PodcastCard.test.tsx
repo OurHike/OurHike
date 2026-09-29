@@ -32,6 +32,7 @@ const HISTORY: PodcastEpisode = {
   minutes: 48,
   hikes: ['nynjtc_hike_finder:7909'],
   atMiles: [],
+  pois: [],
   links: { apple_podcasts: APPLE_LINK },
 }
 const GEOLOGY: PodcastEpisode = {
@@ -406,5 +407,25 @@ describe('PodcastCard, when a control cannot work', () => {
     expect(
       screen.getAllByRole('link', { name: /^Download .* in Spotify$/ }),
     ).toHaveLength(2)
+  })
+})
+
+describe('PodcastCard, under a section title of its own (#1718, the place card)', () => {
+  it('keeps its heading for a screen reader and hides it from the eye', () => {
+    show({ heading: 'Episodes about this place', headingHidden: true })
+
+    const heading = screen.getByRole('heading', { name: 'Episodes about this place' })
+    expect(heading).toHaveClass('visually-hidden')
+    expect(
+      screen.getByRole('region', { name: 'Episodes about this place' }),
+    ).toBeInTheDocument()
+  })
+
+  it('shows its heading wherever the screen has no title of its own', () => {
+    show()
+
+    expect(screen.getByRole('heading', { name: 'Picked for this hike' })).not.toHaveClass(
+      'visually-hidden',
+    )
   })
 })

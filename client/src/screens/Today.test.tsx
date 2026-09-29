@@ -1469,6 +1469,7 @@ describe('the podcast episodes for today’s leg', () => {
     show: 'A show',
     hikes: [],
     atMiles: [[480, 512]] as const,
+    pois: [],
     links: {},
   }
 

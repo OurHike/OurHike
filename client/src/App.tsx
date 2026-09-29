@@ -48,6 +48,7 @@ import {
 } from 'react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import type { PoiDetail } from './chrome/PoiCard'
+import { PodcastCard } from './chrome/PodcastCard'
 import { TabBar } from './chrome/TabBar'
 import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
 import { useNavigator, topOf } from './lib/navigator'
@@ -173,6 +174,7 @@ import {
   appsEveryEpisodeOpensIn,
   episodesForHike,
   episodesForMiles,
+  episodesForPoi,
 } from './lib/podcasts'
 import {
   authorLine,
@@ -2466,6 +2468,25 @@ function App() {
   const podcastApps = useMemo(
     () => appsEveryEpisodeOpensIn(podcastEpisodes),
     [podcastEpisodes],
+  )
+  // "Listen here", last on a waypoint's card (#1718): the episodes tagged to
+  // that one place, in the same card and with the same apps as everywhere
+  // else, or nothing where no episode is tagged.
+  const poiListenHere = useCallback(
+    (poiId: string) => {
+      const tagged = episodesForPoi(podcastEpisodes, poiId)
+      if (tagged.length === 0) return null
+      return (
+        <PodcastCard
+          episodes={tagged}
+          heading="Episodes about this place"
+          headingHidden
+          online={online}
+          offeredApps={podcastApps}
+        />
+      )
+    },
+    [podcastEpisodes, podcastApps, online],
   )
 
   /** One sheet as one state, however many archives are behind it. */
@@ -11314,6 +11335,7 @@ function App() {
                 )
               }
               noteContext={noteContext}
+              poiListenHere={poiListenHere}
               pinCondition={pinCondition}
               onSelectPoi={handleSelectPoi}
               onClosePoi={handleClosePoi}

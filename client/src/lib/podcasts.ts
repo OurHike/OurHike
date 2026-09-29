@@ -92,6 +92,10 @@ export interface PodcastEpisode {
    *  two against this phone's own axis - which an overlap test absorbs and a
    *  podcast can afford. */
   readonly atMiles: readonly (readonly [number, number])[]
+  /** Published POI ids the episode talks about (#1718), each checked against
+   *  the POI ledger by the pipeline. The episode shows under "Listen here",
+   *  last on each of those places' cards. */
+  readonly pois: readonly string[]
   /** The episode's own link in each other app that has one (#1690). An app
    *  missing here is an app nobody has linked it for yet. */
   readonly links: Readonly<Partial<Record<Exclude<PodcastApp, 'spotify'>, string>>>
@@ -155,9 +159,12 @@ function parseEpisode(value: unknown): PodcastEpisode | null {
   const atMiles = Array.isArray(record.at_miles)
     ? record.at_miles.map(milesPair).filter((pair) => pair !== null)
     : []
+  const pois = Array.isArray(record.pois)
+    ? record.pois.map(text).filter((id): id is string => id !== null)
+    : []
   // An episode anchored to nothing would show nowhere; keeping it would only
   // make a count somewhere disagree with what a hiker can find.
-  if (hikes.length === 0 && atMiles.length === 0) return null
+  if (hikes.length === 0 && atMiles.length === 0 && pois.length === 0) return null
 
   const minutes =
     typeof record.minutes === 'number' &&
@@ -172,6 +179,7 @@ function parseEpisode(value: unknown): PodcastEpisode | null {
     show,
     hikes,
     atMiles,
+    pois,
     ...(minutes === undefined ? {} : { minutes }),
   }
 }
@@ -199,6 +207,17 @@ export function episodesForHike(
   hikeId: string,
 ): readonly PodcastEpisode[] {
   const found = episodes.filter((episode) => episode.hikes.includes(hikeId))
+  return found.length === 0 ? NO_PODCAST_EPISODES : found
+}
+
+/** The episodes tagged to one place (#1718), in the list's own order. Exact
+ *  ids only: an episode tagged to a site's summit is not offered on its
+ *  privy, because the tag is somebody's call about that one point. */
+export function episodesForPoi(
+  episodes: readonly PodcastEpisode[],
+  poiId: string,
+): readonly PodcastEpisode[] {
+  const found = episodes.filter((episode) => episode.pois.includes(poiId))
   return found.length === 0 ? NO_PODCAST_EPISODES : found
 }
 

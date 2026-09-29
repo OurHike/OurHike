@@ -11,9 +11,16 @@
 // Not a recipe: shared fixtures live one directory down, where the runner's
 // top-level `preview-shots/*.mjs` pattern does not reach.
 
-/** Two episodes on Wapiti to Docs Knob (fixtures/suggestedHikes.mjs), and one
+/** Two episodes on Wapiti to Docs Knob (fixtures/suggestedHikes.mjs), one
  *  on the A.T. from Neels Gap to Dicks Creek Gap - which holds the leg
- *  fixtures/longHike.mjs plans for today, Low Gap to Tray Mountain. */
+ *  fixtures/longHike.mjs plans for today, Low Gap to Tray Mountain - and one
+ *  tagged to Fingerboard Shelter in Harriman (#1718), the place
+ *  waypoint-listen-here.mjs opens. That id is ATC's, from
+ *  pipeline/reference/poi_identity.json; the episode on it is invented. */
+/** Fingerboard Shelter's published id - ATC's, and stable across a rename,
+ *  which the name is not (features/POI_IDENTITY.md). */
+export const FINGERBOARD_SHELTER = 'atc_shelters:8cbafcd3-26c4-453c-b4be-7add6513e4ff'
+
 export const PODCAST_EPISODES_DOCUMENT = {
   source: 'reference/podcast_episodes.json',
   episodes: [
@@ -51,6 +58,18 @@ export const PODCAST_EPISODES_DOCUMENT = {
       at_miles: [[31.7, 69.6]],
       links: {
         apple_podcasts: 'https://podcasts.apple.com/us/podcast/show-name/id1?i=2',
+      },
+    },
+    {
+      spotify_id: 'Fixture3ShelterEpisode',
+      title: 'Episode about this shelter’s history',
+      show: 'Show name',
+      minutes: 41,
+      hikes: [],
+      at_miles: [],
+      pois: [FINGERBOARD_SHELTER],
+      links: {
+        apple_podcasts: 'https://podcasts.apple.com/us/podcast/show-name/id1?i=4',
       },
     },
   ],

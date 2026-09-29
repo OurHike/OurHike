@@ -4,8 +4,10 @@ episodes picked for the hike, with a one-tap Spotify save and an in-app player).
     python export_podcasts.py            check the list, write data/podcasts/episodes.json
     python export_podcasts.py --upload   ...and put it at podcasts/episodes.json in R2
 
-WHAT THIS READS. reference/podcast_episodes.json and nothing else - no
-network, no other artifact. lib/podcasts.py is the gate a row passes.
+WHAT THIS READS. reference/podcast_episodes.json, and reference/
+poi_identity.json to check each row's `pois` against (#1718) - both
+committed, so no network and no built artifact. lib/podcasts.py is the gate
+a row passes.
 
 WHERE IT GOES, AND WHY NOT A RELEASE FOLDER. `podcasts/episodes.json` at the
 bucket root, beside `conditions/` and `archive/`, which the phone reads
@@ -41,6 +43,7 @@ from lib.r2_keys import validate_key
 
 ROOT = Path(__file__).parent
 REFERENCE_PATH = ROOT / "reference" / "podcast_episodes.json"
+LEDGER_PATH = ROOT / "reference" / "poi_identity.json"
 OUT_PATH = ROOT / "data" / "podcasts" / "episodes.json"
 
 #: The one object this writes. Spelled here and read by the client's
@@ -51,12 +54,22 @@ PODCASTS_KEY = "podcasts/episodes.json"
 WRITE_ENABLED_ENV_VAR = "R2_WRITE_ENABLED"
 
 
-def build_document(reference: dict) -> tuple[dict, list[tuple[str, str]]]:
-    """The published document, and every row that could not be in it."""
+def load_ledger(path: Path | None = None) -> dict:
+    """reference/poi_identity.json's `pois` map: every POI ever published."""
+    ledger = json.loads((path or LEDGER_PATH).read_text(encoding="utf-8")).get("pois")
+    if not isinstance(ledger, dict):
+        raise SystemExit(f"{path or LEDGER_PATH} has no `pois` map")
+    return ledger
+
+
+def build_document(reference: dict, ledger: dict | None = None) -> tuple[dict, list[tuple[str, str]]]:
+    """The published document, and every row that could not be in it.
+
+    `ledger` defaults to the committed POI ledger; tests pass their own."""
     rows = reference.get("episodes")
     if not isinstance(rows, list):
         raise SystemExit(f"{REFERENCE_PATH} has no `episodes` list")
-    result = validate(rows)
+    result = validate(rows, load_ledger() if ledger is None else ledger)
     document = {
         "source": "reference/podcast_episodes.json",
         "episodes": [as_published(episode) for episode in result.episodes],
@@ -128,7 +141,11 @@ def main(argv: list[str] | None = None) -> int:
     episodes = document["episodes"]
     print(f"{len(episodes)} episode(s) -> {OUT_PATH}")
     for episode in episodes:
-        anchors = [*episode["hikes"], *(f"mi {start:g}-{end:g}" for start, end in episode["at_miles"])]
+        anchors = [
+            *episode["hikes"],
+            *(f"mi {start:g}-{end:g}" for start, end in episode["at_miles"]),
+            *episode["pois"],
+        ]
         print(f"  {episode['spotify_id']}  {episode['show']}: {episode['title']}  [{', '.join(anchors)}]")
 
     if args.upload:

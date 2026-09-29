@@ -419,6 +419,7 @@ describe('the podcast episodes picked for this hike', () => {
     minutes: 48,
     hikes: ['nynjtc_favorite_hikes:hike-vista-loop-trail'],
     atMiles: [],
+    pois: [],
     links: {},
   }
 

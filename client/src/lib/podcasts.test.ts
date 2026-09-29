@@ -5,6 +5,7 @@ import {
   PODCAST_EPISODES_KEY,
   appsEveryEpisodeOpensIn,
   episodesForHike,
+  episodesForPoi,
   podcastAppsToList,
   episodesForMiles,
   formatMinutes,
@@ -51,6 +52,7 @@ function episode(overrides: Partial<PodcastEpisode>): PodcastEpisode {
     show: 's',
     hikes: [],
     atMiles: [],
+    pois: [],
     links: {},
     ...overrides,
   }
@@ -72,6 +74,7 @@ describe('parsePodcastEpisodes', () => {
         minutes: 48,
         hikes: [HIKE],
         atMiles: [],
+        pois: [],
         links: {},
       },
       {
@@ -80,6 +83,7 @@ describe('parsePodcastEpisodes', () => {
         show: 'A show',
         hikes: [],
         atMiles: [[480, 512]],
+        pois: [],
         links: {},
       },
     ])
@@ -208,6 +212,32 @@ describe('episodesForHike', () => {
     const list = parsePodcastEpisodes(DOCUMENT) ?? []
     expect(episodesForHike(list, HIKE).map((e) => e.spotifyId)).toEqual([ID_A])
     expect(episodesForHike(list, 'nynjtc_hike_finder:1')).toEqual([])
+  })
+})
+
+describe('episodesForPoi (#1718)', () => {
+  const SHELTER = 'atc_shelters:00000000-0000-0000-0000-000000000001'
+  const SUMMIT = 'atc_viewpoints:00000000-0000-0000-0000-000000000002'
+
+  it('keeps a row tagged only to places, and reads its ids', () => {
+    const parsed = parsePodcastEpisodes({
+      episodes: [{ ...DOCUMENT.episodes[0], hikes: [], pois: [SHELTER, SUMMIT] }],
+    })
+    expect(parsed?.[0]?.pois).toEqual([SHELTER, SUMMIT])
+  })
+
+  it('reads a row published before pois existed as tagged to no place', () => {
+    expect(parsePodcastEpisodes(DOCUMENT)?.[0]?.pois).toEqual([])
+  })
+
+  it('picks the episodes tagged to this exact place, in the list’s order', () => {
+    const list = [
+      episode({ spotifyId: ID_A, pois: [SHELTER] }),
+      episode({ spotifyId: ID_B, pois: [SUMMIT, SHELTER] }),
+    ]
+    expect(episodesForPoi(list, SHELTER).map((e) => e.spotifyId)).toEqual([ID_A, ID_B])
+    expect(episodesForPoi(list, SUMMIT).map((e) => e.spotifyId)).toEqual([ID_B])
+    expect(episodesForPoi(list, 'atc_privies:nowhere')).toEqual([])
   })
 })
 

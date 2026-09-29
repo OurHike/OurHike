@@ -67,6 +67,10 @@ type SaveState = 'idle' | 'saving' | 'saved' | 'not_approved' | 'failed'
 export interface PodcastCardProps {
   episodes: readonly PodcastEpisode[]
   heading: string
+  /** Keep the heading for a screen reader and hide it from the eye, where
+   *  the screen's own section title already says it (the place card's
+   *  "Listen here", #1718). */
+  headingHidden?: boolean
   /** The small line above the heading, where the screen has no rule of its
    *  own to sit under (Today). */
   eyebrow?: string
@@ -88,6 +92,7 @@ export interface PodcastCardProps {
 export function PodcastCard({
   episodes,
   heading,
+  headingHidden = false,
   eyebrow,
   online,
   native = Capacitor.isNativePlatform(),
@@ -136,7 +141,15 @@ export function PodcastCard({
     <section className="podcast-card" aria-label={heading}>
       <div className="podcast-card__head">
         {eyebrow !== undefined && <p className="podcast-card__eyebrow">{eyebrow}</p>}
-        <h3 className="podcast-card__heading">{heading}</h3>
+        <h3
+          className={
+            headingHidden
+              ? 'podcast-card__heading visually-hidden'
+              : 'podcast-card__heading'
+          }
+        >
+          {heading}
+        </h3>
         {!picking && <p className="podcast-card__lede">{lede}</p>}
       </div>
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { buildMapStyle } from './style'
-import { POI_DOT_LAYER_ID, POI_LAYER_ID, POI_STALENESS_LAYER_ID } from './poiLayers'
+import { POI_DOT_LAYER_ID, POI_LAYER_ID } from './poiLayers'
 import { POI_LABEL_LAYER_ID } from './poiLabels'
 import { DISPUTE_LAYER_ID } from './disputeLayers'
 import { WAYPOINT_LAYER_IDS } from './waypointLayerVisibility'
@@ -37,18 +37,12 @@ describe('which layers the waypoint gate reaches', () => {
     }
   })
 
-  it('carries all three ranks, the names and the dispute marks', () => {
+  it('carries both ranks, the names and the dispute marks', () => {
     // Spelled out as well as derived: the derivation above would still pass if
     // the style lost a rank and the list lost it too, which is the one way
     // both halves can agree and be wrong.
     expect([...WAYPOINT_LAYER_IDS].sort()).toEqual(
-      [
-        POI_LABEL_LAYER_ID,
-        POI_DOT_LAYER_ID,
-        POI_STALENESS_LAYER_ID,
-        POI_LAYER_ID,
-        DISPUTE_LAYER_ID,
-      ].sort(),
+      [POI_LABEL_LAYER_ID, POI_DOT_LAYER_ID, POI_LAYER_ID, DISPUTE_LAYER_ID].sort(),
     )
   })
 

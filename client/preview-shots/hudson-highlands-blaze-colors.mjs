@@ -25,20 +25,26 @@
 // The second is a report this frame is the standing check for. The
 // maintainer, same day: "When I turn on the Blaze Color, it displays as grey
 // and hides some trails. Until I zoom out/in, then it displays correctly."
-// That was investigated and NOT reproduced - map/appearanceRestore.test.ts
-// now diffs every appearance-dependent paint property on every line layer
+// That was investigated and NOT reproduced then - map/appearanceRestore.test.ts
+// diffs every appearance-dependent paint property on every line layer
 // against what buildMapStyle would have produced, and the switch writes all
-// of them back correctly, so it is not a missing write. What is left is a
-// render-timing question that only a real map can answer, and this is the
-// only recipe that taps that switch on one.
+// of them back correctly, so it is not a missing write.
+//
+// IT CAME BACK ON 2026-09-26 AND WAS REPRODUCED ON THIS FRAME (#1698): grey
+// after 14 of 18 taps, on a local build against release 2026-09-24-2. It
+// was MapLibre throwing mid-frame when a blaze layer's `line-dasharray`
+// changed between per-feature and absent, which stopped the render loop
+// with only the grey casings drawn. map/style.ts's blazeDashArray has the
+// trace and the fix, and e2e/data/blazeSwitch.spec.ts now taps this switch
+// at this camera in CI and fails on grey or on any page error.
 //
 // WHAT TO LOOK FOR in this frame, therefore: coloured lines, not grey ones,
 // and the same number of trails as the recipe beside it. Note what this
 // frame CANNOT settle - it sits at z13 on a desktop, above the waypoint
 // seam, so the below-seam sketches (map/style.ts's TRAIL_OVERVIEW_LAYER_ID
 // and the network's, the two that draw dark-inked because they have no
-// casing) are not on it. If the report turns out to be about those, it will
-// take a camera below z7 that nothing points yet.
+// casing) are not on it. The fix covers their layers by the same rule, but
+// nothing has photographed them switching.
 //
 // WHAT THE TAP PROVES. The drive taps the toggle and nothing else; the
 // runner's second settle is what lets the repaint land before the shutter.

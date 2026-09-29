@@ -38,9 +38,13 @@ WHY THE TWO SIDES ARE READ FROM THE CODE RATHER THAN LISTED HERE.
 
 Both halves are derived, so neither can go stale against what actually runs:
 the trails come through the same two loaders the exports use, and the coverage
-comes out of `build_osm_water_reach.LINE_SOURCES`, both modules'
-`NETWORK_LINES_PATH` and `fetch_trail_water.CENTERLINE_PATH` - the constants
-that literally decide which geometry a water point is measured against. A
+comes out of `build_osm_water_reach.LINE_SOURCES` and its `NETWORK_LINES_PATH` -
+the constants that literally decide which geometry a water point is measured
+against. `fetch_trail_water.py` was the second water build this read, for the
+stream crossings it intersected with the same lines; #1674 removed crossings,
+and what that module still derives (site water) is measured against shelters
+and campsites rather than against any trail line, so it has nothing to say
+here. A
 hand-written list on either side would be a fifth thing to forget, which is the
 failure already being guarded.
 
@@ -67,7 +71,6 @@ import build_osm_water_reach
 import export_nearby_trails
 import export_poi
 import export_trails
-import fetch_trail_water
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCES_PATH = ROOT / "sources.json"
@@ -90,8 +93,9 @@ NETWORK_ARTIFACT_STEM = "nearby_trails"
 #
 # EMPTY SINCE #1016, and it emptied by mechanism rather than by anybody editing
 # it into agreement: `build_osm_water_reach.py` measures its union against
-# `nearby_trails.geojson` and `fetch_trail_water.py` intersects streams with the
-# same artifact, so `water_covered_sources` below finds every network source
+# `nearby_trails.geojson` (and `fetch_trail_water.py` intersected streams with
+# the same artifact, until #1674 removed crossings), so `water_covered_sources`
+# below finds every network source
 # covered and `test_no_recorded_gap_survives_the_water_build_reaching_it` went
 # red on all four entries until they were removed. That is what this ledger was
 # built to do; it is not evidence that no gap can ever return.
@@ -121,16 +125,17 @@ def water_covered_sources(sources_path: Path, line_sources: dict[str, str] | Non
     """The registry keys whose lines a water point is actually measured against.
 
     Read off the constants that decide it rather than restated:
-    `build_osm_water_reach.LINE_SOURCES` and `NETWORK_LINES_PATH` are the OSM
-    reach gate's line union, and `fetch_trail_water.CENTERLINE_PATH` and its own
-    `NETWORK_LINES_PATH` are the geometry its stream intersections touch.
-    Filename stems are registry keys (see the module docstring), except the
-    network artifact, which stands for all of its sources at once.
+    `build_osm_water_reach.LINE_SOURCES` and its `NETWORK_LINES_PATH` are the
+    OSM reach gate's line union. Filename stems are registry keys (see the
+    module docstring), except the network artifact, which stands for all of
+    its sources at once.
 
-    BOTH WATER BUILDS HAVE TO NAME IT, and the intersection is deliberate: the
-    two derivations publish different POI types from the same registry, and a
-    source whose springs are gated but whose crossings are not is exactly the
-    half-covered state this file exists to make somebody notice.
+    THIS WAS AN INTERSECTION OF TWO WATER BUILDS until #1674. The stream
+    crossings `fetch_trail_water.py` derived were measured against the same
+    lines, and a source whose springs were gated but whose crossings were not
+    was the half-covered state this file was written to catch. With crossings
+    removed, the reach gate is the one build measuring water against trail
+    lines, so its union is the whole answer.
 
     `line_sources` overrides the reach gate's dict, and exists so the tests of
     this file's own machinery can pin what they are measuring against - they
@@ -139,13 +144,10 @@ def water_covered_sources(sources_path: Path, line_sources: dict[str, str] | Non
     if line_sources is None:
         line_sources = build_osm_water_reach.LINE_SOURCES
     stems = {Path(filename).stem for filename in line_sources.values()}
-    stems.add(fetch_trail_water.CENTERLINE_PATH.stem)
     if line_sources is build_osm_water_reach.LINE_SOURCES:
         # The real gate, so the real network constant counts too. A pinned
         # `line_sources` is a test's own world and says nothing about it.
-        gated = {build_osm_water_reach.NETWORK_LINES_PATH.stem}
-        crossed = {fetch_trail_water.NETWORK_LINES_PATH.stem}
-        stems |= gated & crossed
+        stems.add(build_osm_water_reach.NETWORK_LINES_PATH.stem)
 
     covered = set(stems)
     if NETWORK_ARTIFACT_STEM in stems:
@@ -324,19 +326,19 @@ class TestTheRealRegistry:
 
 
 class TestTheArtifactEveryoneNames:
-    """Four modules now hardcode the path of one file, and nothing else makes
+    """Three modules hardcode the path of one file, and nothing else makes
     them agree (#1016).
 
-    `export_nearby_trails.py` writes it; the OSM reach gate, the crossing
-    derivation and the POI clip each read it. A rename or a typo in any of the
-    three readers is silent by construction - an absent artifact is a LEGITIMATE
+    `export_nearby_trails.py` writes it; the OSM reach gate and the POI clip
+    each read it. (The crossing derivation was a third reader until #1674
+    removed it.) A rename or a typo in either reader is silent by construction - an absent artifact is a LEGITIMATE
     state meaning "A.T. only", so a misspelled path does not raise, it just
     quietly restores the defect this whole change removed.
     """
 
     @pytest.mark.parametrize(
         "module",
-        [build_osm_water_reach, fetch_trail_water, export_poi],
+        [build_osm_water_reach, export_poi],
         ids=lambda module: module.__name__,
     )
     def test_every_reader_points_at_the_file_the_export_writes(self, module):

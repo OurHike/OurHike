@@ -113,13 +113,19 @@ export function applyRhythm(plan: HikePlan, pois: readonly StoredPoi[]): HikePla
  * zero at 100. A hiker's own standing instruction, overruled by a shelter
  * they will never reach, silently.
  *
- * WHICH of the in-window stops wins is unchanged and is not obviously right:
- * aiming at the far edge picks the LONGEST nearo the window allows, while
- * this docstring used to say "the first place to sleep inside NEARO_MAX_MI"
- * - the shortest. The two disagreed here for as long as both existed. Left
- * as the code has always behaved rather than resolved in passing: it moves
- * where hikers sleep, and plan.ts's own note that the window "errs SHORT"
- * argues for the other one. Filed as #1053, with what would settle it.
+ * THE FURTHEST STOP IN THE WINDOW WINS, by the maintainer's choice (poll,
+ * 2026-09-25, #1053). Aiming at the far edge picks the LONGEST nearo the
+ * window allows. This docstring, features/HIKE_PLANNING.md and
+ * features/SEGMENTS.md used to say "the first place to sleep" - the
+ * shortest - and disagreed with the code for as long as both existed. The
+ * docs moved to the code, not the reverse; the window itself is still
+ * plan.ts's `@unvalidated` 6 miles.
+ *
+ * AND ONLY STOPS SHORT OF TOMORROW'S ARE CANDIDATES (#1053), the same
+ * bound-the-candidates lesson as #1040 one edge over. The winner used to be
+ * rejected AFTER it was picked for reaching tomorrow's stop, so a rest at
+ * mile 23 with tomorrow at 26 and shelters at 24 and 27 picked 27, refused
+ * it, and printed a zero - while 24 was a real 1-mile nearo.
  *
  * Exported for lib/cascade.ts (#1031), which re-places a rest against the
  * boundaries a re-plan chose. A rest that was placed by one rule and moved
@@ -137,16 +143,17 @@ export function restLanding(
 
   const forward = next.mile > at.mile
   const window = at.mile + (forward ? NEARO_MAX_MI : -NEARO_MAX_MI)
-  // Only what a rest day could actually walk to. The bound has to be applied
-  // to the CANDIDATES, not to the winner - see the note above.
-  // Only what a rest day could actually walk to. The bound has to be applied
-  // to the CANDIDATES, not to the winner - see the note above.
+  // Only what a rest day could actually walk to, and stop short of
+  // tomorrow's stop at. Both bounds apply to the CANDIDATES, not to the
+  // winner - see the two notes above.
   const reachable = pois.filter(
-    (poi) => poi.mile !== undefined && Math.abs(poi.mile - at.mile) <= NEARO_MAX_MI,
+    (poi) =>
+      poi.mile !== undefined &&
+      Math.abs(poi.mile - at.mile) <= NEARO_MAX_MI &&
+      (forward ? poi.mile < next.mile : poi.mile > next.mile),
   )
   const candidate = nearestStopBeyond(reachable, at.mile, window)
   if (candidate === null) return zero
-  if (forward ? candidate.mile >= next.mile : candidate.mile <= next.mile) return zero
 
   return {
     mile: candidate.mile,

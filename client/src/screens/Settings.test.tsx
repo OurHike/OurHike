@@ -431,11 +431,20 @@ describe('MapSettings', () => {
           group.getByRole('checkbox', { name: new RegExp(shown, 'i') }),
         ).toBeChecked()
       }
-      for (const alsoShown of ['resupply', 'crossing', 'viewpoint', 'parking']) {
+      for (const alsoShown of ['resupply', 'viewpoint', 'parking', 'trailhead']) {
         expect(
           group.getByRole('checkbox', { name: new RegExp(alsoShown, 'i') }),
         ).toBeChecked()
       }
+    })
+
+    it('offers no Crossing checkbox, because the crossing type was removed (#1674)', () => {
+      // The maintainer, 2026-09-26: "Crossings are cluttering the map.
+      // Remove the crossing from the legend and do not show on the map."
+      renderMap()
+
+      const group = within(screen.getByRole('group', { name: /waypoints shown/i }))
+      expect(group.queryByRole('checkbox', { name: /crossing/i })).toBeNull()
     })
 
     it('writes the preference when a category is turned off', async () => {

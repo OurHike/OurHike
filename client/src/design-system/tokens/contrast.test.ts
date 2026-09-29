@@ -20,11 +20,13 @@ import { resolve as resolvePath } from 'node:path'
 // primary action button, since removed along with the rest of that feature
 // (#93, #308).
 //
-// It checks the two filled variants and nothing else. A full audit of every
-// pair in the app is real work and is not this; a test that tried it would
-// either be wrong about which pairs actually occur or would need every
-// stylesheet parsed. These four are the ones a filled Button genuinely
-// produces.
+// The filled variants are pairs a component genuinely produces. The second
+// describe below is the other kind of claim: every text level against every
+// surface token, as a cross product, whether or not a stylesheet puts that
+// pair together today (#1670). It does not parse the stylesheets to find the
+// pairs that occur - that would be wrong the day somebody adds one - and so
+// it cannot see a surface that is not a token: text over the translucent
+// `--surface-over-map` plates, or over the map itself.
 
 // `process.cwd()` rather than `import.meta.url`, matching
 // src/test/poiCardChipLayout.test.ts - the convention this repo already has
@@ -200,5 +202,69 @@ describe('a filled button’s label, against its own fill', () => {
     // failing it means somebody put a label on it, and the fix is a different
     // token rather than a darker accent.
     expect(resolve('accent-blaze-orange', 'light')).toBe(resolve('blaze-orange', 'light'))
+  })
+})
+
+describe('every text level, against every surface it can land on', () => {
+  // WHY A CROSS PRODUCT. `--fg-3` shipped as stone-500, which measured 3.13 to
+  // 3.81:1 on every light surface, and the dark block's own header says its
+  // values were "picked against `--bg-surface`" - which the dark `--fg-3`
+  // passed at 4.68:1 while failing the caution tint (3.54:1), the over-map
+  // plate (3.59:1) and the alternate card (4.32:1). Checking the one surface
+  // a value was picked on is how it failed the other seven, so this checks
+  // all of them (#1670 - --fg-3 text is under WCAG AA contrast on every light
+  // surface, and the app uses it 229 times).
+  //
+  // `--surface-over-map-hover` is left out on purpose: the only rule that
+  // reads it is the dark MapLibre control's hover (chrome/chrome.css), which
+  // holds icons, not text.
+  const TEXT = ['fg-1', 'fg-2', 'fg-3']
+  const SURFACES = [
+    'bg-page',
+    'bg-canvas',
+    'bg-surface',
+    'bg-sunken',
+    'surface-card',
+    'surface-card-alt',
+    'surface-warning',
+    'surface-over-map',
+  ]
+  // The chrome family is dark under both themes and has its own text levels,
+  // so it is its own product: chrome text on chrome surfaces only.
+  const CHROME_TEXT = ['fg-chrome-1', 'fg-chrome-2', 'fg-chrome-3']
+  const CHROME_SURFACES = ['bg-chrome', 'surface-chrome-raised']
+
+  for (const theme of ['light', 'dark'] as const) {
+    for (const fg of TEXT) {
+      for (const bg of SURFACES) {
+        it(`--${fg} reaches 4.5:1 on --${bg} under the ${theme} theme`, () => {
+          expect(pair(fg, bg, theme)).toBeGreaterThanOrEqual(AA)
+        })
+      }
+    }
+    for (const fg of CHROME_TEXT) {
+      for (const bg of CHROME_SURFACES) {
+        it(`--${fg} reaches 4.5:1 on --${bg} under the ${theme} theme`, () => {
+          expect(pair(fg, bg, theme)).toBeGreaterThanOrEqual(AA)
+        })
+      }
+    }
+  }
+
+  it('would have failed on the greys #1670 replaced', () => {
+    // Each theme's worst pair before the change, as palette entries rather than
+    // aliases so this keeps meaning the old values after the aliases moved.
+    expect(pair('stone-500', 'bg-sunken', 'light')).toBeLessThan(AA)
+    expect(pair('bone-500', 'surface-warning', 'dark')).toBeLessThan(AA)
+    expect(pair('bone-500', 'surface-chrome-raised', 'dark')).toBeLessThan(AA)
+  })
+
+  it('keeps --fg-3 a separate level from --fg-2 in both themes', () => {
+    // The fix the maintainer chose (#1670's poll, 2026-09-26) was a darker
+    // third level over folding it into the second. Collapsing `--fg-3` onto
+    // `--fg-2` would pass every check above and undo that choice silently.
+    for (const theme of ['light', 'dark'] as const) {
+      expect(resolve('fg-3', theme)).not.toBe(resolve('fg-2', theme))
+    }
   })
 })

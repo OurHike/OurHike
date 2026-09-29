@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, act } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, act, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
@@ -158,6 +158,49 @@ describe('PoiCard', () => {
     renderCard({ ...SHELTER, confidence: 'low' })
 
     expect(screen.getByText(/nobody has confirmed/i)).toBeInTheDocument()
+  })
+
+  it('says in words why a trailhead wears the closed pin (#1695)', () => {
+    const trailhead: PoiDetail = {
+      ...SHELTER,
+      id: 'oprhp_facilities:10073',
+      name: 'Wilkonson Memorial',
+      type: 'trailhead',
+      trailsClosedWithinM: 100,
+    }
+
+    // On the peek, not only behind the expand: a hiker picking a start needs
+    // it before anything else on the card. 100 m is 328 ft, stated as "about
+    // 330" because the radius is a round pick nobody surveyed.
+    renderPeek(trailhead)
+    expect(screen.getByRole('note', { name: '' })).toHaveTextContent(
+      'Every trail OurHike tracks within about 330 ft of this trailhead is marked closed.',
+    )
+  })
+
+  it('states the radius the data carries, in the hiker\u2019s unit', () => {
+    render(
+      <PoiCard
+        poi={{ ...SHELTER, type: 'trailhead', trailsClosedWithinM: 150 }}
+        map={null}
+        onClose={vi.fn()}
+        units="metric"
+      />,
+    )
+
+    expect(
+      screen.getByText(
+        'Every trail OurHike tracks within about 150 m of this trailhead is marked closed.',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('never says it of a waypoint that is not a trailhead, whatever it carries', () => {
+    renderCard({ ...SHELTER, trailsClosedWithinM: 100 })
+
+    expect(
+      screen.queryByText(/of this trailhead is marked closed/),
+    ).not.toBeInTheDocument()
   })
 
   it('does not cast doubt on a waypoint that came from facility data', () => {
@@ -675,10 +718,10 @@ describe('the parts of one site', () => {
 
   const SITE: readonly PoiDetail[] = [SHELTER, PRIVY, CAMPSITE]
 
-  /** Pulled open, for `renderCard`'s reason: the strip of parts is part of
-   *  the record rather than of the peek. A hiker who tapped a shelter pin is
-   *  answering a question about the shelter; picking a different part of the
-   *  site out of it is the next thing they do, not the first. */
+  /** Pulled open, for `renderCard`'s reason: most of what a chip swaps - the
+   *  photograph, the coordinates, the provenance - is in the record, so that
+   *  is where most of these tests look. The strip is on the peek too since
+   *  #1706, and the tests that are about the peek render it shut. */
   function renderSite(site: readonly PoiDetail[] = SITE, poi: PoiDetail = SHELTER) {
     const view = render(<PoiCard poi={poi} site={site} map={null} onClose={vi.fn()} />)
     open()
@@ -686,6 +729,77 @@ describe('the parts of one site', () => {
   }
 
   const chips = () => screen.getAllByTestId('poi-card-chip')
+
+  /** The same site, left as the tap leaves it: peeking. */
+  function renderSitePeek(site: readonly PoiDetail[] = SITE, poi: PoiDetail = SHELTER) {
+    return render(<PoiCard poi={poi} site={site} map={null} onClose={vi.fn()} />)
+  }
+
+  it('lists every part of the place on the peek, before anything is pulled open', () => {
+    // #1706. #941 moved the strip into the opened card, and a tapped shelter's
+    // peek then named nothing of its privy or its water - which ride the
+    // shelter's pin and have no pin of their own to say they are there.
+    renderSitePeek()
+
+    const peek = screen.getByTestId('poi-card-peek')
+    expect(within(peek).getAllByTestId('poi-card-chip')).toHaveLength(3)
+    expect(within(peek).getByRole('button', { name: 'Shelter' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
+    expect(within(peek).getByRole('button', { name: 'Privy 131 ft' })).toBeInTheDocument()
+    expect(
+      within(peek).getByRole('button', { name: 'Campsite 82 ft' }),
+    ).toBeInTheDocument()
+  })
+
+  it('swaps the peek to the part you tapped on it', () => {
+    renderSitePeek()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Privy 131 ft' }))
+
+    const peek = screen.getByTestId('poi-card-peek')
+    expect(
+      within(peek).getByRole('heading', { name: 'Chairback Gap Privy' }),
+    ).toBeInTheDocument()
+    expect(
+      within(peek).queryByRole('heading', { name: SHELTER.name }),
+    ).not.toBeInTheDocument()
+    // The privy is published unverified, and the peek says so for the part it
+    // is now showing - not the shelter's silence carried over.
+    expect(within(peek).getByText(/nobody has confirmed/i)).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Showing Chairback Gap Privy')
+  })
+
+  it('opens on the part picked on the peek, not back on the pin', () => {
+    // One `shownId` for both heights: a hiker who tapped the privy chip and
+    // then pulled is asking for the privy's record.
+    renderSitePeek()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Privy 131 ft' }))
+    open()
+
+    expect(
+      screen.getByRole('heading', { name: 'Chairback Gap Privy' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Privy 131 ft' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
+    // One live region across the pull, still holding what it said, rather
+    // than one per height.
+    expect(screen.getAllByRole('status')).toHaveLength(1)
+  })
+
+  it('links each chip on the peek to the peek it swaps', () => {
+    renderSitePeek()
+
+    for (const chip of chips()) {
+      expect(document.getElementById(chip.getAttribute('aria-controls') ?? '')).toBe(
+        screen.getByTestId('poi-card-peek'),
+      )
+    }
+  })
 
   it('lists every part of the place, the one you are already on included', () => {
     // The issue's own sketch listed the members only, on the reasoning that the
@@ -1038,22 +1152,22 @@ describe('the parts of one site', () => {
     expect(chips()[0]).toHaveAccessibleName('Shelter')
   })
 
-  it('carries each part’s own rim, broken where nobody has checked', () => {
-    // The chip's rim is a fact about ONE privy - which is where it parts company
+  it('draws each part hollow or filled by its own confidence', () => {
+    // The chip's pin is a fact about ONE privy - which is where it parts company
     // with the legend, whose pins carry no confidence at all because a key says
     // what a category's symbol is. Drop the prop and every chip claims the same
     // confidence: an unverified privy looks surveyed until you tap it, which is
     // the honesty-about-uncertainty channel (OurHikeValues.md #4) this card is
-    // built around, silently gone. Assertable because MapIcon gives a verified
-    // pin no `stroke-dasharray` attribute at all rather than a solid-looking
-    // one - see the comment on `broken` there.
+    // built around, silently gone. Hollow since #1682, a broken rim before it;
+    // MapIcon states which on the svg itself.
     renderSite()
 
-    const rim = (chip: HTMLElement) => chip.querySelector('.map-icon__halo')
+    const confidence = (chip: HTMLElement) =>
+      chip.querySelector('svg')?.getAttribute('data-confidence')
 
-    expect(rim(chips()[1])).toHaveAttribute('stroke-dasharray')
-    expect(rim(chips()[0])).not.toHaveAttribute('stroke-dasharray')
-    expect(rim(chips()[2])).not.toHaveAttribute('stroke-dasharray')
+    expect(confidence(chips()[1])).toBe('low')
+    expect(confidence(chips()[0])).toBe('high')
+    expect(confidence(chips()[2])).toBe('high')
   })
 
   it('lets a thumbless hiker reach every part and open one', async () => {

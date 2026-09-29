@@ -198,6 +198,17 @@ export interface StoredPoi {
    *  normalisation matched on. Carried for the waypoint card (#526) rather than
    *  for the pin, which shows the anchor's own name. */
   siteName?: string
+  /**
+   * Every trail line within this many metres of this trailhead is closed
+   * (#1695) - pipeline/export_nearby_poi.py's `trails_closed_within_m`, set
+   * only on trailheads, whose value is the radius that release was computed
+   * with. The map draws such a trailhead as a pin in the closure's ink with a
+   * white cross, and the card states this distance, read from the data rather
+   * than from a constant in this build. Absent on every other waypoint, and on
+   * any release cut before the field existed, which reads as "not known to be
+   * closed".
+   */
+  trailsClosedWithinM?: number
   photoUrl?: string
   /** The Commons file page, where the full licence terms and history live. */
   photoPage?: string
@@ -303,6 +314,7 @@ interface PoiProperties {
   site_role?: unknown
   site_name?: unknown
   nearby?: unknown
+  trails_closed_within_m?: unknown
 }
 
 /** The property when it is a non-empty string, else nothing - the artifact
@@ -464,10 +476,22 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
     // used to arrive as, which is what lets the card write the distances in
     // the units the hiker chose - see lib/nearbyClause.ts.
     const nearby = readNearbyList(props.nearby)
+    const type = typeof props.poi_type === 'string' ? props.poi_type : fallbackType
+    // A positive, finite number of metres, or nothing (#1695): a cross on the
+    // map is a claim that every trail there is shut, so a value this build
+    // does not recognise reads as the ordinary pin.
+    const closedWithin = props.trails_closed_within_m
+    const trailsClosedWithinM =
+      type === 'trailhead' &&
+      typeof closedWithin === 'number' &&
+      Number.isFinite(closedWithin) &&
+      closedWithin > 0
+        ? closedWithin
+        : undefined
 
     pois.push({
       id: String(props.id ?? `${fallbackType}:${props.lat},${props.lon}`),
-      type: typeof props.poi_type === 'string' ? props.poi_type : fallbackType,
+      type,
       name: typeof props.name === 'string' ? props.name : 'Unnamed',
       lat: props.lat,
       lon: props.lon,
@@ -505,6 +529,7 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
       // above: an empty list and an absent field would render identically, and
       // storing the empty one would put an array on 40,000 POIs to say nothing.
       ...(nearby.length > 0 ? { nearby } : {}),
+      ...(trailsClosedWithinM !== undefined ? { trailsClosedWithinM } : {}),
       // Photo fields ride only behind a photo URL: an author or licence with
       // no photo is a credit for nothing, and would render as one.
       ...(photoUrl !== undefined
@@ -1250,6 +1275,24 @@ export async function haveTrailData(): Promise<boolean> {
   return (await get(TRAIL_DATA_PARTIAL_KEY)) !== true
 }
 
+/**
+ * Waypoint types a phone may still hold from an older build, which this build
+ * must not draw.
+ *
+ * `crossing` left POI_TYPES in #1674 (lib/config.ts has why), so nothing this
+ * build downloads is one. But a phone that stored a release under the build
+ * before it keeps those 5,318 stream crossings in IndexedDB until a refresh
+ * rewrites the waypoints, and a refresh only rewrites them when the published
+ * hashes move. Until then they would draw as the unknown-type pin and give the
+ * legend a lowercase `crossing` row - the clutter the removal was for, back
+ * again on exactly the phones that already had it.
+ *
+ * Named apart from POI_TYPES on purpose: verify_release.py reads that array
+ * with a regex, and a second `..._POI_TYPES = [` would be read as a list of
+ * artifacts a release must serve.
+ */
+const WITHDRAWN_WAYPOINT_TYPES: ReadonlySet<string> = new Set(['crossing'])
+
 export async function loadTrailData(): Promise<TrailData | null> {
   const trails = await loadTrailLines()
   if (trails === null) return null
@@ -1288,7 +1331,9 @@ export async function loadTrailData(): Promise<TrailData | null> {
   // build that wrote something different there - is "no miles", never a
   // parse attempt on a value nobody stands behind.
   const trailMiles = storedMiles instanceof Blob ? storedMiles : null
-  const pois = (storedPois as StoredPoi[] | undefined) ?? []
+  const pois = ((storedPois as StoredPoi[] | undefined) ?? []).filter(
+    (poi) => !WITHDRAWN_WAYPOINT_TYPES.has(poi.type),
+  )
   const spurs = (storedSpurs as Record<string, SpurRecord> | undefined) ?? {}
   // Undefined and null both mean "no ribbon". They arrive from different
   // places - nothing stored at all, versus a release that published no profile

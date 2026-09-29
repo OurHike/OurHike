@@ -209,6 +209,8 @@ import json
 from pathlib import Path
 
 import duckdb
+import numpy as np
+import shapely
 from pmtiles.reader import MmapSource, Reader
 from shapely import wkt as shapely_wkt
 from shapely.geometry import MultiLineString, shape
@@ -219,7 +221,8 @@ from export_trails import (
     _TO_METRIC,
     OVERVIEW_COORDINATE_DECIMALS,
     OVERVIEW_SIMPLIFY_TOLERANCE_M,
-    _overview_coordinates,
+    _flat_lines,
+    _overview_coordinates_all,
     build_trail_records,
     geometry_to_wkt,
     load_features,
@@ -227,6 +230,7 @@ from export_trails import (
     normalize_source_features,
     simplify_records,
 )
+from lib.batch_geometry import from_wkt_all, reproject, round_like_python
 from lib.blaze import NEUTRAL_FALLBACK, load_blaze_mapping, map_source_blaze
 from lib.completeness import count_problems, fail_if_incomplete
 from lib.concurrency import AT_CENTERLINE_SOURCE, find_shared_ground
@@ -405,6 +409,13 @@ def _miles(record: dict) -> float:
     return shapely_transform(_TO_METRIC, shapely_wkt.loads(record["wkt"])).length / METERS_PER_MILE
 
 
+def _miles_all(geoms: np.ndarray) -> list[float]:
+    """`_miles` for every parsed geometry, as one reprojection and one length
+    call (#1661): the same GEOS length of the same reprojected coordinates,
+    divided the same way, so the same floats."""
+    return (shapely.length(reproject(geoms, _TO_METRIC)) / METERS_PER_MILE).tolist()
+
+
 def _named_lengths(records: list[dict]) -> dict[tuple[str, str], float]:
     """Total real-world length per (source, name), for every record whose
     name is more than whitespace.
@@ -417,13 +428,11 @@ def _named_lengths(records: list[dict]) -> dict[tuple[str, str], float]:
     happen to share a name are never summed together - the same restraint
     suppressed_by_owner takes on the same two fields, for the same reason.
     """
+    named = [record for record in records if record.get("name") is not None and str(record["name"]).strip()]
     totals: dict[tuple[str, str], float] = {}
-    for record in records:
-        name = record.get("name")
-        if name is None or not str(name).strip():
-            continue
-        key = (record["source"], name)
-        totals[key] = totals.get(key, 0.0) + _miles(record)
+    for record, miles in zip(named, _miles_all(from_wkt_all([record["wkt"] for record in named]))):
+        key = (record["source"], record["name"])
+        totals[key] = totals.get(key, 0.0) + miles
     return totals
 
 
@@ -571,19 +580,15 @@ def resolve_blaze(source: dict, properties: dict, mapping: dict | None) -> tuple
     # thing - a row whose publisher had not filled the column in - so this
     # returned Unknown ("Blaze not recorded") without looking.
     #
-    # NH GRANIT breaks that. Its BLAZE is blank on 7,574 of the 7,643 Whites
-    # rows, and the blank is CORRECT rather than missing: the White Mountains
-    # largely do not use paint blazes, and the 62 rows that do read White are
-    # the A.T. (61 carry TRAILSYS "Appalachian Trail"). For that source blank
-    # means UNBLAZED, which the palette spells "None" and the client renders
-    # as "Unblazed" - a true statement about a Whites trail, where Unknown
-    # would print a hedge in place of a fact.
-    #
-    # That is a judgement about one organization's data, so it lives where the
-    # other such judgements live - reference/blaze_mapping.json, a reviewed
-    # file whose diff is the review - rather than as a new registry field.
-    # A source whose table says nothing about blanks still gets Unknown, which
-    # is every source but one.
+    # NH GRANIT was the case that needed it: its BLAZE was blank on 7,574 of
+    # 7,643 Whites rows, and the blank was CORRECT rather than missing - the
+    # White Mountains largely do not use paint blazes - so its table mapped
+    # the blank to "None" ("Unblazed"). GRANIT dropped the column in
+    # September 2026 (#1646) and the source was removed altogether (#1711),
+    # so no table maps a blank today and every blank falls through to
+    # Unknown. The path stays because the judgement it encodes - a blank a
+    # publisher means is a fact, not a gap - belongs in a reviewed table
+    # (reference/blaze_mapping.json) whenever a source earns it again.
     if isinstance(raw, str) and not raw.strip():
         mapped, disposition = map_source_blaze(raw, mapping)
         return (mapped, "mapped") if disposition == "mapped" else (NEUTRAL_FALLBACK, "absent")
@@ -688,22 +693,17 @@ def keep_reason(source: dict, properties: dict, geometry, owned: dict[str, str],
     if foot_field and properties.get(foot_field) not in source.get("foot_allowed", FOOT_ALLOWED_DEFAULT):
         return f"not a foot trail: {foot_field}={properties.get(foot_field)!r}"
 
-    # The other direction, and it exists because one source can only be
-    # filtered that way (#1207). `foot_field` asks "does this row SAY it is
-    # walkable" and drops everything that does not - which is right where the
-    # column is populated, and destructive where it is not. NH GRANIT's PED is
-    # blank on 3,760 of 7,643 Whites rows, and 2,541 of those blanks carry no
-    # use flag of any kind while being ordinary hiking trails - one of them
-    # literally named "Appalachian Trail - road link". A PED allowlist would
-    # delete them.
-    #
-    # What GRANIT does assert positively is what a corridor is FOR: 1,209 of
-    # those blank-PED rows are flagged SNOWMBL and 124 ATV. Acting on a
-    # positive assertion is sound where acting on an absence is not, so this
-    # drops on the motorized flag and keeps everything else - the maintainer's
-    # "It's OurHike, not OurBike" applied with the only evidence the layer
-    # offers. sources.json's `excluded_when_comment` on that entry carries the
-    # measurement and says why MTNBIKE, HORSE and XCSKI are NOT in the set.
+    # The other direction (#1207). `foot_field` asks "does this row SAY it
+    # is walkable" and drops everything that does not - right where the
+    # column is populated, destructive where it is not, because an absent use
+    # flag is unrecorded rather than a prohibition. `excluded_when` drops on
+    # a POSITIVE assertion instead: a row whose steward says it is motorized,
+    # or says hiking is not allowed. Acting on an assertion is sound where
+    # acting on an absence is not - the maintainer's "It's OurHike, not
+    # OurBike" applied with the evidence each layer actually offers. Three
+    # sources use it (#1711): usfs_trails on `terra_motorized`, and the two
+    # New Jersey layers on their motorized and hiking columns. Each entry's
+    # `excluded_when_comment` in sources.json carries the measurement.
     for field, values in (source.get("excluded_when") or {}).items():
         if properties.get(field) in values:
             return f"excluded use: {field}={properties.get(field)!r}"
@@ -717,6 +717,32 @@ def keep_reason(source: dict, properties: dict, geometry, owned: dict[str, str],
         return f"route owned by {owned[str(properties.get(name_field)).strip()]}"
 
     return None
+
+
+def missing_declared_fields(source: dict, features: list[dict]) -> list[str]:
+    """The fields a registry entry names that appear on NO fetched feature.
+
+    WHY THIS EXISTS (#1646). Every filter in keep_reason() reads a column by
+    the name sources.json gives it, and `properties.get(name)` on a column
+    that does not exist returns None rather than failing. So when NH GRANIT
+    republished its trails layer in September 2026 and renamed SNOWMBL/ATV
+    to SNOWMACHIN/OHRV, `excluded_when` matched nothing, every snowmobile
+    corridor in the state shipped as a hiking trail, and the run was green -
+    measured 2026-09-26, 2,375 mi of motorized-only corridor in the
+    published release, and the #1646 mileage jump nobody could explain. A
+    column that is null on every row is a data question; a column that is
+    ABSENT from every row is the registry describing a layer that no longer
+    exists, and that is a stop.
+
+    Only the keys the entry states are checked - `name_field`'s "Name"
+    default is not, because a source that never declared it never claimed
+    the column."""
+    declared = [source.get(key) for key in ("name_field", "foot_field", "blaze_field", "status_field")]
+    declared += list(source.get("excluded_when") or {})
+    present: set[str] = set()
+    for feature in features:
+        present.update((feature.get("properties") or {}).keys())
+    return [field for field in dict.fromkeys(declared) if field and field not in present]
 
 
 def declared_name(source: dict, properties: dict):
@@ -1063,15 +1089,58 @@ def _rounded_geometry(geometry) -> dict:
     return {"type": geo["type"], "coordinates": walk(geo["coordinates"], cut=False)}
 
 
+def _rounded_geometries(geoms: np.ndarray) -> list[dict]:
+    """`_rounded_geometry` for every geometry (#1661): one rounding pass over
+    every coordinate and one drawability test per part, where the
+    per-record function walked `__geo_interface__` and called `round` twice
+    per vertex. On the real network records_to_geojson spent 54.1 s doing
+    that record by record - a parse, `_miles`, this walk - and 16.3 s this
+    way, under the profiler (2026-09-24).
+
+    Only non-empty 2D LineStrings and MultiLineStrings take the array path
+    (export_trails._flat_lines); anything else is handed to
+    `_rounded_geometry` itself."""
+    out: list = [None] * len(geoms)
+    flat = _flat_lines(geoms)
+    for index in np.flatnonzero(~flat).tolist():
+        out[index] = _rounded_geometry(geoms[index])
+    selected = np.flatnonzero(flat)
+    parts, owner = shapely.get_parts(geoms[selected], return_index=True)
+    counts = shapely.get_num_coordinates(parts)
+    coords = shapely.get_coordinates(parts)
+    decimals = NEARBY_COORDINATE_DECIMALS
+    rounded = np.column_stack((round_like_python(coords[:, 0], decimals), round_like_python(coords[:, 1], decimals)))
+    # _drawable_after_cut, for every part at once: two distinct vertices once
+    # cut is the same as some vertex differing from the part's first. A
+    # geometry is cut only if every one of its parts survives the cut.
+    part_of = np.repeat(np.arange(len(parts)), counts)
+    first = np.cumsum(counts) - counts
+    survives = np.zeros(len(parts), dtype=bool)
+    survives[part_of[(rounded != rounded[first[part_of]]).any(axis=1)]] = True
+    cut = np.bincount(owner[~survives], minlength=len(selected)) == 0
+    chosen = np.where(np.repeat(cut[owner], counts)[:, None], rounded, coords).tolist()
+
+    is_multi = (shapely.get_type_id(geoms[selected]) == 5).tolist()
+    start = 0
+    for position, end in zip(owner.tolist(), np.cumsum(counts).tolist()):
+        index = int(selected[position])
+        if is_multi[position]:
+            if out[index] is None:
+                out[index] = {"type": "MultiLineString", "coordinates": []}
+            out[index]["coordinates"].append(chosen[start:end])
+        else:
+            out[index] = {"type": "LineString", "coordinates": chosen[start:end]}
+        start = end
+    return out
+
+
 def records_to_geojson(records: list[dict]) -> dict:
     """The FeatureCollection the client draws. Properties only - no geometry
     re-derivation - so what is written is what was clipped and simplified,
     at the precision NEARBY_COORDINATE_DECIMALS caps."""
-    from shapely import wkt as shapely_wkt
-
+    geoms = from_wkt_all([record["wkt"] for record in records])
     features = []
-    for record in records:
-        geometry = shapely_wkt.loads(record["wkt"])
+    for record, length_miles, geometry in zip(records, _miles_all(geoms), _rounded_geometries(geoms)):
         features.append(
             {
                 "type": "Feature",
@@ -1104,8 +1173,9 @@ def records_to_geojson(records: list[dict]) -> dict:
                     # `_miles` is export_trails.py's EPSG:5070 transform, the
                     # one this file already names a trail and merges a
                     # duplicate on either side of - one way of measuring
-                    # distance, not a second.
-                    "length_miles": round(_miles(record), 2),
+                    # distance, not a second. `_miles_all` is it for every
+                    # record at once.
+                    "length_miles": round(length_miles, 2),
                     # Every record this export builds carries a status. A
                     # shared-ground pair's A.T. half (#1384) carries none,
                     # because trails.geojson publishes none for the A.T. -
@@ -1147,7 +1217,7 @@ def records_to_geojson(records: list[dict]) -> dict:
                     **({"concurrent_source": record["concurrent_source"]} if record.get("concurrent_source") else {}),
                     **({"concurrent_side": record["concurrent_side"]} if record.get("concurrent_side") else {}),
                 },
-                "geometry": _rounded_geometry(geometry),
+                "geometry": geometry,
             }
         )
     return {"type": "FeatureCollection", "features": features}
@@ -1170,7 +1240,7 @@ def exported_bbox(records: list[dict]) -> list[float] | None:
     """
     if not records:
         return None
-    bounds = [shapely_wkt.loads(record["wkt"]).bounds for record in records]
+    bounds = shapely.bounds(from_wkt_all([record["wkt"] for record in records])).tolist()
     return [
         min(b[0] for b in bounds),
         min(b[1] for b in bounds),
@@ -1235,11 +1305,11 @@ def write_overview(records: list[dict]) -> dict:
     # reads the sentinel back into "omit name and through_route entirely",
     # this export's existing convention for closure_kind above.
     groups: dict[tuple[str, str, str, str], list[list[list[float]]]] = {}
-    for record in coarse:
+    coarse_lines = _overview_coordinates_all(from_wkt_all([record["wkt"] for record in coarse]), OVERVIEW_COORDINATE_DECIMALS)
+    for record, lines in zip(coarse, coarse_lines):
         name = record.get("name")
         qualifies = name is not None and (record["source"], name) in qualifying
         key = (record["source"], name if qualifies else "", record["blaze_color"], record["trail_status"])
-        lines = _overview_coordinates(shapely_wkt.loads(record["wkt"]), OVERVIEW_COORDINATE_DECIMALS)
         groups.setdefault(key, []).extend(lines)
 
     def feature_properties(key: tuple[str, str, str, str]) -> dict:
@@ -1423,6 +1493,16 @@ def main() -> dict:
                 f"({key} is registered as an external layer, so it is not part of fetch_all.py's A.T. fetch.)"
             )
         features = json.loads(raw_path.read_text(encoding="utf-8")).get("features", [])
+        # Before any filter runs, so a renamed column fails the run rather
+        # than turning its filter into a no-op (#1646). An empty layer is
+        # fail_if_incomplete()'s question, not this one.
+        missing = missing_declared_fields(source, features) if features else []
+        if missing:
+            raise SystemExit(
+                f"{key}: sources.json names {missing}, and none of the {len(features):,} fetched features carries "
+                f"{'it' if len(missing) == 1 else 'them'}. The layer's schema has changed - re-read its fields "
+                f"at {source.get('url')} and update the registry entry before exporting."
+            )
         records, stats = build_records(source, features, owned, load_boundary(source))
 
         print(f"  {key}: {stats['kept']} of {len(features)} features kept")

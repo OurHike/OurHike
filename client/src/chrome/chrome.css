@@ -1977,10 +1977,11 @@
   border-radius: 10px;
 }
 
+/* A trust line (#1670): `--fg-2`, not the faint `--fg-3` - test/trustLines.test.ts. */
 .closure-sheet__age {
   margin: 0;
   font-size: 12px;
-  color: var(--fg-3);
+  color: var(--fg-2);
 }
 
 /* ---------- Route entrance sheet (RouteEntranceSheet.tsx, #755) ---------- */
@@ -3258,6 +3259,25 @@ a.poi-card__credit::after {
   display: none;
 }
 
+/* The parts strip on the peek (#1706). The peek's own flex gap spaces it, so
+   the 4px the opened card's body needs above and below would double it. The
+   strip is 240px here as it is in the opened card - the same 12px padding
+   either side of a 264px card - so .poi-card__chips' five-parts-fit
+   arithmetic holds unchanged.
+
+   `flex-shrink: 0` IS THE LINE THAT KEEPS THE ROW ON A SMALL PHONE. The peek
+   is a flex column capped to the room beside its pin (#1374), and the strip's
+   `overflow-x: auto` makes its automatic minimum height zero - so where the
+   cap binds, flexbox shrinks the row away entirely rather than scrolling the
+   peek. Photographed 2026-09-28 at 375x667 on Limestone Spring Shelter, UA
+   data: without this line the peek drew its name and conditions and no chips
+   at all. The other peek children keep their height because nothing else in
+   it clips overflow. */
+.poi-card__peek > .poi-card__chips {
+  flex-shrink: 0;
+  margin: 0;
+}
+
 /* `flex: 0 0 auto`, and NOT tabs.css's `flex: 1 0 auto`: a tab strip stretches
    its tabs to fill the row, which for two chips in a 240px card would make each
    one 120px of mostly nothing and for five would squeeze them all instead of
@@ -3401,10 +3421,13 @@ a.poi-card__credit::after {
   font-family: var(--font-mono, ui-monospace, monospace);
 }
 
+/* A trust line (#1670): `--fg-2`, not the faint `--fg-3` - test/trustLines.test.ts.
+   The coordinates are what a hiker reads out when lost, and they carry
+   `.poi-card__source` on the same line. */
 .poi-card__coords {
   margin: 0;
   font-size: 12px;
-  color: var(--fg-3);
+  color: var(--fg-2);
 }
 
 /* Body text. Sits between the meta line and the unverified block at a size
@@ -3424,6 +3447,21 @@ a.poi-card__credit::after {
   font-size: 13px;
   line-height: 1.45;
   color: var(--fg-2);
+}
+
+/* A trailhead whose trails are all closed (#1695): the unverified line's
+   panel, with a heavy edge and full weight, because it is the reason the pin
+   is a cross. The edge is the text's own ink (--fg-1) rather than the
+   closure's #14130f, which would vanish on the dark theme's sunken panel. */
+.poi-card__trails-closed {
+  margin: var(--space-1, 4px) 0;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-1);
+  background: var(--bg-sunken);
+  border-left: 4px solid var(--fg-1);
+  border-radius: 10px;
 }
 
 /* Called out rather than set in fine print. This is the line that says the app
@@ -3508,9 +3546,10 @@ a.poi-card__credit::after {
   border-radius: var(--radius-pill, 999px);
 }
 
+/* A trust line (#1670): `--fg-2`, not the faint `--fg-3` - test/trustLines.test.ts. */
 .poi-card__note-when {
   font-size: 12px;
-  color: var(--fg-3);
+  color: var(--fg-2);
 }
 
 /* A paragraph of its own since #941, rather than a span beside the tag: a
@@ -3796,10 +3835,12 @@ a.poi-card__credit::after {
 
    Body face, against the mono the coordinates inherit: a source name is a
    name, and setting it in the figures' typeface would invite it to be read as
-   part of the number. */
+   part of the number.
+
+   A trust line (#1670): `--fg-2`, not the faint `--fg-3` - test/trustLines.test.ts. */
 .poi-card__source {
   font-family: var(--font-body);
-  color: var(--fg-3);
+  color: var(--fg-2);
 }
 
 /* Keep-or-discard over a just-picked photo's preview (PoiCard.tsx, #571).

@@ -71,6 +71,41 @@ def _domain_of(email: str | None) -> str | None:
     return email.rsplit("@", 1)[1].strip().lower()
 
 
+def _revoke_the_registrants_unverified_seat(db: Session, club: Club, *, verified_by: str) -> None:
+    """The other half of releasing a held registration - #1641 finding 3's
+    third bullet.
+
+    `register_org` gives whoever fills in the form an approved, `is_codeowner`
+    seat the moment the club row is created, whatever `state` says - a
+    `pending` club's founder is exactly as much of a codeowner as a `claimed`
+    one's, checked nowhere against the domain the club claims to be. Nothing
+    used to revisit that seat when `state` later moved to `claimed`: a
+    stranger who typed a domain they do not hold, naming a real employee as
+    an admin invite, kept a permanent codeowner seat over that employee's own
+    organization once the employee did the honest thing and approved their
+    invitation (`approve_seat`) or claimed it themselves (`claim_org`) - both
+    call this at the exact moment `state` becomes `claimed`.
+
+    Deleted rather than merely un-approved: `_an_admin_offered_it` above
+    treats "created this club" as standing authority on its own, so an
+    un-approved seat could re-approve itself right back with no invitation
+    from anybody who has actually proven anything. "The authority is the
+    invitation" (#1635) - if the registrant really does work there, the
+    admin who just proved the domain can invite them again, the same as
+    anybody else at the organization.
+
+    A no-op when the person who just proved the domain IS the registrant
+    (their own seat is the one being kept, not revoked) or when nobody
+    registered this club in the first place (an `unclaimed` row a maintainer
+    wrote by hand, which has no founder seat to revisit).
+    """
+    if club.created_by is None or club.created_by == verified_by:
+        return
+    founder_seat = db.query(OrgAdmin).filter(OrgAdmin.club_id == club.id, OrgAdmin.person_id == club.created_by).one_or_none()
+    if founder_seat is not None:
+        db.delete(founder_seat)
+
+
 def _somebody_holds_the_domain(domain: str, addresses: list[str | None]) -> bool:
     """At least one admin on an org's own domain.
 
@@ -441,6 +476,7 @@ def approve_seat(
     if club.state == OrgState.pending and club.domain and _somebody_holds_the_domain(club.domain, [email]):
         club.state = OrgState.claimed
         club.verified_by = VerifiedBy.email
+        _revoke_the_registrants_unverified_seat(db, club, verified_by=current_user.id)
     db.commit()
     return _with_admins(db, club)
 
@@ -548,6 +584,9 @@ def claim_org(
         )
 
     now = utc_now()
+    # Revoked before `created_by` is overwritten below, which would make
+    # this a no-op for every held registration - the one case it exists for.
+    _revoke_the_registrants_unverified_seat(db, club, verified_by=current_user.id)
     club.state = OrgState.claimed
     club.verified_by = VerifiedBy.email
     club.created_by = club.created_by or current_user.id

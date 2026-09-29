@@ -239,6 +239,13 @@ describe('searching by mile, and telling a town from a shop (#802)', () => {
     expect(town.textContent).toContain('town')
   })
 
+  it('offers no Roads chip, which only ever found stream crossings (#1674)', () => {
+    render(<RouteStopPicker {...PROPS} />)
+
+    expect(screen.getByRole('button', { name: 'Water' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Roads' })).toBeNull()
+  })
+
   it('filters to towns, which is not a poi_type at all', async () => {
     const user = userEvent.setup()
     render(<RouteStopPicker {...PROPS} />)

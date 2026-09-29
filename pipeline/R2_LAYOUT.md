@@ -67,6 +67,13 @@ segments, the banned word `latest`, the closed extension set — are all consequ
 key being a permanent public URL, and none of them describes a private store, so the raw
 store gets a small validator of its own rather than these rules loosened for both.
 
+**Since 2026-09-24 that design has a second private bucket**, the step cache: the output
+of each expensive pipeline step, stored under a hash of its inputs, plus a read-only
+`.duckdb` copy for people to query (INCREMENTAL.md, "Three tiers, and a step cache between
+them"). It is a separate bucket so the build job can write it without being able to write
+raw. Everything this section says about the raw store is true of it too: never a public
+domain, never these key rules.
+
 ## Top-level prefixes
 
 These are the places an object can be, and a new one is a design decision — recorded in
@@ -82,7 +89,7 @@ data a phone is pinned to.
 | `_internal/` | build intermediates, keyed by release | rewritten per build | no |
 | `photos/` | POI photos, one object per image, content-addressed | mutable: objects are added and deleted, never rewritten | yes |
 | `originals/` | full-resolution originals of the photos above, content-addressed | mutable: objects are added and deleted, never rewritten | **no** |
-| `conditions/` | published safety data — verified closures, verified reports, and the ATC's own trail updates | mutable: rewritten in place, daily | yes |
+| `conditions/` | published safety data — verified closures, verified reports, and the ATC's own trail updates — and, since #1056, the NBM forecast for every trail square with HRRR's first two days' temperature (`weather_index.json` plus one `weather/<cell>.json` per 1° cell) and every active NWS alert that reaches one (`weather_alerts.json`) (features/WEATHER.md §7) | mutable: rewritten in place, hourly by schedule (about every four hours as GitHub actually fires it, #1346) | yes |
 | `archive/` | one-time snapshots of third-party data read once and possibly never again — today the footprint of each NYNJTC paper map sheet | mutable only by a person dispatching the one-off workflow that wrote it | yes |
 | `archive__nynjtc_photos__do_not_delete/` | the whole Internet Archive recovery of NYNJTC's Drupal-era photographs, content-addressed | written once, never rewritten, never pruned | **no** |
 | `environments/` | one subtree per non-production environment, each holding a whole copy of this layout | as whatever it holds | to that environment's audience |

@@ -506,21 +506,24 @@ for (const entry of paint) console.log(`${entry.name.padEnd(31)} ${entry.at} ms`
 //
 // A moment the launch never reached prints as such rather than being left
 // out, for the reason the screen says it: an omitted row reads as instant.
-const marks = await page.evaluate(() =>
-  [
-    ['ourhike:script', 'app code started'],
-    ['ourhike:shell', 'tab bar rendered'],
-    ['ourhike:preferences', 'settings read'],
-    ['ourhike:today', 'waypoints ready'],
-    ['ourhike:index', 'trail index ready'],
-    // The map's own two (#1560): a phone landing on Today never reaches
-    // them, and prints "not reached" for both - which is the right answer.
-    ['ourhike:map', 'map built'],
-    ['ourhike:map-drawn', 'map drawn'],
-  ].map(([name, label]) => {
-    const entry = performance.getEntriesByName(name, 'mark')[0]
-    return { label, at: entry === undefined ? null : Math.round(entry.startTime) }
-  }),
+const MARK_NAMES = [
+  ['ourhike:script', 'app code started'],
+  ['ourhike:shell', 'tab bar rendered'],
+  ['ourhike:preferences', 'settings read'],
+  ['ourhike:today', 'waypoints ready'],
+  ['ourhike:index', 'trail index ready'],
+  // The map's own two (#1560): a phone landing on Today never reaches
+  // them, and prints "not reached" for both - which is the right answer.
+  ['ourhike:map', 'map built'],
+  ['ourhike:map-drawn', 'map drawn'],
+]
+const marks = await page.evaluate(
+  (names) =>
+    names.map(([name, label]) => {
+      const entry = performance.getEntriesByName(name, 'mark')[0]
+      return { label, at: entry === undefined ? null : Math.round(entry.startTime) }
+    }),
+  MARK_NAMES,
 )
 for (const mark of marks) {
   console.log(
@@ -598,6 +601,45 @@ for (const [key, ms] of [...byFunction].sort((a, b) => b[1] - a[1]).slice(0, 15)
   console.log(`  ${String(Math.round(ms)).padStart(6)} ms  ${key}`)
 }
 
+// Which of those marks this BUILD declares, as distinct from which the launch
+// reached (#1488). Production moves only on a `v*` tag, so for days after a
+// mark lands on main the deployed bundle predates it - and a check that saw
+// only "no entry" called that a launch that never got there. It happened:
+// #1376 read "the tab bar rendered - never reached" from 2026-09-10 to
+// 09-14 while the same runs measured the first tap on that tab bar at 223 ms.
+//
+// Read from the eager closure - the entry module and its modulepreloads,
+// which is where src/lib/launchMarks.ts's names live, because main.tsx
+// imports it statically. That is the part that matters: a chunk that never
+// loaded could not report a name it holds, so reading every loaded chunk
+// would turn a broken launch into "not in this build". Done after every
+// measurement above, so the fetches cannot land inside a timed window. Null
+// when the bundle cannot be read, which the checker treats as "declares
+// everything" - the loud side.
+const declaredMarks = await page.evaluate(async (names) => {
+  const urls = [
+    ...document.querySelectorAll(
+      'script[type="module"][src], link[rel="modulepreload"][href]',
+    ),
+  ].map((element) => element.src || element.href)
+  if (urls.length === 0) return null
+  try {
+    const bodies = await Promise.all(
+      urls.map(async (url) => {
+        const response = await fetch(url)
+        if (!response.ok) throw new Error(`${response.status} ${url}`)
+        return response.text()
+      }),
+    )
+    const bundle = bodies.join('\n')
+    return Object.fromEntries(
+      names.map(([name, label]) => [label, bundle.includes(name)]),
+    )
+  } catch {
+    return null
+  }
+}, MARK_NAMES)
+
 if (jsonPath !== null) {
   const { writeFileSync } = await import('node:fs')
   writeFileSync(
@@ -611,6 +653,7 @@ if (jsonPath !== null) {
         tiles_stubbed: stubTiles,
         paint: Object.fromEntries(paint.map((entry) => [entry.name, entry.at])),
         marks: Object.fromEntries(marks.map((mark) => [mark.label, mark.at])),
+        declared_marks: declaredMarks,
         taps: returning
           ? tabTaps.map((tap) => ({
               at: tap.at,

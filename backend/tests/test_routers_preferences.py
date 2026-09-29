@@ -382,6 +382,50 @@ def test_put_preferences_round_trips_blaze_colors_shown(client):
     assert get_response.json()["blaze_colors_shown"] is True
 
 
+def test_a_build_that_predates_a_field_does_not_reset_it_on_another_device(client):
+    """#1641 finding 7: `real_name` (#1563) and `blaze_colors_shown` (#1575)
+    did not exist in every released client's own local model. A v1.3.1
+    build's PUT body has no such keys at all - not a hiker clearing them,
+    just a schema its own app has never heard of - and a full-replace PUT
+    used to write today's defaults over whatever a newer phone had synced,
+    silently. `_valid_preferences()` itself never includes `real_name`,
+    which is already every other test in this file exercising the same
+    shape; this test is the one that checks the value survives.
+    """
+    user_id = str(uuid.uuid4())
+    current_build = _valid_preferences(real_name="Priya Raghavan", blaze_colors_shown=True)
+    client.put("/preferences/me", json=current_build, headers=auth_headers(user_id))
+
+    old_build_payload = _valid_preferences()
+    assert "real_name" not in old_build_payload
+    del old_build_payload["blaze_colors_shown"]
+    response = client.put("/preferences/me", json=old_build_payload, headers=auth_headers(user_id))
+    assert response.status_code == 200
+
+    got = client.get("/preferences/me", headers=auth_headers(user_id)).json()
+    assert got["real_name"] == "Priya Raghavan"
+    assert got["blaze_colors_shown"] is True
+
+
+def test_a_field_a_client_does_know_about_still_overwrites_when_reset(client):
+    """The other half: a client that DOES declare the field is allowed to
+    turn it back off, and that choice is not mistaken for the case above -
+    the field is present in the body, just set to its own default value."""
+    user_id = str(uuid.uuid4())
+    client.put("/preferences/me", json=_valid_preferences(blaze_colors_shown=True), headers=auth_headers(user_id))
+
+    response = client.put(
+        "/preferences/me",
+        json=_valid_preferences(blaze_colors_shown=False),
+        headers=auth_headers(user_id),
+    )
+    assert response.status_code == 200
+    assert response.json()["blaze_colors_shown"] is False
+
+    got = client.get("/preferences/me", headers=auth_headers(user_id)).json()
+    assert got["blaze_colors_shown"] is False
+
+
 def test_get_before_any_put_is_a_404_naming_the_state(client):
     """The documented pre-first-PUT state (#322): a hiker who has never
     synced has no row, and the 404's detail says so - "no preferences yet"

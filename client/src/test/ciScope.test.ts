@@ -66,6 +66,28 @@ describe('the CI scope list covers every out-of-tree read', () => {
   })
 })
 
+describe('the flow job scopes the marketing site', () => {
+  // e2e/sitePages.spec.ts audits site/dist in a browser (#1663 - The
+  // /for-orgs/ pages are unreadable in dark mode and misaligned on a phone).
+  // The flow job's scope list once said, correctly for its day, that the
+  // layer read "no site stylesheet"; narrowing it back to that would let a
+  // site-only change skip the one check that looks at the site.
+  it('lists site/ on the flow job, the second changed-paths step', () => {
+    const lines = readRepoFile('.github/workflows/client-tests.yml').split('\n')
+    const steps = lines
+      .map((line, at) =>
+        line.includes('uses:') && line.includes(CHANGED_PATHS_ACTION) ? at : -1,
+      )
+      .filter((at) => at > -1)
+    expect(
+      steps.length,
+      'expected the unit and flow jobs to each scope themselves',
+    ).toBeGreaterThanOrEqual(2)
+    const flow = lines.slice(steps[1] + 1).find((line) => /^\s*paths:/.test(line)) ?? ''
+    expect(flow.trim().split(/\s+/)).toContain('site/')
+  })
+})
+
 describe('guards the guard', () => {
   it('is actually reading a scope list', () => {
     // A parse that returned nothing would pass everything above by finding

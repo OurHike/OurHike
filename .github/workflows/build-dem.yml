@@ -192,6 +192,14 @@ jobs:
     # Every writer of latest.json shares this group: publish() does a
     # read-modify-write of the manifest, and two concurrent publishes could
     # interleave and clobber each other's entries.
+    #
+    # `environment:` and `concurrency:` on the same job means a run left
+    # `waiting` on the reviewer above holds this group for as long as it
+    # waits, not however long the job itself takes once approved - the same
+    # shape as `publish-vector-data.yml`'s `publish` job, whose header has
+    # the 2026-09-08 measurement (#1271) and the fix options nobody has
+    # picked between yet. Dispatch a real publish only when somebody can
+    # approve it within the hour.
     concurrency:
       group: publish-data
       cancel-in-progress: false

@@ -214,6 +214,81 @@ def test_one_organizations_spending_does_not_touch_anothers(client, db_session, 
     assert response.status_code == 200
 
 
+def test_the_deployment_wide_ceiling_refuses_a_caller_under_their_own_budget(client, db_session, assist_on, monkeypatch):
+    """#1641 finding 4: a per-caller budget does not bound the total once the
+    number of callers is unbounded - `register_org` lets anybody make one.
+
+    This organization has spent nothing of its own 100-token day. The
+    deployment as a whole has already spent past its 150-token ceiling, on
+    other organizations' calls - so this one is still refused, and refused
+    before the call, the same as the per-caller case above.
+    """
+    org, person = _org_with_admin(db_session)
+    _opt_in(db_session, org, person)
+    monkeypatch.setattr(settings, "assist_daily_token_budget", 100)
+    monkeypatch.setattr(settings, "assist_global_daily_token_budget", 150)
+    other = make_org(db_session, slug="another-club", state=OrgState.claimed)
+    db_session.add(AssistUsage(club_id=other.id, panel="registry", input_tokens=140, output_tokens=20))
+    db_session.commit()
+
+    def refuse_to_be_called(*args, **kwargs):
+        raise AssertionError("the deployment-wide budget check let a call through")
+
+    monkeypatch.setattr(assist_core.httpx, "post", refuse_to_be_called)
+
+    response = client.post(
+        f"/clubs/{org.slug}/assist",
+        json={"panel": "registry", "question": "what is there?"},
+        headers=auth_headers(person.id),
+    )
+
+    assert response.status_code == 429
+    assert "Every organization and every caller together" in response.text
+
+
+def test_the_deployment_wide_ceiling_counts_the_public_panels_spending_too(client, db_session, assist_on, monkeypatch):
+    """The public nominate form has no club_id - counted by client_hash
+    instead (see AssistUsage). The global ceiling has to add both columns
+    together, or a public spike would not show up against a club's call."""
+    org, person = _org_with_admin(db_session)
+    _opt_in(db_session, org, person)
+    monkeypatch.setattr(settings, "assist_global_daily_token_budget", 150)
+    db_session.add(AssistUsage(client_hash="deadbeef", panel="nominate", input_tokens=100, output_tokens=60))
+    db_session.commit()
+
+    def refuse_to_be_called(*args, **kwargs):
+        raise AssertionError("the deployment-wide budget check let a call through")
+
+    monkeypatch.setattr(assist_core.httpx, "post", refuse_to_be_called)
+
+    response = client.post(
+        f"/clubs/{org.slug}/assist",
+        json={"panel": "registry", "question": "what is there?"},
+        headers=auth_headers(person.id),
+    )
+
+    assert response.status_code == 429
+
+
+def test_the_deployment_wide_ceiling_does_not_trip_under_it(client, db_session, assist_on, captured, monkeypatch):
+    """The other half of the same test: comfortably under the ceiling still
+    goes through, so this is a cap and not an accidental kill switch."""
+    org, person = _org_with_admin(db_session)
+    _opt_in(db_session, org, person)
+    monkeypatch.setattr(settings, "assist_global_daily_token_budget", 150)
+    other = make_org(db_session, slug="another-club", state=OrgState.claimed)
+    db_session.add(AssistUsage(club_id=other.id, panel="registry", input_tokens=10, output_tokens=5))
+    db_session.commit()
+
+    response = client.post(
+        f"/clubs/{org.slug}/assist",
+        json={"panel": "registry", "question": "what is there?"},
+        headers=auth_headers(person.id),
+    )
+
+    assert response.status_code == 200
+
+
 def test_a_supervisor_cannot_spend_the_organizations_budget(client, db_session, assist_on):
     """One who could would be one who could exhaust it before an admin
     reached the screen."""

@@ -305,6 +305,15 @@ it agreement. A sign-in alone would prove only the first, and an organization "c
 secretary who opened OurHike to look at a trail has confirmed nothing. The registrant approving
 their own seat releases nothing, because theirs is the address that failed the check.
 
+**Releasing it also revokes the registrant's own seat** (`_revoke_the_registrants_unverified_seat`,
+both here and in Claim your org, added after #1641 found the gap). Registering grants an approved
+codeowner seat on the spot, whatever `state` says — checked against nothing until this moment, so
+a stranger who typed a real employee's address as an admin invite kept a permanent, unverified
+codeowner seat over that employee's own organization once the employee did the honest thing and
+approved it. The registrant keeps their seat only when they are the one whose address just proved
+the domain; otherwise "the authority is the invitation" (#1635) applies to them too, and the
+now-verified admin can invite them again if they really do work there.
+
 **The real organization is never locked out.** `pending` is not `claimed`, so Claim your org stays
 open to anybody holding an address at the domain, and taking it makes them a codeowner of the org
 that was sitting in their name. That recourse is why holding is enough.
@@ -584,6 +593,11 @@ Header · Phone Frame.
   buttons to 97% on press. No bounce, no spring.
 - **Responsive.** Desktop screens reflow at `minmax(0,1fr)` and wrap. The phone screens are a separate
   design at 390px with 44–56px hit targets — **not** the desktop ones made narrow.
+  The four public pages under `/for-orgs/` fall in the first group and got no phone design of their
+  own, and until #1663 — The /for-orgs/ pages are unreadable in dark mode and misaligned on a phone —
+  nobody had looked at them at 390px or in dark mode. They now meet the phone screens' 44px targets
+  anyway, and `client/e2e/sitePages.spec.ts` holds every site page to that and to WCAG AA contrast, at
+  390px and 1280px, light and dark.
 
 ---
 
@@ -978,6 +992,11 @@ What this design does not answer, stated plainly.
   `client_fingerprint(null)` hashes the word "unknown", so they share a day. It fails in the safe
   direction — the spend stays bounded — and it means one person can exhaust the free lookup for
   everybody behind that proxy. The nominate form works without the panel.
+- **A deployment-wide ceiling caps every caller together, added after #1641.** Each org and each
+  public caller already had its own budget, but `register_org` lets anybody create an org, so the
+  number of budgets was unbounded even though each one was capped — `assist_global_daily_token_budget`
+  (`app/config.py`, `@unvalidated` for the same reason the per-org number is) is the total the
+  Anthropic key is on the hook for across the whole deployment in a rolling 24 hours.
 
 - **The 10% deactivation hold is `@unvalidated`.** Picked, not measured. What would settle it: one
   real roster sync against an org's live feed, and the distribution of how much a normal run actually
@@ -998,8 +1017,14 @@ What this design does not answer, stated plainly.
   are not designed. This is an accessibility gap with a known shape rather than an unknown one.
 - **Shared-revenue copy needs a legal read.** It is a promise about money — the one thing here that
   could be a liability rather than a bug. It ships marked as not live.
-- **One contrast defect carried forward from the design review:** the global `a` colour is a
-  light-background colour and measured 2.21:1 on the pine footer. It needs an on-dark override.
+- **The demo's Tread card is a second drawing of the app's.** `site/src/components/TreadCard.astro`
+  reads its words and figures from `client/src/org/demoVolunteer.ts`, but its layout copies
+  `client/src/org/components.tsx`'s `TreadCard` by hand, because the site has no React to mount the real
+  one (#1663). A change to the app's card does not reach the demo page's.
+- **The demo's two fixtures disagree about who maintains the Ramble.** `demoOrg.ts`'s roster has
+  Sam Ortiz on the Ramble at 1.2 miles; `demoVolunteer.ts`'s volunteer — the one `/my/tread` and the
+  demo page's card show — is Alex Mercer on MM 1.0 → 4.3, 3.3 miles. A visitor who opens the roster
+  after the card meets a different maintainer for the same section.
 - **What `ReporterType.maintainer` becomes is not decided.** #1169 names the collision — one word
   meaning both a self-declared attribution and a granted role — and records `trail_crew` as a working
   suggestion only. Shipping a console that grants the second while the first stays spelled the same is

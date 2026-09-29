@@ -70,6 +70,16 @@ describe('the waypoint card’s strip of site parts', () => {
     expect(strip).not.toMatch(/flex-wrap:\s*wrap/)
   })
 
+  it('keeps its height on a peek the placement has capped, rather than shrinking to nothing', () => {
+    // #1706. The peek is a flex column capped to the room beside its pin
+    // (#1374), and `overflow-x: auto` above makes the strip's automatic minimum
+    // height zero - so without this the capped peek on a 375x667 phone drew the
+    // shelter's name and conditions and no chips at all. jsdom does no layout,
+    // so the declaration is what can be asserted; the frame that found it is
+    // preview-shots/waypoint-site-parts.mjs at the small viewport.
+    expect(rule('.poi-card__peek > .poi-card__chips')).toMatch(/flex-shrink:\s*0/)
+  })
+
   it('does not spend a chip’s width on a scrollbar', () => {
     expect(rule('.poi-card__chips')).toMatch(/scrollbar-width:\s*none/)
     expect(css).toContain('.poi-card__chips::-webkit-scrollbar {')

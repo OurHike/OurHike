@@ -17,6 +17,7 @@ from datetime import date
 import pytest
 
 import plan_release
+from lib import freshness_state
 
 INDEX_URL = "https://data.ourhike.org/releases/index.json"
 
@@ -81,10 +82,26 @@ class TestWhenToBuild:
         assert document["reasons"] == ["force_full_rebuild was requested"]
 
     def test_the_rebuild_verdicts_are_pinned(self):
-        """Spelled as a set rather than `!= fresh`, so a fourth verdict added
-        to Freshness later fails here rather than being swept silently into
+        """Spelled as a set rather than `!= fresh`, so a verdict added to
+        Freshness later fails here rather than being swept silently into
         one side."""
         assert plan_release.REBUILD_ON == {"stale", "unknown"}
+        assert plan_release.SKIP_ON == {"fresh", "withdrawn"}
+
+    def test_every_freshness_verdict_is_on_exactly_one_side(self):
+        every = {member.value for member in freshness_state.Freshness}
+
+        assert plan_release.REBUILD_ON | plan_release.SKIP_ON == every
+        assert not plan_release.REBUILD_ON & plan_release.SKIP_ON
+
+    def test_a_withdrawn_source_is_not_a_reason_to_build(self):
+        """#1665. topo_quads reads WITHDRAWN while build-raster.yml is off, and
+        before that read UNKNOWN - which made every weekly plan rebuild for a
+        source no build this planner recommends can consume."""
+        document = plan_release.plan(verdict(("atc", "fresh"), ("topo_quads", "withdrawn")), index("2026-09-01"))
+
+        assert document["rebuild"] is False
+        assert document["reasons"] == []
 
 
 class TestTheReleaseId:

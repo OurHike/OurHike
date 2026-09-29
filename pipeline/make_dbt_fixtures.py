@@ -14,9 +14,9 @@ live services: every column below is a name sources.json records as MEASURED
 against the live layer, with a date - the `notes` field lists for
 nynjtc_long_path and nynjtc_highlands_trail (2026-08-24), mohonk_trails
 (2026-08-25), oprhp_trails (2026-08-18), oprhp_facilities and the DEC layers
-(2026-08-27), usfs_trails, usfs_rec_sites and nh_granit_trails
-(2026-09-02), plus the structured `name_field`/`blaze_field`/`id_field`/
-`public_field`/`asset_field`/`facility_field` keys, which are the same
+(2026-08-27), usfs_trails and usfs_rec_sites (2026-09-02), plus the
+structured `name_field`/`blaze_field`/`id_field`/`public_field`/
+`asset_field`/`facility_field` keys, which are the same
 measurements in machine-readable form. Nothing here is invented, and where a
 layer's fields are NOT recorded the fixture carries none rather than a guess
 - `oprhp_park_polygons` is that case and is deliberately property-free.
@@ -448,67 +448,6 @@ def _usfs_rec_sites_layer():
             {**common, "site_name": "RD 614 SITE 13", "site_type": "CAMPING AREA", "development_scale": "0", "fee_charged": "N"},
         ],
         _white_mountains_point,
-    )
-
-
-def _nh_granit_trails_layer():
-    """nh_granit_trails' measured field list and value shapes, 2026-09-02.
-
-    THE POINT OF THIS FIXTURE IS THE BLANK BLAZE, WHICH IS A REAL VALUE AND
-    NOT A HOLE. Across the live 7,643 segments in the Whites, BLAZE reads a
-    literal blank on 7,574 of them - 99.1% - against White 62, Yellow 4, Red 2,
-    Blue 1. That is not an unpopulated column: the White Mountains largely do
-    not use paint blazes, so a Whites trail having none is the normal case, and
-    61 of the 62 White rows carry TRAILSYS 'Appalachian Trail' - the A.T. being
-    the one white-blazed line through the range. reference/blaze_mapping.json
-    maps the blank to "None" ("Unblazed") rather than to "Unknown" ("Blaze not
-    recorded") for exactly that reason.
-
-    It is a blank STRING and not a null, which is the distinction a staging
-    model would get wrong first and which the mapping table's key depends on,
-    so the majority of rows here carry `' '` verbatim. A fixture that populated
-    the column would misrepresent the region.
-
-    `PED` is the opposite case and needs its own row shapes: blank is
-    UNRECORDED, not "no" (3,883 rows '1' against 3,760 blank), and 2,541 of
-    those blanks carry no use flag at all while 1,209 are snowmobile corridors.
-    So the fixture carries all three shapes - PED '1', blank-with-no-flags, and
-    blank-with-SNOWMBL - because a `PED == '1'` filter would drop the middle one
-    and that is the mistake nh_granit_trails' foot_comment exists to prevent.
-    `MAINTORG` is a coded integer whose domain GRANIT does not publish - the
-    codes here are live values, and what any of them means is unknown."""
-    common = {"TRAIL": "Trail", "ACCURACY": "Unknown", "COMMUNITY": "Fixture Township"}
-    return _features(
-        [
-            {**common, "TRAILNAME": "Fixture Ridge Path", "BLAZE": " ", "MAINTORG": 22000, "PED": "1", "MILES": 2.2},
-            # Blank PED and NO use flag of any kind - the 2,541-row shape, a
-            # hiking trail a PED=='1' filter would silently delete.
-            {**common, "TRAILNAME": "Fixture Brook Trail", "BLAZE": " ", "MAINTORG": 50110, "PED": " ", "MILES": 1.4},
-            # Blank PED because it is a snowmobile corridor - the 1,209-row
-            # shape, and the one a motorized filter SHOULD drop.
-            {
-                **common,
-                "TRAILNAME": "Fixture Camp Snowmobile Corridor",
-                "BLAZE": " ",
-                "MAINTORG": 0,
-                "PED": " ",
-                "SNOWMBL": "1",
-                "MILES": 4.0,
-            },
-            # The A.T.: the one white-blazed line through the Whites.
-            {
-                **common,
-                "TRAILNAME": "Appalachian Trail",
-                "TRAILSYS": "Appalachian Trail",
-                "BLAZE": "White",
-                "MAINTORG": 0,
-                "PED": "1",
-                "MILES": 3.1,
-            },
-            # Not a trail at all - the live layer holds rows like 'adj to Rt 118'.
-            {**common, "TRAILNAME": "adj to Rt 118", "BLAZE": " ", "MAINTORG": 0, "PED": " ", "MILES": 0.2},
-        ],
-        _white_mountains_line,
     )
 
 
@@ -1286,7 +1225,6 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         "external/mohonk_trails.geojson": _mohonk_trails_layer(),
         "external/usfs_trails.geojson": _usfs_trails_layer(),
         "external/usfs_rec_sites.geojson": _usfs_rec_sites_layer(),
-        "external/nh_granit_trails.geojson": _nh_granit_trails_layer(),
         "external/njdep_park_trails.geojson": _njdep_park_trails_layer(),
         "external/nj_statewide_trails.geojson": _nj_statewide_trails_layer(),
         "external/nyc_parks_trails.geojson": _nyc_parks_trails_layer(),

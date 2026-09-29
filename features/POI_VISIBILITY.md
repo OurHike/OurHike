@@ -6,6 +6,55 @@ chrome), [POI_SITES.md](POI_SITES.md) (which owns several waypoints at one place
 [UX_CUSTOMIZATION.md](UX_CUSTOMIZATION.md) (which owns *why* `waypoint_types_shown` exists),
 [../WIREFRAMES.md](../WIREFRAMES.md) §1.4 and §2, and [../OurHikeValues.md](../OurHikeValues.md) #4.
 
+> **The pin is drawn slimmer and the tail goes quiet, 2026-09-26
+> ([#1682](https://github.com/OurHike/OurHike/issues/1682)); nothing about which pins place
+> changed.** The maintainer: *"Having so many icons display on the map at once can be difficult to
+> read."* From five drawings of the same 301 waypoints at Harriman z10, then the app built and
+> photographed against the UA bucket, they chose: every waypoint drawn **26 px across inside its
+> 38 px footprint** with a paper hairline in place of the coin's dark edge and cream halo; the
+> tiers below trailheads (resupply, parking, privy, viewpoint) **quiet** — a pale tint of their
+> accent with the glyph in the accent; **unverified drawn hollow** rather than with a broken rim;
+> a site's members as **17 px glyph badges** (38 → 46 / 56 / 58 px for one to three members, from
+> 58 / 70 / 72). The footprint is what collides and what a thumb hits, so `POI_PIN_SIZE`, the
+> collision spacing and the tap target are unchanged and every table below still holds; what moved
+> is `POI_PIN_INK_SIZE`, `QUIET_TINT` and `MEMBER_BADGE_SIZE` in `client/src/map/poiIcons.ts`.
+> Measured on the drawings, not on the app: pin ink 32% of the screen → 18%, dark-or-saturated ink
+> 20% → 5%. The same poll shrank the ATC notice to 30 px to just clear the new pin, slimmed the
+> workday pin to match, and took water's faint invite ring off a hollow pin, where the two rings
+> read as a bullseye.
+
+> **The collision drop is back, 2026-09-26
+> ([#1676](https://github.com/OurHike/OurHike/issues/1676)), and it is the third row of the table
+> below reversed.** The maintainer: *"What happened to the small pins for the POIs? I really liked
+> all that reduced clutter."* The "small pins" were this doc's dot rank. With `icon-allow-overlap:
+> true` every pin drew full size on top of its own dot. Photographed that day against the UA bucket
+> on a 390 × 844 phone, the Hudson Highlands carry frame at z7.8 held 7,123 waypoints, every one of
+> them a full-size pin. With `false` again, crowded pins fall back to their dots. Shown the two
+> frames side by side, the maintainer answered *"Yes that's right."* Three more decisions came from
+> that day's two polls, each put with frames or sketches:
+>
+> - **Which pin wins is the maintainer's order now**: *"Shelters/Campsites, Water, Trailheads,
+>   Everything else."* `POI_PRIORITY` led with water until then. A spring whose pin would overlap
+>   a shelter's or a campsite's is now the one drawn as a dot. That is a safety-adjacent change.
+>   How many water pins it demotes has not been counted (`@unvalidated` in `poiPriority.ts`,
+>   which also names the measurement that would settle it).
+> - **Only those four draw full size.** Asked from two frames whether "Everything else" meant
+>   smaller as well as later, the maintainer chose smaller: towns and parking joined privies
+>   and viewpoints at `SECONDARY_POI_SCALE` (0.72). This replaces the 2026-09-18 full-size list
+>   below.
+> - **The staleness ring is part of the pin's image**, so a pin that falls back to a dot takes
+>   its ring with it. The restored build without this drew pale rings round empty air across
+>   Manhattan. The ring's fade on crowded ground (#1536, below) goes with the ring layer, because
+>   it was only ever a guess at which waypoints were pins.
+>
+> Offered and not taken, from two drawn sketches: moving the pins back above the trail lines so
+> they would win against trail names again. The pins stay under the lines (2026-09-20), so a
+> trail name or through-route badge claims its spot first. With signal, a shelter beside its own
+> trail's name is a dot until the hiker zooms in.
+>
+> **Nothing about which categories draw changes.** The 2026-09-18 rule still holds: the map never
+> hides a category of its own accord, and every waypoint is a pin or a dot, never neither.
+
 > **Its question was answered by removing it, 2026-09-18
 > ([#1585](https://github.com/OurHike/OurHike/issues/1585)).** The maintainer:
 > *"never hide anything!!!!!!!"* — so the map now draws **every** waypoint as a pin, and this
@@ -38,6 +87,14 @@ chrome), [POI_SITES.md](POI_SITES.md) (which owns several waypoints at one place
 > Everything below is the design as it stood before that, and the two-rank principle it turns on
 > — *the absence of a pin is the strongest statement this map makes about a place, so do not make
 > it* — is what the change above follows to its end rather than abandons.
+
+> **One category has since left the map by leaving the data, 2026-09-26
+> ([#1674](https://github.com/OurHike/OurHike/issues/1674)).** The maintainer: *"Crossings are
+> cluttering the map. Remove the crossing from the legend and do not show on the map."* That is
+> not the map deciding to hide something, which #1585 forbids — it is the `crossing` type (the
+> stream crossings `pipeline/fetch_trail_water.py` derived, the 5,318 in the table above) removed
+> from `POI_TYPES` on both sides, from the legend, from Settings, and from the pipeline that made
+> them. No toggle brings them back, because there is nothing left to toggle.
 
 **This doc owned one question: what the map does when it cannot draw every waypoint as a pin.**
 It does not own the pin artwork ([`client/src/map/poiIcons.ts`](../client/src/map/poiIcons.ts)),
@@ -102,7 +159,8 @@ is the doc that gives it something.
 `icon-allow-overlap: false` with `icon-padding: 2`. MapLibre's collision engine places pins in
 `symbol-sort-key` order and discards every one that would overlap something already placed.
 `POI_PRIORITY` decides *who* survives, and decides it well — water first, vistas last, for reasons
-the file argues at length.
+the file argues at length. *(Shelters and campsites first, then water, then trailheads, since the
+maintainer's order of 2026-09-26, #1676.)*
 
 Nothing decides, or reports, that a loser existed. This is the one the design below is for.
 
@@ -124,7 +182,7 @@ in the viewport.
 | corridor length | 2,197 mi | [../WIREFRAMES.md](../WIREFRAMES.md) |
 | waypoints published | **2,778** | measured against the live ATC FeatureServer and opentrail.org, 2026-08-12 ([POI_SITES.md](POI_SITES.md)) |
 | of which vistas | 1,194 in corridor, of 1,223 | [../pipeline/README.md](../pipeline/README.md) |
-| pin size | 38 px + 2 px padding each side = 42 px | `POI_PIN_SIZE`, `icon-padding` |
+| pin size | 38 px + 2 px padding each side = 42 px (the footprint; drawn 26 px inside it since #1682) | `POI_PIN_SIZE`, `icon-padding` |
 
 Simulating MapLibre's placement over the whole corridor — symbols considered in `symbol-sort-key`
 order, a box skipped when it overlaps one already placed — the share of each type drawn at all:
@@ -557,6 +615,10 @@ picture of the current camera is not a preference.
   because the property cannot tell them apart. That is accepted against six
   hundred rings nobody can read, and it is the expression to replace if MapLibre
   ever exposes per-feature placement.
+
+  *(Replaced 2026-09-26, #1676, without MapLibre changing: the ring is painted into
+  the pin's own image, so it is drawn exactly where its pin is and the fade is
+  gone.)*
 
   **And the badge does not say twelve.** The mockup drew a count on the pin and
   this does not, which is a deliberate departure: every New York City fountain

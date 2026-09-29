@@ -15,9 +15,9 @@ and `nh_granit_trails` is statewide. The Whites are where they were found and wh
 field distribution below was measured; they are not the extent of what ships. §7 is the
 nationwide picture and the one holdback it forced.
 
-> **GRANIT's layer changed on 2026-09-21–23, and §3, §7a and §7c describe the old one.** GRANIT
-> republished its trails layer with new columns, and the filter this survey specified
-> silently stopped matching. §8 has what the layer holds now and what ships from it.
+> **NH GRANIT no longer ships: it was removed from the registry on 2026-09-28 (§9).** Before
+> that, its layer changed on 2026-09-21–23 and §3, §7a and §7c describe the old one; §8 has
+> what the republished layer held. **USFS motorized trails are now excluded nationwide (§9).**
 
 Written 2026-09-02 from live probes. **Every count and every field distribution below was
 read from the layer itself that day**, by query, not from a page's claim about itself. Where
@@ -564,3 +564,52 @@ their live layers the same day, and every one is present.
 **Still open:** 1,948 kept NH miles carry no use flag of any kind. They include the A.T. and
 the long trails, so they ship, and they also include whatever of the layer's USGS Digital
 Line Graph lines are old woods roads. Nothing in the schema tells the two apart.
+
+---
+
+## 9. GRANIT removed, and USFS limited to non-motorized trails (2026-09-28)
+
+The maintainer's decision, recorded as
+[#1711](https://github.com/OurHike/OurHike/issues/1711): *"Remove GRANIT altogether. Also
+remove USFS motorized trails nationwide. Only include hiking trails."*
+
+**GRANIT is out of the registry entirely**: the `nh_granit_trails` source, its licence block, its
+organization, its trademark row and its POI-coverage row. The reasons, each measured on
+2026-09-26 and set out in §8:
+
+- GRANIT's own catalogue entry calls the layer an approximation compiled "for planning use
+  only". It says "trails and roads in this data layer may be maintained for management access,
+  not for recreational use", and that not all areas are open to public access.
+- It republished with renamed columns without notice, and it has no date column to warn of the
+  next change.
+- Its `HIKING` flag reads `Y` on only 8,312 of 15,791 rows. GRANIT's own A.T. rows are not among
+  them.
+- It redrew the White Mountains on top of USFS: `lib/duplicates.find_duplicates` flagged 853 of
+  its lines (962 mi) as copies of USFS trails.
+
+**What that costs, said plainly:** GRANIT was the only source for New Hampshire trails outside
+the national forest. That means Franconia and Crawford Notch state parks, the Monadnock region,
+the Wapack, the Monadnock-Sunapee Greenway and the rail trails. NH keeps USFS's White Mountain
+National Forest (994 mi) and the A.T. from ATC, and falls from about 79 to about 11 trail-miles
+per 100 sq mi, near Vermont's 7.2. §6(b)'s AMC ask is now the only route back to that ground
+short of OpenStreetMap, which nobody has compared.
+
+**USFS drops `terra_motorized = Y`.** Measured live 2026-09-28 across `trail_type = TERRA`
+nationwide:
+
+| `terra_motorized` | rows | miles | ships |
+|---|---:|---:|---|
+| `N` | 45,151 | 74,529 | yes |
+| `Y` | 23,195 | 29,199 | **no** |
+| `N/A` | 9,810 | 21,332 | yes |
+
+- **What `Y` means is reasoned, not published.** Every `Y` row carries a 4, 5 or 6 in
+  `allowed_terra_use` (motorcycle, ATV, 4WD), apart from about 1,470 rows (125 mi), and no `N` row
+  does.
+- **The cost:** the Great Western Trail and its ATV and OHV alternates (254 mi), plus about
+  74 mi of the Continental Divide Trail where it shares tread with motorized routes. The CDT will
+  show gaps there.
+- **`N/A` stays:** every use column on those rows is empty, and they include about 570 mi of the
+  Pacific Crest Trail, the Sheltowee Trace, the Ouachita NRT, the Arizona Trail and the Tahoe Rim
+  Trail. An empty column is unrecorded, not motorized. Adding `N/A` to `usfs_trails`'
+  `excluded_when` is the one-line reversal, if the maintainer wants it.

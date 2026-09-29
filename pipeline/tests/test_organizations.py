@@ -251,6 +251,15 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     2026-09-17, tagged `@unvalidated` in the entry. `licence_basis` is not the
     column that would ever show that, which is the reason to say so here.
 
+    WHAT MOVED ON 2026-09-28 (#1711), 29 -> 28 on `maintainer_authorisation`,
+    and it is the first movement in this column made by REMOVING a source
+    rather than by anybody answering. The maintainer took `nh_granit_trails`
+    out altogether: GRANIT describes the layer itself as compiled "for
+    planning use only", republished it with renamed columns without notice,
+    and redrew most of the White Mountains on top of USFS. It was the thinner
+    of the two authorisations the paragraphs above describe, and it is gone
+    rather than upgraded.
+
     This test is expected to change when an organization answers. It should
     change by somebody editing it deliberately, with the org's answer in hand.
     """
@@ -258,4 +267,4 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     for source in REGISTRY["sources"]:
         counts[source["licence_basis"]] = counts.get(source["licence_basis"], 0) + 1
 
-    assert counts == {"maintainer_authorisation": 29, "stated_by_org": 17, "unresolved": 1}
+    assert counts == {"maintainer_authorisation": 28, "stated_by_org": 17, "unresolved": 1}

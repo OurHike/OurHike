@@ -144,10 +144,24 @@ OpenStreetMap's otherwise; a place OpenStreetMap cannot find keeps no point and 
 Places on one episode are kept 500 miles apart by straight line, which never lets
 through two places a trail puts closer.
 
-None of those places reaches the app yet. Every POI OurHike publishes is on the A.T.,
-so a tag off it has nothing to attach to.
-[#1721 — A podcast episode tagged to a trail or park off the A.T. has nowhere to show, because every POI OurHike publishes is on the A.T.](https://github.com/OurHike/OurHike/issues/1721)
-asks where it would show and in what shape.
+None of those places reaches the app yet, and the data is not what stops it. OurHike
+publishes thousands of named places off the A.T. Measured 2026-09-29 against production
+release `cf8ff270`:
+
+- 17,234 named waypoints in `nearby_poi.geojson`, among them 9,066 USFS recreation sites
+  nationwide and New York's DEC, OPRHP and NYC layers;
+- 257 parks and 163 long trails in `places.json`.
+
+Every `nearby_poi` id already opens a place card. What stops a tag is
+`lib/podcasts.py`: it accepts only ids in `reference/poi_identity.json`, which is the
+A.T.'s ledger, and nothing like it exists for the other waypoints.
+
+Of the desk's 254 National Park After Dark places that have a point, only 4 match a
+published place by name within 25 miles. The show is mostly national parks, and nothing
+OurHike publishes covers NPS ground.
+
+[#1721 — A podcast episode can be tagged only to an A.T. POI, because lib/podcasts.py checks ids against the A.T.'s ledger alone](https://github.com/OurHike/OurHike/issues/1721)
+asks what the gate should accept, and where such an episode would show.
 
 ## Adding an episode
 

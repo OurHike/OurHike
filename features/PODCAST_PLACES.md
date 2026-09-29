@@ -1,0 +1,265 @@
+# Finding the places a podcast talks about (Plan v1)
+
+Companion to [PODCASTS.md](PODCASTS.md) (the card, the list, the Podcast desk) and to
+[ORG_BULK_LOAD.md](https://github.com/OurHike/OurHike/blob/claude/modest-hamilton-sxasji/features/ORG_BULK_LOAD.md) on `claude/modest-hamilton-sxasji` (the bulk load of trail
+organizations, **#1543 — 165 trail organizations exist and the registry knows 14, with no way to
+load the rest that does not cost one pull request each**). The gap this plan closes is
+**#1721 — A podcast episode can be tagged only to an A.T. POI, because lib/podcasts.py checks ids
+against the A.T.'s ledger alone**.
+
+The maintainer, 2026-09-29: *"make a plan for what need to happen to search those place names for
+all the podcasts … this will be something we do again and again when we add podcasts. it also
+should be checked each time the weekly podcast update runs."*
+
+**Provenance.** Every number below was measured on 2026-09-29, against production data release
+`cf8ff270` (`https://data.ourhike.org/latest.json`), the Podcast desk's own records, and the
+external sources named beside each figure. The scripts that produced them are scratch files, not
+committed; each figure says what it was measured against, so it can be measured again. Where a
+choice rests on nothing yet, it says `@unvalidated`.
+
+---
+
+## What has to happen, three times over
+
+A place name reaches OurHike three ways, and all three must end in the same state: every
+mention an episode makes is either matched to a place a hiker's phone can open, or says plainly
+why it isn't.
+
+| when | what arrives | how often |
+|---|---|---|
+| **a new show** | hundreds of episodes at once (National Park After Dark: 469; Backpacker Radio: 424) | each time the maintainer adds a podcast |
+| **the weekly run** | one or two new episodes per show | every Tuesday, per show |
+| **a new data release** | no new episodes, but new places to match old mentions against — the bulk load's NPS, BLM and state layers | whenever a release publishes new layers |
+
+The third is the one a naive design misses. National Park After Dark's Half Dome has no OurHike
+place today; the day the NPS layers ship, it does. If matching only ran when an episode arrived,
+that episode would never be looked at again.
+
+## What doing it by hand taught us
+
+The first two shows were matched by hand on the desk: Claude read the notes, named the place, and
+a search over ATC's POIs proposed a point. What that showed, measured:
+
+- **The words an episode uses rarely name a POI.** Of 46 ticked places whose notes carried the
+  words verbatim, the desk's name search put the right POI first for **15** (33%) and in its top six
+  for 23. Searching the *corrected* name Claude wrote got 78 of 80 right — but that number is
+  circular, because Claude wrote those names after looking at ATC's list.
+- **Five things broke it**, each a class the design below handles by name:
+  1. *Abbreviation.* "Mount Washington" found "South Mount Marshall" before "Mt Washington Summit
+     Vista", because nothing maps Mount to Mt.
+  2. *Parks, not points.* "Great Smoky Mountains National Park" names no POI at all; the
+     maintainer's rule gives it one spot, Newfound Gap. Park names were 16 of the 31 verbatim misses.
+  3. *One landmark, several points.* "McAfee Knob" is both "McAfee Knob 2" and "McAfee Knob
+     Summit"; "Katahdin" is a stream, a tableland and two summits.
+  4. *A feature that isn't a POI.* The Lemon Squeezer and the Roller Coaster are real, named, and
+     nowhere in ATC's layers; the ticks put them at the nearest POI.
+  5. *A description, not a name.* "a thriving coal mining and railroad town" is Rausch Gap only
+     to someone who knows the history.
+- **The automatic pick never picked wrong.** The desk auto-chooses when one candidate scores
+  ≥ 0.9 and beats the next by 0.1. It fired 85 times across both inputs and was right all 85 —
+  and fired on only 9 of the 46 verbatim mentions. It is precise and nearly useless alone, which
+  is the right way round.
+- **Public geocoding is not a pipeline.** Locating the 254 off-A.T. places through OpenStreetMap's
+  public Nominatim took 235 distinct queries (plus retries) at about one a second and drew
+  repeated HTTP 429s. Its
+  [usage policy](https://operations.osmfoundation.org/policies/nominatim/) says bulk geocoding
+  "is not encouraged" and that scripts run at regular intervals "are restricted to 4 requests per
+  minute", with results cached. That one run was already past what the policy allows a weekly
+  job; it must not be repeated as a schedule.
+- **Pins and hits both lie sometimes.** The show's map put the Grand Canyon 252 miles from the park.
+  OpenStreetMap answered "K2" with a road in Skardu and "Brown Mountain" with Brown Mountain Beach
+  Road (six road hits refused in all). The 9 parks where pin and OpenStreetMap disagreed by more
+  than 60 miles were all large ones, 62 to 134 miles apart, where both points may well be inside.
+
+## What OurHike can already match against
+
+The first draft of #1721 said OurHike publishes nothing off the A.T. It publishes a great deal:
+
+| artifact | named places | extent | opens a place card |
+|---|---:|---|---|
+| `poi_*.geojson` (`export_poi.py`) | 2,273 shelters, campsites, viewpoints, parking areas and towns | A.T. corridor | yes |
+| `nearby_poi.geojson` (`export_nearby_poi.py`) | 17,234 of 20,506 | no clip: USFS nationwide (9,066 named), DEC/OPRHP New York, NYC, the Long Path | yes |
+| `places.json` parks (`export_places.py`) | 257 | New York (OPRHP units) | no — moves the map |
+| `places.json` trails | 163 | any trail with 50+ published miles, including the PCT, CDT, NCT, AZT | no — moves the map |
+
+**Against the desk's 254 National Park After Dark places off the A.T., that finds almost
+nothing.** 105 have some published OurHike place within 25 miles; **4** match one by name. The show
+is national parks, and nothing OurHike publishes covers NPS ground.
+
+**And the bulk load, as planned, does not change that.** Every `ship` row in
+`pipeline/reference/trail_orgs.json` on the bulk-load branch is a trail-line layer —
+`NPS_Public_Trails`, BLM's GTLF, PCTA's centerline. None is a POI dataset.
+
+**One NPS dataset would.** `NPS_Public_POIs_Geographic`
+(`mapservices.nps.gov/arcgis/rest/services/NationalDatasets/`) is public domain, 35,639 points
+(30,779 named), with `POINAME`, `POIALTNAME` (an alternate name), `POITYPE` (382 types: Trailhead,
+Peak, Waterfall, Visitor Center …) and `UNITCODE`. Measured against the same 254 places:
+
+- **Park mentions (187).** 84 name an NPS unit exactly enough (token-sort ratio ≥ 90), and 82 of
+  those units have a Visitor Center point — the national-park equivalent of the A.T.'s "one spot
+  per park". The other 103 are national forests, state parks and parks abroad.
+- **Specific places (67).** An NPS point carries the name within 15 miles for 12. About half of
+  those are right (Half Dome, Guadalupe Peak, Grand Teton, Hoh Rain Forest, Lake Crescent Lodge) and
+  half are a facility that happens to share a word ("Potomac River" → East Potomac Tennis; "White
+  House" → a restroom). So a POI layer this broad needs a type allowlist before it can propose
+  anything.
+
+The recommendation to the bulk load is therefore concrete: **register `NPS_Public_POIs` beside
+`NPS_Public_Trails`**, and hold it at `reaches_hikers: false` like the rest until #1231's scope
+question is answered.
+
+## The design: mentions, a gazetteer, a resolver, the desk
+
+Four parts, and the split between the first two is the whole design:
+
+### 1. A mention is what the episode said, read once
+
+An LLM reads each episode's notes — from the show's own RSS feed, never from Spotify (below) —
+and writes one row per place the episode is about:
+
+```
+episode        apple-<trackId>
+said           the words, verbatim, so the desk can highlight them
+name           the usual name, spelled out ("Mount Washington", not "the Whites")
+trail          the trail it is on, named first, or "" (the maintainer's "identify the trail first")
+kind           summit | gap | shelter | campsite | lake | falls | park | trail | town | …
+where          park, state or country, when the notes say or plainly imply it
+role           major | segment | passing   (only the first two are ever proposed)
+context        the show's own map pin, when it has one
+```
+
+A mention is **never re-read**. Reading costs an LLM call per episode; matching costs nothing.
+So when the gazetteer grows, the mentions are re-matched and the notes are left alone.
+
+### 2. The gazetteer is what a phone can open, plus names that help find it
+
+One table, rebuilt from the published artifacts of a data release — so a match can only point at
+a place the phone already holds:
+
+```
+id, name, alt_names[], kind, lat, lon, source, unit (park/forest it sits in), trail, release
+```
+
+Two layers of extra names, kept apart:
+
+- **Generated:** Mt/Mount, St/Saint, Ft/Fort; apostrophes; "Lean-to" as "Shelter"; ATC's
+  `SHEN - ` prefixes stripped; the generic word ("Shelter", "Gap", "Falls") moved out of the name
+  and into `kind`, because rapidfuzz's `token_set_ratio` scores Hawk Mountain against Hawk
+  Mountain Shelter at 100 (research, 2026-09-29).
+- **Curated:** `pipeline/reference/place_aliases.json`, one row per judgement a person made —
+  "the Smokies" is Great Smoky Mountains National Park; "the Whites" is the White Mountains; the
+  Lemon Squeezer is at Island Pond. It is small by construction and reviewed row by row, which is
+  what `pipeline/reference/` is for.
+
+**Names-only authorities** fill the one hole the published data leaves — a named feature with no
+OurHike point — and never become a POI:
+
+- **GNIS** (USGS, public domain, refreshed every other month): 981,708 names in 43 classes, 268,012
+  variants. But **57% of its names are shared with another feature** ("Low Gap" is 131 places), and
+  it dropped trails and parks in 2021. It is a point for "where", never an id.
+- **NPS API** `/places` (17,478, public domain, free key, 1,000 requests an hour) — the NPS's own
+  names for things inside its parks.
+- **Wikidata** (CC0) for peaks and parks; it holds only 643 US hiking-trail items.
+
+### 3. The resolver is deterministic, and runs the same everywhere
+
+`pipeline/resolve_podcast_places.py`, DuckDB like the rest of the pipeline, no network. For each
+mention:
+
+1. **Block by the trail first.** The maintainer's instinct is the geoparsing literature's best
+   heuristic: restrict candidates to the named trail's corridor, or the named park's boundary, or
+   the show pin's neighbourhood, before comparing a single name. Without it, "Mount Washington" has
+   22 GNIS candidates; inside the White Mountains, one (reasoned, not yet run).
+2. **Find candidates** by normalised name and alias, then Jaro-Winkler within the block.
+3. **Rank** by name score, kind compatibility (a "summit" mention wants a summit or vista, not a
+   parking area), and closeness to the episode's other resolved mentions ("spatial minimality").
+4. **Prefer the landmark's representative point** where one feature has several (McAfee Knob Summit
+   over McAfee Knob 2), from a small reviewed table, not a guess.
+5. **Parks get their spot.** A park mention resolves to the park's one spot: the A.T. table the
+   maintainer set on 2026-09-29, and for NPS units a reviewed choice of visitor center (the first
+   visitor center in the data is not always the one — Yosemite's first was Wawona).
+6. **Abstain when unsure.** A verdict of `none` or `ambiguous` is an answer. The geoparsing
+   benchmarks' own warning applies: Mordecai 3 declines correctly only 40–100% of the time when the
+   right place is not among its candidates, and "incorrectly geolocating a place name is a worse
+   error than failing to geolocate" (Halterman 2023).
+
+Every verdict carries its grade — `exact`, `alias`, `fuzzy`, `park-spot`, `nearest-to-feature` —
+and the release it was computed against.
+
+### 4. The desk decides; nothing is ever ticked by a machine
+
+The desk shows each mention with its verdict and candidates. A person ticks one. **The tick is
+stored against the mention and the place id, not against the verdict**, so re-resolving after a
+data release can propose something new without undoing anybody's decision. Only ticked places
+reach `podcast_episodes.json`.
+
+## Where it runs
+
+| trigger | who runs it | what it does |
+|---|---|---|
+| **a new show** | a session, on the maintainer's request | fetch the feed; LLM readers write mentions (in parallel, as on 2026-09-29); resolve; write to the desk |
+| **the weekly run** | the existing routine (`trig_01R1d7LAqZ3Y7RhyPV4Fmpci`, and one per show) | new episodes as above; then **if `latest.json`'s version changed since the last run**, re-resolve every mention on the desk and report what newly matched |
+| **a data release** | the same check, the next Tuesday | nothing extra: the version check above is the trigger |
+
+The desk keeps one `meta` record: the data release it last resolved against. That one field is
+what makes the third row free.
+
+**Why not a GitHub workflow?** CI cannot read the desk: its database is reachable only through the
+claude.ai tools a session holds. So resolution runs in a session and the repository holds the
+code, the tests and the reviewed tables — the same split the podcast list already has.
+
+## How we know it works
+
+The maintainer's ticks are a gold set, and it grows every time somebody ticks:
+**80 places today** (the Green Tunnel's 62 and National Park After Dark's 21, less the ones added by
+request). A test runs the resolver over the gold mentions and prints two numbers — how many it
+got right first, and how many it proposed that were wrong — into the test's own output, and fails
+if the second rises. Every change to the aliases, the thresholds or the blocking is then
+**Measured**, not reasoned, which is the standard CLAUDE.md sets.
+
+The two thresholds this plan inherits are `@unvalidated` until that test exists: the desk's 0.9 /
+0.1 auto-pick and the 60-mile pin-agreement radius.
+
+## The gate
+
+`lib/podcasts.py` must accept ids a phone can open, and today it accepts only the A.T. ledger's.
+A committed ledger for the other waypoints is not the answer: `nearby_poi.geojson`'s 20,506 rows
+would be 1.7× the 12,000-line ceiling `test_no_committed_data.py` sets on a reference file, and
+that test's own docstring says the next raise should be a split, not a bigger number.
+
+So the gate checks nearby ids **against the published artifact of the release it publishes into**,
+at publish time in `publish-podcasts.yml`, and against fixtures in the unit tests. A tagged id
+that a release retires is caught the same way `poi_identity.json`'s `retired` rows are caught now.
+
+## Rules this plan inherits and does not relax
+
+- **Places on one episode stay 500 miles apart** — trail miles on the A.T., a straight line
+  elsewhere (never shorter than the trail, so it can only err toward dropping a place).
+- **Crime stories are tagged where they happened.**
+- **Only a major theme or a segment counts.** A passing mention is recorded (`role: passing`) and
+  never proposed.
+- **Show notes come from the show's own feed.** Spotify's Developer Policy (effective 2025-05-15)
+  forbids ingesting "Spotify Content into a machine learning or AI model", so Spotify is used for
+  the episode's id and nothing else.
+- **A point from a podcast is not a place to walk to.** A location anchor never renders in the
+  voice of a surveyed POI (CLAUDE.md, "Never let a display outrun its source").
+
+## What this plan deliberately does not do
+
+- Geocode on a schedule against a public service.
+- Tick anything, or push anything to `podcast_episodes.json` without a person.
+- Re-read episode notes when the data changes.
+- Treat a GNIS or Wikidata point as a POI a hiker can open.
+
+## Open questions
+
+These went to the maintainer by poll with the diagram page; the answers are recorded here when
+they come back.
+
+1. **What the gazetteer includes.** Published places only, or also held (`reaches_hikers: false`)
+   layers, so a tag is staged the day before the data ships?
+2. **The gate.** Check nearby ids against the published release at publish time, as above, or
+   something else?
+3. **NPS POIs.** Ask the bulk load to register `NPS_Public_POIs` now?
+4. **Places with no OurHike point.** Keep a GNIS/NPS-API point on the desk, or leave them unlocated
+   until data covers them?

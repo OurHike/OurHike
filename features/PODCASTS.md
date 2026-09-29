@@ -163,6 +163,9 @@ OurHike publishes covers NPS ground.
 [#1721 — A podcast episode can be tagged only to an A.T. POI, because lib/podcasts.py checks ids against the A.T.'s ledger alone](https://github.com/OurHike/OurHike/issues/1721)
 asks what the gate should accept, and where such an episode would show.
 
+[PODCAST_PLACES.md](PODCAST_PLACES.md) is the plan for matching every show's place names against
+everything OurHike publishes: for each new show, on each weekly run, and again after each data release.
+
 ## Adding an episode
 
 1. Add a row to `pipeline/reference/podcast_episodes.json` - its README says what each field

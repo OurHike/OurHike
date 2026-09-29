@@ -14,7 +14,7 @@ from rasterio.transform import Affine
 
 import export_weather
 import publish
-from lib import nbm_grid
+from lib import hrrr_grid, nbm_grid
 from lib.r2_keys import validate_key
 
 NODATA = -9999
@@ -189,6 +189,7 @@ def test_publish_collects_every_cell_under_a_legal_conditions_key(tmp_path, monk
     monkeypatch.setattr(export_weather, "WEATHER_RAW", raw)
     monkeypatch.setattr(export_weather, "SQUARES_PATH", raw / "squares.json")
     monkeypatch.setattr(export_weather, "CYCLE_PATH", raw / "cycle.json")
+    monkeypatch.setattr(export_weather, "HRRR_CYCLE_PATH", raw / "hrrr_cycle.json")  # absent: NBM alone
     monkeypatch.setattr(export_weather, "CONDITIONS_DIR", processed / "conditions")
     monkeypatch.setattr(export_weather, "CELL_DIR", processed / "conditions" / "weather")
     monkeypatch.setattr(export_weather, "INDEX_PATH", processed / "conditions" / "weather_index.json")
@@ -207,3 +208,128 @@ def test_publish_collects_every_cell_under_a_legal_conditions_key(tmp_path, monk
         "conditions/weather_index.json",
     ]
     assert all(validate_key(k) is None for k in weather)
+
+
+# --------------------------------------------------------------------------
+# HRRR (the HRRR slice). Synthetic full-size rasters on HRRR's pinned grid,
+# each cell's value encoding its own row and column in tenths of a degree,
+# written as GeoTIFFs carrying the unit tag GDAL puts on a GRIB message.
+
+HRRR_GRID = Affine(hrrr_grid.CELL_M, 0, hrrr_grid.ORIGIN_X, 0, -hrrr_grid.CELL_M, hrrr_grid.ORIGIN_Y)
+
+
+def hrrr_encoded(offset: float = 0.0) -> np.ndarray:
+    rows, cols = np.mgrid[0 : hrrr_grid.HEIGHT, 0 : hrrr_grid.WIDTH]
+    return (((rows * 7 + cols * 3) % 400) / 10.0 - 10.0 + offset).astype(np.float64)
+
+
+def hrrr_expected(row: int, col: int, offset: float = 0.0) -> float:
+    return round(((row * 7 + col * 3) % 400) / 10.0 - 10.0 + offset, 1)
+
+
+def write_hrrr(path, array, unit="[C]", transform=HRRR_GRID):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        width=array.shape[1],
+        height=array.shape[0],
+        count=1,
+        dtype="float64",
+        crs=hrrr_grid.PROJ4,
+        transform=transform,
+    ) as ds:
+        ds.write(array, 1)
+        ds.update_tags(1, GRIB_UNIT=unit)
+
+
+# The summit's HRRR cell and Lakes of the Clouds', and a lake cell in the
+# Hudson cell that borrows its land neighbour.
+SQUARES_HRRR = {
+    **SQUARES,
+    "hrrr_grid": {"proj4": hrrr_grid.PROJ4, "origin": [hrrr_grid.ORIGIN_X, hrrr_grid.ORIGIN_Y], "cell_m": hrrr_grid.CELL_M},
+    "hrrr_cells": {"n44w072": [[216, 1588], [216, 1589]], "n41w074": [[341, 1547]]},
+    "hrrr_reads": [[216, 1588, 216, 1588, 1419], [216, 1589, 216, 1589, 1306], [341, 1547, 340, 1547, 212]],
+    "hrrr_water_kept": [],
+}
+
+
+@pytest.fixture
+def hrrr(tmp_path):
+    write_hrrr(tmp_path / "hrrr/r/t2m_f01.grb2", hrrr_encoded(0.0))
+    write_hrrr(tmp_path / "hrrr/r/t2m_f02.grb2", hrrr_encoded(0.5))
+    return {
+        "model": "hrrr",
+        "cycle": "2026-09-25T06:00Z",
+        "fields": {"temp2m": [["2026-09-25T07:00Z", "hrrr/r/t2m_f01.grb2"], ["2026-09-25T08:00Z", "hrrr/r/t2m_f02.grb2"]]},
+    }
+
+
+def bake_with_hrrr(tmp_path, cycle_doc, hrrr_doc, squares=SQUARES_HRRR):
+    from datetime import UTC, datetime
+
+    return export_weather.bake(squares, cycle_doc, tmp_path, datetime(2026, 9, 25, 12, 30, tzinfo=UTC), hrrr_doc)
+
+
+def test_each_hrrr_cell_reads_its_own_temperature_and_carries_its_height(tmp_path, cycle, hrrr):
+    index, documents = bake_with_hrrr(tmp_path, cycle, hrrr)
+
+    block = documents["n44w072"]["hrrr"]
+    assert block["cells"] == [[216, 1588], [216, 1589]]
+    assert block["height"] == [1419, 1306]
+    assert block["temp"] == [
+        [hrrr_expected(216, 1588), hrrr_expected(216, 1588, 0.5)],
+        [hrrr_expected(216, 1589), hrrr_expected(216, 1589, 0.5)],
+    ]
+    assert block["times"] == ["2026-09-25T07:00Z", "2026-09-25T08:00Z"]
+    assert block["units"] == {"temp": "C", "height": "m"} and block["borrowed"] == []
+    # A mirrored read would have returned another cell's number.
+    assert hrrr_expected(hrrr_grid.HEIGHT - 1 - 216, 1589) != hrrr_expected(216, 1589)
+    assert index["hrrr_cycle"] == "2026-09-25T06:00Z" and index["hrrr_grid"]["cell_m"] == 3000.0
+
+
+def test_a_water_hrrr_cell_reads_its_land_neighbour_and_says_so(tmp_path, cycle, hrrr):
+    _, documents = bake_with_hrrr(tmp_path, cycle, hrrr)
+
+    block = documents["n41w074"]["hrrr"]
+    assert block["temp"][0][0] == hrrr_expected(340, 1547)
+    assert block["height"] == [212] and block["borrowed"] == [[0, 340, 1547]]
+
+
+def test_without_an_hrrr_run_every_cell_says_null_and_nbm_still_publishes(tmp_path, cycle):
+    index, documents = bake_with_hrrr(tmp_path, cycle, None)
+
+    assert all(document["hrrr"] is None for document in documents.values())
+    assert index["hrrr_cycle"] is None
+    assert documents["n44w072"]["fields"]["temp"]["values"]  # the forecast itself is intact
+
+
+def test_an_hrrr_file_not_in_celsius_is_refused(tmp_path, cycle, hrrr):
+    write_hrrr(tmp_path / "hrrr/r/t2m_f01.grb2", hrrr_encoded(0.0) + 273.15, unit="[K]")
+
+    with pytest.raises(RuntimeError, match="Celsius"):
+        bake_with_hrrr(tmp_path, cycle, hrrr)
+
+
+def test_an_hrrr_temperature_outside_any_real_one_stops_the_bake(tmp_path, cycle, hrrr):
+    hot = hrrr_encoded(0.0)
+    hot[216, 1589] = 95.0
+
+    write_hrrr(tmp_path / "hrrr/r/t2m_f02.grb2", hot)
+
+    with pytest.raises(RuntimeError, match="outside"):
+        bake_with_hrrr(tmp_path, cycle, hrrr)
+
+
+def test_an_hrrr_file_on_a_moved_grid_is_refused(tmp_path, cycle, hrrr):
+    moved = Affine(hrrr_grid.CELL_M, 0, hrrr_grid.ORIGIN_X + hrrr_grid.CELL_M, 0, -hrrr_grid.CELL_M, hrrr_grid.ORIGIN_Y)
+    write_hrrr(tmp_path / "hrrr/r/t2m_f01.grb2", hrrr_encoded(0.0), transform=moved)
+
+    with pytest.raises(RuntimeError, match="not on HRRR"):
+        bake_with_hrrr(tmp_path, cycle, hrrr)
+
+
+def test_a_squares_file_from_before_hrrr_is_refused_when_hrrr_was_fetched(tmp_path, cycle, hrrr):
+    with pytest.raises(RuntimeError, match="HRRR"):
+        bake_with_hrrr(tmp_path, cycle, hrrr, squares=SQUARES)

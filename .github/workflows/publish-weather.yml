@@ -1,6 +1,11 @@
 # Publishes the NBM forecast for every trail square to UA's bucket, one file
-# per 1-degree cell, and every active NWS alert that reaches a trail square
-# (#1056, features/WEATHER.md build step 1).
+# per 1-degree cell with HRRR's first two days' temperature inside it, and
+# every active NWS alert that reaches a trail square (#1056, features/WEATHER.md
+# build step 1).
+#
+# HRRR FAILING DOES NOT STOP THE FORECAST. fetch_hrrr.py writes its record only
+# on success; without it export_weather.py publishes NBM alone with
+# `hrrr: null`, and the phone uses NBM for every hour. The job still goes red.
 #
 # TWO HALVES, AND EITHER PUBLISHES WITHOUT THE OTHER. NBM stalling must not
 # hold back the warnings, and NWS not answering must not hold back the
@@ -58,9 +63,11 @@ jobs:
   build:
     name: Build the forecast and warnings files
     runs-on: ubuntu-latest
-    # Measured 2026-09-25/26: squares 49 s when the release changed (skipped
-    # otherwise; NWS zones add ~10 s to that, measured in a sandbox rather
-    # than on a runner), alerts 1 s, fetch 20 s, bake 19 s.
+    # Measured on runners 2026-09-25/26: squares 52 s with NWS zones when the
+    # release changed (skipped otherwise), alerts under 1 s, fetch 30 s, bake
+    # 15 s. HRRR, measured in a sandbox 2026-09-29: 7 s to fetch, and the
+    # bake grew from 19 s to 35 s there; HRRR's terrain adds a few seconds to
+    # a squares rebuild.
     # Fifteen minutes is room for a slow NOAA day, not a target.
     timeout-minutes: 15
     outputs:
@@ -90,6 +97,8 @@ jobs:
           path: |
             pipeline/data/raw/weather/squares.json
             pipeline/data/raw/weather/urma_terrain.grb2
+            pipeline/data/raw/weather/hrrr_height.grb2
+            pipeline/data/raw/weather/hrrr_land.grb2
           key: weather-squares-${{ github.run_id }}
           restore-keys: weather-squares-
 
@@ -102,13 +111,15 @@ jobs:
         run: python build_weather_squares.py
 
       - name: Save the trail squares
-        if: always() && hashFiles('pipeline/data/raw/weather/squares.json', 'pipeline/data/raw/weather/urma_terrain.grb2') != ''
+        if: always() && hashFiles('pipeline/data/raw/weather/squares.json', 'pipeline/data/raw/weather/urma_terrain.grb2', 'pipeline/data/raw/weather/hrrr_height.grb2', 'pipeline/data/raw/weather/hrrr_land.grb2') != ''
         uses: actions/cache/save@v6
         with:
           path: |
             pipeline/data/raw/weather/squares.json
             pipeline/data/raw/weather/urma_terrain.grb2
-          key: weather-squares-${{ hashFiles('pipeline/data/raw/weather/squares.json', 'pipeline/data/raw/weather/urma_terrain.grb2') }}
+            pipeline/data/raw/weather/hrrr_height.grb2
+            pipeline/data/raw/weather/hrrr_land.grb2
+          key: weather-squares-${{ hashFiles('pipeline/data/raw/weather/squares.json', 'pipeline/data/raw/weather/urma_terrain.grb2', 'pipeline/data/raw/weather/hrrr_height.grb2', 'pipeline/data/raw/weather/hrrr_land.grb2') }}
 
       # First, because it is one request and a second of work: a slow NBM
       # day that runs into the fetch step's ceiling cannot delay it.
@@ -121,6 +132,13 @@ jobs:
         if: ${{ !cancelled() && steps.squares.outcome == 'success' }}
         timeout-minutes: 5
         run: python fetch_weather.py
+
+      # After NBM's fetch and gated only on the squares, so a stalled HRRR
+      # costs the first two days' temperature and nothing else.
+      - name: Fetch the newest 48-hour HRRR run
+        if: ${{ !cancelled() && steps.squares.outcome == 'success' }}
+        timeout-minutes: 4
+        run: python fetch_hrrr.py
 
       - name: Bake one file per trail cell
         if: ${{ !cancelled() && steps.fetch.outcome == 'success' }}

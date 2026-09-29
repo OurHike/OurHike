@@ -104,7 +104,7 @@ describe('PodcastCard, before a hiker has picked an app (#1690, frame 1A)', () =
   })
 
   it('keeps the pick on this phone and comes back to the list with that app’s buttons', async () => {
-    show()
+    show({ offeredApps: ['spotify', 'apple_podcasts'] })
     await userEvent.click(
       screen.getByRole('button', {
         name: 'Download “The park’s history” in your podcast app',
@@ -118,6 +118,34 @@ describe('PodcastCard, before a hiker has picked an app (#1690, frame 1A)', () =
     expect(
       screen.getByRole('link', { name: 'Open “The park’s history” in Apple Podcasts' }),
     ).toBeTruthy()
+  })
+})
+
+describe('which apps the picker offers (maintainer’s poll, 2026-09-29, frame Q1)', () => {
+  async function openPicker() {
+    await userEvent.click(
+      screen.getByRole('button', {
+        name: 'Listen to “The park’s history” in your podcast app',
+      }),
+    )
+    const list = screen.getByRole('list', { name: 'Podcast apps' })
+    return within(list)
+      .getAllByRole('button')
+      .map((button) => button.textContent)
+  }
+
+  it('offers only the apps it is given, in the app list’s order', async () => {
+    show({ offeredApps: ['apple_podcasts', 'spotify'] })
+    expect(await openPicker()).toEqual(['Spotify', 'Apple Podcasts'])
+  })
+
+  it('works them out from its own episodes when given none: Apple only while every one has an Apple link', async () => {
+    show({ episodes: [HISTORY] })
+    expect(await openPicker()).toEqual(['Spotify', 'Apple Podcasts'])
+    cleanup()
+
+    show({ episodes: [HISTORY, GEOLOGY] })
+    expect(await openPicker()).toEqual(['Spotify'])
   })
 })
 

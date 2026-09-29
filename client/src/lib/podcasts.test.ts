@@ -3,7 +3,9 @@ import { clear } from 'idb-keyval'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   PODCAST_EPISODES_KEY,
+  appsEveryEpisodeOpensIn,
   episodesForHike,
+  podcastAppsToList,
   episodesForMiles,
   formatMinutes,
   parsePodcastEpisodes,
@@ -162,6 +164,42 @@ describe('each other app’s link (#1690)', () => {
     expect(episodeUrlIn(one, 'spotify')).toBe(`https://open.spotify.com/episode/${ID_A}`)
     expect(episodeUrlIn(one, 'apple_podcasts')).toBe(apple)
     expect(episodeUrlIn(one, 'overcast')).toBeNull()
+  })
+})
+
+describe('the apps a hiker is offered (maintainer’s poll, 2026-09-29, frame Q1)', () => {
+  const apple = 'https://podcasts.apple.com/us/podcast/a-show/id1?i=2'
+  const overcast = 'https://overcast.fm/+AbC'
+  const linked = episode({ spotifyId: ID_A, links: { apple_podcasts: apple, overcast } })
+  const appleOnly = episode({ spotifyId: ID_B, links: { apple_podcasts: apple } })
+
+  it('offers an app only when every episode on the list opens in it, Spotify always', () => {
+    expect(appsEveryEpisodeOpensIn([linked])).toEqual([
+      'spotify',
+      'apple_podcasts',
+      'overcast',
+    ])
+    expect(appsEveryEpisodeOpensIn([linked, appleOnly])).toEqual([
+      'spotify',
+      'apple_podcasts',
+    ])
+  })
+
+  it('offers Spotify alone for an empty list, rather than every app for having no exceptions', () => {
+    expect(appsEveryEpisodeOpensIn([])).toEqual(['spotify'])
+  })
+
+  it('lists a pick that has since dropped out beside the apps on offer, in the app list’s order', () => {
+    expect(podcastAppsToList(['spotify', 'apple_podcasts'], 'overcast')).toEqual([
+      'spotify',
+      'apple_podcasts',
+      'overcast',
+    ])
+    expect(podcastAppsToList(['spotify'], null)).toEqual(['spotify'])
+    expect(podcastAppsToList(['spotify', 'apple_podcasts'], 'spotify')).toEqual([
+      'spotify',
+      'apple_podcasts',
+    ])
   })
 })
 

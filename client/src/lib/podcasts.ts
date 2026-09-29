@@ -232,6 +232,44 @@ export function episodeUrlIn(episode: PodcastEpisode, app: PodcastApp): string |
   return app === 'spotify' ? spotifyEpisodeUrl(episode) : (episode.links[app] ?? null)
 }
 
+/**
+ * The apps a hiker is offered to pick from: Spotify, which every episode has,
+ * and each other app only once every episode on `list` carries its link. The
+ * maintainer's rule (poll, 2026-09-29, frame Q1): "If we only support
+ * Spotify, then we shouldn't have the other apps listed." An app joins by
+ * itself when the list covers it - no app release - and drops out when an
+ * episode without its link is added.
+ *
+ * Pass the WHOLE published list, not one hike's share of it: an app offered
+ * on one card and missing from the next would make the pick depend on which
+ * hike the hiker opened first. An empty list offers Spotify alone - "every
+ * episode" of none is true of every app and says nothing.
+ */
+export function appsEveryEpisodeOpensIn(
+  list: readonly PodcastEpisode[],
+): readonly PodcastApp[] {
+  return PODCAST_APPS.filter(
+    (app) =>
+      app === 'spotify' ||
+      (list.length > 0 && list.every((episode) => episodeUrlIn(episode, app) !== null)),
+  )
+}
+
+/**
+ * The apps a picker lists: those on offer, plus the hiker's own pick if it
+ * has since dropped out (an episode without its link was added). A pick that
+ * vanished from the list would leave the hiker unable to see what they chose,
+ * while the card still opens episodes in it where it can; shown, it stays
+ * theirs to change. In PODCAST_APPS order either way, so the list never
+ * reshuffles.
+ */
+export function podcastAppsToList(
+  apps: readonly PodcastApp[],
+  value: PodcastApp | null,
+): readonly PodcastApp[] {
+  return PODCAST_APPS.filter((app) => apps.includes(app) || app === value)
+}
+
 /** Spotify's own embedded player for the episode (chrome/PodcastCard.tsx
  *  loads it only once a hiker taps Play). */
 export function spotifyEmbedUrl(episode: PodcastEpisode): string {

@@ -25,6 +25,7 @@ first build, a photograph of the running app:
 | an episode with no link for the hiker's app | still shown, with Spotify's button and "Not linked for <app> yet." | hidden |
 | ▶ | Spotify's player for everyone, whatever app they picked | only for hikers who picked Spotify |
 | download | a ↓ circle like ▶ that opens the episode in the hiker's app, one tap from that app's own download | keeping the audio in OurHike for no-signal play; saving an .mp3 to the phone |
+| which apps the picker offers (poll, 2026-09-29) | Spotify, and each other app only once every episode on the list carries its link, so an app joins or leaves with the list and no app release | Spotify and Apple Podcasts only, in the code; all five, with every episode required to carry five links |
 
 "Should be the last thing you see" is the maintainer's own line about the hike detail
 placement. The alternatives are written down so the next reader knows they were considered,
@@ -51,6 +52,16 @@ in the hiker's app, and the line under the list says so.
 
 **One-tap Save is Spotify's alone,** for the same reason: no other app lets another add an
 episode to a listener's library.
+
+**The picker offers only the apps every episode opens in.** The maintainer's line, answering
+whether the picker should list five apps when the list only links Spotify: "If we only support
+spotify, then we shouldnt have the other apps listed, right?" So `appsEveryEpisodeOpensIn`
+(`lib/podcasts.ts`) offers Spotify, which every row has, and another app only while every episode
+on the whole published list carries that app's link; the card's picker and the Settings row both
+read it. An empty list offers Spotify alone. A hiker whose pick later drops out (an episode
+without that app's link was added) still sees their pick, ticked, and the card still opens each
+episode in it where it can, saying "Not linked for <app> yet." on the rest. Adding the missing
+links brings the app back with no app release.
 
 **The phone apps get a link.** A sign-in redirect does not return into the Capacitor shells
 today ([AUTHENTICATION.md](AUTHENTICATION.md)), and the Android shell's `useLegacyBridge`
@@ -80,8 +91,9 @@ button needs a Spotify app:
 1. Add a row to `pipeline/reference/podcast_episodes.json` - its README says what each field
    is. For each other app it is in, copy that app's own share link into `links`
    (`apple_podcasts`, `pocket_casts`, `overcast`, `youtube_music`); there is no shared
-   episode-link format across podcast apps, and an app left out sends its listeners to
-   Spotify with a line saying so. Then open a pull request.
+   episode-link format across podcast apps. An app is offered to hikers only while every
+   episode on the list carries its link, so one row without an app's link takes that app out
+   of every hiker's picker. Then open a pull request.
    `pipeline/tests/test_export_podcasts.py` fails on a row the exporter would drop.
 2. After the merge, dispatch `publish-podcasts.yml` with `publish: true` and
    `data_environment: ua`, check it on UA, then again with `production`.

@@ -168,7 +168,12 @@ import { useAvailableBytes } from './lib/useAvailableBytes'
 import { usePublishedSizes } from './lib/usePublishedSizes'
 import { useSuggestedHikes } from './lib/useSuggestedHikes'
 import { usePodcastEpisodes } from './lib/usePodcastEpisodes'
-import { NO_PODCAST_EPISODES, episodesForHike, episodesForMiles } from './lib/podcasts'
+import {
+  NO_PODCAST_EPISODES,
+  appsEveryEpisodeOpensIn,
+  episodesForHike,
+  episodesForMiles,
+} from './lib/podcasts'
 import {
   authorLine,
   hikePlaces,
@@ -2456,6 +2461,12 @@ function App() {
   // The podcast episodes picked for hikes (#1683) - a live list at the
   // bucket root, matched to a hike or a day's miles on this phone.
   const podcastEpisodes = usePodcastEpisodes(online, afterFirstFrame)
+  // The apps a hiker may pick, from the WHOLE list so every card and the
+  // Settings row offer the same ones (lib/podcasts.ts says why).
+  const podcastApps = useMemo(
+    () => appsEveryEpisodeOpensIn(podcastEpisodes),
+    [podcastEpisodes],
+  )
 
   /** One sheet as one state, however many archives are behind it. */
   const sheetStatus = useCallback(
@@ -9899,6 +9910,7 @@ function App() {
       onDropOpenWalk={dropOpenWalk}
       longHike={longHikeToday}
       podcastEpisodes={todayPodcasts}
+      podcastApps={podcastApps}
       pois={searchablePois}
       currentMile={fix?.mile}
       direction={direction?.direction}
@@ -10000,6 +10012,7 @@ function App() {
         online={online}
         stewards={stewards}
         podcastEpisodes={episodesForHike(podcastEpisodes, openHike.id)}
+        podcastApps={podcastApps}
         onBack={goBack}
         onSave={saveSuggestedHike}
         {...(savedCopy === undefined
@@ -10297,6 +10310,7 @@ function App() {
                   preferences={preferences}
                   onChange={updatePreferences}
                   onChangeBackground={handleChangeBackground}
+                  podcastApps={podcastApps}
                   pace={pace}
                   onChangePace={handleChangePace}
                   lastSyncedAt={lastSyncedAt}

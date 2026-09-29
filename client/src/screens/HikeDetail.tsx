@@ -66,7 +66,11 @@ import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
 import { paperMapLead, paperMapsForPlace, stewardForSource } from '../lib/paperMaps'
 import { EMPTY_STEWARDS, type Stewards } from '../lib/stewards'
 import { useHikeDetail } from '../lib/useHikeDetail'
-import { NO_PODCAST_EPISODES, type PodcastEpisode } from '../lib/podcasts'
+import {
+  NO_PODCAST_EPISODES,
+  type PodcastApp,
+  type PodcastEpisode,
+} from '../lib/podcasts'
 import './hikeDetail.css'
 
 /** How many paragraphs of the turn-by-turn show before the button. Two is
@@ -102,6 +106,9 @@ export interface HikeDetailProps {
   /** The podcast episodes picked for this hike (lib/podcasts.ts,
    *  `episodesForHike`), or none - and none draws nothing. */
   podcastEpisodes?: readonly PodcastEpisode[]
+  /** The podcast apps the card's picker offers, from the whole published
+   *  list (PodcastCardProps.offeredApps). */
+  podcastApps?: readonly PodcastApp[]
 }
 
 function figures(hike: SuggestedHike, pace: PaceProfile, units: UnitSystem): string {
@@ -179,6 +186,7 @@ export function HikeDetail({
   onShowOnMap,
   stewards = EMPTY_STEWARDS,
   podcastEpisodes = NO_PODCAST_EPISODES,
+  podcastApps,
 }: HikeDetailProps) {
   const [wholeDescription, setWholeDescription] = useState(false)
   // #1473: the shelf carries the figures, this fetches the prose for the one
@@ -408,6 +416,7 @@ export function HikeDetail({
               episodes={podcastEpisodes}
               heading="Picked for this hike"
               online={online}
+              offeredApps={podcastApps}
             />
           </section>
         )}

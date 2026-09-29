@@ -34,7 +34,11 @@ import { StatusStrip } from '../chrome/StatusStrip'
 import { ModeSwitch } from '../chrome/ModeSwitch'
 import { WelcomeBackCard, type WelcomeBackCardProps } from '../chrome/WelcomeBackCard'
 import { PodcastCard } from '../chrome/PodcastCard'
-import { NO_PODCAST_EPISODES, type PodcastEpisode } from '../lib/podcasts'
+import {
+  NO_PODCAST_EPISODES,
+  type PodcastApp,
+  type PodcastEpisode,
+} from '../lib/podcasts'
 import { ElevationRibbon, type RibbonSubject } from '../chrome/ElevationRibbon'
 import type { RibbonView } from '../lib/ribbonView'
 import type { HikerMode } from '../lib/hikerMode'
@@ -140,6 +144,9 @@ export interface TodayProps {
    *  `episodesForMiles`). Drawn under "Today on your hike" in the long mode
    *  only, and only while there is a leg; empty draws nothing. */
   podcastEpisodes?: readonly PodcastEpisode[]
+  /** The podcast apps the card's picker offers, from the whole published
+   *  list (PodcastCardProps.offeredApps). */
+  podcastApps?: readonly PodcastApp[]
 
   /** Every searchable POI, client mile axis - the journal ranks a scoped
    *  subset (lib/todayJournal.ts). */
@@ -427,6 +434,7 @@ export function Today({
   modePending = false,
   longHike = null,
   podcastEpisodes = NO_PODCAST_EPISODES,
+  podcastApps,
   pois,
   currentMile,
   direction,
@@ -1149,6 +1157,7 @@ export function Today({
           eyebrow="♪ For today’s stretch"
           heading={`Picked for ${longHike.day.title}`}
           online={online}
+          offeredApps={podcastApps}
         />
       ),
     resume: longHike?.resume == null ? null : <WelcomeBackCard {...longHike.resume} />,

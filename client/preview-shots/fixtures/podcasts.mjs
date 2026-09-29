@@ -35,6 +35,12 @@ export const PODCAST_EPISODES_DOCUMENT = {
       minutes: 72,
       hikes: ['nynjtc_hike_finder:7909'],
       at_miles: [],
+      // Every fixture episode carries an Apple link and nothing else beyond
+      // Spotify, so the picker offers exactly Spotify and Apple Podcasts -
+      // the maintainer's frame Q1 (poll, 2026-09-29).
+      links: {
+        apple_podcasts: 'https://podcasts.apple.com/us/podcast/show-name/id1?i=3',
+      },
     },
     {
       spotify_id: 'Fixture2SectionEpisode',

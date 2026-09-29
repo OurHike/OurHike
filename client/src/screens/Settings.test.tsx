@@ -491,9 +491,13 @@ describe('MapSettings', () => {
 })
 
 describe('the podcast app row (#1690)', () => {
+  function optionNames() {
+    return screen.getAllByRole('option').map((option) => option.textContent)
+  }
+
   it('offers “Ask me” only until an app is picked, and keeps the pick on this phone', async () => {
     localStorage.removeItem('ourhike:podcast-app')
-    render(<DisplaySettings {...PROPS} />)
+    render(<DisplaySettings {...PROPS} podcastApps={['spotify', 'overcast']} />)
 
     const select = screen.getByRole('combobox', { name: 'Podcast app' })
     expect((select as HTMLSelectElement).value).toBe('')
@@ -501,6 +505,26 @@ describe('the podcast app row (#1690)', () => {
 
     expect(localStorage.getItem('ourhike:podcast-app')).toBe('overcast')
     expect(screen.queryByRole('option', { name: 'Ask me' })).toBeNull()
+    localStorage.removeItem('ourhike:podcast-app')
+  })
+
+  it('offers only the apps every episode opens in, and Spotify alone with no list to read (frame Q1)', () => {
+    localStorage.removeItem('ourhike:podcast-app')
+    render(<DisplaySettings {...PROPS} podcastApps={['spotify', 'apple_podcasts']} />)
+    expect(optionNames()).toEqual(['Ask me', 'Spotify', 'Apple Podcasts'])
+    cleanup()
+
+    render(<DisplaySettings {...PROPS} />)
+    expect(optionNames()).toEqual(['Ask me', 'Spotify'])
+  })
+
+  it('keeps showing a pick that has since dropped out, selected, rather than a different app', () => {
+    localStorage.setItem('ourhike:podcast-app', 'overcast')
+    render(<DisplaySettings {...PROPS} podcastApps={['spotify']} />)
+
+    const select = screen.getByRole('combobox', { name: 'Podcast app' })
+    expect((select as HTMLSelectElement).value).toBe('overcast')
+    expect(optionNames()).toEqual(['Spotify', 'Overcast'])
     localStorage.removeItem('ourhike:podcast-app')
   })
 })

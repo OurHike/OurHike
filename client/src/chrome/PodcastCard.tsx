@@ -40,6 +40,7 @@ import { Capacitor } from '@capacitor/core'
 import { useState, type ReactNode } from 'react'
 import {
   PODCAST_APP_NAMES,
+  appsEveryEpisodeOpensIn,
   episodeUrlIn,
   formatMinutes,
   spotifyEmbedUrl,
@@ -76,6 +77,12 @@ export interface PodcastCardProps {
   /** Whether this build can save to Spotify at all. From lib/spotify.ts when
    *  absent; passed by tests. */
   spotifyConfigured?: boolean
+  /** The apps the picker offers: appsEveryEpisodeOpensIn over the WHOLE
+   *  published list, which App.tsx holds and this card does not. Absent, it
+   *  is worked out from this card's own episodes, which is only right for a
+   *  card rendered alone (tests): a subset of the list can cover an app the
+   *  whole list does not. */
+  offeredApps?: readonly PodcastApp[]
 }
 
 export function PodcastCard({
@@ -85,6 +92,7 @@ export function PodcastCard({
   online,
   native = Capacitor.isNativePlatform(),
   spotifyConfigured = SPOTIFY_CONFIGURED,
+  offeredApps,
 }: PodcastCardProps) {
   const app = usePodcastApp()
   const [picking, setPicking] = useState(false)
@@ -139,6 +147,7 @@ export function PodcastCard({
         <div className="podcast-card__picker">
           <p className="podcast-card__picker-heading">Which app do you listen in?</p>
           <PodcastAppPicker
+            apps={offeredApps ?? appsEveryEpisodeOpensIn(episodes)}
             value={app}
             onPick={(next) => {
               writePodcastApp(next)

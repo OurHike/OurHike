@@ -62,6 +62,7 @@ export function mapPointsFrom(
     name: string
     siteId?: string
     siteRole?: string
+    trailsClosedWithinM?: number
   }[],
 ): MapPoint[] {
   const points: MapPoint[] = new Array<MapPoint>(pois.length)
@@ -85,6 +86,9 @@ export function mapPointsFrom(
       // show up in a snapshot as a claim about a site.
       ...(poi.siteId !== undefined ? { siteId: poi.siteId } : {}),
       ...(poi.siteRole !== undefined ? { siteRole: poi.siteRole } : {}),
+      // A trailhead whose trails are all closed (#1695), for the pin. The
+      // pin needs only whether; the card reads the distance off StoredPoi.
+      ...(poi.trailsClosedWithinM !== undefined ? { trailsClosed: true } : {}),
     }
   }
   return points
@@ -120,6 +124,10 @@ export interface MapPoint {
    */
   siteId?: string
   siteRole?: string
+  /** Every trail near this trailhead is closed (#1695) - set when
+   *  lib/trailData.ts's StoredPoi.trailsClosedWithinM is, and carried to
+   *  map/poiLayers.ts for the pin. */
+  trailsClosed?: boolean
 }
 
 /**

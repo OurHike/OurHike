@@ -6,10 +6,12 @@ import {
 } from '@maplibre/maplibre-gl-style-spec'
 import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
+import { CLOSURE_INK } from '../lib/closureStyle'
 import { POI_TYPES } from '../lib/config'
 import { hiddenTypesFrom, onlyType, showAllTypes } from '../lib/waypointVisibility'
 import {
   buildPoiIcons,
+  CLOSED_TRAILHEAD_ICON_ID,
   POI_FALLBACK_COLOR,
   POI_PIN_INK_SIZE,
   POI_PIN_SIZE,
@@ -28,6 +30,7 @@ import {
   QUIET_NEIGHBOURS,
 } from './poiCrowding'
 import {
+  TRAILS_CLOSED_PROPERTY,
   attachPoiFilter,
   attachPoiData,
   attachPoiIcons,
@@ -108,6 +111,38 @@ describe('the icon expression', () => {
 
     expect(resolved).toBe(poiIconId(UNKNOWN_POI_TYPE, 'high'))
     expect(REGISTERED_ICON_IDS.has(resolved as string)).toBe(true)
+  })
+
+  it('draws a trailhead whose trails are all closed with the closed pin, whatever its confidence (#1695)', () => {
+    for (const confidence of ['high', 'low'] as const) {
+      const resolved = evaluate(POI_ICON_EXPRESSION, {
+        ...poi('trailhead', confidence),
+        [TRAILS_CLOSED_PROPERTY]: true,
+      })
+
+      expect(resolved).toBe(CLOSED_TRAILHEAD_ICON_ID)
+      expect(REGISTERED_ICON_IDS.has(resolved as string)).toBe(true)
+    }
+  })
+
+  it('keeps the closed pin to trailheads, and to an explicit true', () => {
+    // The pipeline sets the flag only on trailheads; a parking lot that
+    // somehow carried it must still draw as parking, and a trailhead whose
+    // flag is anything but `true` as a trailhead.
+    expect(
+      evaluate(POI_ICON_EXPRESSION, {
+        ...poi('parking'),
+        [TRAILS_CLOSED_PROPERTY]: true,
+      }),
+    ).toBe(poiIconId('parking', 'high'))
+    for (const flag of [false, 'true', 1]) {
+      expect(
+        evaluate(POI_ICON_EXPRESSION, {
+          ...poi('trailhead'),
+          [TRAILS_CLOSED_PROPERTY]: flag,
+        }),
+      ).toBe(poiIconId('trailhead', 'high'))
+    }
   })
 
   it('treats anything that is not an explicit "high" as unverified', () => {
@@ -201,6 +236,20 @@ describe('the dot rank', () => {
 
   it('lands an unknown type on the fallback rather than on nothing', () => {
     expect(evaluate(POI_DOT_COLOR_EXPRESSION, poi('yurt'))).toBe(POI_FALLBACK_COLOR)
+  })
+
+  it("takes the closure's ink for a closed trailhead, as its pin does, and for nothing else", () => {
+    const closed = (type: string) => ({ ...poi(type), [TRAILS_CLOSED_PROPERTY]: true })
+    expect(evaluate(POI_DOT_COLOR_EXPRESSION, closed('trailhead'))).toBe(CLOSURE_INK)
+    expect(evaluate(POI_DOT_COLOR_EXPRESSION, closed('parking'))).toBe(
+      poiColor('parking'),
+    )
+    expect(
+      evaluate(POI_DOT_COLOR_EXPRESSION, {
+        ...poi('trailhead'),
+        [TRAILS_CLOSED_PROPERTY]: false,
+      }),
+    ).toBe(poiColor('trailhead'))
   })
 
   it('stays small enough not to compete with a pin', () => {
@@ -591,6 +640,26 @@ describe('poiFeatureCollection', () => {
     expect(first.geometry.coordinates).toEqual([-77.1, 39.3])
   })
 
+  it('carries a trailhead\u2019s closed flag, and false on every other waypoint (#1695)', () => {
+    const features = poiFeatureCollection([
+      ...pois,
+      {
+        id: 't1',
+        type: 'trailhead',
+        lat: 41.4,
+        lon: -73.9,
+        confidence: 'low',
+        trailsClosed: true,
+      },
+    ]).features
+
+    expect(features.map((f) => f.properties[TRAILS_CLOSED_PROPERTY])).toEqual([
+      false,
+      false,
+      true,
+    ])
+  })
+
   it('carries the attributes the style matches on, and the id to look up by', () => {
     const [, shelter] = poiFeatureCollection(pois).features
 
@@ -604,6 +673,10 @@ describe('poiFeatureCollection', () => {
       // the property arrived - a `toMatchObject` here would have let a fourth
       // property appear unnoticed.
       [SITE_MEMBERS_PROPERTY]: '',
+      // Whether every trail near this trailhead is closed (#1695) - false on
+      // anything that is not a closed trailhead, always a boolean so the icon
+      // expression is one comparison.
+      [TRAILS_CLOSED_PROPERTY]: false,
       // The name map/poiLabels.ts draws (#1194), and empty here because this
       // fixture's MapPoint carries none. Always a string for the same reason
       // the site key above always is: the label layer's filter is then one

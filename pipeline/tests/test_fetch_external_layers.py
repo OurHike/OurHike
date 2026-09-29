@@ -389,7 +389,7 @@ def test_a_moved_maximum_refetches_and_records_it_as_a_string(tmp_path, monkeypa
 
 
 def test_a_layer_with_no_marker_of_any_kind_is_fetched_every_run(tmp_path, monkeypatch, requests_mock):
-    """NH GRANIT: `marker: none`, honestly. Fetched, and the manifest says
+    """`marker: none`, honestly (usfs_rec_sites today; NH GRANIT first). Fetched, and the manifest says
     there was nothing to compare - never a skip on the strength of a file
     happening to be on disk."""
     raw_dir, manifest_path = _setup(

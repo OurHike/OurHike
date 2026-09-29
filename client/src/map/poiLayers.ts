@@ -41,6 +41,7 @@ import type {
   LayerSpecification,
 } from '@maplibre/maplibre-gl-style-spec'
 import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl'
+import { CLOSURE_INK } from '../lib/closureStyle'
 import { POI_TYPES } from '../lib/config'
 // The legend's own point type, deliberately. The map and the legend read the
 // same array, which is what makes "the legend names exactly what is drawn"
@@ -62,6 +63,7 @@ import {
   POI_PIN_INK_SIZE,
   POI_PIN_SIZE,
   poiColor,
+  CLOSED_TRAILHEAD_ICON_ID,
   poiIconId,
   siteMemberCombinations,
   sitePinPadding,
@@ -517,10 +519,30 @@ function siteAwareIconMatch(confidence: PoiConfidence): unknown[] {
   ]
 }
 
+/**
+ * The feature property saying every trail near this trailhead is closed
+ * (#1695) - always present, `false` where it is not, so the expression below
+ * is one comparison rather than a `coalesce`, the rule SITE_MEMBERS_PROPERTY
+ * already follows.
+ */
+export const TRAILS_CLOSED_PROPERTY = 'trails_closed'
+
+/** True for a trailhead whose trails are all closed (#1695); the pin and the dot both ask it. */
+const CLOSED_TRAILHEAD_CONDITION: unknown[] = [
+  'all',
+  ['==', ['get', 'poi_type'], 'trailhead'],
+  ['==', ['get', TRAILS_CLOSED_PROPERTY], true],
+]
+
 export const POI_ICON_EXPRESSION: unknown[] = [
   'concat',
   [
     'case',
+    // A trailhead whose trails are all closed wears the closed pin first,
+    // whatever its confidence or site (#1695): the cross is the one thing on
+    // it a hiker must not miss.
+    CLOSED_TRAILHEAD_CONDITION,
+    CLOSED_TRAILHEAD_ICON_ID,
     ['==', ['get', 'confidence'], 'high'],
     siteAwareIconMatch('high'),
     siteAwareIconMatch('low'),
@@ -770,17 +792,26 @@ export function buildPoiLayer(sourceId: string = POI_SOURCE_ID): LayerSpecificat
 export const POI_DOT_LAYER_ID = 'poi-dots'
 
 /**
- * A dot's colour is its category's accent - the same one its pin wears.
+ * A dot's colour is its category's accent - the same one its pin wears, which
+ * for a closed trailhead is the closure's ink rather than the trailhead's.
  *
  * Built from poiIcons.ts's table rather than a second palette, for the reason
  * that file already gives about anything drawn to match a pin: two tables
  * cannot disagree about an accent if there is only one.
  */
 export const POI_DOT_COLOR_EXPRESSION: unknown[] = [
-  'match',
-  ['get', 'poi_type'],
-  ...POI_TYPES.flatMap((type) => [type, poiColor(type)]),
-  poiColor(UNKNOWN_POI_TYPE),
+  'case',
+  // A closed trailhead's pin is filled with the closure's ink (#1695), so its
+  // dot is too. A purple dot here would drop the closure at exactly the zooms
+  // where the pin loses its place.
+  CLOSED_TRAILHEAD_CONDITION,
+  CLOSURE_INK,
+  [
+    'match',
+    ['get', 'poi_type'],
+    ...POI_TYPES.flatMap((type) => [type, poiColor(type)]),
+    poiColor(UNKNOWN_POI_TYPE),
+  ],
 ]
 
 /**
@@ -949,6 +980,7 @@ export interface PoiFeatureCollection {
       [POI_NAME_PROPERTY]: string
       [POI_ID_PROPERTY]: string
       [SITE_MEMBERS_PROPERTY]: string
+      [TRAILS_CLOSED_PROPERTY]: boolean
       staleness_ring: string
       staleness_faded: boolean
       /** How many other drawn marks sit within map/poiCrowding.ts's radius -
@@ -1057,6 +1089,7 @@ export function poiFeatureCollection(
           // `match` needs no `coalesce` and a pin with no site is not a separate
           // expression path that could drift from the one with.
           [SITE_MEMBERS_PROPERTY]: siteMembersKey(membersFor.get(poi.id)),
+          [TRAILS_CLOSED_PROPERTY]: poi.trailsClosed === true,
           staleness_ring: condition.ring,
           staleness_faded: condition.faded,
           [CROWDING_PROPERTY]: crowding.get(poi.id) ?? 0,

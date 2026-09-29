@@ -104,13 +104,9 @@ EXTRA_LAYERS = [("opentrail", "at", "opentrail_at.geojson")]
 #: Preserve` is here for readability rather than to fix a collision -
 #: `mohonk` is what sources.json's own keys call it.
 #:
-#: `NH GRANIT` is the White Mountains registration (#1207) and is here
-#: because it MUST be: two words, so `_provider_slug` raises rather than
-#: guessing. `granit` rather than `nh` or `nh_granit` for the same reason
-#: `mohonk` is `mohonk` - GRANIT is what the organization calls itself and
-#: what its own service paths spell, and `nh` would name the state where the
-#: point is to name the clearinghouse. The other new provider, `USFS`, needs
-#: no row: one word, so it slugs to `usfs` on its own.
+#: `USFS`, the White Mountains registration (#1207), needs no row: one word,
+#: so it slugs to `usfs` on its own. Its companion `NH GRANIT` had a row
+#: (`granit`) until the source was removed (#1711).
 #:
 #: `NYC Parks` and `NYC DOT` are #1432's registration. Both are two words, so
 #: `_provider_slug` REFUSES them without a row here - it raises rather than
@@ -127,7 +123,6 @@ PROVIDER_SLUGS = {
     "NYS OPRHP": "oprhp",
     "NYS DEC": "dec",
     "Mohonk Preserve": "mohonk",
-    "NH GRANIT": "granit",
     "NYC Parks": "nyc_parks",
     "NYC DOT": "nyc_dot",
 }

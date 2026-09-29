@@ -57,7 +57,6 @@ def test_fixtures_load_through_the_real_loader(tmp_path):
             "raw_nyc_dot__nyc_park_drives",
             "raw_usfs__usfs_trails",
             "raw_usfs__usfs_rec_sites",
-            "raw_granit__nh_granit_trails",
             "raw_njdep__njdep_park_trails",
             "raw_njdep__nj_statewide_trails",
         }
@@ -69,7 +68,6 @@ def test_fixtures_load_through_the_real_loader(tmp_path):
         markers = {row[0] for row in con.execute('select "MARKER" from raw.raw_dec__dec_hiking_trails').fetchall()}
         blazes = {row[0] for row in con.execute('select "Blaze" from raw.raw_mohonk__mohonk_trails').fetchall()}
         publicuse = {row[0] for row in con.execute('select "PUBLICUSE" from raw.raw_dec__dec_lean_tos').fetchall()}
-        granit_hiking = {row[0] for row in con.execute('select "HIKING" from raw.raw_granit__nh_granit_trails').fetchall()}
         usfs_types = {row[0] for row in con.execute("select trail_type from raw.raw_usfs__usfs_trails").fetchall()}
         usfs_designations = {
             row[0]
@@ -98,11 +96,6 @@ def test_fixtures_load_through_the_real_loader(tmp_path):
     assert None in blazes, "7 of Mohonk's live 304 rows carry no Blaze value at all"
     assert publicuse == {"Y", "N"}, (
         "the public flag the staging models carry through has nothing to say unless both sides are present"
-    )
-    assert granit_hiking == {"Y", "NA", " ", "UNKNOWN", "N"}, (
-        "GRANIT's HIKING reads 'Y' on 8,312 of the live 15,791 rows and blank, 'NA' or 'UNKNOWN' on most of the "
-        "rest - unrecorded, not no - and 'N' on 48. A fixture with only 'Y' would make a HIKING filter look lossless when it drops "
-        "the A.T.'s own GRANIT rows"
     )
     assert usfs_types == {"TERRA", "SNOW"}, (
         "549 of the live 2,093 WMNF rows are snowmobile and water corridors; a TERRA-only fixture would let the "

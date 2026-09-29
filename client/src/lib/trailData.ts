@@ -198,6 +198,17 @@ export interface StoredPoi {
    *  normalisation matched on. Carried for the waypoint card (#526) rather than
    *  for the pin, which shows the anchor's own name. */
   siteName?: string
+  /**
+   * Every trail line within this many metres of this trailhead is closed
+   * (#1695) - pipeline/export_nearby_poi.py's `trails_closed_within_m`, set
+   * only on trailheads, whose value is the radius that release was computed
+   * with. The map draws such a trailhead as a pin in the closure's ink with a
+   * white cross, and the card states this distance, read from the data rather
+   * than from a constant in this build. Absent on every other waypoint, and on
+   * any release cut before the field existed, which reads as "not known to be
+   * closed".
+   */
+  trailsClosedWithinM?: number
   photoUrl?: string
   /** The Commons file page, where the full licence terms and history live. */
   photoPage?: string
@@ -303,6 +314,7 @@ interface PoiProperties {
   site_role?: unknown
   site_name?: unknown
   nearby?: unknown
+  trails_closed_within_m?: unknown
 }
 
 /** The property when it is a non-empty string, else nothing - the artifact
@@ -464,10 +476,22 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
     // used to arrive as, which is what lets the card write the distances in
     // the units the hiker chose - see lib/nearbyClause.ts.
     const nearby = readNearbyList(props.nearby)
+    const type = typeof props.poi_type === 'string' ? props.poi_type : fallbackType
+    // A positive, finite number of metres, or nothing (#1695): a cross on the
+    // map is a claim that every trail there is shut, so a value this build
+    // does not recognise reads as the ordinary pin.
+    const closedWithin = props.trails_closed_within_m
+    const trailsClosedWithinM =
+      type === 'trailhead' &&
+      typeof closedWithin === 'number' &&
+      Number.isFinite(closedWithin) &&
+      closedWithin > 0
+        ? closedWithin
+        : undefined
 
     pois.push({
       id: String(props.id ?? `${fallbackType}:${props.lat},${props.lon}`),
-      type: typeof props.poi_type === 'string' ? props.poi_type : fallbackType,
+      type,
       name: typeof props.name === 'string' ? props.name : 'Unnamed',
       lat: props.lat,
       lon: props.lon,
@@ -505,6 +529,7 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
       // above: an empty list and an absent field would render identically, and
       // storing the empty one would put an array on 40,000 POIs to say nothing.
       ...(nearby.length > 0 ? { nearby } : {}),
+      ...(trailsClosedWithinM !== undefined ? { trailsClosedWithinM } : {}),
       // Photo fields ride only behind a photo URL: an author or licence with
       // no photo is a credit for nothing, and would render as one.
       ...(photoUrl !== undefined

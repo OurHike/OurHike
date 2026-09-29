@@ -110,7 +110,13 @@ import { describeNearby, type NearbyPart } from '../lib/nearbyClause'
 import { waypointDistance } from '../lib/waypointDistance'
 import { isSafeLink } from '../lib/safeLink'
 import type { HikeDirection } from './Header'
-import { formatShortDistance, MIN_STATED_FEET, type UnitSystem } from '../lib/units'
+import {
+  feetFromMetres,
+  formatRoundShortDistance,
+  formatShortDistance,
+  MIN_STATED_FEET,
+  type UnitSystem,
+} from '../lib/units'
 import { PhotoUnusable, preparePhoto } from '../lib/reportPhoto'
 import { exifCaptureDate } from '../lib/exifDate'
 import { CARD_PHOTO_EDGE, photoFrame, type OwnPhotoSource } from '../lib/poiPhotos'
@@ -130,6 +136,10 @@ export interface PoiDetail {
   lat: number
   lon: number
   confidence: 'high' | 'low'
+  /** Every trail line within this many metres of this trailhead is closed
+   *  (#1695) - lib/trailData.ts's StoredPoi.trailsClosedWithinM, the radius
+   *  the release was computed with. The card says so above everything else. */
+  trailsClosedWithinM?: number
   /**
    * Which published source listed it - see poiSources.ts.
    *
@@ -1085,6 +1095,28 @@ export function PoiCard({
     </p>
   )
 
+  /* A trailhead whose every trail line within its radius is closed (#1695):
+     the reason its pin on the map is a cross, said in words. Above the
+     unverified line and never behind the expand, for that line's own reason
+     below - a hiker picking a start needs this before anything else here.
+
+     The sentence claims no more than the pipeline checked. "Trails OurHike
+     tracks" because only the published trail lines and the A.T. were read,
+     and the basemap's pale footpaths were not. "Marked closed" because the
+     status is the steward's. And "about", rounded to 10 of the hiker's unit,
+     because the radius is a round pick nobody surveyed
+     (lib/units.ts's formatRoundShortDistance). */
+  const closedWithinM = shown.type === 'trailhead' ? shown.trailsClosedWithinM : undefined
+  const closedLine =
+    closedWithinM !== undefined ? (
+      <p className="poi-card__trails-closed" role="note">
+        {`Every trail OurHike tracks within about ${formatRoundShortDistance(
+          feetFromMetres(closedWithinM),
+          units,
+        )} of this trailhead is marked closed.`}
+      </p>
+    ) : null
+
   /* The existence claim, and the reason this card is worth having (see the
      header of this file). Hoisted for `metaLine`'s reason, and placed by the
      same rule in both heights: as high as the card goes.
@@ -1786,9 +1818,10 @@ export function PoiCard({
                   gets the band with no heading, because "Conditions" is a
                   promise about water, shelter, campsites and resupply and
                   this file must not make it about anything else. */}
-              {(notesShown || unverifiedLine !== null) && (
+              {(notesShown || unverifiedLine !== null || closedLine !== null) && (
                 <section className="poi-card__section">
                   {notesShown && <h3 className="poi-card__section-title">Conditions</h3>}
+                  {closedLine}
                   {unverifiedLine}
                   {conditions('open')}
                 </section>
@@ -1860,9 +1893,15 @@ export function PoiCard({
             </div>
           </div>
 
+          {closedLine}
+
           {/* Under the name, on the surface a tap opens (#1706): the chips'
               existence is the answer to "is there a privy, is there water",
-              and that answer is not worth a pull. */}
+              and that answer is not worth a pull. After `closedLine`, which
+              never renders beside it - that line is trailheads only, and a
+              trailhead is never part of a site (map/poiSites.ts's
+              SITE_ANCHOR_TYPES and SITE_MEMBER_TYPES) - so the order only
+              says which comes first if that ever changes. */}
           {partsStrip(peekId)}
 
           {unverifiedLine}

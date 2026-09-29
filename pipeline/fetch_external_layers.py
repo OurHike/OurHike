@@ -49,8 +49,9 @@ re-fetched. The marker is, in order of preference:
     query on a date column - NYS DEC's on-prem MapServer) or
     `freshness.marker: etag` (a HEAD on the service description - the
     Forest Service's EDW server, which has no date column either);
-  - nothing, for a layer whose entry declares `marker: none` (NH GRANIT),
-    which is fetched every run and says so.
+  - nothing, for a layer whose entry declares `marker: none` (the Forest
+    Service's recreation sites, and NH GRANIT's trails until that source was
+    removed, #1711), which is fetched every run and says so.
 
 WHY THE SUBSTITUTES EXIST. Measured 2026-09-08 on run #88 of the publish
 (#1311): all 18 layers were fetched on every run - ~195,000 features over

@@ -75,6 +75,15 @@
     "and parks wait on the desk: the app has no places off the A.T. to show",
     "them at yet.",
     "",
+    "GRANDMA GATEWOOD (2026-09-29): National Park After Dark's episode about her",
+    "and The Memory Palace's \"Emma and the Trail\" share three places chosen from",
+    "her history at the maintainer's request (\"Grandma gatewood is a must! find",
+    "some places meaningful for her\"): where the trail she walked begins, the",
+    "museum that keeps her shoes, and the summit where she finished. Neither",
+    "episode's notes name a place, so each note says \"Added at the maintainer's",
+    "request\". The trail in Ohio named for her waits on the desk: it is off the",
+    "A.T., and under 500 miles from two of the three.",
+    "",
     "PUBLISHING: .github/workflows/publish-podcasts.yml, dispatched by hand. It",
     "writes podcasts/episodes.json at the bucket root, outside any release",
     "folder, so a phone sees a new list on its next fetch with no app release",
@@ -1281,6 +1290,48 @@
       },
       "reviewed": "2026-09-29",
       "note": "Newfound Gap Vista: One spot for the whole park (the maintainer, 2026-09-29): the notes place the story in Great Smoky Mountains National Park but at no named point on the trail. This park's spot is Newfound Gap, where the A.T. crosses the park's main road."
+    },
+    {
+      "spotify_id": "05tWfEKTUPzFk7kX2dSJhW",
+      "title": "Grandma Gatewood: The Woman Who Saved the Appalachian Trail",
+      "show": "National Park After Dark",
+      "minutes": 59,
+      "pois": [
+        "atc_viewpoints:3f45ce01-0943-4700-8ba6-097ec8e74586",
+        "atc_parking:25f1a956-e791-4754-bea3-2e271dfd3fc0",
+        "atc_viewpoints:34e28cfe-d221-497d-85a8-713dca2dcca6"
+      ],
+      "places": [
+        "Springer Mtn Summit Vista",
+        "Pine Grove Furnace State Park Parking Area 1",
+        "Katahdin Summit (W)"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/grandma-gatewood-the-woman-who-saved-the-appalachian-trail/id1549433407?i=1000606011636"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Springer Mtn Summit Vista: Where the trail she walked now begins. She set out north from Mount Oglethorpe, then the southern terminus, on May 3, 1955; it moved to Springer in 1958, and Oglethorpe is off today's trail. Added at the maintainer's request; the episode does not name it. | Pine Grove Furnace State Park Parking Area 1: The Appalachian Trail Museum at Pine Grove Furnace, near the midpoint, which displays her shoes. Added at the maintainer's request; the episode does not name it. | Katahdin Summit (W): Where she finished on September 25, 1955, signing the register on Baxter Peak. Added at the maintainer's request; the episode does not name it."
+    },
+    {
+      "spotify_id": "5yw1IkFvXlGubRgHqKS3uv",
+      "title": "Episode 225: Emma and the Trail",
+      "show": "the memory palace",
+      "minutes": 21,
+      "pois": [
+        "atc_viewpoints:3f45ce01-0943-4700-8ba6-097ec8e74586",
+        "atc_parking:25f1a956-e791-4754-bea3-2e271dfd3fc0",
+        "atc_viewpoints:34e28cfe-d221-497d-85a8-713dca2dcca6"
+      ],
+      "places": [
+        "Springer Mtn Summit Vista",
+        "Pine Grove Furnace State Park Parking Area 1",
+        "Katahdin Summit (W)"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/episode-225-emma-and-the-trail/id299436963?i=1000684412474"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Springer Mtn Summit Vista: Where the trail she walked now begins. She set out north from Mount Oglethorpe, then the southern terminus, on May 3, 1955; it moved to Springer in 1958, and Oglethorpe is off today's trail. Added at the maintainer's request; the episode does not name it. | Pine Grove Furnace State Park Parking Area 1: The Appalachian Trail Museum at Pine Grove Furnace, near the midpoint, which displays her shoes. Added at the maintainer's request; the episode does not name it. | Katahdin Summit (W): Where she finished on September 25, 1955, signing the register on Baxter Peak. Added at the maintainer's request; the episode does not name it."
     }
   ]
 }

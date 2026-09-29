@@ -86,7 +86,6 @@ import { whenStyleReady } from './styleReady'
 import {
   registryNameForSource,
   BADGE_ANCHOR_PROPERTY,
-  BADGE_CHIP_PROPERTY,
   BADGE_FIT_PROPERTY,
   BADGE_MARK_PROPERTY,
   BADGE_NAME_PROPERTY,
@@ -101,7 +100,6 @@ import {
   TRAIL_BADGE_SOURCE_ID,
   TRAIL_BADGE_TEXT_FIT_PADDING,
   TRAIL_BADGE_TEXT_SIZE,
-  blazeChipImageId,
   trailIdForSource,
   trailMarkImageId,
 } from './trailBadges'
@@ -147,22 +145,31 @@ const OBSTACLE_HALF_PX = 44 / 2 + 2
 export function badgeTextSize(
   name: string,
   fit: BadgeFit = 'full',
+  hasMark: boolean = true,
 ): { width: number; height: number } {
   if (fit === 'mark')
     return { width: TRAIL_BADGE_MARK_SIZE, height: TRAIL_BADGE_MARK_SIZE }
   const text = name.length * TRAIL_BADGE_TEXT_SIZE * 0.5
-  return {
-    width: TRAIL_BADGE_MARK_SIZE + TRAIL_BADGE_MARK_GAP + text,
-    height: TRAIL_BADGE_MARK_SIZE,
-  }
+  // No mark means no mark and no gap either, since map/trailBadges.ts now
+  // leaves the slot empty rather than filling it with a blaze chip. Measuring
+  // the plate as if the chip were still there would reserve 28 px of room
+  // nothing draws into, and the placer would refuse anchors that do fit.
+  const markAndGap = hasMark ? TRAIL_BADGE_MARK_SIZE + TRAIL_BADGE_MARK_GAP : 0
+  return { width: markAndGap + text, height: TRAIL_BADGE_MARK_SIZE }
 }
 
 /** How wide the plate comes out for a name: the text block plus the paper
  *  round it. What the legend and the tests reason about; the collision
  *  model below builds its own box from the same parts. */
-export function badgePlateWidth(name: string, fit: BadgeFit = 'full'): number {
+export function badgePlateWidth(
+  name: string,
+  fit: BadgeFit = 'full',
+  hasMark: boolean = true,
+): number {
   const [, right, , left] = TRAIL_BADGE_TEXT_FIT_PADDING
-  return badgeTextSize(name, fit).width + left + right + TRAIL_BADGE_PLATE_BORDER * 2
+  return (
+    badgeTextSize(name, fit, hasMark).width + left + right + TRAIL_BADGE_PLATE_BORDER * 2
+  )
 }
 
 /** MapLibre's default `text-padding` and `icon-padding`: the ring it grows
@@ -478,10 +485,17 @@ function anchorWithRoom(
   obstacles: ObstacleIndex,
   frame: Box,
   name: string,
+  hasMark: boolean,
 ): BadgeAnchor | null {
   if (candidates.length === 0) return null
-  for (const fit of ['full', 'mark'] as const) {
-    const text = badgeTextSize(name, fit)
+  // THE BARE-MARK FALLBACK NEEDS A MARK. It is the whole badge in that form,
+  // so a trail whose steward has granted nothing would fall back to drawing
+  // nothing at all - the outcome the review of #1374 rejected when it made
+  // this layer always-drawn. A markless badge keeps the full plate instead
+  // and leans on that overlap, which is what "never nothing" costs here.
+  const fits = hasMark ? (['full', 'mark'] as const) : (['full'] as const)
+  for (const fit of fits) {
+    const text = badgeTextSize(name, fit, hasMark)
     for (const candidate of candidates) {
       for (const anchor of TRAIL_BADGE_ANCHORS) {
         const box = plateBox(anchor, candidate.at, text)
@@ -498,7 +512,11 @@ function anchorWithRoom(
       }
     }
   }
-  return { point: candidates[0].point, fit: 'mark', anchor: TRAIL_BADGE_ANCHORS[0] }
+  return {
+    point: candidates[0].point,
+    fit: hasMark ? 'mark' : 'full',
+    anchor: TRAIL_BADGE_ANCHORS[0],
+  }
 }
 
 export type TrailsInViewMap = MapLibreMap
@@ -789,6 +807,7 @@ export function trailsInView(
         pins(),
         frame,
         trail.name,
+        trailMarkImageId(trail.source) !== null,
       )
       if (placed === null) return { ...trail, anchor: null }
       return {
@@ -811,7 +830,7 @@ export function trailsInView(
  * Each carries the line's own properties verbatim - so a tap on the badge
  * hands map/lineTaps.ts exactly what a tap on the line would - plus the two
  * image ids the layer's `coalesce` reads: the registry mark where the source
- * has one, and the blaze chip it falls through to.
+ * has one, and nothing at all where it does not.
  */
 export function badgeFeatures(trails: readonly TrailInView[]): GeoJSON.FeatureCollection {
   return {
@@ -825,7 +844,6 @@ export function badgeFeatures(trails: readonly TrailInView[]): GeoJSON.FeatureCo
           [BADGE_NAME_PROPERTY]: trail.name,
           [BADGE_SOURCE_PROPERTY]: trail.source,
           [BADGE_MARK_PROPERTY]: trailMarkImageId(trail.source) ?? '',
-          [BADGE_CHIP_PROPERTY]: blazeChipImageId(trail.blazeColor),
           [BADGE_FIT_PROPERTY]: trail.badgeFit,
           [BADGE_ANCHOR_PROPERTY]: trail.badgeAnchor,
         },

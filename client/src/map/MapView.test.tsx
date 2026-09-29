@@ -24,7 +24,6 @@ import {
   sketchWidthExpression,
 } from './style'
 import {
-  blazeChipImageId,
   TRAIL_BADGE_LAYER_ID,
   TRAIL_BADGE_PLATE_DAY,
   TRAIL_BADGE_SOURCE_ID,
@@ -660,7 +659,9 @@ describe('POI pins', () => {
     act(() => map.emit('idle'))
 
     expect(map.images.has(TRAIL_BADGE_PLATE_DAY.id)).toBe(true)
-    expect(map.images.has(blazeChipImageId('White'))).toBe(true)
+    // No blaze image is registered at all now: a trail whose steward has
+    // granted no mark gets an empty slot rather than a drawn chip.
+    expect([...map.images.keys()].some((id) => String(id).includes('blaze'))).toBe(false)
     const badges = map.sourceData.get(TRAIL_BADGE_SOURCE_ID) as { features: unknown[] }
     expect(badges.features).toHaveLength(1)
   })

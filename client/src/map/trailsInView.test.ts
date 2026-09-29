@@ -20,10 +20,8 @@ import {
 import {
   BADGE_ANCHOR_PROPERTY,
   TRAIL_BADGE_ANCHORS,
-  BADGE_CHIP_PROPERTY,
   BADGE_MARK_PROPERTY,
   TRAIL_BADGE_SOURCE_ID,
-  blazeChipImageId,
   trailMarkImageId,
 } from './trailBadges'
 import { POI_LAYER_ID } from './poiLayers'
@@ -374,7 +372,6 @@ describe('badgeFeatures', () => {
       source: 'centerline',
       blaze_color: 'White',
       [BADGE_MARK_PROPERTY]: trailMarkImageId('centerline'),
-      [BADGE_CHIP_PROPERTY]: blazeChipImageId('White'),
     })
   })
 

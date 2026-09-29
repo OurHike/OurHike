@@ -1149,7 +1149,6 @@ describe('taking a trail (#1306)', () => {
         properties: {
           ...AT_LINE.properties,
           mark: 'trail-mark-AT',
-          chip: 'blaze-chip-White',
         },
         geometry: { type: 'Point', coordinates: [200, 400] },
       },

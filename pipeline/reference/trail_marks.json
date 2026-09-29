@@ -1,0 +1,540 @@
+{
+ "_comment": "Every steward mark found for a through-route in trail_emblems.json, where it was found, and how much of the badge it actually fills (#1543). NO IMAGE BYTES ARE COMMITTED WITH THIS FILE and that is the point of it: pipeline/tests/test_org_marks.py requires every trail mark in client/src/design-system/assets/trails/ to carry a recorded basis, and 33 of the 35 rows below have none - nobody has asked these organisations and none of them has answered. This file is the research, held where the next session can act on it the day a grant arrives, rather than 33 trademarks entering a public AGPL tree on nobody's authority.",
+ "_how_to_use_a_row": "When an organisation grants permission: fetch `found_at`, drop the file into client/src/design-system/assets/trails/, add the org's `trail_mark_in_tree` record in sources.json's org_marks block with its basis, scope and date, and register it in client/src/lib/trails.ts. map/trailBadges.ts needs no change - BADGE_MARK_BY_SOURCE becomes a registry lookup and the mark appears.",
+ "_ink_at_18px": "MEASURED 2026-09-29. Each mark was letterboxed into an 18-pixel square on #fffdf7 - TRAIL_BADGE_PLATE_DAY's paper - and every one of the 324 pixels scored for WCAG contrast against it. `ink_at_18px` is the share reaching 3:1 or better; `peak_contrast` is the strongest single pixel. The bar is not picked: the A.T. marker already in the tree measures 0.18 ink at 7.4:1, and `clears_the_at` says whether a mark puts at least that much on the plate. A mark below it is not unusable, it is thinner than the one nobody has complained about.",
+ "_why_the_thin_ones_are_thin": "Almost always because the mark is mostly white, and white on the plate's own paper is nothing. That is a fact about the plate as much as the mark, and it is unresolved: whether a pale mark gets a darker plate is a decision nobody has made. @unvalidated - what would settle it is looking at one on a phone in sunlight, which is #105.",
+ "_not_found": {
+  "_comment": "The 32 through-routes with no mark here, and what is actually in the way. Grouped because the reasons are not the same and only some are fixable.",
+  "permission_stated": {
+   "trails": [
+    "pct"
+   ],
+   "detail": "PCTA's media page states the PCT emblem, the PCT diamond and the PCTA logo each need permission and gives two addresses. The one entry on this list a single email would settle."
+  },
+  "federally_protected": {
+   "trails": [
+    "pohe",
+    "natr"
+   ],
+   "detail": "The last two National Scenic Trails. Markers prescribed in the Federal Register and protected by 18 U.S.C. 701; NPS trail pages serve the arrowhead instead. An ask to each trail's administrator."
+  },
+  "no_per_trail_emblem": {
+   "trails": [
+    "jmt",
+    "hst",
+    "backbone",
+    "big-seki"
+   ],
+   "detail": "NPS administers all four and publishes none. johnmuirtrail.org is a fan store whose favicon is a stock photo of a shoe."
+  },
+  "blocked_not_absent": {
+   "trails": [
+    "colorado-trail",
+    "mst"
+   ],
+   "detail": "coloradotrail.org returns 403 to the page, the JSON API, the favicon and the apple-touch-icon alike. mountainstoseatrail.org challenges every logo request; its favicon slips through and is the stock WordPress logo."
+  },
+  "site_compromised": {
+   "trails": [
+    "pinhoti"
+   ],
+   "detail": "The Pinhoti Trail Alliance domain serves gambling spam - the header image's alt text reads GACOR188. Worth telling somebody. The trail's own mark is a turkey track."
+  },
+  "domain_dead_or_photographic": {
+   "trails": [
+    "gwt",
+    "black-canyon",
+    "bst",
+    "quehanna",
+    "donut-hole",
+    "laurel",
+    "mid-state-pa",
+    "msg"
+   ],
+   "detail": "Dead domains, a header baked into a flat photograph, a wordmark tile, or - for the Monadnock-Sunapee Greenway - a landscape illustration measuring 0.02 ink, the thinnest thing tested."
+  },
+  "club_mark_only": {
+   "trails": [
+    "knobstone",
+    "odt",
+    "sd-centennial",
+    "baker"
+   ],
+   "detail": "The steward publishes a club wordmark and no trail symbol. A club's mark is not the trail's, so these keep an empty slot rather than wear somebody else's badge."
+  },
+  "no_steward_no_mark": {
+   "trails": [
+    "hayduke",
+    "sierra-high",
+    "lowest-highest",
+    "hot-springs",
+    "ect",
+    "solomons",
+    "sky-islands",
+    "nnm-loop",
+    "se-serpentine",
+    "ahr"
+   ],
+   "detail": "Routes rather than trails: no organisation, and no mark anybody drew. Two of this group - the Grand Enchantment and the Mogollon Rim - turned out to have one after all, which is why the rest were worth checking twice."
+  }
+ },
+ "_row_count": 35,
+ "_clears_the_at": 24,
+ "marks": [
+  {
+   "trail": "mdh",
+   "name": "Maah Daah Hey Trail",
+   "steward": "Maah Daah Hey Trail Association",
+   "found_at": "https://mdhta.com/wp-content/uploads/2020/05/cropped-favicon-1-2-270x270.png",
+   "fetched": "2026-09-29",
+   "pixels": "270x270",
+   "aspect": 1.0,
+   "ink_at_18px": 1,
+   "peak_contrast": 15.8,
+   "clears_the_at": true,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "standing-stone",
+   "name": "Standing Stone Trail",
+   "steward": "Standing Stone Trail Club",
+   "found_at": "https://static.wixstatic.com/media/30a84d_82ba0f9b302746d9979610842056c83d~mv2.png",
+   "fetched": "2026-09-29",
+   "pixels": "512x512",
+   "aspect": 1.0,
+   "ink_at_18px": 0.917,
+   "peak_contrast": 20.1,
+   "clears_the_at": true,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "catamount",
+   "name": "Catamount Trail",
+   "steward": "Catamount Trail Association",
+   "found_at": "https://catamounttrail.org/wp-content/uploads/cropped-cta-favicon-180x180.jpg",
+   "fetched": "2026-09-29",
+   "pixels": "180x180",
+   "aspect": 1.0,
+   "ink_at_18px": 0.901,
+   "peak_contrast": 15.8,
+   "clears_the_at": true,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "sheltowee",
+   "name": "Sheltowee Trace",
+   "steward": "Sheltowee Trace Association",
+   "found_at": "https://images.squarespace-cdn.com/content/v1/5f656f5d5a92157dd17414ac/1614824980218-WB89JT7X4L2SHLT1LK75/favicon.ico",
+   "fetched": "2026-09-29",
+   "pixels": "256x256",
+   "aspect": 1.0,
+   "ink_at_18px": 0.725,
+   "peak_contrast": 20.6,
+   "clears_the_at": true,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "ridge-trail",
+   "name": "Bay Area Ridge Trail",
+   "steward": "Bay Area Ridge Trail Council",
+   "found_at": "https://ridgetrail.org/wp-content/uploads/2024/06/cropped-BayAreaRidgeTrail_FINAL-LOGO_PMS_outlined_white-background-2.png",
+   "fetched": "2026-09-29",
+   "pixels": "240x240",
+   "aspect": 1.0,
+   "ink_at_18px": 0.639,
+   "peak_contrast": 11.4,
+   "clears_the_at": true,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "nct",
+   "name": "North Country Trail",
+   "steward": "North Country Trail Association",
+   "found_at": "https://northcountrytrail.org/wp-content/uploads/2026/07/map-emblem-icon-2026-e1784225089251.png",
+   "fetched": "2026-09-29",
+   "pixels": "180x180",
+   "aspect": 1.0,
+   "ink_at_18px": 0.596,
+   "peak_contrast": 6.9,
+   "clears_the_at": true,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "get",
+   "name": "Grand Enchantment Trail",
+   "steward": "none - a route with no organisation",
+   "found_at": "https://www.simblissity.net/images/GET/get%20monogram1_small.JPG",
+   "fetched": "2026-09-29",
+   "pixels": "97x90",
+   "aspect": 1.08,
+   "ink_at_18px": 0.593,
+   "peak_contrast": 18.3,
+   "clears_the_at": true,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "cdt",
+   "name": "Continental Divide Trail",
+   "steward": "Continental Divide Trail Coalition",
+   "found_at": "https://cdtcoalition.org/wp-content/uploads/cropped-cdtc-logo-icon-192x192.png",
+   "fetched": "2026-09-29",
+   "pixels": "192x192",
+   "aspect": 1.0,
+   "ink_at_18px": 0.577,
+   "peak_contrast": 20.6,
+   "clears_the_at": true,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "npt",
+   "name": "Northville-Placid Trail",
+   "steward": "Adirondack Mountain Club",
+   "found_at": "https://nptrail.org/wp-content/uploads/2016/01/cropped-cropped-cropped-cropped-images.jpg",
+   "fetched": "2026-09-29",
+   "pixels": "191x150",
+   "aspect": 1.27,
+   "ink_at_18px": 0.559,
+   "peak_contrast": 11.1,
+   "clears_the_at": true,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "bmt",
+   "name": "Benton MacKaye Trail",
+   "steward": "Benton MacKaye Trail Association",
+   "found_at": "https://bmta.org/wp-content/uploads/2020/01/cropped-favicon-192x192.png",
+   "fetched": "2026-09-29",
+   "pixels": "192x192",
+   "aspect": 1.0,
+   "ink_at_18px": 0.546,
+   "peak_contrast": 14.0,
+   "clears_the_at": true,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "mason-dixon",
+   "name": "Mason-Dixon Trail",
+   "steward": "Keystone Trails Association",
+   "found_at": "https://static.wixstatic.com/media/ffe8eb_98df0e09aa174e9f8b301fa9dce9a5c5~mv2.png",
+   "fetched": "2026-09-29",
+   "pixels": "512x512",
+   "aspect": 1.0,
+   "ink_at_18px": 0.531,
+   "peak_contrast": 6.8,
+   "clears_the_at": true,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "cohos",
+   "name": "Cohos Trail",
+   "steward": "The Cohos Trail Association",
+   "found_at": "https://www.cohostrail.org/wp-content/uploads/2020/11/cohos-trail-logo-e1579145800306.png",
+   "fetched": "2026-09-29",
+   "pixels": "47x50",
+   "aspect": 0.94,
+   "ink_at_18px": 0.522,
+   "peak_contrast": 12.4,
+   "clears_the_at": true,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "fnst",
+   "name": "Florida Trail",
+   "steward": "Florida Trail Association",
+   "found_at": "https://floridatrail.org/wp-content/uploads/2021/04/FTA-logo.png",
+   "fetched": "2026-09-29",
+   "pixels": "239x239",
+   "aspect": 1.0,
+   "ink_at_18px": 0.515,
+   "peak_contrast": 9.3,
+   "clears_the_at": true,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "condor",
+   "name": "Condor Trail",
+   "steward": "Condor Trail Association",
+   "found_at": "https://www.condortrail.com/wp-content/uploads/2018/08/logo144x144.png",
+   "fetched": "2026-09-29",
+   "pixels": "114x115",
+   "aspect": 0.99,
+   "ink_at_18px": 0.472,
+   "peak_contrast": 20.6,
+   "clears_the_at": true,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "oht",
+   "name": "Ozark Highlands Trail",
+   "steward": "Ozark Highlands Trail Association",
+   "found_at": "https://ozarkhighlandstrail.com/wp-content/uploads/2022/09/cropped-icon-1-192x192.png",
+   "fetched": "2026-09-29",
+   "pixels": "192x192",
+   "aspect": 1.0,
+   "ink_at_18px": 0.42,
+   "peak_contrast": 14.8,
+   "clears_the_at": true,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "ozark-trail",
+   "name": "Ozark Trail",
+   "steward": "Ozark Trail Association",
+   "found_at": "https://ozarktrail.com/wp-content/uploads/2018/01/ozark_trail_association_iphone_icon.png",
+   "fetched": "2026-09-29",
+   "pixels": "150x150",
+   "aspect": 1.0,
+   "ink_at_18px": 0.377,
+   "peak_contrast": 5.5,
+   "clears_the_at": true,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "long-path",
+   "name": "Long Path",
+   "steward": "New York–New Jersey Trail Conference",
+   "found_at": "https://www.nynjtc.org/wp-content/uploads/2024/12/Long_Path_logo-1.png",
+   "fetched": "2026-09-29",
+   "pixels": "150x151",
+   "aspect": 0.99,
+   "ink_at_18px": 0.327,
+   "peak_contrast": 5.4,
+   "clears_the_at": true,
+   "permission": "the maintainer authorised it (lib/trails.ts)"
+  },
+  {
+   "trail": "flt",
+   "name": "Finger Lakes Trail",
+   "steward": "Finger Lakes Trail Conference",
+   "found_at": "https://fingerlakestrail.org/wp-content/uploads/2017/12/flt_logo_trees-new.png",
+   "fetched": "2026-09-29",
+   "pixels": "266x209",
+   "aspect": 1.27,
+   "ink_at_18px": 0.321,
+   "peak_contrast": 13.6,
+   "clears_the_at": true,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "bartram",
+   "name": "Bartram Trail",
+   "steward": "Bartram Trail Conference",
+   "found_at": "https://bartramtrail.org/Resources/Pictures/BTC_logo2.png",
+   "fetched": "2026-09-29",
+   "pixels": "100x100",
+   "aspect": 1.0,
+   "ink_at_18px": 0.284,
+   "peak_contrast": 12.2,
+   "clears_the_at": true,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "pnnst",
+   "name": "Pacific Northwest Trail",
+   "steward": "Pacific Northwest Trail Association",
+   "found_at": "https://pnt-prod.s3.amazonaws.com/wp-content/uploads/PNTA-Logo-2017-01-1024x1024.png",
+   "fetched": "2026-09-29",
+   "pixels": "1024x1024",
+   "aspect": 1.0,
+   "ink_at_18px": 0.216,
+   "peak_contrast": 20.6,
+   "clears_the_at": true,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "palmetto",
+   "name": "Palmetto Trail",
+   "steward": "Palmetto Conservation Foundation",
+   "found_at": "https://files.aptuitivcdn.com/P8Y6wXyOZ7-1806/images/favicon/apple-touch-icon.png",
+   "fetched": "2026-09-29",
+   "pixels": "180x180",
+   "aspect": 1.0,
+   "ink_at_18px": 0.201,
+   "peak_contrast": 8.1,
+   "clears_the_at": true,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "ouachita",
+   "name": "Ouachita Trail",
+   "steward": "Friends of the Ouachita Trail",
+   "found_at": "https://www.friendsoftheouachita.org/wp-content/uploads/2025/05/favicon.png",
+   "fetched": "2026-09-29",
+   "pixels": "714x714",
+   "aspect": 1.0,
+   "ink_at_18px": 0.194,
+   "peak_contrast": 8.2,
+   "clears_the_at": true,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "azt",
+   "name": "Arizona Trail",
+   "steward": "Arizona Trail Association",
+   "found_at": "https://aztrailmedia.s3.us-west-1.amazonaws.com/wp-content/uploads/2017/12/cropped-AZTrail-Logo-SiteIcon-180x180.jpg",
+   "fetched": "2026-09-29",
+   "pixels": "180x180",
+   "aspect": 1.0,
+   "ink_at_18px": 0.182,
+   "peak_contrast": 12.6,
+   "clears_the_at": true,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "at",
+   "name": "Appalachian Trail",
+   "steward": "Appalachian Trail Conservancy",
+   "found_at": "client/src/design-system/assets/trails/at-logo.png",
+   "fetched": "2026-09-29",
+   "pixels": "144x144",
+   "aspect": 1.0,
+   "ink_at_18px": 0.179,
+   "peak_contrast": 7.4,
+   "clears_the_at": true,
+   "permission": "the repo owner supplied it"
+  },
+  {
+   "trail": "lsht",
+   "name": "Lone Star Hiking Trail",
+   "steward": "Lone Star Hiking Trail Club",
+   "found_at": "https://images.clubexpress.com/738078/graphics/clublogo_150x150_noBackground_1062358180.png",
+   "fetched": "2026-09-29",
+   "pixels": "153x150",
+   "aspect": 1.02,
+   "ink_at_18px": 0.17,
+   "peak_contrast": 16.0,
+   "clears_the_at": false,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "mogollon",
+   "name": "Mogollon Rim Trail",
+   "steward": "none - a route with no organisation",
+   "found_at": "https://www.simblissity.net/images/MRT_logo_s.png",
+   "fetched": "2026-09-29",
+   "pixels": "150x144",
+   "aspect": 1.04,
+   "ink_at_18px": 0.142,
+   "peak_contrast": 10.6,
+   "clears_the_at": false,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "sht",
+   "name": "Superior Hiking Trail",
+   "steward": "Superior Hiking Trail Association",
+   "found_at": "https://superiorhiking.org/wp-content/uploads/2026/03/SHT-Favicon_SHT-Favicon-512px-2.png",
+   "fetched": "2026-09-29",
+   "pixels": "200x200",
+   "aspect": 1.0,
+   "ink_at_18px": 0.139,
+   "peak_contrast": 4.9,
+   "clears_the_at": false,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "iat",
+   "name": "Ice Age Trail",
+   "steward": "Ice Age Trail Alliance",
+   "found_at": "https://www.iceagetrail.org/wp-content/uploads/NST-Logo-1.png",
+   "fetched": "2026-09-29",
+   "pixels": "142x140",
+   "aspect": 1.01,
+   "ink_at_18px": 0.13,
+   "peak_contrast": 8.8,
+   "clears_the_at": false,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "net",
+   "name": "New England Trail",
+   "steward": "Connecticut Forest & Park Association",
+   "found_at": "https://newenglandtrail.org/wp-content/uploads/2019/12/net-logo.png",
+   "fetched": "2026-09-29",
+   "pixels": "372x356",
+   "aspect": 1.04,
+   "ink_at_18px": 0.123,
+   "peak_contrast": 16.2,
+   "clears_the_at": false,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "loyalsock",
+   "name": "Loyalsock Trail",
+   "steward": "Keystone Trails Association",
+   "found_at": "https://alpineclubofwilliamsport.com/wp-content/uploads/2017/06/lt-blaze-transparentbg.png",
+   "fetched": "2026-09-29",
+   "pixels": "178x171",
+   "aspect": 1.04,
+   "ink_at_18px": 0.12,
+   "peak_contrast": 5.9,
+   "clears_the_at": false,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "buckeye",
+   "name": "Buckeye Trail",
+   "steward": "Buckeye Trail Association",
+   "found_at": "https://buckeyetrail.org/media/site/5f6f0e4a9e-1760709600/buckeye-trail-association-logo.svg",
+   "fetched": "2026-09-29",
+   "pixels": "136x150",
+   "aspect": 0.91,
+   "ink_at_18px": 0.099,
+   "peak_contrast": 5.3,
+   "clears_the_at": false,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "long-trail",
+   "name": "Long Trail",
+   "steward": "Green Mountain Club",
+   "found_at": "https://greenmountainclub.org/wp-content/uploads/2025/09/gmc-logo-svg.svg",
+   "fetched": "2026-09-29",
+   "pixels": "230x150",
+   "aspect": 1.53,
+   "ink_at_18px": 0.099,
+   "peak_contrast": 6.9,
+   "clears_the_at": false,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "tahoe-rim",
+   "name": "Tahoe Rim Trail",
+   "steward": "Tahoe Rim Trail Association",
+   "found_at": "https://tahoerimtrail.org/wp-content/uploads/2019/12/cropped-TRTA-logo-main-big-no-white-boarder-192x192.png",
+   "fetched": "2026-09-29",
+   "pixels": "192x192",
+   "aspect": 1.0,
+   "ink_at_18px": 0.093,
+   "peak_contrast": 3.5,
+   "clears_the_at": false,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "foothills",
+   "name": "Foothills Trail",
+   "steward": "Foothills Trail Conservancy",
+   "found_at": "https://foothillstrail.org/wp-content/uploads/2016/08/logo1.png",
+   "fetched": "2026-09-29",
+   "pixels": "185x120",
+   "aspect": 1.54,
+   "ink_at_18px": 0.046,
+   "peak_contrast": 4.3,
+   "clears_the_at": false,
+   "permission": "none asked, none given"
+  },
+  {
+   "trail": "cumberland",
+   "name": "Cumberland Trail",
+   "steward": "Cumberland Trail / Tennessee State Parks",
+   "found_at": "https://cumberlandtrail.org/wp-content/uploads/2026/04/CTC-Circle-Logo-CC.svg",
+   "fetched": "2026-09-29",
+   "pixels": "150x150",
+   "aspect": 1.0,
+   "ink_at_18px": 0.031,
+   "peak_contrast": 8.7,
+   "clears_the_at": false,
+   "permission": "none asked, none given"
+  }
+ ]
+}

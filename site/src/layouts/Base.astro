@@ -21,6 +21,12 @@ const canonical = new URL(Astro.url.pathname, Astro.site)
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    {
+      /* A page's own head tags, when it has any. The homepage uses it for
+         Impact's site verification (#1707), which Impact asks to sit near the
+         top of <head>, ahead of the other meta tags. */
+    }
+    <slot name="head" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     <meta name="description" content={description} />

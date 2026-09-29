@@ -382,24 +382,29 @@ describe('markFitBox', () => {
 
   it('keeps the mark inside the slot at every aspect ratio the sweep found', () => {
     // Every non-square pair in pipeline/reference/trail_marks.json, widest
-    // first, plus the square case. Read off the file on 2026-09-29; 21 of the
-    // 35 are exactly 1:1 and these 14 are the rest.
+    // first, plus the square case. RE-MEASURED FROM THE BYTES on 2026-09-30
+    // when the marks were fetched into the tree: 20 of the 35 are exactly 1:1
+    // and these 15 are the rest. Five moved against the first recording -
+    // four in absolute size only (the SVGs record viewBox units; Wix served
+    // a different rendition of Standing Stone's) and Mason-Dixon in aspect,
+    // 512x512 recorded against 300x288 actual.
     for (const [w, h] of [
-      [185, 120],
-      [230, 150],
-      [191, 150],
-      [266, 209],
-      [97, 90],
-      [150, 144],
-      [372, 356],
-      [178, 171],
-      [153, 150],
-      [142, 140],
-      [114, 115],
-      [150, 151],
-      [47, 50],
-      [136, 150],
-      [144, 144],
+      [185, 120], // Foothills Trail, 1.54:1 - the widest
+      [322.738, 210.842], // Long Trail, 1.531:1 (an SVG, so viewBox units)
+      [191, 150], // Northville-Placid
+      [266, 209], // Finger Lakes
+      [97, 90], // Grand Enchantment
+      [300, 288], // Mason-Dixon
+      [150, 144], // Mogollon Rim
+      [372, 356], // New England
+      [178, 171], // Loyalsock
+      [153, 150], // Lone Star
+      [142, 140], // Ice Age
+      [114, 115], // Condor
+      [150, 151], // Long Path
+      [47, 50], // Cohos
+      [121.25, 134.03], // Buckeye, the tallest (an SVG)
+      [144, 144], // and the square case
     ] as const) {
       const box = markFitBox(w, h, 18)
       expect(box.width).toBeLessThanOrEqual(18 + 1e-9)

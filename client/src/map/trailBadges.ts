@@ -479,9 +479,12 @@ export function buildBadgePlate(
  *
  * MEASURED, and a smaller reason than an earlier draft of this comment
  * claimed. Across the 35 steward marks collected on 2026-09-29
- * (pipeline/reference/trail_marks.json), 21 are exactly 1:1 and 14 are not;
+ * (pipeline/reference/trail_marks.json), 20 are exactly 1:1 and 15 are not;
  * only TWO depart from square by more than half again - the Foothills Trail's
- * at 185x120 (1.54:1) and the Long Trail's at 230x150 (1.53:1). A filling
+ * at 185x120 (1.54:1) and the Long Trail's at 322.738x210.842 (1.531:1).
+ * Re-measured from the bytes on 2026-09-30 when the marks were fetched into
+ * the tree, which moved five rows - four in absolute size only and
+ * Mason-Dixon's from square to 1.042:1. A filling
  * draw stretches the Foothills mark's 120 px of height to the full 18 px
  * slot, 54% in one axis, which is the visible defect this ends.
  *

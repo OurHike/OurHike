@@ -15,7 +15,52 @@
 // situation it is for ~12% of spurs (the same restraint describeStewards
 // applies to an unassigned trail section).
 
+import { useEffect, useState } from 'react'
 import type { LineDetail } from '../lib/lineDetail'
+
+/**
+ * The steward's own marker for a line lib/trails.ts does not name, fetched
+ * only once a sheet is on screen.
+ *
+ * WHY IT IS LAZY AND NOT A FIELD ON `detail`. lib/lineDetail.ts is reached
+ * from App.tsx, so anything it names is parsed before the first frame, and
+ * the 32 names and URLs measured 1,725 bytes over
+ * features/LAUNCH_BUDGET.md §3's eager budget when they sat in lib/trails.ts.
+ * A marker nobody sees until they tap a line does not belong in the launch
+ * path, so lib/stewardMarks.ts is its own `import()` chunk and this hook is
+ * the only thing that pulls it.
+ *
+ * NULL UNTIL IT RESOLVES, and null is the ordinary answer: most lines have no
+ * steward marker and the slot stays empty, which is what it did before this
+ * existed. So the sheet never waits on the chunk and never reserves room for
+ * a mark that may not arrive - it draws without one and the mark appears if
+ * there is one, the same way the registry mark already behaves for a line
+ * whose trail is not named.
+ */
+function useStewardMark(name: string | null, alreadyMarked: boolean): string | null {
+  const [mark, setMark] = useState<string | null>(null)
+  useEffect(() => {
+    if (name === null || alreadyMarked) {
+      setMark(null)
+      return
+    }
+    let live = true
+    void import('../lib/stewardMarks')
+      .then(({ stewardMarkForName }) => {
+        if (live) setMark(stewardMarkForName(name))
+      })
+      .catch(() => {
+        // A chunk that will not load is a marker nobody sees, which is the
+        // same outcome as no marker - never a broken image and never a throw
+        // that takes the sheet down with it.
+        if (live) setMark(null)
+      })
+    return () => {
+      live = false
+    }
+  }, [name, alreadyMarked])
+  return mark
+}
 
 export interface LineSheetProps {
   detail: LineDetail
@@ -67,6 +112,10 @@ export function LineSheet({
   onTakeTrail,
   onLetGo,
 }: LineSheetProps) {
+  // The registry's mark wins; the steward's is what a line it does not name
+  // can still wear.
+  const stewardMark = useStewardMark(detail.name, detail.trailMark !== null)
+  const trailMark = detail.trailMark ?? stewardMark
   return (
     <div className="closure-sheet" role="dialog" aria-label="Trail line">
       <div className="legend__head">
@@ -75,10 +124,10 @@ export function LineSheet({
               trail - the through-route, whose name is not repeated below.
               Decorative: the name is the words, the mark is the same fact
               drawn, so a screen reader hears it once. */}
-          {detail.trailMark !== null && detail.name === null && (
+          {trailMark !== null && detail.name === null && (
             <img
               className="line-sheet__trail-mark"
-              src={detail.trailMark}
+              src={trailMark}
               alt=""
               aria-hidden="true"
             />
@@ -96,10 +145,10 @@ export function LineSheet({
           mark gets no mark, not a placeholder. */}
       {detail.name !== null && (
         <p className="closure-sheet__status">
-          {detail.trailMark !== null && (
+          {trailMark !== null && (
             <img
               className="line-sheet__trail-mark"
-              src={detail.trailMark}
+              src={trailMark}
               alt=""
               aria-hidden="true"
             />

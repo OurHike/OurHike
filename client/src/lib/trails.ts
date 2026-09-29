@@ -9,9 +9,9 @@
 // mark without the sheet knowing which trails have one.
 //
 // THE MARKS ARE THIRD-PARTY TRADEMARKS IN A PUBLIC AGPL TREE, and each one's
-// permission is recorded in pipeline/sources.json's `org_marks` block
-// (`trail_mark_in_tree` on the org's row), which is where #933 says the
-// answer lives - a comment here is the summary, not the record:
+// permission is recorded in pipeline/sources.json's `org_marks` block, which
+// is where #933 says the answer lives - a comment here is the summary, not
+// the record. Two rows carry a stronger basis than the rest:
 //
 //   - The AT mark is the official Appalachian Trail / National Scenic Trail
 //     marker, supplied directly by the repo owner - it carries its own TM
@@ -22,14 +22,26 @@
 //     authorisation and the relationship with NYNJTC they named for the
 //     trail's data the same day. Not a grant from NYNJTC.
 //
-// PCT and CDT still have placeholder marks of OurHike's own design, since
-// PCTA's and CDTC's official logos aren't sourced here - swap in licensed
-// art for those if that's ever secured.
+// EVERY OTHER MARK SHIPS BY DEFAULT, on the maintainer's decision of
+// 2026-09-30 (`org_marks.trail_marks`). A trail's own marker is how a hiker
+// tells which line is which - the same symbol nailed to the trees they are
+// walking past - so withholding it protected nobody and left the map
+// ambiguous. Stewards claim or withdraw; a withdrawal turns
+// test_org_marks.py red until the file is out of the tree.
+//
+// CDT NOW CARRIES CDTC'S OWN MARK (`cdt-logo.png`, their 192x192 site icon
+// resized to 96px, which is the headroom these render at)
+// in place of the OurHike-drawn placeholder that stood here until
+// 2026-09-30. PCT STILL DOES NOT, and that one is deliberate rather than
+// pending: PCTA's media page states in terms that the PCT emblem, the PCT
+// diamond and the PCTA logo each need written permission, and gives two
+// addresses. A stated restriction is not silence, so the placeholder stays
+// until somebody writes.
 
 import atLogo from '../design-system/assets/trails/at-logo.png'
 import lpLogo from '../design-system/assets/trails/lp-logo.png'
 import pctLogo from '../design-system/assets/trails/pct-logo.svg'
-import cdtLogo from '../design-system/assets/trails/cdt-logo.svg'
+import cdtLogo from '../design-system/assets/trails/cdt-logo.png'
 
 export interface Trail {
   id: string
@@ -44,6 +56,23 @@ export interface Trail {
 }
 
 export const TRAILS: Record<string, Trail> = {
+  // THE FOUR THIS TABLE HOLDS, and why the other 33 markers in the tree are
+  // not here. AT and LP are the two BADGE_SOURCES; PCT and CDT are reachable
+  // by name through lib/lineDetail.ts.
+  //
+  // The 33 steward markers shipped on 2026-09-30 are NOT in this table, and
+  // the reason is measured rather than tidy: App.tsx imports TRAILS, so every
+  // row is parsed before the first frame, and adding 32 of them put eager
+  // JavaScript at 257,725 bytes against features/LAUNCH_BUDGET.md §3's
+  // 256,000 - over by 1,725, where a clean build without them passes. That is
+  // real money for a lookup nobody has shown matches anything: `trailForName`
+  // is exact, and whether any name a steward writes equals a name the
+  // usfs_trails layer publishes is unmeasured (#1543's body says so too).
+  //
+  // So the markers ship and are recorded; wiring them to names waits for the
+  // pull request that diffs the published names, which is the one that can
+  // say which rows earn their bytes - and can put them behind an import()
+  // at the sheet boundary rather than in the launch path.
   AT: { id: 'AT', name: 'Appalachian Trail', logo: atLogo, shortName: 'A.T.' },
   LP: { id: 'LP', name: 'Long Path', logo: lpLogo, shortName: 'L.P.' },
   PCT: { id: 'PCT', name: 'Pacific Crest Trail', logo: pctLogo, shortName: 'PCT' },

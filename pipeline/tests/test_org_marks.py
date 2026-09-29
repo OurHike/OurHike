@@ -202,7 +202,77 @@ TRAIL_MARK_DIR = REPO / "client" / "src" / "design-system" / "assets" / "trails"
 #: OurHike's own design" for trails whose official art is not sourced here.
 #: Named so that the next file dropped in beside them is the one this test
 #: asks about.
-OURHIKE_OWN_TRAIL_MARKS = {"pct-logo.svg", "cdt-logo.svg"}
+OURHIKE_OWN_TRAIL_MARKS = {"pct-logo.svg"}
+
+#: Every trail marker shipped under the maintainer's decision of 2026-09-30
+#: (sources.json org_marks.trail_marks): the steward's own marker, carried by
+#: default so a hiker can tell which line is which, with the steward able to
+#: claim it or have it taken out. Opt-OUT, where `orgs` above is opt-IN - two
+#: different assets on two different surfaces, and the distinction the earlier
+#: rule collapsed.
+TRAIL_MARKS = MARKS["trail_marks"]
+CLAIM_VOCABULARY = MARKS["claim_vocabulary"]
+
+
+def trail_mark_rows() -> list[tuple[str, dict]]:
+    return [(slug, row) for slug, row in TRAIL_MARKS.items() if not slug.startswith("_")]
+
+
+class TestTheMarksThatShipByDefault:
+    """The opt-out half. A steward's marker ships unclaimed; the promise that
+    they can have it out again is kept by `test_a_withdrawn_mark_is_gone_from_
+    the_tree` rather than by anybody remembering."""
+
+    def test_there_are_rows_to_check(self):
+        """The guard on the guard: every parametrised test below is vacuous
+        over an empty list."""
+        assert len(trail_mark_rows()) >= 30
+
+    @pytest.mark.parametrize("slug,row", trail_mark_rows())
+    def test_a_shipped_mark_says_whose_it_is_and_where_it_came_from(self, slug: str, row: dict):
+        for field in ("asset", "trail", "steward", "source_url", "fetched", "basis", "scope", "recorded_date"):
+            assert str(row.get(field, "")).strip(), f"{slug}: a shipped mark with no {field} rests on nothing"
+        assert row["source_url"].startswith("http"), f"{slug}: source_url has to be the URL it was fetched from"
+
+    @pytest.mark.parametrize("slug,row", trail_mark_rows())
+    def test_a_shipped_mark_is_not_read_as_a_grant(self, slug: str, row: dict):
+        """`unclaimed` is the default and says nobody has been in touch. It
+        must not read as permission, because the whole point of the opt-out
+        model is that it is honest about resting on the maintainer's decision
+        rather than on the steward's."""
+        assert "not a grant from this organization" in row["basis"].lower()
+
+    @pytest.mark.parametrize("slug,row", trail_mark_rows())
+    def test_a_claim_state_is_one_of_the_three(self, slug: str, row: dict):
+        assert row["claim_state"] in CLAIM_VOCABULARY, f"{slug}: {row['claim_state']!r} is not one of {sorted(CLAIM_VOCABULARY)}"
+        if row["claim_state"] == "claimed":
+            for field in ("claimed_date", "claimed_via"):
+                assert str(row.get(field, "")).strip(), f"{slug}: a claim with no {field} cannot be checked"
+        if row["claim_state"] == "withdrawn":
+            for field in ("withdrawn_date", "withdrawn_reason"):
+                assert str(row.get(field, "")).strip(), f"{slug}: a withdrawal with no {field} cannot be aged"
+
+    @pytest.mark.parametrize("slug,row", trail_mark_rows())
+    def test_an_unwithdrawn_mark_is_actually_in_the_tree(self, slug: str, row: dict):
+        """A row for a file nobody shipped is a record of nothing."""
+        if row["claim_state"] == "withdrawn":
+            return
+        asset = REPO / row["asset"]
+        assert asset.exists(), f"{slug}: {row['asset']} is recorded here and is not in the tree"
+        assert asset.is_relative_to(TRAIL_MARK_DIR), f"{slug}: a trail mark lives under {TRAIL_MARK_DIR.relative_to(REPO)}"
+
+    @pytest.mark.parametrize("slug,row", trail_mark_rows())
+    def test_a_withdrawn_mark_is_gone_from_the_tree(self, slug: str, row: dict):
+        """THE WHOLE PROMISE, AND THE ONLY THING THAT MAKES OPT-OUT HONEST.
+        A steward who asks for their marker to come out gets the row set to
+        `withdrawn`, and this goes red until the file is actually gone. The
+        row stays rather than being deleted, because a deleted row is one the
+        next sweep re-adds."""
+        if row["claim_state"] != "withdrawn":
+            return
+        assert not (REPO / row["asset"]).exists(), (
+            f"{slug}: {row['steward']} asked for this marker to come out on {row.get('withdrawn_date')} and {row['asset']} is still in the tree"
+        )
 
 
 def trail_mark_records() -> list[tuple[str, dict]]:
@@ -251,6 +321,7 @@ class TestTheTrailMarksThatAreAlreadyHere:
         trademark dropped in beside the A.T. marker with no record is exactly
         the pattern #933 exists to end."""
         recorded = {REPO / record["asset"] for _, record in trail_mark_records()}
+        recorded |= {REPO / row["asset"] for _, row in trail_mark_rows() if row["claim_state"] != "withdrawn"}
         unrecorded = sorted(
             str(p.relative_to(REPO))
             for p in TRAIL_MARK_DIR.iterdir()

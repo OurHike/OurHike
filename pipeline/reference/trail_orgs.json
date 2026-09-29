@@ -655,8 +655,9 @@
       "licence_basis": "public_domain",
       "attribution": "Ice Age Trail Alliance",
       "load": "via",
-      "why": "Publishes its own official layer and also feeds WI DNR, which redistributes it as public-domain state data. Take the DNR row: same geometry, unambiguous terms.",
-      "already": null
+      "why": "Publishes its own official layer and also feeds WI DNR, which redistributes it as public-domain state data. Take the DNR row: same geometry, unambiguous terms. DUAL SOURCE (#1709): this organization has a source of ITS OWN as well as the host row `wi-dnr` that redistributes it, so `via` understates it. The maintainer's decision of 2026-09-29 is to register both and reconcile. Seniority follows lib/duplicates.py's own argument - the steward outranks the redistributor for its own trail - and no overlap has been measured for this pair.",
+      "already": null,
+      "dual_source": true
     },
     {
       "slug": "fta",
@@ -674,7 +675,7 @@
       "licence_basis": "public_domain",
       "attribution": "USDA Forest Service / Florida Trail Association",
       "load": "via",
-      "why": "FTA relies on USFS Region 8 for the authoritative centerline rather than publishing its own, so the Forest Service row already carries it. ARCGIS ONLINE: `FloridaTrailAssociation` is this organization's own account and publishes 'Florida National Scenic Trail Line'. THIS BRANCH FIRST REPORTED THAT ONLY TWO ORGANIZATIONS PUBLISH THEIR OWN TRAILS FROM THEIR OWN ACCOUNT, AND THAT WAS WRONG - the matcher missed account spellings like this one. Six do.",
+      "why": "FTA relies on USFS Region 8 for the authoritative centerline rather than publishing its own, so the Forest Service row already carries it. ARCGIS ONLINE: `FloridaTrailAssociation` is this organization's own account and publishes 'Florida National Scenic Trail Line'. THIS BRANCH FIRST REPORTED THAT ONLY TWO ORGANIZATIONS PUBLISH THEIR OWN TRAILS FROM THEIR OWN ACCOUNT, AND THAT WAS WRONG - the matcher missed account spellings like this one. Six do. DUAL SOURCE (#1709): this organization has a source of ITS OWN as well as the host row `usfs` that redistributes it, so `via` understates it. The maintainer's decision of 2026-09-29 is to register both and reconcile. Seniority follows lib/duplicates.py's own argument - the steward outranks the redistributor for its own trail - and no overlap has been measured for this pair.",
       "already": null,
       "agol": {
         "owned": true,
@@ -683,7 +684,8 @@
         "features": null,
         "url": null,
         "note": "An organization-official account, found on the 2026-09-26 sweep and MISSED BY ITS FIRST PASS because the owner-name matcher did not recognise the account spelling."
-      }
+      },
+      "dual_source": true
     },
     {
       "slug": "ata",
@@ -701,7 +703,7 @@
       "licence_basis": "public_domain",
       "attribution": "Arizona Trail Association",
       "load": "via",
-      "why": "Distributed through AZGeo and USFS Region 3, both already rows here. ARCGIS ONLINE: `AzTrailsAssn_official_azgeo` is this organization's own account and publishes 'Arizona National Scenic Trail, the association's own'. THIS BRANCH FIRST REPORTED THAT ONLY TWO ORGANIZATIONS PUBLISH THEIR OWN TRAILS FROM THEIR OWN ACCOUNT, AND THAT WAS WRONG - the matcher missed account spellings like this one. Six do.",
+      "why": "Distributed through AZGeo and USFS Region 3, both already rows here. ARCGIS ONLINE: `AzTrailsAssn_official_azgeo` is this organization's own account and publishes 'Arizona National Scenic Trail, the association's own'. THIS BRANCH FIRST REPORTED THAT ONLY TWO ORGANIZATIONS PUBLISH THEIR OWN TRAILS FROM THEIR OWN ACCOUNT, AND THAT WAS WRONG - the matcher missed account spellings like this one. Six do. DUAL SOURCE (#1709): this organization has a source of ITS OWN as well as the host row `azgeo` that redistributes it, so `via` understates it. The maintainer's decision of 2026-09-29 is to register both and reconcile. Seniority follows lib/duplicates.py's own argument - the steward outranks the redistributor for its own trail - and no overlap has been measured for this pair.",
       "already": null,
       "agol": {
         "owned": true,
@@ -710,7 +712,8 @@
         "features": null,
         "url": null,
         "note": "An organization-official account, found on the 2026-09-26 sweep and MISSED BY ITS FIRST PASS because the owner-name matcher did not recognise the account spelling."
-      }
+      },
+      "dual_source": true
     },
     {
       "slug": "pnta",
@@ -830,9 +833,10 @@
       "licence_basis": "public_domain",
       "attribution": "National Park Service",
       "load": "via",
-      "why": "Advocacy and heritage organisation; the alignment is NPS's and arrives through that row. The IRMA profile is recorded as a pointer, not a tested endpoint — the research's own caveat is that these profiles were not individually opened.",
+      "why": "Advocacy and heritage organisation; the alignment is NPS's and arrives through that row. The IRMA profile is recorded as a pointer, not a tested endpoint — the research's own caveat is that these profiles were not individually opened. DUAL SOURCE (#1709): this organization has a source of ITS OWN as well as the host row `nps` that redistributes it, so `via` understates it. The maintainer's decision of 2026-09-29 is to register both and reconcile. Seniority follows lib/duplicates.py's own argument - the steward outranks the redistributor for its own trail - and no overlap has been measured for this pair.",
       "miles": null,
-      "already": null
+      "already": null,
+      "dual_source": true
     },
     {
       "slug": "sfta",
@@ -849,9 +853,10 @@
       "licence_basis": "public_domain",
       "attribution": "National Park Service",
       "load": "via",
-      "why": "Advocacy and heritage organisation; the alignment is NPS's and arrives through that row. The IRMA profile is recorded as a pointer, not a tested endpoint — the research's own caveat is that these profiles were not individually opened.",
+      "why": "Advocacy and heritage organisation; the alignment is NPS's and arrives through that row. The IRMA profile is recorded as a pointer, not a tested endpoint — the research's own caveat is that these profiles were not individually opened. DUAL SOURCE (#1709): this organization has a source of ITS OWN as well as the host row `nps` that redistributes it, so `via` understates it. The maintainer's decision of 2026-09-29 is to register both and reconcile. Seniority follows lib/duplicates.py's own argument - the steward outranks the redistributor for its own trail - and no overlap has been measured for this pair.",
       "miles": null,
-      "already": null
+      "already": null,
+      "dual_source": true
     },
     {
       "slug": "osta",
@@ -868,9 +873,10 @@
       "licence_basis": "public_domain",
       "attribution": "National Park Service",
       "load": "via",
-      "why": "Advocacy and heritage organisation; the alignment is NPS's and arrives through that row. The IRMA profile is recorded as a pointer, not a tested endpoint — the research's own caveat is that these profiles were not individually opened.",
+      "why": "Advocacy and heritage organisation; the alignment is NPS's and arrives through that row. The IRMA profile is recorded as a pointer, not a tested endpoint — the research's own caveat is that these profiles were not individually opened. DUAL SOURCE (#1709): this organization has a source of ITS OWN as well as the host row `nps` that redistributes it, so `via` understates it. The maintainer's decision of 2026-09-29 is to register both and reconcile. Seniority follows lib/duplicates.py's own argument - the steward outranks the redistributor for its own trail - and no overlap has been measured for this pair.",
       "miles": null,
-      "already": null
+      "already": null,
+      "dual_source": true
     },
     {
       "slug": "nez-perce",
@@ -887,9 +893,10 @@
       "licence_basis": "public_domain",
       "attribution": null,
       "load": "via",
-      "why": "Advocacy and heritage organisation; the alignment is USFS's and arrives through that row. The IRMA profile is recorded as a pointer, not a tested endpoint — the research's own caveat is that these profiles were not individually opened.",
+      "why": "Advocacy and heritage organisation; the alignment is USFS's and arrives through that row. The IRMA profile is recorded as a pointer, not a tested endpoint — the research's own caveat is that these profiles were not individually opened. DUAL SOURCE (#1709): this organization has a source of ITS OWN as well as the host row `usfs` that redistributes it, so `via` understates it. The maintainer's decision of 2026-09-29 is to register both and reconcile. Seniority follows lib/duplicates.py's own argument - the steward outranks the redistributor for its own trail - and no overlap has been measured for this pair.",
       "miles": null,
-      "already": null
+      "already": null,
+      "dual_source": true
     },
     {
       "slug": "iditarod",
@@ -906,9 +913,10 @@
       "licence_basis": "public_domain",
       "attribution": null,
       "load": "via",
-      "why": "Advocacy and heritage organisation; the alignment is BLM's and arrives through that row. The IRMA profile is recorded as a pointer, not a tested endpoint — the research's own caveat is that these profiles were not individually opened.",
+      "why": "Advocacy and heritage organisation; the alignment is BLM's and arrives through that row. The IRMA profile is recorded as a pointer, not a tested endpoint — the research's own caveat is that these profiles were not individually opened. DUAL SOURCE (#1709): this organization has a source of ITS OWN as well as the host row `blm` that redistributes it, so `via` understates it. The maintainer's decision of 2026-09-29 is to register both and reconcile. Seniority follows lib/duplicates.py's own argument - the steward outranks the redistributor for its own trail - and no overlap has been measured for this pair.",
       "miles": null,
-      "already": null
+      "already": null,
+      "dual_source": true
     },
     {
       "slug": "lcthf",
@@ -982,9 +990,10 @@
       "licence_basis": "public_domain",
       "attribution": "National Park Service",
       "load": "via",
-      "why": "Advocacy and heritage organisation; the alignment is NPS's and arrives through that row. The IRMA profile is recorded as a pointer, not a tested endpoint — the research's own caveat is that these profiles were not individually opened.",
+      "why": "Advocacy and heritage organisation; the alignment is NPS's and arrives through that row. The IRMA profile is recorded as a pointer, not a tested endpoint — the research's own caveat is that these profiles were not individually opened. DUAL SOURCE (#1709): this organization has a source of ITS OWN as well as the host row `nps` that redistributes it, so `via` understates it. The maintainer's decision of 2026-09-29 is to register both and reconcile. Seniority follows lib/duplicates.py's own argument - the steward outranks the redistributor for its own trail - and no overlap has been measured for this pair.",
       "miles": null,
-      "already": null
+      "already": null,
+      "dual_source": true
     },
     {
       "slug": "w3r",
@@ -1020,9 +1029,10 @@
       "licence_basis": "public_domain",
       "attribution": "National Park Service",
       "load": "via",
-      "why": "Advocacy and heritage organisation; the alignment is NPS's and arrives through that row. The IRMA profile is recorded as a pointer, not a tested endpoint — the research's own caveat is that these profiles were not individually opened.",
+      "why": "Advocacy and heritage organisation; the alignment is NPS's and arrives through that row. The IRMA profile is recorded as a pointer, not a tested endpoint — the research's own caveat is that these profiles were not individually opened. DUAL SOURCE (#1709): this organization has a source of ITS OWN as well as the host row `nps` that redistributes it, so `via` understates it. The maintainer's decision of 2026-09-29 is to register both and reconcile. Seniority follows lib/duplicates.py's own argument - the steward outranks the redistributor for its own trail - and no overlap has been measured for this pair.",
       "miles": null,
-      "already": null
+      "already": null,
+      "dual_source": true
     },
     {
       "slug": "carta",
@@ -1039,9 +1049,10 @@
       "licence_basis": "public_domain",
       "attribution": "National Park Service",
       "load": "via",
-      "why": "Advocacy and heritage organisation; the alignment is NPS's and arrives through that row. The IRMA profile is recorded as a pointer, not a tested endpoint — the research's own caveat is that these profiles were not individually opened.",
+      "why": "Advocacy and heritage organisation; the alignment is NPS's and arrives through that row. The IRMA profile is recorded as a pointer, not a tested endpoint — the research's own caveat is that these profiles were not individually opened. DUAL SOURCE (#1709): this organization has a source of ITS OWN as well as the host row `nps` that redistributes it, so `via` understates it. The maintainer's decision of 2026-09-29 is to register both and reconcile. Seniority follows lib/duplicates.py's own argument - the steward outranks the redistributor for its own trail - and no overlap has been measured for this pair.",
       "miles": null,
-      "already": null
+      "already": null,
+      "dual_source": true
     },
     {
       "slug": "ala-kahakai",
@@ -1115,9 +1126,10 @@
       "licence_basis": "public_domain",
       "attribution": "National Park Service",
       "load": "via",
-      "why": "Advocacy and heritage organisation; the alignment is NPS's and arrives through that row. The IRMA profile is recorded as a pointer, not a tested endpoint — the research's own caveat is that these profiles were not individually opened.",
+      "why": "Advocacy and heritage organisation; the alignment is NPS's and arrives through that row. The IRMA profile is recorded as a pointer, not a tested endpoint — the research's own caveat is that these profiles were not individually opened. DUAL SOURCE (#1709): this organization has a source of ITS OWN as well as the host row `nps` that redistributes it, so `via` understates it. The maintainer's decision of 2026-09-29 is to register both and reconcile. Seniority follows lib/duplicates.py's own argument - the steward outranks the redistributor for its own trail - and no overlap has been measured for this pair.",
       "miles": null,
-      "already": null
+      "already": null,
+      "dual_source": true
     },
     {
       "slug": "anza",
@@ -1153,9 +1165,10 @@
       "licence_basis": "public_domain",
       "attribution": "National Park Service",
       "load": "via",
-      "why": "Advocacy and heritage organisation; the alignment is NPS's and arrives through that row. The IRMA profile is recorded as a pointer, not a tested endpoint — the research's own caveat is that these profiles were not individually opened.",
+      "why": "Advocacy and heritage organisation; the alignment is NPS's and arrives through that row. The IRMA profile is recorded as a pointer, not a tested endpoint — the research's own caveat is that these profiles were not individually opened. DUAL SOURCE (#1709): this organization has a source of ITS OWN as well as the host row `nps` that redistributes it, so `via` understates it. The maintainer's decision of 2026-09-29 is to register both and reconcile. Seniority follows lib/duplicates.py's own argument - the steward outranks the redistributor for its own trail - and no overlap has been measured for this pair.",
       "miles": null,
-      "already": null
+      "already": null,
+      "dual_source": true
     },
     {
       "slug": "butterfield",
@@ -1172,9 +1185,10 @@
       "licence_basis": "public_domain",
       "attribution": "National Park Service",
       "load": "via",
-      "why": "Advocacy and heritage organisation; the alignment is NPS's and arrives through that row. The IRMA profile is recorded as a pointer, not a tested endpoint — the research's own caveat is that these profiles were not individually opened.",
+      "why": "Advocacy and heritage organisation; the alignment is NPS's and arrives through that row. The IRMA profile is recorded as a pointer, not a tested endpoint — the research's own caveat is that these profiles were not individually opened. DUAL SOURCE (#1709): this organization has a source of ITS OWN as well as the host row `nps` that redistributes it, so `via` understates it. The maintainer's decision of 2026-09-29 is to register both and reconcile. Seniority follows lib/duplicates.py's own argument - the steward outranks the redistributor for its own trail - and no overlap has been measured for this pair.",
       "miles": null,
-      "already": null
+      "already": null,
+      "dual_source": true
     },
     {
       "slug": "stsp",
@@ -1265,7 +1279,7 @@
       "licence_basis": "maintainer_authorisation",
       "load": "via",
       "already": null,
-      "why": "One of the thirty clubs whose sections consolidate into the ATC centerline this repository already fetches. ATC's trail_club_sections layer carries one polygon per club, so the club is already on the map as a maintainer even though it publishes no geometry of its own. ARCGIS ONLINE: `RMC_cartographer` is this organization's own account and publishes 'Randolph Mountain Club's cartographer account'. THIS BRANCH FIRST REPORTED THAT ONLY TWO ORGANIZATIONS PUBLISH THEIR OWN TRAILS FROM THEIR OWN ACCOUNT, AND THAT WAS WRONG - the matcher missed account spellings like this one. Six do.",
+      "why": "One of the thirty clubs whose sections consolidate into the ATC centerline this repository already fetches. ATC's trail_club_sections layer carries one polygon per club, so the club is already on the map as a maintainer even though it publishes no geometry of its own. ARCGIS ONLINE: `RMC_cartographer` is this organization's own account and publishes 'Randolph Mountain Club's cartographer account'. THIS BRANCH FIRST REPORTED THAT ONLY TWO ORGANIZATIONS PUBLISH THEIR OWN TRAILS FROM THEIR OWN ACCOUNT, AND THAT WAS WRONG - the matcher missed account spellings like this one. Six do. DUAL SOURCE (#1709): this organization has a source of ITS OWN as well as the host row `atc` that redistributes it, so `via` understates it. The maintainer's decision of 2026-09-29 is to register both and reconcile. Seniority follows lib/duplicates.py's own argument - the steward outranks the redistributor for its own trail - and no overlap has been measured for this pair.",
       "endpoint": null,
       "endpoint_kind": null,
       "confidence": "inferred",
@@ -1277,7 +1291,8 @@
         "features": null,
         "url": null,
         "note": "An organization-official account, found on the 2026-09-26 sweep and MISSED BY ITS FIRST PASS because the owner-name matcher did not recognise the account spelling."
-      }
+      },
+      "dual_source": true
     },
     {
       "slug": "doc",
@@ -2480,9 +2495,10 @@
       "licence": "public domain",
       "licence_basis": "public_domain",
       "load": "via",
-      "why": "The Mountains-to-Sea Trail: 328 features in the `nc-mst` layer. Counted live 2026-09-17 by this repository. Recorded as blocked on a URL nobody had found; the URL exists and the row now points at it.",
+      "why": "The Mountains-to-Sea Trail: 328 features in the `nc-mst` layer. Counted live 2026-09-17 by this repository. Recorded as blocked on a URL nobody had found; the URL exists and the row now points at it. DUAL SOURCE (#1709): this organization has a source of ITS OWN as well as the host row `nc-mst` that redistributes it, so `via` understates it. The maintainer's decision of 2026-09-29 is to register both and reconcile. Seniority follows lib/duplicates.py's own argument - the steward outranks the redistributor for its own trail - and no overlap has been measured for this pair.",
       "attribution": "State of North Carolina",
-      "already": null
+      "already": null,
+      "dual_source": true
     },
     {
       "slug": "shta",
@@ -2500,7 +2516,7 @@
       "licence_basis": "public_domain",
       "attribution": "Superior Hiking Trail Association / City of Duluth",
       "load": "via",
-      "why": "Feeds the City of Duluth hub and MN DNR rather than publishing itself. The Duluth row covers 42 of the 309 miles; the MN DNR path for the rest was not located, so this trail is partially loaded and the catalogue says which part. THE REST OF THE TRAIL IS NOT IN MN DNR'S STATE TRAILS LAYER, checked rather than assumed: zero features match SUPERIOR across its 978 rows. Counted live 2026-09-17 by this repository. So the 42 Duluth miles remain the only published portion anybody here has found, and the other 267 are a real gap rather than an unexamined one. ARCGIS ONLINE: LAKE COUNTY, MINNESOTA publishes 576 features - the county the trail's north half runs through. This is the first lead on the 267 miles MN DNR's state trails layer does not carry, and it is a county rather than the association, so it is a lead and not a grant. ArcGIS Online item search, swept 2026-09-26 by this repository across all 172 rows.",
+      "why": "Feeds the City of Duluth hub and MN DNR rather than publishing itself. The Duluth row covers 42 of the 309 miles; the MN DNR path for the rest was not located, so this trail is partially loaded and the catalogue says which part. THE REST OF THE TRAIL IS NOT IN MN DNR'S STATE TRAILS LAYER, checked rather than assumed: zero features match SUPERIOR across its 978 rows. Counted live 2026-09-17 by this repository. So the 42 Duluth miles remain the only published portion anybody here has found, and the other 267 are a real gap rather than an unexamined one. ARCGIS ONLINE: LAKE COUNTY, MINNESOTA publishes 576 features - the county the trail's north half runs through. This is the first lead on the 267 miles MN DNR's state trails layer does not carry, and it is a county rather than the association, so it is a lead and not a grant. ArcGIS Online item search, swept 2026-09-26 by this repository across all 172 rows. DUAL SOURCE (#1709): this organization has a source of ITS OWN as well as the host row `duluth` that redistributes it, so `via` understates it. The maintainer's decision of 2026-09-29 is to register both and reconcile. Seniority follows lib/duplicates.py's own argument - the steward outranks the redistributor for its own trail - and no overlap has been measured for this pair.",
       "already": null,
       "agol": {
         "owned": false,
@@ -2509,7 +2525,8 @@
         "features": 576,
         "url": "https://services1.arcgis.com/NlvHF2FHoAfPIDvG/arcgis/rest/services/Superior_Hiking/FeatureServer",
         "note": "LAKE COUNTY, MINNESOTA publishes 576 features - the county the trail's north half runs through. This is the first lead on the 267 miles MN DNR's state trails layer does not carry, and it is a county rather than the association, so it is a lead and not a grant."
-      }
+      },
+      "dual_source": true
     },
     {
       "slug": "ota",
@@ -2545,9 +2562,10 @@
       "licence": "public domain",
       "licence_basis": "public_domain",
       "load": "via",
-      "why": "Also present in COTREX, which is public domain and already a ship row. Take the state copy and the terms question never arises.",
+      "why": "Also present in COTREX, which is public domain and already a ship row. Take the state copy and the terms question never arises. DUAL SOURCE (#1709): this organization has a source of ITS OWN as well as the host row `cotrex` that redistributes it, so `via` understates it. The maintainer's decision of 2026-09-29 is to register both and reconcile. Seniority follows lib/duplicates.py's own argument - the steward outranks the redistributor for its own trail - and no overlap has been measured for this pair.",
       "attribution": null,
-      "already": null
+      "already": null,
+      "dual_source": true
     },
     {
       "slug": "tahoe-rim",
@@ -2906,9 +2924,10 @@
       "licence": "public domain",
       "licence_basis": "public_domain",
       "load": "via",
-      "why": "Sheltowee Trace: 87 features found in the already-registered `usfs` layer, counted live 2026-09-17. Probed live 2026-09-17 by this repository, not by the research pass. Nothing new to fetch - this trail is already inside data this pipeline pulls. THIS ROW WAS `refuse`, AND THE REFUSAL WAS ABOUT THE WRONG THING: the organization sells its own GPX, which restricts ITS product and says nothing about the trail. The Forest Service manages the ground and publishes the geometry as public domain, so the trail ships and nobody's commercial product is touched.",
+      "why": "Sheltowee Trace: 87 features found in the already-registered `usfs` layer, counted live 2026-09-17. Probed live 2026-09-17 by this repository, not by the research pass. Nothing new to fetch - this trail is already inside data this pipeline pulls. THIS ROW WAS `refuse`, AND THE REFUSAL WAS ABOUT THE WRONG THING: the organization sells its own GPX, which restricts ITS product and says nothing about the trail. The Forest Service manages the ground and publishes the geometry as public domain, so the trail ships and nobody's commercial product is touched. DUAL SOURCE (#1709): this organization has a source of ITS OWN as well as the host row `usfs` that redistributes it, so `via` understates it. The maintainer's decision of 2026-09-29 is to register both and reconcile. Seniority follows lib/duplicates.py's own argument - the steward outranks the redistributor for its own trail - and no overlap has been measured for this pair.",
       "attribution": "USDA Forest Service",
-      "already": null
+      "already": null,
+      "dual_source": true
     },
     {
       "slug": "ohta",
@@ -2925,9 +2944,10 @@
       "licence": "public domain",
       "licence_basis": "public_domain",
       "load": "via",
-      "why": "Ozark Highlands Trail: 16 features found in the already-registered `usfs` layer, counted live 2026-09-17. Probed live 2026-09-17 by this repository, not by the research pass. Nothing new to fetch - this trail is already inside data this pipeline pulls. THIS ROW WAS `refuse`, AND THE REFUSAL WAS ABOUT THE WRONG THING: the organization sells its own GPX, which restricts ITS product and says nothing about the trail. The Forest Service manages the ground and publishes the geometry as public domain, so the trail ships and nobody's commercial product is touched.",
+      "why": "Ozark Highlands Trail: 16 features found in the already-registered `usfs` layer, counted live 2026-09-17. Probed live 2026-09-17 by this repository, not by the research pass. Nothing new to fetch - this trail is already inside data this pipeline pulls. THIS ROW WAS `refuse`, AND THE REFUSAL WAS ABOUT THE WRONG THING: the organization sells its own GPX, which restricts ITS product and says nothing about the trail. The Forest Service manages the ground and publishes the geometry as public domain, so the trail ships and nobody's commercial product is touched. DUAL SOURCE (#1709): this organization has a source of ITS OWN as well as the host row `usfs` that redistributes it, so `via` understates it. The maintainer's decision of 2026-09-29 is to register both and reconcile. Seniority follows lib/duplicates.py's own argument - the steward outranks the redistributor for its own trail - and no overlap has been measured for this pair.",
       "attribution": "USDA Forest Service",
-      "already": null
+      "already": null,
+      "dual_source": true
     },
     {
       "slug": "hayduke",
@@ -3378,5 +3398,6 @@
     "amy.lewis_lakecountymn": "A named county employee's work account in Lake County, Minnesota's ArcGIS organization - government, and the county the Superior Hiking Trail's north half runs through.",
     "jlrooks_cesamusace": "A named employee's work account in the US Army Corps of Engineers' organization (`cesamusace` - South Atlantic Division, Mobile District). Federal.",
     "MRWMgis": "A water management district's GIS account. Government."
-  }
+  },
+  "_dual_source": "20 of the 79 `via` rows carry `dual_source: true`: they have a source of their own AS WELL AS the host that redistributes them, so the `via` verdict understates them. The maintainer's decision of 2026-09-29 is to REGISTER BOTH AND RECONCILE, tracked as #1709. The machinery exists - sources.json's `duplicate_of` and lib/duplicates.py, both from #1459, with New York City's two agencies as the worked case at a MEASURED 23.6% overlap. What does not exist is a measurement for any steward/host pair here; NYC's number is two municipal agencies rather than a steward and a national redistributor, and borrowing it would be the mistake the evidence standard exists to stop."
 }

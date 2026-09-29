@@ -86,6 +86,40 @@ and the Oregon Desert Trail, whose GPX is released only after a liability waiver
 not reach a stated restriction, and three of those six have their ground managed by the Forest
 Service, so the open path to the same trail is a row already on the list.
 
+## Twenty `via` rows are dual-source, and both get registered
+
+**The `via` verdict is terminal and that is wrong for 20 of the 79.** It reads "this organization
+holds no geometry of its own, another row carries it, nothing to fetch" — right for most, and wrong
+wherever a steward publishes its own copy *and* a host redistributes it. Measured 2026-09-29: the
+Florida Trail Association (own ArcGIS account, plus USFS), the Arizona Trail Association (own
+account, plus AZGeo), the Ice Age Trail Alliance (own item, plus WI DNR), the Colorado Trail
+Foundation (plus COTREX), Superior Hiking (plus Duluth), Randolph Mountain Club (plus ATC), Ozark
+Highlands, Sheltowee Trace and Nez Perce (plus USFS), Mountains-to-Sea (plus the NC layer), Iditarod
+(plus BLM), and eight National Historic Trail stewards with IRMA profiles beside the NPS layer.
+
+**The maintainer's decision of 2026-09-29 is to register both and reconcile**, tracked as
+**#1709 — Register the steward and the redistributor both, and declare which one wins where they
+overlap**. Those rows now carry `dual_source: true`.
+
+**The machinery already exists and the precedent is measured.** `sources.json` declares duplicate
+pairs with a senior and `lib/duplicates.py` draws the shared path once, both from #1459, worked
+against New York City's two agencies at a **measured 23.6% overlap** (`spike_nyc_overlap.py`,
+2026-09-15). Seniority is already argued there too: NYC Parks wins because it is the path's own
+steward, *"the same precedence argument `owned_route_names` already makes for a route's steward"* —
+so the steward outranks the redistributor for its own trail, and the Florida Trail Association
+outranks USFS on the Florida Trail.
+
+**Two things that argument does not settle**, and both belong to #1709 rather than here. Per-field
+precedence, because SOURCE_REGISTRY.md already records that a lower-tier source is sometimes the only
+one carrying a description, a tag or a photo. And telling a **duplicate** from a **concurrency** —
+`lib/concurrency.py` draws two trails sharing one treadway as two lines on purpose, `lib/duplicates.py`
+draws one path recorded twice as one line, and fetching both sources produces both kinds at once.
+
+**No overlap has been measured for any steward/host pair here.** NYC's 23.6% is two municipal
+agencies, not a steward and a national redistributor; borrowing it would be exactly the
+borrowed-number mistake this file's evidence standard exists to stop. Each pair needs its own
+measurement before either side ships.
+
 ## The binding constraint is download budget, and it has a measured precedent
 
 **#1231 — usfs_trails and usfs_rec_sites ship nationwide (Arizona and beyond), when only the region

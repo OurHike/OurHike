@@ -218,8 +218,10 @@ them better than this document proposed, and the largest one is still open.
   nationwide source. COTREX at 96,897 features and Utah at 47,986 are the next two.
 - **Licence evidence is prose.** `licence_note` is a `Detail`, and `nominate.py` is explicit that
   prose is *deliberately* not grounded the way an address is — right for a summary, and not the same
-  thing as `licence_basis` plus a `licence_evidence_url` and a read date. **54 of 172 rows are
-  `unstated`**, which a free-text note cannot distinguish from "nobody looked".
+  thing as `licence_basis` plus a `licence_evidence_url` and a read date. **40 of the 172 rows carry
+  `licence_basis: unstated`** (and 38 carry `licence: unstated`; an earlier draft of this line said 54
+  and named no field, so it could not be checked either way), which a free-text note cannot
+  distinguish from "nobody looked".
 - **Dedupe.** `NominationOut` carries a `club_slug`, so a slug exists. Whether two submissions for one
   organization collide is not visible from the schema and was not tested here — recorded as unchecked
   rather than as either answer.
@@ -433,7 +435,7 @@ spurs off it. That document also says exactly how long that holds:
 > It answers it for exactly as long as that stays true: […] a second through-route on the map turns
 > the question width answers into "through-route or spur".
 
-The 16 new endpoints above are that second through-route arriving several times over. Width will
+The 17 new endpoints above are that second through-route arriving several times over. Width will
 still say *this is a through-route* and will no longer say *which*.
 
 **The client already has the mechanism, and it already has this gap written down.**

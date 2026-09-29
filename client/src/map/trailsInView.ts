@@ -828,27 +828,44 @@ export function trailsInView(
  * The badge points: one per through-route that has somewhere to sit.
  *
  * Each carries the line's own properties verbatim - so a tap on the badge
- * hands map/lineTaps.ts exactly what a tap on the line would - plus the two
- * image ids the layer's `coalesce` reads: the registry mark where the source
- * has one, and nothing at all where it does not.
+ * hands map/lineTaps.ts exactly what a tap on the line would - plus the one
+ * image id the layer reads: the registry mark where the source has one, and
+ * the empty string where it does not, which `text-field` renders as nothing.
  */
 export function badgeFeatures(trails: readonly TrailInView[]): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
     features: trails
       .filter((trail) => trail.throughRoute && trail.anchor !== null)
-      .map((trail) => ({
-        type: 'Feature',
-        properties: {
-          ...trail.properties,
-          [BADGE_NAME_PROPERTY]: trail.name,
-          [BADGE_SOURCE_PROPERTY]: trail.source,
-          [BADGE_MARK_PROPERTY]: trailMarkImageId(trail.source) ?? '',
-          [BADGE_FIT_PROPERTY]: trail.badgeFit,
-          [BADGE_ANCHOR_PROPERTY]: trail.badgeAnchor,
-        },
-        geometry: { type: 'Point', coordinates: trail.anchor as Position },
-      })),
+      .map((trail) => {
+        const mark = trailMarkImageId(trail.source)
+        return {
+          type: 'Feature' as const,
+          properties: {
+            ...trail.properties,
+            [BADGE_NAME_PROPERTY]: trail.name,
+            [BADGE_SOURCE_PROPERTY]: trail.source,
+            [BADGE_MARK_PROPERTY]: mark ?? '',
+            // THE BARE-MARK FORM NEEDS A MARK, asserted here as well as chosen
+            // in anchorWithRoom, because the two failure modes are not the
+            // same and only this one is silent. An empty mark id renders as
+            // nothing (see map/trailBadges.ts), but the bare form asks for
+            // `<mark>-bare`, and for an empty mark that concatenates to the
+            // string `-bare` - a NON-empty id the style does not hold.
+            // Measured through the style-spec parser: that section comes back
+            // `{image: '-bare', available: false}` rather than imageless, so
+            // it is a badge of one unavailable image and no text, which with
+            // `text-optional: false` is a badge that draws nothing. Falling
+            // back to the full plate is the outcome #1374's review asked for.
+            [BADGE_FIT_PROPERTY]: mark === null ? 'full' : trail.badgeFit,
+            [BADGE_ANCHOR_PROPERTY]: trail.badgeAnchor,
+          },
+          geometry: {
+            type: 'Point' as const,
+            coordinates: trail.anchor as Position,
+          },
+        }
+      }),
   }
 }
 

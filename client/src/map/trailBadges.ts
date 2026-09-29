@@ -46,8 +46,9 @@
 // anywhere in the app to look at. The empty slot appears on the first frame
 // BADGE_SOURCES grows, which is what registering a second steward's
 // through-route does. The same is true of the fitted draw in markFitBox: all
-// four registry marks sit within 1.04:1 of square, so fitting and filling
-// render identically today. That is exactly why a filling draw survived
+// four registry marks are square or all but (at-logo.png and the two SVGs
+// are exactly 1:1; lp-logo.png is 150x151, so 1.007:1), so fitting and
+// filling render identically today. That is exactly why a filling draw survived
 // unnoticed, and why both changes are guarded by tests rather than by a
 // picture.
 //
@@ -476,11 +477,27 @@ export function buildBadgePlate(
  * skipped in this suite and a filling draw could be reintroduced without one
  * of them going red.
  *
- * MEASURED, and the reason the fitting version exists: across the 35 steward
- * marks collected on 2026-09-29 (pipeline/reference/trail_marks.json), 11 sit
- * further than 1.5:1 from square and the widest is CDTC's at 4.40:1. The four
- * marks the registry held before that sweep are all within 1.04:1, which is
- * why filling the square was invisible for as long as it was.
+ * MEASURED, and a smaller reason than an earlier draft of this comment
+ * claimed. Across the 35 steward marks collected on 2026-09-29
+ * (pipeline/reference/trail_marks.json), 21 are exactly 1:1 and 14 are not;
+ * only TWO depart from square by more than half again - the Foothills Trail's
+ * at 185x120 (1.54:1) and the Long Trail's at 230x150 (1.53:1). A filling
+ * draw stretches the Foothills mark's 120 px of height to the full 18 px
+ * slot, 54% in one axis, which is the visible defect this ends.
+ *
+ * The earlier draft said "11 sit further than 1.5:1 and the widest is CDTC's
+ * at 4.40:1", and both halves were false - CDTC's mark is 192x192. That
+ * number was a fossil of a superseded sweep round that collected WORDMARK
+ * banners; the maintainer's instruction to find symbol-only marks is why the
+ * manifest is nearly all square, so the round that produced 4.40:1 no longer
+ * exists in the file being cited. Recorded rather than quietly swapped,
+ * because a stated measurement that nobody can reproduce is the exact failure
+ * CLAUDE.md's evidence standard is for.
+ *
+ * The fit is still the right arithmetic at any distribution: it is what the
+ * slot means. The four marks the registry held before that sweep are square
+ * or all but - the widest is lp-logo.png at 150x151, 1.007:1 - which is why
+ * filling the square was invisible for as long as it was.
  */
 export function markFitBox(
   width: number,
@@ -529,8 +546,8 @@ export function rasteriseTrailMark(
         context.clearRect(0, 0, width, height)
         // FITTED INTO THE SQUARE, NOT STRETCHED TO FILL IT. This was
         // `drawImage(image, 0, 0, side, side)` until 2026-09-29, and that was
-        // free for as long as the registry held four marks all within 1.04:1
-        // of square. markFitBox above has the measurement that ends it.
+        // free for as long as the registry held four marks none wider than
+        // 1.007:1. markFitBox above has the measurement that ends it.
         const box = markFitBox(image.width, image.height, side)
         context.drawImage(image, box.x, box.y, box.width, box.height)
         const pixels = context.getImageData(0, 0, width, height)
@@ -680,10 +697,19 @@ export function buildTrailBadgeLayer(
       // already ruled on that shape of thing - "never a placeholder mark,
       // never an initial, never a generated shape" - and a chip is a
       // generated shape standing where an organisation's identity goes.
-      // `['image', ...]` resolves to nothing for an id the style does not
-      // hold, so a markless badge is the plate and the name, and the blaze
-      // still reaches the hiker where it always did: on the line itself, and
-      // on the tapped trail's sheet.
+      // `['image', '']` renders as nothing rather than as a broken-image box,
+      // which is the whole mechanism and is measured against maplibre-gl
+      // 6.7.0 rather than assumed: `ResolvedImage.fromString` returns null for
+      // a falsy name (maplibre-gl-shared-dev.mjs:7725), and a format section
+      // whose image is null is laid out as a TEXT section (:23287), so it
+      // contributes no glyph - and never reaches the `addImageSection` branch
+      // that would `warnOnce` about an empty image (:23390). Evaluated through
+      // the style-spec parser in trailBadges.test.ts, so a maplibre upgrade
+      // that changed any of that would go red here rather than on a phone.
+      //
+      // So a markless badge is the plate and the name, and the blaze still
+      // reaches the hiker where it always did: on the line itself, and on the
+      // tapped trail's sheet.
       'text-field': [
         'case',
         ['==', ['get', BADGE_FIT_PROPERTY], 'mark'],

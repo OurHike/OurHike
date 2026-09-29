@@ -20,7 +20,10 @@ import {
 import {
   BADGE_ANCHOR_PROPERTY,
   TRAIL_BADGE_ANCHORS,
+  BADGE_FIT_PROPERTY,
   BADGE_MARK_PROPERTY,
+  TRAIL_BADGE_MARK_GAP,
+  TRAIL_BADGE_MARK_SIZE,
   TRAIL_BADGE_SOURCE_ID,
   trailMarkImageId,
 } from './trailBadges'
@@ -393,6 +396,78 @@ describe('badgeFeatures', () => {
       ]).features,
     ).toEqual([])
   })
+
+  it('writes an empty mark id for a source the registry has no mark for', () => {
+    // WHAT THE EMPTY SLOT IS MADE OF. map/trailBadges.ts reads this one
+    // property and renders nothing for an id the style does not hold, so `''`
+    // here is the whole mechanism on the data side. Until 2026-09-29 this
+    // feature also carried a `chip` id and the layer coalesced onto it.
+    const [feature] = badgeFeatures([
+      {
+        name: 'Ozark Highlands Trail',
+        source: 'usfs_trails',
+        blazeColor: 'White',
+        throughRoute: true,
+        takeable: true,
+        chosen: false,
+        anchor: [-93.5, 35.7],
+        badgeFit: 'full',
+        badgeAnchor: 'left',
+        properties: {},
+      },
+    ]).features
+    expect(trailMarkImageId('usfs_trails')).toBeNull()
+    expect(feature.properties?.[BADGE_MARK_PROPERTY]).toBe('')
+    expect(Object.keys(feature.properties ?? {})).not.toContain('chip')
+  })
+
+  it('refuses the bare-mark form for a markless trail, since that form IS the mark', () => {
+    // THE ONE WAY THE EMPTY SLOT COULD STILL DRAW NOTHING. An empty mark id
+    // renders as nothing, which is the point - but the bare form asks the
+    // layer for `<mark>-bare`, and for an empty mark that is the string
+    // `-bare`: a NON-empty image id the style does not hold. Measured through
+    // the style-spec parser, that section evaluates to
+    // `{image: '-bare', available: false}` rather than to no image at all, so
+    // the badge would be one unavailable image and no text - and with
+    // `text-optional: false` it draws nothing rather than falling back.
+    //
+    // anchorWithRoom already never picks 'mark' without a mark; this asserts
+    // the same invariant where a test can reach it, because the anchor chooser
+    // is module-private and no source in BADGE_SOURCES lacks a mark.
+    const [feature] = badgeFeatures([
+      {
+        name: 'Ozark Highlands Trail',
+        source: 'usfs_trails',
+        blazeColor: 'White',
+        throughRoute: true,
+        takeable: true,
+        chosen: false,
+        anchor: [-93.5, 35.7],
+        badgeFit: 'mark',
+        badgeAnchor: 'left',
+        properties: {},
+      },
+    ]).features
+    expect(feature.properties?.[BADGE_FIT_PROPERTY]).toBe('full')
+
+    // A trail that HAS a mark keeps the bare form, which is the fallback the
+    // third preview frame over Harriman exists for.
+    const [marked] = badgeFeatures([
+      {
+        name: 'Appalachian Trail',
+        source: 'centerline',
+        blazeColor: 'White',
+        throughRoute: true,
+        takeable: true,
+        chosen: true,
+        anchor: [-74, 41.3],
+        badgeFit: 'mark',
+        badgeAnchor: 'left',
+        properties: {},
+      },
+    ]).features
+    expect(marked.properties?.[BADGE_FIT_PROPERTY]).toBe('mark')
+  })
 })
 
 describe('attachTrailsInView', () => {
@@ -761,6 +836,39 @@ describe('the pins in view (#1283, the third preview frame)', () => {
     // name and it takes a row of five.
     expect(badgePlateWidth('Appalachian National Scenic Trail')).toBe(240)
     expect(badgePlateWidth('Appalachian Trail')).toBe(144)
+  })
+
+  it('reserves no room for a mark on a trail that has none', () => {
+    // THE PLACER'S HALF OF THE EMPTY SLOT. map/trailBadges.ts leaves the mark
+    // slot empty for a source with no registry mark, so measuring the plate as
+    // if the mark and its gap were still there would reserve 28 px that
+    // nothing draws into - and `anchorWithRoom` would refuse anchors that do
+    // in fact fit, dropping the badge on a screen where it had room.
+    //
+    // 28 px exactly: TRAIL_BADGE_MARK_SIZE (18) plus TRAIL_BADGE_MARK_GAP (10).
+    const gap = TRAIL_BADGE_MARK_SIZE + TRAIL_BADGE_MARK_GAP
+    for (const name of ['Appalachian Trail', 'A.T.', 'Ozark Highlands Trail']) {
+      expect(badgeTextSize(name, 'full', false).width).toBe(
+        badgeTextSize(name, 'full', true).width - gap,
+      )
+      expect(badgePlateWidth(name, 'full', false)).toBe(
+        badgePlateWidth(name, 'full', true) - gap,
+      )
+    }
+    // The same calibration pair as above, so the markless plate has a figure
+    // of its own rather than only a difference: 144 - 28.
+    expect(badgePlateWidth('Appalachian Trail', 'full', false)).toBe(116)
+
+    // The height is the mark's size either way - the plate is one text line
+    // tall whether or not a mark sits in it, which is what keeps a markless
+    // badge the same height as its neighbours.
+    expect(badgeTextSize('Appalachian Trail', 'full', false).height).toBe(
+      TRAIL_BADGE_MARK_SIZE,
+    )
+
+    // A MARK IS STILL ASSUMED BY DEFAULT, so every other test in this file and
+    // every caller that predates the parameter keeps its old answer.
+    expect(badgePlateWidth('Appalachian Trail', 'full')).toBe(144)
   })
 })
 

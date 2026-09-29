@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { createExpression, latest } from '@maplibre/maplibre-gl-style-spec'
 import { MockMap } from '../test/mocks/maplibre-gl'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import {
@@ -128,12 +129,75 @@ describe('who earns a badge', () => {
 })
 
 describe('the badge with no mark', () => {
-  it('leaves the mark section out of the text field instead of drawing a stand-in', () => {
-    // The layer asks for `['image', <the feature's mark id>]` and nothing
-    // else. A feature whose mark id is the empty string names no image, so
-    // MapLibre renders that section as nothing - which is the empty slot.
+  /** What MapLibre's own parser makes of the layer's `text-field` for one
+   *  badge feature. Evaluated rather than string-matched, because the claim
+   *  being made is about what RENDERS, and the shape of the expression is
+   *  only evidence for that if MapLibre agrees. `availableImages` is what the
+   *  style has loaded - `attachTrailBadgeImages` registers the marks, so a
+   *  registered mark is available and anything else is not. */
+  function sections(
+    properties: Record<string, string>,
+    availableImages: readonly string[],
+  ): { text: string; image: string | null }[] {
+    const layout = buildTrailBadgeLayer({ theme: 'light' }).layout as Record<
+      string,
+      unknown
+    >
+    const compiled = createExpression(
+      layout['text-field'] as never,
+      latest.layout_symbol['text-field'] as never,
+    )
+    if (compiled.result === 'error') {
+      throw new Error('text-field on the badge layer is not a valid expression')
+    }
+    const formatted = compiled.value.evaluate(
+      { zoom: POI_PIN_MIN_ZOOM - 1 } as never,
+      { properties } as never,
+      {} as never,
+      undefined as never,
+      availableImages as never,
+    ) as { sections: { text: string; image: { name: string } | null }[] }
+    return formatted.sections.map((section) => ({
+      text: section.text,
+      image: section.image === null ? null : section.image.name,
+    }))
+  }
+
+  it('renders the name with no image section at all, rather than a stand-in', () => {
+    // THE EMPTY SLOT, measured through MapLibre 6.7.0's own expression
+    // parser rather than asserted. `badgeFeatures` writes `''` into the mark
+    // property for a source with no registry mark, and `['image', '']` is
+    // `ResolvedImage.fromString('')`, which returns null for a falsy name
+    // (maplibre-gl-shared-dev.mjs:7725). A section with a null image is laid
+    // out by `TaggedString.fromFeature` as a TEXT section (:23287), so it
+    // contributes no glyph and no warning - the `addImageSection` path that
+    // would `warnOnce` about an empty image is never reached.
+    expect(sections({ fit: 'full', mark: '', name: 'Long Path' }, [])).toEqual([
+      { text: '', image: null },
+      { text: 'Long Path', image: null },
+    ])
+  })
+
+  it('still resolves the mark for a trail that has one, in the same expression', () => {
+    // The other half: one expression serves both, so the markless case is not
+    // a separate branch that could rot while this one keeps passing.
+    const mark = trailMarkImageId('centerline')
+    expect(mark).not.toBeNull()
+    expect(
+      sections({ fit: 'full', mark: mark as string, name: 'Appalachian Trail' }, [
+        mark as string,
+      ]),
+    ).toEqual([
+      { text: '', image: mark },
+      { text: 'Appalachian Trail', image: null },
+    ])
+  })
+
+  it('names no blaze chip anywhere in the field', () => {
     // Before 2026-09-29 this was a `coalesce` onto a blaze-chip id, and the
-    // chip drew for every trail in the country bar two.
+    // chip drew for every trail in the country bar two. The evaluation above
+    // would pass with a `coalesce` still present and a chip id that happened
+    // to be unavailable, so this guards the expression itself.
     const layout = buildTrailBadgeLayer({ theme: 'light' }).layout as Record<
       string,
       unknown
@@ -279,8 +343,23 @@ describe('markFitBox', () => {
     expect(markFitBox(144, 144, 18)).toEqual({ x: 0, y: 0, width: 18, height: 18 })
   })
 
-  it('letterboxes a mark wider than it is tall instead of squashing it', () => {
-    // CDTC's, the widest of the 35 collected on 2026-09-29 at 4.40:1.
+  it('letterboxes the widest mark the sweep found rather than squashing it', () => {
+    // The Foothills Trail's, 185x120, the widest departure from square among
+    // the 35 marks in pipeline/reference/trail_marks.json. A filling draw
+    // stretched those 120 px of height to all 18, 54% in one axis.
+    const box = markFitBox(185, 120, 18)
+    expect(box.width).toBe(18)
+    expect(box.height).toBeCloseTo(18 * (120 / 185), 6)
+    expect(box.y).toBeCloseTo((18 - box.height) / 2, 6)
+    expect(box.x).toBe(0)
+  })
+
+  it('letterboxes a 4.4:1 image, an extreme no collected mark reaches', () => {
+    // SYNTHETIC, and said so: 4.4:1 is not in the manifest. An earlier version
+    // of this test called 440x100 "CDTC's, the widest of the 35" - CDTC's mark
+    // is 192x192, and 4.40:1 was left over from a superseded sweep round that
+    // collected wordmark banners. The case is worth keeping as an extreme; the
+    // claim that it was measured was not.
     const box = markFitBox(440, 100, 18)
     expect(box.width).toBe(18)
     expect(box.height).toBeCloseTo(18 * (100 / 440), 6)
@@ -289,21 +368,38 @@ describe('markFitBox', () => {
   })
 
   it('pillarboxes a mark taller than it is wide', () => {
-    const box = markFitBox(100, 400, 18)
-    expect(box.height).toBe(18)
-    expect(box.width).toBeCloseTo(18 * (100 / 400), 6)
-    expect(box.x).toBeCloseTo((18 - box.width) / 2, 6)
+    // Buckeye's 136x150 is the real tallest; 100x400 is the synthetic extreme.
+    for (const [w, h] of [
+      [136, 150],
+      [100, 400],
+    ] as const) {
+      const box = markFitBox(w, h, 18)
+      expect(box.height).toBe(18)
+      expect(box.width).toBeCloseTo(18 * (w / h), 6)
+      expect(box.x).toBeCloseTo((18 - box.width) / 2, 6)
+    }
   })
 
   it('keeps the mark inside the slot at every aspect ratio the sweep found', () => {
-    // The real measured pairs, widest and tallest first.
+    // Every non-square pair in pipeline/reference/trail_marks.json, widest
+    // first, plus the square case. Read off the file on 2026-09-29; 21 of the
+    // 35 are exactly 1:1 and these 14 are the rest.
     for (const [w, h] of [
-      [440, 100],
+      [185, 120],
       [230, 150],
+      [191, 150],
       [266, 209],
-      [144, 144],
+      [97, 90],
+      [150, 144],
+      [372, 356],
+      [178, 171],
+      [153, 150],
+      [142, 140],
+      [114, 115],
+      [150, 151],
+      [47, 50],
       [136, 150],
-      [256, 358],
+      [144, 144],
     ] as const) {
       const box = markFitBox(w, h, 18)
       expect(box.width).toBeLessThanOrEqual(18 + 1e-9)

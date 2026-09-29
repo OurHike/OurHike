@@ -1697,6 +1697,20 @@ export const RELEASE_SHAPES: readonly ReleaseShapes[] = deepFreeze<
     indexedDb: {},
     localStorage: {},
   },
+  {
+    tag: 'v1.3.4',
+    // A second hotfix (RELEASING.md §11a), cut from v1.3.3 (0066d7dc). It
+    // changes only site/src/pages/index.astro, so no writer differs from
+    // v1.3.2's or v1.3.3's.
+    commit: '0066d7dc',
+    // PLACEHOLDER: the day this entry was written, while v1.3.4 was being
+    // cut. Replace with the GitHub release's published date once it is
+    // published; the tests check only the YYYY-MM-DD shape.
+    published: '2026-09-29',
+    // Empty on purpose, for the same reason as v1.3.3's.
+    indexedDb: {},
+    localStorage: {},
+  },
 ])
 
 /**

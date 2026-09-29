@@ -52,29 +52,30 @@ const ORG_COUNT_LINE = orgCountLine(ORGS)
   {
     /* IMPACT SITE VERIFICATION (#1707), for REI's affiliate program, which
        runs through impact.com. The maintainer registered ourhike.org with
-       Impact on 2026-09-29, and Impact issued the "text content" line below.
-       Its help page (Connect & Verify a Website) says to paste that line
-       anywhere in the homepage's content.
+       Impact on 2026-09-29.
 
-       HIDDEN, so hikers and screen readers never see a stray code (the
-       maintainer's choice, by poll, 2026-09-29). The line is still in the
-       HTML. @unvalidated whether Impact's checker counts text inside a
-       `hidden` element. If verification fails, the fallback is to make this
-       line visible small print. The meta tag is Impact's other documented
-       method, carrying the same id. @unvalidated that the meta method uses
-       the same id as the text method: Impact only showed the maintainer the
-       text line.
+       v1.3.3 shipped two lines: Impact's "text content" line inside a
+       `hidden` <p>, and this meta tag written with double quotes. Impact did
+       not verify the site against that page (maintainer, 2026-09-29, after
+       confirming Impact holds https://ourhike.org). Which line Impact read,
+       and why it refused, is not known.
+
+       So v1.3.4 carries only the meta tag, byte for byte as the maintainer
+       supplied it, single quotes included (maintainer's ask, 2026-09-29). Astro rewrites attribute quotes to double, so the tag is
+       emitted as raw HTML through set:html. @unvalidated that the quote
+       style matters to Impact's checker: the two forms are the same element
+       to any HTML parser, and only a checker that string-matches the
+       snippet would tell them apart. That is the reason for writing it
+       exactly rather than trusting it to be equivalent.
 
        Safe to delete once Impact shows the site as verified? Not known.
        Impact may re-check, so leave it in place unless Impact says
        otherwise. */
   }
-  <meta
+  <Fragment
     slot="head"
-    name="impact-site-verification"
-    value="ef20c667-05ef-4435-af33-c57e73b5f39c"
+    set:html={"<meta name='impact-site-verification' value='ef20c667-05ef-4435-af33-c57e73b5f39c'>"}
   />
-  <p hidden>Impact-Site-Verification: ef20c667-05ef-4435-af33-c57e73b5f39c</p>
   <header class="hero">
     <Contours />
     <div class="wrap">

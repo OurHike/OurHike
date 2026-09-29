@@ -129,11 +129,22 @@
       "release": "v1.3.3",
       "document": "v1.3.3.json",
       "published": "2026-09-29",
-      "superseded": null,
+      "superseded": "2026-09-29",
       "pinned": false,
       "note": "Kuwohi, hotfix (RELEASING.md 11a). Cut from v1.3.2 rather than main, carrying only #1710's change to site/. Added on the release branch before the merge, same reason as every prior entry: `check_openapi_compat.py --write` serializes the working tree.",
       "refreshed": [
         "2026-09-29, added by the v1.3.3 release train. v1.3.2's `superseded` is set to the same date by this change. The document is byte-identical to v1.3.2.json (`cmp` exit 0), as it must be: `git diff --stat v1.3.2..release/v1.3.3 -- backend/` is empty. `published` is the day this entry was written; the GitHub release's date replaces it if the two differ."
+      ]
+    },
+    {
+      "release": "v1.3.4",
+      "document": "v1.3.4.json",
+      "published": "2026-09-29",
+      "superseded": null,
+      "pinned": false,
+      "note": "Kuwohi, hotfix (RELEASING.md 11a). Cut from v1.3.3, carrying only a change to site/: Impact's meta tag served exactly as Impact gives it. Added on the release branch before the merge, same reason as every prior entry: `check_openapi_compat.py --write` serializes the working tree.",
+      "refreshed": [
+        "2026-09-29, added by the v1.3.4 release train. v1.3.3's `superseded` is set to the same date by this change. The document is byte-identical to v1.3.3.json (`cmp` exit 0), as it must be: `git diff --stat v1.3.3..release/v1.3.4 -- backend/app` is empty."
       ]
     }
   ]

@@ -75,3 +75,24 @@ def test_a_point_lands_in_the_web_mercator_tile_that_contains_it():
 
     assert (tx, ty) == (0, 0)
     assert px == 128 and 0 < py < 256
+
+
+def test_the_first_cache_layout_migrates_hour_by_hour():
+    run = "2026-07-23T12:00:00+00:00"
+    old = {
+        run: {
+            "MWN": [["2026-07-24T01:00:00+00:00", 8.3], ["2026-07-24T02:00:00+00:00", 8.1]],
+            "BML": [["2026-07-24T01:00:00+00:00", 15.0]],
+        }
+    }
+
+    assert spike.migrate(old) == {run: {"13": {"MWN": 8.3, "BML": 15.0}, "14": {"MWN": 8.1}}}
+
+
+def test_a_missing_archive_file_is_a_missing_hour_not_a_filled_one():
+    run = datetime(2026, 9, 14, 12, tzinfo=UTC)
+    cached = {run.isoformat(): {"13": None, "14": {"MWN": 50.0, "BML": None}, "15": {"MWN": 51.0}}}
+
+    assert spike.series(cached, run, "MWN") == [(run + timedelta(hours=14), 50.0), (run + timedelta(hours=15), 51.0)]
+    assert spike.series(cached, run, "BML") == []
+    assert spike.missing_files(cached) == [f"{run.isoformat()} +13h"]

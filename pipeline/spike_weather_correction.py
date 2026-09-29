@@ -64,6 +64,7 @@ import argparse
 import io
 import json
 import math
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -199,15 +200,19 @@ def _session() -> requests.Session:
 
 
 def _get(session: requests.Session, url: str, **kw) -> requests.Response:
+    """GET with four tries on transient faults. A 404 raises at once: the
+    archive does not have that file, and asking again will not change it."""
     for attempt in range(4):
         try:
             response = session.get(url, timeout=120, **kw)
         except requests.ConnectionError:
+            time.sleep(2**attempt)
             continue
         if response.status_code in (200, 206):
             return response
         if response.status_code == 404:
             response.raise_for_status()
+        time.sleep(2**attempt)
     raise requests.ConnectionError(f"gave up on {url}")
 
 
@@ -254,38 +259,76 @@ def sample_nbm(session, run: datetime, hour: int, reads: dict) -> dict[str, floa
     return out
 
 
-def archive(model: str, run_list: list[datetime], reads: dict) -> dict[str, dict[str, list]]:
-    """{run iso: {sid: [[valid iso, value], ...]}}, cached per run."""
-    path = CACHE / f"archive_{model}_{run_list[0]:%Y%m%d}_{run_list[-1]:%Y%m%d}.json"
-    cached = json.loads(path.read_text()) if path.exists() else {}
+def migrate(old: dict) -> dict[str, dict[str, dict | None]]:
+    """The first cache layout ({run: {sid: [[valid, value], ...]}}) in the
+    current one, keeping only the hours it actually holds."""
+    out: dict[str, dict[str, dict | None]] = {}
+    for run_iso, by_sid in old.items():
+        run = datetime.fromisoformat(run_iso)
+        for sid, series in by_sid.items():
+            for valid, value in series:
+                hour = int((datetime.fromisoformat(valid) - run).total_seconds() // 3600)
+                out.setdefault(run_iso, {}).setdefault(str(hour), {})[sid] = value
+    return out
+
+
+def archive(model: str, run_list: list[datetime], reads: dict) -> dict[str, dict[str, dict | None]]:
+    """{run iso: {forecast hour: {sid: value}, or None where the archive has
+    no file}}, cached per run and hour so an interrupted run resumes exactly
+    where it stopped."""
+    stem = f"{model}_{run_list[0]:%Y%m%d}_{run_list[-1]:%Y%m%d}"
+    path = CACHE / f"archive_v2_{stem}.json"
+    old = CACHE / f"archive_{stem}.json"
+    if path.exists():
+        cached = json.loads(path.read_text())
+    elif old.exists():
+        cached = migrate(json.loads(old.read_text()))
+    else:
+        cached = {}
     sampler = sample_hrrr if model == "hrrr" else sample_nbm
-    todo = [run for run in run_list if run.isoformat() not in cached]
     session = _session()
+    jobs = [(run, h) for run in run_list for h in FORECAST_HOURS if str(h) not in cached.get(run.isoformat(), {})]
 
     def one(job):
         run, hour = job
-        return run, hour, sampler(session, run, hour, reads)
+        try:
+            return run, hour, sampler(session, run, hour, reads)
+        except requests.HTTPError as error:
+            if error.response is not None and error.response.status_code == 404:
+                return run, hour, None
+            raise
 
-    jobs = [(run, hour) for run in todo for hour in FORECAST_HOURS]
+    CACHE.mkdir(parents=True, exist_ok=True)
     with ThreadPoolExecutor(THREADS) as pool:
         for n, (run, hour, values) in enumerate(pool.map(one, jobs), 1):
-            valid = (run + timedelta(hours=hour)).isoformat()
-            entry = cached.setdefault(run.isoformat(), {})
-            for sid, v in values.items():
-                entry.setdefault(sid, []).append([valid, v])
+            cached.setdefault(run.isoformat(), {})[str(hour)] = values
             if n % 64 == 0:
                 print(f"  {model}: {n}/{len(jobs)} messages")
                 path.write_text(json.dumps(cached))
-    CACHE.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(cached))
     return cached
+
+
+def series(cached: dict, run: datetime, sid: str) -> list[tuple[datetime, float]]:
+    """One station's hours from one run, missing files and missing values
+    left out rather than filled."""
+    hours = cached.get(run.isoformat(), {})
+    return [
+        (run + timedelta(hours=int(h)), values[sid])
+        for h, values in sorted(hours.items(), key=lambda kv: int(kv[0]))
+        if values is not None and values.get(sid) is not None
+    ]
+
+
+def missing_files(cached: dict) -> list[str]:
+    return sorted(f"{run} +{h}h" for run, hours in cached.items() for h, v in hours.items() if v is None)
 
 
 # --------------------------------------------------------------------------
 
 
-def readings(series: list, transform) -> list[tuple[datetime, float]]:
-    return [(datetime.fromisoformat(t), transform(v)) for t, v in series if v is not None]
+def readings(pairs: list[tuple[datetime, float]], transform) -> list[tuple[datetime, float]]:
+    return [(t, transform(v)) for t, v in pairs]
 
 
 def main() -> None:
@@ -310,6 +353,9 @@ def main() -> None:
 
     hrrr = archive("hrrr", run_list, h_reads)
     nbm = archive("nbm", run_list, n_reads)
+    for model, cached in (("HRRR", hrrr), ("NBM", nbm)):
+        gone = missing_files(cached)
+        print(f"{model}: {len(gone)} of {len(run_list) * len(FORECAST_HOURS)} forecast files missing from the archive {gone[:6]}")
 
     variants = [
         "NBM raw",
@@ -330,8 +376,8 @@ def main() -> None:
         fc: dict[str, dict[date, tuple[float, float]]] = {v: {} for v in variants}
         for run in run_list:
             day = scored_day(run)
-            h_series = hrrr.get(run.isoformat(), {}).get(s.sid, [])
-            n_series = nbm.get(run.isoformat(), {}).get(s.sid, [])
+            h_series = series(hrrr, run, s.sid)
+            n_series = series(nbm, run, s.sid)
             pairs = {
                 "NBM raw": readings(n_series, lambda f: f),
                 "NBM corrected 6.5": readings(n_series, lambda f: c_to_f(correct((f - 32) * 5 / 9, square_h, point_h))),

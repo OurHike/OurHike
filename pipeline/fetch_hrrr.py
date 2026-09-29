@@ -10,11 +10,13 @@ once per data release.
 WHICH RUN. HRRR runs every hour, but only the 00, 06, 12 and 18 UTC runs reach
 48 hours; the rest stop at 18 (WEATHER.md §2). The job takes the newest of
 those four whose 48 forecast hours are all in the bucket, and goes back at
-most `MAX_RUNS_BACK` of them. Measured 2026-09-29: the 06Z run's 49 surface
-files (hours 0-48) were all present by early afternoon UTC, and the 12Z run
-had 3 at the same moment - so the run used is usually 6 to 8 hours old, and
-covers about 40 of the next 48 hours (WEATHER.md §3 reasoned the same). The
-phone uses HRRR for each hour it covers and NBM after.
+most `MAX_RUNS_BACK` of them. Measured 2026-09-29: at about 13:40 UTC the 12Z
+run had 3 of its 49 surface files (hours 0-48), and at 14:08 the job found it
+complete - so a 48-hour run lands roughly two hours after its nominal time,
+on one day's observation. The run used is then 2 to 8 hours old depending on
+where GitHub's clock falls against the six-hourly runs, and covers 40 to 46
+of the next 48 hours (WEATHER.md §3 reasoned the 8-hour end). The phone uses
+HRRR for each hour it covers and NBM after.
 
 WHAT IS DOWNLOADED. One GRIB2 message per forecast hour, `TMP:2 m above
 ground`, by byte range from the `.idx` beside each file: 48 messages, 58.5 MB,

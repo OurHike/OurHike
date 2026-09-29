@@ -115,7 +115,7 @@
       "blaze": "none",
       "mark_state": "not_asked",
       "badge_tier": "through_route",
-      "note": "NPS-administered; the National Scenic Trail marker is federal signage."
+      "note": "NPS-administered; the National Scenic Trail marker is federal signage. THE OFFICIAL NATIONAL TRAIL MARKER IS NOT PUBLIC DOMAIN, checked 2026-09-29: it is prescribed by the National Park Service under the National Trails System Act, protected by 18 U.S.C. 701 (official badges and insignia), and its use is authorized by the trail's ADMINISTRATOR rather than being free because a federal body drew it."
     },
     {
       "slug": "natr",
@@ -126,7 +126,7 @@
       "blaze": "none",
       "mark_state": "not_asked",
       "badge_tier": "through_route",
-      "note": "NPS-administered; federal signage."
+      "note": "NPS-administered; federal signage. THE OFFICIAL NATIONAL TRAIL MARKER IS NOT PUBLIC DOMAIN, checked 2026-09-29: it is prescribed by the National Park Service under the National Trails System Act, protected by 18 U.S.C. 701 (official badges and insignia), and its use is authorized by the trail's ADMINISTRATOR rather than being free because a federal body drew it."
     },
     {
       "slug": "long-path",
@@ -313,7 +313,7 @@
       "blaze": "white",
       "mark_state": "not_asked",
       "badge_tier": "through_route",
-      "note": "A Tennessee State Park trail; the marker is state signage."
+      "note": "A Tennessee State Park trail; the marker is state signage. A STATE AGENCY MARKER IS STILL SOMEBODY'S MARK, and nobody has asked. Described here as signage to say who draws it, never to say it may be copied."
     },
     {
       "slug": "lsht",
@@ -346,7 +346,7 @@
       "blaze": "yellow",
       "mark_state": "not_asked",
       "badge_tier": "through_route",
-      "note": "PA DCNR state-park signage."
+      "note": "PA DCNR state-park signage. A STATE AGENCY MARKER IS STILL SOMEBODY'S MARK, and nobody has asked. Described here as signage to say who draws it, never to say it may be copied."
     },
     {
       "slug": "standing-stone",
@@ -478,7 +478,7 @@
       "blaze": "white",
       "mark_state": "not_asked",
       "badge_tier": "through_route",
-      "note": "Indiana DNR signage."
+      "note": "Indiana DNR signage. A STATE AGENCY MARKER IS STILL SOMEBODY'S MARK, and nobody has asked. Described here as signage to say who draws it, never to say it may be copied."
     },
     {
       "slug": "sd-centennial",
@@ -489,7 +489,7 @@
       "blaze": "none",
       "mark_state": "not_asked",
       "badge_tier": "through_route",
-      "note": "South Dakota Game, Fish and Parks signage."
+      "note": "South Dakota Game, Fish and Parks signage. A STATE AGENCY MARKER IS STILL SOMEBODY'S MARK, and nobody has asked. Described here as signage to say who draws it, never to say it may be copied."
     },
     {
       "slug": "bst",
@@ -511,7 +511,7 @@
       "blaze": "none",
       "mark_state": "not_asked",
       "badge_tier": "through_route",
-      "note": "NPS Santa Monica Mountains signage."
+      "note": "NPS Santa Monica Mountains signage. THE OFFICIAL NATIONAL TRAIL MARKER IS NOT PUBLIC DOMAIN, checked 2026-09-29: it is prescribed by the National Park Service under the National Trails System Act, protected by 18 U.S.C. 701 (official badges and insignia), and its use is authorized by the trail's ADMINISTRATOR rather than being free because a federal body drew it."
     },
     {
       "slug": "black-canyon",
@@ -522,7 +522,7 @@
       "blaze": "none",
       "mark_state": "not_asked",
       "badge_tier": "through_route",
-      "note": "BLM Arizona signage."
+      "note": "BLM Arizona signage. THE OFFICIAL NATIONAL TRAIL MARKER IS NOT PUBLIC DOMAIN, checked 2026-09-29: it is prescribed by the National Park Service under the National Trails System Act, protected by 18 U.S.C. 701 (official badges and insignia), and its use is authorized by the trail's ADMINISTRATOR rather than being free because a federal body drew it."
     },
     {
       "slug": "jmt",
@@ -744,5 +744,6 @@
       "badge_tier": "through_route",
       "note": "Route-only: no maintaining organisation, no mark to follow and no geometry OurHike draws. The emblem is OurHike's own and the dotted ground is the honest part - it says unmaintained route rather than trail."
     }
-  ]
+  ],
+  "_what_research_found_2026_09_29": "The maintainer asked whether the logos could simply be taken from the organizations' own websites. Researched rather than assumed, and the answer is firmer than 'unlicensed':\n(1) THE OFFICIAL NATIONAL SCENIC AND HISTORIC TRAIL MARKERS ARE FEDERALLY PROTECTED INSIGNIA. Each is prescribed by NPS in the Federal Register under the National Trails System Act - the Appalachian Trail's image was published by the Department of the Interior in 1970, and there are separate notices for New England, Ice Age, Natchez Trace, Potomac Heritage, Trail of Tears, Oregon and Butterfield Overland among others. 18 U.S.C. 701 protects official badges and insignia, and authorization to use a marker is controlled by that trail's ADMINISTRATOR. So a federal marker is not a public-domain federal work, and an earlier note in this file that called such markers 'federal signage' has been corrected to say so.\n(2) PCTA PROHIBITS USE OF ITS MARKS WITHOUT EXPRESS PRIOR WRITTEN CONSENT, in its own terms of service, and publishes where to ask - one address for the PCT diamond and the PCTA logo, another for the PCT emblem. That is a refusal by default and a route, which is more than most rows here have.\n(3) NPS LICENSING LETS ONLY NCTA PRODUCE ITEMS CARRYING THE NORTH COUNTRY TRAIL EMBLEM, so even the trail's own association holds it under an agreement rather than owning it outright.\nWHAT THIS MEANS FOR THIS FILE: downloading a logo from an organization's website would not change any mark_state, because a logo being published is not a grant to redistribute it inside an offline bundle on a hiker's phone - which is the use sources.json's org_marks block describes and refuses. The research moves rows from 'nobody has asked' towards 'here is who grants it and on what terms', which is the only thing that does move them."
 }

@@ -206,9 +206,10 @@ keeps this outside the argument above rather than a reversal of it.
 ## 3. Closed trails — the closure vocabulary, reused
 
 OPRHP marks trails `Closed` long-term (125 statewide) — distinct from the live
-temporary-closures layer. They ship, drawn with **the closure treatment**: the red
-barrier tape, the map's one permitted non-solid trail-line treatment (WIREFRAMES.md §3's
-stated exception, §7's spec). One vocabulary for "do not walk this", which is the argument that
+temporary-closures layer. They ship, drawn with **the closure treatment**: the trail
+crossed out (since 2026-09-26, [#1677](https://github.com/OurHike/OurHike/issues/1677); red
+barrier tape before that), the map's one permitted non-solid trail-line treatment
+(WIREFRAMES.md §3's stated exception, §7's spec). One vocabulary for "do not walk this", which is the argument that
 won: a hiker learns one mark.
 
 **Built 2026-08-24 ([#964](https://github.com/OurHike/OurHike/issues/964)), and it turned out to be two feeds rather than one.** OPRHP's long-term `Closed` status ships on the line as this section describes. Their _temporary_ closures do not work that way at all: they are polygons over ground, with the reason as prose and no dates, and two of the four do not touch the A.T. — so they are derived onto the trail lines by intersection, split at the boundary, and carry `closure_kind: "area"` against the status feed's `"long_term"`. That property exists because this paragraph asks the sheet to say different things about the two, and `trail_status` cannot tell them apart. **The sheet's half landed with [#1142 — The tapped-line sheet reads a temporary closure in the long-term voice](https://github.com/OurHike/OurHike/issues/1142)**: an area-derived record's sentence is now the closing organization's — "Temporarily closed by …" with their reason verbatim and no date, since the layer publishes none — attributed through `closure_source` (shipped since the same change) and the published stewards table, never through the trail line's own org.
@@ -218,6 +219,14 @@ trail's sheet says "Closed by NYS OPRHP" with the layer's own edit date; a tempo
 closure's says its reason and reporting date as today (ClosureSheet). `Proposed` (19) and
 blank/Unknown (24) segments do not ship at all — a proposed trail is not ground, and an
 unknown status drawn as walkable is a guess (omit rather than guess).
+
+**A trailhead is crossed out when every trail in reach is** (2026-09-28,
+[#1695 — Draw a trailhead whose trails are all closed with a ✕](https://github.com/OurHike/OurHike/issues/1695)).
+`export_nearby_poi.mark_closed_trailheads` reads this section's `trail_status` back off
+`nearby_trails.geojson`. It flags a trailhead `trails_closed_within_m` when every line within
+`TRAILHEAD_TRAIL_RADIUS_M` (100 m) is closed and there is at least one. The A.T.'s raw
+lines count as open, and both kinds of closure count the same. WIREFRAMES.md §7 has the
+pin, the maintainer's choice and the caveat. The radius table lives on the constant.
 
 ## 4. Blazes beyond seven — the palette grows, under governance
 

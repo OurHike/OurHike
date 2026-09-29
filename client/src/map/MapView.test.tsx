@@ -23,6 +23,7 @@ import {
   TRAIL_OVERVIEW_LAYER_ID,
   sketchWidthExpression,
   plainLineColor,
+  solidDashExpression,
 } from './style'
 import {
   blazeChipImageId,
@@ -38,7 +39,6 @@ import {
   poiFilter,
   POI_ID_PROPERTY,
   POI_DOT_LAYER_ID,
-  POI_STALENESS_LAYER_ID,
   POI_LAYER_ID,
   POI_SOURCE_ID,
 } from './poiLayers'
@@ -663,14 +663,10 @@ describe('POI pins', () => {
 
   /** Real MapLibre has its layers and sources by the time `load` fires. */
   function loadStyle(map: MockMap): void {
-    // All three waypoint ranks (#597, rings with #759): attachPoiFilter waits
-    // for every one, so a stub holding only pins never filters at all.
-    map.layerIds = [
-      POI_DOT_LAYER_ID,
-      POI_STALENESS_LAYER_ID,
-      POI_LAYER_ID,
-      WARNING_LAYER_ID,
-    ]
+    // Both waypoint ranks (#597; the rings are part of the pins since #1676):
+    // attachPoiFilter waits for both, so a stub holding only pins never
+    // filters at all.
+    map.layerIds = [POI_DOT_LAYER_ID, POI_LAYER_ID, WARNING_LAYER_ID]
     map.sourceIds = [
       POI_SOURCE_ID,
       CLOSURE_SOURCE_ID,
@@ -1336,8 +1332,9 @@ describe('the taken trail (#1306)', () => {
     }
     const sketch = style.layers.find((layer) => layer.id === TRAIL_OVERVIEW_LAYER_ID)
     const taken = style.layers.find((layer) => layer.id === BLAZE_LAYER_ID)
-    // Solid either way since 2026-09-10 (map/style.ts's header, rule 2).
-    expect(sketch?.paint?.['line-dasharray']).toBeUndefined()
+    // Solid either way since 2026-09-10 (map/style.ts's header, rule 2),
+    // spelled as SOLID_DASH per feature rather than as no dash (#1698).
+    expect(sketch?.paint?.['line-dasharray']).toEqual(solidDashExpression())
     expect(sketch?.paint?.['line-width']).toEqual(sketchWidthExpression([]))
     expect(taken?.filter).toEqual(chosenSystemFilter([]))
   })

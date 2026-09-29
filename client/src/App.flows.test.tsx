@@ -362,19 +362,22 @@ describe('tapping a pin on the map', () => {
 
     await tapPin({ [POI_ID_PROPERTY]: SHELTER.id, poi_type: 'shelter' })
     const card = await screen.findByRole('dialog', { name: /waypoint/i })
-    // The card peeks (#941); the strip of parts is in the record behind the
-    // pull, so reaching the privy now starts with opening the card. That the
-    // gesture exists at all is still what this test is about.
-    await user.click(within(card).getByTestId('poi-card-expand'))
-
-    // Both parts of the place, named as the site they belong to.
-    const strip = within(card).getByRole('group', {
+    // Both parts of the place, named as the site they belong to - on the peek
+    // the tap opens, with nothing pulled open first (#1706). #941 had put the
+    // strip behind the pull, and a tapped shelter then named none of its parts.
+    const strip = within(within(card).getByTestId('poi-card-peek')).getByRole('group', {
       name: 'Parts of Chairback Gap Lean-to',
     })
     expect(within(strip).getAllByRole('button')).toHaveLength(2)
 
     await user.click(within(strip).getByRole('button', { name: 'Privy 131 ft' }))
 
+    expect(
+      within(card).getByRole('heading', { name: 'Chairback Gap Privy' }),
+    ).toBeInTheDocument()
+    // The provenance is in the record, and the pull opens on the part picked on
+    // the peek rather than going back to the shelter.
+    await user.click(within(card).getByTestId('poi-card-expand'))
     expect(
       within(card).getByRole('heading', { name: 'Chairback Gap Privy' }),
     ).toBeInTheDocument()

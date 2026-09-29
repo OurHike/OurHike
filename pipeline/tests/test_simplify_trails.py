@@ -269,3 +269,98 @@ def test_a_zero_tolerance_changes_nothing():
 def test_simplify_rejects_a_negative_tolerance():
     with pytest.raises(ValueError):
         simplify_records([_record(_dense_line())], tolerance_m=-1)
+
+
+# --- the batch form (#1661) ---------------------------------------------------
+#
+# simplify_records runs its parse, reprojection, simplification and WKT as one
+# array call each, and the drawable check as _drawable_all. The published
+# files are compared by hash, so these hold the batch to the per-record loop it
+# replaced to the character, not to a tolerance.
+
+
+def _simplify_one_record_at_a_time(records, tolerance_m):
+    """simplify_records as it was before #1661: one parse, two ops.transform
+    calls, one simplify and one .wkt per record."""
+    from shapely import wkt as shapely_wkt
+    from shapely.ops import transform as shapely_transform
+
+    from export_trails import _TO_GEOGRAPHIC, _TO_METRIC
+
+    simplified = []
+    for record in records:
+        geom = shapely_wkt.loads(record["wkt"])
+        reduced = shapely_transform(
+            _TO_GEOGRAPHIC,
+            shapely_transform(_TO_METRIC, geom).simplify(tolerance_m, preserve_topology=False),
+        )
+        if reduced.is_empty or not _has_drawable_geometry(reduced):
+            reduced = geom
+        simplified.append({**record, "wkt": reduced.wkt})
+    return simplified
+
+
+def _awkward_lines(seed):
+    """Wandering lines at full precision, lines short enough to collapse at
+    1 m, a MultiLineString with one collapsing part, and a line with Z."""
+    import random
+
+    rng = random.Random(seed)
+
+    def wander(steps, step_deg):
+        lon, lat = rng.uniform(-74.3, -73.9), rng.uniform(41.0, 41.4)
+        coords = [(lon, lat)]
+        for _ in range(steps):
+            lon += rng.uniform(-step_deg, step_deg)
+            lat += rng.uniform(-step_deg, step_deg)
+            coords.append((lon, lat))
+        return LineString(coords)
+
+    geoms = []
+    for n in range(400):
+        if n % 5 == 0:
+            geoms.append(MultiLineString([wander(rng.randint(1, 50), 0.0005), wander(rng.randint(1, 50), 0.0005)]))
+        elif n % 7 == 0:
+            geoms.append(wander(rng.randint(1, 4), 0.000002))  # a few centimetres: collapses at 1 m
+        else:
+            geoms.append(wander(rng.randint(1, 200), 0.0005))
+    # A closed loop inside the tolerance is what actually collapses: Douglas-
+    # Peucker keeps its two endpoints, which are one point. 0.2 m across at
+    # 1 m; 50 m across at 100 m.
+    for size_deg in (0.000002, 0.0005):
+        lon, lat = rng.uniform(-74.3, -73.9), rng.uniform(41.0, 41.4)
+        loop = LineString([(lon, lat), (lon + size_deg, lat), (lon + size_deg, lat + size_deg), (lon, lat)])
+        geoms.extend([loop, MultiLineString([wander(30, 0.0005), loop])])
+    geoms.append(LineString([(-74.0, 41.0, 300.0), (-74.00001, 41.00001, 301.0), (-74.01, 41.01, 320.0)]))
+    return geoms
+
+
+@pytest.mark.parametrize("tolerance_m", [DEFAULT_SIMPLIFY_TOLERANCE_M, 100.0])
+def test_batched_simplify_records_writes_what_the_per_record_loop_wrote(tolerance_m):
+    records = [_record(geom, record_id=f"t{n}") for n, geom in enumerate(_awkward_lines(1661))]
+
+    assert simplify_records(records, tolerance_m) == _simplify_one_record_at_a_time(records, tolerance_m)
+
+
+def test_drawable_all_answers_what_has_drawable_geometry_answers():
+    import numpy as np
+
+    from export_trails import _drawable_all
+
+    same_point = LineString([(-74.0, 41.0), (-74.0, 41.0)])
+    geoms = [
+        *_awkward_lines(7),
+        same_point,
+        LineString([(-74.0, 41.0), (-74.0, 41.0), (-74.0, 41.0)]),
+        LineString([(0.0, 0.0), (-0.0, 0.0)]),  # a set says these are one point, and so does numpy
+        MultiLineString([[(-74.0, 41.0), (-74.1, 41.1)], [(-74.2, 41.2), (-74.2, 41.2)]]),
+        MultiLineString([[(-74.0, 41.0), (-74.1, 41.1)], [(-74.2, 41.2), (-74.3, 41.3)]]),
+        LineString([(-74.0, 41.0, 1.0), (-74.0, 41.0, 2.0)]),  # distinct only in Z: the set counts two
+    ]
+    empties = [LineString(), MultiLineString()]
+
+    answers = _drawable_all(np.array(geoms + empties, dtype=object)).tolist()
+
+    assert answers[: len(geoms)] == [_has_drawable_geometry(geom) for geom in geoms]
+    assert answers[len(geoms) :] == [False, False]
+    assert not answers[geoms.index(same_point)]

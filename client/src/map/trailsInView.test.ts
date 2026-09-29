@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { MockMap } from '../test/mocks/maplibre-gl'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import {
@@ -27,6 +27,7 @@ import {
   trailMarkImageId,
 } from './trailBadges'
 import { POI_LAYER_ID } from './poiLayers'
+import { SETTLE_MS } from './settle'
 import { WARNING_LAYER_ID } from './warningLayers'
 
 // Which named trails the map is drawing, and where each through-route's
@@ -448,7 +449,55 @@ describe('attachTrailsInView', () => {
 
     detach()
     expect(map.listenerCount('idle')).toBe(0)
+    expect(map.listenerCount('render')).toBe(0)
     expect(map.listenerCount('moveend')).toBe(0)
+  })
+})
+
+describe('a list that cannot stay empty while a tile hangs (#1696)', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('fills the list and the badge once the map stops drawing, with no idle and no moveend', () => {
+    // THE BUG, as traced 2026-09-26 over Manhattan at z11 with one basemap
+    // tile's request left hanging: measured once at 2.1 s before any line
+    // had drawn, then nothing - `idle` waits on the hung tile, and a phone
+    // got no `moveend` once the lines were in.
+    vi.useFakeTimers()
+    const map = mapWith({ [BLAZE_LAYER_ID]: [] })
+    const onChange = vi.fn()
+    attachTrailsInView(map as unknown as MapLibreMap, onChange)
+    expect(onChange).toHaveBeenLastCalledWith([])
+
+    // The trail lines arrive and draw; the frames stop.
+    map.renderedFeatures.set(BLAZE_LAYER_ID, [AT])
+    map.emit('render')
+    vi.advanceTimersByTime(SETTLE_MS)
+
+    expect(onChange.mock.lastCall?.[0].map((t: { name: string }) => t.name)).toEqual([
+      'Appalachian Trail',
+    ])
+    const pushed = map.sourceData.get(TRAIL_BADGE_SOURCE_ID) as { features: unknown[] }
+    expect(pushed.features).toHaveLength(1)
+  })
+
+  it('measures after the frames stop, not on each one', () => {
+    // A pan is dozens of frames, and each measurement here is a rendered
+    // feature query plus the badge's placement search.
+    vi.useFakeTimers()
+    const map = mapWith({ [BLAZE_LAYER_ID]: [AT] })
+    attachTrailsInView(map as unknown as MapLibreMap, vi.fn())
+    const afterAttach = map.featureQueries.length
+
+    for (let frame = 0; frame < 30; frame += 1) {
+      map.emit('render')
+      vi.advanceTimersByTime(16)
+    }
+    expect(map.featureQueries.length).toBe(afterAttach)
+
+    vi.advanceTimersByTime(SETTLE_MS)
+    expect(map.featureQueries.length).toBeGreaterThan(afterAttach)
   })
 })
 

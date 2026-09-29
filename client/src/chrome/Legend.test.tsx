@@ -8,7 +8,7 @@ import { HIDEABLE_TYPES } from '../lib/waypointVisibility'
 import { typeLabel } from './legendLabels'
 import { glyphPath, poiGlyphPath } from '../map/poiIcons'
 import { WARNING_GLYPH } from '../map/warningPin'
-import { CLOSURE_COLOR } from '../lib/closureStyle'
+import { CLOSURE_INK } from '../lib/closureStyle'
 import { blazePaintColor } from '../lib/blaze'
 
 // WIREFRAMES.md §2 (Legend) plus TESTING.md item 7. Two rules carry real
@@ -295,6 +295,18 @@ describe('every hideable category has a row, in view or not', () => {
     }
   })
 
+  it('has no Crossing row among the padded categories (#1674)', () => {
+    // The maintainer, 2026-09-26: "Crossings are cluttering the map. Remove
+    // the crossing from the legend and do not show on the map." The grid pads
+    // from HIDEABLE_TYPES, so the row goes when the type leaves POI_TYPES.
+    // A crossing a phone stored under an older build never gets this far:
+    // loadTrailData drops it (storedShapes.compat.test.ts).
+    render(<Legend {...PROPS} />)
+
+    expect(HIDEABLE_TYPES).not.toContain('crossing')
+    expect(screen.queryByRole('listitem', { name: /crossing/i })).toBeNull()
+  })
+
   it('turns off a category with nothing of it in view', async () => {
     // The whole point. `privy` appears nowhere in POINTS, so before this it had
     // no row and this tap had nothing to land on.
@@ -386,7 +398,7 @@ describe('every hideable category has a row, in view or not', () => {
     },
   )
 
-  it('still says the map is empty here, with eight rows of zero on screen', () => {
+  it('still says the map is empty here, with a row of zero for every category on screen', () => {
     // `isEmpty` is decided by the viewport, not by the grid. Decided by the grid
     // it would never be true again, and the sentence would be dead code that
     // still reads as live.
@@ -436,43 +448,42 @@ describe('legend icons are the map’s icons', () => {
     )
   })
 
-  it('draws the solid-rimmed pin even where the row counts an unverified point', () => {
+  it('draws the filled pin even where the row counts an unverified point', () => {
     // A key says what a category's symbol IS. Now that a row counts both
-    // confidences, a rim that broke whenever the points in view happened to be
-    // unconfirmed would change the symbol as the hiker panned - and this
+    // confidences, a pin that went hollow whenever the points in view happened
+    // to be unconfirmed would change the symbol as the hiker panned - and this
     // fixture's water row holds an unverified spring, so the assertion has
-    // something to catch. The broken rim still means what it means on the map,
-    // one pin at a time, where it is a fact about a place.
+    // something to catch. Hollow (#1682, the broken rim before it) still means
+    // what it means on the map, one pin at a time, where it is a fact about a
+    // place.
     render(<Legend {...PROPS} />)
 
-    expect(iconIn(rowFor('Water'))?.querySelector('.map-icon__edge')).not.toHaveAttribute(
-      'stroke-dasharray',
-    )
+    // The row's icon IS the pin's svg (it carries .legend__icon).
+    const icon = iconIn(rowFor('Water'))
+    expect(icon).toHaveAttribute('data-confidence', 'high')
+    expect(icon?.querySelector('.map-icon__ring')).toBeNull()
   })
 
-  it('draws a closure as the barred band it is, not as a pin it never was', () => {
+  it('draws a closure as the crossed-out trail it is, not as a pin it never was', () => {
     render(<Legend {...PROPS} />)
     const icon = iconIn(rowFor('Closure'))
 
-    // A FILL RATHER THAN A STROKE SINCE #1599: the swatch's ticks are rects
-    // square to the band, because the map's are - it drew leaning strokes
-    // while the map drew barrier tape, and the tape went when its diagonals
-    // tore at every bend.
-    expect(icon?.querySelector('.map-icon__closure-band')).toHaveAttribute(
-      'fill',
-      CLOSURE_COLOR,
+    // The ✕ on a dotted trace, in the closure ink (#1677) - the swatch
+    // draws what the map draws, and the map no longer bands a closure in red.
+    expect(icon?.querySelector('.map-icon__closure-cross')).toHaveAttribute(
+      'stroke',
+      CLOSURE_INK,
     )
     expect(icon?.querySelector('.map-icon__disc')).toBeNull()
   })
 
-  it('lays the closure swatch on the paper the band takes beside it (#1575)', () => {
-    // The band's ground follows closureTapeGround, so the swatch beside a
-    // night map is the day paper under red ticks since 2026-09-18 - red
-    // and white, the way the canvas draws it there now.
+  it('lays the closure swatch on the paper the map knocks a closure out to (#1575)', () => {
+    // The paper follows closureTapeGround, so the swatch beside a night map
+    // is the day paper since 2026-09-18, the way the canvas draws it there.
     render(<Legend {...PROPS} sheetAppearance={{ theme: 'dark' }} />)
 
     expect(
-      iconIn(rowFor('Closure'))?.querySelector('.map-icon__closure-ground'),
+      iconIn(rowFor('Closure'))?.querySelector('.map-icon__closure-paper'),
     ).toHaveAttribute('fill', MAP_BACKDROP.light)
   })
 

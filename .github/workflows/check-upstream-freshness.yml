@@ -191,6 +191,11 @@ jobs:
 
             const stale = verdict.needs_refetch ?? []
             const unknown = verdict.unknown ?? []
+            // Sources nothing records on purpose (#1665 - topo quads while
+            // build-raster.yml is off, #855). Named below the table so the
+            // reason stays visible, but never a key: they cannot open or hold
+            // this issue open, because no fetch could change their answer.
+            const withdrawn = verdict.withdrawn ?? []
             const age = verdict.state_age_days
 
             await trackingIssue({github, context, core}, {
@@ -218,6 +223,13 @@ jobs:
                   '',
                   unknown.length
                     ? '`could not be checked` is not `fine`. A source nobody could verify is exactly how stale data survives, so it is listed rather than rounded down.'
+                    : '',
+                  '',
+                  withdrawn.length
+                    ? 'Not checked on purpose: ' + withdrawn.map(source => {
+                        const detail = (verdict.sources ?? []).find(s => s.source === source)?.detail
+                        return `\`${source}\`` + (detail ? ` - ${cell(detail)}` : '')
+                      }).join('; ') + '.'
                     : '',
                   '',
                   'Changed data is not published data — this job holds no R2 credentials. Run **Publish vector data** to rebuild.',

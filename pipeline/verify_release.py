@@ -86,7 +86,7 @@ import requests
 
 from lib import data_env, strict_json
 from lib.completeness import DROP_THRESHOLD, count_problems
-from lib.poi_schema import ALLOWED_EMPTY_POI_TYPES
+from lib.poi_schema import ALLOWED_EMPTY_POI_TYPES, WITHDRAWN_POI_TYPES
 from lib.releases import (
     RELEASE_INDEX_KEY,
     RELEASE_MANIFEST_NAME,
@@ -837,8 +837,9 @@ def check_vector(base: str, keys: list[str], session=None) -> list[dict]:
                 reports.append(_report(16, key, OK, "every trail feature carries a blaze_color"))
 
     # 14. Per-type minimums, sharing export_poi.py's own exception
-    # (lib.poi_schema.ALLOWED_EMPTY_POI_TYPES - crossing and trailhead as of
-    # this writing) rather than a hand-copy: check_output_quality.py kept
+    # (lib.poi_schema.ALLOWED_EMPTY_POI_TYPES - trailhead as of this
+    # writing; crossing was the first, until #1674 withdrew it) rather than
+    # a hand-copy: check_output_quality.py kept
     # its own copy too, `trailhead` joined the real one in #1197 and reached
     # neither copy, and a v1.2.1 UA release failed this exact check over an
     # export that had nothing wrong with it (#1225/#1227/#1228 is the first
@@ -971,10 +972,20 @@ def check_nothing_lost(previous_id: str, previous_manifest: dict, current_manife
     as a 404 partway through a download, and it is invisible to every other
     check here - all of which ask about what IS published rather than about
     what used to be.
+
+    EXCEPT A WITHDRAWN POI TYPE (#1674, lib.poi_schema.WITHDRAWN_POI_TYPES),
+    which leaves on purpose and is reported as such rather than failed. The
+    404 this check guards against cannot happen for one: every build reads
+    the release folder it pins, and a build that asks for poi_crossing.*
+    pins a release that still holds it. A build pinned to THIS release is
+    one that no longer asks - verify_release's check 2 already holds every
+    key the client does ask for.
     """
     before = set((previous_manifest.get("artifacts") or {}).keys())
     now = set((current_manifest.get("artifacts") or {}).keys())
-    lost = sorted(before - now)
+    withdrawn_keys = {f"poi_{poi_type}.{kind}" for poi_type in WITHDRAWN_POI_TYPES for kind in ("geojson", "fgb")}
+    withdrawn = sorted((before - now) & withdrawn_keys)
+    lost = sorted(before - now - withdrawn_keys)
 
     if lost:
         return _report(
@@ -983,6 +994,14 @@ def check_nothing_lost(previous_id: str, previous_manifest: dict, current_manife
             FAILED,
             f"{len(lost)} artifact(s) in {previous_id} are absent from this release: {', '.join(lost[:5])}. "
             "A client that had one of these will 404 on it.",
+        )
+    if withdrawn:
+        return _report(
+            3,
+            f"(since {previous_id})",
+            OK,
+            f"every artifact in {previous_id} is still here except {', '.join(withdrawn)}, "
+            "withdrawn on purpose (lib/poi_schema.WITHDRAWN_POI_TYPES)",
         )
     return _report(3, f"(since {previous_id})", OK, f"every one of {len(before)} artifact(s) in {previous_id} is still here")
 
@@ -1320,6 +1339,12 @@ def release_checks(base: str, manifest: dict, session=None, hash_artifacts: bool
 CELL_FAMILIES = ("at_basemap", "dem", "nearby_trails", "trail_graph")
 
 
+def _has_area(box: list[float]) -> bool:
+    """Whether a `[west, south, east, north]` box encloses any ground - the
+    same test client/src/lib/coverageCells.ts applies before keeping a cell."""
+    return box[0] < box[2] and box[1] < box[3]
+
+
 def check_cell_coverage(base: str, manifest: dict, session=None) -> list[dict]:
     """20. Every coverage cell the index names is really in the release, and
     every cell it names is a whole graticule square (#1175).
@@ -1395,15 +1420,33 @@ def check_cell_coverage(base: str, manifest: dict, session=None) -> list[dict]:
         # - the margin turned into a promise, which cut_cells.py's index
         # comment has refused since the family existed. Absent is ordinary:
         # every index cut before #1458 carries none.
+        #
+        # TWO FAULTS, NAMED APART (#1561), because they fail in opposite
+        # directions. A box with no area - west at or past east, or south at
+        # or past north - encloses no ground, so it UNDER-claims: the app
+        # leaves the cell out of its index (coverageCells.ts, #1559) and
+        # cut_cells.covered_bounds() refuses to build one. A box with area
+        # that reaches past `bounds` OVER-claims. The old single test caught
+        # the first only because its chained comparison also breaks on an
+        # inverted box, and then printed the second's sentence - so the 15
+        # empty boxes in release 2026-09-16-4 were reported as cells reaching
+        # into their neighbours, and nobody found anything wrong with them.
+        empty = [entry["name"] for entry in cells if entry.get("covered") and not _has_area(entry["covered"])]
         overreaching = [
             entry["name"]
             for entry in cells
             if entry.get("covered")
+            and _has_area(entry["covered"])
             and not (
                 entry["bounds"][0] <= entry["covered"][0] <= entry["covered"][2] <= entry["bounds"][2]
                 and entry["bounds"][1] <= entry["covered"][1] <= entry["covered"][3] <= entry["bounds"][3]
             )
         ]
+        if empty:
+            problems.append(
+                f"{len(empty)} cell(s) carry a covered box with no area (west at or past east, or south at or "
+                f"past north), so they claim no ground at all and the app leaves them out: {', '.join(empty[:4])}"
+            )
         if overreaching:
             problems.append(f"{len(overreaching)} cell(s) claim coverage outside their own square: {', '.join(overreaching[:4])}")
 

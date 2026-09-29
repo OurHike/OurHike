@@ -366,7 +366,10 @@ def our_features(posts: list[tuple[float, float, float]]) -> dict[str, list[floa
     features: dict[str, list[float]] = {"crossing": [], "site_water": [], "point_source": []}
 
     trail_water = json.loads(TRAIL_WATER_PATH.read_text(encoding="utf-8"))
-    for crossing in trail_water["crossings"]:
+    # `.get`, because a trail_water.json derived after #1674 carries no
+    # crossings at all. The spike's crossing column is then empty, which is
+    # what the app now publishes; its recorded 2026-08-14 results predate that.
+    for crossing in trail_water.get("crossings", []):
         features["crossing"].append(trail_mile(crossing["lat"], crossing["lon"], posts)[0])
     for site in trail_water["sites"]:
         if site.get("water"):

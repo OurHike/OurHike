@@ -151,6 +151,24 @@ def budget_for(club_id: str | None) -> int:
     return settings.assist_daily_token_budget if club_id is not None else settings.assist_public_daily_token_budget
 
 
+def spent_globally_today(db: Session) -> int:
+    """Every token every caller has spent in the last 24 hours, combined.
+
+    `spent_today` answers "has THIS club or THIS address spent its day" -
+    a question with as many answers as there are callers, because
+    `register_org` lets anybody create a club and every club gets its own
+    budget. This is the one number nothing else computes: the total the
+    Anthropic key is on the hook for today, whoever spent it.
+    """
+    since = utc_now() - BUDGET_WINDOW
+    return int(
+        db.query(func.coalesce(func.sum(AssistUsage.input_tokens + AssistUsage.output_tokens), 0))
+        .filter(AssistUsage.created_at >= since)
+        .scalar()
+        or 0
+    )
+
+
 def ask(
     db: Session,
     *,
@@ -194,6 +212,19 @@ def ask(
         raise AssistBudgetSpent(
             f"That is {already:,} of today's {budget:,} tokens. It resets 24 hours after each call, "
             "and everything these panels do can be done by hand in the meantime."
+        )
+
+    # The ceiling nothing else checks: not this caller's spend, but every
+    # caller's spend together. See spent_globally_today and finding 4 of
+    # #1641 - a per-caller budget does not bound the bill once the number of
+    # callers is unbounded.
+    already_globally = spent_globally_today(db)
+    global_budget = settings.assist_global_daily_token_budget
+    if already_globally >= global_budget:
+        raise AssistBudgetSpent(
+            f"Every organization and every caller together have spent {already_globally:,} of today's "
+            f"{global_budget:,} token ceiling for this deployment. It resets 24 hours after the call "
+            "that crossed it, and everything these panels do can be done by hand in the meantime."
         )
 
     try:

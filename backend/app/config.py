@@ -182,6 +182,22 @@ class Settings(BaseSettings):
     # standing between it and a bill is this number.
     assist_public_daily_token_budget: int = 20_000
 
+    # THE CEILING ACROSS EVERY CALLER TOGETHER, checked in addition to the two
+    # above. `register_org` lets anybody create an organization, and each one
+    # gets its own `assist_daily_token_budget` - so before this existed, the
+    # number of budgets was unbounded even though each budget was capped, and
+    # so was the day's total bill on the Anthropic key (#1641 finding 4).
+    #
+    # @unvalidated. Picked to be far above what real usage plausibly costs in
+    # a day - large enough that no deployment with a handful of registered
+    # organizations trips it during ordinary use - rather than measured
+    # against one: no organization has run a real registry read yet, which is
+    # the same gap `assist_daily_token_budget`'s own note names. What would
+    # settle it: a week of real `AssistUsage` rows once organizations are
+    # actually using the panels, the same evidence that would settle the
+    # per-organization number.
+    assist_global_daily_token_budget: int = 5_000_000
+
     # THE NOMINATE PANEL IS NOT PUBLIC ANY MORE. The maintainer's 2026-09-17
     # decision: a signed-in hiker, and a proof of work on top, before this
     # server fetches a website a stranger typed. The budget above still

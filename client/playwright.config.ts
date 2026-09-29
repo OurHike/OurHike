@@ -112,6 +112,19 @@ const COMMAND = process.env.CI
 const DATA_MODE = process.env.FLOW_DATA === '1'
 
 /**
+ * Leave `phone-webkit` out, because the machine has no WebKit build (#1537).
+ *
+ * Set only by scripts/test.sh, and only after it has looked for Playwright's
+ * WebKit executable, not found it, and printed a line saying the project is
+ * being skipped. An agent sandbox ships Chromium alone, so without this every
+ * `phone-webkit` spec fails at launch (147 of 147 on 2026-09-17), while the
+ * change under test is fine. Never detected here: CI's `flow` job does not set
+ * it, so a runner that lost WebKit still fails loudly rather than passing a
+ * suite a browser short.
+ */
+const SKIP_WEBKIT = process.env.FLOW_SKIP_WEBKIT === '1'
+
+/**
  * A server the caller already started, which the browser is pointed at
  * instead of one this config builds.
  *
@@ -298,7 +311,7 @@ export default defineConfig({
           },
         ]
       : []),
-    ...(DATA_MODE
+    ...(DATA_MODE || SKIP_WEBKIT
       ? []
       : [
           {

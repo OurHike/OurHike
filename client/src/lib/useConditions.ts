@@ -46,17 +46,21 @@ import type { WorkProjectSummary } from './workProjects'
 /**
  * How often the published baselines are re-read while the app is open.
  *
- * One hour, deliberately equal to the pipeline's publish cadence
- * (.github/workflows/publish-conditions.yml) rather than a fraction of it.
- * Exported so a test can drive it and so the pairing is greppable from both
- * ends.
+ * One hour, equal to the cadence .github/workflows/publish-conditions.yml's
+ * cron DECLARES rather than a fraction of it. What GitHub's scheduler
+ * delivers is slower, and measured rather than assumed (#1316, 2026-09-25):
+ * 40 scheduled runs, 2026-09-18 16:42Z to 2026-09-25 08:10Z, all successful: median gap 4.0 h, mean 4.1 h, max 6.3 h. The maintainer accepted that cadence rather than
+ * chasing it (poll, 2026-09-25), so the hour stays: it bounds how long after
+ * a publish does land the phone sees it, and a re-read of bytes that have not
+ * changed costs one small fetch. Exported so a test can drive it and so the
+ * pairing is greppable from both ends.
  */
 export const CONDITIONS_REFRESH_MS = 60 * 60 * 1000
 
 /**
  * The shortest gap between two re-reads triggered by the app becoming visible.
  *
- * Five minutes. The hourly interval is paced against the publish cadence, but
+ * Five minutes. The hourly interval is paced against the declared cron, but
  * a return-to-foreground is not a clock tick - it is the one moment we know a
  * hiker is about to READ the thing, and the artifact may have been republished
  * several times while the screen was off. Refetching then is worth the bytes.
@@ -213,11 +217,14 @@ export function useConditions(online: boolean, ready = true): Conditions {
   // stopped being survivable when publishing moved to hourly: without this,
   // the whole cadence change would land in the bucket and reach nobody.
   //
-  // An hour, matching the publish cadence rather than beating it. A shorter
-  // interval would spend a hiker's battery and data re-reading bytes that
-  // cannot have changed; a longer one would make the hourly publish pointless
-  // for the phone it is for. The two numbers are a pair, and moving one
-  // without the other is the mistake this comment exists to prevent.
+  // An hour, matching the cron's declared cadence rather than beating it. A
+  // shorter interval would spend a hiker's battery and data re-reading bytes
+  // that cannot have changed; a longer one would add its own delay on top of
+  // the publish's. The two numbers are a pair, and moving one without the
+  // other is the mistake this comment exists to prevent. The pair is the
+  // DECLARED cadence: the bake actually lands about every four hours
+  // (measured, see CONDITIONS_REFRESH_MS), so a closure verified just after a
+  // run can take ~6 h to reach this clock, which the maintainer accepted.
   //
   // Every read this drives is cheap and cancellable, and each one leaves its
   // state exactly where it was on failure - so a wake-up in a dead spot costs

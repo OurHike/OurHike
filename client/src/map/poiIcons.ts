@@ -22,13 +22,17 @@
 //     reads at a glance as "do not walk down there" is a worse failure than an
 //     ugly palette. The test suite holds this.
 //
-// Confidence rides on the rim, not on the colour or the glyph: a solid rim is
-// a POI somebody has verified exists, a broken one is a POI nobody has
-// (WIREFRAMES.md §11 - "a dashed pin means never verified to exist"). That is
-// deliberately a different channel from staleness, which is about when a human
-// last looked at a POI that is known to be real.
+// Confidence rides on the fill, not on the colour or the glyph: a filled pin
+// is a POI somebody has verified exists, a HOLLOW one - paper inside an accent
+// ring - is a POI nobody has (#1682, which replaced WIREFRAMES.md §11's broken
+// rim; a 1.5 px hairline has no room for dashes). That is deliberately a
+// different channel from staleness, which is about when a human last looked
+// at a POI that is known to be real. The coin below - the serious warning and
+// the workday pin - keeps the broken rim, and neither ever draws one.
 
 import { POI_TYPES, type PoiType } from '../lib/config'
+import { CLOSURE_INK } from '../lib/closureStyle'
+import { LOUD_POI_TYPES } from './poiPriority'
 import { SITE_ANCHOR_TYPES, SITE_MEMBER_TYPES } from './poiSites'
 
 /**
@@ -43,8 +47,8 @@ import { SITE_ANCHOR_TYPES, SITE_MEMBER_TYPES } from './poiSites'
  *
  * The cost of drawing pins bigger is that fewer of them survive
  * `icon-allow-overlap: false` at a given zoom. That is a trade the collision
- * ordering was built to absorb: POI_PRIORITY in poiLayers.ts decides who
- * survives, and water is first in it.
+ * ordering was built to absorb: POI_PRIORITY (map/poiPriority.ts) decides
+ * who is drawn as a pin and who falls back to a dot.
  */
 export const POI_PIN_SIZE = 38
 
@@ -65,7 +69,6 @@ export const POI_COLORS: Record<PoiType, string> = {
   shelter: '#284029',
   campsite: '#47784b',
   resupply: '#994e15',
-  crossing: '#6a4a8f',
   // The three added with ATC's vista/parking/privy layers, and the first
   // accents here that are not lifted verbatim from tokens/colors.css. Not for
   // want of looking: a pin's disc has to clear 4.5:1 against the near-white
@@ -120,13 +123,21 @@ export const POI_COLORS: Record<PoiType, string> = {
   //
   // ITS 24 DEGREES ARE THE TIGHTEST PAIR IN THIS TABLE BAR ONE, and saying so
   // is more use than the number alone. Hue is not the only channel: crossing
-  // is a muted grey-violet (saturation 0.32, contrast 6.91) and this is a
+  // was a muted grey-violet (saturation 0.32, contrast 6.91) and this is a
   // clearer magenta-violet (0.42, 5.52), which is the same two-channel
   // separation shelter and campsite already ship on 2.4 degrees of hue. The
   // family is deliberate too - parking (229) and this are the two gateway
   // classes and the two ways in, both cool, both off the terrain's own
   // greens and browns. But a ninth accent leans harder on the glyph than the
   // first did, and "shape as the primary channel" is doing real work here.
+  //
+  // CROSSING HAS SINCE GONE (#1674), so the 268 above is a hue nothing draws
+  // any more and the tight pair it made with this one no longer exists. The
+  // nearest neighbour now is privy, 24.5 degrees round the other side
+  // (316.0 against 291.5, computed from the two hexes), which is the gap the
+  // choice of 292 always left there. Left where it was rather than re-centred:
+  // moving an accent every hiker has already learned buys nothing a test asks
+  // for.
   trailhead: '#9944a7',
 }
 
@@ -200,33 +211,7 @@ export function pinGeometry(pixels: number) {
   const haloWidth = rOuter / 6
   const rDisc = rOuter - edgeWidth - haloWidth
 
-  // A MEMBER BADGE (#524, and #611 which moved it here from a footer band).
-  //
-  // 21 CSS px at the standard pin, which puts its glyph at 10.7 CSS px - half
-  // again the 14 px this shipped as, and above even the 9.6 px the old footer
-  // strip managed at its most generous. The first size was picked to read as
-  // "extra, not equal"; on a real screen it read as too quiet, and a member a
-  // hiker has to squint at is the failure this whole feature exists to fix.
-  const badgeRadius = rOuter * 0.555
-  // DERIVED, not chosen, and that is the point: a badge sits exactly far enough
-  // out to clear the disc, whatever size it is. Crossing the disc would put a
-  // badge on top of the anchor's own silhouette - the thing moving off the band
-  // was for - so the rule holds the invariant rather than a constant that would
-  // have to be re-tuned by hand every time the badge changed. The daylight is a
-  // third of the pin's own hairline: enough that the two never merge, little
-  // enough that a badge still reads as attached rather than floating.
-  const badgeRing = rDisc + badgeRadius + edgeWidth / 3
-  // Thinner rings than the pin's own 1/6 and 1/15. At this size the pin's
-  // proportions would spend a fifth of the badge on a halo whose only job here
-  // is separating it from the disc beneath it - the dark hairline outside is
-  // what does that work, and the extra room goes to the glyph.
-  const badgeDisc = badgeRadius * 0.8
-
   return {
-    // No `pixels` here any more, and its absence is the point: a site pin's
-    // IMAGE is bigger than its pin, so a field on this object named for the size
-    // that was passed in would be read as the image's the first time somebody
-    // needed one. {@link sitePinPadding} is where the difference lives.
     center,
     rOuter,
     edgeWidth,
@@ -240,103 +225,42 @@ export function pinGeometry(pixels: number) {
      * of it leaves the corners some air.
      */
     glyphBox: rDisc * Math.SQRT2 * 0.86,
-    /**
-     * A member badge, for a SITE pin (#524, #611).
-     *
-     * The same pin at badge scale rather than a second visual language: an
-     * accent disc, the category's own silhouette on it in halo white, a white
-     * ring and the dark hairline outside that. The ring is what keeps a badge
-     * legible where it crosses the parent's halo.
-     *
-     * NOT SIZED FOR THE CURRENT DISTRIBUTION, and that is deliberate - a badge
-     * is the same size whatever a pin carries, so the case worth holding room
-     * for is three. Of the 295 sites the 2026-08-13 publish produced, 169 carry
-     * one member category (57%), 123 carry two (42%) and three carry three (1%),
-     * and that 1% is measuring a DATA GAP rather than the trail: 153 of those
-     * sites are privy-only and only 11 water POIs are members of anything, while
-     * #529 measured that 97% of shelters have no mapped water source within
-     * 250 m and observed that nearly every A.T. shelter has water in reality.
-     * Close that gap and privy+water becomes ordinary and privy+campsite+water
-     * common.
-     *
-     * WHERE THIS RUNS OUT. Three badges already fan from twelve o'clock to
-     * three. A fourth member category would either tighten the pitch below what
-     * the badges can take or wrap past three o'clock into the lower right, which
-     * is a different look and wants the same real screen this one got rather
-     * than a fraction adjusted in advance.
-     */
-    badge: {
-      radius: badgeRadius,
-      /** How far a badge's centre sits from the pin's own. */
-      ring: badgeRing,
-      /** The dark hairline, and the disc inside the white ring inside it. */
-      edgeWidth: badgeRadius * 0.06,
-      rDisc: badgeDisc,
-      /** Slightly fuller than the pin's 0.86, which it can afford: these are
-       *  single silhouettes on a small disc, and the corners still clear it. */
-      glyphBox: badgeDisc * Math.SQRT2 * 0.9,
-      /**
-       * Angle between two badges, so neighbours clear each other by a
-       * fourteenth of a badge rather than merely touching.
-       *
-       * Derived rather than typed out, because it is a consequence of the two
-       * sizes above: change either and the fan re-spaces itself instead of
-       * quietly overlapping.
-       */
-      pitch: 2 * Math.asin((badgeRadius * 1.07) / badgeRing),
-    },
   }
 }
 
 export type PinGeometry = ReturnType<typeof pinGeometry>
 
 /**
- * Where each member badge sits, as an offset from the pin's centre.
+ * How far past its footprint a site pin has to be padded, in CSS pixels.
  *
- * Centred on the 45-degree axis with the first member at the top running
- * clockwise, so a pin carrying one member has it square in the corner and a pin
- * carrying three fans them from twelve o'clock to three. The order is
- * SITE_MEMBER_TYPES', which is fixed - so a hiker who learns where the privy
- * badge sits on one pin finds it in the same place on the next.
- */
-export function badgeCenters(
-  count: number,
-  badge: PinGeometry['badge'],
-): readonly { x: number; y: number }[] {
-  const start = -Math.PI / 4 - (badge.pitch * (count - 1)) / 2
-
-  return Array.from({ length: count }, (_, index) => {
-    const angle = start + badge.pitch * index
-    return { x: Math.cos(angle) * badge.ring, y: Math.sin(angle) * badge.ring }
-  })
-}
-
-/**
- * How far past its own edge a site pin has to be padded, in CSS pixels.
- *
- * Badges hang outside the rim, so the image has to grow to hold them - and it
- * grows SYMMETRICALLY, which is the whole reason map/poiLayers.ts needs no
- * `icon-offset`: the disc stays at the centre of the image, so it stays on the
- * hiker's coordinate at every zoom.
+ * Badges hang outside the drawn pin, so the image grows to hold them - by
+ * less than it did round the coin (#1682): a three-member site is 58 px
+ * against 72, because the 17 px badges sit against a 26 px pin inside the
+ * 38 px footprint rather than against the footprint's own edge. A plain pin
+ * pads by nothing.
  *
  * Per member count rather than one padding for every site pin, because the
- * padding is what MapLibre's collision box is made of. A pin carrying one member
- * needs 4 px and a pin carrying three needs 10; giving the first the second's
- * box would evict neighbours for room it is not using, on 57% of sites.
+ * padding is what MapLibre's collision box is made of: 57% of sites carry one
+ * member, and giving them three members' box would evict neighbours for room
+ * they are not using.
  *
- * Whole pixels, so the image is an integer number of pixels wide at any integer
- * pixel ratio.
+ * Symmetric, so the pin stays at the centre of its image. Whole pixels, so
+ * the image is an integer number of pixels wide at any integer pixel ratio.
  */
-export function sitePinPadding(memberCount: number, sizePx = POI_PIN_SIZE): number {
+export function sitePinPadding(
+  memberCount: number,
+  sizePx = POI_PIN_SIZE,
+  inkPx = POI_PIN_INK_SIZE,
+): number {
   if (memberCount <= 0) return 0
 
-  const { rOuter, badge } = pinGeometry(sizePx)
+  const { badge } = waypointPinGeometry(sizePx, inkPx)
   let reach = 0
   for (const { x, y } of badgeCenters(memberCount, badge)) {
     reach = Math.max(reach, Math.abs(x) + badge.radius, Math.abs(y) + badge.radius)
   }
 
-  return Math.max(0, Math.ceil(reach - rOuter))
+  return Math.max(0, Math.ceil(reach - sizePx / 2))
 }
 
 /** Dash count around the rim of an unverified pin. Even, so the pattern closes
@@ -370,16 +294,6 @@ function arc(
     points.push([cx + r * Math.cos(rad), cy + r * Math.sin(rad)])
   }
   return points
-}
-
-/** A zigzag band: a wave that still reads as a wave in silhouette. */
-function chevron(top: number, amplitude: number, thickness: number): Point[] {
-  const xs = [0.04, 0.27, 0.5, 0.73, 0.96]
-  const ys = xs.map((_, i) => top + (i % 2 === 0 ? amplitude : 0))
-  return [
-    ...xs.map((x, i): Point => [x, ys[i]]),
-    ...xs.map((x, i): Point => [x, ys[i] + thickness]).reverse(),
-  ]
 }
 
 /**
@@ -441,9 +355,6 @@ const GLYPHS: Record<string, Glyph> = {
     ],
     [...arc(0.5, 0.38, 0.23, 180, 360), ...arc(0.5, 0.38, 0.15, 360, 180)],
   ],
-  // Running water, as two bands - a stream to be crossed, not a stream to drink
-  // from, which is what the droplet says.
-  crossing: [chevron(0.1, 0.14, 0.15), chevron(0.52, 0.14, 0.15)],
   // Two peaks with a valley between them, and a sun clear of the left one.
   //
   // The peaks alone are the obvious drawing and were not enough: a solid
@@ -645,14 +556,6 @@ export interface PinSpec {
   color: string
   /** Solid rim, or the broken one that means "nobody has verified this". */
   confidence: PoiConfidence
-  /**
-   * The categories riding this pin, in the order they are drawn (#524).
-   *
-   * Empty or omitted draws the plain pin, unchanged - which is what every pin
-   * that is not a site anchor gets, and what a phone that downloaded before #523
-   * gets for everything.
-   */
-  members?: readonly string[]
 }
 
 /**
@@ -674,74 +577,27 @@ export function buildPinImage({
   glyph,
   color,
   confidence,
-  members = [],
 }: PinSpec): PoiIconImage {
-  const geometry = pinGeometry(sizePx * pixelRatio)
+  const pixels = sizePx * pixelRatio
+  const geometry = pinGeometry(pixels)
   const disc = parseHex(color)
   const halo = parseHex(PIN_HALO_COLOR)
   const edge = parseHex(PIN_EDGE_COLOR)
 
-  const { rOuter, rDisc, edgeWidth, glyphBox, badge } = geometry
-  // The image is the pin plus whatever the badges hang past it, and the pin sits
-  // in the middle of it. A pin carrying nothing pads by nothing and is therefore
-  // the exact image it always was, byte for byte.
-  const pad = sitePinPadding(members.length, sizePx) * pixelRatio
-  const pixels = sizePx * pixelRatio + pad * 2
-  const center = pixels / 2
-  // Each badge, with its own accent and silhouette. The colour pair is the SAME
-  // one the contrast assertion in poiIcons.test.ts already proves for every type
-  // - a type's colour against PIN_HALO_COLOR - so a badge clears WCAG AA by
-  // numbers that were already measured rather than by new ones.
-  const badges = badgeCenters(members.length, badge).map((spot, index) => ({
-    ...spot,
-    glyph: GLYPHS[members[index]] ?? GLYPHS[UNKNOWN_POI_TYPE],
-    ink: parseHex(poiColor(members[index])),
-  }))
-
-  /** The badge covering this offset from the centre, if any covers it. */
-  function badgeInkAt(dx: number, dy: number): readonly [number, number, number] | null {
-    for (const spot of badges) {
-      const bx = dx - spot.x
-      const by = dy - spot.y
-      const distance = Math.hypot(bx, by)
-      if (distance > badge.radius) continue
-
-      if (distance > badge.radius - badge.edgeWidth) return edge
-      if (distance > badge.rDisc) return halo
-
-      const gx = (bx + badge.glyphBox / 2) / badge.glyphBox
-      const gy = (by + badge.glyphBox / 2) / badge.glyphBox
-      return insideGlyph(spot.glyph, gx, gy) ? halo : spot.ink
-    }
-
-    return null
-  }
+  const { center, rOuter, rDisc, edgeWidth, glyphBox } = geometry
 
   const data = new Uint8ClampedArray(pixels * pixels * 4)
   const step = 1 / SUPERSAMPLE
   const samples = SUPERSAMPLE * SUPERSAMPLE
   // How far a pixel's furthest SAMPLE can sit from its centre. Samples are on a
   // sub-grid inset by half a step, so this is the half-diagonal of that grid -
-  // and it is what makes the two skips below exact rather than approximate: a
-  // pixel further than this from every shape cannot have a sample in one.
+  // and it is what makes the skip below exact rather than approximate: a pixel
+  // further than this from the pin cannot have a sample in it.
   const reach = Math.SQRT2 * (0.5 - step / 2)
 
   for (let py = 0; py < pixels; py += 1) {
     for (let px = 0; px < pixels; px += 1) {
-      // Padding a site pin's image out to hold its badges leaves a lot of empty
-      // corner - 53% of a three-member image is neither pin nor badge - and
-      // sampling it nine times a pixel to find nothing was most of what made
-      // this slow enough to time out a test that builds every icon (#611).
-      const cx = px + 0.5 - center
-      const cy = py + 0.5 - center
-      let nearBadge = false
-      for (const spot of badges) {
-        if (Math.hypot(cx - spot.x, cy - spot.y) <= badge.radius + reach) {
-          nearBadge = true
-          break
-        }
-      }
-      if (!nearBadge && Math.hypot(cx, cy) > rOuter + reach) continue
+      if (Math.hypot(px + 0.5 - center, py + 0.5 - center) > rOuter + reach) continue
 
       let r = 0
       let g = 0
@@ -756,19 +612,13 @@ export function buildPinImage({
           const dy = y - center
           const distance = Math.hypot(dx, dy)
 
-          // Badges are drawn OVER the pin, so they are asked first. They never
-          // reach the disc - see `badge.ring` - so what one can cover is the halo
-          // ring, the rim and the paper outside it, never the anchor's own glyph.
-          let ink = nearBadge ? badgeInkAt(dx, dy) : null
-
-          if (ink === null) {
-            if (distance <= rDisc) {
-              const gx = (dx + glyphBox / 2) / glyphBox
-              const gy = (dy + glyphBox / 2) / glyphBox
-              ink = insideGlyph(glyph, gx, gy) ? halo : disc
-            } else if (distance <= rOuter && rimHasInk(dx, dy, confidence)) {
-              ink = distance <= rOuter - edgeWidth ? halo : edge
-            }
+          let ink: readonly [number, number, number] | null = null
+          if (distance <= rDisc) {
+            const gx = (dx + glyphBox / 2) / glyphBox
+            const gy = (dy + glyphBox / 2) / glyphBox
+            ink = insideGlyph(glyph, gx, gy) ? halo : disc
+          } else if (distance <= rOuter && rimHasInk(dx, dy, confidence)) {
+            ink = distance <= rOuter - edgeWidth ? halo : edge
           }
 
           if (ink !== null) {
@@ -795,19 +645,425 @@ export function buildPinImage({
   return { width: pixels, height: pixels, data }
 }
 
+// ---------------------------------------------------------------------------
+// THE WAYPOINT PIN (#1682), which is no longer the coin above.
+//
+// The maintainer, 2026-09-26: "Having so many icons display on the map at once
+// can be difficult to read." Five redrawings of the same 301 real waypoints
+// (the UA release 2026-09-24-2, Harriman at z10) went to them as a poll, and
+// they chose E: a slimmer pin, the categories under the top four made quiet,
+// unverified drawn hollow, and a site's members as smaller badges. Measured on
+// those drawings, not on the app: pin ink went from 32% of the screen to 18%,
+// and the dark-or-saturated share of it from 20% to 5%.
+//
+// The coin stays for the pins that are NOT waypoints - the serious warning and
+// the workday pin draw with buildPinImage above, unchanged, and they now
+// outrank a waypoint by weight as well as by size.
+
+/**
+ * The waypoint pin's drawn diameter in CSS pixels, inside its
+ * {@link POI_PIN_SIZE} footprint.
+ *
+ * TWO NUMBERS ON PURPOSE. The image stays 38 px square and the pin is drawn
+ * 26 px across in the middle of it, so everything that is a fact about the
+ * FOOTPRINT keeps the value the maintainer approved on 2026-09-26 (#1676):
+ * the collision box, and so how many pins place at a zoom and how much paper
+ * sits between them; the tap target (map/poiPinProbe.ts); the room a card
+ * leaves. What changes is only what is inked. A pin that shrank its footprint
+ * as well would let the collision engine pack a third more pins into the same
+ * screen, which is the clutter this was for.
+ *
+ * @unvalidated 26 is the drawn option's number, chosen by eye in a browser
+ * against the real Harriman waypoints. Nobody has looked at it on a phone in
+ * sun. What would settle it: whether a hiker at arm's length can still name a
+ * water pin's droplet at z10.
+ */
+export const POI_PIN_INK_SIZE = 26
+
+/**
+ * How pale a quiet pin's disc is: its accent mixed this far toward paper.
+ *
+ * The drawing's number, chosen by eye, and it happens to sit just inside the
+ * limit that matters: the glyph is drawn in the full accent ON this tint, and
+ * resupply's orange is the tightest pair at 4.61:1 against WCAG AA's 4.5.
+ * Any less pale and resupply fails; poiIcons.test.ts computes every quiet
+ * type rather than trusting this comment.
+ *
+ * @unvalidated as a paleness: the contrast is measured, the "quiet enough to
+ * recede, loud enough to find" is a browser judgement. What would settle it:
+ * whether a hiker looking for parking on a phone in sun finds the pale P as
+ * fast as they found the solid one.
+ */
+export const QUIET_TINT = 0.82
+
+/**
+ * A site member's badge, across, in CSS pixels at full size (#1682).
+ *
+ * Chosen by the maintainer from the app built three ways and photographed on
+ * Limestone Spring Shelter (poll, 2026-09-26): 14 (the coin's badge-to-pin
+ * proportion, glyph 7.5 px - a size #611 had already found too quiet), 17
+ * (glyph 9.1 px) and 21 (the coin's badge unchanged, glyph 11.2 px, nearly as
+ * big as the pin it rides).
+ *
+ * @unvalidated on a phone: chosen from sandbox frames at 2x. What would settle
+ * it: whether a hiker can say "there is a privy at this shelter" from the map
+ * alone at z12, in sun, without tapping.
+ */
+export const MEMBER_BADGE_SIZE = 17
+
+/** `--black` at this alpha, one sliver below the pin. The dark edge the coin
+ *  spends r/15 on, replaced by something that only lifts. */
+export const PIN_SHADOW_COLOR = '#14130f'
+export const PIN_SHADOW_ALPHA = 0.28
+
+/** Is this type drawn full colour, or quiet? The maintainer's four tiers
+ *  (2026-09-26, #1676): shelters/campsites, water, trailheads, then everything
+ *  else - and "everything else" is the quiet tier (#1682), unknown types
+ *  included. */
+export function poiTier(type: string): 'loud' | 'quiet' {
+  return LOUD_POI_TYPES.includes(type) ? 'loud' : 'quiet'
+}
+
+/**
+ * Every proportion of the waypoint pin, in image pixels, as fractions of its
+ * drawn diameter - the same single-knob rule {@link pinGeometry} keeps, and
+ * exported for the same second caller: map/MapIcon.tsx draws the legend's pin
+ * from `waypointPinGeometry(1, 1)`, a unit box the size of the drawn pin.
+ *
+ * `pixels` is the image's side (the footprint, at its pixel ratio) and only
+ * places the centre; `inkPixels` is the drawn diameter every width below is a
+ * fraction of. Each is written as CSS px at {@link POI_PIN_INK_SIZE}, so the
+ * numbers read as what a hiker sees at full size.
+ */
+export function waypointPinGeometry(pixels: number, inkPixels: number) {
+  const unit = inkPixels / POI_PIN_INK_SIZE
+  const rInk = inkPixels / 2
+  // A 1.5 px paper hairline, where the coin spent 7.3 px on a dark edge and a
+  // cream halo. It separates a pin from a darker map and from a neighbour; on
+  // pale paper the disc's own colour does that.
+  const hairline = 1.5 * unit
+  const rDisc = rInk - hairline
+  const badgeRadius = (MEMBER_BADGE_SIZE * unit) / 2
+  // A paper ring, no dark edge - the slim pin's own treatment at badge scale.
+  const badgeStroke = badgeRadius * 0.16
+  const badgeDisc = badgeRadius - badgeStroke
+  // Tangent to the pin's disc with a sliver of daylight, the rule the coin's
+  // badges kept (#611): a badge never covers the anchor's own glyph.
+  const badgeRing = rDisc + badgeRadius + hairline / 5
+  return {
+    center: pixels / 2,
+    rInk,
+    rDisc,
+    /** The glyph box, by the same rule as the coin's: its half-diagonal kept
+     *  inside the disc with 14% to spare. */
+    glyphBox: rDisc * Math.SQRT2 * 0.86,
+    /** An unverified pin's accent ring, just inside the hairline. */
+    hollowRing: 2 * unit,
+    /** A quiet pin's faint ring, the same place. */
+    quietRing: 1 * unit,
+    shadowOffset: 0.8 * unit,
+    /**
+     * A site member, as its own small pin: the member's accent disc, its glyph
+     * in paper, a paper ring (#524, #611, #1682). Colour-only pips were drawn
+     * first; the maintainer, shown them on the real map (poll, 2026-09-26):
+     * "When you put the icon in the upper right, make it the icon, not just
+     * the pin."
+     *
+     * Sized for three, the call the coin's badges made: of the 295 sites the
+     * 2026-08-13 publish produced, 57% carried one member category, 42% two
+     * and 1% three, and #529 measured that the third is mostly a data gap
+     * (97% of shelters with no mapped water within 250 m) rather than rare on
+     * the trail.
+     */
+    badge: {
+      radius: badgeRadius,
+      stroke: badgeStroke,
+      rDisc: badgeDisc,
+      glyphBox: badgeDisc * Math.SQRT2 * 0.9,
+      /** How far a badge's centre sits from the pin's own. */
+      ring: badgeRing,
+      /** Neighbours clear each other by a fourteenth of a badge, derived from
+       *  the two sizes rather than typed, so a resize re-spaces the fan. */
+      pitch: 2 * Math.asin((badgeRadius * 1.07) / badgeRing),
+    },
+  }
+}
+
+export type WaypointPinGeometry = ReturnType<typeof waypointPinGeometry>
+
+/**
+ * Where each member badge sits, as an offset from the pin's centre: fanned
+ * about the 45-degree axis, first member at the top, in SITE_MEMBER_TYPES'
+ * fixed order - so a hiker who learns where the privy sits on one shelter
+ * finds it in the same place on the next.
+ */
+export function badgeCenters(
+  count: number,
+  badge: WaypointPinGeometry['badge'],
+): readonly { x: number; y: number }[] {
+  const start = -Math.PI / 4 - (badge.pitch * (count - 1)) / 2
+  return Array.from({ length: count }, (_, index) => {
+    const angle = start + badge.pitch * index
+    return { x: Math.cos(angle) * badge.ring, y: Math.sin(angle) * badge.ring }
+  })
+}
+
+/** `#rrggbb` mixed toward `#rrggbb` by `t` (0 is `a`, 1 is `b`). */
+export function mixHex(a: string, b: string, t: number): string {
+  const [ar, ag, ab] = parseHex(a)
+  const [br, bg, bb] = parseHex(b)
+  return `#${[ar + (br - ar) * t, ag + (bg - ag) * t, ab + (bb - ab) * t]
+    .map((c) => Math.round(c).toString(16).padStart(2, '0'))
+    .join('')}`
+}
+
+/**
+ * The four inks one waypoint pin is drawn in, by tier and confidence. One home
+ * for them, so the map's raster and the legend's SVG cannot pick differently.
+ *
+ *  - loud, verified: the accent disc with the glyph in paper - the coin's
+ *    colours at two-thirds the size.
+ *  - quiet, verified: a pale tint of the accent, a faint ring in it, and the
+ *    glyph in the full accent. Present, legible, a step back.
+ *  - unverified, either tier: HOLLOW - paper inside, an accent ring, the glyph
+ *    in the accent. It replaces the broken rim (WIREFRAMES.md §11), which a
+ *    1.5 px hairline could not carry. Still the rim, still no colour of its
+ *    own: a hollow pin is the same category, provisionally.
+ */
+export function waypointPinInks(type: string, confidence: PoiConfidence): SlimPinInks {
+  const accent = poiColor(type)
+  if (confidence === 'low') {
+    return { fill: PIN_HALO_COLOR, ring: accent, ringWidth: 'hollow', glyph: accent }
+  }
+  if (poiTier(type) === 'quiet') {
+    return {
+      fill: mixHex(accent, PIN_HALO_COLOR, QUIET_TINT),
+      ring: mixHex(accent, PIN_HALO_COLOR, 0.35),
+      ringWidth: 'quiet',
+      glyph: accent,
+    }
+  }
+  return { fill: accent, ring: null, ringWidth: null, glyph: PIN_HALO_COLOR }
+}
+
+type Rgba = readonly [number, number, number, number]
+
+/**
+ * The supersampling loop, for a shape given as a function: `shade` answers one
+ * sample, in image pixels from the image's centre, with straight RGBA (alpha
+ * 0-1) or null for nothing. Averaged in premultiplied alpha, for the reason
+ * {@link buildPinImage} gives - and unlike that loop, a sample can itself be
+ * part-transparent, which is what the shadow needs.
+ */
+function rasterise(
+  pixels: number,
+  reach: number,
+  shade: (dx: number, dy: number) => Rgba | null,
+): Uint8ClampedArray {
+  const data = new Uint8ClampedArray(pixels * pixels * 4)
+  const step = 1 / SUPERSAMPLE
+  const samples = SUPERSAMPLE * SUPERSAMPLE
+  const center = pixels / 2
+  const slack = Math.SQRT2 * (0.5 - step / 2)
+
+  for (let py = 0; py < pixels; py += 1) {
+    for (let px = 0; px < pixels; px += 1) {
+      if (Math.hypot(px + 0.5 - center, py + 0.5 - center) > reach + slack) continue
+      let r = 0
+      let g = 0
+      let b = 0
+      let a = 0
+      for (let sy = 0; sy < SUPERSAMPLE; sy += 1) {
+        for (let sx = 0; sx < SUPERSAMPLE; sx += 1) {
+          const ink = shade(
+            px + (sx + 0.5) * step - center,
+            py + (sy + 0.5) * step - center,
+          )
+          if (ink === null) continue
+          r += ink[0] * ink[3]
+          g += ink[1] * ink[3]
+          b += ink[2] * ink[3]
+          a += ink[3]
+        }
+      }
+      if (a === 0) continue
+      const at = (py * pixels + px) * 4
+      data[at] = r / a
+      data[at + 1] = g / a
+      data[at + 2] = b / a
+      data[at + 3] = (a / samples) * 255
+    }
+  }
+  return data
+}
+
+/** The inks a slim pin is drawn in - {@link waypointPinInks} for a waypoint. */
+export interface SlimPinInks {
+  fill: string
+  ring: string | null
+  ringWidth: 'hollow' | 'quiet' | null
+  glyph: string
+}
+
+export interface SlimPinSpec {
+  /** The footprint - {@link POI_PIN_SIZE}. */
+  sizePx: number
+  /** What is drawn inside it - {@link POI_PIN_INK_SIZE}. */
+  inkPx: number
+  pixelRatio: number
+  glyph: Glyph
+  inks: SlimPinInks
+  /** A site's other categories, as badges on the rim (#524, #1682). */
+  members?: readonly string[]
+}
+
+/**
+ * One slim pin, as raw RGBA pixels: every waypoint, and since #1682 the
+ * workday pin (map/workdayPin.ts) - one rasteriser for both, for the reason
+ * {@link buildPinImage} is shared with the warning pin.
+ */
+export function buildSlimPinImage({
+  sizePx,
+  inkPx,
+  pixelRatio,
+  glyph,
+  inks,
+  members = [],
+}: SlimPinSpec): PoiIconImage {
+  const pad = sitePinPadding(members.length, sizePx, inkPx) * pixelRatio
+  const pixels = sizePx * pixelRatio + pad * 2
+  const geometry = waypointPinGeometry(pixels, inkPx * pixelRatio)
+  const { rInk, rDisc, glyphBox, badge } = geometry
+  const opaque = (hex: string): Rgba => [...parseHex(hex), 1]
+  const paper = opaque(PIN_HALO_COLOR)
+  const fill = opaque(inks.fill)
+  const glyphInk = opaque(inks.glyph)
+  const ring = inks.ring === null ? null : opaque(inks.ring)
+  const ringWidth =
+    inks.ringWidth === 'hollow'
+      ? geometry.hollowRing
+      : inks.ringWidth === 'quiet'
+        ? geometry.quietRing
+        : 0
+  const shadow: Rgba = [...parseHex(PIN_SHADOW_COLOR), PIN_SHADOW_ALPHA]
+  const badges = badgeCenters(members.length, badge).map((spot, index) => ({
+    ...spot,
+    glyph: GLYPHS[members[index]] ?? GLYPHS[UNKNOWN_POI_TYPE],
+    ink: opaque(poiColor(members[index])),
+  }))
+
+  const data = rasterise(pixels, pixels / 2, (dx, dy) => {
+    // Badges over the pin: a member's accent disc, its glyph in paper, a
+    // paper ring. They never reach the disc (`badge.ring`), so what one can
+    // cover is the hairline, the shadow and the paper beyond.
+    for (const spot of badges) {
+      const bx = dx - spot.x
+      const by = dy - spot.y
+      const d = Math.hypot(bx, by)
+      if (d > badge.radius) continue
+      if (d > badge.rDisc) return paper
+      const gx = (bx + badge.glyphBox / 2) / badge.glyphBox
+      const gy = (by + badge.glyphBox / 2) / badge.glyphBox
+      return insideGlyph(spot.glyph, gx, gy) ? paper : spot.ink
+    }
+    const distance = Math.hypot(dx, dy)
+    if (distance <= rInk) {
+      if (distance > rDisc) return paper
+      const gx = (dx + glyphBox / 2) / glyphBox
+      const gy = (dy + glyphBox / 2) / glyphBox
+      if (insideGlyph(glyph, gx, gy)) return glyphInk
+      if (ring !== null && distance > rDisc - ringWidth) return ring
+      return fill
+    }
+    if (Math.hypot(dx, dy - geometry.shadowOffset) <= rInk) return shadow
+    return null
+  })
+
+  return { width: pixels, height: pixels, data }
+}
+
+/** One waypoint pin, as raw RGBA pixels. */
+export function buildWaypointPinImage({
+  type,
+  confidence,
+  ...spec
+}: Omit<SlimPinSpec, 'glyph' | 'inks'> & {
+  type: string
+  confidence: PoiConfidence
+}): PoiIconImage {
+  return buildSlimPinImage({
+    ...spec,
+    glyph: GLYPHS[type] ?? GLYPHS[UNKNOWN_POI_TYPE],
+    inks: waypointPinInks(type, confidence),
+  })
+}
+
 /** One waypoint pin, at the one size and palette every waypoint uses. */
 export function buildPoiIcon(
   type: string,
   confidence: PoiConfidence,
   members: readonly string[] = [],
 ): PoiIconImage {
-  return buildPinImage({
+  return buildWaypointPinImage({
     sizePx: POI_PIN_SIZE,
+    inkPx: POI_PIN_INK_SIZE,
     pixelRatio: POI_PIN_PIXEL_RATIO,
-    glyph: GLYPHS[type] ?? GLYPHS[UNKNOWN_POI_TYPE],
-    color: poiColor(type),
+    type,
     confidence,
     members,
+  })
+}
+
+/**
+ * The image a trailhead whose trails are all closed is drawn with (#1695).
+ * One id for both confidences: the pin says "closed" in the closure's ink, and
+ * a broken rim round it would be a second claim a hiker has to parse at a
+ * glance. The card still says, in words, when the trailhead is unverified.
+ */
+export const CLOSED_TRAILHEAD_ICON_ID = 'poi-trailhead-closed'
+
+/**
+ * A cross as ONE ring: a plus sign rotated 45 degrees, in the glyph's 0-1 box.
+ * One ring rather than two bars because {@link insideGlyph} fills by even-odd
+ * crossing count, and two overlapping bars would cancel where they cross,
+ * leaving a hole in the middle of the cross.
+ */
+export const CLOSED_GLYPH: Glyph = (() => {
+  const arm = 0.47
+  const half = 0.13
+  const plus: Point[] = [
+    [half, arm],
+    [half, half],
+    [arm, half],
+    [arm, -half],
+    [half, -half],
+    [half, -arm],
+    [-half, -arm],
+    [-half, -half],
+    [-arm, -half],
+    [-arm, half],
+    [-half, half],
+    [-half, arm],
+  ]
+  const c = Math.SQRT1_2
+  return [plus.map(([x, y]): Point => [0.5 + (x - y) * c, 0.5 + (x + y) * c])]
+})()
+
+/**
+ * A trailhead whose every trail within 100 m is closed (#1695): the ordinary
+ * waypoint pin's size and shape, filled with the closure's ink
+ * (lib/closureStyle.ts's CLOSURE_INK), with a white cross where the signpost
+ * was. The maintainer's pick of 2026-09-28, from three drawn over Storm King
+ * on UA data: this, the trailhead's own purple with a cross, and the
+ * closure's bare cross with no pin.
+ */
+export function buildClosedTrailheadIcon(): PoiIconImage {
+  return buildSlimPinImage({
+    sizePx: POI_PIN_SIZE,
+    inkPx: POI_PIN_INK_SIZE,
+    pixelRatio: POI_PIN_PIXEL_RATIO,
+    glyph: CLOSED_GLYPH,
+    inks: { fill: CLOSURE_INK, ring: null, ringWidth: null, glyph: PIN_HALO_COLOR },
   })
 }
 
@@ -883,6 +1139,13 @@ export function buildPoiIcons(): RegisteredPoiIcon[] {
     ),
   )
 
-  cachedPoiIcons = [...plain, ...sited]
+  // The closed trailhead (#1695): one image, whichever confidence.
+  const closed = {
+    id: CLOSED_TRAILHEAD_ICON_ID,
+    image: buildClosedTrailheadIcon(),
+    pixelRatio: POI_PIN_PIXEL_RATIO,
+  }
+
+  cachedPoiIcons = [...plain, ...sited, closed]
   return cachedPoiIcons
 }

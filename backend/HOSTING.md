@@ -128,6 +128,49 @@ only then publish the draft. With it, the ordering holds by construction and the
 stays four buttons — which is the reason to set it at creation rather than to discover
 later that it was worth setting.
 
+### The gap this does not close: backend code against an unmigrated schema
+
+**"Always ahead of the app" is a claim about the client/backend pair. It says nothing
+about the backend and its own database**, and that is a second, different skew a
+tracking Render introduces — [#1641](https://github.com/OurHike/OurHike/issues/1641)
+found it during the v1.3.2 release review, deferred here because it is gated on this
+same not-yet-created service.
+
+Once Render tracks `main`, **any merge that carries a new revision under
+`backend/alembic/versions/` redeploys the ORM models that expect it before the
+migration has necessarily run** — `migrate.yml target: production` is a separate,
+explicit dispatch (RELEASING.md §8c, [`.claude/skills/release-train/SKILL.md`](../.claude/skills/release-train/SKILL.md)'s
+Phase 2), never a consequence of a merge landing. Between the deploy and that dispatch,
+the live backend is running code that reads or writes a column the production database
+does not have yet — a 500 on whatever request reaches it, not a 422 a client can shrug
+off. The release train's own Phase 2 already puts a migration ahead of the *tagged*
+release it belongs to; what it does not cover is an ordinary feature merge, outside a
+release cut, that happens to carry both a migration and the code that depends on it in
+the same pull request.
+
+**`@unvalidated`: which of two remedies this becomes.** Both are real options and
+nothing here has picked one:
+
+- **An ordering discipline**: a migration's "expand" half (the new column, nullable or
+  defaulted) and the ORM/route code that first reads or writes it land in *separate*
+  merges, with the migration's own merge dispatched to production before the second is
+  opened — the same expand-and-contract shape §8c already asks for on the *drop* side,
+  extended to the *add* side for exactly this reason. Costs discipline on every PR that
+  touches the schema, not tooling.
+- **A deploy hook**: Render supports a pre-deploy command that runs before the new
+  release takes traffic, which is precisely where `alembic upgrade head` would close
+  this by construction, the same way the tracking setting itself closes the client skew.
+  Costs one dashboard setting, made at the same account-work moment as #600, rather than
+  discipline on every PR thereafter — but nobody here has a Render account to confirm
+  the feature works as documented, or what happens to in-flight requests against the
+  *previous* release while the command runs.
+
+What would settle it: #600 actually creating the service, at which point this becomes a
+real setting to test rather than a documented risk. Until then, a PR that adds both a
+migration and the code that depends on it should say so in its own body and default to
+the ordering discipline above, since it costs nothing when there is no Render service
+to race yet.
+
 ## What was removed
 
 `backend/fly.toml` is deleted. Nothing was ever deployed to Fly — no account was created,

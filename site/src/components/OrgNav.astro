@@ -73,4 +73,32 @@ const doors = [
     color: var(--brand-primary);
     border-bottom-color: var(--brand-primary);
   }
+
+  /* ONE ROW ON A PHONE, SCROLLING SIDEWAYS - the maintainer's pick by poll,
+     2026-09-24 (#1663), over a 2x2 grid and over hiding the row. Wrapped, the
+     four doors took two rows at 390px and left "Claim your org" alone on the
+     second. Scrolling keeps the four labels exactly OrgShell.tsx's; the
+     last one is cut at the edge, which is the cue that there is more.
+
+     The padding makes each door a 44px target, the handoff's phone minimum
+     (HANDOFF_README.md, Responsive); at 4px it was about 26px. */
+  @media (max-width: 720px) {
+    .org-nav {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      scrollbar-width: none;
+      white-space: nowrap;
+      padding-block: 0;
+      border-bottom: 1px solid var(--border-1);
+    }
+
+    .org-nav::-webkit-scrollbar {
+      display: none;
+    }
+
+    .org-nav__link {
+      flex: none;
+      padding: 12px 0 10px;
+    }
+  }
 </style>

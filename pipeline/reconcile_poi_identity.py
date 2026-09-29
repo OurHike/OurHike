@@ -48,7 +48,10 @@ against tier 2's 2.5, retired and re-minted whatever the distance: 3,370 of
 the ledger's 8,469 live rows were that shape on 2026-08-25. The stream half
 of the meeting cannot have moved (the NHD snapshot is frozen), so its id
 rides each such row as `stream_id` and agreement on it scores like an exact
-name. See SCORE_STREAM_INTACT.
+name. See SCORE_STREAM_INTACT. Crossings were withdrawn in #1674, so the
+passport's remaining riders are the 39 site-water points (nhd_stream), keyed
+by their site rather than by a coordinate - it now has less to do, and the
+reasoning below is kept because it is why the mechanism exists.
 
 OVERRIDES are `reference/poi_identity_overrides.json` - hand-written,
 never touched by this script: `same` rows carry an id onto a named key
@@ -195,7 +198,10 @@ NEAR_MILE = 0.25
 # @unvalidated - the value is reasoned, not measured. What settles it is the
 # first trail re-measure after this lands, read in identity_review/summary.txt:
 # how many crossings carry on "stream intact", and whether any carry put two
-# streams' pins on one id, which is the failure this must never buy.
+# streams' pins on one id, which is the failure this must never buy. That
+# measurement cannot happen now: #1674 withdrew crossings before a re-measure
+# arrived. Site water still carries the passport, keyed by its site's
+# GlobalID, so the value stays untested rather than disproven.
 SCORE_STREAM_INTACT = 2.0
 
 # Acceptance: clear the threshold, clear it by a margin over the runner-up
@@ -603,9 +609,7 @@ def reconcile(
         outcome.minted.append(minted)
 
     for poi_id in disappeared:
-        gone = next_pois[poi_id]
-        gone["retired"] = release
-        gone["history"] = [*gone.get("history", []), {"release": release, "event": "retired"}]
+        retire_row(next_pois[poi_id], release)
         outcome.retired.append(poi_id)
 
     # After retirement, so every edge is validated against settled state:
@@ -613,6 +617,35 @@ def reconcile(
     apply_supersession(next_pois, outcome, merges, overrides, release)
 
     return outcome
+
+
+def retire_row(row: dict, release: str) -> None:
+    """Stamp one row retired - the only way a row leaves circulation (rows are
+    never deleted). Shared by reconcile() and withdraw() so a type withdrawn
+    ahead of a snapshot and a row that disappears from one look identical,
+    which is what lets --check reproduce either byte for byte."""
+    row["retired"] = release
+    row["history"] = [*row.get("history", []), {"release": release, "event": "retired"}]
+
+
+def withdraw(pois: dict, release: str) -> list[str]:
+    """Retire every live row of a withdrawn poi_type (#1674,
+    lib.poi_schema.WITHDRAWN_POI_TYPES), in place, and return their ids.
+
+    Needs no snapshot, which is the point: the next reconciliation would
+    retire these rows anyway - an export that no longer writes a type leaves
+    every row of it unmatched - but only on a runner holding data/raw/, and
+    only after a publish had failed --check on them. Doing it here puts the
+    retirement in the same pull request as the withdrawal, where a reviewer
+    reads it, and leaves the next snapshot's reconciliation nothing to do for
+    these rows: a retired row is not live, so it cannot disappear again.
+    """
+    from lib.poi_schema import WITHDRAWN_POI_TYPES
+
+    withdrawn = sorted(poi_id for poi_id, row in live_rows(pois).items() if row["poi_type"] in WITHDRAWN_POI_TYPES)
+    for poi_id in withdrawn:
+        retire_row(pois[poi_id], release)
+    return withdrawn
 
 
 def apply_supersession(pois: dict, outcome: Outcome, merges: dict, overrides: dict, release: str) -> None:
@@ -698,13 +731,28 @@ def row_arrow(row: dict, record: dict) -> str:
 
 def mass_retirement_refusal(outcome: Outcome, prior: dict) -> str | None:
     """The sentence that refuses a wholesale re-mint, or None when the run
-    is a refresh-shaped one. See MAX_RETIRE_SHARE."""
-    live = len(live_rows(prior))
-    share = len(outcome.retired) / max(1, live)
-    if len(outcome.retired) < MIN_RETIRES_FOR_GUARD or share <= MAX_RETIRE_SHARE:
+    is a refresh-shaped one. See MAX_RETIRE_SHARE.
+
+    ROWS OF A WITHDRAWN TYPE ARE LEFT OUT OF BOTH SIDES OF THE SHARE
+    (lib.poi_schema.WITHDRAWN_POI_TYPES). Withdrawing a category retires
+    every live row of it at once - 5,318 crossings for #1674, 63% of the
+    ledger - and that is a decision written in code and reviewed, not the
+    upstream re-mint this guard exists to catch. Leaving them out rather than
+    raising the threshold keeps the guard exactly as strict about every
+    other type: a re-mint of shelters during the same run still refuses.
+    """
+    from lib.poi_schema import WITHDRAWN_POI_TYPES
+
+    def counted(poi_id: str) -> bool:
+        return prior.get(poi_id, {}).get("poi_type") not in WITHDRAWN_POI_TYPES
+
+    live = sum(1 for poi_id in live_rows(prior) if counted(poi_id))
+    retired = [poi_id for poi_id in outcome.retired if counted(poi_id)]
+    share = len(retired) / max(1, live)
+    if len(retired) < MIN_RETIRES_FOR_GUARD or share <= MAX_RETIRE_SHARE:
         return None
     return (
-        f"REFUSED: this run would retire {len(outcome.retired)} of {live} live rows "
+        f"REFUSED: this run would retire {len(retired)} of {live} live rows "
         f"({share:.0%}) - the shape of a wholesale upstream re-mint, not of a refresh. "
         "Nothing was written; #672's evidence matching is the recovery path, not a mass retirement."
     )
@@ -746,8 +794,8 @@ def published_records() -> list[dict]:
     cannot drift (read_sources' own docstring makes the same argument for
     --check). Each record also gains its inventory `fingerprint` (#672),
     read off the raw properties unify_poi kept for exactly this kind of
-    composition - and, for a crossing or a site's water point, the
-    `stream_id` it is made of (#1028, stream_passport).
+    composition - and, for a site's water point, the `stream_id` it is made
+    of (#1028, stream_passport; crossings carried one too until #1674).
 
     export_poi.build_enriched_records() also caches this call across process
     invocations (#1331): this function and export_poi.main() used to each
@@ -850,6 +898,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--check", action="store_true", help="verify the checked-in ledger instead of writing it")
     parser.add_argument(
+        "--withdraw",
+        action="store_true",
+        help="retire every live row of a lib.poi_schema.WITHDRAWN_POI_TYPES type and write the ledger; reads no snapshot",
+    )
+    parser.add_argument(
         "--release",
         default=None,
         help="release id (YYYY-MM-DD) stamped on new and retired rows; defaults to today (UTC)",
@@ -858,6 +911,13 @@ def main(argv: list[str] | None = None) -> int:
 
     release = args.release or datetime.now(timezone.utc).date().isoformat()
     prior = load_ledger(LEDGER_PATH)
+
+    if args.withdraw:
+        withdrawn = withdraw(prior, release)
+        LEDGER_PATH.write_text(render(prior), encoding="utf-8")
+        print(f"Withdrew {len(withdrawn)} live row(s) of a withdrawn poi_type, retired at {release}.")
+        return 0
+
     seeded = not prior
     records = published_records()
     print(f"{len(records)} publishable POIs against {len(live_rows(prior))} live ledger rows.")

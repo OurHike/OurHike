@@ -168,22 +168,45 @@ jobs:
         with:
           # Narrower than the unit suite's list on purpose: the flow layer
           # boots the built client and drives it, so it reads nothing outside
-          # client/ at runtime - no gain vectors, no issue forms, no site
-          # stylesheet. Its own workflow and the scope action are in the list
-          # for the reason they are in that one, so a change to the gate still
-          # proves the suite it gates.
-          paths: client/ .github/workflows/client-tests.yml .github/actions/changed-paths/
+          # client/ at runtime - no gain vectors, no issue forms. Its own
+          # workflow and the scope action are in the list for the reason they
+          # are in that one, so a change to the gate still proves the suite it
+          # gates.
+          #
+          # site/ IS IN IT since #1663 - The /for-orgs/ pages are unreadable
+          # in dark mode and misaligned on a phone. e2e/sitePages.spec.ts
+          # audits every page of the marketing site in a real browser, which
+          # is the check that would have caught those pages before a
+          # maintainer's phone did; a stylesheet change that skipped this job
+          # would skip exactly that. client/src/test/ciScope.test.ts holds
+          # the entry in place.
+          paths: client/ site/ .github/workflows/client-tests.yml .github/actions/changed-paths/
 
       - uses: actions/setup-node@v7
         if: steps.scope.outputs.run == 'true'
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: client/package-lock.json
+          cache-dependency-path: |
+            client/package-lock.json
+            site/package-lock.json
 
       - name: Install dependencies
         if: steps.scope.outputs.run == 'true'
         run: npm ci
+
+      # The marketing site, built, for e2e/sitePages.spec.ts - which serves
+      # site/dist through preview-shots/fixtures/marketingSite.mjs and fails,
+      # rather than skips, when it is missing. Astro only; a few seconds.
+      - name: Install the site's toolchain
+        if: steps.scope.outputs.run == 'true'
+        working-directory: site
+        run: npm ci
+
+      - name: Build the site
+        if: steps.scope.outputs.run == 'true'
+        working-directory: site
+        run: npm run build
 
       # WebKit's shared libraries, which the runner image does NOT carry -
       # Chromium's it does, which is why this step is new with the engine axis

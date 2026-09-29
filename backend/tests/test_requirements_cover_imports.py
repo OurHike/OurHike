@@ -41,6 +41,7 @@ DISTRIBUTION_OF: dict[str, str] = {
     "botocore": "botocore",
     "dotenv": "python-dotenv",
     "fastapi": "fastapi",
+    "httpcore": "httpcore",
     "httpx": "httpx",
     "jwt": "pyjwt",
     "psycopg": "psycopg",

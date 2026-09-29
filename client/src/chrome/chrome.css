@@ -3259,6 +3259,25 @@ a.poi-card__credit::after {
   display: none;
 }
 
+/* The parts strip on the peek (#1706). The peek's own flex gap spaces it, so
+   the 4px the opened card's body needs above and below would double it. The
+   strip is 240px here as it is in the opened card - the same 12px padding
+   either side of a 264px card - so .poi-card__chips' five-parts-fit
+   arithmetic holds unchanged.
+
+   `flex-shrink: 0` IS THE LINE THAT KEEPS THE ROW ON A SMALL PHONE. The peek
+   is a flex column capped to the room beside its pin (#1374), and the strip's
+   `overflow-x: auto` makes its automatic minimum height zero - so where the
+   cap binds, flexbox shrinks the row away entirely rather than scrolling the
+   peek. Photographed 2026-09-28 at 375x667 on Limestone Spring Shelter, UA
+   data: without this line the peek drew its name and conditions and no chips
+   at all. The other peek children keep their height because nothing else in
+   it clips overflow. */
+.poi-card__peek > .poi-card__chips {
+  flex-shrink: 0;
+  margin: 0;
+}
+
 /* `flex: 0 0 auto`, and NOT tabs.css's `flex: 1 0 auto`: a tab strip stretches
    its tabs to fill the row, which for two chips in a 240px card would make each
    one 120px of mostly nothing and for five would squeeze them all instead of

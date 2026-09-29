@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, act } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, act, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
@@ -718,10 +718,10 @@ describe('the parts of one site', () => {
 
   const SITE: readonly PoiDetail[] = [SHELTER, PRIVY, CAMPSITE]
 
-  /** Pulled open, for `renderCard`'s reason: the strip of parts is part of
-   *  the record rather than of the peek. A hiker who tapped a shelter pin is
-   *  answering a question about the shelter; picking a different part of the
-   *  site out of it is the next thing they do, not the first. */
+  /** Pulled open, for `renderCard`'s reason: most of what a chip swaps - the
+   *  photograph, the coordinates, the provenance - is in the record, so that
+   *  is where most of these tests look. The strip is on the peek too since
+   *  #1706, and the tests that are about the peek render it shut. */
   function renderSite(site: readonly PoiDetail[] = SITE, poi: PoiDetail = SHELTER) {
     const view = render(<PoiCard poi={poi} site={site} map={null} onClose={vi.fn()} />)
     open()
@@ -729,6 +729,77 @@ describe('the parts of one site', () => {
   }
 
   const chips = () => screen.getAllByTestId('poi-card-chip')
+
+  /** The same site, left as the tap leaves it: peeking. */
+  function renderSitePeek(site: readonly PoiDetail[] = SITE, poi: PoiDetail = SHELTER) {
+    return render(<PoiCard poi={poi} site={site} map={null} onClose={vi.fn()} />)
+  }
+
+  it('lists every part of the place on the peek, before anything is pulled open', () => {
+    // #1706. #941 moved the strip into the opened card, and a tapped shelter's
+    // peek then named nothing of its privy or its water - which ride the
+    // shelter's pin and have no pin of their own to say they are there.
+    renderSitePeek()
+
+    const peek = screen.getByTestId('poi-card-peek')
+    expect(within(peek).getAllByTestId('poi-card-chip')).toHaveLength(3)
+    expect(within(peek).getByRole('button', { name: 'Shelter' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
+    expect(within(peek).getByRole('button', { name: 'Privy 131 ft' })).toBeInTheDocument()
+    expect(
+      within(peek).getByRole('button', { name: 'Campsite 82 ft' }),
+    ).toBeInTheDocument()
+  })
+
+  it('swaps the peek to the part you tapped on it', () => {
+    renderSitePeek()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Privy 131 ft' }))
+
+    const peek = screen.getByTestId('poi-card-peek')
+    expect(
+      within(peek).getByRole('heading', { name: 'Chairback Gap Privy' }),
+    ).toBeInTheDocument()
+    expect(
+      within(peek).queryByRole('heading', { name: SHELTER.name }),
+    ).not.toBeInTheDocument()
+    // The privy is published unverified, and the peek says so for the part it
+    // is now showing - not the shelter's silence carried over.
+    expect(within(peek).getByText(/nobody has confirmed/i)).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Showing Chairback Gap Privy')
+  })
+
+  it('opens on the part picked on the peek, not back on the pin', () => {
+    // One `shownId` for both heights: a hiker who tapped the privy chip and
+    // then pulled is asking for the privy's record.
+    renderSitePeek()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Privy 131 ft' }))
+    open()
+
+    expect(
+      screen.getByRole('heading', { name: 'Chairback Gap Privy' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Privy 131 ft' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
+    // One live region across the pull, still holding what it said, rather
+    // than one per height.
+    expect(screen.getAllByRole('status')).toHaveLength(1)
+  })
+
+  it('links each chip on the peek to the peek it swaps', () => {
+    renderSitePeek()
+
+    for (const chip of chips()) {
+      expect(document.getElementById(chip.getAttribute('aria-controls') ?? '')).toBe(
+        screen.getByTestId('poi-card-peek'),
+      )
+    }
+  })
 
   it('lists every part of the place, the one you are already on included', () => {
     // The issue's own sketch listed the members only, on the reasoning that the

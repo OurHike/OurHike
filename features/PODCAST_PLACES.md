@@ -6,6 +6,8 @@ organizations, **#1543 — 165 trail organizations exist and the registry knows 
 load the rest that does not cost one pull request each**). The gap this plan closes is
 **#1721 — A podcast episode can be tagged only to an A.T. POI, because lib/podcasts.py checks ids
 against the A.T.'s ledger alone**.
+The work is tracked as **#1723 — Match every podcast's place names against everything OurHike
+publishes, for each new show, each weekly run, and each data release**.
 
 The maintainer, 2026-09-29: *"make a plan for what need to happen to search those place names for
 all the podcasts … this will be something we do again and again when we add podcasts. it also
@@ -133,11 +135,14 @@ So when the gazetteer grows, the mentions are re-matched and the notes are left 
 
 ### 2. The gazetteer is what a phone can open, plus names that help find it
 
-One table, rebuilt from the published artifacts of a data release — so a match can only point at
-a place the phone already holds:
+One table, rebuilt for each data release from its published artifacts, plus the layers registered
+but held at `reaches_hikers: false` (decided below). Every row says which it is. A match to a held
+row waits on the desk as "waits for data"; only a match to a published row can reach the list, so
+a tag never points at a place the phone does not hold:
 
 ```
-id, name, alt_names[], kind, lat, lon, source, unit (park/forest it sits in), trail, release
+id, name, alt_names[], kind, lat, lon, source, unit (park/forest it sits in), trail, release,
+status (published | held)
 ```
 
 Two layers of extra names, kept apart:
@@ -251,15 +256,17 @@ that a release retires is caught the same way `poi_identity.json`'s `retired` ro
 - Re-read episode notes when the data changes.
 - Treat a GNIS or Wikidata point as a POI a hiker can open.
 
-## Open questions
+## Decided
 
-These went to the maintainer by poll with the diagram page; the answers are recorded here when
-they come back.
+The maintainer, by poll on 2026-09-29, against the diagram page drawn for this plan (four
+frames, each with a recommended option). Every recommendation was taken:
 
-1. **What the gazetteer includes.** Published places only, or also held (`reaches_hikers: false`)
-   layers, so a tag is staged the day before the data ships?
-2. **The gate.** Check nearby ids against the published release at publish time, as above, or
-   something else?
-3. **NPS POIs.** Ask the bulk load to register `NPS_Public_POIs` now?
-4. **Places with no OurHike point.** Keep a GNIS/NPS-API point on the desk, or leave them unlocated
-   until data covers them?
+| question | chosen | offered and not taken |
+|---|---|---|
+| which places a mention may match | everything a phone can open, **and** layers registered but held (`reaches_hikers: false`), shown on the desk as "waits for data" so a tag goes live the day the data ships | published places only |
+| how the gate checks a nearby waypoint's id | against the published release's own `nearby_poi.geojson`, at publish time in `publish-podcasts.yml`; fixtures in unit tests | a committed ledger, which would first need the reference ledger split |
+| NPS's POI layer | ask the bulk load to register `NPS_Public_POIs` beside `NPS_Public_Trails`, held at `reaches_hikers: false` until #1231's scope question is answered | not yet |
+| a named place with no OurHike point | a names-only point from GNIS, the NPS API or Wikidata on the desk, marked as not a place to walk to — never a POI, never on a hiker's map | leave it unlocated |
+
+The alternatives are written down so the next reader knows they were considered, not so they get
+re-argued.

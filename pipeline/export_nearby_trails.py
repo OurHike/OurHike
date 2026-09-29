@@ -580,19 +580,15 @@ def resolve_blaze(source: dict, properties: dict, mapping: dict | None) -> tuple
     # thing - a row whose publisher had not filled the column in - so this
     # returned Unknown ("Blaze not recorded") without looking.
     #
-    # NH GRANIT breaks that. Its BLAZE is blank on 7,574 of the 7,643 Whites
-    # rows, and the blank is CORRECT rather than missing: the White Mountains
-    # largely do not use paint blazes, and the 62 rows that do read White are
-    # the A.T. (61 carry TRAILSYS "Appalachian Trail"). For that source blank
-    # means UNBLAZED, which the palette spells "None" and the client renders
-    # as "Unblazed" - a true statement about a Whites trail, where Unknown
-    # would print a hedge in place of a fact.
-    #
-    # That is a judgement about one organization's data, so it lives where the
-    # other such judgements live - reference/blaze_mapping.json, a reviewed
-    # file whose diff is the review - rather than as a new registry field.
-    # A source whose table says nothing about blanks still gets Unknown, which
-    # is every source but one.
+    # NH GRANIT was the case that needed it: its BLAZE was blank on 7,574 of
+    # 7,643 Whites rows, and the blank was CORRECT rather than missing - the
+    # White Mountains largely do not use paint blazes - so its table mapped
+    # the blank to "None" ("Unblazed"). GRANIT dropped the column in
+    # September 2026 (#1646) and the source was removed altogether (#1711),
+    # so no table maps a blank today and every blank falls through to
+    # Unknown. The path stays because the judgement it encodes - a blank a
+    # publisher means is a fact, not a gap - belongs in a reviewed table
+    # (reference/blaze_mapping.json) whenever a source earns it again.
     if isinstance(raw, str) and not raw.strip():
         mapped, disposition = map_source_blaze(raw, mapping)
         return (mapped, "mapped") if disposition == "mapped" else (NEUTRAL_FALLBACK, "absent")
@@ -697,32 +693,19 @@ def keep_reason(source: dict, properties: dict, geometry, owned: dict[str, str],
     if foot_field and properties.get(foot_field) not in source.get("foot_allowed", FOOT_ALLOWED_DEFAULT):
         return f"not a foot trail: {foot_field}={properties.get(foot_field)!r}"
 
-    # The other direction, and it exists because one source can only be
-    # filtered that way (#1207). `foot_field` asks "does this row SAY it is
-    # walkable" and drops everything that does not - which is right where the
-    # column is populated, and destructive where it is not. NH GRANIT's PED is
-    # blank on 3,760 of 7,643 Whites rows, and 2,541 of those blanks carry no
-    # use flag of any kind while being ordinary hiking trails - one of them
-    # literally named "Appalachian Trail - road link". A PED allowlist would
-    # delete them.
-    #
-    # What GRANIT does assert positively is what a corridor is FOR: 1,209 of
-    # those blank-PED rows are flagged SNOWMBL and 124 ATV. Acting on a
-    # positive assertion is sound where acting on an absence is not, so this
-    # drops on the motorized flag and keeps everything else - the maintainer's
-    # "It's OurHike, not OurBike" applied with the only evidence the layer
-    # offers. sources.json's `excluded_when_comment` on that entry carries the
-    # measurement and says why MTNBIKE, HORSE and XCSKI are NOT in the set.
-    #
-    # `excluded_unless` is the exception to it (#1646), and it exists because
-    # GRANIT's 2026-09 schema can say both things about one row: 633 rows read
-    # HIKING 'Y' AND a snowmobile or OHRV flag (560 mi, measured 2026-09-26).
-    # The steward saying "you may walk this" outranks a motorized flag on the
-    # same row, so a row matching `excluded_unless` is never dropped by
-    # `excluded_when` - it is shared ground, not a snowmobile corridor.
-    spared = any(properties.get(field) in values for field, values in (source.get("excluded_unless") or {}).items())
+    # The other direction (#1207). `foot_field` asks "does this row SAY it
+    # is walkable" and drops everything that does not - right where the
+    # column is populated, destructive where it is not, because an absent use
+    # flag is unrecorded rather than a prohibition. `excluded_when` drops on
+    # a POSITIVE assertion instead: a row whose steward says it is motorized,
+    # or says hiking is not allowed. Acting on an assertion is sound where
+    # acting on an absence is not - the maintainer's "It's OurHike, not
+    # OurBike" applied with the evidence each layer actually offers. Three
+    # sources use it (#1711): usfs_trails on `terra_motorized`, and the two
+    # New Jersey layers on their motorized and hiking columns. Each entry's
+    # `excluded_when_comment` in sources.json carries the measurement.
     for field, values in (source.get("excluded_when") or {}).items():
-        if properties.get(field) in values and not spared:
+        if properties.get(field) in values:
             return f"excluded use: {field}={properties.get(field)!r}"
 
     status_field = source.get("status_field")
@@ -755,7 +738,7 @@ def missing_declared_fields(source: dict, features: list[dict]) -> list[str]:
     default is not, because a source that never declared it never claimed
     the column."""
     declared = [source.get(key) for key in ("name_field", "foot_field", "blaze_field", "status_field")]
-    declared += list(source.get("excluded_when") or {}) + list(source.get("excluded_unless") or {})
+    declared += list(source.get("excluded_when") or {})
     present: set[str] = set()
     for feature in features:
         present.update((feature.get("properties") or {}).keys())

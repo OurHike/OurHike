@@ -73,7 +73,6 @@ probed and there is nothing; **unprobed** is an admission, not a finding.
 | **OpenStreetMap** | unprobed | unprobed | shipping | unprobed | unprobed | unprobed | unprobed | unprobed | unprobed |
 | **USGS** | absent | absent | absent | absent | shipping | absent | absent | absent | absent |
 | **USFS** | *unsuitable* 815 | **ships 4,605** | absent | absent | absent | **ships 636** | absent | absent | **ships 7,358** |
-| **NH GRANIT** | unprobed | unprobed | unprobed | unprobed | unprobed | unprobed | unprobed | unprobed | unprobed |
 | **NYC Parks** | absent | absent | **shipping** 3,195 | absent | absent | absent | absent | **shipping** 975 | absent |
 | **NYC DOT** | absent | absent | absent | absent | absent | absent | absent | absent | absent |
 
@@ -126,9 +125,11 @@ That redraw moved seven numbers besides the two new rows, all of them stale in t
 under-counting: OPRHP `crossing` 793 → 1,222, DEC `shelter` 315 → 331, `campsite` 2,077 → 2,315,
 `crossing` 246 → 1,182, `viewpoint` 202 → 248, `parking` 1,852 → 2,256, `privy` 350 → 393. Named
 rather than silently corrected, because a table that quietly gains a thousand crossings is one a
-reader should be able to ask about. **NH GRANIT's row is nine `unprobed` cells**, which is an
+reader should be able to ask about. **NH GRANIT's row was nine `unprobed` cells**, which was an
 admission and not a finding — #1207's scope was trails, and only layer 2 of its service was
-opened.
+opened. The row is gone since 2026-09-28, with the source: **#1711 — Ship only hiking trails:
+remove NH GRANIT, and drop USFS motorized trails nationwide** removed GRANIT from the registry,
+so there is no longer an organization for those cells to describe.
 
 **Twelve of those cells became `shipping` on 2026-08-27**
 ([#1097](https://github.com/OurHike/OurHike/issues/1097)) — the maintainer's decision on

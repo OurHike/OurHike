@@ -14,9 +14,9 @@ live services: every column below is a name sources.json records as MEASURED
 against the live layer, with a date - the `notes` field lists for
 nynjtc_long_path and nynjtc_highlands_trail (2026-08-24), mohonk_trails
 (2026-08-25), oprhp_trails (2026-08-18), oprhp_facilities and the DEC layers
-(2026-08-27), usfs_trails, usfs_rec_sites and nh_granit_trails
-(2026-09-02), plus the structured `name_field`/`blaze_field`/`id_field`/
-`public_field`/`asset_field`/`facility_field` keys, which are the same
+(2026-08-27), usfs_trails and usfs_rec_sites (2026-09-02), plus the
+structured `name_field`/`blaze_field`/`id_field`/`public_field`/
+`asset_field`/`facility_field` keys, which are the same
 measurements in machine-readable form. Nothing here is invented, and where a
 layer's fields are NOT recorded the fixture carries none rather than a guess
 - `oprhp_park_polygons` is that case and is deliberately property-free.
@@ -448,73 +448,6 @@ def _usfs_rec_sites_layer():
             {**common, "site_name": "RD 614 SITE 13", "site_type": "CAMPING AREA", "development_scale": "0", "fee_charged": "N"},
         ],
         _white_mountains_point,
-    )
-
-
-def _nh_granit_trails_layer():
-    """nh_granit_trails' field list and value shapes as republished in
-    September 2026, read live 2026-09-26 (#1646).
-
-    THE POINT OF THIS FIXTURE IS THAT THE USE FLAGS SAY FOUR THINGS, NOT TWO.
-    Every use column - HIKING, SNOWMACHIN, OHRV, ALPINESKI, PADDLE and the rest -
-    reads 'Y', 'N', 'NA', 'UNKNOWN' or a blank STRING, and only 'Y' and 'N' are
-    statements. HIKING is 'Y' on 8,312 of 15,791 rows, 'NA' on 4,022, blank on
-    3,255, 'UNKNOWN' on 154 and 'N' on 48, and the A.T.'s own GRANIT rows are
-    among the unrecorded - so a staging model that read HIKING as a boolean
-    would delete them. The fixture carries one row of each shape the
-    exporter's filter decides differently: flagged for hiking, unrecorded,
-    a snowmobile corridor, a corridor ALSO flagged for hiking (kept), an alpine
-    ski run and a paddle route.
-
-    The 2026-09-02 version of this fixture carried BLAZE, PED, SNOWMBL and
-    MAINTORG. GRANIT dropped all four; a fixture keeping them would let a
-    staging model be written against columns the live layer does not have."""
-    common = {
-        "ACCURACY": "2",
-        "TOWNNAME": "FIXTURE TOWNSHIP",
-        "COUNTY": "COOS",
-        "SEASONAL": "UNKNOWN",
-        "SURFACE": "UNKNOWN",
-        "MAINTAINED": " ",
-        "PUBLICDOMA": "Y",
-        "SOURCE": "GRANIT",
-        "HIKING": "NA",
-        "SNOWMACHIN": "NA",
-        "OHRV": "NA",
-        "SNOW_CORRI": "NA",
-        "OHRV_CORRI": "NA",
-        "ALPINESKI": "NA",
-        "PADDLE": "NA",
-    }
-    return _features(
-        [
-            {**common, "TRAILNAME": "Fixture Ridge Path", "HIKING": "Y", "Shape_Length": 11616.0},
-            # Unrecorded, and a hiking trail anyway - the shape the A.T.'s own
-            # GRANIT rows take, and the one a HIKING == 'Y' filter would delete.
-            {**common, "TRAILNAME": "APPALACHIAN TRL", "HIKING": " ", "Shape_Length": 16368.0},
-            # A snowmobile corridor not flagged for hiking - dropped.
-            {
-                **common,
-                "TRAILNAME": "FIXTURE CORRIDOR 11 TRL",
-                "SNOWMACHIN": "Y",
-                "SNOW_CORRI": "Y",
-                "MAINTAINED": "FIXTURE SNOWMOBILE CLUB",
-                "SOURCE": "DESC",
-                "Shape_Length": 21120.0,
-            },
-            # The same flag on a row GRANIT also opens to hikers - kept.
-            {**common, "TRAILNAME": "Fixture Woods Road", "HIKING": "Y", "SNOWMACHIN": "Y", "Shape_Length": 7392.0},
-            {
-                **common,
-                "TRAILNAME": "FIXTURE SKI RUN",
-                "HIKING": "UNKNOWN",
-                "ALPINESKI": "Y",
-                "SEASONAL": "WINTER_ONLY",
-                "Shape_Length": 3168.0,
-            },
-            {**common, "TRAILNAME": "FIXTURE RIVER PADDLERS' TRAIL", "HIKING": "N", "PADDLE": "Y", "Shape_Length": 52800.0},
-        ],
-        _white_mountains_line,
     )
 
 
@@ -1292,7 +1225,6 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         "external/mohonk_trails.geojson": _mohonk_trails_layer(),
         "external/usfs_trails.geojson": _usfs_trails_layer(),
         "external/usfs_rec_sites.geojson": _usfs_rec_sites_layer(),
-        "external/nh_granit_trails.geojson": _nh_granit_trails_layer(),
         "external/njdep_park_trails.geojson": _njdep_park_trails_layer(),
         "external/nj_statewide_trails.geojson": _nj_statewide_trails_layer(),
         "external/nyc_parks_trails.geojson": _nyc_parks_trails_layer(),

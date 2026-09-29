@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 import build_weather_squares as squares_mod
-from lib import nbm_grid
+from lib import hrrr_grid, nbm_grid
 
 
 def test_densify_lays_points_no_further_apart_than_the_step():
@@ -80,14 +80,14 @@ def test_a_water_square_borrows_its_nearest_land_square():
     # the square north of it is land (measured: (711, 2007) at 41 m).
     terrain = terrain_with({(10, 10): 0.0, (10, 11): 0.0, (11, 10): 0.0, (11, 11): 0.0, (10, 9): 0.0})
 
-    borrowed, kept = squares_mod.borrow_land({(10, 10)}, terrain)
+    borrowed, kept = squares_mod.borrow_land({(10, 10)}, terrain <= squares_mod.WATER_MAX_M)
 
     assert borrowed == {(10, 10): (9, 10)}  # distance 1, and the smallest (row, col) of the ties
     assert kept == []
 
 
 def test_a_land_square_reads_its_own_forecast():
-    borrowed, kept = squares_mod.borrow_land({(5, 5)}, terrain_with({}))
+    borrowed, kept = squares_mod.borrow_land({(5, 5)}, terrain_with({}) <= squares_mod.WATER_MAX_M)
 
     assert borrowed == {} and kept == []
 
@@ -96,7 +96,7 @@ def test_open_water_with_no_land_in_reach_keeps_its_own_and_is_listed():
     terrain = terrain_with({}, default=0.0)
     terrain[0, 0] = 50.0  # far outside two squares of (10, 10)
 
-    borrowed, kept = squares_mod.borrow_land({(10, 10)}, terrain)
+    borrowed, kept = squares_mod.borrow_land({(10, 10)}, terrain <= squares_mod.WATER_MAX_M)
 
     assert borrowed == {} and kept == [(10, 10)]
 
@@ -234,3 +234,132 @@ def test_a_county_id_is_spelled_the_way_nws_alerts_spell_it(tmp_path):
 
     assert ids == ["MDC031"]
     assert geometries[0].bounds == pytest.approx((-77.5, 39.0, -77.0, 39.3))
+
+
+# --------------------------------------------------------------------------
+# HRRR (the HRRR slice): the lake-aware water rule, and HRRR's own cells.
+
+
+def test_a_lake_square_is_water_when_hrrr_says_so_though_its_terrain_is_above_zero():
+    # Lake Champlain, in miniature: URMA puts the surface at ~30 m, HRRR's
+    # LAND is 0 there. Either test calling it water is enough.
+    terrain = terrain_with({(10, 10): 30.0, (3, 3): 0.0})
+    land = np.ones((5, 5))
+    land[2, 2] = 0
+    hrows = np.full(terrain.shape, 1)
+    hcols = np.full(terrain.shape, 1)
+    hrows[10, 10], hcols[10, 10] = 2, 2  # square (10, 10)'s centre is in HRRR's water cell
+
+    water = squares_mod.water_mask(terrain, land, hrows, hcols)
+
+    assert water[10, 10]  # HRRR water, terrain says land
+    assert water[3, 3]  # terrain water, HRRR says land (the Hudson at Bear Mountain)
+    assert not water[5, 5]
+
+
+def test_a_square_off_hrrrs_grid_is_judged_by_terrain_alone():
+    terrain = terrain_with({(4, 4): 0.0})
+    hrows = np.full(terrain.shape, -1)
+    hcols = np.full(terrain.shape, -1)
+
+    water = squares_mod.water_mask(terrain, np.zeros((5, 5)), hrows, hcols)
+
+    assert water[4, 4] and not water[5, 5]  # HRRR's all-water grid is never consulted
+
+
+def test_a_lake_square_borrows_its_nearest_land_square():
+    water = np.zeros((20, 20), dtype=bool)
+    water[8:13, 8:12] = True  # rows 8-12, columns 8-11; column 12 is the east shore
+
+    borrowed, kept = squares_mod.borrow_land({(10, 10)}, water)
+
+    assert borrowed == {(10, 10): (10, 12)}  # two squares east; every nearer square is lake
+    assert kept == []
+
+
+def test_hrrr_cells_are_filed_by_the_cell_each_trail_point_falls_in():
+    # The summit and Lakes of the Clouds: two HRRR cells, one 1-degree cell.
+    lons, lats = np.array([-71.3033, -71.3190]), np.array([44.2706, 44.2587])
+
+    cells, outside = squares_mod.squares_by_cell(lons, lats, locate=hrrr_grid.cells)
+
+    assert cells == {"n44w072": [[216, 1588], [216, 1589]]} and outside == []
+
+
+def test_a_water_cell_reads_its_land_neighbours_height_as_well_as_its_temperature():
+    # The height the phone corrects from must belong to the cell the
+    # temperature came from, or the correction mixes two places.
+    height = np.zeros((5, 5))
+    height[1, 1], height[1, 2] = 30.0, 412.0
+    cells = {"n44w074": [[1, 1], [3, 3]]}
+
+    reads = squares_mod.hrrr_reads(cells, {(1, 1): (1, 2)}, height)
+
+    assert reads == [[1, 1, 1, 2, 412], [3, 3, 3, 3, 0]]
+
+
+def test_a_mountain_on_land_where_mount_washington_is_passes_the_hrrr_check():
+    height = np.zeros((hrrr_grid.HEIGHT, hrrr_grid.WIDTH))
+    land = np.ones_like(height)
+    height[216, 1589] = 1306.0
+
+    squares_mod.check_hrrr_terrain(height, land)
+
+
+@pytest.mark.parametrize("flip", ["rows", "land"])
+def test_a_mirrored_hrrr_grid_or_a_summit_in_the_sea_is_refused(flip):
+    height = np.zeros((hrrr_grid.HEIGHT, hrrr_grid.WIDTH))
+    land = np.ones_like(height)
+    height[216, 1589] = 1306.0
+    if flip == "rows":
+        height = height[::-1, :]
+    else:
+        land[216, 1589] = 0
+
+    with pytest.raises(RuntimeError, match="Mount Washington"):
+        squares_mod.check_hrrr_terrain(height, land)
+
+
+def test_a_grib_message_range_ends_where_the_next_message_starts():
+    index = [
+        "63:39354229:d=2026092912:HGT:surface:anl:",
+        "64:41507924:d=2026092912:TMP:surface:anl:",
+        "165:148726362:d=2026092912:LAND:surface:anl:",
+        "166:148776838:d=2026092912:ICEC:surface:anl:",
+    ]
+
+    assert squares_mod.grib_message_range(index, "HGT", "surface") == (39354229, 41507923)
+    assert squares_mod.grib_message_range(index, "LAND", "surface") == (148726362, 148776837)
+    with pytest.raises(RuntimeError, match="no TMP:2 m above ground"):
+        squares_mod.grib_message_range(index, "TMP", "2 m above ground")
+    with pytest.raises(RuntimeError, match="last message"):
+        squares_mod.grib_message_range(index, "ICEC", "surface")
+
+
+def test_mount_washingtons_nbm_square_centre_is_in_the_hrrr_cell_beside_the_summits():
+    # The measurement that moved HRRR onto its own cells: this square's centre
+    # is in HRRR cell (215, 1589), while the summit itself is in (216, 1589).
+    hrows, hcols = squares_mod.nbm_centres_on_hrrr()
+
+    assert (int(hrows[562, 2074]), int(hcols[562, 2074])) == (215, 1589)
+    assert hrows.shape == (nbm_grid.HEIGHT, nbm_grid.WIDTH)
+
+
+class FakeHead:
+    def __init__(self, present):
+        self.present, self.asked = present, []
+
+    def head(self, url, timeout):
+        self.asked.append(url)
+        return type("R", (), {"status_code": 200 if any(url.endswith(p) for p in self.present) else 404})()
+
+
+def test_the_newest_hrrr_hour_zero_file_is_found_by_asking_each_hour():
+    from datetime import UTC, datetime
+
+    session = FakeHead(["hrrr.t11z.wrfsfcf00.grib2.idx"])
+
+    key = squares_mod.newest_hrrr_analysis(session, now=datetime(2026, 9, 29, 13, 40, tzinfo=UTC))
+
+    assert key == "hrrr.20260929/conus/hrrr.t11z.wrfsfcf00.grib2"
+    assert len(session.asked) == 3  # 13Z and 12Z were not there yet

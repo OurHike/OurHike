@@ -6,11 +6,11 @@ forecast the coordinate rather than match it**. That issue's measurements are th
 doc exists and are not repeated here; read it for why matching a forecast feed to waypoints
 tops out at 0.8% of them.
 
-**Status, 2026-09-26: designed and spiked; build step 1's NBM and warnings slices built** —
-`publish-weather.yml` publishes NBM's forecast for every trail square to UA, one file per
-1° cell, and every active NWS alert that reaches a trail square, in one file. HRRR's two days
-are step 1's last slice, still to come; nothing a hiker runs reads any of it yet (steps 3
-and 4). This doc owns **forecasts** —
+**Status, 2026-09-29: designed and spiked; build step 1 built** — `publish-weather.yml`
+publishes to UA NBM's forecast for every trail square, one file per 1° cell with HRRR's
+first two days' temperature and cell heights inside it, and every active NWS alert that
+reaches a trail square, in one file. Nothing a hiker runs reads any of it yet (steps 3 and
+4), and no corrected temperature may reach one before step 2. This doc owns **forecasts** —
 where they come from, how precise they are, how often they change, how they reach a phone,
 and what a hiker sees when the phone has not heard anything for a while. It also owns how a
 relayed **NWS warning** is *displayed* as it ages, because a forecast card and a warning
@@ -182,8 +182,11 @@ hours (the maintainer's call; §3). Reasons for NBM, each resting on something i
 - **The COG path carries the model version** (`blendv5.0/`, since NBM v5.0 went operational
   on 2026-05-05; it was `blendv4.3/` before). The job discovers it rather than hard-coding it.
 - **HRRR** (`noaa-hrrr-bdp-pds`, 3 km) runs hourly but reaches 48 hours only from the 00, 06,
-  12 and 18 UTC cycles; the others stop at 18. Its temperature subset for a 48-hour cycle is
-  ~409 MB as GRIB2 byte ranges. **It carries no probabilities**, which is why HRRR can only
+  12 and 18 UTC cycles; the others stop at 18. Its 2 m temperature for a 48-hour cycle is
+  48 GRIB2 messages fetched by byte range, **58.5 MB in 7.9 s** (measured 2026-09-29, the 06Z
+  run; this line said ~409 MB before the build, a figure for a larger subset of fields). When
+  the 06Z run was complete at about 13:40 UTC, the 12Z run had 3 of its 49 files. **It
+  carries no probabilities**, which is why HRRR can only
   ever be the temperature half of the first two days.
 
 The alternative a reviewer should weigh is **NDFD**, the forecaster-edited grid behind
@@ -419,9 +422,18 @@ reaches a card — a number that looks right and is not is the failure
   **@unvalidated, and narrower than "land":** 0 m finds sea-level water — the ocean, the tidal
   Hudson — and a lake surface at its own height passes as land. NBM's sea-surface field is no
   help (it marks the ocean only; the Hudson, Lake Champlain and Lake George read as land in
-  it, measured 2026-09-25). HRRR's `LAND` field, arriving with the HRRR slice, is the real
-  mask; what would settle whether lake squares matter is a lake-shore square's forecast
-  against its landward neighbour's over a season.
+  it, measured 2026-09-25). **Built, 2026-09-29, with HRRR's `LAND` field as a second
+  test:** a square is water when its URMA terrain is at or below 0 m *or* HRRR's land mask is
+  0 under its centre. Each catches what the other misses. HRRR marks Lake Champlain, Lake
+  Winnipesaukee and Lake Superior as water and calls the Hudson at Bear Mountain land (its
+  3 km cell is mostly shore). Measured on UA release 2026-09-25's 72,720 squares, terrain
+  found 183 water squares and HRRR's mask 316, and 214 were HRRR's alone: Champlain, New
+  York's bays and Minnesota's lakes. On release 2026-09-28, 385 of 72,195 squares borrow. Seven
+  have no land within two squares and keep their own, all on the Jersey Shore's barrier
+  beaches, where the forecast really is the sea's. Still
+  **@unvalidated** for water narrower than both tests: Lake George reads as land in each.
+  What would settle whether that matters is a lake-shore square's forecast against its
+  landward neighbour's over a season.
 
 **The first trap is avoided rather than handled:** the job reads NBM's GeoTIFFs, which have no
 scanning-mode rows to mirror, and refuses any file whose grid differs from the one pinned in
@@ -453,10 +465,37 @@ cell under them and its neighbours.
 **What a trail point reads:** its NBM grid square. Which square a point is in is arithmetic —
 `lib/nbm_grid.py`'s projection, whose parameters the index carries as `grid` — so no mapping
 artifact rides with the release; each cell file lists its squares, and the phone looks its
-point's square up in that list, or finds it absent and says there is no forecast there. For
-the hours HRRR covers (the HRRR slice), the file will also carry HRRR's cell temperature and
-that cell's height, from which the phone applies the lapse to the point's own height from the
-DEM it already holds.
+point's square up in that list, or finds it absent and says there is no forecast there.
+
+**For the first two days' temperature it also reads its HRRR cell**, a second lookup by the
+same arithmetic on HRRR's own grid (`lib/hrrr_grid.py`, carried in the index as
+`hrrr_grid`). Each cell file's `hrrr` block lists every HRRR cell a trail point or waypoint in
+that 1° cell falls in, with the cell's model `height` in metres and its 2 m `temp` for each
+hour of the run, in °C to a tenth. The phone applies the lapse from that height to the
+point's own height from its DEM. **The pipeline corrects nothing**, so no corrected number
+exists until step 2 has scored the phone's exact arithmetic (§3).
+
+- **Filed by HRRR's cells, not NBM's squares, and measured into that shape.** The first build
+  hung HRRR off each NBM square's centre. Mount Washington's square has its centre in the
+  HRRR cell next to the summit's, at 1,038 m rather than 1,306, so the phone would have
+  corrected across 880 m instead of 610. The spike scored HRRR at the cell containing each
+  station, which is what the phone will now do. It is smaller too: 54,927 HRRR cells hold a
+  trail point on UA release 2026-09-28, against 72,195 NBM squares.
+- **HRRR cells get the water rule, by HRRR's own mask.** A trail point in an HRRR water cell
+  reads the nearest HRRR land cell within two cells, with that cell's height, and `borrowed`
+  says so. The height has to come with the temperature: a lapse from one cell's height to
+  another cell's temperature corrects neither. 246 cells borrow and 4 keep their own
+  (release 2026-09-28).
+- **Tenths of a degree, not whole degrees.** Whole degrees would add up to ±0.9 °F of rounding
+  against the 2.3 °F accuracy that justified HRRR. Measured 2026-09-29: tenths make every
+  cell file together 37% bigger gzipped (9.5 MB to 13.0 MB; median cell 15 KB, largest
+  162 KB). Whole degrees would have been 8–12%. Keeping one value per HRRR cell rather than
+  per square saves nothing here, because gzip already finds the repeats (measured).
+- **`hrrr` is `null` when the run could not fetch HRRR.** The phone then uses NBM for every
+  hour, as it does past hour 48 anyway, and the index's `hrrr_cycle` is `null`.
+- **Sanity, not validation:** at 12Z on 2026-09-29, the summit's HRRR cell read 8.3 °C (47 °F)
+  at 1,306 m. An illustrative 6.5 °C/km lapse, not the shipped arithmetic, brings that to
+  about 40 °F at 1,917 m, against NBM's 39 °F for the summit's square.
 
 **Every square also lists its NWS zones**, as `zones[i]` beside `squares[i]`: each public
 forecast zone, fire weather zone and county whose outline overlaps that square, spelled the
@@ -505,8 +544,8 @@ month (Cloudflare's pricing page, read 2026-09-24), which the other publishes al
 **What the job downloads each run**, measured 2026-09-25: NBM's GeoTIFFs whole, 315 files and
 240.6 MB in 20 s from this sandbox — whole rather than tile ranges, because the national
 network touches most of CONUS's tiles anyway and one GET per file is simpler than seventy.
-One alerts request (2.6 MB) joins it; HRRR's 48-hour temperature (~409 MB, §2) will join it
-with its slice.
+One alerts request (2.6 MB) joins it, and HRRR's 48 hours of 2 m temperature (58.5 MB by byte
+range, §2).
 That is AWS open-data egress, which costs this project nothing, and GitHub-hosted runner time.
 
 **UA only, for now.** Nothing a hiker runs reads these files until step 3, so production
@@ -549,7 +588,8 @@ adjusted for elevation by OurHike"*, and days 3 onward, unmodified, say *"NOAA f
 
 ## Still open
 
-- **Lake squares** (§6): the water rule catches sea-level water only.
+- **Narrow lakes** (§6): water narrower than a 3 km HRRR cell and above sea level, such as
+  Lake George, still passes as land.
 - **Alaska and Puerto Rico** (§7): 33 trail cells on NBM grids this build does not read. Their
   squares are not in the trail list either, so no warning is placed there yet.
 - **The phone's own ask to NWS** (§5) is step 4's. It will need the privacy policy to say
@@ -560,13 +600,13 @@ adjusted for elevation by OurHike"*, and days 3 onward, unmodified, say *"NOAA f
 
 #1056 carries these as its checklist (maintainer, 2026-09-24). Each is useful alone:
 
-1. **The job**, in three slices. No client change in any of them.
+1. **The job — built**, in three slices. No client change in any of them.
    - **NBM — built, 2026-09-25.** `build_weather_squares.py`, `fetch_weather.py`,
      `export_weather.py`, `publish-weather.yml`; §6's two traps tested.
    - **Warnings — built, 2026-09-26.** `export_weather_alerts.py`, each square's zones in
      `build_weather_squares.py` and the cell files; either half publishes without the other.
-   - **HRRR** — its 48-hour temperature and cell heights beside NBM's fields, and its `LAND`
-     mask for the water rule.
+   - **HRRR — built, 2026-09-29.** `fetch_hrrr.py`, `lib/hrrr_grid.py`, HRRR's cells, heights
+     and land mask in `build_weather_squares.py`, and the `hrrr` block in the cell files.
 2. **The spike re-run with our own correction** (§3) — before phase 3 puts a corrected
    number in front of a hiker.
 3. **The waypoint card** — the five days at the waypoint's grid square, with the age line,

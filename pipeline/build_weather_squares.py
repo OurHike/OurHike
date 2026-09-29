@@ -17,21 +17,49 @@ half (`fetch_weather.py`, `export_weather.py`) reads the answer and nothing
 else about trails.
 
 WATER SQUARES BORROW A LAND NEIGHBOUR (WEATHER.md §6). A trail point by a
-river can sit in a square the model treats as water - Bear Mountain's
-published coordinate is in square (712, 2007), whose terrain height in NOAA's
-URMA analysis is 0 m: the Hudson. A water square's temperature is the river's,
-not the summit path's. So a square whose URMA terrain is at or below
-`WATER_MAX_M` reads the nearest square within `BORROW_RINGS` whose terrain is
-above it, and the file says which squares borrowed.
+river or a lake can sit in a square the model treats as water - Bear
+Mountain's published coordinate is in square (712, 2007), whose terrain height
+in NOAA's URMA analysis is 0 m: the Hudson. A water square's temperature is
+the water's, not the summit path's. So a water square reads the nearest square
+within `BORROW_RINGS` that is land, and the file says which squares borrowed.
 
-@unvalidated, and narrower than it sounds. Terrain at or below 0 m finds
-sea-level water - the ocean, the tidal Hudson - and nothing else: a lake
-surface sits at its own height (Lake Champlain ~30 m) and passes as land, and
-NBM's own sea-surface field marks the ocean only (measured 2026-09-24: the
-Hudson, Lake Champlain and Lake George all read as land in it). A land mask
-proper arrives with HRRR's `LAND` field in step 1's HRRR slice; what would
-settle whether lake squares matter is comparing a lake-shore trail square's
-forecast with its landward neighbour's over a season.
+A square is water when EITHER of two tests says so, because each catches what
+the other misses (measured 2026-09-29):
+
+- URMA terrain at or below `WATER_MAX_M` (0 m) - sea-level water: the ocean
+  and the tidal Hudson. A lake surface sits at its own height (Lake Champlain
+  ~30 m) and passes this test as land.
+- HRRR's `LAND` field is 0 at the square's centre - HRRR's own land mask, on
+  its 3 km grid. It marks Lake Champlain, Lake Winnipesaukee and Lake Superior
+  as water, and misses water narrower than a 3 km cell: the Hudson at Bear
+  Mountain and Lake George both read as land in it.
+
+On UA release 2026-09-25 the first test finds 183 of 72,720 trail squares, the
+second 316, and 214 are found by the second alone - Lake Champlain, New York's
+bays, Minnesota's lakes. @unvalidated, still: water narrower than both a 0 m
+contour and a 3 km cell - Lake George - passes as land, and what would settle
+whether that matters is a lake-shore square's forecast against its landward
+neighbour's over a season.
+
+HRRR, THE FIRST TWO DAYS' TEMPERATURE (the HRRR slice, 2026-09-29). HRRR is a
+different model on its own 3 km grid (`lib/hrrr_grid.py`), and the phone
+corrects its temperature from the HRRR cell's model height to a trail point's
+real one (WEATHER.md §3). So HRRR is filed by ITS OWN cells, not by NBM's
+squares: every HRRR cell a trail point or waypoint falls in, per 1° cell, the
+same rule `squares_by_cell` applies to NBM. The phone finds its point's HRRR
+cell by the same arithmetic and reads it directly.
+
+Filing HRRR under NBM squares was built first and measured wrong: Mount
+Washington's NBM square has its centre in the HRRR cell next to the summit's,
+at 1,038 m rather than 1,306, so the phone would have corrected across 880 m
+instead of 610 - and a lapse rate's error grows with the height it spans. The
+spike scored HRRR at the cell containing each station, which is what this
+reproduces. It is also smaller: 54,927 HRRR cells hold a trail point on UA
+release 2026-09-28, against 72,195 NBM squares.
+
+HRRR cells get the water rule too, by HRRR's own `LAND` mask: a trail point
+whose HRRR cell is water reads the nearest HRRR land cell within
+`BORROW_RINGS`, and the file lists it.
 
 EACH SQUARE'S NWS ZONES (the warnings slice, 2026-09-26). Most NWS alerts name
 the zones they cover rather than drawing a shape - 419 of 486 active at
@@ -70,7 +98,7 @@ import requests
 import shapely
 
 from cut_cells import cell_name
-from lib import data_env, nbm_grid
+from lib import data_env, hrrr_grid, nbm_grid
 from lib.atomic_write import write_text_atomically
 from lib.http_retry import download_with_retry, request_with_retry
 
@@ -79,15 +107,19 @@ WEATHER_RAW = ROOT / "data" / "raw" / "weather"
 RELEASE_DIR = WEATHER_RAW / "release"
 SQUARES_PATH = WEATHER_RAW / "squares.json"
 TERRAIN_PATH = WEATHER_RAW / "urma_terrain.grb2"
+HRRR_HEIGHT_PATH = WEATHER_RAW / "hrrr_height.grb2"
+HRRR_LAND_PATH = WEATHER_RAW / "hrrr_land.grb2"
 ZONES_DIR = WEATHER_RAW / "zones"
 
 USER_AGENT = "OurHike (github.com/OurHike/OurHike)"
 URMA_BUCKET = "https://noaa-urma-pds.s3.amazonaws.com"
+HRRR_BUCKET = "https://noaa-hrrr-bdp-pds.s3.amazonaws.com"
 
 # Bumped when the answer this script writes changes meaning, so a cached
 # squares.json from an older rule is rebuilt rather than reused because its
 # release id still matches. 2: each square's NWS zones (the warnings slice).
-SCHEMA = 2
+# 3: HRRR's land mask in the water rule, and each square's HRRR cell.
+SCHEMA = 3
 
 # Points are laid along each line at most this far apart in either axis
 # before being dropped into squares. Derived, not picked: a square is 2.54 km,
@@ -96,8 +128,8 @@ SCHEMA = 2
 # less than that - a square whose neighbours on the line are all included.
 STEP_DEG = 0.004
 
-# At or below this URMA terrain height a square is treated as water. See the
-# module docstring for what this does and does not catch.
+# At or below this URMA terrain height a square is treated as water - one of
+# the water rule's two tests. See the module docstring for what each catches.
 WATER_MAX_M = 0.0
 
 # How far a water square looks for land: two squares, ~5 km. A trail point
@@ -144,6 +176,13 @@ ZONE_FILES = {
 MOUNT_WASHINGTON = (-71.3033, 44.2706)
 MOUNT_WASHINGTON_TERRAIN_M = (1500.0, 1950.0)
 
+# The same pin for HRRR's height field, whose 3 km cell smooths the summit
+# further: 1,306 m, measured 2026-09-29 (WEATHER.md §6 recorded the same
+# figure from the spike on 2026-09-24). The band is wide enough for a new
+# HRRR version's terrain and narrow enough that no mirrored or shifted read
+# lands in it, and the cell must be land.
+MOUNT_WASHINGTON_HRRR_M = (1150.0, 1450.0)
+
 POI_KEY = re.compile(r"^(poi_[a-z_]+|nearby_poi)\.geojson$")
 LINE_KEYS = ("trails.geojson", "nearby_trails.geojson")
 
@@ -181,12 +220,14 @@ def cells_of(lons: np.ndarray, lats: np.ndarray) -> list[str]:
     return [cell_name(math.floor(lon), math.floor(lat)) for lon, lat in zip(lons, lats, strict=True)]
 
 
-def squares_by_cell(lons: np.ndarray, lats: np.ndarray) -> tuple[dict[str, list[list[int]]], list[str]]:
-    """({cell: sorted [row, col] squares}, sorted cells off the CONUS grid).
+def squares_by_cell(lons: np.ndarray, lats: np.ndarray, locate=nbm_grid.squares) -> tuple[dict[str, list[list[int]]], list[str]]:
+    """({cell: sorted [row, col] squares}, sorted cells off the grid).
 
     A square straddling two cells is listed in each cell a trail point in it
-    falls in, so every cell's file is complete on its own."""
-    rows, cols = nbm_grid.squares(lons, lats)
+    falls in, so every cell's file is complete on its own. `locate` is the
+    grid's point-to-square arithmetic: NBM's by default, `hrrr_grid.cells`
+    for HRRR's."""
+    rows, cols = locate(lons, lats)
     names = cells_of(lons, lats)
     found: dict[str, set[tuple[int, int]]] = {}
     outside: set[str] = set()
@@ -198,19 +239,44 @@ def squares_by_cell(lons: np.ndarray, lats: np.ndarray) -> tuple[dict[str, list[
     return {name: [list(sq) for sq in sorted(found[name])] for name in sorted(found)}, sorted(outside - set(found))
 
 
+def nbm_centres_on_hrrr() -> tuple[np.ndarray, np.ndarray]:
+    """(rows, cols) of the HRRR cell under the centre of every NBM square, as
+    two (HEIGHT, WIDTH) arrays in NBM's shape; -1 where the centre is off
+    HRRR's grid."""
+    cols, rows = np.meshgrid(np.arange(nbm_grid.WIDTH) + 0.5, np.arange(nbm_grid.HEIGHT) + 0.5)
+    x = nbm_grid.ORIGIN_X + cols * nbm_grid.SQUARE_M
+    y = nbm_grid.ORIGIN_Y - rows * nbm_grid.SQUARE_M
+    lons, lats = nbm_grid._TO_GRID.transform(x.ravel(), y.ravel(), direction="INVERSE")
+    hrows, hcols = hrrr_grid.cells(lons, lats)
+    return hrows.reshape(rows.shape), hcols.reshape(rows.shape)
+
+
+def water_mask(
+    terrain: np.ndarray, hrrr_land: np.ndarray, hrows: np.ndarray, hcols: np.ndarray, water_max_m: float = WATER_MAX_M
+) -> np.ndarray:
+    """True for every NBM square either test calls water (module docstring):
+    URMA terrain at or below `water_max_m`, or HRRR's `LAND` 0 under the
+    square's centre. A centre off HRRR's grid is judged by terrain alone."""
+    on_hrrr = hrows >= 0
+    hrrr_water = np.zeros(terrain.shape, dtype=bool)
+    hrrr_water[on_hrrr] = hrrr_land[hrows[on_hrrr], hcols[on_hrrr]] == 0
+    return (terrain <= water_max_m) | hrrr_water
+
+
 def borrow_land(
-    squares: set[tuple[int, int]], terrain: np.ndarray, water_max_m: float = WATER_MAX_M, rings: int = BORROW_RINGS
+    squares: set[tuple[int, int]], water: np.ndarray, rings: int = BORROW_RINGS
 ) -> tuple[dict[tuple[int, int], tuple[int, int]], list[tuple[int, int]]]:
     """({water square: land square it reads from}, water squares with no land
-    near enough, which keep their own forecast).
+    near enough, which keep their own forecast). `water` is `water_mask`'s
+    answer, on NBM's grid.
 
     Nearest by grid distance; a tie goes to the smaller (row, col), so the
     answer does not depend on set order."""
-    height, width = terrain.shape
+    height, width = water.shape
     borrowed: dict[tuple[int, int], tuple[int, int]] = {}
     kept: list[tuple[int, int]] = []
     for row, col in sorted(squares):
-        if terrain[row, col] > water_max_m:
+        if not water[row, col]:
             continue
         best = None
         for dr in range(-rings, rings + 1):
@@ -218,7 +284,7 @@ def borrow_land(
                 r, c = row + dr, col + dc
                 if (dr, dc) == (0, 0) or not (0 <= r < height and 0 <= c < width):
                     continue
-                if terrain[r, c] <= water_max_m:
+                if water[r, c]:
                     continue
                 key = (dr * dr + dc * dc, r, c)
                 if best is None or key < best:
@@ -240,6 +306,38 @@ def check_terrain(terrain: np.ndarray) -> None:
             f"URMA terrain at Mount Washington's square reads {value:.0f} m, outside {low:.0f}-{high:.0f} m. "
             "The grid decoded mirrored, shifted or from the wrong file; refusing to pick land squares from it."
         )
+
+
+def check_hrrr_terrain(height: np.ndarray, land: np.ndarray) -> None:
+    """Refuse HRRR height and land grids whose Mount Washington cell is not a
+    mountain on land."""
+    rows, cols = hrrr_grid.cells([MOUNT_WASHINGTON[0]], [MOUNT_WASHINGTON[1]])
+    row, col = int(rows[0]), int(cols[0])
+    value, is_land = float(height[row, col]), float(land[row, col])
+    low, high = MOUNT_WASHINGTON_HRRR_M
+    if not (low <= value <= high and is_land == 1):
+        raise RuntimeError(
+            f"HRRR at Mount Washington's cell reads {value:.0f} m, land={is_land:.0f}; expected {low:.0f}-{high:.0f} m "
+            "on land. The HRRR grid decoded mirrored, shifted or from the wrong message; refusing to use it."
+        )
+
+
+def hrrr_reads(
+    cells: dict[str, list[list[int]]],
+    borrowed: dict[tuple[int, int], tuple[int, int]],
+    height: np.ndarray,
+) -> list[list[int]]:
+    """[hrrr_row, hrrr_col, read_row, read_col, height_m] for every HRRR cell
+    listed in `cells`: the cell its temperature is read from (itself, or the
+    land cell it borrows) and that cell's model height to the metre - the
+    height the phone corrects from, which must be the height of the cell the
+    temperature came from."""
+    listed = sorted({tuple(c) for cell_list in cells.values() for c in cell_list})
+    reads = []
+    for cell in listed:
+        read_row, read_col = borrowed.get(cell, cell)
+        reads.append([cell[0], cell[1], read_row, read_col, int(round(float(height[read_row, read_col])))])
+    return reads
 
 
 def zones_by_square(square_list: list[list[int]], layers: dict[str, tuple[list[str], list]]) -> dict[str, list[list[int]]]:
@@ -317,6 +415,58 @@ def fetch_terrain(session: requests.Session) -> np.ndarray:
         terrain = ds.read(1).astype(np.float64)
     check_terrain(terrain)
     return terrain
+
+
+def newest_hrrr_analysis(session: requests.Session, now: datetime | None = None, hours_back: int = 48) -> str:
+    """The key of a recent HRRR hour-0 surface file. Its height and land
+    fields are the model's fixed terrain, so any recent one serves.
+
+    Asks for each hour's index directly, newest first, rather than listing a
+    day's keys: a day holds far more than the 1,000 keys one S3 listing page
+    returns, and the hour-0 files are not guaranteed to be on the first."""
+    now = now or datetime.now(UTC)
+    for back in range(hours_back):
+        run = (now - timedelta(hours=back)).replace(minute=0, second=0, microsecond=0)
+        key = f"hrrr.{run:%Y%m%d}/conus/hrrr.t{run:%H}z.wrfsfcf00.grib2"
+        response = session.head(f"{HRRR_BUCKET}/{key}.idx", timeout=30)
+        if response.status_code == 200:
+            return key
+    raise RuntimeError(f"no HRRR hour-0 surface file in the last {hours_back} hours")
+
+
+def grib_message_range(index_lines: list[str], field: str, level: str) -> tuple[int, int]:
+    """(first byte, last byte) of one message in a GRIB2 file, from its .idx.
+    Raises if the field is absent rather than reading the wrong one."""
+    for i, line in enumerate(index_lines):
+        parts = line.split(":")
+        if len(parts) > 4 and parts[3] == field and parts[4] == level:
+            if i + 1 >= len(index_lines):
+                raise RuntimeError(f"{field}:{level} is the last message; its end is not in the index")
+            return int(parts[1]), int(index_lines[i + 1].split(":")[1]) - 1
+    raise RuntimeError(f"no {field}:{level} message in the index")
+
+
+def fetch_hrrr_terrain(session: requests.Session) -> tuple[np.ndarray, np.ndarray]:
+    """(model height in metres, LAND) on HRRR's grid, from one recent file,
+    each checked against the pinned grid and Mount Washington."""
+    if not (HRRR_HEIGHT_PATH.exists() and HRRR_LAND_PATH.exists()):
+        key = newest_hrrr_analysis(session)
+        index = request_with_retry(f"{HRRR_BUCKET}/{key}.idx", session=session, label="HRRR idx").text.splitlines()
+        for (field, level), dest in ((("HGT", "surface"), HRRR_HEIGHT_PATH), (("LAND", "surface"), HRRR_LAND_PATH)):
+            start, end = grib_message_range(index, field, level)
+            body = request_with_retry(
+                f"{HRRR_BUCKET}/{key}", session=session, headers={"Range": f"bytes={start}-{end}"}, label=f"HRRR {field}"
+            ).content
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(body)
+    grids = []
+    for path in (HRRR_HEIGHT_PATH, HRRR_LAND_PATH):
+        with rasterio.open(path) as ds:
+            if not hrrr_grid.matches(ds.transform, ds.crs, ds.width, ds.height):
+                raise RuntimeError(f"{path.name} is not on HRRR's grid; the pin in lib/hrrr_grid.py no longer holds")
+            grids.append(ds.read(1).astype(np.float64))
+    check_hrrr_terrain(*grids)
+    return grids[0], grids[1]
 
 
 def fetch_zone_file(kind: str) -> Path:
@@ -397,7 +547,13 @@ def main(argv: list[str] | None = None) -> dict | None:
     lons, lats = trail_points(paths)
     cells, outside = squares_by_cell(lons, lats)
     all_squares = {tuple(sq) for squares in cells.values() for sq in squares}
-    borrowed, kept = borrow_land(all_squares, fetch_terrain(session))
+    hrrr_height, hrrr_land = fetch_hrrr_terrain(session)
+    hrows, hcols = nbm_centres_on_hrrr()
+    water = water_mask(fetch_terrain(session), hrrr_land, hrows, hcols)
+    borrowed, kept = borrow_land(all_squares, water)
+    hrrr_cells, _ = squares_by_cell(lons, lats, locate=hrrr_grid.cells)
+    all_hrrr = {tuple(c) for cell_list in hrrr_cells.values() for c in cell_list}
+    hrrr_borrowed, hrrr_kept = borrow_land(all_hrrr, hrrr_land == 0)
     layers = {kind: read_zone_file(fetch_zone_file(kind), spec[2]) for kind, spec in ZONE_FILES.items()}
     zones = zones_by_square(sorted(list(sq) for sq in all_squares), layers)
     zoned = {tuple(sq) for squares in zones.values() for sq in squares}
@@ -412,6 +568,11 @@ def main(argv: list[str] | None = None) -> dict | None:
         "borrowed": sorted([list(water), list(land)] for water, land in borrowed.items()),
         "water_kept": sorted(list(sq) for sq in kept),
         "outside_grid": outside,
+        "hrrr_grid": {"proj4": hrrr_grid.PROJ4, "origin": [hrrr_grid.ORIGIN_X, hrrr_grid.ORIGIN_Y], "cell_m": hrrr_grid.CELL_M},
+        "hrrr_cells": hrrr_cells,
+        # [hrrr_row, hrrr_col, read_row, read_col, height_m], one per listed HRRR cell
+        "hrrr_reads": hrrr_reads(hrrr_cells, hrrr_borrowed, hrrr_height),
+        "hrrr_water_kept": sorted(list(c) for c in hrrr_kept),
         "zone_files": {kind: spec[0].rsplit("/", 1)[-1] for kind, spec in ZONE_FILES.items()},
         "zones": zones,
         # Every zone id in the pinned files, trail or not, so the alerts
@@ -424,7 +585,9 @@ def main(argv: list[str] | None = None) -> dict | None:
         f"{env} release {release}: {len(all_squares):,} squares in {len(cells)} cells from {len(lons):,} points; "
         f"{len(borrowed)} water squares borrow land, {len(kept)} keep their own; "
         f"{len(outside)} cells off the CONUS grid ({', '.join(outside) or 'none'}); "
-        f"{len(zones):,} NWS zones overlap a trail square, {len(all_squares) - len(zoned)} squares are in none."
+        f"{len(zones):,} NWS zones overlap a trail square, {len(all_squares) - len(zoned)} squares are in none; "
+        f"{len(all_hrrr):,} HRRR cells hold a trail point; {len(hrrr_borrowed)} water cells borrow land, "
+        f"{len(hrrr_kept)} keep their own."
     )
     return document
 

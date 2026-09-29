@@ -206,7 +206,7 @@ def build() -> dict:
     for trail in emblems["trails"]:
         if trail["steward"]:
             by_steward.setdefault(trail["steward"], []).append(
-                {"slug": trail["slug"], "trail": trail["trail"], "blaze": trail["blaze"], "mark_state": trail["mark_state"]}
+                {"slug": trail["slug"], "trail": trail["trail"], "blaze": trail["blaze"]}
             )
 
     orgs = catalogue["orgs"]

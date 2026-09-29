@@ -5,11 +5,14 @@ should wear a through-route badge, with the blaze their chip takes. It carries
 no artwork and no design for artwork, and these tests are what keep it that
 way.
 
-THE RULE THIS FILE LIVES UNDER IS NOT NEW AND IS NOT THIS BRANCH'S.
-`sources.json`'s `org_marks` block states it: "UNTIL A GRANT ARRIVES, THE SLOT
-RENDERS EMPTY - never a placeholder mark, never an initial, never a generated
-shape." `pipeline/tests/test_org_marks.py` gives it teeth for assets. These
-tests give it teeth one step earlier, in the file somebody would draw from.
+WHETHER A MARK MAY SHIP IS NOT THIS FILE'S QUESTION. `sources.json`'s
+`org_marks` block records that per organization and `test_org_marks.py`
+enforces it; an earlier draft of this file mirrored that vocabulary per trail,
+which tracked nothing org_marks did not already track, and it is gone.
+
+What survives here is narrower: this file must not become a place somebody
+draws a mark FROM. test_no_trail_carries_a_drawn_emblem exists because the
+first draft carried a shape, a ground colour and a letterform per trail.
 
 An earlier draft of this file carried a per-trail shape, ground colour and
 letterform. That is the generated shape the sentence above names, and
@@ -64,30 +67,6 @@ def test_no_trail_row_names_an_image_file(trails):
     blob = json.dumps(trails)
     for smell in ("data:image", "base64", ".svg", ".png", ".jpg", ".webp"):
         assert smell not in blob, f"a trail row carries {smell!r}; this file names no artwork"
-
-
-def test_every_mark_state_is_one_of_the_registry_s_own_four_words(trails):
-    """Not a fifth vocabulary beside org_marks' four.
-
-    A parallel spelling is how two records start disagreeing about whether
-    somebody said yes, which is the disagreement that matters most here.
-    """
-    declared = set(REGISTRY["org_marks"]["state_vocabulary"])
-    assert declared == {"not_asked", "asked", "granted", "refused"}
-    unknown = sorted({t["mark_state"] for t in trails} - declared)
-    assert unknown == [], f"mark states org_marks does not declare: {unknown}"
-
-
-def test_no_trail_claims_a_grant_no_organization_has_given(trails):
-    """Every org_marks row reads not_asked today, and this file may not disagree.
-
-    The day one reads `granted`, it changes in org_marks first and the asset
-    arrives in the same pull request - never here, and never alone.
-    """
-    granted = sorted(t["slug"] for t in trails if t["mark_state"] != "not_asked")
-    assert granted == [], (
-        f"these trails claim a mark answer nobody has: {granted}. Every org_marks row is not_asked; asking is what changes that."
-    )
 
 
 def test_every_trail_records_a_blaze_even_when_it_has_none(trails):

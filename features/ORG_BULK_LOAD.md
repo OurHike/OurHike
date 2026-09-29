@@ -440,49 +440,24 @@ registry and nothing else here changes."*
 tier grows to: **67 long-distance trails** — the 11 National Scenic Trails, 43 named regional long
 trails, and the 13 route-only trails — each with its steward and the blaze its chip takes.
 
-### What it does not contain, and why that was a correction
+### What it does not contain
 
 An earlier draft of that file carried a per-trail shape, ground colour and letterform, so that every
-long trail would have a drawn emblem. **That draft was wrong**, and the rule it broke is the
-repository's own, written before this branch existed. `sources.json`'s `org_marks` block:
+long trail would have a drawn emblem. That was wrong, and the rule it broke is the repository's own,
+written before this branch existed. `sources.json`'s `org_marks` block:
 
 > **UNTIL A GRANT ARRIVES, THE SLOT RENDERS EMPTY** — never a placeholder mark, never an initial,
-> never a generated shape. An organization's identity is the one thing in this app that must not be
-> approximated, and a visibly empty slot is also the thing most likely to prompt somebody to go and
-> ask.
+> never a generated shape.
 
-`pipeline/tests/test_org_marks.py` gives that teeth for assets: a mark file in the client tree for an
-organization whose state is not `granted` fails the suite, and **every one of the 14 rows reads
-`not_asked`**. So neither shape of the original idea could ship — 44 drawn emblems are the generated
-shapes that sentence forbids, and 44 real logos are assets at `not_asked`, which turns the suite red.
+`pipeline/tests/test_org_marks.py` gives that teeth for assets. **Whether a mark may ship is tracked
+there, per organization, and nowhere else.** A later draft of the emblem file mirrored that
+vocabulary per trail — 67 rows all saying the same thing, tracking nothing `org_marks` did not
+already track — and it is gone. One record, in one place.
 
-What a trail without a granted mark wears is **the blaze chip**, which is already built, already
-shipping, and says something true about paint on a tree rather than something invented about an
-organization. `org_marks`' own `brand_colour_chip_only` permission exists to protect exactly that
-channel — *"an organization's brand colour touching a trail line would make the map say something
-false about paint on a tree."*
-
-So the file carries `blaze` and `mark_state`, the latter in `org_marks`' own four words rather than a
-fifth vocabulary beside it. Every row reads `not_asked`, because that is true.
-
-### The ask this actually unblocks
-
-Asking is the only thing that moves a row off `not_asked`, and asking was expensive because nobody
-had the list. **`reference/trail_orgs.json` is now that list** — 163 organizations with their
-websites — which makes the mark ask the same shape as the licence ask and roughly as cheap.
-
-The A.T. and Long Path marks ship on the maintainer's own authorisation, recorded in
-`client/src/lib/trails.ts` and in `org_marks`. That is a real basis, it is the same footing
-`atc_licence` stands on, and it does not extend to anybody else's mark.
-
-**One pre-existing defect is worth naming rather than leaving.** `client/src/lib/trails.ts` carries
-PCT and CDT marks it describes as *"placeholder marks of OurHike's own design, since PCTA's and
-CDTC's official logos aren't sourced here"* — two invented shapes standing in for two organizations'
-identities, which is what the `org_marks` comment forbids. They predate that block. Neither
-organization is in `sources.json`'s provider list, so `test_org_marks.py`'s org-derived check does
-not reach them today. **Registering PCTA — one of the 11 endpoints above — brings it into that list
-and those marks into scope**, which makes this the branch that has to say so even though it is not
-the branch that fixes it.
+What a trail without a mark wears is **the blaze chip**, already built and already shipping: a fact
+about paint on a tree rather than something invented about an organization. The emblem file carries
+the trail, its steward and its blaze, and `test_no_trail_carries_a_drawn_emblem` keeps it from
+becoming a place somebody draws a mark from.
 
 ## What this plan deliberately does not do
 

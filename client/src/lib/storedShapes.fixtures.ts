@@ -1680,6 +1680,23 @@ export const RELEASE_SHAPES: readonly ReleaseShapes[] = deepFreeze<
     },
     localStorage: {},
   },
+  {
+    tag: 'v1.3.3',
+    // A hotfix off v1.3.2 (RELEASING.md §11a), not a cut from main. The tag
+    // is cut from release/v1.3.3: v1.3.2's commit, this one, plus #1710's
+    // change to site/ and the release commit. Neither touches client/src,
+    // so no writer differs from v1.3.2's.
+    commit: '8cb7f5d3',
+    // PLACEHOLDER: the day this entry was written, while v1.3.3 was being
+    // cut. Replace with the GitHub release's published date once it is
+    // published; the tests check only the YYYY-MM-DD shape.
+    published: '2026-09-29',
+    // Empty on purpose: `git diff v1.3.2..release/v1.3.3 -- client/src`
+    // names only this file and its test, so no writer changed and nothing
+    // a phone stores changed shape.
+    indexedDb: {},
+    localStorage: {},
+  },
 ])
 
 /**

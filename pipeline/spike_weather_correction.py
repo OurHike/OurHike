@@ -28,6 +28,15 @@ ship. This spike scores the thing we ship instead:
   Scored raw, as it ships, and corrected from URMA's terrain for comparison
   with §3's finding that correcting NBM makes it worse.
 
+TWO WINDOWS, BECAUSE ONE VARIANT CAME AFTER THE FIRST ANSWER. The first
+window is the first spike's (2026-07-24 to 09-22). On it, corrected HRRR beat
+NBM on highs and lost on lows, and averaging the two models hour by hour
+("blend") beat NBM on both. The blend was thought of after seeing that, so a
+score on the same days is not evidence for it. The second window
+(2026-05-24 to 07-23, the 61 days before, and after NBM v5.0 went live on
+05-05) was scored after the blend was defined and is the out-of-sample test.
+Run it with --start 2026-05-24 --end 2026-07-23.
+
 THE LAPSE RATE WAS FIXED BEFORE SCORING. `LAPSE_C_PER_KM` is 6.5, the
 standard atmosphere's, chosen because it is the textbook default and not
 because of anything in this data. `SENSITIVITY` re-scores 5.0 and 8.0 so a
@@ -331,6 +340,35 @@ def readings(pairs: list[tuple[datetime, float]], transform) -> list[tuple[datet
     return [(t, transform(v)) for t, v in pairs]
 
 
+def blend(a: list[tuple[datetime, float]], b: list[tuple[datetime, float]]) -> list[tuple[datetime, float]]:
+    """The mean of two series hour by hour, over the hours both have."""
+    other = dict(b)
+    return [(t, (v + other[t]) / 2) for t, v in a if t in other]
+
+
+BOOTSTRAP_RESAMPLES = 5000
+BOOTSTRAP_SEED = 1056
+
+
+def paired_difference(errors: dict[date, list[tuple[float, float]]], seed: int = BOOTSTRAP_SEED) -> tuple[float, float, float]:
+    """(mean, 2.5th, 97.5th percentile) of |error a| - |error b| over
+    station-days, resampling whole days so the stations sharing a day's
+    weather move together. `errors` is {day: [(error a, error b), ...]}.
+    Negative means a was closer."""
+    import random
+
+    days = sorted(errors)
+    per_day = {d: [abs(a) - abs(b) for a, b in errors[d]] for d in days}
+    point = sum(x for d in days for x in per_day[d]) / sum(len(per_day[d]) for d in days)
+    rng = random.Random(seed)
+    boots = []
+    for _ in range(BOOTSTRAP_RESAMPLES):
+        sample = [x for d in (rng.choice(days) for _ in days) for x in per_day[d]]
+        boots.append(sum(sample) / len(sample))
+    boots.sort()
+    return point, boots[int(0.025 * len(boots))], boots[int(0.975 * len(boots)) - 1]
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--start", type=date.fromisoformat, default=date(2026, 7, 24))
@@ -363,11 +401,13 @@ def main() -> None:
         "HRRR raw",
         *(f"HRRR corrected {g}" for g in SENSITIVITY),
         "HRRR corr 6.5 to DEM",
+        "blend 6.5",
     ]
     print("\nTomorrow's high / low, error in F: MAE (bias forecast - observed), n days\n")
     head = f"{'station':6} {'n':>3} " + " ".join(f"{v:>21}" for v in variants)
     print(head)
     per_station = {}
+    paired: dict[str, dict[str, dict[date, list]]] = {}
     for s in stations:
         obs = first.daily_extremes(first.observations(s, args.start, args.end), s.utc_offset_s)
         _, _, cell_h = h_reads[s.sid]
@@ -386,12 +426,18 @@ def main() -> None:
             for g in SENSITIVITY:
                 pairs[f"HRRR corrected {g}"] = readings(h_series, lambda c, g=g: c_to_f(correct(c, cell_h, point_h, g)))
             pairs["HRRR corr 6.5 to DEM"] = readings(h_series, lambda c: c_to_f(correct(c, cell_h, dem[s.sid])))
+            pairs["blend 6.5"] = blend(pairs["HRRR corrected 6.5"], pairs["NBM raw"])
             for v, rs in pairs.items():
                 ext = extremes_for_day(rs, s.utc_offset_s, day)
                 if ext:
                     fc[v][day] = ext
         scores = {v: first.score(fc[v], obs) for v in variants}
         per_station[s.sid] = scores
+        for v in variants:
+            for k, name in ((0, "high"), (1, "low")):
+                for day in set(fc[v]) & set(fc["NBM raw"]) & set(obs):
+                    errs = (fc[v][day][k] - obs[day][k], fc["NBM raw"][day][k] - obs[day][k])
+                    paired.setdefault(v, {}).setdefault(name, {}).setdefault(day, []).append(errs)
         n = min((sc.n for sc in scores.values() if sc), default=0)
         cells = []
         for v in variants:
@@ -407,6 +453,17 @@ def main() -> None:
         print(
             f"  {v:22} {sum(x.high_mae for x in ss) / len(ss):4.2f} / {sum(x.low_mae for x in ss) / len(ss):4.2f}   ({len(ss)} stations)"
         )
+
+    print(
+        f"\nAgainst NBM raw, paired by station-day: mean |error| difference, F (95% interval, days resampled x{BOOTSTRAP_RESAMPLES}); negative = closer than NBM"
+    )
+    for v in variants[1:]:
+        cells = []
+        for name in ("high", "low"):
+            days = paired[v][name]
+            point, lo, hi = paired_difference(days)
+            cells.append(f"{name} {point:+.2f} ({lo:+.2f} .. {hi:+.2f}), n={sum(len(x) for x in days.values())}")
+        print(f"  {v:22} " + "   ".join(cells))
 
 
 if __name__ == "__main__":

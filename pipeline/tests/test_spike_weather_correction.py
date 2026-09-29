@@ -96,3 +96,29 @@ def test_a_missing_archive_file_is_a_missing_hour_not_a_filled_one():
     assert spike.series(cached, run, "MWN") == [(run + timedelta(hours=14), 50.0), (run + timedelta(hours=15), 51.0)]
     assert spike.series(cached, run, "BML") == []
     assert spike.missing_files(cached) == [f"{run.isoformat()} +13h"]
+
+
+def test_a_blend_averages_the_hours_both_series_have():
+    t0 = datetime(2026, 7, 24, 0, tzinfo=UTC)
+    a = [(t0, 50.0), (t0 + timedelta(hours=1), 60.0)]
+    b = [(t0 + timedelta(hours=1), 70.0), (t0 + timedelta(hours=2), 80.0)]
+
+    assert spike.blend(a, b) == [(t0 + timedelta(hours=1), 65.0)]
+
+
+def test_the_paired_difference_is_negative_when_the_first_is_closer_and_its_interval_holds_it():
+    # a misses by 1 F every station-day, b by 3 F: a is 2 F closer, with no
+    # spread for the resampling to find.
+    errors = {date(2026, 7, d): [(1.0, -3.0), (-1.0, 3.0)] for d in range(1, 21)}
+
+    point, lo, hi = spike.paired_difference(errors)
+
+    assert point == pytest.approx(-2.0) and lo == pytest.approx(-2.0) and hi == pytest.approx(-2.0)
+
+
+def test_the_paired_difference_interval_straddles_zero_when_neither_is_closer():
+    errors = {date(2026, 7, 1) + timedelta(days=d): [(1.0, 2.0)] if d % 2 else [(2.0, 1.0)] for d in range(40)}
+
+    point, lo, hi = spike.paired_difference(errors)
+
+    assert point == pytest.approx(0.0) and lo < 0 < hi

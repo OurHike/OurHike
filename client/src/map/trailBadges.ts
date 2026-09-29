@@ -39,6 +39,18 @@
 // before it could ship. When a `trail_id` arrives, BADGE_MARK_BY_SOURCE
 // becomes a lookup against the registry and nothing else here changes.
 //
+// NOBODY CAN SEE THAT CHANGE YET, and it is worth knowing why before
+// somebody goes looking for it on a screen. BADGE_SOURCES below has two
+// entries and BADGE_MARK_BY_SOURCE has the same two, so every trail this
+// layer badges today is a trail that HAS a mark - there is no markless badge
+// anywhere in the app to look at. The empty slot appears on the first frame
+// BADGE_SOURCES grows, which is what registering a second steward's
+// through-route does. The same is true of the fitted draw in markFitBox: all
+// four registry marks sit within 1.04:1 of square, so fitting and filling
+// render identically today. That is exactly why a filling draw survived
+// unnoticed, and why both changes are guarded by tests rather than by a
+// picture.
+//
 // WHEN THE PILL HAS NO ROOM, THE MARK STANDS ALONE. The fourth preview frame
 // over Harriman is the reason: with the anchor in the clear and the pins in
 // view, no vertex of the A.T. had a free 230 px strip for the full plate -

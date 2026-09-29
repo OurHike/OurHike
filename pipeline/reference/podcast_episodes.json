@@ -61,6 +61,20 @@
     "out are two trailers that name no place and \"Music of the Mountains\", whose",
     "places are all off the trail.",
     "",
+    "THE NATIONAL PARK AFTER DARK ROWS (21 of the show's 469 episodes,",
+    "2026-09-29): the show's own episode map (npad.bounds.earth, read from its",
+    "sheet) pins each episode to a park, not to the spot the story happened. An",
+    "episode is a candidate when its pin is within 15 miles of the A.T. or its",
+    "notes name a park the trail crosses. A place the notes name is matched to",
+    "its ATC POI; otherwise the park gets one spot, the same for every episode",
+    "set there (\"One spot for the whole park\" in the note, the maintainer's",
+    "rule, 2026-09-29). Crime stories are tagged where they happened. Classified",
+    "by Claude Code by those rules and committed at the maintainer's word",
+    "(\"when done, commit here\"), not ticked place by place on the desk; the",
+    "note on each row says what the match rests on. Episodes about other trails",
+    "and parks wait on the desk: the app has no places off the A.T. to show",
+    "them at yet.",
+    "",
     "PUBLISHING: .github/workflows/publish-podcasts.yml, dispatched by hand. It",
     "writes podcasts/episodes.json at the bucket root, outside any release",
     "folder, so a phone sees a new list on its next fetch with no app release",
@@ -910,6 +924,363 @@
       },
       "reviewed": "2026-09-29",
       "note": "Cornelius Creek Shelter: The host's own green-tunnel moment, just north of Cornelius Creek Shelter. | Saddleback Summit: David Field's favorite stretch of the whole trail: the Saddleback alpine ridge."
+    },
+    {
+      "spotify_id": "0BB5OImSQaHFSwkwehuggx",
+      "title": "Unsolved: Shenandoah and Acadia National Park",
+      "show": "National Park After Dark",
+      "minutes": 64,
+      "pois": [
+        "atc_parking:821abcb0-6578-495e-9f61-10e28e36571d"
+      ],
+      "places": [
+        "SHEN - Skyland South Parking Area"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/unsolved-shenandoah-and-acadia-national-park/id1549433407?i=1000506461778"
+      },
+      "reviewed": "2026-09-29",
+      "note": "SHEN - Skyland South Parking Area: One spot for the whole park (the maintainer, 2026-09-29): the notes place the story in Shenandoah National Park but at no named point on the trail. This park's spot is Skyland, the A.T.'s stop at the park's lodge. The show's map pins Acadia, the episode's other half, which is off the A.T."
+    },
+    {
+      "spotify_id": "6pIuCd8E6xdnLwDDsOhBRm",
+      "title": "Cannibals? Great Smoky Mountains National Park",
+      "show": "National Park After Dark",
+      "minutes": 66,
+      "pois": [
+        "atc_viewpoints:9f76c274-78cc-454c-b803-ca1c295f56ae"
+      ],
+      "places": [
+        "Newfound Gap Vista"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/cannibals-great-smoky-mountains-national-park/id1549433407?i=1000512020918"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Newfound Gap Vista: One spot for the whole park (the maintainer, 2026-09-29): the notes place the story in Great Smoky Mountains National Park but at no named point on the trail. This park's spot is Newfound Gap, where the A.T. crosses the park's main road."
+    },
+    {
+      "spotify_id": "3NZUpzY8jnBKfRXyt0fd4J",
+      "title": "Lore and Lingering Spirits: Haunted National Park Trails",
+      "show": "National Park After Dark",
+      "minutes": 64,
+      "pois": [
+        "atc_viewpoints:9f76c274-78cc-454c-b803-ca1c295f56ae"
+      ],
+      "places": [
+        "Newfound Gap Vista"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/lore-and-lingering-spirits-haunted-national-park-trails/id1549433407?i=1000537431078"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Newfound Gap Vista: One spot for the whole park (the maintainer, 2026-09-29): the notes place the story in Great Smoky Mountains National Park but at no named point on the trail. This park's spot is Newfound Gap, where the A.T. crosses the park's main road. The park is one of five in the episode."
+    },
+    {
+      "spotify_id": "0X74oGTUvTqF21ZWurCJ1s",
+      "title": "Three Points of No Return: Bermuda Triangles of North America",
+      "show": "National Park After Dark",
+      "minutes": 65,
+      "pois": [
+        "atc_viewpoints:20ac12a6-12b0-4581-b6a4-99c60b27407f"
+      ],
+      "places": [
+        "Glastenbury Observation Tower"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/three-points-of-no-return-bermuda-triangles-of/id1549433407?i=1000539588299"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Glastenbury Observation Tower: One spot for the whole park (the maintainer, 2026-09-29): the notes place the story in Green Mountain National Forest but at no named point on the trail. This park's spot is Glastenbury Mountain, the peak the forest's run of disappearances is known by (the \"Bennington Triangle\"); that name is reasoned, not in the notes. The forest is one of three places in the episode."
+    },
+    {
+      "spotify_id": "5oCGQUzYo5ihwdgr13LjSk",
+      "title": "Surviving the Worst Weather on the Planet: White Mountain National Forest",
+      "show": "National Park After Dark",
+      "minutes": 66,
+      "pois": [
+        "atc_parking:d6ae1121-e477-4532-ac2b-774fadec3bff"
+      ],
+      "places": [
+        "Pinkham Notch Visitor Center Parking Area"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/surviving-the-worst-weather-on-the-planet-white/id1549433407?i=1000546753810"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Pinkham Notch Visitor Center Parking Area: One spot for the whole park (the maintainer, 2026-09-29): the notes place the story in White Mountain National Forest but at no named point on the trail. This park's spot is Pinkham Notch, the A.T.'s stop at the base of Mount Washington."
+    },
+    {
+      "spotify_id": "5kFABOWzJ7EGuQWpgB76Gi",
+      "title": "Great Smoky Mountains Murder",
+      "show": "National Park After Dark",
+      "minutes": 73,
+      "pois": [
+        "atc_viewpoints:9f76c274-78cc-454c-b803-ca1c295f56ae"
+      ],
+      "places": [
+        "Newfound Gap Vista"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/great-smoky-mountains-murder/id1549433407?i=1000556139051"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Newfound Gap Vista: One spot for the whole park (the maintainer, 2026-09-29): the notes place the story in Great Smoky Mountains National Park but at no named point on the trail. This park's spot is Newfound Gap, where the A.T. crosses the park's main road."
+    },
+    {
+      "spotify_id": "3aPukk0w1lGB8oakSBzOaK",
+      "title": "People of the Parks: Kathryn Miles",
+      "show": "National Park After Dark",
+      "minutes": 75,
+      "pois": [
+        "atc_parking:821abcb0-6578-495e-9f61-10e28e36571d"
+      ],
+      "places": [
+        "SHEN - Skyland South Parking Area"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/people-of-the-parks-kathryn-miles/id1549433407?i=1000566184564"
+      },
+      "reviewed": "2026-09-29",
+      "note": "SHEN - Skyland South Parking Area: One spot for the whole park (the maintainer, 2026-09-29): the notes place the story in Shenandoah National Park but at no named point on the trail. This park's spot is Skyland, the A.T.'s stop at the park's lodge. The 1996 murders of Julie Williams and Lollie Winans."
+    },
+    {
+      "spotify_id": "59WtXy09lT5orn9YGfmYVE",
+      "title": "Creatures of the Wild ft. Tooth & Claw Podcast: Great Smoky Mountains National Park.",
+      "show": "National Park After Dark",
+      "minutes": 99,
+      "pois": [
+        "atc_viewpoints:9f76c274-78cc-454c-b803-ca1c295f56ae"
+      ],
+      "places": [
+        "Newfound Gap Vista"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/creatures-of-the-wild-ft-tooth-claw-podcast-great/id1549433407?i=1000586908517"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Newfound Gap Vista: One spot for the whole park (the maintainer, 2026-09-29): the notes place the story in Great Smoky Mountains National Park but at no named point on the trail. This park's spot is Newfound Gap, where the A.T. crosses the park's main road."
+    },
+    {
+      "spotify_id": "3vN6zal51RzrCqLNMZsbHy",
+      "title": "What’s In A Name? White Mountain National Forest",
+      "show": "National Park After Dark",
+      "minutes": 58,
+      "pois": [
+        "atc_parking:d6ae1121-e477-4532-ac2b-774fadec3bff"
+      ],
+      "places": [
+        "Pinkham Notch Visitor Center Parking Area"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/whats-in-a-name-white-mountain-national-forest/id1549433407?i=1000606778618"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Pinkham Notch Visitor Center Parking Area: One spot for the whole park (the maintainer, 2026-09-29): the notes place the story in White Mountain National Forest but at no named point on the trail. This park's spot is Pinkham Notch, the A.T.'s stop at the base of Mount Washington."
+    },
+    {
+      "spotify_id": "08EOEjkCtqRyYHl3xAQuUn",
+      "title": "The Spark Ranger: Shenandoah National Park",
+      "show": "National Park After Dark",
+      "minutes": 56,
+      "pois": [
+        "atc_parking:821abcb0-6578-495e-9f61-10e28e36571d"
+      ],
+      "places": [
+        "SHEN - Skyland South Parking Area"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/the-spark-ranger-shenandoah-national-park/id1549433407?i=1000622880530"
+      },
+      "reviewed": "2026-09-29",
+      "note": "SHEN - Skyland South Parking Area: One spot for the whole park (the maintainer, 2026-09-29): the notes place the story in Shenandoah National Park but at no named point on the trail. This park's spot is Skyland, the A.T.'s stop at the park's lodge."
+    },
+    {
+      "spotify_id": "5TNiVfYpT8fkSsD66RETQk",
+      "title": "Death Markers in the Live Free or Die State ft. Marianne O'Connor: White Mountain National Forest",
+      "show": "National Park After Dark",
+      "minutes": 64,
+      "pois": [
+        "atc_parking:d6ae1121-e477-4532-ac2b-774fadec3bff"
+      ],
+      "places": [
+        "Pinkham Notch Visitor Center Parking Area"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/death-markers-in-the-live-free-or-die-state-ft/id1549433407?i=1000632105277"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Pinkham Notch Visitor Center Parking Area: One spot for the whole park (the maintainer, 2026-09-29): the notes place the story in White Mountain National Forest but at no named point on the trail. This park's spot is Pinkham Notch, the A.T.'s stop at the base of Mount Washington."
+    },
+    {
+      "spotify_id": "6yYVJxKvGTrik9K3OIcnKR",
+      "title": "The Lost Boy: Katahdin Woods and Waters National Monument",
+      "show": "National Park After Dark",
+      "minutes": 75,
+      "pois": [
+        "atc_viewpoints:34e28cfe-d221-497d-85a8-713dca2dcca6"
+      ],
+      "places": [
+        "Katahdin Summit (W)"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/the-lost-boy-katahdin-woods-and-waters-national-monument/id1549433407?i=1000647314062"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Katahdin Summit (W): Donn Fendler, 12, separated from his group on Katahdin in July 1939. The show's map pins the national monument, 10.7 miles off the trail; the notes put the story on the mountain. ATC lists two summit points; this one is a guess between them."
+    },
+    {
+      "spotify_id": "2w3NGU53qKGr3tgDYjr9oq",
+      "title": "Solved: The Shenandoah Murders ft. Kathryn Miles",
+      "show": "National Park After Dark",
+      "minutes": 67,
+      "pois": [
+        "atc_parking:821abcb0-6578-495e-9f61-10e28e36571d"
+      ],
+      "places": [
+        "SHEN - Skyland South Parking Area"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/solved-the-shenandoah-murders-ft-kathryn-miles/id1549433407?i=1000660498027"
+      },
+      "reviewed": "2026-09-29",
+      "note": "SHEN - Skyland South Parking Area: One spot for the whole park (the maintainer, 2026-09-29): the notes place the story in Shenandoah National Park but at no named point on the trail. This park's spot is Skyland, the A.T.'s stop at the park's lodge. The 1996 murders of Julie Williams and Lollie Winans."
+    },
+    {
+      "spotify_id": "1phWEIAixypM92MGf3CTpE",
+      "title": "The Disappearance of Trenny Gibson: Great Smoky Mountains National Park",
+      "show": "National Park After Dark",
+      "minutes": 105,
+      "pois": [
+        "atc_viewpoints:9f76c274-78cc-454c-b803-ca1c295f56ae"
+      ],
+      "places": [
+        "Newfound Gap Vista"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/the-disappearance-of-trenny-gibson-great-smoky/id1549433407?i=1000676144077"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Newfound Gap Vista: One spot for the whole park (the maintainer, 2026-09-29): the notes place the story in Great Smoky Mountains National Park but at no named point on the trail. This park's spot is Newfound Gap, where the A.T. crosses the park's main road."
+    },
+    {
+      "spotify_id": "7KU8wDyAu8UKd6WC23psUy",
+      "title": "Bringing the Mountain to the Movies ft. Andrew Kightlinger",
+      "show": "National Park After Dark",
+      "minutes": 64,
+      "pois": [
+        "atc_viewpoints:34e28cfe-d221-497d-85a8-713dca2dcca6"
+      ],
+      "places": [
+        "Katahdin Summit (W)"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/bringing-the-mountain-to-the-movies-ft-andrew-kightlinger/id1549433407?i=1000681253465"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Katahdin Summit (W): The director of Lost on a Mountain in Maine, the film of Donn Fendler's 1939 ordeal on Katahdin. About the film more than the mountain; the notes name Katahdin once."
+    },
+    {
+      "spotify_id": "7Ady7Hs9cWtklb5Cw4S1bT",
+      "title": "Murder on the Appalachian Trail",
+      "show": "National Park After Dark",
+      "minutes": 53,
+      "pois": [
+        "atc_shelters:ba0d3288-4ef6-4bfa-8ac5-8b5c0241907d"
+      ],
+      "places": [
+        "Low Gap Shelter"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/murder-on-the-appalachian-trail/id1549433407?i=1000682787304"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Low Gap Shelter: The 1974 murder at Low Gap Shelter, Georgia, on two thru-hikers' second night; the notes name the shelter, and it is the only shelter of that name on the A.T. A violent death at a place hikers sleep: see the maintainer's question on crime stories."
+    },
+    {
+      "spotify_id": "65FvZplnUSYt7yXDEfzPCi",
+      "title": "The Abduction of Betty and Barney Hill: White Mountain National Forest",
+      "show": "National Park After Dark",
+      "minutes": 74,
+      "pois": [
+        "atc_parking:d6ae1121-e477-4532-ac2b-774fadec3bff"
+      ],
+      "places": [
+        "Pinkham Notch Visitor Center Parking Area"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/the-abduction-of-betty-and-barney-hill/id1549433407?i=1000710808280"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Pinkham Notch Visitor Center Parking Area: One spot for the whole park (the maintainer, 2026-09-29): the notes place the story in White Mountain National Forest but at no named point on the trail. This park's spot is Pinkham Notch, the A.T.'s stop at the base of Mount Washington."
+    },
+    {
+      "spotify_id": "5fMOIpummPyMPI3IO8iTqf",
+      "title": "America’s Oldest Ghost Tour: Harpers Ferry National Historical Park",
+      "show": "National Park After Dark",
+      "minutes": 68,
+      "pois": [
+        "atc_communities:60bcf556-71db-4084-8895-79a9c199612a"
+      ],
+      "places": [
+        "Bolivar/Harpers Ferry"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/americas-oldest-ghost-tour-harpers-ferry-national-historical/id1549433407?i=1000712043603"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Bolivar/Harpers Ferry: The ghost tour of the town the A.T. walks through, built on Shirley Dougherty's collected stories."
+    },
+    {
+      "spotify_id": "0dN4SpKCL6Vd6E68Hg8qGK",
+      "title": "The National Forest Serial Killer",
+      "show": "National Park After Dark",
+      "minutes": 89,
+      "pois": [
+        "atc_viewpoints:75942094-62e1-4cf8-937a-5371e4455445"
+      ],
+      "places": [
+        "Blood Mtn Summit Vista"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/the-national-forest-serial-killer/id1549433407?i=1000747649405"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Blood Mtn Summit Vista: The episode ends on a woman who vanished, and its cited source is \"Wild Crime: Blood Mountain\", the 2008 abduction on Blood Mountain. That is a source's title, not the episode's own words. The park rule would give Hot Springs, the Pisgah spot (the show's map pins Pisgah National Forest), offered as the other choice."
+    },
+    {
+      "spotify_id": "1WGEnStWE3ImmDPr2Q6mia",
+      "title": "The Cog Railway Disaster: White Mountain National Forest",
+      "show": "National Park After Dark",
+      "minutes": 58,
+      "pois": [
+        "atc_viewpoints:233f512c-cb09-49f8-b473-7540800859b8"
+      ],
+      "places": [
+        "Mt Washington Summit Vista"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/the-cog-railway-disaster-white-mountain-national-forest/id1549433407?i=1000775482612"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Mt Washington Summit Vista: The 1967 Cog Railway derailment on Mount Washington's descent. The notes name the mountain; the derailment site itself is not an ATC point, so the summit stands in."
+    },
+    {
+      "spotify_id": "6MkqC97Xiw7AgWZdgF9EJQ",
+      "title": "The Family Annihilator: Great Smoky Mountains National Park",
+      "show": "National Park After Dark",
+      "minutes": 70,
+      "pois": [
+        "atc_viewpoints:9f76c274-78cc-454c-b803-ca1c295f56ae"
+      ],
+      "places": [
+        "Newfound Gap Vista"
+      ],
+      "links": {
+        "apple_podcasts": "https://podcasts.apple.com/us/podcast/the-family-annihilator-great-smoky-mountains-national/id1549433407?i=1000784468570"
+      },
+      "reviewed": "2026-09-29",
+      "note": "Newfound Gap Vista: One spot for the whole park (the maintainer, 2026-09-29): the notes place the story in Great Smoky Mountains National Park but at no named point on the trail. This park's spot is Newfound Gap, where the A.T. crosses the park's main road."
     }
   ]
 }

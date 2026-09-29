@@ -31,6 +31,10 @@ first build, a photograph of the running app:
 | who tags an episode to a place (2026-09-29) | trail admins, on the Podcast desk: Claude proposes the places an episode names and shows the words it matched, a person decides | individual hikers |
 | how far apart one episode's places are (2026-09-29) | at least 500 trail miles | any number of nearby places |
 | an episode with no place it spends time on (2026-09-29) | a place it mentions in passing, only where that place has no other episode | no place |
+| which trails (2026-09-29) | every trail, the trail named first and then the places on it; a major theme or segment only | the A.T. alone, where the list started |
+| an episode set in a park but at no named place (poll, 2026-09-29) | one spot per park, the same for every episode set there | leaving it untagged |
+| a crime story (poll, 2026-09-29) | tagged where it happened | left off the map |
+| a show that keeps publishing (poll, 2026-09-29) | a weekly run proposes its new episodes on the desk | classifying by hand when somebody remembers |
 
 "Should be the last thing you see" is the maintainer's own line about the hike detail
 placement. The alternatives are written down so the next reader knows they were considered,
@@ -112,6 +116,38 @@ straight line cannot stand in for trail miles.
 The first list is 48 of the 51 episodes of The Green Tunnel (R2 Studios, George Mason
 University), 62 places, proposed by Claude Code and pushed by the maintainer on
 2026-09-29. The reference file's README says what each kind of `note` means.
+
+### National Park After Dark, and a show's own map
+
+The second show publishes a map of its episodes (npad.bounds.earth, drawn from a public
+sheet), and the map pins each episode to a park, not to where the story happened. So the
+map picks the candidates and the notes pick the places: an episode is an A.T. candidate
+when its pin is within 15 miles of the trail or its notes name a park the trail crosses;
+a place the notes name is matched to its ATC POI; a park with no named place gets its one
+spot (Newfound Gap for the Smokies, Skyland for Shenandoah, Pinkham Notch for the White
+Mountains, and so on, listed in the reference file's rows). 21 of its 469 episodes are on
+the list by that rule, 2026-09-29.
+
+A weekly routine on claude.ai reads the show's feed each Tuesday and proposes new
+episodes on the desk by the same rules. It runs without the Spotify connector (a routine
+cannot be given one from a session), so a new episode reaches the desk without its
+Spotify link.
+
+### Every trail, not just the A.T.
+
+The maintainer, 2026-09-29: "don't limit to the AT … it is a good idea to identify the
+trail first. keep doing that. but don't limit to it." The desk now names each place's
+trail and holds places off the A.T. with a name, where it is and, when one is known, a
+point. That point is the show's map pin where OpenStreetMap's point for the same park is
+within 60 miles of it (`@unvalidated`: a large park's width, not a measured slip), and
+OpenStreetMap's otherwise; a place OpenStreetMap cannot find keeps no point and says so.
+Places on one episode are kept 500 miles apart by straight line, which never lets
+through two places a trail puts closer.
+
+None of those places reaches the app yet. Every POI OurHike publishes is on the A.T.,
+so a tag off it has nothing to attach to.
+[#1721 — A podcast episode tagged to a trail or park off the A.T. has nowhere to show, because every POI OurHike publishes is on the A.T.](https://github.com/OurHike/OurHike/issues/1721)
+asks where it would show and in what shape.
 
 ## Adding an episode
 

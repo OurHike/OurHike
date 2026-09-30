@@ -140,7 +140,10 @@ the Forest Service's `RD` suffix is a ranger district, which the join had read a
 and so left out 73 miles of the Bartram Trail and 31 of the Benton MacKaye; and two of the three
 `BARTRAM` lines it already badges are Alabama's own Bartram trail — **#1781 — The spelling BARTRAM
 badges 7.8 miles of Tuskegee National Forest, Alabama, as the Georgia–North Carolina Bartram
-Trail**.
+Trail**. The maintainer took both fixes by poll the same day. The three ranger-district spellings
+are rows now, and every row carries an `extent`, the box a line must lie in to wear its badge.
+For the resolver, that box is the same kind of check it already makes against a mention's
+`where`, written down once per trail.
 
 ## What OurHike can already match against
 

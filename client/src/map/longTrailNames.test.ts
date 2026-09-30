@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   longTrailDisplayName,
+  longTrailForLine,
   longTrailForName,
   longTrailHasMarker,
   neverShout,
@@ -12,8 +13,8 @@ import { badgeMarkImageId, BADGE_SOURCES, stewardMarkImageId } from './trailBadg
 // the table caught in the badge's own mark resolver.
 
 describe('longTrailForName', () => {
-  it('holds all 45 measured spellings, so a dropped row goes red here', () => {
-    expect(LONG_TRAIL_NAME_COUNT).toBe(45)
+  it('holds all 48 measured spellings, so a dropped row goes red here', () => {
+    expect(LONG_TRAIL_NAME_COUNT).toBe(48)
   })
 
   it('resolves the Forest Service shout-case a hiker never sees', () => {
@@ -69,12 +70,23 @@ describe('longTrailForName', () => {
     expect(longTrailForName('MST - NANTAHALA RD')).toBe('mst')
   })
 
+  it('resolves the Bartram and Benton MacKaye ranger-district spellings', () => {
+    // Added on the maintainer's poll, 2026-09-30: 73 miles of the Bartram
+    // Trail and 31 of the Benton MacKaye in North Carolina's Nantahala
+    // National Forest, which had drawn as anonymous lines because the table
+    // read RD as a road.
+    expect(longTrailForName('BARTRAM NRT - NANTAHALA RD')).toBe('bartram')
+    expect(longTrailForName('BARTRAM NRT - CHEOAH RD')).toBe('bartram')
+    expect(longTrailForName('BENTON MACKAYE -CHEOAH RD')).toBe('bmt')
+  })
+
   it('leaves a spur, a connector, a loop and an unreviewed section as ordinary lines', () => {
     // Exact after folding, never a prefix. Every one of these is published
     // by a layer this app draws, and none of them is in the reviewed join:
-    // the first six are not the trail, and the last two are sections of it
-    // nobody has reviewed as rows. "BARTRAM NRT - CHEOAH RD" was listed here
-    // as a road section until 2026-09-30; RD is a ranger district.
+    // the first six are not the trail, and the last is a section of it
+    // nobody has reviewed as a row. "BARTRAM NRT - CHEOAH RD" was listed here
+    // as a road section until 2026-09-30; RD is a ranger district, and it is
+    // a reviewed spelling now (the next case).
     for (const notATrail of [
       'Northville-Placid Trail Spur',
       'Finger Lakes Trail Spur',
@@ -83,7 +95,6 @@ describe('longTrailForName', () => {
       'FNST - CAMEL LAKE SPUR',
       'ICE AGE LOOP',
       'ARIZONA TRAIL CANELO HILLS',
-      'BARTRAM NRT - CHEOAH RD',
     ]) {
       expect(longTrailForName(notATrail)).toBeNull()
     }
@@ -122,6 +133,31 @@ describe('longTrailForName', () => {
   it('trims and folds, because a published name carries whatever it carries', () => {
     expect(longTrailForName('  sheltowee trace  ')).toBe('sheltowee')
     expect(longTrailForName('')).toBeNull()
+  })
+})
+
+describe('longTrailForLine', () => {
+  // #1781. The same spelling can be two trails: USFS "BARTRAM" is the
+  // Georgia-North Carolina Bartram Trail and Tuskegee National Forest's own
+  // trail in Alabama. The badge asks this, not longTrailForName.
+
+  it("refuses a name outside its trail's box", () => {
+    // usfs_trails:8251537's first vertex, lon -85.65, lat 32.45, measured
+    // 2026-09-30.
+    expect(longTrailForLine('BARTRAM', [-85.65, 32.45])).toBeNull()
+  })
+
+  it('accepts the same name inside the box', () => {
+    expect(longTrailForLine('BARTRAM', [-83.37, 34.86])).toBe('bartram')
+    expect(longTrailForLine('BARTRAM NRT - NANTAHALA RD', [-83.5, 35.1])).toBe('bartram')
+  })
+
+  it('answers null with no vertex to check, rather than trusting the name', () => {
+    expect(longTrailForLine('BARTRAM', undefined)).toBeNull()
+  })
+
+  it('answers null for a name the table does not hold, wherever it is', () => {
+    expect(longTrailForLine('SOME CREEK', [-83.37, 34.86])).toBeNull()
   })
 })
 

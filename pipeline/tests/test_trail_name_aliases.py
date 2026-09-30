@@ -174,3 +174,45 @@ def test_the_client_only_claims_a_marker_where_one_ships():
     assert claimed, "the marker set is empty or its shape changed"
     assert claimed <= shipped, f"claims a marker that does not ship: {sorted(claimed - shipped)}"
     assert claimed <= set(TRAILS), f"claims a marker for a trail it does not badge: {sorted(claimed - set(TRAILS))}"
+
+
+def _generated_extents() -> dict[str, list[float]]:
+    """The slug->box table out of the generated client module, parsed for the
+    same reason `_generated_pairs` is: prettier decides the quoting."""
+    text = CLIENT_TABLE.read_text()
+    body = text.split("const LONG_TRAIL_EXTENT", 1)[1].split("= {", 1)[1].split("\n}", 1)[0]
+    boxes = re.findall(r"""(?:'([^']+)'|([A-Za-z_][\w]*))\s*:\s*\[([^\]]+)\]""", body)
+    return {(a or b): [float(v) for v in nums.split(",")] for a, b, nums in boxes}
+
+
+@pytest.mark.parametrize("slug,row", rows())
+def test_every_row_says_where_its_trail_is(slug: str, row: dict):
+    """#1781. A name alone put the Georgia-North Carolina Bartram Trail's
+    badge on Tuskegee National Forest's Bartram in Alabama, so every row
+    carries the box a line must lie in to wear its badge. A row without one
+    would badge its spelling anywhere on the continent."""
+    extent = row.get("extent")
+    assert isinstance(extent, list) and len(extent) == 4, f"{slug}: extent is [west, south, east, north]"
+    west, south, east, north = extent
+    assert all(isinstance(v, (int, float)) for v in extent), f"{slug}: extent holds numbers"
+    assert -180 <= west < east <= 180, f"{slug}: west {west} is not west of east {east}"
+    assert -90 <= south < north <= 90, f"{slug}: south {south} is not south of north {north}"
+
+
+def test_the_alabama_bartram_lines_fall_outside_the_bartram_box():
+    """The two features that made #1781, by their measured first vertices:
+    usfs_trails:8251537 at (-85.65, 32.45) and :8280457 at (-85.62, 32.47).
+    If a re-measured box ever swallowed them again, this says so."""
+    west, south, east, north = TRAILS["bartram"]["extent"]
+    for lon, lat in [(-85.65, 32.45), (-85.62, 32.47)]:
+        assert not (west <= lon <= east and south <= lat <= north)
+
+
+def test_the_client_table_carries_every_extent_this_file_holds():
+    """The generated half cannot drift from the reviewed half, in either
+    direction: a box the client lacks refuses every badge for that trail, and
+    one it has that this file does not is a box nobody reviewed."""
+    generated = _generated_extents()
+    assert set(generated) == set(TRAILS), f"slugs differ: {sorted(set(generated) ^ set(TRAILS))}"
+    for slug, row in rows():
+        assert generated[slug] == row["extent"], f"{slug}: {generated[slug]} in the client and {row['extent']} here"

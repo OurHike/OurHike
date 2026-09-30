@@ -6,13 +6,15 @@ forecast the coordinate rather than match it**. That issue's measurements are th
 doc exists and are not repeated here; read it for why matching a forecast feed to waypoints
 tops out at 0.8% of them.
 
-**Status, 2026-09-30: build steps 1 and 2 done; the card is NBM's forecast as NOAA published
-it.** `publish-weather.yml` publishes to UA NBM's forecast for every trail square, one file
-per 1° cell, and every active NWS alert that reaches a trail square, in one file. Step 2
-scored the elevation correction the phone would have run, against NOAA's own archives over
-two windows. It did not reliably beat NBM, and the maintainer chose NBM only (§3), so the job
-no longer fetches or publishes HRRR's temperature. Nothing a hiker runs reads any of it yet
-(steps 3 and 4). This doc owns **forecasts** —
+**Status, 2026-09-30: build steps 1 and 2 done, step 3 built; the card is NBM's forecast as
+NOAA published it.** `publish-weather.yml` publishes to UA NBM's forecast for every trail
+square, one file per 1° cell, and every active NWS alert that reaches a trail square, in one
+file. Step 2 scored the elevation correction the phone would have run, against NOAA's own
+archives over two windows. It did not reliably beat NBM, and the maintainer chose NBM only
+(§3), so the job no longer fetches or publishes HRRR's temperature. Step 3 puts it on the
+waypoint card (§10): a hiker on a build pointed at UA reads it; production publishes no
+weather yet, so there the card shows none until the release train promotes it. This doc owns
+**forecasts** —
 where they come from, how precise they are, how often they change, how they reach a phone,
 and what a hiker sees when the phone has not heard anything for a while. It also owns how a
 relayed **NWS warning** is *displayed* as it ages, because a forecast card and a warning
@@ -58,6 +60,25 @@ cards (§3):
   choice and over an hourly blend of NBM and corrected HRRR, which scored best in both
   windows. The card needs no correction, no join at hour 48, and no "adjusted by OurHike" on
   its credit line (§9).
+
+## What the maintainer decided, 2026-09-30, for the waypoint card
+
+Taken in two polls: the first against a drawn mock of the card with the real Lakes of the
+Clouds forecast, the second against a render of the first build.
+
+- **One line of forecast on the peek** (frame A), over a peek unchanged with the forecast
+  only in the opened card, which had been recommended for the room it saves (#1374).
+- **Units follow the feet/metres setting**: °F and mph with feet, °C and km/h with metres.
+- **The published NWS list's warnings line ships on the card now**, over waiting for
+  step 4's live ask.
+- **A day's chance is the wetter of that day and the night after it**, over the daytime
+  window alone (§10 says why).
+- **An NWS alert on for the spot also goes on the peek**, above the forecast line.
+- **Sun, moon and cloud icons**, over the filled-circle sky symbol the first build drew.
+- **The first build "really looks unprofessional. That needs a lot more polish"** - the
+  second poll's answer on the build as a whole. The band was redrawn (line icons, hours
+  without boxes, days as rows with each day's range drawn against the week's), rendered in
+  eight states for the maintainer, who said to keep going.
 
 ## What the maintainer decided, 2026-09-25, before step 1
 
@@ -607,9 +628,64 @@ card is modified, so every day says *"NOAA forecast"*. The "adjusted for elevati
 OurHike" line that corrected HRRR would have needed is gone with it (2026-09-30).
 `sources.json` gets one row for NBM, in the shape the other open sources use.
 
+## 10. On the waypoint card
+
+Build step 3, and the first thing a hiker reads. `chrome/WeatherBand.tsx` draws it;
+`lib/weatherForecast.ts` holds every rule about what may be shown; `lib/weatherData.ts`
+fetches.
+
+**Which file, which square.** The waypoint's 1° cell is named from its corner
+(`lib/nbmGrid.ts`'s `weatherCellName`, `n44w072` at Lakes of the Clouds), and its square is
+`lib/nbm_grid.py`'s projection ported to TypeScript and pinned to the Python module's answers
+at eight points from Springer to Harts Pass, to a millionth of a square. A waypoint whose
+square the file does not list, off the CONUS grid, or in a cell with no file shows no
+weather at all: the card is exactly as it was before weather existed.
+
+**Offline, the phone's last copy**, kept the way the other conditions files are
+(`lib/conditionsCache.ts`, #447) and labelled by its own age. The phone holds the cells
+whose waypoints it opened with signal; fetching the cells under a planned hike ahead of time
+belongs with Today and the plan (steps 4 and 5), and is not done yet. That is the gap worth
+knowing before a long stretch: a hiker who never opened a card for the next town's
+shelters with signal carries no forecast for them.
+
+**What each figure is.**
+
+- *The high* is NBM's maximum for the day. NOAA's afternoon runs carry no high for the day
+  already half over, so after noon the first row's high is the warmest of the day's
+  remaining hours, labelled "rest of day".
+- *The low* is the night after the day, NWS's "Wednesday / Wednesday night" pairing.
+- *The chance* is NBM's 12-hour chance of rain or snow (more than 0.01 in.), the higher of
+  the daytime window (12Z–00Z) and the night after (00Z–12Z), chosen over the daytime window
+  alone (poll, 2026-09-30). The row's low is that night's, and a hiker camping there needs
+  that night's rain: on the fixture forecast Thursday is 17% by day and 36% overnight.
+- *The sky* is NWS's sky-condition words by eighths of opaque cloud (the table at
+  weather.gov/bgm/forecast_terms). A sun by day and a moon by night, by the sun's height at
+  the waypoint for that hour (`lib/daylight.ts`, within a minute of the `astral` library's
+  sunrise and sunset at four trail points).
+- *The strip's wind* is the range of speeds and the highest gust over its six hours, from
+  NBM's knots.
+
+**The warnings line is the published list's**, dated by when the job asked NWS: "NWS had no
+alerts for this spot at 4:52 am" with signal, "No word on weather warnings since …" without
+it, "No word on weather warnings on this phone yet" before the list has ever arrived. An
+alert on for the square shows in NWS's words, with the issuing office, its end, and the full
+text one tap away; it also goes on the peek. An alert past NWS's own end time is dropped
+because NWS's schedule says it is over, never because it was judged minor. Step 4 adds the
+phone's own ask to NWS, which is what catches the short storm warnings this list misses
+(§4).
+
+**What the preview camera shows.** `preview-shots/waypoint-weather.mjs` and
+`waypoint-weather-peek.mjs` serve the Lakes of the Clouds forecast for every square of
+whichever cell the search opens (`preview-shots/fixtures/weather.mjs`), because the preview
+builds against production. The numbers in those frames are real weather at the wrong place,
+and their captions say so.
+
 ---
 
 ## Still open
+
+- **Pre-fetching the forecast for a planned hike** (§10): the phone holds only the cells whose
+  waypoints it opened with signal.
 
 - **Narrow lakes** (§6): water narrower than a 3 km HRRR cell and above sea level, such as
   Lake George, still passes as land.
@@ -634,8 +710,9 @@ OurHike" line that corrected HRRR would have needed is gone with it (2026-09-30)
 2. **The spike re-run with our own correction — done, 2026-09-30.**
    `spike_weather_correction.py`, two windows. The correction did not reliably beat NBM, and
    the maintainer chose NBM only (§3).
-3. **The waypoint card** — the five days at the waypoint's grid square, all NBM, with the age
-   line, §5's rules and §9's credit line.
+3. **The waypoint card — built, 2026-09-30** (§10). The five days at the waypoint's grid
+   square, all NBM, with the age line, §5's rules, §9's credit line, and the warnings line
+   from the published list.
 4. **Today** — start and end of the day, and the warnings line.
 5. **The plan** — each day's forecast at that night's camp.
 6. **The winter re-run** of the spike, before the first winter. With nothing corrected on the

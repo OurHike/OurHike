@@ -57,6 +57,7 @@ A cross-feature alignment review on 2026-07-28 moved **Authentication**, **Repor
 | [OFFLINE_COVERAGE.md](features/OFFLINE_COVERAGE.md) | **v2, tenth feature — built for the basemap; the terrain, per-level cells and named pieces still to come.** What a hiker can have offline that is less than the whole trail: a 1°×1° cell as the unit that is built, versioned and resumed, gathered into a named piece scoped by org and by state, with the whole trail still one tap. Argues trail-derived stretches down (they cannot describe two orgs in one scheme) and on-demand caching down (what you never looked at in town is missing on the ridge). Measured: 62 basemap cells on UA at 419.1 MB together; the phone reads them, prices the stretch under a planned hike against what it lacks, and draws a dashed line where the download ends. The 88 stretch archives built to the superseded unit are still live on production at 942.9 MB, and no client code reads any of them. |
 | [ORG_ONBOARDING.md](features/ORG_ONBOARDING.md) | **v2, eleventh feature — designed, not started.** Everything an organization does on OurHike, from never having heard of it to running its volunteers year after year: a public pitch and registration, three admins approving, a hike registry read from their own GIS and signed off as a pull request, then roles, workdays, a coverage report, a roster and the volunteer's own screen. Carries VOLUNTEERING.md's phase E rather than restating it, and takes the four decisions that phase left open — roster writes over HTTP under RLS, a workday is not a map feature, thanks never name a person, and an org is identified by a readable slug. |
 | [WEATHER.md](features/WEATHER.md) | **v2, twelfth feature — designed, spike run, not built.** A forecast for every trail the map draws, published hourly to R2 from NOAA's own model grid rather than asked of a per-point API — 142,299 miles of trail is ~74,330 forecast grid squares, which no free API serves and several forbid republishing. Measured, not argued: correcting NBM for elevation made it worse while correcting HRRR made it best, and a day-old forecast is only ~0.2 °F worse on temperature, so what goes stale out of signal is warnings and storm timing. Takes the forecast half of HIKER_SAFETY.md §3–4. |
+| [CHALLENGES.md](features/CHALLENGES.md) | **v2 — built 2026-09-30, one pull request.** A club's list of places on its own trails that a hiker opts into and tags at camp, with an optional finish line and an optional reward. The ATC's A.T. Summer Bucket List is the first, published as a labelled draft. Argues past VOLUNTEERING.md §5 on the fee exemption's terms: a target the publishing club set, shown only to someone who joined, counted in places rather than points. |
 | [INVASIVE_SPECIES.md](features/INVASIVE_SPECIES.md) | **v3, first feature — designed, not started.** What happens to an invasive species sighting after it is filed: a trained surveyor's structured walk over an assigned segment (which can record *absence*, the thing an opportunistic sighting never can), a club-granted credential that is species-scoped and dated rather than a boolean, a fourth `Role.invasives` gating a second moderation queue for the different question a species ID asks, and an export to the scientific record NYNJTC already keeps. The first feature that sends a hiker's contribution out of OurHike to a third party. |
 | [SOURCE_REGISTRY.md](features/SOURCE_REGISTRY.md) | Post-MVP. How an outside organization registers its own map layers and a contact to notify. Registration is a form; the build input stays a reviewed file, so nothing self-service can change a hiker's map without a merge. |
 | [DATA_NUDGES.md](features/DATA_NUDGES.md) | Post-MVP. Non-gamified prompts to keep POI data fresh — no notifications, just map prominence for stale data, self-limiting the moment anyone contributes. |
@@ -345,6 +346,30 @@ Three things it settled that reach beyond it:
 - **A/B tests at club scale can find big effects and cannot find small ones** — ~260 devices per arm to detect 20%→30%, ~25,600 to detect a 5% relative lift. So staged rollout watched against guardrails is the default and experiments are for genuine disagreements, and the aggregate shape that follows leaves GrowthBook's *analysis* half unused while its flagging half stands.
 
 It also states the thing this project has to keep saying to itself: an app committed to being used *less* cannot treat engagement as a goal, so every engagement number is read next to a task-success number or not at all.
+
+## v2 — a club's list, walked
+
+**Designed and built 2026-09-30 in one pull request: [features/CHALLENGES.md](features/CHALLENGES.md),
+tracked by [#1780 — Let a club publish a challenge — places on its own trails that hikers opt
+into and tag at camp — starting with the ATC's A.T. Summer Bucket
+List](https://github.com/OurHike/OurHike/issues/1780).** A challenge is a club's list of
+places on its own trails, a date window, an optional finish line and an optional reward. The
+first is the ATC's A.T. Summer Bucket List, transcribed from the 2025 PDF and published as a
+labelled draft until the ATC confirms 2027's items.
+
+Three things it settled that reach beyond it:
+
+- **VOLUNTEERING.md §5's guardrail has a second stated exception.** The fee exemption's 40-hour
+  threshold was the first. A challenge's finish line is the second, on the same terms: a real
+  external rule set by the publishing organization, shown only to someone who asked for it.
+  The four rules that make it a guardrail — never comparative, no lack-state, private by
+  default, real things not points — are unchanged.
+- **Scope follows the publisher.** A challenge can only use places on trails its organization
+  publishes, and a reviewed `publishers.json` says which trails those are, because the
+  pipeline had no single map from an organization to the trail ids its data carries.
+- **A mile is not a distance.** `attach_miles` gives any point an A.T. mile, so the
+  challenge exporter measures every place against the centerline and makes a town say it is
+  a town.
 
 ---
 

@@ -388,11 +388,35 @@ if (serviceWorker !== undefined) {
 // Measured 2026-09-09 on a production-configured build: 437 KB compressed
 // before #1300, 323 KB with the map engine out of the closure, 267 KB with the
 // screens behind `import()`, and 215 KB with the Supabase client behind one
-// too. The doc's number is 250 KB and this is it - close enough to the
-// measurement to catch a screen drifting back into the eager chunk, with room
-// for the shell itself to grow. gzip, because that is what the host serves
-// (GitHub Pages; measured off production's own response headers).
-const EAGER_JS_BUDGET_BYTES = 250 * 1024
+// too. The doc's number was 250 KB from then until 2026-09-18 - close enough
+// to the measurement to catch a screen drifting back into the eager chunk,
+// with room for the shell itself to grow. gzip, because that is what the host
+// serves (GitHub Pages; measured off production's own response headers).
+//
+// The shell grew into that room in nine days. Measured 2026-09-18 with this
+// walk over `vite build` output of `main` at four dated commits, built in one
+// worktree sharing one node_modules: 236,347 bytes on 2026-09-10 (4d6f416f),
+// 254,808 on 2026-09-14 (ac14c120), 253,620 on 2026-09-16 (e45388a3), 255,316
+// on 2026-09-18 (2a6aac69) - 684 bytes under the 250 KB line, so the next pull
+// request touching the shell tripped it whatever it did, and #1577 did, by 173
+// bytes. Nothing had drifted in: the closure was ten chunks, then eleven, and
+// no chunk the size of a screen set (56 KB) or the engine (157 KB) appears in
+// the series. What is in it and should not be is 32 KB of map code the Today
+// screen never draws with - the style module and the network tiles, reached
+// statically through the legend's swatches (map/MapIcon.tsx imports
+// map/style.ts) - which is the #1300 shape one size down and the headroom
+// worth reclaiming: #1591 - The legend's swatches drag the map style module
+// and the network tiles, 32 KB compressed, in front of the first frame, and
+// main sits 684 bytes under the launch budget.
+//
+// So 300 KB. It is the same sixth of room over today's 255 KB that 250 was
+// over 215, and it still cannot hold the smallest thing this gate exists to
+// catch: the Supabase client's 52 KB (267 to 215 above) lands a drift at
+// 307 KB, a screen set's 56 KB at 311, the engine far beyond. What an absolute
+// line cannot do is tell organic growth from a drift smaller than the room
+// left; a check against `main`'s own figure would, and is that issue's to
+// build.
+const EAGER_JS_BUDGET_BYTES = 300 * 1024
 const MAPLIBRE_MARKERS = ['fill-extrusion-vertical-gradient', 'maplibregl-']
 
 const indexHtml = files.find((f) => /(^|[\\/])index\.html$/.test(f))

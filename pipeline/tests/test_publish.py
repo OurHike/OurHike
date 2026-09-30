@@ -23,6 +23,7 @@ from moto import mock_aws
 import publish
 from lib import data_change, data_env
 from lib.photo_store import PHOTOS_DIRNAME, photo_digest, photo_key
+from lib.r2_keys import assert_valid_keys
 
 BUCKET = "ourhike-test-bucket"
 
@@ -189,6 +190,158 @@ def test_publish_preserves_previously_published_artifacts_not_present_in_this_ru
     # they were published with, untouched.
     assert remote["artifacts"]["shelters.geojson"]["sha256"] == local_artifacts["shelters.geojson"]["sha256"]
     assert remote["artifacts"]["elevation_profile.json"]["sha256"] == full_local_artifacts["elevation_profile.json"]["sha256"]
+
+
+def test_publish_drops_a_stale_elevation_sidecar_when_the_graph_republishes_without_it(s3_client, tmp_path):
+    """#1313: trail_graph_elevation.json and trail_graph_profile.json describe
+    trail_graph.json's edges BY POSITION, not by name - entry i is edge i's
+    climb/profile. The general carry-forward rule the test above pins (an
+    artifact absent from this run's local set keeps its last-published hash)
+    is right for every other pair of artifacts and wrong for this one: a run
+    that rebuilds the graph without also rebuilding its sidecars must not
+    let the OLD sidecar re-attach to the NEW graph's edge numbering. Measured
+    live on production: a 42,103-entry elevation sidecar stayed published
+    against a graph that had grown to 466,966 edges - #1313's own thread
+    found every known reader already refuses rather than trusts a mismatch
+    that size, so this is not a confidently-wrong-answer bug, but publish.py
+    was still keeping a sidecar published that nothing could safely read."""
+    graph_v1 = tmp_path / "trail_graph_v1.json"
+    graph_v1.write_text('{"edges": [1, 2]}')
+    elevation_v1 = tmp_path / "trail_graph_elevation_v1.json"
+    elevation_v1.write_text('{"climbs": [1, 2]}')
+    profile_v1 = tmp_path / "trail_graph_profile_v1.json"
+    profile_v1.write_text('{"profiles": [1, 2]}')
+
+    first = publish.publish(
+        {
+            "trail_graph.json": {"path": str(graph_v1), "sha256": publish.sha256_file(graph_v1)},
+            "trail_graph_elevation.json": {"path": str(elevation_v1), "sha256": publish.sha256_file(elevation_v1)},
+            "trail_graph_profile.json": {"path": str(profile_v1), "sha256": publish.sha256_file(profile_v1)},
+        },
+        s3_client=s3_client,
+        bucket=BUCKET,
+    )
+    assert set(first["uploaded"]) == {"trail_graph.json", "trail_graph_elevation.json", "trail_graph_profile.json"}
+
+    # Second run: the graph grew (new edges, new bytes) but this checkout
+    # only reran the graph build - `include_elevation: false`, the
+    # documented, legitimate way to skip the elevation steps.
+    graph_v2 = tmp_path / "trail_graph_v2.json"
+    graph_v2.write_text('{"edges": [1, 2, 3, 4, 5]}')
+
+    second = publish.publish(
+        {"trail_graph.json": {"path": str(graph_v2), "sha256": publish.sha256_file(graph_v2)}},
+        s3_client=s3_client,
+        bucket=BUCKET,
+    )
+    assert second["uploaded"] == ["trail_graph.json"]
+
+    remote = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())
+    assert remote["artifacts"]["trail_graph.json"]["sha256"] == publish.sha256_file(graph_v2)
+    # The stale sidecars are gone from the manifest entirely - "no figures
+    # for this hike", the case the client already treats as absent - rather
+    # than kept and silently mismatched against the new edge numbering.
+    assert "trail_graph_elevation.json" not in remote["artifacts"]
+    assert "trail_graph_profile.json" not in remote["artifacts"]
+
+
+def _entry(path, text):
+    path.write_text(text)
+    return {"path": str(path), "sha256": publish.sha256_file(path)}
+
+
+def test_publish_stops_carrying_a_withdrawn_poi_type_forward(s3_client, tmp_path):
+    """#1674: crossing left POI_TYPES, so export_poi.py stops writing
+    poi_crossing.* - and the additive merge would otherwise keep the last
+    5,318 crossings in every future manifest. They are dropped by name, and
+    everything else absent from this run still carries forward as before."""
+    first = publish.publish(
+        {
+            "poi_crossing.geojson": _entry(tmp_path / "crossing.geojson", '{"features": [{"properties": {"id": "c1"}}]}'),
+            "poi_crossing.fgb": _entry(tmp_path / "crossing.fgb", "fgb bytes"),
+            "poi_shelter.geojson": _entry(tmp_path / "shelter.geojson", '{"features": [{"properties": {"id": "s1"}}]}'),
+            "elevation_profile.json": _entry(tmp_path / "elevation.json", '{"profile": [1]}'),
+        },
+        s3_client=s3_client,
+        bucket=BUCKET,
+    )
+    assert "poi_crossing.geojson" in first["uploaded"]
+
+    second = publish.publish(
+        {"poi_shelter.geojson": _entry(tmp_path / "shelter_v2.geojson", '{"features": [{"properties": {"id": "s2"}}]}')},
+        s3_client=s3_client,
+        bucket=BUCKET,
+    )
+
+    assert second["withdrawn"] == ["poi_crossing.fgb", "poi_crossing.geojson"]
+    remote = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())
+    assert "poi_crossing.geojson" not in remote["artifacts"]
+    assert "poi_crossing.fgb" not in remote["artifacts"]
+    assert "elevation_profile.json" in remote["artifacts"], "an ordinary absent artifact still carries forward"
+
+
+def test_a_withdrawal_alone_writes_a_version(s3_client, tmp_path):
+    """Nothing uploaded would otherwise mean no new latest.json, and the drop
+    above would happen to a manifest that is never written - leaving the
+    crossings served until some unrelated change happened to publish."""
+    shelter = _entry(tmp_path / "shelter.geojson", '{"features": [{"properties": {"id": "s1"}}]}')
+    publish.publish(
+        {
+            "poi_crossing.geojson": _entry(tmp_path / "crossing.geojson", '{"features": [{"properties": {"id": "c1"}}]}'),
+            "poi_shelter.geojson": shelter,
+        },
+        s3_client=s3_client,
+        bucket=BUCKET,
+    )
+
+    second = publish.publish({"poi_shelter.geojson": shelter}, s3_client=s3_client, bucket=BUCKET)
+
+    assert second["uploaded"] == []
+    assert second["version_written"] is True
+    remote = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())
+    assert set(remote["artifacts"]) == {"poi_shelter.geojson"}
+
+
+def test_nothing_withdrawn_and_nothing_changed_still_writes_no_version(s3_client, tmp_path):
+    shelter = _entry(tmp_path / "shelter.geojson", '{"features": [{"properties": {"id": "s1"}}]}')
+    publish.publish({"poi_shelter.geojson": shelter}, s3_client=s3_client, bucket=BUCKET)
+
+    second = publish.publish({"poi_shelter.geojson": shelter}, s3_client=s3_client, bucket=BUCKET)
+
+    assert second["version_written"] is False
+    assert second["withdrawn"] == []
+
+
+def test_publish_keeps_the_elevation_sidecar_when_the_graph_is_unchanged(s3_client, tmp_path):
+    """The fix above must not fire when there is nothing to protect against:
+    an unchanged trail_graph.json still means its existing sidecar is still
+    correctly paired, and a run that only touched an unrelated artifact must
+    not lose elevation data it never rebuilt."""
+    graph = tmp_path / "trail_graph.json"
+    graph.write_text('{"edges": [1, 2]}')
+    elevation = tmp_path / "trail_graph_elevation.json"
+    elevation.write_text('{"climbs": [1, 2]}')
+    graph_entry = {"path": str(graph), "sha256": publish.sha256_file(graph)}
+    elevation_entry = {"path": str(elevation), "sha256": publish.sha256_file(elevation)}
+
+    publish.publish(
+        {"trail_graph.json": graph_entry, "trail_graph_elevation.json": elevation_entry},
+        s3_client=s3_client,
+        bucket=BUCKET,
+    )
+
+    # Second run: same graph bytes (a run that rebuilt the graph and got the
+    # same result), elevation absent from this run's local set entirely -
+    # the every-other-artifact carry-forward case.
+    second = publish.publish(
+        {"trail_graph.json": graph_entry},
+        s3_client=s3_client,
+        bucket=BUCKET,
+    )
+    assert second["uploaded"] == []
+
+    remote = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())
+    assert remote["artifacts"]["trail_graph_elevation.json"]["sha256"] == elevation_entry["sha256"]
 
 
 def test_publish_manifest_records_one_hash_per_artifact_not_one_hash_for_everything(s3_client, local_artifacts):
@@ -652,6 +805,160 @@ class TestTheArchiveReviewGate:
 
         assert photo_key(digests["confirmed"]) in collected
         assert photo_key(digests["awaiting"]) not in collected
+
+    def _store(self, tmp_path, images):
+        """Bytes in the recovery's OWN store - the directory #1504 moved them
+        into, not the one collect_photos sweeps. Returns {label: digest}."""
+        store = tmp_path / publish.ARCHIVE_STORE_DIRNAME
+        store.mkdir(exist_ok=True)
+        digests = {}
+        for label, content in images.items():
+            digests[label] = photo_digest(content)
+            (store / f"{digests[label]}.jpg").write_bytes(content)
+        return digests
+
+    def test_a_confirmed_photograph_in_the_recovery_store_is_offered_to_the_bucket(self, tmp_path, monkeypatch):
+        """The gap #1550 closed. Before it, reference/nynjtc_hike_photos.json
+        let a photograph reach a CARD through export_suggested_hikes.photo_for
+        and had no way to send its bytes, so the export promised keys
+        verify_photo_promises would refuse."""
+        digests = self._store(tmp_path, {"confirmed": b"\xff\xd8 confirmed"})
+        self._recovered(tmp_path, digests.values(), cleared=[digests["confirmed"]])
+        monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
+        monkeypatch.setattr(publish, "ROOT", tmp_path)
+        monkeypatch.setattr(publish, "load_decisions", dict)
+
+        collected = publish.collect_photos()
+
+        assert collected == {
+            photo_key(digests["confirmed"]): str(tmp_path / publish.ARCHIVE_STORE_DIRNAME / f"{digests['confirmed']}.jpg")
+        }
+
+    def test_an_unconfirmed_photograph_beside_it_is_never_named(self, tmp_path, monkeypatch):
+        """The asymmetry with poi_photos/ and the whole reason this store is
+        read by name. poi_photos/ is swept whole and filtered down, so a new
+        digest arrives published-by-default and something must hold it back;
+        this store is never swept, so a digest the confirm file does not name
+        is not considered at all."""
+        digests = self._store(tmp_path, {"confirmed": b"\xff\xd8 confirmed", "unreviewed": b"\xff\xd8 unreviewed"})
+        self._recovered(tmp_path, digests.values(), cleared=[digests["confirmed"]])
+        monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
+        monkeypatch.setattr(publish, "ROOT", tmp_path)
+        monkeypatch.setattr(publish, "load_decisions", dict)
+
+        collected = publish.collect_photos()
+
+        assert photo_key(digests["unreviewed"]) not in collected
+
+    def test_the_recovery_store_is_read_on_a_tree_with_no_poi_photos_directory(self, tmp_path, monkeypatch):
+        """collect_photos() used to `return {}` the moment poi_photos/ was
+        absent, which after #1550 would skip the archive store on exactly the
+        tree that has one and no other photo source - a publish job that
+        received the recovery's bytes and no Commons or ATC fetch."""
+        digests = self._store(tmp_path, {"confirmed": b"\xff\xd8 confirmed"})
+        self._recovered(tmp_path, digests.values(), cleared=[digests["confirmed"]])
+        monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
+        monkeypatch.setattr(publish, "ROOT", tmp_path)
+        monkeypatch.setattr(publish, "load_decisions", dict)
+
+        assert not (tmp_path / PHOTOS_DIRNAME).exists()
+        assert photo_key(digests["confirmed"]) in publish.collect_photos()
+
+    def test_a_confirmed_row_whose_bytes_are_absent_is_reported_rather_than_raised(self, tmp_path, monkeypatch, capsys):
+        """The bucket may already hold them from an earlier publish, in which
+        case verify_photo_promises passes and this line is the only trace that
+        the local store was thin. Raising here would decide that without the
+        bucket listing, which collect_photos cannot see."""
+        digests = self._store(tmp_path, {"confirmed": b"\xff\xd8 confirmed"})
+        absent = "c" * 64
+        self._recovered(tmp_path, list(digests.values()) + [absent], cleared=[digests["confirmed"], absent])
+        monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
+        monkeypatch.setattr(publish, "ROOT", tmp_path)
+        monkeypatch.setattr(publish, "load_decisions", dict)
+
+        collected = publish.collect_photos()
+
+        assert photo_key(absent) not in collected
+        assert photo_key(digests["confirmed"]) in collected
+        assert absent in capsys.readouterr().out
+
+    def test_the_face_gate_still_wins_over_a_confirmation(self, tmp_path, monkeypatch):
+        """Defence in depth rather than an expected case - the face review
+        reads poi_images.json, which the recovery never writes. A digest that
+        somehow reached both reviews must lose, and losing means held."""
+        digests = self._store(tmp_path, {"confirmed": b"\xff\xd8 confirmed"})
+        self._recovered(tmp_path, digests.values(), cleared=[digests["confirmed"]])
+        monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
+        monkeypatch.setattr(publish, "ROOT", tmp_path)
+        monkeypatch.setattr(publish, "load_decisions", dict)
+        monkeypatch.setattr(publish, "unpublishable_digests", lambda *_: {digests["confirmed"]})
+
+        assert publish.collect_photos() == {}
+
+    def test_the_park_takes_the_whole_store_including_what_nobody_confirmed(self, tmp_path, monkeypatch):
+        """#1567, and the one place in publish.py that ignores the confirm
+        file on purpose. 284 of the 403 recovered photographs are unconfirmed;
+        if the park took only the cleared ones it would preserve 119 and lose
+        the rest, which is the state that made a one-time crawl repeatable."""
+        digests = self._store(tmp_path, {"confirmed": b"\xff\xd8 confirmed", "unreviewed": b"\xff\xd8 unreviewed"})
+        self._recovered(tmp_path, digests.values(), cleared=[digests["confirmed"]])
+        monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
+        monkeypatch.setattr(publish, "ROOT", tmp_path)
+
+        parked = publish.archive_park_objects()
+
+        assert set(parked) == {
+            f"{publish.ARCHIVE_PARK_PREFIX}/{digests['confirmed']}.jpg",
+            f"{publish.ARCHIVE_PARK_PREFIX}/{digests['unreviewed']}.jpg",
+        }
+
+    def test_parking_a_photograph_does_not_put_it_on_a_card(self, tmp_path, monkeypatch):
+        """The two halves must stay independent, because the park is the
+        permissive one. A digest in the park and not in the confirm file is
+        preserved bytes and nothing else - collect_photos() still refuses it,
+        so it reaches no artifact and no hiker."""
+        digests = self._store(tmp_path, {"unreviewed": b"\xff\xd8 unreviewed"})
+        self._recovered(tmp_path, digests.values(), cleared=[])
+        monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
+        monkeypatch.setattr(publish, "ROOT", tmp_path)
+        monkeypatch.setattr(publish, "load_decisions", dict)
+
+        assert publish.archive_park_objects() != {}
+        assert publish.collect_photos() == {}
+
+    def test_a_runner_that_carried_no_store_parks_nothing(self, tmp_path, monkeypatch):
+        """Every routine publish, once the park is full. `carry_archive_photos`
+        defaults to false, so the store is absent and this must be an empty
+        dict rather than an error - the publish path is shared with every
+        other run."""
+        monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
+
+        assert publish.archive_park_objects() == {}
+
+    def test_the_parks_keys_are_legal_in_both_environments(self, tmp_path, monkeypatch):
+        """`assert_valid_keys` refuses an undeclared top-level prefix, so the
+        park is only publishable because lib/r2_keys.py declares it. Checked
+        scoped as well as bare: a UA publish writes
+        `environments/ua/<prefix>/...` and would fail there first."""
+        digests = self._store(tmp_path, {"one": b"\xff\xd8 one"})
+        monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
+
+        keys = list(publish.archive_park_objects())
+        assert keys and all(key.startswith(f"{publish.ARCHIVE_PARK_PREFIX}/") for key in keys)
+        assert_valid_keys(keys)
+        assert_valid_keys([f"environments/ua/{key}" for key in keys])
+        assert digests
+
+    def test_cleared_archive_digests_reads_the_shape_the_confirm_file_is_written_in(self, tmp_path):
+        """The same three shapes _digests_in accepts, through the name the
+        workflow step imports. A reader that took only `photos` would report 0
+        confirmed for a file keyed `matches`, and "0 confirmed" is also what
+        nobody having reviewed anything prints - so the publish workflow would
+        skip fetching the bytes and the publish would fail on the promise."""
+        for shape in ({"photos": [{"digest": "a" * 64}]}, {"matches": [{"digest": "a" * 64}]}, [{"digest": "a" * 64}]):
+            path = tmp_path / "confirm.json"
+            path.write_text(json.dumps(shape), encoding="utf-8")
+            assert publish.cleared_archive_digests(path) == {"a" * 64}
 
 
 def test_photos_alone_do_not_write_a_new_version(s3_client, local_artifacts, local_photos):
@@ -1914,6 +2221,28 @@ def test_the_release_folder_copies_everything_and_writes_its_manifest_last(s3_cl
     assert set(result["release_artifacts"]) == set(many_artifacts)
 
 
+def test_the_release_folder_manifest_is_stored_as_json_so_the_cdn_compresses_it(s3_client, many_artifacts):
+    """The second writer of `releases/<id>/manifest.json`; stage_release.py is
+    the other, and that one has the same assertion for the same reason.
+
+    This key is the one EVERY launch fetches - client/src/lib/dataRelease.ts's
+    RELEASE_MANIFEST_PATH names it, not latest.json - and it was written with
+    no Content-Type, so Cloudflare, which compresses in front of R2 by content
+    type, served it raw. Measured against production 2026-09-21: latest.json
+    at 413,343 stored bytes came back 105,331 zstd with the type set;
+    releases/2026-09-16-4/manifest.json at 412,128 came back at 412,128 with
+    no type and no encoding (#1612).
+
+    Content-Type and NOT a stored Content-Encoding, deliberately: gzipping the
+    bytes would change what every reader of this key gets back, the release
+    gate included, where the header changes nothing but the wire."""
+    result = publish.publish(many_artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    stored = s3_client.get_object(Bucket=BUCKET, Key=f"releases/{result['release']}/manifest.json")
+    assert stored["ContentType"] == "application/json"
+    assert "artifacts" in json.loads(stored["Body"].read())
+
+
 def test_a_failed_artifact_upload_fails_the_publish_rather_than_moving_the_pointer(s3_client, many_artifacts):
     """A worker's exception is the publish's exception. Swallowed, the run
     would go on to write a `latest.json` naming a version whose bytes are not
@@ -2120,3 +2449,30 @@ class TestTheConfirmFileHasNoSchema:
         monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
 
         assert publish.archive_photos_awaiting_review(cleared_path=tmp_path / "absent.json") == (set(), 0)
+
+
+def test_the_client_publish_builds_waits_long_enough_for_a_server_side_copy(monkeypatch, s3_client, local_artifacts):
+    """`_stage_release`'s `copy_object` returns only once R2 has copied the
+    whole object, so botocore's default 60 s read timeout is a limit on how big
+    an artifact the release folder can hold. The v1.3.2 production publish
+    (run 35921489619) died on background_z13.pmtiles at exactly that limit.
+    This pins the client publish() builds to PUBLISH_READ_TIMEOUT_S, and pins
+    that value above the default it replaced."""
+    built: list = []
+
+    def capture(*args, **kwargs):
+        built.append(kwargs.get("config"))
+        return s3_client
+
+    monkeypatch.setattr(publish.boto3, "client", capture)
+    monkeypatch.setenv("R2_BUCKET", BUCKET)
+    monkeypatch.setenv("R2_ENDPOINT_URL", "https://unused.invalid")
+    monkeypatch.setenv("R2_ACCESS_KEY_ID", "unused")
+    monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "unused")
+
+    publish.publish(local_artifacts, sidecars={}, photos={})
+
+    assert built and built[0] is not None
+    assert built[0].read_timeout == publish.PUBLISH_READ_TIMEOUT_S
+    assert publish.PUBLISH_READ_TIMEOUT_S > 60
+    assert built[0].max_pool_connections == publish.PUBLISH_POOL_CONNECTIONS

@@ -186,6 +186,8 @@ describe('parseCellIndex', () => {
   it('refuses the whole index over a covered box it cannot read', () => {
     // Present and malformed is a corrupt row, not an absent key. A coverage
     // claim that parsed half-way is what this function exists to not make.
+    // Malformed means NOT A BOX - three numbers, or a sentence - and not a
+    // box with nothing in it, which the next test is about.
     const broken = {
       ...PUBLISHED,
       cells: [
@@ -193,11 +195,50 @@ describe('parseCellIndex', () => {
           name: 'n40w074',
           key: 'at_basemap_cell_n40w074.pmtiles',
           bounds: [-74, 40, -73, 41],
-          covered: [-73, 40.714, -74, 41],
+          covered: [-74, 40.714, -73.125],
         },
       ],
     }
     expect(parseCellIndex(broken)).toBeNull()
+    expect(
+      parseCellIndex({
+        ...PUBLISHED,
+        cells: [{ ...broken.cells[0], covered: 'the top fifth of the square' }],
+      }),
+    ).toBeNull()
+  })
+
+  it('leaves out a cell whose covered box holds no ground, and keeps the rest (#1559)', () => {
+    // The two shapes release 2026-09-16-4 published, numbers verbatim. n38w082's
+    // tiles all lie south of its own south edge - routed in by the seam
+    // margin from n37w082 - so the cutter's clip put south at the edge and
+    // north below it; n59w135's lie exactly on its west edge, so west and
+    // east came out equal. Twenty-two cells like these, and the whole-index
+    // refusal over them switched off every stretch download on every phone.
+    // A cell that draws nothing inside its square is left out - the
+    // neighbour's own cell holds those tiles - and the other cells stand.
+    const withEmptyBoxes = {
+      ...PUBLISHED,
+      cells: [
+        ...PUBLISHED.cells,
+        {
+          name: 'n38w082',
+          key: 'at_basemap_cell_n38w082.pmtiles',
+          bounds: [-82, 38, -81, 39],
+          covered: [-81.210938, 38.0, -81.0, 37.996163],
+        },
+        {
+          name: 'n59w135',
+          key: 'nearby_trails_cell_n59w135.pmtiles',
+          bounds: [-135, 59, -134, 60],
+          covered: [-135.0, 59.175928, -135.0, 59.888937],
+        },
+      ],
+    }
+    const index = parseCellIndex(withEmptyBoxes)
+
+    expect(index).not.toBeNull()
+    expect(names((index as CellIndex).cells)).toEqual(['n34w085', 'n35w085', 'n34w084'])
   })
 
   it('refuses anything that is not an index at all', () => {

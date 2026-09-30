@@ -613,6 +613,37 @@ def load_done(path: Path | None = None) -> dict[str, HikePage]:
     return done
 
 
+def known_links(path: Path | None = None) -> list[str]:
+    """The write-up URLs a previous run listed, or [] when none did.
+
+    The fallback for an index the archive will not serve today (#1530). It is
+    safe precisely because the index is an ARCHIVED CAPTURE rather than a live
+    page: `20230924170506` is one frozen copy of nynjtc.org/view/hike, and the
+    set of hikes it links can never change. A stale answer is not a risk here;
+    the only risk was treating one refused request as a reason to abandon 444
+    write-ups.
+
+    Deliberately NOT gated on CACHE_FORMAT, unlike `load_done` above. That
+    check exists because a PARSER change makes old rows untrustworthy, and a
+    list of URLs is not parsed - it is the same list whatever read it. Gating
+    it would throw away the fallback on exactly the runs that need it most,
+    the ones following a parser bump.
+    """
+    path = path or OUT_PATH
+    if not path.exists():
+        return []
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    if not isinstance(document, dict):
+        return []
+    links = document.get("links")
+    if not isinstance(links, list):
+        return []
+    return [link for link in links if isinstance(link, str) and link]
+
+
 def write_cache(pages: list[HikePage], links: list[str], path: Path | None = None) -> None:
     path = path or OUT_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -624,6 +655,14 @@ def write_cache(pages: list[HikePage], links: list[str], path: Path | None = Non
                 "index": INDEX_URL,
                 "one_time": True,
                 "listed": len(links),
+                # THE LINKS THEMSELVES, not just how many (#1530). The index
+                # is a FROZEN capture - one archived copy of /view/hike, whose
+                # 444 links cannot change - so re-reading it every run buys
+                # nothing and stakes the whole run on one CDX request. Keeping
+                # them lets a later run whose index fetch is refused carry on
+                # to the write-ups, which is where the work and the resuming
+                # actually are.
+                "links": list(links),
                 "pages": [asdict(p) for p in pages],
             },
             indent=2,
@@ -739,6 +778,37 @@ def probe(made, url: str) -> int:
     return 0
 
 
+def index_links(made: requests.Session) -> list[str]:
+    """Every write-up the index points at - from the archive, or from cache.
+
+    ONE REFUSED REQUEST USED TO COST THE WHOLE RUN (#1530). main() fetched the
+    index first and returned 1 when it came back None, so a run met the
+    archive's mood on a single CDX lookup before reaching any of the work.
+    Measured on run 35163174907: refused at the index, dead in 7.5 minutes,
+    with the raised tripwire below never reached and 444 write-ups untouched.
+
+    The archive is tried first and still wins when it answers, because a
+    capture newer than the cached one is the better list. The fallback is
+    sound because this index is FROZEN - see known_links().
+    """
+    capture = latest_capture(made, INDEX_URL)
+    if capture is not None:
+        index_url, index_ts = capture
+        response = get(made, archived(index_url, index_ts))
+        if response is not None:
+            links = hike_links(response.text)
+            if links:
+                print(f"  {index_ts} {index_url}")
+                print(f"  {len(links)} hike write-ups listed")
+                return links
+
+    cached = known_links()
+    if cached:
+        print("  the archive would not serve the index, so this run uses the list a previous one kept")
+        print(f"  {len(cached)} hike write-ups, from cache")
+    return cached
+
+
 def recover_page(made: requests.Session, link: str) -> tuple[HikePage | None, bool]:
     """One write-up, and whether the archive gave us anything to parse.
 
@@ -768,25 +838,31 @@ def main(limit: int | None, index_only: bool) -> int:
     made = session()
 
     print(f"Finding the most recent capture of {INDEX_URL} ...")
-    capture = latest_capture(made, INDEX_URL)
-    if capture is None:
-        print("The archive would not serve the index. It was refusing this client earlier today;")
-        print("wait longer rather than retrying in a loop - see lib/wayback_rate.py.")
+    links = index_links(made)
+    if not links:
+        print("The archive would not serve the index and no previous run listed it.")
+        print("Wait longer rather than retrying in a loop - see lib/wayback_rate.py.")
         return 1
-    index_url, index_ts = capture
-    print(f"  {index_ts} {index_url}")
-
-    response = get(made, archived(index_url, index_ts))
-    if response is None:
-        print("The index capture could not be fetched. Same advice: wait.")
-        return 1
-
-    links = hike_links(response.text)
-    print(f"  {len(links)} hike write-ups listed")
-    if index_only or not links:
+    if index_only:
+        # `not links` used to ride along here and is gone: the guard above
+        # already returned 1 for an empty list, so it could never be false.
+        #
+        # AND IT BANKS WHAT IT LISTED (#1531). This returned before
+        # write_cache, so the cheapest possible run - two requests, about a
+        # minute - threw away the very thing index_links() needs to fall back
+        # on. That made `--index-only` useless as a way to arm the fallback,
+        # which is the one job it is perfectly shaped for.
+        #
+        # The rows already recovered are carried through rather than passing
+        # an empty list: write_cache rewrites the whole file, so seeding the
+        # links with `[]` here would delete every write-up a previous run
+        # banked - the exact loss #1522 existed to stop, reintroduced from
+        # the other end.
+        write_cache(list(load_done().values()), links)
         for link in links[:20]:
             print(f"    {link}")
-        return 0 if links else 1
+        print(f"  {len(links)} links kept - a later run can no longer be stopped by a refused index")
+        return 0
 
     done = load_done()
     todo = [link for link in links if link not in done]

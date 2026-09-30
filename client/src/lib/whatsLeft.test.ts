@@ -28,6 +28,13 @@ function trip(id: string, from: number, to: number): Trip {
   return { id, name: id, plan }
 }
 
+/** The same trip on the calendar and not yet walked. */
+function planned(id: string, from: number, to: number): Trip {
+  const made = trip(id, from, to)
+  made.plan.days[0].walked = false
+  return made
+}
+
 const HIKE: Hike = {
   id: 'h1',
   name: 'Virginia',
@@ -66,6 +73,24 @@ describe('whatsLeft', () => {
     // The whole is the sum of both halves, so the two cannot disagree.
     expect(totalMi).toBeCloseTo(0.1)
     expect(slivers.miles).toBeLessThan(MIN_GAP_MI)
+  })
+
+  it('counts ground under a trip that is planned but not walked as still left (#1578)', () => {
+    // A trip on the calendar closes no gap until it is walked - hikes.ts's
+    // rule for gapSpans, and the arithmetic behind the "To go" figure the
+    // screen prints above these pieces. Read from the hike's ROWS instead,
+    // a planned trip's ground was in neither figure: 70 mi to go, in no
+    // pieces at all.
+    const { gaps, totalMi } = whatsLeft(
+      HIKE,
+      [trip('a', 0, 30), planned('b', 30, 100)],
+      POIS,
+    )
+
+    expect(totalMi).toBe(70)
+    expect(gaps).toHaveLength(1)
+    expect(gaps[0].span).toEqual({ from: 30, to: 100 })
+    expect(gaps[0].low).toEqual({ name: 'Stop 30', mile: 30 })
   })
 
   it('is the whole hike when nothing has been walked', () => {

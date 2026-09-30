@@ -149,7 +149,10 @@
   font: inherit;
   font-size: 13px;
   color: var(--fg-1);
-  background: var(--bg-raised, var(--bg-0));
+  /* `--bg-raised, --bg-0` until 2026-09-20; nothing defines either, so these
+     fields drew with no background. --bg-surface is what findHike.css and
+     reporting.css give their inputs. */
+  background: var(--bg-surface);
   border: 1px solid var(--bg-sunken);
   border-radius: 8px;
 }

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.account_deletion import delete_account
 from app.core.account_export import build_export
-from app.core.auth import get_current_user
+from app.core.auth import get_current_github_login, get_current_user
 from app.db.session import get_db
 from app.models.profile import Profile
 from app.schemas.profile import DeletionReceipt, ProfileOut
@@ -98,3 +98,54 @@ def delete_my_account(
         app_failure_reports_unlinked=summary.app_failures_unlinked,
         kept=summary.contributions_kept,
     )
+
+
+@router.post("/me/github")
+def link_github_account(
+    current_user: Profile = Depends(get_current_user),
+    github_login: str | None = Depends(get_current_github_login),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    """Record which GitHub account this person signed in as.
+
+    **THE REQUEST BODY IS NOT READ, AND THAT IS THE WHOLE ENDPOINT.** The
+    login comes off the verified token, because an organization's three
+    codeowners approve its registry pull request on GitHub with these
+    accounts - so a caller who could name the account would be naming whose
+    approval counts on somebody else's organization. Same rule, and the same
+    reason, as the domain check at registration.
+
+    **409 RATHER THAN 403 WHEN THERE IS NOTHING TO READ.** A caller signed in
+    through another provider is entitled to be here; there is simply no
+    GitHub identity on their token. A 403 would tell them they lack
+    permission, which is not what happened and not what they can act on.
+
+    Linking the same account twice is not an error - the console calls this
+    whenever somebody signs in with GitHub, and the second call is the same
+    fact arriving again.
+    """
+    if github_login is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "This sign-in did not come from GitHub, so there is no account to link. "
+                "Sign in with GitHub to approve your organization's registry."
+            ),
+        )
+
+    held_by = db.query(Profile).filter(Profile.github_login == github_login).one_or_none()
+    if held_by is not None and held_by.id != current_user.id:
+        # Refused rather than moved. Taking it from the first holder would
+        # let anybody who can sign in as that username unseat them, and a
+        # codeowner seat is exactly the thing worth unseating somebody from.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"The GitHub account {github_login} is already linked to another OurHike account. "
+                "If that is you, sign in to it instead."
+            ),
+        )
+
+    current_user.github_login = github_login
+    db.commit()
+    return {"github_login": github_login}

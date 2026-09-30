@@ -15,6 +15,15 @@
 // GPX" beside it, though the frame draws one: no writer exists, and a door
 // is a claim.
 //
+// AND THAT THE PIECES ADD UP TO THE FIGURE. The seeded hike has one trip
+// walked to Neels Gap and a second walked one day past it, to Low Gap
+// Shelter (mi 42.9), with two days still on the calendar out to Dicks Creek
+// Gap (mi 69.6). The one gap card starts at Low Gap Shelter, where the
+// walking stopped - not at Dicks Creek Gap, where the plan stops. Until
+// #1578 it started at Dicks Creek Gap: the pieces were read off the hike's
+// rows, which give planned ground its trip's row and no gap, so 26.7 mi
+// that "To go" counted were in no piece at all.
+//
 // Nobody's data: the same fixture hike plan-hike-room.mjs seeds - an
 // invented hiker, no account, no location fix, so "Nearest me" is absent
 // rather than dead.

@@ -20,6 +20,7 @@
 // club's own channel, and nothing here renders a roster claim of its own
 // invention.
 
+import { CrewContactLink } from './CrewContactLink'
 import './volunteerRow.css'
 
 export interface WorkdayRowProps {
@@ -67,11 +68,7 @@ export function WorkdayRow({
       </p>
       {lead !== undefined && <p className="workday-row__lead">{lead}</p>}
       {description !== null && <p className="workday-row__description">{description}</p>}
-      {contact !== null && (
-        <a className="workday-row__contact" href={contact}>
-          Ask the crew about joining
-        </a>
-      )}
+      <CrewContactLink contact={contact} className="workday-row__contact" />
     </li>
   )
 }

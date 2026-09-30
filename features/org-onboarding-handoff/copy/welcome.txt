@@ -1,0 +1,89 @@
+[link] Skip to content
+    [svg]
+    Prototype controls
+    ·
+    signed in as
+  [button] org admin
+  [button] not a lead
+  [button] registered volunteer
+  [button] reset
+  [button] show signed out
+  [button] show a new org
+  [button] show failures
+  [button] onboarding complete · replay it
+    [button] RT Ramapo Trail Conference Org admin · maintainer
+      [svg]
+        Onboarding
+      [button] Org home
+      [button] Admin approval
+      [button] Hike registry
+      [button] Registry sign-off
+      [button] Add a trail
+      [svg]
+        Manage volunteers
+      [button] Roles
+      [button] Workdays 3
+      [button] Coverage report 37
+      [button] Your roster
+      [button] Welcome them 37
+      [svg]
+        Volunteer
+      [button] Your Tread
+      [button] On your phone
+      [button] What you hand back
+      [button] Ridge Runner
+      [button] Your profile
+    [button] What we email on your behalf
+    [button] Settings and leaving
+    [link] OurHike
+    [button] For orgs
+    [button] Demo org
+    [button] Nominate an org
+    [button] Claim your org
+        MA
+          Maria Alvarez
+          maria@ramapotrails.org
+      [button] Ramapo Trail Conference
+        ›
+          Manage volunteers
+        ›
+          Welcome volunteers
+        [svg]
+            MANAGE VOLUNTEERS · WELCOME
+        [h1] Welcome your volunteers
+    One email each, with their section, their supervisor, and the three things they can do this week. Plenty of context, no jargon.
+          WHO GETS THIS
+              Never welcomed
+              37
+              Already welcomed
+              1,067
+              On your roster
+              1,104
+          Only the 37 who have never had this email get it. Nobody is welcomed twice — not when you upload a list again, and not when the nightly sync adds somebody back. Of the 37, 29 have a role and 8 do not; theirs skips the section line and points at your workdays instead.
+            Names stay private by default
+            We never publish that a named volunteer looks after a particular stretch unless that person asks to be credited. Public credit is off for everybody on your roster until each one opts in.
+        [button] Send 37 welcomes
+        [button] Back to setup
+          Welcome to OurHike —
+            Ramapo Trail Conference
+          is on the map
+          from hello@ourhike.org · to 37 new volunteers
+        [img photos/welcome-blaze.png] A white blaze painted on a tree trunk beside the Appalachian Trail
+          C. G. P. Grey · CC BY 2.0
+        [h2] Maria, your club's trails are live on OurHike.
+            Ramapo Trail Conference
+          has published
+            312
+          sections and 41 featured hikes to OurHike — a free, open-source offline map. Hikers walking your trails can now see them drawn from your own data, and tell you when something is wrong.
+              Your role:
+            Maintainer · Pine Meadow North
+            MM 11.0 → MM 14.3 · 3.3 miles
+              Supervisor:
+            Joseph Okafor
+          Three things you can do this week
+            Download your section so it works with no signal — the whole corridor fits on a phone.
+            Report a blowdown, a dry spring or a missing blaze in three taps. It reaches you and your supervisor.
+            Log your hours. The record is yours first; the club confirms it afterwards for its own reporting.
+            [button] Open your section
+            [button] Pick a trail name
+          Your name is never shown publicly unless you ask to be credited. OurHike sends no push notifications, and you can leave any time — your logbook exports as a file you keep. This is a beta: carry a paper map.

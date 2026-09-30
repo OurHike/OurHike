@@ -253,6 +253,41 @@ and the `## Screenshot` section above are still required in what gets written in
 repo — a PR body is read later, by someone else, and earns its length; a chat reply is
 read now, by the person waiting on it, and doesn't.
 
+## Show the maintainer what you mean, and keep showing it
+
+The maintainer, 2026-09-17: *"I need you to start polling me with more questions with more
+visuals. Actual screenshots or wireframes. I'm getting questions, but we aren't
+communicating well. The visuals really help me understand what you plan to do."* And:
+*"This shouldn't just happen once in the session either, we are doing a constant feedback
+loop."*
+
+The section above puts a question in the poll tool. This one says what the poll has to
+carry: **a choice about anything a hiker sees goes to the maintainer with a picture** — a
+rendered mock or a screenshot, sent to the side panel first and named in the question —
+and it goes at every fork, not once. Before any code, the plan is drawn. After the first
+build, the screenshot sits beside the mock and the question is whether they match. Before
+the pull request, the recipe and the `## Screenshot` section above carry the same picture
+to the reviewer. A choice with genuinely nothing to draw says `No visual: <why>` in the
+question, which is a real answer for exactly the reason the Screenshot section's one-line
+answer is. None of this is a licence to poll about everything — routine calls are still
+yours to make — but when a question does go to the maintainer, it goes with the picture.
+
+The maintainer chose the shape by poll, 2026-09-17, on **#1566 — A session's questions to
+the maintainer carry no wireframe or screenshot, so the plan cannot be seen from the
+words**, from a wireframe page and two real frames: the rendered mock as the default
+picture, over a drawing inside the poll (which stays the fallback for a session with no
+side panel); a hook that lets a picture-less poll through and tells the session
+afterwards, over one that refuses it; and one reminder line at session start, resume and
+compaction, over one on every prompt. `.claude/hooks/visual_poll.py` is both halves —
+`check` after every poll, `remind` at start — and `.github/tests/test_visual_poll_hook.py`
+holds what it counts as a picture and that it never blocks.
+[`.claude/skills/visual-poll/SKILL.md`](.claude/skills/visual-poll/SKILL.md) is the rest:
+the three kinds of picture a session can make here and what each cannot show, the loop,
+and the poll itself.
+
+An unattended session never polls at all (`night-shift/SKILL.md`: "nothing here waits for
+an answer"), so none of this reaches it — the rule is about how to ask, not whether to.
+
 ## Claim the issue before you branch
 
 Sessions run concurrently and unsupervised, and nothing stops two of them from picking up

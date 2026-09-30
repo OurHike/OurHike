@@ -13,7 +13,14 @@
 // candidates - which is why a gap carries two references rather than a
 // direction.
 
-import { hikePieces, MIN_GAP_MI, type Hike, type PlaceRef, type Span } from './hikes'
+import {
+  gapSpans,
+  MIN_GAP_MI,
+  refAtMile,
+  type Hike,
+  type PlaceRef,
+  type Span,
+} from './hikes'
 import type { StoredPoi } from './trailData'
 import type { Trip } from './trips'
 
@@ -52,15 +59,22 @@ export function whatsLeft(
 ): WhatsLeft {
   // Everything, at no threshold at all - then split by the threshold, so
   // the two halves cannot disagree about what the whole is.
-  const all = hikePieces(hike, trips, pois, 0)
-    .filter((piece) => piece.kind === 'gap')
-    .map((piece) => ({
-      id: piece.id,
-      span: piece.span,
-      low: piece.from,
-      high: piece.to,
-      lengthMi: piece.span.to - piece.span.from,
-    }))
+  //
+  // From `gapSpans` - the ground nobody has WALKED - and not from
+  // `hikePieces`'s gap rows, which are the ground nobody has PLANNED. A trip
+  // on the calendar closes no gap until it is walked (hikes.ts's rule, and
+  // the arithmetic behind the "To go" figure the screen prints above these
+  // pieces). Until #1578 this read the rows, so a planned, unwalked trip
+  // took its miles out of every piece here while "To go" still counted
+  // them: 70 mi to go, in 0 pieces, "Nothing left in this hike".
+  const mine = trips.filter((trip) => hike.tripIds.includes(trip.id))
+  const all = gapSpans(hike, trips, pois, 0).map((span) => ({
+    id: `gap-${span.from}-${span.to}`,
+    span,
+    low: refAtMile(span.from, hike, mine, pois),
+    high: refAtMile(span.to, hike, mine, pois),
+    lengthMi: span.to - span.from,
+  }))
 
   const gaps = all.filter((gap) => gap.lengthMi >= MIN_GAP_MI)
   const slivers = all.filter((gap) => gap.lengthMi < MIN_GAP_MI)

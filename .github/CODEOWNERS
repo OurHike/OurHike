@@ -21,3 +21,46 @@
 # notifications by being added here.
 
 * @jaimito-asuntos-gringuenos
+
+# BELOW THIS LINE IS GENERATED, and the ordering is the point: CODEOWNERS is
+# last-match-wins, so an organization's line has to come after the `*` rule
+# above or the `*` rule overrides it and the organization owns nothing.
+#
+# `backend/app/core/codeowners.py` writes it from the roster: one line per
+# claimed organization, naming its registry directory and the GitHub accounts
+# its approved codeowners have linked. An organization whose codeowners have
+# linked no account is LEFT OUT rather than given an empty line - a pattern
+# with no owners after it overrides the `*` rule and requests nobody, which is
+# worse than being covered by the maintainer.
+#
+# ONE THING THIS CANNOT DO. GitHub reads CODEOWNERS from a pull request's BASE
+# branch, so a pull request that adds its own ownership line is not gated by
+# it. An organization's first registry pull request therefore cannot also be
+# the one granting it ownership: one pull request adds the line and the empty
+# directory, and every registry change after that is gated by the owners it
+# established. Doing both at once would leave the first import - the change
+# that decides what an organization's trails are - as the one nobody at that
+# organization has to approve.
+#
+# WHAT THESE LINES DO TODAY: REQUEST, NOT REQUIRE. "Require review from Code
+# Owners" is OFF, decided 2026-09-21, so an organization's approval is asked
+# for and does not block the merge - the maintainer still merges by hand,
+# having seen it. The lines are still doing real work: last-match-wins means
+# a pull request touching an organization's registry requests review from
+# THAT organization rather than only from the maintainer, which is how its
+# codeowners find the pull request at all.
+#
+# WHY THE GATE IS OFF, AND WHAT TURNING IT ON WOULD COST. Code-owner review
+# is its own requirement, independent of the approval count - so
+# `required_approving_review_count: 0` is not what stands in the way. The
+# `*` rule above is. It matches every file, so with the requirement on,
+# every pull request would need the maintainer's approval, and GitHub has no
+# toggle that lets an author approve their own (see
+# .github/expected-protections.yml, which records that platform rule and
+# that it applies to agent-authored pull requests too, the token being the
+# maintainer's). Turning the gate on therefore means deleting or narrowing
+# the `*` line first, and merging that to main BEFORE the setting is
+# flipped - the other order locks every open pull request at once.
+
+# --- generated: organization registry owners (app/core/codeowners.py) ---
+# --- end generated ---

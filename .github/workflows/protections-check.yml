@@ -97,6 +97,10 @@ jobs:
   configured:
     name: Protections are configured
     runs-on: ubuntu-latest
+    # Ten minutes against 17-30 seconds measured over the last four runs
+    # (2026-09-17); the weekly fire installs from PyPI and reads the settings
+    # API, and GitHub's default of six hours is the only other bound.
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: .github/tests

@@ -52,6 +52,7 @@ import {
 import { formatTodayEyebrow, splitPosition, todayGreeting } from '../lib/todayText'
 import { formatDistance, formatElevation } from '../lib/units'
 import { localDay } from '../lib/passedToday'
+import { shiftDate } from '../lib/plan'
 import { dayLongDateLabel } from '../lib/planDisplay'
 import { mileMarker } from '../lib/planDisplay'
 import { cachedEstimate } from '../lib/dayHikeShelf'
@@ -83,6 +84,8 @@ import { isNoteScopedType } from '../lib/fieldNotes'
 import type { NightBehind } from '../lib/nightsBehind'
 import '../chrome/chrome.css'
 import './today.css'
+import { AccountButton } from '../chrome/AccountButton'
+import { useDesktop } from '../lib/useDesktop'
 
 const NO_SUGGESTIONS: readonly SuggestedHike[] = []
 
@@ -107,6 +110,12 @@ export interface TodayProps {
   backgroundProblem?: BackgroundProblem | null
   backgroundOverride?: BackgroundOverride | null
   trailLinesMissing?: boolean
+  /** The account, for the button in this screen's own chrome (#1596). The
+   *  map has one in its header; Today is the other screen a launch lands on,
+   *  so it carries the same door rather than sending a hiker to the map to
+   *  find it. */
+  account?: { email: string } | null
+  onOpenAccount?: () => void
 
   mode: HikerMode
   onChangeMode: (mode: HikerMode) => void
@@ -404,6 +413,8 @@ export function Today({
   backgroundProblem = null,
   backgroundOverride = null,
   trailLinesMissing = false,
+  account,
+  onOpenAccount,
   mode,
   onChangeMode,
   modePending = false,
@@ -449,6 +460,12 @@ export function Today({
   downloadSize = null,
   placeName = null,
 }: TodayProps) {
+  // The sidebar carries the one account button above the breakpoint, where
+  // this screen is a column beside the map rather than a screen of its own.
+  // chrome/AccountButton.tsx states the rule; chrome/TabBar.tsx says why it
+  // is a hook rather than a media query.
+  const inSidebarLayout = useDesktop()
+
   // Memoized because this screen re-renders for reasons that have nothing to do
   // with it (#1090). It is the home screen now, so it is mounted while the GPS
   // clock, the 60-second clock and the hourly conditions check each re-render
@@ -1183,6 +1200,16 @@ export function Today({
   return (
     <div className="today">
       <header className="today__chrome">
+        {/* Not above the breakpoint: there this screen is a column beside
+            the map and the sidebar carries the one account button
+            (chrome/AccountButton.tsx). */}
+        {!inSidebarLayout && account !== undefined && onOpenAccount !== undefined && (
+          <AccountButton
+            account={account}
+            onOpen={onOpenAccount}
+            className="today__account"
+          />
+        )}
         <StatusStrip
           time={now}
           online={online}
@@ -1282,7 +1309,11 @@ export function Today({
                 {dayLongDateLabel(openWalk.day)} · day hike
               </p>
               <h2 className="today__hike-title">
-                {openWalk.day === localDay(new Date(now.getTime() - 86_400_000))
+                {/* Yesterday on the calendar, not 24 hours ago: the two differ on
+                    both DST mornings (a 23-hour and a 25-hour day), which is
+                    when `now - 86_400_000` lands two days back or on today
+                    itself (#1578). shiftDate is calendar arithmetic. */}
+                {openWalk.day === shiftDate(localDay(now), -1)
                   ? 'Yesterday’s walk is still open'
                   : 'A walk is still open'}
               </h2>

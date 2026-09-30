@@ -98,6 +98,7 @@ Four more things it declines to do:
 - **No map plate.** Drawing the route truthfully means resolving it against the graph the phone holds and rendering that geometry, which is what *Open on map* does on the real map. A decorative sketch is a picture of a walk that may not be the walk.
 - **No pace judgement, no score, no count of anything but the walks themselves** (#982, value #1).
 - **No Avenza link**, on the maintainer's instruction, though the publisher's own pages carry one.
+- **The publisher's paper map, since [#1574](https://github.com/OurHike/OurHike/issues/1574).** Where the publisher is a steward whose store block grants this screen and whose own sheet index names the hike's park, the footer says which sheet the park is on and links the product on the publisher's own store, title verbatim — "The park is on sheets 118 and 119 of the New York-New Jersey Trail Conference’s *Harriman-Bear Mountain Trails Map ›*". No price, ever: the store is the source for that. `client/src/lib/paperMaps.ts` is the join, and its word-containment rule ("Harriman State Park" is on the sheet NYNJTC lists as "Southern Harriman State Park") is `@unvalidated` against the real 385 park names, which were not in the checkout it was written in.
 
 The start is the publisher's coordinate, and the screen says where it came from: a pin they placed, or the centre of the map on their page — the second reading is weaker and the card prints the caveat that says so before offering directions.
 

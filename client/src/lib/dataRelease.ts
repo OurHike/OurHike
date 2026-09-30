@@ -29,8 +29,19 @@
  * this folder's manifest resolves against their OWN base before deploying, so
  * a wrong pin costs a red deploy rather than a hiker's map.
  *
- * 2026-09-16-4 IS IN BOTH ENVIRONMENTS, minted by the v1.3.1 release train.
- * The pin was `2026-09-14` - v1.3.0's data - until this line moved, and the
+ * 2026-09-24-2 IS v1.3.2's DATA, minted by that release train on 2026-09-24.
+ * Production's -1 is the vector data (both DEM variants had published flat
+ * before it, so its folder carries them) and -2 the basemap: the last folder
+ * of the day again, for the reason below. UA held no 2026-09-24 folder at all
+ * when production minted these - its ids are its own sequence - so the train
+ * ran two UA publishes that day to mint UA's -1 and -2 before this line moved,
+ * rather than pin an id one environment lacked. Production's folder also
+ * carries the elevation and profile cells now: its vector publish ran with
+ * `include_elevation: true`, which the 2026-09-16-4 entry below names as the
+ * one thing that would close that gap.
+ *
+ * 2026-09-16-4 WAS IN BOTH ENVIRONMENTS, minted by the v1.3.1 release train.
+ * The pin was `2026-09-14` - v1.3.0's data - until that line moved, and the
  * previous entry's point still holds: nothing chooses a release id.
  * `lib/releases.next_release_id` returns `date.today()`, and no publishing
  * workflow takes an id input.
@@ -89,7 +100,7 @@
  *
  * @see pipeline/DATA_RELEASES.md §4, pipeline/R2_LAYOUT.md
  */
-export const DATA_RELEASE = '2026-09-16-4'
+export const DATA_RELEASE = '2026-09-24-2'
 
 /**
  * Keys that stay at the bucket root rather than moving into the release
@@ -119,7 +130,12 @@ export const DATA_RELEASE = '2026-09-16-4'
  *
  * @see pipeline/lib/releases.py, pipeline/publish.py
  */
-const ROOT_SCOPED_PREFIXES = ['conditions/', 'photos/'] as const
+// `archive/` joined the root on 2026-09-17 (#1574): one-time snapshots of
+// third-party data a person writes by dispatching a workflow, never a
+// release build - pipeline/lib/r2_keys.py's declaration of the prefix is the
+// design record. Versioning one under a release would make a snapshot that
+// cannot be rebuilt look like an artifact that can.
+const ROOT_SCOPED_PREFIXES = ['conditions/', 'photos/', 'archive/'] as const
 const ROOT_SCOPED_KEYS = ['latest.json'] as const
 
 /** Whether `key` is served from the pinned release folder. */

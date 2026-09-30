@@ -169,8 +169,11 @@ export function orderStops(
   }
 
   // By mile, then by id - a stable order for two stops the projection puts at
-  // the same vertex, so a re-render cannot swap two rows under a finger.
-  return stops.sort((a, b) => a.mile - b.mile || (a.poiId < b.poiId ? -1 : 1))
+  // the same vertex, so a re-render cannot swap two rows under a finger. Zero
+  // for the same id, so the comparator is consistent both ways (#1578).
+  return stops.sort(
+    (a, b) => a.mile - b.mile || (a.poiId < b.poiId ? -1 : a.poiId > b.poiId ? 1 : 0),
+  )
 }
 
 /** Add or remove a stop. The set is the state; the order is derived. */

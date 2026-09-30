@@ -113,6 +113,20 @@ describe('useWaypointFiltersPanel', () => {
     expect(result.current.mapScreen.droughtShown).toBe(!before)
   })
 
+  it('flips the blaze colours through the same writer, off by default (#1575)', () => {
+    // Stored like the drought tint and not held like the alerts flag: the
+    // hiker who asked for the hues has them on the next launch.
+    const { result, store, settle } = panel()
+    expect(store.current.blaze_colors_shown).toBe(false)
+    expect(result.current.mapScreen.blazeColorsShown).toBe(false)
+
+    act(() => result.current.mapScreen.onToggleBlazeColors?.())
+    settle()
+
+    expect(store.current.blaze_colors_shown).toBe(true)
+    expect(result.current.mapScreen.blazeColorsShown).toBe(true)
+  })
+
   it('leaves the verified filter off, and does not persist it', () => {
     // Off by default: an unconfirmed spring is still the best information
     // anyone has about that spring. Ephemeral on purpose - that is #530's

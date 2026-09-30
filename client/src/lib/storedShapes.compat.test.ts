@@ -373,6 +373,32 @@ describe('a stored phone from the baseline release', () => {
     expect(shelter?.capacity).toBeUndefined()
   })
 
+  // #1674 removed the crossing type. A phone that downloaded before it holds
+  // stream crossings in POIS_KEY until a refresh rewrites the waypoints, and
+  // until then they must not reach the map or the legend.
+  it('drops a stored stream crossing on load, and keeps the waypoints beside it', async () => {
+    const stored = STORED_SHAPES[POIS_KEY] as { id: string }[]
+    const crossing = {
+      id: 'nhd_crossing:41.3128,-73.9890',
+      type: 'crossing',
+      name: 'Popolopen Brook',
+      lat: 41.3128,
+      lon: -73.989,
+      mile: 1391.4,
+      confidence: 'low',
+    }
+    const store: Record<string, unknown> = {
+      ...phoneStore(),
+      [POIS_KEY]: [...stored, crossing],
+    }
+    mockedGet.mockImplementation(async (key: IDBValidKey) => store[key as string])
+
+    const data = await loadTrailData()
+
+    expect(data?.pois.map((poi) => poi.id)).toEqual(stored.map((poi) => poi.id))
+    expect(data?.pois.some((poi) => poi.type === 'crossing')).toBe(false)
+  })
+
   it('still reads a spur record with every optional field absent', async () => {
     const data = await loadTrailData()
 

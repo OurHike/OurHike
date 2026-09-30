@@ -58,7 +58,9 @@ describe('a tapped closure', () => {
     expect(screen.getByText(/Closed since August 12/)).toBeInTheDocument()
     // Expected reopening is omitted rather than guessed (D13).
     expect(screen.queryByText(/Expected to reopen/)).toBeNull()
-    expect(screen.getByText(/Your copy of this closure is 3d ago/)).toBeInTheDocument()
+    expect(
+      screen.getByText('Your copy of this closure synced 3d ago.'),
+    ).toBeInTheDocument()
   })
 
   it('opens nothing for a band whose closure the list no longer holds', () => {

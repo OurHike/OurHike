@@ -499,20 +499,21 @@ def test_a_stream_point_says_where_it_is_and_who_mapped_it():
     assert "ft" not in sentence
 
 
-def test_a_crossing_says_the_trail_crosses_it():
+def test_a_leftover_crossing_flag_no_longer_says_the_trail_crosses_it():
+    """#1674 removed crossings. A stream point is site water now, whatever a
+    stale property says, so it is described as the site's water."""
     assert describe_stream_point({"name": "Stony Brook", "sources": ["nhd"], "crossing": True}) == (
-        "Where the trail crosses Stony Brook. Mapped by USGS."
+        "Stony Brook, where it runs closest to the site. Mapped by USGS."
     )
 
 
 def test_an_unnamed_stream_still_composes():
     assert describe_stream_point({"sources": ["osm"]}).startswith("A stream, where it runs closest")
-    assert describe_stream_point({"sources": ["nhd"], "crossing": True}).startswith("Where the trail crosses a stream.")
 
 
 def test_a_merged_point_names_both_hydrographies():
-    assert describe_stream_point({"name": "Stony Brook", "sources": ["nhd", "osm"], "crossing": True}) == (
-        "Where the trail crosses Stony Brook. Mapped by USGS and OpenStreetMap contributors."
+    assert describe_stream_point({"name": "Stony Brook", "sources": ["nhd", "osm"]}) == (
+        "Stony Brook, where it runs closest to the site. Mapped by USGS and OpenStreetMap contributors."
     )
 
 
@@ -521,8 +522,10 @@ def test_the_flow_claim_is_attributed_to_whoever_made_it():
     classified the reach, so the sentence names that one rather than
     spreading the claim over both - and the other is still credited."""
     assert describe_stream_point(
-        {"name": "Stony Brook", "sources": ["nhd", "osm"], "flow": "perennial", "flow_source": "nhd", "crossing": True}
-    ) == ("Where the trail crosses Stony Brook. USGS maps it as year-round. Also mapped by OpenStreetMap contributors.")
+        {"name": "Stony Brook", "sources": ["nhd", "osm"], "flow": "perennial", "flow_source": "nhd"}
+    ) == (
+        "Stony Brook, where it runs closest to the site. USGS maps it as year-round. Also mapped by OpenStreetMap contributors."
+    )
     assert describe_stream_point({"sources": ["osm"], "flow": "intermittent", "flow_source": "osm"}) == (
         "A stream, where it runs closest to the site. OpenStreetMap contributors tag it as seasonal."
     )

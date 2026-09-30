@@ -1,0 +1,133 @@
+---
+// /for-orgs/claim/ - taking over an organization somebody else submitted
+// (features/ORG_ONBOARDING.md, #1539).
+//
+// THIS IS THE MIGRATION PATH FOR THE REGISTRY WE ALREADY HAVE, not a new
+// concept. `pipeline/sources.json` registers 33 sources across nine
+// organizations (counted 2026-08-27, SOURCE_REGISTRY.md), every one of them
+// put there by a maintainer rather than by the organization - which is
+// exactly what `Org.state == unclaimed` means: live trails, no admins.
+//
+// TWO THINGS THE PAGE HAS TO SAY OUT LOUD, because a trails chair arriving
+// here is worried about both:
+//
+// 1. **Claiming does not change what is published.** Their sections have been
+//    on the map for months and hikers have walked them. Claiming puts them in
+//    charge of what happens next; it does not alter a line.
+// 2. **First is not owner.** They become the first of three. Nothing
+//    publishes until two more admins from their org join them - the same rule
+//    as an org that signed itself up, because it is the same rule.
+//
+// AND THE ONE THE PAGE OWES SOMEBODY WHO IS NOT ACTING IN GOOD FAITH'S
+// VICTIM: a disputed claim is frozen for a person, with no automatic exit. A
+// timer would resolve a contested claim in favour of whoever was patient.
+import Base from '../../layouts/Base.astro'
+import OrgNav from '../../components/OrgNav.astro'
+
+const title = 'OurHike — Claim your org'
+const description =
+  "Somebody put your trails on OurHike before you got here. If you have an email at your org's domain, that is enough to take it over."
+---
+
+<Base title={title} description={description}>
+  <OrgNav />
+  <section class="section">
+    <div class="wrap wrap--narrow">
+      <span class="org-eyebrow">ALREADY ON OURHIKE · NO ADMINS YET</span>
+      <h1 class="org-form__title">Claim your org</h1>
+      <p class="lede">
+        Somebody put your trails on OurHike before you got here. They are live
+        and anybody can walk them — but nobody from your org controls them yet.
+        If you have an email at your org's domain, that is enough to take it
+        over.
+      </p>
+
+      <form class="org-form" id="claim-form" novalidate style="margin-top: 24px">
+        <fieldset class="org-form__group">
+          <span class="org-eyebrow">STEP 1 · FIND IT</span>
+          <label class="org-label" for="claim-search">Search by name or website</label>
+          <input
+            class="org-input"
+            id="claim-search"
+            name="search"
+            type="search"
+            placeholder="carolinamountainclub.org"
+            autocomplete="off"
+          />
+          <ul class="org-results" id="claim-results" role="status" aria-live="polite"></ul>
+          <p class="org-help">
+            Cannot find yours? Nobody has submitted it —
+            <a href="/for-orgs/">register it yourself</a> instead.
+          </p>
+        </fieldset>
+
+        <fieldset class="org-form__group">
+          <span class="org-eyebrow">STEP 2 · PROVE IT IS YOURS</span>
+          <span class="org-label">An email at your domain is the key</span>
+          <p class="org-help">
+            We already check this when an org signs itself up — at least one
+            admin has to be on the org's own domain. Same rule here, doing the
+            same job. It is the address your account is signed in with, not one
+            typed into this form: an address somebody types proves nothing.
+          </p>
+          <p class="org-identity" id="claim-identity" data-state="signed-out">
+            <span class="org-identity__out">
+              <strong>Sign in with your org address.</strong>
+              <a class="btn btn--ghost btn--small" href="/app/?intent=claim-org"
+                >Sign in to continue</a
+              >
+            </span>
+            <span class="org-identity__in" hidden>
+              Signed in as <strong id="claim-identity-email"></strong> ·
+              <a href="/app/?intent=switch-account">not your org? switch account</a>
+            </span>
+          </p>
+        </fieldset>
+
+        <button class="btn org-form__submit" id="claim-submit" type="submit" disabled>
+          This one is mine
+        </button>
+      </form>
+
+      <div class="org-steps" style="margin-top: 32px">
+        <span class="org-eyebrow">WHAT HAPPENS WHEN YOU DO</span>
+        <ol class="org-numbered">
+          <li>
+            <strong>Your address is the check.</strong> A working address at your
+            org's domain is what makes you one of them. There is no form to fill
+            in and nobody to email about it.
+          </li>
+          <li>
+            <strong>You become the first admin — not the owner.</strong> The
+            first of three. You can edit and propose, but nothing publishes
+            until two more admins from your org join you.
+          </li>
+          <li>
+            <strong>Name your other two.</strong> Invite two colleagues and the
+            org is fully yours. Until then the submitted data stays live and
+            unchanged.
+          </li>
+        </ol>
+      </div>
+
+      <div class="org-note" style="margin-top: 26px">
+        <p>
+          <strong>Your trails are already live.</strong> If somebody submitted
+          your sections months ago, hikers have been finding them there ever
+          since. Claiming the org does not change what is published — it puts
+          you in charge of what happens to it next.
+        </p>
+        <p class="org-note__warning">
+          <strong>If somebody claims an org they should not have.</strong> A
+          claim needs a working address at the org's own domain, and a second
+          claim on the same org <strong>freezes it for a person to look at</strong>
+          rather than resolving itself. There is deliberately no timer: a
+          contested claim settled by a countdown is a claim settled in favour of
+          whoever was patient.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <script src="../../scripts/claimOrgForm.js"></script>
+</Base>

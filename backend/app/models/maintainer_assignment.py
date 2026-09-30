@@ -28,7 +28,7 @@ has their consent.
 
 import uuid
 
-from sqlalchemy import Boolean, Column, Date, Float, ForeignKey, String
+from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, String
 
 from app.db.base import Base
 
@@ -54,3 +54,38 @@ class MaintainerAssignment(Base):
     effective_to = Column(Date, nullable=True)
 
     publicly_creditable = Column(Boolean, nullable=False, default=False)
+
+    # WHAT THE ORG CONSOLE ADDED, 2026-09-17
+    # (../../../features/ORG_ONBOARDING.md, and the model sketch there).
+    #
+    # Both nullable, and both stay nullable, because the file loader that
+    # predates them writes neither: `load_assignments.py` takes a maintainer,
+    # a club and a mile range from an organization's own records, and that is
+    # still the right answer for one organization getting started. An
+    # assignment made in the console carries the role it is an instance of and
+    # the section it covers; one loaded from a file carries the miles alone.
+    # Requiring either would break the loader to tidy a schema.
+    #
+    # `role_id` is what makes "who looks after this mile" answerable as "the
+    # maintainer, supervised by Joseph" rather than just a name - which is the
+    # question a report has to answer before it can be routed, and the reason
+    # the coverage report can say a section has no role attached rather than
+    # only that it has nobody on it.
+    role_id = Column(String, ForeignKey("org_roles.id"), nullable=True, index=True)
+
+    # The section this covers, where the org has drawn one. The mile range
+    # above stays authoritative for resolution: it is what every existing
+    # lookup queries, a section's own miles can be null while it is still
+    # being described, and two sources of truth for one stretch is how a
+    # report reaches the wrong person.
+    section_id = Column(String, ForeignKey("org_sections.id"), nullable=True, index=True)
+
+    # Set when the assignment was proposed by a supervisor and is waiting for
+    # an admin to confirm it. ORG_ONBOARDING.md: supervisors propose, admins
+    # confirm - because RLS says who may write, never whether a write was
+    # right, and a wrong section assignment sends a hiker's report to the
+    # wrong person. Null means it needs nobody's confirmation, which is what
+    # an admin's own write and the file loader both produce.
+    proposed_by = Column(String, ForeignKey("profiles.id"), nullable=True)
+    confirmed_by = Column(String, ForeignKey("profiles.id"), nullable=True)
+    confirmed_at = Column(DateTime, nullable=True)

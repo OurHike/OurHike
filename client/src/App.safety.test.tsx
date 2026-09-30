@@ -8,7 +8,7 @@ import { appHarness, latOfMile, openMapTab } from './test/appHarness'
 import { CORRIDOR_ARCHIVE_KEY } from './map/pmtilesSource'
 import { readCamera } from './lib/cameraMemory'
 import { fetchClosures, fetchReports } from './lib/api'
-import { GeolocateControl } from './test/mocks/maplibre-gl'
+import { LocateControl } from './map/mapChrome'
 
 // The on-trail safety battery. Every test here is one of the ways losing the
 // map - or trusting a silent map - could hurt someone on a ridge, written as
@@ -316,7 +316,11 @@ describe('the map without its sensors', () => {
     // The gate the control used to bypass entirely. Attached regardless, it
     // prompted for browser permission behind the preference's back and fed its
     // fix to MapLibre's blue dot only - so the canvas drew a position the
-    // header knew nothing about, on a second high-accuracy watch.
+    // header knew nothing about, on a second high-accuracy watch. The dot and
+    // the watch are gone since #1581 (the control is map/mapChrome.ts's own
+    // LocateControl, and the mark draws from the shell's watch); the gate
+    // stays, because a button that centres on a fix the hiker said not to
+    // take is a door with nothing behind it.
     hikerOnTrail({ location_permission_requested: false })
     render(<App />)
     await openMapTab()
@@ -330,7 +334,7 @@ describe('the map without its sensors', () => {
 
     await waitFor(() => {
       expect(
-        map.controls.filter(({ control }) => control instanceof GeolocateControl),
+        map.controls.filter(({ control }) => control instanceof LocateControl),
       ).toHaveLength(0)
     })
   })
@@ -351,7 +355,7 @@ describe('the map without its sensors', () => {
 
     await waitFor(() => {
       expect(
-        map.controls.filter(({ control }) => control instanceof GeolocateControl),
+        map.controls.filter(({ control }) => control instanceof LocateControl),
       ).toHaveLength(1)
     })
   })

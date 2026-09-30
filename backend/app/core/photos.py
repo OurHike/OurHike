@@ -82,11 +82,15 @@ not change when a Worker replaces the redirect behind it.
 
 from __future__ import annotations
 
+import logging
+
 import boto3
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 # Where a report's numbering starts. It was numbered from the beginning
 # against the day a second photo was allowed - "the alternative, `photo.jpg`,
@@ -162,13 +166,40 @@ MAX_PHOTO_BYTES = 2 * 1024 * 1024
 PHOTO_URL_TTL_SECONDS = 300
 
 
+# The two sentences a response may carry about the bucket. Fixed strings,
+# because the exception's own message is not one of them - see the class.
+STORAGE_NOT_CONFIGURED_DETAIL = "Photo storage is not configured on this server."
+STORAGE_UNAVAILABLE_DETAIL = "Photo storage could not be reached. Try again later."
+
+
 class PhotoStorageUnavailable(RuntimeError):
     """R2 is not configured, or refused the write.
 
     One exception for both, deliberately: from the caller's side they are the
     same event - the photo did not land - and the report itself is unaffected
     either way, because the row is the authoritative half.
+
+    THE MESSAGE IS FOR THE LOG; `detail` IS FOR THE WIRE. botocore spells a
+    connection failure out in full - `Could not connect to the endpoint URL:
+    "https://<account id>.r2.cloudflarestorage.com/<bucket>/<key>"` - and the
+    three upload endpoints used to hand that string to whoever sent the photo
+    as the 503's `detail`. The R2 endpoint carries the Cloudflare account id
+    and the bucket's name, which is this deployment's private storage
+    configuration, told to any signed-in hiker who uploads while R2 is
+    unreachable. So the endpoints answer with `detail`, one of the two
+    constants above, and the reason stays in the exception for the log line
+    `_unavailable` writes.
     """
+
+    def __init__(self, reason: str, *, detail: str = STORAGE_UNAVAILABLE_DETAIL) -> None:
+        super().__init__(reason)
+        self.detail = detail
+
+
+def _unavailable(operation: str, key: str, error: Exception) -> PhotoStorageUnavailable:
+    """Log the real reason, return the exception that withholds it."""
+    logger.warning("R2 %s failed for %s: %s", operation, key, error)
+    return PhotoStorageUnavailable(f"R2 {operation} failed for {key}: {error}")
 
 
 def photo_key(report_id: str, index: int = FIRST_PHOTO_INDEX) -> str:
@@ -280,7 +311,7 @@ def store_photo_object(key: str, body: bytes) -> str:
     says holds here; the key's derivation is the caller's (`photo_key`,
     `poi_photo_key`), the write's mechanics are one code path."""
     if not photo_uploads_enabled():
-        raise PhotoStorageUnavailable("R2 is not configured for photo uploads.")
+        raise PhotoStorageUnavailable("R2 is not configured for photo uploads.", detail=STORAGE_NOT_CONFIGURED_DETAIL)
 
     try:
         _client().put_object(
@@ -289,8 +320,8 @@ def store_photo_object(key: str, body: bytes) -> str:
             Body=body,
             ContentType=ALLOWED_CONTENT_TYPE,
         )
-    except (BotoCoreError, ClientError) as error:  # pragma: no cover - re-raised as one
-        raise PhotoStorageUnavailable(str(error)) from error
+    except (BotoCoreError, ClientError) as error:
+        raise _unavailable("put_object", key, error) from error
 
     return key
 
@@ -305,12 +336,12 @@ def delete_photo_object(key: str) -> None:
     never a row pointing at nothing.
     """
     if not photo_uploads_enabled():
-        raise PhotoStorageUnavailable("R2 is not configured for photo uploads.")
+        raise PhotoStorageUnavailable("R2 is not configured for photo uploads.", detail=STORAGE_NOT_CONFIGURED_DETAIL)
 
     try:
         _client().delete_object(Bucket=settings.r2_photo_bucket, Key=key)
     except (BotoCoreError, ClientError) as error:  # pragma: no cover - re-raised as one
-        raise PhotoStorageUnavailable(str(error)) from error
+        raise _unavailable("delete_object", key, error) from error
 
 
 def presigned_photo_url(
@@ -346,7 +377,7 @@ def presigned_object_url(key: str, expires_in: int = PHOTO_URL_TTL_SECONDS) -> s
     a caller can hand out is the one whose row was just authorised.
     """
     if not photo_storage_configured():
-        raise PhotoStorageUnavailable("R2 is not configured for photos.")
+        raise PhotoStorageUnavailable("R2 is not configured for photos.", detail=STORAGE_NOT_CONFIGURED_DETAIL)
 
     try:
         return _client().generate_presigned_url(
@@ -355,4 +386,4 @@ def presigned_object_url(key: str, expires_in: int = PHOTO_URL_TTL_SECONDS) -> s
             ExpiresIn=expires_in,
         )
     except (BotoCoreError, ClientError) as error:  # pragma: no cover - re-raised as one
-        raise PhotoStorageUnavailable(str(error)) from error
+        raise _unavailable("generate_presigned_url", key, error) from error

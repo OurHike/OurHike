@@ -99,6 +99,39 @@ const BLAZE_COLORS: Record<string, string> = {
 }
 
 /**
+ * The one red every trail line is drawn in while blaze colours are OFF
+ * (#1575, `blaze_colors_shown` in lib/userPreferences.ts), which is the
+ * shipped default.
+ *
+ * The maintainer's request, 2026-09-17: "Showing the blaze color can be
+ * distracting and feel like I'm living in a rainbow. Provide a switch for the
+ * user to 'Show blaze colors' in the legend. Maybe the default color should be
+ * a red line, like the nynjtc has on their maps. Its easily readible." That is
+ * the maintainer's description of NYNJTC's maps, not a measurement of them;
+ * nothing here was checked against a printed sheet.
+ *
+ * THE PALETTE'S OWN RED, NOT A NEW HUE. `BLAZE_COLORS.Red` already cleared
+ * #782's admission bars (day contrast 6.2 against `#ffffff`, night contrast
+ * 3.0 against `#0c1410`, both computed from the hex above by the WCAG formula
+ * and both above the 2.076 and 2.66 bars), and the rule above says the table
+ * is the entire set of hues this map will ever paint. Spelling a second red
+ * here would be exactly the sprawl that rule closes off, so this is an alias
+ * and moves only if Red does.
+ *
+ * What it costs, stated so nobody rediscovers it: with every line one red, a
+ * junction of two trails is told apart by width alone - through-route against
+ * side trail (map/style.ts's width tiers) - and the blaze is read off the
+ * tapped line's sheet, the legend's "Trails in view" rows and the day hike
+ * card's legs, all of which keep the hue (the maintainer's second instruction
+ * the same day: "Changing the color option should only affect the map itself,
+ * not the other options"). @unvalidated whether that reads outdoors at a
+ * junction as well as two hues did; the outdoor pass (#105) is what would
+ * settle it. Red light is unchanged and still wins: map/style.ts's
+ * blazeLineColor checks it before this.
+ */
+export const PLAIN_TRAIL_COLOR = BLAZE_COLORS.Red
+
+/**
  * The values that mean "no hue to draw" rather than naming one.
  *
  * All three are real pipeline output, not error states: "None" is a confirmed

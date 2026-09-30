@@ -27,6 +27,7 @@ from pmtiles.writer import write
 from pyproj import Transformer
 
 import cut_cells
+import export_nearby_trails
 from lib.corridor_grid import graticule_cells
 from lib.tiling import tile_range_for_bounds
 
@@ -280,6 +281,51 @@ def test_covered_never_claims_ground_outside_the_cell(tmp_path):
     assert cells["n40w074"]["covered"][0] >= -74.0
 
 
+def test_a_cell_the_margin_alone_reaches_is_not_built(tmp_path):
+    """The n38w082 case (#1559). A square the corridor passes just outside of
+    is reached by its neighbour's edge tiles once they are widened by the
+    seam margin, and used to be built from those tiles alone - an archive of
+    ground its neighbour already holds, and a `covered` box clipped to a
+    square none of that ground is in: inverted, and refused by the app along
+    with every other cell in the index. A cell is built only when a tile lies
+    inside its own square; the borrowed tile still reaches the cell it lies
+    in."""
+    near_the_seam = _tile_at(SEAM_LON - 0.01, 40.5)
+    out_dir, manifest = _cut(tmp_path, [_tile_at(-74.5, 40.5), near_the_seam], margin_km=25.0)
+    index = json.loads((out_dir / "at_basemap_cells.json").read_text())
+
+    assert [c["name"] for c in index["cells"]] == ["n40w075"]
+    assert not (out_dir / "at_basemap_cell_n40w074.pmtiles").exists()
+    assert "at_basemap_cell_n40w074.pmtiles" not in manifest["artifacts"]
+    assert near_the_seam in read_all(out_dir / "at_basemap_cell_n40w075.pmtiles")
+
+
+@pytest.mark.parametrize("margin_km", [0.0, 3.0, 25.0])
+def test_every_published_covered_box_has_area(tmp_path, margin_km):
+    """The property the app's parser rests on (client/src/lib/coverageCells.ts):
+    a `covered` box is a rectangle with ground in it, at any margin."""
+    tiles = [*_both_cells_tiles(), _tile_at(SEAM_LON - 0.01, 40.5), _tile_at(-74.5, 40.78)]
+    out_dir, _manifest = _cut(tmp_path, tiles, margin_km=margin_km)
+
+    for cell in json.loads((out_dir / "at_basemap_cells.json").read_text())["cells"]:
+        west, south, east, north = cell["covered"]
+        assert west < east and south < north, cell
+
+
+def test_covered_bounds_refuses_tiles_that_all_lie_outside_the_square():
+    """What n38w082's tiles looked like to covered_bounds() in release
+    2026-09-16-4: every one south of the cell's south edge at 38.0, so the
+    clip put south at the edge and north below it. Refused here rather than
+    published, so a cut that somehow routed such a cell would fail loudly
+    instead of shipping a box the app cannot read."""
+    cell = (-82.0, 38.0, -81.0, 39.0)
+    x0, y0 = _merc(-81.2, 37.9)
+    x1, y1 = _merc(-81.0, 37.996)
+
+    with pytest.raises(ValueError, match="holds no tile inside its own square"):
+        cut_cells.covered_bounds(cell, (x0, y0, x1, y1))
+
+
 @pytest.mark.parametrize("margin_km", [0.0, 3.0, 25.0])
 def test_every_tile_a_cell_holds_is_inside_what_it_claims_to_cover(tmp_path, margin_km):
     """The guarantee narrowing a footprint onto `covered` rests on, and the
@@ -383,12 +429,21 @@ def test_every_artifact_is_named_for_its_family(tmp_path, family):
 
 
 def test_a_context_zoom_under_the_archive_leaves_no_context_and_cuts_every_zoom_into_cells(tmp_path):
-    """The network family's cut (#1257 stage 2): publish-vector-data.yml
-    passes --context-zoom 8 against z9-z14 tiles, so nothing is a context
-    tile and the coarsest zoom rides in the cells with the rest - a stretch
-    then costs nothing shared. Modelled with the real archive's minimum
-    zoom: the z9 tile over lon -74.5 spans -74.53 to -73.83 and so crosses
-    the seam into both cells, margin or no margin."""
+    """An archive whose coarsest tile is already past the context zoom has no
+    context to share, and the coarsest zoom rides in the cells with the rest -
+    a stretch then costs nothing shared.
+
+    THIS WAS THE NETWORK FAMILY'S OWN CUT until #1613, which is why the
+    numbers are its: publish-vector-data.yml passed --context-zoom 8 against
+    an archive export_nearby_trails.py cut from z9, so `nearby_trails_context
+    .pmtiles` was never written and features/LAUNCH_BUDGET.md §7.3 planned
+    against an artifact that 404s. The floor is 5 now and the sibling test
+    below holds what that family does today; this one keeps the general
+    property, which other families can still land in.
+
+    Modelled with the old archive's minimum zoom: the z9 tile over lon -74.5
+    spans -74.53 to -73.83 and so crosses the seam into both cells, margin or
+    no margin."""
     coarse = _tile_at(-74.5, 40.5, z=9)
     fine = _tile_at(-74.5, 40.5)
     out_dir, manifest = _cut(tmp_path, [coarse, fine], family="nearby_trails", context_zoom=8, margin_km=0.0)
@@ -400,6 +455,40 @@ def test_a_context_zoom_under_the_archive_leaves_no_context_and_cuts_every_zoom_
     assert not any(name.endswith("_context.pmtiles") for name in manifest["artifacts"])
     assert set(read_all(out_dir / "nearby_trails_cell_n40w075.pmtiles")) == {coarse, fine}
     assert set(read_all(out_dir / "nearby_trails_cell_n40w074.pmtiles")) == {coarse}
+
+
+def test_the_network_cut_writes_a_context_archive_for_the_zooms_below_the_seam(tmp_path):
+    """What publish-vector-data.yml's step does after #1613, and the artifact
+    features/LAUNCH_BUDGET.md §7.3 needs in order to stop shipping the 12 MB
+    corridor sketch to every launch.
+
+    The flag did not move - it is still --context-zoom 8 - and the meaning
+    did, because export_nearby_trails.TILES_MIN_ZOOM went 9 -> 5. z5-z8 are
+    now below the context zoom and become one shared archive the corridor
+    camera reads by range; z9 and finer still ride in the cells, so nothing
+    a stretch download carries changes.
+
+    The zooms are read off the exporter rather than typed again: this test's
+    whole claim is about that constant, and a copy of it here would go on
+    passing the day somebody moved it back."""
+    context = [_tile_at(-74.5, 40.5, z=z) for z in range(export_nearby_trails.TILES_MIN_ZOOM, 9)]
+    in_cells = _tile_at(-74.5, 40.5, z=9)
+    out_dir, manifest = _cut(
+        tmp_path,
+        [*context, in_cells],
+        family="nearby_trails",
+        context_zoom=8,
+        margin_km=0.0,
+    )
+
+    index = json.loads((out_dir / "nearby_trails_cells.json").read_text())
+    assert index["context"] == "nearby_trails_context.pmtiles"
+    assert manifest["stats"]["context_tiles"] == len(context)
+    assert set(read_all(out_dir / "nearby_trails_context.pmtiles")) == set(context)
+    # And z9 is still the cells', which is the half a wider context would have
+    # quietly taken away - cut_cells.py's docstring prices it at 9.65 MB
+    # nationwide.
+    assert set(read_all(out_dir / "nearby_trails_cell_n40w075.pmtiles")) == {in_cells}
 
 
 def test_graticule_routing_is_the_rectangle_scan_exactly():

@@ -437,24 +437,95 @@ class TestTheDeployWorkflows:
         group = self._workflow("pr-preview.yml")["concurrency"]["group"]
         assert "github.event.number" in group
 
-    def test_a_preview_is_built_for_the_root_of_its_own_hostname(self):
+    def test_a_preview_is_built_for_the_same_path_production_serves_the_app_at(self):
         """A base path that disagrees with the serving path is a blank screen.
 
-        A Cloudflare preview is served from `https://pr-<n>.<project>.pages.dev`
-        with the app at its root, so the old `/OurHike/pr-preview/pr-<n>/` base
-        would be wrong in a way that builds and deploys perfectly well.
+        A preview uploads the site and the app together now, laid out as
+        pages.yml lays them out - site at `/`, app at `/app/` - so the base is
+        production's, and for the stronger reason as well as the obvious one.
+        The obvious one is that a bundle built for `/` and served under `/app/`
+        asks for assets nothing answers. The stronger one is
+        client/src/lib/orgRoute.ts: it reads its basename from
+        `import.meta.env.BASE_URL` because a router taking it from anywhere
+        else "breaks deep links in exactly one environment - the one nobody
+        tests", and a preview built for `/` made this that environment.
         """
-        build = next(step for step in self._steps(self._workflow("pr-preview.yml")) if step.get("name") == "Build the app")
-        assert build["env"]["VITE_BASE_PATH"] == "/"
+
+        def base_path(workflow: str) -> str:
+            build = next(step for step in self._steps(self._workflow(workflow)) if step.get("name") == "Build the app")
+            return build["env"]["VITE_BASE_PATH"]
+
+        assert base_path("pr-preview.yml") == "/app/"
+        assert base_path("pr-preview.yml") == base_path("pages.yml"), (
+            "a preview that disagrees with production is the environment nobody tests"
+        )
+
+    def test_a_preview_uploads_the_site_and_the_app_together(self):
+        """The half of the layout that a base path alone cannot buy.
+
+        `wrangler pages deploy client/dist` uploads the app and nothing else,
+        so `/for-orgs/` and the three pages under it were unreachable in a
+        preview - and did not 404, because Cloudflare Pages answers an
+        unmatched path with the root index.html. Measured on pr-1547,
+        2026-09-17: `/for-orgs/` answered 200 with the app's index.html.
+        """
+        steps = self._steps(self._workflow("pr-preview.yml"))
+        names = [step.get("name") for step in steps]
+        assert "Build the site" in names, "the marketing site has to be built before it can be uploaded"
+        assemble = next(step for step in steps if step.get("name") == "Assemble the preview")
+        # The same two copies pages.yml makes, in the same direction.
+        assert "cp -r site/dist/. _site/" in assemble["run"]
+        assert "cp -r client/dist/. _site/app/" in assemble["run"]
+        deploy = next(step for step in steps if "wrangler-action" in step.get("uses", ""))
+        assert "pages deploy _site" in deploy["with"]["command"]
+        assert "pages deploy client/dist" not in deploy["with"]["command"]
+        assert names.index("Assemble the preview") < names.index("Publish the preview")
+        # The camera writes into client/dist, so a copy taken before it would
+        # upload an app with no pictures and a comment linking at them.
+        assert names.index("Photograph the build") < names.index("Assemble the preview")
+
+    def test_a_preview_can_still_open_a_console_address(self):
+        """The one line that keeps the org surface reviewable at all.
+
+        With the site at the root, a path Pages holds no file for falls back to
+        the SITE's landing page - so `/app/org/<slug>/setup` and `/app/my/tread`
+        would serve marketing copy. Those addresses are the only way the console
+        is reached (client/src/lib/orgRoute.ts: a welcome email, an org's
+        members area, a bookmark), so a preview without this fallback is a
+        preview of a console nobody can review.
+
+        `_redirects` is read by Cloudflare Pages and ignored by GitHub Pages, so
+        this changes nothing about how a hiker is served. Production answers
+        those URLs with a 404 today - measured against the live site
+        2026-09-17, and written up in features/ORG_ONBOARDING.md's Known gaps.
+        """
+        steps = self._steps(self._workflow("pr-preview.yml"))
+        assemble = next(step for step in steps if step.get("name") == "Assemble the preview")
+        assert "_site/_redirects" in assemble["run"], "a preview needs the app's deep links to resolve"
+        assert "/app/index.html  200" in assemble["run"]
+        # The one that actually fires. Pages resolves a not-found path against
+        # its own fallback before reading `_redirects` - measured on run
+        # 8d649163, where the rule was uploaded and did nothing - and a
+        # `404.html` is what displaces that fallback.
+        assert "cp _site/app/index.html _site/404.html" in assemble["run"]
+        # And production keeps its own answer, whatever that turns out to be.
+        assert "_redirects" not in (WORKFLOW_DIR / "pages.yml").read_text(encoding="utf-8")
 
     def test_the_advertised_preview_url_is_the_one_deployed_to(self):
         """Both come from the same step, so they cannot drift apart.
 
         A comment linking somewhere the upload did not go is a reviewer looking
         at someone else's change, or at a 404, and believing either.
+
+        The comment names `steps.links` rather than the deploy directly: with
+        the site at `/` and the app at `/app/` there are several links to
+        build, and the trailing slash has to come off the base once rather
+        than once per link. So this follows the seam - the links step reads
+        the deploy, and every link in the comment reads the links step.
         """
         steps = self._steps(self._workflow("pr-preview.yml"))
         deploy = next(step for step in steps if "wrangler-action" in step.get("uses", ""))
+        links = next(step for step in steps if step.get("name") == "Work out where to link")
         comment = next(
             step
             for step in steps
@@ -466,7 +537,29 @@ class TestTheDeployWorkflows:
         # only one of them is evidence rather than inference - and a comment
         # linking somewhere the upload did not go is a reviewer looking at a
         # 404, or at someone else's change, and believing it.
-        assert "steps.deploy.outputs.pages-deployment-alias-url" in comment["with"]["message"]
+        assert "steps.deploy.outputs.pages-deployment-alias-url" in links["env"]["BASE"]
+        assert "steps.preview.outputs.url" in links["env"]["BASE"]
+        # Off once, in the step every link is built from: the two candidates
+        # disagree about a trailing slash and `https://host//app/` is a 404.
+        assert 'BASE="${BASE%/}"' in links["run"]
+        assert "steps.links.outputs.app" in comment["with"]["message"]
+
+    def test_the_comment_offers_the_marketing_site_as_well_as_the_app(self):
+        """The reviewer-facing half of uploading both.
+
+        A preview that holds `/for-orgs/` and never says so is a preview
+        nobody opens it in: the pull request comment is the only place the
+        URL ever appears.
+        """
+        steps = self._steps(self._workflow("pr-preview.yml"))
+        links = next(step for step in steps if step.get("name") == "Work out where to link")
+        comment = next(
+            step
+            for step in steps
+            if "sticky-pull-request-comment" in step.get("uses", "") and step.get("if", "").strip().endswith("!= 'closed'")
+        )
+        assert "for-orgs" in links["run"]
+        assert "steps.links.outputs.orgs" in comment["with"]["message"]
 
 
 class TestTheCustomDomainAndTheBuildAgree:

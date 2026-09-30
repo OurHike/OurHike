@@ -83,7 +83,6 @@ seeds:
                 - campsite
                 - water
                 - resupply
-                - crossing
                 - viewpoint
                 - parking
                 - privy

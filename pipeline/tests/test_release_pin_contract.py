@@ -88,21 +88,26 @@ def test_conditions_are_excluded_at_both_ends(source):
 
 
 def test_the_client_excludes_more_than_the_pipeline_does_and_that_is_correct(source):
-    """`photos/` and `latest.json` are root-scoped on the client and are NOT
-    excluded by is_release_artifact - which is agreement, not drift.
+    """`photos/`, `archive/` and `latest.json` are root-scoped on the client
+    and are NOT excluded by is_release_artifact - which is agreement, not
+    drift.
 
-    Neither ever reaches that function: photos are uploaded by
-    `upload_photos` and never enter `manifest["artifacts"]`, and `latest.json`
-    is the pointer rather than an artifact. The pipeline has no opinion
-    because it never sees them; the client needs one because it fetches them.
-    Pinned so that a later reader does not "fix" the asymmetry by adding them
-    to the Python, where they would do nothing.
+    None of the three ever reaches that function: photos are uploaded by
+    `upload_photos` and never enter `manifest["artifacts"]`, the archive is
+    written by archive_nynjtc_sheet_extents.py on a person's dispatch and
+    never by publish.py at all (#1574), and `latest.json` is the pointer
+    rather than an artifact. The pipeline has no opinion because it never
+    sees them; the client needs one because it fetches them. Pinned so that a
+    later reader does not "fix" the asymmetry by adding them to the Python,
+    where they would do nothing.
     """
     prefixes, root_keys = _root_scoped(source)
 
     assert "photos/" in prefixes
+    assert "archive/" in prefixes
     assert "latest.json" in root_keys
     assert releases.is_release_artifact("photos/abc.jpg") is True
+    assert releases.is_release_artifact("archive/nynjtc_map_sheets.json") is True
     assert releases.is_release_artifact("latest.json") is True
 
 
@@ -112,10 +117,12 @@ def test_the_root_scoped_lists_stay_short(source):
     The rule is an exclusion so that a new artifact is versioned by default
     (lib/releases.is_release_artifact's own reasoning). That property is only
     worth anything while the exclusion list is something a reader can hold in
-    their head - this fails on the fourth prefix, which is the moment to ask
-    whether the rule has stopped being an exclusion.
+    their head. Three today - the third, `archive/`, arrived with #1574 as a
+    one-time snapshot a release cannot rebuild - and this fails on the fourth,
+    which is the moment to ask whether the rule has stopped being an
+    exclusion.
     """
     prefixes, root_keys = _root_scoped(source)
 
-    assert sorted(prefixes) == ["conditions/", "photos/"]
+    assert sorted(prefixes) == ["archive/", "conditions/", "photos/"]
     assert root_keys == ["latest.json"]

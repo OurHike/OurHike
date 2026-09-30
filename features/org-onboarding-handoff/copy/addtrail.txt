@@ -1,0 +1,82 @@
+[link] Skip to content
+    [svg]
+    Prototype controls
+    ·
+    signed in as
+  [button] org admin
+  [button] not a lead
+  [button] registered volunteer
+  [button] reset
+  [button] show signed out
+  [button] show a new org
+  [button] show failures
+  [button] onboarding complete · replay it
+    [button] RT Ramapo Trail Conference Org admin · maintainer
+      [svg]
+        Onboarding
+      [button] Org home
+      [button] Admin approval
+      [button] Hike registry
+      [button] Registry sign-off
+      [button] Add a trail
+      [svg]
+        Manage volunteers
+      [button] Roles
+      [button] Workdays 3
+      [button] Coverage report 37
+      [button] Your roster
+      [button] Welcome them 37
+      [svg]
+        Volunteer
+      [button] Your Tread
+      [button] On your phone
+      [button] What you hand back
+      [button] Ridge Runner
+      [button] Your profile
+    [button] What we email on your behalf
+    [button] Settings and leaving
+    [link] OurHike
+    [button] For orgs
+    [button] Demo org
+    [button] Nominate an org
+    [button] Claim your org
+        MA
+          Maria Alvarez
+          maria@ramapotrails.org
+      [button] Ramapo Trail Conference
+        ›
+          Manage volunteers
+        ›
+          Add a trail
+        [svg]
+            MANAGE THE REGISTRY · ADD A TRAIL
+        [h1] One new trail, not a new registry
+    Your 312 live sections stay exactly as they are. Claude reads only what you point it at, and you get a diff of what would be
+      added
+    — nothing already published is touched.
+          CLAUDE · ADDING TO AN EXISTING REGISTRY
+          Which trail are we adding? Paste its layer URL, drop its files, or just tell me the name if it is already on your GIS server.
+          Sterling Ridge — it's layer 4 on our server now.
+          Read 14 sections, 18.6 miles, blazed blue. Two of them share an endpoint with
+            Cannonball · south of Lot 2
+          , which you already publish — I have anchored the junction to the existing point rather than making a second one.
+          Nothing here touches your other 312. One section has no name in the file — want me to call it
+            Sterling Ridge · north spur
+          ?
+            [button] Use that name
+            [button] Review all 14
+          Ask Claude about this trail…
+          THE DIFF
+              Sections added
+              +14
+              Miles added
+              +18.6
+              Existing sections changed
+              0
+              Junctions reused
+              2
+          A trail with no maintainer yet is fine — it publishes, and the coverage report will show all 14 sections as gaps until you attach roles.
+            Who has to approve this
+            Adding sections changes the registry files, so all three codeowners approve — same as the first time. A smaller edit, like a corrected privy note, needs one admin.
+        [button] Propose these 14 sections
+        [button] Back to org home

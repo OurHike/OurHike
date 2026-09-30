@@ -256,14 +256,48 @@ export const NEARBY_TRAILS_TILES_KEY = 'nearby_trails.pmtiles'
  * pipeline/tests/test_export_nearby_trails.py reads this file to hold the two
  * pairs equal - the way verify_release.py reads the keys above.
  *
- * 9 is the pin seam (map/poiLayers.ts's POI_PIN_MIN_ZOOM), the zoom the full
- * network's layers already start at; below it the corridor-view sketch
- * (NETWORK_OVERVIEW_KEY) is the drawing of these trails, so tiles there would
- * be tiles nothing asks for. 14 is where the Fine hiking sheet stops and
- * MapLibre overzooms - a line simplified to 1 m (export_nearby_trails.py's
- * tolerance) has nothing more to show past it.
+ * 5 SINCE #1613, AND THE OLD 9 IS WHY THE SKETCH COSTS WHAT IT DOES. It used
+ * to read: "9 is where the corridor-view sketch (NETWORK_OVERVIEW_KEY) hands
+ * these trails over: below it the sketch is the drawing of them, so tiles
+ * there would be tiles nothing asks for." That was a fair trade when the
+ * sketch was free. It is not free - `network_overview.geojson` is 12,238,110
+ * bytes in release 2026-09-16-4, read whole into MapLibre's one worker and
+ * cut into tiles there on every launch, and dropping it puts the A.T.'s own
+ * line on screen 2,470 ms sooner (measured 2026-09-21, features/
+ * LAUNCH_BUDGET.md §7). The archive could not replace it below z9 because
+ * nobody had cut those zooms, and nobody had cut them because the sketch drew
+ * there: a circle, and this is the end of it.
+ *
+ * So the floor is the corridor camera's rather than the seam's. 5 is what
+ * §7.1's own experiment cut the A.T.'s line at, and it holds the continental
+ * view a laptop opens on; it is NOT measured against the widest camera a
+ * hiker reaches, which nothing records. @unvalidated - what would settle it
+ * is the zoom distribution of real opening cameras.
+ *
+ * The zoom range is the one contract a tileset has that a GeoJSON does not: a
+ * vector source asked for a zoom its archive does not hold draws nothing,
+ * silently, with no error anywhere. So both ends are declared here for the
+ * source map/style.ts builds, export_nearby_trails.py declares its own pair
+ * (TILES_MIN_ZOOM, TILES_MAX_ZOOM) for the cut, and
+ * pipeline/tests/test_export_nearby_trails.py reads this file to hold the two
+ * pairs equal - the way verify_release.py reads the keys above.
+ *
+ * THIS MOVING DOES NOT MOVE ANY LAYER, and the order matters: a published
+ * archive is older than any client that reads it, so the tiles have to exist
+ * before a layer asks for them. Until the publish carrying this cut lands,
+ * z5-z8 answer empty exactly as an absent archive does (#1257's "one shape of
+ * style whatever the bucket holds"), the sketch goes on drawing below the
+ * seam, and nothing a hiker sees changes. Pointing the sketch's layers at the
+ * context archive and dropping the 12 MB file is the second half of #1613 and
+ * waits for that publish.
+ *
+ * map/corridorLayers.ts's CORRIDOR_MAX_ZOOM stays 9: it is where the network's
+ * FULL detail begins, which is a different question from what the archive
+ * holds. 14 is where the Fine hiking sheet stops and MapLibre overzooms - a
+ * line simplified to 1 m (export_nearby_trails.py's tolerance) has nothing
+ * more to show past it.
  */
-export const NEARBY_TRAILS_TILES_MIN_ZOOM = 9
+export const NEARBY_TRAILS_TILES_MIN_ZOOM = 5
 export const NEARBY_TRAILS_TILES_MAX_ZOOM = 14
 
 /**
@@ -658,18 +692,25 @@ export const suggestedHikeDetailKey = (id: string): string =>
 // "nothing to search yet" and never as a failed download.
 export const PLACES_KEY = 'places.json'
 
-// 'crossing' was listed here while it was still an empty FeatureCollection, so
-// that it would start working the day the pipeline filled it rather than
-// needing a client release to notice. IT WORKED, and the comment outlived the
-// fact: NHD ingestion has landed and production release 2026-09-04 publishes
-// **5,318** crossings, measured off the live artifact (PR #1247).
+// 'crossing' IS GONE, AND ON PURPOSE (#1674). It was the stream crossings
+// pipeline/fetch_trail_water.py derived by intersecting every walking route
+// with both hydrographies - 5,318 of them on production release 2026-09-04,
+// measured off the live artifact (PR #1247), 4,192 of those on somebody
+// else's trail. The maintainer, 2026-09-26: "Crossings are cluttering the
+// map. Remove the crossing from the legend and do not show on the map." So
+// this build neither downloads poi_crossing.geojson nor draws one, and the
+// pipeline no longer derives them. Nothing here ever counted a crossing as a
+// water source, so no distance a hiker reads moved with it.
 //
-// 1,126 of those carry an A.T. mile and sit a median of 0 ft from the
-// centerline - they are line intersections, so they are as on-trail as a
-// waypoint gets. The other 4,192 carry `mile: null`, which is
-// export_poi.mark_off_trail_records (#1016) withholding it on purpose: a
-// crossing on somebody else's trail must not become a candidate stop in an
-// A.T. itinerary. Both halves draw; only the first can be planned around.
+// A phone still running an older build keeps asking for poi_crossing.geojson
+// and keeps getting it. A pinned build reads its own release folder
+// (lib/dataRelease.ts's DATA_RELEASE), and those folders are immutable and
+// never pruned. A build from before pinning reads the bucket root, where the
+// flat object is never deleted either - pipeline/publish.py's withdrawn-type
+// comment has why its missing manifest entry is not a failure. Nothing on the
+// pipeline side has to keep publishing the key; what a newer release must do
+// instead is STOP carrying it. A phone upgraded onto this build with
+// crossings already stored is lib/trailData.ts's WITHDRAWN_WAYPOINT_TYPES.
 //
 // `trailhead` is the empty-but-present layer now (0 features on that same
 // release), and #1218 is why - USFS's 7,358 trailheads ship as parking pins
@@ -696,17 +737,16 @@ export const PLACES_KEY = 'places.json'
 // out here instead.
 //
 // 'trailhead' (#1197) is where a hiker STARTS, and it is empty on the A.T.
-// today exactly as 'crossing' is: ATC publishes no trailhead layer, and the
-// 287 that ship are OPRHP's, which arrive inside `nearby_poi.geojson` rather
-// than as a per-type artifact. It is listed anyway for 'crossing's reason -
-// so it starts working the day ATC fills it, rather than needing a client
-// release to notice.
+// today: ATC publishes no trailhead layer, and the 287 that ship are OPRHP's,
+// which arrive inside `nearby_poi.geojson` rather than as a per-type
+// artifact. It is listed anyway so it starts working the day ATC fills it,
+// rather than needing a client release to notice - the reason 'crossing' was
+// listed before its data existed, which did pay off (above).
 export const POI_TYPES = [
   'shelter',
   'water',
   'campsite',
   'resupply',
-  'crossing',
   'viewpoint',
   'parking',
   'privy',

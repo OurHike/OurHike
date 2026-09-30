@@ -165,12 +165,22 @@ jobs:
           echo "$JAR_SHA256  planetiler.jar" | sha256sum -c -
           ls -la planetiler.jar
 
+      # Through env, never pasted into the script: a free-text dispatch input
+      # interpolated into `run:` is shell the dispatcher wrote (#660's rule,
+      # held by .github/tests/test_run_steps_take_inputs_through_env.py).
+      # STATES and REGIONS stay unquoted on purpose: they are space-separated
+      # lists and the split is the point, exactly as the format() was.
       - name: Build the basemap
+        env:
+          MAX_ZOOM: ${{ inputs.max_zoom }}
+          STATES: ${{ inputs.states }}
+          REGIONS: ${{ inputs.regions }}
         run: |
+          # shellcheck disable=SC2086
           python export_basemap.py --planetiler-jar planetiler.jar \
-            --max-zoom "${{ inputs.max_zoom }}" \
-            ${{ inputs.states != '' && format('--states {0}', inputs.states) || '' }} \
-            ${{ inputs.regions != '' && format('--regions {0}', inputs.regions) || '' }}
+            --max-zoom "$MAX_ZOOM" \
+            ${STATES:+--states $STATES} \
+            ${REGIONS:+--regions $REGIONS}
 
       - name: Cut the AT package from the build
         run: |
@@ -308,6 +318,14 @@ jobs:
     # Every writer of latest.json shares this group: publish() does a
     # read-modify-write of the manifest, and two concurrent publishes could
     # interleave and clobber each other's entries.
+    #
+    # `environment:` and `concurrency:` on the same job means a run left
+    # `waiting` on the reviewer above holds this group for as long as it
+    # waits, not however long the job itself takes once approved - the same
+    # shape as `publish-vector-data.yml`'s `publish` job, whose header has
+    # the 2026-09-08 measurement (#1271) and the fix options nobody has
+    # picked between yet. Dispatch a real publish only when somebody can
+    # approve it within the hour.
     concurrency:
       group: publish-data
       cancel-in-progress: false
@@ -331,8 +349,11 @@ jobs:
       - name: Refuse a non-canonical shape
         if: inputs.states != '' || inputs.max_zoom != '14'
         working-directory: .
+        env:
+          STATES: ${{ inputs.states }}
+          MAX_ZOOM: ${{ inputs.max_zoom }}
         run: |
-          echo "::error::publish is only for the full corridor build (states empty, z0-14); this run built states='${{ inputs.states }}' at z0-${{ inputs.max_zoom }}"
+          echo "::error::publish is only for the full corridor build (states empty, z0-14); this run built states='$STATES' at z0-$MAX_ZOOM"
           exit 1
 
       # What regions MUST include, for the same reason: the A.T. package is
@@ -341,8 +362,10 @@ jobs:
       - name: Refuse a publish that did not build the A.T.
         if: inputs.regions != '' && !contains(inputs.regions, 'at')
         working-directory: .
+        env:
+          REGIONS: ${{ inputs.regions }}
         run: |
-          echo "::error::publish needs the at region; this run built regions='${{ inputs.regions }}'"
+          echo "::error::publish needs the at region; this run built regions='$REGIONS'"
           exit 1
 
       - uses: actions/checkout@v7

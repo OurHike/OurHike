@@ -91,16 +91,37 @@ def _checked_poi_id(poi_id: str) -> str:
     return poi_id
 
 
+# The longest anonymity window a share honours, in days.
+#
+# @unvalidated - ten years is a ceiling picked to be longer than any hike and
+# far shorter than the arithmetic's own limit, not a design decision about
+# how long a name may be withheld. It exists because `PreferencesIn` stores
+# `anonymity_window_days` as an unbounded int (a bound there would be a new
+# request constraint, which scripts/check_openapi_compat.py refuses), and
+# `share_photo` used to add it to the clock unclamped: a stored 10**9 raised
+# OverflowError out of `timedelta`, and the share came back a 500 instead of a
+# photo. What would settle the number is the settings screen's own maximum,
+# once the "Hide my name on reports for..." control (Settings.tsx, disabled
+# today) offers one; until then any stored value past this masks for ten
+# years, which is indistinguishable from "for ever" on this surface.
+MAX_ANONYMITY_WINDOW_DAYS = 3650
+
+
 def _anonymity_window_days(db: Session, profile_id: str) -> int:
     """The sharer's anonymity window, in days. Zero when unset - masking is
-    opt-in, and the client's own default is 0 (lib/userPreferences.ts)."""
+    opt-in, and the client's own default is 0 (lib/userPreferences.ts).
+    Clamped at `MAX_ANONYMITY_WINDOW_DAYS`, so the value that reaches the
+    clock arithmetic is always one it can do."""
     stored = db.get(UserPreferences, profile_id)
     if stored is None or not isinstance(stored.data, dict):
         return 0
     days = stored.data.get("anonymity_window_days", 0)
-    if not isinstance(days, int) or days < 0:
+    # `bool` first, because it IS an int to `isinstance` and `True` read as a
+    # one-day window (#1545). A bool is not a count of days; it is the unset
+    # value's shape, and gets the unset value's answer.
+    if isinstance(days, bool) or not isinstance(days, int) or days < 0:
         return 0
-    return days
+    return min(days, MAX_ANONYMITY_WINDOW_DAYS)
 
 
 def _recency():
@@ -271,7 +292,9 @@ async def upload_shared_photo(
     try:
         store_photo_object(poi_photo_key(poi_id, current_user.id), body)
     except PhotoStorageUnavailable as error:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)) from error
+        # `error.detail`, never `str(error)` - the message names the endpoint
+        # and the endpoint names the account (app/core/photos.py).
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=error.detail) from error
 
     photo.uploaded_at = utc_now()
     commit_and_refresh(db, photo)

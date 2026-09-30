@@ -117,6 +117,8 @@ const STEWARDS: Stewards = [
     termsSource: null,
     layers: ['ATC Trail Updates'],
     keys: [ATC_SOURCE_KEY],
+    support: null,
+    store: null,
   },
   {
     provider: 'NYNJTC',
@@ -128,6 +130,8 @@ const STEWARDS: Stewards = [
     termsSource: null,
     layers: ['NYNJTC Trail Alerts'],
     keys: ['nynjtc_trail_alerts'],
+    support: null,
+    store: null,
   },
 ]
 

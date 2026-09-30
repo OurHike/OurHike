@@ -67,6 +67,13 @@ segments, the banned word `latest`, the closed extension set — are all consequ
 key being a permanent public URL, and none of them describes a private store, so the raw
 store gets a small validator of its own rather than these rules loosened for both.
 
+**Since 2026-09-24 that design has a second private bucket**, the step cache: the output
+of each expensive pipeline step, stored under a hash of its inputs, plus a read-only
+`.duckdb` copy for people to query (INCREMENTAL.md, "Three tiers, and a step cache between
+them"). It is a separate bucket so the build job can write it without being able to write
+raw. Everything this section says about the raw store is true of it too: never a public
+domain, never these key rules.
+
 ## Top-level prefixes
 
 These are the places an object can be, and a new one is a design decision — recorded in
@@ -82,8 +89,33 @@ data a phone is pinned to.
 | `_internal/` | build intermediates, keyed by release | rewritten per build | no |
 | `photos/` | POI photos, one object per image, content-addressed | mutable: objects are added and deleted, never rewritten | yes |
 | `originals/` | full-resolution originals of the photos above, content-addressed | mutable: objects are added and deleted, never rewritten | **no** |
-| `conditions/` | published safety data — verified closures, verified reports, and the ATC's own trail updates | mutable: rewritten in place, daily | yes |
+| `conditions/` | published safety data — verified closures, verified reports, and the ATC's own trail updates — and, since #1056, the NBM forecast for every trail square with HRRR's first two days' temperature (`weather_index.json` plus one `weather/<cell>.json` per 1° cell) and every active NWS alert that reaches one (`weather_alerts.json`) (features/WEATHER.md §7) | mutable: rewritten in place, hourly by schedule (about every four hours as GitHub actually fires it, #1346) | yes |
+| `archive/` | one-time snapshots of third-party data read once and possibly never again — today the footprint of each NYNJTC paper map sheet | mutable only by a person dispatching the one-off workflow that wrote it | yes |
+| `archive__nynjtc_photos__do_not_delete/` | the whole Internet Archive recovery of NYNJTC's Drupal-era photographs, content-addressed | written once, never rewritten, never pruned | **no** |
 | `environments/` | one subtree per non-production environment, each holding a whole copy of this layout | as whatever it holds | to that environment's audience |
+
+**`archive__nynjtc_photos__do_not_delete/` is a park, not a store anything reads** (#1567).
+It holds all 403 photographs the Internet Archive recovery pulled out of NYNJTC's
+Drupal-era site — a finished corpus of frozen captures that cannot change — so that the
+archive is never asked for them a second time. It was added because 284 of those 403 had
+come to live only in a 14-day workflow artifact and a branch cache that a merge deleted,
+which made a one-time crawl into something that would have to be repeated.
+
+Nothing in the app or the pipeline reads it. What may reach a hiker is decided by
+`pipeline/reference/nynjtc_hike_photos.json` and travels through `photos/` exactly as
+before, so a digest sitting here has no route to a card. The shouting name is doing real
+work rather than decoration: no prune job exists yet ([DATA_RELEASES.md](DATA_RELEASES.md),
+Phase 7 — retention is "keep everything"), and the one eventually written will be scoped
+to `releases/`, so this prefix is safe by design *and* by the name whoever writes that job
+will read.
+
+**What it costs, recorded because it is a real cost.** 284 of the 403 are unreviewed, and
+the `u26` directory they came from is a site-wide upload folder wider than the Favorite
+Hikes permission `sources.json`'s `nynjtc_hikes_licence` covers. A key in this bucket is a
+permanent public URL — the argument #1504 made when it built the review gate, in the words
+"unreferenced is not private". No published artifact references these digests, so nothing
+advertises them, but that is a mitigation and not the licence. The maintainer chose this
+bucket and this name on 2026-09-17, knowing that.
 
 `releases/` and `_internal/` are the layout [DATA_RELEASES.md](DATA_RELEASES.md) designs.
 That document owns the tree, the retention clocks and the migration — this one only says
@@ -137,6 +169,19 @@ which POI_PHOTOS.md keeps off this project's disks entirely.
 
 `_internal/` is named to be obvious rather than to hide: on a public r2.dev bucket it is
 readable by anyone. It means "nothing here is a download", not "nobody can see this".
+
+`archive/` holds what this project read from a third party once and may not be able to read
+again ([#1574](https://github.com/OurHike/OurHike/issues/1574)). The first object is
+`archive/nynjtc_map_sheets.json`: the georeferenced footprint of each of NYNJTC's paper map
+sheets, read off the Avenza Map Store's product pages by `archive_nynjtc_sheet_extents.py` and
+written by `archive-nynjtc-sheets.yml`, which has no schedule. The maintainer's rule for it,
+2026-09-17: *"that will eventually go away. It shouldn't be a real pipeline that runs regularly.
+Just an archive that sits in its own folder."* So it is not under `releases/` — a release is
+rebuilt from the code, and this cannot be rebuilt once the store is gone — and not under
+`conditions/`, which is rewritten hourly by scheduled jobs. The client reads it at the root
+beside `conditions/` (`client/src/lib/mapSheets.ts`, `lib/dataRelease.ts`'s
+`ROOT_SCOPED_PREFIXES`). Retention is `conditions/`'s: one object per snapshot, overwritten in
+place by the next deliberate dispatch, never accumulating, so no prune job is needed.
 
 `environments/` is the one prefix that holds no objects of its own. `environments/ua/` is this
 whole page again — root keys, `releases/`, `photos/`, `conditions/`, all of it — belonging to

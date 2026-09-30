@@ -736,6 +736,90 @@ def test_a_multilinestring_record_carries_one_list_per_part(tmp_path, monkeypatc
     assert stats == {"feature_count": 1, "vertex_count": 4, "monotonic_breaks": 0, "features_with_breaks": 0}
 
 
+def _miles_one_part_at_a_time(con, records, centerline, markers):
+    """vertex_miles as it was before #1660 batched it: one transform, one
+    STRtree.nearest and one line_locate_point per piece, per part. Kept as the
+    reference the batched version must equal to the bit."""
+    import numpy as np
+    import shapely
+    from pyproj import Transformer
+    from shapely import wkt
+
+    calibrated = export_trails.calibrated_trail_axis(con, centerline, markers)
+    tree = shapely.STRtree([cal.line for cal in calibrated])
+    to_metric = Transformer.from_crs(export_trails.GEOGRAPHIC_CRS, export_trails.PROJECTED_CRS, always_xy=True)
+    miles_by_id = {}
+    for record in records:
+        geom = wkt.loads(record["wkt"])
+        per_part = []
+        for part in [geom] if geom.geom_type == "LineString" else list(geom.geoms):
+            coords = np.asarray(part.coords)[:, :2]
+            points = shapely.points(*to_metric.transform(coords[:, 0], coords[:, 1]))
+            nearest = tree.nearest(points)
+            out = np.empty(len(points))
+            for piece in np.unique(nearest):
+                mask = nearest == piece
+                cal = calibrated[int(piece)]
+                out[mask] = cal.mile_at(shapely.line_locate_point(cal.line, points[mask]))
+            per_part.append([float(m) for m in np.round(out, export_trails.TRAIL_MILE_DECIMALS)])
+        miles_by_id[record["id"]] = per_part[0] if geom.geom_type == "LineString" else per_part
+    return miles_by_id, len(calibrated)
+
+
+def test_batched_vertex_miles_equal_the_one_part_at_a_time_miles_to_the_bit(tmp_path, con):
+    """#1660 put every vertex of every part through STRtree.nearest and
+    line_locate_point as one array, split across threads by lib.cores. The
+    published file was byte-identical on the real centerline (216,767
+    vertices, 2026-09-24); this holds the same equality on an axis of three
+    pieces with records that wander between them, so a vertex's nearest piece
+    changes mid-part - the case where rejoining the chunks out of order, or
+    slicing a part's miles off by one vertex, would show."""
+    import random
+
+    from tests.synthetic import write_half_mile_markers
+
+    # Three pieces with ~2 km gaps between them, so calibrated_trail_axis keeps
+    # them apart and the nearest-piece choice is real work.
+    pieces = [
+        [(-74.0 + (i % 2) * 0.002, 40.0 + i * 0.01) for i in range(31)],
+        [(-73.99 + (i % 2) * 0.002, 40.32 + i * 0.01) for i in range(29)],
+        [(-73.98 + (i % 2) * 0.002, 40.62 + i * 0.01) for i in range(29)],
+    ]
+    centerline = tmp_path / "centerline.geojson"
+    _write_fc(centerline, [_line_feature(p, {"GlobalID": f"c-{n}"}, feature_id=n) for n, p in enumerate(pieces)])
+    markers = tmp_path / "markers.geojson"
+    write_half_mile_markers(markers, [c for piece in pieces for c in piece])
+
+    rng = random.Random(1660)
+
+    def wander(lat, steps):
+        coords = []
+        for _ in range(steps):
+            lat += rng.uniform(0.0005, 0.004)
+            coords.append((-73.99 + rng.uniform(-0.012, 0.012), lat))
+        return coords
+
+    def text(coords):
+        return ", ".join(f"{lon!r} {lat!r}" for lon, lat in coords)
+
+    records = []
+    for n in range(40):
+        start = rng.uniform(39.99, 40.85)
+        if n % 4 == 0:
+            parts = [wander(start, rng.randint(2, 40)), wander(start + 0.05, rng.randint(2, 40))]
+            wkt = "MULTILINESTRING (" + ", ".join(f"({text(part)})" for part in parts) + ")"
+        else:
+            wkt = f"LINESTRING ({text(wander(start, rng.randint(2, 120)))})"
+        records.append({"id": f"centerline:{n}", "source": "centerline", "wkt": wkt})
+
+    expected, piece_count = _miles_one_part_at_a_time(con, records, centerline, markers)
+    miles_by_id, stats = export_trails.vertex_miles(con, records, centerline, markers)
+
+    assert piece_count == 3
+    assert json.dumps(miles_by_id) == json.dumps(expected)
+    assert stats["vertex_count"] > 1000
+
+
 def test_a_step_against_the_direction_of_travel_is_counted_not_smoothed(tmp_path, monkeypatch, con):
     """A chain that doubles back on the axis - two source pieces overlapping,
     a fold the merge kept - produces vertex miles that dip. The client splits

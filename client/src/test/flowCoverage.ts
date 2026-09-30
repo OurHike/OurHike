@@ -361,6 +361,41 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F9 reporting',
     flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
   },
+  // The picker is driven where the window is: a tap with no fix is refused
+  // and opens it, and the spec files a report by the words it collects
+  // (#1563).
+  'reporting/LocationPicker.tsx': {
+    step: 'F9 reporting',
+    flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
+  },
+  // The sheet the picker lives in, and the block the receipt and the long
+  // form sign with: both are driven by the same "no fix" and thanks-form
+  // specs, which read the sheet's title and the signature line.
+  'reporting/LocationSheet.tsx': {
+    step: 'F9 reporting',
+    flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
+  },
+  'reporting/ReporterDetails.tsx': {
+    step: 'F9 reporting',
+    flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
+  },
+  // The frame both sheets share, and the keep window the map's tap opens:
+  // driven by the same spec, which marks a spot on the map and keeps it.
+  'reporting/Sheet.tsx': {
+    step: 'F9 reporting',
+    flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
+  },
+  'reporting/KeepSpotSheet.tsx': {
+    step: 'F9 reporting',
+    flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
+  },
+  // The photo tiles the long form and the receipt share (#1563): the
+  // thanks-form spec finds the `+` tile with nothing picked, and the one-tap
+  // spec finds it again above the receipt's note.
+  'reporting/PhotoTiles.tsx': {
+    step: 'F9 reporting',
+    flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
+  },
   'screens/Moderation.tsx': { step: 'F9 reporting', flow: { status: 'planned' } },
 
   // ---- F12 the map --------------------------------------------------------
@@ -507,6 +542,7 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   // artifact is published, so there is nothing for a flow to drive them with.
   'chrome/CrewsSection.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
   'chrome/WorkdayRow.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
+  'chrome/CrewContactLink.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
   'chrome/WorkdayCalendar.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
   'chrome/workdayPanel.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
   'chrome/ClubSheet.tsx': {
@@ -541,19 +577,22 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     flow: { status: 'covered', spec: 'e2e/settingsRooms.spec.ts' },
   },
   'screens/IdentitySetup.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  // Reachable in every build since #1572 put the provider list in code:
+  // ENABLED_PROVIDERS names email, so SignInPrompt offers it and this screen
+  // mounts behind that button. It was 'unit-only' while the deployed set came
+  // from a repository variable the preview build did not carry.
+  //
+  // Covered since #1643, both steps: e2e/identityRooms.spec.ts's `@backend`
+  // test drives the ask, the address, the code step and an eight-digit code
+  // through to a signed-in header. The code "a real email carried" this entry
+  // used to wait for is answered instead by a stubbed Supabase
+  // (e2e/support/backend.ts), so what is covered is the app's half of the
+  // exchange - the request it makes and what it does with the answer - and
+  // not the project's email template, which backend/check_supabase_config.py
+  // reads back.
   'screens/EmailSignIn.tsx': {
     step: 'F13 More',
-    flow: {
-      // Not "planned": no build this project ships can render it. Measured
-      // 2026-09-11 by driving More → You → Sign in, which offers "Continue
-      // with Google" and nothing else. lib/supabase.ts is why - email left
-      // ENABLED_PROVIDERS' default because Supabase's built-in sender "is
-      // not a delivery path this project can ship on", and this screen is
-      // only mounted when SignInPrompt offers the email provider. It comes
-      // back with a sender behind it, and a flow test comes back with it.
-      status: 'unit-only',
-      why: 'Unreachable in any shipped build: ENABLED_PROVIDERS defaults to google alone (lib/supabase.ts), and this screen is mounted only when the sign-in prompt offers email. EmailSignIn.test.tsx holds the form; a flow test would need a build flag no deployment sets.',
-    },
+    flow: { status: 'covered', spec: 'e2e/identityRooms.spec.ts' },
   },
   'screens/SignInPrompt.tsx': {
     step: 'F13 More',
@@ -637,6 +676,28 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
       why: 'A glyph. ModeIcon.test.tsx draws it; a flow test would be a slower way to look at the same SVG.',
     },
   },
+  'chrome/AccountButton.tsx': {
+    step: 'shared',
+    flow: { status: 'covered', spec: 'e2e/identityRooms.spec.ts' },
+  },
+  'chrome/SignInWindow.tsx': {
+    step: 'shared',
+    flow: { status: 'covered', spec: 'e2e/identityRooms.spec.ts' },
+  },
+  'chrome/AccountPanel.tsx': {
+    step: 'shared',
+    flow: {
+      status: 'unit-only',
+      why: "What the account button opens once a hiker is SIGNED IN (#1596) - the address, a sign-out and a line saying the rest is in More. A flow spec cannot reach it: driving there means completing a real round trip at GitHub, Google or a mailbox, which is the same wall e2e/identityRooms.spec.ts stops at for the email code step and which waits on #1399's account. App.accountPanel.test.tsx drives it instead, from App with the auth module mocked signed in, and holds the two things the defect it was written for got wrong - that the window says 'Your account' and not 'Sign in', and that signing out closes it rather than swapping the ask in under the tap.",
+    },
+  },
+  'chrome/ProviderMark.tsx': {
+    step: 'shared',
+    flow: {
+      status: 'unit-only',
+      why: "A glyph per sign-in provider - Google's G, GitHub's mark, the OurHike icon - drawn inside SignInPrompt's buttons (#1572). SignInPrompt.test.tsx pins the colours and that each stays out of the accessible name; e2e/identityRooms.spec.ts finds the buttons by that name.",
+    },
+  },
   'chrome/PoiRow.tsx': {
     step: 'shared',
     flow: {
@@ -701,6 +762,157 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     flow: {
       status: 'unit-only',
       why: 'A generic radio ladder; the download-size rules it renders are asserted in lib and in first run.',
+    },
+  },
+
+  // ---- F14 the organization console (features/ORG_ONBOARDING.md) ----------
+  //
+  // A STEP OUTSIDE PATHWAY.MD'S SPINE, and deliberately: the spine is a
+  // hiker's journey and none of this is on it. An org admin arrives by a link
+  // in their own inbox, and the hiker's app links to none of these screens -
+  // which is why `e2e/orgConsole.spec.ts` opens on an address and says so at
+  // length rather than tapping in from Today.
+  //
+  // `covered` is claimed where the spec ASSERTS on the surface. Every screen
+  // below has a line in that spec checking it landed on its own heading, so
+  // the entrance claim is real for all of them; what is still `planned` for
+  // most is driving their controls, which cannot mean much until the writes
+  // behind them exist (all forty-nine are stubs today).
+  // OrgEntry IS the entrance claim, which is why it is `covered` rather than
+  // passed through: its whole surface is "the address opened the right one of
+  // three screens", and every assertion below that a screen landed on its own
+  // heading is an assertion that this switch chose it. It draws nothing else
+  // but the "Opening" frame while a chunk arrives.
+  'org/OrgEntry.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/OrgConsole.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/OrgShell.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/SetupHub.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/AdminApproval.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/HikeRegistry.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/RegistrySignoff.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/AddTrail.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/Embeds.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/OrgEmails.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/OrgSettings.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/Roles.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/Workdays.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/Coverage.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/Roster.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/WelcomeVolunteers.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+
+  // ---- F15 the volunteer's own screens ------------------------------------
+  // THE TWO SCREENS THAT ARE NOT THE CONSOLE. Both are arrived at from
+  // outside the app - one from /for-orgs/nominate/, one from a link in an
+  // email to somebody with no account - so neither is reachable by the tap
+  // sequence from boot that the flow battery drives, which is the same
+  // exception e2e/orgConsole.spec.ts already takes at the top of its file for
+  // the console itself. Unit-only rather than planned, because the properties
+  // worth asserting on them are decisions rather than journeys: that a
+  // dropped contact is not submitted, and that the refusal is offered as
+  // plainly as the approval.
+  'org/screens/Nominate.tsx': {
+    step: 'F15 volunteer',
+    flow: {
+      status: 'unit-only',
+      why: 'reached only from the marketing site, which the flow battery does not boot into; the review step is asserted in org/screens/nominate.test.tsx',
+    },
+  },
+  'org/screens/Proposal.tsx': {
+    step: 'F15 volunteer',
+    flow: {
+      status: 'unit-only',
+      why: 'reached only by a token in an email, by somebody with no account; the refusal path is asserted in org/screens/nominate.test.tsx',
+    },
+  },
+  'org/screens/YourTread.tsx': {
+    step: 'F15 volunteer',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/OnYourPhone.tsx': {
+    step: 'F15 volunteer',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/HandBack.tsx': {
+    step: 'F15 volunteer',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/RidgeRunner.tsx': {
+    step: 'F15 volunteer',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/VolunteerProfile.tsx': {
+    step: 'F15 volunteer',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+
+  // ---- Leaves with no state of their own ----------------------------------
+  'org/Mark.tsx': {
+    step: 'F14 org console',
+    flow: {
+      status: 'unit-only',
+      why: 'An inline SVG wordmark. It has no state, no branch and no control - driving a browser to it proves what reading it proves.',
+    },
+  },
+  'org/components.tsx': {
+    step: 'F14 org console',
+    flow: {
+      status: 'unit-only',
+      why: "The console's shared parts, every one of which is rendered by a screen above and asserted through it. Their own branches - a blaze with nothing to draw, a section with no geometry, an empty workday list - are pure and tested as functions in src/org, which is faster and covers the cases a browser would have to be contrived into.",
+    },
+  },
+  'org/AssistPanel.tsx': {
+    step: 'F14 org console',
+    flow: {
+      status: 'covered',
+      spec: 'e2e/orgConsole.spec.ts',
     },
   },
 }

@@ -1,13 +1,31 @@
 ---
-// The site's navigation: only pages that exist. Explore the trail (Phase 4),
-// For clubs and Get involved (Phase 6) join this row when they are real -
-// WEBSITE.md §9 sequences them - and not a day before: a nav link to a page
-// that is not there is a promise the site breaks on its second click.
+// The site's navigation: only pages that exist. Explore the trail (Phase 4)
+// and Get involved (Phase 6) join this row when they are real - WEBSITE.md §9
+// sequences them - and not a day before: a nav link to a page that is not
+// there is a promise the site breaks on its second click.
+//
+// FOR ORGS IS NOW REAL, so it joined the row (features/ORG_ONBOARDING.md,
+// #116's Phase 6). The condition above is the reason it took this long and is
+// the reason the other two are still absent: /for-orgs/ exists, it answers,
+// and the rule is satisfied rather than waived.
+//
+// IT SAYS "ORG" AND NOT "CLUB" since 2026-09-17, matching the design handoff,
+// the console and every route. ORG_ONBOARDING.md's conflict 2 is the
+// argument: not every organization that maintains a trail is a club - OPRHP
+// is a state agency, Mohonk a preserve, a land trust neither - and the site
+// was the last surface still saying the narrower word.
+//
+// THE CTA IS THE DESIGN'S. This row carried `Support the trail`, on the
+// reasoning that an organization arriving should not outrank a hiker
+// donating. The maintainer decided the other way on 2026-09-17, against the
+// handoff's own nav: an organization that has come this far is the visitor
+// this row should serve, and `Add your trails` is what the design puts here.
 import Mark from './Mark.astro'
 
 const here = Astro.url.pathname
 const links = [
   { href: '/get-the-app/', label: 'Get the app' },
+  { href: '/for-orgs/', label: 'For orgs' },
   { href: '/about/', label: 'About' },
 ]
 ---
@@ -30,9 +48,9 @@ const links = [
   }
   <a
     class="nav__cta"
-    href="/support/"
-    aria-current={here === '/support/' ? 'page' : undefined}
+    href="/for-orgs/"
+    aria-current={here === '/for-orgs/' ? 'page' : undefined}
   >
-    Support the trail
+    Add your trails
   </a>
 </nav>

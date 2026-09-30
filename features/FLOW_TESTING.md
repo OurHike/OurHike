@@ -621,6 +621,15 @@ the HTML report, traces included, for a fortnight when it fails.
   carries what reading a network costs and the three things that bound it, and the two halves
   are two CI jobs so a bucket outage never reads as a broken client.
 
+  **Hermetic includes the backend-shaped build.** The `@backend` tests (#1643) run against a
+  second build with an API base and a Supabase project baked in, both pointing at the
+  build's own origin, and `e2e/support/backend.ts` answers every request under them with
+  `page.route` — so they still reach nothing external. It exists because Vite inlines those
+  two variables at build time: the outbox send, the email code step and a live organization's
+  console are only reachable in a build that set them. One measured trap is written into
+  that file: with `context.setOffline(true)` in force, a request still reaches `page.route`,
+  so the stub keeps its own offline flag (`setBackendSignal`).
+
 - **Vitest owns `src/`, Playwright owns `e2e/`.** `vite.config.ts` scopes vitest's include to
   `src/` — its default glob does not stop there and swept up `e2e/*.spec.ts`, running
   `@playwright/test`'s `test` through vitest's runner.
@@ -848,16 +857,25 @@ headed, and there is no display in CI or in an agent sandbox.
   repository's test job — a bigger decision than the coverage it buys, and one for the
   maintainer rather than for a spec: **#1399 — The flow suite has no account, so the
   three screens behind one cannot be driven**.
+
+  **A third shape exists since #1643 — The org console's permission matrix skips ten
+  endpoints, and the position mark and outbox drain have no end-to-end test**, and it
+  needs neither a project nor a credential. `playwright.config.ts`'s `phone-backend`
+  project drives a second build of the same app with `VITE_API_BASE_URL` and
+  `VITE_SUPABASE_URL` pointed at paths on its own origin, where
+  `e2e/support/backend.ts` answers every request with `page.route`; `seedSession`
+  writes a session into supabase-js's own storage key, and the real client restores it.
+  It is what drives the outbox send, the email code and a live organization's console
+  today. The three screens above are still undriven — nobody has written those specs —
+  and whether this shape is the answer #1399 wants is still the maintainer's call.
   `e2e/more.spec.ts` already asserts the registry's gate is SHUT, which is the half
   of D4 that can be proved from outside.
 
-- **`screens/EmailSignIn.tsx` is not a gap at all — it is unreachable on purpose**,
-  and the ledger now says `unit-only` rather than `planned`. `ENABLED_PROVIDERS`
-  defaults to `google` alone because Supabase's built-in sender "is not a delivery
-  path this project can ship on" (`lib/supabase.ts`), and the screen is mounted only
-  when the sign-in prompt offers email. Every build this project deploys therefore
-  renders "Continue with Google" and nothing else, measured 2026-09-11. It returns
-  when a sender does.
+- **`screens/EmailSignIn.tsx` is covered, both steps**, by `e2e/identityRooms.spec.ts`'s
+  `@backend` test (#1643): an eight-digit code typed key by key, the token Supabase
+  receives, and a header that comes out signed in. (This bullet said the screen was
+  unreachable on purpose while `ENABLED_PROVIDERS` defaulted to Google alone; #1572
+  put email in the list, and the ledger had already moved to `planned`.)
 - **One screen branches on the user agent, and that is a third thing from either
   axis above.** `screens/InstallPrompt.tsx` is the only surface whose content is
   decided by which phone it is, because `detectInstallPlatform()` reads

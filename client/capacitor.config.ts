@@ -4,8 +4,9 @@ import type { CapacitorConfig } from '@capacitor/cli'
 //
 // The posture, stated once: everything stays on the web APIs the app already
 // uses. Geolocation is navigator.geolocation.watchPosition
-// (lib/useGeolocation.ts, and MapLibre's GeolocateControl runs a second one
-// internally that no plugin swap could reach); the offline archive is
+// (lib/useGeolocation.ts - the one watch, since #1581 retired MapLibre's
+// GeolocateControl and the second watch it ran internally); the offline
+// archive is
 // IndexedDB end-to-end via idb-keyval (lib/archiveStore.ts,
 // map/pmtilesSource.ts — nothing in src/ touches Cache Storage). Both work
 // inside WKWebView and Android WebView, so a Capacitor plugin would be a

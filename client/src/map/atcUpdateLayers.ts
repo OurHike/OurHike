@@ -4,10 +4,12 @@
 // Deliberately a SEPARATE SOURCE from `closures` rather than extra features in
 // that one. Two reasons, and the second is the load-bearing one:
 //
-//  - The two are drawn with different dasharrays (lib/atcUpdateStyle.ts), and
-//    a dasharray is a paint property of a layer rather than of a feature, so
-//    one source could not carry both rhythms without a data-driven expression
-//    MapLibre does not support for `line-dasharray`.
+//  - The two were drawn with different dasharrays (lib/atcUpdateStyle.ts) -
+//    barrier tape images now - and a dasharray was a paint property of a
+//    layer rather than of a feature when this was decided, so one source
+//    could not carry both rhythms. (MapLibre honours a per-feature
+//    `line-dasharray` since, which map/style.ts uses for #1588; the reason
+//    below is the one that still stands.)
 //  - A tap has to be able to answer *which kind of thing* it landed on. With
 //    one source, `queryRenderedFeatures` would hand back a band and the shell
 //    would have to parse the id to find out whether an ATC sheet or a closure

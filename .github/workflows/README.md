@@ -1,6 +1,6 @@
 # The workflows
 
-36 files, 49 jobs (counted 2026-09-09). Each file's header comment is the design record for that
+38 files, 53 jobs (counted 2026-09-17, `python3 -c "import yaml, glob; print(sum(len(yaml.safe_load(open(f)).get('jobs', {})) for f in glob.glob('.github/workflows/*.yml')))"` against the number of files `ls` reports). Each file's header comment is the design record for that
 workflow and is the place to find out *why* it is the way it is — this file is
 the level above: what exists, what makes each one run, and the three or four
 facts that are dangerous to learn by discovering them.
@@ -97,8 +97,9 @@ staleness boundary test in #32, green on the pull request and red on the merge.
 
 ### Builds or publishes data
 
-All five publishing paths share `concurrency: publish-data`, so two of them can
-never interleave. All are dispatch-only except `publish-conditions.yml`.
+All six publishing paths share `concurrency: publish-data`, so two of them can
+never interleave. All are dispatch-only except `publish-conditions.yml` and
+`publish-weather.yml`.
 
 | | |
 |---|---|
@@ -107,6 +108,7 @@ never interleave. All are dispatch-only except `publish-conditions.yml`.
 | `build-raster.yml` | raster background → `disabled`, `compute-cells`, `render`, `assemble`, `publish` — **switched off for v2** (#855): the `disabled` job refuses every dispatch in seconds unless `run_despite_withdrawal` is ticked |
 | `publish-vector-data.yml` | trails, POIs and the manifest hikers download → `build`, `publish` |
 | `publish-conditions.yml` | closures and warnings, on an hourly schedule as well as dispatch |
+| `publish-weather.yml` | the NBM forecast for every trail square, one file per cell with HRRR's first two days' temperature inside it, and the active NWS alerts over trail squares, to UA only → `build`, `publish` — hourly as well as dispatch, only `publish` holds the group, and either half publishes without the other (#1056) |
 
 `publish-vector-data.yml`'s `publish` job and `migrate.yml`'s production job
 both run under the `production` environment whenever they will actually
@@ -194,6 +196,17 @@ All dispatch-only. [RELEASING.md](../../RELEASING.md) is the process.
 | `release-notes.yml` | drafts the notes — **never publishes**, per §12 |
 | `verify-release.yml` | checks a release after it is out |
 
+### Drafts a pull request and stops
+
+Scheduled, but never publishes anything itself — the pull request it opens is
+the whole deliverable, and a human merging or acting on it is what has any
+effect. `release-notes.yml` is the dispatch-only sibling of this shape,
+category above; this one is the daily one.
+
+| | |
+|---|---|
+| `propose-atc-updates.yml` | drafts `pipeline/reference/atc_updates_proposed.json` from what ATC posted that `publish-conditions.yml`'s hourly gate (#963) could not place on its own, and opens (or refreshes) a pull request carrying it — never `reference/atc_updates.json` itself, and never anything a client reads (#463) |
+
 ### Runs when someone is debugging or measuring
 
 All dispatch-only, none of them gates anything.
@@ -220,7 +233,9 @@ gathered rather than restated.
 | `35 7 * * 1` | Mondays | `settings-configured.yml` |
 | `45 7 * * 1` | Mondays | `protections-check.yml` |
 | `10 8 * * *` | daily | `schema-drift.yml` |
+| `50 8 * * *` | daily | `propose-atc-updates.yml` — reads the same cache `publish-conditions.yml`'s hourly leg does, so a slot near it rather than far from it |
 | `40 * * * *` | hourly | `publish-conditions.yml` — moved off daily by #720; still shown here at its :40-past-the-hour slot, which is what keeps it clear of `check-pending-approvals.yml` above |
+| `55 * * * *` | hourly | `publish-weather.yml` — NBM runs a new cycle every hour and NWS alerts change by the minute; `:55` is a minute nothing else here uses, and like every cron in this table it fires about five times a day in practice (#1346) |
 | `15 9 * * *` | daily | `check-deployment.yml` — after `publish-conditions`, so a publish that breaks something is noticed the same day |
 | `30 9 * * *` | daily | `check-deployed-app.yml` |
 | `45 9 * * *` | daily | `check-auth-redirects.yml` — after `check-deployed-app`, so an already-broken app is not a second alarm for the same cause |

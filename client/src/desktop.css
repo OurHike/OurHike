@@ -95,14 +95,28 @@
     text-align: left;
     padding: var(--space-3, 12px) var(--space-4, 16px);
     font-size: 14px;
-    /* Worth a number: chrome.css's resting label is stone-500 on white,
-       3.6:1 - under WCAG AA's 4.5:1 floor. Sage on pine is 11.4:1, so the
-       sidebar fixes in passing what the phone bar still owes. */
+    /* Worth a number: chrome.css's resting label is `--fg-3` on white,
+       5.51:1 since #1670 re-pointed it to stone-600 (it was stone-500, under
+       WCAG AA's 4.5:1). Sage on pine is 11.4:1, so the sidebar's label is
+       the stronger of the two, not the only readable one. */
     color: var(--fg-chrome-2);
     border-top: 0;
     /* The selected marker moves to the inside edge, where the eye already is
        for a vertical list. */
     border-left: 3px solid transparent;
+  }
+
+  /* ---------- The account button: the head of the sidebar ---------- */
+
+  /* Only the sidebar layout draws this at all - chrome/TabBar.tsx renders it
+     behind `useDesktop()`, and chrome/AccountButton.tsx says why that is a
+     hook rather than a rule in here. So this block is placement, not a
+     switch: flush with the tab labels' own 16px, because the column has one
+     left edge and the tabs, the mode block and the wordmark all read off
+     it. */
+  .app__screen > .tab-bar .tab-bar__account,
+  .map-screen > .tab-bar .tab-bar__account {
+    padding: 0 var(--space-4, 16px) var(--space-3, 12px);
   }
 
   /* ---------- Brand mark: the foot of the sidebar ---------- */
@@ -308,6 +322,22 @@
        App.css's `.app__screen > :first-child` states for the phone, and
        hiddenInputContainment.test.ts for the pickers. */
     position: relative;
+  }
+
+  /* THE SAME COLUMN BEFORE THE MAP (#1429, #1560). Until the archive store
+     has answered and MapScreen's own chunk has landed, App.tsx renders this
+     journal inside a plain `.app__screen`, where it is the screen's first
+     child - and App.css's phone rule `.app__screen > :first-child { flex: 1 }`
+     is exactly as specific as the rule above (0,2,0 against 0,2,0), so it
+     won on source order and the journal drew at the full width of the pane.
+     Measured 2026-09-17 at 1728x1080: 1,519 px in that branch, 405 px the
+     moment MapScreen took the same element over, every card, heading and
+     button re-flowing at the hand-over. This rule is that specificity again
+     and later in the cascade, which is what decides it: App.tsx imports
+     desktop.css after App.css deliberately. e2e/desktopSpine.spec.ts holds
+     the two widths equal. */
+  .app__screen > .map-screen__journal {
+    flex: 0 0 25.25rem;
   }
 
   /* The journal re-inked for this room. On a phone the Today header is a
@@ -672,6 +702,26 @@
      covers the map should need dismissing to see the map". */
   .map-screen__body {
     flex-direction: row;
+  }
+
+  /* THE CREDIT STRIP JOINS THE CANVAS HERE, and that is what moves the scale
+     bar. MapScreen.tsx renders <MapAttribution inline> when `useDesktop()` is
+     true - this same 900px, which is why the rule lives inside this block
+     rather than under (pointer: fine) - and .map-screen__canvas is a flex
+     column, so the strip is an in-flow row of it. The box's bottom edge is
+     then BELOW the map, while MapLibre's scale bar still floats off the MAP's
+     bottom, a strip's height higher than it does on a phone.
+
+     That is the maintainer's report of 2026-09-20 - "Show Points on desktop
+     overlaps with the zoom buttons" - surviving its own first fix. The switch
+     was moved out of MapLibre's bottom-right stack and landed on the scale
+     bar instead, because chrome.css's 30px was measured on a phone, where the
+     credit lives in the rail (#1054) and the canvas bottom IS the map bottom.
+
+     15px is the strip, the same figure .turn-card and .hikes-here--closed
+     already use for it. */
+  .map-screen__canvas {
+    --over-map-floor: calc(15px + var(--space-3, 12px) + 30px);
   }
 
   /* ---------- Legend: a panel, not a sheet ---------- */

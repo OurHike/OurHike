@@ -76,6 +76,12 @@ class Freshness(str, Enum):
     FRESH = "fresh"
     STALE = "stale"
     UNKNOWN = "unknown"
+    # Not recorded, on purpose: the only workflow that would record it is
+    # switched off (#1665). Kept apart from UNKNOWN so a permanent, explained
+    # non-signal does not sit in the same list as a source that might have
+    # moved and could not be asked. Only ever given to a source missing from
+    # the recorded state, and only when the caller names it as withdrawn.
+    WITHDRAWN = "withdrawn"
 
 
 class StateUnavailable(RuntimeError):
@@ -112,10 +118,14 @@ def summarise(reports: list[dict]) -> dict:
     """
     stale = [r["source"] for r in reports if r["freshness"] is Freshness.STALE]
     unknown = [r["source"] for r in reports if r["freshness"] is Freshness.UNKNOWN]
+    # Listed so a reader still sees them, and left out of the exit code: a
+    # source nobody is building cannot need a refetch (#1665).
+    withdrawn = [r["source"] for r in reports if r["freshness"] is Freshness.WITHDRAWN]
 
     return {
         "needs_refetch": stale,
         "unknown": unknown,
+        "withdrawn": withdrawn,
         "exit_code": 0 if not stale and not unknown else 1,
     }
 
@@ -418,9 +428,14 @@ def read_published(source: str | Path) -> str:
 # --- Compare: recorded vs upstream -----------------------------------------
 
 
-def compare_state(recorded: dict, upstream: dict) -> list[dict]:
+def compare_state(recorded: dict, upstream: dict, withdrawn: dict[str, str] | None = None) -> list[dict]:
     """One verdict per source, from a recorded state and whatever upstream
     answered.
+
+    `withdrawn` maps a source to why nothing records it right now - see
+    check_freshness.withdrawn_sources(). It only changes the answer for a
+    source ABSENT from `recorded`, from UNKNOWN to WITHDRAWN; a withdrawn
+    source that somebody did record is compared like any other.
 
     `upstream` has the same shape as `recorded` but may be sparser: only the
     sampled topo quads appear, and an ATC layer with no recorded marker is
@@ -432,10 +447,16 @@ def compare_state(recorded: dict, upstream: dict) -> list[dict]:
     taking the whole run down with it.
     """
     reports: list[dict] = []
+    withdrawn = withdrawn or {}
+
+    def absent(source: str) -> dict:
+        if source in withdrawn:
+            return {"source": source, "freshness": Freshness.WITHDRAWN, "detail": withdrawn[source]}
+        return {"source": source, "freshness": Freshness.UNKNOWN, "detail": "not in this state"}
 
     recorded_atc = recorded.get("atc") or {}
     if "atc" not in recorded:
-        reports.append({"source": "atc", "freshness": Freshness.UNKNOWN, "detail": "not in this state"})
+        reports.append(absent("atc"))
     elif not recorded_atc:
         reports.append({"source": "atc", "freshness": Freshness.STALE, "detail": "never fetched"})
     else:
@@ -465,7 +486,7 @@ def compare_state(recorded: dict, upstream: dict) -> list[dict]:
         )
 
     if "opentrail" not in recorded:
-        reports.append({"source": "opentrail", "freshness": Freshness.UNKNOWN, "detail": "not in this state"})
+        reports.append(absent("opentrail"))
     else:
         reports.append(
             {
@@ -477,7 +498,7 @@ def compare_state(recorded: dict, upstream: dict) -> list[dict]:
 
     recorded_topo = recorded.get("topo_quads") or {}
     if "topo_quads" not in recorded:
-        reports.append({"source": "topo_quads", "freshness": Freshness.UNKNOWN, "detail": "not in this state"})
+        reports.append(absent("topo_quads"))
     elif not recorded_topo:
         reports.append({"source": "topo_quads", "freshness": Freshness.STALE, "detail": "never fetched"})
     else:
@@ -499,7 +520,7 @@ def compare_state(recorded: dict, upstream: dict) -> list[dict]:
         )
 
     if "elevation" not in recorded:
-        reports.append({"source": "elevation", "freshness": Freshness.UNKNOWN, "detail": "not in this state"})
+        reports.append(absent("elevation"))
     else:
         reports.append(
             {
@@ -518,7 +539,7 @@ def compare_state(recorded: dict, upstream: dict) -> list[dict]:
     # parse proposes; a human publishes"). The detail string carries that,
     # since the rollup is where somebody reads this.
     if "atc_trail_updates" not in recorded:
-        reports.append({"source": "atc_trail_updates", "freshness": Freshness.UNKNOWN, "detail": "not in this state"})
+        reports.append(absent("atc_trail_updates"))
     else:
         reports.append(
             {
@@ -537,7 +558,7 @@ def compare_state(recorded: dict, upstream: dict) -> list[dict]:
     # weighs migrating off a frozen 2023 snapshot, against losing the
     # perennial/intermittent code 3DHP does not carry (WATER_SOURCES.md §5).
     if HYDROGRAPHY_WATCH_KEY not in recorded:
-        reports.append({"source": HYDROGRAPHY_WATCH_KEY, "freshness": Freshness.UNKNOWN, "detail": "not in this state"})
+        reports.append(absent(HYDROGRAPHY_WATCH_KEY))
     else:
         reports.append(
             {

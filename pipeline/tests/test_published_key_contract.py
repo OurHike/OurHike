@@ -49,6 +49,7 @@ from pathlib import Path
 
 import pytest
 
+import archive_nynjtc_sheet_extents
 import export_suggested_hikes
 import publish
 from lib.poi_schema import POI_TYPES
@@ -59,6 +60,7 @@ CONFIG = CLIENT_SRC / "lib" / "config.ts"
 PUBLISHED_CONDITIONS = CLIENT_SRC / "lib" / "publishedConditions.ts"
 HIKING_DETAIL = CLIENT_SRC / "lib" / "hikingDetail.ts"
 PACKAGES = CLIENT_SRC / "lib" / "packages.ts"
+MAP_SHEETS = CLIENT_SRC / "lib" / "mapSheets.ts"
 
 # Named as a set rather than left implicit in the calls below, because
 # tests/test_ci_scope.py reads it: the pipeline workflow lists these files
@@ -66,7 +68,7 @@ PACKAGES = CLIENT_SRC / "lib" / "packages.ts"
 # suite, and a narrow list is only honest while it is complete. Add a client
 # file to this module and it belongs here in the same edit - the scope test is
 # what makes forgetting a failure rather than a silent hole.
-CLIENT_FILES_READ = (CONFIG, PUBLISHED_CONDITIONS, HIKING_DETAIL, PACKAGES)
+CLIENT_FILES_READ = (CONFIG, PUBLISHED_CONDITIONS, HIKING_DETAIL, PACKAGES, MAP_SHEETS)
 
 
 def _read(path: Path) -> str:
@@ -187,6 +189,12 @@ def client_keys() -> dict[str, str]:
         # exporter wrote it (#1284) - so a respelling on either end would
         # read as "nobody has published a route" for ever.
         _string_const(config, "SUGGESTED_HIKES_KEY"): "config.ts SUGGESTED_HIKES_KEY",
+        # The one-time archive of NYNJTC's paper-sheet footprints (#1574),
+        # read at the bucket root like the conditions family and written by
+        # its own script rather than by the publisher - which is why the
+        # publisher's census below is joined by that script's key before the
+        # comparison, and why this file reads a fifth client module.
+        _string_const(_read(MAP_SHEETS), "NYNJTC_MAP_SHEETS_KEY"): "mapSheets.ts NYNJTC_MAP_SHEETS_KEY",
         # The corridor-view sketch of the other organizations' lines (#1135) -
         # what the opening camera draws so the whole network shows without
         # fetching the whole-file artifact, which no client declares a key
@@ -481,7 +489,12 @@ def test_every_key_the_app_fetches_is_a_key_the_pipeline_publishes(published):
     both real and neither is fetched by this build - while a client asking
     for something the pipeline does not write is a 404 on a mountain.
     """
-    missing = {key: asked_by for key, asked_by in client_keys().items() if key not in published}
+    # Everything publish.py writes, plus the one key a one-off script writes
+    # on a person's instruction (archive_nynjtc_sheet_extents.py). Joined
+    # here rather than folded into collect_artifacts(), because the whole
+    # point of that archive is that no regular publish ever touches it.
+    written = published | {archive_nynjtc_sheet_extents.ARCHIVE_KEY}
+    missing = {key: asked_by for key, asked_by in client_keys().items() if key not in written}
 
     assert not missing, (
         "The app fetches keys publish.py does not write. A key in this bucket "
@@ -558,6 +571,7 @@ def test_this_is_actually_reading_the_client(published):
     keys = client_keys()
 
     assert "trails.geojson" in keys
+    assert archive_nynjtc_sheet_extents.ARCHIVE_KEY in keys
     assert "poi_shelter.geojson" in keys
     assert "conditions/closures.json" in keys
     assert "dem.pmtiles" in keys

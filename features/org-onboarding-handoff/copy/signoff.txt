@@ -1,0 +1,107 @@
+[link] Skip to content
+    [svg]
+    Prototype controls
+    ·
+    signed in as
+  [button] org admin
+  [button] not a lead
+  [button] registered volunteer
+  [button] reset
+  [button] show signed out
+  [button] show a new org
+  [button] show failures
+  [button] onboarding complete · replay it
+    [button] RT Ramapo Trail Conference Org admin · maintainer
+      [svg]
+        Onboarding
+      [button] Org home
+      [button] Admin approval
+      [button] Hike registry
+      [button] Registry sign-off
+      [button] Add a trail
+      [svg]
+        Manage volunteers
+      [button] Roles
+      [button] Workdays 3
+      [button] Coverage report 37
+      [button] Your roster
+      [button] Welcome them 37
+      [svg]
+        Volunteer
+      [button] Your Tread
+      [button] On your phone
+      [button] What you hand back
+      [button] Ridge Runner
+      [button] Your profile
+    [button] What we email on your behalf
+    [button] Settings and leaving
+    [link] OurHike
+    [button] For orgs
+    [button] Demo org
+    [button] Nominate an org
+    [button] Claim your org
+        MA
+          Maria Alvarez
+          maria@ramapotrails.org
+      [button] Ramapo Trail Conference
+        ›
+          Onboarding
+        ›
+          Registry sign-off
+          STAGE 3 OF 3 · Registry sign-off · admins only
+        [svg]
+            STAGE 3 OF 3 · SIGN-OFF
+        [h1] All three admins confirm it is accurate
+    This is exactly what hikers will see. Park or trail system, then trail, then section — a route with no name or blaze is fine, it just needs to be somewhere. Approve it, or flag a line and your note goes back to Claude.
+              PARK / TRAIL SYSTEM
+            TRAIL
+            MILES
+            STATUS
+              Harriman State Park
+              Ramapo–Dunderberg
+              6.2
+                clean
+              Harriman State Park
+              Pine Meadow
+              3.3
+                clean
+              Bear Mountain State Park
+              Timp–Torne
+              4.9
+                clean
+              Ramapo Mountain State Forest
+              Cannonball
+              2.4
+                named
+              Sterling Forest
+              unnamed route
+              1.8
+                unnamed
+              Palisades Interstate Park
+              Long Path
+              4.6
+                merged
+          +
+            306
+          more ·
+          [link] read the full diff
+              ON THE MAP
+            [svg]
+              red blaze
+              blue
+              yellow
+              white
+              no blaze
+              All 312 sections · click a row to isolate one
+          SIGN-OFF ·
+            1
+          OF 3
+                Maria Alvarez
+                  confirmed
+                Joseph Okafor
+                  reading
+                Dana Whitfield
+                  not started
+          [button] Confirm accurate
+          [button] Flag a line for Claude
+        Nothing publishes on two approvals. Sections stay editable afterwards — every change is dated rather than overwritten.

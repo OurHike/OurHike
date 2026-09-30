@@ -15,7 +15,10 @@
 // because a refusal is the only thing it has to say. Here what a hiker needs
 // to see is WHICH of the three answers they got - a mile, "this spot", or
 // more than three miles off the trail - before they agree to file under it.
-// So the tap aims and `Keep` commits, which is also what makes a mis-tap free.
+// So the tap aims and a window commits (reporting/KeepSpotSheet.tsx, the
+// maintainer's steer of 2026-09-17), which is also what makes a mis-tap
+// free. Keep lived on this bar until then; what is left here is the aiming -
+// what a tap will do, the answer it got, and Cancel.
 //
 // The three answers are lib/placement.ts's, shared with the press plate, so
 // the two surfaces that let somebody choose a point cannot come to describe
@@ -32,8 +35,6 @@ export interface ReportPickBarProps {
   mile: number | null
   knowsTrail: boolean
   units: UnitSystem
-  /** Keep the aimed point as the report's location. */
-  onKeep: () => void
   /** Back to the form, changing nothing. */
   onCancel: () => void
 }
@@ -43,7 +44,6 @@ export function ReportPickBar({
   mile,
   knowsTrail,
   units,
-  onKeep,
   onCancel,
 }: ReportPickBarProps) {
   return (
@@ -62,14 +62,9 @@ export function ReportPickBar({
           <span role="status">{placeWords(mile, knowsTrail, units)}</span>
         )}
       </p>
-      {/* KEEP IS ABSENT UNTIL THERE IS SOMETHING TO KEEP, rather than present
-          and disabled: a control that looks pressable and is not teaches a
-          hiker at a junction that the app is broken (D10). */}
-      {aiming !== null && (
-        <button type="button" className="route-map-pick__keep" onClick={onKeep}>
-          Keep this spot
-        </button>
-      )}
+      {/* No Keep here since the keep window: a tap opens it with the answer,
+          so there is nothing to keep until there is something to keep (D10)
+          and nothing pressable that does nothing. */}
       <button type="button" className="route-map-pick__cancel" onClick={onCancel}>
         Cancel
       </button>

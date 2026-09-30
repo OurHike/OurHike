@@ -79,6 +79,8 @@ const STEWARDS: Stewards = [
     termsSource: null,
     layers: [],
     keys: [ATC_SOURCE_KEY],
+    support: null,
+    store: null,
   },
   {
     provider: 'NYNJTC',
@@ -90,6 +92,8 @@ const STEWARDS: Stewards = [
     termsSource: null,
     layers: [],
     keys: ['nynjtc_trail_alerts'],
+    support: null,
+    store: null,
   },
 ]
 

@@ -270,3 +270,19 @@ def test_the_checked_in_reference_file_is_complete_and_internally_consistent():
             assert record["distance_ft"] >= 1
             assert record["provenance"], f"{record['atc_name']}: a distance with no provenance"
     assert document["counts"]["with_distance"] == sum(1 for record in records if record["distance_ft"] is not None)
+
+
+def test_a_negative_distance_publishes_nothing_and_keeps_the_evidence():
+    """-999 is how a GIS table often spells unknown, and `max(1, round(-999))`
+    would have published it as one foot from water. Measured 2026-09-17: the
+    checked-in file's smallest listed value is 0.77 ft, so this refusal is
+    written before the layer needs it rather than after."""
+    feature = atc_feature("Gravel Spring Hut")
+    rows = [csi_row("Gravel Spring Hut", 40.0, -76.0, distance=-999)]
+
+    [record] = bwd.resolve_layer("shelters", [feature], rows)
+
+    assert record["distance_ft"] is None
+    assert record["listed_distance_ft"] == -999
+    assert "sentinel" in record["unresolved"]
+    assert record["match"] == "name"

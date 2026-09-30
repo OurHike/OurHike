@@ -19,6 +19,7 @@ the war stories being written before the incident:
   shape, unhandled where every authenticated request crosses.
 """
 
+import json
 import uuid
 from datetime import date
 
@@ -267,3 +268,30 @@ def _valid_preferences_payload() -> dict:
         "layer_detail_level": "standard",
         "anonymity_window_days": 14,
     }
+
+
+# The two float fields that arrived after #658 as bare floats, and what a NaN
+# did through each. The planned hike is the one last-write-wins write in
+# `/trips/sync`: a NaN was stored, served back to every other device as null,
+# and read there as the hiker having cleared it - resolved by a value no
+# client ever meant to send. A default place's box is what the map fits its
+# fallback view to; an Infinity in it is a box with a hole in one side.
+
+
+def test_a_nan_planned_hike_is_a_422_not_a_cleared_hike(client):
+    response = _post_raw(client, "/trips/sync", '{"trips": [], "hike": {"start_mile": NaN, "end_mile": 1200.5}}')
+
+    assert response.status_code == 422
+
+
+def test_an_infinite_default_place_box_is_a_422(client):
+    place = {"id": "harriman", "name": "Harriman", "kind": "park", "lon": -74.1, "lat": 41.2, "bbox": [-74.3, 41.1, "INF", 41.4]}
+    body = json.dumps({**_valid_preferences_payload(), "default_place": place}).replace('"INF"', "Infinity")
+
+    response = client.put(
+        "/preferences/me",
+        content=body,
+        headers={"Content-Type": "application/json", **auth_headers(str(uuid.uuid4()))},
+    )
+
+    assert response.status_code == 422

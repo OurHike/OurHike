@@ -41,8 +41,9 @@ RUNNER = REPO_ROOT / "client" / "scripts" / "photograph-preview.mjs"
 RECIPES = REPO_ROOT / "client" / "preview-shots"
 
 #: Where the captures are written, and the reason the path is asserted rather
-#: than merely used: it has to be inside the directory wrangler uploads
-#: (`client/dist`), or the images 404 from URLs the comment already printed.
+#: than merely used: it has to be inside `client/dist`, which the workflow
+#: copies into the directory wrangler uploads, or the images 404 from URLs the
+#: comment already printed.
 SCREENSHOT_DIR = "__screenshot"
 
 #: What the runner writes where the preview's URL belongs, because the shots
@@ -160,8 +161,39 @@ def test_the_comment_says_so_when_there_is_no_image(steps: list[dict]):
 def test_the_image_url_cannot_pick_up_a_double_slash(steps: list[dict]):
     """The two candidate bases disagree about a trailing slash - a wrangler
     alias URL may carry one, the worked-out URL does not - and
-    `https://host//__screenshot/x.png` is a 404 on Pages."""
-    assert 'BASE="${BASE%/}"' in _step(steps, "Name the images")["run"]
+    `https://host//__screenshot/x.png` is a 404 on Pages.
+
+    Taken off in `Work out where to link`, which is where the raw candidate
+    arrives, and taken off again here because this step is one `${{ }}` away
+    from being handed a raw one by a later edit."""
+    assert 'BASE="${BASE%/}"' in _step(steps, "Work out where to link")["run"]
+    assert 'BASE="${BASE%/}' in _step(steps, "Name the images")["run"]
+
+
+def test_the_images_are_named_where_the_upload_actually_put_them(steps: list[dict]):
+    """The seam the site joining the upload moved, and the one that fails as a
+    wall of broken images rather than as a red check.
+
+    The runner writes its PNGs into `client/dist/__screenshot/`
+    (screenshot.mjs, DEFAULT_OUT_DIR) and the assembly copies `client/dist`
+    to `_site/app/`, so the pictures are served one directory deeper than the
+    preview's root. `__PREVIEW_BASE__` therefore resolves to the app's base,
+    not the deployment's.
+    """
+    run = _step(steps, "Name the images")["run"]
+    assert "/app" in run.split("BLOCK=")[0], "the image base has to carry the app's own path segment"
+    assemble = _step(steps, "Assemble the preview")["run"]
+    assert "cp -r client/dist/. _site/app/" in assemble
+
+
+def test_the_camera_serves_the_build_at_the_path_it_was_built_for(steps: list[dict]):
+    """`--dist` photographs through `vite preview`, which reads
+    client/vite.config.ts, which takes `base` from VITE_BASE_PATH. Unset on
+    this step, the server would serve at `/` a bundle whose asset paths all
+    begin `/app/` - and every shot would be a photograph of a blank page,
+    which is the one failure this suite can catch and a reviewer cannot."""
+    build = _step(steps, "Build the app")["env"]["VITE_BASE_PATH"]
+    assert _step(steps, "Photograph the build")["env"]["VITE_BASE_PATH"] == build
 
 
 def test_no_screenshot_is_tracked_anywhere(steps: list[dict]):

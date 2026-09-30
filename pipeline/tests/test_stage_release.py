@@ -92,6 +92,29 @@ class TestTheFolderItWrites:
         assert entry["status"] == "candidate"
         assert report["uploaded"] == ["spurs.json", "trails.geojson"]
 
+    def test_the_folder_manifest_is_stored_as_json_so_the_cdn_compresses_it(self, s3_client, artifacts):
+        """`releases/<id>/manifest.json` is the object EVERY launch fetches -
+        client/src/lib/dataRelease.ts's RELEASE_MANIFEST_PATH names this key,
+        not latest.json - and it went out with no Content-Type for months.
+
+        Cloudflare compresses in front of R2 by content type, so a manifest
+        with none was served raw: measured against production 2026-09-21,
+        latest.json at 413,343 stored bytes came back 105,331 zstd with the
+        type set, and releases/2026-09-16-4/manifest.json at 412,128 came back
+        at 412,128 with no type and no encoding. Two near-identical objects in
+        one bucket, so the header is the whole difference (#1612).
+
+        The header rather than the bytes, which is why this asserts on
+        Content-Type alone: a stored ContentEncoding would change what every
+        reader of this key gets back, including the release gate."""
+        stage_release.stage("2026-09-09", s3_client=s3_client, bucket=BUCKET, artifacts=artifacts, sidecars={})
+
+        stored = s3_client.get_object(Bucket=BUCKET, Key="releases/2026-09-09/manifest.json")
+        assert stored["ContentType"] == "application/json"
+        # Readable as it was written, which is the half a compression change
+        # would have broken.
+        assert "artifacts" in json.loads(stored["Body"].read())
+
     def test_conditions_are_excluded_the_way_a_publish_excludes_them(self, s3_client, artifacts, tmp_path):
         """Safety data is rewritten in place on an hourly clock, and a closure
         that has reopened must stop being served - which an immutable folder

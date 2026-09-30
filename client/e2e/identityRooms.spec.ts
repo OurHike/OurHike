@@ -21,6 +21,7 @@
 
 import { test, expect, type Page } from '@playwright/test'
 import { seedPreferences, seedHikerMode, bootFreshPage } from './support/seed'
+import { fakeSession, sent, stubBackend } from './support/backend'
 
 /** More → You, which is where identity lives on this build. The row is
  *  matched by its text rather than by a role name, because the row's
@@ -103,6 +104,100 @@ test.describe('where you hike', () => {
   })
 })
 
+test.describe('the account button, on the app itself', () => {
+  // #1596. Until then the only deliberate way in was More → You → Sign in:
+  // three taps, in the settings tab. These drive the one-tap door and the
+  // window it opens, which is the whole of that change a hiker can see.
+
+  test('entrance: one tap from the map opens the ask, over a map that stays put', async ({
+    page,
+  }) => {
+    await seedPreferences(page)
+    await page.goto('/')
+    // ON THE MAP TAB, because that is where the claim has teeth. A phone
+    // opens on Today, which mounts no `MapView` and so has no "Trail map"
+    // region for the window to leave standing - the assertion below would
+    // pass over a tab that never had a map rather than over one that kept it.
+    await page.getByRole('tab', { name: 'Map' }).click()
+    const map = page.getByRole('region', { name: /trail map/i })
+    await expect(map).toBeVisible()
+
+    await page.getByRole('button', { name: 'Sign in' }).first().click()
+
+    const ask = page.getByRole('dialog', { name: 'Sign in' })
+    await expect(ask).toBeVisible()
+    // One door is enough here: this test is about the window opening over a
+    // live map. That all three are offered is claimed once, by the states
+    // test below, which is where a dropped door should go red.
+    await expect(ask.getByRole('button', { name: 'Continue with Google' })).toBeVisible()
+    // THE POINT OF A WINDOW RATHER THAN A SCREEN: what was behind is still
+    // there. A `flowScreen` would have taken the map subtree out of flow and
+    // out of the accessibility tree, which is what this replaced.
+    await expect(map).toBeVisible()
+  })
+
+  test('states: asked for its own sake, it promises nothing about a saved report', async ({
+    page,
+  }) => {
+    // The five contribution doors open the same ask with a different first
+    // line ("already saved on your phone"). This one is raised by a hiker who
+    // wants an account, with nothing waiting, so that promise would be about
+    // something that does not exist.
+    await seedPreferences(page)
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Sign in' }).first().click()
+
+    const ask = page.getByRole('dialog', { name: 'Sign in' })
+    await expect(ask.getByText(/Reading the map never needs an account/)).toBeVisible()
+    await expect(ask.getByText(/already saved on your phone/)).toHaveCount(0)
+  })
+
+  test('failure: landing back from a refused sign-in says so, instead of nothing', async ({
+    page,
+  }) => {
+    // #1573. The two provider doors are a full off-origin navigation, so a
+    // refusal comes back as a FRESH PAGE LOAD carrying `#error=…` and there
+    // is no component left alive to have been told about it - which is why
+    // this is a `goto` with a fragment rather than a tap. The fragment's
+    // shape is GoTrue's; what this drives is what the app does with it.
+    await seedPreferences(page)
+    await page.goto(
+      '/#error=server_error&error_code=access_denied&error_description=The+user+denied+the+request',
+    )
+
+    const ask = page.getByRole('dialog', { name: 'Sign in' })
+    await expect(ask).toBeVisible()
+    await expect(ask.getByRole('alert')).toHaveText(/was not finished/)
+    // A refusal is not a lock-out: every door is still open, which is the
+    // half a hiker needs after being told the last attempt failed.
+    await expect(ask.getByRole('button', { name: 'Continue with GitHub' })).toBeEnabled()
+
+    // OFF THE ADDRESS BAR, so a pull-to-refresh does not tell them again
+    // about a sign-in they have since forgotten. This assertion is the
+    // reason the test drives a real browser rather than jsdom: it is about
+    // history, and `replaceState` is what keeps Back out of it too.
+    await expect.poll(() => new URL(page.url()).hash).toBe('')
+  })
+
+  test('exit: Escape closes the window and leaves the map where it was', async ({
+    page,
+  }) => {
+    await seedPreferences(page)
+    await page.goto('/')
+    await page.getByRole('tab', { name: 'Map' }).click()
+    const map = page.getByRole('region', { name: /trail map/i })
+    await expect(map).toBeVisible()
+
+    await page.getByRole('button', { name: 'Sign in' }).first().click()
+    await expect(page.getByRole('dialog', { name: 'Sign in' })).toBeVisible()
+
+    await page.keyboard.press('Escape')
+
+    await expect(page.getByRole('dialog', { name: 'Sign in' })).toHaveCount(0)
+    await expect(map).toBeVisible()
+  })
+})
+
 test.describe('the sign-in ask', () => {
   test('entrance and states: asked for its own sake, it promises the map without one', async ({
     page,
@@ -110,19 +205,37 @@ test.describe('the sign-in ask', () => {
     await openYou(page)
     await page.getByRole('button', { name: 'Sign in' }).click()
 
-    await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible()
+    // SCOPED TO THE WINDOW, not to the page. Since #1596 the ask is a dialog
+    // over the You settings screen rather than a screen replacing it, and
+    // that screen carries its own "Reading the map never needs an account."
+    // under the Sign in button - so the unscoped locator these three
+    // assertions used now matches the room behind as well as the window.
+    const ask = page.getByRole('dialog', { name: 'Sign in' })
+    await expect(ask).toBeVisible()
     // THE SENTENCE THE WHOLE SCREEN IS FOR. Not "sign in to continue" —
     // an enumeration of what stays available to somebody who does not, and
     // the four things it names are the four this app can hurt somebody with
     // (CLAUDE.md's "Four ways this app can hurt somebody").
-    await expect(page.getByText(/Reading the map never needs an account/)).toBeVisible()
-    await expect(page.getByText(/water, shelters, closures and warnings/)).toBeVisible()
+    await expect(ask.getByText(/Reading the map never needs an account/)).toBeVisible()
+    await expect(ask.getByText(/water, shelters, closures and warnings/)).toBeVisible()
 
-    // A provider, and a way past. Which providers are offered is a build
-    // setting (ENABLED_PROVIDERS) and an `online` question, so the claim is
-    // that at least one is offered and that declining is always there.
-    await expect(page.getByRole('button', { name: /^Continue with/ })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Not now' })).toBeVisible()
+    // EVERY DOOR BY NAME, and a way past. `/^Continue with/` was here until
+    // #1572, matching one button of one - which is the shape of the defect
+    // that change existed to fix: a production build shipped Google alone for
+    // weeks, because `AUTH_PROVIDERS` went unset and nothing said so. A
+    // pattern matching whichever doors happen to exist cannot see that, and
+    // on three it is a strict-mode violation rather than an assertion.
+    // ENABLED_PROVIDERS is a constant in client/src/lib/supabase.ts now, so
+    // naming its three members here is a claim a test can actually hold, and
+    // adding a fourth door is meant to land on this line.
+    for (const door of [
+      'Continue with Google',
+      'Continue with GitHub',
+      'Continue with email',
+    ]) {
+      await expect(ask.getByRole('button', { name: door })).toBeVisible()
+    }
+    await expect(ask.getByRole('button', { name: 'Not now' })).toBeVisible()
   })
 
   test('states: asked after work is handed over, it leads with the work being safe', async ({
@@ -157,6 +270,73 @@ test.describe('the sign-in ask', () => {
     await expect(page.getByRole('heading', { name: 'One thing first' })).toHaveCount(0)
     await expect(page.getByRole('heading', { name: 'Your hours' })).toBeVisible()
     await expect(page.getByText(/4 hours over 1 day/)).toBeVisible()
+  })
+})
+
+// SIGNING IN WITH AN EMAILED CODE, through to a signed-in app (#1643 item 7).
+// Only reachable against the backend-shaped build (`@backend`,
+// e2e/support/backend.ts): the hermetic build has no Supabase project, so its
+// email door can never reach the code step. The two Supabase calls the screen
+// makes - `POST /auth/v1/otp` and `POST /auth/v1/verify` - are answered by
+// `page.route`, and the verify is where the claim lives.
+//
+// EIGHT DIGITS, BECAUSE THAT IS WHAT SUPABASE SENDS. #1601 - Take the code
+// length Supabase actually sends, instead of assuming six - replaced a field
+// capped at seven characters, which silently dropped the last digit of every
+// eight-digit code the UA project mails. So the code is TYPED, key by key,
+// rather than filled: `pressSequentially` goes through the field's own
+// `maxLength` the way a thumb does, and the assertion is on the token the
+// app actually sent to Supabase rather than on what the field displays.
+test.describe('signing in with an emailed code', { tag: '@backend' }, () => {
+  test('states: an eight-digit code is sent to Supabase whole, and the hiker comes out signed in', async ({
+    page,
+  }) => {
+    const { seen } = await stubBackend(page, {
+      'POST /auth/v1/otp': { status: 200, body: {} },
+      'POST /auth/v1/verify': { status: 200, body: fakeSession('hiker@example.org') },
+    })
+    await seedPreferences(page)
+    await page.goto('/')
+    await page.getByRole('tab', { name: 'Map' }).click()
+    await expect(page.getByRole('region', { name: /trail map/i })).toBeVisible()
+
+    await page.getByRole('button', { name: 'Sign in' }).first().click()
+    const ask = page.getByRole('dialog', { name: 'Sign in' })
+    await ask.getByRole('button', { name: 'Continue with email' }).click()
+    await page.getByRole('textbox', { name: 'Email' }).fill('hiker@example.org')
+    await page.getByRole('button', { name: 'Email me a code' }).click()
+
+    await expect(page.getByRole('heading', { name: 'Check your email' })).toBeVisible()
+    expect(sent(seen, 'POST', '/auth/v1/otp')).toHaveLength(1)
+
+    const code = page.getByRole('textbox', { name: 'Code' })
+    await code.pressSequentially('12345678')
+    await expect(code).toHaveValue('12345678')
+    // The form's own submit, not the map header's account button behind the
+    // window, which carries the same name while nobody is signed in.
+    await page
+      .locator('form')
+      .getByRole('button', { name: 'Sign in', exact: true })
+      .click()
+
+    await expect.poll(() => sent(seen, 'POST', '/auth/v1/verify').length).toBe(1)
+    const [verify] = sent(seen, 'POST', '/auth/v1/verify')
+    expect(verify.body).toMatchObject({
+      email: 'hiker@example.org',
+      token: '12345678',
+      type: 'email',
+    })
+
+    // SIGNED IN, as the app itself tells it: the code step closes, and the
+    // map header's account button (chrome/AccountButton.tsx) names the
+    // address Supabase's session carries rather than offering to sign in.
+    await expect(page.getByRole('heading', { name: 'Check your email' })).toHaveCount(0)
+    await expect(
+      page.getByRole('button', { name: 'Account, signed in as hiker@example.org' }),
+    ).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toHaveCount(
+      0,
+    )
   })
 })
 

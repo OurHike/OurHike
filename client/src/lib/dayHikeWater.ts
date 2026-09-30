@@ -174,6 +174,10 @@ export function waterOnCourse(
     }
   }
   // By mile, then by id, for lib/dayHikeStops.ts's reason: two points the
-  // projection lands on one vertex must not swap rows under a finger.
-  return found.sort((a, b) => a.alongMi - b.alongMi || (a.poiId < b.poiId ? -1 : 1))
+  // projection lands on one vertex must not swap rows under a finger. Zero
+  // for the same id, so the comparator is consistent both ways (#1578).
+  return found.sort(
+    (a, b) =>
+      a.alongMi - b.alongMi || (a.poiId < b.poiId ? -1 : a.poiId > b.poiId ? 1 : 0),
+  )
 }

@@ -20,10 +20,58 @@
 /* ---------- The pine chrome block ---------- */
 
 .today__chrome {
+  position: relative;
   background: var(--bg-chrome);
   padding: 0 18px 14px;
   padding-left: max(18px, env(safe-area-inset-left, 0px));
   padding-right: max(18px, env(safe-area-inset-right, 0px));
+}
+
+/* The account button (#1596), in this chrome's own top-right corner so it
+   lands where the map header's copy does and a hiker finds one control in one
+   place across both screens. Absolute rather than a flex child: the status
+   row and the eyebrow below it are a stack this button must not push around,
+   and the eyebrow's text is short enough that nothing collides at 375px. On
+   pine, so it takes the chrome's foreground rather than the page's. */
+.today__account {
+  position: absolute;
+  /* THE NOTCH, which the `right` edge was written for and the `top` was not.
+     `.today__chrome` has no top padding, so an absolutely positioned child
+     sits this far below the chrome's own top edge - while the status row it
+     is meant to sit at the right end of adds `env(safe-area-inset-top)` of
+     its own (below). On an iPhone 14 Pro in the shell (#101) that inset is
+     about 47px, so the glyph floated 47px above the row whose padding was
+     widened to make room for it, and the browser tab the first frame was
+     measured in reports an inset of 0 and cannot show it. */
+  top: calc(var(--space-2, 8px) + env(safe-area-inset-top, 0px));
+  right: max(18px, env(safe-area-inset-right, 0px));
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--header-button-size, 38px);
+  height: var(--header-button-size, 38px);
+  padding: 0;
+  color: var(--fg-chrome-1);
+  background: transparent;
+  border: 1px solid var(--fg-chrome-3);
+  border-radius: var(--radius-pill, 999px);
+  cursor: pointer;
+}
+
+/* 38px DRAWN, 44px HIT, which is chrome.css's rule at the top of the file
+   and the one surface that was missing it: the map header's copy gets it
+   from `.map-header__button::after` and the sidebar's from
+   `.tab-bar__account-button::before`, and this one had a 38x38 tappable box.
+   Today's button is the phone's - the sidebar carries it above the
+   breakpoint - so the only device that ever gets this control is the one the
+   44px floor was written for, "a cold, gloved, one-handed tap on a moving
+   trail". The inset is negative, so the box grows outward from the drawn
+   circle without moving it. */
+.today__account::after {
+  content: '';
+  position: absolute;
+  inset: calc((var(--header-button-size, 38px) - var(--min-touch-target, 44px)) / 2);
 }
 
 /* The status row is StatusStrip itself, restyled for pine - the same move
@@ -33,7 +81,12 @@
   background: transparent;
   color: var(--fg-chrome-3);
   padding-left: 0;
-  padding-right: 0;
+  /* ROOM FOR THE ACCOUNT BUTTON (#1596), which is positioned over this row's
+     right end. Without it the strip's last flag - "never synced" on a phone
+     that has not - runs under the glyph, which the first frame of this change
+     showed plainly. Reserved rather than shortened: the flags are what this
+     row is for, and a button is not a reason to drop one. */
+  padding-right: calc(var(--header-button-size, 38px) + var(--space-2, 8px));
   /* The top of the screen: the same notch inset .status-strip carries on the
      map screen (#101), restated because the horizontal padding is reset. */
   padding-top: calc(8px + env(safe-area-inset-top, 0px));

@@ -14,7 +14,7 @@ from sqlalchemy import and_, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.assignments import assignments_covering
+from app.core.assignments import assignments_covering, stood_behind
 from app.core.auth import get_current_user, get_current_user_optional
 from app.core.orm import commit_and_refresh, get_or_404
 from app.core.photos import (
@@ -32,6 +32,7 @@ from app.core.photos import (
 )
 from app.core.time import to_naive_utc, utc_now
 from app.db.session import get_db
+from app.models.club import Club
 from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.profile import MODERATOR_ROLES, Profile
 from app.models.report import Report, ReportStatus, ReportType, Visibility
@@ -274,6 +275,9 @@ def create_report(
 
     timestamp = authored if authored is not None else now
     credited_maintainer, credited_club = _credit_for(db, payload, timestamp)
+    signed_name = payload.signed_name.strip() if payload.signed_name is not None else None
+    if signed_name == "":
+        signed_name = None
 
     report = Report(
         # None lets the model's own default mint one - the same fallback
@@ -288,8 +292,19 @@ def create_report(
         # re-derive it against (#244). A client that omits it leaves the
         # column null, which is the honest answer for an off-trail fix.
         mile=payload.mile,
+        # Stored as sent, like the mile, and for the same reason: the fix
+        # these describe was seen by the phone and by nothing here (#1563).
+        location_source=payload.location_source,
+        location_accuracy_m=payload.location_accuracy_m,
+        location_fix_age_s=payload.location_fix_age_s,
         reporter_type=payload.reporter_type,
         note=payload.note,
+        # The hiker's chosen name and their consent to be contacted (#1563),
+        # stored as sent. A kind without a name is a claim about nothing, so
+        # it is dropped rather than stored; whitespace is not a name.
+        signed_name=signed_name,
+        signed_name_kind=payload.signed_name_kind if signed_name is not None else None,
+        contact_ok=payload.contact_ok,
         # Stored as prose and resolved to nothing (#1439). A report that
         # carries this carries no coordinates either, deliberately - see
         # ReportCreate.place_words and the model's column.
@@ -419,7 +434,17 @@ def list_my_thanks(
     A hiker with no assignments gets an empty list, which is the true answer
     rather than a 403 about a resource that concerns them not at all.
     """
-    mine = db.query(MaintainerAssignment).filter(MaintainerAssignment.maintainer_id == current_user.id).all()
+    # Only assignments something other than their own organization stands
+    # behind (`core/assignments.py`'s `stood_behind`, #1635). A thanks is a
+    # hiker's private words to whoever looks after a stretch, and an
+    # organization that registered itself must not be able to read every
+    # one written along the trail by assigning itself the miles.
+    mine = (
+        db.query(MaintainerAssignment)
+        .join(Club, Club.id == MaintainerAssignment.club_id)
+        .filter(MaintainerAssignment.maintainer_id == current_user.id, stood_behind())
+        .all()
+    )
 
     # Named directly. Stands alone: somebody can be thanked by name without
     # holding any assignment at all - a maintainer between sections, or one
@@ -701,7 +726,10 @@ async def _store_report_photo(
     try:
         key = store_photo(report.id, body, index)
     except PhotoStorageUnavailable as error:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)) from error
+        # `error.detail`, never `str(error)`: the message names the endpoint
+        # the write failed against, and the endpoint names the account (see
+        # PhotoStorageUnavailable).
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=error.detail) from error
 
     _record_photo(report, index, key)
     return ReportOut.for_viewer(commit_and_refresh(db, report), current_user)
@@ -783,7 +811,7 @@ def _authorised_photo_url(
     try:
         return presigned_photo_url(report.id, index)
     except PhotoStorageUnavailable as error:  # pragma: no cover - guarded above
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)) from error
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=error.detail) from error
 
 
 @router.get(

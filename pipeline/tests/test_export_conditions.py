@@ -932,3 +932,31 @@ def test_the_migrated_database_publishes_the_geometry(clean_tables):
 
     assert rows[0]["start_lat"] == 40.9
     assert rows[0]["end_lon"] == -73.7
+
+
+# --- the writer refuses a token no phone can read (lib/strict_json.py) --------
+
+
+def test_a_row_carrying_nan_fails_the_write_and_leaves_nothing_behind(tmp_path):
+    """Postgres stores NaN in a double precision column; json.dumps would write
+    it as the bare token `NaN`, which JSON.parse on every phone rejects, and
+    one such row would take the whole baseline down. The API refuses the
+    value on the way in (FiniteFloat, #658); this is the second door."""
+    path = tmp_path / "reports.json"
+    rows = [{"id": "r1", "lat": float("nan"), "lon": -74.0, "timestamp": "2026-09-17T00:00:00Z"}]
+
+    with pytest.raises(ValueError):
+        export_conditions.write_document(path, "reports", rows, datetime(2026, 9, 17, tzinfo=timezone.utc))
+
+    assert not path.exists()
+
+
+def test_a_finite_row_is_written_as_the_same_document_as_before(tmp_path):
+    path = tmp_path / "reports.json"
+    generated_at = datetime(2026, 9, 17, tzinfo=timezone.utc)
+    rows = [{"id": "r1", "lat": 41.0, "lon": -74.0}]
+
+    export_conditions.write_document(path, "reports", rows, generated_at)
+
+    assert json.loads(path.read_text()) == build_document("reports", rows, generated_at)
+    assert path.read_text().endswith("}\n")

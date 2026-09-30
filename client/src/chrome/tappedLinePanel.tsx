@@ -30,6 +30,8 @@ import { buildHighlightDetail, type HighlightDetail } from '../lib/highlightDeta
 import type { ClubRun, ClubSections } from '../lib/clubSections'
 import type { Highlight } from '../lib/highlights'
 import type { TappedLine } from '../map/lineTaps'
+import type { PaperMapLine } from '../lib/lineDetail'
+import type { Stewards } from '../lib/stewards'
 import type { SpurRecord } from '../lib/spurDestination'
 import type { StoredPoi } from '../lib/trailData'
 import type { TrailIndex } from '../lib/trailPosition'
@@ -38,6 +40,11 @@ import type { ElevationProfile } from '../lib/elevationProfile'
 import type { PaceProfile } from '../lib/pace'
 import type { MileRange } from '../lib/walkedMiles'
 import type { UnitSystem } from '../lib/userPreferences'
+
+/** No paper map, as one shared reference: the sheet's detail is memoised on
+ *  it, and a fresh empty array per render would rebuild the detail on every
+ *  render for nothing. */
+const NO_PAPER_MAPS: readonly PaperMapLine[] = []
 
 /** The `MapScreenProps` fields this feature owns. See atcNoticesPanel.tsx. */
 export type TappedLineMapProps = Pick<
@@ -61,6 +68,10 @@ export interface TappedLineInput {
    *  their own words. Empty until stewards load, which reads exactly as the
    *  sheet always read: sentences without a by-clause, never a made-up one. */
   trailSources: Readonly<Record<string, { attribution: string | null }>>
+  /** Who the map's data belongs to (lib/stewards.ts): the paper maps each
+   *  organization sells and which sheets they hold (#1574). Empty until the
+   *  stewards load, which reads as no paper map, exactly as before. */
+  stewards: Stewards
   walked: readonly MileRange[]
   /** The centerline, or null before it has loaded. */
   trailIndex: TrailIndex | null
@@ -146,6 +157,7 @@ export function useTappedLinePanel({
   trailName,
   pace,
   trailSources,
+  stewards,
   walked,
   trailIndex,
   belowSeam,
@@ -238,6 +250,59 @@ export function useTappedLinePanel({
    * `selectedPoi` is: the map reports what was drawn, and the shell is what
    * holds the spur records, the POI a spur leads to, and the hiker's units.
    */
+  /**
+   * Which paper maps hold the tapped point (#1574), resolved here for the
+   * reason the club sheet's mile is: the map reports where the tap landed,
+   * snapped to the line (map/lineTaps.ts), and the shell holds the stewards.
+   * Every match rather than the first: two sets' footprints can overlap at
+   * a margin (Sterling Forest's box and Harriman's do, around Tuxedo), and a
+   * spot on both is on both.
+   *
+   * BEHIND import(), AND THE ARCHIVE IS FETCHED ON THE FIRST TAP. The join
+   * and the archive reader under it are parsed when a line is first tapped,
+   * not before the first frame: imported statically they put the launch 90
+   * bytes over features/LAUNCH_BUDGET.md §3's 256,000-byte eager budget on
+   * this branch's first push. The archive is not safety data, so unlike the
+   * conditions baseline it need not be on the phone before the map is - the
+   * first tap asks for it, and lib/paperMaps.ts keeps it for the rest of the
+   * session.
+   *
+   * Kept beside the line it was resolved for rather than reset when the line
+   * changes: a stale answer is never shown against a new tap, and no state is
+   * set synchronously in the effect.
+   */
+  const [resolvedPaperMaps, setResolvedPaperMaps] = useState<{
+    line: TappedLine
+    lines: readonly PaperMapLine[]
+  } | null>(null)
+  useEffect(() => {
+    // Nothing to join, nothing to load: an A.T.-only phone holds no steward
+    // with a store, and the join's chunk is never fetched or parsed for it.
+    if (selectedLine === null || !stewards.some((steward) => steward.store !== null))
+      return
+    const line = selectedLine
+    let cancelled = false
+    void import('../lib/paperMaps')
+      .then((joins) =>
+        joins.paperMapLinesAt(stewards, 'trail_sheet', line.at[0], line.at[1], online),
+      )
+      .then(
+        (lines) => {
+          if (!cancelled) setResolvedPaperMaps({ line, lines })
+        },
+        // A join that could not load or read is no line on the sheet, which
+        // is exactly what the sheet showed before it existed.
+        () => {},
+      )
+    return () => {
+      cancelled = true
+    }
+  }, [selectedLine, stewards, online])
+  const paperMaps: readonly PaperMapLine[] =
+    resolvedPaperMaps !== null && resolvedPaperMaps.line === selectedLine
+      ? resolvedPaperMaps.lines
+      : NO_PAPER_MAPS
+
   const lineDetail: LineDetail | null = useMemo(() => {
     if (selectedLine === null) return null
     return buildLineDetail(
@@ -249,8 +314,9 @@ export function useTappedLinePanel({
       pace,
       trailSources,
       climb,
+      paperMaps,
     )
-  }, [selectedLine, spurs, pois, units, trailName, pace, trailSources, climb])
+  }, [selectedLine, spurs, pois, units, trailName, pace, trailSources, climb, paperMaps])
 
   const clubDetail: ClubDetail | null = useMemo(() => {
     if (!belowSeam || selectedLine === null || trailIndex === null) return null

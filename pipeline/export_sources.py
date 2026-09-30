@@ -103,6 +103,34 @@ organization has not asked for support, which is not the same as an
 organization that wants none, and neither is a thing to guess at on a hiker's
 screen. Same rule the pipeline already applies to shelter capacity.
 
+WHERE TO BUY THE ORGANIZATION'S PAPER MAP, AND WHY IT IS A SECOND BLOCK (#1574)
+
+A steward record can also carry `store`: the organization's own page for its
+paper maps, their own words for the link, the surfaces they may appear on,
+and the reviewed table of which product covers which ground. Read from a
+top-level `<x>_store` block joined on `author` exactly as `<x>_support` is.
+
+A SEPARATE BLOCK AND A SEPARATE VOCABULARY, deliberately. Buying a thing is
+not giving money, and an organization that has granted a donate line on a
+screen has not thereby granted a shop link there - so `store_surfaces` is its
+own closed list (STORE_SURFACES below), with no map member for the same reason
+DONATE_SURFACES has none, and adding a member is a fresh answer from every
+org that has a block. The one surface the two lists share by name,
+`sources_screen`, is granted separately in each.
+
+THE TABLE IS REVIEWED, THE FOOTPRINTS ARE NOT HERE. `paper_maps` names a file
+in reference/ - a person's join of store product to sheet numbers to the
+parks NYNJTC lists on each sheet, in NYNJTC's own spelling - and this reads
+it whole and publishes it under the record. What it does NOT carry is where
+each sheet lies on the ground: those are numbers read once from a third
+party (archive_nynjtc_sheet_extents.py, `archive/nynjtc_map_sheets.json`)
+and the phone reads that archive on its own, so nothing here depends on the
+network and nothing here goes stale when that third party goes away.
+
+NO PRICE, ANYWHERE IN THIS. The store is the source for a price, and an
+offline phone printing a stale one would be the display outrunning its
+source.
+
 WHAT IT REFUSES TO GUESS
 
 `trust` is published only when every shipping source of a steward declares the
@@ -124,6 +152,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 
 from lib.manifest_paths import to_manifest_path
@@ -179,6 +208,34 @@ DONATE_SURFACES = frozenset(
 # is deliberately NOT here: the org's own words about what the money does are
 # their writing, and this project ships facts and a link until they send them.
 REQUIRED_SUPPORT_FIELDS = ("author", "donate_url", "donate_cta", "donate_surfaces")
+
+# The surfaces an organization can grant a paper-map link on (#1574). CLOSED
+# and its own list rather than DONATE_SURFACES reused, because a shop link
+# and a donation ask are different things to put in front of a hiker and an
+# org answers them separately. No map member, for DONATE_SURFACES's reason.
+STORE_SURFACES = frozenset(
+    {
+        # frame `1h` - "Where this map comes from", beside the donate line.
+        "sources_screen",
+        # The published route's own screen (screens/HikeDetail.tsx): the hike
+        # names its park, and the park names the sheet.
+        "hike_detail",
+        # The sheet a tapped trail line opens (chrome/LineSheet.tsx): the
+        # tapped point lies inside a sheet's footprint, or it does not.
+        "trail_sheet",
+    }
+)
+
+REQUIRED_STORE_FIELDS = ("author", "store_url", "store_cta", "store_surfaces", "paper_maps")
+
+# A Shopify product handle, which is the product's URL path. Lowercase words
+# joined by `-`, nothing else - a handle with a slash or a space would be a
+# link that lands somewhere the table never named.
+PRODUCT_HANDLE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+
+# A sheet number as NYNJTC prints them: three digits, sometimes lettered
+# (106A, 106B). The archive keys its footprints by exactly this spelling.
+SHEET_NUMBER = re.compile(r"^[0-9]{3}[A-Z]?$")
 
 
 def _block(registry: dict, provider_sources: list[dict], suffix: str) -> dict:
@@ -269,6 +326,122 @@ def _support_record(block: dict) -> dict | None:
     if block.get("donate_blurb"):
         record["donate_blurb"] = block["donate_blurb"]
     return record
+
+
+def _with_referral(url: str, referral: str | None) -> str:
+    """`url` carrying the org's referral query, so their own reports can count
+    what came from this app. Composed here, once, so the phone never builds a
+    URL: a link on the wire is a link a reviewer read in the artifact."""
+    if not referral:
+        return url
+    return f"{url}{'&' if '?' in url else '?'}{referral}"
+
+
+def _paper_maps(table: dict, path: Path) -> list[dict]:
+    """The reviewed products, validated row by row, in publishable shape.
+
+    Every refusal is a SystemExit naming the row: a table that half-parsed
+    would publish a link to a product that does not exist, or a sheet that no
+    footprint can ever match, and neither is a thing to find on a phone.
+    """
+    products = table.get("maps")
+    if not isinstance(products, list) or not products:
+        raise SystemExit(f"{path} carries no `maps` - the paper-map table needs at least one product")
+    store = table.get("store") or {}
+    base = store.get("base")
+    if not isinstance(base, str) or not base.startswith("https://"):
+        raise SystemExit(f"{path} needs `store.base` - the https origin every product handle is a path under")
+
+    seen_sheets: dict[str, str] = {}
+    published = []
+    for product in products:
+        handle = product.get("handle")
+        if not isinstance(handle, str) or not PRODUCT_HANDLE.match(handle):
+            raise SystemExit(f"{path}: product handle {handle!r} is not a Shopify handle (lowercase words joined by '-')")
+        title = product.get("title")
+        if not isinstance(title, str) or not title.strip():
+            raise SystemExit(
+                f"{path}: product {handle} has no title - the phone prints the title verbatim, so it cannot be blank"
+            )
+        sheets = product.get("sheets")
+        if not isinstance(sheets, list) or not sheets:
+            raise SystemExit(f"{path}: product {handle} lists no sheets")
+        for sheet in sheets:
+            if not isinstance(sheet, str) or not SHEET_NUMBER.match(sheet):
+                raise SystemExit(f"{path}: product {handle} lists sheet {sheet!r}, which is not a sheet number like 118 or 106A")
+            if sheet in seen_sheets:
+                raise SystemExit(
+                    f"{path}: sheet {sheet} is listed by both {seen_sheets[sheet]} and {handle}; a sheet belongs to one product"
+                )
+            seen_sheets[sheet] = handle
+        sheet_covers = product.get("sheet_covers")
+        if not isinstance(sheet_covers, dict) or set(sheet_covers) != set(sheets):
+            raise SystemExit(f"{path}: product {handle} needs a `sheet_covers` entry for every sheet it lists and no other")
+        for sheet, names in sheet_covers.items():
+            if not isinstance(names, list) or any(not isinstance(name, str) or not name.strip() for name in names):
+                raise SystemExit(f"{path}: product {handle}, sheet {sheet}: `sheet_covers` must be a list of place names")
+        covers = product.get("covers", [])
+        if not isinstance(covers, list) or any(not isinstance(name, str) or not name.strip() for name in covers):
+            raise SystemExit(f"{path}: product {handle}: `covers` must be a list of place names")
+        published.append(
+            {
+                "handle": handle,
+                "title": title.strip(),
+                "url": f"{base}/products/{handle}",
+                "sheets": list(sheets),
+                "covers": list(covers),
+                "sheet_covers": {sheet: list(names) for sheet, names in sheet_covers.items()},
+            }
+        )
+    return published
+
+
+def _store_record(block: dict, reference_dir: Path) -> dict | None:
+    """One steward's paper-map store, or None where the org has none recorded.
+
+    Raises rather than dropping a malformed block, for _support_record's
+    reason: a block missing `store_surfaces` is not a block with no
+    permissions, it is one whose permissions nobody wrote down.
+    """
+    if not block:
+        return None
+
+    missing = [f for f in REQUIRED_STORE_FIELDS if not block.get(f)]
+    if missing:
+        raise SystemExit(
+            f"store block for {block.get('author') or '(no author)'} is missing: "
+            + ", ".join(missing)
+            + "\nA store block puts a shop link on a hiker's screen. Every field above is required; "
+            "see export_sources.py's docstring."
+        )
+    surfaces = block["store_surfaces"]
+    if not isinstance(surfaces, list):
+        raise SystemExit(f"store_surfaces for {block['author']} must be a list, got {type(surfaces).__name__}")
+    unknown = sorted(set(surfaces) - STORE_SURFACES)
+    if unknown:
+        raise SystemExit(
+            f"store_surfaces for {block['author']} names surfaces that do not exist: "
+            + ", ".join(unknown)
+            + "\nThe vocabulary is closed and holds no member for the map, deliberately - "
+            "see export_sources.py's STORE_SURFACES."
+        )
+
+    table_path = reference_dir / block["paper_maps"]
+    if not table_path.is_file():
+        raise SystemExit(f"store block for {block['author']} names {block['paper_maps']}, and {table_path} is not a file")
+    table = json.loads(table_path.read_text(encoding="utf-8"))
+    referral = block.get("referral")
+    if referral is not None and not isinstance(referral, str):
+        raise SystemExit(f"referral for {block['author']} must be a query string, got {type(referral).__name__}")
+
+    return {
+        "store_url": _with_referral(block["store_url"], referral),
+        "store_cta": block["store_cta"],
+        "store_surfaces": sorted(set(surfaces)),
+        "paper_maps": [
+            {**product, "url": _with_referral(product["url"], referral)} for product in _paper_maps(table, table_path)
+        ],
+    }
 
 
 def _unanimous(values: list, absent_counts: bool = True) -> str | None:
@@ -384,7 +557,9 @@ def build_registry(registry: dict | None = None) -> dict:
     }
 
 
-def build_output(registry: dict | None = None) -> dict:
+def build_output(registry: dict | None = None, *, reference_dir: Path = ROOT) -> dict:
+    """The stewards artifact. `reference_dir` is where a store block's
+    `paper_maps` path resolves - the pipeline directory, or a test's."""
     registry = registry if registry is not None else json.loads(SOURCES_PATH.read_text())
     sources = registry.get("sources", [])
 
@@ -459,6 +634,10 @@ def build_output(registry: dict | None = None) -> dict:
                 # asked (#932). Null renders exactly as today: no button, no
                 # empty section, no placeholder.
                 "support": _support_record(_block(registry, entries, "_support")),
+                # Where to buy the organization's paper maps, or null where
+                # none is recorded (#1574). Null renders as nothing, exactly
+                # as `support` does.
+                "store": _store_record(_block(registry, entries, "_store"), reference_dir),
                 # The stable id #929 introduces. Null on a registry that
                 # predates the `organizations` block; never derived from the
                 # provider string, which is the thing an id exists not to be.

@@ -32,6 +32,19 @@ import Mark from './Mark.astro'
         <a href="/status/">Status — is it me or us?</a>
         <a href="/Privacy/">Privacy policy</a>
       </div>
+      {
+        /* FOR ORGS (features/ORG_ONBOARDING.md, #116 Phase 6). A footer column
+           costs the homepage nothing and catches the person who came looking
+           for it deliberately - which, for an organization, is most of them:
+           a trails chair who has been told about this arrives typing, not
+           browsing. */
+      }
+      <div class="footer__col">
+        <span class="footer__heading">FOR ORGS</span>
+        <a href="/for-orgs/">Add your trail data</a>
+        <a href="/for-orgs/claim/">Claim your org</a>
+        <a href="/for-orgs/demo/">See a published club</a>
+      </div>
       <div class="footer__col">
         <span class="footer__heading">THE PROJECT</span>
         <a href="https://github.com/OurHike/OurHike">Source on GitHub — AGPL-3.0</a>

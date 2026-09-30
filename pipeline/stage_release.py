@@ -57,6 +57,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import boto3
+from botocore.config import Config as BotocoreConfig
 
 import publish
 from lib import data_env, releases
@@ -179,6 +180,9 @@ def stage(
             endpoint_url=os.environ["R2_ENDPOINT_URL"],
             aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
             aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+            # The same server-side copies publish.py's release folder makes,
+            # so the same wait - see publish.PUBLISH_READ_TIMEOUT_S.
+            config=BotocoreConfig(read_timeout=publish.PUBLISH_READ_TIMEOUT_S),
         )
     if bucket is None:
         bucket = os.environ["R2_BUCKET"]
@@ -224,10 +228,19 @@ def stage(
 
     # Last of the folder's contents, so it never describes bytes that have not
     # landed.
+    #
+    # `ContentType` for the reason publish._stage_release's own copy of this
+    # write gives at length (#1612): this key is what every launch fetches,
+    # Cloudflare compresses in front of R2 by content type, and a manifest with
+    # none was served raw at 412,128 bytes. Two writers of one key is the
+    # reason it is said in both places rather than one - a folder staged here
+    # and a folder staged there have to be the same object, and the test that
+    # holds it (tests/test_stage_release.py) drives this path.
     s3_client.put_object(
         Bucket=bucket,
         Key=data_env.scope_key(environment, releases.release_key(release_id, releases.RELEASE_MANIFEST_NAME)),
         Body=json.dumps({"release": release_id, "artifacts": manifest_artifacts}, indent=2).encode("utf-8"),
+        ContentType="application/json",
     )
 
     # The index last of all, because it is what advertises the folder as

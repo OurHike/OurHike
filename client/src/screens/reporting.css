@@ -116,116 +116,8 @@
   font-size: 13px;
 }
 
-/* THE PHOTO TILES (#1439, frame 9f).
-
-   A ROW OF TILES RATHER THAN ONE FILE INPUT, because each pick owns its own
-   state: shrinking, attached, or refused with a reason. The old field had one
-   slot and three separate pieces of state around it, which is how a slow pick
-   came to overwrite a fast one (#657) - and how one failure took down the
-   photo that had already attached.
-
-   Wrapping rather than scrolling: three tiles fit a 340px frame and a fourth
-   belongs on the next line, where it can be seen. A horizontal scroller would
-   hide attached photos behind an edge on the screen whose whole job is saying
-   what is attached. */
-.reporting__photos {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2, 8px);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.reporting__tile {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 84px;
-  height: 84px;
-  overflow: hidden;
-  background: var(--bg-sunken);
-  border: 1px solid var(--border-1);
-  border-radius: var(--radius-card, 10px);
-}
-
-/* Named by its edge rather than by a wash over the thumbnail: there is no
-   thumbnail on a failed tile, and the words inside it are what a hiker acts
-   on ("take another"). */
-.reporting__tile--failed {
-  border-color: var(--danger);
-}
-
-.reporting__tile--add {
-  border-style: dashed;
-}
-
-.reporting__thumb {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.reporting__tile-state {
-  padding: 4px;
-  font-size: 11px;
-  line-height: 1.25;
-  text-align: center;
-  color: var(--fg-2);
-}
-
-.reporting__tile--failed .reporting__tile-state {
-  color: var(--danger);
-}
-
-/* A real target, not a 16px glyph: this is pressed by a cold thumb on a
-   ridge, and it is the control that takes a photo back. */
-.reporting__tile-remove {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  font-size: 16px;
-  line-height: 1;
-  color: var(--fg-on-dark);
-  background: rgb(0 0 0 / 55%);
-  border: 0;
-  border-radius: var(--radius-pill, 999px);
-  cursor: pointer;
-}
-
-.reporting__add {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  width: 100%;
-  height: 100%;
-  font-size: 20px;
-  color: var(--fg-2);
-  cursor: pointer;
-}
-
-.reporting__add-label {
-  font-size: 11px;
-}
-
-/* The input itself is the label's, and invisible: a file control cannot be
-   restyled into a tile, so the tile IS the label and the control sits inside
-   it where a tap and a keyboard both still reach it. Not `display: none`,
-   which takes it out of the tab order with it. */
-.reporting__add .reporting__photo {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-}
+/* The photo tiles moved to reporting/photoTiles.css (#1563): the receipt
+   draws them too. */
 
 /* The location line, and the way to correct it (#1439, D16). The words and
    the control on one row, because "Change" is about the sentence beside it
@@ -332,6 +224,132 @@
   border-radius: 10px;
   cursor: pointer;
 }
+/* The doors on SignInPrompt, each in its provider's own colours, with its
+   mark from chrome/ProviderMark.tsx (#1572).
+
+   Google publishes exact values and the button has to use them
+   (developers.google.com/identity/branding-guidelines, read 2026-09-17):
+   light is #FFFFFF on a 1px #747775 stroke with #1F1F1F text, dark is
+   #131314 / #8E918F / #E3E3E3, the G is 20px with 10px to the label, and the
+   label is 14px medium. Two things here do NOT follow that page, both on
+   purpose: the label is set in --font-body rather than Google Sans, because
+   this build vendors its fonts and scripts/check-build-output.mjs refuses
+   cross-origin CSS; and the button is --min-touch-target (44px) tall rather
+   than 40px, because that minimum applies to every control in this app.
+
+   GitHub publishes no button spec, only the mark's rule: black or white at
+   the highest contrast, no effects (brand.github.com/foundations/logo). So
+   the button is GitHub's own black with the white mark, and on the ink theme
+   it inverts to white with the black mark - a black button on a near-black
+   page is the low-contrast case their page tells you to avoid.
+
+   Email is OurHike's own door and keeps the brand button, with the app icon
+   for a mark. Apple, deferred with #92, gets its HIG's black-or-white button
+   and no mark until the provider ships with Apple's own asset. */
+.reporting__provider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 12px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.reporting__provider:disabled {
+  /* Held for want of signal (#315): dimmed rather than hidden, and the note
+     under the buttons says why. Same value as .reporting__photo:disabled. */
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.reporting__provider-mark {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+.reporting__provider--google {
+  color: #1f1f1f;
+  background: #ffffff;
+  border: 1px solid #747775;
+}
+:root[data-theme='dark'] .reporting__provider--google {
+  color: #e3e3e3;
+  background: #131314;
+  border-color: #8e918f;
+}
+.reporting__provider--github {
+  color: #ffffff;
+  background: #24292f;
+  border: 1px solid #24292f;
+}
+:root[data-theme='dark'] .reporting__provider--github {
+  color: #24292f;
+  background: #ffffff;
+  border-color: #ffffff;
+}
+.reporting__provider--apple {
+  color: #ffffff;
+  background: #000000;
+  border: 1px solid #000000;
+}
+:root[data-theme='dark'] .reporting__provider--apple {
+  color: #000000;
+  background: #ffffff;
+  border-color: #ffffff;
+}
+.reporting__provider--email {
+  /* THE CHROME'S OWN FAMILY, which is where this app already stands its logo:
+     the desktop spine under the wordmark and the phone's tab bar mark are
+     both `--bg-chrome` (chrome/chrome.css, chrome/TabBar.tsx), and this is
+     `--surface-chrome-raised`, one rung above it - a raised surface standing
+     on the chrome rather than the chrome's own ground, which is what a
+     button on a sheet is. The maintainer's call, 2026-09-20, and it is
+     better than either option that went to them.
+
+     It fixes the mark rather than framing it. The icon's green half is
+     `#355c3a` (design-system/assets/logo-icon.svg) and `--brand-primary` in
+     the light theme is `--forest-600`, which is the same hex - so on the
+     brand button that half was invisible and the logo read as a brown
+     triangle. This token is `--pine-800`, `#1c2f1f`, sampled off the
+     rendered frame: far darker than the icon's green, so both halves and the
+     blaze stand out. And it needs no literal, because it is dark in BOTH
+     themes (`--ink-800` under the dark one) with `--fg-chrome-1` light in
+     both to carry the label - 13.99:1 for the label, measured.
+
+     `--bg-chrome` ITSELF WAS THE FIRST ANSWER and read as black at this
+     size: pine-900 carries its green across a 208px column and not across a
+     44px strip with GitHub's `#24292f` directly above it. Same family, one
+     rung, and the difference is the whole of it. */
+  color: var(--fg-chrome-1);
+  background: var(--surface-chrome-raised);
+  border: 0;
+}
+/* A DOOR WITH NO EDGE IS NOT A DOOR. Under the dark theme
+   `--surface-chrome-raised` is `--ink-800`, `#24211a`, and the sheet under
+   it renders `#1c1a15` - both sampled off the frame, 2026-09-20 - which is
+   1.08:1. The button's shape vanishes and only its label and logo say
+   anything is there. The light theme has no such problem: pine-800 on paper
+   is 13.99:1, which is why this forks rather than applying to both, the same
+   way the Google, GitHub and Apple rules above do.
+
+   45% of the button's own foreground over its own ground, rather than a
+   border token: `--border-2` is `--ink-600` there and reaches 1.7:1, under
+   the 3:1 WCAG asks of a control's boundary. This mix measures 3.76:1.
+
+   BOTH FIGURES WERE RECOMPUTED when the ground moved from `--bg-chrome` to
+   `--surface-chrome-raised`, rather than carried over from the version that
+   measured `--ink-900` at 1.1:1 and the mix at 3.67:1. The conclusion did
+   not change and the numbers did, and a measurement naming the wrong thing
+   it was measured against is worse than no number at all. */
+:root[data-theme='dark'] .reporting__provider--email {
+  border: 1px solid
+    color-mix(in srgb, var(--fg-chrome-1) 45%, var(--surface-chrome-raised));
+}
+
 .reporting__card--thanks {
   color: var(--fg-1);
   background: color-mix(in srgb, var(--brand-primary) 10%, var(--bg-surface));

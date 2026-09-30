@@ -4,7 +4,8 @@ export_poi.py's subject is the A.T.: ATC's own facility layers plus
 opentrail.org and OSM water, clipped to a 30-mile corridor around ATC's
 centerline and carrying a NOBO mile from Springer. This module's subject is
 everything else already on the ground - the lean-tos, campsites, privies,
-vistas, parking areas and bridges two New York State agencies maintain.
+vistas, parking areas and trailheads two New York State agencies maintain.
+(Their bridges shipped too, as `crossing`, until #1674 withdrew that type.)
 
 A SECOND EXPORT RATHER THAN A BRANCH INSIDE THE FIRST, for the three reasons
 export_nearby_trails.py already gives for doing the same thing with trail
@@ -24,9 +25,11 @@ absent as "no mile" rather than as zero.
 
 WHAT SHIPS, MEASURED 2026-08-27 BY spike_org_poi_coverage.py
 
-Six of the eight POI types, from both orgs. The counts each org publishes, and
-what this module actually emits, are in POI_COVERAGE_SURVEY.md §0; the
-per-source totals are printed by every run and written into the manifest.
+Six of the eight POI types, from both orgs - five since #1674 withdrew
+`crossing`, which was their bridges. The counts each org publishes, and what
+this module actually emits, are in POI_COVERAGE_SURVEY.md §0 (as measured,
+bridges included); the per-source totals are printed by every run and written
+into the manifest.
 
 A THIRD INPUT SINCE 2026-09-08 (#1288), AND THE FIRST THAT IS NOT A LAYER:
 NYNJTC's Long Path section guide, forty web pages fetch_nynjtc_long_path_guide.py
@@ -88,7 +91,12 @@ WHAT DOES NOT SHIP, AND WHY EACH ONE IS A DECISION RATHER THAN AN OVERSIGHT
     Stairs under `crossing` for counting and flagged that a reviewer might want
     them separated - shipping is where that matters, so they are separated: a
     staircase is not a stream crossing, and a road bridge is not a hiker's.
-    Only `Trail Bridge` ships as `crossing` from OPRHP.
+    `Trail Bridge` was the one OPRHP value that shipped as `crossing`.
+  - **Every bridge, since #1674.** The maintainer had the `crossing` type
+    taken off the map ("Crossings are cluttering the map"), and DEC's
+    BRIDGE, FOOT BRIDGE, BOARDWALK and HARDENED CROSSING rows and OPRHP's
+    Trail Bridge were that type here. They drop with a named reason, like
+    every other refusal, rather than falling through as unknown values.
   - **OPRHP's 109 resupply rows** (91 'Concession', 18 'Store'). Whether a park
     concession stand is resupply in the sense a thru-hiker means is exactly
     what #806 got wrong about opentrail's 'r' tag, where 0 of 72 published
@@ -115,7 +123,9 @@ import duckdb
 
 from lib.completeness import count_problems, fail_if_incomplete
 from lib.corridor import (
+    GEOGRAPHIC_CRS,
     NETWORK_BUFFER_FEET,
+    PROJECTED_CRS,
     inside_boundary_sql,
     load_boundary_polygons,
     load_network_lines,
@@ -169,6 +179,43 @@ METERS_PER_FOOT = 0.3048
 #: purpose is to sit off the tread is the wrong one to measure against tread.
 NETWORK_RING_EXEMPT_TYPES = frozenset({"parking", "trailhead"})
 
+#: How near a trail line has to be to count as one of a trailhead's trails, in
+#: metres (#1695). Nothing in any layer says which trails a trailhead serves,
+#: so "its trails" is every published line within this distance.
+#:
+#: THE MAINTAINER'S PICK, 2026-09-28, by poll off this table, measured
+#: 2026-09-26 against the UA release 2026-09-24-2 (7,651 trailheads, 142,620
+#: nearby lines, 224 of them closed):
+#:
+#:     radius   every line closed   some closed   all open   no line within
+#:      50 m           4                 4          4,875        2,768
+#:     100 m           4                 5          5,807        1,835
+#:     200 m           2                11          6,391        1,247
+#:
+#: 100 m rather than 50 because a trailhead is often set back from the tread,
+#: and rather than 200 because at 200 m a trailhead picks up trails it does not
+#: serve. @unvalidated as a distance: what would settle it is the four
+#: trailheads it marks today, looked at on the ground or on the steward's own
+#: map - three on Storm King's Route 9W side, where the only line within 100 m
+#: is a short closed connector, and one on the Genesee Valley Greenway.
+TRAILHEAD_TRAIL_RADIUS_M = 100
+
+#: The A.T.'s own lines, which `nearby_trails.geojson` does not carry: the
+#: A.T. ships as `trails.geojson`, and export_trails.py runs after this script.
+#: fetch_all.py writes these raw layers before it. They count as OPEN lines -
+#: nothing in them marks a closure - so a trailhead beside the A.T. is never
+#: marked closed because of a closed side path next to it.
+AT_LINE_PATHS = (ROOT / "data" / "raw" / "centerline.geojson", ROOT / "data" / "raw" / "side_trails.geojson")
+
+#: The property a trailhead carries when every trail line within
+#: TRAILHEAD_TRAIL_RADIUS_M is closed, and its value IS that radius in metres.
+#: Its presence is the flag. Its value is what the card prints, so the phone
+#: states the distance this release was computed with rather than a copy of
+#: the constant built into whichever client it runs. Absent otherwise, never
+#: `false` or 0: the client draws the ordinary pin for absent, and an artifact
+#: that carried a value on 7,000 trailheads would only be bigger.
+TRAILS_CLOSED_PROPERTY = "trails_closed_within_m"
+
 # `trail_id` per org rather than export_poi.py's "AT". Nothing on the client
 # reads this field today; it is the pipeline's own record of which system a row
 # belongs to, and writing "AT" on a Catskills lean-to would make it wrong the
@@ -192,12 +239,8 @@ DEC_ASSET_TYPES = {
     "PORT-A-JOHN": "privy",
     "RESTROOM": "privy",
     "BATHROOM": "privy",
-    # crossing - a built thing a walker gets across on. 'FORD' is deliberately
-    # absent (see the module docstring), and so is 'CULVERT' at 4,290 rows.
-    "BRIDGE": "crossing",
-    "FOOT BRIDGE": "crossing",
-    "BOARDWALK": "crossing",
-    "HARDENED CROSSING": "crossing",
+    # BRIDGE, FOOT BRIDGE, BOARDWALK and HARDENED CROSSING mapped to
+    # `crossing` here until #1674 withdrew the type - see NAMED_EXCLUSIONS.
 }
 
 # OPRHP's Sub_Asset values. One layer carries all seven types; 'Water Spigot',
@@ -221,7 +264,7 @@ OPRHP_SUB_ASSET_TYPES = {
     "Parking Area": "parking",
     "Pull Off": "parking",
     "Accessible Parking Area": "parking",
-    "Trail Bridge": "crossing",
+    # 'Trail Bridge' was `crossing` until #1674 - see NAMED_EXCLUSIONS.
     # Where the walking starts (#1197). Kept apart from the three `parking`
     # values above rather than folded into them, which is the whole reason
     # the ninth type was worth adding: OPRHP publishes both, and a lot and
@@ -342,11 +385,21 @@ TYPED_LAYERS_FOLDED = {
 # dropped and why rather than silently emitting less. Not a filter - the
 # allowlists above already exclude everything not in them - but a named reason
 # for the four exclusions somebody would otherwise re-litigate from scratch.
+WITHDRAWN_CROSSING = "the crossing type was withdrawn (#1674, lib/poi_schema.WITHDRAWN_POI_TYPES)"
+
 NAMED_EXCLUSIONS = {
     "FORD": "unbridged crossing - a hazard, not an amenity (HIKER_SAFETY.md, POI_COVERAGE_SURVEY.md 8e)",
     "CULVERT": "a pipe under the tread, not a thing anyone crosses",
     "Stairs": "a staircase is not a stream crossing",
     "Vehicle Bridge": "a road bridge is not a hiker's crossing",
+    # The five values that were `crossing` until the maintainer withdrew that
+    # type (#1674). Named rather than dropped from the allowlists alone, so a
+    # run still says it held back the bridges on purpose.
+    "BRIDGE": WITHDRAWN_CROSSING,
+    "FOOT BRIDGE": WITHDRAWN_CROSSING,
+    "BOARDWALK": WITHDRAWN_CROSSING,
+    "HARDENED CROSSING": WITHDRAWN_CROSSING,
+    "Trail Bridge": WITHDRAWN_CROSSING,
     "Water Spigot": "water holdback - no seasonal shutoff recorded (sources.json oprhp_water_holdback)",
     "Drinking Fountain": "water holdback - see oprhp_water_holdback",
     "WATER SUPPLY SYSTEM": "DEC water refused - see sources.json dec_water_holdback",
@@ -521,8 +574,8 @@ def compose_description(source: dict, properties: dict) -> str | None:
 
     That matters most on OPRHP, where `Name` is populated on 18% of rows: a pin
     reading "Unnamed" with no card line at all would be the whole feature for
-    3,676 of these, and "Trail Bridge in Beaver Island State Park." is two facts
-    OPRHP publishes rather than anything composed here.
+    3,676 of these, and "Lean-to in Allegany State Park." is two facts OPRHP
+    publishes rather than anything composed here.
 
     Every clause is the org's word. The only editorialising is `.title()` on
     DEC's ALL-CAPS asset values, which is formatting rather than meaning, and it
@@ -777,6 +830,95 @@ def clip_to_network(
     return kept, stats
 
 
+def mark_closed_trailheads(
+    records: list[dict],
+    network_path: Path,
+    at_line_paths: tuple[Path, ...] = AT_LINE_PATHS,
+) -> dict:
+    """Set TRAILS_CLOSED_PROPERTY on every trailhead whose trail lines within
+    TRAILHEAD_TRAIL_RADIUS_M are all closed (#1695), in place, and say what it
+    did.
+
+    The client draws such a trailhead as a pin in the closure's ink with a
+    white cross (the maintainer's pick of 2026-09-28). A trailhead with no line
+    within the radius is NOT marked: "no trail here" is not "every trail here
+    is closed".
+
+    MISS RATHER THAN CRY WOLF, and every uncertain state takes that direction.
+    A missing network marks nothing. A missing A.T. file marks nothing either:
+    without the A.T.'s lines a trailhead beside the open A.T. and a closed side
+    path would read as closed. A network with no `trail_status` column marks
+    nothing, because there is no closure in it to read. And a line with no
+    status of its own counts as NOT closed, so one nearby is enough to keep
+    the ordinary pin: an unknown status is not evidence of a closure.
+    """
+    stats: dict = {
+        "ran": False,
+        "radius_m": TRAILHEAD_TRAIL_RADIUS_M,
+        "trailheads": 0,
+        "marked": 0,
+        "marked_ids": [],
+    }
+    trailheads = [(at, record) for at, record in enumerate(records) if record["poi_type"] == "trailhead"]
+    stats["trailheads"] = len(trailheads)
+    if not trailheads:
+        return stats
+    if not network_path.exists():
+        stats["reason"] = f"{network_path.name} is missing, so there is no closure to read"
+        return stats
+    missing_at = [path.name for path in at_line_paths if not path.exists()]
+    if missing_at:
+        stats["reason"] = f"{', '.join(missing_at)} missing, so a trailhead beside the open A.T. cannot be told apart"
+        return stats
+
+    def projected(column: str) -> str:
+        return f"ST_Transform({column}, '{GEOGRAPHIC_CRS}', '{PROJECTED_CRS}', always_xy := true)"
+
+    with duckdb.connect() as con:
+        con.execute("INSTALL spatial; LOAD spatial;")
+        # One read of the network: only the two columns this step needs,
+        # selected by pattern so a file with no `trail_status` still loads
+        # and the check below can say so.
+        con.execute(f"""
+            CREATE TABLE network_status AS
+            SELECT COLUMNS('^(geom|trail_status)$') FROM ST_Read('{network_path.as_posix()}')
+        """)
+        columns = {row[0] for row in con.execute("DESCRIBE network_status").fetchall()}
+        if "trail_status" not in columns:
+            stats["reason"] = f"{network_path.name} carries no trail_status, so no line in it is closed"
+            return stats
+
+        con.execute(f"""
+            CREATE TABLE trailhead_line AS
+            SELECT {projected("geom")} AS g, lower(coalesce(CAST(trail_status AS VARCHAR), '')) = 'closed' AS closed
+            FROM network_status
+        """)
+        for path in at_line_paths:
+            con.execute(f"INSERT INTO trailhead_line SELECT {projected('geom')}, false FROM ST_Read('{path.as_posix()}')")
+        con.execute("CREATE INDEX trailhead_line_rtree ON trailhead_line USING RTREE (g)")
+
+        con.execute("CREATE TABLE trailhead_point (idx INTEGER, lon DOUBLE, lat DOUBLE)")
+        con.executemany(
+            "INSERT INTO trailhead_point VALUES (?, ?, ?)",
+            [(at, record["lon"], record["lat"]) for at, record in trailheads],
+        )
+        rows = con.execute(f"""
+            SELECT p.idx, count(*) AS lines, count(*) FILTER (WHERE l.closed) AS closed
+            FROM trailhead_point p
+            JOIN trailhead_line l
+              ON ST_Intersects(l.g, ST_Buffer({projected("ST_Point(p.lon, p.lat)")}, {TRAILHEAD_TRAIL_RADIUS_M}))
+            GROUP BY p.idx
+        """).fetchall()
+
+    for at, lines, closed in rows:
+        if lines > 0 and closed == lines:
+            records[at][TRAILS_CLOSED_PROPERTY] = TRAILHEAD_TRAIL_RADIUS_M
+            stats["marked_ids"].append(records[at]["id"])
+    stats["marked_ids"].sort()
+    stats.update(ran=True, marked=len(stats["marked_ids"]))
+    return stats
+
+
 def guide_records(registry: dict, raw_dir: Path = GUIDE_RAW_DIR, lines_dir: Path = RAW_DIR) -> tuple[list[dict], dict | None]:
     """NYNJTC's Long Path section guide, read as waypoints - and whether they may ship.
 
@@ -854,7 +996,13 @@ def records_to_geojson(records: list[dict]) -> dict:
     }
 
 
-def write_artifact(records: list[dict], per_source: dict, ring: dict | None = None, held_back: dict | None = None) -> dict:
+def write_artifact(
+    records: list[dict],
+    per_source: dict,
+    ring: dict | None = None,
+    held_back: dict | None = None,
+    closed_trailheads: dict | None = None,
+) -> dict:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     path = OUT_DIR / ARTIFACT_NAME
     path.write_text(json.dumps(records_to_geojson(records), separators=(",", ":")))
@@ -874,6 +1022,9 @@ def write_artifact(records: list[dict], per_source: dict, ring: dict | None = No
         # (see main), so without this block the manifest's per-source figures
         # and its feature_count would disagree with no way to see why.
         **({"network_ring": ring} if ring is not None else {}),
+        # Which trailheads carry TRAILS_CLOSED_PROPERTY, and why none do when
+        # the step could not run (#1695).
+        **({"closed_trailheads": closed_trailheads} if closed_trailheads is not None else {}),
         # Sources read and NOT carried, with why - outside `sources` so that
         # publish.py's all-or-nothing gate over that dict sees only what the
         # artifact actually holds (see guide_records).
@@ -980,6 +1131,20 @@ def main() -> dict:
     else:
         print(f"\n  ring: not applied - {ring.get('reason', 'no network artifact')}")
 
+    # Trailheads whose every nearby trail is closed (#1695). After the ring so
+    # it reads the records that ship; trailheads are exempt from the ring, so
+    # the order changes nothing about which trailheads are asked.
+    closed_trailheads = mark_closed_trailheads(all_records, OUT_DIR / NETWORK_ARTIFACT_NAME)
+    if closed_trailheads["ran"]:
+        print(
+            f"\n  closed trailheads: {closed_trailheads['marked']:,} of {closed_trailheads['trailheads']:,} "
+            f"have every trail line within {closed_trailheads['radius_m']} m closed"
+        )
+        for record_id in closed_trailheads["marked_ids"][:12]:
+            print(f"      {record_id}")
+    else:
+        print(f"\n  closed trailheads: not marked - {closed_trailheads.get('reason', 'no trailheads')}")
+
     # AFTER the ring, and the order is the argument again: a site must be
     # composed of waypoints that actually ship. Folding first would anchor a
     # site on a fountain the ring then removed, and the client would draw
@@ -1001,7 +1166,7 @@ def main() -> dict:
         largest = max(sites, key=lambda s: s.size())
         print(f"      largest: {largest.size()} at {largest.site_name!r}")
 
-    manifest = write_artifact(all_records, per_source, ring, held_back_sources)
+    manifest = write_artifact(all_records, per_source, ring, held_back_sources, closed_trailheads)
     size = Path(manifest["path"]).stat().st_size
     print(f"\n  {manifest['feature_count']:,} features -> {manifest['path']} ({size:,} bytes)")
     print(f"  by type: {manifest['by_type']}")

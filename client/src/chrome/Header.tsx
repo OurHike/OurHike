@@ -15,6 +15,8 @@
 // the way every other canvas overlay is hidden (chrome.css).
 
 import type { ReactNode } from 'react'
+import { AccountButton } from './AccountButton'
+import { useDesktop } from '../lib/useDesktop'
 
 export type HikeDirection = 'NOBO' | 'SOBO'
 
@@ -104,6 +106,18 @@ export interface HeaderProps {
    * (Legend.tsx). `label` is the shell's sentence, naming the organization.
    */
   newNotices?: { count: number; label: string }
+  /**
+   * The account this phone is signed in to, or null (#1596).
+   *
+   * Undefined and null are different answers and both are real: undefined is
+   * a caller that does not carry the account at all, which draws no button;
+   * null is a caller that does and is signed out, which draws the way in.
+   * The tests mount this header without either.
+   */
+  account?: { email: string } | null
+  /** Opens the sign-in window. Required alongside `account` for the button to
+   *  be drawn - a door with nothing behind it is worse than no door. */
+  onOpenAccount?: () => void
 }
 
 export function Header({
@@ -120,7 +134,15 @@ export function Header({
   folded = false,
   onUnfold,
   newNotices,
+  account,
+  onOpenAccount,
 }: HeaderProps) {
+  // The sidebar carries the account button above the breakpoint, where Today
+  // and the map are drawn side by side and this one would be the second on
+  // the page. chrome/AccountButton.tsx states the rule; TabBar.tsx says why
+  // it is a hook rather than a media query.
+  const inSidebarLayout = useDesktop()
+
   return (
     <div className="map-header">
       <header className={`map-plate${folded ? ' map-plate--folded' : ''}`}>
@@ -149,6 +171,18 @@ export function Header({
       </header>
 
       <div className="map-header__actions">
+        {/* FIRST IN THE CLUSTER, so it keeps its place as the others come and
+            go: `In view` appears only with a count and the legend button is
+            hidden at desktop widths, so any later position would move under
+            a hiker between screens. #1596 put it here rather than leaving
+            sign-in three taps deep in More. */}
+        {!inSidebarLayout && account !== undefined && onOpenAccount !== undefined && (
+          <AccountButton
+            account={account}
+            onOpen={onOpenAccount}
+            className="map-header__button map-header__account"
+          />
+        )}
         {/* The sentence behind the dot, for a screen reader. Rendered only
             while there is news, exactly as the banner row it replaced was -
             MapScreen.test.tsx pins that a followed walk's announcement is

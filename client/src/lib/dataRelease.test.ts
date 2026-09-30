@@ -99,3 +99,15 @@ describe('the URLs config.ts builds from it', () => {
     expect(releaseManifestUrl()).not.toContain('latest.json')
   })
 })
+
+describe('the archive prefix (#1574)', () => {
+  it('leaves archive/nynjtc_map_sheets.json at the root, beside conditions/', () => {
+    // A one-off snapshot a person writes by dispatching a workflow, never a
+    // release build - pipeline/lib/r2_keys.py declares the prefix and says
+    // why it is not versioned.
+    expect(isReleaseScoped('archive/nynjtc_map_sheets.json')).toBe(false)
+    expect(releasePath('archive/nynjtc_map_sheets.json')).toBe(
+      'archive/nynjtc_map_sheets.json',
+    )
+  })
+})

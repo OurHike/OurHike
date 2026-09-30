@@ -61,6 +61,8 @@ describe('reading a launch back', () => {
       LAUNCH_MARKS.preferences,
       LAUNCH_MARKS.today,
       LAUNCH_MARKS.index,
+      LAUNCH_MARKS.map,
+      LAUNCH_MARKS.mapDrawn,
     ])
   })
 

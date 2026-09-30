@@ -12,7 +12,7 @@
 // that the switch is not a PREFERENCE: this object syncs, so a key here
 // would mean a hiker who cleared the bands once in Virginia opening a new
 // phone in Maine with them already gone. The flag is a `useState` in
-// chrome/alertLayerPanel.ts, is written nowhere, and is back on at the next
+// a `useState` while it existed, is written nowhere, and is back on at the next
 // open.
 //
 // Keeping the invariant at the schema level rather than at the settings
@@ -126,6 +126,15 @@ export interface UserPreferences {
   // Identity
   trail_name: string | null
   /**
+   * The hiker's real name, given only if they choose to sign a report with
+   * it (#1563; lib/reporterSignature.ts). Null until they do. It travels in
+   * the synced blob so a second phone offers the same choice, and reaches a
+   * report only as `signed_name` when the hiker picks it for that report -
+   * never any other surface: the trail name stays the identity shown
+   * (features/IDENTITY_AND_PRIVACY.md).
+   */
+  real_name: string | null
+  /**
    * How this hiker's reports are signed - null until they say (#233).
    *
    * Null is the honest starting state and it is not the same as any of the
@@ -187,6 +196,26 @@ export interface UserPreferences {
    * there would make two independent choices into one list of four.
    */
   drought_layer_shown: boolean
+  /**
+   * Whether the map's trail lines are drawn in their blaze colours, or every
+   * one in the same red (#1575). OFF by default: the maintainer's request of
+   * 2026-09-17 - "Showing the blaze color can be distracting and feel like
+   * I'm living in a rainbow ... Maybe the default color should be a red line,
+   * like the nynjtc has on their maps" - and lib/blaze.ts's PLAIN_TRAIL_COLOR
+   * is the red. Flipping the default is this one line.
+   *
+   * A stored, synced preference like `drought_layer_shown` above, and
+   * deliberately unlike the legend's Alerts switch, removed 2026-09-20:
+   * a hiker who finds the hues distracting today will find them distracting
+   * on a second phone tomorrow, and nobody's safety turns on this the way it
+   * turns on a closure band - the blaze is still named on the tapped line's
+   * sheet, on the legend's "Trails in view" rows and on the day hike card's
+   * legs, none of which read this key. That last part is the maintainer's
+   * second instruction the same day: "Changing the color option should only
+   * affect the map itself, not the other options." Only map/style.ts's
+   * blazeLineColor reads it.
+   */
+  blaze_colors_shown: boolean
   waypoint_types_shown: string[]
   layer_detail_level: LayerDetailLevel
   /**
@@ -265,6 +294,7 @@ export interface UserPreferences {
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
   trail_name: null,
+  real_name: null,
   reporter_type: null,
   default_place: null,
 
@@ -290,6 +320,9 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   red_light_enabled: false,
   show_roads: false,
   drought_layer_shown: false,
+  // One red line for every trail until the hiker asks for the blaze hues -
+  // the maintainer's default (#1575); the key's own comment has the quote.
+  blaze_colors_shown: false,
   // The curated subset, not `[]` (all) - lib/waypointVisibility.ts's
   // DEFAULT_SHOWN_TYPES and the maintainer decision behind it (#865).
   waypoint_types_shown: [...DEFAULT_SHOWN_TYPES],

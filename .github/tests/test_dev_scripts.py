@@ -99,3 +99,20 @@ def test_an_unknown_suite_is_an_error_not_an_empty_answer():
     )
     assert result.returncode != 0
     assert "unknown suite" in result.stderr
+
+
+def test_only_test_sh_may_leave_webkit_out_and_ci_never_does():
+    """#1537. FLOW_SKIP_WEBKIT drops the flow suite's phone-webkit project, so
+    an agent sandbox with Chromium alone can pass scripts/test.sh. It must stay
+    a local, announced skip: set by test.sh only beside the line saying so,
+    and by no workflow, so a CI runner that lost WebKit still goes red."""
+    test_sh = (REPO_ROOT / "scripts" / "test.sh").read_text(encoding="utf-8")
+    config = (REPO_ROOT / "client" / "playwright.config.ts").read_text(encoding="utf-8")
+
+    assert "process.env.FLOW_SKIP_WEBKIT === '1'" in config
+    setter = test_sh.index("flow_env=(FLOW_SKIP_WEBKIT=1)")
+    assert "phone-webkit SKIPPED" in test_sh[test_sh.rindex("if !", 0, setter) : setter]
+    assert "SKIPPED: " in test_sh[test_sh.index("== all green") - 400 :]
+
+    for workflow in sorted((REPO_ROOT / ".github" / "workflows").glob("*.yml")):
+        assert "FLOW_SKIP_WEBKIT" not in workflow.read_text(encoding="utf-8"), workflow.name

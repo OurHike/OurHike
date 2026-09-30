@@ -117,6 +117,7 @@ from pathlib import Path
 
 import psycopg
 
+from lib import strict_json
 from lib.hashing import sha256_file
 from lib.manifest_paths import to_manifest_path
 
@@ -562,6 +563,22 @@ def build_document(key: str, rows: list[dict], generated_at: datetime) -> dict:
     }
 
 
+def write_document(path: Path, key: str, rows: list[dict], generated_at: datetime) -> None:
+    """Write one document, or nothing, and never a token a phone cannot read.
+
+    Postgres stores `NaN` in a double precision column and psycopg hands it
+    back as a float, and Python's `json.dumps` would then write the bare
+    token `NaN` - which `JSON.parse` on every phone rejects, taking the
+    whole baseline down with one row (lib/strict_json.py). The API refuses
+    such a value on the way in (`FiniteFloat`, #658), so this is the second
+    door: `allow_nan=False` fails the bake loudly, the previous artifact
+    stays live, and the row gets looked at. The file is written only after
+    the whole text serialised, so a refusal leaves nothing half-written.
+    """
+    text = strict_json.dumps(build_document(key, rows, generated_at), indent=2) + "\n"
+    path.write_text(text)
+
+
 def connect():
     """Connect, and turn one confusing failure into an actionable one.
 
@@ -639,7 +656,7 @@ def main() -> dict:
         if rows is None:
             print(f"Skipped {path.name}: public.field_notes is not configured for this reader yet.")
             continue
-        path.write_text(json.dumps(build_document(key, rows, generated_at), indent=2) + "\n")
+        write_document(path, key, rows, generated_at)
         artifacts[key] = {
             "path": to_manifest_path(path),
             "sha256": sha256_file(path),

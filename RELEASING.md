@@ -185,6 +185,19 @@ tag whose version disagrees with that file, so the two cannot drift. It is the f
 not the tag that is read, because a tag exists only for a released build — and UA, every
 pull request preview and a laptop all have to be able to answer the same question.
 
+**The native shells follow the same file** (#1397). `npm run shell:version` in `client/`
+writes Android's `versionName`/`versionCode` and iOS's
+`MARKETING_VERSION`/`CURRENT_PROJECT_VERSION` from it: the name is the semver, and the code
+is `major×1,000,000 + minor×10,000 + patch×100 + rebuild`, so 1.3.2 is `1030200`. The
+maintainer chose that scheme (poll, 2026-09-25) because both stores refuse an upload
+whose code is not higher than the last, a code can never be taken back once a store
+holds one, and this one can be read back to the version it came from. It leaves 99
+re-uploads per version, and `scripts/shell-version.mjs` refuses a minor or patch above
+99 instead of letting it overflow. Run it in the pull request that bumps
+`package.json`. `src/test/shellVersion.test.ts` fails that pull request if the shells
+still say the old version, and `build-shells.yml` stamps them again before `cap sync`
+either way.
+
 Two facts travel beside the version, because on their own neither the version nor the
 tag can identify most of the builds people actually run:
 

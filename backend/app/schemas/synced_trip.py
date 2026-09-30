@@ -29,6 +29,7 @@ rather than per store precisely so one unreadable trip is not every trip.
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.time import UtcDatetime
+from app.schemas.common import FiniteFloat
 
 
 class TripUpload(BaseModel):
@@ -69,8 +70,15 @@ class PlannedHikeSync(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    start_mile: float | None = None
-    end_mile: float | None = None
+    # `FiniteFloat`, not `float`: #658 closed NaN and Infinity at the wire for
+    # every float field, and these two arrived after it as bare floats. A NaN
+    # here is stored, serialised back to every other device as null, and
+    # reads there as the hiker having cleared their planned hike - the one
+    # write in this exchange that is last-write-wins, resolved by a value no
+    # client ever meant to send. The type emits no JSON-schema constraint, so
+    # nothing in openapi_baselines/ moves.
+    start_mile: FiniteFloat | None = None
+    end_mile: FiniteFloat | None = None
     #: What the device last saw. Null when it has never synced one.
     base_updated_at: UtcDatetime | None = None
 

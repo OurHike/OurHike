@@ -164,6 +164,11 @@ SCHEDULED_ROSTER = {
     "check-auth-redirects.yml": "GET /auth/v1/verify daily (#488) - GoTrue queries its own auth schema tables to "
     "reject the junk token, which is real database activity even though the point of the probe is the redirect "
     "allow-list, not keeping the project awake",
+    "settings-configured.yml": "not a road at all, and on the roster to say so: it reads every declared setting by "
+    "name - the Supabase URL, the migration and conditions connection strings among them - and its first step "
+    "reduces the values to the names that came back non-empty, before anything could connect. Nothing in it "
+    "reaches the project. It reads them one name at a time since 2026-09-17 because `toJSON(secrets)` was what "
+    "kept it from ever running at all (test_settings_configured_workflow.py)",
 }
 
 

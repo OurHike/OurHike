@@ -44,6 +44,8 @@ const STEWARDS: Stewards = [
     termsSource: null,
     layers: ['ATC Trail Updates'],
     keys: ['atc_trail_updates'],
+    support: null,
+    store: null,
   },
 ]
 

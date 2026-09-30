@@ -24,6 +24,18 @@ import { buildPlan, type HikePlan } from '../lib/plan'
 import type { StoredPoi } from '../lib/trailData'
 import type { Trip } from '../lib/trips'
 
+/** A trip on the calendar from `from` to `to`, none of it walked. */
+function planned(id: string, from: number, to: number): Trip {
+  const plan: HikePlan = buildPlan(
+    [
+      { mile: from, name: `Stop ${from}`, resupply: false },
+      { mile: to, name: `Stop ${to}`, resupply: false },
+    ],
+    { miles: 12 },
+  )
+  return { id, name: id, plan }
+}
+
 /** A walked trip of `days` days, `perDay` miles each, from `from`. */
 function walked(id: string, from: number, days: number, perDay: number): Trip {
   const stops = Array.from({ length: days + 1 }, (_, index) => ({
@@ -76,6 +88,27 @@ describe('what is left', () => {
       /To go\s*428\.0 mi/,
     )
     expect(screen.getByText('in 1 piece')).toBeInTheDocument()
+  })
+
+  it('keeps the to-go figure and the pieces under it agreeing when a planned trip covers the rest (#1578)', () => {
+    // 72 walked, 428 to go, and a trip on the calendar for all 428 of it.
+    // A plan closes no gap until it is walked, so the ground is still one
+    // piece - and this screen used to print "428.0 mi" above "in 0 pieces"
+    // and "Nothing left in this hike", six lines apart.
+    render(
+      <WhatsLeft
+        {...PROPS}
+        hike={{ ...HIKE, tripIds: ['a', 'b'] }}
+        trips={[...PROPS.trips, planned('b', 72, 500)]}
+      />,
+    )
+
+    expect(screen.getByText('To go').closest('.whats-left__figure')).toHaveTextContent(
+      /To go\s*428\.0 mi/,
+    )
+    expect(screen.getByText('in 1 piece')).toBeInTheDocument()
+    expect(screen.queryByText(/Nothing left in this hike/)).toBeNull()
+    expect(screen.getByText(/Stop 72 → Katahdin/)).toBeInTheDocument()
   })
 
   it('offers the way back into the open section’s days, and only then', async () => {

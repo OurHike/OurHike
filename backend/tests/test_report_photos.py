@@ -25,12 +25,14 @@ import uuid
 import boto3
 import pytest
 import requests
+from botocore.exceptions import EndpointConnectionError
 from fastapi import HTTPException, Request
 from moto import mock_aws
 from pydantic import ValidationError
 
 from app.config import Settings, settings
-from app.core.photos import MAX_PHOTO_BYTES, PHOTO_URL_TTL_SECONDS, photo_key
+from app.core import photos as photos_module
+from app.core.photos import MAX_PHOTO_BYTES, PHOTO_URL_TTL_SECONDS, STORAGE_UNAVAILABLE_DETAIL, photo_key
 from app.models.profile import Profile, Role
 from app.models.report import Report, ReporterType, ReportStatus, ReportType, Visibility
 from app.routers.reports import read_capped_body
@@ -949,3 +951,53 @@ def test_the_guard_stays_quiet_where_there_is_nothing_to_collide_with(monkeypatc
     monkeypatch.chdir(tmp_path)
 
     assert Settings().r2_photo_bucket == "your-hike-photos"
+
+
+# --- What the uploader is told when R2 itself is the problem ----------------
+#
+# botocore spells a connection failure out in full, and for R2 that sentence
+# is the deployment's private storage configuration: the endpoint is
+# `https://<account id>.r2.cloudflarestorage.com`, then the bucket, then the
+# key. All three upload endpoints handed it back verbatim as the 503's
+# `detail`. Measured on the unfixed tree, 2026-09-17: `{"detail": "Could not
+# connect to the endpoint URL: \"https://0123456789abcdef0123456789abcdef
+# .r2.cloudflarestorage.com/ourhike-photos\""}`.
+
+_R2_ENDPOINT = "https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com/ourhike-report-photos"
+
+
+class _UnreachableR2:
+    """A client whose every write fails the way an unreachable R2 fails."""
+
+    def put_object(self, **_kwargs):
+        raise EndpointConnectionError(endpoint_url=_R2_ENDPOINT)
+
+
+def test_a_storage_failure_does_not_tell_the_uploader_where_the_bucket_is(client, db_session, r2, monkeypatch):
+    monkeypatch.setattr(photos_module, "_client", lambda: _UnreachableR2())
+    # The logger is read through the module's own name rather than through
+    # caplog, because the process this runs in is not a clean one:
+    # tests/test_migrations.py runs Alembic in-process, and alembic/env.py's
+    # `fileConfig` disables every logger that already exists. Measured
+    # 2026-09-17: `fileConfig("alembic.ini")` flips this logger's `disabled`
+    # to True, and the caplog form of this assertion was green alone and red
+    # whenever that suite had run first on the same xdist worker.
+    logged: list[str] = []
+    monkeypatch.setattr(photos_module.logger, "warning", lambda message, *args: logged.append(message % args))
+    reporter = _reporter(db_session)
+    report = _report(db_session, reporter)
+
+    response = client.put(
+        f"/reports/{report.id}/photo",
+        content=_JPEG,
+        headers={**auth_headers(reporter.id), "Content-Type": "image/jpeg"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == STORAGE_UNAVAILABLE_DETAIL
+    assert "cloudflarestorage" not in response.text
+    # The reason is not thrown away - it goes where an operator reads it.
+    assert any("cloudflarestorage" in line for line in logged), logged
+    # And the row is untouched: the object never landed, so nothing claims it did.
+    db_session.refresh(report)
+    assert (report.photo_count, report.photo_url) == (0, None)

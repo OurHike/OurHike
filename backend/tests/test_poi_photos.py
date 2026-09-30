@@ -26,12 +26,14 @@ from datetime import date, timedelta
 
 import boto3
 import pytest
+from botocore.exceptions import EndpointConnectionError
 from moto import mock_aws
 
 from app.config import settings
-from app.core.photos import poi_photo_key
+from app.core import photos as photos_core
+from app.core.photos import STORAGE_UNAVAILABLE_DETAIL, poi_photo_key
 from app.core.time import utc_now
-from app.models.poi_photo import PoiPhoto, PoiPhotoStatus
+from app.models.poi_photo import PoiPhoto, PoiPhotoDismissal, PoiPhotoStatus
 from app.models.preferences import UserPreferences
 from app.models.profile import Role
 from app.routers import poi_photos as poi_photos_router
@@ -144,6 +146,45 @@ def test_second_share_replaces_the_first_and_clears_the_pin(client, db_session, 
     assert rows[0].pinned_at is None
     # And the replacement is invisible until ITS bytes land.
     assert _gallery(client) == []
+
+
+def test_a_capture_date_in_the_future_dates_the_photo_by_its_share(client, db_session, r2):
+    """`taken` is a claim the server can check at one end: a photo cannot
+    have been taken after it was shared. On the unfixed tree a share claiming
+    9999-12-31 came back `taken_month: "9999-12"` and the card printed it."""
+    hiker = _hiker(db_session)
+
+    response = _share(client, hiker, taken="9999-12-31")
+
+    assert response.status_code == 201
+    assert response.json()["taken_month"] == utc_now().strftime("%Y-%m")
+    row = db_session.query(PoiPhoto).filter_by(poi_id=_POI, contributor_id=hiker.id).one()
+    assert row.taken is None, "dropped, not clamped - the share month is the one date the server can stand behind"
+
+
+def test_tomorrow_is_still_a_capture_date_because_the_phone_has_its_own_midnight(client, db_session, r2):
+    hiker = _hiker(db_session)
+    tomorrow = utc_now().date() + timedelta(days=1)
+
+    response = _share(client, hiker, taken=tomorrow.isoformat())
+
+    assert response.status_code == 201
+    assert response.json()["taken_month"] == tomorrow.strftime("%Y-%m")
+
+
+def test_a_future_capture_date_cannot_hold_the_top_of_the_gallery(client, db_session, r2, no_cooling_off):
+    """The window orders by `coalesce(taken, shared_at)`, so an accepted
+    9999-12-31 listed first for ever and held one of the twelve slots against
+    every later photo. Measured on the unfixed tree: the liar's photo came
+    back ahead of one shared after it."""
+    liar = _hiker(db_session, name="Liar")
+    honest = _hiker(db_session, name="Honest")
+    _share(client, liar, taken="9999-12-31")
+    _upload(client, liar)
+    _share(client, honest)
+    _upload(client, honest)
+
+    assert [entry["attribution"] for entry in _gallery(client)] == ["Honest", "Liar"]
 
 
 # --- uploading -------------------------------------------------------------
@@ -286,6 +327,41 @@ def test_no_window_means_the_credit_shows(client, db_session, r2, no_cooling_off
     _upload(client, hiker)
 
     assert _gallery(client)[0]["attribution"] == "Sawyer"
+
+
+def test_a_stored_true_is_not_a_one_day_window(client, db_session, r2, no_cooling_off):
+    # `isinstance(True, int)` holds, so a bool in the blob used to read as one
+    # day (#1545). A bool is not a count of days; it gets the unset answer.
+    hiker = _hiker(db_session)
+    db_session.add(UserPreferences(profile_id=hiker.id, data={"anonymity_window_days": True}))
+    db_session.commit()
+
+    _share(client, hiker)
+    _upload(client, hiker)
+
+    assert _gallery(client)[0]["attribution"] == "Sawyer"
+    row = db_session.query(PoiPhoto).filter_by(poi_id=_POI, contributor_id=hiker.id).one()
+    assert row.masked_until is None
+
+
+def test_an_absurd_window_is_clamped_rather_than_crashing_the_share(client, db_session, r2, no_cooling_off):
+    """A stored `anonymity_window_days` of 10**9 raised OverflowError out of
+    `timedelta` and answered the share with a 500 on the unfixed tree (the
+    schema stores the int unbounded - MAX_ANONYMITY_WINDOW_DAYS says why the
+    bound lives on the read side). Clamped, the share lands and the name is
+    withheld for the longest window this surface honours."""
+    hiker = _hiker(db_session)
+    db_session.add(UserPreferences(profile_id=hiker.id, data={"anonymity_window_days": 10**9}))
+    db_session.commit()
+
+    response = _share(client, hiker)
+
+    assert response.status_code == 201
+    _upload(client, hiker)
+    assert _gallery(client)[0]["attribution"] is None
+    row = db_session.query(PoiPhoto).filter_by(poi_id=_POI, contributor_id=hiker.id).one()
+    ceiling = utc_now() + timedelta(days=poi_photos_router.MAX_ANONYMITY_WINDOW_DAYS)
+    assert timedelta(0) <= ceiling - row.masked_until < timedelta(minutes=5)
 
 
 # --- withdrawal ------------------------------------------------------------
@@ -540,3 +616,139 @@ def test_replacement_resets_the_moderation_state(client, db_session, r2, no_cool
     assert row.reported_at is None
     assert row.reported_reason is None
     assert row.flagged is None
+
+
+# --- what the sharer is told when R2 itself is the problem ------------------
+
+
+class _UnreachableR2:
+    """Every write fails the way an unreachable R2 fails: with the endpoint
+    URL - account id, bucket, key - in the message. test_report_photos.py
+    has the measurement; this is the same `store_photo_object`, reached
+    from the waypoint upload."""
+
+    def put_object(self, **_kwargs):
+        raise EndpointConnectionError(
+            endpoint_url="https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com/ourhike-photos"
+        )
+
+
+def test_an_upload_that_cannot_reach_the_bucket_does_not_say_where_it_is(client, db_session, r2, monkeypatch):
+    hiker = _hiker(db_session)
+    _share(client, hiker)
+    monkeypatch.setattr(photos_core, "_client", lambda: _UnreachableR2())
+
+    response = _upload(client, hiker)
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == STORAGE_UNAVAILABLE_DETAIL
+    assert "cloudflarestorage" not in response.text
+    # The share row stands and still awaits its bytes - a retry lands them.
+    row = db_session.query(PoiPhoto).filter_by(poi_id=_POI, contributor_id=hiker.id).one()
+    assert row.uploaded_at is None
+
+
+# --- the takedown ledger (#1551) --------------------------------------------
+#
+# The row a dismissal is recorded on is not a record: a re-share upserts over
+# it and a withdrawal deletes it, and both used to take the decision with
+# them. The ledger is what a moderator reads next time this person's photo of
+# this place comes up.
+
+
+def _dismiss(client, moderator, photo_id):
+    return client.post(f"/moderation/poi-photos/{photo_id}/dismiss", headers=auth_headers(moderator.id))
+
+
+def _ledger(db_session):
+    return db_session.query(PoiPhotoDismissal).order_by(PoiPhotoDismissal.dismissed_at, PoiPhotoDismissal.id).all()
+
+
+def test_a_takedown_is_recorded_with_who_decided_and_what_they_saw(client, db_session, r2, no_cooling_off):
+    moderator = _moderator(db_session)
+    hiker = _hiker(db_session)
+    photo_id = _share(client, hiker).json()["id"]
+    _upload(client, hiker)
+    reporter = _hiker(db_session, name="Reporter")
+    assert (
+        client.post(
+            f"/waypoints/{_POI}/photos/{photo_id}/report", json={"reason": "person"}, headers=auth_headers(reporter.id)
+        ).status_code
+        == 204
+    )
+
+    response = _dismiss(client, moderator, photo_id)
+
+    assert response.status_code == 200
+    assert response.json()["dismissal_count"] == 1
+    line = _ledger(db_session)
+    assert [(row.poi_id, row.contributor_id, row.photo_id, row.dismissed_by, row.reported_reason) for row in line] == [
+        (_POI, hiker.id, photo_id, moderator.id, "person")
+    ]
+
+
+def test_the_ledger_survives_the_row_being_withdrawn_and_counts_the_next_photograph(client, db_session, r2, no_cooling_off):
+    moderator = _moderator(db_session)
+    hiker = _hiker(db_session)
+    first_id = _share(client, hiker).json()["id"]
+    _upload(client, hiker)
+    assert _dismiss(client, moderator, first_id).status_code == 200
+
+    # Withdrawn: the row goes, the line does not.
+    assert client.delete(f"/waypoints/{_POI}/photos/mine", headers=auth_headers(hiker.id)).status_code == 204
+    assert db_session.query(PoiPhoto).count() == 0
+    assert len(_ledger(db_session)) == 1
+
+    # Shared again and taken down again: a second photograph, a second line,
+    # and the answer to the second takedown says two.
+    second_id = _share(client, hiker).json()["id"]
+    _upload(client, hiker)
+    second = _dismiss(client, moderator, second_id)
+
+    assert second.json()["dismissal_count"] == 2
+    assert [row.photo_id for row in _ledger(db_session)] == [first_id, second_id]
+
+
+def test_a_repeated_dismissal_of_the_same_row_is_one_takedown(client, db_session, r2, no_cooling_off):
+    # The outbox retries, and two moderators can press the same button; the
+    # count is photographs that came down, not presses.
+    moderator = _moderator(db_session)
+    hiker = _hiker(db_session)
+    photo_id = _share(client, hiker).json()["id"]
+    _upload(client, hiker)
+
+    assert _dismiss(client, moderator, photo_id).status_code == 200
+    again = _dismiss(client, moderator, photo_id)
+
+    assert again.status_code == 200
+    assert again.json()["dismissal_count"] == 1
+    assert len(_ledger(db_session)) == 1
+
+
+def test_a_previously_taken_down_contributor_sorts_between_the_reports_and_the_tail(client, db_session, r2, no_cooling_off):
+    """Three shares of one place, ordered by the queue. Recency alone would
+    put the newcomer's photo first; the ledger lifts the re-share of somebody
+    whose photo of this place came down above it, and a live report still
+    outranks both - a report is somebody saying something about THIS
+    photograph."""
+    moderator = _moderator(db_session)
+    offender = _hiker(db_session, name="Offender")
+    newcomer = _hiker(db_session, name="Newcomer")
+    reported = _hiker(db_session, name="Reported")
+
+    first_id = _share(client, offender, taken="2026-01-01").json()["id"]
+    _upload(client, offender)
+    assert _dismiss(client, moderator, first_id).status_code == 200
+    _share(client, offender, taken="2026-01-02")
+    _upload(client, offender)
+    _share(client, newcomer, taken="2026-05-01")
+    _upload(client, newcomer)
+    reported_id = _share(client, reported, taken="2025-01-01").json()["id"]
+    _upload(client, reported)
+    someone = _hiker(db_session, name="Someone")
+    client.post(f"/waypoints/{_POI}/photos/{reported_id}/report", json={"reason": "other"}, headers=auth_headers(someone.id))
+
+    queue = client.get("/moderation/poi-photos", headers=auth_headers(moderator.id)).json()
+
+    assert [entry["attribution"] for entry in queue] == ["Reported", "Offender", "Newcomer"]
+    assert [entry["dismissal_count"] for entry in queue] == [0, 1, 0]

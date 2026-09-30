@@ -75,13 +75,20 @@ export interface InViewSheetProps {
   docked?: boolean
   head?: ReactNode
   /**
-   * Whether the map is drawing none of these pins at this zoom - the
-   * corridor sketch below the pin floor (#1292), where the legend already
-   * says "Waypoints appear from a closer zoom." The list still lists them,
-   * so a hiker can read what the frame holds, but says so above the rows
-   * rather than letting "In view" claim a pin nobody can see.
+   * Whether the camera is below the waypoint seam (map/poiLayers.ts's
+   * POI_PIN_MIN_ZOOM), where the map draws none of these.
+   *
+   * THIS FLAG HAS BEEN WRONG TWICE, so the name now says where the camera is
+   * rather than what the map is doing with it - the camera is the fact that
+   * does not change under it. It was `drawnNone`, then `drawnAsDots` for two
+   * days on #1585 while the dot rank reached every zoom, and both names were
+   * claims about a layer's floor that outlived the floor.
+   *
+   * The list still has rows down here: they are what the viewport HOLDS,
+   * which is the question this sheet answers, and it is a different question
+   * from what the map has drawn.
    */
-  drawnNone?: boolean
+  belowTheSeam?: boolean
   /**
    * The workdays in view (#1373, frame 14d), under the waypoints: the pinned
    * rows inside the viewport, the day window the pins are filtered to, and
@@ -203,7 +210,7 @@ function InViewSheetBody({
   workdays,
   docked = false,
   head,
-  drawnNone = false,
+  belowTheSeam = false,
 }: InViewSheetProps) {
   // Sorted once per viewport, not per render: thirty thousand rows sort in
   // tens of milliseconds, which is fine on a move and not on every tick.
@@ -257,10 +264,10 @@ function InViewSheetBody({
         </p>
       ) : (
         <>
-          {drawnNone && (
+          {belowTheSeam && (
             <p className="legend__empty">
-              The map draws none of these at this zoom &mdash; waypoints appear from a
-              closer zoom.
+              The map is not drawing these yet &mdash; waypoints appear from a closer
+              zoom.
             </p>
           )}
           <ul

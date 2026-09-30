@@ -1,0 +1,313 @@
+[link] Skip to content
+    [svg]
+    Prototype controls
+    ·
+    signed in as
+  [button] org admin
+  [button] not a lead
+  [button] registered volunteer
+  [button] reset
+  [button] show signed out
+  [button] show a new org
+  [button] show failures
+  [button] onboarding complete · replay it
+    [button] RT Ramapo Trail Conference Org admin · maintainer
+      [svg]
+        Onboarding
+      [button] Org home
+      [button] Admin approval
+      [button] Hike registry
+      [button] Registry sign-off
+      [button] Add a trail
+      [svg]
+        Manage volunteers
+      [button] Roles
+      [button] Workdays 3
+      [button] Coverage report 37
+      [button] Your roster
+      [button] Welcome them 37
+      [svg]
+        Volunteer
+      [button] Your Tread
+      [button] On your phone
+      [button] What you hand back
+      [button] Ridge Runner
+      [button] Your profile
+    [button] What we email on your behalf
+    [button] Settings and leaving
+    [link] OurHike
+    [button] For orgs
+    [button] Demo org
+    [button] Nominate an org
+    [button] Claim your org
+        MA
+          Maria Alvarez
+          maria@ramapotrails.org
+      [button] Ramapo Trail Conference
+        ›
+          Volunteer
+        ›
+          Your Tread
+      [svg]
+          YOUR SECTION · MM 11.0 → 14.3 · 3.3 MILES
+      [h1] Pine Meadow North
+      Maintainer since March 2025 · supervised by Joseph Okafor · Harriman State Park
+    Every boot that walks it walks on your work.
+      ROLE
+    [button] All my roles
+    [button] Maintainer · Pine Meadow N
+    [button] Corridor monitor · AT Sec 12
+      SHOWING
+    [button] 30 days
+    [button] 3 months
+    [button] 1 year
+    [button] All time
+          WHAT HAPPENED WHERE ·
+            3 months
+          [svg]
+            One continuous stretch. The pale line is the rest of the trail, maintained by others.
+            yours
+            somebody else's
+            closed
+            [svg]
+            alert
+            open issue
+            thank you
+            question or comment
+            [svg]
+              water
+            [svg]
+              shelter
+            [svg]
+              campsite
+            [svg]
+              viewpoint
+            [svg]
+              parking
+            [svg]
+              privy
+            [svg]
+              trailhead
+            [svg]
+            Points of interest
+              4 on your miles
+          Water, shelters, privies, viewpoints, parking. You are the only person who sees these often enough to keep them true —
+            Two of these were last checked more than a year ago. If you walk past, a tap keeps them honest.
+            [svg]
+            [input text] Search your POIs — name, type, note value=
+                [select] All types | Water source | Shelter | Viewpoint | Parking
+                [select] Any age | Needs a look | Recently checked
+          [button] Clear
+              [svg]
+                  Pine Meadow spring
+                  Water source
+                ·
+                  confirmed by you · Aug 28
+                  Piped spring, 40 ft west of the tread.
+                [button] Still true
+                [button] Edit
+                [button] gone
+                  current
+              [svg]
+                  Stone Shelter
+                  Shelter
+                ·
+                  confirmed by Joseph · Jun 14
+                  Three-sided, sleeps 6. Bear box 50 ft north.
+                [button] Still true
+                [button] Edit
+                [button] gone
+                  current
+              [svg]
+                  The overlook bench
+                  Viewpoint
+                ·
+                  last checked Mar 2025
+                  Bench installed 2024. Faces southwest.
+                [button] Still true
+                [button] Edit
+                [button] gone
+                  needs a look
+              [svg]
+                  Lot 7
+                  Parking
+                ·
+                  last checked Feb 2025
+                  12 cars, no fee. Gate closes at dusk.
+                [button] Still true
+                [button] Edit
+                [button] gone
+                  needs a look
+            [button] + Add a point of interest
+            [svg]
+            Alerts on your miles
+            from the park, the ATC and the county
+          These come from whoever manages the land, so they are not yours to close. Read them before you go out, and before you send anybody else.
+                    Bridge out at the creek crossing
+                    MM 12.9
+                  ·
+                    Harriman State Park
+                  ·
+                    since Sep 9
+                    Closure
+                Park order. Detour signed at both ends — do not send volunteers through.
+                    Bear activity — food storage required
+                    MM 11.0 → 14.3
+                  ·
+                    Appalachian Trail Conservancy
+                  ·
+                    since Aug 22
+                    ATC notice
+                Canister or hang. Applies to the whole stretch, including your shelter.
+                    No open fires, county-wide
+                    All your miles
+                  ·
+                    Rockland County
+                  ·
+                    since Jul 30
+                    Fire restriction
+                Stoves permitted. Worth repeating at your workday.
+            [svg]
+            Close a stretch
+            3 volunteers, or 1 supervisor
+          You can ask for your own miles to be closed to hikers. Because a closure turns people around, it needs
+            three other volunteers who have seen it
+          or
+            one supervisor
+          before it reaches the map. Nothing waits on us.
+                    Footbridge stringer cracked
+                    MM 13.1
+                  ·
+                    requested by you · 2 days ago
+                    2 of 3 volunteers
+                Ruth Kelley and Tom Boyd have walked it and agreed. One more volunteer, or Joseph, and it goes live to hikers.
+                    Washout at the creek
+                    MM 11.9
+                  ·
+                    requested by Ruth Kelley · Sep 3
+                    approved by Joseph Okafor
+                A supervisor’s word is enough on its own. Live on the map since Sep 3.
+              SHOWING TO HIKERS
+            [button] Request a closure
+            [svg]
+            Reported issues
+              4 issues still open
+          Close one when you have been out and dealt with it. Your supervisor sees the change; nothing is deleted.
+                    Blowdown across the tread
+                    MM 12.4
+                  ·
+                    Sep 12
+                  ·
+                    Reported by a hiker
+                    open
+                Large oak, needs a saw. Passable on the uphill side.
+              [button] Mark resolved
+              [button] Ask for help
+                    Blaze missing at the junction
+                    MM 13.1
+                  ·
+                    Sep 5
+                  ·
+                    Reported by 3 hikers
+                    open
+                People are turning downhill onto the woods road by mistake.
+              [button] Mark resolved
+              [button] Ask for help
+                    Spring running dry
+                    MM 11.8
+                  ·
+                    Aug 28
+                  ·
+                    Reported by a hiker
+                    open
+                Last reliable water before the ridge — worth a note on the map.
+              [button] Mark resolved
+              [button] Ask for help
+                    Washout on the switchbacks
+                    MM 11.2
+                  ·
+                    Aug 2
+                  ·
+                    Reported by you
+                    open
+                Needs rock work, not a one-person job.
+              [button] Mark resolved
+              [button] Ask for help
+            [svg]
+            Ask other volunteers for help
+            2 open requests
+          Some jobs are not a one-person job. Post what you need and it reaches the crews working near you, plus your supervisor.
+                  Rock work on the switchbacks
+                  MM 11.2
+                ·
+                  posted Aug 4
+                  2 volunteers offered
+                  Certified sawyer for the 12.4 blowdown
+                  MM 12.4
+                ·
+                  posted Sep 12
+                  waiting on the crew
+          [button] Request help
+          [svg]
+          Thank yous
+          From hikers who walked your miles.
+            3 months
+          .
+              “
+                Walked this Saturday with my daughter — the new stepping stones at the creek made it doable for her. Thank you.
+              ”
+                  A hiker
+                ·
+                  Sep 8
+              [button] report
+              “
+                Whoever keeps this stretch clear: the blazes are perfect. Never once had to guess.
+              ”
+                  A hiker
+                ·
+                  Aug 30
+              [button] report
+              “
+                Found the reroute around the wet meadow. Beautiful work.
+              ”
+                  A hiker
+                ·
+                  Aug 11
+              [button] report
+              “
+                Thank you for the bench at the overlook. Sat there an hour.
+              ”
+                  A hiker
+                ·
+                  Jul 22
+              [button] report
+          [svg]
+          Questions worth answering
+          You know this ground better than anyone. A sentence from you goes on the map for every hiker who asks the same thing.
+              “
+                Is the water at 11.8 reliable in September?
+              ”
+                A hiker
+              ·
+                Sep 10
+              Answer in a sentence…
+              “
+                Any chance of a marker where the woods road splits off?
+              ”
+                A hiker
+              ·
+                Sep 2
+              Answer in a sentence…
+            [button] Add a note about your section
+          [svg]
+          THIS SECTION ·
+            3 months
+              Thank yous
+              4
+              Issues reported
+              4
+              Still open
+                4
+              Your hours
+              38
+                34 conf · 4 claimed

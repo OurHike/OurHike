@@ -1,0 +1,62 @@
+[link] Skip to content
+    [svg]
+    Prototype controls
+    ·
+    signed in as
+  [button] org admin
+  [button] not a lead
+  [button] registered volunteer
+  [button] reset
+  [button] show signed out
+  [button] show a new org
+  [button] show failures
+  [button] onboarding complete · replay it
+        [svg]
+            ALREADY ON OURHIKE · NO ADMINS YET
+        [h1] Claim your org
+    Somebody put your trails on OurHike before you got here. They are live and anybody can walk them — but nobody from your org controls them yet. If you have an email at your org's domain, that is enough to take it over.
+          STEP 1 · FIND IT
+          Unclaimed orgs
+              Search by name or website
+            [input text] carolinamountainclub.org value=
+                  Carolina Mountain Club
+                  Asheville, NC · 214 sections
+                  submitted by Sam Ortiz · Sep 14, 2026
+                    unclaimed
+                [button] This is mine
+                  Mountains-to-Sea Trail Partners
+                  Raleigh, NC · 96 sections
+                  submitted by Dana Liu · Aug 2, 2026
+                    unclaimed
+                  Pisgah Trailblazers
+                  Brevard, NC · 41 sections
+                  submitted by Sam Ortiz · Jul 19, 2026
+                    claimed by Wes Hartley
+          Cannot find yours? Nobody has submitted it —
+          [link] register it yourself
+          instead.
+          STEP 2 · PROVE IT IS YOURS
+          An email at your domain is the key
+          We already check this when an org signs itself up — at least one admin has to be on the org's own domain. Same rule here, doing the same job.
+              Your email at carolinamountainclub.org
+            [input text] you@carolinamountainclub.org value=
+            [button] Send me a code
+            Signed in as sam@durham.example — not your org?
+            [link] switch account
+          WHAT HAPPENS WHEN YOU DO
+                1
+                  Prove the email
+                  We send a code to your address at the org domain. That is the whole check — a working address at carolinamountainclub.org is what makes you one of them.
+                2
+                  You become the first admin
+                  Not the owner — the first of three. You can edit and propose, but nothing publishes until two more admins from your org join you.
+                3
+                  Name your other two
+                  Invite two colleagues and the org is fully yours. Until then the submitted data stays live and unchanged.
+            Your trails are already live
+            Carolina Mountain Club's 214 sections have been on the map since September, walked by hikers who found them there. Claiming the org does not change what is published — it puts you in charge of what happens to it next.
+            If somebody claims an org they should not have
+            A claim needs a working address at the org's own domain, and the first claim on an org emails every contact we have for it — including whoever submitted the data. Any of them can dispute it, and a disputed claim is frozen until a human at OurHike looks at it.
+          NOT YOUR ORG?
+          You can still help. Submitting somebody else's trails takes about five minutes and gives you no standing at their org.
+          [button] Submit an org's trails

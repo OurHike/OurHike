@@ -276,41 +276,42 @@ def test_export_poi_writes_a_sha256_hash_per_artifact_in_the_manifest(tmp_path, 
     assert on_disk_manifest["shelter"]["geojson"]["sha256"] == shelter_entry["geojson"]["sha256"]
 
 
-def test_export_poi_crossing_layer_is_present_but_empty_pending_nhd_ingestion(tmp_path, monkeypatch, con):
-    """`crossing` is a real declared poi_type (ROADMAP.md's NHD-crossing item
-    is still exploratory/undecided) - it must ship as a present-but-empty
-    layer, not be silently omitted, and not contain invented data."""
+def test_export_poi_writes_no_crossing_layer_since_the_type_was_withdrawn(tmp_path, monkeypatch, con):
+    """#1674: the maintainer had stream crossings taken off the map. The
+    export writes no crossing file and no manifest entry - even from a
+    trail_water.json derived before the change, which still carries its
+    `crossings` array - so publish.py has no crossing artifact to upload."""
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir()
     out_dir = tmp_path / "processed" / "poi"
     _write_fixture_sources(raw_dir)
+    trail_water = tmp_path / "trail_water.json"
+    _write_trail_water(
+        trail_water,
+        crossings=[{"sources": ["nhd"], "stream_id": "90662307", "flow": None, "name": None, "lat": 41.04, "lon": -73.945}],
+    )
 
     monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
     monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+    monkeypatch.setattr(export_poi, "TRAIL_WATER_PATH", trail_water)
 
     manifest = export_poi.main()
 
-    assert "crossing" in manifest
-    assert manifest["crossing"]["geojson"]["feature_count"] == 0
-    assert manifest["crossing"]["fgb"]["feature_count"] == 0
-
-    geojson_path = out_dir / "crossing.geojson"
-    fgb_path = out_dir / "crossing.fgb"
-    assert geojson_path.exists()
-    assert fgb_path.exists()
-
-    fc = json.loads(geojson_path.read_text())
-    assert fc["features"] == []
-
-    fgb_count = con.execute(f"SELECT COUNT(*) FROM ST_Read('{fgb_path.as_posix()}')").fetchone()[0]
-    assert fgb_count == 0
+    assert "crossing" not in manifest
+    assert not (out_dir / "crossing.geojson").exists()
+    assert not (out_dir / "crossing.fgb").exists()
+    every_type = {
+        feature["properties"]["poi_type"]
+        for path in out_dir.glob("*.geojson")
+        for feature in json.loads(path.read_text()).get("features", [])
+    }
+    assert "crossing" not in every_type
 
 
 def test_export_poi_a_non_crossing_type_returning_zero_features_fails_the_run(tmp_path, monkeypatch, con):
-    """Unlike `crossing` (intentionally always empty pending NHD ingestion -
-    see test_export_poi_crossing_layer_is_present_but_empty_pending_nhd_ingestion),
-    every other poi_type is expected to be non-empty for real AT corridor
-    data. A genuinely broken source - e.g. shelters.geojson silently coming
+    """Unlike the types lib.poi_schema.ALLOWED_EMPTY_POI_TYPES names (`trailhead`
+    today; `crossing` was the first, until #1674 withdrew it), every other
+    poi_type is expected to be non-empty for real AT corridor data. A genuinely broken source - e.g. shelters.geojson silently coming
     back with zero features after an upstream schema change - must fail the
     run loudly instead of shipping a structurally-identical-to-crossing empty
     layer with no signal anything went wrong."""
@@ -1400,12 +1401,11 @@ def test_check_reads_the_sources_and_writes_nothing(tmp_path, monkeypatch, con):
         "campsite": 1,
         "water": 2,
         "resupply": 1,  # the ATC Community alone since #806 dropped opentrail "r"
-        "crossing": 0,
         "viewpoint": 1,
         "parking": 1,
         "privy": 1,
         # Zero, and legitimately (#1197): ATC publishes no trailhead layer, so
-        # this export has no source for the ninth type. The 287 that ship are
+        # this export has no source for that type. The 287 that ship are
         # OPRHP's and travel in nearby_poi.geojson, which this export does not
         # write. Asserted as a key rather than omitted, so a trailhead source
         # arriving on the A.T. one day fails here and gets a decision.
@@ -1434,7 +1434,8 @@ def test_check_fails_on_the_defect_that_would_otherwise_surface_an_hour_later(tm
 def test_check_and_the_export_gate_on_the_same_rule(tmp_path, monkeypatch, con):
     """The preflight would be worth little if it were more lenient than the
     export it stands in for. Both call fail_if_any_type_is_empty, and
-    `crossing` is the one type allowed to be empty in both."""
+    `trailhead` is the one type allowed to be empty in both (`crossing` was,
+    until #1674 withdrew it)."""
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir()
     out_dir = tmp_path / "processed" / "poi"
@@ -1443,9 +1444,9 @@ def test_check_and_the_export_gate_on_the_same_rule(tmp_path, monkeypatch, con):
     monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
     monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
 
-    # crossing is empty in the fixtures, and neither side objects.
-    assert export_poi.check_sources()["crossing"] == 0
-    assert export_poi.main()["crossing"]["geojson"]["feature_count"] == 0
+    # trailhead is empty in the fixtures, and neither side objects.
+    assert export_poi.check_sources()["trailhead"] == 0
+    assert export_poi.main()["trailhead"]["geojson"]["feature_count"] == 0
 
 
 def test_a_red_export_writes_no_artifacts_at_all(tmp_path, monkeypatch, con):
@@ -1879,7 +1880,7 @@ def test_export_poi_the_reachability_gate_touches_only_osm_water(tmp_path, monke
     assert shelters["features"]
 
 
-# --- where the trail meets water (#529, fetch_trail_water.py) ---------------
+# --- which sites have water they can reach (#529, fetch_trail_water.py) ------
 
 
 def _write_trail_water(path, crossings=(), sites=()):
@@ -1906,51 +1907,12 @@ def _trail_water_site(global_id, lat, lon, **water):
     }
 
 
-def test_export_poi_publishes_trail_stream_crossings(tmp_path, monkeypatch, con):
-    """The `crossing` type has shipped declared-and-empty since it was
-    declared; a hiker walking the trail walks through these."""
-    raw_dir = tmp_path / "raw"
-    raw_dir.mkdir()
-    _write_fixture_sources(raw_dir)
-    trail_water = tmp_path / "trail_water.json"
-    _write_trail_water(
-        trail_water,
-        crossings=[
-            {
-                "sources": ["nhd", "osm"],
-                "stream_id": "90662307",
-                "flow": "perennial",
-                "flow_source": "nhd",
-                "name": "Stony Brook",
-                "lat": 41.04,
-                "lon": -73.945,
-            }
-        ],
-    )
-    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
-    monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path / "processed" / "poi")
-    monkeypatch.setattr(export_poi, "TRAIL_WATER_PATH", trail_water)
-
-    export_poi.main()
-
-    crossings = json.loads((tmp_path / "processed" / "poi" / "crossing.geojson").read_text())
-    (crossing,) = crossings["features"]
-    assert crossing["properties"]["name"] == "Stony Brook"
-    assert crossing["properties"]["confidence"] == CONFIDENCE_LOW
-    assert crossing["properties"]["description"] == (
-        "Where the trail crosses Stony Brook. USGS maps it as year-round. Also mapped by OpenStreetMap contributors."
-    )
-    # Identity is WHERE it is: one reach can cross the trail twice, so the
-    # reach id alone would collide.
-    assert crossing["properties"]["id"] == "nhd_crossing:41.04000,-73.94500"
-    assert "stream_id" not in crossing["properties"], "the passport is for the ledger, not the phone"
-
-
 def test_load_trail_water_keeps_the_stream_for_the_ledger_and_publishes_nothing_new(tmp_path):
-    """The stream a crossing or a site's water point is made of rides
-    RAW_PROPERTIES_KEY for reconcile_poi_identity.py - the passport that
-    carries a nameless crossing across a trail re-measure (#1028) - and goes
-    nowhere else: it is not a POI_COLUMNS column, so no feature publishes it."""
+    """The stream a site's water point is made of rides RAW_PROPERTIES_KEY
+    for reconcile_poi_identity.py - the passport that carries a nameless
+    derived point across a re-measure (#1028) - and goes nowhere else: it is
+    not a POI_COLUMNS column, so no feature publishes it. A `crossings` array
+    left in the file by a derivation before #1674 is not read at all."""
     trail_water = tmp_path / "trail_water.json"
     _write_trail_water(
         trail_water,
@@ -1958,11 +1920,11 @@ def test_load_trail_water_keeps_the_stream_for_the_ledger_and_publishes_nothing_
         sites=[_trail_water_site("site-1", 41.05, -73.95)],
     )
 
-    crossing, site_water = export_poi.load_trail_water(trail_water)
+    (site_water,) = export_poi.load_trail_water(trail_water)
 
-    assert crossing[export_poi.RAW_PROPERTIES_KEY]["stream_id"] == "90662307"
+    assert site_water["poi_type"] == "water"
     assert site_water[export_poi.RAW_PROPERTIES_KEY]["stream_id"] == "12"
-    assert "stream_id" not in crossing and "stream_id" not in site_water
+    assert "stream_id" not in site_water
     assert "stream_id" not in {column for column, _ in export_poi.POI_COLUMNS}
 
 
@@ -2034,8 +1996,7 @@ def test_export_poi_publishes_no_water_for_a_site_the_gates_refused(tmp_path, mo
 
 def test_export_poi_an_absent_trail_water_file_is_a_normal_state(tmp_path, monkeypatch, con):
     """Same tolerance as capacities and photos: the export ships without
-    crossings rather than failing, and `crossing` is empty-but-present as it
-    was before this source existed."""
+    site water rather than failing."""
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir()
     _write_fixture_sources(raw_dir)
@@ -2045,7 +2006,9 @@ def test_export_poi_an_absent_trail_water_file_is_a_normal_state(tmp_path, monke
 
     manifest = export_poi.main()
 
-    assert manifest["crossing"]["geojson"]["feature_count"] == 0
+    water = json.loads((tmp_path / "processed" / "poi" / "water.geojson").read_text())
+    assert manifest["water"]["geojson"]["feature_count"] > 0
+    assert all(f["properties"]["source"] != "nhd_stream" for f in water["features"])
 
 
 # --- build_enriched_records caching (#1331) -----------------------------------
@@ -2338,31 +2301,17 @@ def test_a_spring_beside_the_at_is_not_marked():
     assert export_poi.NOT_ON_AT_KEY not in records[0]
 
 
-def test_a_crossing_on_somebody_elses_trail_is_marked():
-    """fetch_trail_water.py's own answer, carried through: this stream crosses
-    a network trail, so the crossing is not a point on the A.T."""
+def test_a_stale_network_flag_marks_nothing_now_crossings_are_gone():
+    """fetch_trail_water.py's crossings carried `on_network_trail`, and this
+    marked the ones on somebody else's trail. #1674 removed crossings and the
+    branch with them, so the flag on any record is no longer read."""
     records = [
         {
             "id": "nhd:1",
-            "poi_type": "crossing",
+            "poi_type": "water",
             "source": "nhd_stream",
             "source_feature_id": "1",
             export_poi.RAW_PROPERTIES_KEY: {"on_network_trail": True, "network_source": "nynjtc_long_path"},
-        }
-    ]
-
-    assert export_poi.mark_off_trail_records(records, {}) == 1
-    assert records[0][export_poi.NOT_ON_AT_KEY] == "nynjtc_long_path"
-
-
-def test_an_at_crossing_keeps_its_mile():
-    records = [
-        {
-            "id": "nhd:1",
-            "poi_type": "crossing",
-            "source": "nhd_stream",
-            "source_feature_id": "1",
-            export_poi.RAW_PROPERTIES_KEY: {"on_network_trail": False},
         }
     ]
 

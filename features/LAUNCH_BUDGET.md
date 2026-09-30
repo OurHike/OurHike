@@ -233,6 +233,71 @@ One measurement nearby, for whoever picks this up: the map engine ships as
 eager closure — `scripts/check-build-output.mjs` holds that — and on a laptop it is
 in front of Today anyway, because Today is the map's child.
 
+### 1.4 After #1560: the map's own arrival, and the two frames on the way to it
+
+**#1560 — On a laptop the map arrives seconds after Today, and on the way the
+journal renders full-width, the whole page blanks, and the engine only starts
+loading once the gate has opened** measured the launch §1.3 left, on the
+maintainer's report of 2026-09-17 ("several seconds for the map to appear…
+makes the whole page look buggy on the first open"). Same shape as §1.3's
+profile with three differences, each stated because it changes what the numbers
+mean: 1× CPU rather than 4×, because the report was a laptop's; the release AND
+the three coverage-cell indexes on the machine (seeded, since the published
+indexes were being rejected — #1559); and a build of `main` at 596af5e served
+through `client/scripts/data-proxy.mjs`, which sends the app's own assets
+uncompressed, so every cold "network" figure below is pessimistic against
+production's gzip and comparable only to its neighbour in the table. Two runs a
+cell; a range is the two.
+
+| laptop, 1728×1080, 1× CPU | cold, before | cold, after | warm, before | warm, after |
+|---|---:|---:|---:|---:|
+| sidebar and Today's journal on screen | 452–471 ms | 440–448 ms | 47–89 ms | 50–63 ms |
+| the journal's width in that frame → once the map has it | **1,519 → 405 px** | 405 → 405 px | **1,519 → 405 px** | 405 → 405 px |
+| the whole page blank, sidebar included | **897 → 2,044 ms** | never | never | never |
+| map screen mounts (`.map-screen`) | 1,643–2,044 ms | 2,149–2,329 ms | 523–616 ms | 578–679 ms |
+| map canvas exists | 2,748–2,982 ms | 2,371–2,486 ms | 591–679 ms | 578–679 ms |
+| `ourhike:map` — the engine handed the shell a map | not instrumented | 2,705–2,808 ms | not instrumented | 578–679 ms |
+| first frame with 40+ WebGL draw calls — the pins, NOT the line (see below) | 4,457–5,697 ms | 4,267–4,864 ms | 2,047–2,330 ms | 2,057–2,312 ms |
+| the trail-line source reports loaded (instrumented build, one run each) | — | metadata at 4,707 ms; not loaded by 6.2 s | — | **6,155 ms** |
+
+What moved and what did not, read across the rows:
+
+- **The two frames that looked broken are gone**, and they were the report. The
+  journal is its 404 px column from its first frame (`desktop.css`, one rule at
+  the specificity App.css's phone rule had been winning on), and the pre-map
+  branch now stays up until `MapScreen.loaded()` says the deferred screen can
+  draw, so nothing blanks between the archive store answering and the chunk
+  landing. A first draft of that hold was a render late on a warm launch and put
+  two sidebars up for the length of the map's construction (250–310 ms); the
+  readiness is read during the render now, and `journalNode2` lands in the same
+  commit as `.map-screen` in every run above.
+- **The canvas comes 0.3–0.5 s sooner on a cold launch** because the engine's
+  chunk is fetched from the first frame on a laptop instead of after the map
+  screen has mounted. The map screen itself mounts 0.3–0.5 s *later* on this
+  profile, because the same 25 Mbps link now carries the engine beside
+  MapScreen's chunk and 37 others — a cost that is the proxy's uncompressed
+  bytes more than anything a laptop on production would pay, and the canvas
+  is the frame a hiker sees.
+- **The warm launch is unmoved, and the line is nowhere near two seconds.**
+  The "40+ draw calls" row was first written up as "the trail line drawn", and
+  the screencast says otherwise: at 2.2 s and 3.1 s the warm launch's pane
+  holds the pins and no line. What that row measures is the pins arriving. An
+  instrumented build recording each source's `sourcedata` puts the trails
+  source — the 11.5 MB blob, 249,038 vertices in 1,657 features, fetched and
+  tiled by MapLibre's single worker — at **loaded 6,155 ms** on a warm launch
+  at 1×, with the basemap tiles (`osm`) loading at 6,158 ms behind it and
+  every small GeoJSON source (pins, closures, sketch) done by 2.0 s; cold it
+  reports metadata at 4,707 ms; at 4× it had not loaded by the 10 s the run
+  watched. The line is the whole of the gap to the maintainer's two seconds,
+  and no change here touches it — **#1564 — Research: the map on screen,
+  trail line included, within two seconds of opening the app** is about that.
+
+Two marks were added for this (`lib/launchMarks.ts`): `ourhike:map` and
+`ourhike:map-drawn`, the second on MapLibre's `load`. Settings → About build
+and the stopwatch print both, so the maintainer's own laptop can now say where
+its map arrives — the number this section could not give and §6's first bullet
+still asks for.
+
 ## 2. Where the time goes
 
 ### 2.1 Bytes before the first frame
@@ -374,7 +439,7 @@ carries how it was arrived at, per CLAUDE.md's three grades.
 | Today's journal populated (waypoints on screen) | ≤ 1,500 ms | not instrumented | **Picked**. `@unvalidated`: a cached index and a batched waypoint read cannot beat two IndexedDB round trips plus a transfer, and nobody has measured those on a phone |
 | First run: each Skip tap accepted | ≤ 100 ms | 3,211 · 5,331 · 2,997 ms | **Measured as achievable**: the fix for #857 — *Skip on the first-run steps feels like a broken button* — delivered 11 · 4 · 220 ms on 2026-08-20 |
 | First run: longest task while the steps are up | ≤ 500 ms | 1,600 ms | **Measured as achievable**: 434 ms on 2026-08-20 |
-| Eager JavaScript — every script the document loads before any `import()` | ≤ 250 KB compressed | 440 KB | **Reasoned** from the attribution: React DOM is ~50 KB compressed and the Today path's own code ~120 KB; 250 leaves room to grow and cannot hold the engine (157 KB) or a second screen set |
+| Eager JavaScript — every script the document loads before any `import()` | ≤ 300 KB compressed | 255 KB (`main` at 2a6aac69 on 2026-09-18, by the build check's own walk; production not re-measured) | **Reasoned** from the attribution: React DOM is ~50 KB compressed and the Today path's own code ~120 KB; 250 left room to grow and could not hold the engine (157 KB) or a second screen set. Raised to 300 on 2026-09-18 (#1577), when `main` had grown from 236 KB on 2026-09-10 to 255 KB with nothing drifting in, 684 bytes under the line: 300 is the same sixth of room over 255 that 250 was over 215, and still under the smallest drift the gate is for (the Supabase client's 52 KB lands at 307). 32 KB of the 255 is the map's style module and the network tiles, reached through the legend's swatches, which is the room worth taking back: #1591 — The legend's swatches drag the map style module and the network tiles, 32 KB compressed, in front of the first frame, and main sits 684 bytes under the launch budget |
 | `maplibre-gl` in the eager closure | never | present | **Measured**: #722 — *860 ms of MapLibre parsing sits in front of the first paint* |
 | Full passes over the waypoint list on the launch thread before the shell frame | 0 | 5–6 | **Reasoned**: Today draws nothing from the list without a position, and the position arrives after the frame |
 
@@ -402,6 +467,14 @@ release moved. The maintainer's "six seconds" gets a name on their own device, a
 the production-versus-`main` gap in §1 gets an answer.
 
 ### 4.2 The engine loads when a map is built, never before
+
+**One exception, stated so it stays one (#1560).** A laptop builds a map on
+every launch (`isDesktop` is in `mapNeededNow`), so above the breakpoint
+`App.tsx` calls `loadMapEngine()` at the first frame and the engine's fetch
+overlaps the archive sweep instead of following it — a dynamic import, so
+the eager closure is exactly what it was and `check-build-output.mjs` still
+walks it. Below the breakpoint nothing changed: a launch onto Today asks for
+the engine zero times, and `App.loadBudget.test.tsx` counts that.
 
 Nothing `App.tsx` imports statically may import `maplibre-gl` at module top. The
 corridor URL, the two cell registries and whatever else the shell needs from
@@ -618,3 +691,359 @@ release's effect on the launch is a row in an issue rather than a feeling.
   carry (`App.tsx:1024`) had drifted off the symbol it named; so had
   `App.tsx:1165-1188` three bullets above, and citing a name rather than a line is the
   repair for both.
+
+## 7. The map in two seconds: what the worker does at launch, and the plan (#1564)
+
+The maintainer, 2026-09-17, after §1.4: "4-6 seconds to see the map feels like
+it's too long… 2 seconds feels right as a user. I know that will be hard to
+do." And, an hour later, the constraint that decides the shape of the answer:
+"That trail-line file might become massive. Plan for us adding 100X the miles
+of trails."
+
+**#1564 — Research: the map on screen, trail line included, within two seconds
+of opening the app** is the tracking issue. This section is what was measured
+on 2026-09-17 and what it implies; nothing below is built.
+
+### 7.1 What the map's worker does between being born and drawing the line
+
+Every figure is a warm launch on the §1.4 laptop profile at 1× CPU, the map
+born at 580–660 ms in every run, on an instrumented build that records each
+source's `sourcedata` (the instrumentation is not in the tree). The basemap
+and terrain hosts were switched off for the runs marked *no tiles*, so what is
+left is the app's own sources; one run per row, so read differences of a few
+hundred milliseconds as noise and differences of seconds as findings.
+
+| the `trails` source as | network-overview sketch | basemap tiles | pins loaded | sketch loaded | **line loaded** |
+|---|---|---|---:|---:|---:|
+| GeoJSON (today) | present | through the sandbox proxy | 1,811 ms | 5,411 ms | **6,155 ms** |
+| GeoJSON | present | no tiles | 2,040 ms | 5,685 ms | **6,488 ms** |
+| vector tiles, cut by the pipeline | present | no tiles, 1 worker | 1,982 ms | 4,648 ms | **5,333 ms** |
+| vector tiles | present | no tiles, 2 workers | 2,079 ms | 5,105 ms | **5,425 ms** |
+| vector tiles | **removed** | no tiles | 1,797 ms | — | **2,487 ms** |
+| GeoJSON | **removed** | no tiles | 1,693 ms | — | **3,142 ms** |
+
+Three things the table settles, each measured rather than reasoned:
+
+- **The line is late because of what is in front of it, not because of what it
+  is.** Its source loads last in every configuration — after the 28,913
+  waypoints (`pois`, a GeoJSON source of every pin, ~1.2 s of worker time from
+  the map's birth) and after the network-overview sketch. Removing the sketch
+  alone moves the line from 6.5 s to 3.1 s as GeoJSON and from 5.3 s to 2.5 s
+  as tiles.
+- **The network-overview sketch costs 3–3.5 s of the worker on every launch.**
+  It is `network_overview.geojson`, 12,238,110 bytes in release 2026-09-16-4 —
+  every other organization's trail lines simplified for the corridor zoom,
+  handed to a GeoJSON source and cut into tiles by geojson-vt on the phone,
+  every time the map is built. The same lines already exist as published
+  tiles: `nearby_trails.pmtiles` (155 MB) is cut into cells at z9–14 and a
+  `nearby_trails_context.pmtiles` at z≤8 by `cut_cells.py`, and the map's
+  `nearby-trails` vector source reads the cells by byte range (#1257). The
+  sketch duplicates the context archive's zooms as a whole file.
+- **A second MapLibre worker does not help** — 5,333 → 5,425 ms with the same
+  sources. The order is not a one-worker accident; it is the order the sources
+  are attached and the size of what each has to cut.
+
+Two more, from the same runs: the main thread is not the bottleneck here
+(sampled at 73–75 % idle over the 20 s watched, with `poiCrowding.ts`,
+`legendContents.ts` and the archive sweep the largest of the app's own
+frames at 100 ms or less); and at 4× CPU the same launch had not loaded the
+line by 10 s as GeoJSON and loaded it at 12,992 ms as tiles with the sketch
+present — the phone's number is the laptop's times three to four.
+
+The pre-tiled line for these runs was cut from `trails.geojson` (11,540,417
+bytes, 1,657 features, 249,038 vertices) with the same DuckDB / GDAL PMTiles
+call `export_nearby_trails.write_tiles` uses, z5–z14, in 2.5 s: 3,684,871
+bytes. It was served over HTTP by range through MapLibre's standard `pmtiles`
+protocol for the experiment; the app's own `pmtiles://` scheme reads IndexedDB
+archives and would carry it the same way the corridor sheet is carried.
+
+### 7.2 Why "100× the miles" decides the shape
+
+At a hundred times the miles, `trails.geojson` is on the order of a gigabyte
+and `network_overview.geojson` the same, and a GeoJSON source is read whole
+into the worker and cut into tiles there — the cost above scales with the
+total, not with the view. Tiles read by range scale with what is on screen:
+the worker's cost per launch is the tiles in the viewport, whatever the
+archive holds behind them. The network's lines already made that move under
+#1257 after the whole file crashed every phone at 229 MB (#1254); the two
+whole-file sources still on the launch — the sketch and the A.T.'s own line —
+are the same design a hundredfold away from the same failure, and the pins
+(one GeoJSON of every waypoint, growing with the miles) are the third.
+
+So the plan is not "make the GeoJSON faster". It is that nothing the map draws
+at launch may be a whole file whose size follows the miles.
+
+### 7.3 The plan, in the order the measurements rank it
+
+1. **Draw the corridor-view sketch from the context archive's tiles and stop
+   shipping `network_overview.geojson` to the launch.** The z≤8 tiles exist
+   (`nearby_trails_context.pmtiles`), the `network://` scheme already reads the
+   family by range, and the sketch's only job is those zooms. **Measured**
+   saving: 3–3.5 s of worker time at 1×, first on the line's critical path;
+   at 4×, reasoned ×3–4. The sketch's other consumer, whatever the shell reads
+   from `lib/nearbyTrailData.ts`, is the part to check before deleting the
+   artifact rather than merely not drawing it.
+2. **Publish the A.T. line as tiles too** (`trails.pmtiles`, cut in the same
+   step that writes `trails.geojson`), and point the map's `trails` source at
+   them — the GeoJSON stays for the index build, the mile axis and the
+   elevation profile until those readers move to cells, which is #1257's
+   pattern and a separate piece of work. **Measured** saving: 0.65 s at 1×
+   (3,142 → 2,487 ms with the sketch gone), and the property that the line's
+   cost stops following the miles. One thing to prove before shipping: that a
+   tile cut at z5–z6 never drops a short segment of the trail — the #160
+   failure in a new coat — which is a check of the cut against the merged
+   chains, not a hope.
+3. **Attach the line first.** MapView attaches trail data before the pins and
+   the sketch, but the worker finishes them in the order their bytes arrive;
+   with the sketch gone and the line tiled, the pins (~1.2 s) are what stands
+   between the map's birth and the line. Put the line's source ahead of the
+   waypoints in the style and hand the pins over after the line's first tiles
+   are in — `@unvalidated`, what settles it is the same instrumented run.
+4. **The pins as tiles, when the miles grow.** 28,913 waypoints as one GeoJSON
+   source is 1.2 s of worker today and grows with the miles the same way; a
+   point PMTiles with rank and type baked in, cut by the pipeline, is the
+   same move as 1 and 2. Not first, because today it is the smallest of the
+   three and the crowding logic (`map/poiCrowding.ts`) reads the whole list on
+   the main thread — that reader moves with it.
+5. **Not a lever, measured:** a second worker (above); batching the archive
+   sweep (`getMany` against 2,415 separate reads in a real Chromium: 33–100 ms
+   against 130–213 ms at 1×, 121–207 against 358–423 ms at 4× — a tenth of a
+   second on a laptop, a third on a phone, and the restart when the package
+   set grows, 2,480 → 4,103 reads on one run in §1.4, is worth more than the
+   batching).
+
+### 7.4 What two seconds would then be
+
+Warm, on the laptop profile: the map born at 0.6 s (§1.4), the line's tiles
+for the corridor view a few hundred milliseconds behind it, the basemap from
+the downloaded sheet or the cells where the phone holds them and from the
+network where it does not. On the phone's Map tab the same chain arrives on a
+tap, on a core three to four times slower, which is why 1–3 are ordered by
+worker seconds rather than by bytes. Cold launches keep the §1.4 shape; the
+precache makes them the exception.
+
+**Unvalidated, and named so nobody reads the table above as a phone's:** every
+run here is one run on a server core with software WebGL and a sandbox's tile
+network. What would settle the plan's arithmetic is `ourhike:map` and
+`ourhike:map-drawn` read off the maintainer's laptop and phone from Settings →
+About build, before and after item 1.
+
+### 7.5 What 2026-09-21 measured, and the one thing §7.3 got wrong (#1613, #1612)
+
+The maintainer, 2026-09-21: *"The time it takes to open and load the map has
+slowed down again."* Three things came out of looking, and the first is a
+correction to the section above rather than a new finding.
+
+**§7.3 item 1 rests on an artifact that does not exist.** It says the z≤8 tiles
+*"exist (`nearby_trails_context.pmtiles`)"*. They do not: the key is absent
+from release `2026-09-16-4`'s manifest and `HEAD` on it returns **404**. The
+two context archives that publish are `dem_context.pmtiles` and
+`at_basemap_context.pmtiles`.
+
+The reason is circular and worth naming, because it is the kind that survives a
+plan. `publish-vector-data.yml` cuts the network family with `--context-zoom 8`
+and `export_nearby_trails.py` cut the archive from **z9**, so no tile was ever
+at or under the context zoom and `cut_cells.py` wrote no context artifact. The
+workflow's own comment said why: *"a zoom the sketch already draws below"*.
+The sketch existed, so the tiles were not cut; the tiles were not cut, so the
+sketch could not be replaced. **#1613** breaks the circle at the cut —
+`TILES_MIN_ZOOM` is 5 — and the same `--context-zoom 8` then splits the archive
+the way it was always shaped to.
+
+**What the sketch costs, measured against `main` at c9f3a1e.** Two runs, same
+machine, same driver, release `2026-09-16-4` served from local disk so the
+manifest's own latency is out of both columns, differing in one thing: whether
+`network_overview.geojson` is named in the manifest. A returning hiker's
+launch, 1728×1080, 1× CPU, in an agent sandbox. One run per column.
+
+| | sketch on the launch | sketch dropped |
+|---|---:|---:|
+| the map is built (`ourhike:map`) | 621 ms | 574 ms |
+| the sketch is cut into tiles | 4,591 ms | never fetched |
+| **the A.T. line's tiles are cut** | **4,926 ms** | **2,456 ms** |
+| the basemap tiles land | 5,581 ms | 2,318 ms |
+| everything the launch draws is done | 5,578 ms | 2,699 ms |
+
+The line lands **2,470 ms earlier** and the map settles **2,879 ms earlier**.
+That is §7.1's finding again from the other side — §7.1 took the sketch out of
+the *style*, this takes it out of the *manifest*, so the fetch goes with it —
+and it is the second measurement to rank item 1 first.
+
+**The honest cost, and why the order is what it is.** Below z9 the sketch is
+the only drawing of the other organizations' trails, so dropping it before the
+context archive publishes leaves the A.T. alone on the camera a laptop opens
+on. The maintainer chose the pipeline first, from those screenshots, on
+2026-09-21. The client half of #1613 — pointing the sketch's layers at the
+context tiles and stopping the 12 MB fetch — waits for that publish.
+
+**The third thing is not the worker at all, and §7 could not have seen it,**
+because §7 was measuring the wrong half of the launch. The release manifest —
+`releases/<id>/manifest.json`, the object every launch fetches — was being read
+**seven times per launch at 412,128 bytes**, uncompressed: 2,884,896 bytes on
+the connection the first frame and the map's own artifacts share. It was 27,450
+bytes on 2026-09-10 and served compressed at 6,772. Both halves moved in the
+same week the coverage-cell families landed, and nothing was watching. **#1612**
+has the arithmetic and both fixes; the measured result of the client half is
+seven fetches down to three, the remainder being callers that do not overlap.
+
+**Where the stopwatch does not look.** `check-launch-speed.mjs`'s four rows are
+`shell_frame`, `first_tap`, `longest_task` and `total_blocking`. None of them
+is the map. The scheduled job was green every morning through all of the above,
+correctly, because a blank map pane for five seconds is not a busy main thread
+— §7.1 measured it 73–75 % idle. `ourhike:map` and `ourhike:map-drawn` exist
+and are printed; nothing compares them to a budget. That is the gap that let
+this be reported by a person rather than by a check, twice.
+
+**Unvalidated, on the same terms as §7.4:** one run per column, a server core,
+software WebGL, a proxied tile network, and a manifest served from local disk
+in about 8 ms where production takes hundreds — which if anything *understates*
+the sharing fix, since callers that do not overlap here would overlap on a real
+connection. The instrument was a scratch Playwright driver wrapping
+`Worker.prototype.postMessage` to recover §7.1's per-source timeline without an
+instrumented build; it is not in the tree.
+
+### 7.6 The first cut with the context archive in it (#1613, #1612)
+
+**#1615 merged 2026-09-23** and `publish-vector-data.yml` run #139 published UA
+release **2026-09-23-2** from it — the first release cut with
+`export_nearby_trails.TILES_MIN_ZOOM = 5`. Two things §7.5 said would follow,
+checked against the bucket rather than assumed:
+
+**`nearby_trails_context.pmtiles` exists.** 22,176,121 bytes, `HTTP 206` on a
+range request with a valid `PMTiles` header. The key §7.3 item 1 planned
+against — and which returned 404 for as long as the plan has existed — is
+published. #1613's client half now has something to point at.
+
+**The release manifest is compressed.** `content-type: application/json` and
+`content-encoding: zstd`, 609,205 bytes identity against **154,163 on the
+wire** — 3.95×, which is the ~4× §7.5 predicted from `latest.json`. That is
+#1612's pipeline half working on a real object.
+
+| | before | after |
+|---|---:|---:|
+| `nearby_trails.pmtiles` | 155,229,297 | 181,668,171 |
+| `nearby_trails_context.pmtiles` | **did not exist** | 22,176,121 |
+| release manifest, on the wire | 412,128 (no encoding) | 154,163 (zstd) |
+
+**One number in §7.5's own reasoning was wrong, and the correction is more
+useful than the figure.** `export_nearby_trails.py` predicted z5–z8 would come
+to "a few megabytes", from "each zoom about a quarter of the one below it".
+That runs the pyramid backwards: a coarse tile covers more ground and carries
+more geometry, so z5–z8 are each *larger* than z9's 9.65 MB, not smaller. The
+real figure is 22.2 MB — about nine times the guess.
+
+It does not change the decision, because these tiles are read by byte range: a
+phone pays for the tiles its viewport touches, never for the file. But it does
+move which argument is load-bearing. The cut was justified partly on being
+cheap; it is not cheap in the bucket, and #1257's range-reading is now the
+whole of the case for it. A future seam moved on the same "it is only a few
+megabytes" reasoning should expect to be wrong by an order of magnitude.
+
+**Still unpublished to production.** Everything above is UA
+(`environments/ua/`), which is what keeps `main` testable. Production is the
+release train's promotion and is the maintainer's.
+
+### 7.7 The map's own thread, source-mapped (#1631, #1632, #1633)
+
+§7.1 measured the worker. §7.5 measured the manifest. **This measures the main
+thread between the trail index landing and the shell acknowledging a map**, and
+it moves where the remaining work is: almost none of that window is MapLibre's.
+
+`main` at `212c9945`, built with `--sourcemap` against UA through
+`client/scripts/data-proxy.mjs`, served same-origin. Phone profile 390×844 at
+4× CPU, warm launch, `Profiler` sampling at 200 µs anchored to the launch marks
+by reading `performance.now()` at `Profiler.start`, frames resolved through
+`dist/assets/*.js.map`. **Four runs.** The §7.5 caveats all still hold: an agent
+sandbox, a server core, software WebGL, a proxied tile network, a throttle
+standing in for a phone.
+
+Window `ourhike:index` → `ourhike:map`: **1,800 / 1,836 / 1,887 ms** across the
+three runs analysed together. Self time, sorted by the median:
+
+| | run 2 | run 3 | run 4 |
+|---|---:|---:|---:|
+| `(program)` — native, unattributed | 387 | 448 | 459 |
+| **`lib/useArchiveDownload.ts:128`** | **322** | **159** | **184** |
+| `maplibre-gl-shared.mjs:5` | 230 | 266 | 295 |
+| **`map/poiCrowding.ts:222`** | **228** | **178** | **164** |
+| `maplibre-gl.mjs:805` | 130 | 123 | 113 |
+| **`map/poiCrowding.ts:264`** | **79** | **73** | **73** |
+| `maplibre-gl.mjs:803` | 69 | 62 | 70 |
+| `(garbage collector)` | 57 | 49 | 62 |
+
+The app's own code is **629 / 410 / 421 ms, 23–33% of the window**; MapLibre's
+main-thread work is 473 / 504 / 524 ms. For scale, `createMap` itself is **77
+ms** and `_setupPainter` under it shows as 24 ms. **MapLibre building a map has
+never been the problem**, and two estimates that said otherwise — an ~860 ms
+engine parse and an ~1,800 ms construction — were both wrong by an order of
+magnitude and are withdrawn (#1564's decomposition has them).
+
+**`poiCrowding.ts:222` is `crowdingByPoi`**, building a lat-sized grid over
+every drawn waypoint and counting neighbours within `CROWDING_RADIUS_M`, with
+`metresBetween` (`:264`) the inner loop: **237–307 ms per launch**, synchronous,
+on the thread building the map. §7.1 saw it on a laptop as one of "the app's own
+frames at 100 ms or less"; at 4× it is three times that and inside the window a
+hiker waits through. §7.3 item 4 mentions the module only as a reader that has
+to move when the pins become tiles — **it is a launch cost today, with the pins
+as they are.**
+
+**`useArchiveDownload.ts:128` is the state updater**
+`setStatuses((previous) => ({ ...previous, [packageKey]: status }))`, replayed
+by React during render: **159–322 ms**. This is *not* the cost §7.3 item 5
+measured and dismissed. That was batching the IndexedDB reads (`getMany` against
+2,415 `get`s, "a tenth of a second on a laptop"); this is the React state churn
+the sweep's *reporting* produces, which batching the reads would not touch.
+
+One run of four also had **263 ms in `crypto.subtle.digest`** under `sha256Of`
+(`trailData.ts:635`) and **150 ms in `readPois`** (`:431`); neither recurred, so
+it follows what the warm cache made the launch re-fetch. Worth recording because
+`sha256Of`'s own docstring already named the risk in 2026-08 — "all of the
+former synchronous on the thread that is also drawing the map. A phone is
+materially slower than the machine those numbers came from" — and this is the
+first phone-shaped number for it.
+
+**Reasoned:** getting `crowdingByPoi` off the critical path and batching the
+sweep's status updates is worth roughly **400–600 ms of the 1,800 ms**.
+**@unvalidated: that either is safe to defer** — `crowdingByPoi` feeds what the
+map draws, so deferring it means a frame of uncrowded pins that then re-draw,
+which is a question about what a hiker sees rather than about milliseconds, and
+what would settle it is a rendered frame of both to the maintainer before either
+is built.
+
+### 7.8 Two things the marks do not mean, which §1.4 and §7.4 read as if they did
+
+**`ourhike:map` is not "MapLibre handed back a map".** `onMapReady` is MapView's
+**last** effect (`MapView.tsx:1378`) and React runs effects in declaration
+order, so the mark fires only after all fifty-one have run. Every reading of it
+here — §1.4's "map built at 0.6–0.7 s", §7.5's 621 ms — has MapView's whole
+effect cascade inside it. The numbers are not wrong; what they are called is.
+
+**`ourhike:map-drawn` never fires at all on a profile with no corridor archive
+downloaded** (#1633). It hangs off MapLibre's `load`, and with terrain routed
+through the proxy so the sandbox's TLS failures on `elevation-tiles-prod` are
+out of the way:
+
+| profile | CPU | `ourhike:map` | `ourhike:map-drawn` |
+|---|---:|---:|---|
+| desktop 1440×900 | 1× | 829 ms | **never, in 25 s** |
+| phone 390×844 | 1× | 1,226 ms | **never, in 25 s** |
+| phone 390×844 | 4× | 3,877 ms | **never, in 25 s** |
+
+At the 25 s mark `isStyleLoaded()` is false, the map holds no source caches, and
+it has fired `ArchiveNotDownloadedError` for `ourhike:corridor-archive`
+(`map/pmtilesSource.ts:26`) plus three `Failed to fetch`. **Correlation across
+every run, not a demonstrated cause** — the three fetch failures have not been
+separated from the archive error, and no profile *with* a package downloaded has
+been run to watch the mark appear.
+
+This bears directly on **§7.4's own validation step**, which says what would
+settle the plan's arithmetic is "`ourhike:map` and `ourhike:map-drawn` read off
+the maintainer's laptop and phone". **Half of that instrument does not work as
+written**: a laptop that built a map in 829 ms reports no `map-drawn` at all. A
+reading taken today would show an absence and mean nothing by it.
+
+**And it is why nothing here is evidence about the ten seconds the maintainer
+reported.** A session (this one) took `map-drawn`'s absence for that ten seconds
+and said so; a mark missing at 829 ms on an unthrottled laptop is not reporting
+slowness, and the claim was withdrawn. What the ten seconds is remains open, and
+the instrument that would answer it does not exist yet.

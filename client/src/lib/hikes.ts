@@ -935,7 +935,7 @@ export function hikePieces(
  * looks like an access point and is not. A boundary nobody named stays a
  * mile marker, which is a real shared reference rather than a guess.
  */
-function refAtMile(
+export function refAtMile(
   mile: number,
   hike: Hike,
   trips: readonly Trip[],

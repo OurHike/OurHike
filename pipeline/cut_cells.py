@@ -273,12 +273,23 @@ def covered_bounds(
     min_lon, min_lat = merc_to_lonlat(bounds_merc[0], bounds_merc[1])
     max_lon, max_lat = merc_to_lonlat(bounds_merc[2], bounds_merc[3])
     west, south, east, north = cell
-    return [
+    box = [
         max(_widen(max(min_lon, west), out=False), west),
         max(_widen(max(min_lat, south), out=False), south),
         min(_widen(min(max_lon, east), out=True), east),
         min(_widen(min(max_lat, north), out=True), north),
     ]
+    # A box with no area is the clip of tiles that all lie OUTSIDE the square
+    # - what release 2026-09-16-4 published for n38w082, `[-81.21, 38.0,
+    # -81.0, 37.996]`, south above north (#1559). cut_cells() no longer
+    # builds such a cell; this refuses to describe one, so the index can
+    # never again carry a claim the app has to throw the whole file away over.
+    if not (box[0] < box[2] and box[1] < box[3]):
+        raise ValueError(
+            f"cell {cell} holds no tile inside its own square (its tiles span "
+            f"{(min_lon, min_lat, max_lon, max_lat)}); a cell the margin alone reaches is not built"
+        )
+    return box
 
 
 #: Degrees the published index rounds to. Six places is ~11 cm of latitude -
@@ -349,17 +360,34 @@ def cut_cells(
         # archive.
         lookup = GraticuleLookup(candidates)
         candidate_routing: dict[tuple[int, int, int], list[int]] = {}
+        # The cells a tile lies IN, as against the cells its margin reaches.
+        # Only the first makes a cell worth building - see below.
+        core_populated: set[int] = set()
         context_tile_count = 0
         for (z, x, y), _data in all_tiles(get_bytes):
             if z > context_zoom:
-                candidate_routing[(z, x, y)] = lookup.hits(tile_bounds_lonlat(z, x, y), margin_km)
+                tile = tile_bounds_lonlat(z, x, y)
+                candidate_routing[(z, x, y)] = lookup.hits(tile, margin_km)
+                core_populated.update(lookup.hits(tile, 0.0))
             else:
                 context_tile_count += 1
 
-        # Keep only the cells that are somebody's map. An empty candidate is
-        # ordinary - it is ground the corridor does not cross - and building
-        # it would publish an archive that 404s nothing and covers nothing.
-        populated = sorted({index for indices in candidate_routing.values() for index in indices})
+        # Keep only the cells that are somebody's map: one with a tile inside
+        # its own square. An empty candidate is ordinary - it is ground the
+        # corridor does not cross - and building it would publish an archive
+        # that 404s nothing and covers nothing.
+        #
+        # INSIDE ITS OWN SQUARE, not merely reached by the margin (#1559).
+        # Routing widens every tile by the seam margin, so a square the
+        # corridor passes just outside of used to collect its neighbour's
+        # edge tiles and be built from those alone - 22 such cells in release
+        # 2026-09-16-4 (four each in at_basemap and dem, fourteen in
+        # nearby_trails, n38w082 the first), every one holding only tiles its
+        # neighbour also holds inside the neighbour's square. covered_bounds()
+        # then clipped their box to a square none of their ground was in and
+        # published an inverted or zero-width rectangle, and the app, whole or
+        # nothing over a bad row, refused all three indexes.
+        populated = sorted(core_populated)
         if not populated:
             raise SystemExit(
                 f"{source_path}: no tile in this archive falls in any whole-degree cell of its own "
@@ -368,7 +396,10 @@ def cut_cells(
 
         cells = [candidates[i] for i in populated]
         renumber = {old: new for new, old in enumerate(populated)}
-        routing = {address: [renumber[i] for i in indices] for address, indices in candidate_routing.items()}
+        # A tile whose every hit is a square that is not built goes nowhere.
+        # It lies inside no candidate square at all - past the bounds the
+        # source header declares - so no cell's `bounds` ever drew it either.
+        routing = {address: [renumber[i] for i in indices if i in renumber] for address, indices in candidate_routing.items()}
 
         # Pass 2: stream bytes into one writer per artifact. No context
         # artifact when the source holds nothing at or under the context zoom

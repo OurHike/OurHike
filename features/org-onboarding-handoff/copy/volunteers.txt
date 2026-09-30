@@ -1,0 +1,103 @@
+[link] Skip to content
+    [svg]
+    Prototype controls
+    ·
+    signed in as
+  [button] org admin
+  [button] not a lead
+  [button] registered volunteer
+  [button] reset
+  [button] show signed out
+  [button] show a new org
+  [button] show failures
+  [button] onboarding complete · replay it
+    [button] RT Ramapo Trail Conference Org admin · maintainer
+      [svg]
+        Onboarding
+      [button] Org home
+      [button] Admin approval
+      [button] Hike registry
+      [button] Registry sign-off
+      [button] Add a trail
+      [svg]
+        Manage volunteers
+      [button] Roles
+      [button] Workdays 3
+      [button] Coverage report 37
+      [button] Your roster
+      [button] Welcome them 37
+      [svg]
+        Volunteer
+      [button] Your Tread
+      [button] On your phone
+      [button] What you hand back
+      [button] Ridge Runner
+      [button] Your profile
+    [button] What we email on your behalf
+    [button] Settings and leaving
+    [link] OurHike
+    [button] For orgs
+    [button] Demo org
+    [button] Nominate an org
+    [button] Claim your org
+        MA
+          Maria Alvarez
+          maria@ramapotrails.org
+      [button] Ramapo Trail Conference
+        ›
+          Manage volunteers
+        ›
+          Your roster
+        [svg]
+            VOLUNTEERS · 1,104 ACTIVE · 37 INACTIVE
+        [h1] Your roster
+    The whole roster in one table, and three ways to add to it — none of which ever overwrite a person. Somebody who leaves your feed goes inactive and keeps their history; somebody new gets added.
+    [button] All volunteers
+    [button] Add a person
+    [button] Upload a list
+    [button] Live connection
+        Search a name, email, role or section…
+        1,141 people · 1,104 active
+          NAME
+          EMAIL
+          ROLES
+          WHERE
+          HRS
+          STATUS
+            Maria Alvarez
+            maria@ramapotrails.org
+            Club admin · Supervisor ×2 · Maintainer
+            Harriman · 3 sections
+            142
+              active
+            Joseph Okafor
+            joseph@ramapotrails.org
+            Club admin · Sawyer crew · Supervisor ×4
+            Bear Mountain · Timp–Torne
+            210
+              active
+            Ana Reyes
+            ana@gmail.com
+            Maintainer · Corridor monitor
+            Harriman · Pine Meadow N
+            38
+              active
+            Tom Boyd
+            tboyd@gmail.com
+            Invasives crew
+            Ramapo · Suffern–Bear Mtn
+            12
+              new
+            Ruth Kelley
+            ruth@ramapotrails.org
+            Trailhead steward
+            Harriman · Lot 7
+            96
+              active
+            Paul Iverson
+            paul@oldmail.com
+            no roles — released
+            —
+            304
+              inactive
+        + 1,135 more · click anyone to open their page

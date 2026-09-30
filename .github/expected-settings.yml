@@ -118,24 +118,26 @@ settings:
       secret, belongs only to the backend's runtime environment, and is
       deliberately absent from this file because no workflow reads it.
 
-  AUTH_PROVIDERS:
-    where: variable
+  SUPABASE_ACCESS_TOKEN:
+    where: secret
     required: false
     why: >-
-      Which sign-in buttons a build offers. Optional because the client
-      defaults to google when it is unset, so a missing value is a working
-      app rather than a broken one. Worth declaring anyway: every name in it
-      must be a provider actually enabled in the Supabase dashboard, and one
-      that is not is a button reaching an error page. The Supabase config
-      check is what compares those two lists.
+      A personal access token for Supabase's management API, read only by
+      the Supabase config check, and only to READ the project's auth
+      config: whether custom SMTP is configured, whether the email templates
+      carry `{{ .Token }}`, the code's length and expiry, and each
+      provider's client id - the settings a hiker meets as an email that
+      never arrives, and which the public settings endpoint does not show
+      (#1572). Optional because the check says what it could not see
+      without one, and runs everything else regardless.
 
-      The default was google,email until #397 decided v1's provider set.
-      Email was in it because switching it on costs nothing, which was true
-      of the setup and false of the result - Supabase's built-in sender is
-      not a delivery path this project ships on, so an unset variable built
-      an app offering a sign-in that could not complete. Setting this to
-      `google` explicitly is still worth doing; since #397 it agrees with the
-      default rather than rescuing it.
+      Mint it FINE-GRAINED, with `auth_config_read` and nothing more
+      (supabase.com -> Account -> Access Tokens). A classic token is the
+      whole account - every project, every table - and there is no reason
+      for that to sit in Actions when a read of one document is all this
+      needs. Never the service-role key, which is a different credential
+      for a different API and which app/config.py deliberately does not
+      hold.
 
   API_BASE_URL:
     where: variable

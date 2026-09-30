@@ -85,6 +85,18 @@ describe('the workday sheet', () => {
     expect(screen.queryByRole('button', { name: /sign up|join|reserve/i })).toBeNull()
   })
 
+  it('offers no channel for a contact that is not an address, a number or a page (#1578)', () => {
+    render(
+      <WorkdaySheet
+        project={aProject({ signup_contact: 'data:text/html,<p>join</p>' })}
+        gpsMile={null}
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('link', { name: /ask the crew about joining/i })).toBeNull()
+  })
+
   it('says a workday can be called off after this was written', () => {
     render(<WorkdaySheet project={aProject()} gpsMile={null} onClose={vi.fn()} />)
 

@@ -44,13 +44,33 @@
 import { useEffect, useRef, useState } from 'react'
 import type { LonLat } from './trailPosition'
 
+/** A fix the watch delivered: where, how sure, and when. */
+export interface GeolocationFix {
+  at: LonLat
+  accuracyFeet: number
+  /** The same radius as the platform stated it, in metres - what the report
+   *  path records (lib/reportLocation.ts, #1563). Feet above is the
+   *  display's; this is the wire's, and keeping both avoids a round trip
+   *  through a conversion nobody asked for. */
+  accuracyM: number
+  fixedAt: Date
+}
+
 export type GeolocationState =
   | { status: 'unsupported' }
   | { status: 'idle' }
   | { status: 'locating' }
   | { status: 'denied' }
-  | { status: 'unavailable' }
-  | { status: 'located'; at: LonLat; accuracyFeet: number; fixedAt: Date }
+  /**
+   * A lost signal, carrying the last fix it had (#1581) - or none, when the
+   * signal was never found. The header prints `No GPS signal` either way
+   * (lib/positionLine.ts reads `status` alone); the map draws `last` as a
+   * stale mark with its age, so a hiker sees where the phone last knew it
+   * was and that the answer is old. Both are true at once, which is why the
+   * state carries both rather than choosing.
+   */
+  | { status: 'unavailable'; last?: GeolocationFix }
+  | ({ status: 'located' } & GeolocationFix)
 
 const METERS_TO_FEET = 3.28084
 
@@ -165,11 +185,13 @@ export function useGeolocation(
           // HIKER_SAFETY.md §5 declines to guess at and #93 is already waiting
           // on, not something to infer from a fix cadence.
           //
-          // `accuracyFeet` and `fixedAt` freeze along with the position when
-          // this fires. Nothing reads either one today (grep: this file only),
-          // and a fix at identical coordinates is the same answer about where
-          // somebody is - but a caller that starts reading `fixedAt` as "how
-          // fresh is this" needs to know that it stops advancing here.
+          // `accuracyFeet`, `accuracyM` and `fixedAt` freeze along with the
+          // position when this fires. A fix at identical coordinates is the
+          // same answer about where somebody is - and since #1563 the report
+          // path DOES read `fixedAt` as "how fresh is this", so the age it
+          // records can overstate staleness by however long the platform kept
+          // re-delivering an unchanged fix. That errs toward caution: a fix
+          // reported older than it is, never fresher.
           if (
             current.status === 'located' &&
             current.at.lon === at.lon &&
@@ -182,6 +204,7 @@ export function useGeolocation(
             status: 'located',
             at,
             accuracyFeet: position.coords.accuracy * METERS_TO_FEET,
+            accuracyM: position.coords.accuracy,
             fixedAt: new Date(position.timestamp),
           }
         })
@@ -198,8 +221,22 @@ export function useGeolocation(
           return
         }
         // A timeout or a lost fix is weather, not a verdict - the watch stays,
-        // and the next fix that lands flips this back to located.
-        setState({ status: 'unavailable' })
+        // and the next fix that lands flips this back to located. The last
+        // fix rides along, kept across repeated failures too, so the map can
+        // draw it stale rather than draw nothing (#1581).
+        setState((current) => {
+          if (current.status === 'located') {
+            const { at, accuracyFeet, accuracyM, fixedAt } = current
+            return {
+              status: 'unavailable',
+              last: { at, accuracyFeet, accuracyM, fixedAt },
+            }
+          }
+          if (current.status === 'unavailable' && current.last !== undefined) {
+            return current
+          }
+          return { status: 'unavailable' }
+        })
       },
       { enableHighAccuracy: true, maximumAge: 5_000, timeout: 30_000 },
     )

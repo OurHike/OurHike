@@ -643,14 +643,12 @@ class TestVectorContent:
 
         assert {r["check"]: r["state"] for r in check_vector(BASE, ["poi_shelter.geojson"])}[15] == FAILED
 
-    def test_an_empty_type_fails_its_minimum_but_crossing_may_be_empty(self, requests_mock):
+    def test_an_empty_type_fails_its_minimum(self, requests_mock):
         """export_poi.py's own exception, kept in step: every POI type must be
-        non-empty except `crossing`, which legitimately is for the real AT."""
-        requests_mock.get(f"{BASE}/poi_crossing.geojson", json=self._collection([]))
+        non-empty except the ones ALLOWED_EMPTY_POI_TYPES names. `crossing`
+        was the example here until #1674 withdrew it; test_trailhead_may_be_
+        empty_too below is the allowed case now."""
         requests_mock.get(f"{BASE}/poi_water.geojson", json=self._collection([]))
-
-        states = [r for r in check_vector(BASE, ["poi_crossing.geojson"]) if r["check"] == 14]
-        assert states[0]["state"] == OK
 
         states = [r for r in check_vector(BASE, ["poi_water.geojson"]) if r["check"] == 14]
         assert states[0]["state"] == FAILED
@@ -1027,6 +1025,30 @@ class TestNothingLostSinceTheLastRelease:
 
         assert check_nothing_lost("2026-08-12", before, now)["state"] == OK
 
+    def test_a_withdrawn_poi_type_leaving_is_reported_not_failed(self):
+        """#1674 withdrew crossings on purpose. A build that asks for
+        poi_crossing.* pins a release that still holds it, so the 404 this
+        check guards against cannot reach anybody - and the check says which
+        artifacts left and why, rather than going quiet about them."""
+        before = _release_manifest("2026-09-24", {"trails.geojson": "a", "poi_crossing.geojson": "c", "poi_crossing.fgb": "d"})
+        now = _release_manifest("2026-09-26", {"trails.geojson": "a"})
+
+        report = check_nothing_lost("2026-09-24", before, now)
+
+        assert report["state"] == OK
+        assert "poi_crossing.geojson" in report["detail"]
+        assert "withdrawn" in report["detail"]
+
+    def test_a_withdrawal_does_not_excuse_an_ordinary_loss_beside_it(self):
+        before = _release_manifest("2026-09-24", {"poi_crossing.geojson": "c", "poi_water.geojson": "b"})
+        now = _release_manifest("2026-09-26", {})
+
+        report = check_nothing_lost("2026-09-24", before, now)
+
+        assert report["state"] == FAILED
+        assert "poi_water.geojson" in report["detail"]
+        assert "poi_crossing" not in report["detail"]
+
 
 class TestTheReleaseBeforeThisOne:
     def test_it_is_the_one_written_before_it_rather_than_the_lexically_smaller(self):
@@ -1350,6 +1372,38 @@ class TestCellCoverage:
 
         assert report["state"] == "failed"
         assert "outside their own square" in report["detail"]
+
+    def test_an_empty_covered_box_is_named_as_empty_not_as_overreaching(self, requests_mock):
+        """#1561. n38w082 as release 2026-09-16-4 published it: south above
+        north by 0.004 deg. It encloses no ground, so it under-claims - the
+        opposite fault to reaching past the square - and the check used to
+        print the over-claim's sentence for it."""
+        from verify_release import check_cell_coverage
+
+        cells = self._published()
+        west, south, east, _ = cells[1]["bounds"]
+        cells[1]["covered"] = [west + 0.79, south, east, south - 0.003837]
+        requests_mock.get(f"{BASE}/at_basemap_cells.json", json=self._index(cells))
+
+        report = next(r for r in check_cell_coverage(BASE, self._manifest()) if r["key"] == "at_basemap_cells.json")
+
+        assert report["state"] == "failed"
+        assert "no area" in report["detail"]
+        assert cells[1]["name"] in report["detail"]
+        assert "outside their own square" not in report["detail"]
+
+    def test_an_empty_box_and_an_overreaching_one_are_both_reported(self, requests_mock):
+        from verify_release import check_cell_coverage
+
+        cells = self._published()
+        cells[0]["covered"] = [cells[0]["bounds"][0] - 0.5, *cells[0]["bounds"][1:]]
+        cells[1]["covered"] = [cells[1]["bounds"][2], cells[1]["bounds"][1], cells[1]["bounds"][2], cells[1]["bounds"][3]]
+        requests_mock.get(f"{BASE}/at_basemap_cells.json", json=self._index(cells))
+
+        report = next(r for r in check_cell_coverage(BASE, self._manifest()) if r["key"] == "at_basemap_cells.json")
+
+        assert "1 cell(s) carry a covered box with no area" in report["detail"]
+        assert "1 cell(s) claim coverage outside their own square" in report["detail"]
 
     def test_an_index_with_no_covered_key_still_passes(self, requests_mock):
         """Every index cut before #1458 carries none, and they are the ones
@@ -1693,3 +1747,25 @@ def test_the_cell_families_check_20_walks_are_the_ones_publish_cuts():
     import publish
 
     assert set(verify_release.CELL_FAMILIES) == set(publish.ALL_CELL_FAMILIES)
+
+
+class TestAnArtifactAPhoneCannotParse:
+    """Check 13 reads the artifact the way a phone reads it (lib/strict_json.py).
+
+    `response.json()` would have read `NaN` back as a float and gone on to
+    count features in a document every WebView rejects on its first byte of
+    the token. The class name in the report is the whole diagnosis."""
+
+    NAN_COLLECTION = '{"type": "FeatureCollection", "features": [{"type": "Feature", "geometry": {"type": "Point", "coordinates": [NaN, 39.0]}, "properties": {"blaze_color": "#ffffff"}}]}'
+
+    def test_a_bare_nan_fails_the_parse_check_by_name(self, requests_mock):
+        requests_mock.get(f"{BASE}/trails.geojson", text=self.NAN_COLLECTION)
+
+        reports = {r["check"]: r for r in check_vector(BASE, ["trails.geojson"])}
+
+        assert reports[13]["state"] == FAILED
+        assert "NonFiniteNumber" in reports[13]["detail"]
+
+    def test_the_stdlib_would_have_let_it_through(self):
+        """The premise, pinned: without the strict reader this document parses."""
+        assert json.loads(self.NAN_COLLECTION)["features"][0]["geometry"]["coordinates"][0] != 0

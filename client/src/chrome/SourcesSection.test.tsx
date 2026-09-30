@@ -17,6 +17,8 @@ const ATC = {
   termsSource: null,
   layers: ['A.T. Centerline', 'A.T. Shelters'],
   keys: [],
+  support: null,
+  store: null,
 }
 
 const OSM = {
@@ -29,6 +31,8 @@ const OSM = {
   termsSource: null,
   layers: ['OSM water point sources'],
   keys: [],
+  support: null,
+  store: null,
 }
 
 /** A steward whose block quotes its terms whole — NJDEP's shape, which is the
@@ -48,9 +52,79 @@ const WITH_TERMS = {
   termsSource: 'https://example.invalid/item',
   layers: ['NJ State Park Service Trails'],
   keys: ['njdep_park_trails'],
+  support: null,
+  store: null,
 }
 
 const BOTH: Stewards = [ATC, OSM]
+
+/** NYNJTC as the registry records it since #932 and #1574: their own two
+ *  buttons, both granted on this screen, and one product on the store. */
+const NYNJTC = {
+  provider: 'NYNJTC',
+  name: 'New York-New Jersey Trail Conference',
+  trust: 'authoritative',
+  licence: null,
+  attribution: null,
+  terms: null,
+  termsSource: null,
+  layers: ['NYNJTC Long Path'],
+  keys: ['nynjtc_long_path'],
+  support: {
+    donateUrl: 'https://www.nynjtc.org/support/',
+    donateCta: 'Donate Today',
+    donateRecipient: null,
+    donateSurfaces: ['sources_screen', 'trail_card'],
+  },
+  store: {
+    storeUrl:
+      'https://store.nynjtc.org/collections/maps?utm_source=ourhike&utm_medium=app',
+    storeCta: 'Trail Maps',
+    storeSurfaces: ['sources_screen', 'hike_detail'],
+    paperMaps: [
+      {
+        handle: 'harriman-bear-mountain-trails-map',
+        title: 'Harriman-Bear Mountain Trails Map',
+        url: 'https://store.nynjtc.org/products/harriman-bear-mountain-trails-map',
+        sheets: ['118', '119'],
+        covers: [],
+        sheetCovers: {
+          '118': ['Southern Harriman State Park'],
+          '119': ['Bear Mountain State Park'],
+        },
+      },
+    ],
+  },
+}
+
+/** NYS OPRHP's shape: the money goes to a separate organization, and the
+ *  block grants the sources screen alone. */
+const OPRHP = {
+  provider: 'NYS OPRHP',
+  name: 'New York State Office of Parks, Recreation and Historic Preservation',
+  trust: 'authoritative',
+  licence: null,
+  attribution: null,
+  terms: null,
+  termsSource: null,
+  layers: ['NYS Parks Trails'],
+  keys: ['oprhp_trails'],
+  support: {
+    donateUrl: 'https://parks.ny.gov/about/leadership-partners/natural-heritage-trust',
+    donateCta: 'Donate',
+    donateRecipient: 'Natural Heritage Trust',
+    donateSurfaces: ['sources_screen'],
+  },
+  store: null,
+}
+
+/** An org whose grants name other screens and not this one. */
+const ELSEWHERE_ONLY = {
+  ...NYNJTC,
+  provider: 'ELSEWHERE',
+  support: { ...NYNJTC.support, donateSurfaces: ['trail_card'] },
+  store: { ...NYNJTC.store, storeSurfaces: ['hike_detail'] },
+}
 
 afterEach(cleanup)
 
@@ -152,5 +226,49 @@ describe('the sources section', () => {
     render(<SourcesSection stewards={BOTH} />)
 
     expect(screen.queryByText('The full terms')).not.toBeInTheDocument()
+  })
+
+  it('links "Donate Today ›" to nynjtc_support’s own donate_url when the org granted sources_screen', () => {
+    render(<SourcesSection stewards={[NYNJTC]} />)
+
+    const link = screen.getByRole('link', { name: 'Donate Today ›' })
+    expect(link).toHaveAttribute('href', 'https://www.nynjtc.org/support/')
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noreferrer')
+  })
+
+  it('links "Trail Maps ›" to the store_url beside it, referral query and all', () => {
+    render(<SourcesSection stewards={[NYNJTC]} />)
+
+    expect(screen.getByRole('link', { name: 'Trail Maps ›' })).toHaveAttribute(
+      'href',
+      'https://store.nynjtc.org/collections/maps?utm_source=ourhike&utm_medium=app',
+    )
+  })
+
+  it('names who receives the money under OPRHP’s "Donate ›", which is not the agency', () => {
+    render(<SourcesSection stewards={[OPRHP]} />)
+
+    expect(screen.getByRole('link', { name: 'Donate ›' })).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Goes to Natural Heritage Trust, not to New York State Office of Parks, Recreation and Historic Preservation.',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('renders no link for a grant that names other screens and not this one', () => {
+    const { container } = render(<SourcesSection stewards={[ELSEWHERE_ONLY]} />)
+
+    expect(container.querySelectorAll('a')).toHaveLength(0)
+  })
+
+  it('prints "OurHike takes no cut and holds no money" only once a link is on the screen', () => {
+    const { unmount } = render(<SourcesSection stewards={BOTH} />)
+    expect(screen.queryByText(/takes no cut/)).not.toBeInTheDocument()
+    unmount()
+
+    render(<SourcesSection stewards={[ATC, NYNJTC]} />)
+    expect(screen.getByText(/takes no cut and holds no money/)).toBeInTheDocument()
   })
 })

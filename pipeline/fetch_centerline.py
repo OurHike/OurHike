@@ -48,6 +48,7 @@ import sys
 from pathlib import Path
 
 from lib.arcgis import fetch_layer_geojson
+from lib.atomic_write import write_text_atomically
 from lib.source_registry import find_source, load_registry
 
 ROOT = Path(__file__).parent
@@ -107,7 +108,10 @@ def main() -> int:
         return 1
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    OUT_PATH.write_text(json.dumps(collection))
+    # In one step: the workflow caches this file `if: always()`, and a write
+    # cut short by the step's timeout would otherwise be restored into every
+    # later run as a centerline that no longer parses (lib/atomic_write.py).
+    write_text_atomically(OUT_PATH, json.dumps(collection))
     print(f"Fetched {count} centerline features -> {OUT_PATH}")
     return 0
 

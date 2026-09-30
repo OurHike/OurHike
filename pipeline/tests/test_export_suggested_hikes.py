@@ -646,6 +646,58 @@ def test_a_confirmed_row_naming_no_photographer_ships_no_photograph(sandbox):
     assert "photo" not in published(sandbox)[0]
 
 
+def test_the_manifest_says_how_many_photographs_shipped_and_how_many_were_confirmed(sandbox):
+    """#1557. Before this, a run that shipped photographs and a run that
+    shipped none wrote manifests differing in nothing but the checksum."""
+    sandbox["confirm"]([_confirmed_row()])
+    sandbox["write"]({"7": hike()}, {"7": route()})
+
+    manifest = exporter.main()
+
+    assert manifest["with_photo"] == 1
+    assert manifest["confirmed_photos"] == 1
+
+
+def test_a_confirmed_photograph_whose_hike_is_not_on_the_shelf_still_counts_as_confirmed(sandbox):
+    """The reason both numbers are kept rather than one. 57 of the first 119
+    confirmed rows belonged to hikes the shelf does not carry, so a gap
+    between the two is the ORDINARY state and not evidence of anything. A
+    manifest carrying only `with_photo` would make that indistinguishable
+    from the shipping path having broken."""
+    sandbox["confirm"]([_confirmed_row(hike_id="99")])
+    sandbox["write"]({"7": hike()}, {"7": route()})
+
+    manifest = exporter.main()
+
+    assert manifest["with_photo"] == 0
+    assert manifest["confirmed_photos"] == 1
+
+
+def test_no_confirm_file_reads_as_none_confirmed_rather_than_none_shipped(sandbox):
+    """The distinction the pair exists to draw, at the end that matters.
+    `0 of 0` is nobody having reviewed the sheet - today's ordinary state.
+    `0 of 119` is the shipping path broken while the review stands. Three of
+    its four gates fail quietly by design, so this is the only place the
+    difference shows without querying the bucket by hand."""
+    sandbox["write"]({"7": hike()}, {"7": route()})
+
+    manifest = exporter.main()
+
+    assert not sandbox["confirmed_path"].exists()
+    assert (manifest["with_photo"], manifest["confirmed_photos"]) == (0, 0)
+
+
+def test_the_run_log_carries_the_same_pair_as_the_manifest(sandbox, capsys):
+    """In the log too, because the log is what somebody reads when they are
+    asking why a card is blank - the manifest is not in front of them then."""
+    sandbox["confirm"]([_confirmed_row(), _confirmed_row(hike_id="99", digest="b" * 64)])
+    sandbox["write"]({"7": hike()}, {"7": route()})
+
+    exporter.main()
+
+    assert "1  with a photograph, of 2 confirmed" in capsys.readouterr().out
+
+
 def test_the_sheets_bare_hike_number_joins_to_the_records_prefixed_id(sandbox):
     """THE TRAP THIS JOIN IS MOST LIKELY TO FALL INTO. The matcher writes
     `hike_id` as the bare export number and a record here is

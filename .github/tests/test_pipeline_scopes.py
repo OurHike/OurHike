@@ -19,6 +19,7 @@ reading of this checkout's workflows, so a synthetic fixture would test
 the fixture.
 """
 
+import importlib.util
 import subprocess
 import sys
 from pathlib import Path
@@ -27,16 +28,31 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SCOPES = REPO_ROOT / "scripts" / "pipeline_scopes.py"
 
 #: The publishing paths that exist today. The script derives the roster from
-#: which workflows invoke publish.py; this pins that the derivation keeps
-#: finding all five, so a rename or a refactor that drops one out of the
-#: report fails here instead of silently shrinking the answer.
+#: which workflows invoke publish.py; this pins that the derivation finds
+#: exactly these, so a rename or a refactor that drops one out of the
+#: report fails here instead of silently shrinking the answer - and a
+#: workflow that only MENTIONS the publisher fails here instead of being
+#: handed dispatch advice for inputs it does not have (#1552). A real sixth
+#: publisher belongs in this set, in the same pull request that adds it.
 PUBLISHING_PATHS = {
     "build-basemap.yml",
     "build-dem.yml",
     "build-raster.yml",
     "publish-conditions.yml",
     "publish-vector-data.yml",
+    # The sixth, from #1666 (features/WEATHER.md): its `publish` job runs
+    # `python publish.py` on its own schedule. Found by this set becoming
+    # exact (#1552). Under "at least these five" it had joined the roster on
+    # main without anyone writing it down here.
+    "publish-weather.yml",
 }
+
+
+def _load_scopes_module():
+    spec = importlib.util.spec_from_file_location("pipeline_scopes", SCOPES)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _verdict(changed: list[str]) -> str:
@@ -66,8 +82,42 @@ def test_the_roster_is_derived_and_complete():
         text=True,
         check=True,
     ).stdout
-    named = {line.split()[0] for line in scopes.splitlines() if line.strip()}
+    named = {line.split()[0] for line in scopes.splitlines() if line.strip()} - {"every-path"}
     assert PUBLISHING_PATHS <= named, f"derivation lost a publishing path: {sorted(PUBLISHING_PATHS - named)}"
+    assert named <= PUBLISHING_PATHS, f"derivation invented a publishing path: {sorted(named - PUBLISHING_PATHS)}"
+
+
+def test_workflows_that_only_mention_the_publisher_are_not_publishing_paths():
+    """#1552. Both of these explain in a comment why they do not publish, and
+    matching the whole file's text counted that explanation as a publish -
+    the recovery workflow's dispatch was then refused on 2026-09-23 for the
+    two inputs pipelines.sh told the session to set."""
+    verdict = _verdict(["pipeline/lib/data_env.py"])
+    assert "nynjtc-archive-recovery.yml" not in verdict
+    assert "propose-atc-updates.yml" not in verdict
+
+
+def test_only_a_run_script_that_invokes_the_publisher_counts(tmp_path):
+    scopes = _load_scopes_module()
+
+    def publishes(workflow_yaml: str) -> bool:
+        path = tmp_path / "candidate.yml"
+        path.write_text(workflow_yaml)
+        return bool(scopes.INVOKES_PUBLISH_RE.search(scopes.run_scripts(path)))
+
+    invoked = "jobs:\n  publish:\n    steps:\n      - run: cd pipeline && python publish.py\n"
+    assert publishes(invoked)
+    assert publishes(invoked.replace("python publish.py", "python3 pipeline/publish.py"))
+    assert publishes(invoked.replace("python publish.py", "python -m publish"))
+
+    commented = "# publish.py is not run here\njobs:\n  a:\n    steps:\n      - run: python other.py\n"
+    assert not publishes(commented)
+    shell_comment = "jobs:\n  a:\n    steps:\n      - run: |\n          # then python publish.py\n          true\n"
+    assert not publishes(shell_comment)
+    echoed = 'jobs:\n  a:\n    steps:\n      - run: echo "publish.py did not succeed"\n'
+    assert not publishes(echoed)
+    step_name = "jobs:\n  a:\n    steps:\n      - name: before publish.py\n        uses: actions/checkout@v4\n"
+    assert not publishes(step_name)
 
 
 def test_an_exporter_stales_the_path_that_runs_it_and_only_that_path():
@@ -88,9 +138,35 @@ def test_an_import_stales_the_workflow_that_never_names_it():
 
 
 def test_a_shared_root_stales_every_path():
-    verdict = _verdict(["pipeline/lib/anything_at_all.py"])
+    """pipeline/reference/ is data with no import graph for the closure to
+    walk, so it stays a blanket SHARED_ROOTS entry rather than joining
+    pipeline/lib/ in the closure (#1624)."""
+    verdict = _verdict(["pipeline/reference/anything_at_all.json"])
     for workflow in PUBLISHING_PATHS:
-        assert f"STALE  {workflow}" in verdict, f"{workflow} did not go stale on a lib/ change"
+        assert f"STALE  {workflow}" in verdict, f"{workflow} did not go stale on a reference/ change"
+
+
+def test_a_lib_module_every_path_imports_stales_every_path():
+    """publish.py imports lib.data_env directly, and every publishing path's
+    text names publish.py - so this is a real edge, not SHARED_ROOTS, and it
+    reaches every path the same way #1624's fix means a narrower lib/ change
+    should not."""
+    verdict = _verdict(["pipeline/lib/data_env.py"])
+    for workflow in PUBLISHING_PATHS:
+        assert f"STALE  {workflow}" in verdict, f"{workflow} did not go stale on a lib/data_env.py change"
+
+
+def test_a_lib_module_only_one_path_imports_stales_only_that_path():
+    """#1624. pipeline/lib/work_projects.py is imported by export_work_projects.py
+    alone, which only publish-conditions.yml runs - so a change to it must not
+    stale build-dem.yml, which is what cost two 26-minute DEM builds nothing
+    on 2026-09-23 when pipeline/lib/ was still a blanket SHARED_ROOTS entry."""
+    verdict = _verdict(["pipeline/lib/work_projects.py"])
+    assert "STALE  publish-conditions.yml" in verdict
+    assert "fresh  build-dem.yml" in verdict
+    assert "fresh  build-basemap.yml" in verdict
+    assert "fresh  build-raster.yml" in verdict
+    assert "fresh  publish-vector-data.yml" in verdict
 
 
 def test_tests_and_prose_stale_nothing():
@@ -109,7 +185,7 @@ def test_the_self_healing_and_withdrawn_paths_say_so():
     from main), and a stale raster build is #855's deliberate withdrawal -
     both read out of the workflow files, so flipping either behaviour there
     changes this answer in the same edit."""
-    verdict = _verdict(["pipeline/lib/anything_at_all.py"])
+    verdict = _verdict(["pipeline/lib/data_env.py"])
     assert "nothing to dispatch" in _note_after(verdict, "publish-conditions.yml")
     assert "withdrawn" in _note_after(verdict, "build-raster.yml")
     assert "data_environment=ua" in _note_after(verdict, "publish-vector-data.yml")
@@ -122,7 +198,7 @@ def test_a_variant_taking_path_says_it_is_one_dispatch_per_variant():
     and nothing 404s. Read from the workflow's own input rather than keyed on
     the file's name, so a second variant-taking path answers correctly with no
     edit here."""
-    verdict = _verdict(["pipeline/lib/anything_at_all.py"])
+    verdict = _verdict(["pipeline/lib/data_env.py"])
     dem = _note_after(verdict, "build-dem.yml")
 
     assert "ONCE PER VARIANT" in dem

@@ -53,21 +53,73 @@ describe('publishedHash', () => {
     })
 
     expect(await publishedHash('background.pmtiles')).toBe(HASH.toLowerCase())
-    expect(globalThis.fetch).toHaveBeenCalledWith(`${BASE}/${RELEASE_MANIFEST_PATH}`, {
-      signal: undefined,
-    })
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      `${BASE}/${RELEASE_MANIFEST_PATH}`,
+      // The shared read's own deadline signal, never the caller's - see
+      // "four overlapping callers read one manifest" below.
+      { signal: expect.any(AbortSignal) },
+    )
   })
 
-  it('fetches the manifest again for every call', async () => {
+  it('fetches the manifest again for a call made after the last one settled', async () => {
     // Not cached on purpose: a republished archive must not leave the app
     // verifying against a hash the bucket has stopped serving, which would
     // make every retry discard its own bytes until the app restarted.
+    //
+    // AWAITED, and that is the whole distinction #1612 turns on: these two
+    // calls do not overlap, so the sharing below does not reach them and each
+    // reads the bucket. Two calls in the same tick DO share - which is the
+    // launch, and the next test.
     const { publishedHash } = await loadWithBase(BASE)
     mockManifestResponse({ artifacts: { 'background.pmtiles': { sha256: HASH } } })
 
     await publishedHash('background.pmtiles')
     await publishedHash('background.pmtiles')
     expect(globalThis.fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('reads one manifest for four callers that overlap, not four', async () => {
+    // THE LAUNCH, spelled as the four calls it actually makes: lib/coverageCells.ts
+    // asks publishedHash for a cell index's hash once per family, and there are
+    // four families. Before #1612 each ran its own bare fetch, and a launch
+    // pulled releases/<id>/manifest.json seven times counting the other
+    // callers - 412,128 bytes each on 2026-09-16-4, measured 2026-09-21, all
+    // of it in front of the map.
+    //
+    // Counted rather than timed, for App.loadBudget.test.tsx's reason: what
+    // makes this expensive is that the reads happen at all, and a count is the
+    // same on any machine.
+    const { publishedHash } = await loadWithBase(BASE)
+    mockManifestResponse({ artifacts: { 'background.pmtiles': { sha256: HASH } } })
+
+    const hashes = await Promise.all([
+      publishedHash('background.pmtiles'),
+      publishedHash('background.pmtiles'),
+      publishedHash('background.pmtiles'),
+      publishedHash('background.pmtiles'),
+    ])
+
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+    // Every caller still gets the answer, which is the half a de-duplication
+    // can silently drop.
+    expect(hashes).toEqual(Array(4).fill(HASH.toLowerCase()))
+  })
+
+  it('does not cancel the shared read when one of its callers aborts', async () => {
+    // #1302's trade, inherited here: one caller's abort must reject that
+    // caller without ending the read the other three are waiting on. The
+    // alternative - passing the caller's signal to the fetch - is how a
+    // cancelled download used to take the whole launch's manifest with it.
+    const { publishedHash } = await loadWithBase(BASE)
+    mockManifestResponse({ artifacts: { 'background.pmtiles': { sha256: HASH } } })
+    const controller = new AbortController()
+
+    const cancelled = publishedHash('background.pmtiles', { signal: controller.signal })
+    const other = publishedHash('background.pmtiles')
+    controller.abort()
+
+    await expect(cancelled).rejects.toThrow('Aborted')
+    expect(await other).toBe(HASH.toLowerCase())
   })
 
   it('reads a nested key exactly as given', async () => {
@@ -113,26 +165,38 @@ describe('publishedHash', () => {
     expect(await publishedHash('background.pmtiles')).toBeNull()
   })
 
-  it('lets a cancellation through instead of reporting no hash', async () => {
+  it('lets the caller own cancellation through instead of reporting no hash', async () => {
     // The hiker aborting the download has to stop the attempt, not silently
-    // downgrade it to an unverified one that keeps running.
+    // downgrade it to an unverified one that keeps running. Driven through the
+    // caller's own signal since #1612, because that is now the only abort this
+    // function can see - see the next test for the one it deliberately cannot.
+    const { publishedHash } = await loadWithBase(BASE)
+    mockManifestResponse({ artifacts: { 'background.pmtiles': { sha256: HASH } } })
+    const controller = new AbortController()
+    controller.abort()
+
+    await expect(
+      publishedHash('background.pmtiles', { signal: controller.signal }),
+    ).rejects.toThrow('Aborted')
+  })
+
+  it('reads a manifest read that gave up on its own deadline as unreadable, not as a cancellation', async () => {
+    // The distinction #1612 drew by routing this through publishedSnapshot.
+    // MANIFEST_READ_TIMEOUT_MS aborts a read nobody answered - a captive
+    // portal at a trailhead, which HANGS rather than failing - and that abort
+    // is the app giving up, not the hiker cancelling. Reported as a
+    // cancellation it would stop a download the hiker never touched; reported
+    // as null it downgrades to unverified, which is what an unreachable
+    // manifest has always meant here.
+    //
+    // A bare fetch rejection is what the deadline looks like from inside, so
+    // that is what this drives.
     const { publishedHash } = await loadWithBase(BASE)
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(
       new DOMException('Aborted', 'AbortError'),
     )
 
-    await expect(publishedHash('background.pmtiles')).rejects.toThrow('Aborted')
-  })
-
-  it('passes the abort signal to the manifest fetch', async () => {
-    const { publishedHash } = await loadWithBase(BASE)
-    mockManifestResponse({ artifacts: {} })
-    const controller = new AbortController()
-
-    await publishedHash('background.pmtiles', { signal: controller.signal })
-    expect(globalThis.fetch).toHaveBeenCalledWith(`${BASE}/${RELEASE_MANIFEST_PATH}`, {
-      signal: controller.signal,
-    })
+    expect(await publishedHash('background.pmtiles')).toBeNull()
   })
 
   it('does not fetch a manifest when no bucket is configured', async () => {

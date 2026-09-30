@@ -25,6 +25,11 @@
 //  - THE LINE IS OURS. The footer says the route a map would draw is
 //    OurHike's construction of their description, not a track anybody
 //    walked with a GPS.
+//  - THE FOOTER STILL LINKS TO THEIR PAGE. Since #1578 that link is drawn
+//    only for a URL that is a web page (lib/safeLink.ts), and opens beside
+//    the app rather than navigating it away. The fixture's URL is the
+//    publisher's own https: one, so "Read it on their page ›" is the
+//    evidence that the gate lets a real page through.
 //
 // It is also the shot for the widened difficulty ladder: "Moderate to
 // Strenuous" is one of the two compound levels #1290 added, in the

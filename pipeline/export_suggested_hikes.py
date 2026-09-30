@@ -720,6 +720,19 @@ def main() -> dict | None:
         "by_provenance": by_provenance,
         "with_tags": sum(1 for hike in document["hikes"] if hike["features"]),
         "with_climb": sum(1 for hike in document["hikes"] if "climb" in hike),
+        # BOTH numbers, because either alone is ambiguous (#1557). `with_photo`
+        # says how many cards got a picture; `confirmed_photos` says how many
+        # `reference/nynjtc_hike_photos.json` named. A gap between them is
+        # ordinary - a confirmed photograph whose hike this shelf does not
+        # carry ships nothing, and 57 of the first 119 were exactly that - but
+        # with_photo alone cannot tell that apart from the shipping path
+        # breaking, and the path has three gates that fail QUIETLY by design:
+        # an absent confirm file clears nothing, collect_photos() reads an
+        # absent store as empty, and the workflow's carrier step exits 0 when
+        # no unexpired recovery artifact exists. `0 of 119` and `0 of 0` are
+        # different emergencies and used to print as the same silence.
+        "with_photo": sum(1 for hike in document["hikes"] if hike.get("photo")),
+        "confirmed_photos": len(confirmed_photos()),
         "dropped": [key for key, _ in dropped],
         "generated_at": document["generated_at"],
     }
@@ -732,6 +745,12 @@ def main() -> dict | None:
     print(f"{len(document['hikes'])} suggested hike(s) of {len(cache)} -> {OUT_PATH}")
     for kind, count in sorted(by_provenance.items()):
         print(f"  {count:4}  {kind}")
+    # In the log as well as the manifest: a run's log is what somebody reads
+    # when they are asking why a card is blank, and the manifest is not in
+    # front of them at that moment.
+    print(
+        f"  {manifest['with_photo']:4}  with a photograph, of {manifest['confirmed_photos']} confirmed in {CONFIRMED_PHOTOS_PATH.name}"
+    )
     if dropped:
         print(f"\n{len(dropped)} hike(s) ship no route:", file=sys.stderr)
         reasons: dict[str, int] = {}

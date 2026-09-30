@@ -62,6 +62,7 @@ export function mapPointsFrom(
     name: string
     siteId?: string
     siteRole?: string
+    trailsClosedWithinM?: number
   }[],
 ): MapPoint[] {
   const points: MapPoint[] = new Array<MapPoint>(pois.length)
@@ -85,6 +86,9 @@ export function mapPointsFrom(
       // show up in a snapshot as a claim about a site.
       ...(poi.siteId !== undefined ? { siteId: poi.siteId } : {}),
       ...(poi.siteRole !== undefined ? { siteRole: poi.siteRole } : {}),
+      // A trailhead whose trails are all closed (#1695), for the pin. The
+      // pin needs only whether; the card reads the distance off StoredPoi.
+      ...(poi.trailsClosedWithinM !== undefined ? { trailsClosed: true } : {}),
     }
   }
   return points
@@ -120,6 +124,10 @@ export interface MapPoint {
    */
   siteId?: string
   siteRole?: string
+  /** Every trail near this trailhead is closed (#1695) - set when
+   *  lib/trailData.ts's StoredPoi.trailsClosedWithinM is, and carried to
+   *  map/poiLayers.ts for the pin. */
+  trailsClosed?: boolean
 }
 
 /**
@@ -200,7 +208,7 @@ export const SAFETY_LAYERS = ['closure', 'serious-warning'] as const
  * What is no longer promised is permanence within a single view. The Alerts
  * switch is deliberately not routed through here or through
  * `waypoint_types_shown` at all: it is a `useState` in
- * chrome/alertLayerPanel.ts that nothing writes down, and it resets whenever
+ * a `useState` that nothing wrote down, and it reset whenever
  * the app is next opened. Two mechanisms, and the reason they are two is that
  * only one of them can outlive the moment a hiker is looking at the screen.
  *

@@ -76,7 +76,7 @@ function aPhoto(over: Partial<api.PoiPhotoQueueEntry> = {}): api.PoiPhotoQueueEn
 async function shown(photos: api.PoiPhotoQueueEntry[]) {
   mocked.fetchModerationQueue.mockResolvedValue({ reports: [], closures: [] })
   mocked.fetchPhotoQueue.mockResolvedValue(photos)
-  render(<Moderation onClose={vi.fn()} />)
+  render(<Moderation units="imperial" onClose={vi.fn()} />)
   await screen.findByRole('heading', { name: /photos offered as a pin/i })
   await waitFor(() => expect(screen.queryByText(/reading the photos/i)).toBeNull())
 }
@@ -170,7 +170,7 @@ describe('the photo queue section', () => {
   it('a photo queue that could not be read says so beside a queue that loaded', async () => {
     mocked.fetchModerationQueue.mockResolvedValue({ reports: [], closures: [] })
     mocked.fetchPhotoQueue.mockRejectedValue(new Error('no signal'))
-    render(<Moderation onClose={vi.fn()} />)
+    render(<Moderation units="imperial" onClose={vi.fn()} />)
 
     const section = (
       await screen.findByRole('heading', { name: /photos offered as a pin/i })

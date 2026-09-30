@@ -35,20 +35,32 @@
 //     room from, and it rendered its description 15 px outside its own
 //     border - visible in the photograph that opened #1480.
 //
+// WHAT #1563 CHANGED IN THIS FRAME, which is why the recipe was touched: the
+// camera has no GPS fix, so this is the "No location yet" state, and the
+// header says so with a "Change" beside it where it used to say "here". The
+// tiles are unchanged and will not file until the report has a place - the
+// tap opens the location sheet, which report-window-refused.mjs photographs,
+// and a fix's version of the same sheet is report-window-place.mjs. The
+// sheet is a window of its own (the maintainer's steer of 2026-09-17), so
+// this frame is the tile frame #1480 measured and nothing in it has moved:
+// its first #1563 version drew the picker inside the body, above the tiles,
+// and put the body back under a scroll on the smallest phone.
+//
 // THIS ONE NEEDS NO TRAIL DATA, which is worth saying because the other
 // recipes in this directory spend most of their comments on it. The window
 // opens from Today's own button and renders entirely from the app's own
-// vocabulary, so the frame is the same whether or not the bucket answered.
-// There is no second honest frame here and no branch in the drive.
+// vocabulary, so the frame is the same whether or not the bucket answered -
+// with one honest difference: with the release's waypoints on the phone the
+// find-by-name box has something to find, and without them it says so.
 //
 // Nobody's data is in it: no account, no reports seeded, no location fix, and
 // the report window itself is a list of categories rather than of anything
 // anyone has filed.
 
 export const caption =
-  'Report a problem — the 911 line pinned under the header, and a window that no longer scrolls (#1480). It is still a window over Today rather than a page instead of it (#1133).'
+  'Report a problem with no GPS fix — the header says “No location yet” with a Change beside it (#1563), and the tiles will not file until the report has a place. The 911 line stays pinned under the header (#1480).'
 export const alt =
-  'A centred dialog over a dimmed Today screen, its header on dark pine reading “Report a problem / What did you find?” and, immediately under it, a full-width pale band in red type reading “Call 911 if you are in danger now. This reaches volunteers, sometimes days later.” Below the band, six left-aligned category tiles two per row, each with a line icon beside its label and a description underneath, then two full-width rows — “The trail is closed” and “Something unsafe happened” — both showing their full two-line descriptions inside their own borders. The whole window is on screen with nothing cut off and no scrollbar. The tab bar is still visible at the foot of the screen behind the scrim.'
+  'A centred dialog over a dimmed Today screen, its header on dark pine reading “Report a problem / What did you find?” with the place line “No location yet” and a “Change” control, and immediately under it a full-width pale band in red type reading “Call 911 if you are in danger now. This reaches volunteers, sometimes days later.” Below the band, six left-aligned category tiles two per row, each with a small line icon beside its label and a description under it, then the “The trail is closed” and “Something unsafe happened” rows. The tab bar is still visible at the foot of the screen behind the scrim.'
 
 export default async function drive(page) {
   // Today is where the app opens (#1054), and where the report entry now
@@ -81,4 +93,7 @@ export default async function drive(page) {
   // "the whole window is up" actually means here - and it is the element this
   // frame is for a reviewer to look at.
   await page.getByRole('button', { name: /^Something unsafe happened/ }).waitFor()
+  // And the header's place line in its fixless state, which is what #1563
+  // changed in this frame.
+  await page.getByTestId('report-anchor').filter({ hasText: 'No location yet' }).waitFor()
 }

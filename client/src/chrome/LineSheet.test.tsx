@@ -24,6 +24,7 @@ const FULL: LineDetail = {
   switchNote: null,
   trailMark: null,
   sharedLine: null,
+  paperMaps: [],
 }
 
 /** A nearby trail: somebody else's network, with the three lines an A.T. spur
@@ -43,6 +44,7 @@ const NEARBY: LineDetail = {
   switchNote: 'Not the trail you chose. Switching happens in the picker.',
   trailMark: null,
   sharedLine: null,
+  paperMaps: [],
 }
 
 afterEach(cleanup)
@@ -78,6 +80,7 @@ describe('the line-detail sheet', () => {
           switchNote: null,
           trailMark: null,
           sharedLine: null,
+          paperMaps: [],
         }}
         onClose={vi.fn()}
       />,

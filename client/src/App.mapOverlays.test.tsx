@@ -217,13 +217,11 @@ describe('what the shell draws once the reads land', () => {
   })
 })
 
-// The alerts switch, end to end (#1047).
-//
-// Covered here rather than only in chrome/Legend.test.tsx and
-// chrome/alertLayerPanel.test.ts because the thing worth proving spans all
-// three: a tap in the legend has to reach the two GeoJSON sources on the
-// canvas, and the app has to take the hide back on its own. Either half tested
-// alone would pass with the wiring cut.
+// THE ALERTS SWITCH WAS COVERED HERE END TO END (#1047), because what it did
+// spanned three files: a tap in the legend reaching two GeoJSON sources on the
+// canvas, and the app taking the hide back on its own. The maintainer removed
+// the switch on 2026-09-20 and the describe below is what replaced those
+// three tests - the same span, asserting that the tap has nowhere to happen.
 
 describe('tapping the tape and the pin (#1373, F12)', () => {
   // The two marks #232 drew and left for a tap that never came. Through the
@@ -259,52 +257,47 @@ describe('tapping the tape and the pin (#1373, F12)', () => {
   })
 })
 
-describe('taking the alerts off the map, and getting them back (#1047)', () => {
-  async function openLegendAndToggleAlerts(): Promise<void> {
-    await userEvent.click(await screen.findByRole('button', { name: 'Legend' }))
-    await userEvent.click(await screen.findByRole('checkbox', { name: /alerts/i }))
-  }
-
-  it('clears the bands and the warning pins on one tap', async () => {
+describe('nothing in the running app can take the alerts off the map', () => {
+  it('draws the bands and the warning pins with no control anywhere to clear them', async () => {
+    // The whole span in one test, which is what this file is for. Three tests
+    // stood here: one that cleared both sources on a tap, one that printed
+    // "Alerts hidden" on the map, and one that put everything back on
+    // `visibilitychange` - the maintainer's own constraint on #1047 ("The map
+    // should always open to the alerts being shown").
+    //
+    // The resume rule is the one worth saying out loud now, because removing
+    // the switch is what made it unnecessary rather than what broke it: there
+    // is no hidden state left to restore, so there is nothing for a resume to
+    // put back.
     const map = await renderApp()
     // Waited on rather than assumed: the closure needs the centerline index
-    // AND the backend read, so the source is empty for a beat at first render
-    // and a test that toggled straight away would pass on the wrong emptiness.
+    // AND the backend read, so the source is empty for a beat at first render.
     await waitFor(() => {
       expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(1)
       expect(featuresIn(map, WARNING_SOURCE_ID)).toHaveLength(1)
     })
 
-    await openLegendAndToggleAlerts()
+    await userEvent.click(await screen.findByRole('button', { name: 'Legend' }))
+    const legend = await screen.findByRole('dialog', { name: /legend/i })
 
-    await waitFor(() => {
-      expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(0)
-      expect(featuresIn(map, WARNING_SOURCE_ID)).toHaveLength(0)
-    })
+    expect(within(legend).queryByRole('checkbox', { name: /alerts/i })).toBe(null)
+    expect(within(legend).queryByRole('switch', { name: /alerts/i })).toBe(null)
+    expect(screen.queryByText('Alerts hidden')).toBe(null)
+
+    // And still drawn with the legend open, which is the state a hiker would
+    // have been in to reach the switch.
+    expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(1)
+    expect(featuresIn(map, WARNING_SOURCE_ID)).toHaveLength(1)
   })
 
-  it('says on the map that it is withholding them', async () => {
+  it('survives a resume with the marks still on the map', async () => {
+    // `visibilitychange` was what put the alerts back, via a listener in
+    // chrome/alertLayerPanel.ts. That file is deleted, so this asserts the
+    // event now changes nothing rather than that it restores something - a
+    // resume that emptied the sources would be a listener nobody remembered.
     const map = await renderApp()
     await waitFor(() => {
       expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(1)
-    })
-
-    await openLegendAndToggleAlerts()
-
-    expect(await screen.findByText('Alerts hidden')).toBeInTheDocument()
-  })
-
-  it('puts them back when the hiker comes back to the app', async () => {
-    // The maintainer's constraint on #1047, at the only level that can show
-    // it: "The map should always open to the alerts being shown." On a phone
-    // that keeps this app alive for days, opening it is this event.
-    const map = await renderApp()
-    await waitFor(() => {
-      expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(1)
-    })
-    await openLegendAndToggleAlerts()
-    await waitFor(() => {
-      expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(0)
     })
 
     vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
@@ -314,7 +307,6 @@ describe('taking the alerts off the map, and getting them back (#1047)', () => {
       expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(1)
       expect(featuresIn(map, WARNING_SOURCE_ID)).toHaveLength(1)
     })
-    expect(screen.queryByText('Alerts hidden')).toBe(null)
   })
 })
 

@@ -1,0 +1,99 @@
+[link] Skip to content
+    [svg]
+    Prototype controls
+    ·
+    signed in as
+  [button] org admin
+  [button] not a lead
+  [button] registered volunteer
+  [button] reset
+  [button] show signed out
+  [button] show a new org
+  [button] show failures
+  [button] onboarding complete · replay it
+    [button] RT Ramapo Trail Conference Org admin · maintainer
+      [svg]
+        Onboarding
+      [button] Org home
+      [button] Admin approval
+      [button] Hike registry
+      [button] Registry sign-off
+      [button] Add a trail
+      [svg]
+        Manage volunteers
+      [button] Roles
+      [button] Workdays 3
+      [button] Coverage report 37
+      [button] Your roster
+      [button] Welcome them 37
+      [svg]
+        Volunteer
+      [button] Your Tread
+      [button] On your phone
+      [button] What you hand back
+      [button] Ridge Runner
+      [button] Your profile
+    [button] What we email on your behalf
+    [button] Settings and leaving
+    [link] OurHike
+    [button] For orgs
+    [button] Demo org
+    [button] Nominate an org
+    [button] Claim your org
+        MA
+          Maria Alvarez
+          maria@ramapotrails.org
+      [button] Ramapo Trail Conference
+        ›
+          Manage volunteers
+        ›
+          Workdays
+        [svg]
+            MANAGE VOLUNTEERS · WORKDAYS
+        [h1] Workdays, signups and hours
+    If you already run workdays on your own website, keep doing that — we mirror them and stay out of the way. If you would rather not run two systems, create them here instead. You can do both, and every workday says which one it came from.
+            Your website is the system of record
+              connected
+        ramapotrails.org/events.ics · read hourly · last read 14 minutes ago
+          A mirrored workday is read-only here — we never write back to your site, and we never change what it told us. Your form keeps taking signups; we show hikers the link.
+        [button] Sync settings
+    [button] Workdays
+    [button] Signups
+    [button] Hours to confirm
+                Pine Meadow rock steps
+                Sat 20 Sep · 8:30am
+              ·
+                Pine Meadow North · MM 11.8
+              · led by
+                Joseph Okafor
+                mirrored
+            9 interested · 6 confirmed
+            Read-only here. Edit it on ramapotrails.org and we pick the change up within the hour.
+            [button] Edit on your site ↗
+                Blowdown sweep after the storm
+                Sun 21 Sep · 7am
+              ·
+                Timp–Torne South
+              · led by
+                Maria Alvarez
+                yours, here
+            4 interested · 0 confirmed
+            Created here because it did not exist last week. Nothing on your site needed changing.
+            [button] Edit
+                Invasives pull · barberry
+                Sat 27 Sep · 9am
+              ·
+                Suffern–Bear Mountain
+              · led by
+                Dana Whitfield
+                mirrored
+            12 interested · 12 confirmed · 3 waitlisted
+            Waitlist came from your own form — we only show what it told us.
+            [button] Edit on your site ↗
+          Add one here instead
+            For the workday you called on Thursday because a storm came through. It shows up beside your mirrored ones and is yours to edit.
+          [button] + New workday
+            Why not just import everything once
+            A one-time import goes stale the first time you move a date on your own site. Mirroring means your site stays the truth and this page follows it — which is also why we refuse to write back.
+          WHAT HIKERS SEE
+            All three, on the map and in the next fourteen days — with your own signup link on the mirrored ones, and our form on the one you made here. A hiker cannot tell which is which, and should not have to.

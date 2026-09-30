@@ -1,0 +1,136 @@
+[link] Skip to content
+    [svg]
+    Prototype controls
+    ·
+    signed in as
+  [button] org admin
+  [button] not a lead
+  [button] registered volunteer
+  [button] reset
+  [button] show signed out
+  [button] show a new org
+  [button] show failures
+  [button] onboarding complete · replay it
+    [button] RT Ramapo Trail Conference Org admin · maintainer
+      [svg]
+        Onboarding
+      [button] Org home
+      [button] Admin approval
+      [button] Hike registry
+      [button] Registry sign-off
+      [button] Add a trail
+      [svg]
+        Manage volunteers
+      [button] Roles
+      [button] Workdays 3
+      [button] Coverage report 37
+      [button] Your roster
+      [button] Welcome them 37
+      [svg]
+        Volunteer
+      [button] Your Tread
+      [button] On your phone
+      [button] What you hand back
+      [button] Ridge Runner
+      [button] Your profile
+    [button] What we email on your behalf
+    [button] Settings and leaving
+    [link] OurHike
+    [button] For orgs
+    [button] Demo org
+    [button] Nominate an org
+    [button] Claim your org
+        MA
+          Maria Alvarez
+          maria@ramapotrails.org
+      [button] Ramapo Trail Conference
+        ›
+          Volunteer
+        ›
+          Ridge Runner At-Large
+        [svg]
+            RIDGE RUNNER AT-LARGE · DAY 3 OF 6
+        [h1] You are out this week
+    Mon 14 → Sat 19 September · clean-up and pack-out, invasive species. Your window closes on its own.
+    Work the trail you were walking anyway.
+          Your window
+          Six days, because that is what you asked for. Seven is the ceiling and it is a real limit, not a default — a commitment that can be extended becomes an obligation, and this app does not do those.
+                Mon
+                14
+                4 submissions
+                Tue
+                15
+                2 submissions
+                Wed
+                16
+                out now
+                Thu
+                17
+                Fri
+                18
+                Sat
+                19
+                window ends
+          Thursday and Friday are empty because they have not happened. A day you walk past without filing anything stays empty too, and nothing is subtracted for it — a partial week is a week of real work.
+            What you have filed
+            this window
+          Everything here is an ordinary report or condition note, tagged to this window. Nothing new is stored about you.
+                  Packed out a bag of cans
+                  Today, 11:20
+                ·
+                  MM 12.4 · the creek crossing
+                  trash
+                  Barberry, about 20 ft of it
+                  Today, 9:05
+                ·
+                  MM 11.6
+                  invasive
+                  Brushed the corridor, 300 yards
+                  Tue, 4:40pm
+                ·
+                  MM 13.0 → 13.2
+                  clearance
+                  Spring running well
+                  Tue, 8:15
+                ·
+                  MM 11.8 · Pine Meadow spring
+                  condition
+                  Privy door hinge broken
+                  Mon, 5:30pm
+                ·
+                  MM 14.3 · Stone Shelter
+                  report
+          What you are watching for
+          The two you picked are at the front of every screen this week. The third is off — turn it on and it joins them.
+              [svg]
+                  Clean-up and pack-out
+                  Trash you carry out, and where you found it. Files as a trash report — no new machinery.
+              [svg]
+                  Invasive species
+                  Barberry, stiltgrass, mile-a-minute. A photo helps the conservation lead more than a name does.
+              [svg]
+                  General trail clearance
+                  Brushing, small blowdowns, drainage. Anything needing a saw becomes a help request instead.
+            This is not a credential
+            ATC's Ridgerunners are staff. You are a volunteer trail monitor, and the difference matters on the ground: a hiker must never take a closure, a fire rule or a camping instruction from you as though it came from the agency. So nothing is issued that works as a badge — no card, no public profile, no pin showing where you are.
+          THIS WINDOW
+              Submissions
+              6
+              Trash packed out
+              2 bags
+              Invasives logged
+              1
+              Miles walked
+              21.4
+          Counts of real things, no total across them, and nothing comparing you to another runner.
+          Which club hears about it
+          Ramapo Trail Conference — worked out from who maintains the miles you are on, so you do not have to know.
+          Offline all week? Everything queues and sends when you reach a signal, dated to when you wrote it.
+          Start another window
+              How long
+            [select] Today only | 2 days | 3 days | 5 days | 7 days — the maximum
+              Clean-up and pack-out
+              Invasive species
+              General trail clearance
+          [button] Start when this one ends
+          We will not remind you to. If you never come back to this page, nothing happens and nothing is lost.

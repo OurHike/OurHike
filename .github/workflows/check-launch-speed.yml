@@ -202,6 +202,10 @@ jobs:
             const verdict = JSON.parse(fs.readFileSync('client/launch-verdict.json', 'utf8'))
 
             const failed = verdict.failed ?? []
+            // Rows the deployed build cannot answer because it predates the
+            // mark (#1488). Named under the table, never keys: a build older
+            // than an instrument is not a launch over its budget.
+            const notInBuild = verdict.not_in_build ?? []
 
             await trackingIssue({github, context, core}, {
               label: process.env.ISSUE_LABEL,
@@ -218,6 +222,10 @@ jobs:
                 '| what | first seen | measured | budget |',
                 '|---|---|---|---|',
                 ...failed.map(row => `| ${cell(row.what)} | ${firstSeen[row.check]} | ${row.measured_ms === null ? '**never reached**' : `${row.measured_ms} ms`} | ${row.limit_ms} ms |`),
+                '',
+                notInBuild.length
+                  ? `Not in this build: ${notInBuild.map(row => cell(row.what)).join('; ')} - the deployed bundle does not declare the mark, so it predates it. Not counted as over.`
+                  : '',
                 '',
                 `Timed as a returning hiker's launch, ${verdict.mode} mode, tiles stubbed. Last checked ${verdict.checked_at} · [run](${process.env.RUN_URL})`,
                 '',

@@ -61,6 +61,7 @@ from lib.hashing import sha256_file
 from lib.manifest_paths import from_manifest_path, to_manifest_path
 from lib.photo_screen import load_decisions, unpublishable_digests
 from lib.photo_store import PHOTO_EXTENSION, PHOTO_PREFIX, PHOTOS_DIRNAME, photo_key
+from lib.poi_schema import WITHDRAWN_POI_TYPES
 from lib.r2_keys import assert_valid_keys
 
 ROOT = Path(__file__).parent
@@ -78,6 +79,8 @@ CONDITIONS_MANIFESTS = (
     "nynjtc_alerts_manifest.json",
     "drought_manifest.json",
     "work_projects_manifest.json",
+    "weather_manifest.json",
+    "weather_alerts_manifest.json",
 )
 WRITE_ENABLED_ENV_VAR = "R2_WRITE_ENABLED"
 
@@ -353,6 +356,29 @@ PUBLISH_CONCURRENCY = 16
 # to size, pool included. 160, with the values above.
 PUBLISH_POOL_CONNECTIONS = PUBLISH_CONCURRENCY * TransferConfig().max_concurrency
 
+# How long a publish waits for R2 to answer one request, in seconds - five
+# minutes, against botocore's default of 60.
+#
+# THE REQUEST THIS IS FOR IS A SERVER-SIDE COPY. `_stage_release` copies every
+# artifact into `releases/<id>/` with one `copy_object` each, and R2 does not
+# send a byte of its response until the whole object has been copied. For the
+# large archives that is not a round trip, it is the copy. The v1.3.2
+# production publish (actions run 35921489619, 2026-09-23) died exactly there:
+# `ReadTimeoutError ... releases/2026-09-23-2/background_z13.pmtiles (read
+# timeout=60)`, after botocore's five retries each waited the same 60 s. It
+# failed safe - latest.json is written last, so hikers never saw a half-folder -
+# but it cost the release an hour and a re-dispatch.
+#
+# @unvalidated as a number. Nobody has timed how long R2 takes to copy
+# background_z13.pmtiles server side. Earlier publishes copied it inside 60 s
+# (production 2026-09-16 did), so the time is near that edge rather than far
+# past it, and 300 s gives five times the room. What would settle it is the
+# copy's wall clock, logged per artifact, on a few publishes. Raising only the
+# read timeout changes no request and no byte: a copy that was going to
+# succeed still succeeds, and one that was going to time out gets longer to
+# finish first.
+PUBLISH_READ_TIMEOUT_S = 300
+
 
 def _in_parallel(work: list) -> list:
     """Run every zero-argument callable in `work` at PUBLISH_CONCURRENCY and
@@ -564,6 +590,38 @@ def collect_sidecars() -> dict[str, dict]:
 ARCHIVE_PHOTOS_NAME = "wayback_hike_photos.json"
 ARCHIVE_PHOTOS_CLEARED_NAME = "nynjtc_hike_photos.json"
 
+#: The directory the recovery writes its photographs into, which is NOT the
+#: store `collect_photos` sweeps whole. #1504 separated them precisely so a
+#: publish could not sweep an unreviewed corpus into a public bucket. Spelled
+#: here for the same reason as the two names above - a publisher that imported
+#: it from `fetch_wayback_hike_photos` would depend on a fetcher to publish.
+ARCHIVE_STORE_DIRNAME = "wayback_photos"
+
+#: Where the WHOLE recovered corpus is parked, once, so the Internet Archive
+#: is never asked for it again (#1567).
+#:
+#: THE ARCHIVE IS THE ARTIFACT, NOT A CACHE, and treating it as one is what
+#: this fixes. #1550 left 284 of the 403 recovered photographs living only in
+#: a 14-day workflow artifact and a branch cache that the merge deleted -
+#: measured 2026-09-17, all three spot-checked digests 404 in production - so
+#: confirming any of them after the artifact expired would have meant
+#: re-crawling a host that already refused this client once.
+#:
+#: ALL 403, not the 119 a person has confirmed, because the point is the
+#: bytes surviving rather than the bytes shipping. What may reach a CARD is
+#: still decided by `reference/nynjtc_hike_photos.json` alone, through
+#: `cleared_archive_photos` - parking a digest here gives it no route into
+#: `photos/` and none into an artifact.
+#:
+#: THE MAINTAINER CHOSE THE PUBLIC BUCKET AND THIS NAME (2026-09-17), knowing
+#: what #1504 established: a key here is a permanent public URL, `u26` is a
+#: site-wide upload folder wider than `sources.json`'s `nynjtc_hikes_licence`
+#: covers, and "unreferenced is not private". No published artifact
+#: references these digests, so nothing advertises them, but that is a
+#: mitigation rather than the licence. Recorded here because a decision this
+#: shape should be findable from the code that carries it out.
+ARCHIVE_PARK_PREFIX = "archive__nynjtc_photos__do_not_delete"
+
 
 def archive_photos_awaiting_review(recovered_path: Path | None = None, cleared_path: Path | None = None) -> tuple[set[str], int]:
     """Digests the archive recovery fetched that nobody has cleared to publish,
@@ -649,6 +707,104 @@ def _digests_in(path: Path) -> set[str]:
     return {row["digest"] for row in rows if isinstance(row, dict) and row.get("digest")}
 
 
+def cleared_archive_digests(cleared_path: Path | None = None) -> set[str]:
+    """Every digest `reference/nynjtc_hike_photos.json` confirms.
+
+    A one-line wrapper on `_digests_in`, and public because two callers must
+    not be able to disagree about the answer: `cleared_archive_photos` below,
+    which sends the bytes, and `publish-vector-data.yml`, which reads it to
+    decide whether fetching those bytes is worth doing at all. The second
+    caller is a shell step, so it needs a name it can import.
+    """
+    return _digests_in(cleared_path or ROOT / "reference" / ARCHIVE_PHOTOS_CLEARED_NAME)
+
+
+def cleared_archive_photos(held: set[str] | None = None, cleared_path: Path | None = None) -> dict[str, str]:
+    """The recovered NYNJTC photographs a person has confirmed, as
+    {bucket key: local path}.
+
+    THE OTHER HALF OF A SWITCH THAT ONLY HAD ONE (#1550).
+    `archive_photos_awaiting_review` above subtracts unconfirmed digests from
+    the store `collect_photos` sweeps. #1504 then moved the recovered bytes
+    out of that store altogether, into `data/raw/wayback_photos/`, so that a
+    publish could not sweep an unreviewed corpus into a public bucket. That
+    was right, and it left `reference/nynjtc_hike_photos.json` wired to one of
+    the two things its own docstring says it controls: confirming a row let
+    the photograph reach a CARD, through `export_suggested_hikes.photo_for`,
+    and could not let its bytes reach the BUCKET. The export then promised 119
+    keys with nothing behind them, which `verify_photo_promises` refuses - a
+    failed publish rather than a broken card, but a failed publish either way.
+
+    So the file is now the whole gate in both directions: a row in it ships
+    the photograph AND sends its bytes, and deleting the row stops both. The
+    asymmetry with `poi_photos/` is deliberate and is the safe one. That store
+    is swept whole and filtered down; THIS store is never swept - a digest the
+    file does not name is not merely excluded from the upload, it is never
+    looked at, so a store holding a thousand unreviewed images offers none of
+    them.
+
+    `held` is the face gate's set (#836), passed in rather than recomputed. No
+    archive digest is expected in it - the face review reads `poi_images.json`,
+    which the recovery never writes - but a digest that somehow reached both
+    reviews must lose, and losing means held.
+    """
+    store = RAW_DIR / ARCHIVE_STORE_DIRNAME
+    if not store.is_dir():
+        return {}
+    held = held or set()
+    offered = {}
+    missing = []
+    for digest in sorted(cleared_archive_digests(cleared_path)):
+        if digest in held:
+            continue
+        path = store / f"{digest}.{PHOTO_EXTENSION}"
+        if path.is_file():
+            offered[photo_key(digest)] = str(path)
+        else:
+            missing.append(digest)
+    if offered:
+        print(f"{len(offered)} confirmed archive photograph(s) offered to the bucket from {ARCHIVE_STORE_DIRNAME}/ (#1550).")
+    if missing:
+        # Said rather than raised. The bucket may already hold these from an
+        # earlier publish, in which case verify_photo_promises passes and this
+        # line is the only trace that the local store was thin; if it does not,
+        # that check fails the run and names them. Deciding here would be
+        # deciding without the bucket listing, which this function cannot see.
+        print(
+            f"{len(missing)} confirmed archive photograph(s) are named by "
+            f"reference/{ARCHIVE_PHOTOS_CLEARED_NAME} but absent from {ARCHIVE_STORE_DIRNAME}/ - "
+            f"the bucket must already hold them or this publish will fail on the promise: {', '.join(missing[:3])}"
+            + (f" (+{len(missing) - 3} more)" if len(missing) > 3 else "")
+        )
+    return offered
+
+
+def archive_park_objects() -> dict[str, str]:
+    """Every recovered photograph on this runner, keyed for the park, as
+    {bucket key: local path}.
+
+    THE WHOLE STORE, unfiltered - the one place in this file that does not
+    consult `reference/nynjtc_hike_photos.json`, and deliberately. The confirm
+    file answers "may a hiker see this photograph", and the answer for 284 of
+    the 403 is no. This answers "do these bytes still exist anywhere", and the
+    answer has to be yes for all of them or the recovery was not one-time
+    after all (#1567).
+
+    Parking a digest here gives it no route to a card: `photo_for()` reads the
+    confirm file, `cleared_archive_photos()` reads the confirm file, and
+    neither looks at this prefix. A row added to the confirm file later is
+    what promotes bytes out of here, and that is still a person's decision.
+
+    Empty on every runner that did not carry the store, which is every routine
+    publish since `carry_archive_photos` defaults to false - so this costs one
+    listing and nothing else once the park is full.
+    """
+    store = RAW_DIR / ARCHIVE_STORE_DIRNAME
+    if not store.is_dir():
+        return {}
+    return {f"{ARCHIVE_PARK_PREFIX}/{path.name}": str(path) for path in sorted(store.glob(f"*.{PHOTO_EXTENSION}"))}
+
+
 def collect_photos() -> dict[str, str]:
     """Every cached POI photo, as {bucket key: local path}.
 
@@ -674,10 +830,12 @@ def collect_photos() -> dict[str, str]:
     artifact (the same bytes reaching the export another way),
     verify_photo_promises() fails the publish loudly rather than letting
     this exclusion silently break a card.
+
+    Plus what the archive review gate RELEASES (#1550), which is the same
+    file read the other way round and is a second store rather than a second
+    filter - `cleared_archive_photos` has why the two stores are not treated
+    alike.
     """
-    photos_dir = RAW_DIR / PHOTOS_DIRNAME
-    if not photos_dir.is_dir():
-        return {}
     held = unpublishable_digests(RAW_DIR / "poi_images.json", load_decisions())
     if held:
         print(f"{len(held)} photo(s) held from the bucket by the face gate (#836 - review_flagged_photos.py).")
@@ -688,12 +846,30 @@ def collect_photos() -> dict[str, str]:
             f"(#1504 - {cleared} cleared in reference/nynjtc_hike_photos.json)."
         )
     held = held | awaiting
-    return {photo_key(path.stem): str(path) for path in sorted(photos_dir.glob(f"*.{PHOTO_EXTENSION}")) if path.stem not in held}
+    photos_dir = RAW_DIR / PHOTOS_DIRNAME
+    photos = (
+        {photo_key(path.stem): str(path) for path in sorted(photos_dir.glob(f"*.{PHOTO_EXTENSION}")) if path.stem not in held}
+        if photos_dir.is_dir()
+        else {}
+    )
+    # Second, and additive rather than filtered - the archive store is read
+    # by name from the confirm file, never swept. An absent poi_photos/ used
+    # to return early here, which would now skip the archive store too on
+    # exactly the tree that has one and no other photo source.
+    photos.update(cleared_archive_photos(held))
+    return photos
 
 
-def published_photo_keys(s3_client, bucket: str, prefix: str = "") -> set[str]:
+def published_photo_keys(s3_client, bucket: str, prefix: str = "", store: str = PHOTO_PREFIX) -> set[str]:
     """Every photo object this environment's prefix already holds, as unscoped
     keys - one paginated listing rather than a question per photo.
+
+    `store` is which prefix to list and defaults to the hiker-facing one, so
+    every existing caller reads exactly as before. The archive park
+    (`ARCHIVE_PARK_PREFIX`) is listed through the same function because the
+    question is identical - which of these content-addressed keys does the
+    bucket already hold - and a second walker would be a second place for the
+    pagination to be got wrong.
 
     WHY A LISTING. The two callers below both used to ask the bucket object by
     object, and the corpus is now large enough that the question costs more
@@ -719,7 +895,7 @@ def published_photo_keys(s3_client, bucket: str, prefix: str = "") -> set[str]:
     while True:
         page = s3_client.list_objects_v2(
             Bucket=bucket,
-            Prefix=f"{prefix}{PHOTO_PREFIX}/",
+            Prefix=f"{prefix}{store}/",
             **({"ContinuationToken": token} if token else {}),
         )
         keys.update(item["Key"][len(prefix) :] for item in page.get("Contents", []))
@@ -1418,12 +1594,55 @@ def _stage_release(
 
     # The folder's own manifest, written last of the folder's contents, so it
     # never describes bytes that have not landed yet.
+    #
+    # WITH A CONTENT TYPE, BECAUSE THAT IS WHAT DECIDES WHETHER IT COMPRESSES
+    # (#1612). This call carried none, and the object every launch fetches -
+    # client/src/lib/dataRelease.ts's RELEASE_MANIFEST_PATH is this key, not
+    # `latest.json` - was served raw. Measured against production 2026-09-21,
+    # two objects of near-identical size in the same bucket:
+    #
+    #   latest.json                            413,343 stored, ContentType set
+    #                                          -> 105,331 on the wire, zstd
+    #   releases/2026-09-16-4/manifest.json    412,128 stored, no ContentType
+    #                                          -> 412,128 on the wire, no encoding
+    #
+    # So it is the header and nothing else. The stored bytes do not change and
+    # no reader of them does either: this is Cloudflare compressing in front of
+    # R2 at request time, which is also why lib/content_types.py's "R2 does not
+    # compress on the fly" stays true as written about the bucket itself.
+    #
+    # NOT GZIPPED AT REST the way upload_args does it for the text artifacts,
+    # and deliberately: a stored ContentEncoding is a change to the bytes every
+    # reader of this key gets back, including verify_release.py's gate and
+    # anything reading it through boto3, where `upload_args`'s compression is
+    # already understood by the one helper that needs it. A header costs
+    # nothing and breaks nothing.
+    #
+    # The saving is about 4x, not the order of magnitude a small manifest
+    # suggests: this file is 2,158 artifacts of highly repetitive JSON in
+    # release 2026-09-16-4, and 412 KB compresses to roughly 105 KB. Worth
+    # having, and not the whole of #1612 - the client fetching it seven times
+    # a launch is the other half, and the larger one.
     s3_client.put_object(
         Bucket=bucket,
         Key=f"{prefix}{releases.release_key(release_id, releases.RELEASE_MANIFEST_NAME)}",
         Body=json.dumps(manifest, indent=2).encode("utf-8"),
+        ContentType="application/json",
     )
     return staged
+
+
+def withdrawn_poi_keys(remote_artifacts: dict, artifacts: dict) -> list[str]:
+    """The live manifest entries of a withdrawn poi_type that this run did not
+    produce, sorted - the ones publish() drops rather than carries forward.
+
+    A name this run DID collect is left alone whatever its type: that would be
+    an exporter still writing a type the schema says is withdrawn, and
+    test_poi_schema.py's disjointness test is what rules that out, not a
+    silent drop here.
+    """
+    withdrawn = {f"poi_{poi_type}.{kind}" for poi_type in WITHDRAWN_POI_TYPES for kind in ("geojson", "fgb")}
+    return sorted(name for name in remote_artifacts if name in withdrawn and name not in artifacts)
 
 
 def publish(
@@ -1467,6 +1686,9 @@ def publish(
         sidecars = collect_sidecars()
     if photos is None:
         photos = collect_photos()
+    # Read before the key check below, so a malformed digest in the store
+    # fails by name rather than mid-upload.
+    parked = archive_park_objects()
 
     # Before anything is uploaded, not per-object: a name that breaks the
     # layout (pipeline/R2_LAYOUT.md) must fail the whole run rather than
@@ -1483,7 +1705,7 @@ def publish(
         [
             manifest_key,
             data_env.scope_key(environment, releases.RELEASE_INDEX_KEY),
-            *(f"{prefix}{name}" for name in (*artifacts, *sidecars, *photos)),
+            *(f"{prefix}{name}" for name in (*artifacts, *sidecars, *photos, *parked)),
         ]
     )
 
@@ -1498,7 +1720,10 @@ def publish(
             # fans out to - see PUBLISH_POOL_CONNECTIONS for why the default
             # of 10 costs handshakes rather than queueing. Only the client
             # this function builds: one passed in belongs to its caller.
-            config=BotocoreConfig(max_pool_connections=PUBLISH_POOL_CONNECTIONS),
+            config=BotocoreConfig(
+                max_pool_connections=PUBLISH_POOL_CONNECTIONS,
+                read_timeout=PUBLISH_READ_TIMEOUT_S,
+            ),
         )
     if bucket is None:
         bucket = os.environ["R2_BUCKET"]
@@ -1527,6 +1752,19 @@ def publish(
     # local store, so nothing the listing missed can be read as absent.
     published_photos = published_photo_keys(s3_client, bucket, prefix)
     uploaded_photos = upload_photos(s3_client, bucket, photos, prefix, published=published_photos)
+    # The park, on the same trip and by the same rule: the key is the hash,
+    # so a digest the prefix already holds is the bytes we were about to
+    # send. Its own listing, because it is its own prefix - and a cheap one,
+    # since a routine publish carries no store and sends nothing.
+    uploaded_parked = upload_photos(
+        s3_client,
+        bucket,
+        parked,
+        prefix,
+        published=published_photo_keys(s3_client, bucket, prefix, ARCHIVE_PARK_PREFIX) if parked else set(),
+    )
+    if uploaded_parked:
+        print(f"{len(uploaded_parked)} recovered photograph(s) parked under {ARCHIVE_PARK_PREFIX}/ (#1567).")
     # And immediately settle every photo promise the artifacts make - the
     # loud half of #465's trust-the-record design; see verify_photo_promises.
     verify_photo_promises(s3_client, bucket, prefix, artifacts, photos, published=published_photos)
@@ -1537,6 +1775,73 @@ def publish(
         if (remote := remote_artifacts.get(name)) is not None and remote["sha256"] == entry["sha256"]
     )
     changed = {name: entry for name, entry in artifacts.items() if name not in set(skipped)}
+
+    # INDEX-ALIGNMENT INVARIANT (#1313). trail_graph_elevation.json and
+    # trail_graph_profile.json describe trail_graph.json's edges BY
+    # POSITION - entry i is edge i's climb/profile, nothing names the edge
+    # itself (export_network_elevation.py, export_network_profile.py both
+    # say so directly). The merge below is additive by name, which is right
+    # for every other artifact but wrong for these two: when a run
+    # publishes a new graph without also rebuilding its sidecars
+    # (`include_elevation: false` in publish-vector-data.yml), the merge's
+    # own comment already says the OLD graph's sidecar "must survive into
+    # the new manifest untouched" - which silently re-attaches it to the
+    # NEW graph's edge numbering instead.
+    #
+    # #1313's own thread corrected its first, more alarming framing: no
+    # hiker-facing path reads this whole-artifact pair any more (the phone
+    # fetches per-cell companions keyed by edge id since #1257 stage 3, and
+    # `pipeline/lib/trail_graph_route.py` already refuses a length-mismatched
+    # pair rather than trusting it) - "That staleness is real; it is just
+    # not something the phone can act on." So this is not an active
+    # confidently-wrong-answer bug; it is publish.py silently keeping a
+    # sidecar published that every known reader already has to distrust and
+    # refuse. Not publishing it in the first place matches the workflow's
+    # own stated intent - "ships a graph with no elevation rather than no
+    # graph" - which the additive merge was not actually honouring.
+    #
+    # So: when trail_graph.json is about to publish NEW bytes this run
+    # (`in changed`, not merely present), a sidecar this run did not also
+    # rebuild is dropped from the carry-forward rather than kept stale -
+    # "no figures for this hike", the case every known reader already
+    # treats as absent rather than wrong.
+    if "trail_graph.json" in changed:
+        for stale_key in ("trail_graph_elevation.json", "trail_graph_profile.json"):
+            if stale_key not in artifacts and remote_artifacts.pop(stale_key, None) is not None:
+                print(
+                    f"  STALE PAIRING DROPPED: {stale_key} not carried forward - "
+                    f"trail_graph.json is publishing new bytes this run with no matching "
+                    f"rebuild, and the old entry is indexed against edges that no longer "
+                    f"exist (#1313)."
+                )
+
+    # WITHDRAWN POI TYPES LEAVE THE MANIFEST (#1674), the second exception to
+    # the additive merge below after #1313's. A type taken out of POI_TYPES
+    # stops being exported, so this run collects no `poi_<type>.*` - and the
+    # merge's own rule ("any remote name with no local counterpart this run is
+    # preserved as-is") would then carry the last one forward into every new
+    # latest.json and every release folder staged from it, forever. For
+    # crossings that is the 5,318 pins the maintainer asked to have off the
+    # map, still served, and carrying ids the identity ledger has retired -
+    # which verify_release's check 21 fails as ids published both live and
+    # retired.
+    #
+    # Only the manifest entry goes. The flat object stays in the bucket, as
+    # every object does (R2_LAYOUT.md), and every release folder that already
+    # holds it keeps it. That is what makes the drop safe for both kinds of
+    # build still asking for poi_crossing.geojson:
+    #   - a pinned build (v1.3.0 on) reads its own release folder, which
+    #     still holds the file and its manifest entry;
+    #   - an unpinned build (v1.0.0 to v1.2.2) reads THIS manifest at the
+    #     root, finds no entry, and treats that as "no hash to check"
+    #     (client/src/lib/dataManifest.ts's lookupInto returns null, read at
+    #     the v1.2.2 tag) - so it downloads the flat object, the last
+    #     crossings published, unchecked, rather than failing. Stale, and
+    #     nothing this pipeline can reach any more; never a failed download.
+    withdrawn = withdrawn_poi_keys(remote_artifacts, artifacts)
+    for stale_key in withdrawn:
+        remote_artifacts.pop(stale_key)
+        print(f"  WITHDRAWN: {stale_key} not carried forward - its poi_type is in lib/poi_schema.WITHDRAWN_POI_TYPES.")
 
     # BEFORE the uploads below, and that ordering is the whole of it: these
     # descriptions are a diff against the bytes currently published, and the
@@ -1575,7 +1880,10 @@ def publish(
         changed[name]["transfer_bytes"] = transfer_bytes
     uploaded: list[str] = [name for name, _ in transfers]
 
-    if not uploaded:
+    # A withdrawal is a change to what the manifest serves even when no byte
+    # was uploaded, so it writes a version on its own - otherwise the stale
+    # entries above would be dropped from a manifest that is never written.
+    if not uploaded and not withdrawn:
         return {
             "environment": environment,
             "uploaded": [],
@@ -1584,6 +1892,7 @@ def publish(
             "photos_uploaded": sorted(uploaded_photos),
             "version_written": False,
             "version": remote_manifest["version"] if remote_manifest else None,
+            "withdrawn": [],
         }
 
     new_version = str(uuid.uuid4())
@@ -1729,8 +2038,17 @@ def publish(
         # Never a stale manifest. This file is what says which version is
         # current, so a cached copy would have a client verify freshly
         # downloaded bytes against a superseded hash and throw away a good
-        # download. Left uncompressed too - it is 3.5 KB, and it is the one
-        # object every other check reads before it can do anything.
+        # download.
+        #
+        # It used to add "left uncompressed too - it is 3.5 KB", and both
+        # halves of that had stopped being true (#1612). It is 413,343 bytes
+        # in release 2026-09-16-4, measured 2026-09-21 - 118x what the
+        # sentence rested on, because the coverage-cell cut put 2,158
+        # artifacts in it - and the `ContentType` above has Cloudflare serve
+        # it zstd at 105,331, which is where the figure for the staged release
+        # manifest in _stage_release came from. Nothing was decided by the
+        # removed clause; it was a measurement that nobody re-took while the
+        # object grew underneath it.
         CacheControl=MANIFEST_CACHE_CONTROL,
     )
 
@@ -1744,6 +2062,7 @@ def publish(
         "version": new_version,
         "release": release_id,
         "release_artifacts": staged,
+        "withdrawn": withdrawn,
     }
 
 

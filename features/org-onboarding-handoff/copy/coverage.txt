@@ -1,0 +1,106 @@
+[link] Skip to content
+    [svg]
+    Prototype controls
+    ·
+    signed in as
+  [button] org admin
+  [button] not a lead
+  [button] registered volunteer
+  [button] reset
+  [button] show signed out
+  [button] show a new org
+  [button] show failures
+  [button] onboarding complete · replay it
+    [button] RT Ramapo Trail Conference Org admin · maintainer
+      [svg]
+        Onboarding
+      [button] Org home
+      [button] Admin approval
+      [button] Hike registry
+      [button] Registry sign-off
+      [button] Add a trail
+      [svg]
+        Manage volunteers
+      [button] Roles
+      [button] Workdays 3
+      [button] Coverage report 37
+      [button] Your roster
+      [button] Welcome them 37
+      [svg]
+        Volunteer
+      [button] Your Tread
+      [button] On your phone
+      [button] What you hand back
+      [button] Ridge Runner
+      [button] Your profile
+    [button] What we email on your behalf
+    [button] Settings and leaving
+    [link] OurHike
+    [button] For orgs
+    [button] Demo org
+    [button] Nominate an org
+    [button] Claim your org
+        MA
+          Maria Alvarez
+          maria@ramapotrails.org
+      [button] Ramapo Trail Conference
+        ›
+          Manage volunteers
+        ›
+          Coverage report
+        [svg]
+            REPORT · SECTIONS WITH NO ASSIGNED ROLE
+        [h1] Coverage gaps
+      9 of 312 sections in Harriman have no role attached. Pick an area, or read the whole region at once.
+      AREA
+    [button] Harriman
+    [button] Ramapo
+    [button] Catskills
+    [button] Whole region
+    [button] Edit regions
+        [svg]
+          role assigned
+          no role assigned
+          supervisor vacant
+        Schematic until your GIS is published — the live report draws your own geometry.
+          GAPS HERE ·
+            9
+                  Timp–Torne North
+                  MM 19.8 → MM 24.1
+                  no role
+                  Dunderberg spur
+                  Lot 7 → MM 4.1
+                  no role
+                  Long Path · north of Lot 7
+                  MM 31.0 → MM 35.6
+                  supervisor
+                  Pine Meadow connector
+                  MM 14.3 → MM 16.0
+                  no role
+          Export as CSV or GeoJSON — the same shape your assignment loader already reads.
+          Required roles not filled
+          Roles a managing partner mandates. These are the gaps that put your agreement at risk, not just your coverage.
+                  Corridor monitor
+                  Appalachian Trail
+                · required by
+                  ATC
+                  4 sections
+                  Summit steward
+                  Appalachian Trail
+                · required by
+                  ATC
+                  Bear Mtn summit
+                  Maintainer
+                  Long Path
+                · required by
+                  ATC
+                  2 sections
+                  Supervisor
+                  Highlands Trail
+                · required by
+                  ATC
+                  whole trail
+            Claude read the gaps
+            Six of the nine here were covered by one maintainer who stepped back in July. The Tuesday crew already works two of these sections — want me to draft roles for them?
+          [button] Draft those roles
+          [button] Back to roles

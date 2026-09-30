@@ -215,8 +215,24 @@ change, no migration, no new credential — a real simplification, not just a sc
 
 `DATA_RELEASES.md` already establishes the pattern and `SOURCE_REGISTRY.md` restates it:
 registration proposes, a merged pull request releases. Here that means a scheduled job reads
-the updates, parses them, and **opens a pull request against a reviewed file in git** with the
-proposed rows. A human compares each parsed range against ATC's sentence and merges.
+the updates, parses them, and **opens a pull request** with the proposed rows. A human compares
+each parsed range against ATC's sentence and, if it is right, types the row into the reviewed
+file by hand.
+
+**Amended 2026-09-17.** Most of what this section originally proposed no longer needs a
+person at all: **#963 — Publish the mechanically unambiguous ATC updates hourly, without
+waiting for a person** shipped the part of the gate below that IS mechanical — one mile
+reference, a known category, edited since the review — straight to the hourly bake, with
+`obstructs_trail` forced false. #963's own body says why it supersedes this section's
+volume estimate without deleting the section: "nine updates edited weekly" undercounted a
+real backlog of 89 by an order of magnitude, and a human gate that size did not hold (#478,
+#945). What is left for a pull request is the residue that gate itself refuses — several
+mile references that disagree, a category ATC has not used before, wording that might be an
+all-clear — which is small again now that the mechanical majority never reaches a person at
+all: three candidates out of 89 live updates, measured the day `propose_atc_updates.py`
+(#463) shipped. That script opens the pull request against `reference/atc_updates_proposed.json`
+— a draft a person reads, never the reviewed file itself — and a person still does the actual
+typing into `reference/atc_updates.json` that publishes anything.
 
 The reasons this cannot be automatic are specific, not procedural caution:
 
@@ -294,7 +310,13 @@ already keeps `STALE` and `UNKNOWN` apart. A fifth marker here is a row, not a m
    `Closure` shape for geometry alone; `chrome/OrgNoticeSheet.tsx` carries ATC's name, both
    dates and the outbound link; the banner names the ATC before anything else; the
    band-length ceiling comes free with the shared path.
-5. **Then** the proposing job, once the reviewed-file path is proven by hand.
+5. ~~**Then** the proposing job, once the reviewed-file path is proven by hand.~~ **Built**,
+   in two parts on two different clocks. #963 (2026-08-24) publishes the mechanically
+   unambiguous majority straight to the hourly bake, no pull request and no person, once the
+   reviewed-file path had run long enough to show a human gate did not scale to 89 live
+   updates. `propose_atc_updates.py` (#463, 2026-09-17) is the pull request this item
+   originally meant, narrowed to the residue #963's gate refuses — see the amendment on
+   section 6 above for why the two are not the same job any more.
 
 **The rows are in**, reviewed 2026-08-12 against ATC's live page. Nine updates were posted
 and six are in `reference/atc_updates.json`; the three left out are Iron Mtn Gap

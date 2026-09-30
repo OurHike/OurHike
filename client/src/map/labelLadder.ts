@@ -100,9 +100,13 @@ export type LabelTier = keyof typeof LABEL_TIER
  * the handoff's "park -> route -> section" progression without a second,
  * competing idea of zoom on the screen.
  *
- * The numbers are POI_PIN_MIN_ZOOM (9) and the two steps above it, which is
- * not a coincidence: pins and their names should arrive together, and
- * map/trailLabels.ts already borrowed the same constant for the same reason.
+ * The numbers were POI_PIN_MIN_ZOOM and the two steps above it, on the
+ * reasoning that pins and their names should arrive together. They are
+ * literals now and that reasoning is what came apart: the pin seam moved to
+ * z8 (#1585) so a hiker planning a resupply carry can see one, and a NAME at
+ * that zoom is a name on a hundred-mile screen. The pins arrive a zoom before
+ * their names here, deliberately, and this is the builder's own ladder rather
+ * than the walking map's.
  *
  * `@unvalidated` as display choices, inheriting TRAIL_LABEL_MIN_ZOOM's
  * caveat exactly: picked to match thresholds this map already uses, not

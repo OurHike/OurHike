@@ -42,19 +42,84 @@ describe('the strings #315 found on screen', () => {
   })
 })
 
-describe('the failures worth telling apart', () => {
-  it('a wrong password points at the way round it', () => {
-    // A hiker who cannot remember a password has a sign-in link available,
-    // and this is the moment to say so.
-    expect(signInMessage('Invalid login credentials')).toMatch(/sign-in link/i)
+describe('the failures of the emailed code (#279)', () => {
+  it('"Token has expired or is invalid" offers a new code without blaming the digits', () => {
+    // GoTrue's ONE string for three different things: a mistyped code, a code
+    // left too long, and a code the project never minted. The way out of all
+    // three is the same, so the sentence offers that and guesses at nothing.
+    const said = signInMessage('Token has expired or is invalid')
+
+    // NOT "check the six digits". #1600 is why: a hiker was told exactly that
+    // about a code that could not have worked however carefully they read it,
+    // so they read it again, and again. An instruction that cannot help is
+    // worse than no instruction.
+    expect(said).toMatch(/was not accepted/i)
+    expect(said).toMatch(/ask for a new one/i)
+    expect(said).not.toMatch(/six digits/i)
+    expect(said).not.toMatch(/token/i)
   })
 
-  it('an unconfirmed account says where the link is', () => {
-    expect(signInMessage('Email not confirmed')).toMatch(/follow the link/i)
+  it('"Email address not authorized" says this build cannot send email, and that the map still works', () => {
+    // What a project on Supabase's built-in mailer answers for any address
+    // outside its own team (LAUNCH_CHECKLIST.md 4.3c). Nothing a hiker can
+    // do about it, so the sentence is about what stays true for them.
+    const said = signInMessage('Email address not authorized')
+
+    expect(said).toMatch(/not switched on/i)
+    expect(said).toMatch(/map still works/i)
+    expect(said).not.toMatch(/authorized/i)
   })
 
-  it('an existing account says to sign in rather than sign up', () => {
-    expect(signInMessage('User already registered')).toMatch(/already an account/i)
+  it('"Error sending magic link email" is the sender failing now, so it says to try again later', () => {
+    // GoTrue's wording whether the email carries a link or a code.
+    const said = signInMessage('Error sending magic link email')
+
+    expect(said).toMatch(/could not be sent just now/i)
+    expect(said).toMatch(/on our side/i)
+    expect(said).not.toMatch(/magic link/i)
+  })
+
+  it('"Signups not allowed for otp" says accounts are not being created, without blaming the hiker', () => {
+    expect(signInMessage('Signups not allowed for otp')).toMatch(/not being created/i)
+  })
+})
+
+describe('a round trip refused at Google or GitHub (#1573)', () => {
+  // These two arrive in the fragment of a redirect rather than as the
+  // message of a rejected promise, which is why they were missing: nothing
+  // read that fragment until lib/authRefusal.ts did.
+
+  it('does not tell somebody they cancelled, because the server may have', () => {
+    // RFC 6749 §4.1.2.1 spends `access_denied` on both "the resource owner
+    // denied" and "the authorization server denied". A sentence that picks
+    // the first is an app arguing with a hiker who did not do it.
+    const said = signInMessage('access_denied')
+
+    expect(said).toMatch(/was not finished/i)
+    expect(said).not.toMatch(/you cancelled|you denied|you tapped/i)
+  })
+
+  it('does not name a provider for access_denied, since the string does not say', () => {
+    // Google and GitHub both answer with this code and neither is in it.
+    expect(signInMessage('access_denied')).not.toMatch(/google|github/i)
+  })
+
+  it('says nothing changed, which is the thing worth knowing after a refusal', () => {
+    expect(signInMessage('access_denied')).toMatch(/nothing changed/i)
+  })
+
+  it('explains an account with no verified address, and says where to fix it', () => {
+    // GoTrue answers this when the provider hands back no address; in
+    // practice that is a GitHub account with none verified. The only refusal
+    // in this file a hiker can go and do something about, so it says what.
+    const said = signInMessage('Error getting user email from external provider')
+
+    expect(said).toMatch(/verified email address/i)
+    expect(said).toMatch(/github/i)
+  })
+
+  it('reads a refusal whatever case the provider sent it in', () => {
+    expect(signInMessage('ACCESS_DENIED')).toMatch(/was not finished/i)
   })
 })
 

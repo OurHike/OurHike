@@ -69,7 +69,7 @@ from pathlib import Path
 import requests
 from pmtiles.reader import Reader, traverse
 
-from lib import data_env
+from lib import data_env, strict_json
 from lib.content_types import COMPRESSIBLE_TYPES
 from lib.freshness_state import utc_today
 
@@ -497,7 +497,9 @@ def _at_anchored_water(source: Path, target: Path) -> int:
     "nothing here is known to be on the A.T.", which makes the check SKIPPED
     rather than a false verdict in either direction.
     """
-    document = json.loads(source.read_text(encoding="utf-8"))
+    # Strictly: a `NaN` in this file is a file no phone can read, and the
+    # check that reads it here must not be the one reader that can.
+    document = strict_json.load(source)
     kept, left_out = [], 0
     for feature in document.get("features") or []:
         properties = feature.get("properties") or {}

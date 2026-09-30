@@ -350,11 +350,19 @@ let snapshotInFlight: Promise<PublishedSnapshot> | null = null
  * and this is the bound that removes it.
  *
  * @unvalidated - picked, not measured. Twenty seconds is far longer than the
- * manifest takes on any connection this app has been measured on (~50 KB,
- * 0.45 s against production on 2026-09-09) and short enough that a hiker who
- * walks back into signal is not still waiting on a request from the dead
- * spot. What would settle it is what a real trailhead connection does to this
- * request, which nothing has recorded.
+ * manifest takes on any connection this app has been measured on, and short
+ * enough that a hiker who walks back into signal is not still waiting on a
+ * request from the dead spot. What would settle it is what a real trailhead
+ * connection does to this request, which nothing has recorded.
+ *
+ * THE SIZE IN THAT SENTENCE HAS MOVED and is worth watching rather than
+ * re-forgetting. It read "~50 KB, 0.45 s against production on 2026-09-09";
+ * `releases/2026-09-16-4/manifest.json` is 412,128 bytes, measured
+ * 2026-09-21, because the coverage-cell cut put 2,158 artifacts in it (#1612,
+ * which also gave this read a content type so the wire cost is about a
+ * quarter of that). Still nowhere near twenty seconds on any connection
+ * measured here - what changes is that a manifest growing another order of
+ * magnitude would reach it, and this is the number that would say so.
  */
 export const MANIFEST_READ_TIMEOUT_MS = 20_000
 
@@ -381,30 +389,49 @@ async function readSnapshot(): Promise<PublishedSnapshot> {
  * Never fatal, exactly like {@link publishedHash}: an unreachable, malformed
  * or older manifest yields a lookup that answers null for everything, which is
  * the same downgrade a single unreadable fetch already produced.
+ *
+ * THROUGH {@link publishedSnapshot}, SO IT SHARES THE IN-FLIGHT READ (#1612).
+ * This used to run its own bare `fetch`, and #1302's "ONE READ FOR EVERYONE
+ * ASKING AT ONCE" - written thirty lines above, for the snapshot - never
+ * reached it. What that cost was invisible while the manifest was small and
+ * is not now: lib/coverageCells.ts asks for a hash once per cell family and
+ * there are four of them, so a launch fetched `releases/<id>/manifest.json`
+ * SEVEN times, measured 2026-09-21 on a returning laptop launch - 412,128
+ * bytes each, all seven started within 40 ms of one another, so no HTTP cache
+ * could collapse them. 2,884,896 bytes, on the connection the first frame and
+ * the map's own artifacts were sharing.
+ *
+ * The snapshot already carries the lookup this returns, so there is nothing to
+ * parse twice either.
+ *
+ * SEQUENTIAL CALLS STILL EACH READ, which is the property the test named
+ * "fetches the manifest again for every call" is defending and this must not
+ * quietly take away: `snapshotInFlight` is cleared when the read settles, so
+ * only callers that OVERLAP share one. A republished archive must not leave
+ * the app verifying against a hash the bucket has stopped serving.
+ *
+ * WHAT DID CHANGE FOR A CALLER WITH A SIGNAL: the abort still rejects this
+ * promise by name, and it no longer cancels the request, because the request
+ * is now somebody else's too. That is #1302's own trade, made once where the
+ * fetch lives rather than argued again here. The 20-second deadline on
+ * {@link MANIFEST_READ_TIMEOUT_MS} comes with it - this call had none before,
+ * so a captive portal at a trailhead used to hang it indefinitely.
  */
 export async function publishedHashes({
   signal,
 }: { signal?: AbortSignal } = {}): Promise<PublishedHashLookup> {
   // Nothing to fetch, and nothing that could answer: a build with no bucket
-  // configured has no manifest to read.
+  // configured has no manifest to read. Kept here as well as in the snapshot
+  // so this reads as its own contract rather than one inherited by accident.
   if (DATA_BASE_URL === '') return NOTHING_PUBLISHED
 
-  try {
-    const response = await fetch(releaseManifestUrl(), { signal })
-    if (!response.ok) return NOTHING_PUBLISHED
-    return lookupInto((await response.json()) as DataManifest)
-  } catch (error) {
-    // An abort is the hiker cancelling the download, not a missing manifest,
-    // and swallowing it here would let the attempt continue past its own
-    // cancellation. Everything else - offline, CORS, 404, malformed JSON -
-    // is simply "no published hash".
-    // Matched by name rather than by `instanceof DOMException`: what a fetch
-    // rejects with on abort differs between browsers and test environments
-    // (jsdom's DOMException does not even extend Error), and the name is the
-    // part the platform actually specifies.
-    if ((error as { name?: string } | null)?.name === 'AbortError') throw error
-    return NOTHING_PUBLISHED
-  }
+  // No try/catch, and that is not an omission. `publishedSnapshot` rejects for
+  // exactly one reason - the caller's own abort, as `abortError()` named
+  // 'AbortError' - and turns every other failure into NOTHING_READABLE, whose
+  // `lookup` IS NOTHING_PUBLISHED. So the two outcomes this function has
+  // always had are the two it still has, and re-catching would only be a
+  // second place for them to drift apart.
+  return (await publishedSnapshot({ signal })).lookup
 }
 
 export async function publishedHash(

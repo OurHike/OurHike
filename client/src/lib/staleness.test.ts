@@ -4,7 +4,8 @@ import { stalenessTier } from './staleness'
 // See WIREFRAMES.md's Data staleness section: Fresh <=~14 days, Ageing
 // ~14-60 days, Stale/never >60 days or never confirmed. Independent of a
 // separate verified/unverified confidence flag - staleness is "when a human
-// last said it was fine," confidence is "was this ever verified to exist"
+// was last here and left a note" (#1603 - whatever the note said),
+// confidence is "was this ever verified to exist"
 // - a dashed pin (unverified) can still be Fresh if recently confirmed, and
 // a verified POI can still go Stale if nobody's confirmed it in months.
 

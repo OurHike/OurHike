@@ -34,6 +34,7 @@ endpoint. Neither branch can be steered to the other's key material, and an
 `alg` naming anything else is refused outright rather than defaulted.
 """
 
+import re
 from collections.abc import Iterable
 from functools import lru_cache
 
@@ -45,6 +46,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core.orm import commit_and_refresh
+from app.core.role_invites import apply_pending_invites
 from app.db.session import get_db
 from app.models.profile import Profile, Role
 
@@ -92,6 +94,10 @@ def verify_supabase_jwt(token: str) -> dict:
     does not accept is deliberately in that same family, so an unexpected
     signing algorithm reaches a hiker as "not signed in" rather than as a 500.
 
+    One subclass is not a verdict on the token: `PyJWKClientConnectionError`
+    means the JWKS could not be fetched, and `get_current_user` answers it
+    with a 503 rather than a 401 - see the branch there.
+
     The `audience` argument is load-bearing and not optional politeness.
     PyJWT refuses a token that carries an `aud` claim when the caller named
     no audience - `_validate_aud` raises `InvalidAudienceError` on exactly
@@ -126,13 +132,38 @@ def verify_supabase_jwt(token: str) -> dict:
         # one leaves no room for a token to be verified under an algorithm
         # other than the one it claims.
         algorithms=[algorithm],
-        # An empty setting means "this project's tokens are shaped some other
-        # way" - skip the check rather than demand a claim that is not there.
-        **({"audience": audience} if audience else {"options": {"verify_aud": False}}),
+        # `exp` is REQUIRED, not merely checked when present (#1545). PyJWT
+        # verifies an expiry it finds and says nothing about one it does not,
+        # so a token minted without the claim never expired here. Only
+        # forgeable with the signing key - defence in depth, not a hole - but
+        # every token Supabase issues carries one, so a token without it is
+        # not Supabase's. An empty audience setting means "this project's
+        # tokens are shaped some other way": skip that check rather than
+        # demand a claim that is not there.
+        options={"require": ["exp"], **({} if audience else {"verify_aud": False})},
+        **({"audience": audience} if audience else {}),
     )
 
 
-def _get_or_create_profile(db: Session, user_id: str) -> Profile:
+def _get_or_create_profile(db: Session, user_id: str, email: str | None = None) -> Profile:
+    """The caller's local row, made on first sight.
+
+    `email` is passed only so that an organization's pending role invites can
+    be applied the moment the person it invited first signs in - #1169's
+    problem 3, whose answer is invite-not-create because minting a Supabase
+    Auth user needs a service-role key app/config.py does not hold. It is
+    never stored: Supabase Auth owns the address, and a second copy here
+    would be a second thing to keep in step and a second thing to leak.
+
+    **@unvalidated: that an `email` claim is present on a real Supabase
+    access token.** #1169 asked for this to be confirmed against a live token
+    rather than assumed, and it has not been - this environment has no
+    Supabase project. The code is written so that its absence is harmless
+    rather than broken: no claim means no invite is applied, the person still
+    gets a profile and can still be added to an org by hand. What would
+    settle it: decoding one access token from the real project, which
+    `check_supabase_config.py` is the natural home for.
+    """
     profile = db.get(Profile, user_id)
     if profile is None:
         profile = Profile(id=user_id, role=Role.hiker)
@@ -148,6 +179,12 @@ def _get_or_create_profile(db: Session, user_id: str) -> Profile:
             profile = db.get(Profile, user_id)
             if profile is None:
                 raise
+        else:
+            # Only on the branch that actually created the row. A returning
+            # caller must not re-run this on every request: the invites are
+            # already claimed, so it would be a wasted query on the seam
+            # every authenticated request crosses.
+            apply_pending_invites(db, profile, email)
     return profile
 
 
@@ -171,6 +208,25 @@ def get_current_user(
 
     try:
         claims = verify_supabase_jwt(credentials.credentials)
+    except jwt.PyJWKClientConnectionError as exc:
+        # The token was never examined: this is `PyJWKClient` failing to
+        # FETCH the project's JWKS - a timeout, a DNS miss, Supabase's key
+        # endpoint answering 5xx - which it does synchronously on the first
+        # request after its five-minute cache lapses. It subclasses
+        # PyJWTError, so the branch below used to catch it and answer 401
+        # "Invalid or expired token" for a token that was neither, and the
+        # server log said the same. 503 is what happened: this service
+        # cannot verify anyone right now, and the client should keep the
+        # session and try again. The outbox already retries a 503. It also
+        # retries a 401 today, but for a reason that does not apply here -
+        # lib/api.ts lists 401 as retryable because "Supabase refreshes in
+        # the background" - so the honest status is what stops the client's
+        # correct behaviour being a coincidence.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The signing keys could not be fetched, so this token could not be checked. Try again shortly.",
+            headers={"Retry-After": "30"},
+        ) from exc
     except jwt.PyJWTError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token") from exc
 
@@ -178,7 +234,7 @@ def get_current_user(
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token missing subject claim")
 
-    profile = _get_or_create_profile(db, user_id)
+    profile = _get_or_create_profile(db, user_id, claims.get("email"))
 
     # A deleted account cannot be signed back into (#895). This is not
     # belt-and-braces: this backend has no way to delete the Supabase Auth
@@ -196,6 +252,117 @@ def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="This account has been deleted")
 
     return profile
+
+
+def get_current_email(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> str | None:
+    """The caller's verified email address, from the token, or None.
+
+    **Verified is the whole point.** Registering an organization requires
+    that at least one of its admins holds an email at the organization's own
+    domain, and an address the caller typed into a form proves nothing about
+    that - anybody can type `chair@ramapotrails.org`. The provider verified
+    this one, which AUTHENTICATION.md already treats as "a Provider fact to
+    trust", so this is the only address this backend will check a domain
+    against.
+
+    Nothing stores it. Supabase Auth owns the address, and a second copy here
+    would be a second thing to keep in step and a second thing to leak.
+
+    Returns None rather than raising when the claim is absent, because a
+    token without one is a token this backend still accepts for everything
+    else - see `_get_or_create_profile`'s @unvalidated note on whether a real
+    Supabase access token carries it at all.
+    """
+    if credentials is None:
+        return None
+    try:
+        claims = verify_supabase_jwt(credentials.credentials)
+    except jwt.PyJWTError:
+        return None
+    email = claims.get("email")
+    return email.strip().lower() if isinstance(email, str) and email.strip() else None
+
+
+# WHAT A GITHUB LOGIN LOOKS LIKE, lowercased: letters, digits and hyphens,
+# not starting with a hyphen, at most 39 characters. Reasoned from GitHub's
+# own sign-up rule rather than measured; slightly looser than it (a trailing
+# or doubled hyphen passes here), which is harmless - the point is that
+# nothing with whitespace, `@`, `/` or a newline in it ever becomes a
+# CODEOWNERS line (#1635).
+GITHUB_LOGIN = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,38})")
+
+
+def is_github_login(value: object) -> bool:
+    """Whether `value` has the shape of a lowercased GitHub login, and nothing more."""
+    return isinstance(value, str) and GITHUB_LOGIN.fullmatch(value) is not None
+
+
+def get_current_github_login(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> str | None:
+    """The caller's GitHub account, from the token, or None.
+
+    The same bargain as `get_current_email` one provider further out: the
+    provider says who this is, and a username the caller typed says nothing.
+    A CODEOWNERS entry naming the wrong account hands somebody else approval
+    over an organization's registry, so this is the only place a login may
+    come from.
+
+    **WHERE SUPABASE PUTS IT IS @unvalidated.** `user_metadata.user_name` is
+    where a GitHub OAuth login is documented to land, and
+    `preferred_username` is the OIDC spelling some providers use instead;
+    both are read because the provider is not enabled on this project and
+    nobody here has seen a real token. What would settle it is one GitHub
+    sign-in against the live project, with the decoded claims printed once -
+    at which point the losing branch should be deleted rather than left as
+    a guess that looks like breadth.
+
+    The provider is checked as well as the claim: a token from some other
+    provider that happens to carry a `user_name` is not a GitHub identity,
+    and reading one would link an account nobody proved they hold.
+
+    **`user_metadata` IS WRITABLE BY THE USER IT DESCRIBES, and that is the
+    gap #1635 - The organization console's new endpoints trust
+    self-registered orgs with maintainer powers, seats and mail - found and
+    this function only narrows.** Supabase's `updateUser({data: ...})`
+    rewrites it, and the token then carries the new value signed as if the
+    provider had said it. `app_metadata.provider` is not user-writable, so
+    "signed in with GitHub" still holds; "as THIS GitHub account" does not.
+    What is closed here is the worse half: a value that is not shaped like a
+    login - a newline and a second CODEOWNERS rule inside it - is refused
+    with a 422 rather than stored. What would close the rest is reading the
+    identity server-side, from `GET /auth/v1/user` with the caller's own
+    token, whose `identities[].identity_data` the user cannot edit. Nobody
+    has done that against the live project, for the reason the paragraph
+    above gives.
+    """
+    if credentials is None:
+        return None
+    try:
+        claims = verify_supabase_jwt(credentials.credentials)
+    except jwt.PyJWTError:
+        return None
+
+    app_metadata = claims.get("app_metadata")
+    if not isinstance(app_metadata, dict) or app_metadata.get("provider") != "github":
+        return None
+
+    user_metadata = claims.get("user_metadata")
+    if not isinstance(user_metadata, dict):
+        return None
+    for claim in ("user_name", "preferred_username"):
+        value = user_metadata.get(claim)
+        if isinstance(value, str) and value.strip():
+            login = value.strip().lower()
+            if not is_github_login(login):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="The GitHub account on this sign-in is not a valid GitHub username.",
+                )
+            return login
+    return None
 
 
 def get_current_user_optional(
@@ -221,6 +388,11 @@ def get_current_user_optional(
     A bad or expired token is treated as no token rather than as an error,
     which is the behaviour both callers want: the request is one that works
     anonymously, so an unusable credential should not turn it into a 401.
+
+    The same holds for the 503 `get_current_user` answers when the JWKS
+    cannot be fetched: an anonymous read or an unattributed failure report
+    is the right degradation for a request that never needed the token,
+    where a 503 would take the public list down with the key server.
     """
     if credentials is None:
         return None

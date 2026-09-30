@@ -120,7 +120,7 @@ async function shown(
 ) {
   mocked.fetchNoteQueue.mockResolvedValue(notes)
   mocked.fetchHoursQueue.mockResolvedValue(hours)
-  render(<Moderation onClose={vi.fn()} />)
+  render(<Moderation units="imperial" onClose={vi.fn()} />)
   await screen.findByRole('heading', { name: /hours waiting on a club/i })
   await waitFor(() => {
     expect(screen.queryByText(/reading the notes/i)).toBeNull()
@@ -248,7 +248,7 @@ describe('the flagged-notes section', () => {
   it('says the notes queue is unread rather than empty, and only for itself', async () => {
     mocked.fetchNoteQueue.mockRejectedValue(new Error('offline'))
     mocked.fetchHoursQueue.mockResolvedValue([anHour()])
-    render(<Moderation onClose={vi.fn()} />)
+    render(<Moderation units="imperial" onClose={vi.fn()} />)
 
     const notes = await section(/field notes people flagged/i)
     await within(notes).findByText(/could not be read/i)
@@ -330,7 +330,7 @@ describe('the hours section', () => {
 
   it('says the hours queue is unread rather than empty', async () => {
     mocked.fetchHoursQueue.mockRejectedValue(new Error('offline'))
-    render(<Moderation onClose={vi.fn()} />)
+    render(<Moderation units="imperial" onClose={vi.fn()} />)
 
     const hours = await section(/hours waiting on a club/i)
     await within(hours).findByText(/could not be read/i)

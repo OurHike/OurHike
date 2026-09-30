@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest'
 
-import { BLAZE_PALETTE_MEMBERS, NEUTRAL_BLAZE_COLOR, blazePaintColor } from './blaze'
+import {
+  BLAZE_PALETTE_MEMBERS,
+  NEUTRAL_BLAZE_COLOR,
+  PLAIN_TRAIL_COLOR,
+  blazePaintColor,
+} from './blaze'
+import { plainLineColor } from '../map/style'
 
 // The palette's admission rules, enforced rather than described (#782).
 //
@@ -165,6 +171,63 @@ describe('Aqua, the first admission under the rule (#782)', () => {
     expect(contrastRatio('#0d8f96', DAY_SHEET)).toBeGreaterThan(
       contrastRatio('#00a0a8', DAY_SHEET),
     )
+  })
+})
+
+describe('PLAIN_TRAIL_COLOR, the one red every line takes while blaze colours are off (#1575)', () => {
+  it('is blazePaintColor("Red"), so the switch adds no hue to the closed palette', () => {
+    // An alias and not a second red: the rule in lib/blaze.ts is that the
+    // table is the entire set of hues this map will ever paint, and a hex
+    // spelled beside it would be exactly the sprawl #782 closed off.
+    expect(PLAIN_TRAIL_COLOR).toBe(blazePaintColor('Red'))
+  })
+
+  it('has the day and night contrast its docstring quotes, 6.2 on paper and 3.0 on ink', () => {
+    // Computed here rather than asserted there, so the figures in the comment
+    // and the hex behind them cannot drift apart unnoticed. Both are above
+    // the palette's own bars (2.076 day, 2.66 night), which is what lets the
+    // red draw on every sheet with none of the near-white handling.
+    expect(contrastRatio(PLAIN_TRAIL_COLOR, DAY_SHEET)).toBeCloseTo(6.23, 1)
+    expect(contrastRatio(PLAIN_TRAIL_COLOR, NIGHT_SHEET)).toBeCloseTo(3.0, 1)
+  })
+})
+
+describe('the context trails, which take that same red rather than a tint of it (#1597)', () => {
+  it('clears both sheets’ bars on every line, where the tint cleared only the day one', () => {
+    // What the change bought, computed rather than asserted in prose. From
+    // #1588 to #1597 a trail without a pill was 45% of the red over the
+    // sheet's own paper - '#dca39a' on the field day sheet's white, which
+    // the maintainer read as pink on 2026-09-20 - and on night_hike's ink
+    // that tint measured 1.5:1, UNDER the palette's night bar of 2.66. A
+    // context line on a dark sheet was below the contrast the palette
+    // requires of any line, and the mock-up it was chosen from was a day
+    // frame, so nobody had looked.
+    //
+    // Now every line is PLAIN_TRAIL_COLOR, so every line carries the
+    // figures asserted above: 6.23 on paper and 3.0 on ink, over the bars
+    // of 2.076 and 2.66. The hierarchy the tint drew moved to the width
+    // and the dash (map/style.ts's CONTEXT_TRAIL_WIDTH_SCALE and
+    // CONTEXT_TRAIL_DASH), which cost no contrast at all.
+    expect(plainLineColor({ theme: 'light' })).toBe(PLAIN_TRAIL_COLOR)
+    expect(plainLineColor({ theme: 'dark' })).toBe(PLAIN_TRAIL_COLOR)
+    expect(contrastRatio(PLAIN_TRAIL_COLOR, DAY_SHEET)).toBeGreaterThan(2.076)
+    expect(contrastRatio(PLAIN_TRAIL_COLOR, NIGHT_SHEET)).toBeGreaterThan(2.66)
+
+    // EVERY TINT THAT WAS TRIED, measured, because two of them shipped and
+    // the third is what this replaces. 0.45 cleared the day bar - which is
+    // why the pink survived review - and 1.5 on ink is what nobody had
+    // measured. #1590 then raised it to 0.8 from another session an hour
+    // before this one, on the maintainer's "The trails look pink now, not
+    // red", and that test said in so many words that the night figure was
+    // "still under, still on purpose". It is 2.30 against a 2.66 bar, and
+    // this is where the two changes actually disagree: a context line is
+    // context, but no line on this map is exempt from the palette's own
+    // contrast floor, and only the full red clears it.
+    expect(contrastRatio('#dca39a', DAY_SHEET)).toBeCloseTo(2.15, 1)
+    expect(contrastRatio('#572217', NIGHT_SHEET)).toBeCloseTo(1.5, 1)
+    expect(contrastRatio('#c15b4c', DAY_SHEET)).toBeCloseTo(4.31, 1)
+    expect(contrastRatio('#912c1c', NIGHT_SHEET)).toBeCloseTo(2.3, 1)
+    expect(contrastRatio('#912c1c', NIGHT_SHEET)).toBeLessThan(2.66)
   })
 })
 

@@ -20,10 +20,12 @@ import {
 import {
   BADGE_ANCHOR_PROPERTY,
   TRAIL_BADGE_ANCHORS,
-  BADGE_CHIP_PROPERTY,
+  BADGE_FIT_PROPERTY,
   BADGE_MARK_PROPERTY,
+  TRAIL_BADGE_MARK_GAP,
+  TRAIL_BADGE_MARK_SIZE,
   TRAIL_BADGE_SOURCE_ID,
-  blazeChipImageId,
+  stewardMarkImageId,
   trailMarkImageId,
 } from './trailBadges'
 import { POI_LAYER_ID } from './poiLayers'
@@ -355,6 +357,194 @@ describe('trailsInView', () => {
   })
 })
 
+describe("a long trail inside somebody else's layer (#1543)", () => {
+  // THE DEFECT THIS WHOLE TABLE FIXES. Badge status was
+  // `BADGE_SOURCES.includes(source)`, so ATC's centerline and NYNJTC's Long
+  // Path feed were the only two trails on the map that could wear a pill -
+  // while Sheltowee Trace, Ozark Highlands, Bartram, Ouachita, Maah Daah Hey
+  // and the Tahoe Rim were already downloaded and drawn as anonymous lines
+  // inside the Forest Service's nationwide layer.
+
+  it('earns a badge and its steward mark, from a source that badges nothing by itself', () => {
+    const map = mapWith({
+      [BLAZE_LAYER_ID]: [
+        line(
+          'SHELTOWEE TRACE',
+          'usfs_trails',
+          // In the mock's frame rather than Kentucky's: this fixture maps
+          // degrees straight to pixels, so the coordinates only have to be
+          // on screen. What is under test is the NAME.
+          [
+            [-74.2, 41.2],
+            [-74.1, 41.25],
+            [-74.0, 41.3],
+          ],
+          'White',
+        ),
+      ],
+    })
+    const trails = trailsInView(map as unknown as MapLibreMap)
+    expect(trails).toHaveLength(1)
+    expect(trails[0].throughRoute).toBe(true)
+    expect(trails[0].longTrail).toBe('sheltowee')
+
+    const { features } = badgeFeatures(trails)
+    expect(features).toHaveLength(1)
+    expect(features[0].properties?.[BADGE_MARK_PROPERTY]).toBe(
+      stewardMarkImageId('sheltowee'),
+    )
+  })
+
+  it('draws ONE badge for a trail that arrives under several spellings', () => {
+    // THE DEFECT A SCREENSHOT CAUGHT AND THE SUITE DID NOT. The first frame
+    // of this shipping put NORTH COUNTRY TRAIL and NORTH COUNTRY NATIONAL
+    // SCENIC on the map side by side, and PINHOTI beside PINHOTI NRT - the
+    // map telling a hiker there are two trails where there is one. The
+    // dedupe was keyed on the published name; it is keyed on the resolved
+    // trail now.
+    const map = mapWith({
+      [BLAZE_LAYER_ID]: [
+        line(
+          'NORTH COUNTRY TRAIL',
+          'usfs_trails',
+          [
+            [-74.2, 41.2],
+            [-74.1, 41.25],
+          ],
+          'Blue',
+        ),
+        line(
+          'NORTH COUNTRY NATIONAL SCENIC',
+          'usfs_trails',
+          [
+            [-74.1, 41.25],
+            [-74.0, 41.3],
+          ],
+          'Blue',
+        ),
+      ],
+    })
+    const trails = trailsInView(map as unknown as MapLibreMap)
+    expect(trails).toHaveLength(1)
+    expect(trails[0].longTrail).toBe('nct')
+    expect(badgeFeatures(trails).features).toHaveLength(1)
+  })
+
+  it("prints the steward's name rather than the publisher's shout-case", () => {
+    // USFS publishes a GIS table's spelling. A hiker reads a trail's name.
+    for (const [published, printed] of [
+      ['SHELTOWEE TRACE', 'Sheltowee Trace'],
+      ['BENTON MACKAYE', 'Benton MacKaye Trail'],
+      ['PINHOTI NRT', 'Pinhoti Trail'],
+      ['NORTH COUNTRY NATIONAL SCENIC', 'North Country Trail'],
+      ['OUACHITA NRT', 'Ouachita Trail'],
+    ] as const) {
+      const map = mapWith({
+        [BLAZE_LAYER_ID]: [
+          line(
+            published,
+            'usfs_trails',
+            [
+              [-74.2, 41.2],
+              [-74.0, 41.3],
+            ],
+            'White',
+          ),
+        ],
+      })
+      const trails = trailsInView(map as unknown as MapLibreMap)
+      expect(trails[0].name).toBe(printed)
+    }
+  })
+
+  it('keeps the A.T. takeable when the Forest Service piece is seen first', () => {
+    // THE REGRESSION THE DEDUPE NEARLY SHIPPED. Since the key became the
+    // resolved trail, the A.T. arrives as two pieces: ATC's `centerline`,
+    // which is takeable, and USFS's own APPALACHIAN TRAIL segments, which
+    // are not. queryRenderedFeatures does not promise an order, so the merge
+    // has to prefer the takeable piece rather than the first one - otherwise
+    // a frame where USFS came back first left the A.T. un-takeable, which is
+    // the whole subject of #1306.
+    const map = mapWith({
+      [BLAZE_LAYER_ID]: [
+        line(
+          'APPALACHIAN TRAIL',
+          'usfs_trails',
+          [
+            [-74.2, 41.2],
+            [-74.1, 41.25],
+          ],
+          'White',
+        ),
+        line(
+          'Appalachian National Scenic Trail',
+          'centerline',
+          [
+            [-74.1, 41.25],
+            [-74.0, 41.3],
+          ],
+          'White',
+          { id: 'centerline:chain:0' },
+        ),
+      ],
+    })
+    const trails = trailsInView(map as unknown as MapLibreMap)
+    expect(trails).toHaveLength(1)
+    expect(trails[0].name).toBe('Appalachian Trail')
+    expect(trails[0].takeable).toBe(true)
+    expect(trails[0].source).toBe('centerline')
+    // And it wears ATC's own mark, not a steward copy keyed off usfs_trails.
+    expect(badgeFeatures(trails).features[0].properties?.[BADGE_MARK_PROPERTY]).toBe(
+      trailMarkImageId('centerline'),
+    )
+  })
+
+  it('leaves a connector in the same layer as an ordinary line', () => {
+    // The refusal is what keeps the badge count honest: USFS publishes
+    // SHELTOWEE CONNECTOR and SHELTOWEE SPUR beside the trail itself.
+    const map = mapWith({
+      [BLAZE_LAYER_ID]: [
+        line(
+          'SHELTOWEE CONNECTOR',
+          'usfs_trails',
+          [
+            [-74.2, 41.2],
+            [-74.0, 41.3],
+          ],
+          'White',
+        ),
+      ],
+    })
+    const trails = trailsInView(map as unknown as MapLibreMap)
+    expect(trails).toHaveLength(1)
+    expect(trails[0].throughRoute).toBe(false)
+    expect(badgeFeatures(trails).features).toEqual([])
+  })
+
+  it('badges a trail with no steward marker as a plate and a name', () => {
+    // 7 of the 20 badged trails have no marker anybody could find. They are
+    // still trails worth naming on a map.
+    const map = mapWith({
+      [BLAZE_LAYER_ID]: [
+        line(
+          'GREAT WESTERN TRAIL',
+          'usfs_trails',
+          [
+            [-74.2, 41.2],
+            [-74.0, 41.3],
+          ],
+          'White',
+        ),
+      ],
+    })
+    const trails = trailsInView(map as unknown as MapLibreMap)
+    expect(trails[0].throughRoute).toBe(true)
+    const { features } = badgeFeatures(trails)
+    expect(features[0].properties?.[BADGE_MARK_PROPERTY]).toBe('')
+    expect(features[0].properties?.[BADGE_FIT_PROPERTY]).toBe('full')
+  })
+})
+
 describe('badgeFeatures', () => {
   it('makes one point per through-route with somewhere to sit, carrying the line’s own facts', () => {
     const map = mapWith({
@@ -375,7 +565,6 @@ describe('badgeFeatures', () => {
       source: 'centerline',
       blaze_color: 'White',
       [BADGE_MARK_PROPERTY]: trailMarkImageId('centerline'),
-      [BADGE_CHIP_PROPERTY]: blazeChipImageId('White'),
     })
   })
 
@@ -385,6 +574,7 @@ describe('badgeFeatures', () => {
         {
           name: 'Appalachian Trail',
           source: 'centerline',
+          longTrail: null,
           blazeColor: 'White',
           throughRoute: true,
           takeable: true,
@@ -396,6 +586,84 @@ describe('badgeFeatures', () => {
         },
       ]).features,
     ).toEqual([])
+  })
+
+  it('writes an empty mark id for a source the registry has no mark for', () => {
+    // WHAT THE EMPTY SLOT IS MADE OF. map/trailBadges.ts reads this one
+    // property and renders nothing for an id the style does not hold, so `''`
+    // here is the whole mechanism on the data side. Until 2026-09-29 this
+    // feature also carried a `chip` id and the layer coalesced onto it.
+    const [feature] = badgeFeatures([
+      {
+        name: 'Great Western Trail',
+        source: 'usfs_trails',
+        longTrail: 'gwt',
+        blazeColor: 'White',
+        throughRoute: true,
+        takeable: true,
+        chosen: false,
+        anchor: [-93.5, 35.7],
+        badgeFit: 'full',
+        badgeAnchor: 'left',
+        properties: {},
+      },
+    ]).features
+    // The Great Western Trail earns a badge through map/longTrailNames.ts
+    // and no steward marker was found for it, so the slot is the empty
+    // string - which is the case this whole mechanism exists for.
+    expect(trailMarkImageId('usfs_trails')).toBeNull()
+    expect(feature.properties?.[BADGE_MARK_PROPERTY]).toBe('')
+    expect(Object.keys(feature.properties ?? {})).not.toContain('chip')
+  })
+
+  it('refuses the bare-mark form for a markless trail, since that form IS the mark', () => {
+    // THE ONE WAY THE EMPTY SLOT COULD STILL DRAW NOTHING. An empty mark id
+    // renders as nothing, which is the point - but the bare form asks the
+    // layer for `<mark>-bare`, and for an empty mark that is the string
+    // `-bare`: a NON-empty image id the style does not hold. Measured through
+    // the style-spec parser, that section evaluates to
+    // `{image: '-bare', available: false}` rather than to no image at all, so
+    // the badge would be one unavailable image and no text - and with
+    // `text-optional: false` it draws nothing rather than falling back.
+    //
+    // anchorWithRoom already never picks 'mark' without a mark; this asserts
+    // the same invariant where a test can reach it, because the anchor chooser
+    // is module-private and no source in BADGE_SOURCES lacks a mark.
+    const [feature] = badgeFeatures([
+      {
+        name: 'Great Western Trail',
+        source: 'usfs_trails',
+        longTrail: 'gwt',
+        blazeColor: 'White',
+        throughRoute: true,
+        takeable: true,
+        chosen: false,
+        anchor: [-93.5, 35.7],
+        badgeFit: 'mark',
+        badgeAnchor: 'left',
+        properties: {},
+      },
+    ]).features
+    expect(feature.properties?.[BADGE_FIT_PROPERTY]).toBe('full')
+
+    // A trail that HAS a mark keeps the bare form, which is the fallback the
+    // third preview frame over Harriman exists for.
+    const [marked] = badgeFeatures([
+      {
+        name: 'Appalachian Trail',
+        source: 'centerline',
+        longTrail: null,
+        blazeColor: 'White',
+        throughRoute: true,
+        takeable: true,
+        chosen: true,
+        anchor: [-74, 41.3],
+        badgeFit: 'mark',
+        badgeAnchor: 'left',
+        properties: {},
+      },
+    ]).features
+    expect(marked.properties?.[BADGE_FIT_PROPERTY]).toBe('mark')
   })
 })
 
@@ -814,6 +1082,39 @@ describe('the pins in view (#1283, the third preview frame)', () => {
     expect(badgePlateWidth('Appalachian National Scenic Trail')).toBe(240)
     expect(badgePlateWidth('Appalachian Trail')).toBe(144)
   })
+
+  it('reserves no room for a mark on a trail that has none', () => {
+    // THE PLACER'S HALF OF THE EMPTY SLOT. map/trailBadges.ts leaves the mark
+    // slot empty for a source with no registry mark, so measuring the plate as
+    // if the mark and its gap were still there would reserve 28 px that
+    // nothing draws into - and `anchorWithRoom` would refuse anchors that do
+    // in fact fit, dropping the badge on a screen where it had room.
+    //
+    // 28 px exactly: TRAIL_BADGE_MARK_SIZE (18) plus TRAIL_BADGE_MARK_GAP (10).
+    const gap = TRAIL_BADGE_MARK_SIZE + TRAIL_BADGE_MARK_GAP
+    for (const name of ['Appalachian Trail', 'A.T.', 'Ozark Highlands Trail']) {
+      expect(badgeTextSize(name, 'full', false).width).toBe(
+        badgeTextSize(name, 'full', true).width - gap,
+      )
+      expect(badgePlateWidth(name, 'full', false)).toBe(
+        badgePlateWidth(name, 'full', true) - gap,
+      )
+    }
+    // The same calibration pair as above, so the markless plate has a figure
+    // of its own rather than only a difference: 144 - 28.
+    expect(badgePlateWidth('Appalachian Trail', 'full', false)).toBe(116)
+
+    // The height is the mark's size either way - the plate is one text line
+    // tall whether or not a mark sits in it, which is what keeps a markless
+    // badge the same height as its neighbours.
+    expect(badgeTextSize('Appalachian Trail', 'full', false).height).toBe(
+      TRAIL_BADGE_MARK_SIZE,
+    )
+
+    // A MARK IS STILL ASSUMED BY DEFAULT, so every other test in this file and
+    // every caller that predates the parameter keeps its old answer.
+    expect(badgePlateWidth('Appalachian Trail', 'full')).toBe(144)
+  })
 })
 
 // THE OBSTACLE GRID (#1415)
@@ -948,5 +1249,86 @@ describe('indexObstacles', () => {
     const { examined, positions } = examinations(40)
 
     expect(examined).toBeGreaterThan(positions)
+  })
+})
+
+describe('two badges wanting the same ground', () => {
+  /** Two through-routes whose lines run within a few pixels of each other, so
+   *  every anchor either wants overlaps the other's plate. `centerline` and
+   *  `nynjtc_long_path` are the two BADGE_SOURCES, so both earn a badge
+   *  without needing the name table. */
+  function twoOnTopOfEachOther() {
+    return mapWith({
+      [BLAZE_LAYER_ID]: [
+        line(
+          'Appalachian National Scenic Trail',
+          'centerline',
+          [
+            [-74.1, 41.5],
+            [-74.0, 41.5],
+          ],
+          'White',
+          { id: 'centerline:chain:0' },
+        ),
+        line(
+          'Long Path',
+          'nynjtc_long_path',
+          [
+            [-74.1, 41.5001],
+            [-74.0, 41.5001],
+          ],
+          'Aqua',
+        ),
+      ],
+    })
+  }
+
+  it('drops the second badge rather than stacking it on the first', () => {
+    // WHAT THIS IS FOR. Until 2026-09-30 `anchorWithRoom` never returned null:
+    // its last resort placed the badge at TRAIL_BADGE_ANCHORS[0] whatever was
+    // already there, because #1374 made this layer always-drawn against PINS.
+    // Below the pin seam there are no pins, so every badge took that fallback
+    // and they stacked. CI's whole-US frame showed roughly fifteen plates
+    // written through each other, which names no trail at all - so the reason
+    // #1374 gave for always drawing had stopped applying to what it produced.
+    const trails = trailsInView(twoOnTopOfEachOther() as unknown as MapLibreMap)
+    expect(trails).toHaveLength(2)
+
+    const anchored = trails.filter((trail) => trail.anchor !== null)
+    expect(anchored).toHaveLength(1)
+    // The one that is dropped keeps everything except the pill: it is still
+    // listed, still named, still tappable on its own line.
+    const dropped = trails.find((trail) => trail.anchor === null)
+    expect(dropped?.throughRoute).toBe(true)
+    expect(dropped?.name).toBeTruthy()
+  })
+
+  it('gives the badge to the takeable trail, whichever order the features arrive in', () => {
+    // queryRenderedFeatures promises no order, and a badge is now an obstacle
+    // to the next one - so without a decided order, which trail keeps its pill
+    // would be a coin toss that changes between settles. The same class of
+    // defect as the takeable-piece merge above, one layer up.
+    const forward = twoOnTopOfEachOther()
+    const reversed = twoOnTopOfEachOther()
+    reversed.renderedFeatures.set(
+      BLAZE_LAYER_ID,
+      [...(reversed.renderedFeatures.get(BLAZE_LAYER_ID) as unknown[])].reverse(),
+    )
+
+    const keeps = (map: MockMap) =>
+      trailsInView(map as unknown as MapLibreMap).find((trail) => trail.anchor !== null)
+        ?.name
+
+    expect(keeps(forward)).toBe('Appalachian Trail')
+    expect(keeps(reversed)).toBe('Appalachian Trail')
+  })
+
+  it('still places a lone badge with nowhere clear, because that half of #1374 stands', () => {
+    // The change is narrow on purpose: a plate over a WAYPOINT is readable and
+    // is still drawn. Only a plate over another PLATE is refused. With one
+    // trail on screen there is nothing to collide with, so it is placed.
+    const map = mapWith({ [BLAZE_LAYER_ID]: [AT] })
+    const [at] = trailsInView(map as unknown as MapLibreMap)
+    expect(at.anchor).not.toBeNull()
   })
 })

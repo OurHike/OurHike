@@ -1,0 +1,679 @@
+{
+ "_comment": "Which long-distance trails should wear a through-route badge, and what blaze their chip takes (#1543). map/trailBadges.ts draws one badge per through-route in view and takes its mark from BADGE_MARK_BY_SOURCE, which has two entries - the A.T. and the Long Path. Every other source falls through to the blaze chip in the trail's own hue. This file is the list that tier grows to.",
+ "_marks_live_in_org_marks": "WHETHER A TRAIL'S MARK MAY SHIP IS NOT TRACKED HERE. sources.json's `org_marks` block records it per organization and pipeline/tests/test_org_marks.py enforces it, both of which predate this file. An earlier draft carried a per-trail `mark_state` mirroring that vocabulary; it was 67 rows all saying the same thing and tracking nothing org_marks did not already track, so it is gone. One record, in one place.",
+ "_why_this_exists": "features/TRAIL_BLAZE_COLORS.md records that line WIDTH carries the hue-independent channel - a through-route is drawn wider than the spurs off it - and says outright that this 'answers it for exactly as long as that stays true', because 'a second through-route on the map turns the question width answers into through-route or spur'. The 11 new endpoints in features/ORG_BULK_LOAD.md are that second through-route arriving, several times over. An emblem is what answers WHICH through-route once width can only say THAT it is one.",
+ "_blaze_note": "`blaze` is the trail's painted blaze where it has one and 'none' where it is signed rather than blazed. features/TRAIL_BLAZE_COLORS.md's rule is that a blaze colour in a map or a table is data, not decoration - which is why the chip can carry it and a mark cannot be invented to sit beside it.",
+ "_this_is_a_floor_not_a_census": "67 TRAILS IS WHAT ONE PASS FOUND, NOT WHAT EXISTS. Four regional audits on 2026-09-29 found 153 MORE long-distance trails at 40 miles or over, each with a named steward, and they did not finish - five states were never swept and the 1,358 National Recreation Trails were not enumerated at all. pipeline/reference/trail_candidates.json is that list, with the evidence grade each audit gave it and the public-domain federal service that would enumerate the rest. Nothing downstream breaks on the gap: a trail with no row here still draws as a named line, it just gets no badge. Read a missing trail as 'nobody has added it yet', never as 'it did not qualify'. Before adding any of them, read that file's four findings - there is no built-fraction field yet, and 17 of the 153 share treadway with a trail already listed here.",
+ "trails": [
+  {
+   "slug": "at",
+   "trail": "Appalachian Trail",
+   "steward": "org:atc",
+   "states": "GA-ME",
+   "miles": 2198,
+   "blaze": "white",
+   "badge_tier": "through_route",
+   "note": "The A.T. diamond follows ATC's registered mark. The white ground is the blaze itself, which is the part that is data."
+  },
+  {
+   "slug": "pct",
+   "trail": "Pacific Crest Trail",
+   "steward": "org:pcta",
+   "states": "CA/OR/WA",
+   "miles": 2650,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": "PCTA's mark. The trail is signposted rather than blazed, so the emblem carries no blaze colour."
+  },
+  {
+   "slug": "cdt",
+   "trail": "Continental Divide Trail",
+   "steward": "org:cdtc",
+   "states": "NM/CO/WY/ID/MT",
+   "miles": 3028,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": "CDTC's mark."
+  },
+  {
+   "slug": "nct",
+   "trail": "North Country Trail",
+   "steward": "org:ncta",
+   "states": "ND/MN/WI/MI/OH/PA/NY/VT",
+   "miles": 4800,
+   "blaze": "blue",
+   "badge_tier": "through_route",
+   "note": "NCTA's mark. Blue-blazed."
+  },
+  {
+   "slug": "iat",
+   "trail": "Ice Age Trail",
+   "steward": "org:iata",
+   "states": "WI",
+   "miles": 1200,
+   "blaze": "yellow",
+   "badge_tier": "through_route",
+   "note": "Ice Age Trail Alliance's mark. Yellow-blazed."
+  },
+  {
+   "slug": "fnst",
+   "trail": "Florida Trail",
+   "steward": "org:fta",
+   "states": "FL",
+   "miles": 1500,
+   "blaze": "orange",
+   "badge_tier": "through_route",
+   "note": "Florida Trail Association's mark. Orange-blazed."
+  },
+  {
+   "slug": "azt",
+   "trail": "Arizona Trail",
+   "steward": "org:ata",
+   "states": "AZ",
+   "miles": 800,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": "Arizona Trail Association's mark."
+  },
+  {
+   "slug": "net",
+   "trail": "New England Trail",
+   "steward": "org:cfpa",
+   "states": "CT/MA",
+   "miles": 215,
+   "blaze": "blue",
+   "badge_tier": "through_route",
+   "note": "Connecticut Forest & Park Association's Blue-Blazed system."
+  },
+  {
+   "slug": "pnnst",
+   "trail": "Pacific Northwest Trail",
+   "steward": "org:pnta",
+   "states": "MT/ID/WA",
+   "miles": 1200,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": "PNTA's mark."
+  },
+  {
+   "slug": "pohe",
+   "trail": "Potomac Heritage Trail",
+   "steward": "org:nps",
+   "states": "VA/MD/DC/PA",
+   "miles": 830,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": "NPS-administered; the National Scenic Trail marker is federal signage. THE OFFICIAL NATIONAL TRAIL MARKER IS NOT PUBLIC DOMAIN, checked 2026-09-29: it is prescribed by the National Park Service under the National Trails System Act, protected by 18 U.S.C. 701 (official badges and insignia), and its use is authorized by the trail's ADMINISTRATOR rather than being free because a federal body drew it."
+  },
+  {
+   "slug": "natr",
+   "trail": "Natchez Trace Trail",
+   "steward": "org:nps",
+   "states": "MS/AL/TN",
+   "miles": 65,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": "NPS-administered; federal signage. THE OFFICIAL NATIONAL TRAIL MARKER IS NOT PUBLIC DOMAIN, checked 2026-09-29: it is prescribed by the National Park Service under the National Trails System Act, protected by 18 U.S.C. 701 (official badges and insignia), and its use is authorized by the trail's ADMINISTRATOR rather than being free because a federal body drew it."
+  },
+  {
+   "slug": "long-path",
+   "trail": "Long Path",
+   "steward": "org:nynjtc",
+   "states": "NY",
+   "miles": 358,
+   "blaze": "aqua",
+   "badge_tier": "through_route",
+   "note": "NYNJTC's aqua blaze. Already on the map."
+  },
+  {
+   "slug": "long-trail",
+   "trail": "Long Trail",
+   "steward": "org:gmc",
+   "states": "VT",
+   "miles": 272,
+   "blaze": "white",
+   "badge_tier": "through_route",
+   "note": "Green Mountain Club. White-blazed, like the A.T. it shares 100 miles with."
+  },
+  {
+   "slug": "flt",
+   "trail": "Finger Lakes Trail",
+   "steward": "org:fltc",
+   "states": "NY",
+   "miles": 950,
+   "blaze": "white",
+   "badge_tier": "through_route",
+   "note": "Roughly 424 miles shared with the North Country Trail."
+  },
+  {
+   "slug": "mst",
+   "trail": "Mountains-to-Sea Trail",
+   "steward": "org:fmst",
+   "states": "NC",
+   "miles": 1175,
+   "blaze": "white",
+   "badge_tier": "through_route",
+   "note": ""
+  },
+  {
+   "slug": "colorado-trail",
+   "trail": "Colorado Trail",
+   "steward": "org:ctf",
+   "states": "CO",
+   "miles": 567,
+   "blaze": "white",
+   "badge_tier": "through_route",
+   "note": ""
+  },
+  {
+   "slug": "sht",
+   "trail": "Superior Hiking Trail",
+   "steward": "org:shta",
+   "states": "MN",
+   "miles": 309,
+   "blaze": "blue",
+   "badge_tier": "through_route",
+   "note": ""
+  },
+  {
+   "slug": "ozark-trail",
+   "trail": "Ozark Trail",
+   "steward": "org:ota",
+   "states": "MO",
+   "miles": 366,
+   "blaze": "green",
+   "badge_tier": "through_route",
+   "note": ""
+  },
+  {
+   "slug": "oht",
+   "trail": "Ozark Highlands Trail",
+   "steward": "org:ohta",
+   "states": "AR",
+   "miles": 217,
+   "blaze": "white",
+   "badge_tier": "through_route",
+   "note": ""
+  },
+  {
+   "slug": "ouachita",
+   "trail": "Ouachita Trail",
+   "steward": "org:ouachita",
+   "states": "AR/OK",
+   "miles": 223,
+   "blaze": "blue",
+   "badge_tier": "through_route",
+   "note": ""
+  },
+  {
+   "slug": "buckeye",
+   "trail": "Buckeye Trail",
+   "steward": "org:buckeye",
+   "states": "OH",
+   "miles": 1444,
+   "blaze": "blue",
+   "badge_tier": "through_route",
+   "note": ""
+  },
+  {
+   "slug": "sheltowee",
+   "trail": "Sheltowee Trace",
+   "steward": "org:sheltowee",
+   "states": "KY/TN",
+   "miles": 333,
+   "blaze": "white",
+   "badge_tier": "through_route",
+   "note": "The turtle mark is the Sheltowee Trace Association's."
+  },
+  {
+   "slug": "pinhoti",
+   "trail": "Pinhoti Trail",
+   "steward": "org:pinhoti",
+   "states": "AL/GA",
+   "miles": 339,
+   "blaze": "blue",
+   "badge_tier": "through_route",
+   "note": "The turkey-track mark is the Pinhoti Trail Alliance's."
+  },
+  {
+   "slug": "bmt",
+   "trail": "Benton MacKaye Trail",
+   "steward": "org:bmta",
+   "states": "GA/TN/NC",
+   "miles": 300,
+   "blaze": "white",
+   "badge_tier": "through_route",
+   "note": "White diamond blaze, deliberately unlike the A.T.'s rectangle it runs beside."
+  },
+  {
+   "slug": "bartram",
+   "trail": "Bartram Trail",
+   "steward": "org:bartram",
+   "states": "GA/NC",
+   "miles": 115,
+   "blaze": "yellow",
+   "badge_tier": "through_route",
+   "note": ""
+  },
+  {
+   "slug": "foothills",
+   "trail": "Foothills Trail",
+   "steward": "org:foothills",
+   "states": "SC/NC",
+   "miles": 77,
+   "blaze": "white",
+   "badge_tier": "through_route",
+   "note": ""
+  },
+  {
+   "slug": "palmetto",
+   "trail": "Palmetto Trail",
+   "steward": "org:palmetto",
+   "states": "SC",
+   "miles": 350,
+   "blaze": "blue",
+   "badge_tier": "through_route",
+   "note": ""
+  },
+  {
+   "slug": "cumberland",
+   "trail": "Cumberland Trail",
+   "steward": "org:cumberland",
+   "states": "TN",
+   "miles": 210,
+   "blaze": "white",
+   "badge_tier": "through_route",
+   "note": "A Tennessee State Park trail; the marker is state signage. A STATE AGENCY MARKER IS STILL SOMEBODY'S MARK, and nobody has asked. Described here as signage to say who draws it, never to say it may be copied."
+  },
+  {
+   "slug": "lsht",
+   "trail": "Lone Star Hiking Trail",
+   "steward": "org:lsht",
+   "states": "TX",
+   "miles": 96,
+   "blaze": "white",
+   "badge_tier": "through_route",
+   "note": ""
+  },
+  {
+   "slug": "mdh",
+   "trail": "Maah Daah Hey Trail",
+   "steward": "org:mdhta",
+   "states": "ND",
+   "miles": 144,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": "The turtle marker is the Maah Daah Hey Trail Association's."
+  },
+  {
+   "slug": "laurel",
+   "trail": "Laurel Highlands Hiking Trail",
+   "steward": "org:laurel",
+   "states": "PA",
+   "miles": 70,
+   "blaze": "yellow",
+   "badge_tier": "through_route",
+   "note": "PA DCNR state-park signage. A STATE AGENCY MARKER IS STILL SOMEBODY'S MARK, and nobody has asked. Described here as signage to say who draws it, never to say it may be copied."
+  },
+  {
+   "slug": "standing-stone",
+   "trail": "Standing Stone Trail",
+   "steward": "org:standing-stone",
+   "states": "PA",
+   "miles": 80,
+   "blaze": "orange",
+   "badge_tier": "through_route",
+   "note": ""
+  },
+  {
+   "slug": "mid-state-pa",
+   "trail": "Mid State Trail",
+   "steward": "org:mst-pa",
+   "states": "PA",
+   "miles": 327,
+   "blaze": "orange",
+   "badge_tier": "through_route",
+   "note": "Collides on initials with the Mountains-to-Sea Trail, which is why the slug carries the state."
+  },
+  {
+   "slug": "cohos",
+   "trail": "Cohos Trail",
+   "steward": "org:cohos",
+   "states": "NH",
+   "miles": 170,
+   "blaze": "yellow",
+   "badge_tier": "through_route",
+   "note": ""
+  },
+  {
+   "slug": "msg",
+   "trail": "Monadnock-Sunapee Greenway",
+   "steward": "org:msgtc",
+   "states": "NH",
+   "miles": 50,
+   "blaze": "white",
+   "badge_tier": "through_route",
+   "note": ""
+  },
+  {
+   "slug": "catamount",
+   "trail": "Catamount Trail",
+   "steward": "org:catamount",
+   "states": "VT",
+   "miles": 300,
+   "blaze": "blue",
+   "badge_tier": "through_route",
+   "note": "A backcountry ski trail, which is a scope question before it is an emblem one."
+  },
+  {
+   "slug": "tahoe-rim",
+   "trail": "Tahoe Rim Trail",
+   "steward": "org:tahoe-rim",
+   "states": "CA/NV",
+   "miles": 165,
+   "blaze": "blue",
+   "badge_tier": "through_route",
+   "note": ""
+  },
+  {
+   "slug": "ridge-trail",
+   "trail": "Bay Area Ridge Trail",
+   "steward": "org:ridgetrail",
+   "states": "CA",
+   "miles": 400,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": ""
+  },
+  {
+   "slug": "condor",
+   "trail": "Condor Trail",
+   "steward": "org:condor",
+   "states": "CA",
+   "miles": 400,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": ""
+  },
+  {
+   "slug": "odt",
+   "trail": "Oregon Desert Trail",
+   "steward": "org:onda",
+   "states": "OR",
+   "miles": 750,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": "ONDA releases the route only under a waiver; the emblem is not the route."
+  },
+  {
+   "slug": "gwt",
+   "trail": "Great Western Trail",
+   "steward": "org:gwta",
+   "states": "AZ/UT/ID/WY/MT",
+   "miles": 4455,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": ""
+  },
+  {
+   "slug": "npt",
+   "trail": "Northville-Placid Trail",
+   "steward": "org:adk",
+   "states": "NY",
+   "miles": 138,
+   "blaze": "blue",
+   "badge_tier": "through_route",
+   "note": "NYS DEC manages the land; ADK is the steward organisation."
+  },
+  {
+   "slug": "knobstone",
+   "trail": "Knobstone Trail",
+   "steward": "org:hoosier",
+   "states": "IN",
+   "miles": 58,
+   "blaze": "white",
+   "badge_tier": "through_route",
+   "note": "Indiana DNR signage. A STATE AGENCY MARKER IS STILL SOMEBODY'S MARK, and nobody has asked. Described here as signage to say who draws it, never to say it may be copied."
+  },
+  {
+   "slug": "sd-centennial",
+   "trail": "South Dakota Centennial Trail",
+   "steward": "org:black-hills",
+   "states": "SD",
+   "miles": 111,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": "South Dakota Game, Fish and Parks signage. A STATE AGENCY MARKER IS STILL SOMEBODY'S MARK, and nobody has asked. Described here as signage to say who draws it, never to say it may be copied."
+  },
+  {
+   "slug": "bst",
+   "trail": "Bonneville Shoreline Trail",
+   "steward": "org:utah-sgid",
+   "states": "UT",
+   "miles": 100,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": "Multi-partner; no single steward owns the mark."
+  },
+  {
+   "slug": "backbone",
+   "trail": "Backbone Trail",
+   "steward": "org:nps",
+   "states": "CA",
+   "miles": 67,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": "NPS Santa Monica Mountains signage. THE OFFICIAL NATIONAL TRAIL MARKER IS NOT PUBLIC DOMAIN, checked 2026-09-29: it is prescribed by the National Park Service under the National Trails System Act, protected by 18 U.S.C. 701 (official badges and insignia), and its use is authorized by the trail's ADMINISTRATOR rather than being free because a federal body drew it."
+  },
+  {
+   "slug": "black-canyon",
+   "trail": "Black Canyon Trail",
+   "steward": "org:blm",
+   "states": "AZ",
+   "miles": 80,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": "BLM Arizona signage. THE OFFICIAL NATIONAL TRAIL MARKER IS NOT PUBLIC DOMAIN, checked 2026-09-29: it is prescribed by the National Park Service under the National Trails System Act, protected by 18 U.S.C. 701 (official badges and insignia), and its use is authorized by the trail's ADMINISTRATOR rather than being free because a federal body drew it."
+  },
+  {
+   "slug": "jmt",
+   "trail": "John Muir Trail",
+   "steward": "org:nps",
+   "states": "CA",
+   "miles": 211,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": "NPS and USFS managed segments; no dedicated steward organisation."
+  },
+  {
+   "slug": "hst",
+   "trail": "High Sierra Trail",
+   "steward": "org:nps",
+   "states": "CA",
+   "miles": 72,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": "NPS managed; no dedicated steward."
+  },
+  {
+   "slug": "loyalsock",
+   "trail": "Loyalsock Trail",
+   "steward": "org:kta",
+   "states": "PA",
+   "miles": 59,
+   "blaze": "yellow",
+   "badge_tier": "through_route",
+   "note": "A Keystone Trails Association affiliate's trail."
+  },
+  {
+   "slug": "donut-hole",
+   "trail": "Donut Hole Trail",
+   "steward": "org:kta",
+   "states": "PA",
+   "miles": 90,
+   "blaze": "orange",
+   "badge_tier": "through_route",
+   "note": ""
+  },
+  {
+   "slug": "quehanna",
+   "trail": "Quehanna Trail",
+   "steward": "org:kta",
+   "states": "PA",
+   "miles": 73,
+   "blaze": "orange",
+   "badge_tier": "through_route",
+   "note": ""
+  },
+  {
+   "slug": "mason-dixon",
+   "trail": "Mason-Dixon Trail",
+   "steward": "org:kta",
+   "states": "PA/MD/DE",
+   "miles": 199,
+   "blaze": "blue",
+   "badge_tier": "through_route",
+   "note": ""
+  },
+  {
+   "slug": "baker",
+   "trail": "Baker Trail",
+   "steward": "org:kta",
+   "states": "PA",
+   "miles": 141,
+   "blaze": "yellow",
+   "badge_tier": "through_route",
+   "note": ""
+  },
+  {
+   "slug": "hayduke",
+   "trail": "Hayduke Trail",
+   "steward": null,
+   "states": "UT/AZ",
+   "miles": 812,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": "Route-only: no maintaining organisation, no mark to follow and no geometry OurHike draws. The emblem is OurHike's own and the dotted ground is the honest part - it says unmaintained route rather than trail."
+  },
+  {
+   "slug": "sierra-high",
+   "trail": "Sierra High Route",
+   "steward": null,
+   "states": "CA",
+   "miles": 195,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": "Route-only: no maintaining organisation, no mark to follow and no geometry OurHike draws. The emblem is OurHike's own and the dotted ground is the honest part - it says unmaintained route rather than trail."
+  },
+  {
+   "slug": "lowest-highest",
+   "trail": "Lowest to Highest Route",
+   "steward": null,
+   "states": "CA",
+   "miles": 135,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": "Route-only: no maintaining organisation, no mark to follow and no geometry OurHike draws. The emblem is OurHike's own and the dotted ground is the honest part - it says unmaintained route rather than trail."
+  },
+  {
+   "slug": "se-serpentine",
+   "trail": "Southeast Serpentine Trail",
+   "steward": null,
+   "states": "southeast US",
+   "miles": 583,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": "Route-only: no maintaining organisation, no mark to follow and no geometry OurHike draws. The emblem is OurHike's own and the dotted ground is the honest part - it says unmaintained route rather than trail."
+  },
+  {
+   "slug": "hot-springs",
+   "trail": "Hot Springs Trail",
+   "steward": null,
+   "states": "multi",
+   "miles": 2241,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": "Route-only: no maintaining organisation, no mark to follow and no geometry OurHike draws. The emblem is OurHike's own and the dotted ground is the honest part - it says unmaintained route rather than trail."
+  },
+  {
+   "slug": "ect",
+   "trail": "Eastern Continental Trail",
+   "steward": null,
+   "states": "US/Canada",
+   "miles": 5400,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": "Route-only: no maintaining organisation, no mark to follow and no geometry OurHike draws. The emblem is OurHike's own and the dotted ground is the honest part - it says unmaintained route rather than trail."
+  },
+  {
+   "slug": "big-seki",
+   "trail": "Big SEKI Loop",
+   "steward": null,
+   "states": "CA",
+   "miles": 155,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": "Route-only: no maintaining organisation, no mark to follow and no geometry OurHike draws. The emblem is OurHike's own and the dotted ground is the honest part - it says unmaintained route rather than trail."
+  },
+  {
+   "slug": "solomons",
+   "trail": "Theodore Solomons Trail",
+   "steward": null,
+   "states": "CA",
+   "miles": 271,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": "Route-only: no maintaining organisation, no mark to follow and no geometry OurHike draws. The emblem is OurHike's own and the dotted ground is the honest part - it says unmaintained route rather than trail."
+  },
+  {
+   "slug": "sky-islands",
+   "trail": "Sky Islands Traverse",
+   "steward": null,
+   "states": "AZ",
+   "miles": 519,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": "Route-only: no maintaining organisation, no mark to follow and no geometry OurHike draws. The emblem is OurHike's own and the dotted ground is the honest part - it says unmaintained route rather than trail."
+  },
+  {
+   "slug": "nnm-loop",
+   "trail": "Northern New Mexico Loop",
+   "steward": null,
+   "states": "NM",
+   "miles": 500,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": "Route-only: no maintaining organisation, no mark to follow and no geometry OurHike draws. The emblem is OurHike's own and the dotted ground is the honest part - it says unmaintained route rather than trail."
+  },
+  {
+   "slug": "get",
+   "trail": "Grand Enchantment Trail",
+   "steward": null,
+   "states": "AZ/NM",
+   "miles": 770,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": "Route-only: no maintaining organisation, no mark to follow and no geometry OurHike draws. The emblem is OurHike's own and the dotted ground is the honest part - it says unmaintained route rather than trail."
+  },
+  {
+   "slug": "mogollon",
+   "trail": "Mogollon Rim Trail",
+   "steward": null,
+   "states": "AZ",
+   "miles": 500,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": "Route-only: no maintaining organisation, no mark to follow and no geometry OurHike draws. The emblem is OurHike's own and the dotted ground is the honest part - it says unmaintained route rather than trail."
+  },
+  {
+   "slug": "ahr",
+   "trail": "Appalachian High Route",
+   "steward": null,
+   "states": "NC/TN",
+   "miles": 330,
+   "blaze": "none",
+   "badge_tier": "through_route",
+   "note": "Route-only: no maintaining organisation, no mark to follow and no geometry OurHike draws. The emblem is OurHike's own and the dotted ground is the honest part - it says unmaintained route rather than trail."
+  }
+ ]
+}

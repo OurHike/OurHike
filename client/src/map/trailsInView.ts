@@ -87,10 +87,10 @@ import { POI_LAYER_ID } from './poiLayers'
 import { onSettled } from './settle'
 import { TAPPABLE_BLAZE_LAYER_IDS } from './style'
 import { whenStyleReady } from './styleReady'
+import { longTrailDisplayName, longTrailForName, neverShout } from './longTrailNames'
 import {
   registryNameForSource,
   BADGE_ANCHOR_PROPERTY,
-  BADGE_CHIP_PROPERTY,
   BADGE_FIT_PROPERTY,
   BADGE_MARK_PROPERTY,
   BADGE_NAME_PROPERTY,
@@ -105,9 +105,8 @@ import {
   TRAIL_BADGE_SOURCE_ID,
   TRAIL_BADGE_TEXT_FIT_PADDING,
   TRAIL_BADGE_TEXT_SIZE,
-  blazeChipImageId,
+  badgeMarkImageId,
   trailIdForSource,
-  trailMarkImageId,
 } from './trailBadges'
 import { WARNING_LAYER_ID } from './warningLayers'
 import { WORKDAY_LAYER_ID } from './workdayLayers'
@@ -151,22 +150,31 @@ const OBSTACLE_HALF_PX = 44 / 2 + 2
 export function badgeTextSize(
   name: string,
   fit: BadgeFit = 'full',
+  hasMark: boolean = true,
 ): { width: number; height: number } {
   if (fit === 'mark')
     return { width: TRAIL_BADGE_MARK_SIZE, height: TRAIL_BADGE_MARK_SIZE }
   const text = name.length * TRAIL_BADGE_TEXT_SIZE * 0.5
-  return {
-    width: TRAIL_BADGE_MARK_SIZE + TRAIL_BADGE_MARK_GAP + text,
-    height: TRAIL_BADGE_MARK_SIZE,
-  }
+  // No mark means no mark and no gap either, since map/trailBadges.ts now
+  // leaves the slot empty rather than filling it with a blaze chip. Measuring
+  // the plate as if the chip were still there would reserve 28 px of room
+  // nothing draws into, and the placer would refuse anchors that do fit.
+  const markAndGap = hasMark ? TRAIL_BADGE_MARK_SIZE + TRAIL_BADGE_MARK_GAP : 0
+  return { width: markAndGap + text, height: TRAIL_BADGE_MARK_SIZE }
 }
 
 /** How wide the plate comes out for a name: the text block plus the paper
  *  round it. What the legend and the tests reason about; the collision
  *  model below builds its own box from the same parts. */
-export function badgePlateWidth(name: string, fit: BadgeFit = 'full'): number {
+export function badgePlateWidth(
+  name: string,
+  fit: BadgeFit = 'full',
+  hasMark: boolean = true,
+): number {
   const [, right, , left] = TRAIL_BADGE_TEXT_FIT_PADDING
-  return badgeTextSize(name, fit).width + left + right + TRAIL_BADGE_PLATE_BORDER * 2
+  return (
+    badgeTextSize(name, fit, hasMark).width + left + right + TRAIL_BADGE_PLATE_BORDER * 2
+  )
 }
 
 /** MapLibre's default `text-padding` and `icon-padding`: the ring it grows
@@ -365,6 +373,9 @@ interface BadgeAnchor {
   /** Which side of the vertex the text block sits - one of
    *  TRAIL_BADGE_ANCHORS, and the one the layer draws (below). */
   anchor: string
+  /** The plate this badge actually took, in CSS px. Returned so the caller
+   *  can hand it to the NEXT trail as an obstacle - see `placeBadges`. */
+  box: Box
 }
 
 /**
@@ -482,10 +493,24 @@ function anchorWithRoom(
   obstacles: ObstacleIndex,
   frame: Box,
   name: string,
+  hasMark: boolean,
+  placed: readonly Box[],
 ): BadgeAnchor | null {
   if (candidates.length === 0) return null
-  for (const fit of ['full', 'mark'] as const) {
-    const text = badgeTextSize(name, fit)
+  // A BADGE IS AN OBSTACLE TO THE NEXT BADGE, which nothing here enforced
+  // until 2026-09-30. `placed` is every plate already taken this settle, in
+  // the order they were taken, and it is checked in the search below AND in
+  // the last resort - see the comment on that return for why the second one
+  // is the half that mattered.
+  const clearOfBadges = (box: Box) => !placed.some((taken) => overlaps(box, taken))
+  // THE BARE-MARK FALLBACK NEEDS A MARK. It is the whole badge in that form,
+  // so a trail whose steward has granted nothing would fall back to drawing
+  // nothing at all - the outcome the review of #1374 rejected when it made
+  // this layer always-drawn. A markless badge keeps the full plate instead
+  // and leans on that overlap, which is what "never nothing" costs here.
+  const fits = hasMark ? (['full', 'mark'] as const) : (['full'] as const)
+  for (const fit of fits) {
+    const text = badgeTextSize(name, fit, hasMark)
     for (const candidate of candidates) {
       for (const anchor of TRAIL_BADGE_ANCHORS) {
         const box = plateBox(anchor, candidate.at, text)
@@ -498,11 +523,44 @@ function anchorWithRoom(
         // the handful of pins in the buckets this box touches rather than
         // the few hundred on the screen.
         if (obstacles.near(box).some((obstacle) => overlaps(box, obstacle))) continue
-        return { point: candidate.point, fit, anchor }
+        if (!clearOfBadges(box)) continue
+        return { point: candidate.point, fit, anchor, box }
       }
     }
   }
-  return { point: candidates[0].point, fit: 'mark', anchor: TRAIL_BADGE_ANCHORS[0] }
+  // THE LAST RESORT, AND THE ONE CHANGE THAT UNPILES THE MAP. #1374 made this
+  // layer always-drawn: a badge with nowhere clear to sit is placed anyway
+  // rather than dropped, because a trail the hiker can see and cannot name is
+  // worse than a slightly crowded plate. That was decided when BADGE_SOURCES
+  // held two entries and the only thing a badge could collide with was a pin.
+  //
+  // It does not survive fifteen badges. Below the pin seam there are no pins
+  // at all, so `obstacles` is empty, every trail failed the frame test at the
+  // same handful of anchors and every one of them landed here - at
+  // TRAIL_BADGE_ANCHORS[0], on its middle vertex. CI's whole-US frame
+  // (2026-09-30) is what that looks like: roughly fifteen plates stacked into
+  // one illegible block, "Sheltowee Traceede Trail" and "North Country Trail"
+  // written through each other. Nobody can name a trail from that either, so
+  // the reason #1374 gave for always drawing has stopped applying to the case
+  // it now produces.
+  //
+  // So the last resort still ignores PINS - that part of #1374 stands, and a
+  // plate over a waypoint is readable - and it no longer ignores other
+  // BADGES. A trail with no position clear of a plate already taken draws no
+  // badge this settle. It keeps its line, its name in the legend and its tap
+  // target; what it loses is a pill nobody could have read.
+  const fallback = plateBox(
+    TRAIL_BADGE_ANCHORS[0],
+    candidates[0].at,
+    badgeTextSize(name, hasMark ? 'mark' : 'full', hasMark),
+  )
+  if (!clearOfBadges(fallback)) return null
+  return {
+    point: candidates[0].point,
+    fit: hasMark ? 'mark' : 'full',
+    anchor: TRAIL_BADGE_ANCHORS[0],
+    box: fallback,
+  }
 }
 
 export type TrailsInViewMap = MapLibreMap
@@ -527,6 +585,18 @@ export interface TrailInView {
   takeable: boolean
   /** Whether the trail is in the chosen system, and so drawn solid. */
   chosen: boolean
+  /** Which long trail this line IS, from map/longTrailNames.ts, or null for
+   *  an ordinary line. The badge's mark is keyed off this rather than off
+   *  `source`, because one trail arrives under up to five published
+   *  spellings across three organizations' feeds and they all mean one
+   *  marker (#1543). Null for the A.T. and the Long Path, whose marks come
+   *  from the registry by source as they always did.
+   *
+   *  OPTIONAL, so a caller that predates this field still type-checks and
+   *  still gets the badge it got before - `badgeMarkImageId` treats a missing
+   *  value as "no steward marker" rather than building an id out of
+   *  `undefined`, which is the defect its own comment records. */
+  longTrail?: string | null
   /** A vertex on the trail, in view, where its badge sits; null where none of
    *  the drawn geometry put a vertex inside the viewport. */
   anchor: [number, number] | null
@@ -736,7 +806,30 @@ export function trailsInView(
       stringProp(properties, 'name') ?? registryNameForSource(source),
     )
     if (name === null) continue
-    const throughRoute = BADGE_SOURCES.includes(source)
+    // A BADGE BELONGS TO A TRAIL, NOT TO A FEED (#1543). This was
+    // `BADGE_SOURCES.includes(source)` alone until 2026-09-30, which meant
+    // ATC's centerline and NYNJTC's Long Path feed were the only two trails
+    // on the map that could ever wear one - while Sheltowee Trace, Ozark
+    // Highlands, Bartram, Pinhoti, Ouachita, Maah Daah Hey and the Tahoe Rim
+    // were already being downloaded and drawn as anonymous lines inside the
+    // Forest Service's nationwide layer. The source test stays because two
+    // feeds ARE one trail each; the name test is what reaches the rest.
+    const longTrail = longTrailForName(name)
+    const throughRoute = BADGE_SOURCES.includes(source) || longTrail !== null
+    // WHAT THE BADGE PRINTS, which is not what the publisher spells it. USFS
+    // publishes SHELTOWEE TRACE, BENTON MACKAYE and NORTH COUNTRY NATIONAL
+    // SCENIC; a hiker reads "Sheltowee Trace", "Benton MacKaye Trail" and
+    // "North Country Trail". Same decision lib/trails.ts already took for the
+    // A.T.'s federal designation, applied to the other nineteen.
+    const printed = neverShout(
+      (longTrail !== null && longTrailDisplayName(longTrail)) || name,
+    )
+    // ONE BADGE PER TRAIL, NOT PER SPELLING. Keyed on the resolved trail
+    // where there is one, because the same trail arrives under several names
+    // - the first frame of this shipping badged NORTH COUNTRY TRAIL and
+    // NORTH COUNTRY NATIONAL SCENIC side by side, and PINHOTI beside PINHOTI
+    // NRT, which is the map telling a hiker there are two trails there.
+    const key = longTrail ?? name
     const takeable = trailIdForSource(source) !== null
     const inChosenSystem = chosen.includes(source)
 
@@ -749,13 +842,14 @@ export function trailsInView(
       if (clear !== view) clearRuns.push(...visibleRuns(part, clear))
     }
 
-    const existing = byName.get(name)
+    const existing = byName.get(key)
     if (existing === undefined) {
-      byName.set(name, {
-        name,
+      byName.set(key, {
+        name: printed,
         source,
         blazeColor: stringProp(properties, 'blaze_color'),
         throughRoute,
+        longTrail,
         takeable,
         chosen: inChosenSystem,
         anchor: null,
@@ -771,17 +865,47 @@ export function trailsInView(
     // its runs join the search, and the through-route's piece names it.
     existing.runs.push(...runs)
     existing.clearRuns.push(...clearRuns)
-    if (throughRoute && !existing.throughRoute) {
+    // WHICH PIECE NAMES THE TRAIL. A through-route's piece beats a plain
+    // one, and among through-route pieces a TAKEABLE one beats the rest.
+    //
+    // That second clause is not tidiness. Since the dedupe key became the
+    // resolved trail, the A.T. arrives as two pieces - ATC's `centerline`,
+    // which is takeable, and the Forest Service's own `APPALACHIAN TRAIL`
+    // segments, which are not - and queryRenderedFeatures does not promise
+    // which comes back first. Without it, a frame where the USFS piece
+    // happened to be seen first left the A.T. un-takeable (#1306's whole
+    // subject) and keyed its mark off a source that has none.
+    const betterPiece =
+      (throughRoute && !existing.throughRoute) ||
+      (throughRoute && takeable && !existing.takeable)
+    if (betterPiece) {
       existing.throughRoute = true
       existing.takeable = takeable
       existing.source = source
       existing.blazeColor = stringProp(properties, 'blaze_color')
       existing.properties = properties
     }
+    existing.longTrail = existing.longTrail ?? longTrail
     existing.chosen = existing.chosen || inChosenSystem
   }
 
-  return [...byName.values()]
+  // PLACED IN A DECIDED ORDER, because a badge is now an obstacle to the next
+  // one and so the order decides which trail keeps its pill when two want the
+  // same ground. `queryRenderedFeatures` promises no order, so taking them as
+  // they arrive would have made that a coin toss that changes between settles
+  // - the same class of defect as the takeable-piece merge above.
+  //
+  // Chosen system first (the trail the hiker is actually on outranks the rest,
+  // the same seniority the sort below already applies), then takeable, then by
+  // name so the remainder is stable rather than merely deterministic-looking.
+  const ordered = [...byName.values()].sort((a, b) => {
+    if (a.chosen !== b.chosen) return a.chosen ? -1 : 1
+    if (a.takeable !== b.takeable) return a.takeable ? -1 : 1
+    return a.name.localeCompare(b.name)
+  })
+
+  const taken: Box[] = []
+  return ordered
     .map(({ runs, clearRuns, ...trail }) => {
       // Only a through-route needs an anchor at all; the rest are listed,
       // not badged, and are spared the search. In the clear first: under
@@ -793,8 +917,11 @@ export function trailsInView(
         pins(),
         frame,
         trail.name,
+        badgeMarkImageId(trail.source, trail.longTrail) !== null,
+        taken,
       )
       if (placed === null) return { ...trail, anchor: null }
+      taken.push(placed.box)
       return {
         ...trail,
         anchor: placed.point,
@@ -813,28 +940,44 @@ export function trailsInView(
  * The badge points: one per through-route that has somewhere to sit.
  *
  * Each carries the line's own properties verbatim - so a tap on the badge
- * hands map/lineTaps.ts exactly what a tap on the line would - plus the two
- * image ids the layer's `coalesce` reads: the registry mark where the source
- * has one, and the blaze chip it falls through to.
+ * hands map/lineTaps.ts exactly what a tap on the line would - plus the one
+ * image id the layer reads: the registry mark where the source has one, and
+ * the empty string where it does not, which `text-field` renders as nothing.
  */
 export function badgeFeatures(trails: readonly TrailInView[]): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
     features: trails
       .filter((trail) => trail.throughRoute && trail.anchor !== null)
-      .map((trail) => ({
-        type: 'Feature',
-        properties: {
-          ...trail.properties,
-          [BADGE_NAME_PROPERTY]: trail.name,
-          [BADGE_SOURCE_PROPERTY]: trail.source,
-          [BADGE_MARK_PROPERTY]: trailMarkImageId(trail.source) ?? '',
-          [BADGE_CHIP_PROPERTY]: blazeChipImageId(trail.blazeColor),
-          [BADGE_FIT_PROPERTY]: trail.badgeFit,
-          [BADGE_ANCHOR_PROPERTY]: trail.badgeAnchor,
-        },
-        geometry: { type: 'Point', coordinates: trail.anchor as Position },
-      })),
+      .map((trail) => {
+        const mark = badgeMarkImageId(trail.source, trail.longTrail)
+        return {
+          type: 'Feature' as const,
+          properties: {
+            ...trail.properties,
+            [BADGE_NAME_PROPERTY]: trail.name,
+            [BADGE_SOURCE_PROPERTY]: trail.source,
+            [BADGE_MARK_PROPERTY]: mark ?? '',
+            // THE BARE-MARK FORM NEEDS A MARK, asserted here as well as chosen
+            // in anchorWithRoom, because the two failure modes are not the
+            // same and only this one is silent. An empty mark id renders as
+            // nothing (see map/trailBadges.ts), but the bare form asks for
+            // `<mark>-bare`, and for an empty mark that concatenates to the
+            // string `-bare` - a NON-empty id the style does not hold.
+            // Measured through the style-spec parser: that section comes back
+            // `{image: '-bare', available: false}` rather than imageless, so
+            // it is a badge of one unavailable image and no text, which with
+            // `text-optional: false` is a badge that draws nothing. Falling
+            // back to the full plate is the outcome #1374's review asked for.
+            [BADGE_FIT_PROPERTY]: mark === null ? 'full' : trail.badgeFit,
+            [BADGE_ANCHOR_PROPERTY]: trail.badgeAnchor,
+          },
+          geometry: {
+            type: 'Point' as const,
+            coordinates: trail.anchor as Position,
+          },
+        }
+      }),
   }
 }
 

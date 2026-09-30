@@ -30,10 +30,27 @@
 // writes down its junction rung. `trail_id` is not published on a trail
 // feature - features/SOURCE_REGISTRY.md's field map is what would introduce
 // it - so the mark is keyed off `source` instead: `centerline` is the A.T.
-// and takes the ATC mark; every other source falls through to the OurHike
-// blaze chip in the trail's own blaze hue. When a `trail_id` arrives,
-// BADGE_MARK_BY_SOURCE becomes a lookup against the registry and nothing
-// else here changes.
+// and takes the ATC mark. EVERY OTHER SOURCE DRAWS NO MARK AT ALL, and the
+// badge is the plate and the name. Until 2026-09-29 it fell through to an
+// OurHike-drawn blaze chip, which put a generated shape where an
+// organisation's identity goes - the one thing sources.json's `org_marks`
+// block says must never be approximated. pipeline/reference/trail_marks.json
+// holds the 35 steward marks found for these trails and what each needs
+// before it could ship. When a `trail_id` arrives, BADGE_MARK_BY_SOURCE
+// becomes a lookup against the registry and nothing else here changes.
+//
+// NOBODY CAN SEE THAT CHANGE YET, and it is worth knowing why before
+// somebody goes looking for it on a screen. BADGE_SOURCES below has two
+// entries and BADGE_MARK_BY_SOURCE has the same two, so every trail this
+// layer badges today is a trail that HAS a mark - there is no markless badge
+// anywhere in the app to look at. The empty slot appears on the first frame
+// BADGE_SOURCES grows, which is what registering a second steward's
+// through-route does. The same is true of the fitted draw in markFitBox: all
+// four registry marks are square or all but (at-logo.png and the two SVGs
+// are exactly 1:1; lp-logo.png is 150x151, so 1.007:1), so fitting and
+// filling render identically today. That is exactly why a filling draw survived
+// unnoticed, and why both changes are guarded by tests rather than by a
+// picture.
 //
 // WHEN THE PILL HAS NO ROOM, THE MARK STANDS ALONE. The fourth preview frame
 // over Harriman is the reason: with the anchor in the clear and the pins in
@@ -61,8 +78,8 @@
 
 import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec'
 import type { Map as MapLibreMap } from 'maplibre-gl'
-import { BLAZE_PALETTE_MEMBERS, NEUTRAL_BLAZE_COLOR, blazePaintColor } from '../lib/blaze'
 import { TRAILS } from '../lib/trails'
+import { longTrailHasMarker } from './longTrailNames'
 import { LABEL_TIER } from './labelLadder'
 import { sheetVariant, type SheetAppearance } from './liveTopo'
 import { CHOSEN_SYSTEM_SOURCES, nearbyTrailOpacityExpression } from './nearbyTrails'
@@ -102,11 +119,43 @@ export const BADGE_SOURCES: readonly string[] = ['centerline', 'nynjtc_long_path
  * off `source` because nothing publishes a `trail_id`; `centerline` is ATC's
  * centerline feed, which is the A.T., and `nynjtc_long_path` is NYNJTC's
  * Long Path feed (#1307) - both in lib/trails.ts. A source with no entry
- * takes the blaze chip.
+ * draws no mark at all.
  */
 export const BADGE_MARK_BY_SOURCE: Readonly<Record<string, string>> = {
   centerline: TRAILS.AT.id,
   nynjtc_long_path: TRAILS.LP.id,
+}
+
+/** The badge image id for a long trail's own marker, which is registered
+ *  from lib/stewardMarks.ts rather than from the registry. Separate from
+ *  TRAILS' ids so the two can never collide in the sprite. */
+export function stewardMarkImageId(slug: string): string {
+  return `trail-mark-steward-${slug}`
+}
+
+/**
+ * Which image a badge draws: the registry's mark where the SOURCE has one,
+ * otherwise the steward's own marker for the TRAIL (#1543).
+ *
+ * Source first, deliberately. `centerline` is the A.T. and carries the
+ * marker the repo owner supplied; a USFS segment spelled "APPALACHIAN TRAIL"
+ * resolves to the same trail through map/longTrailNames.ts, and both must
+ * draw the one mark rather than two different files depending on which feed
+ * the nearest piece came from.
+ */
+export function badgeMarkImageId(
+  source: string,
+  longTrail: string | null | undefined,
+): string | null {
+  const registry = trailMarkImageId(source)
+  if (registry !== null) return registry
+  // FALSY RATHER THAN `=== null`, because the first version of this line was
+  // `longTrail === null` and a feature built without the field asked the
+  // sprite for `trail-mark-steward-undefined` - an id nothing holds, so the
+  // badge silently lost its slot rather than failing anywhere visible. The
+  // empty string is refused for the same reason.
+  if (!longTrail || !longTrailHasMarker(longTrail)) return null
+  return stewardMarkImageId(longTrail)
 }
 
 /**
@@ -121,7 +170,7 @@ export const BADGE_MARK_BY_SOURCE: Readonly<Record<string, string>> = {
  */
 const TAKEABLE_SOURCES: ReadonlySet<string> = new Set(['centerline'])
 
-/** The mark's image id, or null where the source wears the blaze chip. */
+/** The mark's image id, or null where the source has no mark to draw. */
 /**
  * The registry trail a badge's source stands for, or null - what a tap on
  * the badge TAKES (#1306). Reads the same mark lookup the badge draws from,
@@ -193,7 +242,7 @@ export function trailMarkImageId(source: string | null | undefined): string | nu
 }
 
 /**
- * Every mark and chip is registered twice: with the gap to the name baked
+ * Every mark is registered twice: with the gap to the name baked
  * in, for the full badge, and bare, for the mark-only plate - where a gap
  * would be paper with nothing after it. This is the bare twin's id.
  */
@@ -211,35 +260,14 @@ export const BADGE_FIT_PROPERTY = 'fit'
  *  The placer's, not the engine's: see the layout below. */
 export const BADGE_ANCHOR_PROPERTY = 'anchor'
 
-/** The chip a blaze falls through to. Every palette member has one, derived
- *  from BLAZE_PALETTE_MEMBERS so lib/blaze.ts's closed-palette rule (#782)
- *  reaches the badges without anybody listing them here; the three neutral
- *  values share one grey chip, as they share one line colour. */
-export function blazeChipImageId(blazeColor: string | null | undefined): string {
-  if (
-    blazeColor !== null &&
-    blazeColor !== undefined &&
-    BLAZE_PALETTE_MEMBERS.includes(blazeColor)
-  ) {
-    return `blaze-chip-${blazeColor}`
-  }
-  return 'blaze-chip-neutral'
-}
-
 /*
  * THE GEOMETRY - the only invented numbers in the handoff, listed there under
  * "Design tokens". Every colour is an existing token; these sizes are the
  * badge's own.
  */
 
-/** Mark and chip side, CSS px. */
+/** The mark's side, CSS px. */
 export const TRAIL_BADGE_MARK_SIZE = 18
-/** The chip's corner radius and the blaze bar's width, as fractions of the
- *  side - lifted from design-system/assets/logo-icon.svg, the app icon,
- *  which is where the chip's geometry comes from. */
-export const BLAZE_CHIP_CORNER = 0.21
-export const BLAZE_CHIP_BAR_WIDTH = 0.21
-export const BLAZE_CHIP_BAR_HEIGHT = 0.62
 /** Between the mark and the name. Baked into the mark image as transparent
  *  columns rather than typed as spaces in the text, so it is the same width
  *  in every font and at every letter-spacing. */
@@ -296,16 +324,6 @@ export const TRAIL_BADGE_ANCHORS: readonly string[] = [
 export const TRAIL_BADGE_RADIAL_OFFSET = 0.3
 
 /**
- * A White-blazed trail's chip takes `--stone-700` as its ground, or the
- * white blaze bar disappears into it. The one place a blaze is not painted
- * in its own hex, and it is the chip's ground rather than the bar - the bar
- * IS the white blaze.
- */
-export const WHITE_CHIP_GROUND = '#5a5346'
-/** `--paper-0`: the blaze bar on every chip. */
-export const BLAZE_CHIP_BAR_COLOR = '#fffdf7'
-
-/**
  * The plate's two faces - one per sheet family - and the ink on each.
  *
  * Day: `--paper-0` at 95% with a border between `--border-1` and
@@ -355,7 +373,7 @@ export function badgeHaloColor(appearance: SheetAppearance): string {
  * THE RASTERISER. A rounded rectangle is all either image is, so this is the
  * smallest thing that draws one: a predicate per shape, sampled 3x3 per
  * pixel and averaged in premultiplied alpha - the same standard as
- * map/poiIcons.ts and map/atcNoticeMark.ts, so a chip beside a pin reads as
+ * map/poiIcons.ts and map/atcNoticeMark.ts, so a mark beside a pin reads as
  * the same weight of ink.
  */
 
@@ -491,76 +509,60 @@ export function buildBadgePlate(
 }
 
 /**
- * The OurHike blaze chip: a rounded square in the blaze's own hue carrying
- * the white blaze bar from the app icon. Baked into an image
- * TRAIL_BADGE_MARK_GAP wider than the chip, transparent on the right, so the
- * gap to the name is the image's and not the font's.
+ * Where a mark of `width` x `height` lands inside a `side`-square slot, fitted
+ * rather than filled.
+ *
+ * Its own function so the arithmetic can be tested: `rasteriseTrailMark` below
+ * needs a 2D canvas and jsdom has none, so every test of that function is
+ * skipped in this suite and a filling draw could be reintroduced without one
+ * of them going red.
+ *
+ * MEASURED, and a smaller reason than an earlier draft of this comment
+ * claimed. Across the 35 steward marks collected on 2026-09-29
+ * (pipeline/reference/trail_marks.json), 20 are exactly 1:1 and 15 are not;
+ * only TWO depart from square by more than half again - the Foothills Trail's
+ * at 185x120 (1.54:1) and the Long Trail's at 322.738x210.842 (1.531:1).
+ * Re-measured from the bytes on 2026-09-30 when the marks were fetched into
+ * the tree, which moved five rows - four in absolute size only and
+ * Mason-Dixon's from square to 1.042:1. A filling
+ * draw stretches the Foothills mark's 120 px of height to the full 18 px
+ * slot, 54% in one axis, which is the visible defect this ends.
+ *
+ * The earlier draft said "11 sit further than 1.5:1 and the widest is CDTC's
+ * at 4.40:1", and both halves were false - CDTC's mark is 192x192. That
+ * number was a fossil of a superseded sweep round that collected WORDMARK
+ * banners; the maintainer's instruction to find symbol-only marks is why the
+ * manifest is nearly all square, so the round that produced 4.40:1 no longer
+ * exists in the file being cited. Recorded rather than quietly swapped,
+ * because a stated measurement that nobody can reproduce is the exact failure
+ * CLAUDE.md's evidence standard is for.
+ *
+ * The fit is still the right arithmetic at any distribution: it is what the
+ * slot means. The four marks the registry held before that sweep are square
+ * or all but - the widest is lp-logo.png at 150x151, 1.007:1 - which is why
+ * filling the square was invisible for as long as it was.
  */
-export function buildBlazeChip(
-  blazeColor: string | null,
-  pixelRatio: number = POI_PIN_PIXEL_RATIO,
-  gap: number = TRAIL_BADGE_MARK_GAP,
-): PoiIconImage {
-  const side = TRAIL_BADGE_MARK_SIZE
-  const ground =
-    blazeColor === null
-      ? NEUTRAL_BLAZE_COLOR
-      : blazeColor === 'White'
-        ? WHITE_CHIP_GROUND
-        : blazePaintColor(blazeColor)
-  const groundRgba = solid(ground)
-  const bar = solid(BLAZE_CHIP_BAR_COLOR)
-  const barWidth = side * BLAZE_CHIP_BAR_WIDTH
-  const barHeight = side * BLAZE_CHIP_BAR_HEIGHT
-
-  const width = Math.round((side + gap) * pixelRatio)
-  const height = Math.round(side * pixelRatio)
-  return rasterise(width, height, (x, y) => {
-    const cx = x / pixelRatio
-    const cy = y / pixelRatio
-    if (
-      insideRoundedRect(
-        cx,
-        cy,
-        (side - barWidth) / 2,
-        (side - barHeight) / 2,
-        barWidth,
-        barHeight,
-        barWidth / 2,
-      )
-    ) {
-      return bar
-    }
-    if (insideRoundedRect(cx, cy, 0, 0, side, side, side * BLAZE_CHIP_CORNER)) {
-      return groundRgba
-    }
-    return null
-  })
-}
-
-/** Every chip the style can ask for, with the id each is registered under -
- *  each in both forms, with the gap and bare. */
-export function buildBlazeChips(): Array<{ id: string; image: PoiIconImage }> {
-  const blazes: Array<string | null> = [...BLAZE_PALETTE_MEMBERS, null]
-  return blazes.flatMap((blaze) => [
-    { id: blazeChipImageId(blaze), image: buildBlazeChip(blaze) },
-    {
-      id: bareImageId(blazeChipImageId(blaze)),
-      image: buildBlazeChip(blaze, POI_PIN_PIXEL_RATIO, 0),
-    },
-  ])
+export function markFitBox(
+  width: number,
+  height: number,
+  side: number,
+): { x: number; y: number; width: number; height: number } {
+  if (!(width > 0) || !(height > 0)) return { x: 0, y: 0, width: side, height: side }
+  const fit = Math.min(side / width, side / height)
+  const drawn = { width: width * fit, height: height * fit }
+  return { x: (side - drawn.width) / 2, y: (side - drawn.height) / 2, ...drawn }
 }
 
 /**
  * A registry mark, drawn from its asset onto the same mark-plus-gap canvas
- * the chips use, at the device pixel ratio.
+ * the plate expects, at the device pixel ratio.
  *
  * Needs a 2D canvas, which is the one thing this file asks of the browser:
  * the A.T. mark is a PNG and the placeholders are SVGs, and nothing but a
  * canvas turns either into pixels. Where there is none - jsdom, a browser
- * that refuses one - this resolves to null and the badge falls through to the
- * blaze chip, which the layer's `coalesce` already does without being told.
- * A missing mark costs the badge its logo, never the badge.
+ * that refuses one - this resolves to null, the image is never added, and the
+ * layer's `['image', ...]` finds nothing to draw. A missing mark costs the
+ * badge its logo, never the badge: the plate and the name still place.
  */
 export function rasteriseTrailMark(
   url: string,
@@ -585,12 +587,18 @@ export function rasteriseTrailMark(
       try {
         const side = Math.round(TRAIL_BADGE_MARK_SIZE * pixelRatio)
         context.clearRect(0, 0, width, height)
-        context.drawImage(image, 0, 0, side, side)
+        // FITTED INTO THE SQUARE, NOT STRETCHED TO FILL IT. This was
+        // `drawImage(image, 0, 0, side, side)` until 2026-09-29, and that was
+        // free for as long as the registry held four marks none wider than
+        // 1.007:1. markFitBox above has the measurement that ends it.
+        const box = markFitBox(image.width, image.height, side)
+        context.drawImage(image, box.x, box.y, box.width, box.height)
         const pixels = context.getImageData(0, 0, width, height)
         resolve({ width, height, data: pixels.data })
       } catch {
-        // A tainted canvas or a decode that failed after load: no mark,
-        // and the chip stands in.
+        // A tainted canvas or a decode that failed after load: no mark, and
+        // the slot stays empty - the same place a trail with no granted mark
+        // already is.
         resolve(null)
       }
     }
@@ -603,11 +611,11 @@ export function rasteriseTrailMark(
  * Registers every image the badge layer can name, on a map that is already
  * built, and returns a detach.
  *
- * Two clocks. The plates and the chips are arithmetic and land the moment the
- * layer is in the style. The registry marks decode from their assets, so they
- * land when they land - and a badge drawn before its mark arrives shows the
- * blaze chip for a frame, then the mark, because adding an image re-lays the
- * symbols that name it. Never re-added: images outlive a style reload and
+ * Two clocks. The plates are arithmetic and land the moment the layer is in
+ * the style. The registry marks decode from their assets, so they land when
+ * they land - and a badge drawn before its mark arrives shows an empty slot
+ * for a frame, then the mark, because adding an image re-lays the symbols
+ * that name it. Never re-added: images outlive a style reload and
  * re-adding one throws, the same rule every other registrar in map/ keeps.
  */
 export function attachTrailBadgeImages(map: MapLibreMap): () => void {
@@ -622,24 +630,43 @@ export function attachTrailBadgeImages(map: MapLibreMap): () => void {
         const { image, options } = buildBadgePlate(face)
         map.addImage(face.id, image, options)
       }
-      for (const { id, image } of buildBlazeChips()) {
-        if (!map.hasImage(id))
-          map.addImage(id, image, { pixelRatio: POI_PIN_PIXEL_RATIO })
-      }
-      for (const trail of Object.values(TRAILS)) {
-        const full = `trail-mark-${trail.id}`
+      const register = (logo: string, base: string) => {
         for (const [id, gap] of [
-          [full, TRAIL_BADGE_MARK_GAP],
-          [bareImageId(full), 0],
+          [base, TRAIL_BADGE_MARK_GAP],
+          [bareImageId(base), 0],
         ] as const) {
           if (map.hasImage(id)) continue
-          void rasteriseTrailMark(trail.logo, POI_PIN_PIXEL_RATIO, gap).then((image) => {
+          void rasteriseTrailMark(logo, POI_PIN_PIXEL_RATIO, gap).then((image) => {
             if (detached || image === null || map.hasImage(id)) return
             if (map.getLayer(TRAIL_BADGE_LAYER_ID) === undefined) return
             map.addImage(id, image, { pixelRatio: POI_PIN_PIXEL_RATIO })
           })
         }
       }
+
+      for (const trail of Object.values(TRAILS)) {
+        register(trail.logo, `trail-mark-${trail.id}`)
+      }
+
+      // THE STEWARDS' OWN MARKERS, behind an `import()` (#1543). These are 32
+      // files and their URLs have no business in the launch path - the same
+      // argument lib/stewardMarks.ts's header makes for the line sheet - and
+      // nothing above waits on them: rasteriseTrailMark is already async, so
+      // a badge draws its plate and name first and the marker lands when it
+      // lands. A steward trail whose marker never arrives keeps the empty
+      // slot, which is what it wore before this existed.
+      void import('../lib/stewardMarks')
+        .then(({ stewardMarkForSlug, stewardMarkSlugs }) => {
+          if (detached || map.getLayer(TRAIL_BADGE_LAYER_ID) === undefined) return
+          for (const slug of stewardMarkSlugs()) {
+            const logo = stewardMarkForSlug(slug)
+            if (logo !== null) register(logo, stewardMarkImageId(slug))
+          }
+        })
+        .catch(() => {
+          // A chunk that will not load is a badge with an empty slot, never a
+          // broken image and never a throw that takes the map down.
+        })
     },
     'Trail badge images',
   )
@@ -654,7 +681,6 @@ export function attachTrailBadgeImages(map: MapLibreMap): () => void {
 export const BADGE_NAME_PROPERTY = 'name'
 export const BADGE_SOURCE_PROPERTY = 'source'
 export const BADGE_MARK_PROPERTY = 'mark'
-export const BADGE_CHIP_PROPERTY = 'chip'
 
 /** The point source the badges draw from: empty in the style, filled by
  *  map/trailsInView.ts as the camera settles. A function rather than a
@@ -734,27 +760,39 @@ export function buildTrailBadgeLayer(
       'text-optional': false,
       // The full badge, or the mark alone where trailsInView found room for
       // nothing wider - the header's fallback. Both are one `format`: the
-      // registry mark where the source has one, the blaze chip otherwise,
-      // in the form with the gap to the name or the bare form.
+      // registry mark where the source has one, in the form with the gap to
+      // the name or the bare form.
+      // AN EMPTY SLOT WHERE THERE IS NO MARK, never a stand-in. This carried
+      // `['coalesce', ['image', mark], ['image', chip]]` until 2026-09-29, so
+      // a trail whose steward has granted nothing still wore an OurHike-drawn
+      // blaze chip in the mark's place. sources.json's `org_marks` block had
+      // already ruled on that shape of thing - "never a placeholder mark,
+      // never an initial, never a generated shape" - and a chip is a
+      // generated shape standing where an organisation's identity goes.
+      // `['image', '']` renders as nothing rather than as a broken-image box,
+      // which is the whole mechanism and is measured against maplibre-gl
+      // 6.7.0 rather than assumed: `ResolvedImage.fromString` returns null for
+      // a falsy name (maplibre-gl-shared-dev.mjs:7725), and a format section
+      // whose image is null is laid out as a TEXT section (:23287), so it
+      // contributes no glyph - and never reaches the `addImageSection` branch
+      // that would `warnOnce` about an empty image (:23390). Evaluated through
+      // the style-spec parser in trailBadges.test.ts, so a maplibre upgrade
+      // that changed any of that would go red here rather than on a phone.
+      //
+      // So a markless badge is the plate and the name, and the blaze still
+      // reaches the hiker where it always did: on the line itself, and on the
+      // tapped trail's sheet.
       'text-field': [
         'case',
         ['==', ['get', BADGE_FIT_PROPERTY], 'mark'],
         [
           'format',
-          [
-            'coalesce',
-            ['image', ['concat', ['get', BADGE_MARK_PROPERTY], '-bare']],
-            ['image', ['concat', ['get', BADGE_CHIP_PROPERTY], '-bare']],
-          ],
+          ['image', ['concat', ['get', BADGE_MARK_PROPERTY], '-bare']],
           { 'vertical-align': 'center' },
         ],
         [
           'format',
-          [
-            'coalesce',
-            ['image', ['get', BADGE_MARK_PROPERTY]],
-            ['image', ['get', BADGE_CHIP_PROPERTY]],
-          ],
+          ['image', ['get', BADGE_MARK_PROPERTY]],
           { 'vertical-align': 'center' },
           ['get', BADGE_NAME_PROPERTY],
           { 'vertical-align': 'center' },

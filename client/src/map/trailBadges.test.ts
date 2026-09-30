@@ -1,21 +1,18 @@
 import { describe, it, expect } from 'vitest'
+import { createExpression, latest } from '@maplibre/maplibre-gl-style-spec'
 import { MockMap } from '../test/mocks/maplibre-gl'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import {
   attachTrailBadgeImages,
   registryNameForSource,
   BADGE_FIT_PROPERTY,
+  BADGE_MARK_PROPERTY,
+  BADGE_NAME_PROPERTY,
   BADGE_SOURCES,
-  bareImageId,
   buildTrailBadgeLayer,
-  BLAZE_CHIP_BAR_COLOR,
-  BLAZE_CHIP_CORNER,
   buildBadgePlate,
-  buildBlazeChip,
-  buildBlazeChips,
-  blazeChipImageId,
+  markFitBox,
   TRAIL_BADGE_LAYER_ID,
-  TRAIL_BADGE_MARK_GAP,
   TRAIL_BADGE_MARK_SIZE,
   TRAIL_BADGE_PLATE_BORDER,
   TRAIL_BADGE_PLATE_DAY,
@@ -24,12 +21,10 @@ import {
   TRAIL_BADGE_TEXT_FIT_PADDING,
   trailIdForSource,
   trailMarkImageId,
-  WHITE_CHIP_GROUND,
 } from './trailBadges'
 import { POI_PIN_MIN_ZOOM } from './poiLayers'
 import { PRIMARY_TRAIL_SOURCES } from './style'
 import { THROUGH_ROUTE_SOURCES } from './trailLabels'
-import { BLAZE_PALETTE_MEMBERS, NEUTRAL_BLAZE_COLOR, blazePaintColor } from '../lib/blaze'
 import { parseHex, POI_PIN_PIXEL_RATIO, type PoiIconImage } from './poiIcons'
 import { TRAILS } from '../lib/trails'
 
@@ -95,24 +90,23 @@ describe('who earns a badge', () => {
     expect(trailIdForSource(null)).toBeNull()
   })
 
-  it('gives every palette member a chip, and the neutrals one grey chip between them - each with a bare twin', () => {
-    for (const blaze of BLAZE_PALETTE_MEMBERS) {
-      expect(blazeChipImageId(blaze)).toBe(`blaze-chip-${blaze}`)
+  it('names no image at all for a source whose steward has granted no mark', () => {
+    // The rule this replaced a blaze chip to keep: sources.json's `org_marks`
+    // says an ungranted slot renders empty, "never a placeholder mark, never
+    // an initial, never a generated shape". Every source but the two the
+    // registry knows answers null here, and the layer draws the plate and the
+    // name with nothing in front of them.
+    expect(trailMarkImageId('centerline')).toBe('trail-mark-AT')
+    expect(trailMarkImageId('nynjtc_long_path')).toBe('trail-mark-LP')
+    for (const source of [
+      'oprhp_trails',
+      'side_trails',
+      'nynjtc_trails',
+      'unknown_source',
+    ]) {
+      expect(trailMarkImageId(source)).toBeNull()
     }
-    expect(blazeChipImageId('None')).toBe('blaze-chip-neutral')
-    expect(blazeChipImageId('Unknown')).toBe('blaze-chip-neutral')
-    expect(blazeChipImageId(null)).toBe('blaze-chip-neutral')
-    expect(buildBlazeChips().map((chip) => chip.id)).toEqual(
-      [
-        ...BLAZE_PALETTE_MEMBERS.map((blaze) => `blaze-chip-${blaze}`),
-        'blaze-chip-neutral',
-      ].flatMap((id) => [id, bareImageId(id)]),
-    )
-    // The bare twin is the mark with no gap after it - the mark-only plate's.
-    const bare = buildBlazeChips().find(
-      (chip) => chip.id === bareImageId('blaze-chip-Blue'),
-    )
-    expect(bare?.image.width).toBe(TRAIL_BADGE_MARK_SIZE * POI_PIN_PIXEL_RATIO)
+    expect(trailMarkImageId(null)).toBeNull()
   })
 
   it('sets the name on a full badge and only the mark on a mark-only one', () => {
@@ -134,48 +128,85 @@ describe('who earns a badge', () => {
   })
 })
 
-describe('the blaze chip', () => {
-  const side = TRAIL_BADGE_MARK_SIZE * POI_PIN_PIXEL_RATIO
-  const centre = Math.floor(side / 2)
-
-  it('is the mark plus the gap to the name, at the pin pixel ratio', () => {
-    const chip = buildBlazeChip('Blue')
-    expect(chip.width).toBe(
-      (TRAIL_BADGE_MARK_SIZE + TRAIL_BADGE_MARK_GAP) * POI_PIN_PIXEL_RATIO,
+describe('the badge with no mark', () => {
+  /** What MapLibre's own parser makes of the layer's `text-field` for one
+   *  badge feature. Evaluated rather than string-matched, because the claim
+   *  being made is about what RENDERS, and the shape of the expression is
+   *  only evidence for that if MapLibre agrees. `availableImages` is what the
+   *  style has loaded - `attachTrailBadgeImages` registers the marks, so a
+   *  registered mark is available and anything else is not. */
+  function sections(
+    properties: Record<string, string>,
+    availableImages: readonly string[],
+  ): { text: string; image: string | null }[] {
+    const layout = buildTrailBadgeLayer({ theme: 'light' }).layout as Record<
+      string,
+      unknown
+    >
+    const compiled = createExpression(
+      layout['text-field'] as never,
+      latest.layout_symbol['text-field'] as never,
     )
-    expect(chip.height).toBe(side)
-    // The gap is transparent - it is spacing, not ink.
-    expect(pixel(chip, chip.width - 2, centre)[3]).toBe(0)
+    if (compiled.result === 'error') {
+      throw new Error('text-field on the badge layer is not a valid expression')
+    }
+    const formatted = compiled.value.evaluate(
+      { zoom: POI_PIN_MIN_ZOOM - 1 } as never,
+      { properties } as never,
+      {} as never,
+      undefined as never,
+      availableImages as never,
+    ) as { sections: { text: string; image: { name: string } | null }[] }
+    return formatted.sections.map((section) => ({
+      text: section.text,
+      image: section.image === null ? null : section.image.name,
+    }))
+  }
+
+  it('renders the name with no image section at all, rather than a stand-in', () => {
+    // THE EMPTY SLOT, measured through MapLibre 6.7.0's own expression
+    // parser rather than asserted. `badgeFeatures` writes `''` into the mark
+    // property for a source with no registry mark, and `['image', '']` is
+    // `ResolvedImage.fromString('')`, which returns null for a falsy name
+    // (maplibre-gl-shared-dev.mjs:7725). A section with a null image is laid
+    // out by `TaggedString.fromFeature` as a TEXT section (:23287), so it
+    // contributes no glyph and no warning - the `addImageSection` path that
+    // would `warnOnce` about an empty image is never reached.
+    expect(sections({ fit: 'full', mark: '', name: 'Long Path' }, [])).toEqual([
+      { text: '', image: null },
+      { text: 'Long Path', image: null },
+    ])
   })
 
-  it('carries the white blaze bar in the middle, over the blaze’s own ground', () => {
-    const chip = buildBlazeChip('Blue')
-    const [r, g, b, a] = pixel(chip, centre, centre)
-    expect([r, g, b]).toEqual(rgb(BLAZE_CHIP_BAR_COLOR))
-    expect(a).toBe(255)
-    // Off the bar but inside the square: the blaze hue.
-    const [gr, gg, gb] = pixel(chip, 3, centre)
-    expect([gr, gg, gb]).toEqual(rgb(blazePaintColor('Blue')))
+  it('still resolves the mark for a trail that has one, in the same expression', () => {
+    // The other half: one expression serves both, so the markless case is not
+    // a separate branch that could rot while this one keeps passing.
+    const mark = trailMarkImageId('centerline')
+    expect(mark).not.toBeNull()
+    expect(
+      sections({ fit: 'full', mark: mark as string, name: 'Appalachian Trail' }, [
+        mark as string,
+      ]),
+    ).toEqual([
+      { text: '', image: mark },
+      { text: 'Appalachian Trail', image: null },
+    ])
   })
 
-  it('gives a White blaze a stone ground, so the bar still reads', () => {
-    const chip = buildBlazeChip('White')
-    const [r, g, b] = pixel(chip, 3, centre)
-    expect([r, g, b]).toEqual(rgb(WHITE_CHIP_GROUND))
-    expect(pixel(chip, centre, centre).slice(0, 3)).toEqual(rgb(BLAZE_CHIP_BAR_COLOR))
-  })
-
-  it('draws the neutral chip in the map’s own "we do not know" grey', () => {
-    const chip = buildBlazeChip(null)
-    expect(pixel(chip, 3, centre).slice(0, 3)).toEqual(rgb(NEUTRAL_BLAZE_COLOR))
-  })
-
-  it('rounds its corners like the app icon, and leaves them clear', () => {
-    const chip = buildBlazeChip('Red')
-    expect(pixel(chip, 0, 0)[3]).toBe(0)
-    expect(BLAZE_CHIP_CORNER).toBeCloseTo(0.21)
-    // Mid-edge is solid.
-    expect(pixel(chip, 0, centre)[3]).toBeGreaterThan(200)
+  it('names no blaze chip anywhere in the field', () => {
+    // Before 2026-09-29 this was a `coalesce` onto a blaze-chip id, and the
+    // chip drew for every trail in the country bar two. The evaluation above
+    // would pass with a `coalesce` still present and a chip id that happened
+    // to be unavailable, so this guards the expression itself.
+    const layout = buildTrailBadgeLayer({ theme: 'light' }).layout as Record<
+      string,
+      unknown
+    >
+    const field = JSON.stringify(layout['text-field'])
+    expect(field).not.toContain('coalesce')
+    expect(field).not.toContain('chip')
+    expect(field).toContain(BADGE_MARK_PROPERTY)
+    expect(field).toContain(BADGE_NAME_PROPERTY)
   })
 })
 
@@ -226,7 +257,7 @@ describe('the plate', () => {
 })
 
 describe('attachTrailBadgeImages', () => {
-  it('registers both plates and every chip once the layer is in the style, never twice', () => {
+  it('registers the two plates and no blaze image once the layer is in the style, never twice', () => {
     const map = new MockMap({
       style: { layers: [{ id: TRAIL_BADGE_LAYER_ID }], sources: {} },
     })
@@ -235,7 +266,13 @@ describe('attachTrailBadgeImages', () => {
 
     expect(map.hasImage(TRAIL_BADGE_PLATE_DAY.id)).toBe(true)
     expect(map.hasImage(TRAIL_BADGE_PLATE_NIGHT.id)).toBe(true)
-    for (const { id } of buildBlazeChips()) expect(map.hasImage(id)).toBe(true)
+    // NO BLAZE IMAGES AT ALL since 2026-09-29. This loop used to assert one
+    // chip per palette member plus a bare twin for each; the mark slot is
+    // empty now where a steward has granted nothing, so there is nothing
+    // keyed off a blaze for this function to add.
+    expect([...map.images.keys()].filter((id) => String(id).includes('blaze'))).toEqual(
+      [],
+    )
     const plate = map.imageOptions.get(TRAIL_BADGE_PLATE_DAY.id) as { stretchX: unknown }
     expect(plate.stretchX).toBeDefined()
 
@@ -298,5 +335,90 @@ describe('registryNameForSource', () => {
     // And it still has no floor of its own - the line layers' floors are the
     // badge's (the review of #1374), which this must not quietly reintroduce.
     expect(layer.minzoom).toBeUndefined()
+  })
+})
+
+describe('markFitBox', () => {
+  it('leaves a square mark filling the whole slot', () => {
+    expect(markFitBox(144, 144, 18)).toEqual({ x: 0, y: 0, width: 18, height: 18 })
+  })
+
+  it('letterboxes the widest mark the sweep found rather than squashing it', () => {
+    // The Foothills Trail's, 185x120, the widest departure from square among
+    // the 35 marks in pipeline/reference/trail_marks.json. A filling draw
+    // stretched those 120 px of height to all 18, 54% in one axis.
+    const box = markFitBox(185, 120, 18)
+    expect(box.width).toBe(18)
+    expect(box.height).toBeCloseTo(18 * (120 / 185), 6)
+    expect(box.y).toBeCloseTo((18 - box.height) / 2, 6)
+    expect(box.x).toBe(0)
+  })
+
+  it('letterboxes a 4.4:1 image, an extreme no collected mark reaches', () => {
+    // SYNTHETIC, and said so: 4.4:1 is not in the manifest. An earlier version
+    // of this test called 440x100 "CDTC's, the widest of the 35" - CDTC's mark
+    // is 192x192, and 4.40:1 was left over from a superseded sweep round that
+    // collected wordmark banners. The case is worth keeping as an extreme; the
+    // claim that it was measured was not.
+    const box = markFitBox(440, 100, 18)
+    expect(box.width).toBe(18)
+    expect(box.height).toBeCloseTo(18 * (100 / 440), 6)
+    expect(box.y).toBeCloseTo((18 - box.height) / 2, 6)
+    expect(box.x).toBe(0)
+  })
+
+  it('pillarboxes a mark taller than it is wide', () => {
+    // Buckeye's 136x150 is the real tallest; 100x400 is the synthetic extreme.
+    for (const [w, h] of [
+      [136, 150],
+      [100, 400],
+    ] as const) {
+      const box = markFitBox(w, h, 18)
+      expect(box.height).toBe(18)
+      expect(box.width).toBeCloseTo(18 * (w / h), 6)
+      expect(box.x).toBeCloseTo((18 - box.width) / 2, 6)
+    }
+  })
+
+  it('keeps the mark inside the slot at every aspect ratio the sweep found', () => {
+    // Every non-square pair in pipeline/reference/trail_marks.json, widest
+    // first, plus the square case. RE-MEASURED FROM THE BYTES on 2026-09-30
+    // when the marks were fetched into the tree: 20 of the 35 are exactly 1:1
+    // and these 15 are the rest. Five moved against the first recording -
+    // four in absolute size only (the SVGs record viewBox units; Wix served
+    // a different rendition of Standing Stone's) and Mason-Dixon in aspect,
+    // 512x512 recorded against 300x288 actual.
+    for (const [w, h] of [
+      [185, 120], // Foothills Trail, 1.54:1 - the widest
+      [322.738, 210.842], // Long Trail, 1.531:1 (an SVG, so viewBox units)
+      [191, 150], // Northville-Placid
+      [266, 209], // Finger Lakes
+      [97, 90], // Grand Enchantment
+      [300, 288], // Mason-Dixon
+      [150, 144], // Mogollon Rim
+      [372, 356], // New England
+      [178, 171], // Loyalsock
+      [153, 150], // Lone Star
+      [142, 140], // Ice Age
+      [114, 115], // Condor
+      [150, 151], // Long Path
+      [47, 50], // Cohos
+      [121.25, 134.03], // Buckeye, the tallest (an SVG)
+      [144, 144], // and the square case
+    ] as const) {
+      const box = markFitBox(w, h, 18)
+      expect(box.width).toBeLessThanOrEqual(18 + 1e-9)
+      expect(box.height).toBeLessThanOrEqual(18 + 1e-9)
+      expect(box.x).toBeGreaterThanOrEqual(-1e-9)
+      expect(box.y).toBeGreaterThanOrEqual(-1e-9)
+      // Proportions survive, which is the whole point of the change.
+      expect(box.width / box.height).toBeCloseTo(w / h, 6)
+    }
+  })
+
+  it('falls back to the full slot for an image with no intrinsic size', () => {
+    // An SVG with no width/height attributes decodes to 0x0 in some browsers;
+    // a mark drawn at 0x0 would be an invisible badge rather than a wrong one.
+    expect(markFitBox(0, 0, 18)).toEqual({ x: 0, y: 0, width: 18, height: 18 })
   })
 })

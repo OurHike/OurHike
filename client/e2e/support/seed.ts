@@ -110,8 +110,11 @@ export async function bootFreshPage(page: Page): Promise<Page> {
  * IndexedDB because it is "a memory of what the hiker is LOOKING AT, not a
  * preference".
  *
- * WHY A SPEC WRITES IT. The opening camera is the whole corridor, which sits
- * below map/poiLayers.ts's POI_PIN_MIN_ZOOM - and down there the app declines
+ * WHY A SPEC WRITES IT. The opening camera is the whole country since
+ * 2026-09-30 (App.tsx's UNITED_STATES_BOUNDS, the A.T. corridor before that),
+ * which sits below map/poiLayers.ts's POI_PIN_MIN_ZOOM - further below it than
+ * the corridor was, so what this paragraph depends on holds more strongly
+ * rather than less. Down there the app declines
  * to draw pins, no trail line is thick enough to tap, and the legend's
  * below-the-seam half never renders. Reaching any of that means a closer
  * camera, and the honest ways to get one are a wheel-zoom loop (measured

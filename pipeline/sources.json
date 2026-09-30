@@ -842,7 +842,11 @@
       "blaze_comment": "REGISTERED AS THE NEUTRAL, AND THE COLOUR IS NOT LOST SO MUCH AS NEVER DECLARED. This layer has no blaze field. What it has is `trailmarkersinstalled`, a plain Yes/No - 4,017 against 3,042, measured live 2026-09-15 - which says WHETHER a marker is nailed to the trees and never which colour it is. The colour is instead inside the NAME: `trail_name` reads 'Blue Trail' 549 times, 'Orange Trail' 326, 'White Trail' 251, 'Red Trail' 215, 'Yellow Trail' 153. Parsing a blaze out of those strings would be easy and is deliberately NOT done here, for the reason nynjtc_highlands_trail registers its absent blaze as the neutral rather than as the teal the trail wears on the ground: a colour this project inferred from a name is this project's claim, not NYC Parks', and a hiker matching a painted blaze against a drawn one cannot tell which of those they are looking at. The honest version of that inference, if it is ever wanted, is a reference/blaze_mapping.json table keyed on the exact name strings and reviewed row by row - the shape the other sources' tables already have - and not a regular expression in an exporter. @unvalidated either way: nobody has checked a single one of those 1,494 colour-named segments against a marker in the field.",
       "name_field": "trail_name",
       "name_comment": "HALF THIS LAYER HAS NO NAME, and it is worth knowing before a screen tries to print one. Measured live 2026-09-15 across 7,059 rows: 'Unnamed Official Trail' 3,448, 'Name TBD' 239, 'TBD' 88 - 3,775 rows, 53%, whose name field carries a placeholder rather than a name. `park_name` is populated on every row and is the useful label for those (Pelham Bay Park, Van Cortlandt Park, Prospect Park), which is a display decision for features/NEARBY_TRAILS.md rather than a registry one. ACTED ON rather than merely recorded, which is what this comment said and did not do when it was first written: `name_placeholders` below makes export_nearby_trails.py read these three values as an ABSENT name. Without it, measured on the live layer, 'Unnamed Official Trail' totals 128.7 miles - past NAMED_TRAIL_THRESHOLD_MILES - so it shipped one overview feature named 'Unnamed Official Trail' with through_route true, drawn at through-route weight across five boroughs beside the Appalachian Trail and labelled that on the map.",
-      "name_placeholders": ["Unnamed Official Trail", "Name TBD", "TBD"],
+      "name_placeholders": [
+        "Unnamed Official Trail",
+        "Name TBD",
+        "TBD"
+      ],
       "may_be_empty": false,
       "discovered_via": "https://github.com/OurHike/OurHike/issues/1432, from the maintainer's own ask (2026-09-15: 'I live in NYC and will be able to test the app easiest here'). NYC_SOURCE_SURVEY.md surveyed everything within a day of the city and had no row for the city itself; reference/nynjtc_hike_routes.json already carried the hole as a held hike - 'Van Cortlandt Park, NYC Parks: only one Old Croton Aqueduct edge within 2.5 km; no source registered for NYC Parks'. Found by searching the NYC Open Data catalogue API (api.us.socrata.com/api/catalog/v1) rather than by guessing a URL. Registered by hand: discover_sources.py walks ATC's Experience Builder app, and this is not an ArcGIS layer at all.",
       "discovered_date": "2026-09-15",
@@ -1010,7 +1014,10 @@
       "where": "status='2' AND rw_type='1' AND ((boroughcode='1' AND stname_label in('EAST DR','WEST DR','CENTER DR','TERRACE DR')) OR (boroughcode='3' AND stname_label in('EAST DR','WEST DR','CENTER DR','WELLHOUSE DR','S LAKE DR','E LAKE DR')))",
       "where_comment": "124 rows, measured live 2026-09-17. THE NAMES ARE A REVIEWED LIST AND NOT A RULE, which is the whole difference between this entry and nyc_cscl_paths. Central Park is boroughcode 1 and Prospect Park is 3; the four Central Park names are its ring drives and the six Brooklyn names are Prospect Park's ring plus its interior lake and Wellhouse drives. WHAT IS DELIBERATELY ABSENT: Central Park's 65/79/86/97 St TRANSVERSES, 2.89 miles in the same rw_type, excluded by the maintainer on 2026-09-17 in as many words - they carry through traffic in a sunken cut and are not walkable. Queens (boroughcode 4) has its own EAST DR, WEST DR and CENTER DR in Flushing Meadows and they are NOT here, which is why the clause is keyed on borough rather than on name alone. `boundary_source` below is what removes the rest of the leak; the name list alone is not sufficient and was measured not to be.",
       "boundary_source": "nyc_park_polygons",
-      "boundary_names": ["Central Park", "Prospect Park"],
+      "boundary_names": [
+        "Central Park",
+        "Prospect Park"
+      ],
       "boundary_source_comment": "WHY A NAME LIST IS NOT ENOUGH, measured 2026-09-17 before this key was added rather than after a reviewer asked. Clipping each (borough, name) pair to NYC Parks' own boundary polygon shows four of the ten leaking outside the park they are named for: boro 3 EAST DR by 0.30 mi over 7 segments, boro 1 TERRACE DR by 0.03, boro 3 WEST DR by 0.02, boro 3 CENTER DR by 0.04. Small, and on a safety path a tenth of a mile of city street drawn as a car-free park drive is the failure this whole entry is trying not to commit. So the boundary does the final cut and the name list only proposes candidates. The same `boundary_source` key export_nearby_poi.py already reads for a POI inside a park property (#1493); `boundary_names` is new and narrows it to the two parks whose drives are reviewed, because the concept 'a street inside any park is walkable' is exactly what the measurement below refutes.",
       "may_be_empty": false,
       "discovered_via": "https://github.com/OurHike/OurHike/issues/1533, decision 2. The maintainer asked for every NYC park rather than Central Park alone, and asked whether the driveable ones could be identified and excluded mechanically.",
@@ -1160,7 +1167,7 @@
     "open_question": "Whether a state agency wants a support line in a third-party app at all, and whether the Natural Heritage Trust wants to be named as the recipient here, are both unasked. `donate_surfaces` is deliberately the narrowest of the three - the sources screen only - until somebody at OPRHP says otherwise, because the trail card is where a hiker is looking at a trail rather than at where the map came from."
   },
   "org_marks": {
-    "_comment": "Whether each organization has granted OurHike the right to SHIP ITS MARK, and the answer for every one of them today is no (#933). WHY THIS IS A LICENCE QUESTION AND NOT A DESIGN ONE: OurHike is offline-first, so an org's logo is not fetched when a card renders - it is copied into the download and carried on a hiker's phone, potentially for months, inside an application distributed under AGPL-3.0. That is redistribution, and it needs permission in writing the same way the trail geometry does. A logo is usually held MORE tightly than the data: trademark rather than copyright, with organizations that care a great deal about how their mark is used. WHY THE BLOCK EXISTS WHILE IT IS EMPTY OF GRANTS. The record has to be older than the first asset, or the first asset arrives with the question already forgotten - which is exactly how this repository already ships one trademarked third-party mark whose permission is recorded in a source comment and nowhere else (client/src/lib/trails.ts, the A.T. marker, see the ATC row below). tests/test_org_marks.py is what makes this block bite: it derives the org list from the registry's own providers, so a newly registered organization cannot slip past by not being added to a second place, and it FAILS if a mark asset exists in the client tree for an org whose state here is not `granted`. UNTIL A GRANT ARRIVES, THE SLOT RENDERS EMPTY - never a placeholder mark, never an initial, never a generated shape. An organization's identity is the one thing in this app that must not be approximated, and a visibly empty slot is also the thing most likely to prompt somebody to go and ask.",
+    "_comment": "Whether each organization has granted OurHike the right to SHIP ITS OWN ORG MARK - its logo on a steward card - and the answer for every one of them today is no (#933). A TRAIL MARK is a different question with a different answer, and the two were run together until the maintainer's decision of 2026-09-30; see `trail_marks` below. WHY AN ORG MARK IS STILL A LICENCE QUESTION: OurHike is offline-first, so an org's logo is not fetched when a card renders - it is copied into the download and carried on a hiker's phone, potentially for months, inside an application distributed under AGPL-3.0. That is redistribution. A logo is usually held MORE tightly than the data: trademark rather than copyright, with organizations that care a great deal about how their mark is used, and a steward card is the surface where a logo reads as endorsement. WHY THE BLOCK EXISTS WHILE IT IS EMPTY OF GRANTS. The record has to be older than the first asset, or the first asset arrives with the question already forgotten. tests/test_org_marks.py is what makes this block bite: it derives the org list from the registry's own providers, so a newly registered organization cannot slip past by not being added to a second place, and it FAILS if an ORG mark asset exists in the client tree for an org whose state here is not `granted`. AN ORG MARK SLOT RENDERS EMPTY UNTIL A GRANT ARRIVES - never a placeholder mark, never an initial, never a generated shape. That last sentence used to govern trail marks too, and the maintainer reversed it on 2026-09-30: see `trail_marks._comment` for what replaced it and why.",
     "state_vocabulary": {
       "not_asked": "Nobody has put the question to this organization. The default, and not a judgement about whether they would say yes.",
       "asked": "The ask has been sent and no answer has come back. Carries `asked_date` so a silence can be aged rather than forgotten.",
@@ -1245,6 +1252,390 @@
         "state": "not_asked",
         "note": "Not asked, on the same footing and for the same reason as NYC Parks above - the statute opens the data, not the mark."
       }
+    },
+    "claim_vocabulary": {
+      "unclaimed": "The steward has not been in touch about this mark. The default. It does NOT mean nobody asked and it does NOT mean permission - it means OurHike is identifying their trail with their own marker and has left them an obvious way to take it back.",
+      "claimed": "The steward has been in touch and is content for the mark to ship. Carries `claimed_date` and `claimed_via` so the word rests on something. Not the same as an org-mark grant above, which is a different asset on a different surface.",
+      "withdrawn": "The steward asked for the mark to come out. The row STAYS - deleting it would let the next sweep re-add the file - and `test_a_withdrawn_mark_is_gone_from_the_tree` fails while the asset is still there. Carries `withdrawn_date` and `withdrawn_reason`."
+    },
+    "trail_marks": {
+      "_comment": "THE STEWARD'S OWN TRAIL MARKER, SHIPPED BY DEFAULT. The maintainer's decision of 2026-09-30, reversing this file's earlier rule that a mark slot renders empty until a grant arrives. WHAT CHANGED AND WHY. The earlier rule was written for ORG marks - a logo on a steward card, where it reads as endorsement - and was then applied to trail markers too, which is a different thing on a different surface. A trail marker on a map badge identifies WHICH TRAIL THE LINE IS. That is what the marker is for: it is the same symbol nailed to the trees a hiker is walking past, and every paper map, guidebook and trail app shows it for the same reason. Withholding it did not protect anybody - it left a hiker unable to tell the A.T. from the six other red lines on the screen, which is the first of the four ways this app can hurt somebody (CLAUDE.md: lost). OPT-OUT, NOT OPT-IN. Every mark here ships unclaimed. A steward who wants it gone says so and the row goes `withdrawn`, which turns the suite red until the file is out of the tree - so the promise is enforced by CI rather than by anybody remembering. A steward who is happy says so and the row goes `claimed`. Neither state is required for the mark to ship, and `unclaimed` is not a claim that anybody granted anything. WHAT THIS DOES NOT COVER. It is the trail's marker, on the trail-identifying surfaces this app draws - the map badge and the line sheet - at the ~18-20px these render at. Not an org logo on a steward card (that is `orgs` above, still opt-in). Not merchandise, not marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward. TWO ROWS ARE ABSENT ON PURPOSE AND ONE ARRIVED BY A DIFFERENT DOOR. `pohe` and `natr` ship nothing: their markers are prescribed in the Federal Register and are federal insignia under 18 U.S.C. 701. AN EARLIER VERSION OF THIS PARAGRAPH SAID 'one row' AND NAMED THE PACIFIC NORTHWEST AND NORTH COUNTRY AS THE PAIR CARRYING ASSOCIATION MARKS INSTEAD, AND BOTH HALVES WERE WRONG - the count was two, and the Pacific Northwest has no Federal Register notice at all. What is true: North Country ships NCTA's blue map icon and Pacific Northwest ships PNTA's roundel, neither of which is a prescribed marker. See `_the_nst_shield_question` below for the part that is NOT resolved. THE PCT ROW IS NOT PCTA'S FILE AND MUST NOT BE READ AS ONE. PCTA's media page still states in terms that the PCT emblem, the PCT diamond and the PCTA logo each need written permission, and nobody has written - nothing here touches that. What ships is the US FOREST SERVICE's own copy of the trail emblem, off the agency that administers the trail, so the mark rests on 17 U.S.C. 105 rather than on the opt-out decision above. See the `pct` row for the three separate questions that answer had to clear, one of which is not a copyright question at all. Provenance for every row is pipeline/reference/trail_marks.json, which holds the URL each was fetched from, its pixel size and its measured ink at 18px. The images here are resized copies - see `scope` on each row.",
+      "azt": {
+        "asset": "client/src/design-system/assets/trails/azt-logo.png",
+        "trail": "Arizona Trail",
+        "steward": "Arizona Trail Association",
+        "source_url": "https://aztrailmedia.s3.us-west-1.amazonaws.com/wp-content/uploads/2017/12/cropped-AZTrail-Logo-SiteIcon-180x180.jpg",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "bartram": {
+        "asset": "client/src/design-system/assets/trails/bartram-logo.png",
+        "trail": "Bartram Trail",
+        "steward": "Bartram Trail Conference",
+        "source_url": "https://bartramtrail.org/Resources/Pictures/BTC_logo2.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "bmt": {
+        "asset": "client/src/design-system/assets/trails/bmt-logo.png",
+        "trail": "Benton MacKaye Trail",
+        "steward": "Benton MacKaye Trail Association",
+        "source_url": "https://bmta.org/wp-content/uploads/2020/01/cropped-favicon-192x192.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "buckeye": {
+        "asset": "client/src/design-system/assets/trails/buckeye-logo.svg",
+        "trail": "Buckeye Trail",
+        "steward": "Buckeye Trail Association",
+        "source_url": "https://buckeyetrail.org/media/site/5f6f0e4a9e-1760709600/buckeye-trail-association-logo.svg",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "catamount": {
+        "asset": "client/src/design-system/assets/trails/catamount-logo.png",
+        "trail": "Catamount Trail",
+        "steward": "Catamount Trail Association",
+        "source_url": "https://catamounttrail.org/wp-content/uploads/cropped-cta-favicon-180x180.jpg",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "cdt": {
+        "asset": "client/src/design-system/assets/trails/cdt-logo.png",
+        "trail": "Continental Divide Trail",
+        "steward": "Continental Divide Trail Coalition",
+        "source_url": "https://cdtcoalition.org/wp-content/uploads/cropped-cdtc-logo-icon-192x192.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "cohos": {
+        "asset": "client/src/design-system/assets/trails/cohos-logo.png",
+        "trail": "Cohos Trail",
+        "steward": "The Cohos Trail Association",
+        "source_url": "https://www.cohostrail.org/wp-content/uploads/2020/11/cohos-trail-logo-e1579145800306.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "condor": {
+        "asset": "client/src/design-system/assets/trails/condor-logo.png",
+        "trail": "Condor Trail",
+        "steward": "Condor Trail Association",
+        "source_url": "https://www.condortrail.com/wp-content/uploads/2018/08/logo144x144.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "cumberland": {
+        "asset": "client/src/design-system/assets/trails/cumberland-logo.svg",
+        "trail": "Cumberland Trail",
+        "steward": "Cumberland Trail / Tennessee State Parks",
+        "source_url": "https://cumberlandtrail.org/wp-content/uploads/2026/04/CTC-Circle-Logo-CC.svg",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "flt": {
+        "asset": "client/src/design-system/assets/trails/flt-logo.png",
+        "trail": "Finger Lakes Trail",
+        "steward": "Finger Lakes Trail Conference",
+        "source_url": "https://fingerlakestrail.org/wp-content/uploads/2017/12/flt_logo_trees-new.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "fnst": {
+        "asset": "client/src/design-system/assets/trails/fnst-logo.png",
+        "trail": "Florida Trail",
+        "steward": "Florida Trail Association",
+        "source_url": "https://floridatrail.org/wp-content/uploads/2021/04/FTA-logo.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "foothills": {
+        "asset": "client/src/design-system/assets/trails/foothills-logo.png",
+        "trail": "Foothills Trail",
+        "steward": "Foothills Trail Conservancy",
+        "source_url": "https://foothillstrail.org/wp-content/uploads/2016/08/logo1.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "get": {
+        "asset": "client/src/design-system/assets/trails/get-logo.png",
+        "trail": "Grand Enchantment Trail",
+        "steward": "none - a route with no organisation",
+        "source_url": "https://www.simblissity.net/images/GET/get%20monogram1_small.JPG",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "iat": {
+        "asset": "client/src/design-system/assets/trails/iat-logo.png",
+        "trail": "Ice Age Trail",
+        "steward": "Ice Age Trail Alliance",
+        "source_url": "https://www.iceagetrail.org/wp-content/uploads/NST-Logo-1.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "long-trail": {
+        "asset": "client/src/design-system/assets/trails/long-trail-logo.svg",
+        "trail": "Long Trail",
+        "steward": "Green Mountain Club",
+        "source_url": "https://greenmountainclub.org/wp-content/uploads/2025/09/gmc-logo-svg.svg",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "loyalsock": {
+        "asset": "client/src/design-system/assets/trails/loyalsock-logo.png",
+        "trail": "Loyalsock Trail",
+        "steward": "Keystone Trails Association",
+        "source_url": "https://alpineclubofwilliamsport.com/wp-content/uploads/2017/06/lt-blaze-transparentbg.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "lsht": {
+        "asset": "client/src/design-system/assets/trails/lsht-logo.png",
+        "trail": "Lone Star Hiking Trail",
+        "steward": "Lone Star Hiking Trail Club",
+        "source_url": "https://images.clubexpress.com/738078/graphics/clublogo_150x150_noBackground_1062358180.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "mason-dixon": {
+        "asset": "client/src/design-system/assets/trails/mason-dixon-logo.png",
+        "trail": "Mason-Dixon Trail",
+        "steward": "Keystone Trails Association",
+        "source_url": "https://static.wixstatic.com/media/ffe8eb_98df0e09aa174e9f8b301fa9dce9a5c5~mv2.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "mdh": {
+        "asset": "client/src/design-system/assets/trails/mdh-logo.png",
+        "trail": "Maah Daah Hey Trail",
+        "steward": "Maah Daah Hey Trail Association",
+        "source_url": "https://mdhta.com/wp-content/uploads/2020/05/cropped-favicon-1-2-270x270.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "mogollon": {
+        "asset": "client/src/design-system/assets/trails/mogollon-logo.png",
+        "trail": "Mogollon Rim Trail",
+        "steward": "none - a route with no organisation",
+        "source_url": "https://www.simblissity.net/images/MRT_logo_s.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "nct": {
+        "asset": "client/src/design-system/assets/trails/nct-logo.png",
+        "trail": "North Country Trail",
+        "steward": "North Country Trail Association",
+        "source_url": "https://northcountrytrail.org/wp-content/uploads/2026/07/map-emblem-icon-2026-e1784225089251.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "net": {
+        "asset": "client/src/design-system/assets/trails/net-logo.png",
+        "trail": "New England Trail",
+        "steward": "Connecticut Forest & Park Association",
+        "source_url": "https://newenglandtrail.org/wp-content/uploads/2019/12/net-logo.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "npt": {
+        "asset": "client/src/design-system/assets/trails/npt-logo.png",
+        "trail": "Northville-Placid Trail",
+        "steward": "Adirondack Mountain Club",
+        "source_url": "https://nptrail.org/wp-content/uploads/2016/01/cropped-cropped-cropped-cropped-images.jpg",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "oht": {
+        "asset": "client/src/design-system/assets/trails/oht-logo.png",
+        "trail": "Ozark Highlands Trail",
+        "steward": "Ozark Highlands Trail Association",
+        "source_url": "https://ozarkhighlandstrail.com/wp-content/uploads/2022/09/cropped-icon-1-192x192.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "ouachita": {
+        "asset": "client/src/design-system/assets/trails/ouachita-logo.png",
+        "trail": "Ouachita Trail",
+        "steward": "Friends of the Ouachita Trail",
+        "source_url": "https://www.friendsoftheouachita.org/wp-content/uploads/2025/05/favicon.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "ozark-trail": {
+        "asset": "client/src/design-system/assets/trails/ozark-trail-logo.png",
+        "trail": "Ozark Trail",
+        "steward": "Ozark Trail Association",
+        "source_url": "https://ozarktrail.com/wp-content/uploads/2018/01/ozark_trail_association_iphone_icon.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "palmetto": {
+        "asset": "client/src/design-system/assets/trails/palmetto-logo.png",
+        "trail": "Palmetto Trail",
+        "steward": "Palmetto Conservation Foundation",
+        "source_url": "https://files.aptuitivcdn.com/P8Y6wXyOZ7-1806/images/favicon/apple-touch-icon.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "pct": {
+        "asset": "client/src/design-system/assets/trails/pct-logo.png",
+        "trail": "Pacific Crest Trail",
+        "steward": "Pacific Crest Trail Association",
+        "source_url": "https://www.fs.usda.gov/sites/nfs/files/trails/pacific-crest-nst/image/PCT%20logo.jpg",
+        "fetched": "2026-09-30",
+        "basis": "PUBLIC DOMAIN, not the opt-out decision the other 33 rows carry. The US Forest Service administers the Pacific Crest National Scenic Trail and publishes this emblem on its own trail page; a work of the US government carries no copyright (17 U.S.C. 105), which is the same basis reference/trail_orgs.json's `usfs` row already records for this publisher's data. THREE QUESTIONS, AND THE FIRST ONE ONLY ANSWERS COPYRIGHT. (1) Copyright: answered above. (2) Official insignia, which 17 U.S.C. 105 does NOT answer - 18 U.S.C. 701 protects trail markers prescribed by the Interior Department, and that is why `pohe` and `natr` ship nothing. (An earlier version of this sentence also claimed the North Country and New England rows carry their associations' marks rather than the prescribed ones. North Country does - NCTA's blue map icon. NEW ENGLAND DOES NOT: `net-logo.png` is the NST shield reading 'NEW ENGLAND TRAIL / NATIONAL SCENIC TRAIL', and New England has a 2021-06-28 notice. Corrected 2026-09-30 by review; see `_the_nst_shield_question` above, which is the unresolved part this row must not be read as having settled.) MEASURED 2026-09-30 against the Federal Register API: all 25 'Official Trail Marker' notices were listed, the four trails this file already treats as protected are each on it (Natchez Trace and North Country 2000-03-28, Potomac Heritage 2001-10-25, New England 2021-06-28), and THERE IS NO PACIFIC CREST NOTICE - consistent with those notices being Interior's and the PCT being Agriculture's. Re-run the query rather than trusting this sentence: GET https://www.federalregister.gov/api/v1/documents.json with conditions[term]=\"official trail marker\", order=oldest, and read every title. SCOPE, said plainly: this establishes that the PCT is not on that list. It does NOT establish anything about the other 20 notices or the marks that ship against them. (3) Trademark: PCTA asserts marks in the emblem and this ships as nominative identification of the trail the line actually is, withdrawable at `claim_state` exactly like every other row. Not a grant from this organization and must not be read as one - nor from the Forest Service, whose publication answers copyright and grants nothing else.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). The Forest Service serves a 253x289 JPEG on a white page background; the copy in the tree is that file with the background flood-filled to transparency from its corners, trimmed to the emblem, padded square and resized to 96px. No recolouring, no cropping into the artwork, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed",
+        "rejected_alternative": "Wikimedia Commons File:Pct-logo.svg, a 512x512 vector of the same emblem, is the cleaner image and was not taken. It carries {{PD-USGov-Interior-NPS}} on the emblem and {{self|cc-by-sa-4.0}} on the vector by a personal Commons account. Share-alike would need an attribution surface, and this repository's one discharge for CC BY-SA is the credit pill rendered on the photo it licenses (lib/heroPhotos.ts) - an 18px badge cannot carry one. The personal account is the maintainer's standing rule of 2026-09-26 besides. Rendered side by side at 18px the two are indistinguishable, so the licence decided it."
+      },
+      "pnnst": {
+        "asset": "client/src/design-system/assets/trails/pnnst-logo.png",
+        "trail": "Pacific Northwest Trail",
+        "steward": "Pacific Northwest Trail Association",
+        "source_url": "https://pnt-prod.s3.amazonaws.com/wp-content/uploads/PNTA-Logo-2017-01-1024x1024.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "ridge-trail": {
+        "asset": "client/src/design-system/assets/trails/ridge-trail-logo.png",
+        "trail": "Bay Area Ridge Trail",
+        "steward": "Bay Area Ridge Trail Council",
+        "source_url": "https://ridgetrail.org/wp-content/uploads/2024/06/cropped-BayAreaRidgeTrail_FINAL-LOGO_PMS_outlined_white-background-2.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "sheltowee": {
+        "asset": "client/src/design-system/assets/trails/sheltowee-logo.png",
+        "trail": "Sheltowee Trace",
+        "steward": "Sheltowee Trace Association",
+        "source_url": "https://images.squarespace-cdn.com/content/v1/5f656f5d5a92157dd17414ac/1614824980218-WB89JT7X4L2SHLT1LK75/favicon.ico",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "sht": {
+        "asset": "client/src/design-system/assets/trails/sht-logo.png",
+        "trail": "Superior Hiking Trail",
+        "steward": "Superior Hiking Trail Association",
+        "source_url": "https://superiorhiking.org/wp-content/uploads/2026/03/SHT-Favicon_SHT-Favicon-512px-2.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "standing-stone": {
+        "asset": "client/src/design-system/assets/trails/standing-stone-logo.png",
+        "trail": "Standing Stone Trail",
+        "steward": "Standing Stone Trail Club",
+        "source_url": "https://static.wixstatic.com/media/30a84d_82ba0f9b302746d9979610842056c83d~mv2.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "tahoe-rim": {
+        "asset": "client/src/design-system/assets/trails/tahoe-rim-logo.png",
+        "trail": "Tahoe Rim Trail",
+        "steward": "Tahoe Rim Trail Association",
+        "source_url": "https://tahoerimtrail.org/wp-content/uploads/2019/12/cropped-TRTA-logo-main-big-no-white-boarder-192x192.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "_the_nst_shield_question": "@unvalidated WHICH SHIPPED MARKS ARE THE PRESCRIBED NATIONAL SCENIC TRAIL MARKER, AND WHETHER THAT MATTERS. Raised by review 2026-09-30, unresolved, and recorded here rather than smoothed over. FOUR of the marks in this block are the NST shield form - a rounded triangle with the trail's name arced above and 'NATIONAL SCENIC TRAIL' below: `at`, `net`, `iat` and `pct`. Three of those four have an 'Official Trail Marker' notice in the Federal Register (Appalachian and Ice Age 2000-03-28, New England 2021-06-28), which is the same instrument that keeps `pohe` and `natr` out. WHAT THE PCT CHECK ACTUALLY ESTABLISHED was narrower than it reads: it enumerated all 25 notices and reasoned about 5 of them - the 4 already treated as protected, plus the PCT's absence. The other 20 were never diffed against the rows that ship. THE A.T.'s IS NOT IN QUESTION: it is the repo owner's own file on their own decision and predates all of this, and the maintainer asked for it specifically to stay. WHAT WOULD SETTLE IT: read each of the 25 notices, list the trails, and diff that list against the slugs in this block - one pass, and it is the pass nobody has done. Until then do not read the `pct` row's insignia paragraph as having answered this for anything but the PCT."
     }
   },
   "organizations": {
@@ -2148,7 +2539,9 @@
   "nyc_licence": {
     "_comment": "The basis on which nyc_parks_trails and nyc_dot_greenways above may be fetched AND republished to hikers, and it is the FIRST STATUTORY GRANT IN THIS REGISTRY. Every other non-ATC source here is unstated (dec_licence, nynjtc_licence, mohonk_licence), conditioned (njdep_licence) or restricted (oprhp_licence's non-commercial clause, which is still an open ask). New York City's is none of those. NYC Local Law 11 of 2012, codified at Administrative Code 23-502(d), requires that a published data set be available 'without registration requirement, license requirement, or usage restrictions'. That is a grant made BY STATUTE TO EVERYONE rather than a permission granted to this project - which is why it needs no ask, cannot be withdrawn by an agency changing its mind about a portal field, and does not have to be re-confirmed in its own name by a club that inherits this project. WHERE IT IS NOT READ FROM, said because this file has been wrong about a licence once before by reading the wrong field: not from the dataset pages, which carry no licence at all - `license` is null and `licenseId` absent on both vjbm-hsyr and mzxg-pwib, verified live 2026-09-15. Their silence here means the statute applies, and is the opposite of what the same silence means on DEC's or Mohonk's services, where nothing stands behind it. The City's own published standards are what quote the law and add the two riders below.",
     "author": "New York City Department of Parks and Recreation",
-    "also_covers": ["New York City Department of Transportation"],
+    "also_covers": [
+      "New York City Department of Transportation"
+    ],
     "also_covers_comment": "One city, two agencies, one statute - recorded as a single block rather than two because the terms are not the agencies' to set and are identical by law. THIS FIELD IS READ, and saying so matters: export_sources.py matches a block to a steward on `author`, and NYC DOT is not this block's author, so before `also_covers` was a list the exporter honoured, NYC DOT shipped to hikers with `licence: null` while this block sat in the registry looking correct. That is the exact failure usdm_licence's `author_note` records - 'the block sits in the registry looking correct, the exporter emits null, the card renders attribution alone, and every test passes' - and prose here naming the other agency did nothing to stop it. tests/test_export_sources.py pins both stewards' licence text now.",
     "license": "NYC Local Law 11 of 2012, Administrative Code 23-502(d) - published data sets are available without registration requirement, license requirement, or usage restrictions",
     "terms_verbatim": "data sets must be available without registration requirement, license requirement, or usage restrictions, except as provided below",

@@ -468,10 +468,11 @@ describe('a background switch under the hiker', () => {
     expect(reopened.options.bounds).toBeUndefined()
   })
 
-  it('opens a fresh session on the whole corridor, not on last week’s view', async () => {
+  it('opens a fresh session on the whole country, not on last week’s view', async () => {
     // The reason it is session storage. Restoring a durable camera would show
     // someone starting in Maine the Georgia view they left on Tuesday, and
-    // the opening view is a deliberate decision (App.tsx's CORRIDOR_BOUNDS).
+    // the opening view is a deliberate decision (App.tsx's
+    // UNITED_STATES_BOUNDS, the A.T. corridor until 2026-09-30).
     window.sessionStorage.clear()
     hikerOnTrail()
     render(<App />)

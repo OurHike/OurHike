@@ -409,14 +409,20 @@ if (serviceWorker !== undefined) {
 // and the network tiles, 32 KB compressed, in front of the first frame, and
 // main sits 684 bytes under the launch budget.
 //
-// So 300 KB. It is the same sixth of room over today's 255 KB that 250 was
-// over 215, and it still cannot hold the smallest thing this gate exists to
-// catch: the Supabase client's 52 KB (267 to 215 above) lands a drift at
-// 307 KB, a screen set's 56 KB at 311, the engine far beyond. What an absolute
-// line cannot do is tell organic growth from a drift smaller than the room
-// left; a check against `main`'s own figure would, and is that issue's to
-// build.
-const EAGER_JS_BUDGET_BYTES = 300 * 1024
+// So 300 KB, from 2026-09-18 to 2026-09-30: the same sixth of room over that
+// day's 255 KB that 250 was over 215. It was a patch on the symptom and said
+// so. The cause is fixed - #1591's first remedy, the ids, inks, palettes,
+// cell setters and archive URLs the shell reads live in leaves under map/,
+// and EAGER_FORBIDDEN below refuses the modules they came from - the closure
+// measured 241,578 bytes at that commit, and the maintainer asked the same
+// day for a smaller budget ("it's too big now"). So the line is 250 KB again:
+// 14,422 bytes of room over that figure, with features/LAUNCH_BUDGET.md §4.4
+// naming the next ~40 KB compressed that can leave (the sheets a tap opens,
+// four layer builders reached for an id, Capacitor). The line follows the
+// closure down as each lands; it does not lead it. What an absolute line
+// still cannot do is tell organic growth from a drift smaller than the room
+// left; a check against `main`'s own figure would, and is #1591's open half.
+const EAGER_JS_BUDGET_BYTES = 250 * 1024
 const MAPLIBRE_MARKERS = ['fill-extrusion-vertical-gradient', 'maplibregl-']
 
 /**

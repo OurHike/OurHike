@@ -70,7 +70,12 @@
 import { useId, useRef, type ReactNode } from 'react'
 
 import { blazePaintColor } from '../lib/blaze'
-import type { DraftStatus, DayHikeDraft, DraftTurn } from '../lib/dayHikeDraft'
+import {
+  routeTitle,
+  type DraftStatus,
+  type DayHikeDraft,
+  type DraftTurn,
+} from '../lib/dayHikeDraft'
 import { routeRows, turnMarks, type RouteRow } from '../lib/dayHikeRows'
 import {
   STOP_FAR_OFF_COURSE_FEET,
@@ -147,16 +152,6 @@ export interface DayHikePanelProps {
  * cannot resolve, and inventing "Reeves -> somewhere" here would be the same
  * invention one screen earlier.
  */
-export function routeTitle(status: DraftStatus): string {
-  if (status.kind !== 'routed' || status.legs.length === 0) return 'A new day hike'
-  const named = status.legs.map((leg) => leg.name).filter((name) => name !== null)
-  if (named.length === 0) return 'A new day hike'
-  if (named.length === 1) return named[0] as string
-  const first = named[0] as string
-  const last = named[named.length - 1] as string
-  if (first === last) return first
-  return `${first} to ${last}`
-}
 
 /** "3 legs · 1 shelter · 2 campsites", with zero clauses omitted. */
 function routeSummary(status: DraftStatus, stops: readonly DayHikeStop[]): string {
@@ -172,6 +167,11 @@ function routeSummary(status: DraftStatus, stops: readonly DayHikeStop[]): strin
   }
   return parts.length > 0 ? parts.join(' · ') : 'Nothing picked yet'
 }
+
+// routeTitle lives in lib/dayHikeDraft.ts since #1735, beside DraftStatus;
+// the shell reads it from there so this panel can be deferred. Re-exported
+// for the readers that knew it here.
+export { routeTitle }
 
 export function DayHikePanel({
   draft,

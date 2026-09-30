@@ -413,16 +413,22 @@ if (serviceWorker !== undefined) {
 // day's 255 KB that 250 was over 215. It was a patch on the symptom and said
 // so. The cause is fixed - #1591's first remedy, the ids, inks, palettes,
 // cell setters and archive URLs the shell reads live in leaves under map/,
-// and EAGER_FORBIDDEN below refuses the modules they came from - the closure
-// measured 241,578 bytes at that commit, and the maintainer asked the same
-// day for a smaller budget ("it's too big now"). So the line is 250 KB again:
-// 14,422 bytes of room over that figure, with features/LAUNCH_BUDGET.md §4.4
-// naming the next ~40 KB compressed that can leave (the sheets a tap opens,
+// and EAGER_FORBIDDEN below refuses the modules they came from - and the
+// maintainer asked the same day for a smaller budget ("it's too big now").
+// The closure measured 241,578 bytes with the leaves in and 229,145 with the
+// ten sheets, panels and cards a tap opens deferred through
+// screens/deferred.ts (#1735 - 123 KB of chrome surfaces Today never shows
+// sit in the eager closure, and preloadScreens evaluates all 50 lazy chunks
+// on the first idle), both by this script's walk on 2026-09-30. So the line
+// is 240 KB: 16,615 bytes of room over that figure, the same order of room
+// 250 had over the first, with features/LAUNCH_BUDGET.md §4.4 naming what
+// can still leave (the entry card, the planning modules behind their hooks,
 // four layer builders reached for an id, Capacitor). The line follows the
-// closure down as each lands; it does not lead it. What an absolute line
-// still cannot do is tell organic growth from a drift smaller than the room
-// left; a check against `main`'s own figure would, and is #1591's open half.
-const EAGER_JS_BUDGET_BYTES = 250 * 1024
+// closure down as each cut lands; it does not lead it. What an absolute
+// line still cannot do is tell organic growth from a drift smaller than the
+// room left; a check against `main`'s own figure would, and is #1591's open
+// half.
+const EAGER_JS_BUDGET_BYTES = 240 * 1024
 const MAPLIBRE_MARKERS = ['fill-extrusion-vertical-gradient', 'maplibregl-']
 
 /**

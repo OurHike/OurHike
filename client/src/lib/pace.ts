@@ -381,3 +381,15 @@ export function clearStoredPace(): void {
     // Ignored on purpose - see readStoredPace.
   }
 }
+
+/**
+ * The pick bar's line for an estimate - "1 h 20 walking" - or nothing for an
+ * estimate with no minutes in it. Was chrome/DayHikePickBar.tsx's until #1735
+ * moved it beside PaceEstimate, so the shell can read it without holding the
+ * bar in the eager closure.
+ */
+export function walkingTime(estimate: PaceEstimate | null): string | null {
+  if (estimate === null) return null
+  if (!Number.isFinite(estimate.minutes) || estimate.minutes <= 0) return null
+  return `${estimate.text} walking`
+}

@@ -105,6 +105,12 @@ import {
   YourReports,
   YourWork,
   PlanStart,
+  DayHikeCard,
+  DayHikePanel,
+  DayHikePickBar,
+  NextTurnCard,
+  RouteStopPicker,
+  StepAwaySheet,
 } from './screens/deferred'
 import { useAfterFirstFrame } from './lib/useAfterFirstFrame'
 import {
@@ -269,7 +275,7 @@ import {
 } from './lib/route'
 import { type ViaStop } from './lib/dayPlanner'
 import type { ChartStretch } from './chrome/ElevationChart'
-import { RouteStopPicker, type RouteStopChoice } from './chrome/RouteStopPicker'
+import type { RouteStopChoice } from './chrome/RouteStopPicker'
 import { RouteMapPickBar } from './chrome/RouteMapPickBar'
 import { ReportPickBar } from './chrome/ReportPickBar'
 import { SectionPlanner } from './chrome/SectionPlanner'
@@ -340,7 +346,6 @@ import {
   pausedDays,
   resumeOffer,
 } from './lib/hikeResume'
-import { DayHikePickBar, walkingTime } from './chrome/DayHikePickBar'
 import { roadRefusal, tappedRoadAt } from './map/roadTaps'
 import {
   canStartStretch,
@@ -360,6 +365,7 @@ import {
   walkEnds,
   type DayHikeDraft,
   NETWORK_STILL_ARRIVING,
+  routeTitle,
 } from './lib/dayHikeDraft'
 import { routeLines, type TrailGraphIndex } from './lib/trailGraph'
 import { buildCourse, lonLatBounds, mileTicks } from './lib/dayHikeCourse'
@@ -379,7 +385,6 @@ import {
   type HiddenLabelLayers,
   type LabelLayerKey,
 } from './lib/mapLabelLayers'
-import { DayHikePanel } from './chrome/DayHikePanel'
 import {
   attachTrailGraphElevation,
   attachTrailGraphGeometry,
@@ -405,15 +410,12 @@ import { dayHikeBailOuts, resolveDayHike } from './lib/dayHikeCard'
 import { followDayHike, followHeader, type FollowState } from './lib/dayHikeFollow'
 import { atJunction, dayHikeTurns, nextTurn } from './lib/dayHikeTurns'
 import { dayHikeWalk } from './lib/dayHikeWalk'
-import { NextTurnCard } from './chrome/NextTurnCard'
 import { TurnCard } from './chrome/TurnCard'
 import { OffRouteBand, OffRouteCard } from './chrome/OffRouteCard'
 import { dayHikesNearHere } from './lib/dayHikeShelf'
-import { DayHikeCard } from './screens/DayHikeCard'
 import { DayHikesHere } from './chrome/DayHikesHere'
 import { planRoomFor } from './lib/planRoom'
 import { HikePickSheet } from './chrome/HikePickSheet'
-import { StepAwaySheet } from './chrome/StepAwaySheet'
 import { AddDayHikeSheet, type DayHikeCandidate } from './chrome/AddDayHikeSheet'
 import { hikeShareText } from './lib/hikeShareText'
 import type { LongHikeToday } from './screens/Today'
@@ -471,7 +473,6 @@ import {
 import { readLaunchMirror, writeLaunchMirror } from './lib/launchMirror'
 import { RouteHoverPlate } from './chrome/RouteHover'
 import { useRouteHover } from './chrome/useRouteHover'
-import { routeTitle } from './chrome/DayHikePanel'
 import { loadTakenTrail, saveTakenTrail } from './lib/takenTrail'
 import { LAUNCH_MARKS, markLaunch } from './lib/launchMarks'
 import { enqueueVolunteerHours } from './lib/outbox'
@@ -497,6 +498,7 @@ import {
   readStoredPace,
   writeStoredPace,
   type PaceProfile,
+  walkingTime,
 } from './lib/pace'
 import {
   MAX_FIX_GAP_MILES,

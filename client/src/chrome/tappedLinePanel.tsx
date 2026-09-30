@@ -18,7 +18,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { MapScreenProps } from './MapScreen'
-import { LineSheet } from './LineSheet'
+import { LineSheet } from '../screens/deferred'
 import { trailIdForSource } from '../map/trailBadges'
 import { ClubSheet } from './ClubSheet'
 import { HighlightSheet } from './HighlightSheet'

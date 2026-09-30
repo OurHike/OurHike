@@ -871,3 +871,20 @@ function gapsAcross(
 export function canCloseLoop(draft: DayHikeDraft): boolean {
   return draft.segments.length === 1 && currentStretch(draft).length >= 2 && !draft.looped
 }
+
+/**
+ * The panel's title for a routed draft - the first and last named legs, or
+ * "A new day hike" until a leg has a name. Was chrome/DayHikePanel.tsx's until
+ * #1735 moved it beside DraftStatus, so the shell can read it without holding
+ * the panel in the eager closure.
+ */
+export function routeTitle(status: DraftStatus): string {
+  if (status.kind !== 'routed' || status.legs.length === 0) return 'A new day hike'
+  const named = status.legs.map((leg) => leg.name).filter((name) => name !== null)
+  if (named.length === 0) return 'A new day hike'
+  if (named.length === 1) return named[0] as string
+  const first = named[0] as string
+  const last = named[named.length - 1] as string
+  if (first === last) return first
+  return `${first} to ${last}`
+}

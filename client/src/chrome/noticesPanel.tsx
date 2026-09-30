@@ -63,7 +63,7 @@ import type { TrailIndex } from '../lib/trailPosition'
 import type { Stewards } from '../lib/stewards'
 import type { MapScreenProps } from './MapScreen'
 import { OrgNoticeSheet } from './OrgNoticeSheet'
-import { NoticeList } from './NoticeList'
+import { NoticeList } from '../screens/deferred'
 
 /**
  * The `MapScreenProps` fields this feature owns.

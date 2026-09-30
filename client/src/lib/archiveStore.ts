@@ -63,7 +63,7 @@
 // too, so a Blob found under the bare package key is served as the archive it
 // is. A finished download replaces it - see `markComplete`.
 
-import { get, getMany, set, del } from 'idb-keyval'
+import { get, getMany, keys, set, del } from 'idb-keyval'
 
 /** The only two generations there are - see the header. Fixed rather than
  *  counted, so `deleteArchiveRecords` can sweep all of them by construction. */
@@ -268,6 +268,39 @@ export async function readArchiveSize(packageKey: string): Promise<number | null
  * record, so the second transaction is empty on a phone whose archives all
  * finished through markComplete.
  */
+/**
+ * Every key in the store, as a set - or null where the store cannot say.
+ *
+ * One request, whatever the store holds (#1726). The launch sweep asks
+ * this before it reads anything: a package with no `:complete` marker, no
+ * legacy record and no `:progress` record under its key is not on the
+ * phone, and knowing that from the key list costs nothing per package,
+ * where asking IndexedDB about each of ~800 registered cells cost ~2,400
+ * request callbacks on the launch thread - 330-370 ms of `get` and its
+ * promise wrapper at 4x CPU, measured 2026-09-30 after the reads had
+ * already been batched into three transactions.
+ *
+ * Null means "list them yourself": a store that refuses the request (the
+ * same incidents `readArchiveSizes` guards against), or an idb-keyval that
+ * answers without a `keys` - which is the shape the App suites' mocks
+ * have, so those suites read every package as they did before this
+ * existed. Callers fall back to reading each package, never to assuming
+ * one absent.
+ */
+export async function storedKeys(): Promise<ReadonlySet<string> | null> {
+  try {
+    // Inside the try, not before it: a mocked module without the export
+    // throws on the read of the binding itself, and that is the same
+    // answer as a store that refused - list them yourself.
+    if (typeof (keys as unknown) !== 'function') return null
+    const listed: unknown = await keys()
+    if (!Array.isArray(listed)) return null
+    return new Set(listed.filter((key): key is string => typeof key === 'string'))
+  } catch {
+    return null
+  }
+}
+
 export async function readArchiveSizes(
   packageKeys: readonly string[],
 ): Promise<Array<number | null>> {

@@ -31,12 +31,18 @@ import {
   ArchiveHashMismatchError,
   deleteArchive,
   downloadArchive,
+  progressKeyFor,
   readDownloadProgress,
   readDownloadProgresses,
   type CheckProgress,
   type DownloadProgress,
 } from './archiveDownload'
-import { readArchiveSize, readArchiveSizes } from './archiveStore'
+import {
+  completeKeyFor,
+  readArchiveSize,
+  readArchiveSizes,
+  storedKeys,
+} from './archiveStore'
 import {
   completedMarker,
   readPersistence,
@@ -147,17 +153,21 @@ export function useArchiveDownloads(requests: readonly ArchiveDownloadRequest[])
   // status has landed is skipped; one whose reads were cancelled mid-flight
   // by a growth has no status yet and is asked again on the next run.
   //
-  // THE WHOLE SET IN THREE TRANSACTIONS AND ONE STATE UPDATE, not three
+  // THE WHOLE SET IN A FEW TRANSACTIONS AND ONE STATE UPDATE, not three
   // transactions and one update per package. With ~800 cells registered the
   // per-package form was ~2,400 one-key transactions, and each answer spread
   // the whole status record again - React replaying that updater was the
   // second-largest slice of the phone's map-build window, 159-322 ms at 4x
   // CPU (#1632; the reads themselves a further ~200 ms, LAUNCH_BUDGET.md
-  // §7.3 item 5). `readArchiveSizes` and `readDownloadProgresses` are one
-  // `getMany` each, and the answers land as a single `setStatuses`, so
-  // `statusesKnown` flips once rather than 800 times. Which status a package
-  // gets is decided exactly as before: a finished archive by its marker's
-  // byte count, else a resumable partial, else the eviction marker's say.
+  // §7.3 item 5). The store's key list is read once (`storedKeys`), and only
+  // a package with a record under its key - a marker, a legacy blob or a
+  // partial - is read at all, through one `getMany` each; on a phone holding
+  // nothing that is one request for the lot. The answers land as a single
+  // `setStatuses`, so `statusesKnown` flips once rather than 800 times.
+  // Which status a package gets is decided exactly as before: a finished
+  // archive by its marker's byte count, else a resumable partial, else the
+  // eviction marker's say. Where the key list cannot be read, every package
+  // is read - never assumed absent.
   const answered = useRef(new Set<string>())
   useEffect(() => {
     let cancelled = false
@@ -172,15 +182,27 @@ export function useArchiveDownloads(requests: readonly ArchiveDownloadRequest[])
       // first transaction answers, then the ones with no finished archive.
       let undecided: readonly string[] = unanswered
       try {
+        const present = await storedKeys()
+        if (cancelled) return
         // The marker's own byte count, not an assembled Blob: this runs for
         // every package on every mount, and since #553 an archive is a run of
         // segment records that would otherwise all be read to learn a number
         // the completion marker already holds.
-        const finishedBytes = await readArchiveSizes(unanswered)
+        const withArchive =
+          present === null
+            ? unanswered
+            : unanswered.filter(
+                (packageKey) =>
+                  present.has(completeKeyFor(packageKey)) || present.has(packageKey),
+              )
+        const finishedBytes = new Map<string, number | null>()
+        ;(await readArchiveSizes(withArchive)).forEach((bytes, at) => {
+          finishedBytes.set(withArchive[at] as string, bytes)
+        })
         if (cancelled) return
         const stillUndecided: string[] = []
-        unanswered.forEach((packageKey, at) => {
-          const bytes = finishedBytes[at]
+        unanswered.forEach((packageKey) => {
+          const bytes = finishedBytes.get(packageKey)
           if (bytes !== null && bytes !== undefined) {
             answered.current.add(packageKey)
             landed[packageKey] = {
@@ -194,10 +216,19 @@ export function useArchiveDownloads(requests: readonly ArchiveDownloadRequest[])
         })
         undecided = stillUndecided
 
-        const partials = await readDownloadProgresses(stillUndecided)
+        const withPartial =
+          present === null
+            ? stillUndecided
+            : stillUndecided.filter((packageKey) =>
+                present.has(progressKeyFor(packageKey)),
+              )
+        const partials = new Map<string, DownloadProgress | null>()
+        ;(await readDownloadProgresses(withPartial)).forEach((partial, at) => {
+          partials.set(withPartial[at] as string, partial)
+        })
         if (cancelled) return
-        stillUndecided.forEach((packageKey, at) => {
-          const partial = partials[at]
+        stillUndecided.forEach((packageKey) => {
+          const partial = partials.get(packageKey)
           answered.current.add(packageKey)
           // No blob, no partial - but if the completion marker says an
           // archive finished here, this is an eviction, and saying "not

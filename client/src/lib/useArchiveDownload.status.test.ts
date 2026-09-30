@@ -31,6 +31,7 @@ import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
 
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  keys: vi.fn(),
   getMany: vi.fn(),
   set: vi.fn(),
   del: vi.fn(),

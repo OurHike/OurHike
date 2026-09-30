@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
-import { del, get, getMany, set } from 'idb-keyval'
+import { del, get, getMany, keys, set } from 'idb-keyval'
 import { useArchiveDownloads } from './useArchiveDownload'
 import { progressKeyFor, sourceKeyFor } from './archiveDownload'
 import { readArchive, segmentKeyFor } from './archiveStore'
@@ -18,6 +18,7 @@ import { readArchive, segmentKeyFor } from './archiveStore'
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
   getMany: vi.fn(),
+  keys: vi.fn(),
   set: vi.fn(),
   del: vi.fn(),
   update: vi.fn(),
@@ -44,6 +45,8 @@ function withStore(initial: Record<string, unknown> = {}) {
   vi.mocked(getMany).mockImplementation((keys) =>
     Promise.all(keys.map((key) => vi.mocked(get)(key))),
   )
+  // The store's own key list, as the launch sweep reads it first (#1726).
+  vi.mocked(keys).mockImplementation(async () => Object.keys(store))
   vi.mocked(set).mockImplementation(async (key, value) => {
     store[key as string] = value
   })
@@ -100,7 +103,7 @@ afterEach(() => {
 })
 
 describe('holding several packages at once', () => {
-  it('reads the whole set in three transactions and lands every status in one update (#1726)', async () => {
+  it('reads the key list once and nothing else for packages the phone holds no record of (#1726)', async () => {
     withStore()
     let renders = 0
 
@@ -110,9 +113,11 @@ describe('holding several packages at once', () => {
     })
     await waitFor(() => expect(result.current.statusesKnown).toBe(true))
 
-    // Markers, then the legacy records of the unmarked, then their partials:
-    // three `getMany` calls for two packages, and the same three for 800.
-    expect(vi.mocked(getMany)).toHaveBeenCalledTimes(3)
+    // One `keys()` for the whole set, and no `getMany` at all: neither
+    // package has a marker, a legacy record or a partial under its key, so
+    // there is nothing to read - the same answer 800 registered cells get.
+    expect(vi.mocked(keys)).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(getMany)).not.toHaveBeenCalled()
     // The mount render, the persistence answer, and the one sweep update -
     // never one render per package.
     expect(renders).toBeLessThanOrEqual(3)
@@ -122,6 +127,52 @@ describe('holding several packages at once', () => {
     expect(result.current.statusFor(TERRAIN.packageKey)).toEqual({
       state: 'not-downloaded',
     })
+  })
+
+  it('reads only the packages the key list names: a marker, a legacy blob, or a partial (#1726)', async () => {
+    withStore({
+      [`${SHEET.packageKey}:complete`]: { generation: 0, segments: 1, totalBytes: 8 },
+      [progressKeyFor(TERRAIN.packageKey)]: { receivedBytes: 3, totalBytes: 6 },
+    })
+
+    const { result } = renderHook(() => useArchiveDownloads(BOTH))
+    await waitFor(() => expect(result.current.statusesKnown).toBe(true))
+
+    expect(result.current.statusFor(SHEET.packageKey)).toMatchObject({
+      state: 'downloaded',
+      totalBytes: 8,
+    })
+    expect(result.current.statusFor(TERRAIN.packageKey)).toEqual({
+      state: 'failed',
+      receivedBytes: 3,
+      totalBytes: 6,
+    })
+    // The sheet's marker in one transaction, the terrain's partial in
+    // another - and the terrain was never asked for a marker it has no key for.
+    const asked = vi.mocked(getMany).mock.calls.map((call) => call[0])
+    expect(asked).toEqual([
+      [`${SHEET.packageKey}:complete`],
+      [progressKeyFor(TERRAIN.packageKey)],
+    ])
+  })
+
+  it('reads every package the slow way when the store cannot list its keys', async () => {
+    withStore({
+      [`${SHEET.packageKey}:complete`]: { generation: 0, segments: 1, totalBytes: 8 },
+    })
+    vi.mocked(keys).mockRejectedValue(new Error('IndexedDB is gone'))
+
+    const { result } = renderHook(() => useArchiveDownloads(BOTH))
+    await waitFor(() => expect(result.current.statusesKnown).toBe(true))
+
+    expect(result.current.statusFor(SHEET.packageKey)).toMatchObject({
+      state: 'downloaded',
+    })
+    expect(result.current.statusFor(TERRAIN.packageKey)).toEqual({
+      state: 'not-downloaded',
+    })
+    // Markers for both, legacy for the unmarked, partials for the rest.
+    expect(vi.mocked(getMany)).toHaveBeenCalledTimes(3)
   })
 
   it('downloads two packages and reports each one’s own size', async () => {
@@ -325,31 +376,35 @@ describe('when the package set grows after mount (#1301)', () => {
     // twice, on a launch with signal. Re-reading the sheets each time was
     // three IndexedDB round trips per known package on the thread the first
     // frame was waiting for.
-    withStore()
+    // Both packages hold a marker, so each is a record the sweep reads when
+    // it is new - and the sheet's must be read once, on mount, never again.
+    withStore({
+      [`${SHEET.packageKey}:complete`]: { generation: 0, segments: 1, totalBytes: 8 },
+      [`${TERRAIN.packageKey}:complete`]: { generation: 0, segments: 1, totalBytes: 6 },
+    })
     mockFetch({})
+    const recordsRead = () => vi.mocked(getMany).mock.calls.flatMap((call) => call[0])
 
     const { result, rerender } = renderHook(
       ({ requests }: { requests: typeof BOTH }) => useArchiveDownloads(requests),
       { initialProps: { requests: [SHEET] } },
     )
     await waitFor(() => expect(result.current.statusesKnown).toBe(true))
-    const sheetReadsAfterMount = vi
-      .mocked(get)
-      .mock.calls.filter(([key]) => String(key).includes(SHEET.packageKey)).length
-    expect(sheetReadsAfterMount).toBeGreaterThan(0)
+    expect(recordsRead()).toEqual([`${SHEET.packageKey}:complete`])
 
     rerender({ requests: BOTH })
     await waitFor(() => expect(result.current.statusesKnown).toBe(true))
 
-    const sheetReadsAfterGrowth = vi
-      .mocked(get)
-      .mock.calls.filter(([key]) => String(key).includes(SHEET.packageKey)).length
-    const terrainReads = vi
-      .mocked(get)
-      .mock.calls.filter(([key]) => String(key).includes(TERRAIN.packageKey)).length
-    expect(sheetReadsAfterGrowth).toBe(sheetReadsAfterMount)
-    expect(terrainReads).toBeGreaterThan(0)
-    expect(result.current.statusFor(TERRAIN.packageKey).state).toBe('not-downloaded')
+    // The terrain's marker joins the list; the sheet's is not read a second
+    // time. The key list itself is re-read per run, which is one request.
+    expect(recordsRead()).toEqual([
+      `${SHEET.packageKey}:complete`,
+      `${TERRAIN.packageKey}:complete`,
+    ])
+    expect(vi.mocked(keys)).toHaveBeenCalledTimes(2)
+    expect(result.current.statusFor(TERRAIN.packageKey)).toMatchObject({
+      state: 'downloaded',
+    })
   })
 })
 
@@ -361,6 +416,9 @@ describe('a store that refuses a read (#1301)', () => {
     // live sheet, until the app is relaunched.
     withStore()
     mockFetch({})
+    // A store that refuses a read refuses its key list too, so the sweep is
+    // back to asking about each package - and those reads refuse as well.
+    vi.mocked(keys).mockRejectedValue(new Error('no IndexedDB here'))
     vi.mocked(get).mockRejectedValue(new Error('no IndexedDB here'))
 
     const { result, rerender } = renderHook(
@@ -394,23 +452,34 @@ describe('whether the phone has been read yet', () => {
     // wrongly, then again when the read lands - which cost the app a whole
     // extra map build on every launch. This flag is the difference.
     const held: Array<() => void> = []
+    // The key list first - the sheet holds a legacy whole-archive record
+    // under its bare key - and then the record itself, each held until
+    // released, so the gate can be watched between the two.
+    vi.mocked(keys).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          held.push(() => resolve([SHEET.packageKey]))
+        }),
+    )
     vi.mocked(get).mockImplementation(
       (key) =>
         new Promise((resolve) => {
           held.push(() => resolve(key === SHEET.packageKey ? new Blob(['x']) : undefined))
         }),
     )
+    vi.mocked(getMany).mockImplementation((asked) =>
+      Promise.all(asked.map((key) => vi.mocked(get)(key))),
+    )
 
     const { result } = renderHook(() => useArchiveDownloads(BOTH))
 
-    // Both reads are out. Nothing has come back, and the hook says so rather
+    // The key list is out. Nothing has come back, and the hook says so rather
     // than answering for the store.
-    await waitFor(() => expect(held.length).toBe(BOTH.length))
+    await waitFor(() => expect(held.length).toBe(1))
     expect(result.current.statusesKnown).toBe(false)
 
     // Released in rounds, because answering a read is how the next one gets
-    // asked: a package with no finished blob goes on to look for a partial
-    // under a second key.
+    // asked: the key list names the sheet's record, which is then read.
     for (let round = 0; round < 4 && held.length > 0; round += 1) {
       const releases = held.splice(0, held.length)
       await act(async () => {

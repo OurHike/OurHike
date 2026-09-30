@@ -200,6 +200,40 @@ transfer size), which is what a reviewer needs and what `sources.json`'s existin
 record by hand. `nh_granit_trails` is the standard to meet: four column findings, each measured, each
 dated.
 
+### The probe ran on 2026-09-30, and batches 2 and 3 became one
+
+**#1778** opened all 19 endpoints and registered **17 rows** — not the 8 + 3 this table predicted,
+because the split it assumed does not survive contact with the registry. `sources.json`'s
+`licence_basis` has three values and `public_domain` is not one of them: a federal layer is
+`stated_by_org` on `usfs_trails`' own reasoning (17 U.S.C. 105 leaves the agency nothing to grant),
+and an organization that states nothing is `maintainer_authorisation`. So the reviewer's decision
+is the same one 17 times — is this licence reading right — and splitting it bought nothing.
+
+**229,160 features across the 18 probed, 2.67× the 136,941 that shipped before.** COTREX alone is
+96,897, which is 71% of the previous total, from one state.
+
+**Three things only opening the URLs could find**, and each is a correction to the catalogue rather
+than to the plan:
+
+- **`njgin` was already registered.** It resolves to exactly the URL `njdep_park_trails` carries, so
+  it is not one of the 17: registering it would have drawn New Jersey's park trails twice.
+- **`ncta`'s entry is wrong twice.** Listed as `ogc_features` at `gis.northcountrytrail.org`, a host
+  that is an ArcGIS Hub *site* serving HTML with no OGC API at all. NCTA's own layer is elsewhere and
+  holds 4,004 features.
+- **`wa-rco` is recorded as 0 miles** and holds 22,454 trail features across 51 fields.
+
+Six more catalogue "endpoints" were Hub landing pages rather than layers. **`osm` is still
+unregistered**: a Geofabrik extract needs a different instrument than an ArcGIS probe.
+
+**Four layers carry no name field, and three of them ARE one trail.** PCTA publishes the Pacific
+Crest Trail as a single feature with two columns; CDTC's eight are the Continental Divide; Wisconsin
+DNR's one is the Ice Age Trail. Without a name each would reach the export anonymous and draw in the
+generic haze — so registering the PCT's own steward would have changed nothing a hiker sees. The
+maintainer's call on 2026-09-30 was to let the registry name them, and `export_nearby_trails.py`'s
+`name_constant` is that, with each name checked end to end before it was written (PCTA's feature runs
+32.59°N to 49.00°N at 2,653 miles against a published 2,650). **BLM's 19,532 unnamed features get
+no constant** — nothing can name those, and `blm_trails`' own row records it.
+
 **Four pull requests, and the fourth is the only one that changes a hiker's map.** The gate
 SOURCE_REGISTRY.md and DATA_RELEASES.md exist to protect is untouched, because registering and
 shipping were already two acts and `reaches_hikers` already separates them.

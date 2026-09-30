@@ -1164,6 +1164,42 @@ def _dec_asset_layer(asset, names, publicuse=("Y",)):
     )
 
 
+def _registered_trail_lines_layer(key: str, name_field: str | None):
+    """A trail-line fixture for one of #1778's seventeen registrations.
+
+    ONE BUILDER FOR SEVENTEEN, where every other external layer here has its
+    own, and the reason is what these rows are rather than a shortcut. Each of
+    the seventeen declares at most ONE column to sources.json - a `name_field`,
+    or nothing where the trail's name is the layer (pcta_centerline,
+    cdtc_centerline, wi_ice_age_trail, which carry `name_constant` instead).
+    `missing_declared_fields` checks exactly the columns an entry declares, so
+    a fixture carrying the declared name column and a geometry exercises
+    everything the registry claims about these layers. A bespoke builder each
+    would be sixteen copies of this one with the column renamed.
+
+    WHAT IT DELIBERATELY DOES NOT REPRODUCE, said because these are real layers
+    with real shapes and a reader will look: the live column lists run from 2
+    fields (PCTA) to 51 (Washington RCO), and nothing here writes the other
+    forty-nine. A fixture that did would be asserting a schema this project has
+    not measured column by column - the #1778 probe read counts, CRS and field
+    NAMES, never per-column values - and the staging models read the declared
+    column and the geometry. When one of these rows grows a `blaze_field` or a
+    `status_field`, this fixture grows with it or `missing_declared_fields`
+    fails the export, which is the guard working.
+
+    The three with no name column get rows with no name key at all, which is
+    their real shape and the one `declared_name`'s `name_constant` branch is
+    for.
+    """
+    rows = []
+    for index in range(2):
+        row = {"OBJECTID": index + 1}
+        if name_field is not None:
+            row[name_field] = f"Fixture {key.replace('_', ' ').title()} {index + 1}"
+        rows.append(row)
+    return _features(rows, _line)
+
+
 def write_fixtures(raw_dir: Path) -> list[str]:
     files = {
         "shelters.geojson": _atc_layer("Shelter", 3),
@@ -1265,6 +1301,26 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         "external/dec_backcountry_features.geojson": _dec_asset_layer(
             "PRIVY", ["Fixture Privy", "Fixture Culvert"], publicuse=("Y", "N")
         ),
+        # #1778's seventeen, each with the one column its registry row declares
+        # spelled the way sources.json spells it - so a rename fails here
+        # rather than in a dbt build, which is what this whole file is for.
+        "external/nps_trails.geojson": _registered_trail_lines_layer("nps_trails", "TRLNAME"),
+        "external/blm_trails.geojson": _registered_trail_lines_layer("blm_trails", None),
+        "external/cotrex_trails.geojson": _registered_trail_lines_layer("cotrex_trails", "name"),
+        "external/wa_rco_trails.geojson": _registered_trail_lines_layer("wa_rco_trails", "trail_name"),
+        "external/utah_sgid_trails.geojson": _registered_trail_lines_layer("utah_sgid_trails", "PrimaryName"),
+        "external/ncta_trail.geojson": _registered_trail_lines_layer("ncta_trail", "seg_name"),
+        "external/alaska_trails.geojson": _registered_trail_lines_layer("alaska_trails", "TrailName"),
+        "external/pasda_dcnr_trails.geojson": _registered_trail_lines_layer("pasda_dcnr_trails", "NAME01"),
+        "external/ct_deep_blue_blazed.geojson": _registered_trail_lines_layer("ct_deep_blue_blazed", "TrailName"),
+        "external/nc_mst_trail.geojson": _registered_trail_lines_layer("nc_mst_trail", "SYSTEMNAME"),
+        "external/azgeo_arizona_trail.geojson": _registered_trail_lines_layer("azgeo_arizona_trail", "Name"),
+        "external/tahoe_rim_trail.geojson": _registered_trail_lines_layer("tahoe_rim_trail", "Name"),
+        "external/duluth_superior_hiking_trail.geojson": _registered_trail_lines_layer("duluth_superior_hiking_trail", "Name"),
+        "external/massgis_long_distance_trails.geojson": _registered_trail_lines_layer("massgis_long_distance_trails", "NAME"),
+        "external/pcta_centerline.geojson": _registered_trail_lines_layer("pcta_centerline", None),
+        "external/cdtc_centerline.geojson": _registered_trail_lines_layer("cdtc_centerline", None),
+        "external/wi_ice_age_trail.geojson": _registered_trail_lines_layer("wi_ice_age_trail", None),
     }
     existing = [name for name in files if (raw_dir / name).exists()]
     if existing:

@@ -59,6 +59,28 @@ def test_fixtures_load_through_the_real_loader(tmp_path):
             "raw_usfs__usfs_rec_sites",
             "raw_njdep__njdep_park_trails",
             "raw_njdep__nj_statewide_trails",
+            # #1778's seventeen. The table name is `raw_<provider slug>__<key>`,
+            # so this list is also where load_raw.PROVIDER_SLUGS' choices become
+            # visible: `raw_cpw__` and not `raw_colorado__`, `raw_nc_parks__`
+            # and not `raw_nc__`. A slug reworded without thinking shows up here
+            # as a renamed table rather than in a dbt build.
+            "raw_nps__nps_trails",
+            "raw_blm__blm_trails",
+            "raw_cpw__cotrex_trails",
+            "raw_wa_rco__wa_rco_trails",
+            "raw_utah_ugrc__utah_sgid_trails",
+            "raw_ncta__ncta_trail",
+            "raw_alaska_trails__alaska_trails",
+            "raw_pasda__pasda_dcnr_trails",
+            "raw_ct_deep__ct_deep_blue_blazed",
+            "raw_nc_parks__nc_mst_trail",
+            "raw_azgeo__azgeo_arizona_trail",
+            "raw_trta__tahoe_rim_trail",
+            "raw_duluth__duluth_superior_hiking_trail",
+            "raw_massgis__massgis_long_distance_trails",
+            "raw_pcta__pcta_centerline",
+            "raw_cdtc__cdtc_centerline",
+            "raw_wi_dnr__wi_ice_age_trail",
         }
         assert skipped == [], (
             "every registered feature layer needs a fixture, or the CI dbt build "

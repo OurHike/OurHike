@@ -2170,3 +2170,43 @@ def test_the_sketch_is_cut_for_its_own_top_zoom_and_not_the_ats(monkeypatch, tmp
     )
     assert entry["tolerance_m"] == ex.OVERVIEW_SEAM_TOLERANCE_M
     assert entry["min_feature_m"] == ex.OVERVIEW_MIN_FEATURE_M
+
+
+# --- a trail whose name is the layer (#1778) --------------------------------------
+#
+# Some stewards publish one trail as a layer with no name column: PCTA's
+# centerline is a single feature carrying OBJECTID and Shape__Length. The name
+# is not missing from that layer, it is the layer - so a row may declare
+# `name_constant`, and these hold the two halves of letting it.
+
+
+def test_a_layer_that_is_one_trail_takes_its_name_from_the_registry():
+    # PCTA's real shape: no name column anywhere, so declared_name has nothing
+    # to read and the feature would reach the export nameless - into the
+    # unnamed haze, at the thinnest weight the sketch draws, for the trail
+    # whose own steward published it.
+    source = {"key": "pcta_centerline", "name_constant": "Pacific Crest Trail"}
+    assert ex.declared_name(source, {"OBJECTID": 1, "Shape__Length": 44.27}) == "Pacific Crest Trail"
+    # Every feature, not just the first: CDTC publishes eight, one per state
+    # run, and a name on one of them would draw seven anonymous lines beside it.
+    assert ex.declared_name(source, {"OBJECTID": 8}) == "Pacific Crest Trail"
+
+
+def test_a_name_constant_does_not_quietly_beat_a_name_column():
+    # The registry may say where to read a name or that there is nowhere to
+    # read it, never both - declared_name takes the constant and never opens
+    # the column, so a row claiming both would leave a column name sitting in
+    # sources.json looking enforced while nothing read it.
+    both = {"key": "confused", "name_constant": "Some Trail", "name_field": "TRLNAME"}
+    assert ex.name_constant_conflicts([both]) == ["confused"]
+    assert ex.name_constant_conflicts([{"key": "a", "name_field": "TRLNAME"}]) == []
+    assert ex.name_constant_conflicts([{"key": "b", "name_constant": "Ice Age Trail"}]) == []
+
+
+def test_a_placeholder_is_still_read_as_no_name_where_a_column_exists():
+    # #1432's rule is untouched by #1778: a steward writing "Name TBD" into a
+    # column that cannot be empty is saying "no name", and the constant is for
+    # the different case of no column at all.
+    source = {"key": "nyc_parks_trails", "name_field": "trail_name", "name_placeholders": ["Name TBD"]}
+    assert ex.declared_name(source, {"trail_name": "Name TBD"}) is None
+    assert ex.declared_name(source, {"trail_name": "Shore Road Path"}) == "Shore Road Path"

@@ -465,6 +465,22 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
   },
+  // NOAA's forecast on the waypoint card (#1056 build step 3). `planned`, not
+  // `covered` by mapSheets.spec.ts's PoiCard row: that spec opens the card on
+  // the pinned release, and weather is not in a release - it is
+  // `conditions/weather/`, which production does not publish until the
+  // release train promotes it (features/WEATHER.md §7). So a flow test has to
+  // route the two weather files itself, as preview-shots/waypoint-weather.mjs
+  // does, and nobody has written it. PoiCard.weather.test.tsx holds the band's
+  // states in the meantime.
+  'chrome/WeatherBand.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
+  'chrome/weatherIcons.tsx': {
+    step: 'F12 the map',
+    flow: {
+      status: 'unit-only',
+      why: 'Stateless SVG drawn inside WeatherBand; which icon an hour gets is PoiCard.weather.test.tsx, and a browser would prove only that an SVG renders.',
+    },
+  },
   // NOT BLOCKED AFTER ALL, and this ledger said otherwise until 2026-09-11:
   // `retired_poi.geojson` ships inside EACH release, so the single pinned one
   // already carries tombstones and no second release is needed. The door is

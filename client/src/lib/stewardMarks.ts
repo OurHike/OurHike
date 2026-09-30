@@ -4,13 +4,24 @@
 // needs by slug - see STEWARD_MARKS_BY_SLUG for why the two maps differ.
 //
 // WHY THIS IS ITS OWN FILE AND NOT lib/trails.ts. App.tsx imports TRAILS, so
-// every row of that table is parsed before the first frame. Putting these 32
-// names and URLs there measured 257,725 bytes of eager JavaScript against
-// features/LAUNCH_BUDGET.md §3's 256,000 - over by 1,725, where the same
-// build without them passes at 253,337. A marker a hiker sees only after
-// tapping a line has no business in the launch path, so this module is
-// reached through `import()` from chrome/LineSheet.tsx and lands in its own
-// chunk. Measured 2026-09-30; `npm run build` prints the number.
+// every row of that table is parsed before the first frame, and a marker a
+// hiker sees only after tapping a line has no business there. So this module
+// is reached through `import()` from chrome/LineSheet.tsx and lands in its
+// own chunk.
+//
+// THE NUMBER THAT ARGUMENT WAS FIRST MADE WITH WAS AGAINST A BUDGET THAT NO
+// LONGER EXISTS, and the correction is here rather than swapped silently
+// because the figure reads like a forced move and is not one. Putting these
+// names and URLs in lib/trails.ts measured 257,725 bytes of eager JavaScript
+// where the same build without them passed at 253,337 - both real, both
+// measured 2026-09-30. They were then compared against 256,000, which is
+// 250 KB and was the budget until #1577 RAISED IT TO 300 KB on 2026-09-18.
+// features/LAUNCH_BUDGET.md §3 has carried 300 since. Measured on this head:
+// 256,493 bytes compressed against the real budget of 307,200, so BOTH
+// arrangements fit and the `import()` is a choice about what belongs in the
+// launch path rather than the only way under a line. It is still the right
+// choice for the reason in the paragraph above. `npm run build` prints the
+// live number and the live budget together; read it rather than this comment.
 //
 // WHAT THE ROWS REST ON. Each marker is the steward's own, shipped by default
 // on the maintainer's decision of 2026-09-30, with its source URL, basis and

@@ -108,7 +108,7 @@ never interleave. All are dispatch-only except `publish-conditions.yml` and
 | `build-raster.yml` | raster background → `disabled`, `compute-cells`, `render`, `assemble`, `publish` — **switched off for v2** (#855): the `disabled` job refuses every dispatch in seconds unless `run_despite_withdrawal` is ticked |
 | `publish-vector-data.yml` | trails, POIs and the manifest hikers download → `build`, `publish` |
 | `publish-conditions.yml` | closures and warnings, on an hourly schedule as well as dispatch |
-| `publish-weather.yml` | the NBM forecast for every trail square, one file per cell with HRRR's first two days' temperature inside it, and the active NWS alerts over trail squares, to UA only → `build`, `publish` — hourly as well as dispatch, only `publish` holds the group, and either half publishes without the other (#1056) |
+| `publish-weather.yml` | the NBM forecast for every trail square, one file per cell, and the active NWS alerts over trail squares, to UA only → `build`, `publish` — hourly as well as dispatch, only `publish` holds the group, and either half publishes without the other (#1056) |
 
 `publish-vector-data.yml`'s `publish` job and `migrate.yml`'s production job
 both run under the `production` environment whenever they will actually

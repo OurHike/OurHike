@@ -746,6 +746,17 @@ describe('the offline-only background', () => {
       'network-overview-casing',
       'network-overview-line-untaken',
       'network-overview-line',
+      // The same three again over the network tiles, for z5 to the seam
+      // (#1775). They survive the subtraction for a better reason than
+      // trail-overview-line's below: on an offline phone they are not
+      // necessarily empty. map/networkTiles.ts asks a HELD cell before it
+      // asks the bucket, so a phone that took its stretch draws every
+      // organization's trails in this band with no signal at all - which is
+      // what #1257 stage 2 built the cells for. Without a held cell they
+      // draw nothing, and a layer that draws nothing costs nothing.
+      'network-overview-tiled-casing',
+      'network-overview-tiled-line-untaken',
+      'network-overview-tiled-line',
       // The corridor-view sketch (#869), which survives the subtraction for
       // a duller reason than the others: it is empty unless the shell has a
       // sketch to put in it, and the shell only has one when the phone has no

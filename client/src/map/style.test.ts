@@ -72,6 +72,9 @@ import {
   NETWORK_OVERVIEW_THROUGH_ROUTE_FAR_WIDTH,
   NETWORK_OVERVIEW_WIDTH_EXPRESSION,
   NETWORK_OVERVIEW_CASING_LAYER_ID,
+  NETWORK_OVERVIEW_TILED_LAYER_ID,
+  NETWORK_OVERVIEW_TILED_UNTAKEN_LAYER_ID,
+  NETWORK_OVERVIEW_TILED_CASING_LAYER_ID,
   NETWORK_OVERVIEW_LINE_LAYER_IDS,
   THROUGH_ROUTE_SOURCE_CONDITION,
   LONG_PATH_SOURCE,
@@ -98,6 +101,7 @@ import {
   closureInk,
   afterTrailLineDrawn,
   TRAIL_LINE_WAIT_MS,
+  NETWORK_SKETCH_MAX_ZOOM,
 } from './style'
 import {
   POSITION_ACCURACY_LAYER_ID,
@@ -118,6 +122,9 @@ import { POI_LAYER_ID, POI_PIN_MIN_ZOOM, POI_SOURCE_ID } from './poiLayers'
 // and the trails stayed at the zoom their archive is cut from.
 import { CORRIDOR_MAX_ZOOM } from './corridorLayers'
 import { CLOSURE_SOURCE_ID } from './closureLayers'
+// The real opening camera, not a copy of it: the case below is only a guard
+// if it fails when somebody reframes the app.
+import { UNITED_STATES_BOUNDS } from '../App'
 import { WARNING_LAYER_ID, WARNING_SOURCE_ID } from './warningLayers'
 import {
   CLOSURE_CROSS_ICON_ID,
@@ -1796,23 +1803,83 @@ describe('the trails other organizations maintain (#950)', () => {
 })
 
 describe('the network overview sketch (#1135)', () => {
-  it('draws below the seam, exactly where the full network does not', () => {
-    // The two representations partition the zoom range rather than overlap:
-    // the sketch's maxzoom is the full network layers' minzoom, so every
-    // camera draws exactly one of them. The tape cap rides along, or closed
-    // ground would be taped twice - from 100 m geometry - above the seam.
-    expect(layer(NETWORK_OVERVIEW_LAYER_ID).maxzoom).toBe(CORRIDOR_MAX_ZOOM)
+  it('partitions the zoom range in three, with no camera drawing two of them', () => {
+    // The representations never overlap: the sketch file draws z0 to the
+    // archive's cut, the sketch's own paint over the TILES draws the cut to
+    // the seam (#1775), and the full network's layers draw from the seam up.
+    // Every camera lands in exactly one band. The tape cap stays on the
+    // sketch file's band, or closed ground would be taped twice.
+    expect(layer(NETWORK_OVERVIEW_LAYER_ID).maxzoom).toBe(NETWORK_SKETCH_MAX_ZOOM)
+    expect(layer(NETWORK_OVERVIEW_TILED_LAYER_ID).minzoom).toBe(NETWORK_SKETCH_MAX_ZOOM)
+    expect(layer(NETWORK_OVERVIEW_TILED_LAYER_ID).maxzoom).toBe(CORRIDOR_MAX_ZOOM)
     expect(layer(NETWORK_OVERVIEW_CLOSURE_LAYER_ID).maxzoom).toBe(CORRIDOR_MAX_ZOOM)
     expect(layer(NEARBY_BLAZE_LAYER_ID).minzoom).toBe(CORRIDOR_MAX_ZOOM)
-    // EVERY layer on the tiles starts at the seam, the names and the closure
-    // included (#1727): one visible layer below it marks the source `used`,
-    // and since the z5 cut (#1615) that had a laptop's opening camera
-    // fetching and parsing the z5 network tiles beside the sketch of the
-    // same lines - 1.2-1.3 MB a tile along the A.T., measured 2026-09-30.
+
+    // #1727's rule still holds for every layer on the tiles EXCEPT that
+    // middle band, and the exception is what #1775 is: one visible layer
+    // below the seam marks the source `used`, which is why the names and the
+    // closure still start at CORRIDOR_MAX_ZOOM.
+    //
+    // WHAT CHANGED IS THE OPENING CAMERA, NOT THE ARGUMENT. #1727 measured
+    // the cost against CORRIDOR_BOUNDS, where a laptop opened at z5.57 and a
+    // tablet at z5.45 - both above the z5 cut, so those launches fetched z5
+    // tiles (1.2-1.3 MB each along the A.T.) beside a sketch drawing the same
+    // lines, and paid twice. #1544 moved the opening camera to
+    // UNITED_STATES_BOUNDS, and MapLibre's own fitBounds arithmetic over that
+    // box puts every common viewport BELOW the cut: z2.24 on a 390x844 phone,
+    // z3.63 on a tablet, z4.39 on a 1728x1080 laptop, and lower again with
+    // FIT_PADDING. So no launch reaches this band, nothing is paid twice, and
+    // a hiker who zooms past the cut is asking for the detail they then get.
+    //
+    // THIS CASE IS THE GUARD ON THAT. If the opening camera is ever framed
+    // tighter than z5 again, the band below starts costing launches tiles -
+    // so the numbers above are re-derived in
+    // 'the opening camera stays below the archive cut' rather than left in
+    // this comment to rot.
+    const sketchBand: readonly string[] = [
+      NETWORK_OVERVIEW_TILED_LAYER_ID,
+      NETWORK_OVERVIEW_TILED_UNTAKEN_LAYER_ID,
+      NETWORK_OVERVIEW_TILED_CASING_LAYER_ID,
+    ]
     for (const spec of style().layers) {
       if (!('source' in spec) || spec.source !== NEARBY_TRAILS_SOURCE_ID) continue
-      expect(spec.minzoom, `${spec.id} starts below the seam`).toBeGreaterThanOrEqual(
-        CORRIDOR_MAX_ZOOM,
+      const floor = sketchBand.includes(spec.id)
+        ? NETWORK_SKETCH_MAX_ZOOM
+        : CORRIDOR_MAX_ZOOM
+      expect(spec.minzoom, `${spec.id} starts below its band`).toBeGreaterThanOrEqual(
+        floor,
+      )
+    }
+  })
+
+  it('keeps the opening camera below the archive cut, so no launch fetches a network tile', () => {
+    // The arithmetic the case above depends on, run rather than quoted -
+    // MapLibre's fitBounds takes the SMALLER of the two scales so the whole
+    // box fits, over 512 px tiles. If a future framing pushes any of these
+    // to or past NETWORK_SKETCH_MAX_ZOOM, the tiled band starts costing every
+    // launch the z5 tiles #1727 measured at 1.2-1.3 MB each.
+    const R = 6378137
+    const world = 2 * Math.PI * R
+    const mercatorY = (lat: number) =>
+      R * Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360))
+    const fitZoom = (width: number, height: number): number => {
+      const [[west, south], [east, north]] = UNITED_STATES_BOUNDS
+      const spanX = (R * (east - west) * Math.PI) / 180
+      const spanY = mercatorY(north) - mercatorY(south)
+      return Math.min(
+        Math.log2((width * world) / (512 * spanX)),
+        Math.log2((height * world) / (512 * spanY)),
+      )
+    }
+    // Phone, tablet, laptop - unpadded, which is the most generous case;
+    // FIT_PADDING only pulls each further out.
+    for (const [width, height] of [
+      [390, 844],
+      [1024, 1366],
+      [1728, 1080],
+    ]) {
+      expect(fitZoom(width, height), `${width}x${height}`).toBeLessThan(
+        NETWORK_SKETCH_MAX_ZOOM,
       )
     }
   })
@@ -1936,6 +2003,11 @@ describe('a near-white blaze on paper is inked in the casing colour where it has
       expect(DARK_INKED_BLAZE_LAYER_IDS).toEqual([
         NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
         NETWORK_OVERVIEW_LAYER_ID,
+        // Both bands of the network's sketch paint (#1775): the rule is about
+        // a line with no casing under it, which is as true over the tiles as
+        // over the sketch file.
+        NETWORK_OVERVIEW_TILED_UNTAKEN_LAYER_ID,
+        NETWORK_OVERVIEW_TILED_LAYER_ID,
         TRAIL_OVERVIEW_LAYER_ID,
       ])
       for (const id of DARK_INKED_BLAZE_LAYER_IDS) {
@@ -2192,7 +2264,21 @@ describe('the network overview and the nearby network split like the trail sourc
     )
     expect((untaken as { filter?: unknown }).filter).toEqual(nearbyTrailFilter())
     expect((taken as { filter?: unknown }).filter).toEqual(chosenSystemFilter())
-    expect(untaken.maxzoom).toBe(CORRIDOR_MAX_ZOOM)
+    expect(untaken.maxzoom).toBe(NETWORK_SKETCH_MAX_ZOOM)
+
+    // The tiled band splits the same way, and its two halves are the sketch's
+    // two halves in everything but source and band (#1775): a split that
+    // agreed on one side of the cut and not the other would draw a system
+    // admitted to the chosen list as untaken at z6 and taken at z4.
+    const tiledUntaken = layer(NETWORK_OVERVIEW_TILED_UNTAKEN_LAYER_ID)
+    const tiledTaken = layer(NETWORK_OVERVIEW_TILED_LAYER_ID)
+    expect(ids.indexOf(NETWORK_OVERVIEW_TILED_UNTAKEN_LAYER_ID)).toBeLessThan(
+      ids.indexOf(NETWORK_OVERVIEW_TILED_LAYER_ID),
+    )
+    expect(tiledUntaken.paint).toEqual(untaken.paint)
+    expect(tiledTaken.paint).toEqual(taken.paint)
+    expect((tiledUntaken as { filter?: unknown }).filter).toEqual(nearbyTrailFilter())
+    expect((tiledTaken as { filter?: unknown }).filter).toEqual(chosenSystemFilter())
   })
 
   it('gives the nearby network the same untaken pair, above the seam, in the tiles’ layer', () => {
@@ -2490,7 +2576,13 @@ describe("every badged trail at the A.T.'s prominence (#1586)", () => {
   const built = buildMapStyle(STYLE_OPTIONS)
   const layerIn = (id: string) =>
     built.layers.find((candidate) => candidate.id === id) as
-      { filter?: unknown; paint?: Record<string, unknown>; maxzoom?: number } | undefined
+      | {
+          filter?: unknown
+          paint?: Record<string, unknown>
+          minzoom?: number
+          maxzoom?: number
+        }
+      | undefined
 
   it('names the through-routes once, as the sort key’s own membership test', () => {
     expect(THROUGH_ROUTE_SOURCE_CONDITION).toEqual([
@@ -2529,11 +2621,21 @@ describe("every badged trail at the A.T.'s prominence (#1586)", () => {
     }
   })
 
-  it('cases the sketch under its through-routes only, under both sides of the split, capped at the seam', () => {
+  it('cases the sketch under its through-routes only, under both sides of the split, on both sides of the cut', () => {
     const casing = layerIn(NETWORK_OVERVIEW_CASING_LAYER_ID)
     expect(casing).toBeDefined()
     expect(casing?.filter).toEqual(THROUGH_ROUTE_SOURCE_CONDITION)
-    expect(casing?.maxzoom).toBe(CORRIDOR_MAX_ZOOM)
+    expect(casing?.maxzoom).toBe(NETWORK_SKETCH_MAX_ZOOM)
+    // THE SAME CASING AGAIN OVER THE TILES (#1775), or the Long Path would
+    // lose its dark edge at the cut and read as the bare thread the rest of
+    // the network is - the exact thing #1586 gave it this casing to stop.
+    // Same filter, same paint; only the source and the band differ.
+    const tiled = layerIn(NETWORK_OVERVIEW_TILED_CASING_LAYER_ID)
+    expect(tiled).toBeDefined()
+    expect(tiled?.filter).toEqual(casing?.filter)
+    expect(tiled?.paint).toEqual(casing?.paint)
+    expect(tiled?.minzoom).toBe(NETWORK_SKETCH_MAX_ZOOM)
+    expect(tiled?.maxzoom).toBe(CORRIDOR_MAX_ZOOM)
     // The untaken casing taper - the same hairline around 1.5 px at the far
     // end and around the tier at the seam as the real untaken A.T.'s - in
     // the same ink and at the same softness as every other untaken casing.
@@ -2550,6 +2652,17 @@ describe("every badged trail at the A.T.'s prominence (#1586)", () => {
     )
     expect(ids.indexOf(NETWORK_OVERVIEW_UNTAKEN_LAYER_ID)).toBeLessThan(
       ids.indexOf(NETWORK_OVERVIEW_LAYER_ID),
+    )
+    // The tiled band keeps the same three-deep order among itself, and sits
+    // above the sketch's: a band that draws at a higher zoom draws later.
+    expect(ids.indexOf(NETWORK_OVERVIEW_LAYER_ID)).toBeLessThan(
+      ids.indexOf(NETWORK_OVERVIEW_TILED_CASING_LAYER_ID),
+    )
+    expect(ids.indexOf(NETWORK_OVERVIEW_TILED_CASING_LAYER_ID)).toBeLessThan(
+      ids.indexOf(NETWORK_OVERVIEW_TILED_UNTAKEN_LAYER_ID),
+    )
+    expect(ids.indexOf(NETWORK_OVERVIEW_TILED_UNTAKEN_LAYER_ID)).toBeLessThan(
+      ids.indexOf(NETWORK_OVERVIEW_TILED_LAYER_ID),
     )
     // Filtered on the source list and not on the chosen system, nor on the
     // data's flag: the Long Path passes, a flagged park name does not.

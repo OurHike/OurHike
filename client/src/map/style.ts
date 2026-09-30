@@ -1363,13 +1363,6 @@ export function sketchLineColor(appearance: SheetAppearance): unknown {
 }
 
 /**
- * One side of the network overview's split (#1135, #1283): the sketch has no
- * casing pair and its own tapering width, so it is not buildTrailLineLayers,
- * but it takes the same filter pair for the same reason. (Its through-routes
- * have one casing under both sides since #1586 -
- * buildNetworkOverviewCasingLayer.)
- */
-/**
  * Where the sketch hands the network over to the tiles (#1775).
  *
  * SPELLED AS THE CUT ITSELF, which is the spelling CORRIDOR_MAX_ZOOM's own
@@ -1418,6 +1411,16 @@ const TILED_SKETCH_BAND: NetworkSketchBand = {
   maxzoom: CORRIDOR_MAX_ZOOM,
 }
 
+/**
+ * One side of the network overview's split (#1135, #1283): the sketch has no
+ * casing pair and its own tapering width, so it is not buildTrailLineLayers,
+ * but it takes the same filter pair for the same reason. (Its through-routes
+ * have one casing under both sides since #1586 -
+ * buildNetworkOverviewCasingLayer.)
+ *
+ * `band` is which of the two zoom bands this layer draws in - the sketch
+ * file's by default, so every existing caller reads as it did.
+ */
 function buildNetworkOverviewLayer(
   layerId: string,
   appearance: SheetAppearance,

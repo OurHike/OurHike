@@ -360,13 +360,20 @@ OVERVIEW_SEAM_TOLERANCE_M = _metres_per_pixel(OVERVIEW_SEAM_ZOOM) / 2
 # A trail whose WHOLE bounding box is under one pixel at the seam is not
 # drawn, it is a dot - so it is dropped rather than simplified.
 #
-# MEASURED against the published network_overview.geojson of release
-# 2026-09-16-4 (2026-09-30): 112,334 of its 144,541 segments - 78% - have a
-# bounding box smaller than this, and dropping them with the tolerance above
-# takes the artifact from 12,238,110 bytes to 1,585,641, or 13.0%. The
-# maintainer chose 1 px over 2 px by poll the same day, from both frames drawn
-# at the real opening camera: 2 px saved a further 590 KB and visibly thinned
-# the haze, 1 px did not.
+# MEASURED by running this function over the 136,941 records read back out of
+# release 2026-09-16-4's own nearby_trails.geojson (2026-09-30): 110,077 of
+# them - 80.4% - have a bounding box smaller than this, and dropping them with
+# the tolerance above takes the artifact from 12,238,110 bytes to 1,811,212,
+# or 14.8%.
+#
+# The prototype #1775 was argued from said 13.0%, applying one 937 m pass to
+# the published sketch's 144,541 parts rather than 937 m to the 100 m pass
+# above; composed Douglas-Peucker keeps a few more vertices. Both figures are
+# in the issue and this one is the code's.
+#
+# The maintainer chose 1 px over 2 px by poll on 2026-09-30, from two frames
+# drawn at the real opening camera: 2 px saved a further 590 KB and visibly
+# thinned the haze, 1 px did not.
 #
 # WHY SIMPLIFICATION ALONE CANNOT DO THIS. Douglas-Peucker never drops a
 # feature (simplify_records' own rule, and the silent-geometry-loss bug behind

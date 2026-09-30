@@ -36,7 +36,7 @@ def rows() -> list[tuple[str, dict]]:
 def test_there_are_rows_to_check():
     """The guard on the guard: every parametrised test below is vacuous over
     an empty table."""
-    assert len(rows()) >= 20
+    assert len(rows()) >= 19
 
 
 @pytest.mark.parametrize("slug,row", rows())

@@ -12,8 +12,8 @@ import { badgeMarkImageId, BADGE_SOURCES, stewardMarkImageId } from './trailBadg
 // the table caught in the badge's own mark resolver.
 
 describe('longTrailForName', () => {
-  it('holds all 34 measured spellings, so a dropped row goes red here', () => {
-    expect(LONG_TRAIL_NAME_COUNT).toBe(34)
+  it('holds all 33 measured spellings, so a dropped row goes red here', () => {
+    expect(LONG_TRAIL_NAME_COUNT).toBe(33)
   })
 
   it('resolves the Forest Service shout-case a hiker never sees', () => {
@@ -155,6 +155,11 @@ describe('badgeMarkImageId', () => {
 })
 
 describe('what a badge prints', () => {
+  // The Monadnock-Sunapee Greenway was here until 2026-09-30 and is not now:
+  // the maintainer removed NH GRANIT outright (#1711) and the greenway was
+  // reaching the map through it. Its row moved to `_removed` in
+  // trail_name_aliases.json with the reason - the match was right, the layer
+  // went.
   // The maintainer, on seeing the first frame: "Always proper case, not alll
   // caps". USFS publishes a GIS table's spelling and a hiker reads a trail's
   // name.
@@ -182,7 +187,6 @@ describe('what a badge prints', () => {
       'bst',
       'jmt',
       'npt',
-      'msg',
     ]) {
       const printed = longTrailDisplayName(slug)
       expect(printed).not.toBeNull()

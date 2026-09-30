@@ -2,7 +2,7 @@
  "_comment": "WHICH PUBLISHED SPELLING MEANS WHICH LONG TRAIL. A reviewed join, in pipeline/reference/ rather than derived at build time, because deciding that OUACHITA NRT is the Ouachita Trail and that a NY State Parks line called 'Long Trail' is NOT Vermont's is a judgement somebody signs for, row by row. CONTRIBUTING.md's line ceiling applies for exactly that reason. WHY IT EXISTS. map/trailsInView.ts decided a badge off the SOURCE - `BADGE_SOURCES`, two entries - so the A.T. and the Long Path were the only trails on the map that could ever wear one, while Sheltowee Trace, Ozark Highlands, Bartram, Pinhoti, Ouachita, Maah Daah Hey and the rest were already drawn as anonymous lines. A trail is not a feed, and this file is what lets the badge key off the trail.",
  "_method": "MEASURED 2026-09-30 against each layer's live service, in two steps. FIRST a name probe: every trail in trail_emblems.json, queried with LIKE on the publisher's own name field, then normalised on both sides - upper-cased, punctuation stripped, and the words TRAIL/NRT/NST/NATIONAL/SCENIC/RECREATION/HISTORIC/HIKING dropped - and kept only where the normalised forms were equal. That alone was not enough and produced confident nonsense, so SECOND a geographic check: every surviving candidate's extent was fetched and compared with the states trail_emblems.json records for that trail. The second step rejected 16 names the first step accepted, and they are listed in `rejected` below so nobody re-adds them.",
  "_what_it_does_not_cover": "Spurs, connectors and road-walks are not here even where the publisher names them after the trail - 'Northville-Placid Trail Spur', 'BARTRAM NRT - CHEOAH RD', 'Finger Lakes Trail Spur'. The match is exact against the spellings listed, never a prefix, so those stay ordinary lines. Three long trails turned up in these layers that trail_emblems.json does not carry - Shawangunk Ridge, Taconic Crest and Metacomet-Monadnock - and are recorded in trail_candidates.json rather than badged here.",
- "_row_count": "20 trails with at least one verified spelling, across 4 published layers.",
+ "_row_count": "19 trails with at least one verified spelling, across 3 published layers.",
  "trails": {
   "at": {
    "trail": "Appalachian Trail",
@@ -212,16 +212,6 @@
     ]
    },
    "note": "DEC publishes the trail and five separate spur spellings; only the trail is here."
-  },
-  "msg": {
-   "trail": "Monadnock-Sunapee Greenway",
-   "states": "NH",
-   "published_as": {
-    "nh_granit_trails": [
-     "DUBLIN TRAIL MONADNOCK SUNAPEE GRNWY"
-    ]
-   },
-   "note": "PARTIAL AND SAID SO: this is the one NH GRANIT spelling that names the greenway, and it names a single trail on it. The rest of the route is published under its constituent trails' own names, so a badge here marks where the greenway is rather than its full length."
   }
  },
  "rejected": {
@@ -241,5 +231,9 @@
   "usfs_trails 'JOHN MUIR NATIONAL RECREATION'": "one segment at lon -84.5, lat 35.2 - Tennessee. A different John Muir trail.",
   "usfs_trails 'SUPERIOR'": "two segments at lon -120.8..-111.3 - Nevada and Utah.",
   "usfs_trails 'ARIZONA TRAIL CANELO HILLS' and the AZT spur spellings": "Sections and spurs of the Arizona Trail rather than the trail, and they normalise differently so they never matched; recorded so the distinction is on the record."
- }
+ },
+ "_removed": {
+  "msg — Monadnock-Sunapee Greenway, via nh_granit_trails": "REMOVED 2026-09-30 because the layer went, not because the match was wrong. The maintainer removed NH GRANIT outright on 2026-09-28 (d53bd431, #1711): GRANIT describes its own layer as compiled 'for planning use only' with roads mixed in, republished with renamed columns without notice (#1646), and redrew 962 miles of USFS trails in the White Mountains. New Hampshire outside the national forest loses its trails with it, and the greenway is one of them. The spelling that matched was 'DUBLIN TRAIL MONADNOCK SUNAPEE GRNWY'. THE TEST CAUGHT THIS RATHER THAN A REVIEWER: test_every_spelling_is_published_by_a_source_this_app_draws went red in CI the moment this branch was merged against a main that had dropped the source."
+ },
+ "_the_motorized_filter": "RE-CHECKED 2026-09-30 after the same commit gave usfs_trails `excluded_when {terra_motorized: ['Y']}`, which drops 23,195 rows and 29,199 miles nationwide. Every spelling below was re-counted with and without the filter and NONE of them ships nothing: the Great Western Trail falls from 16 segments to 3 and the Continental Divide's NST spelling from 116 to 102, and the rest are unchanged. So the filter costs this table no rows - checked rather than assumed, because a spelling whose every segment was motorized would have been a badge that could never draw."
 }

@@ -751,6 +751,10 @@ const NO_PASSED_PLACES: { id: string; name: string; type: string; mile: number }
 const NO_PLACE_CANDIDATES: PlaceCandidate[] = []
 const NO_NEARBY_PLACES: NearbyPlace[] = []
 
+/** One hour, for the roll-up clock above `noteRollups` - the coarsest
+ *  tick the pins' staleness rings can ever move on. */
+const HOUR_MS = 60 * 60 * 1000
+
 function App() {
   // THE ORGANIZATION CONSOLE (#1539-#1542), and the whole of its footprint in
   // this file: one hook and one early return, some 250 lines below. #937
@@ -1483,7 +1487,26 @@ function App() {
 
   // Per-place roll-ups (FIELD_NOTES.md §3), recomputed at render time from
   // whatever notes are held - never stored, the derive-don't-duplicate rule.
-  const noteRollups = useMemo(() => rollupByPoi(allNotes ?? [], now), [allNotes, now])
+  //
+  // ON AN HOURLY CLOCK, NOT THE MINUTE'S (#1727). `now` ticks once a minute
+  // for the status strip, and a roll-up keyed on it got a new identity every
+  // tick, so `pinCondition` below did too, and MapView's source effect
+  // rebuilt the whole waypoint collection - the site fold, the crowding
+  // count (237-307 ms at 4x, #1632), MapLibre's serialisation of 28,913
+  // features and the worker's re-tiling of every pin - once a minute for as
+  // long as the map was open, for a ring whose tiers are measured in days
+  // (lib/staleness.ts). A note that lands still rebuilds it at once, through
+  // `allNotes`; only the clock's own tick is held to the hour. The one thing
+  // this can delay is a ring crossing a tier boundary, by up to an hour.
+  // The hour as a number first, so the memo's dependency is the hour and
+  // not the Date: a new Date each minute with the same hour in it is exactly
+  // the identity this exists to stop.
+  const hourOfNow = Math.floor(now.getTime() / HOUR_MS)
+  const nowHour = useMemo(() => new Date(hourOfNow * HOUR_MS), [hourOfNow])
+  const noteRollups = useMemo(
+    () => rollupByPoi(allNotes ?? [], nowHour),
+    [allNotes, nowHour],
+  )
 
   // Which ring each waypoint wears (#256's consumer, #759's nudge). The
   // policy lives in lib/stalenessDisplay.ts; this just binds it to the

@@ -47,6 +47,8 @@ import {
   liveTopoLayers,
   sheetPalette,
   sheetVariant,
+  CONTOUR_INDEX_MIN_ZOOM,
+  CONTOUR_MINOR_MIN_ZOOM,
 } from './liveTopo'
 import { MAP_STYLE_VALUES } from '../lib/userPreferences'
 import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec'
@@ -67,21 +69,18 @@ import { DISPUTE_LAYER_ID } from './disputeLayers'
 import { COVERAGE_SEAM_LABEL_LAYER_ID, COVERAGE_SEAM_LAYER_ID } from './coverageLayers'
 import { ATC_UPDATE_LAYER_ID, ATC_UPDATE_POINT_LAYER_ID } from '../lib/atcUpdateStyle'
 import {
-  closureCasingId,
-  closureGroundId,
+  closureCrossesId,
+  closureLayerIds,
+  closureMarkId,
   CLOSURE_LAYER_ID,
   LONG_TERM_CLOSURE_LAYER_ID,
 } from '../lib/closureStyle'
 
-/** One closure band's three layers, bottom to top (#1599): the dark edge,
- *  the sheet's paper, the red ticks. Spelled once because the list below
- *  names five bands and a hand-written triple per band is five chances to
- *  get the order wrong. */
-const bandLayers = (bandId: string) => [
-  closureCasingId(bandId),
-  closureGroundId(bandId),
-  bandId,
-]
+/** One closure feed's four layers, bottom to top (#1677): the sheet's paper,
+ *  the dotted trace, the chain of crosses, the far mark. Spelled once
+ *  because the list below names five feeds and a hand-written list per feed
+ *  is five chances to get the order wrong. */
+const bandLayers = (bandId: string) => closureLayerIds(bandId)
 import {
   ROUTE_CASING_LAYER_ID,
   ROUTE_LINE_LAYER_ID,
@@ -332,8 +331,17 @@ describe('the live topographic background', () => {
       // Workdays have outranked waypoint pins since #760 - they were above
       // the pins before 2026-09-20 too.
       WORKDAY_LAYER_ID,
-      // The hazards: a warning or an ATC notice wins the pixels outright.
+      // The hazards: a closure's far mark, a warning or an ATC notice wins
+      // the pixels outright. The far marks (#1677) are the one closure layer
+      // that collides - so a closed network reads as a few crosses rather
+      // than a scribble - and a pin under one falls back to its dot, as a
+      // pin under a warning does.
+      closureMarkId('network-overview-closure-band'),
+      closureMarkId('nearby-long-term-closure-band'),
+      closureMarkId(CLOSURE_LAYER_ID),
+      closureMarkId(LONG_TERM_CLOSURE_LAYER_ID),
       WARNING_LAYER_ID,
+      closureMarkId(ATC_UPDATE_LAYER_ID),
       ATC_UPDATE_POINT_LAYER_ID,
     ])
 
@@ -391,8 +399,9 @@ describe('the live topographic background', () => {
 })
 
 describe('relief shading, by zoom', () => {
-  // The opening view is the whole trail - App.tsx frames CORRIDOR_BOUNDS,
-  // which lands near z4 - and at that zoom every other terrain layer in this
+  // The opening view is the whole country since 2026-09-30 - App.tsx frames
+  // UNITED_STATES_BOUNDS, near z2.2, where it framed the A.T. corridor at
+  // z4.9 - and at that zoom every other terrain layer in this
   // sheet is switched off: both contour layers are at zero opacity, their
   // labels start at 12, the peaks at 10, and OpenMapTiles carries no woodland
   // to fill below roughly z7. The hillshade is the entire background there, so
@@ -737,6 +746,17 @@ describe('the offline-only background', () => {
       'network-overview-casing',
       'network-overview-line-untaken',
       'network-overview-line',
+      // The same three again over the network tiles, for z5 to the seam
+      // (#1775). They survive the subtraction for a better reason than
+      // trail-overview-line's below: on an offline phone they are not
+      // necessarily empty. map/networkTiles.ts asks a HELD cell before it
+      // asks the bucket, so a phone that took its stretch draws every
+      // organization's trails in this band with no signal at all - which is
+      // what #1257 stage 2 built the cells for. Without a held cell they
+      // draw nothing, and a layer that draws nothing costs nothing.
+      'network-overview-tiled-casing',
+      'network-overview-tiled-line-untaken',
+      'network-overview-tiled-line',
       // The corridor-view sketch (#869), which survives the subtraction for
       // a duller reason than the others: it is empty unless the shell has a
       // sketch to put in it, and the shell only has one when the phone has no
@@ -874,10 +894,13 @@ describe('the offline-only background', () => {
       // whole mark. A hiker with no signal is exactly who must keep these,
       // which is why this list has always ended with them; what changed is
       // that the walk's own marks, the workdays and the hiker's mark are
-      // now below rather than above. Each band is three plain lines since
-      // #1599 - a dark edge, the sheet's paper, red ticks - which is what
-      // bandLayers spells, and there is no image behind any of them.
-      ...bandLayers('network-overview-closure-band'),
+      // now below rather than above. Each is the crossed-out mark since
+      // #1677 - paper, dotted trace, chain of crosses, far mark - which is
+      // what bandLayers spells. The corridor sketch's has no chain: the
+      // sketch ends at the seam, below the zoom the chain starts at.
+      ...bandLayers('network-overview-closure-band').filter(
+        (id) => id !== closureCrossesId('network-overview-closure-band'),
+      ),
       ...bandLayers('nearby-long-term-closure-band'),
       ...bandLayers(CLOSURE_LAYER_ID),
       ...bandLayers(LONG_TERM_CLOSURE_LAYER_ID),
@@ -895,9 +918,8 @@ describe('the offline-only background', () => {
       // organisation that maintains it, underneath OurHike's own pin for that
       // shelter, is not a picture anybody wants. src/test/atcAlertProminence.test.ts
       // holds that ordering as a property; this case only has to agree with it.
-      // Over its own outline, like every closure band above (#1598): one mark
-      // for "do not walk this" means the ATC's band grew an edge the day the
-      // closures' did.
+      // The closure's own mark, like every closure feed above (#1677): one
+      // mark for "do not walk this".
       ...bandLayers(ATC_UPDATE_LAYER_ID),
       // And the dots, which is what most ATC notices actually are - five of
       // the six reviewed on 2026-08-12 name a single mile marker.
@@ -1568,5 +1590,37 @@ describe('attachSheetAppearance', () => {
     expect(
       m.paintProperties.get(`${LIVE_TOPO_LAYER_IDS.contourLabel}/text-halo-width`),
     ).toBe(1.8)
+  })
+})
+
+describe('the contour layers are out of the style below their fade (#1727)', () => {
+  // A layer at opacity 0 is still a layer: MapLibre marks its source `used`
+  // and the DEM worker cuts contour tiles at every zoom the camera reaches,
+  // in the same worker queue as the trail line. `minzoom` takes the layer
+  // out of the style where its ramp is 0 anyway.
+  const byId = (id: string) =>
+    liveTopoLayers({ terrain: TERRAIN, units: 'imperial' }).find(
+      (layer) => layer.id === id,
+    ) as {
+      minzoom?: number
+    }
+
+  it('starts each contour layer at its minzoom', () => {
+    expect(byId(LIVE_TOPO_LAYER_IDS.contour).minzoom).toBe(CONTOUR_MINOR_MIN_ZOOM)
+    expect(byId(LIVE_TOPO_LAYER_IDS.contourIndex).minzoom).toBe(CONTOUR_INDEX_MIN_ZOOM)
+  })
+
+  it('puts the minzoom at the earliest fade start of any sheet, so no sheet loses a contour it drew', () => {
+    // The style is built once and repainted in place (attachSheetAppearance
+    // replays the ramps, never the zoom range), so the floor has to be the
+    // earliest start across every variant - ridgeline's, one zoom down.
+    const variants = [
+      ...Object.values(SHEET_VARIANTS).flatMap((pair) => [pair.day, pair.night]),
+      SHEET_VARIANT_RED,
+    ]
+    const earliest = (pick: 'minor' | 'index') =>
+      Math.min(...variants.map((variant) => contourFadeZooms(variant)[pick][0]))
+    expect(CONTOUR_MINOR_MIN_ZOOM).toBe(earliest('minor'))
+    expect(CONTOUR_INDEX_MIN_ZOOM).toBe(earliest('index'))
   })
 })

@@ -50,7 +50,7 @@
 // two floors have drifted apart; a frame of pins with no dots between them
 // means the collision engine is off again.
 export const caption =
-  'Every waypoint at the zoom a resupply carry fits, as a pin or a dot (#1676): the A.T. through the Hudson Highlands at zoom 7.8, just above the z7 seam — pins where there is room, shelters and campsites first, small coloured dots for the waypoints that lost their pin to a neighbour, the trail line drawing over the top, and no category the map decided to leave off'
+  'Every waypoint at the zoom a resupply carry fits, as a pin or a dot (#1676), in the slim pin (#1682): the A.T. through the Hudson Highlands at zoom 7.8, just above the z7 seam — pins where there is room, shelters and campsites first in full colour, parking, privies and vistas pale, unverified waypoints hollow, small coloured dots for the waypoints that lost their pin to a neighbour, the trail line drawing over the top, and no category the map decided to leave off'
 export const alt =
   'The map screen over the Hudson Highlands at zoom 7.8: the Appalachian Trail as a red line drawn over the waypoints along it, a few dozen pins spaced apart with map paper between them, and small coloured dots along the trails for every waypoint that did not take a pin'
 

@@ -74,8 +74,9 @@
   color: var(--fg-3);
 }
 
+/* A trust line (#1670): `--fg-2`, not the faint `--fg-3` - test/trustLines.test.ts. */
 .day-row__figures--unmeasured {
-  color: var(--fg-3);
+  color: var(--fg-2);
 }
 
 .day-row__note {

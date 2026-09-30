@@ -25,11 +25,14 @@
 // features/POI_VISIBILITY.md's "a pin or a dot and never as neither" is
 // untouched.
 //
-// AND SINCE #1676 (2026-09-26) THE RINGS GO WITH THE PINS. Every fountain
-// here is never-confirmed water, so every one carries the faint invite ring.
-// The ring is painted into the pin's own image now, so it sits round the
-// pins that placed and nowhere else - the restored collision engine without
-// that drew pale rings round empty air across Manhattan.
+// AND SINCE #1682 (2026-09-26) THE FOUNTAINS ARE HOLLOW AND UNRINGED. Every
+// fountain here ships at `confidence: low` (NYC's `featuresta` reads Active on
+// all 3,849 rows, #1534), so each is drawn hollow - paper inside a blue ring,
+// the droplet in blue - and the restrooms, in the quiet tier, are pale plum.
+// The faint invite ring #1676 painted round each fountain is not drawn round a
+// hollow pin, where the two read as a bullseye (the maintainer's call, poll,
+// 2026-09-26). What to look for: the same pins place as before, with far less
+// ink each.
 //
 // WHAT IT CANNOT PROMISE YET, and a thin frame here is an answer rather than
 // a broken recipe - network-above-the-seam.mjs makes the same distinction for
@@ -50,6 +53,17 @@
 // So: fewer pins than before with air around them is option 1 working; site
 // pins carrying several fountains is option 2 having been published too.
 //
+// AND THE CHIP ABOVE THE MAP COUNTS WHAT IS DRAWN (#1538). "N of M waypoints
+// fit" is lib/useDrawnPoiCounts.ts reading the pins MapLibre placed, and it
+// used to wait for MapLibre's `idle`, which never fires while one basemap tile
+// keeps failing - so on a cold start it could keep the count it took before
+// any pin had drawn, and read "0 of M" over a screen of pins. It now also
+// counts once the map has drawn nothing for 300 ms, and shows no chip at all
+// until the pins can draw. What to look for: a number in the chip that is
+// plausibly the pins in the frame, never zero. CI's tiles normally all load,
+// so this frame shows the fix working rather than the failure it prevents;
+// the failure was traced in the agent sandbox, where one did not.
+//
 // NOTHING HERE IS ANYBODY'S. Public drinking fountains and public restrooms
 // as New York City publishes them, on city park ground, with no account
 // signed in, no report, no photo and no location fix - the four things
@@ -64,9 +78,9 @@
 // nothing in the frame depends on anything being taken.
 
 export const caption =
-  'Brooklyn at zoom 12, Red Hook to Prospect Park — the densest 390×700 window in the five boroughs, 638 waypoints in it, where the collision engine used to pack 63 pins edge to edge across 30% of the phone. Each pin now claims room in proportion to how crowded its own ground is (map/poiCrowding.ts), so the pins have paper between them and everything that loses one is still a dot at its true coordinate. Fountains carrying a site’s worth of parts appear once publish-vector-data.yml has run since the merge; until then every fountain is its own mark and this is the padding alone'
+  'Brooklyn at zoom 12, Red Hook to Prospect Park — the densest 390×700 window in the five boroughs, 638 waypoints in it, where the collision engine used to pack 63 pins edge to edge across 30% of the phone. Each pin now claims room in proportion to how crowded its own ground is (map/poiCrowding.ts), so the pins have paper between them and everything that loses one is still a dot at its true coordinate. Since #1682 each pin is drawn 26 px inside its 38 px footprint: the unverified fountains hollow, the restrooms pale. Fountains carrying a site’s worth of parts appear once publish-vector-data.yml has run since the merge; until then every fountain is its own mark and this is the padding alone. The chip above the map counts the pins actually drawn out of the waypoints in view, and since #1538 it waits until the pins can draw rather than reading zero'
 export const alt =
-  'The map screen over Brooklyn at zoom 12, from Red Hook up to Prospect Park, with NYC Parks’ green property shapes under it: blue water-drop pins for public drinking fountains and plum pins for public restrooms, spaced apart with map paper visible between them, and a scatter of small blue dots marking the waypoints that did not take a pin'
+  'The map screen over Brooklyn at zoom 12, from Red Hook up to Prospect Park, with NYC Parks’ green property shapes under it: hollow blue water-drop pins for public drinking fountains and pale plum pins for public restrooms, spaced apart with map paper visible between them, and a scatter of small blue dots marking the waypoints that did not take a pin'
 
 /** POIs arrive from IndexedDB after the map is built, and the pins are
  *  rasterised off the main thread (#857) - both land a beat after chrome.

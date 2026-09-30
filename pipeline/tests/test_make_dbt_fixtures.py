@@ -57,9 +57,30 @@ def test_fixtures_load_through_the_real_loader(tmp_path):
             "raw_nyc_dot__nyc_park_drives",
             "raw_usfs__usfs_trails",
             "raw_usfs__usfs_rec_sites",
-            "raw_granit__nh_granit_trails",
             "raw_njdep__njdep_park_trails",
             "raw_njdep__nj_statewide_trails",
+            # #1778's seventeen. The table name is `raw_<provider slug>__<key>`,
+            # so this list is also where load_raw.PROVIDER_SLUGS' choices become
+            # visible: `raw_cpw__` and not `raw_colorado__`, `raw_nc_parks__`
+            # and not `raw_nc__`. A slug reworded without thinking shows up here
+            # as a renamed table rather than in a dbt build.
+            "raw_nps__nps_trails",
+            "raw_blm__blm_trails",
+            "raw_cpw__cotrex_trails",
+            "raw_wa_rco__wa_rco_trails",
+            "raw_utah_ugrc__utah_sgid_trails",
+            "raw_ncta__ncta_trail",
+            "raw_alaska_trails__alaska_trails",
+            "raw_pasda__pasda_dcnr_trails",
+            "raw_ct_deep__ct_deep_blue_blazed",
+            "raw_nc_parks__nc_mst_trail",
+            "raw_azgeo__azgeo_arizona_trail",
+            "raw_trta__tahoe_rim_trail",
+            "raw_duluth__duluth_superior_hiking_trail",
+            "raw_massgis__massgis_long_distance_trails",
+            "raw_pcta__pcta_centerline",
+            "raw_cdtc__cdtc_centerline",
+            "raw_wi_dnr__wi_ice_age_trail",
         }
         assert skipped == [], (
             "every registered feature layer needs a fixture, or the CI dbt build "
@@ -69,8 +90,6 @@ def test_fixtures_load_through_the_real_loader(tmp_path):
         markers = {row[0] for row in con.execute('select "MARKER" from raw.raw_dec__dec_hiking_trails').fetchall()}
         blazes = {row[0] for row in con.execute('select "Blaze" from raw.raw_mohonk__mohonk_trails').fetchall()}
         publicuse = {row[0] for row in con.execute('select "PUBLICUSE" from raw.raw_dec__dec_lean_tos').fetchall()}
-        granit_blazes = {row[0] for row in con.execute('select "BLAZE" from raw.raw_granit__nh_granit_trails').fetchall()}
-        granit_ped = {row[0] for row in con.execute('select "PED" from raw.raw_granit__nh_granit_trails').fetchall()}
         usfs_types = {row[0] for row in con.execute("select trail_type from raw.raw_usfs__usfs_trails").fetchall()}
         usfs_designations = {
             row[0]
@@ -99,19 +118,6 @@ def test_fixtures_load_through_the_real_loader(tmp_path):
     assert None in blazes, "7 of Mohonk's live 304 rows carry no Blaze value at all"
     assert publicuse == {"Y", "N"}, (
         "the public flag the staging models carry through has nothing to say unless both sides are present"
-    )
-    assert " " in granit_blazes, (
-        "GRANIT's BLAZE is a blank STRING on 7,574 of the live 7,643 Whites rows - 99.1% - because the Whites "
-        "largely are not blazed. reference/blaze_mapping.json keys that literal ' ' to \"None\" (Unblazed), so a "
-        "fixture that dropped it would stop exercising the row the whole mapping turns on"
-    )
-    assert "White" in granit_blazes, (
-        "the A.T. is the one white-blazed line through the Whites - 61 of the live 62 White rows carry TRAILSYS "
-        "'Appalachian Trail' - so the colour that IS present has to be exercised too"
-    )
-    assert granit_ped == {"1", " "}, (
-        "PED splits 3,883 '1' against 3,760 blank on the live rows, and blank means UNRECORDED rather than no - "
-        "a fixture with only '1' would make a PED filter look lossless when it drops half the layer"
     )
     assert usfs_types == {"TERRA", "SNOW"}, (
         "549 of the live 2,093 WMNF rows are snowmobile and water corridors; a TERRA-only fixture would let the "

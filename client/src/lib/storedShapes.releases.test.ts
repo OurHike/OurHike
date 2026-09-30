@@ -112,6 +112,8 @@ describe('the release ledger itself', () => {
       'v1.3.0',
       'v1.3.1',
       'v1.3.2',
+      'v1.3.3',
+      'v1.3.4',
     ])
     for (const release of RELEASE_SHAPES) {
       expect(release.commit).toMatch(/^[0-9a-f]{8}$/)
@@ -611,6 +613,39 @@ describe('a phone that stopped on v1.3.2', () => {
     expect(await readStoredCellIndex(DEM_CELLS)).not.toBeNull()
     expect((await loadTrailData())?.stewards).toHaveLength(3)
     expect(readLaunchMirror()?.takenTrail).toBe('LP')
+  })
+})
+
+// v1.3.3 is a hotfix that changed only site/, so its phone is v1.3.2's. The
+// block is here so the ledger's claim ("every release") is checked rather than
+// assumed, and so the next release's entry has a v1.3.3 phone to be laid over.
+describe('a phone that stopped on v1.3.3', () => {
+  beforeEach(() => installPhone('v1.3.3'))
+
+  it('reads everything v1.3.2 wrote, unchanged', async () => {
+    const preferences = await loadPreferences()
+
+    expect(preferences.real_name).toBe('Pat Example')
+    expect(preferences.blaze_colors_shown).toBe(true)
+    expect(await listQueued()).toHaveLength(14)
+    expect((await loadTrips()).activeHikeId).toBe('hike-0001')
+    expect((await loadTrailData())?.stewards).toHaveLength(3)
+  })
+})
+
+// v1.3.4 is a second hotfix that changed only site/, so its phone is also
+// v1.3.2's. Same reason for the block as v1.3.3's above.
+describe('a phone that stopped on v1.3.4', () => {
+  beforeEach(() => installPhone('v1.3.4'))
+
+  it('reads everything v1.3.2 wrote, unchanged', async () => {
+    const preferences = await loadPreferences()
+
+    expect(preferences.real_name).toBe('Pat Example')
+    expect(preferences.blaze_colors_shown).toBe(true)
+    expect(await listQueued()).toHaveLength(14)
+    expect((await loadTrips()).activeHikeId).toBe('hike-0001')
+    expect((await loadTrailData())?.stewards).toHaveLength(3)
   })
 })
 

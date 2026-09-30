@@ -14,9 +14,9 @@ live services: every column below is a name sources.json records as MEASURED
 against the live layer, with a date - the `notes` field lists for
 nynjtc_long_path and nynjtc_highlands_trail (2026-08-24), mohonk_trails
 (2026-08-25), oprhp_trails (2026-08-18), oprhp_facilities and the DEC layers
-(2026-08-27), usfs_trails, usfs_rec_sites and nh_granit_trails
-(2026-09-02), plus the structured `name_field`/`blaze_field`/`id_field`/
-`public_field`/`asset_field`/`facility_field` keys, which are the same
+(2026-08-27), usfs_trails and usfs_rec_sites (2026-09-02), plus the
+structured `name_field`/`blaze_field`/`id_field`/`public_field`/
+`asset_field`/`facility_field` keys, which are the same
 measurements in machine-readable form. Nothing here is invented, and where a
 layer's fields are NOT recorded the fixture carries none rather than a guess
 - `oprhp_park_polygons` is that case and is deliberately property-free.
@@ -448,67 +448,6 @@ def _usfs_rec_sites_layer():
             {**common, "site_name": "RD 614 SITE 13", "site_type": "CAMPING AREA", "development_scale": "0", "fee_charged": "N"},
         ],
         _white_mountains_point,
-    )
-
-
-def _nh_granit_trails_layer():
-    """nh_granit_trails' measured field list and value shapes, 2026-09-02.
-
-    THE POINT OF THIS FIXTURE IS THE BLANK BLAZE, WHICH IS A REAL VALUE AND
-    NOT A HOLE. Across the live 7,643 segments in the Whites, BLAZE reads a
-    literal blank on 7,574 of them - 99.1% - against White 62, Yellow 4, Red 2,
-    Blue 1. That is not an unpopulated column: the White Mountains largely do
-    not use paint blazes, so a Whites trail having none is the normal case, and
-    61 of the 62 White rows carry TRAILSYS 'Appalachian Trail' - the A.T. being
-    the one white-blazed line through the range. reference/blaze_mapping.json
-    maps the blank to "None" ("Unblazed") rather than to "Unknown" ("Blaze not
-    recorded") for exactly that reason.
-
-    It is a blank STRING and not a null, which is the distinction a staging
-    model would get wrong first and which the mapping table's key depends on,
-    so the majority of rows here carry `' '` verbatim. A fixture that populated
-    the column would misrepresent the region.
-
-    `PED` is the opposite case and needs its own row shapes: blank is
-    UNRECORDED, not "no" (3,883 rows '1' against 3,760 blank), and 2,541 of
-    those blanks carry no use flag at all while 1,209 are snowmobile corridors.
-    So the fixture carries all three shapes - PED '1', blank-with-no-flags, and
-    blank-with-SNOWMBL - because a `PED == '1'` filter would drop the middle one
-    and that is the mistake nh_granit_trails' foot_comment exists to prevent.
-    `MAINTORG` is a coded integer whose domain GRANIT does not publish - the
-    codes here are live values, and what any of them means is unknown."""
-    common = {"TRAIL": "Trail", "ACCURACY": "Unknown", "COMMUNITY": "Fixture Township"}
-    return _features(
-        [
-            {**common, "TRAILNAME": "Fixture Ridge Path", "BLAZE": " ", "MAINTORG": 22000, "PED": "1", "MILES": 2.2},
-            # Blank PED and NO use flag of any kind - the 2,541-row shape, a
-            # hiking trail a PED=='1' filter would silently delete.
-            {**common, "TRAILNAME": "Fixture Brook Trail", "BLAZE": " ", "MAINTORG": 50110, "PED": " ", "MILES": 1.4},
-            # Blank PED because it is a snowmobile corridor - the 1,209-row
-            # shape, and the one a motorized filter SHOULD drop.
-            {
-                **common,
-                "TRAILNAME": "Fixture Camp Snowmobile Corridor",
-                "BLAZE": " ",
-                "MAINTORG": 0,
-                "PED": " ",
-                "SNOWMBL": "1",
-                "MILES": 4.0,
-            },
-            # The A.T.: the one white-blazed line through the Whites.
-            {
-                **common,
-                "TRAILNAME": "Appalachian Trail",
-                "TRAILSYS": "Appalachian Trail",
-                "BLAZE": "White",
-                "MAINTORG": 0,
-                "PED": "1",
-                "MILES": 3.1,
-            },
-            # Not a trail at all - the live layer holds rows like 'adj to Rt 118'.
-            {**common, "TRAILNAME": "adj to Rt 118", "BLAZE": " ", "MAINTORG": 0, "PED": " ", "MILES": 0.2},
-        ],
-        _white_mountains_line,
     )
 
 
@@ -1225,6 +1164,42 @@ def _dec_asset_layer(asset, names, publicuse=("Y",)):
     )
 
 
+def _registered_trail_lines_layer(key: str, name_field: str | None):
+    """A trail-line fixture for one of #1778's seventeen registrations.
+
+    ONE BUILDER FOR SEVENTEEN, where every other external layer here has its
+    own, and the reason is what these rows are rather than a shortcut. Each of
+    the seventeen declares at most ONE column to sources.json - a `name_field`,
+    or nothing where the trail's name is the layer (pcta_centerline,
+    cdtc_centerline, wi_ice_age_trail, which carry `name_constant` instead).
+    `missing_declared_fields` checks exactly the columns an entry declares, so
+    a fixture carrying the declared name column and a geometry exercises
+    everything the registry claims about these layers. A bespoke builder each
+    would be sixteen copies of this one with the column renamed.
+
+    WHAT IT DELIBERATELY DOES NOT REPRODUCE, said because these are real layers
+    with real shapes and a reader will look: the live column lists run from 2
+    fields (PCTA) to 51 (Washington RCO), and nothing here writes the other
+    forty-nine. A fixture that did would be asserting a schema this project has
+    not measured column by column - the #1778 probe read counts, CRS and field
+    NAMES, never per-column values - and the staging models read the declared
+    column and the geometry. When one of these rows grows a `blaze_field` or a
+    `status_field`, this fixture grows with it or `missing_declared_fields`
+    fails the export, which is the guard working.
+
+    The three with no name column get rows with no name key at all, which is
+    their real shape and the one `declared_name`'s `name_constant` branch is
+    for.
+    """
+    rows = []
+    for index in range(2):
+        row = {"OBJECTID": index + 1}
+        if name_field is not None:
+            row[name_field] = f"Fixture {key.replace('_', ' ').title()} {index + 1}"
+        rows.append(row)
+    return _features(rows, _line)
+
+
 def write_fixtures(raw_dir: Path) -> list[str]:
     files = {
         "shelters.geojson": _atc_layer("Shelter", 3),
@@ -1286,7 +1261,6 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         "external/mohonk_trails.geojson": _mohonk_trails_layer(),
         "external/usfs_trails.geojson": _usfs_trails_layer(),
         "external/usfs_rec_sites.geojson": _usfs_rec_sites_layer(),
-        "external/nh_granit_trails.geojson": _nh_granit_trails_layer(),
         "external/njdep_park_trails.geojson": _njdep_park_trails_layer(),
         "external/nj_statewide_trails.geojson": _nj_statewide_trails_layer(),
         "external/nyc_parks_trails.geojson": _nyc_parks_trails_layer(),
@@ -1327,6 +1301,26 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         "external/dec_backcountry_features.geojson": _dec_asset_layer(
             "PRIVY", ["Fixture Privy", "Fixture Culvert"], publicuse=("Y", "N")
         ),
+        # #1778's seventeen, each with the one column its registry row declares
+        # spelled the way sources.json spells it - so a rename fails here
+        # rather than in a dbt build, which is what this whole file is for.
+        "external/nps_trails.geojson": _registered_trail_lines_layer("nps_trails", "TRLNAME"),
+        "external/blm_trails.geojson": _registered_trail_lines_layer("blm_trails", None),
+        "external/cotrex_trails.geojson": _registered_trail_lines_layer("cotrex_trails", "name"),
+        "external/wa_rco_trails.geojson": _registered_trail_lines_layer("wa_rco_trails", "trail_name"),
+        "external/utah_sgid_trails.geojson": _registered_trail_lines_layer("utah_sgid_trails", "PrimaryName"),
+        "external/ncta_trail.geojson": _registered_trail_lines_layer("ncta_trail", "seg_name"),
+        "external/alaska_trails.geojson": _registered_trail_lines_layer("alaska_trails", "TrailName"),
+        "external/pasda_dcnr_trails.geojson": _registered_trail_lines_layer("pasda_dcnr_trails", "NAME01"),
+        "external/ct_deep_blue_blazed.geojson": _registered_trail_lines_layer("ct_deep_blue_blazed", "TrailName"),
+        "external/nc_mst_trail.geojson": _registered_trail_lines_layer("nc_mst_trail", "SYSTEMNAME"),
+        "external/azgeo_arizona_trail.geojson": _registered_trail_lines_layer("azgeo_arizona_trail", "Name"),
+        "external/tahoe_rim_trail.geojson": _registered_trail_lines_layer("tahoe_rim_trail", "Name"),
+        "external/duluth_superior_hiking_trail.geojson": _registered_trail_lines_layer("duluth_superior_hiking_trail", "Name"),
+        "external/massgis_long_distance_trails.geojson": _registered_trail_lines_layer("massgis_long_distance_trails", "NAME"),
+        "external/pcta_centerline.geojson": _registered_trail_lines_layer("pcta_centerline", None),
+        "external/cdtc_centerline.geojson": _registered_trail_lines_layer("cdtc_centerline", None),
+        "external/wi_ice_age_trail.geojson": _registered_trail_lines_layer("wi_ice_age_trail", None),
     }
     existing = [name for name in files if (raw_dir / name).exists()]
     if existing:

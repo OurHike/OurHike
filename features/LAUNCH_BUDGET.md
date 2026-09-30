@@ -117,6 +117,16 @@ issues were about, and nothing here has scoped it.
 **The release still never lands in any of these runs** (§1's caveat), so the second
 cost that paragraph named is measured by none of these columns, before or after.
 
+**Read 2026-09-30:** that caveat was the stopwatch's own defect, not the sandbox's
+network. The warm-up's `releaseLanded()` returned before a byte of the release had
+landed (**#1725 — The stopwatch's warm-up never waits for the release to land, so
+every --returning figure since #1192 timed a launch that was re-downloading the whole
+release**), so every `--returning` row in this section and in §1.4 timed a launch
+that was fetching and hashing the release it should have held. The differences
+between the columns are still real — the same wrong launch, before and after — and
+the absolute rows are not what they were called. §1.5 has the first returning launch
+measured with the release on the phone.
+
 Deterministic, and therefore subject to none of the above: eager JavaScript is **437 KB
 compressed before this work and 215 KB after**, MapLibre is out of the eagerly loaded
 closure, and `scripts/check-build-output.mjs` fails the build on either regression.
@@ -298,6 +308,99 @@ and the stopwatch print both, so the maintainer's own laptop can now say where
 its map arrives — the number this section could not give and §6's first bullet
 still asks for.
 
+### 1.5 After #1725, #1726, #1727 and #1591: the first returning launch measured with the release on the phone
+
+Every `--returning` row above timed a launch that was re-downloading the release
+(§1.1's note of 2026-09-30, **#1725 — The stopwatch's warm-up never waits for the
+release to land, so every --returning figure since #1192 timed a launch that was
+re-downloading the whole release**). These are the first rows the stopwatch has
+printed for a phone that held it — the profile §3 names (390×844, 4× CPU, 12 Mbps /
+80 ms), a build against the UA data served through `client/scripts/data-proxy.mjs`,
+the warm-up waiting for `ourhike:pois` before the timed launch. No corridor archive
+is on the profile, so no map mounts and `map built` reads `not reached` in every
+run; the map-side changes of #1727 are evidenced in that issue by node measurements
+over the same artifacts, not here.
+
+Two machines, because the sandbox restarted between the two halves of the work and
+came back on a slower host; a row is comparable only to its neighbour on the same
+machine. Two runs a cell on the first machine, four on the second; a range is the
+spread.
+
+**Machine A** — `main` at 0efac90 against the branch through 4e2b8ff5 (the sweep in
+three transactions and one key list, crowding, the map order, the layer zooms, the
+hourly roll-up; not yet the eager-closure leaves):
+
+| returning hiker, machine A | `main` @ 0efac90 | branch @ 4e2b8ff5 |
+|---|---:|---:|
+| first contentful paint | 372–408 ms | 356–396 ms |
+| tab bar rendered (the app's own mark) | 391–444 ms | 378–427 ms |
+| waypoints ready (`ourhike:today`) | 1,701–1,731 ms | 1,286–1,660 ms |
+| trail index ready (`ourhike:index`) | 2,736–2,852 ms | **2,190–2,293 ms** |
+| the tap on Plan at 0.8 s accepted after | 1,195–1,212 ms | 941–1,142 ms |
+| the tap on More at 2.0–2.1 s accepted after | 496–597 ms | **187–245 ms** |
+| long tasks · longest · total blocking | 8–9 · 333–359 ms · 515–677 ms | 6–10 · **170–241 ms** · **295–334 ms** |
+| `lib/useArchiveDownload.ts:128` (the sweep's updater), sampled self time | 324–348 ms | gone from the top 15 |
+| `transaction` · `get` (the sweep's one-key reads) | 206–253 · 158–196 ms | gone from the top 15 |
+| `dist/index.js:4` (idb-keyval `promisifyRequest`: the release's structured clone) | 203–207 ms | 179–270 ms |
+
+**Machine B** — the same `main` against the whole branch at d88d9efd (the eager-closure
+leaves included), four runs a cell. This host is slower and noisier: `main`'s own
+`trail index ready` spread 4,125–6,899 ms across its four runs, so read the rows whose
+ranges do not overlap and treat the rest as unmeasured.
+
+| returning hiker, machine B | `main` @ 0efac90 | branch @ d88d9efd |
+|---|---:|---:|
+| first contentful paint | 556–688 ms | 556–736 ms |
+| tab bar rendered (the app's own mark) | 579–748 ms | 591–793 ms |
+| waypoints ready (`ourhike:today`) | 2,096–3,042 ms | 2,356–2,628 ms |
+| trail index ready (`ourhike:index`) | 4,125–6,899 ms | **3,675–4,226 ms** |
+| the tap on Plan at 0.8 s accepted after | 1,417–2,244 ms | 1,085–1,615 ms |
+| the tap on More at 2.5–3.4 s accepted after | 701–1,148 ms | **258–674 ms** |
+| long tasks · longest · total blocking | 16–18 · 423–541 ms · 1,125–2,321 ms | 15–16 · **251–300 ms** · **1,002–1,086 ms** |
+| `lib/useArchiveDownload.ts:128` (the sweep's updater), sampled self time | 381–439 ms | gone from the top 15 |
+| `transaction` · `get` (the sweep's one-key reads) | 353–664 · 249–502 ms | gone from the top 15 |
+| `dist/index.js:4` (idb-keyval `promisifyRequest`: the release's structured clone) | 257–559 ms | 325–395 ms |
+| garbage collector | 159–227 ms | 375–473 ms |
+
+The garbage-collector row moved the opposite way on the two machines — down on A
+(125–163 → 80–83 ms), up on B — and nothing in this branch is known to allocate more;
+it is left unexplained rather than explained away, and a heap profile of one branch
+launch on machine B is what would settle it.
+
+What moved, and what did not:
+
+- **The sweep is gone from the profile on both machines**, and it was the largest
+  function in it: three one-key reads and one `setStatuses` per package, ~800
+  packages, became one `keys()`, at most three `getMany` transactions and one state
+  update (#1726). The longest task halved and total blocking time roughly halved
+  on machine A; on machine B the same three rows vanished and the longest task
+  fell by a similar share, inside a wider spread.
+- **The release's own read is now the biggest row left** — idb-keyval's
+  `promisifyRequest`, which is where 28,913 plain objects are cloned into the main
+  thread's heap. §4.5 already proposes packed storage; **#1733 — Reading the release
+  out of IndexedDB is the largest main-thread task left in a returning launch: 180 to
+  270 ms of structured clone at 4× for 28,913 plain waypoint objects** is its home.
+- **The first frame did not move**, on either machine, and was not expected to:
+  the launch mirror already draws it from nothing the sweep touches (§4.3). What
+  a hiker feels from this branch is the tap that used to wait on the sweep.
+- **`waypoints ready` disagrees between the machines** — earlier by up to 400 ms on
+  machine A, later by a few hundred on machine B — inside spreads wider than the
+  difference. Not claimed either way; it is the row §3 says nobody has measured on
+  a phone, and it still is.
+- **Deterministic, and therefore subject to none of the above:** the closure the
+  document loads before any `import()` went from 257,109 to 241,578 gzip bytes
+  (#1591, the same day, one machine, the build check's own walk), and to 229,145
+  with the ten sheets a tap opens deferred (#1735's first slice), and
+  `scripts/check-build-output.mjs` now refuses the style module, the live sheet and
+  pmtiles in any eager chunk by name. `crowdingByPoi` over 28,913 points at the
+  corridor's real density: 118–123 ms became 62–68 ms in node with a byte-identical
+  answer (`map/poiCrowding.test.ts` holds both implementations to the same counts).
+
+The thresholds the daily check widened against the wrong launch are the loose end:
+**#1772 — check-launch-speed.mjs's four thresholds and §3's production column were
+set against a launch that was re-downloading the release, and need re-reading from
+the first morning runs on the fixed warm-up**.
+
 ## 2. Where the time goes
 
 ### 2.1 Bytes before the first frame
@@ -439,7 +542,7 @@ carries how it was arrived at, per CLAUDE.md's three grades.
 | Today's journal populated (waypoints on screen) | ≤ 1,500 ms | not instrumented | **Picked**. `@unvalidated`: a cached index and a batched waypoint read cannot beat two IndexedDB round trips plus a transfer, and nobody has measured those on a phone |
 | First run: each Skip tap accepted | ≤ 100 ms | 3,211 · 5,331 · 2,997 ms | **Measured as achievable**: the fix for #857 — *Skip on the first-run steps feels like a broken button* — delivered 11 · 4 · 220 ms on 2026-08-20 |
 | First run: longest task while the steps are up | ≤ 500 ms | 1,600 ms | **Measured as achievable**: 434 ms on 2026-08-20 |
-| Eager JavaScript — every script the document loads before any `import()` | ≤ 300 KB compressed | 255 KB (`main` at 2a6aac69 on 2026-09-18, by the build check's own walk; production not re-measured) | **Reasoned** from the attribution: React DOM is ~50 KB compressed and the Today path's own code ~120 KB; 250 left room to grow and could not hold the engine (157 KB) or a second screen set. Raised to 300 on 2026-09-18 (#1577), when `main` had grown from 236 KB on 2026-09-10 to 255 KB with nothing drifting in, 684 bytes under the line: 300 is the same sixth of room over 255 that 250 was over 215, and still under the smallest drift the gate is for (the Supabase client's 52 KB lands at 307). 32 KB of the 255 is the map's style module and the network tiles, reached through the legend's swatches, which is the room worth taking back: #1591 — The legend's swatches drag the map style module and the network tiles, 32 KB compressed, in front of the first frame, and main sits 684 bytes under the launch budget |
+| Eager JavaScript — every script the document loads before any `import()` | **≤ 240 KB compressed** (245,760 bytes; 300 KB from 2026-09-18 to 2026-09-30, 250 KB for a day after) | 229,145 bytes on branch `ccr-d8e0ea16-3fqncu` with the sheets deferred (241,578 at d88d9efd, before them), against 257,109 on `main` at 0efac90 the same day (2026-09-30, all by the build check's own walk on one machine; production not re-measured) | **Reasoned** from the attribution: React DOM is ~50 KB compressed and the Today path's own code ~120 KB; 250 left room to grow and could not hold the engine (157 KB) or a second screen set. Raised to 300 on 2026-09-18 (#1577), when `main` had grown from 236 KB on 2026-09-10 to 255 KB with nothing drifting in, 684 bytes under the line: 300 is the same sixth of room over 255 that 250 was over 215, and still under the smallest drift the gate is for (the Supabase client's 52 KB lands at 307). 32 KB of the 255 is the map's style module and the network tiles, reached through the legend's swatches, which is the room worth taking back: #1591 — The legend's swatches drag the map style module and the network tiles, 32 KB compressed, in front of the first frame, and main sits 684 bytes under the launch budget. Taken back on 2026-09-30 by that issue's first remedy: the ids, inks, palettes, cell setters and archive URLs the shell reads live in five leaves (`map/styleIds.ts`, `map/sheetInks.ts`, `map/sheets.ts`, `map/heldCells.ts`, `map/archiveUrls.ts`), `map/archiveZooms.ts` imports pmtiles when a read runs, and the check refuses three strings only the style module, the live sheet and pmtiles hold in any eager chunk. That is 15.5 KB of the 32 KB the issue counted, because the palettes and ids the leaves hold are still eager — they are what the legend draws with — and only the layer builders and the tile readers left. **Back to 250 KB on 2026-09-30, at the maintainer's ask the same day ("it's too big now")**: 300 was a patch on the symptom and the cause is fixed, so the line returned to where it was; then to 240 KB the same day, once the ten sheets, panels and cards a tap opens were deferred through `screens/deferred.ts` (**#1735 — 123 KB of chrome surfaces Today never shows sit in the eager closure, and preloadScreens evaluates all 50 lazy chunks on the first idle**, its first slice) and the closure read 229,145 — 16,615 bytes under the new line, and §4.4's table names what can still leave. The line follows the closure down as each piece lands; it is not set to the target ahead of the work, because an absolute line with no room trips on the next string the shell grows (#1591's own finding), and the durable answer — a check against `main`'s own figure — is that issue's open half |
 | `maplibre-gl` in the eager closure | never | present | **Measured**: #722 — *860 ms of MapLibre parsing sits in front of the first paint* |
 | Full passes over the waypoint list on the launch thread before the shell frame | 0 | 5–6 | **Reasoned**: Today draws nothing from the list without a position, and the position arrives after the frame |
 
@@ -529,6 +632,37 @@ and had nothing to find here, so the only thing that reported it was the budget 
 red and the attribution being read afterwards. The rule it generalises to: **a
 constant the shell reads out of a screen-sized module belongs in a module of its
 own**, and the screen imports it too.
+
+**Read again 2026-09-30, with #1591's leaves in** (branch `ccr-d8e0ea16-3fqncu` at
+d88d9efd, the same attribution over a UA build): the closure is 755,995 raw / 241,578
+gzip bytes, and this is what is in it that a Today launch does not draw with.
+
+| still eager | raw bytes | reached how |
+|---|---:|---|
+| React DOM, React, scheduler | 189,000 | the framework; the floor |
+| `App.tsx` | 74,593 | the shell, every flow's handlers and JSX still inline (**#1746 — App.tsx is 11,743 lines, 92 useState and 209 imports, 2.7× its size when #327 closed; eight panel hooks in this order would take about 5,200 lines out**) |
+| `chrome/` sheets, panels and cards a tap opens: `DayHikePanel` 7,292, `RouteEntranceSheet` 7,262, `RouteStopPicker` 6,174, `DayHikePickBar` 5,231, `RouteStopsPanel` 4,003, `NextTurnCard` 3,417, `NoticeList` 3,279, `LineSheet` 2,673, `StepAwaySheet` 2,437, and `screens/DayHikeCard.tsx` 8,863 | 50,631 | `App.tsx` and two panel hooks imported each statically and rendered it conditionally (**#1735 — 123 KB of chrome surfaces Today never shows sit in the eager closure, and preloadScreens evaluates all 50 lazy chunks on the first idle**). **Deferred through `screens/deferred.ts` on this branch the same day**: the closure went from 241,578 to 229,145 compressed. `chrome/routeBuilderPanel.tsx` (8,476) stays: it is the hook, not a surface |
+| `screens/LeaveWithSomeone.tsx` | 2,862 | reached through a module this pass did not trace |
+| `screens/Onboarding.tsx` + `lib/heroPhotos.ts` | 12,167 | first run's entry card, carried by every returning launch |
+| planning: `lib/trailGraph.ts` 10,832, `trailGraphData.ts` 5,553, `suggestedHikes.ts` + `suggestedHikesData.ts` 8,542, `plan.ts` 4,706, `cascade.ts` 4,556, `dayHikeDraft.ts` 4,457, `dayHikeFollow.ts` 2,628, `dayPlanner.ts` 2,271 | 43,545 | `App.tsx`'s planning hooks import them statically; they leave when those hooks become lazily mounted panels (#1746's order) |
+| four layer builders reached for an id: `map/poiLayers.ts` 3,883 (`POI_PIN_MIN_ZOOM`, `LOCATE_MIN_ZOOM`), `map/corridorLayers.ts` 3,197, `map/dayHikeLayers.ts` 2,766 and `map/routeLayers.ts` 2,481 through `chrome/useRouteHover.ts` | 12,327 | this section's own rule, not yet applied to these four |
+| `@capacitor/core` | 7,773 | `lib/backgroundGeolocation.ts` and `lib/tracePlatform.ts` import it for `isNativePlatform()`, which `window.Capacitor` answers without the package |
+
+About 138 KB raw of the 756 could leave without a hiker seeing a difference — roughly
+40 KB compressed at the closure's overall 0.32 ratio (**reasoned** from that ratio, not
+measured per module). The first 50 KB raw of it did, the same day: the sheets behind
+`deferredScreen`, which `preloadScreens` already warms on the first idle so a tap after
+it pays nothing, took the closure to 229,145 compressed (**measured**, the build
+check's own walk) — 12,433 bytes for 50,631 raw, a better ratio than the 0.32 guess.
+Still to go: the four ids into leaves; Capacitor behind a check of `window.Capacitor`. The planning modules follow
+their hooks out. What the arithmetic says the closure can be is **about 200 KB
+compressed** with those gone, and not much below it while React DOM (about 52 KB
+compressed) and a shell that holds every flow's handlers stay — which is why §3's line
+follows the closure down as each piece lands rather than being set to 200 today. Two
+of the cuts are not free and are the maintainer's to weigh: Onboarding lazy costs a
+first run one chunk fetch before its entry card (§4.6's budget, not this one), and
+Capacitor's dynamic import changes the native path that only a phone verifies
+(`backgroundGeolocation.ts`'s header says so).
 
 ### 4.5 Waypoints are the worker's, not the render's
 
@@ -739,6 +873,16 @@ Three things the table settles, each measured rather than reasoned:
   `nearby_trails_context.pmtiles` at z≤8 by `cut_cells.py`, and the map's
   `nearby-trails` vector source reads the cells by byte range (#1257). The
   sketch duplicates the context archive's zooms as a whole file.
+
+  **Most of that 12 MB was sub-pixel, and #1775 cut it to 1,811,212 bytes.**
+  The sketch was cut at `export_trails.py`'s 100 m tolerance — about one pixel
+  at z9, its old top zoom — and drawn at z2.2. 112,334 of its 144,541 trail
+  segments have a bounding box under one pixel at z5. Dropping those and
+  simplifying at half a pixel there leaves 14.8% of the file, measured by
+  running the changed exporter over the release's own records. The worker cost
+  has not been re-measured against the smaller file; it should fall roughly
+  with the vertex count (616,517 → 98,948), which is reasoning rather than a
+  measurement and is what §7.4's closing line asks for.
 - **A second MapLibre worker does not help** — 5,333 → 5,425 ms with the same
   sources. The order is not a one-worker accident; it is the order the sources
   are attached and the size of what each has to cut.
@@ -776,13 +920,35 @@ at launch may be a whole file whose size follows the miles.
 ### 7.3 The plan, in the order the measurements rank it
 
 1. **Draw the corridor-view sketch from the context archive's tiles and stop
-   shipping `network_overview.geojson` to the launch.** The z≤8 tiles exist
+   shipping `network_overview.geojson` to the launch.** ~~The z≤8 tiles exist
    (`nearby_trails_context.pmtiles`), the `network://` scheme already reads the
-   family by range, and the sketch's only job is those zooms. **Measured**
+   family by range, and the sketch's only job is those zooms.~~ **Measured**
    saving: 3–3.5 s of worker time at 1×, first on the line's critical path;
    at 4×, reasoned ×3–4. The sketch's other consumer, whatever the shell reads
    from `lib/nearbyTrailData.ts`, is the part to check before deleting the
    artifact rather than merely not drawing it.
+
+   **The struck sentence was wrong, and #1775 is what it cost.** #1613 found
+   the first half of it — the archive did not exist — and cut one. The second
+   half is the one that outlived the correction: *the sketch's only job is
+   those zooms*. It is not. Every archive in this family is cut from
+   `NEARBY_TRAILS_TILES_MIN_ZOOM = 5`, and **the app opens below that** —
+   z2.2 on a 390×844 phone, z3.63 on a tablet, z4.39 on a 1728×1080 laptop,
+   by MapLibre's own `fitBounds` arithmetic over `UNITED_STATES_BOUNDS`. A
+   vector source asked for a zoom its archive does not hold draws nothing,
+   silently, so dropping the sketch would leave the A.T. alone on the first
+   screen of every launch.
+
+   So the sketch does not go away; it stops owning z5–z9 and is cut for the
+   zooms it keeps. `map/style.ts` draws the sketch's own paint twice —
+   over the file below `NETWORK_SKETCH_MAX_ZOOM` and over the network tiles
+   from there to `CORRIDOR_MAX_ZOOM` — and `export_nearby_trails.py` cuts the
+   file for a pixel at the first of those rather than at the second. What is
+   left of this item is deleting the artifact outright, which now needs a
+   z≤4 cut nobody has costed: a z5 tile is 1.2–1.3 MB along the A.T., and a
+   coarser tile carries *more* of the network, not less (#1613's own
+   correction), so the opening camera's two or three z2 tiles could cost more
+   than the 1.8 MB whole file they would replace. Nobody has measured it.
 2. **Publish the A.T. line as tiles too** (`trails.pmtiles`, cut in the same
    step that writes `trails.geojson`), and point the map's `trails` source at
    them — the GeoJSON stays for the index build, the mile axis and the

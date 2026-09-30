@@ -244,11 +244,16 @@ describe('App shell', () => {
     await screen.findByRole('region', { name: /trail map/i })
   })
 
-  it('opens on the whole corridor once the steps are done, the map screen view', async () => {
+  it('opens on the whole United States once the steps are done, not the A.T. corridor', async () => {
     // The camera assertion #721 made about the backdrop map, moved to the map
-    // a hiker now actually gets. `CORRIDOR_BOUNDS` unchanged: what first run
-    // opens on is still the whole trail, which is the claim the first step
-    // makes in words.
+    // a hiker now actually gets, and widened on 2026-09-30: "We should start
+    // showing the entire US, not just the at corridor" - the maintainer. This
+    // was [[-84.73, 34.2], [-68.3, 46.34]], the A.T.'s own extent.
+    //
+    // CORRIDOR_BOUNDS still exists and still holds those numbers; what moved
+    // is only the opening camera, which is UNITED_STATES_BOUNDS now. The test
+    // below that hands the elevation chart its `wholeTrailBounds` is the other
+    // half of that split and must keep answering the corridor.
     const user = userEvent.setup()
     render(<App />)
 
@@ -257,8 +262,8 @@ describe('App shell', () => {
     const map = await liveMap()
 
     expect(map.options.bounds).toEqual([
-      [-84.73, 34.2],
-      [-68.3, 46.34],
+      [-125.0, 24.5],
+      [-66.9, 49.4],
     ])
   })
 
@@ -659,17 +664,19 @@ describe('App shell', () => {
     expect(survivor.zoom).toBe(15)
   })
 
-  it('opens on the whole corridor when there is no view to come back to', async () => {
+  it('opens on the whole United States when there is no view to come back to', async () => {
     returningHiker()
     render(<App />)
     await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     // Before a fix or a pan the app genuinely does not know where the hiker
-    // is, and the whole trail is the honest opening answer.
+    // is, and everything it covers is the honest opening answer. That argument
+    // did not change when the frame widened on 2026-09-30 - it is why the
+    // frame is the whole country rather than a guess at a region.
     expect((await liveMap()).options.bounds).toEqual([
-      [-84.73, 34.2],
-      [-68.3, 46.34],
+      [-125.0, 24.5],
+      [-66.9, 49.4],
     ])
   })
 
@@ -1163,7 +1170,6 @@ describe('taking a trail (#1306)', () => {
         properties: {
           ...AT_LINE.properties,
           mark: 'trail-mark-AT',
-          chip: 'blaze-chip-White',
         },
         geometry: { type: 'Point', coordinates: [200, 400] },
       },

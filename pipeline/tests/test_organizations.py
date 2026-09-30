@@ -251,6 +251,43 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     2026-09-17, tagged `@unvalidated` in the entry. `licence_basis` is not the
     column that would ever show that, which is the reason to say so here.
 
+    WHAT MOVED ON 2026-09-28 (#1711), 29 -> 28 on `maintainer_authorisation`,
+    and it is the first movement in this column made by REMOVING a source
+    rather than by anybody answering. The maintainer took `nh_granit_trails`
+    out altogether: GRANIT describes the layer itself as compiled "for
+    planning use only", republished it with renamed columns without notice,
+    and redrew most of the White Mountains on top of USFS. It was the thinner
+    of the two authorisations the paragraphs above describe, and it is gone
+    rather than upgraded.
+
+    WHAT MOVED ON 2026-09-30 (#1778), and it is the largest single movement
+    this column has had: seventeen organizations registered at once, from the
+    #1543 catalogue, taking the file from 46 sources to 63. Thirteen landed in
+    `stated_by_org` and four in `maintainer_authorisation`, so 17 -> 30 there
+    and 28 -> 32 here.
+
+    THE THIRTEEN ARE NOT ALL ALIKE AND THE COLUMN HIDES IT, which is the same
+    flattery the USFS paragraph above records, now at scale. Two are federal -
+    NPS and BLM - and sit here on 17 U.S.C. 105, where the statute means the
+    agency never had a grant to make. One, PCTA, published CC BY 4.0, which is
+    an actual act of consent and the only one in this batch. The other ten are
+    STATE OR MUNICIPAL publications resting on the maintainer's assume-open
+    decision of 2026-09-17: section 105 does not reach a state, and what the
+    row records is that nothing restricting use was FOUND. That is the weakest
+    of the three readings and it is counted beside the strongest.
+
+    The four in this column state nothing at all - NCTA, Alaska Trails, TRTA
+    and CDTC - and TRTA is worth naming because its row disagrees with the
+    catalogue: the catalogue says "free with registration" and the layer
+    answered an anonymous probe, and the row keeps the weaker reading of the
+    two rather than the one the probe made convenient.
+
+    NONE OF THE SEVENTEEN REACHES A HIKER. They are all `reaches_hikers:
+    false`, so this count now includes a block of registrations whose licence
+    reading has never had to be right in production. That is by design -
+    features/ORG_BULK_LOAD.md registers before it ships - and it is the thing
+    to remember before reading the ratio as exposure.
+
     This test is expected to change when an organization answers. It should
     change by somebody editing it deliberately, with the org's answer in hand.
     """
@@ -258,4 +295,4 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     for source in REGISTRY["sources"]:
         counts[source["licence_basis"]] = counts.get(source["licence_basis"], 0) + 1
 
-    assert counts == {"maintainer_authorisation": 29, "stated_by_org": 17, "unresolved": 1}
+    assert counts == {"maintainer_authorisation": 32, "stated_by_org": 30, "unresolved": 1}

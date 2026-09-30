@@ -714,7 +714,13 @@
       "foot_allowed": [
         "TERRA"
       ],
-      "foot_allowed_comment": "WHY trail_type IS THE foot_field HERE, when on other sources that slot holds an actual foot column. export_nearby_trails.py's foot_field/foot_allowed pair means 'the field that decides whether you can walk this, and the values that say yes'. For OPRHP and DEC that is a per-use foot column. USFS publishes its trails split by MEDIUM instead: measured nationwide 2026-09-02, trail_type reads TERRA on 78,101 rows, SNOW on 8,152 and WATER on 76. The 8,228 non-TERRA rows are snowmobile and paddle corridors - a first page of WMNF results is HIX MTN RD SNOMO, BERRY FARM SNOMO, ROSEBROOK SNOMO - so TERRA is exactly the walkable set and the drop reason this prints ('not a foot trail: trail_type=SNOW') is true as written. WHY NOT hiker_pedestrian_managed, WHICH IS THE OBVIOUS CANDIDATE AND IS A TRAP. It is a SEASON STRING ('01/01-12/31'), not a flag, so it cannot be an allowed-set at all - and it is NULL on 35,667 of the 78,101 TERRA rows. Requiring it would delete 46% of the Forest Service's terrestrial trail inventory. Absent is unrecorded, not prohibited, which is the same lesson dec_hiking_trails' foot_allowed_comment records for DEC's `M` and nh_granit_trails' foot_comment records for GRANIT's blank PED - three sources, three vocabularies, one mistake. AND THE LAYER ESSENTIALLY NEVER PROHIBITS FOOT TRAVEL: 78,064 of the 78,101 TERRA rows carry at least one populated hiker_pedestrian_* column, and hiker_pedestrian_restricted reads the literal string 'N/A' on 399 of a 400-row sample of the rows where it is set. So there is no prohibition signal to honour even if one were wanted. WHAT IS LEFT UNDONE, said rather than guessed: the four-column per-use matrix (managed/accpt/disc/restricted x fifteen uses) is undecoded, so this export cannot yet tell a trail MANAGED for hikers from one where hiking is merely accepted, and it cannot exclude a bike or OHV trail that also allows foot travel. That is a real gap against the maintainer's 'It's OurHike, not OurBike' rule - it keeps corridors a stricter reading would drop - and it wants the Forest Service's data dictionary rather than a guess at their column semantics.",
+      "foot_allowed_comment": "WHY trail_type IS THE foot_field HERE, when on other sources that slot holds an actual foot column. export_nearby_trails.py's foot_field/foot_allowed pair means 'the field that decides whether you can walk this, and the values that say yes'. For OPRHP and DEC that is a per-use foot column. USFS publishes its trails split by MEDIUM instead: measured nationwide 2026-09-02, trail_type reads TERRA on 78,101 rows, SNOW on 8,152 and WATER on 76. The 8,228 non-TERRA rows are snowmobile and paddle corridors - a first page of WMNF results is HIX MTN RD SNOMO, BERRY FARM SNOMO, ROSEBROOK SNOMO - so TERRA is exactly the walkable set and the drop reason this prints ('not a foot trail: trail_type=SNOW') is true as written. WHY NOT hiker_pedestrian_managed, WHICH IS THE OBVIOUS CANDIDATE AND IS A TRAP. It is a SEASON STRING ('01/01-12/31'), not a flag, so it cannot be an allowed-set at all - and it is NULL on 35,667 of the 78,101 TERRA rows. Requiring it would delete 46% of the Forest Service's terrestrial trail inventory. Absent is unrecorded, not prohibited, which is the same lesson dec_hiking_trails' foot_allowed_comment records for DEC's `M` and nh_granit_trails' foot_comment records for GRANIT's blank PED - three sources, three vocabularies, one mistake. AND THE LAYER ESSENTIALLY NEVER PROHIBITS FOOT TRAVEL: 78,064 of the 78,101 TERRA rows carry at least one populated hiker_pedestrian_* column, and hiker_pedestrian_restricted reads the literal string 'N/A' on 399 of a 400-row sample of the rows where it is set. So there is no prohibition signal to honour even if one were wanted. WHAT CHANGED ON 2026-09-28 (#1711): motorized trails are now excluded - see excluded_when_comment. WHAT IS STILL LEFT UNDONE: this export cannot tell a trail MANAGED for hikers from one where hiking is merely accepted, and it keeps bicycle and pack-and-saddle trails that also allow foot travel, because a trail a hiker may walk is walkable ground.",
+      "excluded_when": {
+        "terra_motorized": [
+          "Y"
+        ]
+      },
+      "excluded_when_comment": "THE MAINTAINER'S DECISION OF 2026-09-28 (#1711): 'remove USFS motorized trails nationwide. Only include hiking trails.' terra_motorized is a three-value column, measured live 2026-09-28 across trail_type TERRA nationwide: 'N' 45,151 rows / 74,529 gis_miles, 'Y' 23,195 / 29,199, 'N/A' 9,810 / 21,332. WHAT 'Y' MEANS, reasoned rather than published (the field's domain reads null): allowed_terra_use is a string of use codes, and every 'Y' row carries a 4, 5 or 6 in it - motorcycle, ATV, 4WD - while no 'N' row does, apart from about 1,470 'Y' rows (125 mi) whose codes are only 3, 31 or 321, which the Forest Service still flags motorized and which go with the rest. WHAT GOES WITH IT, known and accepted: the Great Western Trail and its ATV/OHV alternates (254 mi), which are motorized routes by design, and about 74 mi of the Continental Divide Trail where it shares tread with motorized routes (CONTINENTAL DIVIDE NST, MONARCH CREST-CDNST, CDNST - COCHETOPA ROADS, CONTINENTAL DIVIDE ATV). The CDT will show gaps there. WHY 'N/A' IS KEPT: every use column on those 9,810 rows is empty, so nothing says they are NOT hiking trails - and they include about 570 mi of the Pacific Crest Trail, the Sheltowee Trace (287 mi), the Ouachita NRT (187 mi), the Arizona Trail (143 mi) and the Tahoe Rim Trail (111 mi). Dropping them would delete real hiking trails on the strength of an absence, which is the mistake foot_allowed_comment already records for hiker_pedestrian_managed. Adding 'N/A' to this list is the one-line reversal if the maintainer wants it.",
       "blaze_default": "Unknown",
       "blaze_default_comment": "THE FOREST SERVICE PUBLISHES NO BLAZE COLUMN AT ALL - not a blank one, none - across the 100-odd fields of the TrailNFS publish schema, checked against the live field list 2026-09-02. So this states the absence rather than asserting a paint, exactly as nynjtc_highlands_trail's blaze_default does for the same reason. IT IS 'Unknown' AND NOT 'None', AND THE DIFFERENCE IS THE POINT: 'None' means a CONFIRMED unblazed trail (the client renders it 'Unblazed'), which is what nh_granit_trails' blank BLAZE earns because GRANIT does record blazes where they exist and records none here. USFS records nothing either way, so the honest word is 'Blaze not recorded'. Two sources covering the same White Mountains ground, two different absences, and collapsing them would tell a hiker the Forest Service had checked. It also has a mechanical job: network_line_sources() identifies a trail-LINE source by the presence of blaze_field or blaze_default, so without this key export_nearby_trails.py would skip this layer entirely as if it were a points layer - which it did, until a test caught it."
     },
@@ -744,42 +750,6 @@
       "asset_field": "site_type",
       "facility_field": "recarea_name",
       "field_comment": "id_field is spelled LOWERCASE 'objectid' because the EDW layer spells it that way - export_nearby_poi.py defaults to 'OBJECTID' and would have fallen through to a null id on every row. The layer publishes no GlobalID and no public/visitor flag, so there is no public_field here: unlike DEC's PUBLICUSE and OPRHP's ParksApp, the Forest Service offers nothing to filter or lower confidence on, and inventing one would be worse than having none."
-    },
-    {
-      "key": "nh_granit_trails",
-      "title": "New Hampshire Trails (NH GRANIT, Recreation Resources)",
-      "provider": "NH GRANIT",
-      "kind": "external_arcgis_layer",
-      "url": "https://nhgeodata.unh.edu/nhgeodata/rest/services/CSD/RecreationResources/MapServer/2",
-      "trust": "authoritative",
-      "steward": "NH GRANIT, Earth Systems Research Center, University of New Hampshire",
-      "steward_contact": "https://www.granit.unh.edu/",
-      "licence": "Ships on the maintainer's authorisation of 2026-09-02, the same footing atc_licence, nynjtc_licence, mohonk_licence and dec_licence already use. IT IS NOT A GRANT FROM THE ORGANIZATION and must never be rendered as one - see usfs_licence / nh_granit_licence for what was actually read and what was not. See nh_granit_licence below.",
-      "attribution": "NH GRANIT, University of New Hampshire",
-      "name_field": "TRAILNAME",
-      "trust_comment": "'authoritative' describes the PUBLISHER, not the survey grade of each row. GRANIT is New Hampshire's state GIS clearinghouse and this is the state's own recreation inventory - but it AGGREGATES contributed data rather than surveying it, and the layer carries its own ACCURACY column saying so. A per-row confidence treatment would have to read that column; nothing does, because nothing ships.",
-      "discovered_via": "Probed under https://github.com/OurHike/OurHike/issues/1207 as the state-level counterpart to the federal usfs_trails. Found by walking nhgeodata.unh.edu/nhgeodata/rest/services' folder list (APB, BE, CAD, CSD, EC, EDP, GG, Hosted, IBM, IWR, LGN, OC, TN, Topical, Utilities) and scanning each for a trail service; CSD/RecreationResources was the hit. Registered by hand: an on-prem ArcGIS server with no AGOL item, so discover_sources.py has nothing to walk.",
-      "discovered_date": "2026-09-02",
-      "notes": "19,877 polyline segments statewide, of which 7,643 fall inside the White Mountains bounding box pipeline/WHITE_MOUNTAINS_SOURCE_SURVEY.md section 1 proposes (lon -71.95 to -70.85, lat 43.65 to 44.55) - both measured live 2026-09-02 by returnCountOnly. THAT IS 3.6x THE USFS COUNT FOR OVERLAPPING GROUND, because GRANIT is not limited to federal land: state parks, town forests and land-trust holdings are all in it, and it is the only surveyed source covering Franconia Notch and Crawford Notch State Parks - most of what the WMNF boundary leaves out. FOUR COLUMN FINDINGS. (1) BLAZE IS BLANK ON 7,574 OF THE 7,643 WHITES ROWS AND THAT IS CORRECT RATHER THAN MISSING - the Whites largely do not use paint blazes, and the 62 that read White are the A.T. (61 of them carry TRAILSYS 'Appalachian Trail'). See blaze_comment below, which records that this entry first got the reading backwards. (2) PED SPLITS 3,883 rows '1' against 3,760 BLANK in the Whites bbox, so BLANK IS NOT 'NO', it is unrecorded - a PED='1' filter would drop nearly half the layer including trails that are plainly walkable. Left unfiltered and unresolved: the same shape as dec_hiking_trails' foot_allowed question, but without DEC's published domain to reason from, so no foot_field is claimed here. (3) MAINTORG IS A CODED INTEGER WITH NO PUBLISHED DOMAIN - live values on a 2,000-row page are 0 (685), 22000 (422), 50110 (242), 31000 (215), 51700 (104) and a long tail. If one of those codes is AMC, it is the closest thing to an AMC trail inventory any public service offers, and finding out costs one lookup table this survey does not have (pipeline/WHITE_MOUNTAINS_SOURCE_SURVEY.md section 6(d)). (4) TRAILNAME NEEDS A QUALITY PASS BEFORE IT IS A LABEL: sampled values are real Whites trails (A-Z Trail, Air Line) alongside rows that are not trails at all (adj to Rt 118, Abanaki Quad). THE OTHER THREE LAYERS IN THIS SERVICE ARE UNPROBED and are an unopened POI source - Access Sites to Public Waters (0), Recreation Inventory: Points (1), Recreation Inventory: Areas (3); #1207's scope was trails, and pipeline/WHITE_MOUNTAINS_SOURCE_SURVEY.md section 6(c) records the gap. FRESHNESS: no editingInfo and no date column, the same as both USFS entries.",
-      "freshness": {
-        "marker": "none",
-        "read_date": "2026-09-02",
-        "notes": "No editingInfo (an on-prem ArcGIS server) and no date column anywhere in the schema, so fetch_external_layers.py's change-aware skip cannot fire and there is not even the max(UPDATED) substitute dec_hiking_trails has. Unlike the USFS EDW server, no ETag was recorded for this host. Nothing reads this block yet."
-      },
-      "reaches_hikers": true,
-      "licence_basis": "maintainer_authorisation",
-      "blaze_field": "BLAZE",
-      "blaze_comment": "BLANK IS NOT A GAP HERE - IT IS THE GROUND. This entry carried the opposite reading for a few hours on 2026-09-02 and it was wrong, so the correction is written down rather than quietly swapped: the first version registered WITHOUT a blaze_field, on the argument that BLAZE is blank on 7,574 of the 7,643 Whites rows (99.1%) and that painting from a 0.9%-populated column would draw the region as a data outage. THE MAINTAINER CORRECTED IT THE SAME DAY, from knowing the ground: the White Mountains largely do not use paint blazes. AMC's convention there is cairns above treeline and unmarked tread below, so a Whites trail having no blaze is the normal case and GRANIT recording none is GRANIT being right. THE DATA CONFIRMS THE CORRECTION, measured 2026-09-02 and worth keeping because it turns a domain fact into a checkable one: of the 62 rows that DO read White, 61 carry TRAILSYS 'Appalachian Trail' and their names are the A.T.'s own route through the Whites - Beaver Brook, Kinsman Ridge, Franconia Ridge, Garfield Ridge, Ethan Pond, Crawford Path, Gulfside, Carter-Moriah, Glencliff, Liberty Spring, Centennial. The 62nd is Lost Pond Trail (TRAILSYS 'Square Ledge'), which runs beside the A.T. at Pinkham Notch. The only other blazes in the whole bbox are 4 Yellow, 2 Red and 1 Blue, every one of them in a lowland wildlife sanctuary or conservation easement (Dahl Wildlife Sanctuary, Burleigh CE, Red Hill) rather than in the mountains. So the column is not sparse - it is CORRECT: the A.T. is white-blazed through the Whites and almost nothing else up there is blazed at all, and that is exactly the picture GRANIT publishes. WHAT THIS MEANS FOR THE MAP: a blank must render as 'no blaze', which is a true statement about a Whites trail, and never as 'unknown'. The one thing still unstated is GRANIT's own semantics - they do not document whether blank means 'unblazed' or 'not recorded', and the reading that it means unblazed rests on the maintainer's knowledge of the region plus the A.T. correlation above, not on anything GRANIT says. That is a sound basis and it is not the publisher's word, which is the distinction this note exists to keep visible.",
-      "foot_comment": "WHY NO foot_field, AND WHY 'PED' IS THE WRONG ONE. GRANIT publishes a per-use matrix (PED/MTNBIKE/XCSKI/SNOWMBL/ATV/HORSE/...), so PED looks like oprhp_trails' Foot and dec_hiking_trails' FOOT. It is not, and export_nearby_trails.py's allowed-set mechanism would misread it. Measured 2026-09-02 across the 7,643 Whites rows: PED reads '1' on 3,883 and BLANK on 3,760, and blank means UNRECORDED rather than no. Of those 3,760 blanks, 2,541 carry NO use flag of any kind - not snowmobile, not ATV, not bike, not ski, not horse - and their names are ordinary hiking trails (Alpina Trail, Bathtub Trail, Beaver Pond Trail), one of them literally 'Appalachian Trail - road link'. A foot_allowed of {'1'} would therefore delete 2,541 hiking trails including a piece of the A.T., which is the exact failure dec_hiking_trails' foot_allowed_comment records DEC's {'Y'} would have caused, one state over. WHAT THE LAYER DOES JUSTIFY DROPPING: the 1,209 blank-PED rows flagged SNOWMBL '1' and the 124 flagged ATV '1' are motorized corridors and are not this app's subject. That is a filter on a POSITIVE motorized flag rather than on an absent foot one, and it needs code export_nearby_trails.py does not have today - so nothing is filtered here yet and this comment is the specification for the change that does it.",
-      "excluded_when": {
-        "SNOWMBL": [
-          "1"
-        ],
-        "ATV": [
-          "1"
-        ]
-      },
-      "excluded_when_comment": "THE MOTORIZED EXCLUSION, and why it is an exclusion rather than a foot allowlist. foot_comment above shows why foot_field cannot be PED: blank means unrecorded, and 2,541 blank-PED rows in the Whites carry no use flag at all while being ordinary hiking trails. But GRANIT's layer does contain corridors this app has no business drawing as trails - measured 2026-09-02 inside the Whites bbox, 1,209 blank-PED rows are flagged SNOWMBL '1' and 124 are flagged ATV '1'. Those are POSITIVE assertions by GRANIT about what a corridor is for, and acting on a positive assertion is sound where acting on an absence is not. So this drops on the motorized flag and keeps everything else, which is the maintainer's 'It's OurHike, not OurBike' rule applied with the only evidence this layer actually offers. NOT EXCLUDED: MTNBIKE, HORSE and XCSKI, because a mountain-bike or ski trail is walkable ground and dropping it would repeat the deletion this comment exists to avoid."
     },
     {
       "key": "njdep_park_trails",
@@ -872,7 +842,11 @@
       "blaze_comment": "REGISTERED AS THE NEUTRAL, AND THE COLOUR IS NOT LOST SO MUCH AS NEVER DECLARED. This layer has no blaze field. What it has is `trailmarkersinstalled`, a plain Yes/No - 4,017 against 3,042, measured live 2026-09-15 - which says WHETHER a marker is nailed to the trees and never which colour it is. The colour is instead inside the NAME: `trail_name` reads 'Blue Trail' 549 times, 'Orange Trail' 326, 'White Trail' 251, 'Red Trail' 215, 'Yellow Trail' 153. Parsing a blaze out of those strings would be easy and is deliberately NOT done here, for the reason nynjtc_highlands_trail registers its absent blaze as the neutral rather than as the teal the trail wears on the ground: a colour this project inferred from a name is this project's claim, not NYC Parks', and a hiker matching a painted blaze against a drawn one cannot tell which of those they are looking at. The honest version of that inference, if it is ever wanted, is a reference/blaze_mapping.json table keyed on the exact name strings and reviewed row by row - the shape the other sources' tables already have - and not a regular expression in an exporter. @unvalidated either way: nobody has checked a single one of those 1,494 colour-named segments against a marker in the field.",
       "name_field": "trail_name",
       "name_comment": "HALF THIS LAYER HAS NO NAME, and it is worth knowing before a screen tries to print one. Measured live 2026-09-15 across 7,059 rows: 'Unnamed Official Trail' 3,448, 'Name TBD' 239, 'TBD' 88 - 3,775 rows, 53%, whose name field carries a placeholder rather than a name. `park_name` is populated on every row and is the useful label for those (Pelham Bay Park, Van Cortlandt Park, Prospect Park), which is a display decision for features/NEARBY_TRAILS.md rather than a registry one. ACTED ON rather than merely recorded, which is what this comment said and did not do when it was first written: `name_placeholders` below makes export_nearby_trails.py read these three values as an ABSENT name. Without it, measured on the live layer, 'Unnamed Official Trail' totals 128.7 miles - past NAMED_TRAIL_THRESHOLD_MILES - so it shipped one overview feature named 'Unnamed Official Trail' with through_route true, drawn at through-route weight across five boroughs beside the Appalachian Trail and labelled that on the map.",
-      "name_placeholders": ["Unnamed Official Trail", "Name TBD", "TBD"],
+      "name_placeholders": [
+        "Unnamed Official Trail",
+        "Name TBD",
+        "TBD"
+      ],
       "may_be_empty": false,
       "discovered_via": "https://github.com/OurHike/OurHike/issues/1432, from the maintainer's own ask (2026-09-15: 'I live in NYC and will be able to test the app easiest here'). NYC_SOURCE_SURVEY.md surveyed everything within a day of the city and had no row for the city itself; reference/nynjtc_hike_routes.json already carried the hole as a held hike - 'Van Cortlandt Park, NYC Parks: only one Old Croton Aqueduct edge within 2.5 km; no source registered for NYC Parks'. Found by searching the NYC Open Data catalogue API (api.us.socrata.com/api/catalog/v1) rather than by guessing a URL. Registered by hand: discover_sources.py walks ATC's Experience Builder app, and this is not an ArcGIS layer at all.",
       "discovered_date": "2026-09-15",
@@ -1040,7 +1014,10 @@
       "where": "status='2' AND rw_type='1' AND ((boroughcode='1' AND stname_label in('EAST DR','WEST DR','CENTER DR','TERRACE DR')) OR (boroughcode='3' AND stname_label in('EAST DR','WEST DR','CENTER DR','WELLHOUSE DR','S LAKE DR','E LAKE DR')))",
       "where_comment": "124 rows, measured live 2026-09-17. THE NAMES ARE A REVIEWED LIST AND NOT A RULE, which is the whole difference between this entry and nyc_cscl_paths. Central Park is boroughcode 1 and Prospect Park is 3; the four Central Park names are its ring drives and the six Brooklyn names are Prospect Park's ring plus its interior lake and Wellhouse drives. WHAT IS DELIBERATELY ABSENT: Central Park's 65/79/86/97 St TRANSVERSES, 2.89 miles in the same rw_type, excluded by the maintainer on 2026-09-17 in as many words - they carry through traffic in a sunken cut and are not walkable. Queens (boroughcode 4) has its own EAST DR, WEST DR and CENTER DR in Flushing Meadows and they are NOT here, which is why the clause is keyed on borough rather than on name alone. `boundary_source` below is what removes the rest of the leak; the name list alone is not sufficient and was measured not to be.",
       "boundary_source": "nyc_park_polygons",
-      "boundary_names": ["Central Park", "Prospect Park"],
+      "boundary_names": [
+        "Central Park",
+        "Prospect Park"
+      ],
       "boundary_source_comment": "WHY A NAME LIST IS NOT ENOUGH, measured 2026-09-17 before this key was added rather than after a reviewer asked. Clipping each (borough, name) pair to NYC Parks' own boundary polygon shows four of the ten leaking outside the park they are named for: boro 3 EAST DR by 0.30 mi over 7 segments, boro 1 TERRACE DR by 0.03, boro 3 WEST DR by 0.02, boro 3 CENTER DR by 0.04. Small, and on a safety path a tenth of a mile of city street drawn as a car-free park drive is the failure this whole entry is trying not to commit. So the boundary does the final cut and the name list only proposes candidates. The same `boundary_source` key export_nearby_poi.py already reads for a POI inside a park property (#1493); `boundary_names` is new and narrows it to the two parks whose drives are reviewed, because the concept 'a street inside any park is walkable' is exactly what the measurement below refutes.",
       "may_be_empty": false,
       "discovered_via": "https://github.com/OurHike/OurHike/issues/1533, decision 2. The maintainer asked for every NYC park rather than Central Park alone, and asked whether the driveable ones could be identified and excluded mechanically.",
@@ -1048,6 +1025,328 @@
       "notes": "12.02 miles across 124 segments: Central Park 6.61 (EAST DR 2.90, WEST DR 2.73, CENTER DR 0.58, TERRACE DR 0.40) and Prospect Park 5.41 (WEST DR 1.96, EAST DR 1.46, CENTER DR 0.68, WELLHOUSE DR 0.60, S LAKE DR 0.48, E LAKE DR 0.11). THIS ENTRY CONTRADICTS ITS OWN SOURCE AND THAT HAS TO BE SAID FIRST. CSCL still models these as vehicular streets: EAST DR reads trafdir FT with posted_speed 20 and one travel lane, WEST DR reads TF/TW at 25, TERRACE DR reads TW at 25 with three lanes. Central Park's and Prospect Park's drives were closed to cars in 2018 and the street file has not caught up, so drawing them as walkable is OURS rather than the city's, and it is the one place in this registry where a display is deliberately allowed to outrun its source. THE EVIDENCE IS THE MAINTAINER'S, recorded as that and not dressed up: their decision of 2026-09-17, made as somebody who lives in New York City and named this park as the ground they can test on (#1432). @unvalidated against any published source - the city's own pages answer 403 from an agent sandbox, so nobody in this repository has read a primary document saying these are car-free. What would settle it: a DOT or NYC Parks page stating the closure, cited here by URL and date, or a CSCL republication that finally sets these rows to trafdir NV. WHY THE MECHANICAL ROUTE WAS TRIED FIRST AND REJECTED, so it is not tried again: `trafdir='NV'` is the city's own non-vehicular assertion and it finds only 3.59 miles inside all 2,061 park polygons - 0.24 of it in Prospect Park and NONE of Central Park's four drives - against 61.58 miles of park-interior street the city marks vehicular. nyc_dot_greenways carries none of these drives. NYC's Open Streets layer (uiay-nctu, 391 rows) is a per-day schedule of temporary closures on ordinary streets, not a permanent status, and reading a Sunday-morning closure as a walkable path would be worse than omitting one. So there is no NYC dataset that says which park drives are car-free, and a reviewed list is the honest mechanism rather than a lazy one. WHY EVERY OTHER PARK IS OUT, which was the maintainer's actual question: a rule admitting any street inside a park boundary takes 61.58 miles across 79 parks, and the measurement says what that buys - Pelham Bay's ORCHARD BEACH BUS TERMINAL LOOP and ORCHARD BEACH ROAD, Bronx Park's JUNGLE WORLD RD and BOTANICAL GARDEN RD (zoo and garden service roads), Flushing Meadows' SHEA RD and MERIDIAN RD, Forest Park's FOREST PARK DR, Highland Park's HIGHLAND BLVD. Those carry cars, and a hiker walked onto one is CLAUDE.md's third way this app can hurt somebody. Adding a park here is one reviewed row and a measurement, and the file is built so that is cheap.",
       "reaches_hikers": true,
       "licence_basis": "stated_by_org"
+    },
+    {
+      "key": "nps_trails",
+      "title": "Trails in National Park Service units (nationwide)",
+      "provider": "NPS",
+      "kind": "external_arcgis_layer",
+      "url": "https://mapservices.nps.gov/arcgis/rest/services/NationalDatasets/NPS_Public_Trails/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "National Park Service",
+      "steward_contact": "https://www.nps.gov/aboutus/contactus.htm",
+      "licence": "PUBLIC DOMAIN, on 17 U.S.C. 105 and the maintainer's adoption of it for usfs_trails (2026-09-02). A work prepared by an officer or employee of the U.S. Government as part of their official duties is not subject to domestic copyright, so there is nothing here for the agency to grant or withhold - which is why this is `stated_by_org` rather than `maintainer_authorisation`, on usfs_trails' own reasoning.",
+      "licence_basis": "stated_by_org",
+      "attribution": "National Park Service",
+      "name_field": "TRLNAME",
+      "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
+      "discovered_date": "2026-09-30",
+      "notes": "31,485 polyline features, 42 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:3857. maxRecordCount 2,000, which is what a paged fetch has to respect. A 504 from the server on the first probe attempt; the retry answered, and that is recorded as a retry rather than as a finding about the layer.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+    },
+    {
+      "key": "blm_trails",
+      "title": "BLM trails and routes (Natl GTLF public display)",
+      "provider": "BLM",
+      "kind": "external_arcgis_layer",
+      "url": "https://gis.blm.gov/arcgis/rest/services/transportation/BLM_Natl_GTLF_Public_Display/MapServer/7",
+      "trust": "authoritative",
+      "steward": "Bureau of Land Management",
+      "steward_contact": "https://www.blm.gov/contact",
+      "licence": "PUBLIC DOMAIN, on 17 U.S.C. 105 and the maintainer's adoption of it for usfs_trails (2026-09-02). A work prepared by an officer or employee of the U.S. Government as part of their official duties is not subject to domestic copyright, so there is nothing here for the agency to grant or withhold - which is why this is `stated_by_org` rather than `maintainer_authorisation`, on usfs_trails' own reasoning.",
+      "licence_basis": "stated_by_org",
+      "attribution": "Bureau of Land Management",
+      "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
+      "discovered_date": "2026-09-30",
+      "notes": "19,532 polyline features, 35 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:3857. maxRecordCount 2,000, which is what a paged fetch has to respect. NO NAME FIELD ON ANY OF THE 35, which is the finding this row exists to record and not an omission here: nothing in the layer names a trail, so every one of these 19,532 features reaches the export nameless and draws in the unnamed haze. `name_constant` is not the answer either - that key is for a layer that IS one trail (see pcta_centerline), and this is 19,532 of them. What would fix it is the BLM publishing a name column, which nobody has asked them for.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+    },
+    {
+      "key": "cotrex_trails",
+      "title": "Colorado trails statewide (COTREX)",
+      "provider": "Colorado Parks & Wildlife",
+      "kind": "external_arcgis_layer",
+      "url": "https://services3.arcgis.com/0jWpHMuhmHsukKE3/arcgis/rest/services/CPW_Trails_08222024/FeatureServer/2",
+      "trust": "authoritative",
+      "steward": "Colorado Parks & Wildlife",
+      "steward_contact": "https://cpw.state.co.us/aboutus/Pages/ContactUs.aspx",
+      "licence": "PUBLIC DOMAIN as a state or municipal publication, on the maintainer's assume-open decision of 2026-09-17 recorded in features/ORG_BULK_LOAD.md. The publisher states no terms that reach this use, and 17 U.S.C. 105 does not itself cover a state - so this is the weaker claim of the two and the row says so: nothing restricting use was FOUND, which is not the same as a grant. @unvalidated - what would settle it is the publisher answering the nominate form.",
+      "licence_basis": "stated_by_org",
+      "attribution": "Colorado Parks & Wildlife (COTREX)",
+      "name_field": "name",
+      "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
+      "discovered_date": "2026-09-30",
+      "notes": "96,897 polyline features, 44 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:3857. maxRecordCount 2,000, which is what a paged fetch has to respect. THE LARGEST SINGLE SOURCE IN THIS BATCH BY SOME WAY: 96,897 features is 71% of everything nearby_trails.geojson shipped before this batch (136,941 from eleven sources), from one state. COTREX aggregates 236 land managers, which is why.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+    },
+    {
+      "key": "wa_rco_trails",
+      "title": "Washington State Trails Database",
+      "provider": "Washington RCO",
+      "kind": "external_arcgis_layer",
+      "url": "https://services2.arcgis.com/TGEC20q86HQAeMS6/arcgis/rest/services/WA_RCO_Trails_Database_Public_View/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "Washington Recreation and Conservation Office",
+      "steward_contact": "https://rco.wa.gov/contact-us/",
+      "licence": "PUBLIC DOMAIN as a state or municipal publication, on the maintainer's assume-open decision of 2026-09-17 recorded in features/ORG_BULK_LOAD.md. The publisher states no terms that reach this use, and 17 U.S.C. 105 does not itself cover a state - so this is the weaker claim of the two and the row says so: nothing restricting use was FOUND, which is not the same as a grant. @unvalidated - what would settle it is the publisher answering the nominate form.",
+      "licence_basis": "stated_by_org",
+      "attribution": "Washington State Recreation and Conservation Office",
+      "name_field": "trail_name",
+      "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
+      "discovered_date": "2026-09-30",
+      "notes": "22,454 polyline features, 51 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:3857. maxRecordCount 2,000, which is what a paged fetch has to respect. THE CATALOGUE'S URL IS A LANDING PAGE, not this layer: https://geo.wa.gov/maps/a8e9bf1b77644e9bbff6996a27030f5a . Resolved through the ArcGIS Hub API; `url` above is what a fetch actually opens. The service carries a second layer, Trailheads, which this row does NOT register - waypoints are export_poi.py's question and nothing here fetches them. The catalogue recorded 0 miles for this organization; it holds 22,454 trail features.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+    },
+    {
+      "key": "utah_sgid_trails",
+      "title": "Utah trails and pathways (SGID)",
+      "provider": "Utah UGRC",
+      "kind": "external_arcgis_layer",
+      "url": "https://services1.arcgis.com/99lidPhWCzftIe9K/ArcGIS/rest/services/TrailsAndPathways/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "Utah Geospatial Resource Center",
+      "steward_contact": "https://gis.utah.gov/contact/",
+      "licence": "PUBLIC DOMAIN as a state or municipal publication, on the maintainer's assume-open decision of 2026-09-17 recorded in features/ORG_BULK_LOAD.md. The publisher states no terms that reach this use, and 17 U.S.C. 105 does not itself cover a state - so this is the weaker claim of the two and the row says so: nothing restricting use was FOUND, which is not the same as a grant. @unvalidated - what would settle it is the publisher answering the nominate form.",
+      "licence_basis": "stated_by_org",
+      "attribution": "Utah Geospatial Resource Center (SGID)",
+      "name_field": "PrimaryName",
+      "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
+      "discovered_date": "2026-09-30",
+      "notes": "48,132 polyline features, 27 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:3857. maxRecordCount 2,000, which is what a paged fetch has to respect.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+    },
+    {
+      "key": "ncta_trail",
+      "title": "North Country National Scenic Trail (NCTA's own layer)",
+      "provider": "NCTA",
+      "kind": "external_arcgis_layer",
+      "url": "https://services2.arcgis.com/UfGVyqUm4GHa2zrj/arcgis/rest/services/nct_public/FeatureServer/2",
+      "trust": "authoritative",
+      "steward": "North Country Trail Association",
+      "steward_contact": "https://northcountrytrail.org/contact/",
+      "licence": "NOTHING STATED EITHER WAY. The organization publishes no terms that reach this use, and this ships on the maintainer's own authorisation (2026-09-17). NOT A LICENCE FROM THEM and must never be rendered as one; a club inheriting this project has to re-confirm it in its own name.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "North Country Trail Association",
+      "name_field": "seg_name",
+      "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
+      "discovered_date": "2026-09-30",
+      "notes": "4,004 polyline features, 33 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:26916. maxRecordCount 1,000, which is what a paged fetch has to respect. THE CATALOGUE'S URL IS A LANDING PAGE, not this layer: https://gis.northcountrytrail.org/ . Resolved through the ArcGIS Hub API; `url` above is what a fetch actually opens. THE CATALOGUE HAS THIS ROW WRONG TWICE and both were found only by opening it. It lists `ogc_features` at gis.northcountrytrail.org; that host is an ArcGIS Hub SITE serving HTML, with no OGC API and no collections at all. NCTA's own layer is the `url` above, found through a Hub search of the organization's published datasets.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+    },
+    {
+      "key": "alaska_trails",
+      "title": "Alaska Trail Database",
+      "provider": "Alaska Trails",
+      "kind": "external_arcgis_layer",
+      "url": "https://services.arcgis.com/E4aLbdRuC2azR6Sw/arcgis/rest/services/Alaska_Trail_Database/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "Alaska Trails",
+      "steward_contact": "https://alaska-trails.org/contact/",
+      "licence": "NOTHING STATED EITHER WAY. The organization publishes no terms that reach this use, and this ships on the maintainer's own authorisation (2026-09-17). NOT A LICENCE FROM THEM and must never be rendered as one; a club inheriting this project has to re-confirm it in its own name.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Alaska Trails",
+      "name_field": "TrailName",
+      "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
+      "discovered_date": "2026-09-30",
+      "notes": "1,602 polyline features, 44 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). The layer reports NO spatial reference in its extent, its sourceSpatialReference or its spatialReference - so the CRS here is unrecorded rather than assumed, and a fetch has to read it off the response. maxRecordCount 2,000, which is what a paged fetch has to respect. The layer is AK_Trails_db_v6 and its last recorded edit is 2024-02-20, which is the oldest freshness marker in this batch.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+    },
+    {
+      "key": "pasda_dcnr_trails",
+      "title": "Pennsylvania DCNR land trails (PASDA)",
+      "provider": "PASDA",
+      "kind": "external_arcgis_layer",
+      "url": "https://mapservices.pasda.psu.edu/server/rest/services/pasda/DCNR/MapServer/5",
+      "trust": "authoritative",
+      "steward": "Pennsylvania Department of Conservation and Natural Resources",
+      "steward_contact": "https://www.dcnr.pa.gov/Pages/ContactUs.aspx",
+      "licence": "PUBLIC DOMAIN as a state or municipal publication, on the maintainer's assume-open decision of 2026-09-17 recorded in features/ORG_BULK_LOAD.md. The publisher states no terms that reach this use, and 17 U.S.C. 105 does not itself cover a state - so this is the weaker claim of the two and the row says so: nothing restricting use was FOUND, which is not the same as a grant. @unvalidated - what would settle it is the publisher answering the nominate form.",
+      "licence_basis": "stated_by_org",
+      "attribution": "PASDA / PA DCNR",
+      "name_field": "NAME01",
+      "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
+      "discovered_date": "2026-09-30",
+      "notes": "684 polyline features, 26 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:4269. maxRecordCount 1,000, which is what a paged fetch has to respect.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+    },
+    {
+      "key": "ct_deep_blue_blazed",
+      "title": "Connecticut Blue-Blazed Hiking Trails",
+      "provider": "CT DEEP",
+      "kind": "external_arcgis_layer",
+      "url": "https://services1.arcgis.com/FjPcSmEFuDYlIdKC/arcgis/rest/services/BlueBlazedHikingTrails/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "Connecticut Department of Energy and Environmental Protection",
+      "steward_contact": "https://portal.ct.gov/deep/about/contact-deep",
+      "licence": "PUBLIC DOMAIN as a state or municipal publication, on the maintainer's assume-open decision of 2026-09-17 recorded in features/ORG_BULK_LOAD.md. The publisher states no terms that reach this use, and 17 U.S.C. 105 does not itself cover a state - so this is the weaker claim of the two and the row says so: nothing restricting use was FOUND, which is not the same as a grant. @unvalidated - what would settle it is the publisher answering the nominate form.",
+      "licence_basis": "stated_by_org",
+      "attribution": "Connecticut DEEP",
+      "name_field": "TrailName",
+      "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
+      "discovered_date": "2026-09-30",
+      "notes": "351 polyline features, 9 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:2234. maxRecordCount 1,000, which is what a paged fetch has to respect. The Blue-Blazed system is maintained on the ground by the Connecticut Forest & Park Association; this layer is the state's publication of it, and the attribution above names the publisher rather than the club that does the work. CFPA is a separate catalogue row and is not registered here.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+    },
+    {
+      "key": "nc_mst_trail",
+      "title": "Mountains-to-Sea Trail (NC state-published layer)",
+      "provider": "NC State Parks",
+      "kind": "external_arcgis_layer",
+      "url": "https://services7.arcgis.com/SEKZuPu27jfvDQ5b/arcgis/rest/services/Mountains_to_Sea_Trail/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "North Carolina Division of Parks and Recreation",
+      "steward_contact": "https://www.ncparks.gov/contact-us",
+      "licence": "PUBLIC DOMAIN as a state or municipal publication, on the maintainer's assume-open decision of 2026-09-17 recorded in features/ORG_BULK_LOAD.md. The publisher states no terms that reach this use, and 17 U.S.C. 105 does not itself cover a state - so this is the weaker claim of the two and the row says so: nothing restricting use was FOUND, which is not the same as a grant. @unvalidated - what would settle it is the publisher answering the nominate form.",
+      "licence_basis": "stated_by_org",
+      "attribution": "North Carolina Division of Parks and Recreation",
+      "name_field": "SYSTEMNAME",
+      "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
+      "discovered_date": "2026-09-30",
+      "notes": "328 polyline features, 33 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:32119. maxRecordCount 2,000, which is what a paged fetch has to respect. Published by the state rather than by Friends of the MST, who maintain it; the Friends are their own catalogue row and are not registered here.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+    },
+    {
+      "key": "azgeo_arizona_trail",
+      "title": "Arizona National Scenic Trail (AZGeo)",
+      "provider": "AZGeo",
+      "kind": "external_arcgis_layer",
+      "url": "https://services3.arcgis.com/IKBBLZOXy58PXgpl/arcgis/rest/services/Arizona_National_Scenic_Trail_Feature_Layers_view/FeatureServer/5",
+      "trust": "authoritative",
+      "steward": "Arizona State Land Department / AZGeo Data Hub",
+      "steward_contact": "https://azgeo.az.gov/",
+      "licence": "PUBLIC DOMAIN as a state or municipal publication, on the maintainer's assume-open decision of 2026-09-17 recorded in features/ORG_BULK_LOAD.md. The publisher states no terms that reach this use, and 17 U.S.C. 105 does not itself cover a state - so this is the weaker claim of the two and the row says so: nothing restricting use was FOUND, which is not the same as a grant. @unvalidated - what would settle it is the publisher answering the nominate form.",
+      "licence_basis": "stated_by_org",
+      "attribution": "AZGeo Data Hub",
+      "name_field": "Name",
+      "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
+      "discovered_date": "2026-09-30",
+      "notes": "145 polyline features, 10 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:4326. maxRecordCount 1,000, which is what a paged fetch has to respect. THE CATALOGUE'S URL IS A LANDING PAGE, not this layer: https://azgeo-open-data-agic.hub.arcgis.com/datasets/azgeo::arizona-trail-association-connector-trails . Resolved through the ArcGIS Hub API; `url` above is what a fetch actually opens.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+    },
+    {
+      "key": "tahoe_rim_trail",
+      "title": "Tahoe Rim Trail",
+      "provider": "TRTA",
+      "kind": "external_arcgis_layer",
+      "url": "https://services7.arcgis.com/NchnBpgTjegMVinZ/arcgis/rest/services/TRT_System_Fixed/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "Tahoe Rim Trail Association",
+      "steward_contact": "https://tahoerimtrail.org/contact-us/",
+      "licence": "NOTHING STATED EITHER WAY. The organization publishes no terms that reach this use, and this ships on the maintainer's own authorisation (2026-09-17). NOT A LICENCE FROM THEM and must never be rendered as one; a club inheriting this project has to re-confirm it in its own name.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Tahoe Rim Trail Association",
+      "name_field": "Name",
+      "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
+      "discovered_date": "2026-09-30",
+      "notes": "132 polyline features, 6 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:3857. maxRecordCount 2,000, which is what a paged fetch has to respect. THE CATALOGUE RECORDS 'free with registration, no stated licence', and this layer answered an anonymous probe with no registration at all. Those two do not agree, and the row keeps the weaker reading: the service being open does not mean the organization intends it to be, which is exactly what `maintainer_authorisation` is for. @unvalidated - what would settle it is TRTA answering.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+    },
+    {
+      "key": "duluth_superior_hiking_trail",
+      "title": "Superior Hiking Trail (Duluth section)",
+      "provider": "City of Duluth",
+      "kind": "external_arcgis_layer",
+      "url": "https://utility.arcgis.com/usrsvcs/servers/085f4309eec943a8998e801f7849b1b8/rest/services/Parks/TrailsDuluthService/MapServer/0",
+      "trust": "authoritative",
+      "steward": "City of Duluth",
+      "steward_contact": "https://duluthmn.gov/city-directory/",
+      "licence": "PUBLIC DOMAIN as a state or municipal publication, on the maintainer's assume-open decision of 2026-09-17 recorded in features/ORG_BULK_LOAD.md. The publisher states no terms that reach this use, and 17 U.S.C. 105 does not itself cover a state - so this is the weaker claim of the two and the row says so: nothing restricting use was FOUND, which is not the same as a grant. @unvalidated - what would settle it is the publisher answering the nominate form.",
+      "licence_basis": "stated_by_org",
+      "attribution": "City of Duluth Open Data",
+      "name_field": "Name",
+      "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
+      "discovered_date": "2026-09-30",
+      "notes": "67 polyline features, 34 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:26915. maxRecordCount 1,000, which is what a paged fetch has to respect. THE CATALOGUE'S URL IS A LANDING PAGE, not this layer: https://hub.arcgis.com/datasets/DuluthMN::superior-hiking-trail . Resolved through the ArcGIS Hub API; `url` above is what a fetch actually opens. The Duluth section only - the Superior Hiking Trail runs some 300 miles and this is the city's own 67 features. The Superior Hiking Trail Association is a separate catalogue row and is not registered here.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+    },
+    {
+      "key": "massgis_long_distance_trails",
+      "title": "Massachusetts long-distance trails (MassGIS)",
+      "provider": "MassGIS",
+      "kind": "external_arcgis_layer",
+      "url": "https://arcgisserver.digital.mass.gov/arcgisserver/rest/services/AGOL/Long_Distance_Trails/MapServer/0",
+      "trust": "authoritative",
+      "steward": "MassGIS (Bureau of Geographic Information)",
+      "steward_contact": "https://www.mass.gov/orgs/massgis-bureau-of-geographic-information",
+      "licence": "PUBLIC DOMAIN as a state or municipal publication, on the maintainer's assume-open decision of 2026-09-17 recorded in features/ORG_BULK_LOAD.md. The publisher states no terms that reach this use, and 17 U.S.C. 105 does not itself cover a state - so this is the weaker claim of the two and the row says so: nothing restricting use was FOUND, which is not the same as a grant. @unvalidated - what would settle it is the publisher answering the nominate form.",
+      "licence_basis": "stated_by_org",
+      "attribution": "MassGIS",
+      "name_field": "NAME",
+      "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
+      "discovered_date": "2026-09-30",
+      "notes": "32 polyline features, 8 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:26986. maxRecordCount 2,000, which is what a paged fetch has to respect.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+    },
+    {
+      "key": "pcta_centerline",
+      "title": "Pacific Crest National Scenic Trail (PCTA centerline)",
+      "provider": "PCTA",
+      "kind": "external_arcgis_layer",
+      "url": "https://services5.arcgis.com/ZldHa25efPFpMmfB/arcgis/rest/services/PCTA_Centerline/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "Pacific Crest Trail Association",
+      "steward_contact": "https://www.pcta.org/contact-us/",
+      "licence": "CC BY 4.0, which PCTA states. Attribution is REQUIRED and map/credits.ts carries it; the licence permits redistribution and adaptation on that condition.",
+      "licence_basis": "stated_by_org",
+      "attribution": "Pacific Crest Trail Association",
+      "name_constant": "Pacific Crest Trail",
+      "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
+      "discovered_date": "2026-09-30",
+      "notes": "1 polyline features, 2 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:4326. maxRecordCount 2,000, which is what a paged fetch has to respect. NO NAME FIELD: the layer carries OBJECTID and Shape__Length and nothing else, so `name_constant` names it (#1778, declared_name). CHECKED BEFORE THE NAME WAS WRITTEN, 2026-09-30: the single feature is 2,653 miles of line running from 32.59 deg N to 49.00 deg N - the Mexican border to the Canadian - against the PCT's published 2,650. There is no other trail that could be.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+    },
+    {
+      "key": "cdtc_centerline",
+      "title": "Continental Divide National Scenic Trail (CDTC)",
+      "provider": "CDTC",
+      "kind": "external_arcgis_layer",
+      "url": "https://services.wygisc.org/HostGIS/rest/services/GeoHub/CDTrailCoalition/MapServer/0",
+      "trust": "authoritative",
+      "steward": "Continental Divide Trail Coalition",
+      "steward_contact": "https://continentaldividetrail.org/contact-us/",
+      "licence": "NOTHING STATED EITHER WAY. The organization publishes no terms that reach this use, and this ships on the maintainer's own authorisation (2026-09-17). NOT A LICENCE FROM THEM and must never be rendered as one; a club inheriting this project has to re-confirm it in its own name.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Continental Divide Trail Coalition",
+      "name_constant": "Continental Divide Trail",
+      "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
+      "discovered_date": "2026-09-30",
+      "notes": "8 polyline features, 5 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:3857. maxRecordCount 2,000, which is what a paged fetch has to respect. THE CATALOGUE'S URL IS A LANDING PAGE, not this layer: https://hub.arcgis.com/datasets/79de12d605ca401492734e3952455a8e_0 . Resolved through the ArcGIS Hub API; `url` above is what a fetch actually opens. NO NAME FIELD - the five columns are OBJECTID, Shape, STATE, Shape_Leng and Shape_Length - so `name_constant` names it. CHECKED BEFORE THE NAME WAS WRITTEN, 2026-09-30: the eight features total 3,060 miles from 31.50 deg N to 49.05 deg N, Mexico to Canada, against the CDT's published 3,028. TWO THINGS A LATER READER SHOULD NOT HAVE TO RE-FETCH: the layer is named ContinentalDivideTrail2016 and is hosted by the Wyoming Geographic Information Science Center on CDTC's behalf, so the vintage is 2016 and the host is not the steward; and its STATE column is inconsistent - both 'CO' and 'Colorado' appear, and both 'NM' and 'New Mexico' - which is why nothing here reads it.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+    },
+    {
+      "key": "wi_ice_age_trail",
+      "title": "Ice Age National Scenic Trail in Wisconsin (WDNR)",
+      "provider": "Wisconsin DNR",
+      "kind": "external_arcgis_layer",
+      "url": "https://dnrmaps.wi.gov/arcgis/rest/services/LF_DML/LF_DNR_REC_OPPS_WTM_Ext/MapServer/2",
+      "trust": "authoritative",
+      "steward": "Wisconsin Department of Natural Resources",
+      "steward_contact": "https://dnr.wisconsin.gov/contact",
+      "licence": "PUBLIC DOMAIN as a state or municipal publication, on the maintainer's assume-open decision of 2026-09-17 recorded in features/ORG_BULK_LOAD.md. The publisher states no terms that reach this use, and 17 U.S.C. 105 does not itself cover a state - so this is the weaker claim of the two and the row says so: nothing restricting use was FOUND, which is not the same as a grant. @unvalidated - what would settle it is the publisher answering the nominate form.",
+      "licence_basis": "stated_by_org",
+      "attribution": "Wisconsin Department of Natural Resources",
+      "name_constant": "Ice Age Trail",
+      "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
+      "discovered_date": "2026-09-30",
+      "notes": "1 polyline features, 3 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:3071. maxRecordCount 2,000, which is what a paged fetch has to respect. THE CATALOGUE'S URL IS A LANDING PAGE, not this layer: https://data-wi-dnr.opendata.arcgis.com/datasets/wi-dnr::ice-age-trail . Resolved through the ArcGIS Hub API; `url` above is what a fetch actually opens. NO NAME FIELD across its three columns, so `name_constant` names it - the layer is itself called 'Ice Age Trail'. CHECKED BEFORE THE NAME WAS WRITTEN, 2026-09-30: the single feature is 711 miles of line inside Wisconsin. THAT IS NOT THE WHOLE TRAIL and the name must not be read as claiming it is: the Ice Age NST is planned at about 1,200 miles, and 711 is the built and blazed segments. A hiker reading this line is reading the built trail, which is the useful half, but the gap is real and nothing here marks where the connecting routes run.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
     }
   ],
   "usdm_licence": {
@@ -1190,7 +1489,7 @@
     "open_question": "Whether a state agency wants a support line in a third-party app at all, and whether the Natural Heritage Trust wants to be named as the recipient here, are both unasked. `donate_surfaces` is deliberately the narrowest of the three - the sources screen only - until somebody at OPRHP says otherwise, because the trail card is where a hiker is looking at a trail rather than at where the map came from."
   },
   "org_marks": {
-    "_comment": "Whether each organization has granted OurHike the right to SHIP ITS MARK, and the answer for every one of them today is no (#933). WHY THIS IS A LICENCE QUESTION AND NOT A DESIGN ONE: OurHike is offline-first, so an org's logo is not fetched when a card renders - it is copied into the download and carried on a hiker's phone, potentially for months, inside an application distributed under AGPL-3.0. That is redistribution, and it needs permission in writing the same way the trail geometry does. A logo is usually held MORE tightly than the data: trademark rather than copyright, with organizations that care a great deal about how their mark is used. WHY THE BLOCK EXISTS WHILE IT IS EMPTY OF GRANTS. The record has to be older than the first asset, or the first asset arrives with the question already forgotten - which is exactly how this repository already ships one trademarked third-party mark whose permission is recorded in a source comment and nowhere else (client/src/lib/trails.ts, the A.T. marker, see the ATC row below). tests/test_org_marks.py is what makes this block bite: it derives the org list from the registry's own providers, so a newly registered organization cannot slip past by not being added to a second place, and it FAILS if a mark asset exists in the client tree for an org whose state here is not `granted`. UNTIL A GRANT ARRIVES, THE SLOT RENDERS EMPTY - never a placeholder mark, never an initial, never a generated shape. An organization's identity is the one thing in this app that must not be approximated, and a visibly empty slot is also the thing most likely to prompt somebody to go and ask.",
+    "_comment": "Whether each organization has granted OurHike the right to SHIP ITS OWN ORG MARK - its logo on a steward card - and the answer for every one of them today is no (#933). A TRAIL MARK is a different question with a different answer, and the two were run together until the maintainer's decision of 2026-09-30; see `trail_marks` below. WHY AN ORG MARK IS STILL A LICENCE QUESTION: OurHike is offline-first, so an org's logo is not fetched when a card renders - it is copied into the download and carried on a hiker's phone, potentially for months, inside an application distributed under AGPL-3.0. That is redistribution. A logo is usually held MORE tightly than the data: trademark rather than copyright, with organizations that care a great deal about how their mark is used, and a steward card is the surface where a logo reads as endorsement. WHY THE BLOCK EXISTS WHILE IT IS EMPTY OF GRANTS. The record has to be older than the first asset, or the first asset arrives with the question already forgotten. tests/test_org_marks.py is what makes this block bite: it derives the org list from the registry's own providers, so a newly registered organization cannot slip past by not being added to a second place, and it FAILS if an ORG mark asset exists in the client tree for an org whose state here is not `granted`. AN ORG MARK SLOT RENDERS EMPTY UNTIL A GRANT ARRIVES - never a placeholder mark, never an initial, never a generated shape. That last sentence used to govern trail marks too, and the maintainer reversed it on 2026-09-30: see `trail_marks._comment` for what replaced it and why.",
     "state_vocabulary": {
       "not_asked": "Nobody has put the question to this organization. The default, and not a judgement about whether they would say yes.",
       "asked": "The ask has been sent and no answer has come back. Carries `asked_date` so a silence can be aged rather than forgotten.",
@@ -1263,10 +1562,6 @@
         "state": "not_asked",
         "note": "Not asked, and not close to being asked - no mark of theirs is in the tree and nothing of theirs ships, so there is no surface for one to appear on. The licence question in pipeline/WHITE_MOUNTAINS_SOURCE_SURVEY.md section 6(a) comes first; a mark ask would ride along with it if the data ever ships."
       },
-      "NH GRANIT": {
-        "state": "not_asked",
-        "note": "Not asked, and not close to being asked - no mark of theirs is in the tree and nothing of theirs ships, so there is no surface for one to appear on. The licence question in pipeline/WHITE_MOUNTAINS_SOURCE_SURVEY.md section 6(a) comes first; a mark ask would ride along with it if the data ever ships."
-      },
       "NJDEP": {
         "state": "not_asked",
         "note": "Not asked. No mark of theirs is in the tree and neither of their layers ships, so there is no surface for one to appear on. Their Data Distribution Agreement is the nearer question and it says nothing about marks - condition 4 warns that NJDEP makes no warranty the data is free of trademark claims, which is a disclaimer about OTHERS' marks rather than a licence of their own (njdep_licence). A mark ask would ride along with the licence decision in #1293 if the data ever ships."
@@ -1278,7 +1573,459 @@
       "NYC DOT": {
         "state": "not_asked",
         "note": "Not asked, on the same footing and for the same reason as NYC Parks above - the statute opens the data, not the mark."
+      },
+      "NPS": {
+        "state": "not_asked",
+        "note": "Not asked, and the ask is more complicated than for a club. A federal agency's data is public domain under 17 U.S.C. 105, and its SEAL OR INSIGNIA is not - 18 U.S.C. 701 is a different statute answering a different question, which is the distinction sources.json's own org_marks._the_nst_shield_question records. So the licence reading that lets the trail lines ship says nothing at all about the emblem."
+      },
+      "BLM": {
+        "state": "not_asked",
+        "note": "Not asked, and the ask is more complicated than for a club. A federal agency's data is public domain under 17 U.S.C. 105, and its SEAL OR INSIGNIA is not - 18 U.S.C. 701 is a different statute answering a different question, which is the distinction sources.json's own org_marks._the_nst_shield_question records. So the licence reading that lets the trail lines ship says nothing at all about the emblem."
+      },
+      "Colorado Parks & Wildlife": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "Washington RCO": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "Utah UGRC": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "NCTA": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "Alaska Trails": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "PASDA": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "CT DEEP": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "NC State Parks": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "AZGeo": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "TRTA": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "City of Duluth": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "MassGIS": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "PCTA": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "CDTC": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "Wisconsin DNR": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
       }
+    },
+    "claim_vocabulary": {
+      "unclaimed": "The steward has not been in touch about this mark. The default. It does NOT mean nobody asked and it does NOT mean permission - it means OurHike is identifying their trail with their own marker and has left them an obvious way to take it back.",
+      "claimed": "The steward has been in touch and is content for the mark to ship. Carries `claimed_date` and `claimed_via` so the word rests on something. Not the same as an org-mark grant above, which is a different asset on a different surface.",
+      "withdrawn": "The steward asked for the mark to come out. The row STAYS - deleting it would let the next sweep re-add the file - and `test_a_withdrawn_mark_is_gone_from_the_tree` fails while the asset is still there. Carries `withdrawn_date` and `withdrawn_reason`."
+    },
+    "trail_marks": {
+      "_comment": "THE STEWARD'S OWN TRAIL MARKER, SHIPPED BY DEFAULT. The maintainer's decision of 2026-09-30, reversing this file's earlier rule that a mark slot renders empty until a grant arrives. WHAT CHANGED AND WHY. The earlier rule was written for ORG marks - a logo on a steward card, where it reads as endorsement - and was then applied to trail markers too, which is a different thing on a different surface. A trail marker on a map badge identifies WHICH TRAIL THE LINE IS. That is what the marker is for: it is the same symbol nailed to the trees a hiker is walking past, and every paper map, guidebook and trail app shows it for the same reason. Withholding it did not protect anybody - it left a hiker unable to tell the A.T. from the six other red lines on the screen, which is the first of the four ways this app can hurt somebody (CLAUDE.md: lost). OPT-OUT, NOT OPT-IN. Every mark here ships unclaimed. A steward who wants it gone says so and the row goes `withdrawn`, which turns the suite red until the file is out of the tree - so the promise is enforced by CI rather than by anybody remembering. A steward who is happy says so and the row goes `claimed`. Neither state is required for the mark to ship, and `unclaimed` is not a claim that anybody granted anything. WHAT THIS DOES NOT COVER. It is the trail's marker, on the trail-identifying surfaces this app draws - the map badge and the line sheet - at the ~18-20px these render at. Not an org logo on a steward card (that is `orgs` above, still opt-in). Not merchandise, not marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward. TWO ROWS ARE ABSENT ON PURPOSE AND ONE ARRIVED BY A DIFFERENT DOOR. `pohe` and `natr` ship nothing: their markers are prescribed in the Federal Register and are federal insignia under 18 U.S.C. 701. AN EARLIER VERSION OF THIS PARAGRAPH SAID 'one row' AND NAMED THE PACIFIC NORTHWEST AND NORTH COUNTRY AS THE PAIR CARRYING ASSOCIATION MARKS INSTEAD, AND BOTH HALVES WERE WRONG - the count was two, and the Pacific Northwest has no Federal Register notice at all. What is true: North Country ships NCTA's blue map icon and Pacific Northwest ships PNTA's roundel, neither of which is a prescribed marker. See `_the_nst_shield_question` below for the part that is NOT resolved. THE PCT ROW IS NOT PCTA'S FILE AND MUST NOT BE READ AS ONE. PCTA's media page still states in terms that the PCT emblem, the PCT diamond and the PCTA logo each need written permission, and nobody has written - nothing here touches that. What ships is the US FOREST SERVICE's own copy of the trail emblem, off the agency that administers the trail, so the mark rests on 17 U.S.C. 105 rather than on the opt-out decision above. See the `pct` row for the three separate questions that answer had to clear, one of which is not a copyright question at all. Provenance for every row is pipeline/reference/trail_marks.json, which holds the URL each was fetched from, its pixel size and its measured ink at 18px. The images here are resized copies - see `scope` on each row.",
+      "azt": {
+        "asset": "client/src/design-system/assets/trails/azt-logo.png",
+        "trail": "Arizona Trail",
+        "steward": "Arizona Trail Association",
+        "source_url": "https://aztrailmedia.s3.us-west-1.amazonaws.com/wp-content/uploads/2017/12/cropped-AZTrail-Logo-SiteIcon-180x180.jpg",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "bartram": {
+        "asset": "client/src/design-system/assets/trails/bartram-logo.png",
+        "trail": "Bartram Trail",
+        "steward": "Bartram Trail Conference",
+        "source_url": "https://bartramtrail.org/Resources/Pictures/BTC_logo2.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "bmt": {
+        "asset": "client/src/design-system/assets/trails/bmt-logo.png",
+        "trail": "Benton MacKaye Trail",
+        "steward": "Benton MacKaye Trail Association",
+        "source_url": "https://bmta.org/wp-content/uploads/2020/01/cropped-favicon-192x192.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "buckeye": {
+        "asset": "client/src/design-system/assets/trails/buckeye-logo.svg",
+        "trail": "Buckeye Trail",
+        "steward": "Buckeye Trail Association",
+        "source_url": "https://buckeyetrail.org/media/site/5f6f0e4a9e-1760709600/buckeye-trail-association-logo.svg",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "catamount": {
+        "asset": "client/src/design-system/assets/trails/catamount-logo.png",
+        "trail": "Catamount Trail",
+        "steward": "Catamount Trail Association",
+        "source_url": "https://catamounttrail.org/wp-content/uploads/cropped-cta-favicon-180x180.jpg",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "cdt": {
+        "asset": "client/src/design-system/assets/trails/cdt-logo.png",
+        "trail": "Continental Divide Trail",
+        "steward": "Continental Divide Trail Coalition",
+        "source_url": "https://cdtcoalition.org/wp-content/uploads/cropped-cdtc-logo-icon-192x192.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "cohos": {
+        "asset": "client/src/design-system/assets/trails/cohos-logo.png",
+        "trail": "Cohos Trail",
+        "steward": "The Cohos Trail Association",
+        "source_url": "https://www.cohostrail.org/wp-content/uploads/2020/11/cohos-trail-logo-e1579145800306.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "condor": {
+        "asset": "client/src/design-system/assets/trails/condor-logo.png",
+        "trail": "Condor Trail",
+        "steward": "Condor Trail Association",
+        "source_url": "https://www.condortrail.com/wp-content/uploads/2018/08/logo144x144.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "cumberland": {
+        "asset": "client/src/design-system/assets/trails/cumberland-logo.svg",
+        "trail": "Cumberland Trail",
+        "steward": "Cumberland Trail / Tennessee State Parks",
+        "source_url": "https://cumberlandtrail.org/wp-content/uploads/2026/04/CTC-Circle-Logo-CC.svg",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "flt": {
+        "asset": "client/src/design-system/assets/trails/flt-logo.png",
+        "trail": "Finger Lakes Trail",
+        "steward": "Finger Lakes Trail Conference",
+        "source_url": "https://fingerlakestrail.org/wp-content/uploads/2017/12/flt_logo_trees-new.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "fnst": {
+        "asset": "client/src/design-system/assets/trails/fnst-logo.png",
+        "trail": "Florida Trail",
+        "steward": "Florida Trail Association",
+        "source_url": "https://floridatrail.org/wp-content/uploads/2021/04/FTA-logo.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "foothills": {
+        "asset": "client/src/design-system/assets/trails/foothills-logo.png",
+        "trail": "Foothills Trail",
+        "steward": "Foothills Trail Conservancy",
+        "source_url": "https://foothillstrail.org/wp-content/uploads/2016/08/logo1.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "get": {
+        "asset": "client/src/design-system/assets/trails/get-logo.png",
+        "trail": "Grand Enchantment Trail",
+        "steward": "none - a route with no organisation",
+        "source_url": "https://www.simblissity.net/images/GET/get%20monogram1_small.JPG",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "iat": {
+        "asset": "client/src/design-system/assets/trails/iat-logo.png",
+        "trail": "Ice Age Trail",
+        "steward": "Ice Age Trail Alliance",
+        "source_url": "https://www.iceagetrail.org/wp-content/uploads/NST-Logo-1.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "long-trail": {
+        "asset": "client/src/design-system/assets/trails/long-trail-logo.svg",
+        "trail": "Long Trail",
+        "steward": "Green Mountain Club",
+        "source_url": "https://greenmountainclub.org/wp-content/uploads/2025/09/gmc-logo-svg.svg",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "loyalsock": {
+        "asset": "client/src/design-system/assets/trails/loyalsock-logo.png",
+        "trail": "Loyalsock Trail",
+        "steward": "Keystone Trails Association",
+        "source_url": "https://alpineclubofwilliamsport.com/wp-content/uploads/2017/06/lt-blaze-transparentbg.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "lsht": {
+        "asset": "client/src/design-system/assets/trails/lsht-logo.png",
+        "trail": "Lone Star Hiking Trail",
+        "steward": "Lone Star Hiking Trail Club",
+        "source_url": "https://images.clubexpress.com/738078/graphics/clublogo_150x150_noBackground_1062358180.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "mason-dixon": {
+        "asset": "client/src/design-system/assets/trails/mason-dixon-logo.png",
+        "trail": "Mason-Dixon Trail",
+        "steward": "Keystone Trails Association",
+        "source_url": "https://static.wixstatic.com/media/ffe8eb_98df0e09aa174e9f8b301fa9dce9a5c5~mv2.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "mdh": {
+        "asset": "client/src/design-system/assets/trails/mdh-logo.png",
+        "trail": "Maah Daah Hey Trail",
+        "steward": "Maah Daah Hey Trail Association",
+        "source_url": "https://mdhta.com/wp-content/uploads/2020/05/cropped-favicon-1-2-270x270.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "mogollon": {
+        "asset": "client/src/design-system/assets/trails/mogollon-logo.png",
+        "trail": "Mogollon Rim Trail",
+        "steward": "none - a route with no organisation",
+        "source_url": "https://www.simblissity.net/images/MRT_logo_s.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "nct": {
+        "asset": "client/src/design-system/assets/trails/nct-logo.png",
+        "trail": "North Country Trail",
+        "steward": "North Country Trail Association",
+        "source_url": "https://northcountrytrail.org/wp-content/uploads/2026/07/map-emblem-icon-2026-e1784225089251.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "net": {
+        "asset": "client/src/design-system/assets/trails/net-logo.png",
+        "trail": "New England Trail",
+        "steward": "Connecticut Forest & Park Association",
+        "source_url": "https://newenglandtrail.org/wp-content/uploads/2019/12/net-logo.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "npt": {
+        "asset": "client/src/design-system/assets/trails/npt-logo.png",
+        "trail": "Northville-Placid Trail",
+        "steward": "Adirondack Mountain Club",
+        "source_url": "https://nptrail.org/wp-content/uploads/2016/01/cropped-cropped-cropped-cropped-images.jpg",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "oht": {
+        "asset": "client/src/design-system/assets/trails/oht-logo.png",
+        "trail": "Ozark Highlands Trail",
+        "steward": "Ozark Highlands Trail Association",
+        "source_url": "https://ozarkhighlandstrail.com/wp-content/uploads/2022/09/cropped-icon-1-192x192.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "ouachita": {
+        "asset": "client/src/design-system/assets/trails/ouachita-logo.png",
+        "trail": "Ouachita Trail",
+        "steward": "Friends of the Ouachita Trail",
+        "source_url": "https://www.friendsoftheouachita.org/wp-content/uploads/2025/05/favicon.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "ozark-trail": {
+        "asset": "client/src/design-system/assets/trails/ozark-trail-logo.png",
+        "trail": "Ozark Trail",
+        "steward": "Ozark Trail Association",
+        "source_url": "https://ozarktrail.com/wp-content/uploads/2018/01/ozark_trail_association_iphone_icon.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "palmetto": {
+        "asset": "client/src/design-system/assets/trails/palmetto-logo.png",
+        "trail": "Palmetto Trail",
+        "steward": "Palmetto Conservation Foundation",
+        "source_url": "https://files.aptuitivcdn.com/P8Y6wXyOZ7-1806/images/favicon/apple-touch-icon.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "pct": {
+        "asset": "client/src/design-system/assets/trails/pct-logo.png",
+        "trail": "Pacific Crest Trail",
+        "steward": "Pacific Crest Trail Association",
+        "source_url": "https://www.fs.usda.gov/sites/nfs/files/trails/pacific-crest-nst/image/PCT%20logo.jpg",
+        "fetched": "2026-09-30",
+        "basis": "PUBLIC DOMAIN, not the opt-out decision the other 33 rows carry. The US Forest Service administers the Pacific Crest National Scenic Trail and publishes this emblem on its own trail page; a work of the US government carries no copyright (17 U.S.C. 105), which is the same basis reference/trail_orgs.json's `usfs` row already records for this publisher's data. THREE QUESTIONS, AND THE FIRST ONE ONLY ANSWERS COPYRIGHT. (1) Copyright: answered above. (2) Official insignia, which 17 U.S.C. 105 does NOT answer - 18 U.S.C. 701 protects trail markers prescribed by the Interior Department, and that is why `pohe` and `natr` ship nothing. (An earlier version of this sentence also claimed the North Country and New England rows carry their associations' marks rather than the prescribed ones. North Country does - NCTA's blue map icon. NEW ENGLAND DOES NOT: `net-logo.png` is the NST shield reading 'NEW ENGLAND TRAIL / NATIONAL SCENIC TRAIL', and New England has a 2021-06-28 notice. Corrected 2026-09-30 by review; see `_the_nst_shield_question` above, which is the unresolved part this row must not be read as having settled.) MEASURED 2026-09-30 against the Federal Register API: all 25 'Official Trail Marker' notices were listed, the four trails this file already treats as protected are each on it (Natchez Trace and North Country 2000-03-28, Potomac Heritage 2001-10-25, New England 2021-06-28), and THERE IS NO PACIFIC CREST NOTICE - consistent with those notices being Interior's and the PCT being Agriculture's. Re-run the query rather than trusting this sentence: GET https://www.federalregister.gov/api/v1/documents.json with conditions[term]=\"official trail marker\", order=oldest, and read every title. SCOPE, said plainly: this establishes that the PCT is not on that list. It does NOT establish anything about the other 20 notices or the marks that ship against them. (3) Trademark: PCTA asserts marks in the emblem and this ships as nominative identification of the trail the line actually is, withdrawable at `claim_state` exactly like every other row. Not a grant from this organization and must not be read as one - nor from the Forest Service, whose publication answers copyright and grants nothing else.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). The Forest Service serves a 253x289 JPEG on a white page background; the copy in the tree is that file with the background flood-filled to transparency from its corners, trimmed to the emblem, padded square and resized to 96px. No recolouring, no cropping into the artwork, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed",
+        "rejected_alternative": "Wikimedia Commons File:Pct-logo.svg, a 512x512 vector of the same emblem, is the cleaner image and was not taken. It carries {{PD-USGov-Interior-NPS}} on the emblem and {{self|cc-by-sa-4.0}} on the vector by a personal Commons account. Share-alike would need an attribution surface, and this repository's one discharge for CC BY-SA is the credit pill rendered on the photo it licenses (lib/heroPhotos.ts) - an 18px badge cannot carry one. The personal account is the maintainer's standing rule of 2026-09-26 besides. Rendered side by side at 18px the two are indistinguishable, so the licence decided it."
+      },
+      "pnnst": {
+        "asset": "client/src/design-system/assets/trails/pnnst-logo.png",
+        "trail": "Pacific Northwest Trail",
+        "steward": "Pacific Northwest Trail Association",
+        "source_url": "https://pnt-prod.s3.amazonaws.com/wp-content/uploads/PNTA-Logo-2017-01-1024x1024.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "ridge-trail": {
+        "asset": "client/src/design-system/assets/trails/ridge-trail-logo.png",
+        "trail": "Bay Area Ridge Trail",
+        "steward": "Bay Area Ridge Trail Council",
+        "source_url": "https://ridgetrail.org/wp-content/uploads/2024/06/cropped-BayAreaRidgeTrail_FINAL-LOGO_PMS_outlined_white-background-2.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "sheltowee": {
+        "asset": "client/src/design-system/assets/trails/sheltowee-logo.png",
+        "trail": "Sheltowee Trace",
+        "steward": "Sheltowee Trace Association",
+        "source_url": "https://images.squarespace-cdn.com/content/v1/5f656f5d5a92157dd17414ac/1614824980218-WB89JT7X4L2SHLT1LK75/favicon.ico",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "sht": {
+        "asset": "client/src/design-system/assets/trails/sht-logo.png",
+        "trail": "Superior Hiking Trail",
+        "steward": "Superior Hiking Trail Association",
+        "source_url": "https://superiorhiking.org/wp-content/uploads/2026/03/SHT-Favicon_SHT-Favicon-512px-2.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "standing-stone": {
+        "asset": "client/src/design-system/assets/trails/standing-stone-logo.png",
+        "trail": "Standing Stone Trail",
+        "steward": "Standing Stone Trail Club",
+        "source_url": "https://static.wixstatic.com/media/30a84d_82ba0f9b302746d9979610842056c83d~mv2.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "tahoe-rim": {
+        "asset": "client/src/design-system/assets/trails/tahoe-rim-logo.png",
+        "trail": "Tahoe Rim Trail",
+        "steward": "Tahoe Rim Trail Association",
+        "source_url": "https://tahoerimtrail.org/wp-content/uploads/2019/12/cropped-TRTA-logo-main-big-no-white-boarder-192x192.png",
+        "fetched": "2026-09-29",
+        "basis": "Maintainer's decision of 2026-09-30: a trail's own marker identifies the trail on a map and ships by default, with the steward able to claim or withdraw it at any time (see claim_vocabulary). Not a grant from this organization and must not be read as one.",
+        "scope": "This trail's own marker, on the trail-identifying surfaces this app draws (the map badge at 18px and the line sheet at 20px). Resized to fit those; no recolouring, no cropping, no redrawing. Not an org logo on a steward card, not merchandise or marketing, not a claim of affiliation or endorsement, and not a licence to sublicense onward.",
+        "recorded_date": "2026-09-30",
+        "claim_state": "unclaimed"
+      },
+      "_the_nst_shield_question": "@unvalidated WHICH SHIPPED MARKS ARE THE PRESCRIBED NATIONAL SCENIC TRAIL MARKER, AND WHETHER THAT MATTERS. Raised by review 2026-09-30, unresolved, and recorded here rather than smoothed over. FOUR of the marks in this block are the NST shield form - a rounded triangle with the trail's name arced above and 'NATIONAL SCENIC TRAIL' below: `at`, `net`, `iat` and `pct`. Three of those four have an 'Official Trail Marker' notice in the Federal Register (Appalachian and Ice Age 2000-03-28, New England 2021-06-28), which is the same instrument that keeps `pohe` and `natr` out. WHAT THE PCT CHECK ACTUALLY ESTABLISHED was narrower than it reads: it enumerated all 25 notices and reasoned about 5 of them - the 4 already treated as protected, plus the PCT's absence. The other 20 were never diffed against the rows that ship. THE A.T.'s IS NOT IN QUESTION: it is the repo owner's own file on their own decision and predates all of this, and the maintainer asked for it specifically to stay. WHAT WOULD SETTLE IT: read each of the 25 notices, list the trails, and diff that list against the slugs in this block - one pass, and it is the pass nobody has done. Until then do not read the `pct` row's insignia paragraph as having answered this for anything but the PCT."
     }
   },
   "organizations": {
@@ -1336,11 +2083,6 @@
         "name": "USDA Forest Service",
         "note": "Manages the White Mountain National Forest and publishes its trail and recreation-site inventories openly on the Enterprise Data Warehouse. Two layers are registered and neither ships: the Forest Service states no reuse terms, and this project declines to decide the public-domain question on their behalf."
       },
-      "org:nhgranit": {
-        "provider": "NH GRANIT",
-        "name": "NH GRANIT, University of New Hampshire",
-        "note": "New Hampshire's statewide GIS clearinghouse, run by UNH's Earth Systems Research Center. Its recreation inventory is the only surveyed source covering the state-park ground inside the White Mountains that the national-forest boundary leaves out. Registered, does not ship, terms unstated."
-      },
       "org:njdep": {
         "provider": "NJDEP",
         "name": "New Jersey Department of Environmental Protection",
@@ -1355,6 +2097,91 @@
         "provider": "NYC DOT",
         "name": "New York City Department of Transportation",
         "note": "The city agency that builds and records New York's greenway network - the off-street, car-free paths along the waterfronts and through the parks - and publishes it inside its bicycle-facility dataset, which is why a walking app reads a bike layer here. Registered for the current off-street greenway subset only (#1432); the on-street bike lanes in the same dataset are filtered out at the portal rather than after fetching. Same statutory terms as org:nycparks, recorded once in nyc_licence."
+      },
+      "org:nps": {
+        "provider": "NPS",
+        "name": "National Park Service",
+        "note": "The federal agency for national parks and for several National Scenic and Historic Trails' alignments. Its trails layer is public domain on 17 U.S.C. 105, the same reading usfs_trails ships on."
+      },
+      "org:blm": {
+        "provider": "BLM",
+        "name": "Bureau of Land Management",
+        "note": "245 million acres of federal public land. Its ground transportation layer carries trails and routes, and no name column at all - blm_trails' notes record what that costs."
+      },
+      "org:cpw": {
+        "provider": "Colorado Parks & Wildlife",
+        "name": "Colorado Parks & Wildlife",
+        "note": "Publishes COTREX, which aggregates 236 Colorado land managers into one statewide layer. At 96,897 features it is the largest single source in the registry after USFS."
+      },
+      "org:ugrc": {
+        "provider": "Utah UGRC",
+        "name": "Utah Geospatial Resource Center",
+        "note": "Utah's state geospatial office, publisher of the SGID trails and pathways layer."
+      },
+      "org:ncta": {
+        "provider": "NCTA",
+        "name": "North Country Trail Association",
+        "note": "Maintains the North Country National Scenic Trail, the longest of the NSTs. Its own layer is registered here; the catalogue pointed at a Hub site serving HTML instead."
+      },
+      "org:pasda": {
+        "provider": "PASDA",
+        "name": "Pennsylvania Spatial Data Access",
+        "note": "Penn State's clearinghouse for Pennsylvania public geospatial data, publishing PA DCNR's land trails."
+      },
+      "org:ncparks": {
+        "provider": "NC State Parks",
+        "name": "North Carolina Division of Parks and Recreation",
+        "note": "Publishes the Mountains-to-Sea Trail's state layer. Friends of the MST maintain the trail and are a separate catalogue row."
+      },
+      "org:azgeo": {
+        "provider": "AZGeo",
+        "name": "Arizona State Land Department / AZGeo Data Hub",
+        "note": "Arizona's state geospatial hub, publishing the Arizona National Scenic Trail."
+      },
+      "org:trta": {
+        "provider": "TRTA",
+        "name": "Tahoe Rim Trail Association",
+        "note": "Maintains the 165-mile Tahoe Rim Trail. The catalogue records 'free with registration'; the layer answered an anonymous probe, and tahoe_rim_trail's notes keep the weaker reading of those two."
+      },
+      "org:duluth": {
+        "provider": "City of Duluth",
+        "name": "City of Duluth",
+        "note": "Publishes the Duluth section of the Superior Hiking Trail through its open data portal. The Superior Hiking Trail Association maintains the rest and is a separate catalogue row."
+      },
+      "org:massgis": {
+        "provider": "MassGIS",
+        "name": "MassGIS (Bureau of Geographic Information)",
+        "note": "Massachusetts' state geospatial office, publishing its long-distance trails layer."
+      },
+      "org:pcta": {
+        "provider": "PCTA",
+        "name": "Pacific Crest Trail Association",
+        "note": "Maintains the Pacific Crest National Scenic Trail and publishes its centerline under CC BY 4.0 - one of the few organizations in this registry that states a licence outright. The layer carries no name column, so pcta_centerline names it from the registry."
+      },
+      "org:cdtc": {
+        "provider": "CDTC",
+        "name": "Continental Divide Trail Coalition",
+        "note": "Maintains the Continental Divide National Scenic Trail. Its centerline is hosted by the Wyoming Geographic Information Science Center on its behalf, so the host is not the steward."
+      },
+      "org:wdnr": {
+        "provider": "Wisconsin DNR",
+        "name": "Wisconsin Department of Natural Resources",
+        "note": "Publishes the built segments of the Ice Age National Scenic Trail, which runs wholly inside Wisconsin."
+      },
+      "org:alaskatrails": {
+        "provider": "Alaska Trails",
+        "name": "Alaska Trails",
+        "note": "An Alaska trails advocacy organization publishing a statewide trail database. States no terms, so it ships on the maintainer's authorisation rather than theirs."
+      },
+      "org:ctdeep": {
+        "provider": "CT DEEP",
+        "name": "Connecticut Department of Energy and Environmental Protection",
+        "note": "Publishes the Blue-Blazed Hiking Trails layer. The trails themselves are maintained by the Connecticut Forest & Park Association, who are not registered here - the attribution names the publisher, not the club with the tools."
+      },
+      "org:warco": {
+        "provider": "Washington RCO",
+        "name": "Washington Recreation and Conservation Office",
+        "note": "Keeps Washington's State Trails Database. The catalogue recorded 0 miles for it; the layer holds 22,454 trail features and a separate trailheads layer nothing here fetches."
       }
     }
   },
@@ -2006,44 +2833,6 @@
           }
         }
       },
-      "NH GRANIT": {
-        "probed_date": "2026-09-02",
-        "note": "Probed for https://github.com/OurHike/OurHike/issues/1207, and every verdict is 'unprobed' - which is a real answer and is recorded as one rather than left blank. GRANIT's trail layer was measured in detail (7,643 segments in the Whites, and the empty BLAZE column that is nh_granit_trails' main finding); its three sibling POI layers in the same service were not opened at all. Registering the org obliges an answer to the POI question, and the answer today is that nobody has looked.",
-        "types": {
-          "shelter": {
-            "status": "unprobed",
-            "note": "UNPROBED rather than absent, and the distinction is the whole point of this cell. #1207's scope was TRAILS, so only layer 2 of CSD/RecreationResources was opened. The service holds three further layers that are exactly where POIs would live - 'Access Sites to Public Waters' (0), 'Recreation Inventory: Points' (1) and 'Recreation Inventory: Areas' (3) - and not one of them has been queried. Their names were read from the service metadata on 2026-09-02 and nothing else about them is known. This is the cheapest open question in pipeline/WHITE_MOUNTAINS_SOURCE_SURVEY.md (section 6(c)): one probe of an already-registered service."
-          },
-          "campsite": {
-            "status": "unprobed",
-            "note": "UNPROBED rather than absent, and the distinction is the whole point of this cell. #1207's scope was TRAILS, so only layer 2 of CSD/RecreationResources was opened. The service holds three further layers that are exactly where POIs would live - 'Access Sites to Public Waters' (0), 'Recreation Inventory: Points' (1) and 'Recreation Inventory: Areas' (3) - and not one of them has been queried. Their names were read from the service metadata on 2026-09-02 and nothing else about them is known. This is the cheapest open question in pipeline/WHITE_MOUNTAINS_SOURCE_SURVEY.md (section 6(c)): one probe of an already-registered service."
-          },
-          "water": {
-            "status": "unprobed",
-            "note": "UNPROBED rather than absent, and the distinction is the whole point of this cell. #1207's scope was TRAILS, so only layer 2 of CSD/RecreationResources was opened. The service holds three further layers that are exactly where POIs would live - 'Access Sites to Public Waters' (0), 'Recreation Inventory: Points' (1) and 'Recreation Inventory: Areas' (3) - and not one of them has been queried. Their names were read from the service metadata on 2026-09-02 and nothing else about them is known. This is the cheapest open question in pipeline/WHITE_MOUNTAINS_SOURCE_SURVEY.md (section 6(c)): one probe of an already-registered service."
-          },
-          "resupply": {
-            "status": "unprobed",
-            "note": "UNPROBED rather than absent, and the distinction is the whole point of this cell. #1207's scope was TRAILS, so only layer 2 of CSD/RecreationResources was opened. The service holds three further layers that are exactly where POIs would live - 'Access Sites to Public Waters' (0), 'Recreation Inventory: Points' (1) and 'Recreation Inventory: Areas' (3) - and not one of them has been queried. Their names were read from the service metadata on 2026-09-02 and nothing else about them is known. This is the cheapest open question in pipeline/WHITE_MOUNTAINS_SOURCE_SURVEY.md (section 6(c)): one probe of an already-registered service."
-          },
-          "viewpoint": {
-            "status": "unprobed",
-            "note": "UNPROBED rather than absent, and the distinction is the whole point of this cell. #1207's scope was TRAILS, so only layer 2 of CSD/RecreationResources was opened. The service holds three further layers that are exactly where POIs would live - 'Access Sites to Public Waters' (0), 'Recreation Inventory: Points' (1) and 'Recreation Inventory: Areas' (3) - and not one of them has been queried. Their names were read from the service metadata on 2026-09-02 and nothing else about them is known. This is the cheapest open question in pipeline/WHITE_MOUNTAINS_SOURCE_SURVEY.md (section 6(c)): one probe of an already-registered service."
-          },
-          "parking": {
-            "status": "unprobed",
-            "note": "UNPROBED rather than absent, and the distinction is the whole point of this cell. #1207's scope was TRAILS, so only layer 2 of CSD/RecreationResources was opened. The service holds three further layers that are exactly where POIs would live - 'Access Sites to Public Waters' (0), 'Recreation Inventory: Points' (1) and 'Recreation Inventory: Areas' (3) - and not one of them has been queried. Their names were read from the service metadata on 2026-09-02 and nothing else about them is known. This is the cheapest open question in pipeline/WHITE_MOUNTAINS_SOURCE_SURVEY.md (section 6(c)): one probe of an already-registered service."
-          },
-          "privy": {
-            "status": "unprobed",
-            "note": "UNPROBED rather than absent, and the distinction is the whole point of this cell. #1207's scope was TRAILS, so only layer 2 of CSD/RecreationResources was opened. The service holds three further layers that are exactly where POIs would live - 'Access Sites to Public Waters' (0), 'Recreation Inventory: Points' (1) and 'Recreation Inventory: Areas' (3) - and not one of them has been queried. Their names were read from the service metadata on 2026-09-02 and nothing else about them is known. This is the cheapest open question in pipeline/WHITE_MOUNTAINS_SOURCE_SURVEY.md (section 6(c)): one probe of an already-registered service."
-          },
-          "trailhead": {
-            "status": "unprobed",
-            "note": "UNPROBED rather than absent, on exactly the same footing as this org's other eight. #1207's scope was TRAILS, so only layer 2 of CSD/RecreationResources was opened, and the three sibling POI layers in the same service were not looked at. A trailhead is a likelier thing to find in a state recreation-resources service than most of the types above it - GRANIT's trail layer alone holds 7,643 segments in the Whites - which makes the admission worth more here than the guess would be. #1197 gave POI_TYPES the category; it did not go and look."
-          }
-        }
-      },
       "NJDEP": {
         "probed_date": "2026-09-09",
         "note": "Registered for https://github.com/OurHike/OurHike/issues/1293 (trail lines only, neither shipping), and every verdict is 'unprobed' - a real answer recorded as one rather than left blank. One probe of layer 62 would turn most of these into findings.",
@@ -2190,6 +2979,635 @@
             "note": "Probed 2026-09-15: DOT's registered dataset is a line network of bicycle facilities with no point layer in it, and nothing else of DOT's on the portal is POI-shaped for a hiker."
           }
         }
+      },
+      "NPS": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          }
+        }
+      },
+      "BLM": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          }
+        }
+      },
+      "Colorado Parks & Wildlife": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          }
+        }
+      },
+      "Utah UGRC": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          }
+        }
+      },
+      "NCTA": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          }
+        }
+      },
+      "Alaska Trails": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          }
+        }
+      },
+      "PASDA": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          }
+        }
+      },
+      "CT DEEP": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          }
+        }
+      },
+      "NC State Parks": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          }
+        }
+      },
+      "AZGeo": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          }
+        }
+      },
+      "TRTA": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          }
+        }
+      },
+      "City of Duluth": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          }
+        }
+      },
+      "MassGIS": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          }
+        }
+      },
+      "Wisconsin DNR": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          }
+        }
+      },
+      "Washington RCO": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it. ONE THING KNOWN WITHOUT A PROBE: the service wa_rco_trails reads from carries a second layer named Trailheads, seen while resolving the first. Nobody has counted it, so this stays unprobed rather than becoming `available`."
+          }
+        }
+      },
+      "PCTA": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          }
+        }
+      },
+      "CDTC": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          }
+        }
       }
     }
   },
@@ -2211,14 +3629,6 @@
     "recorded_date": "2026-09-02",
     "open_question": "None that blocks anything, which makes this the only source family in the registry with no licence ask outstanding - the Forest Service has nothing to answer. What remains is narrower and is listed in _comment: the statute is domestic, it does not reach contractor-held copyright if any of this layer contains contributed content, and it says nothing about the Forest Service's shield, which stays unasked in org_marks. https://github.com/OurHike/OurHike/issues/1207 is where this was decided."
   },
-  "nh_granit_licence": {
-    "_comment": "The basis on which nh_granit_trails may be fetched AND republished to hikers. WHAT GRANIT STATES: nothing. copyrightText is EMPTY on both the CSD/RecreationResources service and on the Trails layer inside it, read live 2026-09-02, and an on-prem ArcGIS server carries no AGOL item-level licenseInfo either - the same genuinely-unstated position dec_licence records for DEC. WHAT CHANGED ON 2026-09-02: the maintainer authorised publication ('yes do publish these. Its publically available info.'), so this moved from 'unresolved' to 'maintainer_authorisation' the day it was registered. Public and queryable is not itself a reuse grant - that is SOURCE_SURVEY.md's rule and the reason the basis here is the maintainer's decision rather than GRANIT's terms. ONE THING THAT DISTINGUISHES THIS FROM THE FEDERAL CASE AND IS WORTH KNOWING BEFORE ANYONE RELIES ON IT: no public-domain-by-statute argument is available here. GRANIT is a university-run state clearinghouse that AGGREGATES contributed data - town, land-trust and agency layers, with its own ACCURACY column saying so - so the organization that could actually answer for a given segment may not be GRANIT at all. That makes this the thinner of the two authorisations even though it is the smaller dataset, and it is the one to revisit first if terms ever matter.",
-    "author": "NH GRANIT, Earth Systems Research Center, University of New Hampshire",
-    "license": "Unstated by the publisher; ships on maintainer authorisation - see _comment",
-    "basis": "Maintainer authorisation, 2026-09-02 ('yes do publish these. Its publically available info.')",
-    "recorded_date": "2026-09-02",
-    "open_question": "https://github.com/OurHike/OurHike/issues/1207 - GRANIT's own stated terms should replace this block, the way dec_licence's open question reads, and the aggregation point in _comment is why that ask is worth more here than the dataset's size suggests."
-  },
   "njdep_licence": {
     "_comment": "The basis on which the two New Jersey layers above (njdep_park_trails, nj_statewide_trails) may be fetched, and the bar their data has to clear before any of it is republished to hikers. TERMS ARE STATED, for the first time on a trail-line source in this registry beyond OPRHP's: the Forum item carries the NJDEP Data Distribution Agreement as its licenseInfo, 1,968 characters, read WHOLE on 2026-09-09 (the survey's own instruction, in bold, for the oprhp_licence reason - a licence once misread through a 200-character truncation) and quoted verbatim below. WHAT IT SAYS, condition by condition. It is a distribution agreement, so it PERMITS reproduction and redistribution - conditions 1 and 2 speak of 'any reproduction or manipulation' and of data 'reproduced or redistributed', which are acts it regulates rather than forbids. It DISCLAIMS everything: as-is, no warranty of any kind, no duty to maintain or update, no warranty that the data is free of third-party copyright or trademark claims (condition 4), and the user is 'responsible for understanding the accuracy limitations' documented in the cross-reference files. It REQUIRES three things: (1) that 'the coordinate reference system remains intact' in any reproduction - satisfied by construction if the published lines stay in the CRS the layer serves them in (WGS84 through the export; the reprojection export_trails.py does to simplify in metres is a manipulation whose OUTPUT is back in WGS84, and whether that is 'intact' is a reading nobody has taken); (2) that the data 'may not be reproduced or redistributed without all the metadata provided' - the item description, this agreement, and the cross-reference the agreement itself refers to, which means the Sources screen (export_sources.py) would have to carry NJDEP's metadata wholesale rather than a name and a licence line, a surface this project does not have; (3) that 'any maps, publications, reports, or other documents' using the data credit NJDEP's GIS 'with the following credit/disclaimer' - the sentence in attribution_required, verbatim, which map/credits.ts would have to print in those words and not in a paraphrase. NONE OF THESE IS A REFUSAL, AND NONE IS SATISFIED TODAY, which is why licence_basis reads `unresolved` on both entries and reaches_hikers false: satisfying (2) and (3) is a deliberate act with a design question inside it (where a hiker reads a paragraph of NJDEP's metadata), and the maintainer decides whether that act is worth New Jersey's lines. When it is taken and recorded here, the basis becomes `stated_by_org` - the terms are NJDEP's own and they permit this - on the same footing as oprhp_licence. WHERE THE AGREEMENT IS AND IS NOT STATED. It is stated on the Forum item only. NJDEP's on-prem service (mapsdep.nj.gov) carries copyrightText 'NJDEP' at the service and layer level and no terms text at all, read live 2026-09-09. Both are owned by the same NJDEPBGIS account, so the agreement is read as governing the park layer too - an inference from the owner and not from anything that layer says, and recorded as one.",
     "author": "New Jersey Department of Environmental Protection",
@@ -2233,7 +3643,9 @@
   "nyc_licence": {
     "_comment": "The basis on which nyc_parks_trails and nyc_dot_greenways above may be fetched AND republished to hikers, and it is the FIRST STATUTORY GRANT IN THIS REGISTRY. Every other non-ATC source here is unstated (dec_licence, nynjtc_licence, mohonk_licence), conditioned (njdep_licence) or restricted (oprhp_licence's non-commercial clause, which is still an open ask). New York City's is none of those. NYC Local Law 11 of 2012, codified at Administrative Code 23-502(d), requires that a published data set be available 'without registration requirement, license requirement, or usage restrictions'. That is a grant made BY STATUTE TO EVERYONE rather than a permission granted to this project - which is why it needs no ask, cannot be withdrawn by an agency changing its mind about a portal field, and does not have to be re-confirmed in its own name by a club that inherits this project. WHERE IT IS NOT READ FROM, said because this file has been wrong about a licence once before by reading the wrong field: not from the dataset pages, which carry no licence at all - `license` is null and `licenseId` absent on both vjbm-hsyr and mzxg-pwib, verified live 2026-09-15. Their silence here means the statute applies, and is the opposite of what the same silence means on DEC's or Mohonk's services, where nothing stands behind it. The City's own published standards are what quote the law and add the two riders below.",
     "author": "New York City Department of Parks and Recreation",
-    "also_covers": ["New York City Department of Transportation"],
+    "also_covers": [
+      "New York City Department of Transportation"
+    ],
     "also_covers_comment": "One city, two agencies, one statute - recorded as a single block rather than two because the terms are not the agencies' to set and are identical by law. THIS FIELD IS READ, and saying so matters: export_sources.py matches a block to a steward on `author`, and NYC DOT is not this block's author, so before `also_covers` was a list the exporter honoured, NYC DOT shipped to hikers with `licence: null` while this block sat in the registry looking correct. That is the exact failure usdm_licence's `author_note` records - 'the block sits in the registry looking correct, the exporter emits null, the card renders attribution alone, and every test passes' - and prose here naming the other agency did nothing to stop it. tests/test_export_sources.py pins both stewards' licence text now.",
     "license": "NYC Local Law 11 of 2012, Administrative Code 23-502(d) - published data sets are available without registration requirement, license requirement, or usage restrictions",
     "terms_verbatim": "data sets must be available without registration requirement, license requirement, or usage restrictions, except as provided below",

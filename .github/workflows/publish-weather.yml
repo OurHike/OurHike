@@ -1,6 +1,9 @@
 # Publishes the NBM forecast for every trail square to UA's bucket, one file
 # per 1-degree cell, and every active NWS alert that reaches a trail square
-# (#1056, features/WEATHER.md build step 1).
+# (#1056, features/WEATHER.md build step 1). The card is NBM only: HRRR's
+# first-two-days temperature was scored in build step 2 and dropped by the
+# maintainer on 2026-09-30, so only HRRR's land mask is still read, once per
+# data release, by the squares step.
 #
 # TWO HALVES, AND EITHER PUBLISHES WITHOUT THE OTHER. NBM stalling must not
 # hold back the warnings, and NWS not answering must not hold back the
@@ -58,9 +61,8 @@ jobs:
   build:
     name: Build the forecast and warnings files
     runs-on: ubuntu-latest
-    # Measured 2026-09-25/26: squares 49 s when the release changed (skipped
-    # otherwise; NWS zones add ~10 s to that, measured in a sandbox rather
-    # than on a runner), alerts 1 s, fetch 20 s, bake 19 s.
+    # Measured on runners 2026-09-25/29: squares 46-52 s when the release
+    # changed (skipped otherwise), alerts under 1 s, fetch 14-30 s, bake 15 s.
     # Fifteen minutes is room for a slow NOAA day, not a target.
     timeout-minutes: 15
     outputs:
@@ -90,6 +92,8 @@ jobs:
           path: |
             pipeline/data/raw/weather/squares.json
             pipeline/data/raw/weather/urma_terrain.grb2
+            pipeline/data/raw/weather/hrrr_height.grb2
+            pipeline/data/raw/weather/hrrr_land.grb2
           key: weather-squares-${{ github.run_id }}
           restore-keys: weather-squares-
 
@@ -102,13 +106,15 @@ jobs:
         run: python build_weather_squares.py
 
       - name: Save the trail squares
-        if: always() && hashFiles('pipeline/data/raw/weather/squares.json', 'pipeline/data/raw/weather/urma_terrain.grb2') != ''
+        if: always() && hashFiles('pipeline/data/raw/weather/squares.json', 'pipeline/data/raw/weather/urma_terrain.grb2', 'pipeline/data/raw/weather/hrrr_height.grb2', 'pipeline/data/raw/weather/hrrr_land.grb2') != ''
         uses: actions/cache/save@v6
         with:
           path: |
             pipeline/data/raw/weather/squares.json
             pipeline/data/raw/weather/urma_terrain.grb2
-          key: weather-squares-${{ hashFiles('pipeline/data/raw/weather/squares.json', 'pipeline/data/raw/weather/urma_terrain.grb2') }}
+            pipeline/data/raw/weather/hrrr_height.grb2
+            pipeline/data/raw/weather/hrrr_land.grb2
+          key: weather-squares-${{ hashFiles('pipeline/data/raw/weather/squares.json', 'pipeline/data/raw/weather/urma_terrain.grb2', 'pipeline/data/raw/weather/hrrr_height.grb2', 'pipeline/data/raw/weather/hrrr_land.grb2') }}
 
       # First, because it is one request and a second of work: a slow NBM
       # day that runs into the fetch step's ceiling cannot delay it.

@@ -213,6 +213,20 @@ export function formatShortDistance(feet: number, units: UnitSystem): string {
 }
 
 /**
+ * A short distance that is a round pick rather than a measurement, from the
+ * canonical feet, to the nearest 10 of the hiker's unit.
+ *
+ * For a radius somebody chose, like the 100 m a closed trailhead is judged by
+ * (#1695): "328 ft" would state a round pick to the foot, as if it had been
+ * surveyed. The caller says "about" in front of it. `formatDistance` rounds a
+ * spur length to 10 m for the same reason.
+ */
+export function formatRoundShortDistance(feet: number, units: UnitSystem): string {
+  if (units === 'metric') return `${group(Math.round(feet / FEET_PER_METRE / 10) * 10)} m`
+  return `${group(Math.round(feet / 10) * 10)} ft`
+}
+
+/**
  * One metre, in feet - the floor under any distance this app STATES.
  *
  * pipeline/lib/poi_description.py's `MIN_PART_FT` is the same number for the

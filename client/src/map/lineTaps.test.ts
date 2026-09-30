@@ -509,7 +509,6 @@ describe('the through-route badge (#1283)', () => {
           name: 'Appalachian National Scenic Trail',
           blaze_color: 'White',
           mark: 'trail-mark-AT',
-          chip: 'blaze-chip-White',
         },
         geometry: { type: 'Point', coordinates: [-74.1, 41.25] },
       },

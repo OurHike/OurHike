@@ -80,10 +80,29 @@
 // one red and only the width and the dash separate them. This recipe is
 // the standing opening frame, so it is photographed on every pull request;
 // the caption below is what to check it against now.
+//
+// RE-FRAMED 2026-09-30, AND THIS ONE CHANGES THE WHOLE PICTURE: "We should
+// start showing the entire US, not just the at corridor" - the maintainer.
+// App.tsx's opening camera is UNITED_STATES_BOUNDS now rather than
+// CORRIDOR_BOUNDS, so this shot is the lower 48 at roughly z2.2 where it was
+// Georgia-to-Maine at z4.9. This recipe seeds no camera of its own - it
+// photographs whatever the app opens on - so it re-framed without being
+// touched, which is why the caption and alt below had to be rewritten rather
+// than amended: they described the A.T.'s New York miles, which are now a
+// couple of hundred pixels of a continent.
+//
+// WHAT SHOULD BE IN THE NEW FRAME, so a reviewer can tell a working shot from
+// a broken one. The published overview (network_overview.geojson, release
+// 2026-09-16-4) carries 201 lines and 127 of them are `usfs_trails`, drawn
+// across the whole country - so the frame is NOT the A.T. alone on an empty
+// continent. Measured 2026-09-30: all 201 lines are centred inside these
+// bounds. If this frame comes back with trails only in the northeast, the
+// overview did not load and the shot is evidence of that rather than of the
+// camera.
 export const caption =
-  'The opening map — trail lines only below the seam (#1292), nothing taken (#1306), blaze colours off (#1575, the shipped default): since #1588 the A.T. and the Long Path are each a plain solid red line at one fine weight, badged, and the other organizations’ trails a thinner dashed line around the A.T.’s New York miles — in the same red since #1597 took the tint off them, so width and dash are the whole difference; no waypoints, no casing on anything, and the two badges naming the two trails, placed at this camera since the review of #1374'
+  'The opening map, now the entire lower 48 rather than the A.T. corridor (the maintainer, 2026-09-30) — near z2.2 where this frame was z4.9 over Georgia-to-Maine. Trail lines only below the seam (#1292), nothing taken (#1306), blaze colours off (#1575, the shipped default): the badged trails each a plain solid red line at one fine weight since #1588, every other organization’s trail thinner and dashed in the same red since #1597, so width and dash are the whole difference. 127 of the release’s 201 overview lines are USFS and nationwide, so the west should carry lines too — a frame with trails only in the northeast means the overview did not load. SOME BADGES SHOW THE MARK ALONE, with no name beside it, and that is the designed fallback rather than a fault: map/trailsInView.ts searches for room for the full plate first and for the mark’s small plate second. Until 2026-09-30 nothing ever reached it, because a badge with nowhere clear was placed on top of whatever was there — so this frame is the first one where the fallback does its job. What would be a fault is plates written through each other, which is what this shot showed before the fix.'
 export const alt =
-  'The whole-corridor opening view: the A.T. as a single fine solid red line from Georgia to Maine over the basemap, the Long Path a second one up the Hudson valley, each with a paper badge naming it, and the other organizations’ trails as fainter dashed red threads around the A.T.’s New York miles, with no pins'
+  'The opening map view of the entire continental United States: a pale basemap from the Pacific to the Atlantic with fine red trail lines threaded across it — the Appalachian Trail down the eastern mountains, the Pacific Crest Trail through the far west, the Continental Divide Trail through the Rockies, and many fainter dashed red threads of other organizations’ trails between them, the most prominent long trails each carrying a small paper badge naming it — Pacific Crest, Continental Divide, Appalachian, Finger Lakes, Long Path, Maah Daah Hey — and several others carrying just their round trail emblem with no name, where there was no room for the full plate; no waypoint pins at this zoom'
 
 /** The network overview is one 10.8 MB GeoJSON (lib/config.ts's
  *  NETWORK_OVERVIEW_KEY) that the map cuts into tiles in a worker after it

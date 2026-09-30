@@ -190,25 +190,65 @@ export const POI_ICON_PADDING_EXPRESSION: unknown[] = [
  */
 export function crowdingByPoi(drawn: readonly MapPoint[]): Map<string, number> {
   const cell = CROWDING_RADIUS_M / METRES_PER_DEGREE
-  const grid = new Map<string, MapPoint[]>()
-  for (const poi of drawn) {
-    const key = cellKey(Math.floor(poi.lon / cell), Math.floor(poi.lat / cell))
+  // Each waypoint's grid column and row, computed once rather than once per
+  // lookup - and the grid keyed by ONE NUMBER rather than a `${x},${y}`
+  // string (#1727, #1632). The string key allocated and hashed a fresh
+  // string ten times per waypoint (one insert, nine lookups), which for
+  // 28,913 waypoints was a quarter of a million short-lived strings on the
+  // thread building the map. A column and a row packed into one integer
+  // costs a multiply and an add.
+  const column = new Int32Array(drawn.length)
+  const row = new Int32Array(drawn.length)
+  // cos(latitude) per waypoint, for the east-west reject below.
+  const cosLat = new Float64Array(drawn.length)
+  const grid = new Map<number, number[]>()
+  for (let at = 0; at < drawn.length; at += 1) {
+    const poi = drawn[at] as MapPoint
+    const cx = Math.floor(poi.lon / cell)
+    const cy = Math.floor(poi.lat / cell)
+    column[at] = cx
+    row[at] = cy
+    cosLat[at] = Math.cos(poi.lat * (Math.PI / 180))
+    const key = cellKey(cx, cy)
     const bucket = grid.get(key)
-    if (bucket === undefined) grid.set(key, [poi])
-    else bucket.push(poi)
+    if (bucket === undefined) grid.set(key, [at])
+    else bucket.push(at)
   }
 
   const counts = new Map<string, number>()
-  for (const poi of drawn) {
-    const gx = Math.floor(poi.lon / cell)
-    const gy = Math.floor(poi.lat / cell)
+  for (let at = 0; at < drawn.length; at += 1) {
+    const poi = drawn[at] as MapPoint
+    const gx = column[at] as number
+    const gy = row[at] as number
+    const cosHere = cosLat[at] as number
     // Starts at -1 because the nine cells include this waypoint's own.
     let near = -1
     for (let dx = -1; dx <= 1; dx += 1) {
       for (let dy = -1; dy <= 1; dy += 1) {
         const bucket = grid.get(cellKey(gx + dx, gy + dy))
         if (bucket === undefined) continue
-        for (const other of bucket) {
+        for (const otherAt of bucket) {
+          const other = drawn[otherAt] as MapPoint
+          // The north-south leg alone already past the radius is an exact
+          // reject - `hypot(dx, dy)` can never be less than `|dy|` - and it
+          // costs a subtraction where the full distance costs a cosine and
+          // a square root. About a third of the candidates in the nine
+          // cells fall here (the cells are one radius tall, and three rows
+          // are checked). Nothing about the answer changes: every pair that
+          // survives is measured exactly as before.
+          const northSouth = (poi.lat - other.lat) * METRES_PER_DEGREE
+          if (northSouth > CROWDING_RADIUS_M || -northSouth > CROWDING_RADIUS_M) continue
+          // The east-west leg, bounded from below: metresBetween scales the
+          // longitude gap by cos(mid-latitude), and on either side of the
+          // equator cos(mid) is at least the smaller of the two endpoints'
+          // cosines (cos falls away from the equator, and the mid-latitude
+          // lies between them). So a gap that is past the radius even at the
+          // smaller cosine is past it at the real one - exact again, and it
+          // is the reject that does the work on dense ground, where most of
+          // the nine cells' candidates are east or west of the circle.
+          const lowestCos = Math.min(cosHere, cosLat[otherAt] as number)
+          const eastWest = (poi.lon - other.lon) * METRES_PER_DEGREE * lowestCos
+          if (eastWest > CROWDING_RADIUS_M || -eastWest > CROWDING_RADIUS_M) continue
           if (metresBetween(poi, other) <= CROWDING_RADIUS_M) near += 1
         }
       }
@@ -220,8 +260,17 @@ export function crowdingByPoi(drawn: readonly MapPoint[]): Map<string, number> {
 
 const METRES_PER_DEGREE = 111_320
 
-function cellKey(x: number, y: number): string {
-  return `${x},${y}`
+/**
+ * A grid column and row as one integer, so the grid's Map never hashes a
+ * string. Rows run ±90° / cell ≈ ±12,600 and columns ±180° / cell ≈ ±25,100
+ * (cell being 800 m in degrees of latitude), so a stride of 2^16 keeps every
+ * (column, row) pair distinct and the product inside 2^32 - a Map key that
+ * is a small integer, which V8 hashes without allocating.
+ */
+const CELL_KEY_STRIDE = 65_536
+
+function cellKey(x: number, y: number): number {
+  return x * CELL_KEY_STRIDE + y
 }
 
 /**

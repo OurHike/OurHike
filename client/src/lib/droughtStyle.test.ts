@@ -9,7 +9,7 @@ import {
   DROUGHT_LAYER_ID,
   droughtColorExpression,
 } from './droughtStyle'
-import { CLOSURE_CASING_COLOR, CLOSURE_COLOR } from './closureStyle'
+import { CLOSURE_COLOR, CLOSURE_INK } from './closureStyle'
 
 /** Rough perceived lightness, enough to order a ramp by. */
 function lightness(hex: string): number {
@@ -32,7 +32,7 @@ describe('the drought ramp', () => {
     // "near enough to be confusable" is the thing being excluded rather than
     // exact equality - so this measures distance in RGB rather than checking
     // for a literal match.
-    const forbidden = [CLOSURE_COLOR, CLOSURE_CASING_COLOR]
+    const forbidden = [CLOSURE_COLOR, CLOSURE_INK]
     for (const band of Object.values(DROUGHT_COLORS)) {
       for (const danger of forbidden) {
         const [r1, g1, b1] = channels(band)

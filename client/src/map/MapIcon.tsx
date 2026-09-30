@@ -19,10 +19,12 @@
 //
 // Three kinds of thing end up in a legend row, and they are not all pins:
 //
-//  - A waypoint is a pin - disc, glyph, halo, rim (poiIcons.ts).
-//  - A serious warning is the same pin with the three things allowed to differ
-//    (map/warningPin.ts): its colour, its hollow hazard triangle, and on the
-//    map its size. Size is the one this does NOT carry - see below.
+//  - A waypoint is the slim pin (poiIcons.ts, #1682) - a disc inside a paper
+//    hairline, its glyph, full colour or quiet by tier, hollow when nobody has
+//    verified it, and a site's members as colour pips on its rim.
+//  - A serious warning is the older coin - disc, glyph, cream halo, dark edge
+//    (map/warningPin.ts) - in its own red with a hollow hazard triangle, and on
+//    the map at its own size. Size is the one this does NOT carry - see below.
 //  - A closure is not a pin at all. It is barrier tape along closed geometry
 //    (lib/closureStyle.ts), and drawing it here as a pin would invent a symbol
 //    the map never shows.
@@ -36,13 +38,17 @@
 // drift the header above exists to prevent.
 
 import {
-  badgeCenters,
   glyphPath,
   pinGeometry,
+  badgeCenters,
   poiColor,
   poiGlyphPath,
+  waypointPinGeometry,
+  waypointPinInks,
   PIN_EDGE_COLOR,
   PIN_HALO_COLOR,
+  PIN_SHADOW_ALPHA,
+  PIN_SHADOW_COLOR,
   RIM_DASHES,
   type PoiConfidence,
 } from './poiIcons'
@@ -58,15 +64,20 @@ import {
   SIDE_TRAIL_WIDTH,
   redLightActive,
   trailCasingColor,
+  closureInk,
   closureTapeGround,
-} from './style'
+} from './sheetInks'
 import { WARNING_PIN } from '../lib/seriousWarnings'
 import {
-  CLOSURE_CASING_COLOR,
-  CLOSURE_COLOR,
-  CLOSURE_DASH,
-  CLOSURE_OUTLINE_WIDTH,
-  CLOSURE_TAPE_WIDTH,
+  CLOSURE_CROSS_ARM,
+  CLOSURE_CROSS_HALO_WIDTH,
+  CLOSURE_CROSS_SPACING,
+  CLOSURE_CROSS_STROKE,
+  CLOSURE_PAPER_WIDTH,
+  CLOSURE_TRACE_DASH,
+  CLOSURE_TRACE_OPACITY,
+  CLOSURE_TRACE_WIDTH,
+  closureCrossImageSize,
 } from '../lib/closureStyle'
 
 /** The one type here that is a line rather than a pin. Paired with
@@ -132,47 +143,22 @@ interface PinProps {
   color: string
   path: string
   confidence: PoiConfidence
-  /** The categories riding this pin as badges (#524), in SITE_MEMBER_TYPES'
-   *  order - a shelter carrying a privy and water wears them rather than
-   *  three pins fighting for one spot. Empty draws the plain pin. */
-  members?: readonly string[]
 }
 
 /**
- * How far past the pin's own edge its badges reach, in unit terms - the same
- * arithmetic sitePinPadding does in pixels, so a badged SVG grows exactly as
- * the badged image does and the disc stays at the centre of both.
+ * The coin: the serious warning's pin (map/warningPin.ts), and every
+ * waypoint's until #1682 drew those slimmer. Drawn from pinGeometry(), as
+ * buildPinImage rasterises it.
  */
-function badgeReach(count: number): number {
-  let reach = 0
-  for (const { x, y } of badgeCenters(count, PIN.badge)) {
-    reach = Math.max(
-      reach,
-      Math.abs(x) + PIN.badge.radius,
-      Math.abs(y) + PIN.badge.radius,
-    )
-  }
-  return Math.max(0, reach - PIN.rOuter)
-}
-
-function Pin({ className, color, path, confidence, members = [] }: PinProps) {
+function Pin({ className, color, path, confidence }: PinProps) {
   // Verified pins have no dasharray attribute at all rather than a solid-
   // looking one, so "this rim is unbroken" is visible in the DOM.
   const broken = confidence === 'low'
-  const pad = badgeReach(members.length)
-  const badges = badgeCenters(members.length, PIN.badge).map((spot, index) => ({
-    cx: PIN.center + spot.x,
-    cy: PIN.center + spot.y,
-    path: poiGlyphPath(members[index]),
-    ink: poiColor(members[index]),
-  }))
 
   return (
     <svg
       className={className}
-      // The box grows symmetrically for the badges, as the raster's image
-      // does (sitePinPadding), so the disc stays on the row's centre line.
-      viewBox={`${-pad} ${-pad} ${1 + 2 * pad} ${1 + 2 * pad}`}
+      viewBox="0 0 1 1"
       // Decorative here: every row that carries one of these already names its
       // category in text beside it, and a screen reader announcing "Water,
       // Water" is worse than one announcing it once.
@@ -216,34 +202,130 @@ function Pin({ className, color, path, confidence, members = [] }: PinProps) {
         strokeWidth={PIN.edgeWidth}
         strokeDasharray={broken ? rimDashes(EDGE_RADIUS) : undefined}
       />
-      {/* A member badge is the same pin at badge scale (poiIcons.ts): the
-          category's own accent disc, its silhouette in halo white, a white
-          ring and the dark hairline outside. Drawn after the pin so it sits
-          over the halo where the two cross, as buildPinImage inks it. */}
-      {badges.map((badge, index) => (
-        <g key={members[index]} className="map-icon__badge" data-member={members[index]}>
-          <circle
-            cx={badge.cx}
-            cy={badge.cy}
-            r={PIN.badge.radius}
-            fill={PIN_HALO_COLOR}
-          />
-          <circle cx={badge.cx} cy={badge.cy} r={PIN.badge.rDisc} fill={badge.ink} />
+    </svg>
+  )
+}
+
+/**
+ * The waypoint pin's proportions in a unit box whose side is the DRAWN pin,
+ * not its 38 px footprint: a legend slot is a key read a row at a time, and
+ * spending a third of it on the footprint's transparent margin would draw the
+ * pin smaller than the row's other icons for no reason a legend has.
+ */
+const WAYPOINT = waypointPinGeometry(1, 1)
+
+/** How far past the drawn pin its badges reach, in unit terms - the
+ *  arithmetic sitePinPadding does in pixels, so the box grows exactly as the
+ *  raster's does and the pin stays on the row's centre line. Not the shadow:
+ *  its sliver below the pin is 0.7 px in a 24 px legend slot, and a plain pin
+ *  whose box is not the unit square would sit off every other row's line. */
+function waypointReach(count: number): number {
+  let reach = WAYPOINT.rInk
+  for (const { x, y } of badgeCenters(count, WAYPOINT.badge)) {
+    reach = Math.max(
+      reach,
+      Math.abs(x) + WAYPOINT.badge.radius,
+      Math.abs(y) + WAYPOINT.badge.radius,
+    )
+  }
+  return reach - WAYPOINT.rInk
+}
+
+interface WaypointPinProps {
+  className?: string
+  type: string
+  confidence: PoiConfidence
+  /** The categories riding this pin as badges (#524, #1682), in
+   *  SITE_MEMBER_TYPES' order. Empty draws the plain pin. */
+  members?: readonly string[]
+}
+
+/**
+ * The slim pin, as buildWaypointPinImage rasterises it (#1682): a faint
+ * shadow, a paper hairline, the disc in the ink waypointPinInks picks for
+ * this tier and confidence, a ring inside the hairline when there is one, the
+ * glyph, and a site's members as small badges against the rim.
+ */
+function WaypointPin({ className, type, confidence, members = [] }: WaypointPinProps) {
+  const inks = waypointPinInks(type, confidence)
+  const pad = waypointReach(members.length)
+  const c = WAYPOINT.center
+  const ringWidth =
+    inks.ringWidth === 'hollow'
+      ? WAYPOINT.hollowRing
+      : inks.ringWidth === 'quiet'
+        ? WAYPOINT.quietRing
+        : 0
+  const box = WAYPOINT.glyphBox
+  const badge = WAYPOINT.badge
+  const badges = badgeCenters(members.length, badge).map((spot, index) => ({
+    cx: c + spot.x,
+    cy: c + spot.y,
+    ink: poiColor(members[index]),
+    path: poiGlyphPath(members[index]),
+    member: members[index],
+  }))
+
+  return (
+    <svg
+      className={className}
+      viewBox={`${-pad} ${-pad} ${1 + 2 * pad} ${1 + 2 * pad}`}
+      aria-hidden="true"
+      focusable="false"
+      data-confidence={confidence}
+    >
+      <circle
+        className="map-icon__shadow"
+        cx={c}
+        cy={c + WAYPOINT.shadowOffset}
+        r={WAYPOINT.rInk}
+        fill={PIN_SHADOW_COLOR}
+        fillOpacity={PIN_SHADOW_ALPHA}
+      />
+      <circle
+        className="map-icon__halo"
+        cx={c}
+        cy={c}
+        r={WAYPOINT.rInk}
+        fill={PIN_HALO_COLOR}
+      />
+      <circle
+        className="map-icon__disc"
+        cx={c}
+        cy={c}
+        r={WAYPOINT.rDisc}
+        fill={inks.fill}
+      />
+      {inks.ring !== null && (
+        <circle
+          className="map-icon__ring"
+          cx={c}
+          cy={c}
+          r={WAYPOINT.rDisc - ringWidth / 2}
+          fill="none"
+          stroke={inks.ring}
+          strokeWidth={ringWidth}
+        />
+      )}
+      <g transform={`translate(${c - box / 2} ${c - box / 2}) scale(${box})`}>
+        <path
+          className="map-icon__glyph"
+          d={poiGlyphPath(type)}
+          fill={inks.glyph}
+          fillRule="evenodd"
+        />
+      </g>
+      {badges.map((spot) => (
+        <g key={spot.member} className="map-icon__badge" data-member={spot.member}>
+          <circle cx={spot.cx} cy={spot.cy} r={badge.radius} fill={PIN_HALO_COLOR} />
+          <circle cx={spot.cx} cy={spot.cy} r={badge.rDisc} fill={spot.ink} />
           <g
-            transform={`translate(${badge.cx - PIN.badge.glyphBox / 2} ${
-              badge.cy - PIN.badge.glyphBox / 2
-            }) scale(${PIN.badge.glyphBox})`}
+            transform={`translate(${spot.cx - badge.glyphBox / 2} ${
+              spot.cy - badge.glyphBox / 2
+            }) scale(${badge.glyphBox})`}
           >
-            <path d={badge.path} fill={PIN_HALO_COLOR} fillRule="evenodd" />
+            <path d={spot.path} fill={PIN_HALO_COLOR} fillRule="evenodd" />
           </g>
-          <circle
-            cx={badge.cx}
-            cy={badge.cy}
-            r={PIN.badge.radius - PIN.badge.edgeWidth / 2}
-            fill="none"
-            stroke={PIN_EDGE_COLOR}
-            strokeWidth={PIN.badge.edgeWidth}
-          />
         </g>
       ))}
     </svg>
@@ -284,96 +366,95 @@ function Tile({
   )
 }
 
-/** The swatch's viewBox is drawn in CSS pixels, at the band's own width - so
- *  every number below is a number lib/closureStyle.ts ships, and the legend
- *  cannot drift from the map by someone editing one of them. */
-const CLOSURE_HEIGHT = CLOSURE_TAPE_WIDTH
-/** The swatch's full height: the band plus the outline showing past each
- *  side (#1598). The band's own width grows with the zoom on the map, and
- *  this swatch draws the top of that taper - the weight a hiker learns the
- *  mark at, which is the zoom they are reading the legend from. */
-const CLOSURE_BOX_HEIGHT = CLOSURE_HEIGHT + CLOSURE_OUTLINE_WIDTH * 2
+/** The swatch is drawn in CSS pixels at the map's own full-zoom sizes, so
+ *  every number below is one lib/closureStyle.ts ships and the legend cannot
+ *  drift from the map by someone editing one of them (#1677). One pitch of
+ *  the chain wide - one cross with the trace running out either side of it -
+ *  and the cross image's height, which letterboxes into chrome.css's 24px
+ *  slot at the map's own scale. */
+const CLOSURE_SWATCH_WIDTH = CLOSURE_CROSS_SPACING[CLOSURE_CROSS_SPACING.length - 1][1]
+const CLOSURE_SWATCH_HEIGHT = closureCrossImageSize()
+const CLOSURE_MID_X = CLOSURE_SWATCH_WIDTH / 2
+const CLOSURE_MID_Y = CLOSURE_SWATCH_HEIGHT / 2
 
-/** One tick and the paper after it, in CSS pixels: the map's rhythm, which
- *  is written in line widths, resolved at the width above. */
-const CLOSURE_TICK = CLOSURE_DASH.tick * CLOSURE_HEIGHT
-const CLOSURE_PITCH = (CLOSURE_DASH.tick + CLOSURE_DASH.gap) * CLOSURE_HEIGHT
-
-/**
- * How many pitches of band the swatch shows.
- *
- * Four, and the number was chosen by looking rather than by arithmetic: the
- * legend's slot is 24px square (chrome.css's .legend__icon) and the viewBox
- * letterboxes into it, so this trades the strip's height against how much
- * rhythm it shows. At two the swatch is a pair of fat ticks with no rhythm
- * to read; at four it is a run of bars, which is the thing a hiker has to
- * recognise again on the map.
- */
-const CLOSURE_TILES = 4
-const CLOSURE_WIDTH = CLOSURE_PITCH * CLOSURE_TILES
-/** One tick per pitch, plus one past each end: an SVG clips to its own
- *  viewBox, so a tick that starts off the left edge still draws the part of
- *  itself that is inside - which is what keeps the swatch from beginning and
- *  ending on a half tick. */
-const CLOSURE_TICKS = Array.from(
-  { length: CLOSURE_TILES + 2 },
-  (_, index) => (index - 1) * CLOSURE_PITCH,
+/** The trace's dots: one per dash pitch, measured in line widths as the map's
+ *  `line-dasharray` is, and left out under the cross and its halo - where the
+ *  map's halo covers them too. */
+const CLOSURE_DOT_PITCH =
+  (CLOSURE_TRACE_DASH[0] + CLOSURE_TRACE_DASH[1]) * CLOSURE_TRACE_WIDTH
+const CLOSURE_CROSS_REACH =
+  CLOSURE_CROSS_ARM + CLOSURE_CROSS_STROKE / 2 + CLOSURE_CROSS_HALO_WIDTH
+const CLOSURE_DOTS = Array.from(
+  { length: Math.floor(CLOSURE_SWATCH_WIDTH / CLOSURE_DOT_PITCH) + 1 },
+  (_, index) => CLOSURE_DOT_PITCH / 2 + index * CLOSURE_DOT_PITCH,
+).filter(
+  (x) => x < CLOSURE_SWATCH_WIDTH && Math.abs(x - CLOSURE_MID_X) > CLOSURE_CROSS_REACH,
 )
 
-function ClosureBand({ className, ground }: { className?: string; ground: string }) {
-  /** The outline, drawn as the two edges it actually is (#1598). Two rects
-   *  over the ticks rather than one behind them, which is the same picture
-   *  the map makes: the band is opaque, so the line under it shows only past
-   *  its two sides. */
-  const outline = (y: number) => (
-    <rect
-      key={`outline-${y}`}
-      className="map-icon__closure-outline"
-      x={0}
-      y={y}
-      width={CLOSURE_WIDTH}
-      height={CLOSURE_OUTLINE_WIDTH}
-      fill={CLOSURE_CASING_COLOR}
-    />
-  )
+/** The cross's two strokes, centred in the swatch, as one SVG path. */
+const CLOSURE_CROSS_PATH = (() => {
+  const a = CLOSURE_CROSS_ARM
+  const [x, y] = [CLOSURE_MID_X, CLOSURE_MID_Y]
+  return `M${x - a} ${y - a}L${x + a} ${y + a}M${x + a} ${y - a}L${x - a} ${y + a}`
+})()
 
+function ClosureCrossedOut({
+  className,
+  ground,
+  ink,
+}: {
+  className?: string
+  ground: string
+  ink: string
+}) {
   return (
     <svg
       className={className}
-      viewBox={`0 0 ${CLOSURE_WIDTH} ${CLOSURE_BOX_HEIGHT}`}
+      viewBox={`0 0 ${CLOSURE_SWATCH_WIDTH} ${CLOSURE_SWATCH_HEIGHT}`}
       aria-hidden="true"
       focusable="false"
     >
-      {/* The sheet's paper under the ticks, exactly as the map draws it
-          (#1575, option E). There was no rect here from 2026-08-27, when the
-          band's gaps were transparent and the legend's own paper showed
-          through; now the map's paper does, in the map's own colour, which on
-          a dark sheet is ink - a legend that drew the panel's surface instead
-          would be teaching a mark the map does not draw. */}
+      {/* The paper the closed trail is knocked out to, in the map's own
+          colour for this sheet - on a dark sheet the panel's surface would
+          be the wrong ground, and a legend should teach the mark the map
+          draws. */}
       <rect
-        className="map-icon__closure-ground"
+        className="map-icon__closure-paper"
         x={0}
-        y={CLOSURE_OUTLINE_WIDTH}
-        width={CLOSURE_WIDTH}
-        height={CLOSURE_HEIGHT}
+        y={CLOSURE_MID_Y - CLOSURE_PAPER_WIDTH / 2}
+        width={CLOSURE_SWATCH_WIDTH}
+        height={CLOSURE_PAPER_WIDTH}
         fill={ground}
       />
-      {/* The ticks, SQUARE TO THE BAND since #1599, which is the whole of
-          that change: a mark leaning at 55 degrees was what tore at every
-          bend on the real map, so the legend leans no more than the map
-          does. */}
-      {CLOSURE_TICKS.map((x) => (
-        <rect
-          key={`tick-${x}`}
-          className="map-icon__closure-band"
-          x={x}
-          y={CLOSURE_OUTLINE_WIDTH}
-          width={CLOSURE_TICK}
-          height={CLOSURE_HEIGHT}
-          fill={CLOSURE_COLOR}
+      {CLOSURE_DOTS.map((x) => (
+        <circle
+          key={`dot-${x}`}
+          className="map-icon__closure-trace"
+          cx={x}
+          cy={CLOSURE_MID_Y}
+          r={CLOSURE_TRACE_WIDTH / 2}
+          fill={ink}
+          fillOpacity={CLOSURE_TRACE_OPACITY}
         />
       ))}
-      {[0, CLOSURE_HEIGHT + CLOSURE_OUTLINE_WIDTH].map(outline)}
+      {/* The cross: its paper-coloured halo, then the ink, as the map's
+          `icon-halo-width` and `icon-color` draw it. */}
+      <path
+        className="map-icon__closure-halo"
+        d={CLOSURE_CROSS_PATH}
+        stroke={ground}
+        strokeWidth={CLOSURE_CROSS_STROKE + CLOSURE_CROSS_HALO_WIDTH * 2}
+        strokeLinecap="round"
+        fill="none"
+      />
+      <path
+        className="map-icon__closure-cross"
+        d={CLOSURE_CROSS_PATH}
+        stroke={ink}
+        strokeWidth={CLOSURE_CROSS_STROKE}
+        strokeLinecap="round"
+        fill="none"
+      />
     </svg>
   )
 }
@@ -472,19 +553,19 @@ export interface MapIconProps {
    *  for it too - a category added upstream should look unfamiliar here, not
    *  invisible. */
   type: string
-  /** Solid rim, or the broken one that means nobody has verified the POI
-   *  exists. Ignored by the closure band and the warning pin, neither of which
+  /** Filled, or the hollow pin that means nobody has verified the POI exists
+   *  (#1682). Ignored by the closure band and the warning pin, neither of which
    *  is a claim about a waypoint's existence. */
   confidence?: PoiConfidence
   className?: string
-  /** The categories riding a site pin as badges - see PinProps. */
+  /** The categories riding a site pin as pips - see WaypointPinProps. */
   members?: readonly string[]
   /** `pin` (the default) is the map's own pin; `tile` is the bare silhouette
    *  on a tinted square, for lists (#1373). A closure and a warning have no
    *  tile form - a warning is its pin, a closure is its tape. */
   variant?: 'pin' | 'tile'
   /** Which sheet the map is drawn in - read by the closure swatch alone, for
-   *  the paper its tape lies on (#1575). Defaults to the field day sheet, as
+   *  its paper and ink (#1575, #1677). Defaults to the field day sheet, as
    *  TrailLineSwatch does for the same reason; the pins ignore it. */
   appearance?: SheetAppearance
 }
@@ -498,13 +579,19 @@ export function MapIcon({
   appearance = { theme: 'light' },
 }: MapIconProps) {
   if (type === CLOSURE_TYPE) {
-    return <ClosureBand className={className} ground={closureTapeGround(appearance)} />
+    return (
+      <ClosureCrossedOut
+        className={className}
+        ground={closureTapeGround(appearance)}
+        ink={closureInk(appearance)}
+      />
+    )
   }
 
   if (type === WARNING_ICON_ID) {
     // Drawn at the same size as every other icon here, which is the one place
     // this deliberately parts company with the map. On the map the warning pin
-    // is the biggest thing drawn (44px against a waypoint's 38) because it has
+    // is the biggest thing drawn (44px against a waypoint's 26 drawn inside a 38 px footprint) because it has
     // to win a glance across a moving screen. A legend is a key, read a row at
     // a time, and a row 16% taller than its neighbours would buy no urgency
     // and cost the grid its alignment. What carries the recognition instead is
@@ -529,10 +616,9 @@ export function MapIcon({
   }
 
   return (
-    <Pin
+    <WaypointPin
       className={className}
-      color={poiColor(type)}
-      path={poiGlyphPath(type)}
+      type={type}
       confidence={confidence}
       members={members}
     />

@@ -35,7 +35,7 @@
 // a control.
 
 import { TRAIL_LABEL_LAYER_ID, NEARBY_TRAIL_LABEL_LAYER_ID } from '../map/trailLabels'
-import { LIVE_TOPO_LAYER_IDS } from '../map/liveTopo'
+import { LIVE_TOPO_LAYER_IDS } from '../map/sheets'
 import { TIER_MIN_ZOOM, type LabelTier } from '../map/labelLadder'
 
 export type LabelLayerKey =

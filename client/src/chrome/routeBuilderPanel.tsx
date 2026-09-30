@@ -27,9 +27,10 @@
 
 import { useCallback, useMemo, useState } from 'react'
 import type { MapScreenProps } from './MapScreen'
-import { RouteEntranceSheet, type EntranceEnd } from './RouteEntranceSheet'
-import { RouteStopsPanel, type RouteLegDisplay } from './RouteStopsPanel'
-import { RouteStopPicker, type RouteStopChoice } from './RouteStopPicker'
+import type { EntranceEnd } from './RouteEntranceSheet'
+import type { RouteLegDisplay } from './RouteStopsPanel'
+import { RouteEntranceSheet, RouteStopPicker, RouteStopsPanel } from '../screens/deferred'
+import type { RouteStopChoice } from './RouteStopPicker'
 import { RouteMapPickBar } from './RouteMapPickBar'
 import type { ChartStretch } from './ElevationChart'
 import { mileMarker, stopLabel } from '../lib/planDisplay'

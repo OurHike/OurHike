@@ -27,14 +27,23 @@ import export_nearby_trails as ex
 
 # Harriman-ish, and far enough from any real data that nothing here can be
 # confused for a measurement. The default place a fixture feature sits.
-HARRIMAN = [(-74.1, 41.25), (-74.09, 41.26)]
+#
+# 0.04 DEGREES RATHER THAN 0.01 SINCE #1775, and the size is now load-bearing
+# where it used to be arbitrary: write_overview drops anything whose bounding
+# box is under OVERVIEW_MIN_FEATURE_M - one pixel at the zoom the tiles take
+# over, about 1,874 m - and the old 0.01° span was 1.4 km. Every sketch
+# assertion in this file would have read an empty artifact and passed only
+# where it expected nothing. About 4.4 km across, still one screen of input,
+# and still far under NAMED_TRAIL_THRESHOLD_MILES for the tests that need a
+# feature to fall into the unnamed haze.
+HARRIMAN = [(-74.1, 41.25), (-74.06, 41.29)]
 # Two places this export USED TO refuse to draw, kept as fixtures because the
 # refusal is what #1019 removed: north of the old ring's 42.55° cut (the Long
 # Path's Albany end, in miniature) and east of its -73.4° edge. Named for the
 # boundary rather than for the ground so the geography tests below read as the
 # inversion they are.
-PAST_THE_OLD_NORTH_CUT = [(-74.0, 43.1), (-73.99, 43.11)]
-PAST_THE_OLD_EAST_EDGE = [(-72.0, 41.2), (-71.99, 41.21)]
+PAST_THE_OLD_NORTH_CUT = [(-74.0, 43.1), (-73.96, 43.14)]
+PAST_THE_OLD_EAST_EDGE = [(-72.0, 41.2), (-71.96, 41.24)]
 
 
 def _feature(coords, properties, feature_id=1):
@@ -109,6 +118,7 @@ def _usfs_source(**overrides):
     trails by MEDIUM (trail_type TERRA/SNOW/WATER) rather than by use, and
     TERRA is exactly the walkable set. See sources.json's foot_allowed_comment
     for why hiker_pedestrian_managed - the obvious candidate - cannot be used.
+    Motorized trails are excluded on `terra_motorized` (#1711).
     """
     source = {
         "key": "usfs_trails",
@@ -121,33 +131,19 @@ def _usfs_source(**overrides):
         "blaze_default": "Unknown",
         "foot_field": "trail_type",
         "foot_allowed": ["TERRA"],
+        "excluded_when": {"terra_motorized": ["Y"]},
         "reaches_hikers": True,
     }
     source.update(overrides)
     return source
 
 
-def _granit_source(**overrides):
-    """The shape of the real nh_granit_trails entry, minus the prose.
-
-    The only source using `excluded_when`: its PED column cannot be an
-    allowlist (blank means unrecorded, not no), so it filters on GRANIT's
-    positive motorized flags instead.
-    """
-    source = {
-        "key": "nh_granit_trails",
-        "title": "New Hampshire Trails",
-        "kind": "external_arcgis_layer",
-        "url": "https://example.test/granit",
-        "steward": "NH GRANIT, Earth Systems Research Center, University of New Hampshire",
-        "attribution": "NH GRANIT, University of New Hampshire",
-        "blaze_field": "BLAZE",
-        "name_field": "TRAILNAME",
-        "excluded_when": {"SNOWMBL": ["1"], "ATV": ["1"]},
-        "reaches_hikers": True,
-    }
-    source.update(overrides)
-    return source
+def _usfs_properties(**overrides):
+    """One non-motorized foot trail, the commonest live shape (45,151 of the
+    TERRA rows read terra_motorized 'N', measured 2026-09-28)."""
+    props = {"trail_name": "JEWELL", "trail_type": "TERRA", "terra_motorized": "N"}
+    props.update(overrides)
+    return props
 
 
 def _centerline_source():
@@ -963,7 +959,10 @@ def test_the_manifest_reports_the_ground_the_export_actually_covers(tmp_path, mo
         mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
     )
 
-    assert manifest["bbox"] == pytest.approx([-74.1, 41.25, -73.99, 43.11])
+    # The two fixtures' own corners - HARRIMAN's west/south and
+    # PAST_THE_OLD_NORTH_CUT's east/north, both 0.04 degrees across since
+    # #1775 lengthened them past the sketch's floor.
+    assert manifest["bbox"] == pytest.approx([-74.1, 41.25, -73.96, 43.14])
     assert "ring_bbox" not in manifest
 
 
@@ -1244,11 +1243,16 @@ def test_the_overview_groups_by_the_three_properties_the_paint_and_tape_read(tmp
     assert all(f["geometry"]["type"] == "MultiLineString" for f in features)
 
 
-def test_overview_coordinates_carry_the_at_sketchs_own_four_decimals(tmp_path, monkeypatch):
-    # OVERVIEW_COORDINATE_DECIMALS, imported from export_trails.py rather than
-    # restated - four decimals is ~11 m of longitude, an order finer than the
-    # 100 m tolerance, and survey-noise digits are what the sketch exists to
-    # shed.
+def test_overview_coordinates_stop_an_order_below_the_sketchs_own_tolerance(tmp_path, monkeypatch):
+    # OVERVIEW_SEAM_DECIMALS, this export's own since #1775 rather than
+    # export_trails.py's four: three decimals is ~111 m of longitude, an order
+    # finer than the 937 m this sketch is now cut to, and survey-noise digits
+    # are what a sketch exists to shed. The rule did not change - "an order
+    # finer than the tolerance" is the same rule the four-decimal version
+    # stated - only the tolerance it is measured against did.
+    #
+    # The fixture spans about 2.2 km, which clears OVERVIEW_MIN_FEATURE_M: a
+    # shorter one would test the floor instead and find no coordinates at all.
     survey_noise = [(-74.123456789, 41.251234567), (-74.109876543, 41.267654321)]
     _run(
         tmp_path,
@@ -1260,8 +1264,15 @@ def test_overview_coordinates_carry_the_at_sketchs_own_four_decimals(tmp_path, m
 
     (feature,) = _overview(tmp_path)["features"]
     (line,) = feature["geometry"]["coordinates"]
-    assert line[0] == [-74.1235, 41.2512]
-    assert line[-1] == [-74.1099, 41.2677]
+    # Asserted as a digit count rather than as literals: the cut runs through
+    # EPSG:5070 and back, so the last digit is the projection's and pinning it
+    # would be pinning pyproj's version rather than this export's contract.
+    for lon, lat in line:
+        for value in (lon, lat):
+            decimals = len(str(value).partition(".")[2])
+            assert decimals <= ex.OVERVIEW_SEAM_DECIMALS, f"{value} carries {decimals} decimals"
+    assert line[0][0] == pytest.approx(-74.1235, abs=0.001)
+    assert line[-1][1] == pytest.approx(41.2677, abs=0.001)
 
 
 def test_the_overview_rides_the_manifest_the_publish_gate_reads(tmp_path, monkeypatch):
@@ -1281,7 +1292,7 @@ def test_the_overview_rides_the_manifest_the_publish_gate_reads(tmp_path, monkey
     assert len(overview["sha256"]) == 64
     assert overview["feature_count"] == 1
     assert overview["coordinate_count"] >= 2
-    assert overview["tolerance_m"] == 100.0
+    assert overview["tolerance_m"] == ex.OVERVIEW_SEAM_TOLERANCE_M
 
 
 # --- Naming a long-distance trail below the seam (#1307) --------------------
@@ -1383,9 +1394,9 @@ def test_usfs_snow_and_water_corridors_are_dropped_and_terra_ships(tmp_path, mon
         [_usfs_source()],
         {
             "usfs_trails": [
-                _feature(HARRIMAN, {"trail_name": "JEWELL", "trail_type": "TERRA"}, feature_id=1),
-                _feature(HARRIMAN, {"trail_name": "ROSEBROOK SNOMO", "trail_type": "SNOW"}, feature_id=2),
-                _feature(HARRIMAN, {"trail_name": "A PADDLE ROUTE", "trail_type": "WATER"}, feature_id=3),
+                _feature(HARRIMAN, _usfs_properties(trail_name="JEWELL"), feature_id=1),
+                _feature(HARRIMAN, _usfs_properties(trail_name="ROSEBROOK SNOMO", trail_type="SNOW"), feature_id=2),
+                _feature(HARRIMAN, _usfs_properties(trail_name="A PADDLE ROUTE", trail_type="WATER"), feature_id=3),
             ]
         },
     )
@@ -1412,10 +1423,10 @@ def test_a_usfs_trail_with_no_hiker_season_still_ships(tmp_path, monkeypatch):
             "usfs_trails": [
                 _feature(
                     HARRIMAN,
-                    {"trail_name": "SEASONED", "trail_type": "TERRA", "hiker_pedestrian_managed": "01/01-12/31"},
+                    _usfs_properties(trail_name="SEASONED", hiker_pedestrian_managed="01/01-12/31"),
                     feature_id=1,
                 ),
-                _feature(HARRIMAN, {"trail_name": "UNRECORDED", "trail_type": "TERRA"}, feature_id=2),
+                _feature(HARRIMAN, _usfs_properties(trail_name="UNRECORDED"), feature_id=2),
             ]
         },
     )
@@ -1423,104 +1434,61 @@ def test_a_usfs_trail_with_no_hiker_season_still_ships(tmp_path, monkeypatch):
     assert [f["properties"]["name"] for f in body["features"]] == ["SEASONED", "UNRECORDED"]
 
 
-def test_granit_drops_motorized_corridors_on_a_positive_flag(tmp_path, monkeypatch):
-    # Measured in the Whites 2026-09-02: 1,209 blank-PED rows are flagged
-    # SNOWMBL '1' and 124 ATV '1'. Those are positive assertions about what a
-    # corridor is FOR, and acting on one is sound where acting on an absence
-    # is not.
+def test_usfs_motorized_trails_are_dropped_and_unrecorded_ones_ship(tmp_path, monkeypatch):
+    """The maintainer's filter of 2026-09-28 (#1711): no motorized trails.
+
+    Measured nationwide that day across trail_type TERRA: terra_motorized
+    reads 'Y' on 23,195 rows (29,199 mi) - every one carrying a motorcycle,
+    ATV or 4WD code in allowed_terra_use - 'N' on 45,151, and 'N/A' on 9,810
+    rows whose every use column is empty. The 'N/A' rows SHIP: they include
+    about 570 mi of the Pacific Crest Trail and the Arizona Trail, and an
+    empty use column is unrecorded, not motorized.
+    """
     manifest, body = _run(
         tmp_path,
         monkeypatch,
-        [_granit_source()],
+        [_usfs_source()],
         {
-            "nh_granit_trails": [
-                _feature(HARRIMAN, {"TRAILNAME": "Air Line", "BLAZE": " ", "PED": "1"}, feature_id=1),
-                _feature(HARRIMAN, {"TRAILNAME": "Camp 7 Snowmobile", "BLAZE": " ", "PED": " ", "SNOWMBL": "1"}, feature_id=2),
-                _feature(HARRIMAN, {"TRAILNAME": "An OHV run", "BLAZE": " ", "PED": " ", "ATV": "1"}, feature_id=3),
+            "usfs_trails": [
+                _feature(HARRIMAN, _usfs_properties(trail_name="JEWELL"), feature_id=1),
+                _feature(HARRIMAN, _usfs_properties(trail_name="GREAT WESTERN TRAIL", terra_motorized="Y"), feature_id=2),
+                _feature(HARRIMAN, _usfs_properties(trail_name="PACIFIC CREST TRAIL", terra_motorized="N/A"), feature_id=3),
             ]
         },
-        mapping={"nh_granit_trails": {"mapped": {" ": "None", "White": "White"}}},
     )
 
-    assert [f["properties"]["name"] for f in body["features"]] == ["Air Line"]
-    assert manifest["sources"]["nh_granit_trails"]["dropped"] == {
-        "excluded use: SNOWMBL='1'": 1,
-        "excluded use: ATV='1'": 1,
-    }
+    assert [f["properties"]["name"] for f in body["features"]] == ["JEWELL", "PACIFIC CREST TRAIL"]
+    assert manifest["sources"]["usfs_trails"]["dropped"] == {"excluded use: terra_motorized='Y'": 1}
 
 
-def test_a_granit_trail_with_blank_ped_and_no_other_flag_still_ships(tmp_path, monkeypatch):
-    # The counterpart, and the reason PED is not a foot_field. 2,541 of the
-    # 3,760 blank-PED rows in the Whites carry NO use flag of any kind and are
-    # ordinary hiking trails - one of them literally named "Appalachian Trail
-    # - road link". A PED allowlist would delete them.
-    _, body = _run(
-        tmp_path,
-        monkeypatch,
-        [_granit_source()],
-        {
-            "nh_granit_trails": [
-                _feature(HARRIMAN, {"TRAILNAME": "Appalachian Trail - road link", "BLAZE": " ", "PED": " "}, feature_id=1),
-            ]
-        },
-        mapping={"nh_granit_trails": {"mapped": {" ": "None"}}},
-    )
+def test_a_registry_field_absent_from_every_fetched_feature_fails_the_run(tmp_path, monkeypatch):
+    """#1646's failure, pinned: a renamed column must stop the run.
 
-    assert [f["properties"]["name"] for f in body["features"]] == ["Appalachian Trail - road link"]
-
-
-def test_an_unblazed_whites_trail_draws_as_unblazed_not_unknown(tmp_path, monkeypatch):
-    # The maintainer's correction of 2026-09-02: the Whites largely do not use
-    # paint blazes, so GRANIT's blank BLAZE - 7,574 of 7,643 rows - is the
-    # ground rather than a gap. reference/blaze_mapping.json keys the literal
-    # ' ' to "None", which the client renders as "Unblazed"; "Unknown" would
-    # print a hedge in place of a true fact. The A.T. is the one white line
-    # through the range (61 of the 62 White rows carry TRAILSYS 'Appalachian
-    # Trail').
-    _, body = _run(
-        tmp_path,
-        monkeypatch,
-        [_granit_source()],
-        {
-            "nh_granit_trails": [
-                _feature(HARRIMAN, {"TRAILNAME": "Air Line", "BLAZE": " ", "PED": "1"}, feature_id=1),
-                _feature(HARRIMAN, {"TRAILNAME": "Appalachian Trail", "BLAZE": "White", "PED": "1"}, feature_id=2),
-            ]
-        },
-        mapping={"nh_granit_trails": {"mapped": {" ": "None", "White": "White"}}},
-    )
-
-    blazes = {f["properties"]["name"]: f["properties"]["blaze_color"] for f in body["features"]}
-    assert blazes == {"Air Line": "None", "Appalachian Trail": "White"}
-
-
-def test_the_two_whites_sources_report_two_different_absences(tmp_path, monkeypatch):
-    """GRANIT's blank is "Unblazed"; USFS's silence is "Blaze not recorded".
-
-    Both cover the same White Mountains ground and neither paints most of it,
-    which makes it tempting to treat the two absences as one. They are not.
-    GRANIT records a blaze where one exists - the A.T.'s white - so its blank
-    is evidence that a trail is unblazed. USFS publishes no blaze column at
-    all, so it has said nothing. Collapsing them would tell a hiker the Forest
-    Service had checked.
-
-    Pinned together in one test because the distinction only exists in the
-    comparison, and a future simplification would erase it by making both
-    sources agree.
+    NH GRANIT republished in September 2026 with SNOWMBL/ATV renamed. The
+    registry still named the old columns, `properties.get` returned None on
+    every row, the exclusion matched nothing, and every snowmobile corridor in
+    New Hampshire shipped as a hiking trail from a green run. Here the same
+    thing happens to usfs_trails' `terra_motorized`: the layer stops carrying
+    it, and a green run would ship every ATV trail in the country.
     """
-    _, body = _run(
-        tmp_path,
-        monkeypatch,
-        [_granit_source(), _usfs_source()],
-        {
-            "nh_granit_trails": [_feature(HARRIMAN, {"TRAILNAME": "Air Line", "BLAZE": " ", "PED": "1"}, feature_id=1)],
-            "usfs_trails": [_feature(HARRIMAN, {"trail_name": "JEWELL", "trail_type": "TERRA"}, feature_id=1)],
-        },
-        mapping={"nh_granit_trails": {"mapped": {" ": "None"}}},
-    )
+    renamed = [_feature(HARRIMAN, {"trail_name": "GREAT WESTERN TRAIL", "trail_type": "TERRA", "motorized": "Y"})]
+    with pytest.raises(SystemExit, match=r"usfs_trails: sources.json names \['terra_motorized'\]"):
+        _run(tmp_path, monkeypatch, [_usfs_source()], {"usfs_trails": renamed})
 
-    blazes = {f["properties"]["name"]: f["properties"]["blaze_color"] for f in body["features"]}
-    assert blazes == {"Air Line": "None", "JEWELL": "Unknown"}
+
+def test_a_registry_field_null_on_every_feature_is_not_a_schema_change():
+    """The guard asks whether a column EXISTS, not whether it is populated.
+
+    A steward publishing a column and leaving it empty is a data question the
+    filters already answer (an absent blaze draws "Unknown"); only a column
+    missing from every row means the registry describes a different layer.
+    """
+    source = _usfs_source()
+    assert ex.missing_declared_fields(source, [{"properties": _usfs_properties(terra_motorized=None)}]) == []
+    assert ex.missing_declared_fields(source, [{"properties": {"trail_name": "JEWELL"}}]) == [
+        "trail_type",
+        "terra_motorized",
+    ]
 
 
 # --------------------------------------------------------------------------
@@ -2092,3 +2060,153 @@ def test_overview_coordinates_all_cuts_what_overview_coordinates_cut():
     for decimals in (export_trails.OVERVIEW_COORDINATE_DECIMALS, 6):
         batched = export_trails._overview_coordinates_all(np.array(geoms, dtype=object), decimals)
         assert json.dumps(batched) == json.dumps([export_trails._overview_coordinates(g, decimals) for g in geoms])
+
+
+# --- the sketch's floor (#1775) --------------------------------------------------
+#
+# write_overview stopped owning the whole zoom range when the tiles took
+# z5-z9, so it is cut for a pixel at OVERVIEW_SEAM_ZOOM instead of one at the
+# seam. These hold the two halves of that: a segment smaller than a pixel
+# there is dropped, and a through-route is kept whatever it measures.
+
+
+def _straight(lon: float, lat: float, metres: float) -> str:
+    """A due-north line `metres` long, near enough at these latitudes - one
+    degree of latitude is close to 111,320 m everywhere."""
+    return f"LINESTRING ({lon} {lat}, {lon} {lat + metres / 111_320})"
+
+
+def test_a_trail_smaller_than_a_pixel_at_the_seam_is_not_in_the_sketch(monkeypatch, tmp_path):
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path / "processed")
+    # Either side of OVERVIEW_MIN_FEATURE_M, which is one pixel at
+    # OVERVIEW_SEAM_ZOOM - about 1,874 m. Both are longer than the 100 m the
+    # sketch used to be cut at, so neither is dropped by simplification.
+    records = [
+        {
+            "id": "big",
+            "source": "oprhp_trails",
+            "name": None,
+            "blaze_color": "Blue",
+            "trail_status": "open",
+            "wkt": _straight(-74.1, 41.25, ex.OVERVIEW_MIN_FEATURE_M * 2),
+        },
+        {
+            "id": "small",
+            "source": "oprhp_trails",
+            "name": None,
+            "blaze_color": "Blue",
+            "trail_status": "open",
+            "wkt": _straight(-74.3, 41.25, ex.OVERVIEW_MIN_FEATURE_M / 4),
+        },
+    ]
+
+    entry = ex.write_overview(records)
+
+    assert entry["records_before_floor"] == 2
+    assert entry["records_after_floor"] == 1
+    body = json.loads((ex.OUT_DIR / ex.OVERVIEW_ARTIFACT_NAME).read_text())
+    # One feature, and the vertex that survived is the long line's - the two
+    # sit 0.2 degrees apart so the longitude alone says which.
+    drawn = [line for feature in body["features"] for line in feature["geometry"]["coordinates"]]
+    assert len(drawn) == 1
+    assert drawn[0][0][0] == pytest.approx(-74.1, abs=0.01)
+
+
+def test_a_through_route_stays_in_the_sketch_however_short_its_sections_are(monkeypatch, tmp_path):
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path / "processed")
+    # #1307's threshold is about the WHOLE trail, and one trail is ordinarily
+    # many rows - the Long Path published 43. A floor applied row by row would
+    # erase a long trail section by section while keeping a single-row trail
+    # of the same length, which is the failure _above_the_seam_floor's
+    # qualifying-name branch exists to prevent.
+    sections = int(ex.NAMED_TRAIL_THRESHOLD_MILES) + 5
+    records = [
+        {
+            "id": f"lp{n}",
+            "source": "nynjtc_long_path",
+            "name": "Long Path",
+            "blaze_color": "Aqua",
+            "trail_status": "open",
+            # A mile each, which is well under one pixel at the seam.
+            "wkt": _straight(-74.0 + n * 0.02, 41.0, 1_609.34),
+        }
+        for n in range(sections)
+    ]
+    assert 1_609.34 < ex.OVERVIEW_MIN_FEATURE_M, "the fixture has to be sub-pixel for this to test anything"
+
+    entry = ex.write_overview(records)
+
+    assert entry["records_after_floor"] == sections
+    body = json.loads((ex.OUT_DIR / ex.OVERVIEW_ARTIFACT_NAME).read_text())
+    named = [f for f in body["features"] if f["properties"].get("through_route")]
+    assert [f["properties"]["name"] for f in named] == ["Long Path"]
+
+
+def test_the_sketch_is_cut_for_its_own_top_zoom_and_not_the_ats(monkeypatch, tmp_path):
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path / "processed")
+    import export_trails
+
+    # The two sketches answer different questions since the tiles took z5-z9,
+    # and export_trails.py's constant carries the A.T. sketch's own safety
+    # ceiling ("a trail drawn somewhere it does not go"). This export must not
+    # drag it along: half a pixel at z5 is an order coarser than 100 m, and a
+    # shared constant would be one of the two artifacts being wrong.
+    assert ex.OVERVIEW_SEAM_ZOOM == ex.TILES_MIN_ZOOM
+    assert ex.OVERVIEW_SEAM_TOLERANCE_M == pytest.approx(ex.OVERVIEW_MIN_FEATURE_M / 2)
+    assert ex.OVERVIEW_SEAM_TOLERANCE_M > export_trails.OVERVIEW_SIMPLIFY_TOLERANCE_M * 5
+    assert export_trails.OVERVIEW_SIMPLIFY_TOLERANCE_M == 100.0
+
+    entry = ex.write_overview(
+        [
+            {
+                "id": "a",
+                "source": "oprhp_trails",
+                "name": None,
+                "blaze_color": "Blue",
+                "trail_status": "open",
+                "wkt": _straight(-74.1, 41.25, ex.OVERVIEW_MIN_FEATURE_M * 3),
+            }
+        ]
+    )
+    assert entry["tolerance_m"] == ex.OVERVIEW_SEAM_TOLERANCE_M
+    assert entry["min_feature_m"] == ex.OVERVIEW_MIN_FEATURE_M
+
+
+# --- a trail whose name is the layer (#1778) --------------------------------------
+#
+# Some stewards publish one trail as a layer with no name column: PCTA's
+# centerline is a single feature carrying OBJECTID and Shape__Length. The name
+# is not missing from that layer, it is the layer - so a row may declare
+# `name_constant`, and these hold the two halves of letting it.
+
+
+def test_a_layer_that_is_one_trail_takes_its_name_from_the_registry():
+    # PCTA's real shape: no name column anywhere, so declared_name has nothing
+    # to read and the feature would reach the export nameless - into the
+    # unnamed haze, at the thinnest weight the sketch draws, for the trail
+    # whose own steward published it.
+    source = {"key": "pcta_centerline", "name_constant": "Pacific Crest Trail"}
+    assert ex.declared_name(source, {"OBJECTID": 1, "Shape__Length": 44.27}) == "Pacific Crest Trail"
+    # Every feature, not just the first: CDTC publishes eight, one per state
+    # run, and a name on one of them would draw seven anonymous lines beside it.
+    assert ex.declared_name(source, {"OBJECTID": 8}) == "Pacific Crest Trail"
+
+
+def test_a_name_constant_does_not_quietly_beat_a_name_column():
+    # The registry may say where to read a name or that there is nowhere to
+    # read it, never both - declared_name takes the constant and never opens
+    # the column, so a row claiming both would leave a column name sitting in
+    # sources.json looking enforced while nothing read it.
+    both = {"key": "confused", "name_constant": "Some Trail", "name_field": "TRLNAME"}
+    assert ex.name_constant_conflicts([both]) == ["confused"]
+    assert ex.name_constant_conflicts([{"key": "a", "name_field": "TRLNAME"}]) == []
+    assert ex.name_constant_conflicts([{"key": "b", "name_constant": "Ice Age Trail"}]) == []
+
+
+def test_a_placeholder_is_still_read_as_no_name_where_a_column_exists():
+    # #1432's rule is untouched by #1778: a steward writing "Name TBD" into a
+    # column that cannot be empty is saying "no name", and the constant is for
+    # the different case of no column at all.
+    source = {"key": "nyc_parks_trails", "name_field": "trail_name", "name_placeholders": ["Name TBD"]}
+    assert ex.declared_name(source, {"trail_name": "Name TBD"}) is None
+    assert ex.declared_name(source, {"trail_name": "Shore Road Path"}) == "Shore Road Path"

@@ -30,15 +30,19 @@
 //
 // Its own tiny rasteriser rather than `buildPinImage`, for the reason
 // map/positionMark.ts gives: that function draws a pin, and this is not one.
-import { parseHex, type PoiIconImage } from './poiIcons'
+import { parseHex, POI_PIN_INK_SIZE, type PoiIconImage } from './poiIcons'
 
 /**
  * The ring's radius in CSS px at icon-size 1, to the middle of its ink: half
- * the 38 px pin plus 3 px of air, the same 22 px the circle layer drew at
- * full size. Scaled by the pin's own `icon-size` now, so a secondary pin gets
- * a proportionally smaller ring rather than the full-size one it used to.
+ * the drawn pin plus 3 px of air. Scaled by the pin's own `icon-size`, so a
+ * secondary pin gets a proportionally smaller ring.
+ *
+ * 16 since the pin was drawn 26 px across inside its 38 px footprint (#1682);
+ * it was 22 round the 38 px coin. Derived from the drawn size rather than
+ * typed, so the 3 px of air is what survives a resize - the circle layer's
+ * original choice, kept.
  */
-export const STALENESS_RING_RADIUS = 22
+export const STALENESS_RING_RADIUS = POI_PIN_INK_SIZE / 2 + 3
 
 /** The ink width in CSS px - the circle layer's `circle-stroke-width: 2`. */
 const RING_INK = 2

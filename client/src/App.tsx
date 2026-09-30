@@ -106,6 +106,12 @@ import {
   YourReports,
   YourWork,
   PlanStart,
+  DayHikeCard,
+  DayHikePanel,
+  DayHikePickBar,
+  NextTurnCard,
+  RouteStopPicker,
+  StepAwaySheet,
 } from './screens/deferred'
 import { useAfterFirstFrame } from './lib/useAfterFirstFrame'
 import {
@@ -126,7 +132,7 @@ import { FIT_PADDING } from './map/fitPadding'
 import { trailIdForSource } from './map/trailBadges'
 import { chosenSystemSources } from './map/nearbyTrails'
 import type { TappedLine } from './map/lineTaps'
-import { CORRIDOR_ARCHIVE_URL } from './map/protocol'
+import { CORRIDOR_ARCHIVE_URL } from './map/archiveUrls'
 import { loadMapEngine } from './map/mapEngineLoader'
 import { DATA_CONFIGURED } from './lib/config'
 import {
@@ -200,9 +206,8 @@ import {
   useCellIndex,
   useCellIndexState,
 } from './lib/coverageCells'
-import { setBasemapCells } from './map/basemap'
+import { setBasemapCells, setNetworkCells } from './map/heldCells'
 import { setTerrainCells } from './map/demCells'
-import { setNetworkCells } from './map/networkTiles'
 import type { StretchOffer } from './screens/StretchCard'
 import { HEALTHY, type LiveSourceHealth, type SourceReport } from './map/liveSourceHealth'
 import {
@@ -279,7 +284,7 @@ import {
 } from './lib/route'
 import { type ViaStop } from './lib/dayPlanner'
 import type { ChartStretch } from './chrome/ElevationChart'
-import { RouteStopPicker, type RouteStopChoice } from './chrome/RouteStopPicker'
+import type { RouteStopChoice } from './chrome/RouteStopPicker'
 import { RouteMapPickBar } from './chrome/RouteMapPickBar'
 import { ReportPickBar } from './chrome/ReportPickBar'
 import { SectionPlanner } from './chrome/SectionPlanner'
@@ -350,7 +355,6 @@ import {
   pausedDays,
   resumeOffer,
 } from './lib/hikeResume'
-import { DayHikePickBar, walkingTime } from './chrome/DayHikePickBar'
 import { roadRefusal, tappedRoadAt } from './map/roadTaps'
 import {
   canStartStretch,
@@ -370,6 +374,7 @@ import {
   walkEnds,
   type DayHikeDraft,
   NETWORK_STILL_ARRIVING,
+  routeTitle,
 } from './lib/dayHikeDraft'
 import { routeLines, type TrailGraphIndex } from './lib/trailGraph'
 import { buildCourse, lonLatBounds, mileTicks } from './lib/dayHikeCourse'
@@ -389,7 +394,6 @@ import {
   type HiddenLabelLayers,
   type LabelLayerKey,
 } from './lib/mapLabelLayers'
-import { DayHikePanel } from './chrome/DayHikePanel'
 import {
   attachTrailGraphElevation,
   attachTrailGraphGeometry,
@@ -415,15 +419,12 @@ import { dayHikeBailOuts, resolveDayHike } from './lib/dayHikeCard'
 import { followDayHike, followHeader, type FollowState } from './lib/dayHikeFollow'
 import { atJunction, dayHikeTurns, nextTurn } from './lib/dayHikeTurns'
 import { dayHikeWalk } from './lib/dayHikeWalk'
-import { NextTurnCard } from './chrome/NextTurnCard'
 import { TurnCard } from './chrome/TurnCard'
 import { OffRouteBand, OffRouteCard } from './chrome/OffRouteCard'
 import { dayHikesNearHere } from './lib/dayHikeShelf'
-import { DayHikeCard } from './screens/DayHikeCard'
 import { DayHikesHere } from './chrome/DayHikesHere'
 import { planRoomFor } from './lib/planRoom'
 import { HikePickSheet } from './chrome/HikePickSheet'
-import { StepAwaySheet } from './chrome/StepAwaySheet'
 import { AddDayHikeSheet, type DayHikeCandidate } from './chrome/AddDayHikeSheet'
 import { hikeShareText } from './lib/hikeShareText'
 import type { LongHikeToday } from './screens/Today'
@@ -481,7 +482,6 @@ import {
 import { readLaunchMirror, writeLaunchMirror } from './lib/launchMirror'
 import { RouteHoverPlate } from './chrome/RouteHover'
 import { useRouteHover } from './chrome/useRouteHover'
-import { routeTitle } from './chrome/DayHikePanel'
 import { loadTakenTrail, saveTakenTrail } from './lib/takenTrail'
 import { LAUNCH_MARKS, markLaunch } from './lib/launchMarks'
 import { enqueueVolunteerHours } from './lib/outbox'
@@ -507,6 +507,7 @@ import {
   readStoredPace,
   writeStoredPace,
   type PaceProfile,
+  walkingTime,
 } from './lib/pace'
 import {
   MAX_FIX_GAP_MILES,
@@ -606,6 +607,47 @@ const TRAIL_NAME = TRAILS.AT.name
 const CORRIDOR_BOUNDS: [[number, number], [number, number]] = [
   [-84.73, 34.2],
   [-68.3, 46.34],
+]
+
+/**
+ * What the app OPENS on, which stopped being the A.T. corridor on 2026-09-30:
+ * "We should start showing the entire US, not just the at corridor" - the
+ * maintainer.
+ *
+ * WHY THIS IS A SEPARATE CONSTANT rather than CORRIDOR_BOUNDS widened.
+ * CORRIDOR_BOUNDS answers two questions and only one of them moved. It is
+ * still the A.T.'s own extent, and `wholeTrailBounds` below hands it to the
+ * elevation chart as the whole of the trail a hiker is walking - widening
+ * that would tell the chart the A.T. runs to California. The opening camera
+ * is the half that changed.
+ *
+ * WHY THE LOWER 48 AND NOT EVERYTHING THE DATA HOLDS. MEASURED 2026-09-30
+ * against the pinned release's network_overview.geojson (2026-09-16-4), which
+ * is what this camera draws: 201 lines, and ALL 201 are centred inside these
+ * bounds. The file's raw extent does reach -150.00 by 61.13 - Anchorage - but
+ * every one of those vertices belongs to a single unnamed `usfs_trails`
+ * aggregate carrying 400,009 points, of which 12,670 are in Alaska. Nothing
+ * badges it and nothing names it. Framing Alaska to hold that one line would
+ * shrink the rest of the country to a thumbnail, so the frame holds every
+ * trail a hiker can actually pick out and the Alaska vertices fall off the
+ * edge. Re-run the count rather than trusting this sentence; if a named
+ * Alaskan trail is ever published, this is the comment that is then wrong.
+ *
+ * WHAT IT COSTS, said plainly because it is visible in the first frame: the
+ * lower 48 is 58.1 degrees of longitude, so on a 390 px phone this fits near
+ * z2.2 against the corridor's z4.9, and the aspect leaves Canada and northern
+ * Mexico in view above and below. The basemap has them - OpenFreeMap's planet
+ * tiles (map/liveTopo.ts) are global, so this is a wider view of a real map
+ * rather than a frame the tiles cannot fill.
+ *
+ * The honesty argument that put the camera on the whole corridor is unchanged
+ * and is why this is the whole country rather than a guess at a region:
+ * before a fix, the app does not know where the hiker is, and a view of
+ * everything it covers says "somewhere on this" without pretending.
+ */
+export const UNITED_STATES_BOUNDS: [[number, number], [number, number]] = [
+  [-125.0, 24.5],
+  [-66.9, 49.4],
 ]
 
 const EMPTY_BBOX: BoundingBox = { west: 0, south: 0, east: 0, north: 0 }
@@ -759,6 +801,10 @@ const NO_HIKE_PLACES: ReturnType<typeof hikePlaces> = []
 const NO_PASSED_PLACES: { id: string; name: string; type: string; mile: number }[] = []
 const NO_PLACE_CANDIDATES: PlaceCandidate[] = []
 const NO_NEARBY_PLACES: NearbyPlace[] = []
+
+/** One hour, for the roll-up clock above `noteRollups` - the coarsest
+ *  tick the pins' staleness rings can ever move on. */
+const HOUR_MS = 60 * 60 * 1000
 
 function App() {
   // THE ORGANIZATION CONSOLE (#1539-#1542), and the whole of its footprint in
@@ -1492,7 +1538,26 @@ function App() {
 
   // Per-place roll-ups (FIELD_NOTES.md §3), recomputed at render time from
   // whatever notes are held - never stored, the derive-don't-duplicate rule.
-  const noteRollups = useMemo(() => rollupByPoi(allNotes ?? [], now), [allNotes, now])
+  //
+  // ON AN HOURLY CLOCK, NOT THE MINUTE'S (#1727). `now` ticks once a minute
+  // for the status strip, and a roll-up keyed on it got a new identity every
+  // tick, so `pinCondition` below did too, and MapView's source effect
+  // rebuilt the whole waypoint collection - the site fold, the crowding
+  // count (237-307 ms at 4x, #1632), MapLibre's serialisation of 28,913
+  // features and the worker's re-tiling of every pin - once a minute for as
+  // long as the map was open, for a ring whose tiers are measured in days
+  // (lib/staleness.ts). A note that lands still rebuilds it at once, through
+  // `allNotes`; only the clock's own tick is held to the hour. The one thing
+  // this can delay is a ring crossing a tier boundary, by up to an hour.
+  // The hour as a number first, so the memo's dependency is the hour and
+  // not the Date: a new Date each minute with the same hour in it is exactly
+  // the identity this exists to stop.
+  const hourOfNow = Math.floor(now.getTime() / HOUR_MS)
+  const nowHour = useMemo(() => new Date(hourOfNow * HOUR_MS), [hourOfNow])
+  const noteRollups = useMemo(
+    () => rollupByPoi(allNotes ?? [], nowHour),
+    [allNotes, nowHour],
+  )
 
   // Which ring each waypoint wears (#256's consumer, #759's nudge). The
   // policy lives in lib/stalenessDisplay.ts; this just binds it to the
@@ -1627,7 +1692,7 @@ function App() {
     // moved the map at the moment of choosing; this is the re-fit that
     // used to undo it, and now agrees with it); the corridor otherwise.
     if (defaultPlace !== null) moveMapToPlace(map, defaultPlace)
-    else map.fitBounds(CORRIDOR_BOUNDS, { padding: FIT_PADDING, duration: 0 })
+    else map.fitBounds(UNITED_STATES_BOUNDS, { padding: FIT_PADDING, duration: 0 })
   }, [entering, map, mapTaken, defaultPlace])
 
   // The centerline, the POIs, the elevation profile, and the fetch that puts
@@ -2898,8 +2963,9 @@ function App() {
     rasterFootprint,
   ])
 
-  // A fix moves no camera - see CORRIDOR_BOUNDS. It is read for everything
-  // else: the mile below, the direction of travel, the elevation ribbon.
+  // A fix moves no camera - see UNITED_STATES_BOUNDS. It is read for
+  // everything else: the mile below, the direction of travel, the elevation
+  // ribbon.
   const fix = useMemo(() => {
     if (trailIndex === null || gps.status !== 'located') return null
     return locateOnTrail(trailIndex, gps.at)
@@ -3526,7 +3592,8 @@ function App() {
    * chooses which sentences it produces, and never shows both.
    *
    * `camera === null` IS below the seam: that is the opening view, fitted to
-   * CORRIDOR_BOUNDS, which lands near z4.9 on a phone.
+   * UNITED_STATES_BOUNDS, which lands near z2.2 on a phone - further below the
+   * seam than the corridor's z4.9 was, never above it.
    */
   const belowSeam = camera === null || camera.zoom < POI_PIN_MIN_ZOOM
 
@@ -3657,7 +3724,7 @@ function App() {
     const disputed = new Set(disputes.map((dispute) => dispute.poi_id))
     return pois
       .filter((poi) => disputed.has(poi.id))
-      .map((poi) => ({ poiId: poi.id, lon: poi.lon, lat: poi.lat }))
+      .map((poi) => ({ poiId: poi.id, poiType: poi.type, lon: poi.lon, lat: poi.lat }))
     // `mapMounted` IS a dependency, and was missing until #1374's review -
     // the guard on the first line reads it. On a phone it flips true only when
     // the hiker opens the Map tab, which is normally AFTER `pois` and
@@ -9114,8 +9181,9 @@ function App() {
    * of the trail wedged into the corner above the card, while the sentence next
    * to it said "the whole trail's topo map lives on your phone". The fit was
    * right and the framing was wrong, which is why this is padding rather than a
-   * different camera: CORRIDOR_BOUNDS still says show all of it, and this says
-   * where "all of it" has to fit.
+   * different camera: the opening bounds still say show all of it - all of the
+   * country now, rather than all of the corridor - and this says where "all of
+   * it" has to fit.
    *
    * Expressed as a fraction of the viewport rather than in pixels because the
    * card is (`ENTRY_CARD_MAX_VIEWPORT_FRACTION`), so the two move together on a
@@ -11373,7 +11441,7 @@ function App() {
                 camera !== null
                   ? undefined
                   : placeView === null
-                    ? CORRIDOR_BOUNDS
+                    ? UNITED_STATES_BOUNDS
                     : placeView.bounds
               }
               boundsPadding={entryFitPadding}

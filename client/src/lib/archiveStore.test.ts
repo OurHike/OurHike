@@ -6,6 +6,7 @@ import {
   markComplete,
   readArchive,
   readArchiveSize,
+  readArchiveSizes,
   readComplete,
   readSegmentRun,
   readSegments,
@@ -27,6 +28,7 @@ import {
 
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  keys: vi.fn(),
   getMany: vi.fn(),
   set: vi.fn(),
   del: vi.fn(),
@@ -146,6 +148,60 @@ describe('readArchiveSize', () => {
     withStore(segments(0, 'unfinished'))
 
     expect(await readArchiveSize(KEY)).toBeNull()
+  })
+})
+
+describe('readArchiveSizes', () => {
+  const MARKED = 'ourhike:basemap-cell-n40w076'
+  const LEGACY = 'ourhike:dem-cell-n40w076'
+  const ABSENT = 'ourhike:network-cell-n40w076'
+
+  it('decides each package exactly as readArchiveSize does, in the order asked', async () => {
+    withStore({
+      ...{ [`${MARKED}:complete`]: { generation: 1, segments: 3, totalBytes: 96 } },
+      [LEGACY]: new Blob(['12345']),
+      ...segments(0, 'unfinished'),
+    })
+
+    expect(await readArchiveSizes([ABSENT, MARKED, LEGACY, KEY])).toEqual([
+      null,
+      96,
+      5,
+      null,
+    ])
+  })
+
+  it('reads 800 packages in two getMany transactions, not 2,400 gets (#1726)', async () => {
+    const keys = Array.from({ length: 800 }, (_, i) => `ourhike:network-cell-${i}`)
+    withStore({ [`${keys[0]}:complete`]: { generation: 0, segments: 1, totalBytes: 7 } })
+    vi.mocked(getMany).mockClear()
+
+    const sizes = await readArchiveSizes(keys)
+
+    expect(sizes[0]).toBe(7)
+    expect(sizes.slice(1).every((size) => size === null)).toBe(true)
+    // One transaction over every marker, one over the 799 with no marker.
+    expect(vi.mocked(getMany)).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(getMany).mock.calls[1]?.[0]).toHaveLength(799)
+  })
+
+  it('opens no second transaction when every package has a marker', async () => {
+    withStore({
+      [`${MARKED}:complete`]: { generation: 0, segments: 1, totalBytes: 10 },
+      [`${LEGACY}:complete`]: { generation: 0, segments: 1, totalBytes: 20 },
+    })
+    vi.mocked(getMany).mockClear()
+
+    expect(await readArchiveSizes([MARKED, LEGACY])).toEqual([10, 20])
+    expect(vi.mocked(getMany)).toHaveBeenCalledTimes(1)
+  })
+
+  it('answers an empty set without touching the store', async () => {
+    withStore()
+    vi.mocked(getMany).mockClear()
+
+    expect(await readArchiveSizes([])).toEqual([])
+    expect(vi.mocked(getMany)).not.toHaveBeenCalled()
   })
 })
 

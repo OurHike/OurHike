@@ -54,9 +54,9 @@
 // replacing the reporting this listener displaces. Its test asserts it.
 
 import type { Map as MapLibreMap, MapSourceDataEvent } from 'maplibre-gl'
-import { OSM_SOURCE_ID } from './liveTopo'
+import { OSM_SOURCE_ID } from './sheets'
 import { DEM_SOURCE_ID } from './terrain'
-import { TOPO_SOURCE_ID } from './style'
+import { TOPO_SOURCE_ID } from './styleIds'
 
 /**
  * What never arrived, as against what merely has not arrived yet.

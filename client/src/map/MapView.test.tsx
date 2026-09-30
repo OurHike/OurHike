@@ -19,13 +19,14 @@ import {
   TAPPABLE_BLAZE_LAYER_IDS,
   TRAIL_OVERVIEW_SOURCE_ID,
   TRAILS_SOURCE_ID,
+  NETWORK_OVERVIEW_SOURCE_ID,
   BLAZE_UNTAKEN_LAYER_ID,
   TRAIL_OVERVIEW_LAYER_ID,
   sketchWidthExpression,
   plainLineColor,
+  solidDashExpression,
 } from './style'
 import {
-  blazeChipImageId,
   TRAIL_BADGE_LAYER_ID,
   TRAIL_BADGE_PLATE_DAY,
   TRAIL_BADGE_SOURCE_ID,
@@ -693,7 +694,9 @@ describe('POI pins', () => {
     act(() => map.emit('idle'))
 
     expect(map.images.has(TRAIL_BADGE_PLATE_DAY.id)).toBe(true)
-    expect(map.images.has(blazeChipImageId('White'))).toBe(true)
+    // No blaze image is registered at all now: a trail whose steward has
+    // granted no mark gets an empty slot rather than a drawn chip.
+    expect([...map.images.keys()].some((id) => String(id).includes('blaze'))).toBe(false)
     const badges = map.sourceData.get(TRAIL_BADGE_SOURCE_ID) as { features: unknown[] }
     expect(badges.features).toHaveLength(1)
   })
@@ -1331,8 +1334,9 @@ describe('the taken trail (#1306)', () => {
     }
     const sketch = style.layers.find((layer) => layer.id === TRAIL_OVERVIEW_LAYER_ID)
     const taken = style.layers.find((layer) => layer.id === BLAZE_LAYER_ID)
-    // Solid either way since 2026-09-10 (map/style.ts's header, rule 2).
-    expect(sketch?.paint?.['line-dasharray']).toBeUndefined()
+    // Solid either way since 2026-09-10 (map/style.ts's header, rule 2),
+    // spelled as SOLID_DASH per feature rather than as no dash (#1698).
+    expect(sketch?.paint?.['line-dasharray']).toEqual(solidDashExpression())
     expect(sketch?.paint?.['line-width']).toEqual(sketchWidthExpression([]))
     expect(taken?.filter).toEqual(chosenSystemFilter([]))
   })
@@ -1409,5 +1413,86 @@ describe("the hiker's position (#1581)", () => {
 
     const button = (locate?.control as LocateControl).container?.querySelector('button')
     expect(button?.disabled).toBe(false)
+  })
+})
+
+describe('the trail line goes first in the worker (#1727)', () => {
+  // MapLibre tiles every GeoJSON source in one worker, in the order the data
+  // arrives, and it takes each whole: the 9.7 MB network sketch and the
+  // 28,913 waypoints landed a few hundred milliseconds after the line and sat
+  // in front of its tiles. Measured 2026-09-17 on a warm laptop launch
+  // (LAUNCH_BUDGET.md §7.1): the line loaded at 6,155 ms, after the pins at
+  // 1,811 ms and the sketch at 5,411 ms.
+  const SOURCES = [TRAILS_SOURCE_ID, NETWORK_OVERVIEW_SOURCE_ID, POI_SOURCE_ID]
+  const POIS: MapPoint[] = [
+    { id: 'w1', type: 'water', lat: 39.3, lon: -77.1, confidence: 'high' },
+    { id: 's1', type: 'shelter', lat: 40.1, lon: -76.4, confidence: 'low' },
+  ]
+
+  it('holds the network sketch and the pins until the trails source reports loaded', () => {
+    render(
+      <MapView {...PROPS} haveTrailLines networkOverviewUrl="blob:network" pois={POIS} />,
+    )
+    const [map] = MockMap.live
+    map.sourceIds = SOURCES
+    map.emit('styledata')
+
+    expect(map.sourceData.has(NETWORK_OVERVIEW_SOURCE_ID)).toBe(false)
+    expect(map.sourceData.has(POI_SOURCE_ID)).toBe(false)
+
+    map.loadedSources.add(TRAILS_SOURCE_ID)
+    map.emit('sourcedata', { sourceId: TRAILS_SOURCE_ID })
+
+    expect(map.sourceData.get(NETWORK_OVERVIEW_SOURCE_ID)).toBe('blob:network')
+    expect(map.sourceData.get(POI_SOURCE_ID)).toEqual(poiFeatureCollection(POIS))
+  })
+
+  it('pushes both at once on a map with no trail line to wait for', () => {
+    // A first run before its release, or a phone holding nothing: the trails
+    // source is the style's empty placeholder, which loads instantly, and
+    // waiting on it would be waiting on nothing.
+    render(<MapView {...PROPS} networkOverviewUrl="blob:network" pois={POIS} />)
+    const [map] = MockMap.live
+    map.sourceIds = SOURCES
+    map.emit('styledata')
+
+    expect(map.sourceData.get(NETWORK_OVERVIEW_SOURCE_ID)).toBe('blob:network')
+    expect(map.sourceData.get(POI_SOURCE_ID)).toEqual(poiFeatureCollection(POIS))
+  })
+
+  it('lets a legend tap through without waiting again once the line has been seen drawn', () => {
+    const { rerender } = render(<MapView {...PROPS} haveTrailLines pois={POIS} />)
+    const [map] = MockMap.live
+    map.sourceIds = SOURCES
+    map.emit('styledata')
+    map.loadedSources.add(TRAILS_SOURCE_ID)
+    map.emit('sourcedata', { sourceId: TRAILS_SOURCE_ID })
+    // The camera moves and the line's tiles are loading again: the wait
+    // must not come back, or a tap on the legend would stall behind a pan.
+    map.loadedSources.delete(TRAILS_SOURCE_ID)
+
+    const hidden = new Set(['water'])
+    rerender(<MapView {...PROPS} haveTrailLines pois={POIS} hiddenTypes={hidden} />)
+
+    expect(map.sourceData.get(POI_SOURCE_ID)).toEqual(
+      poiFeatureCollection(POIS, { hiddenTypes: hidden }),
+    )
+  })
+
+  it('stops watching the trails source when the map screen goes away mid-wait', () => {
+    const { unmount } = render(
+      <MapView {...PROPS} haveTrailLines networkOverviewUrl="blob:network" pois={POIS} />,
+    )
+    const [map] = MockMap.live
+    map.sourceIds = SOURCES
+    map.emit('styledata')
+    expect(map.listenerCount('sourcedata')).toBeGreaterThan(0)
+
+    unmount()
+
+    map.loadedSources.add(TRAILS_SOURCE_ID)
+    map.emit('sourcedata', { sourceId: TRAILS_SOURCE_ID })
+    expect(map.sourceData.has(NETWORK_OVERVIEW_SOURCE_ID)).toBe(false)
+    expect(map.sourceData.has(POI_SOURCE_ID)).toBe(false)
   })
 })

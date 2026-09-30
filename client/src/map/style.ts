@@ -90,7 +90,9 @@
 //     `line-dasharray` has allowed since the split below was built (the
 //     style spec lists `feature` among its parameters now), so the split's
 //     layers stay exactly as they are and the sort key still decides who is
-//     painted last. The 2026-09-10 sentence stands for the trails the map
+//     painted last. It stays per feature on every sheet, solid ones too -
+//     a switch that took it away drew every trail grey (#1698,
+//     blazeDashArray). The 2026-09-10 sentence stands for the trails the map
 //     is about: a through-route is solid, on every sheet, in every mode.
 //
 //  3. A side trail is never drawn over the through-route it hangs off. One
@@ -134,8 +136,9 @@ import { BLAZE_MATCH_EXPRESSION, PLAIN_TRAIL_COLOR } from '../lib/blaze'
 import { ATC_UPDATE_LAYER_ID, buildAtcUpdateLayers } from '../lib/atcUpdateStyle'
 import {
   buildClosureLayers,
-  CLOSURE_LAYER_ID,
-  closureGroundId,
+  closureCrossesId,
+  closureMarkId,
+  closureTraceId,
   LONG_TERM_CLOSED_FILTER,
   LONG_TERM_CLOSURE_LAYER_ID,
 } from '../lib/closureStyle'
@@ -195,7 +198,6 @@ import {
   buildPositionSource,
   POSITION_SOURCE_ID,
 } from './positionLayers'
-import type { PositionInk } from './positionMark'
 import {
   CHOSEN_SYSTEM_SOURCES,
   chosenSystemFilter,
@@ -227,7 +229,6 @@ import {
   attachSheetAppearance,
   liveTopoLayers,
   liveTopoSources,
-  sheetVariant,
   type SheetAppearance,
 } from './liveTopo'
 import { NEARBY_TRAILS_ATTRIBUTION, OSM_CREDIT, USGS_TOPO_CREDIT } from './credits'
@@ -236,461 +237,55 @@ import { TRAILS } from '../lib/trails'
 import type { GeoJSONSource, Map as MapLibreMap, MapSourceDataEvent } from 'maplibre-gl'
 import type { ResolvedTheme } from '../lib/theme'
 import type { ContourUnits, TerrainUrls } from './terrain'
-
-export const TOPO_SOURCE_ID = 'usgs-topo'
-export const TRAILS_SOURCE_ID = 'trails'
-export const TRAIL_OVERVIEW_SOURCE_ID = 'trail-overview'
-
-/**
- * The trail lines other organizations maintain (#950,
- * features/NEARBY_TRAILS.md, pipeline/export_nearby_trails.py).
- *
- * ITS OWN SOURCE, AND NOT BECAUSE THE MAP WANTED ONE. These lines belong in
- * the same source as the A.T.'s - they are drawn by the same expressions off
- * the same properties, and a single source would have meant a single set of
- * layers. They are separated because they are separately LICENSED: NYS OPRHP
- * states terms and NYNJTC, Mohonk Preserve and NYS DEC state none, so the
- * pipeline publishes them as their own artifact and publish.py holds that
- * artifact back entirely while ANY steward in it is outstanding (the
- * `reaches_hikers` gate lib/config.ts's NEARBY_TRAILS_TILES_KEY describes).
- *
- * A VECTOR SOURCE SINCE #1257, where the A.T.'s is GeoJSON. The artifact grew
- * to 228,820,578 bytes on 2026-09-07 (nationwide USFS, #1231) and a GeoJSON
- * source takes its `data` whole - parsed on the main thread, indexed in the
- * worker, every phone that tried crashed (#1254). So these lines are cut into
- * z9-z14 tiles (lib/config.ts's NEARBY_TRAILS_TILES_KEY) and this source
- * declares a network:// template that map/networkTiles.ts answers by byte
- * range, the way the hiking sheet's basemap:// is answered. What the map
- * holds is the tiles under the camera and nothing else. The A.T.'s own line
- * stays GeoJSON because it is 3.9 MB and the thing every entry step is about;
- * it is not this problem.
- *
- * The one thing a vector source needs that a GeoJSON one does not is the name
- * of the layer inside the tiles: every layer over this source carries
- * `source-layer: NETWORK_TILES_LAYER` (onSourceLayer below), and a layer that
- * did not would draw nothing and say nothing.
- *
- * WHAT THAT COSTS, stated so nobody rediscovers it: the layers below are a
- * second instance of the trail line's casing, blaze, closure band and label.
- * Every expression in them is imported from where the first instance gets it
- * rather than copied, so the two cannot drift in appearance - but a new
- * channel added to one is a channel somebody has to remember to add to the
- * other, and nothing mechanical catches that. style.test.ts holds the two
- * paint objects against each other for exactly this reason.
- */
-export const NEARBY_TRAILS_SOURCE_ID = 'nearby-trails'
-
-/**
- * The corridor-view sketch of that whole network (#1135, lib/config.ts's
- * NETWORK_OVERVIEW_KEY) - what the opening camera draws, since the full
- * network's layers carry `minzoom` at the seam and the A.T.'s own sketch
- * covers only the A.T.
- *
- * A third source rather than folded into NEARBY_TRAILS_SOURCE_ID because
- * the two are on the map AT ONCE with disjoint zoom ranges - the sketch below
- * the seam, the full lines above it - and since #1257 because the two are
- * different kinds of source: the sketch is one GeoJSON handed over whole, the
- * lines are tiles read by range. Same stewards, so the same attribution rides
- * it - the licence condition follows the lines, not the artifact.
- */
-export const NETWORK_OVERVIEW_SOURCE_ID = 'network-overview'
-
-export const BACKDROP_LAYER_ID = 'backdrop'
-export const TOPO_LAYER_ID = 'topo'
-export const TRAIL_CASING_LAYER_ID = 'trail-casing'
-export const BLAZE_LAYER_ID = 'trail-blaze'
-export const TRAIL_OVERVIEW_LAYER_ID = 'trail-overview-line'
-export const NEARBY_TRAIL_CASING_LAYER_ID = 'nearby-trail-casing'
-export const NEARBY_BLAZE_LAYER_ID = 'nearby-trail-blaze'
-export const NEARBY_LONG_TERM_CLOSURE_LAYER_ID = 'nearby-long-term-closure-band'
-export const NETWORK_OVERVIEW_LAYER_ID = 'network-overview-line'
-export const NETWORK_OVERVIEW_CLOSURE_LAYER_ID = 'network-overview-closure-band'
-
-/**
- * Every layer painting barrier tape from the closure image: the closures
- * feed's band, the A.T.'s long-term-closed lines, the nearby network's and the
- * corridor-view sketch's. The tape's ground is the sheet's paper, baked into
- * a layer of its own since #1599 (closureGroundId), so a sheet change
- * repaints each of these bands' ground - attachMapAppearance walks this list
- * and the ATC band's id beside it.
- */
-export const CLOSURE_TAPE_LAYER_IDS: readonly string[] = [
-  CLOSURE_LAYER_ID,
-  LONG_TERM_CLOSURE_LAYER_ID,
-  NEARBY_LONG_TERM_CLOSURE_LAYER_ID,
-  NETWORK_OVERVIEW_CLOSURE_LAYER_ID,
-]
-
-/**
- * The untaken half of each trail-line split (#1283, map/nearbyTrails.ts).
- *
- * The ids without a suffix keep drawing the chosen system exactly as they
- * did - which is what keeps every tap handler, probe and repaint that
- * already names them correct for the taken trail. Each has an `-untaken`
- * twin drawing every other line UNDER it, at the network's far weight below
- * the seam, so the taken trail is never crossed by a line that is not it.
- * The twins were `-dotted` until 2026-09-10 (this file's header, rule 2);
- * the suffix changed with the drawing, so a layer's name still says what it
- * draws.
- */
-export const TRAIL_CASING_UNTAKEN_LAYER_ID = 'trail-casing-untaken'
-export const BLAZE_UNTAKEN_LAYER_ID = 'trail-blaze-untaken'
-export const NEARBY_TRAIL_CASING_UNTAKEN_LAYER_ID = 'nearby-trail-casing-untaken'
-export const NEARBY_BLAZE_UNTAKEN_LAYER_ID = 'nearby-trail-blaze-untaken'
-export const NETWORK_OVERVIEW_UNTAKEN_LAYER_ID = 'network-overview-line-untaken'
-
-/** The casing under a through-route's sketch line below the seam (#1586):
- *  the corridor-view sketch's one casing, under the PRIMARY_TRAIL_SOURCES
- *  features and nothing else, so the Long Path reads at the opening camera
- *  as the untaken A.T. does - a dark-edged stroke rather than a bare thread.
- *  buildNetworkOverviewCasingLayer says the rest. */
-export const NETWORK_OVERVIEW_CASING_LAYER_ID = 'network-overview-casing'
-/** The sketch's two line layers, the ones sketchLineColor paints (#1586). */
-export const NETWORK_OVERVIEW_LINE_LAYER_IDS: readonly string[] = [
-  NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
-  NETWORK_OVERVIEW_LAYER_ID,
-]
-
-/**
- * Every casing under a blaze, and every layer painting a blaze colour -
- * the two lists attachMapAppearance repaints, and the lists anything asking
- * "what is drawn on the trail lines" should query (map/trailsInView.ts,
- * map/lineTaps.ts, map/drawnBlazes.ts).
- *
- * LISTS RATHER THAN THE TWO NAMED LAYERS, because that is how the repaint
- * used to fail: attachMapAppearance wrote `line-color` on TRAIL_CASING_LAYER_ID
- * and BLAZE_LAYER_ID by name, and the nearby network's pair and both sketches
- * were left on the previous sheet's ink after every theme switch. A layer
- * added to the style is added here, or a theme switch leaves it behind.
- */
-export const TRAIL_CASING_LAYER_IDS: readonly string[] = [
+import {
+  TOPO_SOURCE_ID,
+  TRAILS_SOURCE_ID,
+  TRAIL_OVERVIEW_SOURCE_ID,
+  NEARBY_TRAILS_SOURCE_ID,
+  NETWORK_OVERVIEW_SOURCE_ID,
+  BACKDROP_LAYER_ID,
+  TOPO_LAYER_ID,
   TRAIL_CASING_LAYER_ID,
-  TRAIL_CASING_UNTAKEN_LAYER_ID,
+  BLAZE_LAYER_ID,
+  TRAIL_OVERVIEW_LAYER_ID,
   NEARBY_TRAIL_CASING_LAYER_ID,
+  NEARBY_BLAZE_LAYER_ID,
+  NEARBY_LONG_TERM_CLOSURE_LAYER_ID,
+  NETWORK_OVERVIEW_LAYER_ID,
+  NETWORK_OVERVIEW_CLOSURE_LAYER_ID,
+  CLOSURE_BAND_IDS,
+  TRAIL_CASING_UNTAKEN_LAYER_ID,
+  BLAZE_UNTAKEN_LAYER_ID,
   NEARBY_TRAIL_CASING_UNTAKEN_LAYER_ID,
-  SHARED_GROUND_CASING_LAYER_ID,
-  // The sketch's casing under its through-routes (#1586): repainted with
-  // every other casing on a sheet change, ghosted by attachChosenTrail in a
-  // block of its own (its filter is the source list, not the chosen system).
+  NEARBY_BLAZE_UNTAKEN_LAYER_ID,
+  NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
   NETWORK_OVERVIEW_CASING_LAYER_ID,
-]
-/**
- * The blaze layers that ink a near-white line in the casing's colour on a
- * day sheet: the two corridor-view sketches, which have no casing pair
- * (#1306, and the maintainer's reversal of 2026-09-10).
- *
- * The rule used to be "every day sheet", and was overruled on the frame
- * twice. First a TAKEN A.T. drawn in the casing's ink was a black line
- * across the country ("that is not a dashed line / it looks like a black
- * line", 2026-09-09), so #1306 made the ink follow the dot rhythm: dark
- * under dots, white with its casing when solid. Then the dots went
- * (2026-09-10, "the AT is now black, and not its white blaze - make it
- * white"), and with every real line solid and cased there is nothing left
- * for the dark ink to fix on them: a white blaze between two dark rails is
- * what every paper map draws, and it is what the maintainer asked for.
- *
- * BOTH SKETCHES STAY IN THE LIST WHATEVER THEY DRAW, and that is the one
- * place the old unconditional rule stands: neither has a casing pair
- * (buildNetworkOverviewLayer and the sketch layer both say so), and a white
- * line with no edge at all is the empty-looking frame #1291 exists to
- * prevent. The cost is the A.T. changing ink once at the seam, when the real
- * line replaces the sketch; at the corridor camera both read as a
- * dark-edged stroke of the same weight, which is the least bad of the three
- * options. Giving the sketches a casing pair would end the swap and this
- * list with it - not done here, because nobody has looked at a cased
- * 1.5 px line over the opening camera's park clusters, which is the texture
- * NETWORK_OVERVIEW_WIDTH_EXPRESSION's taper exists to keep off that view.
- *
- * SINCE #1586 THE NETWORK SKETCH IS CASED UNDER ITS THROUGH-ROUTES, and
- * only there (NETWORK_OVERVIEW_CASING_LAYER_ID), so its two layers ink dark
- * on the rest alone: sketchLineColor decides per feature, the cased rule on
- * a PRIMARY_TRAIL_SOURCES feature and this list's rule everywhere else. The
- * two ids stay listed, because for everything the casing does not reach the
- * argument above is unchanged.
- */
-export const DARK_INKED_BLAZE_LAYER_IDS: readonly string[] = [
-  NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
-  NETWORK_OVERVIEW_LAYER_ID,
-  TRAIL_OVERVIEW_LAYER_ID,
-]
-
-export const BLAZE_LINE_LAYER_IDS: readonly string[] = [
-  BLAZE_LAYER_ID,
-  BLAZE_UNTAKEN_LAYER_ID,
-  NEARBY_BLAZE_LAYER_ID,
-  NEARBY_BLAZE_UNTAKEN_LAYER_ID,
-  SHARED_GROUND_BLAZE_LAYER_ID,
-  TRAIL_OVERVIEW_LAYER_ID,
-  NETWORK_OVERVIEW_LAYER_ID,
-  NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
-]
-export const TRAIL_LINE_LAYER_IDS: readonly string[] = [
-  ...TRAIL_CASING_LAYER_IDS,
-  ...BLAZE_LINE_LAYER_IDS,
-]
-
-/** The blaze layers a hiker can tap or read a trail off - the full lines,
- *  both halves of both splits, plus the network overview's own split since
- *  #1307. THE A.T.'s SKETCH (TRAIL_OVERVIEW_LAYER_ID) STAYS OUT: it carries
- *  no `name` (export_trails.py's write_overview still publishes source,
- *  blaze and status only) and needs none - the header plate already names
- *  the app's own trail, which is what map/trailBadges.ts's own header means
- *  by "the header already does". The network overview's two layers DO carry
- *  `name` now, on the features export_nearby_trails.py's write_overview
- *  named for clearing NAMED_TRAIL_THRESHOLD_MILES; map/trailsInView.ts's
- *  `if (name === null) continue` is what keeps the unnamed haze out even
- *  though its layer is included here. */
-export const TAPPABLE_BLAZE_LAYER_IDS: readonly string[] = [
-  BLAZE_LAYER_ID,
-  BLAZE_UNTAKEN_LAYER_ID,
-  NEARBY_BLAZE_LAYER_ID,
-  NEARBY_BLAZE_UNTAKEN_LAYER_ID,
-  // The two halves of a shared stretch (#1384), first: they are drawn over
-  // both stacks, and a tap on the stretch should answer with the half it
-  // landed on and its `concurrent_with`, not the plain line masked under it.
-  SHARED_GROUND_BLAZE_LAYER_ID,
-  NETWORK_OVERVIEW_LAYER_ID,
-  NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
-]
-
-/**
- * What the map paints wherever it has no topo ink to paint.
- *
- * White, the field sheet's own paper (MAP_STYLE_SPEC.md - the palette's
- * halos and hillshade highlight are the same #ffffff, so uncovered ground,
- * label halos and lit slopes read as one sheet). It used to be the chrome's
- * `--paper-100` cream; the field palette was reviewed on white, and a cream
- * ground under white-haloed labels reads as two papers. Named rather than
- * inlined because chrome.css's pre-WebGL fallback has to agree on the same
- * paper - see `.map-view` there.
- *
- * Uncovered ground is not an edge case, and reaching it does not need the
- * pipeline's transparent-nodata tiles to be involved at all - the corridor
- * archive is a 30-mile strip, so panning off it, zooming out below the
- * archive's own minzoom, opening the app before the download finishes, or
- * simply moving faster than tiles decode each leave a hole too.
- */
-export const MAP_BACKGROUND_COLOR = '#ffffff'
-
-/*
- * THE CANVAS'S HALF OF MAP APPEARANCE
- *
- * Everything in the chrome follows `data-theme` through the design tokens
- * (design-system/tokens/colors.css). The map cannot: it is WebGL, its colours
- * are paint properties on a style specification, and a style has never heard
- * of a CSS variable. So the resolved theme comes down as a value
- * (lib/useTheme.ts -> App -> MapScreen -> MapView) - joined since
- * MAP_STYLE_SPEC.md by the map style and red-light preferences, which never
- * touch the chrome at all - and the definitions below are what the three of
- * them mean once they get here.
- *
- * The layers they touch beyond the sheet are this file's own - the backdrop,
- * the downloaded archive, and the trail's casing and blaze - which is why
- * this lives here rather than in a module of its own: a fifth file holding a
- * table of layer ids owned by this one is indirection, not separation. The
- * live sheet's twenty-one layers are handled where their palette is
- * (liveTopo.ts's attachSheetAppearance), the same way liveTopo.ts already
- * owns the unit switch for its own labels.
- *
- * THE ARCHIVE CANNOT GO DARK, AND IS DIMMED INSTEAD
- *
- * TECHNICAL_ARCHITECTURE.md recorded this trade-off when the corridor
- * background was chosen: US Topo quads are pre-rendered raster, their ink is
- * pixels, and no semantic swap is available - there is no "draw the contours
- * brown-on-ink instead", because nothing here knows which pixels are contours.
- * That note named canvas-level filters as the fallback, and this is that
- * fallback taken one step better: MapLibre's own raster paint properties dim
- * the archive LAYER, on the GPU, leaving the trail lines, the pins and the
- * chrome over it at full strength. A CSS filter on the canvas would have
- * dimmed those too - which would make the one safety-critical thing on the
- * screen the thing dark mode faded out.
- *
- * So under a dark sheet the archive is a dimmed paper map rather than a dark
- * one, and that limitation is not hidden: a hiker on the downloaded background
- * gets a quieter version of the same sheet, a hiker on the live background
- * gets a genuinely dark one. "Dark sheet" rather than "dark theme" since the
- * style preference arrived: night_hike picked under a light theme dims the
- * archive exactly as the dark theme does, because what the dimming serves is
- * the sheet the archive sits under, not the chrome around the canvas.
- */
-
-/** Whether an appearance resolves to a dark sheet - night_hike outright (red
- *  light included) or the dark theme. Defined as "not the day palette" so it
- *  cannot drift from the variant table's own composition. */
-export function sheetIsDark(appearance: SheetAppearance): boolean {
-  return sheetVariant(appearance).dark
-}
-
-/** Whether the red-light sub-mode is actually in force - armed AND on the
- *  style it refines. The toggle alone means nothing under field, exactly as
- *  the variant table treats it. */
-export function redLightActive(appearance: SheetAppearance): boolean {
-  return sheetVariant(appearance).redLight
-}
-
-/**
- * Which ink family the hiker's mark is drawn in (#1581, map/positionMark.ts):
- * red light's one hue where it is in force, bone on every other dark sheet,
- * the pins' own hairline on the day sheets. Defined off the two predicates
- * above so it cannot drift from what "dark" and "red light" mean here.
- */
-export function positionInkFor(appearance: SheetAppearance): PositionInk {
-  if (redLightActive(appearance)) return 'red'
-  return sheetIsDark(appearance) ? 'night' : 'day'
-}
-
-/**
- * The backdrop, per theme.
- *
- * chrome.css paints `.map-view` with the same pair as its pre-WebGL fallback,
- * and that identity is load-bearing rather than tidy: the handover from the
- * DOM's background to the style's backdrop layer has to be invisible in BOTH
- * themes, not only the one these were picked in. (The dark value is also
- * `--bg-page` under the dark theme; the light one stopped being a token when
- * the field sheet moved the map onto white paper - see MAP_BACKGROUND_COLOR.)
- *
- * Per THEME, while the sheet's palette is per appearance - which is why
- * mapBackdrop() below exists and callers with an appearance in hand use it
- * instead. This record stays because the two explicit sheets it names are
- * real anchor points the tests and the CSS pin against.
- */
-export const MAP_BACKDROP: Record<ResolvedTheme, string> = {
-  light: MAP_BACKGROUND_COLOR,
-  // night_hike's ink - the sheet the DEFAULT dark path lands on (field's
-  // auto-dark is night_hike), which is what makes it the right pre-WebGL
-  // fallback for the dark theme. Individual sheets carry their own backdrops
-  // in SHEET_VARIANTS; this pair is the anchor chrome.css and the tests pin.
-  dark: '#0c1410',
-}
-
-/**
- * The backdrop, per appearance: each sheet's own paper, straight from its
- * card in the variant table - parchment's warm quad paper, red light's
- * near-black red ink, and everything between.
- */
-export function mapBackdrop(appearance: SheetAppearance): string {
-  return sheetVariant(appearance).backdrop
-}
-
-/**
- * The paper the barrier tape lies on, per appearance (#1575, option E, and
- * the maintainer's dark-mode reading of 2026-09-18).
- *
- * The sheet's own backdrop by day, so the band is parchment on parchment
- * and white on the field sheet. On a dark sheet it is the field day sheet's
- * white paper (MAP_BACKDROP.light) rather than the sheet's ink: option E was
- * chosen off five treatments rendered on the day sheet, and built as "the
- * sheet's paper" it put red stripes on near-black ink over a near-black map
- * - "it's really hard to tell it's a closure when the background is black,
- * with black & red alternating for the closure. Maybe that should be red &
- * white just for dark mode." The night sheets' whole point is a dark ground
- * (features/MAP_STYLE_SPEC.md), and the tape is the one thing on them that
- * must not be, because it says "do not walk this".
- *
- * RED LIGHT KEEPS ITS OWN PAPER, and that is the open question rather than
- * a decision: under red light every hue collapses to one to spare night
- * vision, and a white band would be the brightest thing on the screen. The
- * maintainer asked for dark mode; red light is the dark sheet with a rule
- * of its own, so it is left as option E built it - stripes on its ink -
- * until somebody says what a closure should look like under it.
- * @unvalidated on a phone at night, both halves.
- */
-export function closureTapeGround(appearance: SheetAppearance): string {
-  if (sheetIsDark(appearance) && !redLightActive(appearance)) return MAP_BACKDROP.light
-  return mapBackdrop(appearance)
-}
-
-/**
- * How far the downloaded archive is turned down, per theme.
- *
- * Light is the spec's own defaults, written out rather than left implicit,
- * because these get applied to a LIVE map: switching back out of dark has to
- * restore the property, and "restore" needs a value to restore to.
- *
- * The dark numbers are a judgement, and the judgement is that legibility wins.
- * 0.62 takes the quads' white paper to about the lightness of a slate roof -
- * clearly no longer a lamp, still clearly a map. Pushing it to 0.3 makes a
- * handsome screenshot and a sheet whose 1:24,000 contour labels cannot be
- * read, which is the wrong trade on the one screen a hiker uses to decide
- * where to walk. The desaturation stops the water layers' blue glowing out of
- * the dimmed sheet, and the contrast nudge puts back some of the separation
- * the dimming costs.
- */
-export const ARCHIVE_RASTER_PAINT: Record<
-  ResolvedTheme,
-  Readonly<Record<string, number>>
-> = {
-  light: {
-    'raster-brightness-max': 1,
-    'raster-saturation': 0,
-    'raster-contrast': 0,
-  },
-  dark: {
-    'raster-brightness-max': 0.62,
-    'raster-saturation': -0.2,
-    'raster-contrast': 0.08,
-  },
-}
-
-/** The archive's dimming for an appearance: dark-sheet appearances dim, day
- *  sheets do not - see the header note on why this follows the sheet rather
- *  than the theme. */
-export function archiveRasterPaint(
-  appearance: SheetAppearance,
-): Readonly<Record<string, number>> {
-  return ARCHIVE_RASTER_PAINT[sheetIsDark(appearance) ? 'dark' : 'light']
-}
-
-/**
- * The hairline under every blaze, per appearance - each sheet inks its own
- * (SheetVariant.casing). Day sheets carry it near their label ink so the
- * near-white centerline keeps an edge on pale paper; dark sheets drop it to
- * near-black so the casing recedes into ground and the blaze itself is the
- * edge.
- */
-export function trailCasingColor(appearance: SheetAppearance): string {
-  return sheetVariant(appearance).casing
-}
-
-/**
- * What red light does to the blazes: one red-amber, every trail
- * (MAP_STYLE_SPEC.md). A blaze colour is a fact about the ground, and
- * recolouring facts is exactly what this map exists not to do - but under red
- * light every hue would render as a barely-distinguishable dark red anyway,
- * which is the same information loss drawn less legibly. So the loss is taken
- * honestly: the line stays the most legible thing on the screen, in the one
- * hue the mode permits, and blaze identity moves to the tapped trail's
- * details rather than pretending to survive on the line.
- */
-export const RED_LIGHT_BLAZE_COLOR = '#e8804a'
-
-/**
- * Blazes with no edge of their own on white paper. Today: White (#1283).
- *
- * lib/blaze.ts measures White against the field sheet's paper at 1.02:1 and
- * keeps it because "its width and casing are what carry it". On a layer
- * with a casing that is the whole answer, and since 2026-09-10 it is the
- * only answer for a real line: the maintainer's "make it white" on the
- * frame (this file's header, rule 2). Where a layer has NO casing - the two
- * corridor-view sketches - a near-white blaze on a DAY sheet is inked in the
- * casing colour instead, one dark line rather than no visible line, which
- * is the empty frame #1291 exists to prevent. Blaze identity there moves to
- * the badge's chip, the legend's swatch and the tapped line's sheet: the
- * same trade blazeLineColor already makes for red light.
- *
- * DARK SHEETS ARE LEFT ALONE, and the guard is the whole reason this is a
- * function of the appearance: trailCasingColor is near-black on every dark
- * sheet, so inking White in it would make the A.T. invisible on ink. There
- * a white line has exactly the surround it needs.
- */
-export const NEAR_WHITE_BLAZES: readonly string[] = ['White']
-
-/** Whether the sheet inks near-white blazes in the casing colour on a layer
- *  with no casing: day sheets only, red light included in the dark half by
- *  construction. */
-export function inksNearWhiteAsCasing(appearance: SheetAppearance): boolean {
-  return !sheetIsDark(appearance)
-}
+  NETWORK_OVERVIEW_TILED_LAYER_ID,
+  NETWORK_OVERVIEW_TILED_UNTAKEN_LAYER_ID,
+  NETWORK_OVERVIEW_TILED_CASING_LAYER_ID,
+  NETWORK_OVERVIEW_LINE_LAYER_IDS,
+  TRAIL_CASING_LAYER_IDS,
+  DARK_INKED_BLAZE_LAYER_IDS,
+  BLAZE_LINE_LAYER_IDS,
+} from './styleIds'
+import {
+  sheetIsDark,
+  redLightActive,
+  positionInkFor,
+  mapBackdrop,
+  closureTapeGround,
+  closureInk,
+  archiveRasterPaint,
+  trailCasingColor,
+  RED_LIGHT_BLAZE_COLOR,
+  NEAR_WHITE_BLAZES,
+  inksNearWhiteAsCasing,
+  PRIMARY_TRAIL_WIDTH,
+  SIDE_TRAIL_WIDTH,
+  CASING_OVERHANG,
+} from './sheetInks'
+export * from './sheetInks'
+export * from './styleIds'
 
 function nearWhiteBlazeCondition(): unknown[] {
   return ['in', ['get', 'blaze_color'], ['literal', [...NEAR_WHITE_BLAZES]]]
@@ -780,9 +375,39 @@ export const CONTEXT_TRAIL_WIDTH_SCALE = 0.8
  */
 export const CONTEXT_TRAIL_DASH: readonly [number, number] = [3, 2.5]
 
-/** A dash pattern with no gap: how a through-route's feature stays solid on
- *  a layer whose other features dash (#1588). */
-export const SOLID_DASH: readonly [number, number] = [1, 0]
+/**
+ * A dash pattern with no gap: how a line stays solid on a layer whose
+ * `line-dasharray` is per feature - a through-route's feature among dashed
+ * ones (#1588), and every feature under the hues and red light (#1698).
+ *
+ * A THOUSAND LINE WIDTHS, NOT ONE. Blaze lines have round caps, and MapLibre
+ * 6.7.0 draws a round-capped dash as pills laid end to end
+ * (`LineAtlas.addRoundDash`), so the line's edges pinch wherever one copy of
+ * the pattern meets the next - and a zero-length gap does not remove the
+ * pinch, only the gap. At `[1, 0]` that came once per line width, which on a
+ * thin line is most of its edge. Measured 2026-09-28 in headless Chromium,
+ * one yellow line drawn plain beside the same line through this dash, share
+ * of ink lost against the plain line:
+ *
+ *     width  dpr   [1, 0]   [100, 0]   [1000, 0]
+ *     1.5    1     10.1%     0.1%       0.0%
+ *     2.5    1      2.5%    -0.1%      -0.1%
+ *     1.5    2      1.6%    -0.1%      -0.1%
+ *     4.5    1-3   ≤ 0.4%   within 0.2% either way
+ *
+ * so `[1, 0]` drew the 1.5 px sketches about a tenth fainter on a laptop
+ * screen, and the through-routes had carried it under the default since
+ * #1588. At a thousand widths the pinch comes once every 1,500 px of a
+ * 1.5 px line, and the table cannot find it.
+ *
+ * And on the app itself, same day, against UA release 2026-09-24-2: loaded
+ * fresh with the hues on over the Hudson Highlands, this build's frame and
+ * one whose solid lines carry no dash at all differed in 0 pixels by more
+ * than 16 levels - at DPR 1 and 2 at z13, DPR 1 at z8, and a DPR 3 phone.
+ * At `[1, 0]` the same comparison had 257 pixels off at z13 and 1,318 at
+ * z8. The PR that made this change (#1700) has both harnesses.
+ */
+export const SOLID_DASH: readonly [number, number] = [1000, 0]
 
 /**
  * `line-color` under the default: PLAIN_TRAIL_COLOR on every feature, on
@@ -807,25 +432,91 @@ export function plainLineColor(_appearance: SheetAppearance): string {
  *  style spec allows for this property since MapLibre 4 - the split's
  *  layers stay as they are. */
 export function contextDashExpression(): unknown[] {
+  return throughRouteSolidDash(CONTEXT_TRAIL_DASH)
+}
+
+/** `line-dasharray` wherever every line is solid - the hues and red light:
+ *  SOLID_DASH on a through-route's feature and on everything else alike.
+ *  Evaluates to the one constant on every feature, and is spelled per
+ *  feature anyway; blazeDashArray says why that is the whole point. */
+export function solidDashExpression(): unknown[] {
+  return throughRouteSolidDash(SOLID_DASH)
+}
+
+function throughRouteSolidDash(otherTrails: readonly [number, number]): unknown[] {
   return [
     'case',
     THROUGH_ROUTE_SOURCE_CONDITION,
     ['literal', [...SOLID_DASH]],
-    ['literal', [...CONTEXT_TRAIL_DASH]],
+    ['literal', [...otherTrails]],
   ]
 }
 
-/** The `line-dasharray` a blaze layer carries for the appearance: the
- *  context dash under the default, nothing otherwise - a solid line has no
- *  dasharray at all, and a sheet change restores that absence
- *  (attachMapAppearance writes `undefined`). */
-export function blazeDashArray(appearance: SheetAppearance): unknown[] | undefined {
-  return plainRedActive(appearance) ? contextDashExpression() : undefined
+/**
+ * The `line-dasharray` a blaze layer carries for the appearance: the context
+ * dash under the default, solidDashExpression under the hues and red light.
+ *
+ * ALWAYS PER FEATURE, AND NEVER ABSENT (#1698). A solid line used to carry no
+ * dasharray at all, and attachMapAppearance wrote `undefined` to get back to
+ * one. Changing a blaze layer's `line-dasharray` between per-feature and
+ * absent is what drew every trail grey when the hiker switched "Blaze colors"
+ * on, until a zoom. Measured 2026-09-26 in headless Chromium on a local
+ * build against UA release 2026-09-24-2, Hudson Highlands at z13 on a
+ * desktop: grey after 14 of 18 taps, and every grey tap that was watched for
+ * errors logged one uncaught `TypeError: Cannot read properties of undefined
+ * (reading '0')` from MapLibre's `drawLine`. Why, read from MapLibre 6.7.0's
+ * source:
+ *
+ *   - `line-dasharray` transitions over the style's 300 ms, and from a
+ *     per-feature value to a constant one MapLibre keeps evaluating the OLD
+ *     per-feature dash until the transition ends;
+ *   - the same write re-lays out every tile, and the worker builds the new
+ *     buckets with no dash at all;
+ *   - a frame inside those 300 ms draws with the dashed shader against a
+ *     bucket that has no dash positions, and `CrossFadedConstantBinder`
+ *     hands `undefined` to a vec4 uniform, which throws;
+ *   - the throw leaves `Map._render` before the line that keeps a transition
+ *     running, so the transition never ends and every later frame throws at
+ *     the same layer. The casings draw first, so what the hiker sees is the
+ *     casing: a grey line. A zoom restarts the style, which is why it cleared.
+ *
+ * Switching off goes the other way: it snaps straight to the per-feature
+ * dash, and threw 2 to 3 times per tap against the old dashless tiles,
+ * recovering when the new ones landed. A zero-length dash transition alone
+ * fixed switching on and left those. Keeping the dash per feature on every
+ * sheet fixed both: 12 of 12 taps drew correctly with no error, on the same
+ * camera and release, with a stand-in for this function patched into the
+ * running map. With this function built in, e2e/data/blazeSwitch.spec.ts
+ * failed on every local run against the build before and passed on every
+ * local run against this one, through each version of that spec.
+ *
+ * Then it was attacked, 2026-09-28, same setup: about 190 page loads of
+ * rapid taps (down to 25 ms apart), taps during flyTo, easeTo, drag and
+ * wheel zoom, z7 to z18 and across the seam, the hues on from a fresh load,
+ * the night sheet, red light, a map-style change, the phone's legend sheet,
+ * and a taken trail. None drew grey and none threw; main's code went grey
+ * or threw in all but two of those scenarios.
+ *
+ * Red light makes the same two changes of kind - coming on from the default
+ * is the grey direction, going off is the other - so it was exposed to both,
+ * and is fixed by the same rule. Measured in that run: switching red light
+ * on and off in Settings over the default sheet threw in 3 of 3 runs on
+ * main's code and 0 of 3 on this. Nobody has watched it on a phone.
+ *
+ * WHAT IT COSTS: every blaze line now draws through MapLibre's dash shader,
+ * where the hues and red light used the plain one. The first version of
+ * this rule spelled solid as `[1, 0]`, and that drew thin lines visibly
+ * fainter - SOLID_DASH has the measurement and why a thousand widths does
+ * not. Whether the dash shader costs frame time on a phone has not been
+ * measured. A through-route has drawn this way under the default since
+ * #1588.
+ */
+export function blazeDashArray(appearance: SheetAppearance): unknown[] {
+  return plainRedActive(appearance) ? contextDashExpression() : solidDashExpression()
 }
 
 function blazeDashPaint(appearance: SheetAppearance): Record<string, unknown> {
-  const dash = blazeDashArray(appearance)
-  return dash === undefined ? {} : { 'line-dasharray': dash }
+  return { 'line-dasharray': blazeDashArray(appearance) }
 }
 
 /** Whether the casing layers draw: hidden under the default, where the
@@ -935,9 +626,11 @@ export function attachMapAppearance(
               )) as never,
         )
         // The default's vocabulary follows the switch (#1588): the context
-        // dash on every blaze layer, or none - `undefined` puts the
-        // property back to the solid line the hues draw - and the mode's
-        // tiers on the layers whose width the mode changes.
+        // dash on every blaze layer, or the same `case` solid on every
+        // feature - never `undefined`, because a write that changes this
+        // property between per-feature and absent is what drew every trail
+        // grey (#1698, blazeDashArray) - and the mode's tiers on the layers
+        // whose width the mode changes.
         map.setPaintProperty(
           layerId,
           'line-dasharray',
@@ -955,17 +648,22 @@ export function attachMapAppearance(
         map.setLayoutProperty(layerId, 'visibility', casingVisibility(appearance))
       }
 
-      // The band's ground is the paper closureTapeGround picks for the sheet
-      // (#1575, option E). It was baked into a tape image and re-pointed here
-      // by name; since #1599 every band is three plain lines, so the paper is
-      // a `line-color` on a layer of its own and a sheet change simply
-      // repaints it - no images to have registered first, and no step
-      // expression to flatten by writing a bare value over it.
+      // Every closure's paper, ink and halo (#1677): the paper is the one
+      // closureTapeGround picks for the sheet, and the crosses' halo is that
+      // same paper. The crosses are one signed-distance image, so their
+      // colours are paint properties like the lines' and a sheet change
+      // repaints them in place - there is no image per sheet to swap.
       const tapeGround = closureTapeGround(appearance)
-      for (const bandId of [...CLOSURE_TAPE_LAYER_IDS, ATC_UPDATE_LAYER_ID]) {
-        const groundId = closureGroundId(bandId)
-        if (map.getLayer(groundId) === undefined) continue
-        map.setPaintProperty(groundId, 'line-color', tapeGround as never)
+      const ink = closureInk(appearance)
+      for (const bandId of [...CLOSURE_BAND_IDS, ATC_UPDATE_LAYER_ID]) {
+        if (map.getLayer(bandId) === undefined) continue
+        map.setPaintProperty(bandId, 'line-color', tapeGround as never)
+        map.setPaintProperty(closureTraceId(bandId), 'line-color', ink as never)
+        for (const symbolId of [closureCrossesId(bandId), closureMarkId(bandId)]) {
+          if (map.getLayer(symbolId) === undefined) continue
+          map.setPaintProperty(symbolId, 'icon-color', ink as never)
+          map.setPaintProperty(symbolId, 'icon-halo-color', tapeGround as never)
+        }
       }
 
       // The through-route badge (#1283): its plate is an image per sheet
@@ -1167,6 +865,90 @@ function trailLinesDrawn(map: MapLibreMap): boolean {
   return map.isSourceLoaded(TRAILS_SOURCE_ID)
 }
 
+/**
+ * How long the pins and the network sketch wait for the trail line before
+ * they are attached anyway (#1727).
+ *
+ * `@unvalidated`: picked, not measured. MapLibre counts a source that FAILED
+ * to load as loaded, so a line that 404s or is refused releases the wait at
+ * once and this only ever bounds a hang - a worker that never answers. The
+ * line's own worker work is about a second on a laptop and three to four on
+ * a phone (LAUNCH_BUDGET.md §7.1's ratio), so ten seconds is comfortably past
+ * any launch that is still going to draw it. What would settle it is the
+ * per-source `sourcedata` timeline on a real phone.
+ */
+export const TRAIL_LINE_WAIT_MS = 10_000
+
+/** The maps whose trail line has reported loaded once. After that the wait
+ *  below is never taken again on that map: a legend tap or a notes refresh
+ *  re-pushes the pins straight away, as it always did. */
+const trailLineSeen = new WeakSet<MapLibreMap>()
+
+/**
+ * Runs `attach` once this map has drawn its trail line, or at once where
+ * there is no line to wait for - and returns a detach (#1727).
+ *
+ * MapLibre tiles every GeoJSON source in one worker, in the order their data
+ * arrives. The shell hands the map the trail line first, but the 28,913
+ * waypoints and the 9.7 MB network sketch land a few hundred milliseconds
+ * later, before the line's own tiles have been cut - and the worker takes
+ * each `loadData` whole. Measured 2026-09-17 on a warm laptop launch at 1x
+ * (LAUNCH_BUDGET.md §7.1): the line's source loaded at 6,155 ms, after the
+ * pins (1,811 ms) and the sketch (5,411 ms); with the sketch out of the way
+ * it loaded at 3,142 ms, and its own parse and index cost about 250 ms. So
+ * the line is late because of what is queued in front of it, and this puts
+ * it first: the sketch and the first push of the pins wait until the trails
+ * source reports its tiles drawn, then go through unchanged.
+ *
+ * `trailLinesHeld` false means the trails source holds the style's empty
+ * placeholder, which loads instantly and must not be waited on - a first run
+ * before its release, or a phone with nothing on it, attaches exactly as it
+ * did. Once a map's line has been seen drawn the wait is never taken again
+ * on it; and a line that never reports - {@link TRAIL_LINE_WAIT_MS} - lets
+ * the attach through rather than holding the pins off the map for good.
+ */
+export function afterTrailLineDrawn(
+  map: MapLibreMap,
+  trailLinesHeld: boolean,
+  attach: () => () => void,
+): () => void {
+  if (trailLineSeen.has(map)) return attach()
+  if (!trailLinesHeld) return attach()
+  if (trailLinesDrawn(map)) {
+    trailLineSeen.add(map)
+    return attach()
+  }
+
+  let detachInner: (() => void) | null = null
+  let waiting = true
+  const stop = () => {
+    if (!waiting) return
+    waiting = false
+    map.off('sourcedata', onSourceData)
+    map.off('idle', check)
+    clearTimeout(timer)
+  }
+  function go(drawn: boolean) {
+    stop()
+    if (drawn) trailLineSeen.add(map)
+    detachInner = attach()
+  }
+  function check() {
+    if (trailLinesDrawn(map)) go(true)
+  }
+  function onSourceData(event: MapSourceDataEvent) {
+    if (event.sourceId === TRAILS_SOURCE_ID) check()
+  }
+  const timer = setTimeout(() => go(false), TRAIL_LINE_WAIT_MS)
+  map.on('sourcedata', onSourceData)
+  map.on('idle', check)
+
+  return () => {
+    stop()
+    detachInner?.()
+  }
+}
+
 /** Whether the A.T.'s own sketch draws as an untaken line: it does whenever
  *  the A.T.'s through-route source is not in the chosen system - nothing
  *  taken, or some other trail taken (#1306). */
@@ -1241,12 +1023,14 @@ export function attachChosenTrail(
       // casing, and is not in CHOSEN_TRAIL_SPLIT_LAYERS for the reason the
       // shared-ground block below gives: that loop writes a chosen-system
       // filter, and this layer's filter is the through-route source list.
-      if (map.getLayer(NETWORK_OVERVIEW_CASING_LAYER_ID) !== undefined) {
-        map.setPaintProperty(
-          NETWORK_OVERVIEW_CASING_LAYER_ID,
-          'line-opacity',
-          casingOpacity,
-        )
+      // Both bands' casings since #1775, or the Long Path's edge would fade
+      // at z5 as the source changes under it.
+      for (const id of [
+        NETWORK_OVERVIEW_CASING_LAYER_ID,
+        NETWORK_OVERVIEW_TILED_CASING_LAYER_ID,
+      ]) {
+        if (map.getLayer(id) === undefined) continue
+        map.setPaintProperty(id, 'line-opacity', casingOpacity)
       }
       for (const id of [TRAIL_LABEL_LAYER_ID, NEARBY_TRAIL_LABEL_LAYER_ID]) {
         if (map.getLayer(id) === undefined) continue
@@ -1291,6 +1075,12 @@ export const CHOSEN_TRAIL_SPLIT_LAYERS: ReadonlyArray<readonly [string, TrailLin
   [
     [NETWORK_OVERVIEW_UNTAKEN_LAYER_ID, 'nearby'],
     [NETWORK_OVERVIEW_LAYER_ID, 'chosen'],
+    // The tiled band's twins (#1775), drawn immediately after the sketch's
+    // and filtered the same way: a system admitted to the chosen list has to
+    // stop being drawn as untaken on BOTH sides of NETWORK_SKETCH_MAX_ZOOM,
+    // and this loop is what writes that filter.
+    [NETWORK_OVERVIEW_TILED_UNTAKEN_LAYER_ID, 'nearby'],
+    [NETWORK_OVERVIEW_TILED_LAYER_ID, 'chosen'],
     [NEARBY_TRAIL_CASING_UNTAKEN_LAYER_ID, 'nearby'],
     [NEARBY_BLAZE_UNTAKEN_LAYER_ID, 'nearby'],
     [NEARBY_TRAIL_CASING_LAYER_ID, 'chosen'],
@@ -1424,7 +1214,8 @@ function buildTrailLineLayers(
         // (NEAR_WHITE_BLAZES).
         'line-color': blazeLineColor(appearance, true) as unknown as string,
         // Dashed on the context trails under the default, solid on a
-        // through-route, absent otherwise (#1588, blazeDashArray).
+        // through-route, and solid per feature everywhere otherwise (#1588,
+        // #1698 - blazeDashArray).
         ...blazeDashPaint(appearance),
         // Its own tier, except on the untaken side below the seam, where
         // the tier is a rope and the network's far weight is what the
@@ -1572,26 +1363,80 @@ export function sketchLineColor(appearance: SheetAppearance): unknown {
 }
 
 /**
+ * Where the sketch hands the network over to the tiles (#1775).
+ *
+ * SPELLED AS THE CUT ITSELF, which is the spelling CORRIDOR_MAX_ZOOM's own
+ * docstring warns against - and the warning does not apply here, because the
+ * two constants stand on opposite sides of the same seam. That one is a
+ * CEILING for layers reading a different source, so a cut that moved down
+ * would drag it below the zooms those layers must still draw; this one is the
+ * boundary BETWEEN the two sources, so wherever the archive begins is exactly
+ * where the sketch should stop. Move the cut either way and this follows it
+ * correctly; the sketch and the tiles cannot leave a gap between them.
+ *
+ * The sketch is cut for this zoom too, and that is the other half of the pair
+ * being right: export_nearby_trails.py's OVERVIEW_SEAM_ZOOM is this number,
+ * its floor is one pixel here, and its tolerance is half of one.
+ */
+export const NETWORK_SKETCH_MAX_ZOOM = NEARBY_TRAILS_TILES_MIN_ZOOM
+
+/** One of the two zoom bands the network's sketch paint is drawn over, and
+ *  the source and layer ids that band reads. The two differ in nothing else -
+ *  every expression below is shared - which is the property that makes the
+ *  handover at NETWORK_SKETCH_MAX_ZOOM invisible. */
+interface NetworkSketchBand {
+  source: string
+  casingId: string
+  minzoom?: number
+  maxzoom: number
+}
+
+/** z0 to the cut: the published `network_overview.geojson`, which is the only
+ *  thing that can draw here because the archive holds no tile below its own
+ *  minimum. This is the band the app OPENS on - z2.2 on a 390 px phone. */
+const SKETCH_BAND: NetworkSketchBand = {
+  source: NETWORK_OVERVIEW_SOURCE_ID,
+  casingId: NETWORK_OVERVIEW_CASING_LAYER_ID,
+  maxzoom: NETWORK_SKETCH_MAX_ZOOM,
+}
+
+/** The cut to the seam: the same paint over `nearby_trails.pmtiles`, read by
+ *  range through map/networkTiles.ts. What this band draws used to come out
+ *  of the sketch file, and taking it off there is what let the sketch be cut
+ *  for a z5 pixel instead of a z9 one (#1775). */
+const TILED_SKETCH_BAND: NetworkSketchBand = {
+  source: NEARBY_TRAILS_SOURCE_ID,
+  casingId: NETWORK_OVERVIEW_TILED_CASING_LAYER_ID,
+  minzoom: NETWORK_SKETCH_MAX_ZOOM,
+  maxzoom: CORRIDOR_MAX_ZOOM,
+}
+
+/**
  * One side of the network overview's split (#1135, #1283): the sketch has no
  * casing pair and its own tapering width, so it is not buildTrailLineLayers,
  * but it takes the same filter pair for the same reason. (Its through-routes
  * have one casing under both sides since #1586 -
  * buildNetworkOverviewCasingLayer.)
+ *
+ * `band` is which of the two zoom bands this layer draws in - the sketch
+ * file's by default, so every existing caller reads as it did.
  */
 function buildNetworkOverviewLayer(
   layerId: string,
   appearance: SheetAppearance,
   side: TrailLineSide,
   chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
+  band: NetworkSketchBand = SKETCH_BAND,
 ): LayerSpecification {
   return {
     id: layerId,
     type: 'line',
-    source: NETWORK_OVERVIEW_SOURCE_ID,
+    source: band.source,
     filter: (side === 'chosen'
       ? chosenSystemFilter(chosen)
       : nearbyTrailFilter(chosen)) as never,
-    maxzoom: CORRIDOR_MAX_ZOOM,
+    ...(band.minzoom === undefined ? {} : { minzoom: band.minzoom }),
+    maxzoom: band.maxzoom,
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: {
       // Uncased on the haze, so a near-white line there is inked dark on a
@@ -1627,13 +1472,15 @@ function buildNetworkOverviewLayer(
 function buildNetworkOverviewCasingLayer(
   appearance: SheetAppearance,
   chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
+  band: NetworkSketchBand = SKETCH_BAND,
 ): LayerSpecification {
   return {
-    id: NETWORK_OVERVIEW_CASING_LAYER_ID,
+    id: band.casingId,
     type: 'line',
-    source: NETWORK_OVERVIEW_SOURCE_ID,
+    source: band.source,
     filter: THROUGH_ROUTE_SOURCE_CONDITION as never,
-    maxzoom: CORRIDOR_MAX_ZOOM,
+    ...(band.minzoom === undefined ? {} : { minzoom: band.minzoom }),
+    maxzoom: band.maxzoom,
     // Hidden under the default like every casing (#1588): there the
     // through-routes are plain solid red, which is what the maintainer
     // chose over this casing on the same sheet of frames.
@@ -1772,10 +1619,6 @@ export const THROUGH_ROUTE_SOURCE_CONDITION: unknown[] = [
   ['literal', [...PRIMARY_TRAIL_SOURCES]],
 ]
 
-/** The two width tiers, in CSS pixels. */
-export const PRIMARY_TRAIL_WIDTH = 4.5
-export const SIDE_TRAIL_WIDTH = 2.5
-
 /**
  * Line width in CSS pixels, per trail source.
  *
@@ -1844,9 +1687,6 @@ export const TRAIL_SORT_KEY_EXPRESSION = [
   PRIMARY_TRAIL_SORT_KEY,
   SIDE_TRAIL_SORT_KEY,
 ]
-
-/** How far the dark casing shows past each side of the line it sits under. */
-export const CASING_OVERHANG = 1
 
 /**
  * The widest a blaze is ever drawn, and the width a closure has to stay
@@ -2091,6 +1931,11 @@ export function blazeWidthExpressionFor(
       return untakenTrailWidthExpression(appearance)
     case NETWORK_OVERVIEW_LAYER_ID:
     case NETWORK_OVERVIEW_UNTAKEN_LAYER_ID:
+    // The tiled band's twins take the sketch's own width (#1775), which is
+    // what makes the handover at the cut invisible: the taper is a function
+    // of zoom, so both bands land on the same pixel where they meet.
+    case NETWORK_OVERVIEW_TILED_LAYER_ID:
+    case NETWORK_OVERVIEW_TILED_UNTAKEN_LAYER_ID:
       return networkOverviewWidthExpression(appearance)
     default:
       return undefined
@@ -2121,8 +1966,11 @@ export function blazeWidthExpressionFor(
  * - The A.T.'s sketch and its real line carry the SAME width at every
  *   zoom (sketchWidthExpression takes this expression), so the swap when
  *   trails.geojson finally parses stays the invisible one #1291 asked for.
- * - The nearby network's tiles start AT the seam, so this taper is a no-op
- *   over them - it exists for the sources that draw below it.
+ * - The nearby network's FULL layers start at the seam, so this taper is a
+ *   no-op over them. It is not a no-op over the tiles as such any more: since
+ *   #1775 the sketch's own paint is drawn over the same archive between
+ *   NETWORK_SKETCH_MAX_ZOOM and the seam, and tapers there exactly as the
+ *   sketch file's band does below it.
  */
 export function untakenTrailWidthExpression(appearance: SheetAppearance = HUES): unknown {
   return overviewTaper(
@@ -2329,9 +2177,10 @@ export function buildMapStyle({
     redLight,
     blazeColorsShown,
   }
-  // The paper every barrier tape lies on (#1575, option E): this sheet's
-  // backdrop, which is what map/closureTape.ts bakes under the stripes.
+  // The paper every closure is knocked out to, and the ink its trace and
+  // crosses are drawn in, for this sheet (#1677).
   const tapeGround = closureTapeGround(appearance)
+  const closureInkColor = closureInk(appearance)
   // Asked for, and that is the whole question. Terrain used to be half of it -
   // `background === 'hiking_topo_live' && terrain !== undefined` - on the
   // reasoning that a style must not reference sources resolving to nothing.
@@ -2668,6 +2517,16 @@ export function buildMapStyle({
       // the same builder, so admitting a source to the chosen system cannot
       // leave the overview drawing it as untaken while the full lines draw
       // it as taken.
+      //
+      // TWICE, OVER TWO SOURCES, SINCE #1775. Below NETWORK_SKETCH_MAX_ZOOM
+      // the sketch file draws it, because the archive is cut from that zoom
+      // and holds nothing under it - and that band is the one the app opens
+      // on. From there to the seam the same paint is drawn over the network
+      // tiles instead, read by range. Taking the upper band off the sketch
+      // file is what let export_nearby_trails.py cut it for a pixel at z5
+      // rather than at z9: 12,238,110 bytes to 1,811,212, measured, on a file
+      // every launch fetches whole and the only one whose size followed the
+      // number of organizations.
       buildNetworkOverviewCasingLayer(appearance, chosen),
       buildNetworkOverviewLayer(
         NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
@@ -2676,6 +2535,26 @@ export function buildMapStyle({
         chosen,
       ),
       buildNetworkOverviewLayer(NETWORK_OVERVIEW_LAYER_ID, appearance, 'chosen', chosen),
+      ...onSourceLayer(
+        [
+          buildNetworkOverviewCasingLayer(appearance, chosen, TILED_SKETCH_BAND),
+          buildNetworkOverviewLayer(
+            NETWORK_OVERVIEW_TILED_UNTAKEN_LAYER_ID,
+            appearance,
+            'nearby',
+            chosen,
+            TILED_SKETCH_BAND,
+          ),
+          buildNetworkOverviewLayer(
+            NETWORK_OVERVIEW_TILED_LAYER_ID,
+            appearance,
+            'chosen',
+            chosen,
+            TILED_SKETCH_BAND,
+          ),
+        ],
+        NETWORK_TILES_LAYER,
+      ),
       // The sketch's own closed ground is drawn with every other closure, at
       // the top of the style (#1599) - it used to sit here, over its own
       // ghosted line. See THE SAFETY MARKS, LAST at the end of this list.
@@ -2709,8 +2588,9 @@ export function buildMapStyle({
           // real line differ, and the frame #1291 is about.
           'line-color': blazeLineColor(appearance, false) as unknown as string,
           // Every feature here is the A.T.'s, so this is the no-gap dash on
-          // each of them under the default: carried for the uniformity the
-          // sheet repaint relies on, not for anything it draws (#1588).
+          // each of them on every sheet: carried because the sheet repaint
+          // must never take a per-feature dash away (#1588, #1698), not for
+          // anything it draws - SOLID_DASH says why it draws as no dash.
           ...blazeDashPaint(appearance),
           // The one departure, and only while the A.T. is not taken: the
           // network's taper rather than the line's own tier, because 4.5 px
@@ -2884,13 +2764,24 @@ export function buildMapStyle({
       // trail's name cannot both be placed, the one the map is about is the
       // one that should survive. Same layer, same expressions, same opacity
       // rule; only the id and the source differ.
+      //
+      // FROM THE SEAM, NOT FROM TRAIL_LABEL_MIN_ZOOM (#1727). Below
+      // CORRIDOR_MAX_ZOOM the network is the sketch, whose layers stop there
+      // and carry no names; the tiles were cut from z9 until #1615, so a
+      // label layer starting at z4 asked for nothing. The cut starts at z5
+      // now, and a layer that is visible at z5 marks its source `used`, so a
+      // laptop's opening camera (z5.2-5.6 at 1728x1080) fetched and parsed
+      // the z5 network tiles - the same lines the sketch was already
+      // drawing - for a label layer with almost nothing to place. Reasoned
+      // from MapLibre's `Style.update`/`coveringTiles`, measured only as
+      // tile bytes (1.2-1.3 MB per z5 tile along the A.T., 2026-09-30).
       ...onSourceLayer(
         [
           buildTrailLabelLayer(
             NEARBY_TRAILS_SOURCE_ID,
             trailCasingColor(appearance),
             mapBackdrop(appearance),
-            TRAIL_LABEL_MIN_ZOOM,
+            Math.max(TRAIL_LABEL_MIN_ZOOM, CORRIDOR_MAX_ZOOM),
             NEARBY_TRAIL_LABEL_LAYER_ID,
             chosen,
           ),
@@ -3032,22 +2923,46 @@ export function buildMapStyle({
       // for the ATC's notices and for the same reason: the mark is hollow,
       // so a band crossing it hides its centre and nothing else, and the
       // ring and the ticks still say where the hiker is.
+      //
+      // THE SKETCH'S CLOSURE ENDS WHERE THE SKETCH DOES, so a layer of it
+      // that would only start above the seam - the chain of crosses, from
+      // lib/closureStyle.ts's CLOSURE_NEAR_MIN_ZOOM - is left out rather
+      // than given a zoom range that is empty.
       ...buildClosureLayers(NETWORK_OVERVIEW_SOURCE_ID, {
         ground: tapeGround,
+        ink: closureInkColor,
         bandId: NETWORK_OVERVIEW_CLOSURE_LAYER_ID,
         filter: LONG_TERM_CLOSED_FILTER,
-      }).map((layer) => ({ ...layer, maxzoom: CORRIDOR_MAX_ZOOM })),
+      })
+        .filter((layer) => (layer.minzoom ?? 0) < CORRIDOR_MAX_ZOOM)
+        .map((layer) => ({
+          ...layer,
+          maxzoom: Math.min(layer.maxzoom ?? CORRIDOR_MAX_ZOOM, CORRIDOR_MAX_ZOOM),
+        })),
+      // THE TILES' CLOSURE STARTS WHERE THE SKETCH'S ENDS (#1727) - the
+      // mirror of the clamp above it. Uncapped, the band and the trace had
+      // no minzoom at all, which since the z5 cut (#1615) kept the network
+      // source `used` at the corridor camera for a mark the sketch's own
+      // band was already drawing.
       ...onSourceLayer(
         buildClosureLayers(NEARBY_TRAILS_SOURCE_ID, {
           ground: tapeGround,
+          ink: closureInkColor,
           bandId: NEARBY_LONG_TERM_CLOSURE_LAYER_ID,
           filter: LONG_TERM_CLOSED_FILTER,
-        }),
+        }).map((layer) => ({
+          ...layer,
+          minzoom: Math.max(layer.minzoom ?? 0, CORRIDOR_MAX_ZOOM),
+        })),
         NETWORK_TILES_LAYER,
       ),
-      ...buildClosureLayers(CLOSURE_SOURCE_ID, { ground: tapeGround }),
+      ...buildClosureLayers(CLOSURE_SOURCE_ID, {
+        ground: tapeGround,
+        ink: closureInkColor,
+      }),
       ...buildClosureLayers(TRAILS_SOURCE_ID, {
         ground: tapeGround,
+        ink: closureInkColor,
         bandId: LONG_TERM_CLOSURE_LAYER_ID,
         filter: LONG_TERM_CLOSED_FILTER,
       }),
@@ -3078,7 +2993,7 @@ export function buildMapStyle({
       // a property by src/test/atcAlertProminence.test.ts, which asserts the
       // last two layers by name. So the maintainer's "top 2" is the top two
       // OurHike layers; the upstream authority on the A.T. keeps the roof.
-      ...buildAtcUpdateLayers(ATC_UPDATE_SOURCE_ID, tapeGround),
+      ...buildAtcUpdateLayers(ATC_UPDATE_SOURCE_ID, tapeGround, closureInkColor),
     ],
   }
 }

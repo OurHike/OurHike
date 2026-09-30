@@ -848,24 +848,47 @@ class TestTheRegistryTheConsoleReads:
         assert states == {"not_asked"}
 
     def test_lists_every_organization_once_with_its_id(self):
+        """13 until 2026-09-30, when #1778 registered seventeen at once.
+
+        Spelled out rather than counted, because the point of the case is that
+        a registration cannot arrive without somebody writing its id down: a
+        length assertion alone would pass for any seventeen, including
+        seventeen typos.
+        """
         orgs = self.real()["organizations"]
 
-        assert len(orgs) == 14
+        assert len(orgs) == 30
         assert {org["steward_id"] for org in orgs} == {
+            "org:alaskatrails",
             "org:atc",
+            "org:azgeo",
+            "org:blm",
+            "org:cdtc",
+            "org:cpw",
+            "org:ctdeep",
+            "org:duluth",
             "org:gatc",
+            "org:massgis",
             "org:mohonk",
+            "org:ncparks",
+            "org:ncta",
             "org:ndmc",
-            "org:nhgranit",
             "org:njdep",
+            "org:nps",
             "org:nycdot",
             "org:nycparks",
             "org:nynjtc",
             "org:nysdec",
             "org:nysoprhp",
             "org:osm",
+            "org:pasda",
+            "org:pcta",
+            "org:trta",
+            "org:ugrc",
             "org:usfs",
             "org:usgs",
+            "org:warco",
+            "org:wdnr",
         }
 
     def test_composes_nothing_a_reviewer_would_have_to_check(self):

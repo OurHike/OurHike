@@ -208,3 +208,96 @@ describe('the cost of counting', () => {
     expect(elapsed).toBeLessThan(2000)
   })
 })
+
+describe('the faster count answers exactly what the plain one did (#1727)', () => {
+  // The count was rewritten for speed - numeric grid keys and an exact
+  // north-south reject before the distance - and the one thing that must not
+  // move is the answer. This is the plain form, as first written for #1536,
+  // kept here as the reference the fast one is held to.
+  const METRES_PER_DEGREE = 111_320
+  function metresBetween(a: MapPoint, b: MapPoint): number {
+    const midLat = ((a.lat + b.lat) / 2) * (Math.PI / 180)
+    const dx = (a.lon - b.lon) * METRES_PER_DEGREE * Math.cos(midLat)
+    const dy = (a.lat - b.lat) * METRES_PER_DEGREE
+    return Math.hypot(dx, dy)
+  }
+  function plainCrowding(drawn: readonly MapPoint[]): Map<string, number> {
+    const cell = CROWDING_RADIUS_M / METRES_PER_DEGREE
+    const grid = new Map<string, MapPoint[]>()
+    for (const poi of drawn) {
+      const key = `${Math.floor(poi.lon / cell)},${Math.floor(poi.lat / cell)}`
+      const bucket = grid.get(key)
+      if (bucket === undefined) grid.set(key, [poi])
+      else bucket.push(poi)
+    }
+    const counts = new Map<string, number>()
+    for (const poi of drawn) {
+      const gx = Math.floor(poi.lon / cell)
+      const gy = Math.floor(poi.lat / cell)
+      let near = -1
+      for (let dx = -1; dx <= 1; dx += 1) {
+        for (let dy = -1; dy <= 1; dy += 1) {
+          for (const other of grid.get(`${gx + dx},${gy + dy}`) ?? []) {
+            if (metresBetween(poi, other) <= CROWDING_RADIUS_M) near += 1
+          }
+        }
+      }
+      counts.set(poi.id, Math.max(0, near))
+    }
+    return counts
+  }
+
+  /** Deterministic pseudo-random points: a trail's worth strung along a
+   *  diagonal with small scatter, a city's worth in a dense blob, and a few
+   *  on the far side of the corridor - the three shapes the count has to
+   *  tell apart. Seeded, so a failure reproduces. */
+  function points(count: number, seed: number): MapPoint[] {
+    let state = seed
+    const random = () => {
+      state = (state * 1_664_525 + 1_013_904_223) % 4_294_967_296
+      return state / 4_294_967_296
+    }
+    const out: MapPoint[] = []
+    for (let i = 0; i < count; i += 1) {
+      const kind = random()
+      let lat: number
+      let lon: number
+      if (kind < 0.6) {
+        const along = random()
+        lat = 34.6 + along * 11.4 + (random() - 0.5) * 0.02
+        lon = -84.2 + along * 15.2 + (random() - 0.5) * 0.02
+      } else if (kind < 0.9) {
+        lat = 40.68 + (random() - 0.5) * 0.12
+        lon = -73.98 + (random() - 0.5) * 0.12
+      } else {
+        lat = 30 + random() * 20
+        lon = -90 + random() * 30
+      }
+      out.push({ id: `p${i}`, type: 'water', lat, lon, confidence: 'high' })
+    }
+    return out
+  }
+
+  it('matches the plain count on 6,000 points of trail, city and scatter', () => {
+    const drawn = points(6_000, 20260930)
+    expect([...crowdingByPoi(drawn).entries()]).toEqual([
+      ...plainCrowding(drawn).entries(),
+    ])
+  })
+
+  it('matches it on a second seed too, and on a set with cells straddling the antimeridian of the grid', () => {
+    const drawn = [
+      ...points(2_000, 7),
+      // Negative and positive columns and rows - a grid key packed into one
+      // integer must keep (-1, 0) apart from (0, -1) and (0, 0).
+      { id: 'a', type: 'shelter', lat: 0.001, lon: 0.001, confidence: 'high' as const },
+      { id: 'b', type: 'shelter', lat: -0.001, lon: 0.001, confidence: 'high' as const },
+      { id: 'c', type: 'shelter', lat: 0.001, lon: -0.001, confidence: 'high' as const },
+      { id: 'd', type: 'shelter', lat: -0.001, lon: -0.001, confidence: 'high' as const },
+    ]
+    expect([...crowdingByPoi(drawn).entries()]).toEqual([
+      ...plainCrowding(drawn).entries(),
+    ])
+    expect(crowdingByPoi(drawn).get('a')).toBe(3)
+  })
+})

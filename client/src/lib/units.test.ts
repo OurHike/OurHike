@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest'
 import {
   formatDistance,
   formatDistanceRange,
+  feetFromMetres,
   formatElevation,
+  formatRoundShortDistance,
   formatShortDistance,
   unitSystemLabel,
 } from './units'
@@ -113,6 +115,15 @@ describe('formatShortDistance', () => {
   })
 })
 
+describe('formatRoundShortDistance', () => {
+  it('states a round pick to the nearest 10 of the hiker\u2019s unit, not to the foot', () => {
+    // 100 m is 328.08 ft: a radius somebody chose, not a survey (#1695).
+    expect(formatRoundShortDistance(feetFromMetres(100), 'imperial')).toBe('330 ft')
+    expect(formatRoundShortDistance(feetFromMetres(100), 'metric')).toBe('100 m')
+    expect(formatRoundShortDistance(feetFromMetres(150), 'metric')).toBe('150 m')
+  })
+})
+
 describe('unitSystemLabel', () => {
   it('names the unit a hiker reads, not the customs schedule it belongs to', () => {
     expect(unitSystemLabel('imperial')).toBe('Feet')
@@ -130,6 +141,7 @@ describe('the module as a whole', () => {
       formatDistance(1, 'metric'),
       formatDistance(0.01, 'metric', 'fine'),
       formatShortDistance(100, 'metric'),
+      formatRoundShortDistance(100, 'metric'),
     ]
     for (const output of outputs) {
       expect(output).toMatch(/^[\d,.]+ (m|km)$/)

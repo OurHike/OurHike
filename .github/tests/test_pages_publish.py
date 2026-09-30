@@ -817,3 +817,15 @@ class TestDraftingWithoutDeploying:
         env = self._draft_step()["env"]
         assert env["REF_NAME"] == "${{ github.ref_name }}"
         assert env["DEFAULT_BRANCH"] == "${{ github.event.repository.default_branch }}"
+
+    def test_a_refused_release_post_prints_githubs_reason_instead_of_a_bare_exit(self):
+        """#1717. `curl -f` turned a 403 into an exit code and discarded the
+        body, so the cause of the 2026-09-29 refusals was never seen. The step
+        reads the status itself, as release-notes.yml does for its own POST."""
+        run = self._draft_step()["run"]
+        post = run.split("response=", 1)[1].split("-d @payload.json", 1)[0]
+        assert "curl -sS -w" in post
+        assert "-fsS" not in post
+        assert "%{http_code}" in post
+        assert "::error::Drafting" in run
+        assert ".message" in run

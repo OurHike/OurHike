@@ -25,9 +25,13 @@ the index as `grid`) finds that point's whole forecast in one lookup.
   different sentences, and only one of them is true.
 - **A water square says where its numbers came from.** `borrowed` lists each
   square that reads a land neighbour instead (WEATHER.md §6).
-- **No elevation correction.** Measured, NBM corrected for height scored worse
-  than NBM as published (WEATHER.md §3). HRRR's corrected first two days are
-  the next slice of this step, and arrive as their own fields beside these.
+- **No elevation correction.** Measured, NBM corrected for
+  height scored worse than NBM as published (WEATHER.md §3), so NBM's fields
+  are as NOAA published them.
+- **NBM only, for every hour** (the maintainer's call of 2026-09-30, after
+  build step 2 scored HRRR corrected for elevation and found it did not
+  reliably beat NBM; WEATHER.md §3). Step 1's `hrrr` block is gone from
+  these files.
 - **No warnings, but each square's NWS zones.** The alerts themselves are
   their own artifact (`export_weather_alerts.py`). What this file adds is
   `zones[i]`: every NWS forecast zone, fire weather zone and county whose

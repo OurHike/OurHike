@@ -206,6 +206,7 @@ attribution so that screen has one place to read them from when it does.
 """
 
 import json
+import math
 from pathlib import Path
 
 import duckdb
@@ -219,7 +220,6 @@ from shapely.ops import unary_union
 
 from export_trails import (
     _TO_METRIC,
-    OVERVIEW_COORDINATE_DECIMALS,
     OVERVIEW_SIMPLIFY_TOLERANCE_M,
     _flat_lines,
     _overview_coordinates_all,
@@ -330,6 +330,70 @@ TILES_LAYER = "trails"
 TILES_MIN_ZOOM = 5
 TILES_MAX_ZOOM = 14
 
+
+def _metres_per_pixel(zoom: float, latitude: float = 40.0) -> float:
+    """Ground distance one CSS pixel covers at `zoom`, MapLibre's 512 px tiles.
+
+    40 degrees north because that is roughly where the network's mass is - the
+    Appalachians and the Sierra - and Mercator's scale factor is a cosine, so
+    one number cannot be right everywhere. It is optimistic in Maine and
+    pessimistic in Georgia, by about 15% either way across the shipped extent.
+    """
+    return 156543.03392 * math.cos(math.radians(latitude)) / (2**zoom) / 2
+
+
+# WHERE THE SKETCH HANDS THE NETWORK OVER, and therefore what it has to be
+# good enough for (#1775). The sketch used to draw to CORRIDOR_MAX_ZOOM = 9
+# and was cut at export_trails.py's OVERVIEW_SIMPLIFY_TOLERANCE_M = 100 m,
+# which is about one pixel there. Since #1615 cut the tiles from z5 the tiles
+# can take z5-z9, so the sketch only still owns z0-z5 - where 100 m is 16
+# times finer than a pixel and the file is paying for every one of those
+# digits on every launch.
+OVERVIEW_SEAM_ZOOM = TILES_MIN_ZOOM
+
+# Half a pixel at the seam: 937 m. Douglas-Peucker guarantees no point moves
+# further than this from where it was, so at the finest zoom this artifact
+# draws at, nothing moves by half a pixel - and at the camera the app actually
+# opens on (z2.2, App.tsx's UNITED_STATES_BOUNDS) it is a fourteenth of one.
+OVERVIEW_SEAM_TOLERANCE_M = _metres_per_pixel(OVERVIEW_SEAM_ZOOM) / 2
+
+# A trail whose WHOLE bounding box is under one pixel at the seam is not
+# drawn, it is a dot - so it is dropped rather than simplified.
+#
+# MEASURED by running this function over the 136,941 records read back out of
+# release 2026-09-16-4's own nearby_trails.geojson (2026-09-30): 110,077 of
+# them - 80.4% - have a bounding box smaller than this, and dropping them with
+# the tolerance above takes the artifact from 12,238,110 bytes to 1,811,212,
+# or 14.8%.
+#
+# The prototype #1775 was argued from said 13.0%, applying one 937 m pass to
+# the published sketch's 144,541 parts rather than 937 m to the 100 m pass
+# above; composed Douglas-Peucker keeps a few more vertices. Both figures are
+# in the issue and this one is the code's.
+#
+# The maintainer chose 1 px over 2 px by poll on 2026-09-30, from two frames
+# drawn at the real opening camera: 2 px saved a further 590 KB and visibly
+# thinned the haze, 1 px did not.
+#
+# WHY SIMPLIFICATION ALONE CANNOT DO THIS. Douglas-Peucker never drops a
+# feature (simplify_records' own rule, and the silent-geometry-loss bug behind
+# it), so it cannot go below two vertices per segment. Measured on the same
+# file: 1,000 m leaves 309,570 vertices, 4,000 m leaves 290,333, and 8,000 m
+# leaves 289,299 - an asymptote at two vertices times 144,541 segments,
+# 5.3 MB, however coarse the tolerance is set. The cost here is segment
+# COUNT, and only a floor reaches it.
+#
+# @unvalidated as a threshold, though the frames it was chosen from are real:
+# nobody has looked at the opening camera on a phone in daylight, which is what
+# would settle whether one pixel is the right floor. The same outdoor pass #105
+# owes the rest of the map chrome.
+OVERVIEW_MIN_FEATURE_M = _metres_per_pixel(OVERVIEW_SEAM_ZOOM)
+
+# Three decimals, about 111 m of longitude here - an order finer than the
+# tolerance above, which is export_trails.py's own precision rule applied to
+# this artifact's own tolerance rather than to the 100 m one it no longer uses.
+OVERVIEW_SEAM_DECIMALS = 3
+
 # Coordinates are written at six decimals - about 0.11 m of longitude at
 # these latitudes - by export_trails.py's own precision rule: an order finer
 # than the tolerance the geometry was simplified to, which is 1 m here (the
@@ -434,6 +498,44 @@ def _named_lengths(records: list[dict]) -> dict[tuple[str, str], float]:
         key = (record["source"], record["name"])
         totals[key] = totals.get(key, 0.0) + miles
     return totals
+
+
+def _above_the_seam_floor(records: list[dict], qualifying: set[tuple[str, str]]) -> list[dict]:
+    """`records` without the ones too small to be a line at OVERVIEW_SEAM_ZOOM.
+
+    The test is the whole record's bounding-box diagonal against
+    OVERVIEW_MIN_FEATURE_M - one pixel at the seam - rather than its length,
+    deliberately: a two-mile trail folded into three switchbacks inside one
+    pixel draws as the same dot a 300 m spur does, and length would keep it.
+    What the sketch is for is the SHAPE of the network at a continental
+    camera, and a shape smaller than a pixel has none.
+
+    A QUALIFYING NAMED TRAIL IS NEVER DROPPED, whatever its rows measure. The
+    through-routes are the one thing #1307 and #1586 deliberately put on this
+    camera - the Long Path beside the A.T., "make sure that all long distance
+    trails get the same prominence as what the AT has now" - and a trail
+    published as many short sections would otherwise be erased section by
+    section while a single-row trail of the same length survived. That is the
+    Long Path's own shape: 43 section records as of #1019's measurement.
+
+    In EPSG:5070 metres, like every other distance this export takes, which is
+    equal-area rather than conformal - so a "pixel" here is a few percent off
+    a screen pixel across CONUS. Consistency with `simplify_records`' own
+    tolerance is worth more than that, since the two are compared.
+    """
+    if not records:
+        return []
+    projected = reproject(from_wkt_all([record["wkt"] for record in records]), _TO_METRIC)
+    bounds = shapely.bounds(projected)
+    spans = np.hypot(bounds[:, 2] - bounds[:, 0], bounds[:, 3] - bounds[:, 1]).tolist()
+    kept = []
+    for record, span in zip(records, spans):
+        name = record.get("name")
+        if name is not None and (record["source"], name) in qualifying:
+            kept.append(record)
+        elif span >= OVERVIEW_MIN_FEATURE_M:
+            kept.append(record)
+    return kept
 
 
 def network_line_sources(registry: dict) -> list[dict]:
@@ -580,19 +682,15 @@ def resolve_blaze(source: dict, properties: dict, mapping: dict | None) -> tuple
     # thing - a row whose publisher had not filled the column in - so this
     # returned Unknown ("Blaze not recorded") without looking.
     #
-    # NH GRANIT breaks that. Its BLAZE is blank on 7,574 of the 7,643 Whites
-    # rows, and the blank is CORRECT rather than missing: the White Mountains
-    # largely do not use paint blazes, and the 62 rows that do read White are
-    # the A.T. (61 carry TRAILSYS "Appalachian Trail"). For that source blank
-    # means UNBLAZED, which the palette spells "None" and the client renders
-    # as "Unblazed" - a true statement about a Whites trail, where Unknown
-    # would print a hedge in place of a fact.
-    #
-    # That is a judgement about one organization's data, so it lives where the
-    # other such judgements live - reference/blaze_mapping.json, a reviewed
-    # file whose diff is the review - rather than as a new registry field.
-    # A source whose table says nothing about blanks still gets Unknown, which
-    # is every source but one.
+    # NH GRANIT was the case that needed it: its BLAZE was blank on 7,574 of
+    # 7,643 Whites rows, and the blank was CORRECT rather than missing - the
+    # White Mountains largely do not use paint blazes - so its table mapped
+    # the blank to "None" ("Unblazed"). GRANIT dropped the column in
+    # September 2026 (#1646) and the source was removed altogether (#1711),
+    # so no table maps a blank today and every blank falls through to
+    # Unknown. The path stays because the judgement it encodes - a blank a
+    # publisher means is a fact, not a gap - belongs in a reviewed table
+    # (reference/blaze_mapping.json) whenever a source earns it again.
     if isinstance(raw, str) and not raw.strip():
         mapped, disposition = map_source_blaze(raw, mapping)
         return (mapped, "mapped") if disposition == "mapped" else (NEUTRAL_FALLBACK, "absent")
@@ -697,22 +795,17 @@ def keep_reason(source: dict, properties: dict, geometry, owned: dict[str, str],
     if foot_field and properties.get(foot_field) not in source.get("foot_allowed", FOOT_ALLOWED_DEFAULT):
         return f"not a foot trail: {foot_field}={properties.get(foot_field)!r}"
 
-    # The other direction, and it exists because one source can only be
-    # filtered that way (#1207). `foot_field` asks "does this row SAY it is
-    # walkable" and drops everything that does not - which is right where the
-    # column is populated, and destructive where it is not. NH GRANIT's PED is
-    # blank on 3,760 of 7,643 Whites rows, and 2,541 of those blanks carry no
-    # use flag of any kind while being ordinary hiking trails - one of them
-    # literally named "Appalachian Trail - road link". A PED allowlist would
-    # delete them.
-    #
-    # What GRANIT does assert positively is what a corridor is FOR: 1,209 of
-    # those blank-PED rows are flagged SNOWMBL and 124 ATV. Acting on a
-    # positive assertion is sound where acting on an absence is not, so this
-    # drops on the motorized flag and keeps everything else - the maintainer's
-    # "It's OurHike, not OurBike" applied with the only evidence the layer
-    # offers. sources.json's `excluded_when_comment` on that entry carries the
-    # measurement and says why MTNBIKE, HORSE and XCSKI are NOT in the set.
+    # The other direction (#1207). `foot_field` asks "does this row SAY it
+    # is walkable" and drops everything that does not - right where the
+    # column is populated, destructive where it is not, because an absent use
+    # flag is unrecorded rather than a prohibition. `excluded_when` drops on
+    # a POSITIVE assertion instead: a row whose steward says it is motorized,
+    # or says hiking is not allowed. Acting on an assertion is sound where
+    # acting on an absence is not - the maintainer's "It's OurHike, not
+    # OurBike" applied with the evidence each layer actually offers. Three
+    # sources use it (#1711): usfs_trails on `terra_motorized`, and the two
+    # New Jersey layers on their motorized and hiking columns. Each entry's
+    # `excluded_when_comment` in sources.json carries the measurement.
     for field, values in (source.get("excluded_when") or {}).items():
         if properties.get(field) in values:
             return f"excluded use: {field}={properties.get(field)!r}"
@@ -726,6 +819,32 @@ def keep_reason(source: dict, properties: dict, geometry, owned: dict[str, str],
         return f"route owned by {owned[str(properties.get(name_field)).strip()]}"
 
     return None
+
+
+def missing_declared_fields(source: dict, features: list[dict]) -> list[str]:
+    """The fields a registry entry names that appear on NO fetched feature.
+
+    WHY THIS EXISTS (#1646). Every filter in keep_reason() reads a column by
+    the name sources.json gives it, and `properties.get(name)` on a column
+    that does not exist returns None rather than failing. So when NH GRANIT
+    republished its trails layer in September 2026 and renamed SNOWMBL/ATV
+    to SNOWMACHIN/OHRV, `excluded_when` matched nothing, every snowmobile
+    corridor in the state shipped as a hiking trail, and the run was green -
+    measured 2026-09-26, 2,375 mi of motorized-only corridor in the
+    published release, and the #1646 mileage jump nobody could explain. A
+    column that is null on every row is a data question; a column that is
+    ABSENT from every row is the registry describing a layer that no longer
+    exists, and that is a stop.
+
+    Only the keys the entry states are checked - `name_field`'s "Name"
+    default is not, because a source that never declared it never claimed
+    the column."""
+    declared = [source.get(key) for key in ("name_field", "foot_field", "blaze_field", "status_field")]
+    declared += list(source.get("excluded_when") or {})
+    present: set[str] = set()
+    for feature in features:
+        present.update((feature.get("properties") or {}).keys())
+    return [field for field in dict.fromkeys(declared) if field and field not in present]
 
 
 def declared_name(source: dict, properties: dict):
@@ -751,7 +870,34 @@ def declared_name(source: dict, properties: dict):
 
     Matched case-insensitively on the stripped value, because a placeholder
     is prose typed by whoever surveyed the segment rather than a coded domain.
+
+    `name_constant` IS THE SAME RULE POINTING THE OTHER WAY (#1778). Some
+    stewards publish one trail as a layer with no name column at all: PCTA's
+    `PCTA_Centerline` is a single feature with two fields, `OBJECTID` and
+    `Shape__Length`. The trail's name is not missing from that layer, it is
+    the layer - and dropping it into the unnamed haze would be as wrong as
+    reading `Name TBD` as a name. So a source may declare `name_constant`, and
+    every feature it ships carries that name.
+
+    THE REGISTRY HAS TO EARN IT, because this is the one place the pipeline
+    writes a name no steward published. A row carrying `name_constant` records
+    the measurement that identifies the trail, and the three registered under
+    #1778 were each checked end to end on 2026-09-30 before the name was
+    written: PCTA's one feature is 2,653 miles from 32.59 deg N to 49.00 deg N -
+    Mexico to Canada, against the PCT's published 2,650 - and CDTC's eight
+    total 3,060 miles from 31.50 to 49.05 against the CDT's 3,028. Wisconsin
+    DNR's single `Ice Age Trail` feature is 711 miles, which is the BUILT
+    segments of a trail planned at about 1,200, and its row says so rather
+    than implying the whole route is there.
+
+    A source may not declare both: `name_field` says where to read the name
+    and `name_constant` says there is nowhere to read it, so a row claiming
+    both has not decided what it is. `name_constant_conflicts` below is the
+    check, and it runs over the registry rather than per feature.
     """
+    constant = source.get("name_constant")
+    if constant is not None:
+        return constant
     raw = properties.get(source.get("name_field", "Name"))
     placeholders = source.get("name_placeholders")
     if not placeholders or raw is None:
@@ -759,6 +905,19 @@ def declared_name(source: dict, properties: dict):
     if str(raw).strip().casefold() in {str(p).strip().casefold() for p in placeholders}:
         return None
     return raw
+
+
+def name_constant_conflicts(sources: list[dict]) -> list[str]:
+    """The registry keys that declare both a name column and a name constant.
+
+    A stop rather than a warning, on missing_declared_fields' own argument: a
+    row that says both has not decided which is true, and `declared_name`
+    would silently take the constant and never read the column - so the
+    column's name would sit in the registry looking enforced while nothing
+    read it, which is the decoration `usfs_trails`' own entry records having
+    removed once already.
+    """
+    return [s["key"] for s in sources if s.get("name_constant") is not None and s.get("name_field") is not None]
 
 
 def build_records(source: dict, features: list[dict], owned: dict[str, str], boundary=None) -> tuple[list[dict], dict]:
@@ -1238,9 +1397,19 @@ def write_overview(records: list[dict]) -> dict:
 
     Takes the SAME records write_artifact publishes - after every filter, the
     closure split and the 1 m simplification - so the sketch can never describe
-    different trails: it is those lines with vertices removed, at
-    export_trails.py's own overview constants (100 m Douglas-Peucker, four
-    decimals), imported rather than copied so the two sketches cannot drift.
+    different trails: it is those lines with vertices removed, and now also
+    with the ones too small to draw at its own top zoom removed outright.
+
+    IT HAS ITS OWN CONSTANTS SINCE #1775, where it used to import
+    export_trails.py's (100 m Douglas-Peucker, four decimals). The two sketches
+    stopped answering the same question when #1615 cut the tiles from z5: the
+    A.T.'s overview still draws to CORRIDOR_MAX_ZOOM and its 100 m is reasoned
+    from the pin seam's pixel and from a safety argument about a line drawn
+    where it does not go, while THIS sketch now hands the network to the tiles
+    at OVERVIEW_SEAM_ZOOM and only owns z0-z5. Sharing one tolerance across
+    two artifacts with different top zooms is what made this one 16 times finer
+    than it draws - so the drift the shared import was preventing is now the
+    thing to prevent, and export_trails.py's constant must not follow this one.
 
     ONE FEATURE PER (source, blaze_color, trail_status), where the A.T.'s
     overview is one feature flat. The first two are the properties the client's
@@ -1269,18 +1438,50 @@ def write_overview(records: list[dict]) -> dict:
     no name at all, groups exactly as before - this is an exception to ONE
     FEATURE PER above, not a replacement for it.
 
-    What it weighs, measured 2026-08-27 against the live published artifact by
-    pipeline/spike_network_overview.py (this function is that spike's method,
-    moved into the export): 480,115 -> 57,226 coordinates, 1,125,263 bytes raw,
-    255,263 gzipped - beside 7.3 MB gzipped for the artifact it sketches. That
-    measurement predates the named-feature exception above, which only grows
-    the count where a trail actually clears the threshold - the Long Path's
-    own rows, folded into one NYNJTC feature before, are the first to.
+    WHAT IT WEIGHS. The figure this docstring carried for a year - 480,115 ->
+    57,226 coordinates, 1,125,263 bytes raw, 255,263 gzipped, measured
+    2026-08-27 by pipeline/spike_network_overview.py, whose method this
+    function is - described a network of five stewards. It is eleven now, and
+    the same code had grown to 616,517 coordinates and 12,238,110 bytes in
+    release 2026-09-16-4. That is the growth #1775 is about: the sketch was the
+    ONE launch fetch whose size followed the number of organizations, and 71.3%
+    of it was a single nationwide source's.
+
+    Re-measured 2026-09-30 by running THIS function over the 136,941 records
+    read back out of that release's own nearby_trails.geojson:
+
+        136,941 -> 26,864 records kept, 616,517 -> 98,948 coordinates,
+        12,238,110 -> 1,811,212 bytes raw, 3,344,736 -> 407,480 gzipped
+
+    14.8%. The prototype #1775 was argued from said 13.0%, applying one
+    937 m pass to the published sketch; this code applies 937 m to the 100 m
+    pass above, and composed Douglas-Peucker keeps a few more vertices than a
+    single coarser one. The prototype's figure is the one to distrust - it was
+    not this code.
+
+    Re-run it rather than trusting this paragraph: the numbers move with every
+    source the registry gains, and that they move LESS than linearly now is the
+    whole point of the floor.
     """
     coarse = simplify_records(records, OVERVIEW_SIMPLIFY_TOLERANCE_M)
 
     named_lengths = _named_lengths(coarse)
     qualifying = {key for key, miles in named_lengths.items() if miles >= NAMED_TRAIL_THRESHOLD_MILES}
+
+    # QUALIFICATION IS MEASURED BEFORE THE RESIZE AND IS UNCHANGED BY IT
+    # (#1775). The 100 m pass above is still what _named_lengths reads, so
+    # which trails clear NAMED_TRAIL_THRESHOLD_MILES is exactly what it was -
+    # measuring a trail's length off a 937 m simplification would shorten a
+    # switchbacked one enough to cost it its own feature and its casing.
+    #
+    # Then the floor, then the seam tolerance, in that order: dropping first
+    # means the second simplification only walks the segments that survived.
+    # Simplifying twice is not the same as simplifying once at the sum, but
+    # Douglas-Peucker's guarantee composes - no point has moved further than
+    # 100 + 937 m from where it started, which is under a pixel and a half at
+    # the seam and a fourteenth of one at the opening camera.
+    kept = _above_the_seam_floor(coarse, qualifying)
+    seam = simplify_records(kept, OVERVIEW_SEAM_TOLERANCE_M)
 
     # The group key is always this four-tuple, name "" standing for "not a
     # qualifying named trail" - never None, which would make sorted() below
@@ -1288,8 +1489,8 @@ def write_overview(records: list[dict]) -> dict:
     # reads the sentinel back into "omit name and through_route entirely",
     # this export's existing convention for closure_kind above.
     groups: dict[tuple[str, str, str, str], list[list[list[float]]]] = {}
-    coarse_lines = _overview_coordinates_all(from_wkt_all([record["wkt"] for record in coarse]), OVERVIEW_COORDINATE_DECIMALS)
-    for record, lines in zip(coarse, coarse_lines):
+    coarse_lines = _overview_coordinates_all(from_wkt_all([record["wkt"] for record in seam]), OVERVIEW_SEAM_DECIMALS)
+    for record, lines in zip(seam, coarse_lines):
         name = record.get("name")
         qualifies = name is not None and (record["source"], name) in qualifying
         key = (record["source"], name if qualifies else "", record["blaze_color"], record["trail_status"])
@@ -1323,8 +1524,15 @@ def write_overview(records: list[dict]) -> dict:
         "sha256": sha256_file(path),
         "feature_count": len(body["features"]),
         "coordinate_count": sum(len(line) for lines in groups.values() for line in lines),
-        "tolerance_m": OVERVIEW_SIMPLIFY_TOLERANCE_M,
+        "tolerance_m": OVERVIEW_SEAM_TOLERANCE_M,
         "named_trail_threshold_miles": NAMED_TRAIL_THRESHOLD_MILES,
+        # What the floor removed, so a reader can tell a sketch that shrank
+        # because the network shrank from one that shrank because the floor
+        # moved - the two look identical in a byte count alone.
+        "seam_zoom": OVERVIEW_SEAM_ZOOM,
+        "min_feature_m": OVERVIEW_MIN_FEATURE_M,
+        "records_before_floor": len(coarse),
+        "records_after_floor": len(kept),
     }
 
 
@@ -1460,6 +1668,16 @@ def write_artifact(records: list[dict], per_source: dict) -> dict:
 def main() -> dict:
     registry = load_registry(SOURCES_PATH)
     sources = network_line_sources(registry)
+    # Over the registry rather than per feature, and before anything is
+    # fetched: a row claiming both a name column and a name constant is a
+    # contradiction in the file, not a fault in the data (#1778).
+    conflicts = name_constant_conflicts(sources)
+    if conflicts:
+        raise SystemExit(
+            f"{', '.join(conflicts)}: sources.json declares both name_field and name_constant. "
+            "declared_name takes the constant and never reads the column, so the column would sit "
+            "in the registry looking enforced while nothing read it. Keep whichever is true."
+        )
     owned = owned_route_names(registry)
     print(f"Route names owned by their steward: {owned}")
 
@@ -1476,6 +1694,16 @@ def main() -> dict:
                 f"({key} is registered as an external layer, so it is not part of fetch_all.py's A.T. fetch.)"
             )
         features = json.loads(raw_path.read_text(encoding="utf-8")).get("features", [])
+        # Before any filter runs, so a renamed column fails the run rather
+        # than turning its filter into a no-op (#1646). An empty layer is
+        # fail_if_incomplete()'s question, not this one.
+        missing = missing_declared_fields(source, features) if features else []
+        if missing:
+            raise SystemExit(
+                f"{key}: sources.json names {missing}, and none of the {len(features):,} fetched features carries "
+                f"{'it' if len(missing) == 1 else 'them'}. The layer's schema has changed - re-read its fields "
+                f"at {source.get('url')} and update the registry entry before exporting."
+            )
         records, stats = build_records(source, features, owned, load_boundary(source))
 
         print(f"  {key}: {stats['kept']} of {len(features)} features kept")

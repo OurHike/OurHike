@@ -1,0 +1,1669 @@
+{
+ "_comment": "Long-distance hiking trails of 40 miles or more that trail_emblems.json does NOT carry, found 2026-09-29 by four regional audits. 153 of them. This file is a CANDIDATE LIST, not a catalogue: nothing here has been loaded, registered or given an emblem, and the evidence grade on every row is the one the audit gave it rather than one this repository has re-earned.",
+ "_what_it_says_about_the_67": "The emblem catalogue held 67 trails and read as a national list. It is not one. Against a 40-mile bar these four audits found 153 more with a named steward, and they did not finish - the northeast audit exhausted its search budget with Virginia, Maryland, Delaware, New Hampshire and Maine never swept, and no audit covered National Recreation Trails as a class. 67 was one pass, and reading it as a census was the mistake this file exists to correct.",
+ "_evidence_grades": {
+  "measured": "Re-run against a live GIS service during the audit. 23 rows. The strongest thing here.",
+  "steward": "The maintaining organisation's own page gave the figure. 68 rows.",
+  "secondary": "Only a non-steward source had it. 55 rows. Treat the mileage as approximate.",
+  "unverified": "A specific doubt is named in the row's note. 7 rows. Do not publish these without checking."
+ },
+ "_the_four_findings_that_matter_more_than_the_list": {
+  "built_fraction_has_no_field_and_a_hiker_pays_for_that": "AT LEAST 17 OF THESE 153 ARE NOT CONTINUOUSLY WALKABLE, and the schema has nowhere to say so. New Mexico's Rio Grande Trail is 500 miles planned and 88.5 designated. The Alaska Long Trail is 500 planned with a 1.3-mile segment under construction. Ala Kahakai is 175 miles of broken segments. A row showing a name and a mileage tells a hiker they can walk it end to end, and for these that is false. This is the FEATURES.md line about a confidently wrong prediction being more dangerous than an honest unknown, applied to a field that does not exist yet. Adding trails without adding this field would make the catalogue worse, not better.",
+  "usfs_gis_miles_is_a_lower_bound_not_a_length": "MEASURED during the audit: summing GIS_MILES over the USFS EDW TrailNFSPublish service gives 11.2 miles for the Wild Azalea Trail against a real 24-31, and 29.0 for the Uwharrie NRT against a claimed 40. It agreed with Land Between The Lakes' North/South Trail within 1.0 mile. The service's own description says data readiness varies between Forests and that Forests can provide no information. So a sum is how much tread has been MAPPED, not how long the trail is. If an exporter ever ingests this, that distinction has to survive into the export - a hiker shown '37.6 mi' for a 40-mile trail is being handed a data-coverage artefact in the voice of a measurement.",
+  "overlap_is_tread_not_proximity": "17 rows share actual treadway with a trail already in the catalogue, and it is invisible from the name. The Great Eastern Trail CONTAINS the Pinhoti, the Cumberland Trail and Pine Mountain. The Lake Okeechobee Scenic Trail IS the Florida Trail's Okeechobee segment. The Collegiate Loop is the Colorado Trail plus the CDT. Kekekabic is now an official North Country Trail segment. Boundary Trail #533 overlaps the PNT; Rae Lakes overlaps the JMT; Timberline shares 11 miles with the PCT; the C&O Canal Towpath is the Potomac Heritage NST's designated route; Metacomet and Mattabesett are components of the New England Trail. lib/duplicates.py draws one path recorded twice once, and lib/concurrency.py draws two trails sharing treadway twice - which of those applies has to be decided per pair, and loading all 153 blind would double-count mileage and draw doubled lines.",
+  "three_names_collide_outright": "Adding these without qualifiers breaks GLOSSARY.md's disambiguation habit. JOHN MUIR TRAIL would mean three trails: the Sierra one already held, a 20.7-mile John Muir NRT in the Cherokee NF, and a 44-mile one in Big South Fork. MID STATE TRAIL (Pennsylvania, 327 mi, already held) against MIDSTATE TRAIL (Massachusetts, 92 mi). LINK TRAIL is a 40.3-mile trail in New York AND the former name of Pennsylvania's Standing Stone Trail, which is already held under its new name."
+ },
+ "_the_highest_yield_next_step_is_not_more_searching": "Every audit reached the same conclusion independently: STATE GIS CLEARINGHOUSES return more verified trails per query than any amount of web search. Pennsylvania's DCNR service alone holds 91 named trails at 40 miles or more, and querying it produced seven Pennsylvania trails nobody would have thought to search for. The services below were each hit and confirmed live during the audit.",
+ "_state_and_federal_services_confirmed_live": [
+  {
+   "name": "PA DCNR Explore PA Trails",
+   "url": "https://maps.dcnr.pa.gov/agsprod/rest/services/BRC/EPAT_NEW/FeatureServer/1",
+   "holds": "91 named trails at 40+ miles",
+   "fields": "NAME01, MILES",
+   "note": "supports f=geojson, maxRecordCount 5000. The single highest-value source found."
+  },
+  {
+   "name": "Minnesota Geospatial Commons - State Trails of Minnesota",
+   "url": "https://gis.data.mn.gov/datasets/state-trails-of-minnesota-1",
+   "holds": "978 records",
+   "note": "covers 10 of the Minnesota candidates in one layer. Several are snowmobile trails - hikeability unproven."
+  },
+  {
+   "name": "Wisconsin DNR State Trail Segments",
+   "url": "https://data-wi-dnr.opendata.arcgis.com/datasets/wi-dnr::state-trail-segments",
+   "holds": "9 of the Wisconsin candidates",
+   "fields": "name, surface, manager, allowed use"
+  },
+  {
+   "name": "Michigan DNR DNRTrailsOPENDATA",
+   "url": "https://gisagodnr.state.mi.us/arcgis/rest/services/DNR/DNRTrailsOPENDATA/FeatureServer",
+   "holds": "7 of the Michigan candidates, incl. a designated-hiking-trails layer"
+  },
+  {
+   "name": "RIGIS",
+   "url": "https://services2.arcgis.com/S8zZg9pg23JUEexQ/arcgis/rest/services/TRANS_State_Hiking_Trails/FeatureServer",
+   "holds": "Rhode Island state hiking trails incl. the 77-mile North South Trail"
+  },
+  {
+   "name": "Florida DEP geodata portal",
+   "url": "https://geodata.dep.state.fl.us/",
+   "holds": "the Florida Greenways and Trails System land-trail layers",
+   "note": "covers Cross Florida, Withlacoochee, the Keys Overseas Heritage Trail"
+  },
+  {
+   "name": "California Coastal Commission - California Coastal Trail",
+   "url": "https://gis.data.ca.gov/datasets/coastalcomm::california-coastal-trail-cct-/explore",
+   "holds": "the ~1200-mile CCT",
+   "note": "downloadable as shapefile, KML, GeoJSON and CSV"
+  },
+  {
+   "name": "USFS EDW TrailNFSPublish",
+   "url": "https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_TrailNFSPublish_01/MapServer/0",
+   "holds": "most USFS trails here, queryable by TRAIL_NAME",
+   "note": "READ the GIS_MILES warning above before using its lengths for anything"
+  },
+  {
+   "name": "NPS ArcGIS Online organization",
+   "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei",
+   "holds": "1457 services incl. Overmountain Victory NHT and Natchez Trace",
+   "note": "has NO trail centerline for Big South Fork or Buffalo National River"
+  }
+ ],
+ "_what_the_audits_did_not_cover": "Virginia, Maryland, Delaware, New Hampshire and Maine got no statewide sweep. National Recreation Trails as a class - reportedly 1300+ designated - were not enumerated by any audit. Neither were state trail systems in the states without a clearinghouse listed above. A fifth audit on the federal datasets was still running when this file was written.",
+ "_one_negative_result_worth_keeping": "LOUISIANA HAS NO HIKING TRAIL THAT REACHES 40 MILES. Its longest footpath is the Wild Azalea Trail at 24-31 miles and its longest rail-trail is the Tammany Trace at 31. If per-state coverage is ever a target, Louisiana cannot meet a 40-mile bar and the gap is the state's, not the catalogue's.",
+ "_counts": {
+  "candidates": 153,
+  "by_region": {
+   "northeast": 57,
+   "southeast": 19,
+   "midwest_rockies": 31,
+   "west": 46
+  },
+  "by_evidence": {
+   "secondary": 55,
+   "steward": 68,
+   "measured": 23,
+   "unverified": 7
+  },
+  "with_a_gis_endpoint": 58,
+  "flagged_as_overlapping_something_already_held": 17
+ },
+ "candidates": [
+  {
+   "trail": "American Discovery Trail",
+   "miles": "~6800 total; DE ~45, MD+DC 271, WV 281",
+   "states": "DE MD DC WV +13",
+   "steward": "American Discovery Trail Society",
+   "region": "northeast",
+   "website": "discoverytrail.org",
+   "evidence": "secondary",
+   "note": "coast-to-coast composite; double-counts constituent trails"
+  },
+  {
+   "trail": "East Coast Greenway",
+   "miles": "~3000 (~1100 off-road)",
+   "states": "ME NH MA RI CT NY NJ PA DE MD DC VA",
+   "steward": "East Coast Greenway Alliance",
+   "region": "northeast",
+   "website": "greenway.org",
+   "evidence": "steward",
+   "note": "mostly on-road in places"
+  },
+  {
+   "trail": "Great Eastern Trail",
+   "miles": "~1800 (~1600 built)",
+   "states": "PA MD VA WV NY AL GA TN KY",
+   "steward": "Great Eastern Trail Association",
+   "region": "northeast",
+   "website": "greateasterntrail.net",
+   "evidence": "steward",
+   "note": "CONTAINS Pinhoti, Cumberland Trail, Pine Mountain SST - overlaps rows already held"
+  },
+  {
+   "trail": "9/11 National Memorial Trail",
+   "miles": "1500+",
+   "states": "NY NJ PA MD DC VA",
+   "steward": "9/11 National Memorial Trail Alliance",
+   "region": "northeast",
+   "website": "911trail.org",
+   "evidence": "steward"
+  },
+  {
+   "trail": "Empire State Trail",
+   "miles": "750 (75% off-road)",
+   "states": "NY",
+   "steward": "NY State Parks / Hudson River Valley Greenway",
+   "region": "northeast",
+   "website": "parks.ny.gov",
+   "evidence": "secondary",
+   "note": "Erie Canalway Trail is its E-W spine - same tread, two names"
+  },
+  {
+   "trail": "Erie Canalway Trail",
+   "miles": "~360 (~270 off-road)",
+   "states": "NY",
+   "steward": "NYS Canal Corp / Erie Canalway NHC",
+   "region": "northeast",
+   "website": "eriecanalway.org",
+   "evidence": "secondary",
+   "note": "= spine of the Empire State Trail"
+  },
+  {
+   "trail": "Allegheny Trail",
+   "miles": "316 (steward); 311 and 287.8 also cited",
+   "states": "WV",
+   "steward": "West Virginia Scenic Trails Association",
+   "region": "northeast",
+   "website": "hikethealleghenytrail.org",
+   "evidence": "steward"
+  },
+  {
+   "trail": "Tuscarora Trail",
+   "miles": "250; PA portion 76.4 measured",
+   "states": "PA MD WV VA",
+   "steward": "Potomac Appalachian Trail Club",
+   "region": "northeast",
+   "website": "patc.net/tuscarora-trail",
+   "gis": "PA portion in DCNR EPAT",
+   "evidence": "steward",
+   "note": "PATC's own GIS is internal-only"
+  },
+  {
+   "trail": "Bay Circuit Trail",
+   "miles": "230+",
+   "states": "MA",
+   "steward": "AMC / Bay Circuit Alliance",
+   "region": "northeast",
+   "website": "baycircuit.org",
+   "gis": "https://services9.arcgis.com/mxpFc8oFRyNIV03y/arcgis/rest/services/Bay_Circuit_Trail_2024_Spring/FeatureServer",
+   "evidence": "measured",
+   "note": "637 features verified"
+  },
+  {
+   "trail": "C&O Canal Towpath",
+   "miles": "184.5",
+   "states": "MD DC",
+   "steward": "NPS C&O Canal NHP",
+   "region": "northeast",
+   "website": "nps.gov/choh",
+   "gis": "NPS_Public_Trails",
+   "evidence": "steward",
+   "note": "= designated route of the Potomac Heritage NST already held"
+  },
+  {
+   "trail": "Highlands Trail",
+   "miles": "180+; NJ portion 122-130",
+   "states": "NJ NY PA CT",
+   "steward": "New York-New Jersey Trail Conference",
+   "region": "northeast",
+   "website": "nynjtc.org/highlands-trail",
+   "gis": "https://services7.arcgis.com/G1WTEJ6UVRUTvh9C/arcgis/rest/services/NYNJTC_HighlandsTrail2021sections/FeatureServer",
+   "evidence": "measured",
+   "note": "12 features, Fall 2025"
+  },
+  {
+   "trail": "D&L Trail",
+   "miles": "165 planned / 144 open; 145.9 measured",
+   "states": "PA",
+   "steward": "Delaware & Lehigh National Heritage Corridor",
+   "region": "northeast",
+   "website": "delawareandlehigh.org",
+   "gis": "DCNR EPAT",
+   "evidence": "measured"
+  },
+  {
+   "trail": "Great Allegheny Passage",
+   "miles": "150 (150.0 measured - exact match)",
+   "states": "PA MD",
+   "steward": "Great Allegheny Passage Conservancy",
+   "region": "northeast",
+   "website": "gaptrail.org",
+   "gis": "DCNR EPAT",
+   "evidence": "measured"
+  },
+  {
+   "trail": "Horse-Shoe Trail",
+   "miles": "140 (138.6 measured)",
+   "states": "PA",
+   "steward": "Horse-Shoe Trail Conservancy",
+   "region": "northeast",
+   "website": "weconservepa.org/groups/horse-shoe-trail-conservancy",
+   "gis": "https://services6.arcgis.com/NlHEsqLPxZkmmWjV/arcgis/rest/services/Horse_Shoe_Trail_PUBLIC/FeatureServer",
+   "evidence": "measured",
+   "note": "78 features, the steward's own service"
+  },
+  {
+   "trail": "Paumanok Path",
+   "miles": "125",
+   "states": "NY",
+   "steward": "steward unconfirmed - LI Greenbelt Trail Conference + Southampton/East Hampton societies",
+   "region": "northeast",
+   "evidence": "unverified",
+   "note": "no steward page reachable; AGOL search returned nothing"
+  },
+  {
+   "trail": "Schuylkill River Trail",
+   "miles": "120 planned / 80+ open",
+   "states": "PA",
+   "steward": "Schuylkill River Greenways NHA",
+   "region": "northeast",
+   "website": "schuylkillriver.org",
+   "evidence": "secondary"
+  },
+  {
+   "trail": "Mass Central Rail Trail",
+   "miles": "104 planned / 64 open",
+   "states": "MA",
+   "steward": "MA DCR",
+   "region": "northeast",
+   "website": "masscentralrailtrail.org",
+   "evidence": "secondary"
+  },
+  {
+   "trail": "Lamoille Valley Rail Trail",
+   "miles": "93 (fully open)",
+   "states": "VT",
+   "steward": "Vermont Agency of Transportation",
+   "region": "northeast",
+   "website": "railtrails.vermont.gov",
+   "evidence": "steward"
+  },
+  {
+   "trail": "Midstate Trail",
+   "miles": "92",
+   "states": "MA",
+   "steward": "Midstate Trail Committee / AMC Worcester",
+   "region": "northeast",
+   "website": "midstatetrail.org",
+   "gis": "https://services9.arcgis.com/mxpFc8oFRyNIV03y/arcgis/rest/services/Midstate_Trail/FeatureServer",
+   "evidence": "measured",
+   "note": "NAME COLLISION with the catalogued Mid State Trail (PA, 327 mi)"
+  },
+  {
+   "trail": "Genesee Valley Greenway State Park",
+   "miles": "90",
+   "states": "NY",
+   "steward": "NY State Parks + Friends of the GVG",
+   "region": "northeast",
+   "website": "parks.ny.gov",
+   "evidence": "secondary"
+  },
+  {
+   "trail": "Cross Vermont Trail",
+   "miles": "90 planned (30 off-road + 60 road)",
+   "states": "VT",
+   "steward": "Cross Vermont Trail Association",
+   "region": "northeast",
+   "website": "crossvermont.org",
+   "evidence": "steward"
+  },
+  {
+   "trail": "Down East Sunrise Trail",
+   "miles": "87",
+   "states": "ME",
+   "steward": "Maine DOT + Maine DACF",
+   "region": "northeast",
+   "website": "sunrisetrail.org",
+   "evidence": "steward"
+  },
+  {
+   "trail": "Farmington Canal Heritage Trail",
+   "miles": "84 corridor; ~56.5 open CT",
+   "states": "CT MA",
+   "steward": "Farmington Canal Rail-to-Trail Assoc + CT DEEP",
+   "region": "northeast",
+   "website": "fchtrail.org",
+   "evidence": "secondary"
+  },
+  {
+   "trail": "Susquehannock Trail System",
+   "miles": "83.4 loop (82.1 measured)",
+   "states": "PA",
+   "steward": "Susquehannock Trail Club",
+   "region": "northeast",
+   "website": "stc-hike.org",
+   "gis": "DCNR EPAT",
+   "evidence": "measured"
+  },
+  {
+   "trail": "Maine Huts & Trails",
+   "miles": "80+ of a 180 vision",
+   "states": "ME",
+   "steward": "Maine Huts & Trails",
+   "region": "northeast",
+   "website": "mainehuts.org",
+   "evidence": "steward"
+  },
+  {
+   "trail": "Greenbrier River Trail",
+   "miles": "78",
+   "states": "WV",
+   "steward": "West Virginia State Parks",
+   "region": "northeast",
+   "website": "wvstateparks.com",
+   "evidence": "steward"
+  },
+  {
+   "trail": "North South Trail",
+   "miles": "77",
+   "states": "RI",
+   "steward": "RI DEM Division of Forest Environment",
+   "region": "northeast",
+   "gis": "https://services2.arcgis.com/S8zZg9pg23JUEexQ/arcgis/rest/services/TRANS_NorthSouth_Hiking_Trail_spf/FeatureServer",
+   "evidence": "measured",
+   "note": "official RIGIS; RI DEM page 403s"
+  },
+  {
+   "trail": "Sunapee-Ragged-Kearsarge Greenway",
+   "miles": "75 loop",
+   "states": "NH",
+   "steward": "SRK Greenway Coalition",
+   "region": "northeast",
+   "website": "srkg.org",
+   "evidence": "steward"
+  },
+  {
+   "trail": "North Bend Rail Trail",
+   "miles": "72",
+   "states": "WV",
+   "steward": "West Virginia State Parks",
+   "region": "northeast",
+   "website": "wvstateparks.com",
+   "evidence": "steward"
+  },
+  {
+   "trail": "Massanutten Trail",
+   "miles": "71 loop",
+   "states": "VA",
+   "steward": "USFS George Washington NF + PATC",
+   "region": "northeast",
+   "evidence": "secondary"
+  },
+  {
+   "trail": "Shawangunk Ridge Trail",
+   "miles": "71 (67.9 by one GPS measure)",
+   "states": "NJ NY",
+   "steward": "New York-New Jersey Trail Conference",
+   "region": "northeast",
+   "website": "nynjtc.org",
+   "gis": "https://services7.arcgis.com/G1WTEJ6UVRUTvh9C/arcgis/rest/services/Long_Path_Shawangunk_Ridge_Trail/FeatureServer",
+   "evidence": "measured"
+  },
+  {
+   "trail": "Delaware & Raritan Canal State Park Trail",
+   "miles": "70+",
+   "states": "NJ",
+   "steward": "NJ DEP State Park Service + D&R Canal Commission",
+   "region": "northeast",
+   "website": "dandrcanal.org",
+   "evidence": "secondary"
+  },
+  {
+   "trail": "Warrior Trail",
+   "miles": "67 (PA portion 47.1 measured)",
+   "states": "PA WV",
+   "steward": "Warrior Trail Association",
+   "region": "northeast",
+   "gis": "DCNR EPAT",
+   "evidence": "measured"
+  },
+  {
+   "trail": "Mattabesett Trail",
+   "miles": "65",
+   "states": "CT",
+   "steward": "Connecticut Forest & Park Association",
+   "region": "northeast",
+   "website": "ctwoodlands.org",
+   "gis": "AMC New England Trail service",
+   "evidence": "secondary",
+   "note": "COMPONENT of the New England Trail already held"
+  },
+  {
+   "trail": "Eastern Trail",
+   "miles": "65 (~30% off-road)",
+   "states": "ME",
+   "steward": "Eastern Trail Alliance",
+   "region": "northeast",
+   "website": "easterntrail.org",
+   "evidence": "steward"
+  },
+  {
+   "trail": "Montour Trail",
+   "miles": "60+ with branches (64.9 measured)",
+   "states": "PA",
+   "steward": "Montour Trail Council",
+   "region": "northeast",
+   "website": "montourtrail.org",
+   "gis": "DCNR EPAT",
+   "evidence": "measured"
+  },
+  {
+   "trail": "Conestoga Trail",
+   "miles": "65.8 (59.8 measured)",
+   "states": "PA",
+   "steward": "Lancaster Hiking Club",
+   "region": "northeast",
+   "website": "lancasterhikingclub.com",
+   "gis": "https://services1.arcgis.com/I6XnrlnguPDoEObn/arcgis/rest/services/ConestogaTrail/FeatureServer",
+   "evidence": "measured",
+   "note": "that service covers only the ranger-patrolled section"
+  },
+  {
+   "trail": "Pine Creek Rail Trail",
+   "miles": "62 (62.7 measured)",
+   "states": "PA",
+   "steward": "PA DCNR Tioga + Tiadaghton State Forests",
+   "region": "northeast",
+   "gis": "DCNR EPAT",
+   "evidence": "measured"
+  },
+  {
+   "trail": "Metacomet Trail",
+   "miles": "62",
+   "states": "CT",
+   "steward": "Connecticut Forest & Park Association",
+   "region": "northeast",
+   "website": "ctwoodlands.org",
+   "gis": "AMC New England Trail service",
+   "evidence": "secondary",
+   "note": "COMPONENT of the New England Trail already held"
+  },
+  {
+   "trail": "Northern Rail Trail",
+   "miles": "58",
+   "states": "NH",
+   "steward": "NH Bureau of Trails + Friends of the Northern Rail Trail",
+   "region": "northeast",
+   "website": "fnrt.org",
+   "evidence": "steward"
+  },
+  {
+   "trail": "New River Trail State Park",
+   "miles": "57",
+   "states": "VA",
+   "steward": "Virginia DCR State Parks",
+   "region": "northeast",
+   "website": "dcr.virginia.gov",
+   "evidence": "steward"
+  },
+  {
+   "trail": "Air Line State Park Trail",
+   "miles": "~55",
+   "states": "CT",
+   "steward": "CT DEEP",
+   "region": "northeast",
+   "website": "portal.ct.gov",
+   "evidence": "steward"
+  },
+  {
+   "trail": "Ghost Town Trail",
+   "miles": "54 incl 2026 extension (44.5 measured)",
+   "states": "PA",
+   "steward": "Indiana County Parks & Trails + Cambria County",
+   "region": "northeast",
+   "website": "indianacountyparks.org",
+   "gis": "DCNR EPAT",
+   "evidence": "measured"
+  },
+  {
+   "trail": "Batona Trail",
+   "miles": "53.5",
+   "states": "NJ",
+   "steward": "Batona Hiking Club of Philadelphia + NJ State Park Service",
+   "region": "northeast",
+   "evidence": "secondary",
+   "note": "club site unreachable; AGOL search returned nothing"
+  },
+  {
+   "trail": "Virginia Capital Trail",
+   "miles": "51.7-52",
+   "states": "VA",
+   "steward": "Virginia Capital Trail Foundation + VDOT",
+   "region": "northeast",
+   "evidence": "secondary"
+  },
+  {
+   "trail": "Redbank Valley Trail",
+   "miles": "51 system (41.1 measured main line)",
+   "states": "PA",
+   "steward": "Redbank Valley Trail Association",
+   "region": "northeast",
+   "website": "redbankvalleytrails.org",
+   "gis": "DCNR EPAT",
+   "evidence": "measured"
+  },
+  {
+   "trail": "Iron Mountain Trail",
+   "miles": "51",
+   "states": "VA",
+   "steward": "USFS Mount Rogers NRA",
+   "region": "northeast",
+   "evidence": "secondary"
+  },
+  {
+   "trail": "Chuck Keiper Trail",
+   "miles": "~50-53 (51.8 measured)",
+   "states": "PA",
+   "steward": "PA DCNR Sproul State Forest",
+   "region": "northeast",
+   "gis": "DCNR EPAT",
+   "evidence": "measured"
+  },
+  {
+   "trail": "Shenipsit Trail",
+   "miles": "50",
+   "states": "CT",
+   "steward": "Connecticut Forest & Park Association",
+   "region": "northeast",
+   "website": "ctwoodlands.org",
+   "evidence": "steward"
+  },
+  {
+   "trail": "Cranberry Lake 50",
+   "miles": "50 loop",
+   "states": "NY",
+   "steward": "NYS DEC + Cranberry Lake 50 committee",
+   "region": "northeast",
+   "website": "cranberrylake50.org",
+   "evidence": "steward"
+  },
+  {
+   "trail": "Rachel Carson Trail",
+   "miles": "46 (steward); 37.1 measured - large discrepancy",
+   "states": "PA",
+   "steward": "Rachel Carson Trails Conservancy",
+   "region": "northeast",
+   "website": "rachelcarsontrails.org",
+   "gis": "DCNR EPAT",
+   "evidence": "measured",
+   "note": "steward and GIS disagree by 9 miles"
+  },
+  {
+   "trail": "W&OD Trail",
+   "miles": "45 paved + 32 parallel gravel",
+   "states": "VA",
+   "steward": "NOVA Parks",
+   "region": "northeast",
+   "website": "novaparks.com",
+   "evidence": "steward"
+  },
+  {
+   "trail": "Black Forest Trail",
+   "miles": "42 (43.5 measured)",
+   "states": "PA",
+   "steward": "PA DCNR Tiadaghton State Forest",
+   "region": "northeast",
+   "gis": "DCNR EPAT",
+   "evidence": "measured"
+  },
+  {
+   "trail": "Mattatuck Trail",
+   "miles": "42",
+   "states": "CT",
+   "steward": "Connecticut Forest & Park Association",
+   "region": "northeast",
+   "website": "ctwoodlands.org",
+   "evidence": "steward"
+  },
+  {
+   "trail": "Allegheny Front Trail",
+   "miles": "42 loop (40.6 measured)",
+   "states": "PA",
+   "steward": "PA DCNR Moshannon State Forest",
+   "region": "northeast",
+   "gis": "DCNR EPAT",
+   "evidence": "measured"
+  },
+  {
+   "trail": "Link Trail (New York)",
+   "miles": "40.3",
+   "states": "NY",
+   "steward": "North Country Trail Association, Central New York Chapter",
+   "region": "northeast",
+   "website": "cnyhiking.com",
+   "evidence": "secondary",
+   "note": "largely coincident with the North Country NST already held; NOT the PA Link Trail, which was renamed Standing Stone Trail in 2007"
+  },
+  {
+   "trail": "Nipmuck Trail",
+   "miles": "40 (CFPA's table); Wikipedia says 34.5",
+   "states": "CT",
+   "steward": "Connecticut Forest & Park Association",
+   "region": "northeast",
+   "website": "ctwoodlands.org",
+   "evidence": "steward"
+  },
+  {
+   "trail": "Northeast Texas Trail",
+   "miles": "130, partly improved",
+   "states": "TX",
+   "steward": "NorthEast Texas Trail Coalition",
+   "region": "southeast",
+   "website": "netexastrail.org",
+   "evidence": "steward",
+   "note": "steward and secondary sources disagree on the termini"
+  },
+  {
+   "trail": "Marjorie Harris Carr Cross Florida Greenway",
+   "miles": "110",
+   "states": "FL",
+   "steward": "Florida DEP / Florida State Parks",
+   "region": "southeast",
+   "website": "floridastateparks.org/Cross-Florida",
+   "gis": "FDEP geodata portal",
+   "evidence": "steward",
+   "note": "a corridor holding ~300 mi of trails incl. the Florida Trail, not one footpath"
+  },
+  {
+   "trail": "Lake Okeechobee Scenic Trail",
+   "miles": "109 loop",
+   "states": "FL",
+   "steward": "US Army Corps of Engineers",
+   "region": "southeast",
+   "evidence": "secondary",
+   "note": "= the Florida Trail's Okeechobee segment already held. Same tread, second name"
+  },
+  {
+   "trail": "Florida Keys Overseas Heritage Trail",
+   "miles": "106 planned / 90 built",
+   "states": "FL",
+   "steward": "Florida State Parks (FDEP)",
+   "region": "southeast",
+   "gis": "FDEP geodata portal",
+   "evidence": "secondary"
+  },
+  {
+   "trail": "Delta Heritage Trail",
+   "miles": "84.5 planned / 74.1 open",
+   "states": "AR",
+   "steward": "Arkansas State Parks",
+   "region": "southeast",
+   "website": "arkansas.com",
+   "evidence": "steward"
+  },
+  {
+   "trail": "Buffalo River Trail",
+   "miles": "~79.8 in two disconnected sections (37 + 42.8, ~30 mi gap)",
+   "states": "AR",
+   "steward": "NPS Buffalo National River + Ozark Highlands Trail Association",
+   "region": "southeast",
+   "website": "nps.gov/buff",
+   "evidence": "secondary",
+   "note": "east section = the Ozark Highlands Trail extension already held; no NPS centerline layer exists"
+  },
+  {
+   "trail": "Caprock Canyons Trailway",
+   "miles": "64.25",
+   "states": "TX",
+   "steward": "Texas Parks and Wildlife Department",
+   "region": "southeast",
+   "website": "tpwd.texas.gov",
+   "evidence": "secondary"
+  },
+  {
+   "trail": "Silver Comet Trail",
+   "miles": "61.5 paved",
+   "states": "GA",
+   "steward": "Cobb/Paulding/Polk counties; PATH Foundation",
+   "region": "southeast",
+   "website": "pathfoundation.org",
+   "evidence": "secondary",
+   "note": "joins the Chief Ladiga Trail for ~94 mi continuous"
+  },
+  {
+   "trail": "Ocean to Lake Hiking Trail",
+   "miles": "61.4 (steward); 63 commonly cited",
+   "states": "FL",
+   "steward": "Loxahatchee Chapter, Florida Trail Association",
+   "region": "southeast",
+   "website": "loxfltrail.org",
+   "evidence": "steward",
+   "note": "PDFs only, no GPX"
+  },
+  {
+   "trail": "North/South Trail (Land Between The Lakes)",
+   "miles": "58 (steward); 59.0 measured in USFS GIS",
+   "states": "KY TN",
+   "steward": "USFS Land Between The Lakes NRA",
+   "region": "southeast",
+   "website": "landbetweenthelakes.us",
+   "gis": "USFS EDW TrailNFSPublish",
+   "evidence": "measured",
+   "note": "steward figure and GIS agree within 1 mile - unusual"
+  },
+  {
+   "trail": "Overmountain Victory National Historic Trail",
+   "miles": "330 corridor; 57 developed",
+   "states": "NC SC TN VA",
+   "steward": "National Park Service",
+   "region": "southeast",
+   "website": "nps.gov/ovvi",
+   "gis": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/ArcGIS/rest/services/Overmountain_Victory_National_Historic_Trail_Official_Temp/FeatureServer",
+   "evidence": "measured",
+   "note": "mostly a driving route with discontinuous footpath"
+  },
+  {
+   "trail": "Withlacoochee State Trail",
+   "miles": "46 asphalt",
+   "states": "FL",
+   "steward": "Florida DEP / Florida State Parks",
+   "region": "southeast",
+   "gis": "FDEP geodata portal",
+   "evidence": "secondary"
+  },
+  {
+   "trail": "John Muir Trail (Big South Fork)",
+   "miles": "44 within Big South Fork",
+   "states": "TN KY",
+   "steward": "NPS Big South Fork NRRA",
+   "region": "southeast",
+   "website": "nps.gov/biso",
+   "evidence": "secondary",
+   "note": "NAME COLLISION: three John Muir Trails - the Sierra one already held, a 20.7 mi Cherokee NF NRT, and this. Partly = Sheltowee Trace already held"
+  },
+  {
+   "trail": "Pine Mountain State Scenic Trail",
+   "miles": "44 open of 120 planned",
+   "states": "KY",
+   "steward": "Pine Mountain Trail Conference",
+   "region": "southeast",
+   "website": "pinemountainstatescenictrail.com",
+   "evidence": "secondary",
+   "note": "steward's own sections page totals ~56 by adding a section that may be road"
+  },
+  {
+   "trail": "Longleaf Trace",
+   "miles": "44 paved",
+   "states": "MS",
+   "steward": "Pearl and Leaf Rivers Rails-to-Trails District",
+   "region": "southeast",
+   "website": "longleaftrace.org",
+   "evidence": "steward"
+  },
+  {
+   "trail": "Tanglefoot Trail",
+   "miles": "43.6 asphalt - longest rail-trail in MS",
+   "states": "MS",
+   "steward": "GM&O Rails-to-Trails Recreational District of North Mississippi",
+   "region": "southeast",
+   "website": "tanglefoottrail.com",
+   "evidence": "secondary",
+   "note": "steward page behind a bot check"
+  },
+  {
+   "trail": "Black Creek Hiking Trail",
+   "miles": "40 (USFS flyer); 41 (NRT db); 37.6 measured in USFS GIS",
+   "states": "MS",
+   "steward": "USFS De Soto Ranger District",
+   "region": "southeast",
+   "website": "fs.usda.gov",
+   "gis": "USFS EDW TrailNFSPublish",
+   "evidence": "measured",
+   "note": "Mississippi's longest footpath; foot traffic only"
+  },
+  {
+   "trail": "Uwharrie Trail",
+   "miles": "40 (Three Rivers Land Trust); their own trail page says 20; 29.0 measured in USFS GIS",
+   "states": "NC",
+   "steward": "USFS Uwharrie NF + Three Rivers Land Trust",
+   "region": "southeast",
+   "website": "threeriverslandtrust.org",
+   "gis": "USFS EDW TrailNFSPublish",
+   "evidence": "unverified",
+   "note": "the steward contradicts itself; nobody has walked it end to end on any record found"
+  },
+  {
+   "trail": "Lake Ouachita Vista Trail",
+   "miles": "38-39 main line, ~45 with spurs; 38.4 measured",
+   "states": "AR",
+   "steward": "USFS Caddo-Womble RD, Ouachita NF",
+   "region": "southeast",
+   "website": "fs.usda.gov",
+   "gis": "USFS EDW TrailNFSPublish",
+   "evidence": "measured",
+   "note": "BELOW a 40-mile bar on the main line"
+  },
+  {
+   "trail": "Idaho Centennial Trail",
+   "miles": "995.6",
+   "states": "ID",
+   "steward": "Idaho Department of Parks and Recreation",
+   "region": "midwest_rockies",
+   "website": "parksandrecreation.idaho.gov",
+   "gis": "https://services1.arcgis.com/CNPdEkvnGl65jCX8/arcgis/rest/services/Idaho_Centennial_Trail_(Official_Route)_view/FeatureServer",
+   "evidence": "steward",
+   "note": "the only steward-owned authoritative line geometry for a backcountry long trail in the whole region"
+  },
+  {
+   "trail": "Lewis and Clark National Historic Trail",
+   "miles": "~4900",
+   "states": "OH IN IL MO KS IA NE SD ND MT ID +5",
+   "steward": "National Park Service",
+   "region": "midwest_rockies",
+   "website": "nps.gov/lecl",
+   "gis": "NPS NHT centerline",
+   "evidence": "steward",
+   "note": "mostly a driving corridor"
+  },
+  {
+   "trail": "Great Plains Trail",
+   "miles": "~2200 planned; 350 built as the Pilot Trail",
+   "states": "MT ND SD NE CO OK NM TX",
+   "steward": "Great Plains Trail Alliance",
+   "region": "midwest_rockies",
+   "website": "greatplainstrail.org",
+   "evidence": "steward",
+   "note": "~80% backroads by the Alliance's own account"
+  },
+  {
+   "trail": "Montana Trail 406",
+   "miles": "1823 reported",
+   "states": "MT",
+   "steward": "Montana Trail 406",
+   "region": "midwest_rockies",
+   "website": "montanatrail.org",
+   "evidence": "unverified",
+   "note": "site behind a Cloudflare challenge; mileage from a search snippet only"
+  },
+  {
+   "trail": "Iron Belle Trail (hiking route)",
+   "miles": "1204 designed, ~71% complete",
+   "states": "MI",
+   "steward": "Michigan DNR",
+   "region": "midwest_rockies",
+   "website": "michigan.gov/dnr",
+   "gis": "https://gisagodnr.state.mi.us/arcgis/rest/services/DNR/DNRTrailsOPENDATA/FeatureServer",
+   "evidence": "secondary",
+   "note": "shares ~1033 mi with the North Country Trail already held"
+  },
+  {
+   "trail": "Nez Perce (Nee-Me-Poo) National Historic Trail",
+   "miles": "~1170",
+   "states": "ID MT WY OR",
+   "steward": "USDA Forest Service",
+   "region": "midwest_rockies",
+   "evidence": "unverified",
+   "note": "the USFS page tried returned 404"
+  },
+  {
+   "trail": "Grand Illinois Trail",
+   "miles": "575+ loop",
+   "states": "IL",
+   "steward": "Illinois DNR",
+   "region": "midwest_rockies",
+   "website": "dnr.illinois.gov",
+   "evidence": "secondary",
+   "note": "assembled from ~20 constituent trails"
+  },
+  {
+   "trail": "Colorado Front Range Trail",
+   "miles": "876 planned, ~300 built",
+   "states": "CO",
+   "steward": "Colorado Parks and Wildlife + municipalities",
+   "region": "midwest_rockies",
+   "evidence": "secondary"
+  },
+  {
+   "trail": "Ohio to Erie Trail",
+   "miles": "326 (293 and 318 also cited)",
+   "states": "OH",
+   "steward": "Ohio to Erie Trail Fund",
+   "region": "midwest_rockies",
+   "website": "ohiotoerietrail.org",
+   "evidence": "secondary",
+   "note": "24 constituent trail systems"
+  },
+  {
+   "trail": "Katy Trail",
+   "miles": "240 - longest developed rail-trail in the US",
+   "states": "MO",
+   "steward": "Missouri State Parks",
+   "region": "midwest_rockies",
+   "website": "mostateparks.com",
+   "gis": "https://services2.arcgis.com/kNS2ppBA4rwAQQZy/arcgis/rest/services/MO_2019_Katy_Trail/FeatureServer",
+   "evidence": "secondary"
+  },
+  {
+   "trail": "Michigan Shore-to-Shore Trail",
+   "miles": "220 core; ~420 with spurs",
+   "states": "MI",
+   "steward": "Michigan Trail Riders Association + MI DNR",
+   "region": "midwest_rockies",
+   "website": "mtra.org",
+   "gis": "MI DNR DNRTrailsOPENDATA",
+   "evidence": "secondary",
+   "note": "hiking and equestrian, no bikes"
+  },
+  {
+   "trail": "Cowboy Recreation and Nature Trail",
+   "miles": "317 corridor, ~202 developed",
+   "states": "NE",
+   "steward": "Nebraska Game and Parks Commission",
+   "region": "midwest_rockies",
+   "website": "outdoornebraska.gov",
+   "gis": "https://services5.arcgis.com/IOshH1zLrIieqrNk/arcgis/rest/services/Cowboy_Trail_Complete/FeatureServer",
+   "evidence": "steward",
+   "note": "the 195/203/317 figures in circulation are corridor-vs-built confusion"
+  },
+  {
+   "trail": "Mesabi Trail",
+   "miles": "165 planned, ~150 built",
+   "states": "MN",
+   "steward": "St. Louis and Itasca Counties",
+   "region": "midwest_rockies",
+   "website": "mesabitrail.com",
+   "gis": "https://services1.arcgis.com/XcwN27e6wZ49zF8i/arcgis/rest/services/MesabiSegmentsAndAccessPoints/FeatureServer",
+   "evidence": "secondary"
+  },
+  {
+   "trail": "Collegiate Loop",
+   "miles": "160 (East 78.8 + West 84.8)",
+   "states": "CO",
+   "steward": "Colorado Trail Foundation",
+   "region": "midwest_rockies",
+   "website": "coloradotrail.org",
+   "evidence": "steward",
+   "note": "geometrically = Colorado Trail + CDT, both already held. A separately named product, not new tread"
+  },
+  {
+   "trail": "River to River Trail",
+   "miles": "160-162",
+   "states": "IL",
+   "steward": "River to River Trail Society + Shawnee NF",
+   "region": "midwest_rockies",
+   "website": "rivertorivertrail.net",
+   "evidence": "steward",
+   "note": "9 Avenza map products; hiking and equestrian, part road"
+  },
+  {
+   "trail": "Uinta Highline Trail",
+   "miles": "96 official (104 and 107 also circulate)",
+   "states": "UT",
+   "steward": "USFS Ashley NF and Uinta-Wasatch-Cache NF",
+   "region": "midwest_rockies",
+   "website": "fs.usda.gov",
+   "gis": "USFS EDW TrailNFSPublish",
+   "evidence": "steward"
+  },
+  {
+   "trail": "Wind River High Route",
+   "miles": "97 (Skurka, ~65% off-trail); Dixon/Wilson variant 80",
+   "states": "WY",
+   "steward": "none - crosses Bridger-Teton and Shoshone NFs",
+   "region": "midwest_rockies",
+   "evidence": "secondary",
+   "note": "TWO distinct routes share the name; majority off-trail; no steward"
+  },
+  {
+   "trail": "Border Route Trail",
+   "miles": "65 across the BWCAW",
+   "states": "MN",
+   "steward": "Border Route Trail Association + Superior NF + NCTA",
+   "region": "midwest_rockies",
+   "website": "borderroutetrail.org",
+   "evidence": "steward",
+   "note": "the BRTA warns third-party tracks may not match the ground because of re-routes, and publishes no authoritative download"
+  },
+  {
+   "trail": "Kekekabic Trail",
+   "miles": "41 through the BWCAW",
+   "states": "MN",
+   "steward": "Kekekabic Trail Chapter, North Country Trail Association",
+   "region": "midwest_rockies",
+   "website": "northcountrytrail.org",
+   "gis": "https://services2.arcgis.com/UfGVyqUm4GHa2zrj/arcgis/rest/services/kek_mileage_elev/FeatureServer",
+   "evidence": "steward",
+   "note": "now an official NCT segment, so may already sit inside the North Country Trail row"
+  },
+  {
+   "trail": "George S. Mickelson Trail",
+   "miles": "109",
+   "states": "SD",
+   "steward": "South Dakota Game, Fish and Parks",
+   "region": "midwest_rockies",
+   "website": "gfp.sd.gov",
+   "evidence": "steward"
+  },
+  {
+   "trail": "Flint Hills Trail State Park",
+   "miles": "117-118 - 7th longest rail-trail in the US",
+   "states": "KS",
+   "steward": "Kansas Department of Wildlife and Parks",
+   "region": "midwest_rockies",
+   "website": "ksoutdoors.gov",
+   "gis": "https://services1.arcgis.com/VineY8LQ39gOVtTz/arcgis/rest/services/Flint_Hills_Trail/FeatureServer",
+   "evidence": "secondary"
+  },
+  {
+   "trail": "Paul Bunyan State Trail",
+   "miles": "113 - longest continuously paved rail-trail in the US",
+   "states": "MN",
+   "steward": "Minnesota DNR + Paul Bunyan Trail Association",
+   "region": "midwest_rockies",
+   "website": "dnr.state.mn.us",
+   "gis": "MN Geospatial Commons",
+   "evidence": "steward"
+  },
+  {
+   "trail": "Weiser River Trail",
+   "miles": "84 - Idaho's longest rail-trail",
+   "states": "ID",
+   "steward": "Friends of the Weiser River Trail",
+   "region": "midwest_rockies",
+   "website": "weiserrivertrail.org",
+   "gis": "https://services6.arcgis.com/ikurHvtarxfN6u3u/arcgis/rest/services/Weiser_River_Trail/FeatureServer",
+   "evidence": "secondary"
+  },
+  {
+   "trail": "Wyoming Range National Recreation Trail #48",
+   "miles": "70",
+   "states": "WY",
+   "steward": "USFS Bridger-Teton National Forest",
+   "region": "midwest_rockies",
+   "website": "fs.usda.gov",
+   "gis": "USFS EDW TrailNFSPublish",
+   "evidence": "steward"
+  },
+  {
+   "trail": "Beartooth High Route",
+   "miles": "90, 21383 ft gain",
+   "states": "MT WY",
+   "steward": "none - Custer Gallatin and Shoshone NFs",
+   "region": "midwest_rockies",
+   "evidence": "secondary",
+   "note": "no steward; off-trail route"
+  },
+  {
+   "trail": "Greenstone Ridge Trail",
+   "miles": "40 - the spine of Isle Royale",
+   "states": "MI",
+   "steward": "NPS Isle Royale National Park",
+   "region": "midwest_rockies",
+   "website": "nps.gov/isro",
+   "evidence": "secondary"
+  },
+  {
+   "trail": "Teton Crest Trail",
+   "miles": "39 (NPS); 40 in most guides; a 59-mi variant exists",
+   "states": "WY",
+   "steward": "NPS Grand Teton NP + Bridger-Teton and Caribou-Targhee NFs",
+   "region": "midwest_rockies",
+   "website": "nps.gov/grte",
+   "evidence": "steward",
+   "note": "the NPS figure is BELOW a 40-mile bar"
+  },
+  {
+   "trail": "Trail of the Coeur d'Alenes",
+   "miles": "73 paved",
+   "states": "ID",
+   "steward": "Idaho Dept of Parks and Recreation + Coeur d'Alene Tribe",
+   "region": "midwest_rockies",
+   "website": "parksandrecreation.idaho.gov",
+   "evidence": "steward"
+  },
+  {
+   "trail": "High Country Pathway",
+   "miles": "82 loop",
+   "states": "MI",
+   "steward": "Michigan DNR + volunteers",
+   "region": "midwest_rockies",
+   "website": "trailscouncil.org",
+   "gis": "MI DNR hiking trails layer",
+   "evidence": "secondary"
+  },
+  {
+   "trail": "Zion Traverse / Trans-Zion Trek",
+   "miles": "~48",
+   "states": "UT",
+   "steward": "NPS Zion NP manages the constituent trails; the traverse name has no steward",
+   "region": "midwest_rockies",
+   "website": "nps.gov/zion",
+   "evidence": "secondary"
+  },
+  {
+   "trail": "Tecumseh Trail",
+   "miles": "42 (Hoosier Hikers Council); Wikipedia says 38.2",
+   "states": "IN",
+   "steward": "Hoosier Hikers Council + Indiana DNR",
+   "region": "midwest_rockies",
+   "website": "hoosierhikerscouncil.org",
+   "evidence": "secondary",
+   "note": "the discrepancy decides whether it clears a 40-mile bar"
+  },
+  {
+   "trail": "Old Spanish National Historic Trail",
+   "miles": "2700 total",
+   "states": "NM CO UT AZ NV CA",
+   "steward": "NPS + BLM jointly",
+   "region": "west",
+   "website": "nps.gov/olsp",
+   "gis": "https://irma.nps.gov/DataStore/Reference/Profile/2244633",
+   "evidence": "steward",
+   "note": "a historic trade route, not a continuous footpath"
+  },
+  {
+   "trail": "Desert Trail",
+   "miles": "~1500 official route; ~2233 envisioned",
+   "states": "CA NV OR ID WA",
+   "steward": "Desert Trail Association - could not confirm it is still active",
+   "region": "west",
+   "evidence": "unverified",
+   "note": "biggest doubt in the western list; verify the steward before cataloguing"
+  },
+  {
+   "trail": "California Coastal Trail",
+   "miles": "~1200, ~70% complete",
+   "states": "CA",
+   "steward": "California State Coastal Conservancy + Coastwalk California",
+   "region": "west",
+   "website": "coastwalk.org",
+   "gis": "https://gis.data.ca.gov/datasets/coastalcomm::california-coastal-trail-cct-/explore",
+   "evidence": "steward",
+   "note": "downloadable shapefile/KML/GeoJSON/CSV"
+  },
+  {
+   "trail": "Juan Bautista de Anza National Historic Trail",
+   "miles": "1200; ~300 certified as recreation trail",
+   "states": "AZ CA",
+   "steward": "National Park Service",
+   "region": "west",
+   "website": "nps.gov/juba",
+   "evidence": "steward",
+   "note": "verified ABSENT from the NPS National Trails Office GIS list"
+  },
+  {
+   "trail": "Iditarod National Historic Trail",
+   "miles": "1000 main + ~1400 side trails",
+   "states": "AK",
+   "steward": "BLM Anchorage Field Office + USFS Chugach NF",
+   "region": "west",
+   "website": "blm.gov",
+   "gis": "usfs.maps.arcgis.com story map",
+   "evidence": "steward",
+   "note": "the only WINTER trail in the National Trails System. The summer-hikeable piece is the Southern Trek, 120 mi built"
+  },
+  {
+   "trail": "American Discovery Trail (western)",
+   "miles": "~907 in region: 387 CA + ~520 NV",
+   "states": "CA NV",
+   "steward": "American Discovery Trail Society",
+   "region": "west",
+   "website": "discoverytrail.org",
+   "evidence": "steward",
+   "note": "NV portion largely dirt roads"
+  },
+  {
+   "trail": "Blue Mountains Trail",
+   "miles": "530",
+   "states": "OR",
+   "steward": "Greater Hells Canyon Council",
+   "region": "west",
+   "website": "hellscanyon.org",
+   "evidence": "steward",
+   "note": "full-route CalTopo maps behind a waiver signup"
+  },
+  {
+   "trail": "Rio Grande Trail",
+   "miles": "500 planned; ONLY 88.5 designated",
+   "states": "NM",
+   "steward": "NM EMNRD Office of the Rio Grande Trail Commission",
+   "region": "west",
+   "website": "emnrd.nm.gov",
+   "evidence": "steward",
+   "note": "do not list 500 mi as walkable"
+  },
+  {
+   "trail": "Alaska Long Trail",
+   "miles": "500 planned",
+   "states": "AK",
+   "steward": "Alaska Trails",
+   "region": "west",
+   "website": "alaska-trails.org",
+   "evidence": "secondary",
+   "note": "construction began 2026 on a 1.3-mi segment"
+  },
+  {
+   "trail": "Oregon Coast Trail",
+   "miles": "384 border to border, 344 designated; OPRD elsewhere says 362; ~425 walked",
+   "states": "OR",
+   "steward": "Oregon Parks and Recreation Department",
+   "region": "west",
+   "website": "stateparks.oregon.gov",
+   "evidence": "steward",
+   "note": "three different numbers from the same agency; ten section PDFs, no GIS"
+  },
+  {
+   "trail": "Bigfoot Trail",
+   "miles": "360",
+   "states": "CA",
+   "steward": "Bigfoot Trail Alliance",
+   "region": "west",
+   "website": "bigfoottrail.org",
+   "evidence": "steward",
+   "note": "32 conifer species in 360 miles; mapset is paid"
+  },
+  {
+   "trail": "Maricopa Trail",
+   "miles": "315+ loop",
+   "states": "AZ",
+   "steward": "Maricopa County Parks and Recreation",
+   "region": "west",
+   "website": "maricopacountyparks.net",
+   "gis": "https://maricopa.maps.arcgis.com/apps/webappviewer/index.html?id=aafc101dac42439baeaad96a27b9097b",
+   "evidence": "steward"
+  },
+  {
+   "trail": "Chinook Trail",
+   "miles": "300+ conceptual loop; ~30 holds NRT designation",
+   "states": "WA OR",
+   "steward": "Chinook Trail Association",
+   "region": "west",
+   "website": "chinooktrails.org",
+   "evidence": "secondary",
+   "note": "thru-hiked in 2014 but road walks and research required"
+  },
+  {
+   "trail": "Palouse to Cascades State Park Trail",
+   "miles": "251 (steward); 285 widely cited",
+   "states": "WA",
+   "steward": "Washington State Parks",
+   "region": "west",
+   "website": "parks.wa.gov",
+   "evidence": "steward",
+   "note": "crosses a 2.3-mi unlit tunnel; permit east of the Columbia"
+  },
+  {
+   "trail": "Tahoe-Yosemite Trail",
+   "miles": "186",
+   "states": "CA",
+   "steward": "none - USFS LTBMU/Eldorado/Stanislaus/Humboldt-Toiyabe and NPS Yosemite",
+   "region": "west",
+   "evidence": "secondary",
+   "note": "a named historical route; northern ~50 mi now overlaps the PCT/TRT"
+  },
+  {
+   "trail": "Ala Kahakai National Historic Trail",
+   "miles": "175",
+   "states": "HI",
+   "steward": "National Park Service",
+   "region": "west",
+   "website": "nps.gov/alka",
+   "evidence": "steward",
+   "note": "NOT yet continuous - broken segments. Verified absent from the NPS National Trails Office GIS list. The only Hawaii trail found at 40+ mi"
+  },
+  {
+   "trail": "Metolius-Windigo Trail",
+   "miles": "157 (Oregon State Parks); 'over 100' (Deschutes NF)",
+   "states": "OR",
+   "steward": "USFS Deschutes National Forest",
+   "region": "west",
+   "website": "fs.usda.gov",
+   "gis": "USFS EDW TrailNFSPublish",
+   "evidence": "secondary",
+   "note": "sources disagree by ~50%"
+  },
+  {
+   "trail": "San Diego Trans-County Trail",
+   "miles": "~155 (also seen as ~110)",
+   "states": "CA",
+   "steward": "none - a route across public land documented by hikers",
+   "region": "west",
+   "evidence": "unverified",
+   "note": "no definitive route page reachable"
+  },
+  {
+   "trail": "General George Crook National Recreation Trail",
+   "miles": "138 within National Forest boundaries",
+   "states": "AZ",
+   "steward": "USFS Apache-Sitgreaves, Coconino and Prescott NFs",
+   "region": "west",
+   "website": "fs.usda.gov",
+   "gis": "USFS EDW TrailNFSPublish",
+   "evidence": "steward",
+   "note": "Arizona's first State Historic Trail, 1979"
+  },
+  {
+   "trail": "Fremont National Recreation Trail",
+   "miles": "~135 (157 also cited)",
+   "states": "OR",
+   "steward": "USFS Fremont-Winema National Forest",
+   "region": "west",
+   "website": "fs.usda.gov",
+   "gis": "USFS EDW TrailNFSPublish",
+   "evidence": "secondary",
+   "note": "two sections split by ~13 mi of road; a stretch closed since the 2021 Cougar Peak Fire"
+  },
+  {
+   "trail": "Olympic Discovery Trail",
+   "miles": "135 planned, ~92 built",
+   "states": "WA",
+   "steward": "Peninsula Trails Coalition",
+   "region": "west",
+   "website": "olympicdiscoverytrail.org",
+   "evidence": "steward",
+   "note": "mostly paved rail trail"
+  },
+  {
+   "trail": "Columbia Plateau State Park Trail",
+   "miles": "130",
+   "states": "WA",
+   "steward": "Washington State Parks",
+   "region": "west",
+   "website": "parks.wa.gov",
+   "evidence": "steward",
+   "note": "long unballasted stretches"
+  },
+  {
+   "trail": "Kings Canyon High Basin Route",
+   "miles": "124, 84 off-trail, 16 passes above 11000 ft",
+   "states": "CA",
+   "steward": "route author (Andrew Skurka)",
+   "region": "west",
+   "website": "andrewskurka.com",
+   "evidence": "secondary",
+   "note": "two-thirds off-trail - the extreme end of difficulty"
+  },
+  {
+   "trail": "Tahoe-Pyramid Trail",
+   "miles": "116, over 75% complete",
+   "states": "CA NV",
+   "steward": "Tahoe-Pyramid Trail",
+   "region": "west",
+   "website": "tahoepyramidtrail.org",
+   "evidence": "steward",
+   "note": "bike-oriented"
+  },
+  {
+   "trail": "Santa Ana River Trail",
+   "miles": "110 planned, 68 complete or under construction",
+   "states": "CA",
+   "steward": "Orange, Riverside and San Bernardino county parks",
+   "region": "west",
+   "website": "rivcoparks.org",
+   "evidence": "secondary",
+   "note": "primarily a paved Class I bikeway"
+  },
+  {
+   "trail": "OC&E Woods Line State Trail",
+   "miles": "105",
+   "states": "OR",
+   "steward": "Oregon Parks and Recreation Department",
+   "region": "west",
+   "website": "stateparks.oregon.gov",
+   "evidence": "secondary",
+   "note": "Oregon's longest linear state park"
+  },
+  {
+   "trail": "40-Mile Loop Trail",
+   "miles": "102 of an eventual 140",
+   "states": "OR",
+   "steward": "40-Mile Loop Land Trust + Portland jurisdictions",
+   "region": "west",
+   "evidence": "steward",
+   "note": "urban/suburban; the name badly understates the mileage"
+  },
+  {
+   "trail": "Tonto Trail",
+   "miles": "~95",
+   "states": "AZ",
+   "steward": "NPS Grand Canyon National Park",
+   "region": "west",
+   "website": "nps.gov/grca",
+   "evidence": "steward",
+   "note": "almost always hiked in sections; water is the limiting factor"
+  },
+  {
+   "trail": "Yosemite High Route",
+   "miles": "94 core; 125-162 for a full thru-hike; 70% off-trail",
+   "states": "CA",
+   "steward": "route author (Andrew Skurka)",
+   "region": "west",
+   "website": "andrewskurka.com",
+   "evidence": "secondary",
+   "note": "joins the Sierra High Route already held"
+  },
+  {
+   "trail": "Wonderland Trail",
+   "miles": "93, ~27000 ft gain",
+   "states": "WA",
+   "steward": "NPS Mount Rainier National Park",
+   "region": "west",
+   "website": "nps.gov/mora",
+   "evidence": "steward",
+   "note": "no GPX/KML/GIS on the NPS page - PDFs only"
+  },
+  {
+   "trail": "North Umpqua Trail",
+   "miles": "79 in 12 segments",
+   "states": "OR",
+   "steward": "USFS Umpqua NF + BLM Roseburg District",
+   "region": "west",
+   "website": "fs.usda.gov",
+   "gis": "USFS EDW TrailNFSPublish",
+   "evidence": "secondary",
+   "note": "over 30 mi burned in recent wildfires; do not present as continuously walkable"
+  },
+  {
+   "trail": "Boundary Trail #533",
+   "miles": "73+ (80 by another count)",
+   "states": "WA",
+   "steward": "USFS Okanogan-Wenatchee NF, Pasayten Wilderness",
+   "region": "west",
+   "website": "fs.usda.gov",
+   "gis": "USFS EDW TrailNFSPublish",
+   "evidence": "secondary",
+   "note": "OVERLAPS the Pacific Northwest Trail already held"
+  },
+  {
+   "trail": "Historic Columbia River Highway State Trail",
+   "miles": "73 corridor, 68 open; car-free trail segments total ~12-14",
+   "states": "OR",
+   "steward": "Oregon DOT + Oregon State Parks",
+   "region": "west",
+   "website": "oregon.gov/odot",
+   "evidence": "steward",
+   "note": "most of the 68 open miles are a driveable historic highway, not trail"
+  },
+  {
+   "trail": "Olympic Wilderness Coast",
+   "miles": "~73 of protected coastline; three hikeable sections total ~54",
+   "states": "WA",
+   "steward": "NPS Olympic National Park",
+   "region": "west",
+   "website": "nps.gov/olym",
+   "evidence": "steward",
+   "note": "NOT one continuous trail - three sections separated by tribal lands, tide-dependent"
+  },
+  {
+   "trail": "Coast to Crest Trail",
+   "miles": "71 planned, 49 complete",
+   "states": "CA",
+   "steward": "San Dieguito River Park JPA",
+   "region": "west",
+   "website": "sdrp.org",
+   "evidence": "steward"
+  },
+  {
+   "trail": "Toiyabe Crest National Recreation Trail",
+   "miles": "62.7 (USFS); the historic NRT designation says 72",
+   "states": "NV",
+   "steward": "USFS Humboldt-Toiyabe NF + Friends of Nevada Wilderness",
+   "region": "west",
+   "website": "fs.usda.gov",
+   "gis": "USFS EDW TrailNFSPublish",
+   "evidence": "steward",
+   "note": "faint tread in places; CCC-built from the late 1930s"
+  },
+  {
+   "trail": "Willapa Hills State Park Trail",
+   "miles": "56",
+   "states": "WA",
+   "steward": "Washington State Parks",
+   "region": "west",
+   "website": "parks.wa.gov",
+   "evidence": "steward",
+   "note": "35 bridges and trestles"
+  },
+  {
+   "trail": "Lost Coast Trail",
+   "miles": "~54 combined: 24.6 King Range + ~29 Sinkyone",
+   "states": "CA",
+   "steward": "BLM Arcata Field Office + California State Parks",
+   "region": "west",
+   "website": "blm.gov",
+   "evidence": "steward",
+   "note": "TWO separate segments under two agencies with a gap between. Tide tables mandatory"
+  },
+  {
+   "trail": "Highline National Recreation Trail",
+   "miles": "51 (54.7 by GPS; up to 57)",
+   "states": "AZ",
+   "steward": "USFS Tonto National Forest",
+   "region": "west",
+   "website": "fs.usda.gov",
+   "gis": "USFS EDW TrailNFSPublish",
+   "evidence": "secondary",
+   "note": "OVERLAPS Arizona Trail Passage 26 and the Mogollon Rim Trail, both already held"
+  },
+  {
+   "trail": "Kettle Crest Trail",
+   "miles": "43-44 one-way",
+   "states": "WA",
+   "steward": "USFS Colville National Forest",
+   "region": "west",
+   "website": "fs.usda.gov",
+   "gis": "USFS EDW TrailNFSPublish",
+   "evidence": "secondary",
+   "note": "partly overlaps the PNT already held"
+  },
+  {
+   "trail": "Rae Lakes Loop",
+   "miles": "41.4, over Glen Pass",
+   "states": "CA",
+   "steward": "NPS Kings Canyon National Park",
+   "region": "west",
+   "website": "nps.gov/seki",
+   "evidence": "secondary",
+   "note": "shares tread with the John Muir Trail already held"
+  },
+  {
+   "trail": "Timberline Trail #600",
+   "miles": "40.7, ~9000 ft change, circling Mount Hood",
+   "states": "OR",
+   "steward": "USFS Mt. Hood National Forest",
+   "region": "west",
+   "website": "fs.usda.gov",
+   "gis": "USFS EDW TrailNFSPublish",
+   "evidence": "secondary",
+   "note": "hazardous unbridged crossings; the Eliot Branch has closed the trail since 2007; shares 11 mi with the PCT"
+  },
+  {
+   "trail": "Rogue River National Recreation Trail",
+   "miles": "40",
+   "states": "OR",
+   "steward": "BLM Medford District + USFS Rogue River-Siskiyou NF",
+   "region": "west",
+   "website": "blm.gov",
+   "evidence": "steward",
+   "note": "BLM rates it DIFFICULT for remoteness, cliffs, landslides and high water"
+  },
+  {
+   "trail": "Spokane River Centennial State Park Trail",
+   "miles": "40 in Washington (+~24 in Idaho)",
+   "states": "WA ID",
+   "steward": "Washington State Parks",
+   "region": "west",
+   "website": "parks.wa.gov",
+   "evidence": "steward",
+   "note": "paved"
+  },
+  {
+   "trail": "Lost Sierra Route",
+   "miles": "600+ planned; first 30-mi section due 2025",
+   "states": "CA NV",
+   "steward": "Sierra Buttes Trail Stewardship",
+   "region": "west",
+   "website": "sierratrails.org",
+   "evidence": "secondary",
+   "note": "multi-use"
+  },
+  {
+   "trail": "Sun Circle Trail",
+   "miles": "~120 cited (one source says 300)",
+   "states": "AZ",
+   "steward": "Maricopa County Parks",
+   "region": "west",
+   "website": "maricopacountyparks.net",
+   "evidence": "unverified",
+   "note": "much of it is canal-bank path in metro Phoenix, sections incomplete"
+  }
+ ],
+ "_national_datasets": {
+  "_comment": "What a fifth audit found when it stopped hunting trails one at a time and went looking for the datasets that enumerate them. Every count below came from a live request on 2026-09-29. THIS IS THE ANSWER TO 'as many trails as possible': the 153 candidates above are what searching found, and the services here are what would make searching unnecessary.",
+  "the_one_to_build_on": {
+   "name": "USGS The National Map - aggregated trails",
+   "url": "https://partnerships.nationalmap.gov/arcgis/rest/services/USGSTrails/MapServer/0",
+   "features": 607202,
+   "version": "v20260611.3",
+   "why": "The only national layer carrying a DESIGNATION field that enumerates the NSTs, NHTs and NRTs, alongside `name`, `lengthmiles`, `hikerpedestrian` and `primarytrailmaintainer`. GeoJSON export works directly - f=geojson with a where clause returns a valid FeatureCollection in WGS84, no conversion step.",
+   "licence": "PUBLIC DOMAIN, stated by the service: 'The National Map download client allows free downloads of public domain transportation data'.",
+   "measured_designations": "Grouping the 591,392-feature carto layer by `nationaltraildesignation` enumerates all 11 National Scenic Trails and 13 National Historic Trails in one query. NRT alone is 13,049 segments and 14,704 miles.",
+   "bulk": "https://tnmaccess.nationalmap.gov/api/v1/products?datasets=National Transportation Dataset (NTD)&prodFormats=FileGDB - 57 per-state FileGDBs. Trails ship inside NTD; there is no trails-only product."
+  },
+  "four_traps_in_it_all_measured": {
+   "name_case_fragmentation_splits_one_trail_into_three": "MEASURED: 'Appalachian National Scenic Trail' sums to 1,012.0 miles over 1,979 segments while 'APPALACHIAN TRAIL' sums separately to 440.3 over 250. The Continental Divide splits three ways - 869.1, 371.3 and 298.7 miles under three spellings. Normalise case and alias BEFORE grouping, or publish one trail as three, each at a fraction of its length. This is the exact failure mode `_the_four_findings` above describes for built fraction: a number in the voice of a measurement that is really an artefact.",
+   "networklength_is_not_the_trail": "It is the length of the connected network a segment belongs to. Two A.T. segments returned 11,412.16 and 45.33 in the same query. Use SUM(lengthmiles). Never surface networklength as a distance.",
+   "string_sentinels_for_null": "`nationaltraildesignation` holds literal 'Null' (2,472 rows) and '<Null>' (8,572) beside real nulls. `hikerpedestrian` holds BOTH 'Y' (138,741) and 'Yes' (139,662). A filter matching one spelling silently drops half the trails.",
+   "water_trails_are_mixed_in": "The designated list at 50+ miles is topped by the Florida Circumnavigational Paddling Trail at 914.2 miles. Filter on hikerpedestrian or trailtype, not length. Generic names aggregate wrongly too - 'Social Trail' sums to 336.6 miles across 2,033 unrelated segments."
+  },
+  "national_recreation_trails_the_roster_exists_and_its_licence_does_not": {
+   "roster_url": "https://services7.arcgis.com/feBzKmbMMjDq2yKj/arcgis/rest/services/NRT_Trail_Data_ESRI/FeatureServer/0",
+   "features": 1358,
+   "measured": "LengthMile is populated on EVERY row - zero nulls, which is rare. 70 trails at 100+ miles, 143 at 50+, 338 at 20+. TrailType splits Backcountry 853, Frontcountry 148, Urban 72, Rail Trail 72, and 85 water-trail rows to exclude.",
+   "geometry_problem": "The roster is POINTS. The companion line layer covers only 731 of the 1,358 (54%) and is four years staler. NRT centrelines have to be joined to TNM by name.",
+   "THE_LICENCE_GAP": "NONE STATED. Both items' licenseInfo and accessInformation are empty, and American Trails is a private nonprofit, so public domain is not the default. This is the single dataset most worth having and the only one here with no terms at all. ASK BEFORE SHIPPING - it is a one-email question of exactly the kind PCTA answered on its media page."
+  },
+  "agency_services_with_their_traps": [
+   {
+    "name": "USFS EDW TrailNFSPublish",
+    "url": "https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_TrailNFSPublish_01/MapServer/0",
+    "features": 86417,
+    "named": 85828,
+    "licence": "A disclaimer, not a restriction - accconst is 'None'. US federal work.",
+    "trap": "`national_trail_designation` does NOT mean NST or NHT. 80,917 of 86,417 features have it above zero, and sampled rows include 'BIG SPRINGS', 'SARDINE SNOWMOBILE' and '235 ROAD'. Filtering on it to find scenic trails returns nearly the whole layer."
+   },
+   {
+    "name": "NPS Public Trails",
+    "url": "https://mapservices.nps.gov/arcgis/rest/services/NationalDatasets/NPS_Public_Trails/FeatureServer/0",
+    "features": 31491,
+    "named": 24056,
+    "licence": "No restriction stated; US federal work.",
+    "trap": "NO LENGTH FIELD. Shape__Length comes back in DEGREES - an A.T. segment reads 0.348 - despite the response declaring WKID 102100. Never surface it as a distance. All 31,491 rows are already PUBLICDISPLAY-filtered, so no extra screening is needed."
+   },
+   {
+    "name": "BLM National GTLF Public Display",
+    "url": "https://gis.blm.gov/arcgis/rest/services/transportation/BLM_Natl_GTLF_Public_Display/MapServer",
+    "features": 173469,
+    "licence": "No restriction stated; US federal work.",
+    "trap": "The commonly-cited BLM_Natl_GTLF_Public URL 404s, and BLM_Natl_GTLF carries only 10,382 features - a recreation subset. This is the real one. BLM has the CLEANEST designation filter of any agency: ROUTE_SPCL_DSGNTN_TYPE literally spells 'National Scenic Trail'. Values are dirty though - 'N/A', 'NONE', 'NRT' and empty string appear alongside the full spellings."
+   },
+   {
+    "name": "NPS ANST_Centerline",
+    "url": "NPS AGOL org fBc8EJBxQRMcHlei",
+    "features": 3025,
+    "licence": "copyright 'National Park Service Appalachian National Scenic Trail & Appalachian Trail Conservancy, 2023'",
+    "trap": "None found. Better sourced than the A.T. in TNM, and it is the layer this repository already reads."
+   }
+  ],
+  "there_is_no_single_nst_service": "CHECKED AND STATED CONCRETELY: mapservices.nps.gov/NationalDatasets holds exactly five datasets and none is a national trails-system layer. The NPS AGOL org's 1,457 services carry per-trail layers only. TNM's designation field IS the consolidation, and nothing else is.",
+  "openstreetmap": {
+   "licence": "ODbL - attribution AND share-alike on derived databases. The only dataset here with a share-alike obligation. Do not merge OSM geometry into a database shipped under other terms without advice.",
+   "measured": "3,374 US relations at type=route + route=hiking; 428 network=nwn; 718 network=rwn. Only 92 national or international routes carry a `distance` tag, so OSM will not supply lengths for most.",
+   "THE_TRAP_THAT_MATTERS": "THE FLAGSHIP TRAILS ARE type=superroute, NOT type=route. Relation 1225378 fetched directly from the OSM API is the Pacific Crest Trail, tagged type=superroute with operator=Pacific Crest Trail Association. A query filtering ['type'='route'] - the form in most published recipes, and the form that produced the 3,374 figure - SILENTLY EXCLUDES IT. Query both.",
+   "better_path": "Waymarked Trails API, undocumented but working: hiking.waymarkedtrails.org/api/v1/list/search and /details/relation/{id}. Carries route.length in metres and a ready-made NAT/REG/LOC classification. The PCT reads 4,222,324 m = 2,624 mi against PCTA's ~2,650. Search has no country filter, so it resolves a known trail by name but cannot enumerate US trails."
+  },
+  "one_state_licence_blocker": "IDAHO. Quoted from its item licenseInfo: 'Not for commercial use and may not be used in 3rd party apps without source attribution.' It names third-party apps specifically, so Idaho's 57,932-feature trails layer is the one state dataset here that cannot simply be ingested - and Idaho is where the 995-mile Idaho Centennial Trail is. New Jersey's NJDEP Data Distribution Agreement is a conditional grant too. Connecticut is CC0 and unambiguously safe.",
+  "deduplication_order_suggested_by_the_audit": "TNM as the spine, since it already aggregates USFS and most state contributions. Override with the NPS per-trail centrelines for the NSTs, which are better sourced. NRT roster for the 1,358 names and their lengths, licence permitting. BLM only for routes on BLM land TNM misses. OSM last and separately, because of ODbL.",
+  "what_this_audit_could_not_reach": "services.nationalmap.gov returned 502 through the egress proxy, twice - untested, not confirmed absent. The Partnership for the National Trails System's webmapping application is behind a bot wall. OSM iwn, lwn and route=foot counts are untested; the Overpass mirror degraded. The state survey covers 8 states with live counts plus 8 confirmed negatives, not 50."
+ }
+}

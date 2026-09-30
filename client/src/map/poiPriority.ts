@@ -66,6 +66,26 @@ export const POI_PRIORITY: readonly string[] = [
 ]
 
 /**
+ * The top of {@link POI_PRIORITY}, down to and including trailheads: the
+ * maintainer's first three tiers (2026-09-26, #1676), "Shelters/Campsites,
+ * Water, Trailheads", with "Everything else" after them.
+ *
+ * Two things read it, and they are one decision rather than two that could
+ * disagree: map/poiLayers.ts draws these full size (FULL_SIZE_POI_TYPES), and
+ * map/poiIcons.ts draws these in full colour while everything else goes quiet
+ * (#1682). Parking is in the quiet tier by the maintainer's choice, asked with
+ * the note that parking is where a hiker leaves the trail for a car: the
+ * trailhead, which stays loud, is where that way off meets the road.
+ *
+ * Here rather than in poiLayers.ts because poiIcons.ts runs in a worker and
+ * cannot import the layer module.
+ */
+export const LOUD_POI_TYPES: readonly string[] = POI_PRIORITY.slice(
+  0,
+  POI_PRIORITY.indexOf('trailhead') + 1,
+)
+
+/**
  * Where a type sits in {@link POI_PRIORITY}, lowest first.
  *
  * A type the list does not name sorts last rather than first, which is the

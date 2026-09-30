@@ -213,6 +213,60 @@ export const ShareHike = screen(
   'ShareHike',
 )
 
+// THE SHEETS, PANELS AND CARDS A TAP OPENS, deferred for the reason the
+// screens above are (#1735). App.tsx and two panel hooks rendered each of
+// these conditionally and imported it statically, so the closure a launch
+// parses before its first frame carried all ten for a Today screen that
+// opens none of them: 50,631 raw bytes, measured 2026-09-30 by attributing
+// the built chunks to their sources (DayHikeCard 8,863, DayHikePanel 7,292,
+// RouteEntranceSheet 7,262, RouteStopPicker 6,174, DayHikePickBar 5,231,
+// RouteStopsPanel 4,003, NextTurnCard 3,417, LineSheet 2,673, StepAwaySheet
+// 2,437; NoticeList 3,279 through chrome/noticesPanel.tsx). preloadScreens warms them on the first idle with the screens, so a
+// tap after that pays nothing; a tap before it waits for the chunk, which the
+// service worker serves from its cache on every launch but the first. Two of
+// them can be on screen when a launch starts - the turn card mid-walk and
+// the saved day-hike card - and arrive that one chunk later.
+export const DayHikeCard = screen(
+  () => import('./DayHikeCard').then((m) => m.DayHikeCard),
+  'DayHikeCard',
+)
+export const DayHikePanel = screen(
+  () => import('../chrome/DayHikePanel').then((m) => m.DayHikePanel),
+  'DayHikePanel',
+)
+export const DayHikePickBar = screen(
+  () => import('../chrome/DayHikePickBar').then((m) => m.DayHikePickBar),
+  'DayHikePickBar',
+)
+export const RouteStopPicker = screen(
+  () => import('../chrome/RouteStopPicker').then((m) => m.RouteStopPicker),
+  'RouteStopPicker',
+)
+export const RouteEntranceSheet = screen(
+  () => import('../chrome/RouteEntranceSheet').then((m) => m.RouteEntranceSheet),
+  'RouteEntranceSheet',
+)
+export const RouteStopsPanel = screen(
+  () => import('../chrome/RouteStopsPanel').then((m) => m.RouteStopsPanel),
+  'RouteStopsPanel',
+)
+export const NextTurnCard = screen(
+  () => import('../chrome/NextTurnCard').then((m) => m.NextTurnCard),
+  'NextTurnCard',
+)
+export const StepAwaySheet = screen(
+  () => import('../chrome/StepAwaySheet').then((m) => m.StepAwaySheet),
+  'StepAwaySheet',
+)
+export const NoticeList = screen(
+  () => import('../chrome/NoticeList').then((m) => m.NoticeList),
+  'NoticeList',
+)
+export const LineSheet = screen(
+  () => import('../chrome/LineSheet').then((m) => m.LineSheet),
+  'LineSheet',
+)
+
 /**
  * Every deferred screen's module, ahead of any tap.
  *

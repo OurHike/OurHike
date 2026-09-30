@@ -91,9 +91,13 @@ const SAVED_WALK_STOPS: ReadonlyArray<readonly [number, number]> = (
  *
  * WHY THIS EXISTS, and it is the interesting part. The builder does not open
  * on the route it is editing — it opens on the camera the map already had,
- * which is the whole corridor. A 2.9 mi walk drawn at corridor zoom is a mark
+ * which is the whole country since 2026-09-30 and was the A.T. corridor when
+ * the numbers below were measured. A 2.9 mi walk drawn at that zoom is a mark
  * a few tens of pixels long, and whether a sweep of the frame lands on it is
- * luck rather than a property of the app.
+ * luck rather than a property of the app. The re-frame only makes the mark
+ * smaller, so the measurement below is now an UPPER bound on how often the
+ * unseeded camera finds it - which is the direction that keeps this seed
+ * necessary rather than one that would quietly retire it.
  *
  * MEASURED 2026-09-11 against release 2026-09-10, the same 17-by-17 sweep of
  * the map's own box, one run each:

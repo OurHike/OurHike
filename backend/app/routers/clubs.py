@@ -688,6 +688,7 @@ def export_org(
     """
     from app.models.org_registry import OrgPark, OrgSection, OrgTrail
     from app.models.org_role import OrgRole
+    from app.models.trail_challenge import ClubChallenge
     from app.models.work_project import WorkProject
     from app.routers.org_roles import read_roster
 
@@ -715,6 +716,14 @@ def export_org(
         "workdays": [
             row(w, ("id", "title", "starts_on", "ends_on", "meet_point", "status", "cap", "source"))
             for w in db.query(WorkProject).filter(WorkProject.club_id == club.id).all()
+        ],
+        # The challenges it has saved (#1780) - its own definitions, which it
+        # wrote. Not the entries hikers sent it: those are people's names and
+        # addresses, already the club's to download as the finishers' CSV, and
+        # an export is not a second route to them.
+        "challenges": [
+            row(c, ("challenge_id", "definition", "window_closes", "takes_entries", "pr_url", "updated_at"))
+            for c in db.query(ClubChallenge).filter(ClubChallenge.club_id == club.id).order_by(ClubChallenge.challenge_id).all()
         ],
         "admins": [
             row(a, ("id", "person_id", "title", "is_codeowner", "approved_at", "declined_at"))

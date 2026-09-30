@@ -22,7 +22,7 @@ this repository that holds a token which could.
 import httpx
 import pytest
 
-from app.core.registry_pr import RegistryPrRefused, open_registry_pr
+from app.core.registry_pr import RegistryPrRefused, open_challenge_pr, open_registry_pr
 from app.models.club import OrgState
 from tests.factories import make_org, make_section
 
@@ -168,3 +168,50 @@ class TestWhatItNeverDoes:
             open_registry_pr(db_session, club, client=httpx.Client(transport=httpx.MockTransport(handler)))
 
         assert len(calls) == 1
+
+
+class TestAChallenge:
+    """The second thing that goes up this way (#1780): one club challenge, as
+    one file under `pipeline/reference/challenges/<slug>/`, and nothing else."""
+
+    DEFINITION = {"id": "harriman-shelters", "org": "ramapo-trail-conference", "name": "Harriman shelters"}
+
+    def test_it_writes_exactly_one_file_inside_the_challenges_directory(self, client, db_session, enabled):
+        club = make_org(db_session, state=OrgState.claimed)
+        recorder = Recorder()
+
+        opened = open_challenge_pr(
+            club, "harriman-shelters", self.DEFINITION, client=httpx.Client(transport=recorder.transport())
+        )
+
+        assert recorder.paths_written() == ["pipeline/reference/challenges/ramapo-trail-conference/harriman-shelters.json"]
+        assert opened.number == 42
+
+    def test_it_never_merges(self, client, db_session, enabled):
+        club = make_org(db_session, state=OrgState.claimed)
+        recorder = Recorder()
+
+        open_challenge_pr(club, "harriman-shelters", self.DEFINITION, client=httpx.Client(transport=recorder.transport()))
+
+        assert not any(path.endswith("/merge") for _, path, _ in recorder.calls)
+
+    @pytest.mark.parametrize("challenge_id", ["../../.github/workflows/x", "a/b", "", "UPPER"])
+    def test_an_id_that_is_not_one_path_segment_opens_nothing(self, client, db_session, enabled, challenge_id):
+        """The opener refuses to build a path from anything it has not
+        checked itself, even though the route validated the id first."""
+        club = make_org(db_session, state=OrgState.claimed)
+        recorder = Recorder()
+
+        with pytest.raises(RegistryPrRefused):
+            open_challenge_pr(club, challenge_id, self.DEFINITION, client=httpx.Client(transport=recorder.transport()))
+
+        assert recorder.calls == []
+
+    def test_a_held_registration_publishes_no_challenge(self, client, db_session, enabled):
+        club = make_org(db_session, state=OrgState.pending)
+        recorder = Recorder()
+
+        with pytest.raises(RegistryPrRefused):
+            open_challenge_pr(club, "harriman-shelters", self.DEFINITION, client=httpx.Client(transport=recorder.transport()))
+
+        assert recorder.calls == []

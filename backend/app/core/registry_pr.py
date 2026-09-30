@@ -30,17 +30,29 @@ opening pull requests against a public repository.
 **ONE COMMIT, VIA THE GIT DATA API.** The contents API would make one commit
 per file and a registry would arrive as eleven of them - eleven things to
 read in a review that should be one.
+
+**TWO THINGS GO UP THIS WAY NOW, AND THEY SHARE ONE PATH TO GITHUB.** An
+organization's registry, and one of its challenges (#1780, features/
+CHALLENGES.md): a club's list of places, saved in the console and written to
+`pipeline/reference/challenges/<slug>/<id>.json` for a maintainer to review.
+Both openers hand `_put_up_for_review` their files and the one directory
+they may write into, so the containment check, the switch and the
+never-merge rule are enforced in one place rather than copied into two.
 """
 
 from __future__ import annotations
 
 import base64
+import json
+import posixpath
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 
 from app.config import settings
 from app.core.registry_file import org_dir, registry_files
+from app.core.trail_challenge import ID_RE, challenge_dir, challenge_file
 from app.models.club import Club, OrgState
 
 GITHUB_API = "https://api.github.com"
@@ -104,32 +116,51 @@ def _request(client: httpx.Client, method: str, path: str, *, json: dict | None 
         raise RegistryPrRefused(f"GitHub's answer to {method} {path} could not be read.") from exc
 
 
-def open_registry_pr(db, club: Club, *, client: httpx.Client | None = None) -> OpenedPr:
-    """Put this organization's registry up for its codeowners to approve."""
+def _refuse_unless_switched_on() -> None:
     if not settings.registry_pr_enabled or not settings.registry_pr_token:
         raise RegistryPrRefused("Opening registry pull requests is not switched on for this deployment.")
+
+
+def _refuse_unless_claimed(club: Club) -> str:
+    """The organization's slug, once it is one allowed to publish anything."""
     if club.state != OrgState.claimed:
         raise RegistryPrRefused(
-            "Only a claimed organization publishes a registry. A held registration has not been "
+            "Only a claimed organization publishes a registry or a challenge. A held registration has not been "
             "confirmed by anybody at the organization."
         )
     slug = club.slug or ""
     if not slug:
         raise RegistryPrRefused("This organization has no address yet.")
+    return slug
 
-    files = registry_files(db, club)
-    inside = f"{org_dir(slug)}/"
-    outside = sorted(path for path in files if not path.startswith(inside))
-    if outside:
+
+def _put_up_for_review(
+    owned: httpx.Client,
+    *,
+    files: dict[str, str],
+    inside: str,
+    branch: str,
+    message: str,
+    title: str,
+    body: str,
+) -> OpenedPr:
+    """Commit `files` to `branch` as one commit and open (or move on) its pull request.
+
+    `inside` is the one directory every path must be under, and it is checked
+    here - before any request - so no opener can reach GitHub without passing
+    it. A path is also refused if it does not normalize to itself: a string
+    prefix check alone would pass `<dir>/../../.github/x`, and a traversal is
+    precisely a write outside the directory.
+    """
+    outside = sorted(path for path in files if not path.startswith(inside) or posixpath.normpath(path) != path)
+    if outside or not files:
         # Refused rather than filtered. A writer producing a path outside the
         # organization's directory is a writer that has gone wrong, and
         # quietly dropping the bad paths would commit the rest as if nothing
         # had happened.
         raise RegistryPrRefused(f"Refusing to write outside {inside}: {outside}")
 
-    owned = client if client is not None else httpx.Client()
     repo = settings.registry_pr_repo
-    branch = branch_for(slug)
 
     base = _request(owned, "GET", f"/repos/{repo}/git/ref/heads/main")
     base_sha = base.get("object", {}).get("sha")
@@ -155,11 +186,7 @@ def open_registry_pr(db, club: Club, *, client: httpx.Client | None = None) -> O
         owned,
         "POST",
         f"/repos/{repo}/git/commits",
-        json={
-            "message": f"{club.name}: registry as its codeowners signed it off",
-            "tree": made_tree["sha"],
-            "parents": [base_sha],
-        },
+        json={"message": message, "tree": made_tree["sha"], "parents": [base_sha]},
     )
 
     existing = _request(owned, "GET", f"/repos/{repo}/pulls?head={repo.split('/')[0]}:{branch}&state=open")
@@ -174,16 +201,79 @@ def open_registry_pr(db, club: Club, *, client: httpx.Client | None = None) -> O
         owned,
         "POST",
         f"/repos/{repo}/pulls",
-        json={
-            "title": f"{club.name}: registry",
-            "head": branch,
-            "base": "main",
-            "body": (
-                f"The registry {club.name} signed off, as files.\n\n"
-                "Its codeowners are requested on this automatically - "
-                "`.github/CODEOWNERS` names them against this directory.\n\n"
-                "**Nothing here merges itself.**"
-            ),
-        },
+        json={"title": title, "head": branch, "base": "main", "body": body},
     )
     return OpenedPr(number=opened["number"], url=opened.get("html_url", ""))
+
+
+def open_registry_pr(db, club: Club, *, client: httpx.Client | None = None) -> OpenedPr:
+    """Put this organization's registry up for its codeowners to approve."""
+    _refuse_unless_switched_on()
+    slug = _refuse_unless_claimed(club)
+
+    return _put_up_for_review(
+        client if client is not None else httpx.Client(),
+        files=registry_files(db, club),
+        inside=f"{org_dir(slug)}/",
+        branch=branch_for(slug),
+        message=f"{club.name}: registry as its codeowners signed it off",
+        title=f"{club.name}: registry",
+        body=(
+            f"The registry {club.name} signed off, as files.\n\n"
+            "Its codeowners are requested on this automatically - "
+            "`.github/CODEOWNERS` names them against this directory.\n\n"
+            "**Nothing here merges itself.**"
+        ),
+    )
+
+
+def challenge_branch_for(slug: str, challenge_id: str) -> str:
+    """One branch per challenge, reused - `branch_for`'s reason, per challenge.
+
+    Per challenge rather than per organization because a club editing two
+    lists at once should get two reviews, not one pull request whose second
+    push silently replaced the first list's change.
+    """
+    return f"challenges/{slug}/{challenge_id}"
+
+
+def open_challenge_pr(
+    club: Club, challenge_id: str, definition: dict[str, Any], *, client: httpx.Client | None = None
+) -> OpenedPr:
+    """Put one of this organization's challenges up for a maintainer to review.
+
+    Writes exactly one file, `pipeline/reference/challenges/<slug>/<id>.json`,
+    and nothing else. It is a request for review and nothing more: the
+    pipeline's own checks (pipeline/lib/challenges.py) run on the pull
+    request, and a person merges it or does not.
+
+    **NOT OWNED BY THE CLUB'S CODEOWNERS.** `.github/CODEOWNERS` names each
+    organization's registry directory and not this one, so the review a
+    challenge gets is the `*` rule's - the maintainer's. That is deliberate
+    rather than an omission: a challenge is published under the club's name
+    to every phone, and whether its places are the club's to use (design
+    principle 5) is a judgement the pipeline and a maintainer make, not one
+    the club makes about itself.
+    """
+    _refuse_unless_switched_on()
+    slug = _refuse_unless_claimed(club)
+    if not ID_RE.match(challenge_id) or not ID_RE.match(slug):
+        # Both are validated at the wire already; this is the opener refusing
+        # to build a path from anything it has not checked itself.
+        raise RegistryPrRefused("A challenge id or organization address is not a plain path segment.")
+
+    return _put_up_for_review(
+        client if client is not None else httpx.Client(),
+        files={challenge_file(slug, challenge_id): json.dumps(definition, indent=2, ensure_ascii=False) + "\n"},
+        inside=f"{challenge_dir(slug)}/",
+        branch=challenge_branch_for(slug, challenge_id),
+        message=f"{club.name}: challenge {challenge_id} as saved in the console",
+        title=f"{club.name}: challenge {challenge_id}",
+        body=(
+            f"{club.name}'s challenge `{challenge_id}`, as its admins saved it in the organization console "
+            "(#1780, features/CHALLENGES.md).\n\n"
+            "The pipeline checks every place against the club's own trails when this runs; a maintainer "
+            "reviews the list and merges it or does not.\n\n"
+            "**Nothing here merges itself.**"
+        ),
+    )

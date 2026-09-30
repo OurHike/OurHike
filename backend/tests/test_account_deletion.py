@@ -39,6 +39,7 @@ from app.models.ridge_runner import RidgeRunnerCommitment
 from app.models.synced_day_hike import SyncedDayHike
 from app.models.synced_hike import SyncedActiveHike, SyncedHike
 from app.models.synced_trip import SyncedPlannedHike, SyncedTrip
+from app.models.trail_challenge import ChallengeEntry, ChallengeTag, ClubChallenge, TagHow
 from app.models.volunteer_hours import HoursState, VolunteerHoursRecord
 from app.models.work_project import WorkProject, WorkProjectSignup
 from tests.factories import make_closure, make_profile
@@ -169,6 +170,38 @@ def _furnish(db, profile_id: str, *, hours_state=HoursState.claimed) -> None:
             secret_hash="x" * 64,
             allowed_origins="https://example.org",
             created_by=profile_id,
+        )
+    )
+    # Challenges (#1780): a tag and an entry of their own, and a definition
+    # they saved for the club - the one of the three that is the club's.
+    db.add(
+        ChallengeTag(
+            id=f"tag-{profile_id}",
+            user_id=profile_id,
+            challenge_id="atc-summer-bucket-list-2027",
+            item_id="mcafee-knob",
+            how=TagHow.gps,
+            authored_at=dt.datetime(2027, 6, 1, 20, 0),
+        )
+    )
+    db.add(
+        ChallengeEntry(
+            id=f"entry-{profile_id}",
+            user_id=profile_id,
+            challenge_id="atc-summer-bucket-list-2027",
+            name="Jane Doe",
+            email="jane@example.com",
+            item_ids=["mcafee-knob"],
+            consented_at=dt.datetime(2027, 8, 30, 12, 0),
+            sent_at=dt.datetime(2027, 8, 30, 12, 0),
+        )
+    )
+    db.add(
+        ClubChallenge(
+            challenge_id=f"challenge-{profile_id}",
+            club_id=club.id,
+            definition={"id": f"challenge-{profile_id}", "name": "A club's list"},
+            updated_by=profile_id,
         )
     )
     club.created_by = profile_id
@@ -433,6 +466,12 @@ _TABLES_EMPTIED = {
     # unlinked; one they CLAIMED is the audit row for a grant that has just
     # gone with them, and goes too.
     "role_invites",
+    # --- Challenges (#1780). A tag is the hiker's own record, and an entry is
+    # their name and address, so both go (account_deletion.py argues the
+    # entry). A definition is the club's, so only the name beside it goes. ---
+    "challenge_tags",
+    "challenge_entries",
+    "club_challenges",
 }
 
 
@@ -564,3 +603,19 @@ def test_the_receipt_counts_what_the_organization_surface_released(db_session, h
     assert summary.commitments_deleted == 1
     # Four unlinked rows plus the one claimed invite that went with them.
     assert summary.org_rows_unlinked >= 4
+
+
+def test_a_hikers_challenge_record_goes_and_the_clubs_definition_stays(db_session, hiker):
+    """Tags and the entry are the hiker's - one is where they have been, the
+    other their name and home address - so both go. The definition they last
+    saved is their club's, so it stays with nobody's name beside it."""
+    summary = delete_account(db_session, hiker)
+    db_session.commit()
+
+    assert db_session.query(ChallengeTag).count() == 0
+    assert db_session.query(ChallengeEntry).count() == 0
+    assert summary.challenge_tags_deleted == 1
+    assert summary.challenge_entries_deleted == 1
+    definition = db_session.get(ClubChallenge, f"challenge-{hiker.id}")
+    assert definition is not None
+    assert definition.updated_by is None

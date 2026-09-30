@@ -29,6 +29,7 @@ from app.routers import (
     ridge_runner,
     synced_day_hikes,
     synced_trips,
+    trail_challenges,
     volunteer_hours,
     work_projects,
 )
@@ -118,3 +119,8 @@ app.include_router(ridge_runner.router)
 app.include_router(console.router)
 app.include_router(assist.router)
 app.include_router(nominations.router)
+# Challenges (#1780, features/CHALLENGES.md). One router for both halves - a
+# hiker's `/challenges/...` and a club's `/clubs/{slug}/challenges...` -
+# because the club's counts and CSV are read off the hiker's rows, and two
+# routers would be two places deciding what a count may reveal.
+app.include_router(trail_challenges.router)

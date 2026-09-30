@@ -39,6 +39,7 @@ from app.models.club import OrgState
 from app.models.console_key import ConsoleKey
 from app.models.org_registry import OrgPark, OrgSection, OrgTrail
 from app.models.org_role import OrgRole
+from app.models.trail_challenge import ClubChallenge
 from app.models.work_project import WorkProjectSignup
 from tests.factories import (
     make_admin,
@@ -516,6 +517,93 @@ def test_recording_attendance_reaches_supervisors_too(client, db_session, org_wo
     assert response.status_code == (200 if expected is None else expected)
 
 
+# ------------------------------------------------------------------ #
+# Challenges (#1780, features/CHALLENGES.md)
+#
+# Five org routes, all admin-only: the list and the counts are a club's
+# unpublished work, the CSV carries the names and home addresses hikers sent
+# it, and saving or publishing decides where hikers' entries go. A supervisor
+# runs crews and does none of these - `/clubs/{slug}/export`'s line.
+# ------------------------------------------------------------------ #
+
+CHALLENGE = "ramapo-fire-towers-2027"
+
+
+def _challenge_definition() -> dict:
+    return {
+        "id": CHALLENGE,
+        "org": "ramapo-trail-conference",
+        "trail": "LP",
+        "name": "Fire towers of the Ramapos",
+        "status": "draft",
+        "window": {"opens": None, "closes": None},
+        "items": [],
+    }
+
+
+def _owned_challenge(db_session, world) -> None:
+    db_session.add(ClubChallenge(challenge_id=CHALLENGE, club_id=world["org"].id, definition=_challenge_definition()))
+    db_session.commit()
+
+
+@pytest.mark.parametrize("who", EVERYBODY)
+def test_the_challenges_list_reaches_admins_only(client, org_world, who):
+    response = _call(client, org_world, who, "get", "/clubs/{slug}/challenges")
+    expected = _expected({ADMIN, CODEOWNER}, who)
+
+    assert response.status_code == (200 if expected is None else expected)
+
+
+@pytest.mark.parametrize("who", EVERYBODY)
+def test_a_challenges_counts_reach_admins_only(client, db_session, org_world, who):
+    _owned_challenge(db_session, org_world)
+
+    response = _call(client, org_world, who, "get", f"/clubs/{{slug}}/challenges/{CHALLENGE}/counts")
+    expected = _expected({ADMIN, CODEOWNER}, who)
+
+    assert response.status_code == (200 if expected is None else expected)
+
+
+@pytest.mark.parametrize("who", EVERYBODY)
+def test_a_challenges_entries_csv_reaches_admins_only(client, db_session, org_world, who):
+    """Names, emails and home addresses hikers sent this club. A supervisor
+    reads the roster screen; a drawing's entrants are not a crew."""
+    _owned_challenge(db_session, org_world)
+
+    response = _call(client, org_world, who, "get", f"/clubs/{{slug}}/challenges/{CHALLENGE}/entries")
+    expected = _expected({ADMIN, CODEOWNER}, who)
+
+    assert response.status_code == (200 if expected is None else expected)
+
+
+@pytest.mark.parametrize("who", EVERYBODY)
+def test_saving_a_challenge_is_an_admins_act(client, org_world, who):
+    """Saving claims the id, which is what routes hikers' entries to this club."""
+    response = _call(
+        client,
+        org_world,
+        who,
+        "put",
+        f"/clubs/{{slug}}/challenges/{CHALLENGE}",
+        {"definition": _challenge_definition()},
+    )
+    expected = _expected({ADMIN, CODEOWNER}, who)
+
+    assert response.status_code == (200 if expected is None else expected)
+
+
+@pytest.mark.parametrize("who", EVERYBODY)
+def test_putting_a_challenge_up_for_review_is_an_admins_act(client, db_session, org_world, who):
+    """200 with `pull_request: null` for an admin: the opener is off by
+    default, and the guard still let them through to find that out."""
+    _owned_challenge(db_session, org_world)
+
+    response = _call(client, org_world, who, "post", f"/clubs/{{slug}}/challenges/{CHALLENGE}/publish")
+    expected = _expected({ADMIN, CODEOWNER}, who)
+
+    assert response.status_code == (200 if expected is None else expected)
+
+
 def test_ids_from_another_organization_are_404_here(client, db_session, org_world):
     """An admin of B, naming A's role, key, park or trail under B's own slug.
 
@@ -533,12 +621,17 @@ def test_ids_from_another_organization_are_404_here(client, db_session, org_worl
     db_session.commit()
     role_id, key_id = role.id, key.id
 
+    _owned_challenge(db_session, org_world)
+
     b = make_org(db_session, slug="another-conference", state=OrgState.claimed)
     b_admin = make_profile(db_session)
     make_admin(db_session, b, b_admin, is_codeowner=True)
     db_session.commit()
 
     for method, path, body in (
+        ("get", f"/clubs/{b.slug}/challenges/{CHALLENGE}/counts", None),
+        ("get", f"/clubs/{b.slug}/challenges/{CHALLENGE}/entries", None),
+        ("post", f"/clubs/{b.slug}/challenges/{CHALLENGE}/publish", None),
         ("patch", f"/clubs/{b.slug}/roles/{role_id}", {"name": "Taken over"}),
         ("delete", f"/clubs/{b.slug}/roles/{role_id}", None),
         ("delete", f"/clubs/{b.slug}/console-keys/{key_id}", None),
@@ -580,6 +673,7 @@ def test_a_seat_at_one_organization_is_not_a_seat_at_another(client, db_session,
     for method, path, body in (
         ("get", "/clubs/{slug}/roster", None),
         ("get", "/clubs/{slug}/export", None),
+        ("get", "/clubs/{slug}/challenges", None),
         ("patch", "/clubs/{slug}", {"region": "nope"}),
         ("delete", "/clubs/{slug}", None),
     ):

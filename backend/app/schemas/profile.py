@@ -40,4 +40,7 @@ class DeletionReceipt(BaseModel):
     assignments_released: int
     hours_deleted: int
     app_failure_reports_unlinked: int
+    #: Challenges (#1780): the places they tagged, and what they sent a club.
+    challenge_tags_deleted: int
+    challenge_entries_deleted: int
     kept: dict[str, int]

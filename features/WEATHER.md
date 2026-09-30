@@ -74,10 +74,11 @@ Clouds forecast, the second against a render of the first build.
 - **A day's chance is the wetter of that day and the night after it**, over the daytime
   window alone (§10 says why).
 - **An NWS alert on for the spot also goes on the peek**, above the forecast line.
-- **Sun, moon and cloud icons**, over the filled-circle sky symbol the first build drew. The
-  first build itself drew *"It really looks unprofessional. That needs a lot more polish"*,
-  and the band was redrawn before the second poll: line icons, hours without boxes, days as
-  rows with each day's range drawn against the week's.
+- **Sun, moon and cloud icons**, over the filled-circle sky symbol the first build drew.
+- **The first build "really looks unprofessional. That needs a lot more polish"** - the
+  second poll's answer on the build as a whole. The band was redrawn (line icons, hours
+  without boxes, days as rows with each day's range drawn against the week's), rendered in
+  eight states for the maintainer, who said to keep going.
 
 ## What the maintainer decided, 2026-09-25, before step 1
 

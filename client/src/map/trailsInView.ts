@@ -110,17 +110,25 @@ import {
 } from './trailBadges'
 import { WARNING_LAYER_ID } from './warningLayers'
 import { WORKDAY_LAYER_ID } from './workdayLayers'
+import { CHALLENGE_LAYER_ID } from './challengeLayers'
 
 /**
  * The symbol layers placed before the badge, whose pins it must not sit on:
  * every pin layer after it in the stack (style.ts). The along-line names and
  * the sheet's own labels are NOT here - they are placed after the badge and
  * yield to it.
+ *
+ * The challenge diamonds (#1780) are here although each sits on a waypoint
+ * pin already in this list, for the case where it does not: a hiker who hid
+ * that waypoint's category still has the diamond drawn, and a badge on it
+ * would cover the only mark at the place. Hidden layers answer nothing, so
+ * with the switch off this costs nothing.
  */
 export const BADGE_OBSTACLE_LAYER_IDS: readonly string[] = [
   POI_LAYER_ID,
   WARNING_LAYER_ID,
   WORKDAY_LAYER_ID,
+  CHALLENGE_LAYER_ID,
   ATC_UPDATE_POINT_LAYER_ID,
 ]
 

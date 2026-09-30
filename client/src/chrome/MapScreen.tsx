@@ -57,6 +57,7 @@ import type { DroughtBand } from '../map/droughtLayers'
 import type { ClosureBand } from '../map/closureLayers'
 import type { CorridorFeatureCollection } from '../map/corridorLayers'
 import type { WorkdayPoint } from '../map/workdayLayers'
+import type { ChallengePinFeatureCollection } from '../map/challengeLayers'
 import type { WorkdayRow, WorkdayWindowId } from '../lib/workProjects'
 import type { DisputePoint } from '../map/disputeLayers'
 import type { AtcUpdatePoint } from '../map/atcUpdateLayers'
@@ -683,6 +684,22 @@ export interface MapScreenProps {
    *  that goes nowhere is worse than none, the legend's rule for every
    *  control it offers. */
   onToggleBlazeColors?: () => void
+  /**
+   * The challenge places (#1780 — Let a club publish a challenge — places on
+   * its own trails that hikers opt into and tag at camp — starting with the
+   * ATC's A.T. Summer Bucket List), all four from chrome/challengePanel.ts
+   * and passed straight through: the pins and whether they are drawn to the
+   * canvas, the switch's state and handler to the legend.
+   *
+   * NOTHING ELSE ON THIS SCREEN READS THEM, and that is the design's
+   * principle 2 rather than an omission: no banner, no count, no live
+   * region and no plate change near a challenge place.
+   * chrome/MapScreen.test.tsx renders with and without them and compares.
+   */
+  challengePins?: ChallengePinFeatureCollection
+  showChallengePins?: boolean
+  challengePlacesShown?: boolean
+  onToggleChallengePlaces?: () => void
 
   /** Opening camera only; later moves are the hiker's. */
   center?: [number, number]
@@ -971,6 +988,10 @@ export function MapScreen({
   redLight = false,
   blazeColorsShown = true,
   onToggleBlazeColors,
+  challengePins,
+  showChallengePins = false,
+  challengePlacesShown = false,
+  onToggleChallengePlaces,
   detail = 'standard',
   center,
   zoom,
@@ -1630,6 +1651,8 @@ export function MapScreen({
               onSelectWarning={onSelectWarning}
               workdays={workdays}
               onSelectWorkday={onSelectWorkday}
+              challengePins={challengePins}
+              showChallengePins={showChallengePins}
               disputes={disputes}
               warnings={warnings}
               routeDrawing={routeDrawing}
@@ -1860,6 +1883,8 @@ export function MapScreen({
             onToggleDrought={onToggleDrought}
             blazeColorsShown={blazeColorsShown}
             onToggleBlazeColors={onToggleBlazeColors}
+            challengePlacesShown={challengePlacesShown}
+            onToggleChallengePlaces={onToggleChallengePlaces}
             units={units}
             maintainerLine={maintainerLine}
             droughtSummary={

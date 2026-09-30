@@ -72,6 +72,13 @@ import {
   attachWorkdayTaps,
   type WorkdayPoint,
 } from './workdayLayers'
+import {
+  attachChallengeData,
+  attachChallengeIcons,
+  NO_CHALLENGE_PINS,
+  setChallengeVisible,
+  type ChallengePinFeatureCollection,
+} from './challengeLayers'
 import { attachDisputeData, attachDisputeIcon, type DisputePoint } from './disputeLayers'
 import { attachPositionData, attachPositionImages } from './positionLayers'
 import type { GeolocationState } from '../lib/useGeolocation'
@@ -276,6 +283,21 @@ export interface MapViewProps {
   /** Which workday a tap landed on. Must be stable across renders, like
    *  `onSelectPoi`. */
   onSelectWorkday?: (projectId: string) => void
+  /**
+   * The places on the challenges the hiker joined (#1780), already derived
+   * by the shell (map/challengePins.ts). Pushed whether or not they are
+   * shown, so the switch below is instant.
+   *
+   * No tap of its own: a diamond sits on its place's own waypoint pin, and
+   * the tap that opens that pin's card is `onSelectPoi`'s - see
+   * map/challengeLayers.ts's header for why a second handler would break
+   * "one touch, one interpreter", and for the one case that leaves unopened.
+   */
+  challengePins?: ChallengePinFeatureCollection
+  /** Whether the legend's "Challenge places" switch is on AND a joined
+   *  challenge is on the chosen trail. Off by default - features/CHALLENGES.md
+   *  principle 2. Separate from the data for droughtLayers.ts's reason. */
+  showChallengePins?: boolean
   /**
    * Places the field says are not there (#876), already joined to their
    * coordinates by the shell.
@@ -587,6 +609,9 @@ export function MapView({
   workdays = NO_WORKDAYS,
   disputes = NO_DISPUTES,
   onSelectWorkday,
+  // A module-level empty collection, for NO_POIS's reason.
+  challengePins = NO_CHALLENGE_PINS,
+  showChallengePins = false,
   routeDrawing = null,
   dayHikeDrawing = null,
   dayHikeTicks = EMPTY_TICKS,
@@ -1172,6 +1197,32 @@ export function MapView({
     if (map === null) return
     return attachWorkdayData(map, workdays)
   }, [map, workdays])
+
+  // The challenge places (#1780): the two images once there is a pin to
+  // draw, the pins whenever the hiker joins, leaves or tags, and the switch
+  // on its own clock - the workdays' three effects with the drought's
+  // switch in place of a tap. The image effect is declared first for the
+  // warnings' reason above: a symbol naming an image the map has not been
+  // given draws nothing, and in the commit the switch goes on this runs
+  // before the visibility effect below. Gated on there being a pin to SHOW,
+  // one step tighter than the workday image, so a hiker who joined but never
+  // switched the layer on - the default - never pays for two rasterises.
+  // Images are never removed, so switching off and on again costs nothing.
+  const drawChallengePins = showChallengePins && challengePins.features.length > 0
+  useEffect(() => {
+    if (map === null || !drawChallengePins) return
+    return attachChallengeIcons(map)
+  }, [map, drawChallengePins])
+
+  useEffect(() => {
+    if (map === null) return
+    return attachChallengeData(map, challengePins)
+  }, [map, challengePins])
+
+  useEffect(() => {
+    if (map === null) return
+    return setChallengeVisible(map, showChallengePins)
+  }, [map, showChallengePins])
 
   // The dispute marks (#876): the image once, the places whenever the shell's
   // join changes. No tap effect - see the prop.

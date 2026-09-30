@@ -190,6 +190,11 @@ import {
 import { buildPoiLabelLayer } from './poiLabels'
 import { buildWarningLayer, buildWarningSource, WARNING_SOURCE_ID } from './warningLayers'
 import { buildWorkdayLayer, buildWorkdaySource, WORKDAY_SOURCE_ID } from './workdayLayers'
+import {
+  buildChallengeLayer,
+  buildChallengeSource,
+  CHALLENGE_SOURCE_ID,
+} from './challengeLayers'
 import { buildDisputeLayer, buildDisputeSource, DISPUTE_SOURCE_ID } from './disputeLayers'
 import {
   applyPositionInk,
@@ -2401,6 +2406,12 @@ export function buildMapStyle({
       [ATC_UPDATE_SOURCE_ID]: buildAtcUpdateSource(),
       [WARNING_SOURCE_ID]: buildWarningSource(),
       [WORKDAY_SOURCE_ID]: buildWorkdaySource(),
+      // The places on the challenges a hiker joined (#1780). Empty until the
+      // shell fills it, and no `attribution`, for the trail badges' reason:
+      // every point is a published POI's own coordinate, already credited
+      // through POI_SOURCE_ID, and the list is the club's, named on the
+      // challenge's own page.
+      [CHALLENGE_SOURCE_ID]: buildChallengeSource(),
       [DISPUTE_SOURCE_ID]: buildDisputeSource(),
       // The hiker's own position (#1581): empty until the shell hands a fix
       // over, and no `attribution` for the plainest reason of all - it is
@@ -2857,6 +2868,21 @@ export function buildMapStyle({
       // one a hiker needs. Unlike the warning it submits to the collision
       // engine rather than shoving a shelter aside (workdayLayers.ts).
       buildWorkdayLayer(),
+      // Challenge places (#1780), hidden until the hiker's legend switch
+      // shows them, directly OVER the workdays and under everything after
+      // them - the hiker's mark and its ring, the closures, the warnings and
+      // the ATC's notices. Over the waypoints because each diamond is drawn
+      // on its own place's waypoint pin and has to cover it
+      // (challengeLayers.ts); over the workdays because a diamond is a place
+      // this hiker chose to go, where a workday is an invitation shown to
+      // everybody - and the diamond claims no space in placement, so being
+      // above costs the workday pins nothing but the pixels where the two
+      // actually meet. Under every safety mark and the hiker because a
+      // challenge is the one thing on this map nobody needs in order to walk
+      // safely. There is no "below the labels" to put it at: every label
+      // layer already sits under the workdays, and since this layer ignores
+      // placement it cannot push a name off the map from here.
+      buildChallengeLayer(),
       // The serious-warning pins used to sit here, over the waypoints and
       // the workdays. They are at the top of the style now (#1599).
       // The ATC's own notices last of all, so nothing on this map can cover

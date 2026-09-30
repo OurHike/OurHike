@@ -1804,6 +1804,82 @@ describe('the drought row', () => {
   })
 })
 
+// --- The Challenge places switch (#1780) -----------------------------------
+//
+// features/CHALLENGES.md frame #1: a switch "Challenge places", off by
+// default, listed only when a joined challenge is on the chosen trail - which
+// the shell says by passing the handler or not (chrome/challengePanel.ts).
+
+describe('the Challenge places switch (#1780)', () => {
+  function challengeSwitch() {
+    return screen.getByRole('switch', { name: /^Challenge places/ })
+  }
+
+  it('is not listed when the shell offers no handler - no joined challenge on this trail', () => {
+    render(<Legend {...PROPS} challengePlacesShown />)
+
+    expect(screen.queryByRole('switch', { name: /^Challenge places/ })).toBe(null)
+    expect(screen.queryByText('Challenge places')).toBe(null)
+  })
+
+  it('is listed off by default, a switch rather than a checkbox', () => {
+    render(<Legend {...PROPS} onToggleChallengePlaces={vi.fn()} />)
+
+    expect(challengeSwitch().tagName).toBe('BUTTON')
+    expect(challengeSwitch()).toHaveAttribute('aria-checked', 'false')
+    expect(screen.queryByRole('checkbox', { name: /^Challenge places/ })).toBe(null)
+  })
+
+  it('reads on when the hiker has it on', () => {
+    render(<Legend {...PROPS} challengePlacesShown onToggleChallengePlaces={vi.fn()} />)
+
+    expect(challengeSwitch()).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('hands the tap back to the shell rather than deciding anything itself', async () => {
+    const user = userEvent.setup()
+    const onToggleChallengePlaces = vi.fn()
+    render(
+      <Legend
+        {...PROPS}
+        challengePlacesShown={false}
+        onToggleChallengePlaces={onToggleChallengePlaces}
+      />,
+    )
+
+    await user.click(challengeSwitch())
+
+    expect(onToggleChallengePlaces).toHaveBeenCalledTimes(1)
+  })
+
+  it('keys the mark and prints no count - no numeral anywhere in the row', () => {
+    // Principle 2 keeps counts off the walking view, and "No lack-state"
+    // keeps a tally of what is left off every surface. What the row says
+    // instead is what a hollow diamond means.
+    const { container } = render(
+      <Legend {...PROPS} challengePlacesShown onToggleChallengePlaces={vi.fn()} />,
+    )
+
+    const row = container.querySelector('.legend__challenges')!
+    expect(row).toHaveTextContent('Places on your challenges, hollow until tagged.')
+    expect(row.textContent).not.toMatch(/\d/)
+  })
+
+  it('leaves the Blaze colors row first under the head', () => {
+    const { container } = render(
+      <Legend
+        {...PROPS}
+        onToggleBlazeColors={vi.fn()}
+        onToggleChallengePlaces={vi.fn()}
+      />,
+    )
+
+    expect(container.querySelector('.legend__head')!.nextElementSibling).toBe(
+      container.querySelector('.legend__blazes'),
+    )
+  })
+})
+
 /**
  * Who maintains the trail in front of the hiker (#598).
  *

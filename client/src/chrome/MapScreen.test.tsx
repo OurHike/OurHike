@@ -15,6 +15,8 @@ import { closureFeatureCollection, CLOSURE_SOURCE_ID } from '../map/closureLayer
 import { warningFeatureCollection, WARNING_SOURCE_ID } from '../map/warningLayers'
 import { ATC_UPDATE_SOURCE_ID } from '../map/atcUpdateLayers'
 import { HEALTHY, type SourceReport } from '../map/liveSourceHealth'
+import { CHALLENGE_LAYER_ID, CHALLENGE_SOURCE_ID } from '../map/challengeLayers'
+import { CHALLENGE_ICON_ID } from '../map/challengePin'
 
 /** The visible safety band. No longer `role="alert"` (#315) — its text ends
  *  in a distance App.tsx recomputes on every GPS fix, so a live role meant an
@@ -1681,5 +1683,135 @@ describe('while the day-hike builder owns the screen (#1194)', () => {
     rerender(<MapScreen {...PROPS} />)
 
     expect(document.querySelector('.next-up__ribbon-card')).not.toBeNull()
+  })
+})
+
+// --- Principle 2: the walking view does not change (#1780) ------------------
+//
+// features/CHALLENGES.md's contract, verbatim: "No notification, sound,
+// haptic, banner, or count on the map plate (chrome/Header.tsx) near a
+// challenge place. The map layer is off by default." Its "What proves it"
+// list asks for this exact assertion: "the map with a challenge joined and
+// the layer on adds no live region, no notification call, and does not
+// change the plate".
+//
+// Rendered once without the challenge props and then again, in the same tree,
+// with pins passed and shown - so every difference between the two frames is
+// the challenge layer's doing, and the only difference allowed is on the
+// canvas.
+
+describe('challenge places leave the walking view alone (#1780, principle 2)', () => {
+  const PINS = {
+    type: 'FeatureCollection' as const,
+    features: [
+      {
+        type: 'Feature' as const,
+        // Inside PROPS.bbox, beside the water point, so the pin is "near"
+        // everything this screen draws.
+        geometry: {
+          type: 'Point' as const,
+          coordinates: [-77.5, 39.5] as [number, number],
+        },
+        properties: {
+          poi: 'atc_viewpoints:mcafee',
+          name: 'McAfee Knob Summit',
+          tagged: false,
+          challengeId: 'bucket',
+          itemId: 'mcafee-knob',
+        },
+      },
+    ],
+  }
+
+  let notification: ReturnType<typeof vi.fn> & {
+    requestPermission: ReturnType<typeof vi.fn>
+  }
+  let vibrate: ReturnType<typeof vi.fn>
+  let play: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    // jsdom has neither API, so a call would throw rather than be counted;
+    // stand both in, and count. test/noNotifications.test.ts is the static
+    // half - no module can reach for them at all - and this is the runtime
+    // half, on the one screen principle 2 is about.
+    notification = Object.assign(vi.fn(), { requestPermission: vi.fn() })
+    vi.stubGlobal('Notification', notification)
+    vibrate = vi.fn()
+    Object.defineProperty(navigator, 'vibrate', { value: vibrate, configurable: true })
+    play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    Reflect.deleteProperty(navigator, 'vibrate')
+    play.mockRestore()
+  })
+
+  it('draws the diamonds on the canvas, and changes nothing else on the screen', () => {
+    const onToggleChallengePlaces = vi.fn()
+    const { container, rerender } = render(<MapScreen {...PROPS} />)
+    const [map] = MockMap.live
+    map.emit('load')
+
+    const plateBefore = container.querySelector('.map-header')!.outerHTML
+    const liveBefore = container.querySelectorAll('[aria-live]').length
+    const alertsBefore = container.querySelectorAll(
+      '[role="alert"], [role="status"]',
+    ).length
+
+    rerender(
+      <MapScreen
+        {...PROPS}
+        challengePins={PINS}
+        showChallengePins
+        challengePlacesShown
+        onToggleChallengePlaces={onToggleChallengePlaces}
+      />,
+    )
+
+    // The canvas did get them, in place - the same map, not a rebuilt one.
+    expect(MockMap.live).toEqual([map])
+    expect(map.sourceData.get(CHALLENGE_SOURCE_ID)).toEqual(PINS)
+    expect(map.layoutProperties.get(`${CHALLENGE_LAYER_ID}/visibility`)).toBe('visible')
+
+    // And nothing else did.
+    expect(container.querySelector('.map-header')!.outerHTML).toBe(plateBefore)
+    expect(container.querySelectorAll('[aria-live]')).toHaveLength(liveBefore)
+    expect(container.querySelectorAll('[role="alert"], [role="status"]')).toHaveLength(
+      alertsBefore,
+    )
+    expect(container.querySelector('.map-header')!.textContent).not.toMatch(/challenge/i)
+    expect(notification).not.toHaveBeenCalled()
+    expect(notification.requestPermission).not.toHaveBeenCalled()
+    expect(vibrate).not.toHaveBeenCalled()
+    expect(play).not.toHaveBeenCalled()
+  })
+
+  it('keeps the layer hidden until the hiker asks, even with pins to draw', () => {
+    render(<MapScreen {...PROPS} challengePins={PINS} />)
+    const [map] = MockMap.live
+    map.emit('load')
+
+    expect(map.sourceData.get(CHALLENGE_SOURCE_ID)).toEqual(PINS)
+    expect(map.layoutProperties.get(`${CHALLENGE_LAYER_ID}/visibility`)).toBe('none')
+    // Nor are the images rasterised for a layer nobody switched on.
+    expect(map.images.has(CHALLENGE_ICON_ID)).toBe(false)
+  })
+
+  it('hands the legend its switch', () => {
+    render(
+      <MapScreen
+        {...PROPS}
+        legendOpen
+        challengePins={PINS}
+        challengePlacesShown={false}
+        onToggleChallengePlaces={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('switch', { name: /^Challenge places/ })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    )
   })
 })

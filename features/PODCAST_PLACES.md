@@ -81,19 +81,53 @@ What that left, measured on the desk:
 - **A trail show proposes trails, not places.** Of 1,081 places proposed across 341 episodes, 810
   are a whole trail (177 different trails) and 78 a named section; 33 are A.T. POIs, 74 got a
   names-only point (53 from GNIS, 21 an NPS visitor center), and 86 have no point at all. For this
-  kind of show the trail *is* the answer. 274 of the 341 episodes have at least one trail OurHike
-  already publishes.
+  kind of show the trail *is* the answer. 265 of the 341 episodes have at least one trail OurHike
+  already draws (after the re-match below; 274 before it withdrew the Colorado Trail).
 - **A published trail name is not one trail.** `places.json` groups USFS trails by name, so
   `trail:usfs_trails:TIMBERLINE` has a box from −121.8° to −106.4° longitude, and `LONE STAR`
   from −118.6° to −95.1°: many unrelated trails, neither the one an episode means. The resolver
-  must check a trail's extent against the mention's `where` before it believes a name, and those
-  two are left out of the aliases by hand.
-- **Some matches are a part of the trail.** The Long Trail is published only where it is the A.T.
-  The Colorado Trail is published as a USFS line named `COLORADO`, 252 miles between 38.35° and
-  39.55° N, which reads as its northern half — reasoned from its name and extent; nobody has
-  confirmed it with the Colorado Trail Foundation. Both carry a `partial` note the desk shows.
+  must check a trail's extent against the mention's `where` before it believes a name.
+  `trail_name_aliases.json` (#1544) rejects both for the same reason, measured on the live
+  service.
+- **Some matches are a part of the trail.** The Long Trail is published only where it is the A.T.,
+  as `APPALACHIAN TRAIL/LONG TRAIL`, and the desk says so. The first pass also matched the
+  Colorado Trail to a USFS line named `COLORADO` (252 miles, 38.35°–39.55° N) from its name and
+  extent alone; the reviewed join records that same line as "might be the Colorado Trail -
+  UNRESOLVED, and left out because a wrong badge is worse than a missing one", so the re-match
+  withdrew all 46 of those matches.
 - **Short words need whole-word matching.** "AT" was highlighted inside "navigation" until the
   desk matched `said` on word boundaries. The resolver's name search has the same trap.
+
+### The first re-match, after the bulk load (2026-09-30)
+
+The bulk load (#1544 — Catalogue 173 trail organizations, ship every steward's trail marker, and
+badge the trail rather than the feed) added a *catalogue*, not new lines: `sources.json` holds 46
+sources before and after it, and UA's 2026-09-30 release draws fewer trails than production, 123
+long trails in `places.json` against 163, because #1712 — Remove NH GRANIT, and drop USFS
+motorized trails: ship only hiking trails — took 40 out. What it did add is what a resolver
+needs: `trail_name_aliases.json`, a reviewed join from 19 trails to their published spellings with
+16 spellings rejected, and 153 candidate trails with their stewards.
+
+Every desk mention was re-matched by hand-run script against UA (`2b95b221`) in that order —
+reviewed join, then an exact name whose every segment lies in the states the episode names, then
+the catalogue — and ticked places were left alone. Of Backpacker Radio's 810 whole-trail
+mentions: 425 reviewed matches, 40 unreviewed (the Long Trail's shared miles and 15 new ones such
+as the Loowit, Uinta Highline and Art Loeb trails), 173 only catalogued, and 172 with nothing.
+New from the reviewed join: the John Muir Trail, which OurHike draws for 14 of its 211 miles.
+Every match now carries the miles it draws and the release it was measured on, because "OurHike
+publishes the PCT" was true of 377 of its 2,650 miles.
+
+Two thresholds are `@unvalidated`: an unreviewed name match needs 5 drawn miles (Oregon Coast,
+1.1 mi, and Chinook, 2.7 mi, fell under it), and a place matches a named waypoint within 25
+miles of its point. The maintainer's ticks on what they let through would settle both.
+
+It also found four trails a podcast talks about that UA already draws under spellings the
+reviewed join does not list — for the join's owner to decide, not a resolver:
+`FNST - <name> SECTION` (the Florida Trail, 12 mentions), `ICE AGE NST-A/B/C` (66 miles in
+Chequamegon NF; the Ice Age Trail, 10), `MST - <district> RD` (the Mountains-to-Sea Trail, 2), and
+`LONE STAR`, which the join rejects for spanning −118.6° to −95.1° but which on UA, after #1712's
+motorized filter, is 97 miles inside Sam Houston National Forest only (3). `OUACHITA NRT`, a
+reviewed spelling, is not in UA's release at all.
 
 ## What OurHike can already match against
 

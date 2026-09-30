@@ -18,6 +18,19 @@
 // frame is where that is visible on the one trail that publishes a spelling
 // wholly contained in another.
 //
+// THE TWO FEATURES BECOME ONE AT THE NEXT PUBLISH (#1776), and until it runs
+// this frame is the BEFORE. The sketch now qualifies a run of shared tread
+// rather than a spelling, and folds USFS's 81 spellings of this trail into
+// one identity first - so the export writes a single feature called
+// `Pacific Crest Trail` where the pinned release has two, and it reaches
+// further: the largest continuous run of the PCT in that layer is 424 miles
+// through the Oregon and Washington Cascades, which carried NO spelling the
+// alias table listed and so drew as anonymous haze. What this frame should
+// show afterwards is the same single badge in the same place, with more
+// cased line running north out of the top of it. If it shows TWO badges, the
+// client dedupe is carrying a case the pipeline was supposed to have stopped
+// creating.
+//
 // WHY z6 AND NOT z7. MapLibre's world is 512 px times two to the zoom, so a
 // 390 by 844 px phone at z6 spans 4.28 degrees of longitude and, at this
 // latitude, about 7.0 of latitude - against the 3.34 by 3.99 the trail needs.

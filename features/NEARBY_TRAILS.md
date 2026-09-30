@@ -439,6 +439,61 @@ already makes about which registry trail a line is, and firing for those two sou
 alone, so a park's folded haze stays unnamed and off the list. **Both halves stand**: the
 fallback is what a hiker sees today, and the republish is what makes the data say it
 itself.
+
+**And "one trail" became a run of shared tread rather than a spelling
+(2026-09-30, [#1776](https://github.com/OurHike/OurHike/issues/1776)).**
+
+_Every mileage below is a figure inside `network_overview.geojson`, which is the OTHER
+organizations' sketch. **ATC's `centerline` is not in it** — the Appalachian Trail a hiker
+sees is `trails.geojson`'s, from `export_trails.py`, drawn at every zoom and untouched by
+any of this. What `usfs_trails` publishes under the name `APPALACHIAN TRAIL` is USFS's own
+copies of the segments crossing national forest land, 164 rows and 458 miles, lying under
+the real line — the same duplication §7 already describes as "other organizations' copies
+of the A.T.". A number here that looks like a trail's length is not one._
+
+`_named_lengths`
+summed every row carrying one name inside one organization, which was right for the eleven
+regional stewards it was written against and wrong for a national one: `usfs_trails` is one
+organization covering the country, where a trail name is neither unique nor ever was.
+Measured against release `2026-09-16-4`'s own published artifact, **146 of its names cleared
+`NAMED_TRAIL_THRESHOLD_MILES` and 75 of those were spread over more than 5° of longitude**,
+which no single trail is. `GREEN MOUNTAIN` was 27 unrelated trails in 27 national forests,
+summed to 82 miles and drawn across **50.5° — the width of the country** — with the casing
+and the badge the Long Path was given. **126 of the shipped sketch's 142 through routes were
+USFS's**, so most of what the opening camera drew at a long-distance trail's prominence was
+not a long-distance trail.
+
+`_through_routes` replaces it. Rows are chained where they share tread, within one trail
+identity, and each **chain** is measured against the threshold — so the question "is this one
+trail?" is answered by geometry rather than by a string. It needs no ceiling on how far a
+name may spread: after it, 47 through routes remain and the only four spanning more than 5°
+are the North Country, Appalachian, Continental Divide and Pacific Crest trails, which really
+do. `CHAIN_TOLERANCE_M` is twice `OVERVIEW_SIMPLIFY_TOLERANCE_M` because Douglas-Peucker may
+move a point that far and two rows that met can now sit at twice it; swept from 17 m to
+4,264 m the answer moves between 79 and 87 qualifying chains and never once produces a
+country-spanning one, so it is not a number anybody has to defend.
+
+**The identity is `(source, trail)`, and both halves are load-bearing.** Dropping the source
+was tried and chained two stewards' 30-mile "Ridge Trail"s into one 60-mile through route —
+#1307's own restraint, spent. Dropping the *name* and chaining a whole source by geometry was
+also tried: the Appalachian Trail came out at 514 miles having absorbed `GLENWOOD HORSE` and
+`ALLEGHENY TRAIL`, because in a trail network everything touches eventually. The name says
+which trail; the tread says whether it is one.
+
+`reference/trail_name_aliases.json` is the other half and now feeds the pipeline rather than
+only the client's badge: USFS publishes the Pacific Crest Trail under 81 spellings, and
+folding them into one identity before chaining is what lets the trail qualify as itself. **The
+largest continuous run of it — 424 miles through the Oregon and Washington Cascades — carried
+no spelling that table already listed**, which is why the check that extended it could not
+require one as a seed.
+
+**What it costs, and it is not nothing:** a section its publisher draws disconnected from the
+rest of its trail falls into the unnamed haze. On the same measurement that is 464 of the
+2,139 miles carried by the eight names #1776 lists as real — **all of it other
+organizations' duplicate segments, none of it a trail's own centerline**, and USFS's A.T.
+copies lose none of it. It is still drawn, at haze weight — not cased, not badged, and not
+labelled, and in exactly the same place. Recovering it is
+[#1783](https://github.com/OurHike/OurHike/issues/1783)'s, not this change's.
 **And the badge stops at the waypoint seam (2026-09-14).** The maintainer, reading the
 built map: _"when a user zooms in close enough to see a POI, the trail pills (AT & LP)
 should hide."_ `buildTrailBadgeLayer` now carries `maxzoom: POI_PIN_MIN_ZOOM` — the seam

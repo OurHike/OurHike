@@ -599,6 +599,47 @@ const CORRIDOR_BOUNDS: [[number, number], [number, number]] = [
   [-68.3, 46.34],
 ]
 
+/**
+ * What the app OPENS on, which stopped being the A.T. corridor on 2026-09-30:
+ * "We should start showing the entire US, not just the at corridor" - the
+ * maintainer.
+ *
+ * WHY THIS IS A SEPARATE CONSTANT rather than CORRIDOR_BOUNDS widened.
+ * CORRIDOR_BOUNDS answers two questions and only one of them moved. It is
+ * still the A.T.'s own extent, and `wholeTrailBounds` below hands it to the
+ * elevation chart as the whole of the trail a hiker is walking - widening
+ * that would tell the chart the A.T. runs to California. The opening camera
+ * is the half that changed.
+ *
+ * WHY THE LOWER 48 AND NOT EVERYTHING THE DATA HOLDS. MEASURED 2026-09-30
+ * against the pinned release's network_overview.geojson (2026-09-16-4), which
+ * is what this camera draws: 201 lines, and ALL 201 are centred inside these
+ * bounds. The file's raw extent does reach -150.00 by 61.13 - Anchorage - but
+ * every one of those vertices belongs to a single unnamed `usfs_trails`
+ * aggregate carrying 400,009 points, of which 12,670 are in Alaska. Nothing
+ * badges it and nothing names it. Framing Alaska to hold that one line would
+ * shrink the rest of the country to a thumbnail, so the frame holds every
+ * trail a hiker can actually pick out and the Alaska vertices fall off the
+ * edge. Re-run the count rather than trusting this sentence; if a named
+ * Alaskan trail is ever published, this is the comment that is then wrong.
+ *
+ * WHAT IT COSTS, said plainly because it is visible in the first frame: the
+ * lower 48 is 58.1 degrees of longitude, so on a 390 px phone this fits near
+ * z2.2 against the corridor's z4.9, and the aspect leaves Canada and northern
+ * Mexico in view above and below. The basemap has them - OpenFreeMap's planet
+ * tiles (map/liveTopo.ts) are global, so this is a wider view of a real map
+ * rather than a frame the tiles cannot fill.
+ *
+ * The honesty argument that put the camera on the whole corridor is unchanged
+ * and is why this is the whole country rather than a guess at a region:
+ * before a fix, the app does not know where the hiker is, and a view of
+ * everything it covers says "somewhere on this" without pretending.
+ */
+const UNITED_STATES_BOUNDS: [[number, number], [number, number]] = [
+  [-125.0, 24.5],
+  [-66.9, 49.4],
+]
+
 const EMPTY_BBOX: BoundingBox = { west: 0, south: 0, east: 0, north: 0 }
 
 /** Where a search result lands. Only ever zooms IN: someone already at 16
@@ -1618,7 +1659,7 @@ function App() {
     // moved the map at the moment of choosing; this is the re-fit that
     // used to undo it, and now agrees with it); the corridor otherwise.
     if (defaultPlace !== null) moveMapToPlace(map, defaultPlace)
-    else map.fitBounds(CORRIDOR_BOUNDS, { padding: FIT_PADDING, duration: 0 })
+    else map.fitBounds(UNITED_STATES_BOUNDS, { padding: FIT_PADDING, duration: 0 })
   }, [entering, map, mapTaken, defaultPlace])
 
   // The centerline, the POIs, the elevation profile, and the fetch that puts
@@ -2861,8 +2902,9 @@ function App() {
     rasterFootprint,
   ])
 
-  // A fix moves no camera - see CORRIDOR_BOUNDS. It is read for everything
-  // else: the mile below, the direction of travel, the elevation ribbon.
+  // A fix moves no camera - see UNITED_STATES_BOUNDS. It is read for
+  // everything else: the mile below, the direction of travel, the elevation
+  // ribbon.
   const fix = useMemo(() => {
     if (trailIndex === null || gps.status !== 'located') return null
     return locateOnTrail(trailIndex, gps.at)
@@ -3489,7 +3531,8 @@ function App() {
    * chooses which sentences it produces, and never shows both.
    *
    * `camera === null` IS below the seam: that is the opening view, fitted to
-   * CORRIDOR_BOUNDS, which lands near z4.9 on a phone.
+   * UNITED_STATES_BOUNDS, which lands near z2.2 on a phone - further below the
+   * seam than the corridor's z4.9 was, never above it.
    */
   const belowSeam = camera === null || camera.zoom < POI_PIN_MIN_ZOOM
 
@@ -9062,8 +9105,9 @@ function App() {
    * of the trail wedged into the corner above the card, while the sentence next
    * to it said "the whole trail's topo map lives on your phone". The fit was
    * right and the framing was wrong, which is why this is padding rather than a
-   * different camera: CORRIDOR_BOUNDS still says show all of it, and this says
-   * where "all of it" has to fit.
+   * different camera: the opening bounds still say show all of it - all of the
+   * country now, rather than all of the corridor - and this says where "all of
+   * it" has to fit.
    *
    * Expressed as a fraction of the viewport rather than in pixels because the
    * card is (`ENTRY_CARD_MAX_VIEWPORT_FRACTION`), so the two move together on a
@@ -11315,7 +11359,7 @@ function App() {
                 camera !== null
                   ? undefined
                   : placeView === null
-                    ? CORRIDOR_BOUNDS
+                    ? UNITED_STATES_BOUNDS
                     : placeView.bounds
               }
               boundsPadding={entryFitPadding}

@@ -897,9 +897,11 @@ export const PLACE_SORT_KEY_EXPRESSION = [
  * Everything else that describes terrain is keyed to hiking zooms: the
  * contours fade in over 9-12 and are at flat zero below that, their labels
  * start at 12, the peaks at 10, and OpenMapTiles carries no woodland to fill
- * below roughly z7. The opening view is the whole trail - App.tsx frames
- * CORRIDOR_BOUNDS, which on a phone lands near z4 - so on that view relief is
- * the only thing between the hiker and blank paper.
+ * below roughly z7. The opening view is the whole COUNTRY since 2026-09-30 -
+ * App.tsx frames UNITED_STATES_BOUNDS, near z2.2 on a phone, where it framed
+ * the A.T. corridor at z4.9 - so on that view relief is the only thing
+ * between the hiker and blank paper, and MORE so than when this was written:
+ * every zoom-keyed layer named above is even further from its floor.
  *
  * At 0.35, stretched across a thousand kilometres of DEM, it was not enough to
  * be one: the first thing anyone saw on opening the app was an empty sheet

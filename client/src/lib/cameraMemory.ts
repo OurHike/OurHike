@@ -12,17 +12,17 @@
 //
 // This is a memory of what the hiker is LOOKING AT, not a preference. It has
 // to survive a reload of this tab and it must not survive the tab closing:
-// opening the app fresh belongs on the whole trail (App.tsx's CORRIDOR_BOUNDS
-// and the note above it), and restoring last Tuesday's view over Georgia to
-// someone starting in Maine would be a confident answer to a question nobody
-// asked. `sessionStorage` is exactly that lifetime, which is why the
+// opening the app fresh belongs on everything the map covers (App.tsx's
+// UNITED_STATES_BOUNDS and the note above it - the whole A.T. corridor until
+// 2026-09-30), and restoring last Tuesday's view over Georgia to someone
+// starting in Maine would be a confident answer to a question nobody asked. `sessionStorage` is exactly that lifetime, which is why the
 // preferences in lib/preferences.ts - real, durable choices - live in
 // IndexedDB instead.
 //
 // Everything here is best-effort. Private browsing, a full quota and a
 // hardened embedder all make storage throw on ACCESS rather than on write, so
 // every path is guarded and every failure means the same harmless thing: the
-// map opens on the corridor, exactly as it did before this file existed.
+// map opens on the whole country, exactly as it does with no memory at all.
 
 /** One camera position, the shape App.tsx keeps and MapView opens on. */
 export interface RememberedCamera {

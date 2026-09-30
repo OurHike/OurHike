@@ -397,8 +397,9 @@ describe('the live topographic background', () => {
 })
 
 describe('relief shading, by zoom', () => {
-  // The opening view is the whole trail - App.tsx frames CORRIDOR_BOUNDS,
-  // which lands near z4 - and at that zoom every other terrain layer in this
+  // The opening view is the whole country since 2026-09-30 - App.tsx frames
+  // UNITED_STATES_BOUNDS, near z2.2, where it framed the A.T. corridor at
+  // z4.9 - and at that zoom every other terrain layer in this
   // sheet is switched off: both contour layers are at zero opacity, their
   // labels start at 12, the peaks at 10, and OpenMapTiles carries no woodland
   // to fill below roughly z7. The hillshade is the entire background there, so

@@ -42,7 +42,23 @@
     "colorado-trail",
     "mst"
    ],
-   "detail": "coloradotrail.org returns 403 to the page, the JSON API, the favicon and the apple-touch-icon alike. mountainstoseatrail.org challenges every logo request; its favicon slips through and is the stock WordPress logo."
+   "detail": "coloradotrail.org returns 403 to the page, the JSON API, the favicon and the apple-touch-icon alike. mountainstoseatrail.org challenges every logo request; its favicon slips through and is the stock WordPress logo. NOT ABSENT, AND NOW NOT UNFOUND EITHER - both marks were reached by another route on 2026-09-30 and both were still left out, on ink rather than on access.",
+   "found_but_too_thin": {
+    "colorado-trail": {
+     "found_at": "https://imagecdn.mightycause.com/ - the Colorado Trail Foundation's own logo as it supplies it to its ColoradoGives profile",
+     "pixels": "1146x1146",
+     "ink_at_18px": 0.06,
+     "peak_contrast": 11.4,
+     "why_not": "0.06 against the A.T.'s 0.17 on the same run. It is a combination lockup - a dark-green double-peaked triangle over two lines of type - and most of the square is white margin, so at 18px the type is mush and the symbol is small. A symbol-only crop would clear the bar and is NOT taken here: `permission_meanings.no_modification` is the rule, and cropping somebody's lockup down to the part we prefer is the kind of change that needs asking rather than deciding. The ® on the mark is a second reason to ask."
+    },
+    "mst": {
+     "found_at": "https://files.nc.gov/trails/.../MST_Blaze.png - NC Division of Parks and Recreation, the state's own marker rather than the Friends' logo",
+     "pixels": "400x400",
+     "ink_at_18px": 0.02,
+     "peak_contrast": 3.6,
+     "why_not": "0.02 ink and a peak of 3.6, which is the thinnest thing this file has measured and barely clears the 3:1 the ink share is counted against at all. It is a white disc with a thin black ring and the trail's name curved around it - legible on a signpost, and at 18px a pale circle. Availability was the problem and is solved; legibility is the problem now and is not."
+    }
+   }
   },
   "site_compromised": {
    "trails": [
@@ -61,7 +77,10 @@
     "mid-state-pa",
     "msg"
    ],
-   "detail": "Dead domains, a header baked into a flat photograph, a wordmark tile, or - for the Monadnock-Sunapee Greenway - a landscape illustration measuring 0.02 ink, the thinnest thing tested."
+   "detail": "Dead domains, a header baked into a flat photograph, a wordmark tile, or - for the Monadnock-Sunapee Greenway - a landscape illustration measuring 0.02 ink, the thinnest thing tested.",
+   "re_fetched_2026_09_30": {
+    "msg": "RE-FETCHED, NOT NEWLY FOUND, and left where it was. The 2026-09-30 sweep returned msgtc.org's logo.png - the same file the 2026-09-29 sweep already had and this group already describes. Measured again: 0.03 ink at 5.3 peak against the A.T.'s 0.17 / 11.0. Recorded so the third sweep does not fetch it a third time and think it has found something."
+   }
   },
   "club_mark_only": {
    "trails": [
@@ -70,7 +89,8 @@
     "sd-centennial",
     "baker"
    ],
-   "detail": "The steward publishes a club wordmark and no trail symbol. A club's mark is not the trail's, so these keep an empty slot rather than wear somebody else's badge."
+   "detail": "The steward publishes a club wordmark and no trail symbol. A club's mark is not the trail's, so these keep an empty slot rather than wear somebody else's badge. Knobstone is the one worth re-reading - see `the_knobstone_question`.",
+   "the_knobstone_question": "@unvalidated WHETHER THIS GROUP'S RULE SHOULD HOLD FOR KNOBSTONE. Found 2026-09-30 at https://www.knobstonehikingtrail.org/wp-content/uploads/2015/03/khta-logo.png, 82x150, and it is the only mark this whole sweep returned that CLEARS THE BAR - 0.53 ink at 16.5 peak against the A.T.'s 0.17 / 11.0. An Indiana silhouette with a trail line and a river, over 'KHTA'. WHY IT IS NOT IN `marks` ANYWAY: this is the Knobstone Hiking Trail Association's mark, and trail_orgs.json records the Hoosier Hikers Council as the steward of record - so shipping it would put one body's mark on a trail this repository attributes to another. It is a NARROWER case than the rest of this group, though, because KHTA exists for this trail alone where the Hoosier Hikers Council is a general Indiana club. WHAT WOULD SETTLE IT: which of the two the trail's badge should name, which is a question about the catalogue rather than about the image, and the maintainer's to answer. The site footer reads '(c) 2026 All Rights Reserved'; nothing was asked and nothing was given, which is true of 33 of the rows that do ship."
   },
   "no_steward_no_mark": {
    "trails": [
@@ -89,7 +109,8 @@
   },
   "_resolved": {
    "pct": "2026-09-30. `permission_stated` held one trail and is gone. PCTA's media page still requires written permission for the PCT emblem, the PCT diamond and the PCTA logo, and still nobody has written - what changed is that the mark did not have to come from PCTA. The US Forest Service administers the trail and publishes the emblem on its own page, so the row below is the federal copy under 17 U.S.C. 105. sources.json's `org_marks.trail_marks.pct` carries the basis, including the insignia question that copyright does not answer."
-  }
+  },
+  "_the_2026_09_30_sweep": "A SECOND SWEEP RAN ON 2026-09-30 after the maintainer said to go and get the rest, and it is recorded per group below rather than summarised, because 'not found' and 'found and not shipped' are different facts and the groups were only carrying the first. SEVEN MARKS CAME BACK AND NONE OF THEM SHIPPED. Two are federal insignia the maintainer decided to leave out (see `federally_protected`). Three measure below the A.T.'s bar by enough that the badge would draw a smudge - the bar is `_ink_at_18px`, and every figure below was measured on the 2026-09-30 re-implementation against that same run's A.T. control of 0.17 ink / 11.0 peak, NOT against the 2026-09-29 column. One is a wordmark, which is the thing the maintainer ruled out twice. One clears the bar and raises a different question, in `club_mark_only`. The sweep's own account of what it could not reach at all is worth keeping too: web.archive.org is blocked from this sandbox, so the dead-domain route is closed here."
  },
  "_row_count": 36,
  "_clears_the_at": 25,

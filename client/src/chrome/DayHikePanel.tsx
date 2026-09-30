@@ -91,13 +91,9 @@ import {
 } from '../lib/mapLabelLayers'
 import type { PaceEstimate } from '../lib/pace'
 import { legLabel } from '../lib/planDisplay'
-import {
-  formatDistance,
-  formatElevation,
-  formatShortDistance,
-  MIN_STATED_FEET,
-} from '../lib/units'
+import { formatDistance, formatElevation, formatShortDistance } from '../lib/units'
 import type { UnitSystem } from '../lib/units'
+import { formatWaterDistance } from '../lib/waterProvenance'
 import { HIKER_MODE_LABELS } from '../lib/hikerMode'
 import { StepRail } from './StepRail'
 import { SheetGripLoader } from './SheetGripLoader'
@@ -487,12 +483,14 @@ function RouteRowItem({
             <>
               {' '}
               &middot; water{' '}
-              {formatShortDistance(
-                // The floor the card applies to the same published column, from
-                // the one home both now read (lib/units.ts). A stop claiming a
-                // hiker walks zero feet to water reads as a bug rather than as
-                // the very short walk it asserts.
-                Math.max(MIN_STATED_FEET, row.stop.waterDistanceFt),
+              {/* Floored and marked in the one home the card reads too
+                  (lib/waterProvenance.ts): a stop claiming a hiker walks
+                  zero feet to water reads as a bug rather than as the very
+                  short walk it asserts, and a steward's estimate reads as
+                  "~250 ft" here exactly as it does on the card (#1728). */}
+              {formatWaterDistance(
+                row.stop.waterDistanceFt,
+                row.stop.waterDistanceSource,
                 units,
               )}
             </>

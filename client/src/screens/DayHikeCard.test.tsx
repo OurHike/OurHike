@@ -689,6 +689,17 @@ describe('step 3 of the spine (#1373, frames 5a and 5c)', () => {
     expect(screen.queryByText(/water \d/)).toBeNull()
   })
 
+  it('marks a steward’s estimate of the water distance with a tilde (#1728)', () => {
+    // The same mark the card and the builder's rows print for the same
+    // published column - lib/waterProvenance.ts is the one home.
+    renderCard({ stops: [{ ...STOP, waterDistanceSource: 'OSA_Field_Estimate' }] })
+
+    const section = screen
+      .getByRole('heading', { name: 'Shelters & campsites' })
+      .closest('section') as HTMLElement
+    expect(section).toHaveTextContent('water ~300 ft')
+  })
+
   it('offers the name as a field, and keeps it a heading without a way to change it', async () => {
     const user = userEvent.setup()
     const onRename = vi.fn()

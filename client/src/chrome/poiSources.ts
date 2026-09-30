@@ -23,11 +23,16 @@ export const SOURCE_LABELS: Record<string, string> = {
   atc_parking: 'the Appalachian Trail Conservancy’s parking data',
   atc_privies: 'the Appalachian Trail Conservancy’s privy data',
   atc_communities: 'the Appalachian Trail Conservancy’s list of A.T. Community towns',
-  // Not "water data": the ATC measured how FAR water is from the site, never
-  // where it is, and the point carrying this label sits at the site itself
-  // (#694). The wording keeps the claim the size it really is, the same way
-  // the Communities line refuses to say "the ATC" plain for a proxy.
-  atc_csi: 'the Appalachian Trail Conservancy’s distance-to-water measurements',
+  // Not "water data": ATC states how FAR water is from the site, never where
+  // it is, and the point carrying this label sits at the site itself (#694).
+  // The wording keeps the claim the size it really is, the same way the
+  // Communities line refuses to say "the ATC" plain for a proxy. "Index"
+  // rather than "measurements" since #1728: the layer is ATC's Campsite
+  // Sustainability Index, and 42 of the 305 distances it publishes are a
+  // steward's estimate (lib/waterProvenance.ts), so "measurements" under a
+  // sentence that had just said "estimated" was this line outrunning its
+  // source. The maintainer chose "index" by poll, 2026-09-30.
+  atc_csi: 'the Appalachian Trail Conservancy’s distance-to-water index',
   opentrail_at: 'opentrail.org, tagged by hikers',
 }
 

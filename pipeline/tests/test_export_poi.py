@@ -670,7 +670,9 @@ def test_export_poi_exports_without_capacity_when_the_reference_file_is_absent(t
 
 def _write_water_distance_file(path, records):
     """A stand-in for reference/water_distance.json, same shape
-    build_water_distance.py writes."""
+    build_water_distance.py writes: `provenance` is CSI's own
+    `Nearest_Water_Source` value, and a record without one is what a file
+    written before #1728 carried."""
     path.write_text(json.dumps({"sites": records}))
 
 
@@ -692,14 +694,20 @@ def test_export_poi_carries_water_distance_onto_shelters_and_campsites(tmp_path,
     _write_water_distance_file(
         water_path,
         [
-            {"layer": "shelters", "atc_global_id": "shelter-glob-1", "distance_ft": 120},
-            {"layer": "campsites", "atc_global_id": "campsite-glob-1", "distance_ft": 100},
+            {"layer": "shelters", "atc_global_id": "shelter-glob-1", "distance_ft": 120, "provenance": "FarOut"},
+            {
+                "layer": "campsites",
+                "atc_global_id": "campsite-glob-1",
+                "distance_ft": 100,
+                "provenance": "OSA_Field_Estimate",
+            },
             # A refusal row, exactly as build_water_distance.py writes one:
             # null distance, reason stated. Must publish nothing.
             {
                 "layer": "shelters",
                 "atc_global_id": "shelter-glob-absent",
                 "distance_ft": None,
+                "provenance": None,
                 "unresolved": "no CSI row within 150 m",
             },
         ],
@@ -713,13 +721,19 @@ def test_export_poi_carries_water_distance_onto_shelters_and_campsites(tmp_path,
 
     shelter_props = json.loads((out_dir / "shelter.geojson").read_text())["features"][0]["properties"]
     assert shelter_props["water_distance_ft"] == 120
+    # And how ATC arrived at it, verbatim (#1728): the phone prints a
+    # steward's estimate with a tilde and a measurement without, and can only
+    # tell them apart if the difference reaches it as a column.
+    assert shelter_props["water_distance_source"] == "FarOut"
     # The column's own number, unconverted, through the same nearby_parts a
-    # folded water point would use - so one card cannot say it two ways.
-    assert _json_prop(shelter_props["nearby"]) == [{"phrase": "water", "distance_ft": 120.0}]
+    # folded water point would use - so one card cannot say it two ways. The
+    # provenance rides the part for the same sentence.
+    assert _json_prop(shelter_props["nearby"]) == [{"phrase": "water", "distance_ft": 120.0, "source": "FarOut"}]
 
     campsite_props = json.loads((out_dir / "campsite.geojson").read_text())["features"][0]["properties"]
     assert campsite_props["water_distance_ft"] == 100
-    assert _json_prop(campsite_props["nearby"]) == [{"phrase": "water", "distance_ft": 100.0}]
+    assert campsite_props["water_distance_source"] == "OSA_Field_Estimate"
+    assert _json_prop(campsite_props["nearby"]) == [{"phrase": "water", "distance_ft": 100.0, "source": "OSA_Field_Estimate"}]
 
     # Real water POIs never carry the column - it is a fact about a shelter
     # or campsite, not about the water point itself. The members synthesized
@@ -730,6 +744,38 @@ def test_export_poi_carries_water_distance_onto_shelters_and_campsites(tmp_path,
     for feature in water_fc["features"]:
         if feature["properties"]["source"] != export_poi.CSI_WATER_SOURCE:
             assert feature["properties"].get("water_distance_ft") is None
+            assert feature["properties"].get("water_distance_source") is None
+
+
+def test_export_poi_publishes_no_provenance_where_the_reference_file_carried_none(tmp_path, monkeypatch, con):
+    """A water_distance.json written before #1728 states a distance and
+    nothing about where it came from. The figure still publishes - it is the
+    same figure it always was - and the provenance is NULL and the nearby
+    part carries no `source` key, so the phone prints the number in the voice
+    it always has rather than in a voice this export guessed at. Absent means
+    unknown, never "measured"."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+    water_path = tmp_path / "water_distance.json"
+    _write_water_distance_file(water_path, [{"layer": "shelters", "atc_global_id": "shelter-glob-1", "distance_ft": 120}])
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+    monkeypatch.setattr(export_poi, "WATER_DISTANCE_PATH", water_path)
+
+    export_poi.main()
+
+    shelter_props = json.loads((out_dir / "shelter.geojson").read_text())["features"][0]["properties"]
+    assert shelter_props["water_distance_ft"] == 120
+    assert shelter_props["water_distance_source"] is None
+    assert _json_prop(shelter_props["nearby"]) == [{"phrase": "water", "distance_ft": 120.0}]
+    water_fc = json.loads((out_dir / "water.geojson").read_text())
+    [synthesized] = [f["properties"] for f in water_fc["features"] if f["properties"]["source"] == export_poi.CSI_WATER_SOURCE]
+    assert synthesized["water_distance_source"] is None
+    # The one thing true of every row, and nothing more.
+    assert synthesized["description"].startswith("ATC's index gives how far water is from Test Shelter;")
 
 
 def test_export_poi_synthesizes_a_water_member_where_the_sentence_fired(tmp_path, monkeypatch, con):
@@ -750,7 +796,9 @@ def test_export_poi_synthesizes_a_water_member_where_the_sentence_fired(tmp_path
     out_dir = tmp_path / "processed" / "poi"
     _write_fixture_sources(raw_dir)
     water_path = tmp_path / "water_distance.json"
-    _write_water_distance_file(water_path, [{"layer": "shelters", "atc_global_id": "shelter-glob-1", "distance_ft": 120}])
+    _write_water_distance_file(
+        water_path, [{"layer": "shelters", "atc_global_id": "shelter-glob-1", "distance_ft": 120, "provenance": "FarOut"}]
+    )
 
     monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
     monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
@@ -766,10 +814,14 @@ def test_export_poi_synthesizes_a_water_member_where_the_sentence_fired(tmp_path
     assert synthesized["name"] == "Water near Test Shelter"
     assert synthesized["confidence"] == "low"
     assert synthesized["water_distance_ft"] == 120
+    # The anchor's provenance, on the member whose chip prints the figure
+    # (#1728) - so the chip can say "~" exactly where the anchor's line does.
+    assert synthesized["water_distance_source"] == "FarOut"
     # Inherited coordinates, and a description that says so in place of them.
     assert (synthesized["lat"], synthesized["lon"]) == (shelter_props["lat"], shelter_props["lon"])
     assert synthesized["description"] == (
-        "ATC measured how far water is from Test Shelter; the spot itself is not mapped, so this point sits on the shelter."
+        "ATC measured how far the nearest water waypoint in FarOut is from Test Shelter; "
+        "the spot itself is not mapped, so this point sits on the shelter."
     )
     # And no figure in it, in either unit - the chip carries that (#625).
     assert not any(character.isdigit() for character in synthesized["description"])
@@ -781,7 +833,51 @@ def test_export_poi_synthesizes_a_water_member_where_the_sentence_fired(tmp_path
     assert shelter_props["site_id"] == shelter_props["id"]
     # The anchor's own parts still carry the stated distance, not the zero its
     # member's inherited position would measure.
-    assert _json_prop(shelter_props["nearby"]) == [{"phrase": "water", "distance_ft": 120.0}]
+    assert _json_prop(shelter_props["nearby"]) == [{"phrase": "water", "distance_ft": 120.0, "source": "FarOut"}]
+
+
+@pytest.mark.parametrize(
+    ("provenance", "claim"),
+    [
+        ("FarOut", "ATC measured how far the nearest water waypoint in FarOut is from Test Shelter"),
+        ("NHDP_HR_Stream", "ATC measured how far the nearest USGS-mapped stream is from Test Shelter"),
+        ("NHDP_HR_Pond", "ATC measured how far the nearest USGS-mapped pond is from Test Shelter"),
+        ("OSA_Field_Estimate", "An ATC steward estimated how far water is from Test Shelter"),
+        # A value build_water_distance.py's allowlist admits before
+        # WATER_PROVENANCE_CLAIMS learns it: the sentence asserts only what is
+        # true of every row rather than promoting it to "measured".
+        ("Something_ATC_Adds_Later", "ATC's index gives how far water is from Test Shelter"),
+    ],
+)
+def test_export_poi_words_the_synthesized_members_sentence_by_how_atc_arrived_at_the_figure(
+    tmp_path, monkeypatch, con, provenance, claim
+):
+    """ "ATC measured" was the one wording for every synthesized member until
+    #1728, and on the 42 `OSA_Field_Estimate` rows it was not true: those are
+    a steward's round number, typically 250 or 300. The verb is now the
+    claim's real size, per provenance, and the figure stays out of the
+    sentence in every case (#625)."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+    water_path = tmp_path / "water_distance.json"
+    _write_water_distance_file(
+        water_path,
+        [{"layer": "shelters", "atc_global_id": "shelter-glob-1", "distance_ft": 250, "provenance": provenance}],
+    )
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+    monkeypatch.setattr(export_poi, "WATER_DISTANCE_PATH", water_path)
+
+    export_poi.main()
+
+    water_fc = json.loads((out_dir / "water.geojson").read_text())
+    [synthesized] = [f["properties"] for f in water_fc["features"] if f["properties"]["source"] == export_poi.CSI_WATER_SOURCE]
+    assert synthesized["description"] == f"{claim}; the spot itself is not mapped, so this point sits on the shelter."
+    assert not any(character.isdigit() for character in synthesized["description"])
+    assert synthesized["water_distance_source"] == provenance
 
 
 def test_export_poi_synthesizes_from_the_anchor_only_never_from_a_member(tmp_path, monkeypatch, con):
@@ -830,7 +926,10 @@ def test_export_poi_keeps_far_water_out_of_the_nearby_sentence(tmp_path, monkeyp
     out_dir = tmp_path / "processed" / "poi"
     _write_fixture_sources(raw_dir)
     water_path = tmp_path / "water_distance.json"
-    _write_water_distance_file(water_path, [{"layer": "shelters", "atc_global_id": "shelter-glob-1", "distance_ft": 1648}])
+    _write_water_distance_file(
+        water_path,
+        [{"layer": "shelters", "atc_global_id": "shelter-glob-1", "distance_ft": 1648, "provenance": "OSA_Field_Estimate"}],
+    )
 
     monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
     monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
@@ -840,6 +939,10 @@ def test_export_poi_keeps_far_water_out_of_the_nearby_sentence(tmp_path, monkeyp
 
     shelter_props = json.loads((out_dir / "shelter.geojson").read_text())["features"][0]["properties"]
     assert shelter_props["water_distance_ft"] == 1648
+    # The provenance publishes with the column wherever the column does: a
+    # day hike's stop row prints this figure with no nearby gate in front of
+    # it, and needs the tilde there too (#1728).
+    assert shelter_props["water_distance_source"] == "OSA_Field_Estimate"
     assert "water" not in shelter_props["description"]
     # And no synthesized member either (#694): a site is a sub-150 m place,
     # and a part half a kilometre off is not a part of it.
@@ -879,6 +982,9 @@ def test_export_poi_never_says_water_twice_when_a_real_point_already_folded(tmp_
     # The folded point's own measurement - ~45 m, so ~147 ft - and not the
     # reference file's 120 ft.
     assert waters[0]["distance_ft"] == pytest.approx(147, abs=2)
+    # And no provenance on it: a measured position is not a stated figure,
+    # and the reference file's provenance belongs to the figure it kept out.
+    assert "source" not in waters[0]
     # And no synthesized member beside the real one (#694): the site already
     # holds an actual mapped point, and it speaks for water here.
     water_fc = json.loads((out_dir / "water.geojson").read_text())
@@ -934,9 +1040,10 @@ def test_export_poi_exported_properties_are_exactly_the_declared_columns(tmp_pat
     # which is exactly where an off-by-one would land the wrong value.
     assert props["confidence"] == CONFIDENCE_HIGH
     assert props["capacity"] == 8
-    # The column between capacity and description: present as a key, NULL
-    # with no reference file - so a one-place shift cannot hide in it.
-    assert props.get("water_distance_ft") is None
+    # The columns between capacity and description: present as keys, NULL
+    # with no reference file - so a one-place shift cannot hide in them.
+    assert "water_distance_ft" in props and props["water_distance_ft"] is None
+    assert "water_distance_source" in props and props["water_distance_source"] is None
     assert props["photo_key"] == f"photos/{SHELTER_DIGEST}.jpg"
     assert props["photo_author"] == "Jane Doe"
     assert props["name"] == "Test Shelter"

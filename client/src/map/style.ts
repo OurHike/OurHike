@@ -1290,6 +1290,90 @@ function trailLinesDrawn(map: MapLibreMap): boolean {
   return map.isSourceLoaded(TRAILS_SOURCE_ID)
 }
 
+/**
+ * How long the pins and the network sketch wait for the trail line before
+ * they are attached anyway (#1727).
+ *
+ * `@unvalidated`: picked, not measured. MapLibre counts a source that FAILED
+ * to load as loaded, so a line that 404s or is refused releases the wait at
+ * once and this only ever bounds a hang - a worker that never answers. The
+ * line's own worker work is about a second on a laptop and three to four on
+ * a phone (LAUNCH_BUDGET.md §7.1's ratio), so ten seconds is comfortably past
+ * any launch that is still going to draw it. What would settle it is the
+ * per-source `sourcedata` timeline on a real phone.
+ */
+export const TRAIL_LINE_WAIT_MS = 10_000
+
+/** The maps whose trail line has reported loaded once. After that the wait
+ *  below is never taken again on that map: a legend tap or a notes refresh
+ *  re-pushes the pins straight away, as it always did. */
+const trailLineSeen = new WeakSet<MapLibreMap>()
+
+/**
+ * Runs `attach` once this map has drawn its trail line, or at once where
+ * there is no line to wait for - and returns a detach (#1727).
+ *
+ * MapLibre tiles every GeoJSON source in one worker, in the order their data
+ * arrives. The shell hands the map the trail line first, but the 28,913
+ * waypoints and the 9.7 MB network sketch land a few hundred milliseconds
+ * later, before the line's own tiles have been cut - and the worker takes
+ * each `loadData` whole. Measured 2026-09-17 on a warm laptop launch at 1x
+ * (LAUNCH_BUDGET.md §7.1): the line's source loaded at 6,155 ms, after the
+ * pins (1,811 ms) and the sketch (5,411 ms); with the sketch out of the way
+ * it loaded at 3,142 ms, and its own parse and index cost about 250 ms. So
+ * the line is late because of what is queued in front of it, and this puts
+ * it first: the sketch and the first push of the pins wait until the trails
+ * source reports its tiles drawn, then go through unchanged.
+ *
+ * `trailLinesHeld` false means the trails source holds the style's empty
+ * placeholder, which loads instantly and must not be waited on - a first run
+ * before its release, or a phone with nothing on it, attaches exactly as it
+ * did. Once a map's line has been seen drawn the wait is never taken again
+ * on it; and a line that never reports - {@link TRAIL_LINE_WAIT_MS} - lets
+ * the attach through rather than holding the pins off the map for good.
+ */
+export function afterTrailLineDrawn(
+  map: MapLibreMap,
+  trailLinesHeld: boolean,
+  attach: () => () => void,
+): () => void {
+  if (trailLineSeen.has(map)) return attach()
+  if (!trailLinesHeld) return attach()
+  if (trailLinesDrawn(map)) {
+    trailLineSeen.add(map)
+    return attach()
+  }
+
+  let detachInner: (() => void) | null = null
+  let waiting = true
+  const stop = () => {
+    if (!waiting) return
+    waiting = false
+    map.off('sourcedata', onSourceData)
+    map.off('idle', check)
+    clearTimeout(timer)
+  }
+  function go(drawn: boolean) {
+    stop()
+    if (drawn) trailLineSeen.add(map)
+    detachInner = attach()
+  }
+  function check() {
+    if (trailLinesDrawn(map)) go(true)
+  }
+  function onSourceData(event: MapSourceDataEvent) {
+    if (event.sourceId === TRAILS_SOURCE_ID) check()
+  }
+  const timer = setTimeout(() => go(false), TRAIL_LINE_WAIT_MS)
+  map.on('sourcedata', onSourceData)
+  map.on('idle', check)
+
+  return () => {
+    stop()
+    detachInner?.()
+  }
+}
+
 /** Whether the A.T.'s own sketch draws as an untaken line: it does whenever
  *  the A.T.'s through-route source is not in the chosen system - nothing
  *  taken, or some other trail taken (#1306). */
@@ -3010,13 +3094,24 @@ export function buildMapStyle({
       // trail's name cannot both be placed, the one the map is about is the
       // one that should survive. Same layer, same expressions, same opacity
       // rule; only the id and the source differ.
+      //
+      // FROM THE SEAM, NOT FROM TRAIL_LABEL_MIN_ZOOM (#1727). Below
+      // CORRIDOR_MAX_ZOOM the network is the sketch, whose layers stop there
+      // and carry no names; the tiles were cut from z9 until #1615, so a
+      // label layer starting at z4 asked for nothing. The cut starts at z5
+      // now, and a layer that is visible at z5 marks its source `used`, so a
+      // laptop's opening camera (z5.2-5.6 at 1728x1080) fetched and parsed
+      // the z5 network tiles - the same lines the sketch was already
+      // drawing - for a label layer with almost nothing to place. Reasoned
+      // from MapLibre's `Style.update`/`coveringTiles`, measured only as
+      // tile bytes (1.2-1.3 MB per z5 tile along the A.T., 2026-09-30).
       ...onSourceLayer(
         [
           buildTrailLabelLayer(
             NEARBY_TRAILS_SOURCE_ID,
             trailCasingColor(appearance),
             mapBackdrop(appearance),
-            TRAIL_LABEL_MIN_ZOOM,
+            Math.max(TRAIL_LABEL_MIN_ZOOM, CORRIDOR_MAX_ZOOM),
             NEARBY_TRAIL_LABEL_LAYER_ID,
             chosen,
           ),
@@ -3174,13 +3269,21 @@ export function buildMapStyle({
           ...layer,
           maxzoom: Math.min(layer.maxzoom ?? CORRIDOR_MAX_ZOOM, CORRIDOR_MAX_ZOOM),
         })),
+      // THE TILES' CLOSURE STARTS WHERE THE SKETCH'S ENDS (#1727) - the
+      // mirror of the clamp above it. Uncapped, the band and the trace had
+      // no minzoom at all, which since the z5 cut (#1615) kept the network
+      // source `used` at the corridor camera for a mark the sketch's own
+      // band was already drawing.
       ...onSourceLayer(
         buildClosureLayers(NEARBY_TRAILS_SOURCE_ID, {
           ground: tapeGround,
           ink: closureInkColor,
           bandId: NEARBY_LONG_TERM_CLOSURE_LAYER_ID,
           filter: LONG_TERM_CLOSED_FILTER,
-        }),
+        }).map((layer) => ({
+          ...layer,
+          minzoom: Math.max(layer.minzoom ?? 0, CORRIDOR_MAX_ZOOM),
+        })),
         NETWORK_TILES_LAYER,
       ),
       ...buildClosureLayers(CLOSURE_SOURCE_ID, {

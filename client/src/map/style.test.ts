@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   ATC_UPDATE_BAND_LAYER_IDS,
   ATC_UPDATE_LAYER_ID,
@@ -96,6 +96,8 @@ import {
   DARK_INKED_BLAZE_LAYER_IDS,
   CLOSURE_BAND_IDS,
   closureInk,
+  afterTrailLineDrawn,
+  TRAIL_LINE_WAIT_MS,
 } from './style'
 import {
   POSITION_ACCURACY_LAYER_ID,
@@ -1761,11 +1763,15 @@ describe('the trails other organizations maintain (#950)', () => {
     // whoever's trail it is. OPRHP publishes the status
     // (export_nearby_trails.py's `trail_status`) and lib/closureStyle.ts's
     // filter is what reads it.
+    // ... and from the seam up (#1727): below it the sketch's own band is
+    // the tape, and a band with no minzoom kept the tiles loading at the
+    // corridor camera for nothing.
     expect(layer(NEARBY_LONG_TERM_CLOSURE_LAYER_ID)).toEqual({
       ...layer(LONG_TERM_CLOSURE_LAYER_ID),
       id: NEARBY_LONG_TERM_CLOSURE_LAYER_ID,
       source: NEARBY_TRAILS_SOURCE_ID,
       'source-layer': NETWORK_TILES_LAYER,
+      minzoom: CORRIDOR_MAX_ZOOM,
     })
   })
 
@@ -1798,6 +1804,17 @@ describe('the network overview sketch (#1135)', () => {
     expect(layer(NETWORK_OVERVIEW_LAYER_ID).maxzoom).toBe(CORRIDOR_MAX_ZOOM)
     expect(layer(NETWORK_OVERVIEW_CLOSURE_LAYER_ID).maxzoom).toBe(CORRIDOR_MAX_ZOOM)
     expect(layer(NEARBY_BLAZE_LAYER_ID).minzoom).toBe(CORRIDOR_MAX_ZOOM)
+    // EVERY layer on the tiles starts at the seam, the names and the closure
+    // included (#1727): one visible layer below it marks the source `used`,
+    // and since the z5 cut (#1615) that had a laptop's opening camera
+    // fetching and parsing the z5 network tiles beside the sketch of the
+    // same lines - 1.2-1.3 MB a tile along the A.T., measured 2026-09-30.
+    for (const spec of style().layers) {
+      if (!('source' in spec) || spec.source !== NEARBY_TRAILS_SOURCE_ID) continue
+      expect(spec.minzoom, `${spec.id} starts below the seam`).toBeGreaterThanOrEqual(
+        CORRIDOR_MAX_ZOOM,
+      )
+    }
   })
 
   it('sits under everything the A.T. draws, its own sketch included', () => {
@@ -3177,5 +3194,81 @@ describe("the hiker's mark, over everything (#1581)", () => {
 
     expect(inkOf('light')).toBe(POSITION_INKS.day.ink)
     expect(inkOf('dark')).toBe(POSITION_INKS.night.ink)
+  })
+})
+
+describe('afterTrailLineDrawn (#1727)', () => {
+  it('attaches when the trails source reports loaded, and not before', () => {
+    const m = new MockMap({})
+    m.sourceIds = [TRAILS_SOURCE_ID]
+    const detachInner = vi.fn()
+    const attach = vi.fn(() => detachInner)
+
+    afterTrailLineDrawn(m as never, true, attach)
+    expect(attach).not.toHaveBeenCalled()
+
+    m.loadedSources.add(TRAILS_SOURCE_ID)
+    m.emit('sourcedata', { sourceId: TRAILS_SOURCE_ID })
+    expect(attach).toHaveBeenCalledTimes(1)
+    // And stops listening: a later sourcedata is not a second attach.
+    m.emit('sourcedata', { sourceId: TRAILS_SOURCE_ID })
+    expect(attach).toHaveBeenCalledTimes(1)
+    expect(m.listenerCount('sourcedata')).toBe(0)
+    expect(m.listenerCount('idle')).toBe(0)
+  })
+
+  it('never waits on the same map twice', () => {
+    const m = new MockMap({})
+    m.sourceIds = [TRAILS_SOURCE_ID]
+    m.loadedSources.add(TRAILS_SOURCE_ID)
+    afterTrailLineDrawn(m as never, true, () => () => {})
+    // The line's tiles load again after a pan, and a second attach - a
+    // legend tap - must not wait for them.
+    m.loadedSources.delete(TRAILS_SOURCE_ID)
+
+    const attach = vi.fn(() => () => {})
+    afterTrailLineDrawn(m as never, true, attach)
+    expect(attach).toHaveBeenCalledTimes(1)
+  })
+
+  it('attaches anyway once TRAIL_LINE_WAIT_MS has passed, so a line that never reports cannot hold the pins off the map', () => {
+    vi.useFakeTimers()
+    try {
+      const m = new MockMap({})
+      m.sourceIds = [TRAILS_SOURCE_ID]
+      const attach = vi.fn(() => () => {})
+      afterTrailLineDrawn(m as never, true, attach)
+
+      vi.advanceTimersByTime(TRAIL_LINE_WAIT_MS - 1)
+      expect(attach).not.toHaveBeenCalled()
+      vi.advanceTimersByTime(1)
+      expect(attach).toHaveBeenCalledTimes(1)
+      expect(m.listenerCount('sourcedata')).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('detaches the inner attach, and the wait, whichever is in progress', () => {
+    vi.useFakeTimers()
+    try {
+      const waiting = new MockMap({})
+      waiting.sourceIds = [TRAILS_SOURCE_ID]
+      const attach = vi.fn(() => () => {})
+      const detach = afterTrailLineDrawn(waiting as never, true, attach)
+      detach()
+      vi.advanceTimersByTime(TRAIL_LINE_WAIT_MS)
+      expect(attach).not.toHaveBeenCalled()
+      expect(waiting.listenerCount('sourcedata')).toBe(0)
+
+      const drawn = new MockMap({})
+      drawn.sourceIds = [TRAILS_SOURCE_ID]
+      drawn.loadedSources.add(TRAILS_SOURCE_ID)
+      const detachInner = vi.fn()
+      afterTrailLineDrawn(drawn as never, true, () => detachInner)()
+      expect(detachInner).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

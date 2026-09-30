@@ -47,6 +47,8 @@ import {
   liveTopoLayers,
   sheetPalette,
   sheetVariant,
+  CONTOUR_INDEX_MIN_ZOOM,
+  CONTOUR_MINOR_MIN_ZOOM,
 } from './liveTopo'
 import { MAP_STYLE_VALUES } from '../lib/userPreferences'
 import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec'
@@ -1576,5 +1578,37 @@ describe('attachSheetAppearance', () => {
     expect(
       m.paintProperties.get(`${LIVE_TOPO_LAYER_IDS.contourLabel}/text-halo-width`),
     ).toBe(1.8)
+  })
+})
+
+describe('the contour layers are out of the style below their fade (#1727)', () => {
+  // A layer at opacity 0 is still a layer: MapLibre marks its source `used`
+  // and the DEM worker cuts contour tiles at every zoom the camera reaches,
+  // in the same worker queue as the trail line. `minzoom` takes the layer
+  // out of the style where its ramp is 0 anyway.
+  const byId = (id: string) =>
+    liveTopoLayers({ terrain: TERRAIN, units: 'imperial' }).find(
+      (layer) => layer.id === id,
+    ) as {
+      minzoom?: number
+    }
+
+  it('starts each contour layer at its minzoom', () => {
+    expect(byId(LIVE_TOPO_LAYER_IDS.contour).minzoom).toBe(CONTOUR_MINOR_MIN_ZOOM)
+    expect(byId(LIVE_TOPO_LAYER_IDS.contourIndex).minzoom).toBe(CONTOUR_INDEX_MIN_ZOOM)
+  })
+
+  it('puts the minzoom at the earliest fade start of any sheet, so no sheet loses a contour it drew', () => {
+    // The style is built once and repainted in place (attachSheetAppearance
+    // replays the ramps, never the zoom range), so the floor has to be the
+    // earliest start across every variant - ridgeline's, one zoom down.
+    const variants = [
+      ...Object.values(SHEET_VARIANTS).flatMap((pair) => [pair.day, pair.night]),
+      SHEET_VARIANT_RED,
+    ]
+    const earliest = (pick: 'minor' | 'index') =>
+      Math.min(...variants.map((variant) => contourFadeZooms(variant)[pick][0]))
+    expect(CONTOUR_MINOR_MIN_ZOOM).toBe(earliest('minor'))
+    expect(CONTOUR_INDEX_MIN_ZOOM).toBe(earliest('index'))
   })
 })

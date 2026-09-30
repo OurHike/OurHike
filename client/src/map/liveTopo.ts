@@ -1010,6 +1010,29 @@ export function contourOpacityRamp(
 }
 
 /**
+ * The zoom below which each contour layer is not in the style at all (#1727).
+ *
+ * The ramps above put both layers at opacity 0 below their fade start, and
+ * a layer at opacity 0 is still a layer: MapLibre marks its source `used`,
+ * asks the DEM worker for a contour tile at every zoom the camera reaches,
+ * runs marching squares over the DEM and its eight neighbours, parses the
+ * result and builds line buckets - all for ink that is never drawn, in the
+ * same worker queue as the trail line (LAUNCH_BUDGET.md §7.1). `minzoom`
+ * takes the layer out of the style below it, and with it the request.
+ *
+ * ONE VALUE ACROSS EVERY SHEET, the earliest any variant's fade starts
+ * (contourFadeZooms: ridgeline's `contoursEarly` pulls each window one zoom
+ * down), rather than the variant's own: the style is built once and the
+ * sheet is repainted in place (attachSheetAppearance replays the ramps, not
+ * the zoom range), so a per-variant minzoom would leave ridgeline's z8
+ * contours missing after a switch. At the earliest start the ramp is 0 on
+ * every sheet, so nothing drawn changes. liveTopo.test.ts holds the pair to
+ * the table.
+ */
+export const CONTOUR_MINOR_MIN_ZOOM = 9
+export const CONTOUR_INDEX_MIN_ZOOM = 8
+
+/**
  * The type treatment one variant carries - field's sunlight brief against the
  * baseline everything else uses (MAP_STYLE_SPEC.md's "field extras": labels
  * one size up, halos 1.8). One builder for the style build and the live
@@ -1333,6 +1356,7 @@ export function liveTopoLayers({
       type: 'line',
       source: CONTOUR_SOURCE_ID,
       'source-layer': CONTOUR_LAYER,
+      minzoom: CONTOUR_MINOR_MIN_ZOOM,
       filter: [
         'all',
         ['==', ['get', CONTOUR_LEVEL_KEY], 0],
@@ -1355,6 +1379,7 @@ export function liveTopoLayers({
       type: 'line',
       source: CONTOUR_SOURCE_ID,
       'source-layer': CONTOUR_LAYER,
+      minzoom: CONTOUR_INDEX_MIN_ZOOM,
       filter: [
         'all',
         ['>', ['get', CONTOUR_LEVEL_KEY], 0],

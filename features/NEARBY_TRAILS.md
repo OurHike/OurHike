@@ -506,6 +506,16 @@ byte range as the camera asks, a few kilobytes a tile, whatever the archive weig
 the hiking sheet has always been read. What that costs, stated: **a tile lives in the
 browser's HTTP cache and nowhere else, so with no signal the map above the seam draws no
 nearby trails.** The corridor-view sketch below the seam is still cached and still draws.
+
+**That band widened with #1775, and it is the one cost of that change worth stating.** The
+sketch used to draw to `CORRIDOR_MAX_ZOOM` (9); it now stops at `NETWORK_SKETCH_MAX_ZOOM`
+(5), and z5–z9 is drawn from the same archive the zooms above it are. So a phone with no
+signal and no held cell loses the other organizations' trails from **z5** up rather than
+from z9 up — four zooms of ground that used to come out of a file it had already
+downloaded. What it buys is that the file in question stopped being 12,238,110 bytes on
+every launch, and stopped growing with every organization the registry gains; the stretch
+download (`NEARBY_TRAILS_CELLS_KEY`) is what answers the offline case in both bands, and
+answers it the same way it always did.
 That is the state this section described before #1082 and the state #1254's budget had
 already left every phone in; it is honest rather than good, and it is the paragraph above
 as written: a **named** download of the network, cut to #552's unit, is now #1257's second

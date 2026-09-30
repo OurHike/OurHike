@@ -636,7 +636,7 @@ const CORRIDOR_BOUNDS: [[number, number], [number, number]] = [
  * before a fix, the app does not know where the hiker is, and a view of
  * everything it covers says "somewhere on this" without pretending.
  */
-const UNITED_STATES_BOUNDS: [[number, number], [number, number]] = [
+export const UNITED_STATES_BOUNDS: [[number, number], [number, number]] = [
   [-125.0, 24.5],
   [-66.9, 49.4],
 ]

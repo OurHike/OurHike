@@ -126,10 +126,40 @@ export const NETWORK_OVERVIEW_UNTAKEN_LAYER_ID = 'network-overview-line-untaken'
  *  as the untaken A.T. does - a dark-edged stroke rather than a bare thread.
  *  buildNetworkOverviewCasingLayer says the rest. */
 export const NETWORK_OVERVIEW_CASING_LAYER_ID = 'network-overview-casing'
-/** The sketch's two line layers, the ones sketchLineColor paints (#1586). */
+
+/**
+ * The same three layers again, over the network TILES rather than the sketch
+ * file, for the band between NETWORK_SKETCH_MAX_ZOOM and CORRIDOR_MAX_ZOOM
+ * (#1775).
+ *
+ * WHY THERE ARE TWO SETS AND NOT ONE. A MapLibre layer reads one source, and
+ * the sketch's zooms and the archive's now overlap rather than meet: the
+ * sketch owns z0-z5 because `nearby_trails.pmtiles` is cut from z5 and a
+ * vector source asked below its cut draws nothing, and the archive owns
+ * z5-z9 because the sketch was resized for a z5 pixel and no longer carries
+ * a segment short enough to matter there. Same paint either side, so the
+ * handover is a source change a hiker cannot see.
+ *
+ * NOT THE TILED NEARBY-TRAIL LAYERS, which already exist over this source
+ * and start at CORRIDOR_MAX_ZOOM. Those give every line a casing and the
+ * full side-trail width; these carry the sketch's own paint - uncased except
+ * under a through-route, tapered - which is what features/NEARBY_TRAILS.md §8
+ * and #1135 put below the seam and what the width taper's own comment calls
+ * the texture it exists to keep off this view.
+ */
+export const NETWORK_OVERVIEW_TILED_LAYER_ID = 'network-overview-tiled-line'
+export const NETWORK_OVERVIEW_TILED_UNTAKEN_LAYER_ID =
+  'network-overview-tiled-line-untaken'
+export const NETWORK_OVERVIEW_TILED_CASING_LAYER_ID = 'network-overview-tiled-casing'
+
+/** The sketch's line layers, the ones sketchLineColor paints (#1586) - both
+ *  sources' since #1775, because every rule that reads this list is about
+ *  what the paint means and not about where the geometry came from. */
 export const NETWORK_OVERVIEW_LINE_LAYER_IDS: readonly string[] = [
   NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
   NETWORK_OVERVIEW_LAYER_ID,
+  NETWORK_OVERVIEW_TILED_UNTAKEN_LAYER_ID,
+  NETWORK_OVERVIEW_TILED_LAYER_ID,
 ]
 
 /**
@@ -153,7 +183,11 @@ export const TRAIL_CASING_LAYER_IDS: readonly string[] = [
   // The sketch's casing under its through-routes (#1586): repainted with
   // every other casing on a sheet change, ghosted by attachChosenTrail in a
   // block of its own (its filter is the source list, not the chosen system).
+  // Both sources' since #1775 - the tiled twin is the same casing over the
+  // same features above the sketch's zooms, and a repaint that reached one
+  // and not the other would change ink at z5.
   NETWORK_OVERVIEW_CASING_LAYER_ID,
+  NETWORK_OVERVIEW_TILED_CASING_LAYER_ID,
 ]
 /**
  * The blaze layers that ink a near-white line in the casing's colour on a
@@ -192,6 +226,10 @@ export const TRAIL_CASING_LAYER_IDS: readonly string[] = [
 export const DARK_INKED_BLAZE_LAYER_IDS: readonly string[] = [
   NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
   NETWORK_OVERVIEW_LAYER_ID,
+  // The tiled twins (#1775) ink by the same rule for the same reason: they
+  // have no casing pair either, except under a through-route.
+  NETWORK_OVERVIEW_TILED_UNTAKEN_LAYER_ID,
+  NETWORK_OVERVIEW_TILED_LAYER_ID,
   TRAIL_OVERVIEW_LAYER_ID,
 ]
 
@@ -204,6 +242,8 @@ export const BLAZE_LINE_LAYER_IDS: readonly string[] = [
   TRAIL_OVERVIEW_LAYER_ID,
   NETWORK_OVERVIEW_LAYER_ID,
   NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
+  NETWORK_OVERVIEW_TILED_LAYER_ID,
+  NETWORK_OVERVIEW_TILED_UNTAKEN_LAYER_ID,
 ]
 export const TRAIL_LINE_LAYER_IDS: readonly string[] = [
   ...TRAIL_CASING_LAYER_IDS,
@@ -232,4 +272,9 @@ export const TAPPABLE_BLAZE_LAYER_IDS: readonly string[] = [
   SHARED_GROUND_BLAZE_LAYER_ID,
   NETWORK_OVERVIEW_LAYER_ID,
   NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
+  // The tiled twins (#1775). A badge placed off the sketch at z4 and off the
+  // tiles at z6 is the same badge on the same trail: map/trailsInView.ts
+  // reads `name` off whichever layer the camera is over, and both carry it.
+  NETWORK_OVERVIEW_TILED_LAYER_ID,
+  NETWORK_OVERVIEW_TILED_UNTAKEN_LAYER_ID,
 ]

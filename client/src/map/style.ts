@@ -260,6 +260,9 @@ import {
   NEARBY_BLAZE_UNTAKEN_LAYER_ID,
   NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
   NETWORK_OVERVIEW_CASING_LAYER_ID,
+  NETWORK_OVERVIEW_TILED_LAYER_ID,
+  NETWORK_OVERVIEW_TILED_UNTAKEN_LAYER_ID,
+  NETWORK_OVERVIEW_TILED_CASING_LAYER_ID,
   NETWORK_OVERVIEW_LINE_LAYER_IDS,
   TRAIL_CASING_LAYER_IDS,
   DARK_INKED_BLAZE_LAYER_IDS,
@@ -1020,12 +1023,14 @@ export function attachChosenTrail(
       // casing, and is not in CHOSEN_TRAIL_SPLIT_LAYERS for the reason the
       // shared-ground block below gives: that loop writes a chosen-system
       // filter, and this layer's filter is the through-route source list.
-      if (map.getLayer(NETWORK_OVERVIEW_CASING_LAYER_ID) !== undefined) {
-        map.setPaintProperty(
-          NETWORK_OVERVIEW_CASING_LAYER_ID,
-          'line-opacity',
-          casingOpacity,
-        )
+      // Both bands' casings since #1775, or the Long Path's edge would fade
+      // at z5 as the source changes under it.
+      for (const id of [
+        NETWORK_OVERVIEW_CASING_LAYER_ID,
+        NETWORK_OVERVIEW_TILED_CASING_LAYER_ID,
+      ]) {
+        if (map.getLayer(id) === undefined) continue
+        map.setPaintProperty(id, 'line-opacity', casingOpacity)
       }
       for (const id of [TRAIL_LABEL_LAYER_ID, NEARBY_TRAIL_LABEL_LAYER_ID]) {
         if (map.getLayer(id) === undefined) continue
@@ -1070,6 +1075,12 @@ export const CHOSEN_TRAIL_SPLIT_LAYERS: ReadonlyArray<readonly [string, TrailLin
   [
     [NETWORK_OVERVIEW_UNTAKEN_LAYER_ID, 'nearby'],
     [NETWORK_OVERVIEW_LAYER_ID, 'chosen'],
+    // The tiled band's twins (#1775), drawn immediately after the sketch's
+    // and filtered the same way: a system admitted to the chosen list has to
+    // stop being drawn as untaken on BOTH sides of NETWORK_SKETCH_MAX_ZOOM,
+    // and this loop is what writes that filter.
+    [NETWORK_OVERVIEW_TILED_UNTAKEN_LAYER_ID, 'nearby'],
+    [NETWORK_OVERVIEW_TILED_LAYER_ID, 'chosen'],
     [NEARBY_TRAIL_CASING_UNTAKEN_LAYER_ID, 'nearby'],
     [NEARBY_BLAZE_UNTAKEN_LAYER_ID, 'nearby'],
     [NEARBY_TRAIL_CASING_LAYER_ID, 'chosen'],
@@ -1358,20 +1369,71 @@ export function sketchLineColor(appearance: SheetAppearance): unknown {
  * have one casing under both sides since #1586 -
  * buildNetworkOverviewCasingLayer.)
  */
+/**
+ * Where the sketch hands the network over to the tiles (#1775).
+ *
+ * SPELLED AS THE CUT ITSELF, which is the spelling CORRIDOR_MAX_ZOOM's own
+ * docstring warns against - and the warning does not apply here, because the
+ * two constants stand on opposite sides of the same seam. That one is a
+ * CEILING for layers reading a different source, so a cut that moved down
+ * would drag it below the zooms those layers must still draw; this one is the
+ * boundary BETWEEN the two sources, so wherever the archive begins is exactly
+ * where the sketch should stop. Move the cut either way and this follows it
+ * correctly; the sketch and the tiles cannot leave a gap between them.
+ *
+ * The sketch is cut for this zoom too, and that is the other half of the pair
+ * being right: export_nearby_trails.py's OVERVIEW_SEAM_ZOOM is this number,
+ * its floor is one pixel here, and its tolerance is half of one.
+ */
+export const NETWORK_SKETCH_MAX_ZOOM = NEARBY_TRAILS_TILES_MIN_ZOOM
+
+/** One of the two zoom bands the network's sketch paint is drawn over, and
+ *  the source and layer ids that band reads. The two differ in nothing else -
+ *  every expression below is shared - which is the property that makes the
+ *  handover at NETWORK_SKETCH_MAX_ZOOM invisible. */
+interface NetworkSketchBand {
+  source: string
+  casingId: string
+  minzoom?: number
+  maxzoom: number
+}
+
+/** z0 to the cut: the published `network_overview.geojson`, which is the only
+ *  thing that can draw here because the archive holds no tile below its own
+ *  minimum. This is the band the app OPENS on - z2.2 on a 390 px phone. */
+const SKETCH_BAND: NetworkSketchBand = {
+  source: NETWORK_OVERVIEW_SOURCE_ID,
+  casingId: NETWORK_OVERVIEW_CASING_LAYER_ID,
+  maxzoom: NETWORK_SKETCH_MAX_ZOOM,
+}
+
+/** The cut to the seam: the same paint over `nearby_trails.pmtiles`, read by
+ *  range through map/networkTiles.ts. What this band draws used to come out
+ *  of the sketch file, and taking it off there is what let the sketch be cut
+ *  for a z5 pixel instead of a z9 one (#1775). */
+const TILED_SKETCH_BAND: NetworkSketchBand = {
+  source: NEARBY_TRAILS_SOURCE_ID,
+  casingId: NETWORK_OVERVIEW_TILED_CASING_LAYER_ID,
+  minzoom: NETWORK_SKETCH_MAX_ZOOM,
+  maxzoom: CORRIDOR_MAX_ZOOM,
+}
+
 function buildNetworkOverviewLayer(
   layerId: string,
   appearance: SheetAppearance,
   side: TrailLineSide,
   chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
+  band: NetworkSketchBand = SKETCH_BAND,
 ): LayerSpecification {
   return {
     id: layerId,
     type: 'line',
-    source: NETWORK_OVERVIEW_SOURCE_ID,
+    source: band.source,
     filter: (side === 'chosen'
       ? chosenSystemFilter(chosen)
       : nearbyTrailFilter(chosen)) as never,
-    maxzoom: CORRIDOR_MAX_ZOOM,
+    ...(band.minzoom === undefined ? {} : { minzoom: band.minzoom }),
+    maxzoom: band.maxzoom,
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: {
       // Uncased on the haze, so a near-white line there is inked dark on a
@@ -1407,13 +1469,15 @@ function buildNetworkOverviewLayer(
 function buildNetworkOverviewCasingLayer(
   appearance: SheetAppearance,
   chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
+  band: NetworkSketchBand = SKETCH_BAND,
 ): LayerSpecification {
   return {
-    id: NETWORK_OVERVIEW_CASING_LAYER_ID,
+    id: band.casingId,
     type: 'line',
-    source: NETWORK_OVERVIEW_SOURCE_ID,
+    source: band.source,
     filter: THROUGH_ROUTE_SOURCE_CONDITION as never,
-    maxzoom: CORRIDOR_MAX_ZOOM,
+    ...(band.minzoom === undefined ? {} : { minzoom: band.minzoom }),
+    maxzoom: band.maxzoom,
     // Hidden under the default like every casing (#1588): there the
     // through-routes are plain solid red, which is what the maintainer
     // chose over this casing on the same sheet of frames.
@@ -1864,6 +1928,11 @@ export function blazeWidthExpressionFor(
       return untakenTrailWidthExpression(appearance)
     case NETWORK_OVERVIEW_LAYER_ID:
     case NETWORK_OVERVIEW_UNTAKEN_LAYER_ID:
+    // The tiled band's twins take the sketch's own width (#1775), which is
+    // what makes the handover at the cut invisible: the taper is a function
+    // of zoom, so both bands land on the same pixel where they meet.
+    case NETWORK_OVERVIEW_TILED_LAYER_ID:
+    case NETWORK_OVERVIEW_TILED_UNTAKEN_LAYER_ID:
       return networkOverviewWidthExpression(appearance)
     default:
       return undefined
@@ -1894,8 +1963,11 @@ export function blazeWidthExpressionFor(
  * - The A.T.'s sketch and its real line carry the SAME width at every
  *   zoom (sketchWidthExpression takes this expression), so the swap when
  *   trails.geojson finally parses stays the invisible one #1291 asked for.
- * - The nearby network's tiles start AT the seam, so this taper is a no-op
- *   over them - it exists for the sources that draw below it.
+ * - The nearby network's FULL layers start at the seam, so this taper is a
+ *   no-op over them. It is not a no-op over the tiles as such any more: since
+ *   #1775 the sketch's own paint is drawn over the same archive between
+ *   NETWORK_SKETCH_MAX_ZOOM and the seam, and tapers there exactly as the
+ *   sketch file's band does below it.
  */
 export function untakenTrailWidthExpression(appearance: SheetAppearance = HUES): unknown {
   return overviewTaper(
@@ -2442,6 +2514,16 @@ export function buildMapStyle({
       // the same builder, so admitting a source to the chosen system cannot
       // leave the overview drawing it as untaken while the full lines draw
       // it as taken.
+      //
+      // TWICE, OVER TWO SOURCES, SINCE #1775. Below NETWORK_SKETCH_MAX_ZOOM
+      // the sketch file draws it, because the archive is cut from that zoom
+      // and holds nothing under it - and that band is the one the app opens
+      // on. From there to the seam the same paint is drawn over the network
+      // tiles instead, read by range. Taking the upper band off the sketch
+      // file is what let export_nearby_trails.py cut it for a pixel at z5
+      // rather than at z9: 12,238,110 bytes to 1,811,212, measured, on a file
+      // every launch fetches whole and the only one whose size followed the
+      // number of organizations.
       buildNetworkOverviewCasingLayer(appearance, chosen),
       buildNetworkOverviewLayer(
         NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
@@ -2450,6 +2532,26 @@ export function buildMapStyle({
         chosen,
       ),
       buildNetworkOverviewLayer(NETWORK_OVERVIEW_LAYER_ID, appearance, 'chosen', chosen),
+      ...onSourceLayer(
+        [
+          buildNetworkOverviewCasingLayer(appearance, chosen, TILED_SKETCH_BAND),
+          buildNetworkOverviewLayer(
+            NETWORK_OVERVIEW_TILED_UNTAKEN_LAYER_ID,
+            appearance,
+            'nearby',
+            chosen,
+            TILED_SKETCH_BAND,
+          ),
+          buildNetworkOverviewLayer(
+            NETWORK_OVERVIEW_TILED_LAYER_ID,
+            appearance,
+            'chosen',
+            chosen,
+            TILED_SKETCH_BAND,
+          ),
+        ],
+        NETWORK_TILES_LAYER,
+      ),
       // The sketch's own closed ground is drawn with every other closure, at
       // the top of the style (#1599) - it used to sit here, over its own
       // ghosted line. See THE SAFETY MARKS, LAST at the end of this list.

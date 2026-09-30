@@ -873,6 +873,16 @@ Three things the table settles, each measured rather than reasoned:
   `nearby_trails_context.pmtiles` at z≤8 by `cut_cells.py`, and the map's
   `nearby-trails` vector source reads the cells by byte range (#1257). The
   sketch duplicates the context archive's zooms as a whole file.
+
+  **Most of that 12 MB was sub-pixel, and #1775 cut it to 1,811,212 bytes.**
+  The sketch was cut at `export_trails.py`'s 100 m tolerance — about one pixel
+  at z9, its old top zoom — and drawn at z2.2. 112,334 of its 144,541 trail
+  segments have a bounding box under one pixel at z5. Dropping those and
+  simplifying at half a pixel there leaves 14.8% of the file, measured by
+  running the changed exporter over the release's own records. The worker cost
+  has not been re-measured against the smaller file; it should fall roughly
+  with the vertex count (616,517 → 98,948), which is reasoning rather than a
+  measurement and is what §7.4's closing line asks for.
 - **A second MapLibre worker does not help** — 5,333 → 5,425 ms with the same
   sources. The order is not a one-worker accident; it is the order the sources
   are attached and the size of what each has to cut.
@@ -910,13 +920,35 @@ at launch may be a whole file whose size follows the miles.
 ### 7.3 The plan, in the order the measurements rank it
 
 1. **Draw the corridor-view sketch from the context archive's tiles and stop
-   shipping `network_overview.geojson` to the launch.** The z≤8 tiles exist
+   shipping `network_overview.geojson` to the launch.** ~~The z≤8 tiles exist
    (`nearby_trails_context.pmtiles`), the `network://` scheme already reads the
-   family by range, and the sketch's only job is those zooms. **Measured**
+   family by range, and the sketch's only job is those zooms.~~ **Measured**
    saving: 3–3.5 s of worker time at 1×, first on the line's critical path;
    at 4×, reasoned ×3–4. The sketch's other consumer, whatever the shell reads
    from `lib/nearbyTrailData.ts`, is the part to check before deleting the
    artifact rather than merely not drawing it.
+
+   **The struck sentence was wrong, and #1775 is what it cost.** #1613 found
+   the first half of it — the archive did not exist — and cut one. The second
+   half is the one that outlived the correction: *the sketch's only job is
+   those zooms*. It is not. Every archive in this family is cut from
+   `NEARBY_TRAILS_TILES_MIN_ZOOM = 5`, and **the app opens below that** —
+   z2.2 on a 390×844 phone, z3.63 on a tablet, z4.39 on a 1728×1080 laptop,
+   by MapLibre's own `fitBounds` arithmetic over `UNITED_STATES_BOUNDS`. A
+   vector source asked for a zoom its archive does not hold draws nothing,
+   silently, so dropping the sketch would leave the A.T. alone on the first
+   screen of every launch.
+
+   So the sketch does not go away; it stops owning z5–z9 and is cut for the
+   zooms it keeps. `map/style.ts` draws the sketch's own paint twice —
+   over the file below `NETWORK_SKETCH_MAX_ZOOM` and over the network tiles
+   from there to `CORRIDOR_MAX_ZOOM` — and `export_nearby_trails.py` cuts the
+   file for a pixel at the first of those rather than at the second. What is
+   left of this item is deleting the artifact outright, which now needs a
+   z≤4 cut nobody has costed: a z5 tile is 1.2–1.3 MB along the A.T., and a
+   coarser tile carries *more* of the network, not less (#1613's own
+   correction), so the opening camera's two or three z2 tiles could cost more
+   than the 1.8 MB whole file they would replace. Nobody has measured it.
 2. **Publish the A.T. line as tiles too** (`trails.pmtiles`, cut in the same
    step that writes `trails.geojson`), and point the map's `trails` source at
    them — the GeoJSON stays for the index build, the mile axis and the

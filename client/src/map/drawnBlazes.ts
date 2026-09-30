@@ -27,6 +27,8 @@ import {
   NEARBY_BLAZE_LAYER_ID,
   NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
   NETWORK_OVERVIEW_LAYER_ID,
+  NETWORK_OVERVIEW_TILED_UNTAKEN_LAYER_ID,
+  NETWORK_OVERVIEW_TILED_LAYER_ID,
 } from './styleIds'
 import { CHOSEN_SYSTEM_SOURCES, isNearbyTrail } from './nearbyTrails'
 
@@ -70,11 +72,19 @@ export function drawsNearbyTrails(
   // on any is exactly the state the sentence explains, no property read
   // needed: the exporters admit nothing but other organizations' trails to
   // those artifacts.
+  //
+  // THE SKETCH'S PAINT IS TWO LAYER SETS SINCE #1775, over the sketch file
+  // below NETWORK_SKETCH_MAX_ZOOM and over the network tiles from there to
+  // the seam. Both are asked, or the legend would stop explaining its own
+  // ghosting across that whole band - the zooms between the opening camera
+  // and the seam, where the full network's layers have not started either.
   for (const layerId of [
     NEARBY_BLAZE_LAYER_ID,
     NEARBY_BLAZE_UNTAKEN_LAYER_ID,
     NETWORK_OVERVIEW_LAYER_ID,
     NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
+    NETWORK_OVERVIEW_TILED_LAYER_ID,
+    NETWORK_OVERVIEW_TILED_UNTAKEN_LAYER_ID,
   ]) {
     if (map.getLayer(layerId) === undefined) continue
     if (map.queryRenderedFeatures(undefined, { layers: [layerId] }).length > 0) {

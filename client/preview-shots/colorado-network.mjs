@@ -4,49 +4,58 @@
 // opening camera over the whole lower 48, where a state's worth of new trail
 // is a few pixels; network-above-the-seam.mjs and network-at-the-corridor-
 // camera.mjs are both in the Hudson valley, two thousand miles from anything
-// #1785 flips. Nothing in the set looks at ground the bulk load actually
-// changes.
+// #1785 flips. Nothing in the set looks at ground the bulk load changes.
 //
-// COTREX IS 96,897 FEATURES IN ONE STATE - 71% of the entire network that
-// shipped before this batch, from Colorado alone (measured by the UA publish
-// of 2026-09-30, which fetched it at exactly the count #1778's probe
-// predicted). Utah UGRC's 48,132 and BLM's 19,532 are next door. So this is
-// the frame where "seventeen organizations reach a hiker" either happened or
-// did not, and it is legible at a glance rather than by counting.
+// WHAT IS ALREADY HERE, because the first version of this comment got it
+// wrong and the frame said so. This does NOT open on empty ground. usfs_trails
+// is nationwide and has shipped for a long time - it is the very source #1776
+// is about, "one organization covering the country" - and usfs_rec_sites
+// carries its waypoints, so Colorado's national forests already draw densely
+// and the first shot of this recipe counted 563 waypoints in view. The
+// Continental Divide runs through it. An earlier draft of this header
+// predicted "the Continental Divide and little else", which was written from
+// the flip's diff rather than from the map, and is the kind of guess a
+// recipe exists to catch.
 //
-// WHAT THIS SHOT SHOWS ON THIS PULL REQUEST, and it is the honest answer
-// rather than a failure: NOT MUCH. The preview reads the bucket, and the
-// bucket carries what `reaches_hikers` allowed when it was last published -
-// so until this branch merges AND a publish runs, Colorado draws the
-// Continental Divide and little else. This frame is the BEFORE. What should
-// be different afterwards is a state filled with fine trail lines in their
-// blaze hues, the Colorado Trail and the Continental Divide among them at
-// through-route weight.
+// SO THE QUESTION THIS FRAME ASKS IS NOT "DID ANYTHING ARRIVE". It is whether
+// the map stays legible when a SECOND source at national scale lands on a
+// state that already carries one. COTREX publishes 96,897 trail features in
+// Colorado alone - 71% of the entire network that shipped before this batch,
+// from one state - with Utah UGRC's 48,132 next door and BLM's 19,532 across
+// the West (measured by the UA publish of 2026-09-30, which fetched each at
+// exactly the count #1778's probe predicted).
+//
+// ON THIS PULL REQUEST THIS IS THE BEFORE, and that part was right: the
+// preview reads the bucket, and the bucket carries what `reaches_hikers`
+// allowed at the last publish. Until this merges AND a publish runs, what is
+// drawn here is USFS's Colorado and nothing else the flip adds.
 //
 // WHAT WOULD BE WRONG AFTERWARDS:
 //
-//   - A trail drawn at through-route weight whose name belongs to several
-//     unrelated trails. That was #1776, fixed in #1784 before this flip was
-//     allowed to happen, and this is the first frame where a national
-//     source's naming is visible on real ground.
-//   - The state a solid mat of colour rather than legible lines, which would
-//     mean the width taper is not reaching a density nothing has drawn
-//     before - 96,897 features in one state is an order more than any
-//     previous frame in this set.
+//   - A SOLID MAT OF COLOUR rather than legible lines. This is the real risk
+//     and it is why this frame matters more than a sparser one would: the
+//     ground is already busy, and the width taper has never been asked to
+//     draw two nationwide sources over each other. If the mountains west of
+//     Denver read as a wash, that is the finding.
+//   - A trail at through-route weight whose name belongs to several unrelated
+//     trails. That was #1776, fixed in #1784 before this flip was allowed to
+//     happen, and this is the first frame where a national source's naming is
+//     visible on real ground rather than in a record count.
 //
 // z7 rather than z8: one pixel is about 470 m at this latitude, so a segment
-// is a line rather than a dot, and the whole state is not in frame at z8.
-// Public land at a scale where nothing of anybody's is readable - no
-// campsite, no report, no fix (the four things
+// is a line rather than a dot. A phone at z7 spans roughly Fort Collins to
+// Alamosa - the length of the state and not its width, which is the trade for
+// segments being legible at all. Public land at a scale where nothing of
+// anybody's is readable - no campsite, no report, no fix (the four things
 // .claude/skills/pr-screenshot/SKILL.md says must never appear).
 //
 // The camera is seeded through lib/cameraMemory.ts's session-storage key, as
 // network-above-the-seam.mjs does and for its reasons.
 
 export const caption =
-  'Colorado at zoom 7 — where this batch is largest. COTREX publishes 96,897 trail features in this one state, 71% of the entire network that shipped before #1785. On this pull request the frame is the BEFORE: the preview reads the bucket, and the bucket carries what `reaches_hikers` allowed at the last publish, so Colorado is nearly bare. After the flip merges and a publish runs, this is where seventeen organizations arriving is visible at a glance.'
+  'Colorado at zoom 7 — where this batch is largest. The ground is already busy: usfs_trails is nationwide and has shipped for a long time, so the national forests draw densely before this change touches anything. What #1785 adds here is COTREX\u2019s 96,897 trail features in this one state, 71% of the entire network that shipped before it, with Utah\u2019s 48,132 next door. On this pull request the frame is the BEFORE — the preview reads the bucket, and no publish has carried the flip yet. The question afterwards is not whether anything arrived but whether the map stayed legible when a second nationwide source landed on a state that already had one.'
 export const alt =
-  'The map screen over Colorado at zoom 7: a pale basemap of the state with the Continental Divide Trail running north to south through the Rockies as a fine line, and very little else drawn — the state largely empty of trail lines.'
+  'The map screen over Colorado at zoom 7: a shaded-relief basemap from Fort Collins down to Alamosa, with dense red trail lines threaded through the mountain ranges west of Denver, and many purple and green waypoint pins across them — a counter reading “in view · 563”.'
 
 /** A state's worth of vector tiles at a coarse zoom reads several leaf
  *  directories before the first tile draws. */

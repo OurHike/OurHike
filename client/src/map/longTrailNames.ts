@@ -10,7 +10,8 @@
 //
 // GENERATED FROM pipeline/reference/trail_name_aliases.json, which is the
 // reviewed half and carries the evidence: every spelling here was measured
-// against its publisher's live service on 2026-09-30 and then checked
+// on 2026-09-30 - against its publisher's live service, or for the Florida,
+// Ice Age and Mountains-to-Sea rows against what UA ships - and then checked
 // GEOGRAPHICALLY against the states the trail runs through. That second step
 // rejected 16 names the first step accepted - a New York State Parks line
 // called "Long Trail" 200 miles from Vermont, a "PALMETTO" in California, a
@@ -19,8 +20,12 @@
 //
 // EXACT AFTER FOLDING, NEVER A PREFIX, which is the same refusal
 // lib/trails.ts makes and the reason spurs stay ordinary lines: DEC publishes
-// "Northville-Placid Trail Spur", USFS publishes "BARTRAM NRT - CHEOAH RD",
-// and neither is the trail.
+// "Northville-Placid Trail Spur", USFS publishes "FNST - WESTERN CONNECTOR",
+// and neither is the trail. A SECTION IS the trail - "MST - PISGAH RD" is the
+// Mountains-to-Sea Trail in the Pisgah Ranger District - but only the section
+// spellings somebody reviewed are here. This comment used to call
+// "BARTRAM NRT - CHEOAH RD" a road-walk; RD is a ranger district, and that
+// spelling is out because it is unreviewed, not because it is a road.
 //
 // THE COST OF BEING WRONG IS NOT SYMMETRIC, so where a name was ambiguous it
 // was left out. Bare "COLORADO" is 90 USFS segments in roughly the right part
@@ -43,9 +48,21 @@ const LONG_TRAIL_BY_NAME: Readonly<Record<string, string>> = {
   'finger lakes': 'flt',
   'finger lakes trail': 'flt',
   'finger lakes trail (orange)': 'flt',
+  'fnst - apalach section': 'fnst',
+  'fnst - lake george section': 'fnst',
+  'fnst - osceola section': 'fnst',
+  'fnst - seminole section': 'fnst',
+  'fnst - wakulla section': 'fnst',
   'great western trail': 'gwt',
+  'ice age nst-a': 'iat',
+  'ice age nst-b': 'iat',
+  'ice age nst-c': 'iat',
   'john muir': 'jmt',
   'maah daah hey': 'mdh',
+  'mst - appalachian rd': 'mst',
+  'mst - grandfather rd': 'mst',
+  'mst - nantahala rd': 'mst',
+  'mst - pisgah rd': 'mst',
   'north country national scenic': 'nct',
   'north country trail': 'nct',
   'north country trail (hiking)': 'nct',
@@ -75,11 +92,13 @@ export const LONG_TRAIL_NAME_COUNT = Object.keys(LONG_TRAIL_BY_NAME).length
  * The badged trails a steward marker actually exists for.
  *
  * WHY THIS IS NOT DERIVED FROM THE TABLE ABOVE. Earning a badge and having a
- * marker are different facts: 4 of the 19 trails this badges publish no
- * per-trail symbol anybody could find - `bst`, `gwt`, `jmt` and `pinhoti`,
- * whose steward domain serves spam. Recounted 2026-09-30; this said "6 of the
- * 20" after the `msg` slug was dropped and the PCT and the A.T. gained marks,
- * and none of the three changes had updated it. Those wear the plate
+ * marker are different facts: 5 of the 22 trails this badges have no
+ * per-trail symbol in the tree - `bst`, `gwt`, `jmt` and `pinhoti`, whose
+ * steward domain serves spam, and `mst`, which has no trail_marks row.
+ * Recounted 2026-09-30 when the Florida, Ice Age and Mountains-to-Sea rows
+ * were added; before that it said "4 of the 19", and earlier "6 of the 20"
+ * after the `msg` slug was dropped and the PCT and the A.T. gained marks,
+ * and none of those three changes had updated it. Those wear the plate
  * and their name. The PCT left that group on 2026-09-30: PCTA still requires
  * written permission for its own files, but the Forest Service administers
  * the trail and publishes the emblem itself, so `pct-logo.png` is the federal
@@ -113,6 +132,8 @@ const SLUGS_WITH_A_STEWARD_MARKER: ReadonlySet<string> = new Set([
   'bmt',
   'cdt',
   'flt',
+  'fnst',
+  'iat',
   'mdh',
   'nct',
   'npt',
@@ -149,7 +170,7 @@ export function longTrailMarkerSlugs(): readonly string[] {
  * hiker do. This is the same decision lib/trails.ts already took for the
  * A.T. - "the maintainer asked on 2026-09-16 for the app to say
  * 'Appalachian Trail' wherever a hiker reads it" - applied to the other
- * eighteen of the nineteen slugs this table produces.
+ * twenty-one of the twenty-two slugs this table produces.
  *
  * The names come from trail_emblems.json through trail_name_aliases.json, so
  * they are the steward's own spelling rather than a case transform of the
@@ -163,9 +184,12 @@ const LONG_TRAIL_DISPLAY_NAME: Readonly<Record<string, string>> = {
   bst: 'Bonneville Shoreline Trail',
   cdt: 'Continental Divide Trail',
   flt: 'Finger Lakes Trail',
+  fnst: 'Florida Trail',
   gwt: 'Great Western Trail',
+  iat: 'Ice Age Trail',
   jmt: 'John Muir Trail',
   mdh: 'Maah Daah Hey Trail',
+  mst: 'Mountains-to-Sea Trail',
   nct: 'North Country Trail',
   npt: 'Northville-Placid Trail',
   oht: 'Ozark Highlands Trail',

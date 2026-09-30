@@ -820,7 +820,7 @@ export function trailsInView(
     // publishes SHELTOWEE TRACE, BENTON MACKAYE and NORTH COUNTRY NATIONAL
     // SCENIC; a hiker reads "Sheltowee Trace", "Benton MacKaye Trail" and
     // "North Country Trail". Same decision lib/trails.ts already took for the
-    // A.T.'s federal designation, applied to the other nineteen.
+    // A.T.'s federal designation, applied to the other twenty-one.
     const printed = neverShout(
       (longTrail !== null && longTrailDisplayName(longTrail)) || name,
     )

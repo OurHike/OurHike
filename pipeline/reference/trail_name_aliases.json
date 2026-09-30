@@ -1,8 +1,8 @@
 {
  "_comment": "WHICH PUBLISHED SPELLING MEANS WHICH LONG TRAIL. A reviewed join, in pipeline/reference/ rather than derived at build time, because deciding that OUACHITA NRT is the Ouachita Trail and that a NY State Parks line called 'Long Trail' is NOT Vermont's is a judgement somebody signs for, row by row. CONTRIBUTING.md's line ceiling applies for exactly that reason. WHY IT EXISTS. map/trailsInView.ts decided a badge off the SOURCE - `BADGE_SOURCES`, two entries - so the A.T. and the Long Path were the only trails on the map that could ever wear one, while Sheltowee Trace, Ozark Highlands, Bartram, Pinhoti, Ouachita, Maah Daah Hey and the rest were already drawn as anonymous lines. A trail is not a feed, and this file is what lets the badge key off the trail.",
- "_method": "MEASURED 2026-09-30 against each layer's live service, in two steps. FIRST a name probe: every trail in trail_emblems.json, queried with LIKE on the publisher's own name field, then normalised on both sides - upper-cased, punctuation stripped, and the words TRAIL/NRT/NST/NATIONAL/SCENIC/RECREATION/HISTORIC/HIKING dropped - and kept only where the normalised forms were equal. That alone was not enough and produced confident nonsense, so SECOND a geographic check: every surviving candidate's extent was fetched and compared with the states trail_emblems.json records for that trail. The second step rejected 16 names the first step accepted, and they are listed in `rejected` below so nobody re-adds them.",
- "_what_it_does_not_cover": "Spurs, connectors and road-walks are not here even where the publisher names them after the trail - 'Northville-Placid Trail Spur', 'BARTRAM NRT - CHEOAH RD', 'Finger Lakes Trail Spur'. The match is exact against the spellings listed, never a prefix, so those stay ordinary lines. Three long trails turned up in these layers that trail_emblems.json does not carry - Shawangunk Ridge, Taconic Crest and Metacomet-Monadnock - and are recorded in trail_candidates.json rather than badged here.",
- "_row_count": "19 trails with at least one verified spelling, across 3 published layers.",
+ "_method": "MEASURED 2026-09-30 against each layer's live service, in two steps. FIRST a name probe: every trail in trail_emblems.json, queried with LIKE on the publisher's own name field, then normalised on both sides - upper-cased, punctuation stripped, and the words TRAIL/NRT/NST/NATIONAL/SCENIC/RECREATION/HISTORIC/HIKING dropped - and kept only where the normalised forms were equal. That alone was not enough and produced confident nonsense, so SECOND a geographic check: every surviving candidate's extent was fetched and compared with the states trail_emblems.json records for that trail. The second step rejected 16 names the first step accepted, and they are listed in `rejected` below so nobody re-adds them. A seventeenth, New Jersey's 'Ice Age Trail', was added with the `iat` row on 2026-09-30.",
+ "_what_it_does_not_cover": "Spurs, connectors and loops are not here even where the publisher names them after the trail - 'Northville-Placid Trail Spur', 'Finger Lakes Trail Spur', 'FNST - WESTERN CONNECTOR', 'ICE AGE LOOP'. The match is exact against the spellings listed, never a prefix, so those stay ordinary lines. SECTIONS ARE A DIFFERENT CASE, and this file treated them as spurs until 2026-09-30. A spelling that names the trail and one stretch of it - 'FNST - OSCEOLA SECTION', 'ICE AGE NST-B', 'MST - PISGAH RD' - is the trail, and the maintainer asked for those three trails' section spellings that day. 'RD' in these Forest Service names is a ranger district, not a road; the `mst` row has the reasoning. This paragraph used to give 'BARTRAM NRT - CHEOAH RD' as an example of a road-walk, which was that misreading. It and the other ranger-district spellings of the Bartram and Benton MacKaye trails ('BARTRAM NRT - NANTAHALA RD', 68.4 mi; 'BENTON MACKAYE -CHEOAH RD', 31.1 mi) are still left out because nobody has reviewed them as rows, not because they are not the trail. The Arizona and Bonneville Shoreline section spellings excluded in those rows' notes have not been re-read. Three long trails turned up in these layers that trail_emblems.json does not carry - Shawangunk Ridge, Taconic Crest and Metacomet-Monadnock - and are recorded in trail_candidates.json rather than badged here.",
+ "_row_count": "22 trails with at least one verified spelling, across 3 published layers.",
  "trails": {
   "at": {
    "trail": "Appalachian Trail",
@@ -141,7 +141,7 @@
      "BENTON MACKAYE"
     ]
    },
-   "note": "7 segments, lon -84.5..-84.1. The two road spellings are sections and are excluded."
+   "note": "7 segments, lon -84.5..-84.1. The two road spellings are sections and are excluded. 'RD' in 'BENTON MACKAYE -CHEOAH RD', the one such spelling UA ships, is a ranger district rather than a road - see `_what_it_does_not_cover`."
   },
   "bartram": {
    "trail": "Bartram Trail",
@@ -151,7 +151,7 @@
      "BARTRAM"
     ]
    },
-   "note": "3 segments, lon -85.7..-83.2. The NRT road-section spellings are excluded."
+   "note": "3 segments, lon -85.7..-83.2. The NRT ranger-district spellings are excluded, unreviewed rather than wrong - see `_what_it_does_not_cover`. TWO OF THE THREE ARE NOT THIS TRAIL, found 2026-09-30 by checking each feature rather than the spelling's whole extent: usfs_trails:8251537 and :8280457, 7.8 mi together at lon -85.65..-85.56, lat 32.45..32.48, are about 35 miles inside Alabama - reasoned to be Tuskegee National Forest's own Bartram trail. The match is by name, so they still wear this badge. #1781 - The spelling BARTRAM badges 7.8 miles of Tuskegee National Forest, Alabama, as the Georgia-North Carolina Bartram Trail."
   },
   "mdh": {
    "trail": "Maah Daah Hey Trail",
@@ -212,6 +212,45 @@
     ]
    },
    "note": "DEC publishes the trail and five separate spur spellings; only the trail is here."
+  },
+  "fnst": {
+   "trail": "Florida Trail",
+   "states": "FL",
+   "published_as": {
+    "usfs_trails": [
+     "FNST - APALACH SECTION",
+     "FNST - LAKE GEORGE SECTION",
+     "FNST - OSCEOLA SECTION",
+     "FNST - SEMINOLE SECTION",
+     "FNST - WAKULLA SECTION"
+    ]
+   },
+   "note": "ADDED 2026-09-30 on the maintainer's instruction. MEASURED against UA release 2026-09-30 (version 2b95b221, so after the motorized filter): 18 segments, 152.5 miles, every one inside Florida when checked feature by feature - the Apalachicola (lon -85.0..-84.4), Osceola (-82.6..-82.4) and Ocala (-81.8..-81.5) national forests. The Forest Service spells this trail only by designation plus section, so no spelling is the bare trail name and the name probe never matched it. EXCLUDED under this file's connector and spur rule: 'FNST - WESTERN CONNECTOR' (one feature, 27.6 mi, lon -82.0..-81.8 in Ocala NF), 'FNST 88 STORE CONNECTOR' (0.4 mi), and five SPUR spellings - Bradwell Bay, Buck Lake, Camel Lake, Langston House and Monkey Creek South, 2.9 mi together. The Western Connector may be the last stretch of the trail's own western corridor rather than a side trail: REASONED from where it runs, not checked. The Florida Trail Association's route map for Ocala NF would settle it."
+  },
+  "iat": {
+   "trail": "Ice Age Trail",
+   "states": "WI",
+   "published_as": {
+    "usfs_trails": [
+     "ICE AGE NST-A",
+     "ICE AGE NST-B",
+     "ICE AGE NST-C"
+    ]
+   },
+   "note": "ADDED 2026-09-30 on the maintainer's instruction. MEASURED against UA release 2026-09-30 (version 2b95b221, so after the motorized filter): 3 segments, 66.6 miles, lon -90.95..-90.28 and lat 45.03..45.33 - the Chequamegon-Nicolet National Forest in north-central Wisconsin. Their extents meet end to end, at lon -90.70 and -90.37. No other layer UA ships has a line with this trail's name, so the rest of its roughly 1,200 miles is either not drawn or drawn under local names. EXCLUDED: 'ICE AGE LOOP' (6.0 mi at lon -90.53..-90.50, inside the -B segment's extent), which is a loop by its name and has not been reviewed. REJECTED rather than excluded: nj_statewide_trails 'Ice Age Trail', below."
+  },
+  "mst": {
+   "trail": "Mountains-to-Sea Trail",
+   "states": "NC",
+   "published_as": {
+    "usfs_trails": [
+     "MST - APPALACHIAN RD",
+     "MST - GRANDFATHER RD",
+     "MST - NANTAHALA RD",
+     "MST - PISGAH RD"
+    ]
+   },
+   "note": "ADDED 2026-09-30 on the maintainer's instruction. MEASURED against UA release 2026-09-30 (version 2b95b221, so after the motorized filter): 6 segments, 166.4 miles, lon -83.04..-81.78 and lat 35.30..36.08, every one inside North Carolina when checked feature by feature. 'MST - GRANDFATHER RD' alone is one 70.7-mile feature. 'RD' IS A RANGER DISTRICT, NOT A ROAD - REASONED, because the layer as UA ships it carries no district field to confirm it. Appalachian, Grandfather and Pisgah are the three ranger districts of Pisgah National Forest, and Nantahala is a district of Nantahala National Forest. Each spelling's extent falls where that district is: Grandfather's runs north-east to lat 36.08 and Nantahala's is the westernmost. UA has no spur or connector spelling for this trail. The rest of its roughly 1,175 miles - the Blue Ridge Parkway, the state parks and the roads to the Outer Banks - is not in the Forest Service layer."
   }
  },
  "rejected": {
@@ -230,7 +269,8 @@
   "usfs_trails 'HOT SPRINGS' and 'HOT SPRINGS TRAIL'": "lon -115.2..-105.8. A common name for a common destination.",
   "usfs_trails 'JOHN MUIR NATIONAL RECREATION'": "one segment at lon -84.5, lat 35.2 - Tennessee. A different John Muir trail.",
   "usfs_trails 'SUPERIOR'": "two segments at lon -120.8..-111.3 - Nevada and Utah.",
-  "usfs_trails 'ARIZONA TRAIL CANELO HILLS' and the AZT spur spellings": "Sections and spurs of the Arizona Trail rather than the trail, and they normalise differently so they never matched; recorded so the distinction is on the record."
+  "usfs_trails 'ARIZONA TRAIL CANELO HILLS' and the AZT spur spellings": "Sections and spurs of the Arizona Trail rather than the trail, and they normalise differently so they never matched; recorded so the distinction is on the record.",
+  "nj_statewide_trails 'Ice Age Trail'": "3 segments, 1.2 mi together, at lon -74.66, lat 40.90 - northern New Jersey, about 860 miles from the Wisconsin segments in the `iat` row. Found 2026-09-30 while adding the `iat` row; it normalises to the same name as the Ice Age Trail, so a name probe would have accepted it."
  },
  "_removed": {
   "msg — Monadnock-Sunapee Greenway, via nh_granit_trails": "REMOVED 2026-09-30 because the layer went, not because the match was wrong. The maintainer removed NH GRANIT outright on 2026-09-28 (d53bd431, #1711): GRANIT describes its own layer as compiled 'for planning use only' with roads mixed in, republished with renamed columns without notice (#1646), and redrew 962 miles of USFS trails in the White Mountains. New Hampshire outside the national forest loses its trails with it, and the greenway is one of them. The spelling that matched was 'DUBLIN TRAIL MONADNOCK SUNAPEE GRNWY'. THE TEST CAUGHT THIS RATHER THAN A REVIEWER: test_every_spelling_is_published_by_a_source_this_app_draws went red in CI the moment this branch was merged against a main that had dropped the source."

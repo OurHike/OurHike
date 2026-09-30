@@ -129,6 +129,19 @@ Chequamegon NF; the Ice Age Trail, 10), `MST - <district> RD` (the Mountains-to-
 motorized filter, is 97 miles inside Sam Houston National Forest only (3). `OUACHITA NRT`, a
 reviewed spelling, is not in UA's release at all.
 
+**The maintainer took the first three the same day** ("add the FNST, Ice Age and MST spellings to
+the alias table"), and they are rows in `trail_name_aliases.json` now, each checked feature by
+feature against its state. `LONE STAR` stays rejected. Re-running the match against the new join
+changed exactly 23 desk docs, and in each the only change was 24 mentions moving from "catalogued"
+to a reviewed match: Florida 12 (153 drawn miles), Ice Age 10 (67) and Mountains-to-Sea 2 (166).
+Nothing else on the desk moved. Eight episodes gained their first drawn trail, so 273 of the 341
+now have one, up from 265. Two things the rows turned up belong to the join rather than to podcasts:
+the Forest Service's `RD` suffix is a ranger district, which the join had read as a road-walk
+and so left out 73 miles of the Bartram Trail and 31 of the Benton MacKaye; and two of the three
+`BARTRAM` lines it already badges are Alabama's own Bartram trail — **#1781 — The spelling BARTRAM
+badges 7.8 miles of Tuskegee National Forest, Alabama, as the Georgia–North Carolina Bartram
+Trail**.
+
 ## What OurHike can already match against
 
 The first draft of #1721 said OurHike publishes nothing off the A.T. It publishes a great deal:

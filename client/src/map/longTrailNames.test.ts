@@ -12,8 +12,8 @@ import { badgeMarkImageId, BADGE_SOURCES, stewardMarkImageId } from './trailBadg
 // the table caught in the badge's own mark resolver.
 
 describe('longTrailForName', () => {
-  it('holds all 33 measured spellings, so a dropped row goes red here', () => {
-    expect(LONG_TRAIL_NAME_COUNT).toBe(33)
+  it('holds all 45 measured spellings, so a dropped row goes red here', () => {
+    expect(LONG_TRAIL_NAME_COUNT).toBe(45)
   })
 
   it('resolves the Forest Service shout-case a hiker never sees', () => {
@@ -55,25 +55,46 @@ describe('longTrailForName', () => {
     }
   })
 
-  it('leaves a spur, a connector and a road section as ordinary lines', () => {
+  it('resolves the section spellings of the Florida, Ice Age and Mountains-to-Sea trails', () => {
+    // The Forest Service publishes these three only as designation plus
+    // section - "FNST - OSCEOLA SECTION", "ICE AGE NST-B", and "MST - PISGAH
+    // RD", where RD is a ranger district - so no spelling is the bare trail
+    // name and the name probe never found them. Added on the maintainer's
+    // instruction, 2026-09-30.
+    expect(longTrailForName('FNST - OSCEOLA SECTION')).toBe('fnst')
+    expect(longTrailForName('FNST - APALACH SECTION')).toBe('fnst')
+    expect(longTrailForName('ICE AGE NST-A')).toBe('iat')
+    expect(longTrailForName('ICE AGE NST-C')).toBe('iat')
+    expect(longTrailForName('MST - GRANDFATHER RD')).toBe('mst')
+    expect(longTrailForName('MST - NANTAHALA RD')).toBe('mst')
+  })
+
+  it('leaves a spur, a connector, a loop and an unreviewed section as ordinary lines', () => {
     // Exact after folding, never a prefix. Every one of these is published
-    // by a layer this app draws, and none of them is the trail.
+    // by a layer this app draws, and none of them is in the reviewed join:
+    // the first six are not the trail, and the last two are sections of it
+    // nobody has reviewed as rows. "BARTRAM NRT - CHEOAH RD" was listed here
+    // as a road section until 2026-09-30; RD is a ranger district.
     for (const notATrail of [
       'Northville-Placid Trail Spur',
-      'BARTRAM NRT - CHEOAH RD',
       'Finger Lakes Trail Spur',
       'SHELTOWEE CONNECTOR',
+      'FNST - WESTERN CONNECTOR',
+      'FNST - CAMEL LAKE SPUR',
+      'ICE AGE LOOP',
       'ARIZONA TRAIL CANELO HILLS',
+      'BARTRAM NRT - CHEOAH RD',
     ]) {
       expect(longTrailForName(notATrail)).toBeNull()
     }
   })
 
-  it('refuses the sixteen look-alikes the geographic check rejected', () => {
+  it('refuses the seventeen look-alikes the geographic check rejected', () => {
     // Each of these is a real line in a layer this app draws, whose name
     // matches a long trail and whose location says it is a different trail:
     // a NY State Parks "Long Trail" 200 miles from Vermont, a "PALMETTO" in
-    // California, a "CUMBERLAND" in Colorado. The evidence is in
+    // California, a "CUMBERLAND" in Colorado, an "Ice Age Trail" in New
+    // Jersey. The evidence is in
     // pipeline/reference/trail_name_aliases.json's `rejected` block.
     for (const lookAlike of [
       'Long Trail',
@@ -92,6 +113,7 @@ describe('longTrailForName', () => {
       'COLORADO',
       'CDNST - COLORADO',
       'JOHN MUIR NATIONAL RECREATION',
+      'Ice Age Trail',
     ]) {
       expect(longTrailForName(lookAlike)).toBeNull()
     }
@@ -187,6 +209,9 @@ describe('what a badge prints', () => {
       'bst',
       'jmt',
       'npt',
+      'fnst',
+      'iat',
+      'mst',
     ]) {
       const printed = longTrailDisplayName(slug)
       expect(printed).not.toBeNull()

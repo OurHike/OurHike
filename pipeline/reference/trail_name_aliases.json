@@ -1,19 +1,20 @@
 {
  "_comment": "WHICH PUBLISHED SPELLING MEANS WHICH LONG TRAIL. A reviewed join, in pipeline/reference/ rather than derived at build time, because deciding that OUACHITA NRT is the Ouachita Trail and that a NY State Parks line called 'Long Trail' is NOT Vermont's is a judgement somebody signs for, row by row. CONTRIBUTING.md's line ceiling applies for exactly that reason. WHY IT EXISTS. map/trailsInView.ts decided a badge off the SOURCE - `BADGE_SOURCES`, two entries - so the A.T. and the Long Path were the only trails on the map that could ever wear one, while Sheltowee Trace, Ozark Highlands, Bartram, Pinhoti, Ouachita, Maah Daah Hey and the rest were already drawn as anonymous lines. A trail is not a feed, and this file is what lets the badge key off the trail.",
- "_method": "MEASURED 2026-09-30 against each layer's live service, in two steps. FIRST a name probe: every trail in trail_emblems.json, queried with LIKE on the publisher's own name field, then normalised on both sides - upper-cased, punctuation stripped, and the words TRAIL/NRT/NST/NATIONAL/SCENIC/RECREATION/HISTORIC/HIKING dropped - and kept only where the normalised forms were equal. That alone was not enough and produced confident nonsense, so SECOND a geographic check: every surviving candidate's extent was fetched and compared with the states trail_emblems.json records for that trail. The second step rejected 16 names the first step accepted, and they are listed in `rejected` below so nobody re-adds them. A seventeenth, New Jersey's 'Ice Age Trail', was added with the `iat` row on 2026-09-30.",
+ "_method": "MEASURED 2026-09-30 against each layer's live service, in two steps. FIRST a name probe: every trail in trail_emblems.json, queried with LIKE on the publisher's own name field, then normalised on both sides - upper-cased, punctuation stripped, and the words TRAIL/NRT/NST/NATIONAL/SCENIC/RECREATION/HISTORIC/HIKING dropped - and kept only where the normalised forms were equal. That alone was not enough and produced confident nonsense, so SECOND a geographic check: every surviving candidate's extent was fetched and compared with the states trail_emblems.json records for that trail. The second step rejected 16 names the first step accepted, and they are listed in `rejected` below so nobody re-adds them. A seventeenth, New Jersey's 'Ice Age Trail', was added with the `iat` row on 2026-09-30.\n\nEXTENDED 2026-09-30 FOR #1776, by a different check, because the pipeline now uses this table to decide which lines are one trail and not only which wear a badge. A spelling joins a trail when it appears in a RUN OF SHARED TREAD that totals at least NAMED_TRAIL_THRESHOLD_MILES and in which EVERY spelling names that trail. Continuity says it is one trail; the names say which. Neither alone is enough - names alone is what gave GREEN MOUNTAIN 27 unrelated trails in 27 national forests, and continuity alone folded ALLEGHENY TRAIL and GLENWOOD HORSE into the Appalachian Trail. Measured against release 2026-09-16-4's published nearby_trails.geojson, chaining on any shared vertex within 200 m. Roads, connectors, ties, accesses, spurs, approaches and motorized routes are excluded BY NAME first, as below - which is what keeps ANST - APPALACHIAN RD out at 159 miles, the single largest thing this check rejects. READ AGAIN 2026-09-30, when the `mst` row was added: in these Forest Service names 'RD' is a ranger district rather than a road (`_what_it_does_not_cover` has the reasoning), so ANST - APPALACHIAN RD is, by the same reading, the Appalachian Trail in Pisgah National Forest's Appalachian Ranger District - REASONED from the name, not checked against its geometry. It stays out because nobody has reviewed it as a spelling, not because it is a road.",
  "_what_it_does_not_cover": "Spurs, connectors and loops are not here even where the publisher names them after the trail - 'Northville-Placid Trail Spur', 'Finger Lakes Trail Spur', 'FNST - WESTERN CONNECTOR', 'ICE AGE LOOP'. The match is exact against the spellings listed, never a prefix, so those stay ordinary lines. SECTIONS ARE A DIFFERENT CASE, and this file treated them as spurs until 2026-09-30. A spelling that names the trail and one stretch of it - 'FNST - OSCEOLA SECTION', 'ICE AGE NST-B', 'MST - PISGAH RD' - is the trail, and the maintainer asked for those three trails' section spellings that day. 'RD' in these Forest Service names is a ranger district, not a road; the `mst` row has the reasoning. This paragraph used to give 'BARTRAM NRT - CHEOAH RD' as an example of a road-walk, which was that misreading. The Bartram and Benton MacKaye ranger-district spellings it left out for that reason were added on the maintainer's poll the same day; see those rows. The Arizona and Bonneville Shoreline section spellings excluded in those rows' notes have not been re-read. Three long trails turned up in these layers that trail_emblems.json does not carry - Shawangunk Ridge, Taconic Crest and Metacomet-Monadnock - and are recorded in trail_candidates.json rather than badged here.",
- "_row_count": "22 trails with at least one verified spelling, across 3 published layers.",
+ "_row_count": "22 trails with at least one verified spelling, across 3 published layers. #1776 added 94 usfs_trails spellings to four of them; the Florida, Ice Age and Mountains-to-Sea rows and the Bartram and Benton MacKaye ranger-district spellings were added on the maintainer's instruction and poll the same day.",
  "trails": {
   "at": {
    "trail": "Appalachian Trail",
    "states": "GA-ME",
    "published_as": {
     "usfs_trails": [
+     "APPALACHIAN",
      "APPALACHIAN TRAIL",
-     "APPALACHIAN"
+     "APPALACHIAN TRAIL/LONG TRAIL"
     ]
    },
-   "note": "Already badged through ATC's own `centerline` source; these are the USFS segments of the same trail, 165 and 4 respectively, in GA-VA and VT.",
+   "note": "Already badged through ATC's own `centerline` source; these are the USFS segments of the same trail, 165 and 4 respectively, in GA-VA and VT. #1776 added APPALACHIAN TRAIL/LONG TRAIL, the 111 miles USFS publishes for the Vermont concurrency where both trails share tread.",
    "extent": [
     -84.45,
     34.37,
@@ -26,17 +27,95 @@
    "states": "CA/OR/WA",
    "published_as": {
     "usfs_trails": [
-     "PACIFIC CREST TRAIL",
      "PACIFIC CREST",
-     "PACIFIC CREST NATIONAL SCENIC"
+     "PACIFIC CREST NATIONAL SCENIC",
+     "PACIFIC CREST TRAIL",
+     "PACIFIC CREST TRAIL - WIF1",
+     "PACIFIC CREST TRAIL - WIF2",
+     "PACIFIC CREST TRAIL - WIF3",
+     "PACIFIC CREST TRAIL - WIF4",
+     "PCNST",
+     "PCT - PACIFIC CREST TRAIL",
+     "PCT BADEN-POWELL",
+     "PCT DAWSON SADDLE",
+     "PCT GRASSY HOLLOW",
+     "PCT INDIAN CYN TO VASQUEZ",
+     "PCT MT GLEASON",
+     "PCT PACIFICO MOUNTAIN",
+     "PCT SECTION 10",
+     "PCT SECTION 11",
+     "PCT SECTION 12",
+     "PCT SECTION 13",
+     "PCT SECTION 14",
+     "PCT SECTION 15",
+     "PCT SECTION 16",
+     "PCT SECTION 17",
+     "PCT SECTION 18",
+     "PCT SECTION 19",
+     "PCT SECTION 2",
+     "PCT SECTION 20",
+     "PCT SECTION 21",
+     "PCT SECTION 22",
+     "PCT SECTION 23",
+     "PCT SECTION 24",
+     "PCT SECTION 25",
+     "PCT SECTION 26",
+     "PCT SECTION 27",
+     "PCT SECTION 28",
+     "PCT SECTION 29",
+     "PCT SECTION 3",
+     "PCT SECTION 30",
+     "PCT SECTION 31",
+     "PCT SECTION 32",
+     "PCT SECTION 33",
+     "PCT SECTION 33A",
+     "PCT SECTION 34",
+     "PCT SECTION 35",
+     "PCT SECTION 36",
+     "PCT SECTION 37",
+     "PCT SECTION 38",
+     "PCT SECTION 4",
+     "PCT SECTION 5",
+     "PCT SECTION 6",
+     "PCT SECTION 7",
+     "PCT SECTION 8",
+     "PCT SECTION 9",
+     "PCT VASQUEZ TO SIERRA HWY",
+     "PCT WRIGHT MT TO INSPIRATION P",
+     "PCT: CLE ELUM NORTH",
+     "PCT: CLE ELUM SOUTH",
+     "PCT: COLUMBIA GORGE",
+     "PCT: DEF BEND NORTH",
+     "PCT: DEF BEND SOUTH",
+     "PCT: DEF SISTERS",
+     "PCT: GLACIER PEAK WILDERNESS",
+     "PCT: MBS DARRINGTON",
+     "PCT: MBS SKYKOMISH NORTH",
+     "PCT: MBS SKYKOMISH SOUTH",
+     "PCT: MBS WHITE RIVER",
+     "PCT: METHOW VALLEY N. TERMINUS",
+     "PCT: MT HOOD",
+     "PCT: NACHES CENTRAL",
+     "PCT: NACHES NORTH",
+     "PCT: NACHES SOUTH",
+     "PCT: PLUMAS",
+     "PCT: RRS CENTRAL",
+     "PCT: RRS SOUTH",
+     "PCT: RRS-FW SKY LAKES N",
+     "PCT: SHASTA-TRINITY",
+     "PCT: SONORA PASS - CARSON PASS",
+     "PCT: SONORA PASS - DOROTHY LK",
+     "PCT: STANISLAUS",
+     "PCT: WENATCHEE RIVER NORTH",
+     "PCT: WENATCHEE RIVER SOUTH"
     ]
    },
-   "note": "37 + 5 + 2 segments, all between lon -123.3 and -118.0.",
+   "note": "37 + 5 + 2 segments, all between lon -123.3 and -118.0. #1776 added 78 more spellings, 1,800 miles across twelve runs of shared tread. The LARGEST of those runs - 424 miles through the Oregon and Washington Cascades, nine spellings - contained NO spelling this table already listed, which is why a check that needed one as a seed could not have found it.",
    "extent": [
     -123.51,
-    35.12,
-    -117.78,
-    42.87
+    33.29,
+    -116.31,
+    49.26
    ]
   },
   "cdt": {
@@ -44,18 +123,26 @@
    "states": "NM/CO/WY/ID/MT",
    "published_as": {
     "usfs_trails": [
-     "CONTINENTAL DIVIDE NST",
+     "BOSS LAKE/CDNST",
+     "CDNST",
+     "CDNST - COLORADO",
+     "CDNST - COTTONWOOD SOUTH",
      "CONTINENTAL DIVIDE",
-     "CONTINENTAL DIVIDE TRAIL",
      "CONTINENTAL DIVIDE NAT SCENIC",
-     "CONTINENTAL DIVIDE NATION SCEN"
+     "CONTINENTAL DIVIDE NATION SCEN",
+     "CONTINENTAL DIVIDE NST",
+     "CONTINENTAL DIVIDE TRAIL",
+     "HANCOCK LAKE/CDNST",
+     "HUNT LAKE/CDNST",
+     "MONARCH CREST-CDNST",
+     "TUNNEL LAKE/CDNST"
     ]
    },
-   "note": "Five spellings of one trail, 267 segments together, lon -113.9..-106.2 and lat 32.4..47.2 - the whole divide.",
+   "note": "Five spellings of one trail, 267 segments together, lon -113.9..-106.2 and lat 32.4..47.2 - the whole divide. #1776 added the CDNST spellings: eight more, 292 miles, every one in a run of shared tread that clears 50 miles and in which every spelling names this trail.",
    "extent": [
     -114.19,
     32.14,
-    -105.93,
+    -105.88,
     47.49
    ]
   },
@@ -64,12 +151,19 @@
    "states": "ND/MN/WI/MI/OH/PA/NY/VT",
    "published_as": {
     "usfs_trails": [
+     "NORTH COUNTRY NATIONAL 187-188",
+     "NORTH COUNTRY NATIONAL 188-604",
+     "NORTH COUNTRY NATIONAL 202-383",
+     "NORTH COUNTRY NATIONAL 383-187",
+     "NORTH COUNTRY NATIONAL 604-390",
+     "NORTH COUNTRY NATIONAL D-202",
      "NORTH COUNTRY NATIONAL SCENIC",
+     "NORTH COUNTRY NTL SCENIC-EAST",
      "NORTH COUNTRY TRAIL",
      "NORTH COUNTRY TRAIL (HIKING)"
     ]
    },
-   "note": "45 segments spanning lon -97.5..-78.8, which is ND to NY.",
+   "note": "45 segments spanning lon -97.5..-78.8, which is ND to NY. #1776 added seven more, including the segment-numbered spellings (NORTH COUNTRY NATIONAL 383-187 and its five siblings) and NORTH COUNTRY NTL SCENIC-EAST.",
    "extent": [
     -97.72,
     41.19,
@@ -391,7 +485,6 @@
  "rejected": {
   "usfs_trails 'LONG' and 'LONG TRAIL'": "Vermont's Long Trail is not in the USFS layer. 'LONG' spans lon -115.5..-72.8 and 'LONG TRAIL' sits at lon -115.8 in Idaho. GMC's own data is the way in.",
   "oprhp_trails 'Long Trail'": "lon -76.1, lat 43.0 - central New York, 200 miles from Vermont.",
-  "usfs_trails 'COLORADO' and 'CDNST - COLORADO'": "'CDNST - COLORADO' is the Continental Divide trail in Colorado, not the Colorado Trail. Bare 'COLORADO' is 90 segments in roughly the right place and might be the Colorado Trail - UNRESOLVED, and left out because a wrong badge is worse than a missing one.",
   "usfs_trails 'BUCKEYE'": "lon -121.4..-81.6, so California to Ohio under one name. Ohio's Buckeye Trail is not a Forest Service trail.",
   "usfs_trails 'FOOTHILLS'": "lon -106.5..-83.0, New Mexico to South Carolina. 'BRIDGER FOOTHILLS' in Montana is one of them.",
   "usfs_trails 'PALMETTO'": "one segment at lon -121.3, lat 39.8 - California.",
@@ -405,11 +498,13 @@
   "usfs_trails 'JOHN MUIR NATIONAL RECREATION'": "one segment at lon -84.5, lat 35.2 - Tennessee. A different John Muir trail.",
   "usfs_trails 'SUPERIOR'": "two segments at lon -120.8..-111.3 - Nevada and Utah.",
   "usfs_trails 'ARIZONA TRAIL CANELO HILLS' and the AZT spur spellings": "Sections and spurs of the Arizona Trail rather than the trail, and they normalise differently so they never matched; recorded so the distinction is on the record.",
-  "nj_statewide_trails 'Ice Age Trail'": "3 segments, 1.2 mi together, at lon -74.66, lat 40.90 - northern New Jersey, about 860 miles from the Wisconsin segments in the `iat` row. Found 2026-09-30 while adding the `iat` row; it normalises to the same name as the Ice Age Trail, so a name probe would have accepted it."
+  "usfs_trails 'COLORADO'": "90 segments in roughly the right part of Colorado, and it might be the Colorado Trail - UNRESOLVED, and left out because a wrong badge is worse than a missing one. This row used to cover 'CDNST - COLORADO' as well, on the grounds that it is the Continental Divide trail in Colorado and not the Colorado Trail. That was right, and #1776 acted on it: the spelling is now listed under `cdt`, where it belongs. Only the bare name is still unresolved.",
+  "nj_statewide_trails 'Ice Age Trail'": "3 segments, 1.2 mi together, at lon -74.66, lat 40.90 - northern New Jersey, about 860 miles from the Wisconsin segments in the `iat` row. Found 2026-09-30 while adding the `iat` row; it normalises to the same name as the Ice Age Trail, so a name probe would have accepted it. The NAME cannot refuse it, because it is spelled exactly as the `iat` row's own trail name, which client/src/map/longTrailNames.ts holds so that the sketch's through-route label resolves; the `iat` extent is what refuses it (#1781)."
  },
  "_removed": {
   "msg — Monadnock-Sunapee Greenway, via nh_granit_trails": "REMOVED 2026-09-30 because the layer went, not because the match was wrong. The maintainer removed NH GRANIT outright on 2026-09-28 (d53bd431, #1711): GRANIT describes its own layer as compiled 'for planning use only' with roads mixed in, republished with renamed columns without notice (#1646), and redrew 962 miles of USFS trails in the White Mountains. New Hampshire outside the national forest loses its trails with it, and the greenway is one of them. The spelling that matched was 'DUBLIN TRAIL MONADNOCK SUNAPEE GRNWY'. THE TEST CAUGHT THIS RATHER THAN A REVIEWER: test_every_spelling_is_published_by_a_source_this_app_draws went red in CI the moment this branch was merged against a main that had dropped the source."
  },
  "_the_motorized_filter": "RE-CHECKED 2026-09-30 after the same commit gave usfs_trails `excluded_when {terra_motorized: ['Y']}`, which drops 23,195 rows and 29,199 miles nationwide. Every spelling below was re-counted with and without the filter and NONE of them ships nothing: the Great Western Trail falls from 16 segments to 3 and the Continental Divide's NST spelling from 116 to 102, and the rest are unchanged. So the filter costs this table no rows - checked rather than assumed, because a spelling whose every segment was motorized would have been a badge that could never draw.",
+ "_what_1776_could_not_verify": "Spellings that name one of these trails, are not a road or connector, and still did NOT land in a qualifying run of shared tread are left out and are NOT in `rejected` - they are unproven rather than refused. The largest are PCT: MT HOOD's neighbours where the Cascades run is cut, and NORTH COUNTRY NTL SCENIC -WEST at 24 miles. A publisher's gap and a wrong name look identical from here, and the weaker reading is the one this table takes.",
  "_extent": "A LINE WEARS A ROW'S BADGE ONLY INSIDE THAT ROW'S `extent`, [west, south, east, north] in degrees, since 2026-09-30 (#1781, the maintainer's pick by poll of three fixes). Name matching alone cannot tell two trails with the same name apart: 'BARTRAM' is the Georgia-North Carolina trail and also Tuskegee National Forest's in Alabama. MEASURED 2026-09-30: each box is the extent of the features this file accepts, in UA release 2026-09-30 (2b95b221) and production release 2026-09-24-2 together - the two agree for every row but the Great Western Trail and the Continental Divide, where production has more - padded by 0.25 degrees and rounded outward. The two Alabama BARTRAM features are left out of that box, which is the fix. The Ouachita row's box is from the live service, because neither release has the line. A BOX ROUND WHAT WAS REVIEWED, NOT ROUND THE TRAIL. A segment published later outside its row's box - the A.T.'s Forest Service segments stop at lat 43.73, in Vermont, for example - draws unbadged until somebody measures it and widens the box. That is the miss this file prefers to a wrong name. @unvalidated: the 0.25-degree pad, about 17 miles, chosen so that simplified or tile-clipped geometry cannot fall off the edge of a box it belongs in. What would settle it: re-measuring these boxes against the next release and finding no accepted feature within the pad of an edge."
 }

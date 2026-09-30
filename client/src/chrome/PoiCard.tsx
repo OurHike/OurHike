@@ -128,6 +128,8 @@ import { syncOutbox } from '../lib/outboxSync'
 import { FieldNoteSection, type FieldNoteContext } from './FieldNoteSection'
 import { remainingLabel, sharePhase, takenClaimForShare } from '../lib/photoShare'
 import { PoiShareSheet } from './PoiShareSheet'
+import { WeatherPeekLine, WeatherSection } from './WeatherBand'
+import { useWaypointWeather } from '../lib/weatherData'
 import type { PoiPhotoSummary } from '../lib/api'
 
 export interface PoiDetail {
@@ -568,6 +570,9 @@ function usePinAnchor(
    *  pulled open (#941), which is a sheet or a docked column and is placed by
    *  the stylesheet - there is no pin-relative answer to give. */
   tethered: boolean,
+  /** Anything else that changes the card's height while it hangs off its
+   *  pin - the forecast line arriving after the card has opened (#1056). */
+  heightKey?: unknown,
 ): CardPlacement | null {
   const [placement, setPlacement] = useState<CardPlacement | null>(null)
 
@@ -619,9 +624,18 @@ function usePinAnchor(
     // shorter than its shelter (no capacity, usually no description, often no
     // photo credit), and a card placed BELOW its pin is positioned by its own
     // height, so a stale one sits over the pin it is describing.
-  }, [map, anchor, shown, card, tethered])
+  }, [map, anchor, shown, card, tethered, heightKey])
 
   return placement
+}
+
+/** The peek's pull, named for what is behind it (#941): "Notes & details" only
+ *  where there are notes, and weather named only where a forecast is. */
+function expandLabel(notes: boolean, weather: boolean): string {
+  if (notes && weather) return 'Notes, weather & details'
+  if (notes) return 'Notes & details'
+  if (weather) return 'Weather & details'
+  return 'Details'
 }
 
 export function PoiCard({
@@ -697,7 +711,11 @@ export function PoiCard({
   // Tethered only while it peeks: an opened card has let go of its pin, so
   // there is nothing for the geometry to answer and re-measuring it on every
   // frame of a pan would re-render a sheet to move it nowhere.
-  const placement = usePinAnchor(map, poi, shown, cardRef, !open)
+  // NOAA's forecast at the square the shown part is in (#1056). `none` until
+  // there is one to show - see lib/weatherData.ts for every case that stays
+  // `none`, and why that leaves the card exactly as it was before weather.
+  const weather = useWaypointWeather(shown.lon, shown.lat)
+  const placement = usePinAnchor(map, poi, shown, cardRef, !open, weather)
   const source = sourceLabel(shown.source)
   // Whether the conditions surface will render anything - the same question
   // FieldNoteSection answers for itself by returning null, asked here because
@@ -1842,6 +1860,19 @@ export function PoiCard({
                 </section>
               )}
 
+              {/* After Conditions and before About, where the mock the
+                  maintainer chose put it (#1056, 2026-09-30): what the field
+                  says about this place first, then what NOAA expects here,
+                  then where the pin came from. */}
+              {weather.kind === 'forecast' && (
+                <WeatherSection
+                  weather={weather}
+                  units={units}
+                  lat={shown.lat}
+                  lon={shown.lon}
+                />
+              )}
+
               {/* Where the coordinates and the provenance went. They are
                   facts about where the pin CAME FROM, and #941's complaint
                   was that they outranked the answer the hiker tapped the pin
@@ -1930,6 +1961,18 @@ export function PoiCard({
               says which comes first if that ever changes. */}
           {partsStrip(peekId)}
 
+          {/* One line of forecast under the chips - frame A of the mock the
+              maintainer chose over a peek without it (#1056, poll
+              2026-09-30). */}
+          {weather.kind === 'forecast' && (
+            <WeatherPeekLine
+              weather={weather}
+              units={units}
+              lat={shown.lat}
+              lon={shown.lon}
+            />
+          )}
+
           {unverifiedLine}
           {conditions('peek')}
 
@@ -1944,7 +1987,7 @@ export function PoiCard({
             aria-expanded={false}
             onClick={() => setOpen(true)}
           >
-            {notesShown ? 'Notes & details' : 'Details'}
+            {expandLabel(notesShown, weather.kind === 'forecast')}
             <span className="poi-card__expand-caret" aria-hidden="true">
               ▲
             </span>

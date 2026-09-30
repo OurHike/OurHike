@@ -2981,6 +2981,367 @@
   color: var(--fg-3);
 }
 
+/* ---------- NOAA's forecast on the card (#1056) ---------- */
+
+/* One type treatment for every figure in the band: tabular, so a column of
+   highs lines up digit under digit and a changing hour does not shift its
+   neighbours. */
+.poi-card__weather,
+.poi-card__weather-line,
+.poi-card__weather-warning {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The line icons (chrome/weatherIcons.tsx): 1.5px strokes in the text's own
+   colour, the sun in the yellow blaze, clouds filled with the card so they sit
+   in front of what is behind them. */
+.weather-icon {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  stroke: var(--fg-2);
+}
+
+.weather-icon__sun {
+  stroke: var(--warning);
+}
+
+.weather-icon__sun circle {
+  fill: color-mix(in srgb, var(--warning) 22%, var(--bg-surface));
+}
+
+.weather-icon__moon {
+  fill: var(--bg-surface);
+  stroke: var(--fg-2);
+}
+
+.weather-icon__cloud {
+  fill: var(--bg-surface);
+  stroke: var(--fg-2);
+}
+
+.weather-icon--drop {
+  width: 10px;
+  height: 10px;
+  margin-right: 1px;
+  fill: currentColor;
+  stroke: none;
+}
+
+.weather-icon--wind {
+  width: 16px;
+  height: 16px;
+  stroke: var(--fg-3);
+}
+
+.weather-icon--alert {
+  width: 18px;
+  height: 18px;
+  stroke: var(--danger-strong);
+}
+
+/* ----- The peek's line ----- */
+
+/* The sky, today's high and low, the chance and the forecast's age on one
+   row, the age pushed to the end in a quieter voice. That row is the room
+   the maintainer chose to spend on the peek (poll 2026-09-30); #1374's cap is
+   what scrolls the peek if it ever needs two. */
+.poi-card__weather-line {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: var(--space-2, 8px);
+  margin: 0;
+  font-size: 13px;
+  color: var(--fg-2);
+}
+
+/* The sky icon only - a direct child - so the chance's drop keeps its own
+   size. */
+.poi-card__weather-line > .weather-icon {
+  grid-row: span 2;
+  width: 26px;
+  height: 26px;
+}
+
+.poi-card__weather-line-main {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+}
+
+.poi-card__weather-today {
+  white-space: nowrap;
+}
+
+.poi-card__weather-today strong {
+  font-weight: 700;
+  color: var(--fg-1);
+}
+
+.poi-card__weather-slash {
+  color: var(--fg-3);
+}
+
+.poi-card__weather-line-chance,
+.poi-card__weather-hour-chance,
+.poi-card__weather-day-chance {
+  display: inline-flex;
+  align-items: center;
+  color: var(--info);
+  white-space: nowrap;
+}
+
+/* Zero is still said - "0%" is a forecast, where no figure is not - but
+   quietly, so the eye goes to the chances that are not zero. */
+.poi-card__weather-line-chance--zero,
+.poi-card__weather-hour-chance--zero,
+.poi-card__weather-day-chance--zero,
+.poi-card__weather-hour-chance--none,
+.poi-card__weather-day-chance--none {
+  color: var(--fg-3);
+}
+
+.poi-card__weather-age {
+  grid-column: 2;
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+/* An NWS alert on for this spot: NWS's warning, so the one place on the peek
+   in a warning's colours. */
+.poi-card__weather-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2, 8px);
+  margin: 0;
+  padding: var(--space-2, 8px);
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--fg-2);
+  background: var(--surface-warning);
+  border-radius: var(--radius-m, 8px);
+}
+
+.poi-card__weather-warning strong {
+  color: var(--fg-1);
+}
+
+/* ----- The opened card's band ----- */
+
+.poi-card__weather-age-line {
+  margin: 0 0 var(--space-3, 12px);
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+/* Out of signal the age is the first thing to read, so it takes the weight
+   the approved drawing gave it. */
+.poi-card__weather-age-line--stale {
+  font-weight: 600;
+  color: var(--danger-strong);
+}
+
+.poi-card__weather-alert {
+  display: flex;
+  gap: var(--space-2, 8px);
+  margin: 0 0 var(--space-3, 12px);
+  padding: 10px var(--space-3, 12px);
+  background: var(--surface-warning);
+  border-radius: 10px;
+}
+
+.poi-card__weather-alert-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+.poi-card__weather-alert-body strong {
+  font-size: 14px;
+  color: var(--fg-1);
+}
+
+.poi-card__weather-alert-text summary {
+  margin-top: var(--space-1, 4px);
+  font-weight: 600;
+  color: var(--fg-1);
+  cursor: pointer;
+}
+
+.poi-card__weather-alert-text p {
+  margin: var(--space-1, 4px) 0 0;
+  white-space: pre-line;
+}
+
+/* With signal, a dated sentence and nothing more: the ordinary answer, so it
+   is not dressed as news. */
+.poi-card__weather-quiet {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 0 var(--space-3, 12px);
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+/* Out of signal it is the absence of an answer, so it gets an edge: dashed,
+   because it is a gap rather than a finding. */
+.poi-card__weather-quiet--unknown {
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border: 1px dashed var(--border-strong);
+  border-radius: 10px;
+}
+
+.poi-card__weather-quiet--unknown .poi-card__weather-quiet-title {
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+/* Six hours across the band, no boxes: the columns are the structure. */
+.poi-card__weather-hours {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  margin: 0;
+  padding: var(--space-2, 8px) 0;
+  list-style: none;
+  border-top: 1px solid var(--border-1);
+  border-bottom: 1px solid var(--border-1);
+}
+
+.poi-card__weather-hour {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.poi-card__weather-hour-time {
+  font-size: 11px;
+  color: var(--fg-3);
+  white-space: nowrap;
+}
+
+.poi-card__weather-hour-sky {
+  display: flex;
+  height: 26px;
+  align-items: center;
+}
+
+.poi-card__weather-hour-temp {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.poi-card__weather-hour-chance {
+  font-size: 11px;
+}
+
+/* Past HOURLY_TRUST_HOURS the timing is not to be leaned on (WEATHER.md §5):
+   faded, not hidden, and the note under it says why. */
+.poi-card__weather-hours--stale .poi-card__weather-hour {
+  opacity: 0.45;
+}
+
+.poi-card__weather-wind,
+.poi-card__weather-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: var(--space-2, 8px) 0 0;
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+.poi-card__weather-note {
+  color: var(--fg-3);
+}
+
+/* Five days as rows: the day, the chance, and the low and high either side of
+   a bar drawn against the week's own range. */
+.poi-card__weather-days {
+  margin: var(--space-3, 12px) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.poi-card__weather-day {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 46px 32px minmax(56px, 1.1fr) 32px;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  min-height: 40px;
+  font-size: 14px;
+  border-bottom: 1px solid var(--border-1);
+}
+
+.poi-card__weather-day:last-child {
+  border-bottom: 0;
+}
+
+.poi-card__weather-day-name {
+  display: flex;
+  flex-direction: column;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.poi-card__weather-day-note {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--fg-3);
+}
+
+.poi-card__weather-day-chance {
+  justify-content: flex-end;
+  font-size: 12px;
+}
+
+.poi-card__weather-day-low {
+  text-align: right;
+  color: var(--fg-3);
+}
+
+.poi-card__weather-day-high {
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.poi-card__weather-day-bar {
+  position: relative;
+  height: 5px;
+  background: var(--bg-sunken);
+  border-radius: var(--radius-pill, 999px);
+}
+
+.poi-card__weather-day-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--brand-primary);
+  border-radius: var(--radius-pill, 999px);
+}
+
+.poi-card__weather-day--none {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.poi-card__weather-day-none {
+  font-size: 12px;
+  color: var(--fg-3);
+}
+
+.poi-card__weather-credit {
+  margin: var(--space-2, 8px) 0 0;
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
 /* Where the answering happens. Ruled off from the history above it because
    the two are different acts - reading what the field said, and saying
    something back - and #941's third defect was that the composer had nowhere

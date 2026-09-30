@@ -489,6 +489,21 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
   },
+  // NOAA's forecast on the waypoint card (#1056 build step 3). `planned`: the
+  // data suite reads UA (client-tests.yml's flow-data job), and UA publishes
+  // `conditions/weather/`, so mapSheets.spec.ts's cards already carry a real
+  // forecast - its first run on #1782 proved it by renaming the pull under
+  // the spec's locator. Nothing there asserts on the band yet, and it was not
+  // written blind: this branch's sandbox cannot reach the bucket to run it.
+  // PoiCard.weather.test.tsx holds the band's states in the meantime.
+  'chrome/WeatherBand.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
+  'chrome/weatherIcons.tsx': {
+    step: 'F12 the map',
+    flow: {
+      status: 'unit-only',
+      why: 'Stateless SVG drawn inside WeatherBand; which icon an hour gets is PoiCard.weather.test.tsx, and a browser would prove only that an SVG renders.',
+    },
+  },
   // NOT BLOCKED AFTER ALL, and this ledger said otherwise until 2026-09-11:
   // `retired_poi.geojson` ships inside EACH release, so the single pinned one
   // already carries tombstones and no second release is needed. The door is

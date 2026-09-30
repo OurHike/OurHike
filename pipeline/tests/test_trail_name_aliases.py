@@ -131,12 +131,29 @@ def test_the_client_table_carries_every_spelling_this_file_holds():
 
 def test_the_client_table_carries_nothing_this_file_does_not():
     """The other direction, which is the one that would put a badge on a line
-    nobody reviewed."""
+    nobody reviewed. A row's own `trail` name counts as reviewed: it is the
+    row, and it is the name export_nearby_trails.py writes on a through route
+    (next test)."""
     reviewed = {
         spelling.strip().lower() for _, row in rows() for spellings in row["published_as"].values() for spelling in spellings
-    }
+    } | {row["trail"].strip().lower() for _, row in rows()}
     extra = sorted(set(_generated_pairs()) - reviewed)
     assert extra == [], f"{CLIENT_TABLE.name} claims spellings no reviewed row holds: {extra}"
+
+
+@pytest.mark.parametrize("slug,row", rows())
+def test_the_client_resolves_the_name_the_sketch_writes(slug: str, row: dict):
+    """Since #1776, export_nearby_trails.py names a through route by the row's
+    `trail` rather than the spelling its steward published - "Benton MacKaye
+    Trail", not "BENTON MACKAYE". For 10 of these rows no spelling equalled
+    that name, and UA release 2026-09-30-3 shipped "Benton MacKaye Trail",
+    "Maah Daah Hey Trail" and "Pinhoti Trail" through routes that the client
+    table could not resolve, so they drew with no badge below z5."""
+    generated = _generated_pairs()
+    folded = row["trail"].strip().lower()
+    assert generated.get(folded) == slug, (
+        f"{row['trail']!r} is what the sketch writes and the client resolves it to {generated.get(folded)}"
+    )
 
 
 def test_the_client_only_claims_a_marker_where_one_ships():

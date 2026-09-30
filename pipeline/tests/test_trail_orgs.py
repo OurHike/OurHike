@@ -1,12 +1,12 @@
 """The trail-organization catalogue says what it means (#1543).
 
-`pipeline/reference/trail_orgs.json` is 163 organizations and the verdict on
+`pipeline/reference/trail_orgs.json` is 173 organizations and the verdict on
 each: ship it, hold it, take it through another row, refuse it, or record that
 there is nothing to take. features/ORG_BULK_LOAD.md is the argument; this file
 is what stops the argument drifting away from the data.
 
 WHY THESE CHECKS AND NOT A SCHEMA. Every assertion here is one a reviewer would
-otherwise have to make by eye across 163 rows, and each has a failure that has
+otherwise have to make by eye across 173 rows, and each has a failure that has
 already happened somewhere in this repository: a pointer to a row that does not
 exist, a source registered without the licence question being asked, a verdict
 word that means one thing in the file and another in the document beside it.
@@ -21,7 +21,10 @@ import pytest
 
 CATALOGUE = Path(__file__).resolve().parents[1] / "reference" / "trail_orgs.json"
 
-LOAD_VERDICTS = {"ship", "hold", "via", "refuse", "none"}
+LOAD_VERDICTS = {"ship", "hold", "via", "refuse", "none", "retired"}
+#: `retired` joined on 2026-09-30 for `nh-granit`. Pinned here as well as in the
+#: catalogue deliberately: the assertion below compares the two, so a verdict
+#: cannot be introduced by editing the data alone.
 LICENCE_BASES = {"public_domain", "stated_by_org", "maintainer_authorisation", "unstated"}
 
 
@@ -55,7 +58,10 @@ def test_every_load_verdict_is_one_the_file_defines(orgs, catalogue):
 
 
 def test_every_via_pointer_names_a_row_that_is_in_this_file(orgs):
-    """59 organizations hold no geometry and point at another row for it.
+    """79 organizations hold no geometry and point at another row for it.
+
+    Recounted 2026-09-30 from the data; this said 59. The file's own
+    `_dual_source` block has said 79 throughout.
 
     A pointer to a slug that is not here reads as 'already covered' and covers
     nothing - the Maine Appalachian Trail Club's 267 miles would silently
@@ -83,7 +89,11 @@ def test_a_row_that_ships_carries_an_endpoint_and_an_attribution(orgs):
 
 
 def test_a_row_with_no_geometry_to_fetch_claims_no_endpoint(orgs):
-    """`none` is 25 advocacy organizations and 13 route-only trails.
+    """`none` is 25 rows: 12 organizations with no geometry and 13 route-only trails.
+
+    Recounted 2026-09-30 - this said "25 advocacy organizations and 13
+    route-only trails", which reads as 38. It is 25 in total: 11
+    `national_umbrella`, 1 `nst_org` and 13 `route_only`.
 
     A route with an endpoint is a contradiction: the Hayduke has no maintainer
     and no dataset, and a URL on that row would be somebody's trip report
@@ -107,7 +117,12 @@ def test_every_licence_basis_is_one_of_the_four_sources_json_already_uses(orgs):
 
 
 def test_a_refused_row_says_which_terms_refused_it(orgs):
-    """Six organizations state a real restriction, and assume-open must not reach them.
+    """Four organizations state a real restriction, and assume-open must not reach them.
+
+    Recounted 2026-09-30; this said six. Four rows carry `load: refuse` - rtc,
+    onda, avenza and buckeye. Seven carry `licence_basis: stated_by_org`, which
+    is the larger number this may have been reaching for and is a different
+    thing: a stated licence is not a refusal.
 
     A refusal with no stated licence is indistinguishable from a row nobody got
     round to reading, which is the distinction the whole catalogue exists to

@@ -44,6 +44,7 @@
 // `name` values that export publishes and diff them against these keys. The
 // exact match is why an unmatched key is a marker nobody sees rather than a
 // wrong marker on a line.
+import atLogo from '../design-system/assets/trails/at-logo.png'
 import aztLogo from '../design-system/assets/trails/azt-logo.png'
 import cdtLogo from '../design-system/assets/trails/cdt-logo.png'
 import bartramLogo from '../design-system/assets/trails/bartram-logo.png'
@@ -134,14 +135,28 @@ export const STEWARD_MARK_COUNT = Object.keys(STEWARD_MARKS).length
  * because one trail has up to five published spellings and they all mean this
  * one file.
  *
- * NOT THE SAME SET, by two rows: `cdt` and `pct` are here and are NOT in
- * STEWARD_MARKS above. Both are lib/trails.ts registry trails, so a tapped
+ * NOT THE SAME SET, by three rows: `at`, `cdt` and `pct` are here and are NOT
+ * in STEWARD_MARKS above. Both are lib/trails.ts registry trails, so a tapped
  * line already finds them by name through `trailForName`, and LineSheet
  * prefers that answer (`detail.trailMark ?? stewardMark`). The badge is the
  * caller with no such fallback: map/trailBadges.ts's BADGE_MARK_BY_SOURCE is
  * keyed by SOURCE and holds only `centerline` and `nynjtc_long_path`, so a
  * USFS segment spelled "CONTINENTAL DIVIDE NST" or "PACIFIC CREST TRAIL"
  * reaches its mark only through this map.
+ *
+ * THE A.T. WAS THE WORST OF THE THREE, and it is not the same failure as
+ * `cdt` below - it is the one the `cdt` fix did not think to look for. `at` is
+ * a slug map/longTrailNames.ts's name table produces (USFS publishes
+ * "APPALACHIAN TRAIL" on 165 segments in GA-VA and 4 in VT), and it was in
+ * NEITHER this map nor SLUGS_WITH_A_STEWARD_MARKER. So `badgeMarkImageId`
+ * returned null and the badge drew the MARKLESS form - plate and name, no
+ * emblem - with at-logo.png in the tree the whole time and registered in the
+ * sprite as `trail-mark-AT`. Nothing was broken enough to fail: the markless
+ * badge is a designed state, so this rendered as a deliberate choice rather
+ * than as a defect. It only shows when the USFS piece wins the merge, which is
+ * any frame where the nationwide layer has loaded and ATC's corridor file has
+ * not - and the mark it loses is the one the maintainer asked by name to keep.
+ * Found by review 2026-09-30, fixed here.
  *
  * CDT WAS THE BUG THAT MADE THAT WORTH WRITING DOWN. map/longTrailNames.ts's
  * SLUGS_WITH_A_STEWARD_MARKER listed `cdt` while this map did not, so
@@ -153,6 +168,7 @@ export const STEWARD_MARK_COUNT = Object.keys(STEWARD_MARKS).length
  * marker for resolves to a file here.
  */
 const STEWARD_MARKS_BY_SLUG: Readonly<Record<string, string>> = {
+  at: atLogo,
   azt: aztLogo,
   bartram: bartramLogo,
   bmt: bmtLogo,
@@ -190,8 +206,9 @@ const STEWARD_MARKS_BY_SLUG: Readonly<Record<string, string>> = {
 }
 
 /** The steward marker for a long trail's slug, or null where no marker was
- *  found for it - Pinhoti's steward domain serves spam, and five of the
- *  trails this badges publish no per-trail symbol at all. */
+ *  found for it. Four of the nineteen trails map/longTrailNames.ts badges have
+ *  none: `bst`, `gwt`, `jmt` and `pinhoti`, whose steward domain serves spam.
+ *  Recounted 2026-09-30 - this said five. */
 export function stewardMarkForSlug(slug: string): string | null {
   return STEWARD_MARKS_BY_SLUG[slug] ?? null
 }

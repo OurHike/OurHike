@@ -23,12 +23,17 @@ import type { LineDetail } from '../lib/lineDetail'
  * only once a sheet is on screen.
  *
  * WHY IT IS LAZY AND NOT A FIELD ON `detail`. lib/lineDetail.ts is reached
- * from App.tsx, so anything it names is parsed before the first frame, and
- * the 32 names and URLs measured 1,725 bytes over
- * features/LAUNCH_BUDGET.md §3's eager budget when they sat in lib/trails.ts.
- * A marker nobody sees until they tap a line does not belong in the launch
- * path, so lib/stewardMarks.ts is its own `import()` chunk and this hook is
- * the only thing that pulls it.
+ * from App.tsx, so anything it names is parsed before the first frame, and a
+ * marker nobody sees until they tap a line does not belong there. So
+ * lib/stewardMarks.ts is its own `import()` chunk and this hook is the only
+ * thing that pulls it.
+ *
+ * THIS USED TO SAY the 32 names and URLs "measured 1,725 bytes over
+ * features/LAUNCH_BUDGET.md §3's eager budget when they sat in lib/trails.ts",
+ * and that comparison was against 256,000 - the budget until #1577 raised it
+ * to 300 KB on 2026-09-18. §3 has carried 307,200 since, so nothing was over
+ * anything. Corrected 2026-09-30; lib/stewardMarks.ts's header has the live
+ * figure and the live budget together, and `npm run build` prints both.
  *
  * NULL UNTIL IT RESOLVES, and null is the ordinary answer: most lines have no
  * steward marker and the slot stays empty, which is what it did before this

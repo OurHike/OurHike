@@ -5,7 +5,8 @@
   "hold": "Recorded, reaches_hikers false. No endpoint exists, nobody has read the terms, or - added 2026-09-30 for `nps-poi` - the endpoint and the terms are both fine and the SCOPE is the blocker, because what it would put in front of a hiker is wrong until something narrows it.",
   "via": "No entry of its own - the geometry arrives through the row named in `via`.",
   "refuse": "The organization states commercial, app-only or waiver-gated terms.",
-  "none": "No trail geometry exists to load, now or later."
+  "none": "No trail geometry exists to load, now or later.",
+  "retired": "Registered once and deliberately removed, on a judgement about the DATA rather than about terms or availability. Added 2026-09-30 for `nh-granit`, which `none` could not hold - `none` means no geometry exists, and GRANIT's does; a test caught the stretch. The endpoint stays on the row on purpose, because what a retired row has to answer is 'what was this and why did it go', and a blank URL answers neither. reaches_hikers false."
  },
  "_confidence_values": {
   "verified": "The research pass confirmed this URL resolving on 2026-09-17.",
@@ -353,8 +354,8 @@
    "licence_basis": "public_domain",
    "attribution": "NYS Office of Parks, Recreation and Historic Preservation",
    "load": "hold",
-   "already": "NYS OPRHP (4 layers, reaches_hikers false)",
-   "why": "OPRHP is already registered and deliberately not shipping: its four layers are marked fetched for review and the #771 spike only. This clearinghouse face of the same data must not quietly become the way that holdback is bypassed. Held until the OPRHP licence answer lands, which is one decision for both rows.",
+   "already": "NYS OPRHP (4 layers, all reaches_hikers true; water POIs held back)",
+   "why": "OPRHP IS ALREADY REGISTERED AND ITS FOUR LAYERS DO SHIP. This row said the opposite until 2026-09-30 - 'deliberately not shipping: its four layers are marked fetched for review and the #771 spike only' - and review recomputed it against sources.json: oprhp_trails, oprhp_trail_closures, oprhp_facilities and oprhp_park_polygons are all `reaches_hikers: true`, and were on main too. The real holdback is narrower and still stands: `oprhp_water_holdback` withholds water POIs only, and `oprhp_licence` records a grant since 2026-08-24 (#950). The verdict stays `hold` but the reason changes completely - not 'the data is held back' but 'the geometry already arrives through the rows above, so this clearinghouse face is a second path to data this registry already has', which is a `via`-shaped argument. Re-deciding between `hold` and `via` needs the #1709 dual-source work and is not this row's to settle.",
    "miles": null
   },
   {
@@ -3368,9 +3369,9 @@
    "licence": "public domain",
    "licence_basis": "public_domain",
    "attribution": "NH GRANIT, University of New Hampshire",
-   "load": "ship",
-   "already": "nh_granit_trails",
-   "why": "ALREADY REGISTERED AND SHIPPING, and absent from the research pass. 19,877 statewide polyline segments, counted live 2026-09-17. Probed live 2026-09-17 by this repository, not by the research pass."
+   "load": "retired",
+   "already": null,
+   "why": "REGISTERED AND SHIPPING UNTIL 2026-09-28, AND NOT ANY MORE. This row read 'ALREADY REGISTERED AND SHIPPING' with `already: nh_granit_trails` and `load: ship` until 2026-09-30, when review caught that the very branch carrying it had removed the layer: d53bd431 (#1711) dropped `nh_granit_trails` from sources.json and no GRANIT source is registered now. The reasons are the maintainer's: GRANIT describes its own layer as compiled 'for planning use only' with roads mixed in, renamed its columns without notice (#1646), and redrew 962 miles of USFS trails in the White Mountains. The 19,877 statewide polyline segments counted live 2026-09-17 were real; the objection is to what they say, not to whether they exist. `retired` rather than `none` or `hold`: `none` means no geometry exists and GRANIT's does - test_a_row_with_no_geometry_to_fetch_claims_no_endpoint caught that stretch the moment it was tried - and `hold` means nobody has looked. Somebody looked and said no. Restoring it would be reversing #1711, not finding an endpoint."
   },
   {
    "slug": "mohonk",

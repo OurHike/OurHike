@@ -143,7 +143,18 @@ def test_the_client_only_claims_a_marker_where_one_ships():
     """`longTrailHasMarker` frees the placer to use the bare-mark form, whose
     whole content is the marker - so a slug listed there without a file in the
     tree is a badge that draws nothing on a crowded map."""
-    shipped = {slug for slug in REGISTRY["org_marks"]["trail_marks"] if not slug.startswith("_")}
+    # A WITHDRAWN ROW IS NOT A SHIPPED MARK, and leaving it in this set was the
+    # hole review found on 2026-09-30: setting `azt` to `withdrawn` left this
+    # test green while longTrailNames.ts still listed `azt`, which is exactly
+    # the badge-draws-nothing case the docstring above says it prevents. The
+    # promise the opt-out model makes is that a steward's withdrawal is honoured
+    # by CI rather than by anybody remembering, and a test that counts withdrawn
+    # rows as shipped is the one place that promise could have leaked.
+    shipped = {
+        slug
+        for slug, row in REGISTRY["org_marks"]["trail_marks"].items()
+        if not slug.startswith("_") and row["claim_state"] != "withdrawn"
+    }
     claimed = _generated_marker_slugs()
     assert claimed, "the marker set is empty or its shape changed"
     assert claimed <= shipped, f"claims a marker that does not ship: {sorted(claimed - shipped)}"

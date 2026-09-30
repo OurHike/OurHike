@@ -72,16 +72,22 @@ export interface Trail {
 }
 
 export const TRAILS: Record<string, Trail> = {
-  // THE FOUR THIS TABLE HOLDS, and why the other 33 markers in the tree are
+  // THE FOUR THIS TABLE HOLDS, and why the other 32 markers in the tree are
   // not here. AT and LP are the two BADGE_SOURCES; PCT and CDT are reachable
   // by name through lib/lineDetail.ts.
   //
-  // The 33 steward markers shipped on 2026-09-30 are NOT in this table, and
-  // the reason is measured rather than tidy: App.tsx imports TRAILS, so every
-  // row is parsed before the first frame, and adding 32 of them put eager
-  // JavaScript at 257,725 bytes against features/LAUNCH_BUDGET.md §3's
-  // 256,000 - over by 1,725, where a clean build without them passes. That is
-  // real money for a lookup nobody has shown matches anything: `trailForName`
+  // The 32 steward markers shipped on 2026-09-30 are NOT in this table (PCT's
+  // and CDT's are, because those two are registry trails), and
+  // the reason is about what belongs in front of the first frame: App.tsx
+  // imports TRAILS, so every row is parsed before it. Adding 32 of them
+  // measured 257,725 bytes of eager JavaScript where a clean build without
+  // them passed at 253,337 - both real, both measured 2026-09-30. THEY WERE
+  // COMPARED AGAINST 256,000, WHICH STOPPED BEING THE BUDGET on 2026-09-18
+  // when #1577 raised it to 300 KB; features/LAUNCH_BUDGET.md §3 has carried
+  // 307,200 since, so both arrangements fit and this was never the forced move
+  // the old sentence implied. Corrected 2026-09-30 by review, which found the
+  // same dead figure in three files. It is still the right side to put them
+  // on, for a lookup nobody has shown matches anything: `trailForName`
   // is exact, and whether any name a steward writes equals a name the
   // usfs_trails layer publishes is unmeasured (#1543's body says so too).
   //

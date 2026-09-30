@@ -75,9 +75,11 @@ export const LONG_TRAIL_NAME_COUNT = Object.keys(LONG_TRAIL_BY_NAME).length
  * The badged trails a steward marker actually exists for.
  *
  * WHY THIS IS NOT DERIVED FROM THE TABLE ABOVE. Earning a badge and having a
- * marker are different facts: 6 of the 20 trails this badges publish no
- * per-trail symbol anybody could find - Pinhoti's steward domain serves
- * spam, and the rest publish a club wordmark or nothing. Those wear the plate
+ * marker are different facts: 4 of the 19 trails this badges publish no
+ * per-trail symbol anybody could find - `bst`, `gwt`, `jmt` and `pinhoti`,
+ * whose steward domain serves spam. Recounted 2026-09-30; this said "6 of the
+ * 20" after the `msg` slug was dropped and the PCT and the A.T. gained marks,
+ * and none of the three changes had updated it. Those wear the plate
  * and their name. The PCT left that group on 2026-09-30: PCTA still requires
  * written permission for its own files, but the Forest Service administers
  * the trail and publishes the emblem itself, so `pct-logo.png` is the federal
@@ -105,6 +107,7 @@ export const LONG_TRAIL_NAME_COUNT = Object.keys(LONG_TRAIL_BY_NAME).length
  * sheet reaches those by name.
  */
 const SLUGS_WITH_A_STEWARD_MARKER: ReadonlySet<string> = new Set([
+  'at',
   'azt',
   'bartram',
   'bmt',
@@ -146,7 +149,7 @@ export function longTrailMarkerSlugs(): readonly string[] {
  * hiker do. This is the same decision lib/trails.ts already took for the
  * A.T. - "the maintainer asked on 2026-09-16 for the app to say
  * 'Appalachian Trail' wherever a hiker reads it" - applied to the other
- * nineteen.
+ * eighteen of the nineteen slugs this table produces.
  *
  * The names come from trail_emblems.json through trail_name_aliases.json, so
  * they are the steward's own spelling rather than a case transform of the
@@ -197,6 +200,20 @@ export function longTrailDisplayName(slug: string): string | null {
  * "Northville-Placid Trail", and anything with an internal capital.
  */
 export function neverShout(name: string): string {
-  if (/[a-z]/.test(name)) return name
-  return name.replace(/[A-Za-z]+/g, (word) => word[0] + word.slice(1).toLowerCase())
+  if (/\p{Ll}/u.test(name)) return name
+  // WORD BOUNDARIES ARE LETTERS, NOT [A-Za-z], and both halves of that matter.
+  // The first version was `/[A-Za-z]+/g`, which broke a word at the apostrophe
+  // and skipped accented capitals, so it mangled rather than fixed:
+  //   "DEVIL'S PATH"   -> "Devil'S Path"
+  //   "CANON DEL AGUA" with a tilde -> "CaNOn Del Agua"
+  // Both are reachable - trailsInView.ts runs EVERY named line through this,
+  // not only badged ones, and the Forest Service's Southwestern Region
+  // publishes plenty of both. features/NEARBY_TRAILS.md §6 forbids rewording a
+  // steward's value, and mangling it is worse than leaving it shouting.
+  // `\p{L}` with the `u` flag takes the accented letters; the trailing
+  // `(?:'\p{L}+)?` keeps a possessive inside the word it belongs to.
+  return name.replace(
+    /\p{L}+(?:'\p{L}+)?/gu,
+    (word) => word[0] + word.slice(1).toLowerCase(),
+  )
 }

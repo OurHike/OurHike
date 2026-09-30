@@ -218,3 +218,31 @@ describe('what a badge prints', () => {
     }
   })
 })
+
+describe('neverShout on names it must not mangle', () => {
+  it('keeps a possessive inside its own word', () => {
+    // The first version split on the apostrophe because it matched [A-Za-z]+,
+    // so "DEVIL'S PATH" came back "Devil'S Path" - a name nobody writes, on a
+    // real Catskills trail. trailsInView.ts runs every named line through this,
+    // so it is not confined to badged trails.
+    expect(neverShout("DEVIL'S PATH")).toBe("Devil's Path")
+    expect(neverShout("MARY'S ROCK")).toBe("Mary's Rock")
+  })
+
+  it('folds accented capitals instead of skipping them', () => {
+    // [A-Za-z]+ did not match N-tilde or E-acute, so the letter stayed upper
+    // and the fold restarted after it. The Forest Service's Southwestern
+    // Region publishes plenty of both.
+    expect(neverShout('CAÑON DEL AGUA')).toBe(
+      'Cañon del agua'.replace('del agua', 'Del Agua'),
+    )
+    expect(neverShout('LA CIÉNEGA')).toBe('La Ciénega')
+  })
+
+  it('still leaves a considered spelling alone', () => {
+    // The guard is any lower-case letter, and it has to see a lower-case
+    // accented letter as lower-case too.
+    expect(neverShout('Northville-Placid Trail')).toBe('Northville-Placid Trail')
+    expect(neverShout('Cañon del Agua')).toBe('Cañon del Agua')
+  })
+})

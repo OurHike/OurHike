@@ -267,8 +267,9 @@ test.describe('the map’s chrome', () => {
   test('states: below the pin seam the legend says waypoints show as dots, and the In view door is absent for want of points rather than zoom (D10)', async ({
     page,
   }) => {
-    // The camera the app opens on is the whole corridor, which is below
-    // map/poiLayers.ts's POI_PIN_MIN_ZOOM. Legend.tsx checks this first "so
+    // The camera the app opens on is the whole country since 2026-09-30,
+    // which is below map/poiLayers.ts's POI_PIN_MIN_ZOOM - and further below
+    // it than the A.T. corridor was, so this case is reached the same way. Legend.tsx checks this first "so
     // the true sentence wins over the general one", and the two sentences
     // have opposite remedies - zoom in, versus there is nothing here - so the
     // spec asserts which one is printed rather than the zeros beside it.

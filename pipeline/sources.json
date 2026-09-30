@@ -1573,6 +1573,74 @@
       "NYC DOT": {
         "state": "not_asked",
         "note": "Not asked, on the same footing and for the same reason as NYC Parks above - the statute opens the data, not the mark."
+      },
+      "NPS": {
+        "state": "not_asked",
+        "note": "Not asked, and the ask is more complicated than for a club. A federal agency's data is public domain under 17 U.S.C. 105, and its SEAL OR INSIGNIA is not - 18 U.S.C. 701 is a different statute answering a different question, which is the distinction sources.json's own org_marks._the_nst_shield_question records. So the licence reading that lets the trail lines ship says nothing at all about the emblem."
+      },
+      "BLM": {
+        "state": "not_asked",
+        "note": "Not asked, and the ask is more complicated than for a club. A federal agency's data is public domain under 17 U.S.C. 105, and its SEAL OR INSIGNIA is not - 18 U.S.C. 701 is a different statute answering a different question, which is the distinction sources.json's own org_marks._the_nst_shield_question records. So the licence reading that lets the trail lines ship says nothing at all about the emblem."
+      },
+      "Colorado Parks & Wildlife": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "Washington RCO": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "Utah UGRC": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "NCTA": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "Alaska Trails": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "PASDA": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "CT DEEP": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "NC State Parks": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "AZGeo": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "TRTA": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "City of Duluth": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "MassGIS": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "PCTA": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "CDTC": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "Wisconsin DNR": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
       }
     },
     "claim_vocabulary": {
@@ -2045,11 +2113,6 @@
         "name": "Colorado Parks & Wildlife",
         "note": "Publishes COTREX, which aggregates 236 Colorado land managers into one statewide layer. At 96,897 features it is the largest single source in the registry after USFS."
       },
-      "org:wa-rco": {
-        "provider": "Washington RCO",
-        "name": "Washington Recreation and Conservation Office",
-        "note": "Keeps Washington's State Trails Database. The catalogue recorded 0 miles for it; the layer holds 22,454 trail features and a separate trailheads layer nothing here fetches."
-      },
       "org:ugrc": {
         "provider": "Utah UGRC",
         "name": "Utah Geospatial Resource Center",
@@ -2060,20 +2123,10 @@
         "name": "North Country Trail Association",
         "note": "Maintains the North Country National Scenic Trail, the longest of the NSTs. Its own layer is registered here; the catalogue pointed at a Hub site serving HTML instead."
       },
-      "org:alaska-trails": {
-        "provider": "Alaska Trails",
-        "name": "Alaska Trails",
-        "note": "An Alaska trails advocacy organization publishing a statewide trail database. States no terms, so it ships on the maintainer's authorisation rather than theirs."
-      },
       "org:pasda": {
         "provider": "PASDA",
         "name": "Pennsylvania Spatial Data Access",
         "note": "Penn State's clearinghouse for Pennsylvania public geospatial data, publishing PA DCNR's land trails."
-      },
-      "org:ct-deep": {
-        "provider": "CT DEEP",
-        "name": "Connecticut Department of Energy and Environmental Protection",
-        "note": "Publishes the Blue-Blazed Hiking Trails layer. The trails themselves are maintained by the Connecticut Forest & Park Association, who are not registered here - the attribution names the publisher, not the club with the tools."
       },
       "org:ncparks": {
         "provider": "NC State Parks",
@@ -2114,6 +2167,21 @@
         "provider": "Wisconsin DNR",
         "name": "Wisconsin Department of Natural Resources",
         "note": "Publishes the built segments of the Ice Age National Scenic Trail, which runs wholly inside Wisconsin."
+      },
+      "org:alaskatrails": {
+        "provider": "Alaska Trails",
+        "name": "Alaska Trails",
+        "note": "An Alaska trails advocacy organization publishing a statewide trail database. States no terms, so it ships on the maintainer's authorisation rather than theirs."
+      },
+      "org:ctdeep": {
+        "provider": "CT DEEP",
+        "name": "Connecticut Department of Energy and Environmental Protection",
+        "note": "Publishes the Blue-Blazed Hiking Trails layer. The trails themselves are maintained by the Connecticut Forest & Park Association, who are not registered here - the attribution names the publisher, not the club with the tools."
+      },
+      "org:warco": {
+        "provider": "Washington RCO",
+        "name": "Washington Recreation and Conservation Office",
+        "note": "Keeps Washington's State Trails Database. The catalogue recorded 0 miles for it; the layer holds 22,454 trail features and a separate trailheads layer nothing here fetches."
       }
     }
   },
@@ -2909,6 +2977,635 @@
           "trailhead": {
             "status": "absent",
             "note": "Probed 2026-09-15: DOT's registered dataset is a line network of bicycle facilities with no point layer in it, and nothing else of DOT's on the portal is POI-shaped for a hiker."
+          }
+        }
+      },
+      "NPS": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          }
+        }
+      },
+      "BLM": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          }
+        }
+      },
+      "Colorado Parks & Wildlife": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          }
+        }
+      },
+      "Utah UGRC": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          }
+        }
+      },
+      "NCTA": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          }
+        }
+      },
+      "Alaska Trails": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          }
+        }
+      },
+      "PASDA": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          }
+        }
+      },
+      "CT DEEP": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          }
+        }
+      },
+      "NC State Parks": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          }
+        }
+      },
+      "AZGeo": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          }
+        }
+      },
+      "TRTA": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          }
+        }
+      },
+      "City of Duluth": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          }
+        }
+      },
+      "MassGIS": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          }
+        }
+      },
+      "Wisconsin DNR": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          }
+        }
+      },
+      "Washington RCO": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "#1778's probe opened this organization's TRAIL LINE layer and read its count, fields and CRS. It asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none. spike_org_poi_coverage.py pointed at their POI layers is what would settle it. ONE THING KNOWN WITHOUT A PROBE: the service wa_rco_trails reads from carries a second layer named Trailheads, seen while resolving the first. Nobody has counted it, so this stays unprobed rather than becoming `available`."
+          }
+        }
+      },
+      "PCTA": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          }
+        }
+      },
+      "CDTC": {
+        "probed_date": "2026-09-30",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
           }
         }
       }

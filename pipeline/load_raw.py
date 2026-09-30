@@ -125,6 +125,25 @@ PROVIDER_SLUGS = {
     "Mohonk Preserve": "mohonk",
     "NYC Parks": "nyc_parks",
     "NYC DOT": "nyc_dot",
+    # #1778's seventeen registrations. The one-word providers - NPS, BLM,
+    # NCTA, PASDA, AZGeo, TRTA, MassGIS, PCTA, CDTC - slug themselves and are
+    # deliberately absent from this table rather than listed for symmetry.
+    # These seven are multi-word, so `_provider_slug` raises without them.
+    #
+    # EACH KEEPS WHAT DISAMBIGUATES IT, on `nyc_parks`' own argument. `cpw`
+    # rather than `colorado`, because the state is not the publisher and
+    # Colorado has several. `wa_rco` and `nc_parks` keep the state for the
+    # reason `nyc_parks` keeps the city: `rco` and `parks` alone name nothing.
+    # `utah_ugrc` keeps both because `ugrc` is an acronym nobody outside Utah
+    # reads. `duluth` and `wi_dnr` are already unambiguous in this table space.
+    "Colorado Parks & Wildlife": "cpw",
+    "Washington RCO": "wa_rco",
+    "Utah UGRC": "utah_ugrc",
+    "Alaska Trails": "alaska_trails",
+    "CT DEEP": "ct_deep",
+    "NC State Parks": "nc_parks",
+    "City of Duluth": "duluth",
+    "Wisconsin DNR": "wi_dnr",
 }
 
 

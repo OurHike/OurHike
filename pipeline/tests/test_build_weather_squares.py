@@ -237,7 +237,7 @@ def test_a_county_id_is_spelled_the_way_nws_alerts_spell_it(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# HRRR (the HRRR slice): the lake-aware water rule, and HRRR's own cells.
+# HRRR's land mask (the HRRR slice): the lake-aware water rule.
 
 
 def test_a_lake_square_is_water_when_hrrr_says_so_though_its_terrain_is_above_zero():
@@ -275,27 +275,6 @@ def test_a_lake_square_borrows_its_nearest_land_square():
 
     assert borrowed == {(10, 10): (10, 12)}  # two squares east; every nearer square is lake
     assert kept == []
-
-
-def test_hrrr_cells_are_filed_by_the_cell_each_trail_point_falls_in():
-    # The summit and Lakes of the Clouds: two HRRR cells, one 1-degree cell.
-    lons, lats = np.array([-71.3033, -71.3190]), np.array([44.2706, 44.2587])
-
-    cells, outside = squares_mod.squares_by_cell(lons, lats, locate=hrrr_grid.cells)
-
-    assert cells == {"n44w072": [[216, 1588], [216, 1589]]} and outside == []
-
-
-def test_a_water_cell_reads_its_land_neighbours_height_as_well_as_its_temperature():
-    # The height the phone corrects from must belong to the cell the
-    # temperature came from, or the correction mixes two places.
-    height = np.zeros((5, 5))
-    height[1, 1], height[1, 2] = 30.0, 412.0
-    cells = {"n44w074": [[1, 1], [3, 3]]}
-
-    reads = squares_mod.hrrr_reads(cells, {(1, 1): (1, 2)}, height)
-
-    assert reads == [[1, 1, 1, 2, 412], [3, 3, 3, 3, 0]]
 
 
 def test_a_mountain_on_land_where_mount_washington_is_passes_the_hrrr_check():

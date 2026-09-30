@@ -41,25 +41,11 @@ contour and a 3 km cell - Lake George - passes as land, and what would settle
 whether that matters is a lake-shore square's forecast against its landward
 neighbour's over a season.
 
-HRRR, THE FIRST TWO DAYS' TEMPERATURE (the HRRR slice, 2026-09-29). HRRR is a
-different model on its own 3 km grid (`lib/hrrr_grid.py`), and the phone
-corrects its temperature from the HRRR cell's model height to a trail point's
-real one (WEATHER.md §3). So HRRR is filed by ITS OWN cells, not by NBM's
-squares: every HRRR cell a trail point or waypoint falls in, per 1° cell, the
-same rule `squares_by_cell` applies to NBM. The phone finds its point's HRRR
-cell by the same arithmetic and reads it directly.
-
-Filing HRRR under NBM squares was built first and measured wrong: Mount
-Washington's NBM square has its centre in the HRRR cell next to the summit's,
-at 1,038 m rather than 1,306, so the phone would have corrected across 880 m
-instead of 610 - and a lapse rate's error grows with the height it spans. The
-spike scored HRRR at the cell containing each station, which is what this
-reproduces. It is also smaller: 54,927 HRRR cells hold a trail point on UA
-release 2026-09-28, against 72,195 NBM squares.
-
-HRRR cells get the water rule too, by HRRR's own `LAND` mask: a trail point
-whose HRRR cell is water reads the nearest HRRR land cell within
-`BORROW_RINGS`, and the file lists it.
+HRRR'S LAND MASK IS ALL THIS KEEPS OF HRRR. Step 1's HRRR slice also filed
+HRRR's own cells and heights here for a first-two-days temperature, and the
+maintainer dropped that on 2026-09-30, after step 2 measured it
+(`spike_weather_correction.py`, WEATHER.md §3): the card is NBM only. The
+land mask stays because the water rule above needs it.
 
 EACH SQUARE'S NWS ZONES (the warnings slice, 2026-09-26). Most NWS alerts name
 the zones they cover rather than drawing a shape - 419 of 486 active at
@@ -119,7 +105,8 @@ HRRR_BUCKET = "https://noaa-hrrr-bdp-pds.s3.amazonaws.com"
 # squares.json from an older rule is rebuilt rather than reused because its
 # release id still matches. 2: each square's NWS zones (the warnings slice).
 # 3: HRRR's land mask in the water rule, and each square's HRRR cell.
-SCHEMA = 3
+# 4: HRRR's cells dropped (the card is NBM only, 2026-09-30).
+SCHEMA = 4
 
 # Points are laid along each line at most this far apart in either axis
 # before being dropped into squares. Derived, not picked: a square is 2.54 km,
@@ -220,14 +207,12 @@ def cells_of(lons: np.ndarray, lats: np.ndarray) -> list[str]:
     return [cell_name(math.floor(lon), math.floor(lat)) for lon, lat in zip(lons, lats, strict=True)]
 
 
-def squares_by_cell(lons: np.ndarray, lats: np.ndarray, locate=nbm_grid.squares) -> tuple[dict[str, list[list[int]]], list[str]]:
-    """({cell: sorted [row, col] squares}, sorted cells off the grid).
+def squares_by_cell(lons: np.ndarray, lats: np.ndarray) -> tuple[dict[str, list[list[int]]], list[str]]:
+    """({cell: sorted [row, col] squares}, sorted cells off the CONUS grid).
 
     A square straddling two cells is listed in each cell a trail point in it
-    falls in, so every cell's file is complete on its own. `locate` is the
-    grid's point-to-square arithmetic: NBM's by default, `hrrr_grid.cells`
-    for HRRR's."""
-    rows, cols = locate(lons, lats)
+    falls in, so every cell's file is complete on its own."""
+    rows, cols = nbm_grid.squares(lons, lats)
     names = cells_of(lons, lats)
     found: dict[str, set[tuple[int, int]]] = {}
     outside: set[str] = set()
@@ -320,24 +305,6 @@ def check_hrrr_terrain(height: np.ndarray, land: np.ndarray) -> None:
             f"HRRR at Mount Washington's cell reads {value:.0f} m, land={is_land:.0f}; expected {low:.0f}-{high:.0f} m "
             "on land. The HRRR grid decoded mirrored, shifted or from the wrong message; refusing to use it."
         )
-
-
-def hrrr_reads(
-    cells: dict[str, list[list[int]]],
-    borrowed: dict[tuple[int, int], tuple[int, int]],
-    height: np.ndarray,
-) -> list[list[int]]:
-    """[hrrr_row, hrrr_col, read_row, read_col, height_m] for every HRRR cell
-    listed in `cells`: the cell its temperature is read from (itself, or the
-    land cell it borrows) and that cell's model height to the metre - the
-    height the phone corrects from, which must be the height of the cell the
-    temperature came from."""
-    listed = sorted({tuple(c) for cell_list in cells.values() for c in cell_list})
-    reads = []
-    for cell in listed:
-        read_row, read_col = borrowed.get(cell, cell)
-        reads.append([cell[0], cell[1], read_row, read_col, int(round(float(height[read_row, read_col])))])
-    return reads
 
 
 def zones_by_square(square_list: list[list[int]], layers: dict[str, tuple[list[str], list]]) -> dict[str, list[list[int]]]:
@@ -448,7 +415,9 @@ def grib_message_range(index_lines: list[str], field: str, level: str) -> tuple[
 
 def fetch_hrrr_terrain(session: requests.Session) -> tuple[np.ndarray, np.ndarray]:
     """(model height in metres, LAND) on HRRR's grid, from one recent file,
-    each checked against the pinned grid and Mount Washington."""
+    each checked against the pinned grid and Mount Washington. Only LAND is
+    used; the height is fetched for that check, because a mountain in the
+    right cell is what shows the grid decoded the right way round."""
     if not (HRRR_HEIGHT_PATH.exists() and HRRR_LAND_PATH.exists()):
         key = newest_hrrr_analysis(session)
         index = request_with_retry(f"{HRRR_BUCKET}/{key}.idx", session=session, label="HRRR idx").text.splitlines()
@@ -547,13 +516,10 @@ def main(argv: list[str] | None = None) -> dict | None:
     lons, lats = trail_points(paths)
     cells, outside = squares_by_cell(lons, lats)
     all_squares = {tuple(sq) for squares in cells.values() for sq in squares}
-    hrrr_height, hrrr_land = fetch_hrrr_terrain(session)
+    _, hrrr_land = fetch_hrrr_terrain(session)
     hrows, hcols = nbm_centres_on_hrrr()
     water = water_mask(fetch_terrain(session), hrrr_land, hrows, hcols)
     borrowed, kept = borrow_land(all_squares, water)
-    hrrr_cells, _ = squares_by_cell(lons, lats, locate=hrrr_grid.cells)
-    all_hrrr = {tuple(c) for cell_list in hrrr_cells.values() for c in cell_list}
-    hrrr_borrowed, hrrr_kept = borrow_land(all_hrrr, hrrr_land == 0)
     layers = {kind: read_zone_file(fetch_zone_file(kind), spec[2]) for kind, spec in ZONE_FILES.items()}
     zones = zones_by_square(sorted(list(sq) for sq in all_squares), layers)
     zoned = {tuple(sq) for squares in zones.values() for sq in squares}
@@ -568,11 +534,6 @@ def main(argv: list[str] | None = None) -> dict | None:
         "borrowed": sorted([list(water), list(land)] for water, land in borrowed.items()),
         "water_kept": sorted(list(sq) for sq in kept),
         "outside_grid": outside,
-        "hrrr_grid": {"proj4": hrrr_grid.PROJ4, "origin": [hrrr_grid.ORIGIN_X, hrrr_grid.ORIGIN_Y], "cell_m": hrrr_grid.CELL_M},
-        "hrrr_cells": hrrr_cells,
-        # [hrrr_row, hrrr_col, read_row, read_col, height_m], one per listed HRRR cell
-        "hrrr_reads": hrrr_reads(hrrr_cells, hrrr_borrowed, hrrr_height),
-        "hrrr_water_kept": sorted(list(c) for c in hrrr_kept),
         "zone_files": {kind: spec[0].rsplit("/", 1)[-1] for kind, spec in ZONE_FILES.items()},
         "zones": zones,
         # Every zone id in the pinned files, trail or not, so the alerts
@@ -585,9 +546,7 @@ def main(argv: list[str] | None = None) -> dict | None:
         f"{env} release {release}: {len(all_squares):,} squares in {len(cells)} cells from {len(lons):,} points; "
         f"{len(borrowed)} water squares borrow land, {len(kept)} keep their own; "
         f"{len(outside)} cells off the CONUS grid ({', '.join(outside) or 'none'}); "
-        f"{len(zones):,} NWS zones overlap a trail square, {len(all_squares) - len(zoned)} squares are in none; "
-        f"{len(all_hrrr):,} HRRR cells hold a trail point; {len(hrrr_borrowed)} water cells borrow land, "
-        f"{len(hrrr_kept)} keep their own."
+        f"{len(zones):,} NWS zones overlap a trail square, {len(all_squares) - len(zoned)} squares are in none."
     )
     return document
 

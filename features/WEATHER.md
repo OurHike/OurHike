@@ -6,11 +6,13 @@ forecast the coordinate rather than match it**. That issue's measurements are th
 doc exists and are not repeated here; read it for why matching a forecast feed to waypoints
 tops out at 0.8% of them.
 
-**Status, 2026-09-29: designed and spiked; build step 1 built** — `publish-weather.yml`
-publishes to UA NBM's forecast for every trail square, one file per 1° cell with HRRR's
-first two days' temperature and cell heights inside it, and every active NWS alert that
-reaches a trail square, in one file. Nothing a hiker runs reads any of it yet (steps 3 and
-4), and no corrected temperature may reach one before step 2. This doc owns **forecasts** —
+**Status, 2026-09-30: build steps 1 and 2 done; the card is NBM's forecast as NOAA published
+it.** `publish-weather.yml` publishes to UA NBM's forecast for every trail square, one file
+per 1° cell, and every active NWS alert that reaches a trail square, in one file. Step 2
+scored the elevation correction the phone would have run, against NOAA's own archives over
+two windows. It did not reliably beat NBM, and the maintainer chose NBM only (§3), so the job
+no longer fetches or publishes HRRR's temperature. Nothing a hiker runs reads any of it yet
+(steps 3 and 4). This doc owns **forecasts** —
 where they come from, how precise they are, how often they change, how they reach a phone,
 and what a hiker sees when the phone has not heard anything for a while. It also owns how a
 relayed **NWS warning** is *displayed* as it ages, because a forecast card and a warning
@@ -38,13 +40,24 @@ Every section below answers one of those.
 Taken against the offline mock (one card at three ages) and §3's accuracy table:
 
 - **The offline rules in §5, as drawn.**
-- **Temperature for the first two days from HRRR corrected for elevation, NBM after that** —
+- **Temperature for the first two days from HRRR corrected for elevation, NBM after that** (reversed 2026-09-30, after step 2 scored it; that decision is below) —
   chosen over NBM uncorrected throughout, which §3 had recommended. §3 says what that choice
   means field by field.
 - **GitHub's scheduler as it is, ~4 hours** — over an outside hourly trigger and over moving
   the job off GitHub. §4 says what age a hiker will actually see.
 - **#1056 stays open as the program issue** until the build is done; the build order at the
   foot of this doc is its checklist rather than a set of new issues.
+
+## What the maintainer decided, 2026-09-30, after step 2
+
+Taken against a page of step 2's results: both windows' scores per station, and three phone
+cards (§3):
+
+- **NBM only, as NOAA published it, for every day the card shows.** This reverses the
+  2026-09-24 choice of HRRR corrected for elevation for days 1–2. It was chosen over that
+  choice and over an hourly blend of NBM and corrected HRRR, which scored best in both
+  windows. The card needs no correction, no join at hour 48, and no "adjusted by OurHike" on
+  its credit line (§9).
 
 ## What the maintainer decided, 2026-09-25, before step 1
 
@@ -149,11 +162,12 @@ line that runs just south of the Catskills, with Harriman on one side and Slide 
 on the other. A source that switches models mid-map is a source
 whose forecast can jump at a line nobody drew on purpose.
 
-### The source: NOAA's NBM, with HRRR for the first two days' temperature
+### The source: NOAA's NBM
 
 **NOAA's National Blend of Models**, fetched from its AWS open-data bucket and sampled by our
-own job, is the forecast. **HRRR**, from the same place, supplies temperature for the first 48
-hours (the maintainer's call; §3). Reasons for NBM, each resting on something in this doc:
+own job, is the forecast, for every day the card shows (the maintainer's call of 2026-09-30,
+after §3's step-2 measurement). HRRR was built in for the first two days' temperature, then
+scored and dropped. Reasons for NBM, each resting on something in this doc:
 
 - **It is the only kind of source that fits the volume** (§1): whole grids, no quota, and
   NOAA's open-data terms — "can be used as desired" (§9).
@@ -184,7 +198,8 @@ hours (the maintainer's call; §3). Reasons for NBM, each resting on something i
 - **HRRR** (`noaa-hrrr-bdp-pds`, 3 km) runs hourly but reaches 48 hours only from the 00, 06,
   12 and 18 UTC cycles; the others stop at 18. Its 2 m temperature for a 48-hour cycle is
   48 GRIB2 messages fetched by byte range, **58.5 MB in 7.9 s** (measured 2026-09-29, the 06Z
-  run; this line said ~409 MB before the build, a figure for a larger subset of fields). When
+  run; this line said ~409 MB before the build, a figure for a larger subset of fields). The
+  job no longer fetches it: the card is NBM only (§3). When
   the 06Z run was complete at about 13:40 UTC, the 12Z run had 3 of its 49 files. **It
   carries no probabilities**, which is why HRRR can only
   ever be the temperature half of the first two days.
@@ -246,54 +261,83 @@ doubtful. The full table, including daily lows and ECMWF, is what the script pri
 - **Correction rescues the coarse models, and HRRR** — GFS at Mount Washington goes from
   16.1 °F wrong to 5.1; HRRR from 6.6 to 2.1, the best day-1 score in the table. But HRRR
   forecasts only 18–48 hours ahead, so it cannot fill a five-day card on its own.
-- **This doc recommended NBM uncorrected throughout; the maintainer chose HRRR corrected for
-  the first two days' temperature.** The case for that choice is the best day-1 high in the
-  table, 2.3 °F against NBM's 2.7. The case against, recorded so the build does not rediscover
-  it: **the win is on highs only** — tomorrow's low scored 2.8 °F both ways — and it buys a
-  second model, a correction step, and a seam at hour 48 where the temperature source changes.
+- **This doc recommended NBM uncorrected throughout; on 2026-09-24 the maintainer chose HRRR
+  corrected for the first two days' temperature**, on the best day-1 high in the table,
+  2.3 °F against NBM's 2.7. That number was Open-Meteo's: its HRRR archive, its choice of run
+  and grid cell, its correction to its own DEM. So it was **@unvalidated** for what we would
+  ship, and build step 2 existed to score ours. It did, and the choice was reversed
+  (2026-09-30, below).
 
-**What that decision means, field by field:**
+### Step 2: our correction, on NOAA's own archives
 
-| | Hours 0–48 | After hour 48 |
-|---|---|---|
-| Temperature (hourly, high, low) | **HRRR, corrected** from its grid cell's height to the trail point's height | NBM, uncorrected |
-| Precipitation and thunder probability, sky, wind, gust | NBM, uncorrected — HRRR has no probabilities | NBM, uncorrected |
+**The spike: `pipeline/spike_weather_correction.py`.**
 
-**The seam is per hour, not at a day boundary.** HRRR reaches 48 hours only from its
-six-hourly cycles, so on GitHub's ~4-hour clock (§4) the HRRR run in a publish can already be
-~8 hours old (reasoned: six hours between 48-hour cycles plus up to ~2 hours to land) and
-cover only ~40 of the next 48 hours. The job uses HRRR for each hour it covers and NBM for
-every hour after, so "the first two days" is a ceiling, not a promise.
+- **Forecasts:** HRRR and NBM from NOAA's own buckets, read by the pipeline's own code at the
+  cell each station is in, water rule included, and rounded as the cell files carry them.
+- **Correction:** the phone's arithmetic, a fixed **6.5 °C/km, chosen before scoring**, from
+  the published HRRR cell height to the station's height.
+- **Scoring:** the same eight stations, the same scoring code, and the 12 UTC run of the day
+  before each local day.
+- **Two windows:**
+  - Window 1 is the first spike's days, 2026-07-24 to 09-22 (431 station-days scored by every
+    variant).
+  - Window 2 is the 61 days before, 2026-05-24 to 07-23 (435), after NBM v5.0 went live on
+    05-05.
+- **The blend:** the hourly mean of NBM and corrected HRRR. It was defined after window 1's
+  numbers were in, so **window 2 is its only real test**.
 
-So "along each trail" becomes genuinely finer than the grid for the first two days'
-temperature — every trail point gets its own correction from its own height — and stays at
-NBM's 2.5 km square for everything else. Compared with what #1056 started from — 90 points, a
-median 3.8 miles from the waypoint — even the uncorrected square puts every point within about
-1.1 miles of its forecast's centre.
+Mean |error| difference from NBM as published, °F. Negative is closer to what happened. The
+95% interval resamples whole days, so stations sharing a day's weather move together:
 
-**Three things the build owes this decision**, because the spike measured something close to
-it rather than it:
+| | Window 1 highs | Window 1 lows | Window 2 highs | Window 2 lows |
+|---|---|---|---|---|
+| HRRR corrected, 6.5 °C/km | **−0.37** (−0.59 … −0.15) | +0.20 (+0.00 … +0.40) | **+0.33** (+0.13 … +0.55) | −0.14 (−0.39 … +0.10) |
+| same, point height from the app's DEM | −0.19 (−0.42 … +0.04) | +0.32 (+0.12 … +0.51) | +0.58 (+0.36 … +0.81) | −0.06 (−0.30 … +0.18) |
+| NBM corrected, 6.5 °C/km | +0.38 (+0.25 … +0.51) | +0.50 (+0.32 … +0.67) | +0.53 (+0.40 … +0.65) | +0.12 (−0.05 … +0.29) |
+| Blend (exploratory in window 1) | −0.46 (−0.59 … −0.34) | −0.09 (−0.20 … +0.03) | −0.15 (−0.26 … −0.05) | −0.28 (−0.42 … −0.15) |
 
-- **The spike scored Open-Meteo's correction, not ours.** Ours will be a lapse rate applied
-  from HRRR's cell height to the height in our own DEM. Until the spike is re-run with that
-  exact arithmetic, the 2.3 °F is **@unvalidated** for the thing we ship. The re-run is
-  cheap: the archive and the stations are already in the script.
-- **The seam at hour 48 must not draw a step.** Day 2's high from HRRR and day 3's from NBM
-  are different models; a hiker comparing them is comparing two sources without being
-  told. The card says which days are "adjusted for elevation" (§9 requires saying it anyway).
-- **A corrected value is our number, not NOAA's**, and NOAA's terms say a modified value may
-  not be presented as unaltered NOAA data (§9).
+NBM as published scored 2.72 / 2.77 °F (highs / lows, mean of the eight) in window 1 and
+2.50 / 3.20 in window 2.
+
+**What it says:**
+
+- **Our correction does not reliably beat NBM.** It won on highs in one window and lost by
+  about as much in the other. It never clearly won on lows.
+- **Berlin, NH is where it hurts most.** It is a valley station, and its corrected lows missed
+  by 5.7 and 6.1 °F against NBM's 3.0 and 3.7. A fixed lapse warms a valley on the clear
+  nights when cold air pools in it: the inversion problem, visible even in summer.
+- **Correcting NBM makes it worse again**, in both windows. This is the first spike's
+  finding, reproduced on NOAA's own archive.
+- **The height the phone would read matters.** IEM gives some stations' coordinates to two
+  decimals, so the app's DEM at IEM's coordinate is 205 m low at Wolf Creek Pass. Using that
+  height instead of the station's cost 0.18–0.25 °F on highs, in both windows.
+- **Only the blend beat NBM in both windows**, by 0.15–0.46 °F on highs and 0.09–0.28 °F on
+  lows (window 1's lows interval touches zero). That is summer only, eight stations, and a
+  variant chosen after window 1.
+
+**The maintainer chose NBM only, 2026-09-30**, over the blend and over keeping corrected HRRR:
+
+| | Every day the card shows |
+|---|---|
+| Temperature (hourly, high, low) | NBM, as published |
+| Precipitation and thunder probability, sky, wind, gust | NBM, as published |
+
+So "along each trail" is NBM's 2.5 km square, and nothing is corrected. Compared with what
+#1056 started from (90 points, a median 3.8 miles from the waypoint), the square still puts
+every point within about 1.1 miles of its forecast's centre. The blend is the measured
+alternative if this is revisited; `spike_weather_correction.py` re-scores it over any window
+in about half an hour.
 
 **What the spike cannot say**, and a reader should not borrow its confidence for:
 
 - **Only temperature.** Precipitation, wind and thunderstorms have no correction to test,
   and scoring whether a shower was forecast takes more than one summer.
 - **Only summer.** A fixed lapse rate is at its worst in winter inversions, when a valley is
-  colder than the ridge above it — which now matters more, since HRRR's first two days are
-  corrected with one. Whether the correction still helps in January is **@unvalidated**;
-  re-running the script over a December–February window settles it, and that re-run is in
-  the build order below.
-- **Eight stations**, chosen for relief rather than at random, and 51–61 days each.
+  colder than the ridge above it. With nothing corrected on the card, that no longer decides
+  anything shipped. Whether NBM as published holds up in January is still unmeasured, and
+  the winter re-run in the build order would say.
+- **Eight stations**, chosen for relief rather than at random, and 13–61 days each (Red Cliff
+  Pass reported on only 13 of window 2's days).
 - **No NDFD** — the one plausible rival to NBM is the one it could not score.
 
 ## 4. How often
@@ -467,35 +511,14 @@ cell under them and its neighbours.
 artifact rides with the release; each cell file lists its squares, and the phone looks its
 point's square up in that list, or finds it absent and says there is no forecast there.
 
-**For the first two days' temperature it also reads its HRRR cell**, a second lookup by the
-same arithmetic on HRRR's own grid (`lib/hrrr_grid.py`, carried in the index as
-`hrrr_grid`). Each cell file's `hrrr` block lists every HRRR cell a trail point or waypoint in
-that 1° cell falls in, with the cell's model `height` in metres and its 2 m `temp` for each
-hour of the run, in °C to a tenth. The phone applies the lapse from that height to the
-point's own height from its DEM. **The pipeline corrects nothing**, so no corrected number
-exists until step 2 has scored the phone's exact arithmetic (§3).
-
-- **Filed by HRRR's cells, not NBM's squares, and measured into that shape.** The first build
-  hung HRRR off each NBM square's centre. Mount Washington's square has its centre in the
-  HRRR cell next to the summit's, at 1,038 m rather than 1,306, so the phone would have
-  corrected across 880 m instead of 610. The spike scored HRRR at the cell containing each
-  station, which is what the phone will now do. It is smaller too: 54,927 HRRR cells hold a
-  trail point on UA release 2026-09-28, against 72,195 NBM squares.
-- **HRRR cells get the water rule, by HRRR's own mask.** A trail point in an HRRR water cell
-  reads the nearest HRRR land cell within two cells, with that cell's height, and `borrowed`
-  says so. The height has to come with the temperature: a lapse from one cell's height to
-  another cell's temperature corrects neither. 246 cells borrow and 4 keep their own
-  (release 2026-09-28).
-- **Tenths of a degree, not whole degrees.** Whole degrees would add up to ±0.9 °F of rounding
-  against the 2.3 °F accuracy that justified HRRR. Measured 2026-09-29: tenths make every
-  cell file together 37% bigger gzipped (9.5 MB to 13.0 MB; median cell 15 KB, largest
-  162 KB). Whole degrees would have been 8–12%. Keeping one value per HRRR cell rather than
-  per square saves nothing here, because gzip already finds the repeats (measured).
-- **`hrrr` is `null` when the run could not fetch HRRR.** The phone then uses NBM for every
-  hour, as it does past hour 48 anyway, and the index's `hrrr_cycle` is `null`.
-- **Sanity, not validation:** at 12Z on 2026-09-29, the summit's HRRR cell read 8.3 °C (47 °F)
-  at 1,306 m. An illustrative 6.5 °C/km lapse, not the shipped arithmetic, brings that to
-  about 40 °F at 1,917 m, against NBM's 39 °F for the summit's square.
+**No HRRR in the files.** Step 1's HRRR slice published an `hrrr` block in every cell file:
+each HRRR cell a trail point falls in, its model height, and 48 hours of 2 m temperature, for
+the phone to correct. It was filed by HRRR's own cells after a measurement showed that NBM
+square centres put Mount Washington's summit in the wrong HRRR cell. Step 2 then scored the
+correction and it did not reliably beat NBM (§3), so the maintainer chose NBM only
+(2026-09-30). The block, `fetch_hrrr.py` and its 58.5 MB a run are gone, and so is the 37%
+it added to every cell file gzipped. HRRR's land mask stays, because the water rule uses it
+(§6).
 
 **Every square also lists its NWS zones**, as `zones[i]` beside `squares[i]`: each public
 forecast zone, fire weather zone and county whose outline overlaps that square, spelled the
@@ -544,8 +567,8 @@ month (Cloudflare's pricing page, read 2026-09-24), which the other publishes al
 **What the job downloads each run**, measured 2026-09-25: NBM's GeoTIFFs whole, 315 files and
 240.6 MB in 20 s from this sandbox — whole rather than tile ranges, because the national
 network touches most of CONUS's tiles anyway and one GET per file is simpler than seventy.
-One alerts request (2.6 MB) joins it, and HRRR's 48 hours of 2 m temperature (58.5 MB by byte
-range, §2).
+One alerts request (2.6 MB) joins it. HRRR's land mask (50 KB) and height (2.2 MB) are fetched
+once per data release for the water rule, not every run.
 That is AWS open-data egress, which costs this project nothing, and GitHub-hosted runner time.
 
 **UA only, for now.** Nothing a hiker runs reads these files until step 3, so production
@@ -579,10 +602,10 @@ affiliation with NOAA. If you modify NOAA data, you may not state or imply that 
 original, unaltered NOAA data."* NWS alerts are public domain by the
 [weather.gov disclaimer](https://www.weather.gov/disclaimer). Nothing needs asking.
 
-**That last sentence of NOAA's governs the card.** HRRR temperature corrected for elevation is
-modified data, so days 1–2 cannot be credited plainly to NOAA: they say *"NOAA forecast,
-adjusted for elevation by OurHike"*, and days 3 onward, unmodified, say *"NOAA forecast"*.
-`sources.json` gets a row for each, in the shape the other open sources use.
+**That last sentence of NOAA's governs the card, and NBM only keeps it simple.** Nothing on the
+card is modified, so every day says *"NOAA forecast"*. The "adjusted for elevation by
+OurHike" line that corrected HRRR would have needed is gone with it (2026-09-30).
+`sources.json` gets one row for NBM, in the shape the other open sources use.
 
 ---
 
@@ -605,13 +628,16 @@ adjusted for elevation by OurHike"*, and days 3 onward, unmodified, say *"NOAA f
      `export_weather.py`, `publish-weather.yml`; §6's two traps tested.
    - **Warnings — built, 2026-09-26.** `export_weather_alerts.py`, each square's zones in
      `build_weather_squares.py` and the cell files; either half publishes without the other.
-   - **HRRR — built, 2026-09-29.** `fetch_hrrr.py`, `lib/hrrr_grid.py`, HRRR's cells, heights
-     and land mask in `build_weather_squares.py`, and the `hrrr` block in the cell files.
-2. **The spike re-run with our own correction** (§3) — before phase 3 puts a corrected
-   number in front of a hiker.
-3. **The waypoint card** — the five days at the waypoint's grid square, with the age line,
-   §5's rules and §9's credit lines.
+   - **HRRR — built 2026-09-29, then cut to its land mask 2026-09-30** once step 2 had
+     scored it and the maintainer chose NBM only. `lib/hrrr_grid.py` and the land mask in
+     `build_weather_squares.py` remain.
+2. **The spike re-run with our own correction — done, 2026-09-30.**
+   `spike_weather_correction.py`, two windows. The correction did not reliably beat NBM, and
+   the maintainer chose NBM only (§3).
+3. **The waypoint card** — the five days at the waypoint's grid square, all NBM, with the age
+   line, §5's rules and §9's credit line.
 4. **Today** — start and end of the day, and the warnings line.
 5. **The plan** — each day's forecast at that night's camp.
-6. **The winter re-run** of the spike, before the first winter, to see whether the
-   correction still helps in inversions.
+6. **The winter re-run** of the spike, before the first winter. With nothing corrected on the
+   card, it no longer gates anything. It would say whether NBM as published holds up in
+   winter, and whether the blend would earn a second look.

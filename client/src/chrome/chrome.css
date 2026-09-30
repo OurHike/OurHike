@@ -3047,19 +3047,28 @@
    the maintainer chose to spend on the peek (poll 2026-09-30); #1374's cap is
    what scrolls the peek if it ever needs two. */
 .poi-card__weather-line {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 2px 6px;
-  min-height: 28px;
+  column-gap: var(--space-2, 8px);
   margin: 0;
   font-size: 13px;
   color: var(--fg-2);
 }
 
-.poi-card__weather-line .weather-icon {
-  width: 20px;
-  height: 20px;
+/* The sky icon only - a direct child - so the chance's drop keeps its own
+   size. */
+.poi-card__weather-line > .weather-icon {
+  grid-row: span 2;
+  width: 26px;
+  height: 26px;
+}
+
+.poi-card__weather-line-main {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
 }
 
 .poi-card__weather-today {
@@ -3095,10 +3104,9 @@
 }
 
 .poi-card__weather-age {
-  margin-left: auto;
+  grid-column: 2;
   font-size: 11px;
   color: var(--fg-3);
-  white-space: nowrap;
 }
 
 /* An NWS alert on for this spot: NWS's warning, so the one place on the peek

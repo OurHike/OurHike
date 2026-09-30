@@ -110,7 +110,7 @@ describe('the peek', () => {
     weather = holding()
     peek()
     expect(screen.getByTestId('poi-card-weather-line')).toHaveTextContent(
-      'Today 56° / 47°2% chance of rain or snowNOAA 8 am',
+      'Today 56° / 47°2% chance of rain or snowNOAA forecast from 8:00 am',
     )
   })
 
@@ -128,12 +128,12 @@ describe('the peek', () => {
     )
   })
 
-  it('says how far ahead the forecast was made once it is from an earlier day, in place of the run time', () => {
+  it("dates a forecast from an earlier day as yesterday, in the band's own words", () => {
     vi.setSystemTime(new Date('2026-10-01T13:30Z'))
     weather = holding({ live: false })
     peek()
     expect(screen.getByTestId('poi-card-weather-line')).toHaveTextContent(
-      'Today 61° / 53°36% chance of rain or snowmade 1 d before',
+      'Today 61° / 53°36% chance of rain or snowNOAA forecast from yesterday 8:00 am',
     )
   })
 

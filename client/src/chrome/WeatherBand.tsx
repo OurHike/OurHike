@@ -118,19 +118,23 @@ export function WeatherPeekLine({ weather, units, lat, lon }: WeatherProps) {
           {next?.sky != null && (
             <SkyIcon cover={next.sky} day={isDaylight(lat, lon, next.at)} />
           )}
-          <span className="poi-card__weather-today">
-            {today.highIsRestOfDay ? 'Rest of today ' : 'Today '}
-            <strong>{temperature(today.highF, units)}</strong>
-            <span className="poi-card__weather-slash">{' / '}</span>
-            {temperature(today.lowF, units)}
+          <span className="poi-card__weather-line-main">
+            <span className="poi-card__weather-today">
+              {today.highIsRestOfDay ? 'Rest of today ' : 'Today '}
+              <strong>{temperature(today.highF, units)}</strong>
+              <span className="poi-card__weather-slash">{' / '}</span>
+              {temperature(today.lowF, units)}
+            </span>
+            {today.chance !== null && (
+              <Chance value={today.chance} className="poi-card__weather-line-chance" />
+            )}
           </span>
-          {today.chance !== null && (
-            <Chance value={today.chance} className="poi-card__weather-line-chance" />
-          )}
+          {/* Its own row, in the band's own words: at the card's 264px the
+              age never fitted beside the figures once the app's fonts
+              loaded (the preview's first shot, 2026-09-30), and a row that
+              wraps only sometimes is a row whose height nobody can plan. */}
           <span className="poi-card__weather-age">
-            {today.madeDaysBefore === null
-              ? `NOAA ${view.cycle.getMinutes() === 0 ? hourText(view.cycle) : clockText(view.cycle)}`
-              : `made ${today.madeDaysBefore} d before`}
+            {`NOAA forecast from ${whenText(view.cycle, now)}`}
           </span>
         </p>
       )}

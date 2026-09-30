@@ -27,7 +27,7 @@ import {
   NEARBY_BLAZE_LAYER_ID,
   NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
   NETWORK_OVERVIEW_LAYER_ID,
-} from './style'
+} from './styleIds'
 import { CHOSEN_SYSTEM_SOURCES, isNearbyTrail } from './nearbyTrails'
 
 /** The real MapLibre map — see map/drawnPois.ts for why not a structural

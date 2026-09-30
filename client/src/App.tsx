@@ -125,7 +125,7 @@ import { FIT_PADDING } from './map/fitPadding'
 import { trailIdForSource } from './map/trailBadges'
 import { chosenSystemSources } from './map/nearbyTrails'
 import type { TappedLine } from './map/lineTaps'
-import { CORRIDOR_ARCHIVE_URL } from './map/protocol'
+import { CORRIDOR_ARCHIVE_URL } from './map/archiveUrls'
 import { loadMapEngine } from './map/mapEngineLoader'
 import { DATA_CONFIGURED } from './lib/config'
 import {
@@ -191,9 +191,8 @@ import {
   useCellIndex,
   useCellIndexState,
 } from './lib/coverageCells'
-import { setBasemapCells } from './map/basemap'
+import { setBasemapCells, setNetworkCells } from './map/heldCells'
 import { setTerrainCells } from './map/demCells'
-import { setNetworkCells } from './map/networkTiles'
 import type { StretchOffer } from './screens/StretchCard'
 import { HEALTHY, type LiveSourceHealth, type SourceReport } from './map/liveSourceHealth'
 import {

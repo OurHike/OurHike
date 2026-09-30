@@ -64,14 +64,10 @@
 import type { addProtocol as AddProtocol } from 'maplibre-gl'
 import { PMTiles } from 'pmtiles'
 import { BASEMAP_PACKAGE } from '../lib/packages'
-import {
-  cellPackageKey,
-  cellsForTile,
-  CONTEXT_PACKAGE_KEY,
-  type CellIndex,
-} from '../lib/coverageCells'
+import { cellPackageKey, cellsForTile, CONTEXT_PACKAGE_KEY } from '../lib/coverageCells'
 import { IndexedDbArchiveSource } from './pmtilesSource'
-import { BASEMAP_SCHEME, OPENFREEMAP_TILEJSON } from './liveTopo'
+import { heldBasemapCells, onBasemapCellsSet, resetHeldCellsForTests } from './heldCells'
+import { BASEMAP_SCHEME, OPENFREEMAP_TILEJSON } from './sheets'
 
 const TILE_URL = new RegExp(`^${BASEMAP_SCHEME}://(\\d+)/(\\d+)/(\\d+)$`)
 
@@ -93,36 +89,27 @@ function packageArchive(): PMTiles {
   return archive
 }
 
-/** The cells the shell says this phone holds, by package key, and the index
- *  they are in. Null until the shell has an index to hand over, which reads
- *  as "no cells" - the package and the network are then the whole answer,
- *  exactly as before cells existed. */
-let cells: { index: CellIndex; held: ReadonlySet<string> } | null = null
+// The cells the shell says this phone holds live in map/heldCells.ts (#1591),
+// so the shell can set them without loading this handler; they are read on
+// every tile through heldBasemapCells().
 
 /** One reader per held cell and one for the context, by package key -
  *  created on first use and dropped on failure, on the package's own rule
  *  above. */
 const readers = new Map<string, PMTiles>()
 
-/**
- * What the shell knows about cells, for the handler that cannot ask.
- *
- * `held` is package keys (lib/coverageCells.ts's `cellPackageKey`, plus
- * CONTEXT_PACKAGE_KEY), and it is read on every tile rather than copied into
- * anything: a cell that finishes downloading mid-session is answered from on
- * the next tile the map asks for. A reader for a cell no longer in the set is
- * dropped - it would answer from bytes the hiker has removed, or from a
- * directory cached before a re-download replaced them.
- */
-export function setBasemapCells(
-  index: CellIndex | null,
-  held: ReadonlySet<string>,
-): void {
-  cells = index === null ? null : { index, held }
+/** The shell's setter, kept here by name for its readers - it lives in
+ *  map/heldCells.ts so the shell's import of it does not load this module. */
+export { setBasemapCells } from './heldCells'
+
+// A reader for a cell no longer in the set is dropped - it would answer from
+// bytes the hiker has removed, or from a directory cached before a
+// re-download replaced them.
+onBasemapCellsSet((held) => {
   for (const key of [...readers.keys()]) {
     if (!held.has(key)) readers.delete(key)
   }
-}
+})
 
 function reader(packageKey: string): PMTiles {
   let existing = readers.get(packageKey)
@@ -135,6 +122,7 @@ function reader(packageKey: string): PMTiles {
 
 /** Which local archives may hold this tile, in the order they are asked. */
 function localCandidates(z: number, x: number, y: number): string[] {
+  const cells = heldBasemapCells()
   if (cells === null) return []
   const { index, held } = cells
   const keys: string[] = []
@@ -296,6 +284,6 @@ export function resetBasemapForTests(): void {
   registered = false
   archive = null
   networkTemplate = null
-  cells = null
+  resetHeldCellsForTests()
   readers.clear()
 }

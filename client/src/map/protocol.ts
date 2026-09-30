@@ -25,9 +25,14 @@ import type { addProtocol as AddProtocol } from 'maplibre-gl'
 import { PMTiles, Protocol, SharedPromiseCache } from 'pmtiles'
 import type { Entry, Header, Source } from 'pmtiles'
 import { MAP_PACKAGES } from '../lib/packages'
-import { CORRIDOR_ARCHIVE_KEY, IndexedDbArchiveSource } from './pmtilesSource'
+import { IndexedDbArchiveSource } from './pmtilesSource'
+import { PMTILES_SCHEME } from './archiveUrls'
 
-export const PMTILES_SCHEME = 'pmtiles'
+// The scheme and the URL helpers live in map/archiveUrls.ts (#1591), so the
+// shell can name an archive without loading this handler and the library
+// under it; they are re-exported here for the readers that always found them
+// here.
+export { CORRIDOR_ARCHIVE_URL, PMTILES_SCHEME, packageArchiveUrl } from './archiveUrls'
 
 /**
  * pmtiles' SharedPromiseCache, minus one behaviour that breaks the offline
@@ -74,18 +79,6 @@ class RetryOnFailureCache extends SharedPromiseCache {
     return directory
   }
 }
-
-/**
- * The style URL that resolves to a package's archive on this phone rather
- * than to the network. The key is part of the URL because `Protocol.add()`
- * indexes an archive by its source's `getKey()`, and this is the string a
- * `pmtiles://` lookup matches against.
- */
-export function packageArchiveUrl(idbKey: string): string {
-  return `${PMTILES_SCHEME}://${idbKey}`
-}
-
-export const CORRIDOR_ARCHIVE_URL = packageArchiveUrl(CORRIDOR_ARCHIVE_KEY)
 
 let registered: Protocol | null = null
 

@@ -419,6 +419,38 @@ if (serviceWorker !== undefined) {
 const EAGER_JS_BUDGET_BYTES = 300 * 1024
 const MAPLIBRE_MARKERS = ['fill-extrusion-vertical-gradient', 'maplibregl-']
 
+/**
+ * Three more modules the eager closure must not carry, each named by a string
+ * only it holds (#1591). The MapLibre markers above catch the engine; these
+ * catch the #1300 shape one size down, which the byte budget alone cannot
+ * tell from the shell growing: a constant read out of a screen-sized module
+ * brings the module (features/LAUNCH_BUDGET.md §4.4). Measured 2026-09-30 by
+ * attributing the closure to its sources: the style module and its layer
+ * builders were 18,925 gzip bytes of it, the live sheet 14,421 raw, and the
+ * pmtiles library 14,288 raw - all reached from a Today screen that mounts
+ * no map, for a handful of ids, four inks and two setters. Each now lives in
+ * a leaf (map/styleIds.ts, map/sheetInks.ts, map/sheets.ts, map/heldCells.ts,
+ * map/archiveUrls.ts) and the module that builds layers or reads archives
+ * stays behind import().
+ */
+const EAGER_FORBIDDEN = [
+  {
+    marker: 'Corridor-view centerline',
+    what: 'the map style module (map/style.ts)',
+    where: 'map/styleIds.ts for an id, map/sheetInks.ts for an ink',
+  },
+  {
+    marker: 'hillshade-exaggeration',
+    what: 'the live sheet (map/liveTopo.ts)',
+    where: 'map/sheets.ts for a palette, a variant or a layer id',
+  },
+  {
+    marker: 'Wrong magic number for PMTiles archive',
+    what: 'the pmtiles library, through a tile handler or map/protocol.ts',
+    where: 'map/heldCells.ts for the cell setters, map/archiveUrls.ts for a URL',
+  },
+]
+
 const indexHtml = files.find((f) => /(^|[\\/])index\.html$/.test(f))
 const eagerProblems = []
 const closure = new Set()
@@ -468,6 +500,15 @@ if (indexHtml === undefined) {
         `  (found ${found.map((m) => `"${m}"`).join(' and ')})`,
         '  The engine belongs behind map/mapEngineLoader.ts. Something the shell',
         '  imports statically reaches `maplibre-gl` - see map/engine.ts and #1300.',
+      )
+    }
+    for (const { marker, what, where } of EAGER_FORBIDDEN) {
+      if (!text.includes(marker)) continue
+      eagerProblems.push(
+        `${what} is in a chunk the document loads before any import(): ${path}`,
+        `  (found "${marker}")`,
+        `  Something the shell imports statically reaches it. The value the shell`,
+        `  wants belongs in a leaf - ${where} - see #1591.`,
       )
     }
   }

@@ -144,6 +144,43 @@ nationwide federal layer is the case it did not anticipate. **#1543 carries this
 question, and no `ship` row flips to `reaches_hikers: true` until it has an answer.** That is why the
 plan below registers before it ships, rather than as caution for its own sake.
 
+### The answer, 2026-09-30: the question dissolved rather than being decided
+
+**No geography is needed, because the artifact that made geography matter is no longer downloaded.**
+Measured against release `2026-09-24-2`, decoded, against `client/src/lib/artifactBudget.ts`'s
+`LAUNCH_ARTIFACT_BUDGET_BYTES` of 33,554,432:
+
+| artifact | decoded | a phone fetches it? |
+| --- | ---: | --- |
+| `nearby_trails.geojson` | 252,233,415 | **no** — `config.ts` declares no key for it |
+| `trail_graph_geometry.json` | 242,321,456 | **no** |
+| `trail_graph.json` | 112,181,230 | **no** |
+| `nearby_trails.pmtiles` | 181,668,171 | by byte range, a few kB a tile |
+| `network_overview.geojson` | 12,775,859 | yes, whole |
+
+#1257 replaced the first three with tiles and cells, and `verify_release.py`'s check 22 skips all
+three by name. **Of every key `config.ts` declares, nothing is over the budget.** So the 68,622
+out-of-corridor features that were the whole of #1231's complaint now cost a phone in Georgia
+exactly nothing: they are tiles nobody's camera asks for. A geographic clip would save bucket bytes
+and no hiker's bytes, which is not a trade worth breaking #1019's policy for.
+
+**What was left is one artifact and one property.** `network_overview.geojson` is the only launch
+fetch whose size follows the *number of organizations* rather than the camera — 12,238,110 bytes
+across eleven stewards, 71.3% of it `usfs_trails`'. Adding these 17 would have grown it by about
+5.1 MB from the nine rows that record a mileage alone, with NPS and BLM unsized.
+
+**#1775 capped it without a geography**, which is the shape of answer this section was waiting for:
+the sketch is cut for a pixel at the zoom the tiles take over, and a segment whose whole bounding
+box is smaller than that pixel is dropped. 12,238,110 → 1,811,212 bytes, measured by running the
+changed exporter over release `2026-09-16-4`'s own records. A new organization's short trails are
+sub-pixel too, so they cost the launch nothing and **the growth stops being linear in
+organizations** — which is the property, not the 1.8 MB.
+
+So batch 4's question — *"Which geography, and what does the archive weigh?"* — has become *"does
+anything a phone fetches whole still grow per organization?"*, and after #1775 the answer is no.
+`scripts/pipelines.sh` and check 22 are what keep it that way; a future artifact that reintroduces
+the property is the thing to refuse, rather than a region.
+
 ## The load, in four pull requests
 
 Batched by **the decision a reviewer is making**, not by organization. A reviewer approving eight
@@ -155,7 +192,7 @@ licences makes eight decisions. The first is worth batching and the second is no
 | **1** | This plan and the 163-row catalogue | Is the `load` column right? | no |
 | **2** | 8 public-domain endpoints, probed, `reaches_hikers: false` | Is public domain the right reading, and did the probe run honestly? | no |
 | **3** | 3 open-licence endpoints + attribution strings, `reaches_hikers: false` | Are the attribution strings correct? | no |
-| **4** | The `reaches_hikers` flip, once #1231's scope question is answered | Which geography, and what does the archive weigh? | **yes** |
+| **4** | The `reaches_hikers` flip, once #1231's scope question is answered — **answered 2026-09-30, see above** | Which geography, and what does the archive weigh? → does anything fetched whole still grow per organization? | **yes** |
 
 Pull request 1 is this one. Each of 2 and 3 carries a **summary table, not 163 diffs** — the probe
 result per endpoint (feature count, geometry kind, CRS, whether the freshness marker exists,

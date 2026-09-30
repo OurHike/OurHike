@@ -14,9 +14,9 @@
 import { serveWeather } from './fixtures/weather.mjs'
 
 export const caption =
-  'A shelter’s peek with its one weather line (#1056) — the forecast is a fixture: real NOAA numbers, served for whichever shelter the search opens'
+  'A waypoint’s peek with its forecast line (#1056) — the forecast is a fixture: real NOAA numbers, served for whichever waypoint the search opens'
 export const alt =
-  'Either a waypoint card peeking over the map for a shelter, with a weather line under its part chips - a sun-and-cloud icon, “Today” with a high and a low, a chance of rain and “NOAA” with the time of the forecast - above a “Notes, weather & details” expander; or, where this build has no waypoint data, the search panel reading “Nothing here by that name.”'
+  'Either a waypoint card peeking over the map, with a forecast under its name - a sun-and-cloud icon beside “Today” with a high, a low and a chance of rain, and under them “NOAA forecast from” and the time - above a “Weather & details” or “Notes, weather & details” expander; or, where this build has no waypoint data, the search panel reading “Nothing here by that name.”'
 
 export const wait = 5000
 

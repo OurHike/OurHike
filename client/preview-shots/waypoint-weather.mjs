@@ -14,8 +14,10 @@
 // camera runs. So the numbers are real weather, at the wrong place.
 //
 // Reached the way waypoint-conditions.mjs reaches the opened card, for its
-// reasons: a search for the category rather than a named shelter, and a
-// pull by test id. TWO HONEST FRAMES, as there: where the POI artifacts
+// reasons: a search for "Shelter" rather than a named shelter, and a pull by
+// test id. The search matches names, so the first result need not be a
+// shelter - on this PR's first preview it was a privy called "Sheltering Arms
+// Playground" in Manhattan - which is why the captions say waypoint. TWO HONEST FRAMES, as there: where the POI artifacts
 // arrive, the card; where they do not, Search saying "Nothing here by that
 // name".
 //
@@ -25,9 +27,9 @@
 import { serveWeather } from './fixtures/weather.mjs'
 
 export const caption =
-  'The opened card’s “Weather here” band (#1056) — the forecast is a fixture: real NOAA numbers, served for whichever shelter the search opens'
+  'The opened card’s “Weather here” band (#1056) — the forecast is a fixture: real NOAA numbers, served for whichever waypoint the search opens'
 export const alt =
-  'Either a waypoint card pulled open for a shelter and scrolled to a “Weather here” band: a line saying when the forecast is from and when it was checked, a line saying NWS had no alerts for the spot, six hourly columns with a sun-and-cloud icon, a temperature and a chance of rain, a wind line, and five day rows each with a chance of rain, a low, a bar and a high; or, where this build has no waypoint data, the search panel reading “Nothing here by that name.”'
+  'Either a waypoint card pulled open and scrolled to a “Weather here” band: a line saying when the forecast is from and when it was checked, a line saying NWS had no alerts for the spot, six hourly columns with a sun-and-cloud icon, a temperature and a chance of rain, a wind line, and five day rows each with a chance of rain, a low, a bar and a high; or, where this build has no waypoint data, the search panel reading “Nothing here by that name.”'
 
 export const wait = 5000
 

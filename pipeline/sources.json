@@ -1043,7 +1043,10 @@
       "discovered_date": "2026-09-30",
       "notes": "31,485 polyline features, 42 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:3857. maxRecordCount 2,000, which is what a paged fetch has to respect. A 504 from the server on the first probe attempt; the retry answered, and that is recorded as a retry rather than as a finding about the layer.",
       "reaches_hikers": true,
-      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today.",
+      "blaze_field": null,
+      "blaze_default": "Unknown",
+      "blaze_comment": "Declared so network_line_sources() reads this layer at all (#1787): that selector is `'blaze_field' in s or 'blaze_default' in s`, and a trail-line source carrying neither is skipped exactly as OPRHP's facilities points are. `reaches_hikers` gates publish.py and is a different question - #1786 flipped it alone and this layer still reached nobody. 'Unknown' is what usfs_trails and the four NYC layers already use for a steward publishing no blaze. EVERY FIELD OF THIS LAYER WAS READ LIVE on 2026-09-30 rather than pattern-matched, because #1778's probe used a name filter and a filter only finds what it was told to look for. `TRLCLASS` is the trail's construction standard, not a blaze."
     },
     {
       "key": "blm_trails",
@@ -1061,7 +1064,10 @@
       "discovered_date": "2026-09-30",
       "notes": "19,532 polyline features, 35 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:3857. maxRecordCount 2,000, which is what a paged fetch has to respect. NO NAME FIELD ON ANY OF THE 35, which is the finding this row exists to record and not an omission here: nothing in the layer names a trail, so every one of these 19,532 features reaches the export nameless and draws in the unnamed haze. `name_constant` is not the answer either - that key is for a layer that IS one trail (see pcta_centerline), and this is 19,532 of them. What would fix it is the BLM publishing a name column, which nobody has asked them for.",
       "reaches_hikers": true,
-      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today.",
+      "blaze_field": null,
+      "blaze_default": "Unknown",
+      "blaze_comment": "Declared so network_line_sources() reads this layer at all (#1787): that selector is `'blaze_field' in s or 'blaze_default' in s`, and a trail-line source carrying neither is skipped exactly as OPRHP's facilities points are. `reaches_hikers` gates publish.py and is a different question - #1786 flipped it alone and this layer still reached nobody. 'Unknown' is what usfs_trails and the four NYC layers already use for a steward publishing no blaze. EVERY FIELD OF THIS LAYER WAS READ LIVE on 2026-09-30 rather than pattern-matched, because #1778's probe used a name filter and a filter only finds what it was told to look for. `PLAN_ASSET_CLASS` and `OBSRVE_ROUTE_USE_CLASS` are asset and use classes, not paint."
     },
     {
       "key": "cotrex_trails",
@@ -1080,7 +1086,10 @@
       "discovered_date": "2026-09-30",
       "notes": "96,897 polyline features, 44 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:3857. maxRecordCount 2,000, which is what a paged fetch has to respect. THE LARGEST SINGLE SOURCE IN THIS BATCH BY SOME WAY: 96,897 features is 71% of everything nearby_trails.geojson shipped before this batch (136,941 from eleven sources), from one state. COTREX aggregates 236 land managers, which is why.",
       "reaches_hikers": true,
-      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today.",
+      "blaze_field": null,
+      "blaze_default": "Unknown",
+      "blaze_comment": "Declared so network_line_sources() reads this layer at all (#1787): that selector is `'blaze_field' in s or 'blaze_default' in s`, and a trail-line source carrying neither is skipped exactly as OPRHP's facilities points are. `reaches_hikers` gates publish.py and is a different question - #1786 flipped it alone and this layer still reached nobody. 'Unknown' is what usfs_trails and the four NYC layers already use for a steward publishing no blaze. EVERY FIELD OF THIS LAYER WAS READ LIVE on 2026-09-30 rather than pattern-matched, because #1778's probe used a name filter and a filter only finds what it was told to look for."
     },
     {
       "key": "wa_rco_trails",
@@ -1099,7 +1108,10 @@
       "discovered_date": "2026-09-30",
       "notes": "22,454 polyline features, 51 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:3857. maxRecordCount 2,000, which is what a paged fetch has to respect. THE CATALOGUE'S URL IS A LANDING PAGE, not this layer: https://geo.wa.gov/maps/a8e9bf1b77644e9bbff6996a27030f5a . Resolved through the ArcGIS Hub API; `url` above is what a fetch actually opens. The service carries a second layer, Trailheads, which this row does NOT register - waypoints are export_poi.py's question and nothing here fetches them. The catalogue recorded 0 miles for this organization; it holds 22,454 trail features.",
       "reaches_hikers": true,
-      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today.",
+      "blaze_field": null,
+      "blaze_default": "Unknown",
+      "blaze_comment": "Declared so network_line_sources() reads this layer at all (#1787): that selector is `'blaze_field' in s or 'blaze_default' in s`, and a trail-line source carrying neither is skipped exactly as OPRHP's facilities points are. `reaches_hikers` gates publish.py and is a different question - #1786 flipped it alone and this layer still reached nobody. 'Unknown' is what usfs_trails and the four NYC layers already use for a steward publishing no blaze. EVERY FIELD OF THIS LAYER WAS READ LIVE on 2026-09-30 rather than pattern-matched, because #1778's probe used a name filter and a filter only finds what it was told to look for. `national_trail_designation` and `trail_class` are a designation and a standard, not paint."
     },
     {
       "key": "utah_sgid_trails",
@@ -1118,7 +1130,10 @@
       "discovered_date": "2026-09-30",
       "notes": "48,132 polyline features, 27 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:3857. maxRecordCount 2,000, which is what a paged fetch has to respect.",
       "reaches_hikers": true,
-      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today.",
+      "blaze_field": null,
+      "blaze_default": "Unknown",
+      "blaze_comment": "Declared so network_line_sources() reads this layer at all (#1787): that selector is `'blaze_field' in s or 'blaze_default' in s`, and a trail-line source carrying neither is skipped exactly as OPRHP's facilities points are. `reaches_hikers` gates publish.py and is a different question - #1786 flipped it alone and this layer still reached nobody. 'Unknown' is what usfs_trails and the four NYC layers already use for a steward publishing no blaze. EVERY FIELD OF THIS LAYER WAS READ LIVE on 2026-09-30 rather than pattern-matched, because #1778's probe used a name filter and a filter only finds what it was told to look for. `CartoCode` looked like symbology and is not: its 12 values are use classes - '1 - Hiking Only', '2 - Hiking and Biking', '7 - Steps' - measured live."
     },
     {
       "key": "ncta_trail",
@@ -1137,7 +1152,10 @@
       "discovered_date": "2026-09-30",
       "notes": "4,004 polyline features, 33 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:26916. maxRecordCount 1,000, which is what a paged fetch has to respect. THE CATALOGUE'S URL IS A LANDING PAGE, not this layer: https://gis.northcountrytrail.org/ . Resolved through the ArcGIS Hub API; `url` above is what a fetch actually opens. THE CATALOGUE HAS THIS ROW WRONG TWICE and both were found only by opening it. It lists `ogc_features` at gis.northcountrytrail.org; that host is an ArcGIS Hub SITE serving HTML, with no OGC API and no collections at all. NCTA's own layer is the `url` above, found through a Hub search of the organization's published datasets.",
       "reaches_hikers": true,
-      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today.",
+      "blaze_field": null,
+      "blaze_default": "Unknown",
+      "blaze_comment": "Declared so network_line_sources() reads this layer at all (#1787): that selector is `'blaze_field' in s or 'blaze_default' in s`, and a trail-line source carrying neither is skipped exactly as OPRHP's facilities points are. `reaches_hikers` gates publish.py and is a different question - #1786 flipped it alone and this layer still reached nobody. 'Unknown' is what usfs_trails and the four NYC layers already use for a steward publishing no blaze. EVERY FIELD OF THIS LAYER WAS READ LIVE on 2026-09-30 rather than pattern-matched, because #1778's probe used a name filter and a filter only finds what it was told to look for."
     },
     {
       "key": "alaska_trails",
@@ -1156,7 +1174,10 @@
       "discovered_date": "2026-09-30",
       "notes": "1,602 polyline features, 44 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). The layer reports NO spatial reference in its extent, its sourceSpatialReference or its spatialReference - so the CRS here is unrecorded rather than assumed, and a fetch has to read it off the response. maxRecordCount 2,000, which is what a paged fetch has to respect. The layer is AK_Trails_db_v6 and its last recorded edit is 2024-02-20, which is the oldest freshness marker in this batch.",
       "reaches_hikers": true,
-      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today.",
+      "blaze_field": null,
+      "blaze_default": "Unknown",
+      "blaze_comment": "Declared so network_line_sources() reads this layer at all (#1787): that selector is `'blaze_field' in s or 'blaze_default' in s`, and a trail-line source carrying neither is skipped exactly as OPRHP's facilities points are. `reaches_hikers` gates publish.py and is a different question - #1786 flipped it alone and this layer still reached nobody. 'Unknown' is what usfs_trails and the four NYC layers already use for a steward publishing no blaze. EVERY FIELD OF THIS LAYER WAS READ LIVE on 2026-09-30 rather than pattern-matched, because #1778's probe used a name filter and a filter only finds what it was told to look for. `Trail_Designation` and `TrailClass` are a designation and a standard, not paint."
     },
     {
       "key": "pasda_dcnr_trails",
@@ -1175,7 +1196,10 @@
       "discovered_date": "2026-09-30",
       "notes": "684 polyline features, 26 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:4269. maxRecordCount 1,000, which is what a paged fetch has to respect.",
       "reaches_hikers": true,
-      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today.",
+      "blaze_field": null,
+      "blaze_default": "Unknown",
+      "blaze_comment": "Declared so network_line_sources() reads this layer at all (#1787): that selector is `'blaze_field' in s or 'blaze_default' in s`, and a trail-line source carrying neither is skipped exactly as OPRHP's facilities points are. `reaches_hikers` gates publish.py and is a different question - #1786 flipped it alone and this layer still reached nobody. 'Unknown' is what usfs_trails and the four NYC layers already use for a steward publishing no blaze. EVERY FIELD OF THIS LAYER WAS READ LIVE on 2026-09-30 rather than pattern-matched, because #1778's probe used a name filter and a filter only finds what it was told to look for."
     },
     {
       "key": "ct_deep_blue_blazed",
@@ -1194,7 +1218,9 @@
       "discovered_date": "2026-09-30",
       "notes": "351 polyline features, 9 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:2234. maxRecordCount 1,000, which is what a paged fetch has to respect. The Blue-Blazed system is maintained on the ground by the Connecticut Forest & Park Association; this layer is the state's publication of it, and the attribution above names the publisher rather than the club that does the work. CFPA is a separate catalogue row and is not registered here.",
       "reaches_hikers": true,
-      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today.",
+      "blaze_field": "Map_Color",
+      "blaze_comment": "Declared so network_line_sources() reads this layer (#1787), and with the STEWARD'S OWN COLUMN rather than a constant, because this one publishes paint. `Map_Color`'s distinct values were read live on 2026-09-30 and each has a row in reference/blaze_mapping.json - mapped where it names a palette member, deferred with a reason where it does not. A value in neither falls to Unknown WITH A WARNING, which is lib/blaze.py's way of telling an oversight from a decision."
     },
     {
       "key": "nc_mst_trail",
@@ -1213,7 +1239,9 @@
       "discovered_date": "2026-09-30",
       "notes": "328 polyline features, 33 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:32119. maxRecordCount 2,000, which is what a paged fetch has to respect. Published by the state rather than by Friends of the MST, who maintain it; the Friends are their own catalogue row and are not registered here.",
       "reaches_hikers": true,
-      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today.",
+      "blaze_field": "Blaze",
+      "blaze_comment": "Declared so network_line_sources() reads this layer (#1787), and with the STEWARD'S OWN COLUMN rather than a constant, because this one publishes paint. `Blaze`'s distinct values were read live on 2026-09-30 and each has a row in reference/blaze_mapping.json - mapped where it names a palette member, deferred with a reason where it does not. A value in neither falls to Unknown WITH A WARNING, which is lib/blaze.py's way of telling an oversight from a decision."
     },
     {
       "key": "azgeo_arizona_trail",
@@ -1232,7 +1260,10 @@
       "discovered_date": "2026-09-30",
       "notes": "145 polyline features, 10 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:4326. maxRecordCount 1,000, which is what a paged fetch has to respect. THE CATALOGUE'S URL IS A LANDING PAGE, not this layer: https://azgeo-open-data-agic.hub.arcgis.com/datasets/azgeo::arizona-trail-association-connector-trails . Resolved through the ArcGIS Hub API; `url` above is what a fetch actually opens.",
       "reaches_hikers": true,
-      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today.",
+      "blaze_field": null,
+      "blaze_default": "Unknown",
+      "blaze_comment": "Declared so network_line_sources() reads this layer at all (#1787): that selector is `'blaze_field' in s or 'blaze_default' in s`, and a trail-line source carrying neither is skipped exactly as OPRHP's facilities points are. `reaches_hikers` gates publish.py and is a different question - #1786 flipped it alone and this layer still reached nobody. 'Unknown' is what usfs_trails and the four NYC layers already use for a steward publishing no blaze. EVERY FIELD OF THIS LAYER WAS READ LIVE on 2026-09-30 rather than pattern-matched, because #1778's probe used a name filter and a filter only finds what it was told to look for."
     },
     {
       "key": "tahoe_rim_trail",
@@ -1251,7 +1282,10 @@
       "discovered_date": "2026-09-30",
       "notes": "132 polyline features, 6 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:3857. maxRecordCount 2,000, which is what a paged fetch has to respect. THE CATALOGUE RECORDS 'free with registration, no stated licence', and this layer answered an anonymous probe with no registration at all. Those two do not agree, and the row keeps the weaker reading: the service being open does not mean the organization intends it to be, which is exactly what `maintainer_authorisation` is for. @unvalidated - what would settle it is TRTA answering.",
       "reaches_hikers": true,
-      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today.",
+      "blaze_field": null,
+      "blaze_default": "Unknown",
+      "blaze_comment": "Declared so network_line_sources() reads this layer at all (#1787): that selector is `'blaze_field' in s or 'blaze_default' in s`, and a trail-line source carrying neither is skipped exactly as OPRHP's facilities points are. `reaches_hikers` gates publish.py and is a different question - #1786 flipped it alone and this layer still reached nobody. 'Unknown' is what usfs_trails and the four NYC layers already use for a steward publishing no blaze. EVERY FIELD OF THIS LAYER WAS READ LIVE on 2026-09-30 rather than pattern-matched, because #1778's probe used a name filter and a filter only finds what it was told to look for."
     },
     {
       "key": "duluth_superior_hiking_trail",
@@ -1270,7 +1304,10 @@
       "discovered_date": "2026-09-30",
       "notes": "67 polyline features, 34 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:26915. maxRecordCount 1,000, which is what a paged fetch has to respect. THE CATALOGUE'S URL IS A LANDING PAGE, not this layer: https://hub.arcgis.com/datasets/DuluthMN::superior-hiking-trail . Resolved through the ArcGIS Hub API; `url` above is what a fetch actually opens. The Duluth section only - the Superior Hiking Trail runs some 300 miles and this is the city's own 67 features. The Superior Hiking Trail Association is a separate catalogue row and is not registered here.",
       "reaches_hikers": true,
-      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today.",
+      "blaze_field": null,
+      "blaze_default": "Unknown",
+      "blaze_comment": "Declared so network_line_sources() reads this layer at all (#1787): that selector is `'blaze_field' in s or 'blaze_default' in s`, and a trail-line source carrying neither is skipped exactly as OPRHP's facilities points are. `reaches_hikers` gates publish.py and is a different question - #1786 flipped it alone and this layer still reached nobody. 'Unknown' is what usfs_trails and the four NYC layers already use for a steward publishing no blaze. EVERY FIELD OF THIS LAYER WAS READ LIVE on 2026-09-30 rather than pattern-matched, because #1778's probe used a name filter and a filter only finds what it was told to look for."
     },
     {
       "key": "massgis_long_distance_trails",
@@ -1289,7 +1326,10 @@
       "discovered_date": "2026-09-30",
       "notes": "32 polyline features, 8 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:26986. maxRecordCount 2,000, which is what a paged fetch has to respect.",
       "reaches_hikers": true,
-      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today.",
+      "blaze_field": null,
+      "blaze_default": "Unknown",
+      "blaze_comment": "Declared so network_line_sources() reads this layer at all (#1787): that selector is `'blaze_field' in s or 'blaze_default' in s`, and a trail-line source carrying neither is skipped exactly as OPRHP's facilities points are. `reaches_hikers` gates publish.py and is a different question - #1786 flipped it alone and this layer still reached nobody. 'Unknown' is what usfs_trails and the four NYC layers already use for a steward publishing no blaze. EVERY FIELD OF THIS LAYER WAS READ LIVE on 2026-09-30 rather than pattern-matched, because #1778's probe used a name filter and a filter only finds what it was told to look for."
     },
     {
       "key": "pcta_centerline",
@@ -1308,7 +1348,10 @@
       "discovered_date": "2026-09-30",
       "notes": "1 polyline features, 2 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:4326. maxRecordCount 2,000, which is what a paged fetch has to respect. NO NAME FIELD: the layer carries OBJECTID and Shape__Length and nothing else, so `name_constant` names it (#1778, declared_name). CHECKED BEFORE THE NAME WAS WRITTEN, 2026-09-30: the single feature is 2,653 miles of line running from 32.59 deg N to 49.00 deg N - the Mexican border to the Canadian - against the PCT's published 2,650. There is no other trail that could be.",
       "reaches_hikers": true,
-      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today.",
+      "blaze_field": null,
+      "blaze_default": "Unknown",
+      "blaze_comment": "Declared so network_line_sources() reads this layer at all (#1787): that selector is `'blaze_field' in s or 'blaze_default' in s`, and a trail-line source carrying neither is skipped exactly as OPRHP's facilities points are. `reaches_hikers` gates publish.py and is a different question - #1786 flipped it alone and this layer still reached nobody. 'Unknown' is what usfs_trails and the four NYC layers already use for a steward publishing no blaze. EVERY FIELD OF THIS LAYER WAS READ LIVE on 2026-09-30 rather than pattern-matched, because #1778's probe used a name filter and a filter only finds what it was told to look for."
     },
     {
       "key": "cdtc_centerline",
@@ -1327,7 +1370,10 @@
       "discovered_date": "2026-09-30",
       "notes": "8 polyline features, 5 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:3857. maxRecordCount 2,000, which is what a paged fetch has to respect. THE CATALOGUE'S URL IS A LANDING PAGE, not this layer: https://hub.arcgis.com/datasets/79de12d605ca401492734e3952455a8e_0 . Resolved through the ArcGIS Hub API; `url` above is what a fetch actually opens. NO NAME FIELD - the five columns are OBJECTID, Shape, STATE, Shape_Leng and Shape_Length - so `name_constant` names it. CHECKED BEFORE THE NAME WAS WRITTEN, 2026-09-30: the eight features total 3,060 miles from 31.50 deg N to 49.05 deg N, Mexico to Canada, against the CDT's published 3,028. TWO THINGS A LATER READER SHOULD NOT HAVE TO RE-FETCH: the layer is named ContinentalDivideTrail2016 and is hosted by the Wyoming Geographic Information Science Center on CDTC's behalf, so the vintage is 2016 and the host is not the steward; and its STATE column is inconsistent - both 'CO' and 'Colorado' appear, and both 'NM' and 'New Mexico' - which is why nothing here reads it.",
       "reaches_hikers": true,
-      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today.",
+      "blaze_field": null,
+      "blaze_default": "Unknown",
+      "blaze_comment": "Declared so network_line_sources() reads this layer at all (#1787): that selector is `'blaze_field' in s or 'blaze_default' in s`, and a trail-line source carrying neither is skipped exactly as OPRHP's facilities points are. `reaches_hikers` gates publish.py and is a different question - #1786 flipped it alone and this layer still reached nobody. 'Unknown' is what usfs_trails and the four NYC layers already use for a steward publishing no blaze. EVERY FIELD OF THIS LAYER WAS READ LIVE on 2026-09-30 rather than pattern-matched, because #1778's probe used a name filter and a filter only finds what it was told to look for."
     },
     {
       "key": "wi_ice_age_trail",
@@ -1346,7 +1392,10 @@
       "discovered_date": "2026-09-30",
       "notes": "1 polyline features, 3 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:3071. maxRecordCount 2,000, which is what a paged fetch has to respect. THE CATALOGUE'S URL IS A LANDING PAGE, not this layer: https://data-wi-dnr.opendata.arcgis.com/datasets/wi-dnr::ice-age-trail . Resolved through the ArcGIS Hub API; `url` above is what a fetch actually opens. NO NAME FIELD across its three columns, so `name_constant` names it - the layer is itself called 'Ice Age Trail'. CHECKED BEFORE THE NAME WAS WRITTEN, 2026-09-30: the single feature is 711 miles of line inside Wisconsin. THAT IS NOT THE WHOLE TRAIL and the name must not be read as claiming it is: the Ice Age NST is planned at about 1,200 miles, and 711 is the built and blazed segments. A hiker reading this line is reading the built trail, which is the useful half, but the gap is real and nothing here marks where the connecting routes run.",
       "reaches_hikers": true,
-      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
+      "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today.",
+      "blaze_field": null,
+      "blaze_default": "Unknown",
+      "blaze_comment": "Declared so network_line_sources() reads this layer at all (#1787): that selector is `'blaze_field' in s or 'blaze_default' in s`, and a trail-line source carrying neither is skipped exactly as OPRHP's facilities points are. `reaches_hikers` gates publish.py and is a different question - #1786 flipped it alone and this layer still reached nobody. 'Unknown' is what usfs_trails and the four NYC layers already use for a steward publishing no blaze. EVERY FIELD OF THIS LAYER WAS READ LIVE on 2026-09-30 rather than pattern-matched, because #1778's probe used a name filter and a filter only finds what it was told to look for."
     }
   ],
   "usdm_licence": {

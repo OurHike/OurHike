@@ -17,7 +17,9 @@
 // measured 2026-09-30. They were then compared against 256,000, which is
 // 250 KB and was the budget until #1577 RAISED IT TO 300 KB on 2026-09-18.
 // features/LAUNCH_BUDGET.md §3 has carried 300 since. Measured on this head:
-// 256,493 bytes compressed against the real budget of 307,200, so BOTH
+// 256,487 bytes compressed against the real budget of 307,200 - a repeat
+// build of the same tree printed 256,493, because content hashing moves the
+// figure a few bytes, so read it as ~256.5 KB rather than to the byte. BOTH
 // arrangements fit and the `import()` is a choice about what belongs in the
 // launch path rather than the only way under a line. It is still the right
 // choice for the reason in the paragraph above. `npm run build` prints the

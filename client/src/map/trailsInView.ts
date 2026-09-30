@@ -83,7 +83,7 @@ import { CHOSEN_SYSTEM_SOURCES } from './nearbyTrails'
 import { POI_LAYER_ID } from './poiLayers'
 import { TAPPABLE_BLAZE_LAYER_IDS } from './style'
 import { whenStyleReady } from './styleReady'
-import { longTrailForName } from './longTrailNames'
+import { longTrailDisplayName, longTrailForName, neverShout } from './longTrailNames'
 import {
   registryNameForSource,
   BADGE_ANCHOR_PROPERTY,
@@ -773,6 +773,20 @@ export function trailsInView(
     // feeds ARE one trail each; the name test is what reaches the rest.
     const longTrail = longTrailForName(name)
     const throughRoute = BADGE_SOURCES.includes(source) || longTrail !== null
+    // WHAT THE BADGE PRINTS, which is not what the publisher spells it. USFS
+    // publishes SHELTOWEE TRACE, BENTON MACKAYE and NORTH COUNTRY NATIONAL
+    // SCENIC; a hiker reads "Sheltowee Trace", "Benton MacKaye Trail" and
+    // "North Country Trail". Same decision lib/trails.ts already took for the
+    // A.T.'s federal designation, applied to the other nineteen.
+    const printed = neverShout(
+      (longTrail !== null && longTrailDisplayName(longTrail)) || name,
+    )
+    // ONE BADGE PER TRAIL, NOT PER SPELLING. Keyed on the resolved trail
+    // where there is one, because the same trail arrives under several names
+    // - the first frame of this shipping badged NORTH COUNTRY TRAIL and
+    // NORTH COUNTRY NATIONAL SCENIC side by side, and PINHOTI beside PINHOTI
+    // NRT, which is the map telling a hiker there are two trails there.
+    const key = longTrail ?? name
     const takeable = trailIdForSource(source) !== null
     const inChosenSystem = chosen.includes(source)
 
@@ -785,10 +799,10 @@ export function trailsInView(
       if (clear !== view) clearRuns.push(...visibleRuns(part, clear))
     }
 
-    const existing = byName.get(name)
+    const existing = byName.get(key)
     if (existing === undefined) {
-      byName.set(name, {
-        name,
+      byName.set(key, {
+        name: printed,
         source,
         blazeColor: stringProp(properties, 'blaze_color'),
         throughRoute,
@@ -808,14 +822,27 @@ export function trailsInView(
     // its runs join the search, and the through-route's piece names it.
     existing.runs.push(...runs)
     existing.clearRuns.push(...clearRuns)
-    if (throughRoute && !existing.throughRoute) {
+    // WHICH PIECE NAMES THE TRAIL. A through-route's piece beats a plain
+    // one, and among through-route pieces a TAKEABLE one beats the rest.
+    //
+    // That second clause is not tidiness. Since the dedupe key became the
+    // resolved trail, the A.T. arrives as two pieces - ATC's `centerline`,
+    // which is takeable, and the Forest Service's own `APPALACHIAN TRAIL`
+    // segments, which are not - and queryRenderedFeatures does not promise
+    // which comes back first. Without it, a frame where the USFS piece
+    // happened to be seen first left the A.T. un-takeable (#1306's whole
+    // subject) and keyed its mark off a source that has none.
+    const betterPiece =
+      (throughRoute && !existing.throughRoute) ||
+      (throughRoute && takeable && !existing.takeable)
+    if (betterPiece) {
       existing.throughRoute = true
-      existing.longTrail = existing.longTrail ?? longTrail
       existing.takeable = takeable
       existing.source = source
       existing.blazeColor = stringProp(properties, 'blaze_color')
       existing.properties = properties
     }
+    existing.longTrail = existing.longTrail ?? longTrail
     existing.chosen = existing.chosen || inChosenSystem
   }
 

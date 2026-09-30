@@ -394,6 +394,110 @@ describe("a long trail inside somebody else's layer (#1543)", () => {
     )
   })
 
+  it('draws ONE badge for a trail that arrives under several spellings', () => {
+    // THE DEFECT A SCREENSHOT CAUGHT AND THE SUITE DID NOT. The first frame
+    // of this shipping put NORTH COUNTRY TRAIL and NORTH COUNTRY NATIONAL
+    // SCENIC on the map side by side, and PINHOTI beside PINHOTI NRT - the
+    // map telling a hiker there are two trails where there is one. The
+    // dedupe was keyed on the published name; it is keyed on the resolved
+    // trail now.
+    const map = mapWith({
+      [BLAZE_LAYER_ID]: [
+        line(
+          'NORTH COUNTRY TRAIL',
+          'usfs_trails',
+          [
+            [-74.2, 41.2],
+            [-74.1, 41.25],
+          ],
+          'Blue',
+        ),
+        line(
+          'NORTH COUNTRY NATIONAL SCENIC',
+          'usfs_trails',
+          [
+            [-74.1, 41.25],
+            [-74.0, 41.3],
+          ],
+          'Blue',
+        ),
+      ],
+    })
+    const trails = trailsInView(map as unknown as MapLibreMap)
+    expect(trails).toHaveLength(1)
+    expect(trails[0].longTrail).toBe('nct')
+    expect(badgeFeatures(trails).features).toHaveLength(1)
+  })
+
+  it("prints the steward's name rather than the publisher's shout-case", () => {
+    // USFS publishes a GIS table's spelling. A hiker reads a trail's name.
+    for (const [published, printed] of [
+      ['SHELTOWEE TRACE', 'Sheltowee Trace'],
+      ['BENTON MACKAYE', 'Benton MacKaye Trail'],
+      ['PINHOTI NRT', 'Pinhoti Trail'],
+      ['NORTH COUNTRY NATIONAL SCENIC', 'North Country Trail'],
+      ['OUACHITA NRT', 'Ouachita Trail'],
+    ] as const) {
+      const map = mapWith({
+        [BLAZE_LAYER_ID]: [
+          line(
+            published,
+            'usfs_trails',
+            [
+              [-74.2, 41.2],
+              [-74.0, 41.3],
+            ],
+            'White',
+          ),
+        ],
+      })
+      const trails = trailsInView(map as unknown as MapLibreMap)
+      expect(trails[0].name).toBe(printed)
+    }
+  })
+
+  it('keeps the A.T. takeable when the Forest Service piece is seen first', () => {
+    // THE REGRESSION THE DEDUPE NEARLY SHIPPED. Since the key became the
+    // resolved trail, the A.T. arrives as two pieces: ATC's `centerline`,
+    // which is takeable, and USFS's own APPALACHIAN TRAIL segments, which
+    // are not. queryRenderedFeatures does not promise an order, so the merge
+    // has to prefer the takeable piece rather than the first one - otherwise
+    // a frame where USFS came back first left the A.T. un-takeable, which is
+    // the whole subject of #1306.
+    const map = mapWith({
+      [BLAZE_LAYER_ID]: [
+        line(
+          'APPALACHIAN TRAIL',
+          'usfs_trails',
+          [
+            [-74.2, 41.2],
+            [-74.1, 41.25],
+          ],
+          'White',
+        ),
+        line(
+          'Appalachian National Scenic Trail',
+          'centerline',
+          [
+            [-74.1, 41.25],
+            [-74.0, 41.3],
+          ],
+          'White',
+          { id: 'centerline:chain:0' },
+        ),
+      ],
+    })
+    const trails = trailsInView(map as unknown as MapLibreMap)
+    expect(trails).toHaveLength(1)
+    expect(trails[0].name).toBe('Appalachian Trail')
+    expect(trails[0].takeable).toBe(true)
+    expect(trails[0].source).toBe('centerline')
+    // And it wears ATC's own mark, not a steward copy keyed off usfs_trails.
+    expect(badgeFeatures(trails).features[0].properties?.[BADGE_MARK_PROPERTY]).toBe(
+      trailMarkImageId('centerline'),
+    )
+  })
+
   it('leaves a connector in the same layer as an ordinary line', () => {
     // The refusal is what keeps the badge count honest: USFS publishes
     // SHELTOWEE CONNECTOR and SHELTOWEE SPUR beside the trail itself.

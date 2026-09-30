@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
+  longTrailDisplayName,
   longTrailForName,
   longTrailHasMarker,
+  neverShout,
   LONG_TRAIL_NAME_COUNT,
 } from './longTrailNames'
 import { badgeMarkImageId, BADGE_SOURCES, stewardMarkImageId } from './trailBadges'
@@ -148,6 +150,67 @@ describe('badgeMarkImageId', () => {
   it('keeps the two source-badged trails working exactly as before', () => {
     for (const source of BADGE_SOURCES) {
       expect(badgeMarkImageId(source, null)).not.toBeNull()
+    }
+  })
+})
+
+describe('what a badge prints', () => {
+  // The maintainer, on seeing the first frame: "Always proper case, not alll
+  // caps". USFS publishes a GIS table's spelling and a hiker reads a trail's
+  // name.
+
+  it('gives every badged trail a name with no shouting in it', () => {
+    // The guarantee, checked across the whole table rather than on the five
+    // examples that prompted it.
+    for (const slug of [
+      'at',
+      'pct',
+      'cdt',
+      'nct',
+      'azt',
+      'flt',
+      'sht',
+      'oht',
+      'ouachita',
+      'sheltowee',
+      'pinhoti',
+      'bmt',
+      'bartram',
+      'mdh',
+      'tahoe-rim',
+      'gwt',
+      'bst',
+      'jmt',
+      'npt',
+      'msg',
+    ]) {
+      const printed = longTrailDisplayName(slug)
+      expect(printed).not.toBeNull()
+      expect(printed).not.toBe((printed as string).toUpperCase())
+    }
+  })
+
+  it('keeps the capital letters a mechanical title case would lose', () => {
+    // Why the curated name beats `neverShout`: it comes from the steward.
+    expect(longTrailDisplayName('bmt')).toBe('Benton MacKaye Trail')
+    expect(longTrailDisplayName('pinhoti')).toBe('Pinhoti Trail')
+    expect(longTrailDisplayName('nct')).toBe('North Country Trail')
+  })
+
+  it('never shouts even for a name no curated spelling covers', () => {
+    // The last resort, for a trail badged before it is catalogued.
+    expect(neverShout('SOME NEW TRAIL')).toBe('Some New Trail')
+    expect(neverShout('PINHOTI NRT')).toBe('Pinhoti Nrt')
+  })
+
+  it('leaves a considered spelling alone, because lower case means somebody chose it', () => {
+    for (const name of [
+      'Long Path',
+      'Northville-Placid Trail',
+      'Benton MacKaye Trail',
+      "Devil's Path",
+    ]) {
+      expect(neverShout(name)).toBe(name)
     }
   })
 })

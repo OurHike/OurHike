@@ -110,3 +110,70 @@ const SLUGS_WITH_A_STEWARD_MARKER: ReadonlySet<string> = new Set([
 export function longTrailHasMarker(slug: string): boolean {
   return SLUGS_WITH_A_STEWARD_MARKER.has(slug)
 }
+
+/**
+ * What the badge PRINTS for a long trail, which is not what the publisher
+ * spells it.
+ *
+ * WHY. The Forest Service publishes in capitals and by designation:
+ * `SHELTOWEE TRACE`, `BENTON MACKAYE`, `PINHOTI NRT`, `NORTH COUNTRY
+ * NATIONAL SCENIC`. Printed raw those shout across the map and name the
+ * trail the way a GIS table does rather than the way its steward and a
+ * hiker do. This is the same decision lib/trails.ts already took for the
+ * A.T. - "the maintainer asked on 2026-09-16 for the app to say
+ * 'Appalachian Trail' wherever a hiker reads it" - applied to the other
+ * nineteen.
+ *
+ * The names come from trail_emblems.json through trail_name_aliases.json, so
+ * they are the steward's own spelling rather than a case transform of the
+ * publisher's: `PINHOTI NRT` becomes "Pinhoti Trail", not "Pinhoti Nrt".
+ */
+const LONG_TRAIL_DISPLAY_NAME: Readonly<Record<string, string>> = {
+  at: 'Appalachian Trail',
+  azt: 'Arizona Trail',
+  bartram: 'Bartram Trail',
+  bmt: 'Benton MacKaye Trail',
+  bst: 'Bonneville Shoreline Trail',
+  cdt: 'Continental Divide Trail',
+  flt: 'Finger Lakes Trail',
+  gwt: 'Great Western Trail',
+  jmt: 'John Muir Trail',
+  mdh: 'Maah Daah Hey Trail',
+  msg: 'Monadnock-Sunapee Greenway',
+  nct: 'North Country Trail',
+  npt: 'Northville-Placid Trail',
+  oht: 'Ozark Highlands Trail',
+  ouachita: 'Ouachita Trail',
+  pct: 'Pacific Crest Trail',
+  pinhoti: 'Pinhoti Trail',
+  sheltowee: 'Sheltowee Trace',
+  sht: 'Superior Hiking Trail',
+  'tahoe-rim': 'Tahoe Rim Trail',
+}
+
+/** The name a badge prints for a long trail, or null if it is not one. */
+export function longTrailDisplayName(slug: string): string | null {
+  return LONG_TRAIL_DISPLAY_NAME[slug] ?? null
+}
+
+/**
+ * A last resort so a badge NEVER shouts, on the maintainer's instruction of
+ * 2026-09-30: "Always proper case, not alll caps".
+ *
+ * WHAT IT IS FOR, AND WHY IT IS THE WORSE ANSWER. Every trail this badges
+ * today has a curated name in LONG_TRAIL_DISPLAY_NAME above, and that is the
+ * one to use: it comes from the steward, so `PINHOTI NRT` reads "Pinhoti
+ * Trail" and `BENTON MACKAYE` keeps its capital K. Mechanical title case
+ * cannot do either - it would give "Pinhoti Nrt" and "Benton Mackaye". This
+ * only catches a name that reaches a badge with no curated spelling at all,
+ * which happens if BADGE_SOURCES grows before its trail is added to
+ * trail_name_aliases.json.
+ *
+ * LEFT ALONE UNLESS IT IS ACTUALLY SHOUTING. A name with any lower-case in
+ * it is somebody's considered spelling and is not touched - "Long Path",
+ * "Northville-Placid Trail", and anything with an internal capital.
+ */
+export function neverShout(name: string): string {
+  if (/[a-z]/.test(name)) return name
+  return name.replace(/[A-Za-z]+/g, (word) => word[0] + word.slice(1).toLowerCase())
+}

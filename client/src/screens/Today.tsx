@@ -275,6 +275,13 @@ export interface TodayProps {
    *  `1g` is designed - the cards render as things to read rather than as
    *  buttons that go nowhere (chrome/SuggestedHikeCard.tsx). */
   onOpenSuggestedHike?: (id: string) => void
+  /**
+   * The camp card (#1780, frame #3): "From today's walk", asking about the
+   * challenge places the day passed. Rendered by the shell - which decides
+   * whether the day is over and has already asked - and null otherwise, in
+   * which case its slot collapses like any other.
+   */
+  challengeCamp?: ReactNode
 }
 
 /**
@@ -459,6 +466,7 @@ export function Today({
   stopFacts,
   downloadSize = null,
   placeName = null,
+  challengeCamp = null,
 }: TodayProps) {
   // The sidebar carries the one account button above the breakpoint, where
   // this screen is a column beside the map rather than a screen of its own.
@@ -1131,12 +1139,16 @@ export function Today({
     // Null in every other mode, which is what keeps one ordered record
     // rather than three lists with a hole in two of them (#1317).
     hikeDay: hikeDayCard,
+    // First after setup in every mode: it only exists once the day is over,
+    // and at camp it is the one thing today asks.
+    camp: challengeCamp,
     resume: longHike?.resume == null ? null : <WelcomeBackCard {...longHike.resume} />,
   }
   const order =
     mode === 'volunteer'
       ? [
           'setup',
+          'camp',
           'download',
           'alerts',
           'volunteer',
@@ -1150,6 +1162,7 @@ export function Today({
       : mode === 'day'
         ? [
             'setup',
+            'camp',
             'walk',
             // Trail information before it is an invitation (#1440, D18), so
             // it sits with the day rather than at the foot with the doors:
@@ -1175,6 +1188,7 @@ export function Today({
           // what a hiker's eye lands on first (#1317, lib/hikerMode.ts).
           [
             'setup',
+            'camp',
             'download',
             // Above the day's own leg: a hiker who has been away for a
             // fortnight is not looking for today's miles, they are looking

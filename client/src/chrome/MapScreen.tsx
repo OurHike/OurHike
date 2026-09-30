@@ -99,6 +99,7 @@ import {
 import type { SearchablePoi } from '../lib/searchPoi'
 import type { Place } from '../lib/places'
 import { TrailDataUpdate, type TrailDataUpdateProps } from './TrailDataUpdate'
+import { PoiChallenges, type PoiChallengesProps } from './PoiChallenges'
 import './chrome.css'
 
 export interface MapScreenProps {
@@ -700,6 +701,14 @@ export interface MapScreenProps {
   showChallengePins?: boolean
   challengePlacesShown?: boolean
   onToggleChallengePlaces?: () => void
+  /**
+   * What the place card's "On your challenges" section needs (#1780, frames
+   * #2 and #2c): every challenge on the phone, the hiker's record, and the
+   * three things a row can do. Data rather than a rendered node, so the
+   * section's component loads with this deferred screen instead of in front
+   * of the first frame. Absent, the card has no challenge section.
+   */
+  challengeCard?: Omit<PoiChallengesProps, 'poiIds'>
 
   /** Opening camera only; later moves are the hiker's. */
   center?: [number, number]
@@ -992,6 +1001,7 @@ export function MapScreen({
   showChallengePins = false,
   challengePlacesShown = false,
   onToggleChallengePlaces,
+  challengeCard,
   detail = 'standard',
   center,
   zoom,
@@ -1745,6 +1755,17 @@ export function MapScreen({
                 {...(direction === undefined ? {} : { direction })}
                 onClose={onClosePoi}
                 sheetContainer={screenRoot}
+                challengeSection={
+                  challengeCard === undefined ? undefined : (
+                    <PoiChallenges
+                      poiIds={[
+                        selectedPoi.id,
+                        ...(selectedSite ?? []).map((part) => part.id),
+                      ]}
+                      {...challengeCard}
+                    />
+                  )
+                }
               />
             )}
 

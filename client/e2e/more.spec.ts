@@ -1,7 +1,7 @@
 // The More tab (client/src/screens/More.tsx) and the settings behind it -
 // F13 in features/FLOW_TESTING.md's battery.
 //
-// ENTRANCE. More is five rows over a storage card, and each row is the only
+// ENTRANCE. More is six rows over a storage card, and each row is the only
 // shipped door to its page: there is no URL to type and no navigator state to
 // inject (FLOW_TESTING.md, "Not a router"). So the entrance claim here is
 // literally the tap sequence a hiker makes, once per page, asserted on the
@@ -36,6 +36,8 @@ const PAGES = [
   { row: 'The map', heading: /^the map$/i },
   { row: 'Safety & privacy', heading: /^safety & privacy$/i },
   { row: 'Volunteer & report', heading: /^contribute$/i },
+  // #1780. Its page draws its own title rather than a settings heading.
+  { row: 'Challenges', heading: /^your challenges$/i },
   { row: 'Where this map comes from', heading: /^your data$/i },
 ] as const
 

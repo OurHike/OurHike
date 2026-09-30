@@ -147,6 +147,14 @@ export const ChallengeDetail = screen(
   () => import('./ChallengeDetail').then((m) => m.ChallengeDetail),
   'ChallengeDetail',
 )
+export const ChallengeCampCard = screen(
+  () => import('../chrome/ChallengeCampCard').then((m) => m.ChallengeCampCard),
+  'ChallengeCampCard',
+)
+export const PlanChallenges = screen(
+  () => import('../chrome/PlanChallenges').then((m) => m.PlanChallenges),
+  'PlanChallenges',
+)
 export const ChallengeBrowse = screen(
   () => import('./ChallengeBrowse').then((m) => m.ChallengeBrowse),
   'ChallengeBrowse',

@@ -883,6 +883,16 @@
   color: var(--fg-3);
 }
 
+.challenge-plan__note {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-warning);
+  color: var(--fg-1);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .challenge-plan__mile {
   margin-left: auto;
   font-family: var(--font-mono);

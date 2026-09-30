@@ -773,7 +773,13 @@ export const SEEDED_STATE = {
  */
 export async function seedChallenges(
   page,
-  { state = SEEDED_STATE, document = CHALLENGES_DOCUMENT } = {},
+  {
+    state = SEEDED_STATE,
+    document = CHALLENGES_DOCUMENT,
+    passedToday = null,
+    trips = null,
+    takenTrail = null,
+  } = {},
 ) {
   await page.route(/\/challenges\.json(\?|$)/, (route) =>
     route.fulfill({
@@ -783,28 +789,111 @@ export async function seedChallenges(
     }),
   )
   await page.evaluate(
-    ({ document, state }) =>
+    ({ document, state, passedToday, trips, takenTrail }) =>
       new Promise((done, fail) => {
         localStorage.setItem('ourhike:challenge-state', JSON.stringify(state))
+        if (passedToday !== null) {
+          localStorage.setItem('ourhike:passed-today', JSON.stringify(passedToday))
+        }
         const open = indexedDB.open('keyval-store')
         open.onupgradeneeded = () => open.result.createObjectStore('keyval')
         open.onerror = () => fail(open.error)
         open.onsuccess = () => {
-          const write = open.result
+          const shelf = open.result
             .transaction('keyval', 'readwrite')
             .objectStore('keyval')
-            .put(
-              { document, storedAt: '2027-07-14T12:00:00.000Z' },
-              'ourhike:conditions:challenges.json',
-            )
+          if (trips !== null) {
+            shelf.put(trips, 'ourhike:trips')
+            shelf.put('long', 'ourhike:hiker-mode')
+          }
+          if (takenTrail !== null) shelf.put(takenTrail, 'ourhike:taken-trail')
+          const write = shelf.put(
+            { document, storedAt: '2027-07-14T12:00:00.000Z' },
+            'ourhike:conditions:challenges.json',
+          )
           write.onsuccess = () => done()
           write.onerror = () => fail(write.error)
         }
       }),
-    { document, state },
+    { document, state, passedToday, trips, takenTrail },
   )
   await page.reload({ waitUntil: 'load' })
 }
+
+/** The evening the camp-card recipe is shot at, and its local day. Fixed on
+ *  the page clock in the recipe's `before`, so the card - which waits for the
+ *  day to be over - is on screen whatever time CI runs. */
+export const EVENING = new Date('2027-07-14T23:30:00Z')
+export const EVENING_DAY = '2027-07-14'
+
+/** Today's walked miles past McAfee Knob Summit (mile 714.92) and Campbell
+ *  Shelter - lib/passedToday.ts's own record, the input the camp card reads. */
+export const PASSED_MCAFEE = {
+  day: EVENING_DAY,
+  ranges: [{ startMile: 710, endMile: 716 }],
+}
+
+function dayOf(from, offset) {
+  return new Date(from.getTime() + offset * 86_400_000).toISOString().slice(0, 10)
+}
+
+/**
+ * One planned section over Virginia's Triple Crown, for Plan's card. The
+ * stops are INVENTED names at real A.T. miles - a plan somebody might make,
+ * not anybody's - and the days are laid around the browser's own today, for
+ * fixtures/longHike.mjs's reason: Plan renders the plan it holds, dated.
+ */
+export function planStore(today = new Date()) {
+  const planDay = (id, offset) => ({
+    id,
+    date: dayOf(today, offset),
+    pinned: false,
+    generated: true,
+    walked: false,
+  })
+  return {
+    openId: null,
+    activeHikeId: 'preview-hike',
+    groups: [],
+    trips: [
+      {
+        id: 'preview-section',
+        name: 'Pearisburg → Daleville',
+        plan: {
+          target: { miles: 14 },
+          stops: [
+            { mile: 686.0, name: 'Start (preview)', resupply: false },
+            { mile: 699.0, name: 'Night one (preview)', resupply: false },
+            { mile: 713.9, name: 'Night two (preview)', resupply: false },
+            { mile: 727.5, name: 'Daleville', resupply: true },
+          ],
+          days: [
+            planDay('preview-day-1', 1),
+            planDay('preview-day-2', 2),
+            planDay('preview-day-3', 3),
+          ],
+        },
+      },
+    ],
+    hikes: [
+      {
+        id: 'preview-hike',
+        name: 'Pearisburg → Daleville',
+        type: 'section',
+        trailId: 'AT',
+        points: [
+          { name: 'Start (preview)', mile: 686.0 },
+          { name: 'Daleville', mile: 727.5 },
+        ],
+        status: 'planned',
+        tripIds: ['preview-section'],
+      },
+    ],
+  }
+}
+
+/** Nobody joined anything - for the Plan suggestion and Browse. */
+export const UNJOINED_STATE = { ...SEEDED_STATE, joined: [], tags: [] }
 
 /** More → Challenges, from wherever the app opened. */
 export async function openChallenges(page) {

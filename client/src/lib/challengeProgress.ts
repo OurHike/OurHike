@@ -796,3 +796,48 @@ export function planDayRanges(
     endMile: Math.max(day.start.mile, day.end.mile),
   }))
 }
+
+// ---------------------------------------------------------------------------
+// When the camp card may ask
+
+/**
+ * The hour, local time, after which a day with no explicit end counts as
+ * over for the camp card. @unvalidated - a guess at "at camp", not a
+ * measurement. The app has no automatic end-of-day signal on purpose (a long
+ * hike's day ends when the hiker calls it, a day hike when they finish the
+ * walk), and a hiker using neither would otherwise never be asked. What would
+ * settle it: when hikers who DO call their days actually call them - the
+ * distribution of that hour, which nobody has looked at.
+ */
+export const CAMP_CARD_EVENING_HOUR = 18
+
+/**
+ * Whether today's walk is over, so the camp card may ask (principle 3,
+ * "asked at camp"). The hiker's own act first - a long-hike day called, a
+ * day hike's walk logged - and the evening hour only when neither exists.
+ */
+export function dayHasEnded(input: {
+  now: Date
+  calledToday: boolean
+  walkLoggedToday: boolean
+}): boolean {
+  if (input.calledToday || input.walkLoggedToday) return true
+  return input.now.getHours() >= CAMP_CARD_EVENING_HOUR
+}
+
+/**
+ * Whether Today shows the camp card: the day is over, today's card has not
+ * been answered (Tag all or Not tonight both answer it), and the day's walk
+ * passed something. Never shown for nothing - an empty "you passed nothing"
+ * card would be a lack-state.
+ */
+export function campCardShows(input: {
+  dayEnded: boolean
+  answeredDay: string | null
+  today: string
+  candidates: readonly DayCandidate[]
+}): boolean {
+  return (
+    input.dayEnded && input.answeredDay !== input.today && input.candidates.length > 0
+  )
+}

@@ -96,6 +96,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type ReactNode,
   type RefObject,
 } from 'react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
@@ -306,6 +307,9 @@ export interface PoiCardProps {
    *  (PoiShareSheet.tsx's header has the whole argument). Optional for the
    *  same bare-render reason every optional field above states. */
   sheetContainer?: HTMLElement | null
+  /** "On your challenges" (#1780), rendered by MapScreen and placed here
+   *  above "About this place". Absent for a card with nothing on a list. */
+  challengeSection?: ReactNode
 }
 
 function mile(value: number): string {
@@ -622,6 +626,7 @@ export function PoiCard({
   direction,
   onClose,
   sheetContainer,
+  challengeSection,
 }: PoiCardProps) {
   const cardRef = useRef<HTMLDivElement | null>(null)
 
@@ -1832,6 +1837,12 @@ export function PoiCard({
                   was that they outranked the answer the hiker tapped the pin
                   for - so they are last, under a heading that says what they
                   are, rather than gone. */}
+              {/* A place's challenges (#1780) - above "About this place",
+                  which #941 moved to the foot of the card; the handoff drew
+                  this section under the description when the description
+                  still sat near the top. */}
+              {challengeSection}
+
               <section className="poi-card__section">
                 <h3 className="poi-card__section-title">About this place</h3>
                 {shown.description !== undefined && (

@@ -586,6 +586,14 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F13 More',
     flow: { status: 'covered', spec: 'e2e/challenges.spec.ts' },
   },
+  // The camp card is Today's (F2); the place-card section and Plan's card
+  // are driven by unit tests and recipes, not yet by a flow.
+  'chrome/ChallengeCampCard.tsx': {
+    step: 'F2 Today',
+    flow: { status: 'covered', spec: 'e2e/challenges.spec.ts' },
+  },
+  'chrome/PoiChallenges.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
+  'chrome/PlanChallenges.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
   'screens/GpsTrace.tsx': {
     step: 'F13 More',
     flow: { status: 'covered', spec: 'e2e/more.spec.ts' },

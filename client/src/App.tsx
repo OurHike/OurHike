@@ -72,6 +72,8 @@ import type { MorePage, StuckReport } from './screens/More'
 import {
   AppFailureReport,
   ChallengeBrowse,
+  ChallengeCampCard,
+  PlanChallenges,
   ChallengeDetail,
   Challenges,
   ClosureForm,
@@ -177,7 +179,16 @@ import { useAvailableBytes } from './lib/useAvailableBytes'
 import { usePublishedSizes } from './lib/usePublishedSizes'
 import { useSuggestedHikes } from './lib/useSuggestedHikes'
 import { useChallenges } from './lib/useChallenges'
-import { planDayRanges, profileMaxFt } from './lib/challengeProgress'
+import { useChallengePanel } from './chrome/challengePanel'
+import {
+  campCardShows,
+  dayHasEnded,
+  matchDay,
+  planDayRanges,
+  planRows,
+  profileMaxFt,
+  suggestion as challengeSuggestion,
+} from './lib/challengeProgress'
 import { projectFor } from './lib/volunteerHours'
 import {
   authorLine,
@@ -8734,6 +8745,107 @@ function App() {
         onBrowse={() => setMorePage('challenge-browse')}
       />
     )
+  // The map layer (frame #1): its Legend row and pins, owned by
+  // chrome/challengePanel.ts and spread into <MapScreen> as one line.
+  const { setLayerShown: setChallengeLayerShown } = challenges
+  const challengeLayerShown = challenges.state.layerShown
+  const toggleChallengePlaces = useCallback(
+    () => setChallengeLayerShown(!challengeLayerShown),
+    [setChallengeLayerShown, challengeLayerShown],
+  )
+  const challengeLayer = useChallengePanel({
+    joined: challenges.joined,
+    state: challenges.state,
+    today: challengeToday,
+    chosenTrail: chosenTrailId,
+    onToggle: toggleChallengePlaces,
+  })
+  // Today's camp card (frame #3): asked once, after the day is over, and only
+  // about what the day's walked miles passed.
+  const challengeDayEnded = dayHasEnded({
+    now,
+    calledToday:
+      plan !== null &&
+      planDayViews(plan).some((day) => day.walked && day.date === challengeToday),
+    walkLoggedToday: dayHikeStore.hikes.some((hike) =>
+      walkedDates(hike).includes(challengeToday),
+    ),
+  })
+  const campCandidates = useMemo(
+    () =>
+      matchDay({
+        joined: challenges.joined,
+        state: challenges.state,
+        todayRanges: passedToday.ranges,
+        trail: DEFAULT_TRAIL_ID,
+        pois,
+        today: challengeToday,
+      }),
+    [challenges.joined, challenges.state, passedToday.ranges, pois, challengeToday],
+  )
+  const challengeCampNode = campCardShows({
+    dayEnded: challengeDayEnded,
+    answeredDay: challenges.state.answeredDay,
+    today: challengeToday,
+    candidates: campCandidates,
+  }) ? (
+    <ChallengeCampCard
+      candidates={campCandidates}
+      today={challengeToday}
+      onTagAll={() => challenges.tagAll(campCandidates, challengeToday)}
+      onNotTonight={() => challenges.notTonight(challengeToday)}
+    />
+  ) : null
+
+  // Plan's card (frames #6 and #6b): the joined challenges' places on this
+  // route by day, or - when none touches it - the one best suggestion. The
+  // hike key scopes "Hide" to this trip.
+  const challengeHikeKey = currentTrip?.id ?? 'plan'
+  const planChallengeRows = useMemo(
+    () =>
+      challenges.joined.flatMap((challenge) =>
+        planRows(challenge, challengePlanDays, challengeToday),
+      ),
+    [challenges.joined, challengePlanDays, challengeToday],
+  )
+  const planSuggestion = useMemo(
+    () =>
+      planChallengeRows.length > 0
+        ? null
+        : challengeSuggestion({
+            challenges: challenges.all,
+            state: challenges.state,
+            days: challengePlanDays,
+            hikeKey: challengeHikeKey,
+            today: challengeToday,
+            // The handoff's tie-break is the org that maintains the most of
+            // the route; the phone holds no org-to-miles map for challenge
+            // publishers yet, so every tie falls through to the name. Said
+            // rather than faked.
+            maintainedMiles: () => 0,
+          }),
+    [
+      planChallengeRows,
+      challenges.all,
+      challenges.state,
+      challengePlanDays,
+      challengeHikeKey,
+      challengeToday,
+    ],
+  )
+  const planChallengeNode =
+    planChallengeRows.length > 0 || planSuggestion !== null ? (
+      <PlanChallenges
+        rows={planChallengeRows}
+        state={challenges.state}
+        suggestion={planSuggestion}
+        today={challengeToday}
+        onJoin={challenges.join}
+        onHide={(challengeId) => challenges.hideSuggestion(challengeHikeKey, challengeId)}
+        onOpen={openChallenge}
+      />
+    ) : null
+
   const challengesSummary =
     challenges.joined.length > 0
       ? challenges.joined.map((entry) => entry.name).join(' · ')
@@ -10020,6 +10132,7 @@ function App() {
   // copies, so the forty-odd props feeding it cannot drift between layouts.
   const todayScreen = (
     <Today
+      challengeCamp={challengeCampNode}
       account={account}
       onOpenAccount={openSignIn}
       now={now}
@@ -10543,6 +10656,7 @@ function App() {
                 planStartNode
               ) : (
                 <PlanScreen
+                  challengeCard={planChallengeNode}
                   plan={plan}
                   elevation={elevation}
                   // The hike the app is on, and the way to a different one
@@ -11116,6 +11230,16 @@ function App() {
               {...line.mapScreen}
               onSelectLine={handleSelectLine}
               {...workday.mapScreen}
+              {...challengeLayer.mapScreen}
+              challengeCard={{
+                challenges: challenges.all,
+                state: challenges.state,
+                today: challengeToday,
+                onTag: (challenge, item, poi) =>
+                  challenges.tagItem(challenge, item, 'hand', poi),
+                onUntag: challenges.untagItem,
+                onJoin: challenges.join,
+              }}
               // The route builder's three, from the same kind of hook (#991).
               {...routeBuilder.mapScreen}
               dayHikeDrawing={dayHikeDrawing ?? followDrawing}

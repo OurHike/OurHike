@@ -71,6 +71,9 @@ import type { MorePage, StuckReport } from './screens/More'
 // frame is up - whichever comes first - and never in front of Today.
 import {
   AppFailureReport,
+  ChallengeBrowse,
+  ChallengeDetail,
+  Challenges,
   ClosureForm,
   Downloads,
   DownloadsDialog,
@@ -173,6 +176,9 @@ import type { TrailInView } from './map/trailsInView'
 import { useAvailableBytes } from './lib/useAvailableBytes'
 import { usePublishedSizes } from './lib/usePublishedSizes'
 import { useSuggestedHikes } from './lib/useSuggestedHikes'
+import { useChallenges } from './lib/useChallenges'
+import { planDayRanges, profileMaxFt } from './lib/challengeProgress'
+import { projectFor } from './lib/volunteerHours'
 import {
   authorLine,
   hikePlaces,
@@ -286,6 +292,7 @@ import { formatDistance, formatElevation, type UnitSystem } from './lib/units'
 import { useRouteBuilderPanel, type ViaStopLike } from './chrome/routeBuilderPanel'
 import {
   currentDayIndex,
+  planDayViews,
   insertZeroAfter,
   removeDay,
   togglePinned,
@@ -8635,6 +8642,103 @@ function App() {
     ].sort((a, b) => b.worked_on.localeCompare(a.worked_on) || a.id.localeCompare(b.id))
   }, [myHours, localHours])
 
+  // ---- Challenges (#1780, features/CHALLENGES.md) ----
+  //
+  // The published list, the hiker's record of it, and today's walk for the
+  // items that tag themselves. Today's walk is `passedToday` - the merged
+  // mile intervals the Volunteer tab already keeps - and never a track: the
+  // challenge record adds nothing finer about where somebody went.
+  const challengeToday = localDay(now)
+  const challengeHours = useMemo(
+    () =>
+      (hoursRecords ?? []).map((record) => {
+        const project = projectFor(record, workProjects)
+        return {
+          workedOn: record.worked_on,
+          mile: record.mile ?? project?.mile ?? null,
+          clubName: project?.club_name ?? null,
+          disputed: record.state === 'disputed',
+        }
+      }),
+    [hoursRecords, workProjects],
+  )
+  const challenges = useChallenges(online, afterFirstFrame, () => void syncOutbox(), {
+    todayRanges: passedToday.ranges,
+    trail: DEFAULT_TRAIL_ID,
+    today: challengeToday,
+    maxElevationFt: (ranges) => profileMaxFt(elevation, ranges),
+    hours: challengeHours,
+  })
+  const [openChallengeId, setOpenChallengeId] = useState<string | null>(null)
+  const challengePlanDays = useMemo(
+    () => (plan === null ? [] : planDayRanges(planDayViews(plan))),
+    [plan],
+  )
+  const challengesOnOffer = useMemo(
+    () =>
+      challenges.all.filter(
+        (challenge) =>
+          !challenges.state.joined.some((entry) => entry.challengeId === challenge.id) &&
+          (chosenTrailId === null || challenge.trail === chosenTrailId),
+      ).length,
+    [challenges.all, challenges.state, chosenTrailId],
+  )
+  const openChallenge = useCallback(
+    (challengeId: string) => {
+      setOpenChallengeId(challengeId)
+      setMorePage('challenge')
+    },
+    [setMorePage],
+  )
+  const openChallengeRecord =
+    openChallengeId === null
+      ? null
+      : (challenges.all.find((entry) => entry.id === openChallengeId) ?? null)
+  const challengesScreenNode =
+    morePage === 'challenge' && openChallengeRecord !== null ? (
+      <ChallengeDetail
+        challenge={openChallengeRecord}
+        state={challenges.state}
+        today={challengeToday}
+        walked={walked}
+        signedIn={account !== null}
+        defaultName={preferences.trail_name ?? undefined}
+        onJoin={() => challenges.join(openChallengeRecord.id)}
+        onLeave={() => challenges.leave(openChallengeRecord.id)}
+        onTag={(item) => challenges.tagItem(openChallengeRecord, item, 'hand')}
+        onUntag={(item) => challenges.untagItem(openChallengeRecord, item)}
+        onSetNote={(item, note) => challenges.setNote(openChallengeRecord, item, note)}
+        onSendEntry={challenges.sendEntry}
+        // An arrow, because openSignIn is declared further down the shell.
+        onSignIn={() => openSignIn()}
+        onOpenWorkdays={() => setMorePage('volunteer')}
+      />
+    ) : morePage === 'challenge-browse' ? (
+      <ChallengeBrowse
+        challenges={challenges.all}
+        state={challenges.state}
+        chosenTrail={chosenTrailId}
+        days={challengePlanDays}
+        planName={currentTrip?.name ?? null}
+        today={challengeToday}
+        units={units}
+        onOpen={openChallenge}
+        onJoin={challenges.join}
+      />
+    ) : (
+      <Challenges
+        joined={challenges.joined}
+        state={challenges.state}
+        onOffer={challengesOnOffer}
+        onOpen={openChallenge}
+        onBrowse={() => setMorePage('challenge-browse')}
+      />
+    )
+  const challengesSummary =
+    challenges.joined.length > 0
+      ? challenges.joined.map((entry) => entry.name).join(' · ')
+      : undefined
+
   /** Queue a day's hours - saved first, echoed at once, sign-in asked after
    *  (contributionFlow.ts's ordering, the same walk every write takes). */
   const handleLogHours = useCallback(
@@ -10380,6 +10484,8 @@ function App() {
                   yourWork={yourWorkNode}
                   onRetryReport={handleRetryReport}
                   onDiscardReport={handleDiscardReport}
+                  challengesScreen={challengesScreenNode}
+                  challengesSummary={challengesSummary}
                   volunteerScreen={
                     <Volunteer
                       contributeConditions={preferences.contribute_conditions}

@@ -102,6 +102,15 @@ export interface MoreProps extends SettingsProps {
    */
   volunteerScreen?: ReactNode
   /**
+   * Challenges (#1780): whichever of the list, one challenge or Browse the
+   * current page names, rendered by the shell for `volunteerScreen`'s reason
+   * - it holds the live state (the published list, the hiker's tags, the
+   * plan). Absent means the row leads to an empty page, never a crash.
+   */
+  challengesScreen?: ReactNode
+  /** The Challenges row's second line, e.g. the joined challenges' names. */
+  challengesSummary?: string
+  /**
    * Opens the moderation queue, and present ONLY for a moderator (#235).
    *
    * An optional callback rather than an `isModerator` flag, deliberately:
@@ -322,6 +331,8 @@ export function More({
   sentReportCount = 0,
   yourWork,
   volunteerScreen,
+  challengesScreen,
+  challengesSummary = 'Places clubs invite you to walk',
   onOpenModeration,
   onOpenRegistry,
   hikeSummary = null,
@@ -469,6 +480,31 @@ export function More({
       )}
     </section>
   )
+
+  if (page === 'challenges' || page === 'challenge' || page === 'challenge-browse') {
+    // Their own chrome - a pine header, a sheet - so not inside `.settings`.
+    // Back goes up one level: a challenge and Browse to the list, the list
+    // home.
+    const up: { page: MorePage; label: string } =
+      page === 'challenges'
+        ? { page: 'home', label: 'More' }
+        : { page: 'challenges', label: 'Challenges' }
+    return (
+      <div className="more">
+        <div className="more__pagebar">
+          <button
+            type="button"
+            className="more__back"
+            onClick={() => onNavigate(up.page)}
+          >
+            <span aria-hidden="true">‹ </span>
+            {up.label}
+          </button>
+        </div>
+        {challengesScreen}
+      </div>
+    )
+  }
 
   if (page !== 'home') {
     let panel: ReactNode
@@ -745,7 +781,7 @@ export function More({
     )
   }
 
-  // ---- Home: the storage card, five rows, and the thank-you line. ----
+  // ---- Home: the storage card, six rows, and the thank-you line. ----
 
   const face = storageFace(
     hikingStatus,
@@ -796,7 +832,7 @@ export function More({
           'Report problems, or lend a hand'
 
   /**
-   * THE FIVE ROWS, AND THEY TAKE NO MODE INPUT (D23, #1437).
+   * THE SIX ROWS, AND THEY TAKE NO MODE INPUT (D23, #1437).
    *
    * Today, Map and Plan change with the mode switch. More does not, and the
    * reason is what the screen is for: More is where somebody goes looking
@@ -831,6 +867,9 @@ export function More({
       sub: volunteerSummary,
       alert: stuckCount > 0,
     },
+    // After "Volunteer & report", the handoff's place for it (#1780). Present
+    // in every mode, for the reason the block above gives.
+    { page: 'challenges', title: 'Challenges', sub: challengesSummary },
     {
       page: 'sources',
       title: 'Where this map comes from',

@@ -642,12 +642,41 @@ export async function sendClosure(item: OutboxItem): Promise<void> {
 }
 
 /**
+ * Sends one completed challenge item (#1780). `authored_at` travels for the
+ * reason `sendClosure`'s `reported_at` does: the server flags a tag made
+ * after the window closed, and a tag queued inside the window must not
+ * arrive looking late because the phone found signal late.
+ */
+export async function sendChallengeTag(item: OutboxItem): Promise<void> {
+  await authedFetch('/challenges/tags', {
+    method: 'POST',
+    body: JSON.stringify({
+      ...item.challengeTag,
+      id: item.id,
+      authored_at: item.authoredAt,
+    }),
+  })
+}
+
+/** Sends one challenge entry (#1780) - the only thing about a hiker a club
+ *  ever receives, and only because they pressed send. */
+export async function sendChallengeEntry(item: OutboxItem): Promise<void> {
+  const entry = item.challengeEntry
+  if (entry === undefined) return
+  const { challenge_id: challengeId, ...body } = entry
+  await authedFetch(`/challenges/${encodeURIComponent(challengeId)}/entries`, {
+    method: 'POST',
+    body: JSON.stringify({ ...body, id: item.id }),
+  })
+}
+
+/**
  * Sends one queued outbox item, whatever it carries.
  *
- * The outbox holds six families now: condition reports (the original
+ * The outbox holds eight families now: condition reports (the original
  * cargo), photo actions (#577/#579 - share, withdraw, report), app-failure
  * reports (#848), field notes (features/FIELD_NOTES.md), volunteer hours
- * (#761), and closures (#832). One dispatcher, so `flushOutbox` keeps its
+ * (#761), closures (#832), and challenge tags and entries (#1780). One dispatcher, so `flushOutbox` keeps its
  * single `send`
  * seam and the queue stays one queue - a hiker's unsent work is one list.
  */
@@ -657,6 +686,8 @@ export async function sendOutboxItem(item: OutboxItem): Promise<void> {
   if (item.fieldNote !== undefined) return sendFieldNote(item)
   if (item.volunteerHours !== undefined) return sendVolunteerHours(item)
   if (item.closure !== undefined) return sendClosure(item)
+  if (item.challengeTag !== undefined) return sendChallengeTag(item)
+  if (item.challengeEntry !== undefined) return sendChallengeEntry(item)
   return sendReport(item)
 }
 

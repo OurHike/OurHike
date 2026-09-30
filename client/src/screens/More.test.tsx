@@ -45,10 +45,10 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-// --- The home screen: five rows that answer before they are tapped ---------
+// --- The home screen: six rows that answer before they are tapped ----------
 
 describe('More, the home screen', () => {
-  it('offers five destinations, in order', () => {
+  it('offers six destinations, in order, with Challenges after Volunteer & report', () => {
     const { container } = render(<More {...PROPS} />)
 
     expect(
@@ -60,6 +60,7 @@ describe('More, the home screen', () => {
       'The map',
       'Safety & privacy',
       'Volunteer & report',
+      'Challenges',
       'Where this map comes from',
     ])
   })

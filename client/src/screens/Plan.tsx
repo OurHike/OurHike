@@ -76,6 +76,12 @@ import { HikeZoom } from './HikeZoom'
 import { PlanHome } from './PlanHome'
 import type { PlanRoom } from '../lib/planRoom'
 import { WhatsLeft } from './WhatsLeft'
+import { TenEssentials } from './TenEssentials'
+import {
+  readPackedEssentials,
+  writePackedEssentials,
+  type EssentialId,
+} from '../lib/tenEssentials'
 import './plan.css'
 
 /**
@@ -353,6 +359,14 @@ export function PlanScreen({
   const [summaryAfterCascade, setSummaryAfterCascade] = useState<number | null>(null)
   const [zoomWanted, setZoomWanted] = useState<PlanZoom>('days')
   const [whatsLeftOpen, setWhatsLeftOpen] = useState(false)
+  /** The Ten Essentials page (#1689), opened from the home's "Before you go"
+   *  row. This screen's own, like `whatsLeftOpen`: nothing outside Plan opens
+   *  it, and the tab unmounting on a switch closes it, which is the answer a
+   *  hiker coming back to Plan expects. */
+  const [essentialsOpen, setEssentialsOpen] = useState(false)
+  /** The ticks, read once per mount and written on every change. The home's
+   *  row counts them, so the state lives here rather than in the page. */
+  const [packed, setPacked] = useState<ReadonlySet<EssentialId>>(readPackedEssentials)
   /** Which shelf the day-hike list opens on (#1373, D5): every hike, or the
    *  walked ones alone. This screen's own, unlike `dayListOpen`, because
    *  nothing outside Plan opens the walked shelf - the trailhead door that
@@ -499,6 +513,25 @@ export function PlanScreen({
         </div>
       )
     }
+    if (essentialsOpen) {
+      return (
+        <div className={room === 'day' ? 'plan plan--day' : 'plan plan--trips'}>
+          <TenEssentials
+            room={room}
+            packed={packed}
+            onChange={(next) => {
+              setPacked(next)
+              writePackedEssentials(next)
+            }}
+            onBack={() => setEssentialsOpen(false)}
+          />
+          {targetSheet}
+          {kindSheet}
+          {dayHikeCard}
+          {tripList}
+        </div>
+      )
+    }
     return (
       <div className={room === 'day' ? 'plan plan--day' : 'plan plan--trips'}>
         <PlanHome
@@ -556,6 +589,8 @@ export function PlanScreen({
           onNewTrip={onNewTrip}
           draftKind={draftKind}
           onResumeDraft={onStartOnMap}
+          onTenEssentials={() => setEssentialsOpen(true)}
+          essentialsPacked={packed.size}
         />
         {targetSheet}
         {kindSheet}

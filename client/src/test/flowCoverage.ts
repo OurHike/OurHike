@@ -289,6 +289,14 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F8 Plan',
     flow: { status: 'covered', spec: 'e2e/plan.spec.ts' },
   },
+  // The Ten Essentials page (#1689). Planned rather than covered: this
+  // branch was pushed as a draft while its design is reviewed, and the flow
+  // test (open from "Before you go", tick, back) belongs with the settled
+  // shape.
+  'screens/TenEssentials.tsx': {
+    step: 'F8 Plan',
+    flow: { status: 'planned' },
+  },
   'screens/HikeZoom.tsx': {
     step: 'F8 Plan',
     flow: { status: 'covered', spec: 'e2e/plan.spec.ts' },

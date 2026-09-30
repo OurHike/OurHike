@@ -68,6 +68,7 @@ import { canRetryTrailNetwork, trailNetworkRefusal } from '../lib/trailNetworkTe
 import { groupFigures, type TripGroup } from '../lib/tripGroups'
 import type { Trip } from '../lib/trips'
 import { formatDistance, type UnitSystem } from '../lib/units'
+import { TEN_ESSENTIALS } from '../lib/tenEssentials'
 import './plan.css'
 
 export interface PlanHomeProps {
@@ -140,6 +141,10 @@ export interface PlanHomeProps {
   /** Back to whichever builder holds the live draft (the shell knows which,
    *  chrome/PlanKindSheet's opener rule). */
   onResumeDraft: () => void
+  /** Open the Ten Essentials page (#1689). Undefined renders no row. */
+  onTenEssentials?: () => void
+  /** How many of the ten are ticked on this phone, for the row's line. */
+  essentialsPacked?: number
 }
 
 /** How many entries a home lists before sending you to the full list. */
@@ -176,7 +181,13 @@ export function PlanHome({
   onResumeDraft,
   network,
   onRetryNetwork,
+  onTenEssentials,
+  essentialsPacked = 0,
 }: PlanHomeProps) {
+  const beforeYouGo =
+    onTenEssentials !== undefined ? (
+      <BeforeYouGo packed={essentialsPacked} onOpen={onTenEssentials} />
+    ) : null
   // THREE HOMES, TWO ROOMS. `room` still answers "day hikes or sections",
   // and the sections room answers a second question the mode has already
   // settled: whether there is a hike to be the room ABOUT. Long with no hike
@@ -208,6 +219,7 @@ export function PlanHome({
         onAddDayHikeToHike={onAddDayHikeToHike}
         onNewTrip={onNewTrip}
         onResumeDraft={onResumeDraft}
+        beforeYouGo={beforeYouGo}
       />
     )
   }
@@ -226,6 +238,7 @@ export function PlanHome({
       onResumeDraft={onResumeDraft}
       network={network}
       onRetryNetwork={onRetryNetwork}
+      beforeYouGo={beforeYouGo}
     />
   ) : (
     <TripsHome
@@ -243,7 +256,33 @@ export function PlanHome({
       onAllTrips={onAllTrips}
       onNewTrip={onNewTrip}
       onResumeDraft={onResumeDraft}
+      beforeYouGo={beforeYouGo}
     />
+  )
+}
+
+/**
+ * "Before you go": the door to the Ten Essentials page (#1689).
+ *
+ * The same row in all three homes, just above the room's own primary action.
+ * The maintainer put it on the Plan tab rather than under More (poll,
+ * 2026-09-26, frame A): the checklist is about the trip being planned, so it
+ * sits where the trip is.
+ *
+ * "packed" rather than "done": the count is how many things a hiker has said
+ * are in the pack, and nothing here counts toward anything.
+ */
+function BeforeYouGo({ packed, onOpen }: { packed: number; onOpen: () => void }) {
+  return (
+    <section className="plan-home__section">
+      <span className="plan-home__title">Before you go</span>
+      <button type="button" className="plan-home__row" onClick={onOpen}>
+        <span className="plan-home__row-name">Pack the Ten Essentials</span>
+        <span className="plan-home__meta">
+          {packed} of {TEN_ESSENTIALS.length} packed · gear at REI
+        </span>
+      </button>
+    </section>
   )
 }
 
@@ -311,6 +350,9 @@ interface HikeRoomProps {
   onTakeSectionOut?: (tripId: string) => void
   onNewTrip: () => void
   onResumeDraft: () => void
+  /** The Ten Essentials row, or null (PlanHome builds it once for all three
+   *  rooms). */
+  beforeYouGo: ReactNode
 }
 
 /**
@@ -360,6 +402,7 @@ function HikeRoom({
   onAddDayHikeToHike,
   onNewTrip,
   onResumeDraft,
+  beforeYouGo,
 }: HikeRoomProps) {
   const [renaming, setRenaming] = useState(false)
   const [draftName, setDraftName] = useState('')
@@ -630,6 +673,8 @@ function HikeRoom({
         </button>
       )}
 
+      {beforeYouGo}
+
       {/* THE PLANNER TAKES THE PRIMARY'S PLACE rather than opening over it.
           One thing at a time in one column: a button that opened a panel and
           then sat under it would be a second way to do what the panel is
@@ -855,6 +900,7 @@ interface DayHikesHomeProps {
    *  what the refusal says. */
   network: TrailNetworkState
   onRetryNetwork?: () => void
+  beforeYouGo: ReactNode
 }
 
 function DayHikesHome({
@@ -870,6 +916,7 @@ function DayHikesHome({
   onResumeDraft,
   network,
   onRetryNetwork,
+  beforeYouGo,
 }: DayHikesHomeProps) {
   const shelf = splitDayHikes(dayHikes)
 
@@ -939,6 +986,8 @@ function DayHikesHome({
           account and sync switched on, follows you to the next one.
         </p>
       )}
+
+      {beforeYouGo}
 
       {/* Only a DAY draft brings a hiker back here. A live trip route is the
           other room's business: offering "Back to your route" under a band
@@ -1011,6 +1060,7 @@ interface TripsHomeProps {
    *  the app is not in a long hike - and then the row is absent rather than
    *  present and dead. */
   onAddDayHikeToHike?: () => void
+  beforeYouGo: ReactNode
 }
 
 function TripsHome({
@@ -1028,6 +1078,7 @@ function TripsHome({
   onNewTrip,
   onResumeDraft,
   onAddDayHikeToHike,
+  beforeYouGo,
 }: TripsHomeProps) {
   // Newest first, by the dates the trips already carry (#805). Undated
   // trips sort last rather than being hidden - they are plans somebody has
@@ -1155,6 +1206,8 @@ function TripsHome({
           <span aria-hidden="true">+</span>
         </button>
       )}
+
+      {beforeYouGo}
 
       {/* The mirror of the day room's, and the same cost: `openDayHike`
           closes the route builder, which cancels the draft in it. */}

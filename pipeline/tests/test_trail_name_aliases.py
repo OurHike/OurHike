@@ -155,6 +155,21 @@ def test_the_client_only_claims_a_marker_where_one_ships():
         for slug, row in REGISTRY["org_marks"]["trail_marks"].items()
         if not slug.startswith("_") and row["claim_state"] != "withdrawn"
     }
+    # THE TWO REGISTRY MARKS SHIP FROM A DIFFERENT BLOCK, and leaving them out
+    # made this test wrong in the direction that costs a mark rather than
+    # invents one: the A.T.'s marker is recorded under
+    # `org_marks.orgs.ATC.trail_mark_in_tree` because it predates `trail_marks`
+    # and rests on the maintainer's own authorisation, not on the opt-out
+    # decision. Adding `at` to SLUGS_WITH_A_STEWARD_MARKER on 2026-09-30 - so
+    # that a USFS line spelled "APPALACHIAN TRAIL" wears the A.T.'s emblem
+    # instead of a markless plate - reddened this test although at-logo.png
+    # both ships and is recorded. The slug is derived from the asset's
+    # filename, which is what ties the two blocks together.
+    shipped |= {
+        Path(row["trail_mark_in_tree"]["asset"]).stem.removesuffix("-logo")
+        for row in REGISTRY["org_marks"]["orgs"].values()
+        if "trail_mark_in_tree" in row
+    }
     claimed = _generated_marker_slugs()
     assert claimed, "the marker set is empty or its shape changed"
     assert claimed <= shipped, f"claims a marker that does not ship: {sorted(claimed - shipped)}"

@@ -78,7 +78,17 @@ def test_no_two_rows_describe_the_same_trail():
 def test_a_row_carries_what_a_later_session_would_need_to_refetch_it(row: dict):
     for field in ("trail", "name", "steward", "found_at", "fetched", "pixels"):
         assert str(row.get(field, "")).strip(), f"{row['trail']}: no {field}"
-    assert row["found_at"].startswith("http"), f"{row['trail']}: found_at has to be the URL it was fetched from"
+    # A URL WHERE IT WAS FETCHED, A REPO PATH WHERE IT WAS SUPPLIED. The A.T.'s
+    # marker came from the repo owner rather than off anybody's website, so its
+    # `found_at` is the file itself and there is no URL to record - writing one
+    # would invent a provenance it does not have. Everything else has to carry
+    # the URL a later session would re-fetch from. This test was written
+    # demanding `http` on every row and the A.T. reddened it at once, which is
+    # the check working: the exception is real and is stated here rather than
+    # assumed away.
+    found_at = row["found_at"]
+    supplied = found_at.startswith("client/") and row["permission"].startswith("the repo owner")
+    assert found_at.startswith("http") or supplied, f"{row['trail']}: found_at is neither a URL nor a supplied file's path"
 
 
 @pytest.mark.parametrize("row", ROWS, ids=[row["trail"] for row in ROWS])

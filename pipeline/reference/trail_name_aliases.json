@@ -1,0 +1,245 @@
+{
+ "_comment": "WHICH PUBLISHED SPELLING MEANS WHICH LONG TRAIL. A reviewed join, in pipeline/reference/ rather than derived at build time, because deciding that OUACHITA NRT is the Ouachita Trail and that a NY State Parks line called 'Long Trail' is NOT Vermont's is a judgement somebody signs for, row by row. CONTRIBUTING.md's line ceiling applies for exactly that reason. WHY IT EXISTS. map/trailsInView.ts decided a badge off the SOURCE - `BADGE_SOURCES`, two entries - so the A.T. and the Long Path were the only trails on the map that could ever wear one, while Sheltowee Trace, Ozark Highlands, Bartram, Pinhoti, Ouachita, Maah Daah Hey and the rest were already drawn as anonymous lines. A trail is not a feed, and this file is what lets the badge key off the trail.",
+ "_method": "MEASURED 2026-09-30 against each layer's live service, in two steps. FIRST a name probe: every trail in trail_emblems.json, queried with LIKE on the publisher's own name field, then normalised on both sides - upper-cased, punctuation stripped, and the words TRAIL/NRT/NST/NATIONAL/SCENIC/RECREATION/HISTORIC/HIKING dropped - and kept only where the normalised forms were equal. That alone was not enough and produced confident nonsense, so SECOND a geographic check: every surviving candidate's extent was fetched and compared with the states trail_emblems.json records for that trail. The second step rejected 16 names the first step accepted, and they are listed in `rejected` below so nobody re-adds them.",
+ "_what_it_does_not_cover": "Spurs, connectors and road-walks are not here even where the publisher names them after the trail - 'Northville-Placid Trail Spur', 'BARTRAM NRT - CHEOAH RD', 'Finger Lakes Trail Spur'. The match is exact against the spellings listed, never a prefix, so those stay ordinary lines. Three long trails turned up in these layers that trail_emblems.json does not carry - Shawangunk Ridge, Taconic Crest and Metacomet-Monadnock - and are recorded in trail_candidates.json rather than badged here.",
+ "_row_count": "20 trails with at least one verified spelling, across 4 published layers.",
+ "trails": {
+  "at": {
+   "trail": "Appalachian Trail",
+   "states": "GA-ME",
+   "published_as": {
+    "usfs_trails": [
+     "APPALACHIAN TRAIL",
+     "APPALACHIAN"
+    ]
+   },
+   "note": "Already badged through ATC's own `centerline` source; these are the USFS segments of the same trail, 165 and 4 respectively, in GA-VA and VT."
+  },
+  "pct": {
+   "trail": "Pacific Crest Trail",
+   "states": "CA/OR/WA",
+   "published_as": {
+    "usfs_trails": [
+     "PACIFIC CREST TRAIL",
+     "PACIFIC CREST",
+     "PACIFIC CREST NATIONAL SCENIC"
+    ]
+   },
+   "note": "37 + 5 + 2 segments, all between lon -123.3 and -118.0."
+  },
+  "cdt": {
+   "trail": "Continental Divide Trail",
+   "states": "NM/CO/WY/ID/MT",
+   "published_as": {
+    "usfs_trails": [
+     "CONTINENTAL DIVIDE NST",
+     "CONTINENTAL DIVIDE",
+     "CONTINENTAL DIVIDE TRAIL",
+     "CONTINENTAL DIVIDE NAT SCENIC",
+     "CONTINENTAL DIVIDE NATION SCEN"
+    ]
+   },
+   "note": "Five spellings of one trail, 267 segments together, lon -113.9..-106.2 and lat 32.4..47.2 - the whole divide."
+  },
+  "nct": {
+   "trail": "North Country Trail",
+   "states": "ND/MN/WI/MI/OH/PA/NY/VT",
+   "published_as": {
+    "usfs_trails": [
+     "NORTH COUNTRY NATIONAL SCENIC",
+     "NORTH COUNTRY TRAIL",
+     "NORTH COUNTRY TRAIL (HIKING)"
+    ]
+   },
+   "note": "45 segments spanning lon -97.5..-78.8, which is ND to NY."
+  },
+  "azt": {
+   "trail": "Arizona Trail",
+   "states": "AZ",
+   "published_as": {
+    "usfs_trails": [
+     "ARIZONA TRAIL",
+     "ARIZONA"
+    ]
+   },
+   "note": "Both inside Arizona. 'ARIZONA TRAIL CANELO HILLS' and the AZT spur names are deliberately absent - they normalise differently and are sections."
+  },
+  "flt": {
+   "trail": "Finger Lakes Trail",
+   "states": "NY",
+   "published_as": {
+    "usfs_trails": [
+     "FINGER LAKES"
+    ],
+    "oprhp_trails": [
+     "Finger Lakes Trail",
+     "7 - Finger Lakes Trail"
+    ],
+    "dec_hiking_trails": [
+     "Finger Lakes Trail",
+     "Finger Lakes Trail (Orange)"
+    ]
+   },
+   "note": "The one trail here three different organizations publish. Spur spellings are excluded."
+  },
+  "sht": {
+   "trail": "Superior Hiking Trail",
+   "states": "MN",
+   "published_as": {
+    "usfs_trails": [
+     "SUPERIOR HIKING"
+    ]
+   },
+   "note": "28 segments at lon -91.0..-89.9, lat 47.5..47.9 - the north shore. Bare 'SUPERIOR' was rejected; see below."
+  },
+  "oht": {
+   "trail": "Ozark Highlands Trail",
+   "states": "AR",
+   "published_as": {
+    "usfs_trails": [
+     "OZARK HIGHLANDS TRAIL"
+    ]
+   },
+   "note": "16 segments in Arkansas."
+  },
+  "ouachita": {
+   "trail": "Ouachita Trail",
+   "states": "AR/OK",
+   "published_as": {
+    "usfs_trails": [
+     "OUACHITA NRT"
+    ]
+   },
+   "note": "The Forest Service calls it by its National Recreation Trail designation and the association calls it the Ouachita Trail. 20 segments, lon -95.0..-92.8."
+  },
+  "sheltowee": {
+   "trail": "Sheltowee Trace",
+   "states": "KY/TN",
+   "published_as": {
+    "usfs_trails": [
+     "SHELTOWEE TRACE"
+    ]
+   },
+   "note": "64 segments, lon -84.7..-83.4, lat 36.6..38.4. The connector and spur spellings are excluded."
+  },
+  "pinhoti": {
+   "trail": "Pinhoti Trail",
+   "states": "AL/GA",
+   "published_as": {
+    "usfs_trails": [
+     "PINHOTI",
+     "PINHOTI NRT"
+    ]
+   },
+   "note": "3 segments in GA and 16 in AL."
+  },
+  "bmt": {
+   "trail": "Benton MacKaye Trail",
+   "states": "GA/TN/NC",
+   "published_as": {
+    "usfs_trails": [
+     "BENTON MACKAYE"
+    ]
+   },
+   "note": "7 segments, lon -84.5..-84.1. The two road spellings are sections and are excluded."
+  },
+  "bartram": {
+   "trail": "Bartram Trail",
+   "states": "GA/NC",
+   "published_as": {
+    "usfs_trails": [
+     "BARTRAM"
+    ]
+   },
+   "note": "3 segments, lon -85.7..-83.2. The NRT road-section spellings are excluded."
+  },
+  "mdh": {
+   "trail": "Maah Daah Hey Trail",
+   "states": "ND",
+   "published_as": {
+    "usfs_trails": [
+     "MAAH DAAH HEY"
+    ]
+   },
+   "note": "31 segments in the Little Missouri grassland."
+  },
+  "tahoe-rim": {
+   "trail": "Tahoe Rim Trail",
+   "states": "CA/NV",
+   "published_as": {
+    "usfs_trails": [
+     "TAHOE RIM TRAIL"
+    ]
+   },
+   "note": "34 segments round the lake."
+  },
+  "gwt": {
+   "trail": "Great Western Trail",
+   "states": "AZ/UT/ID/WY/MT",
+   "published_as": {
+    "usfs_trails": [
+     "GREAT WESTERN TRAIL"
+    ]
+   },
+   "note": "16 segments, lon -112.3..-111.3."
+  },
+  "bst": {
+   "trail": "Bonneville Shoreline Trail",
+   "states": "UT",
+   "published_as": {
+    "usfs_trails": [
+     "BONNEVILLE SHORELINE TRAIL"
+    ]
+   },
+   "note": "26 segments along the Wasatch front. The NE/NORTH/SOUTH/SPUR spellings are sections and are excluded."
+  },
+  "jmt": {
+   "trail": "John Muir Trail",
+   "states": "CA",
+   "published_as": {
+    "usfs_trails": [
+     "JOHN MUIR"
+    ]
+   },
+   "note": "4 segments at lon -119.2, lat 37.6 - Yosemite. 'JOHN MUIR NATIONAL RECREATION' was rejected: it is in Tennessee."
+  },
+  "npt": {
+   "trail": "Northville-Placid Trail",
+   "states": "NY",
+   "published_as": {
+    "dec_hiking_trails": [
+     "Northville-Placid Trail"
+    ]
+   },
+   "note": "DEC publishes the trail and five separate spur spellings; only the trail is here."
+  },
+  "msg": {
+   "trail": "Monadnock-Sunapee Greenway",
+   "states": "NH",
+   "published_as": {
+    "nh_granit_trails": [
+     "DUBLIN TRAIL MONADNOCK SUNAPEE GRNWY"
+    ]
+   },
+   "note": "PARTIAL AND SAID SO: this is the one NH GRANIT spelling that names the greenway, and it names a single trail on it. The rest of the route is published under its constituent trails' own names, so a badge here marks where the greenway is rather than its full length."
+  }
+ },
+ "rejected": {
+  "usfs_trails 'LONG' and 'LONG TRAIL'": "Vermont's Long Trail is not in the USFS layer. 'LONG' spans lon -115.5..-72.8 and 'LONG TRAIL' sits at lon -115.8 in Idaho. GMC's own data is the way in.",
+  "oprhp_trails 'Long Trail'": "lon -76.1, lat 43.0 - central New York, 200 miles from Vermont.",
+  "usfs_trails 'COLORADO' and 'CDNST - COLORADO'": "'CDNST - COLORADO' is the Continental Divide trail in Colorado, not the Colorado Trail. Bare 'COLORADO' is 90 segments in roughly the right place and might be the Colorado Trail - UNRESOLVED, and left out because a wrong badge is worse than a missing one.",
+  "usfs_trails 'BUCKEYE'": "lon -121.4..-81.6, so California to Ohio under one name. Ohio's Buckeye Trail is not a Forest Service trail.",
+  "usfs_trails 'FOOTHILLS'": "lon -106.5..-83.0, New Mexico to South Carolina. 'BRIDGER FOOTHILLS' in Montana is one of them.",
+  "usfs_trails 'PALMETTO'": "one segment at lon -121.3, lat 39.8 - California.",
+  "usfs_trails 'CUMBERLAND'": "one segment at lon -106.5, lat 38.7 - Colorado. Tennessee's Cumberland Trail is a state park trail.",
+  "usfs_trails 'LONE STAR'": "lon -118.6..-95.1. Some of it is in Texas and some is not, and the Lone Star Hiking Trail is in Sam Houston National Forest only.",
+  "usfs_trails 'CATAMOUNT', dec_hiking_trails 'Catamount Trail', nh_granit_trails 'CATAMOUNT TRL'": "Colorado, the Adirondacks and New Hampshire respectively. Vermont's Catamount Trail is in none of these layers.",
+  "usfs_trails 'BACKBONE' and 'BACKBONE TRAIL'": "country-wide and Arizona. California's Backbone Trail is in the Santa Monica Mountains NRA, which NPS administers.",
+  "usfs_trails 'BLACK CANYON' and 'BLACK CANYON TRAIL'": "country-wide and Idaho. Arizona's Black Canyon Trail is BLM.",
+  "usfs_trails 'BAKER'": "lon -115.8..-109.0, Arizona and Utah. Pennsylvania's Baker Trail is not a Forest Service trail.",
+  "usfs_trails 'HOT SPRINGS' and 'HOT SPRINGS TRAIL'": "lon -115.2..-105.8. A common name for a common destination.",
+  "usfs_trails 'JOHN MUIR NATIONAL RECREATION'": "one segment at lon -84.5, lat 35.2 - Tennessee. A different John Muir trail.",
+  "usfs_trails 'SUPERIOR'": "two segments at lon -120.8..-111.3 - Nevada and Utah.",
+  "usfs_trails 'ARIZONA TRAIL CANELO HILLS' and the AZT spur spellings": "Sections and spurs of the Arizona Trail rather than the trail, and they normalise differently so they never matched; recorded so the distinction is on the record."
+ }
+}

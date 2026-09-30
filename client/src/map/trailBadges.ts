@@ -79,6 +79,7 @@
 import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { TRAILS } from '../lib/trails'
+import { longTrailHasMarker } from './longTrailNames'
 import { LABEL_TIER } from './labelLadder'
 import { sheetVariant, type SheetAppearance } from './liveTopo'
 import { CHOSEN_SYSTEM_SOURCES, nearbyTrailOpacityExpression } from './nearbyTrails'
@@ -116,6 +117,38 @@ export const BADGE_SOURCES: readonly string[] = ['centerline', 'nynjtc_long_path
 export const BADGE_MARK_BY_SOURCE: Readonly<Record<string, string>> = {
   centerline: TRAILS.AT.id,
   nynjtc_long_path: TRAILS.LP.id,
+}
+
+/** The badge image id for a long trail's own marker, which is registered
+ *  from lib/stewardMarks.ts rather than from the registry. Separate from
+ *  TRAILS' ids so the two can never collide in the sprite. */
+export function stewardMarkImageId(slug: string): string {
+  return `trail-mark-steward-${slug}`
+}
+
+/**
+ * Which image a badge draws: the registry's mark where the SOURCE has one,
+ * otherwise the steward's own marker for the TRAIL (#1543).
+ *
+ * Source first, deliberately. `centerline` is the A.T. and carries the
+ * marker the repo owner supplied; a USFS segment spelled "APPALACHIAN TRAIL"
+ * resolves to the same trail through map/longTrailNames.ts, and both must
+ * draw the one mark rather than two different files depending on which feed
+ * the nearest piece came from.
+ */
+export function badgeMarkImageId(
+  source: string,
+  longTrail: string | null | undefined,
+): string | null {
+  const registry = trailMarkImageId(source)
+  if (registry !== null) return registry
+  // FALSY RATHER THAN `=== null`, because the first version of this line was
+  // `longTrail === null` and a feature built without the field asked the
+  // sprite for `trail-mark-steward-undefined` - an id nothing holds, so the
+  // badge silently lost its slot rather than failing anywhere visible. The
+  // empty string is refused for the same reason.
+  if (!longTrail || !longTrailHasMarker(longTrail)) return null
+  return stewardMarkImageId(longTrail)
 }
 
 /**
@@ -590,20 +623,43 @@ export function attachTrailBadgeImages(map: MapLibreMap): () => void {
         const { image, options } = buildBadgePlate(face)
         map.addImage(face.id, image, options)
       }
-      for (const trail of Object.values(TRAILS)) {
-        const full = `trail-mark-${trail.id}`
+      const register = (logo: string, base: string) => {
         for (const [id, gap] of [
-          [full, TRAIL_BADGE_MARK_GAP],
-          [bareImageId(full), 0],
+          [base, TRAIL_BADGE_MARK_GAP],
+          [bareImageId(base), 0],
         ] as const) {
           if (map.hasImage(id)) continue
-          void rasteriseTrailMark(trail.logo, POI_PIN_PIXEL_RATIO, gap).then((image) => {
+          void rasteriseTrailMark(logo, POI_PIN_PIXEL_RATIO, gap).then((image) => {
             if (detached || image === null || map.hasImage(id)) return
             if (map.getLayer(TRAIL_BADGE_LAYER_ID) === undefined) return
             map.addImage(id, image, { pixelRatio: POI_PIN_PIXEL_RATIO })
           })
         }
       }
+
+      for (const trail of Object.values(TRAILS)) {
+        register(trail.logo, `trail-mark-${trail.id}`)
+      }
+
+      // THE STEWARDS' OWN MARKERS, behind an `import()` (#1543). These are 32
+      // files and their URLs have no business in the launch path - the same
+      // argument lib/stewardMarks.ts's header makes for the line sheet - and
+      // nothing above waits on them: rasteriseTrailMark is already async, so
+      // a badge draws its plate and name first and the marker lands when it
+      // lands. A steward trail whose marker never arrives keeps the empty
+      // slot, which is what it wore before this existed.
+      void import('../lib/stewardMarks')
+        .then(({ stewardMarkForSlug, stewardMarkSlugs }) => {
+          if (detached || map.getLayer(TRAIL_BADGE_LAYER_ID) === undefined) return
+          for (const slug of stewardMarkSlugs()) {
+            const logo = stewardMarkForSlug(slug)
+            if (logo !== null) register(logo, stewardMarkImageId(slug))
+          }
+        })
+        .catch(() => {
+          // A chunk that will not load is a badge with an empty slot, never a
+          // broken image and never a throw that takes the map down.
+        })
     },
     'Trail badge images',
   )

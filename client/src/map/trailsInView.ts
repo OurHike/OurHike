@@ -83,6 +83,7 @@ import { CHOSEN_SYSTEM_SOURCES } from './nearbyTrails'
 import { POI_LAYER_ID } from './poiLayers'
 import { TAPPABLE_BLAZE_LAYER_IDS } from './style'
 import { whenStyleReady } from './styleReady'
+import { longTrailForName } from './longTrailNames'
 import {
   registryNameForSource,
   BADGE_ANCHOR_PROPERTY,
@@ -100,8 +101,8 @@ import {
   TRAIL_BADGE_SOURCE_ID,
   TRAIL_BADGE_TEXT_FIT_PADDING,
   TRAIL_BADGE_TEXT_SIZE,
+  badgeMarkImageId,
   trailIdForSource,
-  trailMarkImageId,
 } from './trailBadges'
 import { WARNING_LAYER_ID } from './warningLayers'
 import { WORKDAY_LAYER_ID } from './workdayLayers'
@@ -541,6 +542,18 @@ export interface TrailInView {
   takeable: boolean
   /** Whether the trail is in the chosen system, and so drawn solid. */
   chosen: boolean
+  /** Which long trail this line IS, from map/longTrailNames.ts, or null for
+   *  an ordinary line. The badge's mark is keyed off this rather than off
+   *  `source`, because one trail arrives under up to five published
+   *  spellings across three organizations' feeds and they all mean one
+   *  marker (#1543). Null for the A.T. and the Long Path, whose marks come
+   *  from the registry by source as they always did.
+   *
+   *  OPTIONAL, so a caller that predates this field still type-checks and
+   *  still gets the badge it got before - `badgeMarkImageId` treats a missing
+   *  value as "no steward marker" rather than building an id out of
+   *  `undefined`, which is the defect its own comment records. */
+  longTrail?: string | null
   /** A vertex on the trail, in view, where its badge sits; null where none of
    *  the drawn geometry put a vertex inside the viewport. */
   anchor: [number, number] | null
@@ -750,7 +763,16 @@ export function trailsInView(
       stringProp(properties, 'name') ?? registryNameForSource(source),
     )
     if (name === null) continue
-    const throughRoute = BADGE_SOURCES.includes(source)
+    // A BADGE BELONGS TO A TRAIL, NOT TO A FEED (#1543). This was
+    // `BADGE_SOURCES.includes(source)` alone until 2026-09-30, which meant
+    // ATC's centerline and NYNJTC's Long Path feed were the only two trails
+    // on the map that could ever wear one - while Sheltowee Trace, Ozark
+    // Highlands, Bartram, Pinhoti, Ouachita, Maah Daah Hey and the Tahoe Rim
+    // were already being downloaded and drawn as anonymous lines inside the
+    // Forest Service's nationwide layer. The source test stays because two
+    // feeds ARE one trail each; the name test is what reaches the rest.
+    const longTrail = longTrailForName(name)
+    const throughRoute = BADGE_SOURCES.includes(source) || longTrail !== null
     const takeable = trailIdForSource(source) !== null
     const inChosenSystem = chosen.includes(source)
 
@@ -770,6 +792,7 @@ export function trailsInView(
         source,
         blazeColor: stringProp(properties, 'blaze_color'),
         throughRoute,
+        longTrail,
         takeable,
         chosen: inChosenSystem,
         anchor: null,
@@ -787,6 +810,7 @@ export function trailsInView(
     existing.clearRuns.push(...clearRuns)
     if (throughRoute && !existing.throughRoute) {
       existing.throughRoute = true
+      existing.longTrail = existing.longTrail ?? longTrail
       existing.takeable = takeable
       existing.source = source
       existing.blazeColor = stringProp(properties, 'blaze_color')
@@ -807,7 +831,7 @@ export function trailsInView(
         pins(),
         frame,
         trail.name,
-        trailMarkImageId(trail.source) !== null,
+        badgeMarkImageId(trail.source, trail.longTrail) !== null,
       )
       if (placed === null) return { ...trail, anchor: null }
       return {
@@ -838,7 +862,7 @@ export function badgeFeatures(trails: readonly TrailInView[]): GeoJSON.FeatureCo
     features: trails
       .filter((trail) => trail.throughRoute && trail.anchor !== null)
       .map((trail) => {
-        const mark = trailMarkImageId(trail.source)
+        const mark = badgeMarkImageId(trail.source, trail.longTrail)
         return {
           type: 'Feature' as const,
           properties: {

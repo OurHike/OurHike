@@ -105,3 +105,60 @@ export function stewardMarkForName(name: string): string | null {
 /** How many markers this module carries, for the test that guards the count
  *  against an import silently dropping out. */
 export const STEWARD_MARK_COUNT = Object.keys(STEWARD_MARKS).length
+
+/**
+ * The same markers keyed by the trail's slug, which is what the BADGE asks.
+ *
+ * TWO KEYS, ONE SET, and the reason they differ is what each caller has in
+ * hand. chrome/LineSheet.tsx has a tapped line's published NAME and nothing
+ * else. map/trailsInView.ts has already resolved that name to a trail
+ * through map/longTrailNames.ts, so it has the SLUG - and the slug is the
+ * better key, because one trail has up to five published spellings and they
+ * all mean this one file.
+ */
+const STEWARD_MARKS_BY_SLUG: Readonly<Record<string, string>> = {
+  azt: aztLogo,
+  bartram: bartramLogo,
+  bmt: bmtLogo,
+  buckeye: buckeyeLogo,
+  catamount: catamountLogo,
+  cohos: cohosLogo,
+  condor: condorLogo,
+  cumberland: cumberlandLogo,
+  flt: fltLogo,
+  fnst: fnstLogo,
+  foothills: foothillsLogo,
+  get: getLogo,
+  iat: iatLogo,
+  'long-trail': longTrailLogo,
+  loyalsock: loyalsockLogo,
+  lsht: lshtLogo,
+  'mason-dixon': masonDixonLogo,
+  mdh: mdhLogo,
+  mogollon: mogollonLogo,
+  nct: nctLogo,
+  net: netLogo,
+  npt: nptLogo,
+  oht: ohtLogo,
+  ouachita: ouachitaLogo,
+  'ozark-trail': ozarkTrailLogo,
+  palmetto: palmettoLogo,
+  pnnst: pnnstLogo,
+  'ridge-trail': ridgeTrailLogo,
+  sheltowee: sheltoweeLogo,
+  sht: shtLogo,
+  'standing-stone': standingStoneLogo,
+  'tahoe-rim': tahoeRimLogo,
+}
+
+/** The steward marker for a long trail's slug, or null where no marker was
+ *  found for it - Pinhoti's steward domain serves spam, and five of the
+ *  trails this badges publish no per-trail symbol at all. */
+export function stewardMarkForSlug(slug: string): string | null {
+  return STEWARD_MARKS_BY_SLUG[slug] ?? null
+}
+
+/** Every slug with a marker, for the badge's image registration. */
+export function stewardMarkSlugs(): readonly string[] {
+  return Object.keys(STEWARD_MARKS_BY_SLUG)
+}

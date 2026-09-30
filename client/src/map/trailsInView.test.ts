@@ -25,6 +25,7 @@ import {
   TRAIL_BADGE_MARK_GAP,
   TRAIL_BADGE_MARK_SIZE,
   TRAIL_BADGE_SOURCE_ID,
+  stewardMarkImageId,
   trailMarkImageId,
 } from './trailBadges'
 import { POI_LAYER_ID } from './poiLayers'
@@ -355,6 +356,90 @@ describe('trailsInView', () => {
   })
 })
 
+describe("a long trail inside somebody else's layer (#1543)", () => {
+  // THE DEFECT THIS WHOLE TABLE FIXES. Badge status was
+  // `BADGE_SOURCES.includes(source)`, so ATC's centerline and NYNJTC's Long
+  // Path feed were the only two trails on the map that could wear a pill -
+  // while Sheltowee Trace, Ozark Highlands, Bartram, Ouachita, Maah Daah Hey
+  // and the Tahoe Rim were already downloaded and drawn as anonymous lines
+  // inside the Forest Service's nationwide layer.
+
+  it('earns a badge and its steward mark, from a source that badges nothing by itself', () => {
+    const map = mapWith({
+      [BLAZE_LAYER_ID]: [
+        line(
+          'SHELTOWEE TRACE',
+          'usfs_trails',
+          // In the mock's frame rather than Kentucky's: this fixture maps
+          // degrees straight to pixels, so the coordinates only have to be
+          // on screen. What is under test is the NAME.
+          [
+            [-74.2, 41.2],
+            [-74.1, 41.25],
+            [-74.0, 41.3],
+          ],
+          'White',
+        ),
+      ],
+    })
+    const trails = trailsInView(map as unknown as MapLibreMap)
+    expect(trails).toHaveLength(1)
+    expect(trails[0].throughRoute).toBe(true)
+    expect(trails[0].longTrail).toBe('sheltowee')
+
+    const { features } = badgeFeatures(trails)
+    expect(features).toHaveLength(1)
+    expect(features[0].properties?.[BADGE_MARK_PROPERTY]).toBe(
+      stewardMarkImageId('sheltowee'),
+    )
+  })
+
+  it('leaves a connector in the same layer as an ordinary line', () => {
+    // The refusal is what keeps the badge count honest: USFS publishes
+    // SHELTOWEE CONNECTOR and SHELTOWEE SPUR beside the trail itself.
+    const map = mapWith({
+      [BLAZE_LAYER_ID]: [
+        line(
+          'SHELTOWEE CONNECTOR',
+          'usfs_trails',
+          [
+            [-74.2, 41.2],
+            [-74.0, 41.3],
+          ],
+          'White',
+        ),
+      ],
+    })
+    const trails = trailsInView(map as unknown as MapLibreMap)
+    expect(trails).toHaveLength(1)
+    expect(trails[0].throughRoute).toBe(false)
+    expect(badgeFeatures(trails).features).toEqual([])
+  })
+
+  it('badges a trail with no steward marker as a plate and a name', () => {
+    // 7 of the 20 badged trails have no marker anybody could find. They are
+    // still trails worth naming on a map.
+    const map = mapWith({
+      [BLAZE_LAYER_ID]: [
+        line(
+          'GREAT WESTERN TRAIL',
+          'usfs_trails',
+          [
+            [-74.2, 41.2],
+            [-74.0, 41.3],
+          ],
+          'White',
+        ),
+      ],
+    })
+    const trails = trailsInView(map as unknown as MapLibreMap)
+    expect(trails[0].throughRoute).toBe(true)
+    const { features } = badgeFeatures(trails)
+    expect(features[0].properties?.[BADGE_MARK_PROPERTY]).toBe('')
+    expect(features[0].properties?.[BADGE_FIT_PROPERTY]).toBe('full')
+  })
+})
+
 describe('badgeFeatures', () => {
   it('makes one point per through-route with somewhere to sit, carrying the line’s own facts', () => {
     const map = mapWith({
@@ -384,6 +469,7 @@ describe('badgeFeatures', () => {
         {
           name: 'Appalachian Trail',
           source: 'centerline',
+          longTrail: null,
           blazeColor: 'White',
           throughRoute: true,
           takeable: true,
@@ -404,8 +490,9 @@ describe('badgeFeatures', () => {
     // feature also carried a `chip` id and the layer coalesced onto it.
     const [feature] = badgeFeatures([
       {
-        name: 'Ozark Highlands Trail',
+        name: 'Great Western Trail',
         source: 'usfs_trails',
+        longTrail: 'gwt',
         blazeColor: 'White',
         throughRoute: true,
         takeable: true,
@@ -416,6 +503,9 @@ describe('badgeFeatures', () => {
         properties: {},
       },
     ]).features
+    // The Great Western Trail earns a badge through map/longTrailNames.ts
+    // and no steward marker was found for it, so the slot is the empty
+    // string - which is the case this whole mechanism exists for.
     expect(trailMarkImageId('usfs_trails')).toBeNull()
     expect(feature.properties?.[BADGE_MARK_PROPERTY]).toBe('')
     expect(Object.keys(feature.properties ?? {})).not.toContain('chip')
@@ -436,8 +526,9 @@ describe('badgeFeatures', () => {
     // is module-private and no source in BADGE_SOURCES lacks a mark.
     const [feature] = badgeFeatures([
       {
-        name: 'Ozark Highlands Trail',
+        name: 'Great Western Trail',
         source: 'usfs_trails',
+        longTrail: 'gwt',
         blazeColor: 'White',
         throughRoute: true,
         takeable: true,
@@ -456,6 +547,7 @@ describe('badgeFeatures', () => {
       {
         name: 'Appalachian Trail',
         source: 'centerline',
+        longTrail: null,
         blazeColor: 'White',
         throughRoute: true,
         takeable: true,

@@ -57,6 +57,13 @@ summer only (a fixed lapse rate is at its worst in winter inversions - build
 step 6), eight stations chosen for relief rather than at random, and one run
 a day.
 
+WHAT IT FOUND (2026-09-30; WEATHER.md §3 has the table). Corrected HRRR beat
+NBM on highs in window 1 by 0.37 °F and lost in window 2 by 0.33. It never
+clearly won on lows, and its valley nights were worst (Berlin, NH). The blend
+beat NBM in both windows on both. The maintainer chose NBM only, so nothing
+this scores is on the card; the script stays so the blend can be re-scored
+over any window, the winter one first.
+
 THIS IS A SPIKE. The downloading is throwaway; the answer is the output.
 
     python spike_weather_correction.py                 (the first spike's window)

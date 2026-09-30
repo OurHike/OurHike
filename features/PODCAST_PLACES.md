@@ -73,6 +73,28 @@ a search over ATC's POIs proposed a point. What that showed, measured:
   Road (six road hits refused in all). The 9 parks where pin and OpenStreetMap disagreed by more
   than 60 miles were all large ones, 62 to 134 miles apart, where both points may well be inside.
 
+Backpacker Radio was the third show (2026-09-30), and the first read with the rule "a major theme
+or a segment only". Eight parallel readers took its 419 episodes; assembly dropped 89 news
+headlines, 16 gear surveys that list trails, 98 regions, cities and businesses, and 4 bike routes.
+What that left, measured on the desk:
+
+- **A trail show proposes trails, not places.** Of 1,081 places proposed across 341 episodes, 810
+  are a whole trail (177 different trails) and 78 a named section; 33 are A.T. POIs, 74 got a
+  names-only point (53 from GNIS, 21 an NPS visitor center), and 86 have no point at all. For this
+  kind of show the trail *is* the answer. 274 of the 341 episodes have at least one trail OurHike
+  already publishes.
+- **A published trail name is not one trail.** `places.json` groups USFS trails by name, so
+  `trail:usfs_trails:TIMBERLINE` has a box from −121.8° to −106.4° longitude, and `LONE STAR`
+  from −118.6° to −95.1°: many unrelated trails, neither the one an episode means. The resolver
+  must check a trail's extent against the mention's `where` before it believes a name, and those
+  two are left out of the aliases by hand.
+- **Some matches are a part of the trail.** The Long Trail is published only where it is the A.T.
+  The Colorado Trail is published as a USFS line named `COLORADO`, 252 miles between 38.35° and
+  39.55° N, which reads as its northern half — reasoned from its name and extent; nobody has
+  confirmed it with the Colorado Trail Foundation. Both carry a `partial` note the desk shows.
+- **Short words need whole-word matching.** "AT" was highlighted inside "navigation" until the
+  desk matched `said` on word boundaries. The resolver's name search has the same trap.
+
 ## What OurHike can already match against
 
 The first draft of #1721 said OurHike publishes nothing off the A.T. It publishes a great deal:
@@ -203,11 +225,19 @@ reach `podcast_episodes.json`.
 | trigger | who runs it | what it does |
 |---|---|---|
 | **a new show** | a session, on the maintainer's request | fetch the feed; LLM readers write mentions (in parallel, as on 2026-09-29); resolve; write to the desk |
-| **the weekly run** | the existing routine (`trig_01R1d7LAqZ3Y7RhyPV4Fmpci`, and one per show) | new episodes as above; then **if `latest.json`'s version changed since the last run**, re-resolve every mention on the desk and report what newly matched |
+| **the weekly run** | one routine per show: National Park After Dark (`trig_01R1d7LAqZ3Y7RhyPV4Fmpci`) and Backpacker Radio (`trig_01WeUhK3WkaF6oXamymvz5ii`), Tuesdays | new episodes as above; then **if `latest.json`'s version changed since the last run**, re-resolve every mention on the desk and report what newly matched |
 | **a data release** | the same check, the next Tuesday | nothing extra: the version check above is the trigger |
 
 The desk keeps one `meta` record: the data release it last resolved against. That one field is
 what makes the third row free.
+
+**The desk has two limits a new show can hit.** One query delivers at most 1,000 documents, and
+after Backpacker Radio the desk held 940 episodes, so it now watches each show on its own, named in
+a `shows` collection, with one more window for any show not named there yet (desk version 9,
+2026-09-30). That holds up to 29 named shows at 1,000 episodes each. The artifact's database caps
+at 25,000 documents in all, according to the write results on 2026-09-30. At the roughly 450
+episodes a show has brought so far, that is about 50 shows, after which skipped episodes would need
+archiving. So adding a show means adding its row to `shows` too.
 
 **Why not a GitHub workflow?** CI cannot read the desk: its database is reachable only through the
 claude.ai tools a session holds. So resolution runs in a session and the repository holds the

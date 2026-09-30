@@ -66,7 +66,7 @@ import {
   trailCasingColor,
   closureInk,
   closureTapeGround,
-} from './style'
+} from './sheetInks'
 import { WARNING_PIN } from '../lib/seriousWarnings'
 import {
   CLOSURE_CROSS_ARM,

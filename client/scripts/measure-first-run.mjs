@@ -309,47 +309,70 @@ async function refuseToMeasureOnboarding() {
   )
 }
 
-/** The release is on the phone: the waypoints are stored and the partial
- *  marker is down (lib/trailData.ts). Read out of IndexedDB rather than off
- *  the screen, because the screen a launch lands on is Today now (#1054) and
- *  says nothing about waypoint counts. */
+/**
+ * The release is on the phone: the waypoints are stored and the partial
+ * marker is down (lib/trailData.ts). Read out of IndexedDB rather than off
+ * the screen, because the screen a launch lands on is Today now (#1054) and
+ * says nothing about waypoint counts.
+ *
+ * POLLED FROM HERE WITH `page.evaluate`, NOT WITH `page.waitForFunction`.
+ * The predicate has to open IndexedDB, so it returns a Promise - and
+ * Playwright does not await a Promise a waitForFunction predicate returns:
+ * the Promise object is itself truthy, so the wait ended on its first poll,
+ * before a byte of the release had landed. Measured 2026-09-30 in the agent
+ * sandbox: a predicate resolving `false` after 100 ms came back from
+ * waitForFunction in 131 ms with the unresolved Promise as its value, and a
+ * `--returning` run then timed a launch that was re-downloading the whole
+ * release - which is what every "waypoints ready: not reached" row this
+ * script had printed was. `page.evaluate` awaits the Promise, so the loop
+ * below only ends on a phone that actually holds the release.
+ */
 async function releaseLanded() {
-  await page.waitForFunction(
-    () =>
-      new Promise((resolve) => {
-        const open = indexedDB.open('keyval-store')
-        open.onsuccess = () => {
-          const db = open.result
-          const store = db.transaction('keyval').objectStore('keyval')
-          const pois = store.get('ourhike:pois')
-          const partial = store.get('ourhike:trail-data-partial')
-          let left = 2
-          let ready = true
-          const done = () => {
-            left -= 1
-            if (left === 0) {
-              db.close()
-              resolve(ready)
+  const deadline = Date.now() + 600_000
+  for (;;) {
+    const landed = await page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          const open = indexedDB.open('keyval-store')
+          open.onsuccess = () => {
+            const db = open.result
+            const store = db.transaction('keyval').objectStore('keyval')
+            const pois = store.get('ourhike:pois')
+            const partial = store.get('ourhike:trail-data-partial')
+            let left = 2
+            let ready = true
+            const done = () => {
+              left -= 1
+              if (left === 0) {
+                db.close()
+                resolve(ready)
+              }
+            }
+            pois.onsuccess = () => {
+              if (pois.result === undefined) ready = false
+              done()
+            }
+            partial.onsuccess = () => {
+              if (partial.result === true) ready = false
+              done()
+            }
+            pois.onerror = partial.onerror = () => {
+              ready = false
+              done()
             }
           }
-          pois.onsuccess = () => {
-            if (pois.result === undefined) ready = false
-            done()
-          }
-          partial.onsuccess = () => {
-            if (partial.result === true) ready = false
-            done()
-          }
-          pois.onerror = partial.onerror = () => {
-            ready = false
-            done()
-          }
-        }
-        open.onerror = () => resolve(false)
-      }),
-    null,
-    { timeout: 600_000, polling: 1000 },
-  )
+          open.onerror = () => resolve(false)
+        }),
+    )
+    if (landed === true) return
+    if (Date.now() > deadline) {
+      throw new Error(
+        'the release did not land within 600 s of first run starting, so there is ' +
+          'no returning launch to measure - check the data URL the build was given',
+      )
+    }
+    await page.waitForTimeout(1000)
+  }
 }
 
 if (warm || returning) {

@@ -409,15 +409,59 @@ if (serviceWorker !== undefined) {
 // and the network tiles, 32 KB compressed, in front of the first frame, and
 // main sits 684 bytes under the launch budget.
 //
-// So 300 KB. It is the same sixth of room over today's 255 KB that 250 was
-// over 215, and it still cannot hold the smallest thing this gate exists to
-// catch: the Supabase client's 52 KB (267 to 215 above) lands a drift at
-// 307 KB, a screen set's 56 KB at 311, the engine far beyond. What an absolute
-// line cannot do is tell organic growth from a drift smaller than the room
-// left; a check against `main`'s own figure would, and is that issue's to
-// build.
-const EAGER_JS_BUDGET_BYTES = 300 * 1024
+// So 300 KB, from 2026-09-18 to 2026-09-30: the same sixth of room over that
+// day's 255 KB that 250 was over 215. It was a patch on the symptom and said
+// so. The cause is fixed - #1591's first remedy, the ids, inks, palettes,
+// cell setters and archive URLs the shell reads live in leaves under map/,
+// and EAGER_FORBIDDEN below refuses the modules they came from - and the
+// maintainer asked the same day for a smaller budget ("it's too big now").
+// The closure measured 241,578 bytes with the leaves in and 229,145 with the
+// ten sheets, panels and cards a tap opens deferred through
+// screens/deferred.ts (#1735 - 123 KB of chrome surfaces Today never shows
+// sit in the eager closure, and preloadScreens evaluates all 50 lazy chunks
+// on the first idle), both by this script's walk on 2026-09-30. So the line
+// is 240 KB: 16,615 bytes of room over that figure, the same order of room
+// 250 had over the first, with features/LAUNCH_BUDGET.md §4.4 naming what
+// can still leave (the entry card, the planning modules behind their hooks,
+// four layer builders reached for an id, Capacitor). The line follows the
+// closure down as each cut lands; it does not lead it. What an absolute
+// line still cannot do is tell organic growth from a drift smaller than the
+// room left; a check against `main`'s own figure would, and is #1591's open
+// half.
+const EAGER_JS_BUDGET_BYTES = 240 * 1024
 const MAPLIBRE_MARKERS = ['fill-extrusion-vertical-gradient', 'maplibregl-']
+
+/**
+ * Three more modules the eager closure must not carry, each named by a string
+ * only it holds (#1591). The MapLibre markers above catch the engine; these
+ * catch the #1300 shape one size down, which the byte budget alone cannot
+ * tell from the shell growing: a constant read out of a screen-sized module
+ * brings the module (features/LAUNCH_BUDGET.md §4.4). Measured 2026-09-30 by
+ * attributing the closure to its sources: the style module and its layer
+ * builders were 18,925 gzip bytes of it, the live sheet 14,421 raw, and the
+ * pmtiles library 14,288 raw - all reached from a Today screen that mounts
+ * no map, for a handful of ids, four inks and two setters. Each now lives in
+ * a leaf (map/styleIds.ts, map/sheetInks.ts, map/sheets.ts, map/heldCells.ts,
+ * map/archiveUrls.ts) and the module that builds layers or reads archives
+ * stays behind import().
+ */
+const EAGER_FORBIDDEN = [
+  {
+    marker: 'Corridor-view centerline',
+    what: 'the map style module (map/style.ts)',
+    where: 'map/styleIds.ts for an id, map/sheetInks.ts for an ink',
+  },
+  {
+    marker: 'hillshade-exaggeration',
+    what: 'the live sheet (map/liveTopo.ts)',
+    where: 'map/sheets.ts for a palette, a variant or a layer id',
+  },
+  {
+    marker: 'Wrong magic number for PMTiles archive',
+    what: 'the pmtiles library, through a tile handler or map/protocol.ts',
+    where: 'map/heldCells.ts for the cell setters, map/archiveUrls.ts for a URL',
+  },
+]
 
 const indexHtml = files.find((f) => /(^|[\\/])index\.html$/.test(f))
 const eagerProblems = []
@@ -468,6 +512,15 @@ if (indexHtml === undefined) {
         `  (found ${found.map((m) => `"${m}"`).join(' and ')})`,
         '  The engine belongs behind map/mapEngineLoader.ts. Something the shell',
         '  imports statically reaches `maplibre-gl` - see map/engine.ts and #1300.',
+      )
+    }
+    for (const { marker, what, where } of EAGER_FORBIDDEN) {
+      if (!text.includes(marker)) continue
+      eagerProblems.push(
+        `${what} is in a chunk the document loads before any import(): ${path}`,
+        `  (found "${marker}")`,
+        `  Something the shell imports statically reaches it. The value the shell`,
+        `  wants belongs in a leaf - ${where} - see #1591.`,
       )
     }
   }

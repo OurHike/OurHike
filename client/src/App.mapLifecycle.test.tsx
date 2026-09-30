@@ -532,6 +532,16 @@ describe('what the first-run steps cost', () => {
     await openMapTab()
     await landEverything()
 
+    // The line goes first in the worker (#1727): with real lines on the
+    // phone, the pins are pushed once this map's own trails source reports
+    // its tiles drawn - which the mock never does unasked.
+    await waitFor(() => expect(MockMap.live[0]).toBeDefined())
+    act(() => {
+      const opened = MockMap.live[0]
+      opened.loadedSources.add(TRAILS_SOURCE_ID)
+      opened.emit('sourcedata', { sourceId: TRAILS_SOURCE_ID })
+    })
+
     await waitFor(() => {
       const opened = MockMap.live[0]
       expect(opened).toBeDefined()

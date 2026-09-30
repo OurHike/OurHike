@@ -42,7 +42,7 @@ import {
   type DraftShape,
   type DraftStatus,
 } from '../lib/dayHikeDraft'
-import type { PaceEstimate } from '../lib/pace'
+import { walkingTime, type PaceEstimate } from '../lib/pace'
 import { formatDistance, type UnitSystem } from '../lib/units'
 import '../screens/plan.css'
 
@@ -116,11 +116,10 @@ const SHAPE_LABELS: Record<DraftShape, string> = {
   loop: 'Loop',
 }
 
-export function walkingTime(estimate: PaceEstimate | null): string | null {
-  if (estimate === null) return null
-  if (!Number.isFinite(estimate.minutes) || estimate.minutes <= 0) return null
-  return `${estimate.text} walking`
-}
+// walkingTime lives in lib/pace.ts since #1735, beside the estimate it words;
+// the shell reads it from there so this bar can be deferred. Re-exported for
+// the readers that knew it here.
+export { walkingTime }
 
 export function DayHikePickBar({
   draft,

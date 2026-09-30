@@ -140,7 +140,7 @@ import {
 } from '../lib/legendContents'
 import { MapIcon, TrailLineSwatch } from '../map/MapIcon'
 import type { SheetAppearance } from '../map/liveTopo'
-import { redLightActive } from '../map/style'
+import { redLightActive } from '../map/sheetInks'
 import type { TrailInView } from '../map/trailsInView'
 import { HIDEABLE_TYPES, shownSelection } from '../lib/waypointVisibility'
 import { typeLabel } from './legendLabels'

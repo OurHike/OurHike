@@ -41,7 +41,7 @@
 
 import type { Map as MapLibreMap } from 'maplibre-gl'
 
-import { LIVE_TOPO_LAYER_IDS } from './liveTopo'
+import { LIVE_TOPO_LAYER_IDS } from './sheets'
 
 /** The transportation layers the live sheet draws, in the order a tap should
  *  prefer them: the specific, named thing over the ambient one. */

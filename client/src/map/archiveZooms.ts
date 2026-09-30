@@ -10,10 +10,24 @@
 // The header is the first 127 bytes of the file, so this is one small
 // byte-range read against a Blob already in IndexedDB - cheap enough to do on
 // mount and not worth caching beyond the hook that calls it.
+//
+// THE LIBRARY ARRIVES WITH THE FIRST READ, NOT WITH THIS MODULE (#1591).
+// App.tsx reaches this file through lib/useArchiveZooms.ts on every launch,
+// and a static `import { PMTiles }` here put the pmtiles library - 14,288
+// raw bytes, measured 2026-09-30 by attributing the built chunks - in the
+// bundle a launch parses before its first frame, on a Today screen that
+// mounts no map. Both readers are already async, so the class is imported
+// when one of them runs: a chunk the map engine shares and the service
+// worker precaches, fetched once per session after the shell is up.
+// scripts/check-build-output.mjs holds the library out of the eager closure.
 
-import { PMTiles } from 'pmtiles'
 import { IndexedDbArchiveSource } from './pmtilesSource'
 import type { ArchiveZooms, Footprint } from '../lib/archiveCoverage'
+
+async function archiveHeader(idbKey: string) {
+  const { PMTiles } = await import('pmtiles')
+  return new PMTiles(new IndexedDbArchiveSource(idbKey)).getHeader()
+}
 
 /**
  * The archive's zoom range, or `null` where it cannot be established.
@@ -26,7 +40,7 @@ import type { ArchiveZooms, Footprint } from '../lib/archiveCoverage'
  */
 export async function readArchiveZooms(idbKey: string): Promise<ArchiveZooms | null> {
   try {
-    const header = await new PMTiles(new IndexedDbArchiveSource(idbKey)).getHeader()
+    const header = await archiveHeader(idbKey)
     return { minZoom: header.minZoom, maxZoom: header.maxZoom }
   } catch {
     return null
@@ -46,7 +60,7 @@ export async function readArchiveZooms(idbKey: string): Promise<ArchiveZooms | n
  */
 export async function readArchiveFootprint(idbKey: string): Promise<Footprint | null> {
   try {
-    const header = await new PMTiles(new IndexedDbArchiveSource(idbKey)).getHeader()
+    const header = await archiveHeader(idbKey)
     return {
       west: header.minLon,
       south: header.minLat,

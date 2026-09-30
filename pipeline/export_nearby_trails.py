@@ -870,7 +870,34 @@ def declared_name(source: dict, properties: dict):
 
     Matched case-insensitively on the stripped value, because a placeholder
     is prose typed by whoever surveyed the segment rather than a coded domain.
+
+    `name_constant` IS THE SAME RULE POINTING THE OTHER WAY (#1778). Some
+    stewards publish one trail as a layer with no name column at all: PCTA's
+    `PCTA_Centerline` is a single feature with two fields, `OBJECTID` and
+    `Shape__Length`. The trail's name is not missing from that layer, it is
+    the layer - and dropping it into the unnamed haze would be as wrong as
+    reading `Name TBD` as a name. So a source may declare `name_constant`, and
+    every feature it ships carries that name.
+
+    THE REGISTRY HAS TO EARN IT, because this is the one place the pipeline
+    writes a name no steward published. A row carrying `name_constant` records
+    the measurement that identifies the trail, and the three registered under
+    #1778 were each checked end to end on 2026-09-30 before the name was
+    written: PCTA's one feature is 2,653 miles from 32.59 deg N to 49.00 deg N -
+    Mexico to Canada, against the PCT's published 2,650 - and CDTC's eight
+    total 3,060 miles from 31.50 to 49.05 against the CDT's 3,028. Wisconsin
+    DNR's single `Ice Age Trail` feature is 711 miles, which is the BUILT
+    segments of a trail planned at about 1,200, and its row says so rather
+    than implying the whole route is there.
+
+    A source may not declare both: `name_field` says where to read the name
+    and `name_constant` says there is nowhere to read it, so a row claiming
+    both has not decided what it is. `name_constant_conflicts` below is the
+    check, and it runs over the registry rather than per feature.
     """
+    constant = source.get("name_constant")
+    if constant is not None:
+        return constant
     raw = properties.get(source.get("name_field", "Name"))
     placeholders = source.get("name_placeholders")
     if not placeholders or raw is None:
@@ -878,6 +905,19 @@ def declared_name(source: dict, properties: dict):
     if str(raw).strip().casefold() in {str(p).strip().casefold() for p in placeholders}:
         return None
     return raw
+
+
+def name_constant_conflicts(sources: list[dict]) -> list[str]:
+    """The registry keys that declare both a name column and a name constant.
+
+    A stop rather than a warning, on missing_declared_fields' own argument: a
+    row that says both has not decided which is true, and `declared_name`
+    would silently take the constant and never read the column - so the
+    column's name would sit in the registry looking enforced while nothing
+    read it, which is the decoration `usfs_trails`' own entry records having
+    removed once already.
+    """
+    return [s["key"] for s in sources if s.get("name_constant") is not None and s.get("name_field") is not None]
 
 
 def build_records(source: dict, features: list[dict], owned: dict[str, str], boundary=None) -> tuple[list[dict], dict]:
@@ -1628,6 +1668,16 @@ def write_artifact(records: list[dict], per_source: dict) -> dict:
 def main() -> dict:
     registry = load_registry(SOURCES_PATH)
     sources = network_line_sources(registry)
+    # Over the registry rather than per feature, and before anything is
+    # fetched: a row claiming both a name column and a name constant is a
+    # contradiction in the file, not a fault in the data (#1778).
+    conflicts = name_constant_conflicts(sources)
+    if conflicts:
+        raise SystemExit(
+            f"{', '.join(conflicts)}: sources.json declares both name_field and name_constant. "
+            "declared_name takes the constant and never reads the column, so the column would sit "
+            "in the registry looking enforced while nothing read it. Keep whichever is true."
+        )
     owned = owned_route_names(registry)
     print(f"Route names owned by their steward: {owned}")
 

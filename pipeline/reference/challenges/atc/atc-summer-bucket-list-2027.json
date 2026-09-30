@@ -1,0 +1,949 @@
+{
+  "_README": [
+    "The ATC's A.T. Summer Bucket List as a challenge (#1780, features/CHALLENGES.md).",
+    "",
+    "A DRAFT, AND THE APP SAYS SO. Transcribed 2026-09-30 from the ATC's 2025 PDF",
+    "(https://appalachiantrail.org/wp-content/uploads/2025/05/ATC_Summer-Bucket-List_2025.pdf,",
+    "co-branded 'ATC x Altra'). The ATC has not confirmed the 2027 items or agreed to",
+    "run its drawing through OurHike. status 'draft' publishes, labelled 'Draft - not",
+    "yet confirmed by the ATC' on every surface (maintainer, poll 2026-09-30), and a",
+    "draft takes no entries.",
+    "",
+    "TITLES ARE THE PDF'S OWN WORDS, verbatim, typos included ('Donate to the ATC help",
+    "protect'). Section order and item order are the PDF's. Nothing is paraphrased,",
+    "because a hiker comparing this list with the ATC's must find the same lines.",
+    "",
+    "THE DATES ARE PLACEHOLDERS. 2027-05-15 to 2027-09-01 come from the design handoff;",
+    "the 2025 PDF gives only the close ('by September 1'). @unvalidated until the ATC",
+    "publishes 2027's.",
+    "",
+    "WHICH LINES ARE PLACES. 14 items name a place the ATC's own layers carry, by",
+    "published POI id - the anchors block repeats each name so a reviewer can read",
+    "the diff without resolving ids. 3 match any waypoint of a type (a shelter, an",
+    "ATC vista, an A.T. Community), 1 the elevation profile, 3 a logged workday on",
+    "the A.T. The other 76 are at-home lines (self_report). Some PDF lines that",
+    "sound like places are self_report on purpose: no published layer carries a",
+    "fire tower, a waterfall, a hostel or Amicalola Falls (on the approach trail,",
+    "not the A.T.), and inventing a point for one is what this file must not do.",
+    "",
+    "TOWNS ARE OFF THE TRAIL AND SAY SO. The Harpers Ferry community point is 236 m",
+    "from the centerline and Monson's is 2,867 m (measured 2026-09-30, release",
+    "2026-09-24-2), so their items carry off_trail and an 800 m radius around the",
+    "town point. The 800 m is @unvalidated - a town-sized guess, not a measurement.",
+    "",
+    "THE THREE MYSTERY ITEMS carry no title and no date: the ATC announced 2025's",
+    "only on social media. They ship sealed and the ATC reveals one by republishing.",
+    "",
+    "Reviewed row by row. That is why this is committed rather than generated."
+  ],
+  "id": "atc-summer-bucket-list-2027",
+  "org": "atc",
+  "trail": "AT",
+  "name": "A.T. Summer Bucket List",
+  "status": "draft",
+  "summary": "Complete at least 25 items by September 1 to be eligible for the grand prize drawing.",
+  "window": {
+    "opens": "2027-05-15",
+    "closes": "2027-09-01"
+  },
+  "finish": {
+    "count": 25,
+    "label": "for the drawing"
+  },
+  "reward": {
+    "kind": "drawing",
+    "rules_url": "https://appalachiantrail.org/sweepstakes"
+  },
+  "sections": [
+    {
+      "id": "learn",
+      "title": "Learn about the A.T.",
+      "short": "Learn"
+    },
+    {
+      "id": "experience",
+      "title": "Experience the A.T.",
+      "short": "Anywhere"
+    },
+    {
+      "id": "protect",
+      "title": "Protect the A.T.",
+      "short": "Protect"
+    },
+    {
+      "id": "mystery",
+      "title": "Mystery Items",
+      "short": "Mystery"
+    }
+  ],
+  "anchors": {
+    "atc_communities:60bcf556-71db-4084-8895-79a9c199612a": "Bolivar/Harpers Ferry",
+    "atc_viewpoints:288915b1-d985-4bf6-9d5f-863bf14395f7": "Clingmans Dome Summit Lookout Tower Vista",
+    "atc_communities:70620d62-6b5b-4cd2-bc86-0ce2baf0950d": "Damascus",
+    "atc_viewpoints:3cadebda-9d7d-4373-88f6-b240420eb958": "Dragons Tooth Peak",
+    "atc_viewpoints:5366ed77-b71a-453b-8f75-90352c9c5c10": "James River",
+    "atc_viewpoints:9c19514f-736c-4f04-9581-d6b989908547": "Katahdin Summit (E)",
+    "atc_viewpoints:95a18f95-b78f-43bb-843a-4b9b82fecb76": "McAfee Knob Summit",
+    "atc_communities:5af4f547-e26c-4f9e-a916-49ad8c0ba0e6": "Monson",
+    "atc_viewpoints:c973c8b0-cde7-4dfb-95dd-a7e9a282cda4": "Pine Grove Furnace Vista",
+    "atc_viewpoints:3f45ce01-0943-4700-8ba6-097ec8e74586": "Springer Mtn Summit Vista",
+    "atc_shelters:e90877f7-1669-4ddf-adce-2a920ee0ba22": "The Priest Shelter",
+    "atc_viewpoints:0897b09f-f474-4466-adeb-98c23a56106d": "Tinker Cliffs 2",
+    "atc_viewpoints:db91e68b-f616-4457-b8b5-c23c3d813bd5": "West Kennebec River"
+  },
+  "items": [
+    {
+      "id": "plan-with-hiker-resource-library",
+      "section": "learn",
+      "title": "Plan an adventure with the Appalachian Trail Conservancy’s Hiker Resource Library.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "library-book",
+      "section": "learn",
+      "title": "Check out a book about the Appalachian Trail from your local library.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "map-or-guidebook",
+      "section": "learn",
+      "title": "Plan a trip with a map or guidebook from the ATC Trail Store.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "trivia-quiz",
+      "section": "learn",
+      "title": "Take our A.T. trivia quiz.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "conservation-film",
+      "section": "learn",
+      "title": "Watch one of the ATC’s short films about conservation.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "inaturalist-seek",
+      "section": "learn",
+      "title": "Download the iNaturalist Seek app and catalogue species you find on the Trail.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "harpers-ferry-visitor-center",
+      "section": "learn",
+      "title": "Visit the Harpers Ferry Visitor Center.",
+      "match": {
+        "kind": "place",
+        "poi": "atc_communities:60bcf556-71db-4084-8895-79a9c199612a",
+        "radius_m": 800,
+        "off_trail": true
+      }
+    },
+    {
+      "id": "damascus-trail-center",
+      "section": "learn",
+      "title": "Visit the Damascus Trail Center.",
+      "match": {
+        "kind": "place",
+        "poi": "atc_communities:70620d62-6b5b-4cd2-bc86-0ce2baf0950d",
+        "radius_m": 800,
+        "off_trail": true
+      }
+    },
+    {
+      "id": "monson-visitor-center",
+      "section": "learn",
+      "title": "Visit the Monson Visitor Center.",
+      "match": {
+        "kind": "place",
+        "poi": "atc_communities:5af4f547-e26c-4f9e-a916-49ad8c0ba0e6",
+        "radius_m": 800,
+        "off_trail": true
+      }
+    },
+    {
+      "id": "at-museum",
+      "section": "learn",
+      "title": "Learn about the history of the Trail at the Appalachian Trail Museum in Pennsylvania.",
+      "match": {
+        "kind": "place",
+        "poi": "atc_viewpoints:c973c8b0-cde7-4dfb-95dd-a7e9a282cda4",
+        "radius_m": 300
+      }
+    },
+    {
+      "id": "purify-water",
+      "section": "learn",
+      "title": "Learn to purify water using a filter or chemical treatment.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "pct-hang",
+      "section": "learn",
+      "title": "Learn how to do a PCT hang.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "bear-canister",
+      "section": "learn",
+      "title": "Learn how to use a bear canister.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "wfa-wfr",
+      "section": "learn",
+      "title": "Get WFA/WFR certified.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "follow-on-social",
+      "section": "learn",
+      "title": "Follow the ATC on social media.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "green-tunnel-podcast",
+      "section": "learn",
+      "title": "Listen to an episode of the Green Tunnel podcast about A.T. history.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "read-a-biography",
+      "section": "learn",
+      "title": "Read The Appalachian Trail: A Biography.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "read-thru-hikers-companion",
+      "section": "learn",
+      "title": "Read The Appalachian Trail Thru-Hiker’s Companion.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "national-park-visitor-center",
+      "section": "learn",
+      "title": "Stop by a national park visitor center to learn about the local landscape.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "roan-mountain-visitor-center",
+      "section": "learn",
+      "title": "Stop by the Roan Mountain State Park Visitor Center for high-elevation ecology.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "virginia-creeper-exhibits",
+      "section": "learn",
+      "title": "Check out the Virginia Creeper Trail exhibits on rail-to-trail history.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "birdwatching-hike",
+      "section": "learn",
+      "title": "Take a birdwatching hike with a local Audubon chapter or an ATC Visitor Center.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "civil-war-battlefields",
+      "section": "learn",
+      "title": "Follow the footsteps of history—visit sections of the Trail that cross Civil War battlefields.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "benton-mackaye-proposal",
+      "section": "learn",
+      "title": "Read Benton MacKaye’s original Appalachian Trail proposal.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "identify-five-species",
+      "section": "learn",
+      "title": "Identify 5 different species on a hike.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "talk-with-a-maintainer",
+      "section": "learn",
+      "title": "Have a conversation with a Trail maintainer or Trail Crew member who builds and repairs sections of the A.T.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "meal-with-a-thru-hiker",
+      "section": "learn",
+      "title": "Share a meal with someone who has completed a thru-hike and hear their story.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "native-lands",
+      "section": "learn",
+      "title": "Learn about the native lands the A.T. passes through.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "keep-the-trail-alive",
+      "section": "learn",
+      "title": "Learn about A.T. history at keepthetrailalive.org.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "usgs-geology",
+      "section": "learn",
+      "title": "Visit USGS.gov to learn about the geology of the Appalachian Mountains.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "usgs-survey-marker",
+      "section": "learn",
+      "title": "Find a USGS A.T. survey marker.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "white-blaze-photo",
+      "section": "experience",
+      "title": "Take a photo of a white blaze.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "shelter-logbook",
+      "section": "experience",
+      "title": "Hike to an A.T. shelter and sign the shelter logbook.",
+      "match": {
+        "kind": "poi_type",
+        "type": "shelter",
+        "radius_m": 60
+      }
+    },
+    {
+      "id": "find-a-vista",
+      "section": "experience",
+      "title": "Use the “A.T. Vistas” layer of the Appalachian Trail Conservancy’s interactive map to find one of the Trail’s stunning vistas.",
+      "match": {
+        "kind": "poi_type",
+        "type": "viewpoint",
+        "radius_m": 60
+      }
+    },
+    {
+      "id": "sunrise",
+      "section": "experience",
+      "title": "Watch the sunrise from the Trail. Don’t forget to take a photo!",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "hike-together",
+      "section": "experience",
+      "title": "Take a partner, friend, or family member with you on a hike to experience the Trail together.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "mcafee-knob",
+      "section": "experience",
+      "title": "Take the McAfee Knob shuttle to hike to one of the most photographed spots on the A.T.",
+      "match": {
+        "kind": "place",
+        "poi": "atc_viewpoints:95a18f95-b78f-43bb-843a-4b9b82fecb76",
+        "radius_m": 150
+      }
+    },
+    {
+      "id": "springer-mountain",
+      "section": "experience",
+      "title": "Visit the A.T.’s southern terminus at Springer Mountain.",
+      "match": {
+        "kind": "place",
+        "poi": "atc_viewpoints:3f45ce01-0943-4700-8ba6-097ec8e74586",
+        "radius_m": 150
+      }
+    },
+    {
+      "id": "amicalola-arch",
+      "section": "experience",
+      "title": "Visit the stone arch at Amicalola Falls State Park.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "katahdin",
+      "section": "experience",
+      "title": "Hike to the A.T.’s northern terminus at Katahdin.",
+      "match": {
+        "kind": "place",
+        "poi": "atc_viewpoints:9c19514f-736c-4f04-9581-d6b989908547",
+        "radius_m": 150
+      }
+    },
+    {
+      "id": "harpers-ferry-halfway",
+      "section": "experience",
+      "title": "Visit the A.T.’s psychological halfway point at Harpers Ferry.",
+      "match": {
+        "kind": "place",
+        "poi": "atc_communities:60bcf556-71db-4084-8895-79a9c199612a",
+        "radius_m": 800,
+        "off_trail": true
+      }
+    },
+    {
+      "id": "postcard-with-at-stamp",
+      "section": "experience",
+      "title": "Send a postcard with an A.T. stamp.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "summit-4000",
+      "section": "experience",
+      "title": "Summit a 4,000+ foot peak.",
+      "match": {
+        "kind": "elevation_min_ft",
+        "value": 4000
+      }
+    },
+    {
+      "id": "meal-in-a-community",
+      "section": "experience",
+      "title": "Visit an A.T. Community and have a meal at a local restaurant.",
+      "match": {
+        "kind": "poi_type",
+        "type": "resupply",
+        "radius_m": 800
+      }
+    },
+    {
+      "id": "trail-story",
+      "section": "experience",
+      "title": "Write your own trail story or poem.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "full-state-section",
+      "section": "experience",
+      "title": "Hike a full state section of the Trail.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "all-14-states",
+      "section": "experience",
+      "title": "Hike in all 14 Trail states.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "priest-confession",
+      "section": "experience",
+      "title": "Write a confession in the logbook at the Priest Shelter.",
+      "match": {
+        "kind": "place",
+        "poi": "atc_shelters:e90877f7-1669-4ddf-adce-2a920ee0ba22",
+        "radius_m": 150
+      }
+    },
+    {
+      "id": "new-way-to-cover-distance",
+      "section": "experience",
+      "title": "Cover distance in a new way by trail running or aqua blazing.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "say-hello-to-a-ridgerunner",
+      "section": "experience",
+      "title": "Say hello to a Ridgerunner.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "national-park-unit",
+      "section": "experience",
+      "title": "Visit one of the six National Park Service units along the A.T.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "junior-ranger",
+      "section": "experience",
+      "title": "Become a Junior Ranger (open to all ages).",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "at-inspired-art",
+      "section": "experience",
+      "title": "Make a piece of art inspired by the A.T. and share it on social media with the hashtag #ATInspired.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "blue-blaze",
+      "section": "experience",
+      "title": "Follow a blue blaze trail.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "public-transportation",
+      "section": "experience",
+      "title": "Take public transportation to the Trail.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "trail-playlist",
+      "section": "experience",
+      "title": "Make a playlist inspired by the Trail.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "james-river-footbridge",
+      "section": "experience",
+      "title": "Cross the James River Footbridge—the longest footbridge on the A.T.",
+      "match": {
+        "kind": "place",
+        "poi": "atc_viewpoints:5366ed77-b71a-453b-8f75-90352c9c5c10",
+        "radius_m": 150
+      }
+    },
+    {
+      "id": "at-passport-stamps",
+      "section": "experience",
+      "title": "Collect A.T. passport stamps along the Trail.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "hiker-hostel",
+      "section": "experience",
+      "title": "Stay in a hiker hostel or A.T.-friendly accommodation.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "trail-festival",
+      "section": "experience",
+      "title": "Attend an Appalachian Trail festival in a Trail town.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "solo-hike",
+      "section": "experience",
+      "title": "Hike a portion of the Trail completely solo to deepen your connection with nature.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "live-music",
+      "section": "experience",
+      "title": "Listen to live music in an A.T. Community.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "fire-tower",
+      "section": "experience",
+      "title": "Visit an old fire tower along the Trail and learn about its history.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "virginia-triple-crown",
+      "section": "experience",
+      "title": "Hike the “Triple Crown” of Virginia: McAfee Knob, Tinker Cliffs, and Dragon’s Tooth.",
+      "match": {
+        "kind": "places_all",
+        "pois": [
+          "atc_viewpoints:3cadebda-9d7d-4373-88f6-b240420eb958",
+          "atc_viewpoints:95a18f95-b78f-43bb-843a-4b9b82fecb76",
+          "atc_viewpoints:0897b09f-f474-4466-adeb-98c23a56106d"
+        ],
+        "radius_m": 150
+      }
+    },
+    {
+      "id": "pine-grove-ice-cream",
+      "section": "experience",
+      "title": "Eat all (or some) of a half-gallon of ice cream at Pine Grove Furnace State Park.",
+      "match": {
+        "kind": "place",
+        "poi": "atc_viewpoints:c973c8b0-cde7-4dfb-95dd-a7e9a282cda4",
+        "radius_m": 300
+      }
+    },
+    {
+      "id": "care-package",
+      "section": "experience",
+      "title": "Mail yourself a care package to an A.T. post office and pick it up mid-hike.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "journal-entry",
+      "section": "experience",
+      "title": "Write a journal entry from the Trail.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "trail-name",
+      "section": "experience",
+      "title": "Find your Trail name.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "original-trail-marker",
+      "section": "experience",
+      "title": "Spot an original Trail marker. Look for a metal diamond with the A.T. symbol and the words “Maine to Georgia.”",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "kennebec-ferry",
+      "section": "experience",
+      "title": "Ride the Kennebec River ferry.",
+      "match": {
+        "kind": "place",
+        "poi": "atc_viewpoints:db91e68b-f616-4457-b8b5-c23c3d813bd5",
+        "radius_m": 250
+      }
+    },
+    {
+      "id": "kuwohi",
+      "section": "experience",
+      "title": "Hike to the summit of Kuwohi, the highest point on the A.T.",
+      "match": {
+        "kind": "place",
+        "poi": "atc_viewpoints:288915b1-d985-4bf6-9d5f-863bf14395f7",
+        "radius_m": 150
+      }
+    },
+    {
+      "id": "waterfall",
+      "section": "experience",
+      "title": "Hike to a waterfall.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "film-camera",
+      "section": "experience",
+      "title": "Take photos of your adventure with a disposable or film camera.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "camp-stove-meal",
+      "section": "experience",
+      "title": "Cook a meal on a camp stove.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "hike-in-silence",
+      "section": "experience",
+      "title": "Hike in silence to truly listen to nature.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "local-trail-club",
+      "section": "protect",
+      "title": "Identify and learn about your local Trail Club.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "volunteer-event",
+      "section": "protect",
+      "title": "Sign up for a volunteer event and spend a day doing essential Trail maintenance.",
+      "match": {
+        "kind": "workday"
+      }
+    },
+    {
+      "id": "leave-no-trace-online",
+      "section": "protect",
+      "title": "Brush up on your Leave No Trace knowledge with the ATC’s online resources.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "become-a-member",
+      "section": "protect",
+      "title": "Become a member of the ATC to support ongoing conservation work.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "pick-up-litter",
+      "section": "protect",
+      "title": "Pick up litter on a hike.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "gift-a-membership",
+      "section": "protect",
+      "title": "Gift a membership to a friend or family member.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "legacy-gift",
+      "section": "protect",
+      "title": "Leave a legacy gift to the A.T. in your will",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "advocate",
+      "section": "protect",
+      "title": "Advocate for the Trail with your members of Congress.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "at-hero",
+      "section": "protect",
+      "title": "Become an A.T. Hero.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "donate",
+      "section": "protect",
+      "title": "Donate to the ATC help protect the Trail experience for future generations.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "employer-match",
+      "section": "protect",
+      "title": "Ask your employer to match your donation to the ATC.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "fundraiser",
+      "section": "protect",
+      "title": "Organize a fundraiser on Facebook or Instagram for the ATC.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "trail-crew",
+      "section": "protect",
+      "title": "Join a Trail Crew.",
+      "match": {
+        "kind": "workday"
+      }
+    },
+    {
+      "id": "invasive-species-workday",
+      "section": "protect",
+      "title": "Participate in an invasive species removal workday.",
+      "match": {
+        "kind": "workday"
+      }
+    },
+    {
+      "id": "leave-no-trace-course",
+      "section": "protect",
+      "title": "Take a Leave No Trace training course.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "register-on-atcamp",
+      "section": "protect",
+      "title": "Register your upcoming A.T. trips on ATCamp.org to help reduce crowding on the Trail.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "helene-recovery",
+      "section": "protect",
+      "title": "Contribute to the Hurricane Helene recovery effort.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "national-trails-day",
+      "section": "protect",
+      "title": "Participate in National Trails Day activities.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "report-graffiti",
+      "section": "protect",
+      "title": "Report graffiti, vandalism, or dumping via the ATC’s incident report form.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "waterway-litter",
+      "section": "protect",
+      "title": "Remove litter from A.T. waterways.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "hiker-pledge",
+      "section": "protect",
+      "title": "Take the long-distance hiker pledge.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "tell-someone",
+      "section": "protect",
+      "title": "Tell a partner, friend, or family member about why the A.T. is meaningful to you.",
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "mystery-1",
+      "section": "mystery",
+      "mystery": {
+        "number": 1,
+        "reveal_on": null
+      },
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "mystery-2",
+      "section": "mystery",
+      "mystery": {
+        "number": 2,
+        "reveal_on": null
+      },
+      "match": {
+        "kind": "self_report"
+      }
+    },
+    {
+      "id": "mystery-3",
+      "section": "mystery",
+      "mystery": {
+        "number": 3,
+        "reveal_on": null
+      },
+      "match": {
+        "kind": "self_report"
+      }
+    }
+  ],
+  "reviewed": "2026-09-30"
+}

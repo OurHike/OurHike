@@ -1354,6 +1354,19 @@ def collect_artifacts() -> dict[str, dict]:
         manifest = json.loads(highlights_manifest.read_text())
         artifacts["highlights.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
 
+    # The clubs' challenges, if export_challenges.py has run (#1780,
+    # features/CHALLENGES.md). Highlights' shape and highlights' reason: the
+    # reviewed files change a row at a time while the POI miles under them
+    # move whenever ATC re-surveys, and the artifact carries no generated_at
+    # (the exporter's comment has why), so a run that changes neither
+    # uploads nothing. config.ts declares CHALLENGES_KEY `@release optional`:
+    # a release exported before this existed has no manifest, and the phone
+    # reads that as "no challenges yet".
+    challenges_manifest = PROCESSED_DIR / "challenges_manifest.json"
+    if challenges_manifest.exists():
+        manifest = json.loads(challenges_manifest.read_text())
+        artifacts["challenges.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
+
     # The routes somebody wrote up, if export_suggested_hikes.py has run
     # (#1427, features/SUGGESTED_HIKES.md) - NYNJTC's hikes from the Hike
     # Finder export. Same shape again. It is absent from a release for THREE

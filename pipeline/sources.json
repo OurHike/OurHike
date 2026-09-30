@@ -1042,7 +1042,7 @@
       "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
       "discovered_date": "2026-09-30",
       "notes": "31,485 polyline features, 42 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:3857. maxRecordCount 2,000, which is what a paged fetch has to respect. A 504 from the server on the first probe attempt; the retry answered, and that is recorded as a retry rather than as a finding about the layer.",
-      "reaches_hikers": false,
+      "reaches_hikers": true,
       "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
     },
     {
@@ -1060,7 +1060,7 @@
       "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
       "discovered_date": "2026-09-30",
       "notes": "19,532 polyline features, 35 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:3857. maxRecordCount 2,000, which is what a paged fetch has to respect. NO NAME FIELD ON ANY OF THE 35, which is the finding this row exists to record and not an omission here: nothing in the layer names a trail, so every one of these 19,532 features reaches the export nameless and draws in the unnamed haze. `name_constant` is not the answer either - that key is for a layer that IS one trail (see pcta_centerline), and this is 19,532 of them. What would fix it is the BLM publishing a name column, which nobody has asked them for.",
-      "reaches_hikers": false,
+      "reaches_hikers": true,
       "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
     },
     {
@@ -1079,7 +1079,7 @@
       "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
       "discovered_date": "2026-09-30",
       "notes": "96,897 polyline features, 44 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:3857. maxRecordCount 2,000, which is what a paged fetch has to respect. THE LARGEST SINGLE SOURCE IN THIS BATCH BY SOME WAY: 96,897 features is 71% of everything nearby_trails.geojson shipped before this batch (136,941 from eleven sources), from one state. COTREX aggregates 236 land managers, which is why.",
-      "reaches_hikers": false,
+      "reaches_hikers": true,
       "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
     },
     {
@@ -1098,7 +1098,7 @@
       "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
       "discovered_date": "2026-09-30",
       "notes": "22,454 polyline features, 51 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:3857. maxRecordCount 2,000, which is what a paged fetch has to respect. THE CATALOGUE'S URL IS A LANDING PAGE, not this layer: https://geo.wa.gov/maps/a8e9bf1b77644e9bbff6996a27030f5a . Resolved through the ArcGIS Hub API; `url` above is what a fetch actually opens. The service carries a second layer, Trailheads, which this row does NOT register - waypoints are export_poi.py's question and nothing here fetches them. The catalogue recorded 0 miles for this organization; it holds 22,454 trail features.",
-      "reaches_hikers": false,
+      "reaches_hikers": true,
       "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
     },
     {
@@ -1117,7 +1117,7 @@
       "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
       "discovered_date": "2026-09-30",
       "notes": "48,132 polyline features, 27 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:3857. maxRecordCount 2,000, which is what a paged fetch has to respect.",
-      "reaches_hikers": false,
+      "reaches_hikers": true,
       "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
     },
     {
@@ -1136,7 +1136,7 @@
       "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
       "discovered_date": "2026-09-30",
       "notes": "4,004 polyline features, 33 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:26916. maxRecordCount 1,000, which is what a paged fetch has to respect. THE CATALOGUE'S URL IS A LANDING PAGE, not this layer: https://gis.northcountrytrail.org/ . Resolved through the ArcGIS Hub API; `url` above is what a fetch actually opens. THE CATALOGUE HAS THIS ROW WRONG TWICE and both were found only by opening it. It lists `ogc_features` at gis.northcountrytrail.org; that host is an ArcGIS Hub SITE serving HTML, with no OGC API and no collections at all. NCTA's own layer is the `url` above, found through a Hub search of the organization's published datasets.",
-      "reaches_hikers": false,
+      "reaches_hikers": true,
       "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
     },
     {
@@ -1155,7 +1155,7 @@
       "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
       "discovered_date": "2026-09-30",
       "notes": "1,602 polyline features, 44 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). The layer reports NO spatial reference in its extent, its sourceSpatialReference or its spatialReference - so the CRS here is unrecorded rather than assumed, and a fetch has to read it off the response. maxRecordCount 2,000, which is what a paged fetch has to respect. The layer is AK_Trails_db_v6 and its last recorded edit is 2024-02-20, which is the oldest freshness marker in this batch.",
-      "reaches_hikers": false,
+      "reaches_hikers": true,
       "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
     },
     {
@@ -1174,7 +1174,7 @@
       "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
       "discovered_date": "2026-09-30",
       "notes": "684 polyline features, 26 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:4269. maxRecordCount 1,000, which is what a paged fetch has to respect.",
-      "reaches_hikers": false,
+      "reaches_hikers": true,
       "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
     },
     {
@@ -1193,7 +1193,7 @@
       "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
       "discovered_date": "2026-09-30",
       "notes": "351 polyline features, 9 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:2234. maxRecordCount 1,000, which is what a paged fetch has to respect. The Blue-Blazed system is maintained on the ground by the Connecticut Forest & Park Association; this layer is the state's publication of it, and the attribution above names the publisher rather than the club that does the work. CFPA is a separate catalogue row and is not registered here.",
-      "reaches_hikers": false,
+      "reaches_hikers": true,
       "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
     },
     {
@@ -1212,7 +1212,7 @@
       "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
       "discovered_date": "2026-09-30",
       "notes": "328 polyline features, 33 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:32119. maxRecordCount 2,000, which is what a paged fetch has to respect. Published by the state rather than by Friends of the MST, who maintain it; the Friends are their own catalogue row and are not registered here.",
-      "reaches_hikers": false,
+      "reaches_hikers": true,
       "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
     },
     {
@@ -1231,7 +1231,7 @@
       "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
       "discovered_date": "2026-09-30",
       "notes": "145 polyline features, 10 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:4326. maxRecordCount 1,000, which is what a paged fetch has to respect. THE CATALOGUE'S URL IS A LANDING PAGE, not this layer: https://azgeo-open-data-agic.hub.arcgis.com/datasets/azgeo::arizona-trail-association-connector-trails . Resolved through the ArcGIS Hub API; `url` above is what a fetch actually opens.",
-      "reaches_hikers": false,
+      "reaches_hikers": true,
       "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
     },
     {
@@ -1250,7 +1250,7 @@
       "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
       "discovered_date": "2026-09-30",
       "notes": "132 polyline features, 6 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:3857. maxRecordCount 2,000, which is what a paged fetch has to respect. THE CATALOGUE RECORDS 'free with registration, no stated licence', and this layer answered an anonymous probe with no registration at all. Those two do not agree, and the row keeps the weaker reading: the service being open does not mean the organization intends it to be, which is exactly what `maintainer_authorisation` is for. @unvalidated - what would settle it is TRTA answering.",
-      "reaches_hikers": false,
+      "reaches_hikers": true,
       "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
     },
     {
@@ -1269,7 +1269,7 @@
       "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
       "discovered_date": "2026-09-30",
       "notes": "67 polyline features, 34 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:26915. maxRecordCount 1,000, which is what a paged fetch has to respect. THE CATALOGUE'S URL IS A LANDING PAGE, not this layer: https://hub.arcgis.com/datasets/DuluthMN::superior-hiking-trail . Resolved through the ArcGIS Hub API; `url` above is what a fetch actually opens. The Duluth section only - the Superior Hiking Trail runs some 300 miles and this is the city's own 67 features. The Superior Hiking Trail Association is a separate catalogue row and is not registered here.",
-      "reaches_hikers": false,
+      "reaches_hikers": true,
       "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
     },
     {
@@ -1288,7 +1288,7 @@
       "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
       "discovered_date": "2026-09-30",
       "notes": "32 polyline features, 8 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:26986. maxRecordCount 2,000, which is what a paged fetch has to respect.",
-      "reaches_hikers": false,
+      "reaches_hikers": true,
       "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
     },
     {
@@ -1307,7 +1307,7 @@
       "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
       "discovered_date": "2026-09-30",
       "notes": "1 polyline features, 2 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:4326. maxRecordCount 2,000, which is what a paged fetch has to respect. NO NAME FIELD: the layer carries OBJECTID and Shape__Length and nothing else, so `name_constant` names it (#1778, declared_name). CHECKED BEFORE THE NAME WAS WRITTEN, 2026-09-30: the single feature is 2,653 miles of line running from 32.59 deg N to 49.00 deg N - the Mexican border to the Canadian - against the PCT's published 2,650. There is no other trail that could be.",
-      "reaches_hikers": false,
+      "reaches_hikers": true,
       "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
     },
     {
@@ -1326,7 +1326,7 @@
       "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
       "discovered_date": "2026-09-30",
       "notes": "8 polyline features, 5 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:3857. maxRecordCount 2,000, which is what a paged fetch has to respect. THE CATALOGUE'S URL IS A LANDING PAGE, not this layer: https://hub.arcgis.com/datasets/79de12d605ca401492734e3952455a8e_0 . Resolved through the ArcGIS Hub API; `url` above is what a fetch actually opens. NO NAME FIELD - the five columns are OBJECTID, Shape, STATE, Shape_Leng and Shape_Length - so `name_constant` names it. CHECKED BEFORE THE NAME WAS WRITTEN, 2026-09-30: the eight features total 3,060 miles from 31.50 deg N to 49.05 deg N, Mexico to Canada, against the CDT's published 3,028. TWO THINGS A LATER READER SHOULD NOT HAVE TO RE-FETCH: the layer is named ContinentalDivideTrail2016 and is hosted by the Wyoming Geographic Information Science Center on CDTC's behalf, so the vintage is 2016 and the host is not the steward; and its STATE column is inconsistent - both 'CO' and 'Colorado' appear, and both 'NM' and 'New Mexico' - which is why nothing here reads it.",
-      "reaches_hikers": false,
+      "reaches_hikers": true,
       "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
     },
     {
@@ -1345,7 +1345,7 @@
       "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
       "discovered_date": "2026-09-30",
       "notes": "1 polyline features, 3 fields, measured 2026-09-30 by querying the layer (returnCountOnly, and the layer's own metadata for the rest). Published in EPSG:3071. maxRecordCount 2,000, which is what a paged fetch has to respect. THE CATALOGUE'S URL IS A LANDING PAGE, not this layer: https://data-wi-dnr.opendata.arcgis.com/datasets/wi-dnr::ice-age-trail . Resolved through the ArcGIS Hub API; `url` above is what a fetch actually opens. NO NAME FIELD across its three columns, so `name_constant` names it - the layer is itself called 'Ice Age Trail'. CHECKED BEFORE THE NAME WAS WRITTEN, 2026-09-30: the single feature is 711 miles of line inside Wisconsin. THAT IS NOT THE WHOLE TRAIL and the name must not be read as claiming it is: the Ice Age NST is planned at about 1,200 miles, and 711 is the built and blazed segments. A hiker reading this line is reading the built trail, which is the useful half, but the gap is real and nothing here marks where the connecting routes run.",
-      "reaches_hikers": false,
+      "reaches_hikers": true,
       "reaches_hikers_comment": "Registered, not shipped - features/ORG_BULK_LOAD.md's batches 2 and 3, which register before they ship on purpose. The flip is batch 4 and its own decision; it wants a UA publish first, to show the pipeline carries 2.67x the features it carries today."
     }
   ],

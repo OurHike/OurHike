@@ -31,10 +31,13 @@ import { useEffect, useState } from 'react'
 import { OrgShell } from './OrgShell'
 import {
   orgApi,
+  type ChallengeDefinition,
+  type ChallengePublishResult,
   type ConsoleKey,
   type Coverage,
   type Org,
   type OrgAccess,
+  type OrgChallengeRow,
   type OrgPark,
   type OrgRole,
   type RosterEntry,
@@ -45,6 +48,7 @@ import type { ConsoleRoute } from '../lib/orgRoute'
 import type { UnitSystem } from '../lib/units'
 import {
   DEMO_ASSIST_CONSENT,
+  DEMO_CHALLENGES,
   DEMO_COVERAGE,
   DEMO_HIKES,
   DEMO_SCOREBOARD,
@@ -76,6 +80,8 @@ import { YourTread, type TreadWindow } from './screens/YourTread'
 import { OnYourPhone } from './screens/OnYourPhone'
 import { HandBack } from './screens/HandBack'
 import { RidgeRunner } from './screens/RidgeRunner'
+import { Challenges } from './screens/Challenges'
+import { ChallengeFinishers } from './screens/ChallengeFinishers'
 import {
   DEMO_ALERTS,
   DEMO_CLOSURES,
@@ -101,6 +107,7 @@ interface OrgData {
   readonly roster: readonly RosterEntry[]
   readonly workdays: readonly Workday[]
   readonly coverage: Coverage | null
+  readonly challenges: readonly OrgChallengeRow[]
   readonly error: string | null
   readonly loading: boolean
 }
@@ -113,6 +120,7 @@ const EMPTY: OrgData = {
   roster: [],
   workdays: [],
   coverage: null,
+  challenges: [],
   error: null,
   loading: true,
 }
@@ -137,6 +145,7 @@ function demoData(): OrgData {
     // Derived in demoOrg.ts, because /for-orgs/demo/ serves the same object
     // to the public embeds and two derivations would drift.
     coverage: DEMO_COVERAGE,
+    challenges: DEMO_CHALLENGES,
     error: null,
     loading: false,
   }
@@ -186,13 +195,18 @@ function useOrgData(slug: string | null): OrgData {
             return fallback
           }
         }
-        const [registry, roles, roster, workdays, coverage] = await Promise.all([
-          optional(() => orgApi.registry(slug, signal), [] as OrgPark[]),
-          optional(() => orgApi.roles(slug, signal), [] as OrgRole[]),
-          optional(() => orgApi.roster(slug, signal), [] as RosterEntry[]),
-          optional(() => orgApi.workdays(slug, 60, signal), [] as Workday[]),
-          optional(() => orgApi.coverage(slug, undefined, signal), null),
-        ])
+        const [registry, roles, roster, workdays, coverage, challenges] =
+          await Promise.all([
+            optional(() => orgApi.registry(slug, signal), [] as OrgPark[]),
+            optional(() => orgApi.roles(slug, signal), [] as OrgRole[]),
+            optional(() => orgApi.roster(slug, signal), [] as RosterEntry[]),
+            optional(() => orgApi.workdays(slug, 60, signal), [] as Workday[]),
+            optional(() => orgApi.coverage(slug, undefined, signal), null),
+            // An admin read like the registry's; a 403 for anybody else, or a
+            // backend that has not shipped the route yet, is an empty list
+            // rather than a broken console.
+            optional(() => orgApi.challenges(slug, signal), [] as OrgChallengeRow[]),
+          ])
         if (signal.aborted) return
         setData({
           org,
@@ -202,6 +216,7 @@ function useOrgData(slug: string | null): OrgData {
           roster,
           workdays,
           coverage,
+          challenges,
           error: null,
           loading: false,
         })
@@ -408,6 +423,41 @@ export function OrgConsole({
   const neverWelcomed = data.roster.filter((entry) => entry.pending_invite).length
   if (neverWelcomed > 0) waiting.welcome = neverWelcomed
   if (data.workdays.length > 0) waiting.workdays = data.workdays.length
+  // NO COUNT ON CHALLENGES, deliberately, although frame #2a draws a "3" there.
+  // The shell's rule is that a count appears only on something awaiting
+  // action, and the number of challenges is a total. The one thing on that
+  // page that could await an admin - entries nobody has downloaded yet - is
+  // not something the server reports, so there is no honest count to show.
+
+  // SAVE, THEN OPEN THE PULL REQUEST. Two requests because they are two acts
+  // on the server: the definition is stored whether or not a pull request can
+  // be opened (the opener is off by default - ORG_ONBOARDING.md, Known gaps),
+  // and the screen reports the second's `detail` either way. The demo makes
+  // neither: it has no backend behind it, and says what would have happened.
+  const publishChallenge = async (
+    challengeId: string,
+    definition: ChallengeDefinition,
+  ): Promise<ChallengePublishResult> => {
+    if (slug === null) throw new Error('No organization is open.')
+    if (isDemoOrg(slug)) {
+      return {
+        pull_request: null,
+        detail:
+          'This is the demo organization, so nothing was sent anywhere. For a real club this opens a pull request against its challenge file, and the challenge reaches phones in the data refresh after that is merged.',
+      }
+    }
+    await orgApi.saveChallenge(slug, challengeId, definition)
+    return orgApi.publishChallenge(slug, challengeId)
+  }
+  const challengeEntries = async (challengeId: string): Promise<string> => {
+    if (slug === null) throw new Error('No organization is open.')
+    if (isDemoOrg(slug)) {
+      throw new Error(
+        'This is the demo organization, and nobody real has sent it an entry, so there is no file to give you.',
+      )
+    }
+    return orgApi.challengeEntriesCsv(slug, challengeId)
+  }
 
   const body = () => {
     if (data.loading) {
@@ -589,6 +639,43 @@ export function OrgConsole({
               names={names}
             />
           ) : null
+        case 'challenges':
+          return (
+            <Challenges
+              // Remounted per `?challenge=`, so the way back from Finishers
+              // opens the editor on the challenge somebody was looking at.
+              key={route.challenge ?? ''}
+              orgSlug={route.slug}
+              rows={data.challenges}
+              trails={data.registry.flatMap((park) => park.trails)}
+              initialId={route.challenge ?? null}
+              canEdit={data.access?.can_touch_registry ?? false}
+              onPublish={publishChallenge}
+              onPreview={notWiredYet}
+              onOpenFinishers={(challenge) =>
+                go({ kind: 'setup', slug: route.slug, page: 'finishers', challenge })
+              }
+            />
+          )
+        case 'finishers':
+          return (
+            <ChallengeFinishers
+              rows={data.challenges}
+              challengeId={route.challenge ?? null}
+              onPick={(challenge) =>
+                go({ kind: 'setup', slug: route.slug, page: 'finishers', challenge })
+              }
+              onBack={(challenge) =>
+                go({
+                  kind: 'setup',
+                  slug: route.slug,
+                  page: 'challenges',
+                  ...(challenge ? { challenge } : {}),
+                })
+              }
+              fetchEntries={challengeEntries}
+            />
+          )
         default:
           return org ? (
             <SetupHub

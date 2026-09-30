@@ -1000,3 +1000,61 @@
   max-width: 860px;
   margin: 0 auto;
 }
+
+/* ---------- A table with its editor beside it (Challenges, frame #2a) ---------- */
+
+/* THE ONE NEW LAYOUT THE CHALLENGES PAGE NEEDED, and nothing else: the list on
+   the left and the challenge being edited in a fixed column on the right, as
+   the handoff's frame #2a draws it. 360px is the frame's own width for the
+   editor, not a measurement - a column narrow enough to leave the table its
+   five columns at a 1280px desktop and wide enough for two date fields side
+   by side. Under a laptop the editor drops below the table rather than
+   squeezing it, the same call `.org` makes for the rail at 900px. */
+.org-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 22px;
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .org-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Three short tiles under a table that is itself only part of the page, so
+   the 240px floor `.org-grid--three` uses would wrap them two and one. */
+.org-grid--tiles {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+/* The sentence under a field saying what blank means. */
+.org-field__hint {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--fg-3);
+}
+
+/* A group of fields that can be disabled together, drawn as no box at all. */
+.org-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* `.org-input` is `width: 100%` in content-box, so its padding and border push
+   it past a narrow column - seen in a render of the Challenges editor, where
+   every text and date field overran the card by about 26px. Scoped to this
+   fieldset rather than fixed on `.org-input` itself, because the wider screens
+   that use it have not been looked at with the change. */
+.org-fieldset .org-input,
+.org-fieldset .org-select,
+.org-fieldset .org-textarea {
+  box-sizing: border-box;
+  min-width: 0;
+}

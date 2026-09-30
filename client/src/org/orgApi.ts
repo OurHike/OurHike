@@ -73,6 +73,24 @@ async function writeOrg<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await response.json()) as T
 }
 
+/** A CSV an org admin downloads, refused here when signed out.
+ *
+ *  `writeOrg`'s stance rather than `readOrg`'s, although it changes nothing:
+ *  a challenge's entries carry the names, addresses and emails hikers chose
+ *  to send one club, so there is no signed-out caller this could ever answer,
+ *  and the refusal costs no request. Text rather than JSON because
+ *  `GET /clubs/{slug}/challenges/{id}/entries` answers `text/csv` only - the
+ *  console never parses the rows, which is how no hiker's name reaches the
+ *  screen (screens/ChallengeFinishers.tsx). */
+async function readCsv(path: string): Promise<string> {
+  const token = await accessToken()
+  if (token === null) throw new NotSignedInError()
+  const response = await apiFetch(path, {
+    headers: { Accept: 'text/csv', Authorization: `Bearer ${token}` },
+  })
+  return response.text()
+}
+
 export interface OrgAdmin {
   id: string
   person_id: string
@@ -292,6 +310,121 @@ export interface AssistConsent {
   opted_in_at: string | null
   opted_in_by: string | null
   opted_out_at: string | null
+}
+
+/* ------------------------------------------------------------------ *
+ * Challenges (#1780, features/CHALLENGES.md)
+ *
+ * NOT `NominateChallenge` below, which is the nominate flow's proof of work
+ * and shares nothing with these but a word. Every type here is prefixed or
+ * named for the club's list of places so the two cannot be confused in an
+ * import.
+ * ------------------------------------------------------------------ */
+
+/** Either end may be null: no opening date, or never closes. */
+export interface ChallengeWindow {
+  opens: string | null
+  closes: string | null
+}
+
+/** How one item is tagged, in the REVIEWED file's shape - the one a club's
+ *  definition is saved in and `pipeline/lib/challenges.py` resolves.
+ *
+ *  **Places are published POI ids, never typed miles or coordinates**
+ *  (features/CHALLENGES.md, "Items name published POI ids"). The exporter
+ *  copies the published record's own mile, coordinate and name into the
+ *  artifact, so nothing typed in this console becomes a position a hiker's
+ *  phone matches against. That is why no type here has a mile or a latitude
+ *  field to fill. */
+export type ChallengeDefinitionMatch =
+  | { kind: 'place'; poi: string; radius_m?: number; off_trail?: boolean }
+  | { kind: 'places_all'; pois: string[]; radius_m?: number; off_trail?: boolean }
+  | { kind: 'poi_type'; type: string; radius_m?: number }
+  | { kind: 'elevation_min_ft'; value: number }
+  | { kind: 'section_walked'; from_poi: string; to_poi: string; min_fraction?: number }
+  | { kind: 'workday'; org?: string | null }
+  | { kind: 'self_report' }
+
+export type ChallengeMatchKind = ChallengeDefinitionMatch['kind']
+
+export interface ChallengeDefinitionItem {
+  id: string
+  section: string
+  /** Null for a mystery item nobody has announced yet. */
+  title: string | null
+  /** The club's own words on the tagged place, one to three sentences. */
+  note?: string | null
+  note_by?: string | null
+  /** The club's photo of the place, shown labelled as the club's. */
+  photo?: string | null
+  mystery?: { number: number; reveal_on: string | null } | null
+  match: ChallengeDefinitionMatch
+}
+
+export interface ChallengeDefinitionSection {
+  id: string
+  title: string
+  short?: string | null
+}
+
+/** What somebody who finishes is offered. `null` - nothing - is the common
+ *  case, not a gap: most challenges offer no reward. */
+export type ChallengeRewardKind = 'patch' | 'postcard' | 'sticker' | 'drawing'
+
+/** One challenge as a club authors it: `pipeline/reference/challenges/<org>/
+ *  <id>.json`, before anything is resolved against published data. */
+export interface ChallengeDefinition {
+  id: string
+  org: string
+  /** One trail, and one the organization publishes (design principle 5). */
+  trail: string
+  name: string
+  status: 'draft' | 'published'
+  summary?: string | null
+  window: ChallengeWindow
+  /** Null is a challenge with no finish, just a record. */
+  finish: { count: number; label?: string | null } | null
+  reward: { kind: ChallengeRewardKind; rules_url?: string | null } | null
+  sections: ChallengeDefinitionSection[]
+  items: ChallengeDefinitionItem[]
+  /** What the club said counts, for whoever reviews the file and picks the
+   *  places. See `screens/Challenges.tsx` for why it travels. */
+  what_counts?: ChallengeMatchKind[]
+  reviewed?: string | null
+}
+
+/** One row of `GET /clubs/{slug}/challenges`.
+ *
+ *  `hikers_in` is a count the club sees and never a hiker: null when it is
+ *  below `hikers_in_floor`, the k-anonymity floor EVENTING.md sets at 25.
+ *  Showing "fewer than 25" there is features/CHALLENGES.md's placeholder,
+ *  which that doc's open questions say is nobody's decision yet.
+ *
+ *  `live` and `definition` are optional because the endpoint is being built
+ *  alongside this screen and its contract as handed over names neither. The
+ *  screen reads an absent `definition` as "the file could not be shown here"
+ *  and an absent `live` as unknown - never as live, and never as not. */
+export interface OrgChallengeRow {
+  challenge_id: string
+  name: string
+  status: 'draft' | 'published'
+  window: ChallengeWindow | null
+  hikers_in: number | null
+  hikers_in_floor: number
+  /** How many sent an entry at the finish. A count, no names. */
+  finished: number
+  /** Whether a data refresh has carried it to phones yet. */
+  live?: boolean
+  definition?: ChallengeDefinition | null
+}
+
+/** What pressing "Publish with next refresh" did. `pull_request` is null
+ *  whenever nothing was opened - the registry's opener is off by default
+ *  (ORG_ONBOARDING.md, Known gaps) - and `detail` then says why, in words
+ *  the screen shows as they are. */
+export interface ChallengePublishResult {
+  pull_request: string | null
+  detail: string
 }
 
 const org = (slug: string) => `/clubs/${encodeURIComponent(slug)}`
@@ -551,6 +684,21 @@ export const orgApi = {
       method: 'PUT',
       body: JSON.stringify({ opted_in: optedIn }),
     }),
+  challenges: (slug: string, signal?: AbortSignal) =>
+    readOrg<OrgChallengeRow[]>(`${org(slug)}/challenges`, signal),
+  saveChallenge: (slug: string, challengeId: string, definition: ChallengeDefinition) =>
+    writeOrg<unknown>(`${org(slug)}/challenges/${encodeURIComponent(challengeId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ definition }),
+    }),
+  publishChallenge: (slug: string, challengeId: string) =>
+    writeOrg<ChallengePublishResult>(
+      `${org(slug)}/challenges/${encodeURIComponent(challengeId)}/publish`,
+      { method: 'POST' },
+    ),
+  /** The entries hikers sent, as the CSV the server writes. Never parsed. */
+  challengeEntriesCsv: (slug: string, challengeId: string) =>
+    readCsv(`${org(slug)}/challenges/${encodeURIComponent(challengeId)}/entries`),
   exportOrg: (slug: string) => writeOrg<Record<string, unknown>>(`${org(slug)}/export`),
   deleteOrg: (slug: string) => writeOrg<void>(org(slug), { method: 'DELETE' }),
   stepBack: (slug: string, assignmentId: string) =>

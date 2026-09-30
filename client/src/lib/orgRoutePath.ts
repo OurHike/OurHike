@@ -43,9 +43,11 @@ export function orgRoutePath(
     // `page=home` is the bare address rather than a parameter: an org
     // bookmarking their console should get `/org/x/setup`, not
     // `/org/x/setup?page=home`.
-    return route.page === 'home'
-      ? `${prefix}org/${slug}/setup`
-      : `${prefix}org/${slug}/setup?page=${route.page}`
+    if (route.page === 'home') return `${prefix}org/${slug}/setup`
+    const challenge = route.challenge
+      ? `&challenge=${encodeURIComponent(route.challenge)}`
+      : ''
+    return `${prefix}org/${slug}/setup?page=${route.page}${challenge}`
   }
   const person = route.person ? `&person=${encodeURIComponent(route.person)}` : ''
   return `${prefix}org/${slug}/volunteers?page=${route.page}${person}`

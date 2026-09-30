@@ -79,6 +79,13 @@ test.describe('arriving at an organization console', () => {
   }) => {
     // The whole set, because a router that fell back to one screen for an
     // unrecognised `page` would pass any single-address test.
+    //
+    // A longer budget than the default 30s, because the set is long: measured
+    // 2026-09-30 against the dev server with two workers, the fourteen
+    // addresses took 29.5s on one run and ran past 30s on the next, at about
+    // two seconds a load. Splitting the set would make the budget fit and lose
+    // the reason it is one test.
+    test.setTimeout(60_000)
     const screens = [
       { path: `/org/${DEMO}/setup?page=approve`, heading: /approving/i },
       { path: `/org/${DEMO}/setup?page=registry`, heading: /turn your GIS/i },
@@ -87,6 +94,10 @@ test.describe('arriving at an organization console', () => {
       { path: `/org/${DEMO}/setup?page=embeds`, heading: /your own site/i },
       { path: `/org/${DEMO}/setup?page=emails`, heading: /three emails/i },
       { path: `/org/${DEMO}/setup?page=leaving`, heading: /on your terms/i },
+      // #1780. Anchored, so it is each page's own title being asserted and not
+      // a sub-heading that happens to mention challenges.
+      { path: `/org/${DEMO}/setup?page=challenges`, heading: /^Challenges$/ },
+      { path: `/org/${DEMO}/setup?page=finishers`, heading: /^Finishers$/ },
       { path: `/org/${DEMO}/volunteers?page=roles`, heading: /which section/i },
       { path: `/org/${DEMO}/volunteers?page=workdays`, heading: /signups and hours/i },
       { path: `/org/${DEMO}/volunteers?page=coverage`, heading: /coverage gaps/i },

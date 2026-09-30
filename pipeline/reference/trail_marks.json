@@ -10,7 +10,23 @@
     "pohe",
     "natr"
    ],
-   "detail": "The last two National Scenic Trails. Markers prescribed in the Federal Register and protected by 18 U.S.C. 701; NPS trail pages serve the arrowhead instead. An ask to each trail's administrator."
+   "detail": "The last two National Scenic Trails. Markers prescribed in the Federal Register and protected by 18 U.S.C. 701; NPS trail pages serve the arrowhead instead.",
+   "found_but_withheld": {
+    "_comment": "BOTH MARKS WERE FOUND ON 2026-09-30 AND THE MAINTAINER DECIDED TO LEAVE THEM OUT. Recorded here so the next sweep does not spend the afternoon re-finding them, and so the decision is visible rather than looking like a gap nobody got to. Re-deciding needs written authorisation from the Interior Department, not a better search.",
+    "why_not_the_pct_answer": "The PCT shipped because the Forest Service publishes its emblem and the page carries no restriction. These two are the opposite case and the difference is quoted rather than paraphrased. Both designating notices say: 'Authorization for use of this trail marker is controlled by the administrator of the Trail... whoever manufactures, sells, or possesses this insignia or any colorable imitation thereof... without written authorization from the United States Department of the Interior is subject to the penalty provisions of section 701 of Title 18.' 17 U.S.C. 105 answers copyright and says nothing about that.",
+    "pohe": {
+     "name": "Potomac Heritage Trail",
+     "found_at": "https://www.govinfo.gov/ - Federal Register document 01-26893 (NPS, 2001-10-25)",
+     "pixels": "2496x2402",
+     "what_it_is": "The official trail marker: Capitol dome and bridge in the rounded-triangle shield."
+    },
+    "natr": {
+     "name": "Natchez Trace Trail",
+     "found_at": "https://www.govinfo.gov/ - Federal Register document 00-7563 (NPS, 2000-03-28)",
+     "pixels": "1373x1337",
+     "what_it_is": "The official trail marker: a rider on horseback in the matching shield."
+    }
+   }
   },
   "no_per_trail_emblem": {
    "trails": [

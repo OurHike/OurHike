@@ -1251,3 +1251,84 @@ describe('indexObstacles', () => {
     expect(examined).toBeGreaterThan(positions)
   })
 })
+
+describe('two badges wanting the same ground', () => {
+  /** Two through-routes whose lines run within a few pixels of each other, so
+   *  every anchor either wants overlaps the other's plate. `centerline` and
+   *  `nynjtc_long_path` are the two BADGE_SOURCES, so both earn a badge
+   *  without needing the name table. */
+  function twoOnTopOfEachOther() {
+    return mapWith({
+      [BLAZE_LAYER_ID]: [
+        line(
+          'Appalachian National Scenic Trail',
+          'centerline',
+          [
+            [-74.1, 41.5],
+            [-74.0, 41.5],
+          ],
+          'White',
+          { id: 'centerline:chain:0' },
+        ),
+        line(
+          'Long Path',
+          'nynjtc_long_path',
+          [
+            [-74.1, 41.5001],
+            [-74.0, 41.5001],
+          ],
+          'Aqua',
+        ),
+      ],
+    })
+  }
+
+  it('drops the second badge rather than stacking it on the first', () => {
+    // WHAT THIS IS FOR. Until 2026-09-30 `anchorWithRoom` never returned null:
+    // its last resort placed the badge at TRAIL_BADGE_ANCHORS[0] whatever was
+    // already there, because #1374 made this layer always-drawn against PINS.
+    // Below the pin seam there are no pins, so every badge took that fallback
+    // and they stacked. CI's whole-US frame showed roughly fifteen plates
+    // written through each other, which names no trail at all - so the reason
+    // #1374 gave for always drawing had stopped applying to what it produced.
+    const trails = trailsInView(twoOnTopOfEachOther() as unknown as MapLibreMap)
+    expect(trails).toHaveLength(2)
+
+    const anchored = trails.filter((trail) => trail.anchor !== null)
+    expect(anchored).toHaveLength(1)
+    // The one that is dropped keeps everything except the pill: it is still
+    // listed, still named, still tappable on its own line.
+    const dropped = trails.find((trail) => trail.anchor === null)
+    expect(dropped?.throughRoute).toBe(true)
+    expect(dropped?.name).toBeTruthy()
+  })
+
+  it('gives the badge to the takeable trail, whichever order the features arrive in', () => {
+    // queryRenderedFeatures promises no order, and a badge is now an obstacle
+    // to the next one - so without a decided order, which trail keeps its pill
+    // would be a coin toss that changes between settles. The same class of
+    // defect as the takeable-piece merge above, one layer up.
+    const forward = twoOnTopOfEachOther()
+    const reversed = twoOnTopOfEachOther()
+    reversed.renderedFeatures.set(
+      BLAZE_LAYER_ID,
+      [...(reversed.renderedFeatures.get(BLAZE_LAYER_ID) as unknown[])].reverse(),
+    )
+
+    const keeps = (map: MockMap) =>
+      trailsInView(map as unknown as MapLibreMap).find((trail) => trail.anchor !== null)
+        ?.name
+
+    expect(keeps(forward)).toBe('Appalachian Trail')
+    expect(keeps(reversed)).toBe('Appalachian Trail')
+  })
+
+  it('still places a lone badge with nowhere clear, because that half of #1374 stands', () => {
+    // The change is narrow on purpose: a plate over a WAYPOINT is readable and
+    // is still drawn. Only a plate over another PLATE is refused. With one
+    // trail on screen there is nothing to collide with, so it is placed.
+    const map = mapWith({ [BLAZE_LAYER_ID]: [AT] })
+    const [at] = trailsInView(map as unknown as MapLibreMap)
+    expect(at.anchor).not.toBeNull()
+  })
+})

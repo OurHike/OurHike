@@ -373,6 +373,9 @@ interface BadgeAnchor {
   /** Which side of the vertex the text block sits - one of
    *  TRAIL_BADGE_ANCHORS, and the one the layer draws (below). */
   anchor: string
+  /** The plate this badge actually took, in CSS px. Returned so the caller
+   *  can hand it to the NEXT trail as an obstacle - see `placeBadges`. */
+  box: Box
 }
 
 /**
@@ -491,8 +494,15 @@ function anchorWithRoom(
   frame: Box,
   name: string,
   hasMark: boolean,
+  placed: readonly Box[],
 ): BadgeAnchor | null {
   if (candidates.length === 0) return null
+  // A BADGE IS AN OBSTACLE TO THE NEXT BADGE, which nothing here enforced
+  // until 2026-09-30. `placed` is every plate already taken this settle, in
+  // the order they were taken, and it is checked in the search below AND in
+  // the last resort - see the comment on that return for why the second one
+  // is the half that mattered.
+  const clearOfBadges = (box: Box) => !placed.some((taken) => overlaps(box, taken))
   // THE BARE-MARK FALLBACK NEEDS A MARK. It is the whole badge in that form,
   // so a trail whose steward has granted nothing would fall back to drawing
   // nothing at all - the outcome the review of #1374 rejected when it made
@@ -513,14 +523,43 @@ function anchorWithRoom(
         // the handful of pins in the buckets this box touches rather than
         // the few hundred on the screen.
         if (obstacles.near(box).some((obstacle) => overlaps(box, obstacle))) continue
-        return { point: candidate.point, fit, anchor }
+        if (!clearOfBadges(box)) continue
+        return { point: candidate.point, fit, anchor, box }
       }
     }
   }
+  // THE LAST RESORT, AND THE ONE CHANGE THAT UNPILES THE MAP. #1374 made this
+  // layer always-drawn: a badge with nowhere clear to sit is placed anyway
+  // rather than dropped, because a trail the hiker can see and cannot name is
+  // worse than a slightly crowded plate. That was decided when BADGE_SOURCES
+  // held two entries and the only thing a badge could collide with was a pin.
+  //
+  // It does not survive fifteen badges. Below the pin seam there are no pins
+  // at all, so `obstacles` is empty, every trail failed the frame test at the
+  // same handful of anchors and every one of them landed here - at
+  // TRAIL_BADGE_ANCHORS[0], on its middle vertex. CI's whole-US frame
+  // (2026-09-30) is what that looks like: roughly fifteen plates stacked into
+  // one illegible block, "Sheltowee Traceede Trail" and "North Country Trail"
+  // written through each other. Nobody can name a trail from that either, so
+  // the reason #1374 gave for always drawing has stopped applying to the case
+  // it now produces.
+  //
+  // So the last resort still ignores PINS - that part of #1374 stands, and a
+  // plate over a waypoint is readable - and it no longer ignores other
+  // BADGES. A trail with no position clear of a plate already taken draws no
+  // badge this settle. It keeps its line, its name in the legend and its tap
+  // target; what it loses is a pill nobody could have read.
+  const fallback = plateBox(
+    TRAIL_BADGE_ANCHORS[0],
+    candidates[0].at,
+    badgeTextSize(name, hasMark ? 'mark' : 'full', hasMark),
+  )
+  if (!clearOfBadges(fallback)) return null
   return {
     point: candidates[0].point,
     fit: hasMark ? 'mark' : 'full',
     anchor: TRAIL_BADGE_ANCHORS[0],
+    box: fallback,
   }
 }
 
@@ -850,7 +889,23 @@ export function trailsInView(
     existing.chosen = existing.chosen || inChosenSystem
   }
 
-  return [...byName.values()]
+  // PLACED IN A DECIDED ORDER, because a badge is now an obstacle to the next
+  // one and so the order decides which trail keeps its pill when two want the
+  // same ground. `queryRenderedFeatures` promises no order, so taking them as
+  // they arrive would have made that a coin toss that changes between settles
+  // - the same class of defect as the takeable-piece merge above.
+  //
+  // Chosen system first (the trail the hiker is actually on outranks the rest,
+  // the same seniority the sort below already applies), then takeable, then by
+  // name so the remainder is stable rather than merely deterministic-looking.
+  const ordered = [...byName.values()].sort((a, b) => {
+    if (a.chosen !== b.chosen) return a.chosen ? -1 : 1
+    if (a.takeable !== b.takeable) return a.takeable ? -1 : 1
+    return a.name.localeCompare(b.name)
+  })
+
+  const taken: Box[] = []
+  return ordered
     .map(({ runs, clearRuns, ...trail }) => {
       // Only a through-route needs an anchor at all; the rest are listed,
       // not badged, and are spared the search. In the clear first: under
@@ -863,8 +918,10 @@ export function trailsInView(
         frame,
         trail.name,
         badgeMarkImageId(trail.source, trail.longTrail) !== null,
+        taken,
       )
       if (placed === null) return { ...trail, anchor: null }
+      taken.push(placed.box)
       return {
         ...trail,
         anchor: placed.point,

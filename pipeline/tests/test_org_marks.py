@@ -198,11 +198,18 @@ class TestNoMarkShipsWithoutOne:
 TRAIL_MARK_DIR = REPO / "client" / "src" / "design-system" / "assets" / "trails"
 
 #: The marks in that directory that are OurHike's own design and nobody's
-#: trademark - lib/trails.ts's header calls them "placeholder marks of
-#: OurHike's own design" for trails whose official art is not sourced here.
-#: Named so that the next file dropped in beside them is the one this test
-#: asks about.
-OURHIKE_OWN_TRAIL_MARKS = {"pct-logo.svg"}
+#: trademark. EMPTY SINCE 2026-09-30, and that is a fact about the tree rather
+#: than a disabled check: every marker now in it is somebody's real one, with a
+#: row saying whose and on what basis. `pct-logo.svg` was the last - a blue
+#: hexagon with "PCT" set in Arial - and it went when the Forest Service's own
+#: emblem replaced it (sources.json `org_marks.trail_marks.pct`).
+#:
+#: The escape hatch stays because the exemption it grants is narrow and worth
+#: keeping narrow: a file listed here is one this repository drew itself, so
+#: nobody else's permission is in question. Adding a name is how a future
+#: placeholder gets past the check below, and the empty braces are the
+#: reminder that none is needed today.
+OURHIKE_OWN_TRAIL_MARKS: set[str] = set()
 
 #: Every trail marker shipped under the maintainer's decision of 2026-09-30
 #: (sources.json org_marks.trail_marks): the steward's own marker, carried by

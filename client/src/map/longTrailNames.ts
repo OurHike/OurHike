@@ -75,10 +75,14 @@ export const LONG_TRAIL_NAME_COUNT = Object.keys(LONG_TRAIL_BY_NAME).length
  * The badged trails a steward marker actually exists for.
  *
  * WHY THIS IS NOT DERIVED FROM THE TABLE ABOVE. Earning a badge and having a
- * marker are different facts: 7 of the 20 trails this badges publish no
+ * marker are different facts: 6 of the 20 trails this badges publish no
  * per-trail symbol anybody could find - Pinhoti's steward domain serves
- * spam, PCTA states written permission is required, and the rest publish a
- * club wordmark or nothing. Those wear the plate and their name.
+ * spam, and the rest publish a club wordmark or nothing. Those wear the plate
+ * and their name. The PCT left that group on 2026-09-30: PCTA still requires
+ * written permission for its own files, but the Forest Service administers
+ * the trail and publishes the emblem itself, so `pct-logo.png` is the federal
+ * copy (lib/trails.ts's header has the reasoning, including the insignia
+ * question that a public-domain answer does not reach).
  *
  * WHAT GOES WRONG WITHOUT IT, which is why the list is here rather than
  * assumed: map/trailBadges.ts minted `trail-mark-steward-<slug>` for any
@@ -88,6 +92,17 @@ export const LONG_TRAIL_NAME_COUNT = Object.keys(LONG_TRAIL_BY_NAME).length
  * free to fall back to the bare-mark form, whose whole content is that
  * missing image. A badge that draws nothing at all, only when the map is
  * crowded. Caught by trailsInView.test.ts rather than on a phone.
+ *
+ * AND THE SAME THING HAPPENS WHEN THIS LIST IS RIGHT AND THE REGISTRY IS NOT.
+ * `cdt` sat here from the day the list was written while
+ * lib/stewardMarks.ts's STEWARD_MARKS_BY_SLUG had no `cdt` row, so every
+ * badge on the 267 USFS Continental Divide segments asked for an id nothing
+ * held - the identical failure, reached from the other side, with
+ * cdt-logo.png in the tree the whole time. Fixed 2026-09-30 by registering
+ * it; stewardMarks.test.ts now asserts every slug in this set resolves to a
+ * file, which is the check neither side had. Containment, not equality -
+ * stewardMarks holds 20 markers this set has no entry for, because the line
+ * sheet reaches those by name.
  */
 const SLUGS_WITH_A_STEWARD_MARKER: ReadonlySet<string> = new Set([
   'azt',
@@ -100,6 +115,7 @@ const SLUGS_WITH_A_STEWARD_MARKER: ReadonlySet<string> = new Set([
   'npt',
   'oht',
   'ouachita',
+  'pct',
   'sheltowee',
   'sht',
   'tahoe-rim',
@@ -108,6 +124,15 @@ const SLUGS_WITH_A_STEWARD_MARKER: ReadonlySet<string> = new Set([
 /** Whether a long trail has a steward marker to draw. */
 export function longTrailHasMarker(slug: string): boolean {
   return SLUGS_WITH_A_STEWARD_MARKER.has(slug)
+}
+
+/** Every slug this file CLAIMS a marker for. Exported for the one check that
+ *  catches the cdt defect above: lib/stewardMarks.test.ts asserts each of
+ *  these resolves to a file, which is the half neither module could see on
+ *  its own. Not the reverse - stewardMarks holds 20 more markers that only
+ *  chrome/LineSheet.tsx reaches, by name. */
+export function longTrailMarkerSlugs(): readonly string[] {
+  return [...SLUGS_WITH_A_STEWARD_MARKER]
 }
 
 /**

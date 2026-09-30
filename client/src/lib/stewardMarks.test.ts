@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { stewardMarkForName, STEWARD_MARK_COUNT } from './stewardMarks'
+import {
+  stewardMarkForName,
+  stewardMarkForSlug,
+  STEWARD_MARK_COUNT,
+} from './stewardMarks'
+import { longTrailMarkerSlugs } from '../map/longTrailNames'
 import { trailForName } from './trails'
 
 // The stewards' own markers (#1543), shipped by default on the maintainer's
@@ -50,5 +55,43 @@ describe('stewardMarkForName', () => {
     const urls = names.map((n) => stewardMarkForName(n))
     expect(urls.every((u) => u !== null)).toBe(true)
     expect(new Set(urls).size).toBe(names.length)
+  })
+})
+
+describe('the badge asking this module by slug', () => {
+  it('finds a file for every slug longTrailNames claims a marker for', () => {
+    // THE CHECK NEITHER MODULE COULD DO ALONE, and the defect that earned it:
+    // map/longTrailNames.ts listed `cdt` in SLUGS_WITH_A_STEWARD_MARKER while
+    // STEWARD_MARKS_BY_SLUG had no `cdt` row. map/trailBadges.ts's
+    // badgeMarkImageId therefore named `trail-mark-steward-cdt`, an id nothing
+    // ever registered, so the badge on the 267 USFS Continental Divide
+    // segments drew an empty slot beside its name - with cdt-logo.png sitting
+    // in the tree the whole time. An unavailable image is dropped rather than
+    // thrown, so this failed on a phone and nowhere else.
+    const unregistered = longTrailMarkerSlugs().filter(
+      (s) => stewardMarkForSlug(s) === null,
+    )
+    expect(unregistered).toEqual([])
+  })
+
+  it('does not require the reverse, because the line sheet reaches the rest by name', () => {
+    // Containment, not equality. STEWARD_MARKS_BY_SLUG carries markers for
+    // trails the badge has no slug entry for; chrome/LineSheet.tsx finds those
+    // through stewardMarkForName. Asserting equality here would fail on a
+    // marker that is doing its job.
+    const claimed = new Set(longTrailMarkerSlugs())
+    expect(claimed.has('buckeye')).toBe(false)
+    expect(stewardMarkForSlug('buckeye')).not.toBeNull()
+  })
+
+  it('answers for the two registry trails the badge cannot reach by source', () => {
+    // map/trailBadges.ts's BADGE_MARK_BY_SOURCE is keyed by SOURCE and holds
+    // only `centerline` and `nynjtc_long_path`, so a USFS segment spelled
+    // "CONTINENTAL DIVIDE NST" or "PACIFIC CREST TRAIL" reaches its mark only
+    // through this map - which is why cdt and pct are in it although
+    // lib/trails.ts already answers both by name.
+    expect(stewardMarkForSlug('cdt')).not.toBeNull()
+    expect(stewardMarkForSlug('pct')).not.toBeNull()
+    expect(stewardMarkForSlug('cdt')).not.toBe(stewardMarkForSlug('pct'))
   })
 })

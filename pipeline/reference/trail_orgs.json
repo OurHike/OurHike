@@ -2,7 +2,7 @@
  "_comment": "Which US trail organizations exist, where their geometry actually lives, and whether OurHike may ship it (#1543). One row per organization from the maintainer's research pass of 2026-09-17. THIS FILE DECIDES NOTHING ON ITS OWN - it is the reviewed input a sources.json entry is written from, and `load` is the column a reviewer is actually reviewing. See features/ORG_BULK_LOAD.md for what each verdict costs and why the batches are grouped the way they are.",
  "_load_values": {
   "ship": "Open terms and a usable endpoint. Becomes a sources.json row that reaches hikers.",
-  "hold": "Recorded, reaches_hikers false. Either no endpoint exists or nobody has read the terms.",
+  "hold": "Recorded, reaches_hikers false. No endpoint exists, nobody has read the terms, or - added 2026-09-30 for `nps-poi` - the endpoint and the terms are both fine and the SCOPE is the blocker, because what it would put in front of a hiker is wrong until something narrows it.",
   "via": "No entry of its own - the geometry arrives through the row named in `via`.",
   "refuse": "The organization states commercial, app-only or waiver-gated terms.",
   "none": "No trail geometry exists to load, now or later."
@@ -13,7 +13,7 @@
  },
  "_source": "Maintainer-supplied research pass, 2026-09-17, covering 165 organizations. Mileage figures are approximate and drawn from organization, agency and Wikipedia summaries - use them for filtering, never for reporting. The three the research confirmed are USFS (>165,000), ATC (2,197.9, official 2026) and COTREX (45,076 across 236 land managers).",
  "_attribution_obligation": "The trail-name crosswalk this research used is derived from LongTrailsWiki (the OpenLongTrails project), licensed CC BY-SA 4.0. That obligation attaches to the trail-name column specifically and is independent of the licence on any geometry. No crosswalk column is carried into this file, so nothing here inherits share-alike - recorded because re-adding one would.",
- "_row_count": "163 rows from a research pass that numbered 165. Two organizations were listed twice in the source and are one row each here, per CONTRIBUTING.md's one-home rule: Rails-to-Trails Conservancy appeared as both the umbrella and its TrailLink product, and American Trails as both the umbrella and its National Recreation Trails directory. The Appalachian Mountain Club IS carried twice, deliberately - `amc` is its New England National Scenic Trail and White Mountains role, `amc-at` its A.T. maintaining-club role, and the two resolve to different upstreams.",
+ "_row_count": "173 rows. The research pass of 2026-09-17 contributed 163 of them, from a source that numbered 165: two organizations were listed twice there and are one row each here, per CONTRIBUTING.md's one-home rule - Rails-to-Trails Conservancy appeared as both the umbrella and its TrailLink product, and American Trails as both the umbrella and its National Recreation Trails directory. The rest were added after it. TWO ORGANIZATIONS ARE CARRIED TWICE, DELIBERATELY, because each pair resolves to different upstreams: `amc` is the Appalachian Mountain Club's New England National Scenic Trail and White Mountains role and `amc-at` its A.T. maintaining-club role; `nps` is the National Park Service's trail geometry and `nps-poi` its points of interest.",
  "_probe_pass": "A second pass on 2026-09-17 probed the endpoints live from this repository rather than inferring them. It moved 11 rows to `via` on measured feature counts, corrected the COTREX endpoint from a Hub page to a queryable layer, ruled the Cohos Trail out of NH GRANIT by measurement, and added five organizations the research pass omitted ENTIRELY THOUGH OURHIKE ALREADY SHIPS THEIR DATA - NYS DEC, NH GRANIT, Mohonk Preserve, NYC Parks and NYC DOT. Every count in a `why` that says 'counted live 2026-09-17' is this pass's and is re-runnable. A SECOND ROUND probed eight state clearinghouses and added four more organizations the research pass omitted - MassGIS, CT DEEP, PASDA and North Carolina's own Mountains-to-Sea layer - moving nine more rows off `hold`. It also ruled two cheap answers out by measurement: the Superior Hiking Trail is not in MN DNR's state trails layer, and NC OneMap's recreation service holds only paddle trails.",
  "_agol_sweep": "All 172 rows searched against the ArcGIS Online public item catalogue on 2026-09-26, after the maintainer observed that the Appalachian Mountain Club publishes no map on outdoors.org and has trail data on ArcGIS Online. 39 rows have a trail-shaped item. SIX ORGANIZATIONS PUBLISH THEIR OWN TRAILS FROM THEIR OWN ACCOUNT - Alaska Trails, Mohonk Preserve, the Appalachian Mountain Club, the Florida Trail Association, the Arizona Trail Association and PCTA - plus Randolph Mountain Club's cartographer account. The first pass said two, which was wrong: the owner-name matcher did not recognise spellings like `FloridaTrailAssociation` or `PCTA_Admin`. EXCLUDED BY THE PERSONAL-ACCOUNT RULE (maintainer, 2026-09-26): an ArcGIS Online item is evidence only when an institution published it - the organization itself, or a government, agency or university account. A bare personal handle is not. It carries no licence anybody stated, nobody is accountable for it, and it vanishes with the account. Three items were dropped under it: `jnugent` (Catamount), `gdurkee_gis_cc` (Sierra High Route) and `jsapi_team` (Tahoe Rim, Esri's demo team rather than the association). Everything kept is an organization, a county, an agency or a university account, and an institutional account is still a lead rather than a grant - the licence question has been asked of nobody.",
  "_agol_accepted_owners": {
@@ -158,6 +158,25 @@
    "why": "The single highest-leverage row in the catalogue. 21 National Historic Trail stewards and 2 National Scenic Trails hold no data of their own and point here, so one registration answers 23 organizations.",
    "miles": null,
    "already": null
+  },
+  {
+   "slug": "nps-poi",
+   "org": "National Park Service",
+   "website": "nps.gov",
+   "type": "federal",
+   "states": "national",
+   "trails": "Not trails - visitor-facing POINT features in NPS units",
+   "miles": null,
+   "endpoint": "https://mapservices.nps.gov/arcgis/rest/services/NationalDatasets/NPS_Public_POIs_Geographic/MapServer/0",
+   "endpoint_kind": "external_arcgis_layer",
+   "confidence": "verified",
+   "via": "self",
+   "licence": "public domain",
+   "licence_basis": "public_domain",
+   "attribution": "National Park Service",
+   "load": "hold",
+   "already": null,
+   "why": "A SECOND ROW FOR AN ORGANISATION THAT ALREADY HAS ONE, on the `amc`/`amc-at` precedent in `_row_count`: `nps` is the trail geometry and this is the POI layer, a different upstream answering a different question. MEASURED 2026-09-30 against the live service, re-run rather than trusted: 35,639 points, of which 30,648 carry a POINAME; 38 fields; 382 distinct POITYPE values returned complete (exceededTransferLimit was null, so that is the whole set, and three of the 382 are empty-ish - '', ' ' and the literal string '<Null>'); maxRecordCount 2000 with pagination supported, so a fetch has to page. Terms are not the blocker and neither is the endpoint - this is HELD ON SCOPE, which is why `_load_values.hold` gained a third reason today. TWO THINGS HAVE TO NARROW IT FIRST. (1) Corridor clip: 35,639 nationwide points is the same nationwide-layer problem #1231 opens against `usfs`, and this row is worse for it because a POI draws a pin rather than a line. (2) A POITYPE allowlist, and the reason is not tidiness: a name search for 'Potomac' returns 'East Potomac Tennis' (POITYPE Tennis) and 'East Potomac Park Comfort Station' (Restroom) beside the one row a hiker wanted, 'Potomac Forks Hiker-Biker Campsite'. Shipping this unfiltered would put tennis courts on a trail map, and 382 types is too many to allowlist by guessing - somebody reads them. The layer's own description says only publicly shareable features are included and sensitive ones are excluded, which is the publisher's screen and not a substitute for either of these."
   },
   {
    "slug": "blm",

@@ -30,17 +30,33 @@
 // test_org_marks.py red until the file is out of the tree.
 //
 // CDT NOW CARRIES CDTC'S OWN MARK (`cdt-logo.png`, their 192x192 site icon
-// resized to 96px, which is the headroom these render at)
-// in place of the OurHike-drawn placeholder that stood here until
-// 2026-09-30. PCT STILL DOES NOT, and that one is deliberate rather than
-// pending: PCTA's media page states in terms that the PCT emblem, the PCT
-// diamond and the PCTA logo each need written permission, and gives two
-// addresses. A stated restriction is not silence, so the placeholder stays
-// until somebody writes.
+// resized to 96px, which is the headroom these render at) in place of the
+// OurHike-drawn placeholder that stood here until 2026-09-30, AND SO DOES
+// PCT - which took a different route and is worth reading before anybody
+// copies it.
+//
+// PCTA's media page still states in terms that the PCT emblem, the PCT
+// diamond and the PCTA logo each need written permission, and still nobody
+// has written. That restriction is intact; what changed is that the mark did
+// not have to come from PCTA. The US Forest Service administers the Pacific
+// Crest National Scenic Trail and publishes the emblem on its own trail
+// page, so `pct-logo.png` is the federal copy and rests on 17 U.S.C. 105
+// rather than on the opt-out decision above.
+//
+// COPYRIGHT WAS NOT THE ONLY QUESTION, and this is the part the public-domain
+// answer does not reach: 18 U.S.C. 701 protects trail markers prescribed by
+// the Interior Department, which is why `pohe` and `natr` ship nothing and
+// why the North Country and New England rows wear their associations' marks
+// instead of the prescribed ones. All 25 'Official Trail Marker' notices were
+// listed from the Federal Register API on 2026-09-30; those four trails are
+// each on it and THERE IS NO PACIFIC CREST NOTICE, which fits those notices
+// being Interior's and this trail being Agriculture's. sources.json's
+// `org_marks.trail_marks.pct` carries the query to re-run and the Commons
+// vector that was rejected for its share-alike layer.
 
 import atLogo from '../design-system/assets/trails/at-logo.png'
 import lpLogo from '../design-system/assets/trails/lp-logo.png'
-import pctLogo from '../design-system/assets/trails/pct-logo.svg'
+import pctLogo from '../design-system/assets/trails/pct-logo.png'
 import cdtLogo from '../design-system/assets/trails/cdt-logo.png'
 
 export interface Trail {

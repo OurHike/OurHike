@@ -4,13 +4,7 @@
  "_ink_at_18px": "MEASURED 2026-09-29. Each mark was letterboxed into an 18-pixel square on #fffdf7 - TRAIL_BADGE_PLATE_DAY's paper - and every one of the 324 pixels scored for WCAG contrast against it. `ink_at_18px` is the share reaching 3:1 or better; `peak_contrast` is the strongest single pixel. The bar is not picked: the A.T. marker already in the tree measures 0.18 ink at 7.4:1, and `clears_the_at` says whether a mark puts at least that much on the plate. A mark below it is not unusable, it is thinner than the one nobody has complained about.",
  "_why_the_thin_ones_are_thin": "Almost always because the mark is mostly white, and white on the plate's own paper is nothing. That is a fact about the plate as much as the mark, and it is unresolved: whether a pale mark gets a darker plate is a decision nobody has made. @unvalidated - what would settle it is looking at one on a phone in sunlight, which is #105.",
  "_not_found": {
-  "_comment": "The 32 through-routes with no mark here, and what is actually in the way. Grouped because the reasons are not the same and only some are fixable.",
-  "permission_stated": {
-   "trails": [
-    "pct"
-   ],
-   "detail": "PCTA's media page states the PCT emblem, the PCT diamond and the PCTA logo each need permission and gives two addresses. The one entry on this list a single email would settle."
-  },
+  "_comment": "The 31 through-routes with no mark here, and what is actually in the way. Grouped because the reasons are not the same and only some are fixable. `_resolved` at the foot is the other direction - a group that emptied and why, kept so the next sweep does not re-derive a blocker that has already been answered.",
   "federally_protected": {
    "trails": [
     "pohe",
@@ -76,10 +70,13 @@
     "ahr"
    ],
    "detail": "Routes rather than trails: no organisation, and no mark anybody drew. Two of this group - the Grand Enchantment and the Mogollon Rim - turned out to have one after all, which is why the rest were worth checking twice."
+  },
+  "_resolved": {
+   "pct": "2026-09-30. `permission_stated` held one trail and is gone. PCTA's media page still requires written permission for the PCT emblem, the PCT diamond and the PCTA logo, and still nobody has written - what changed is that the mark did not have to come from PCTA. The US Forest Service administers the trail and publishes the emblem on its own page, so the row below is the federal copy under 17 U.S.C. 105. sources.json's `org_marks.trail_marks.pct` carries the basis, including the insignia question that copyright does not answer."
   }
  },
- "_row_count": 35,
- "_clears_the_at": 24,
+ "_row_count": 36,
+ "_clears_the_at": 25,
  "marks": [
   {
    "trail": "mdh",
@@ -93,6 +90,20 @@
    "peak_contrast": 15.8,
    "clears_the_at": true,
    "permission": "none asked, none given"
+  },
+  {
+   "trail": "pct",
+   "name": "Pacific Crest Trail",
+   "steward": "USDA Forest Service (the trail's administering agency); PCTA is the steward org",
+   "found_at": "https://www.fs.usda.gov/sites/nfs/files/trails/pacific-crest-nst/image/PCT%20logo.jpg",
+   "fetched": "2026-09-30",
+   "pixels": "253x289",
+   "aspect": 0.875,
+   "ink_at_18px": 0.23,
+   "peak_contrast": 17.5,
+   "clears_the_at": true,
+   "permission": "public domain - a US government work (17 U.S.C. 105), off the agency that administers the trail. Not PCTA's file and not a grant from PCTA, whose own permission requirement is untouched.",
+   "measured_with": "The `_ink_at_18px` method below, re-implemented on 2026-09-30 rather than re-run from the 2026-09-29 pass. IT DOES NOT REPRODUCE THAT PASS EXACTLY, so read these two numbers against the control rather than against the other rows: the A.T. marker measures 0.18 ink at 7.4:1 in the 2026-09-29 column and 0.17 at 11.0:1 under this implementation. The ink share agrees to 0.01; the peak does not, and nobody has worked out which resampling step moves it. On this implementation the PCT reads 0.23 / 17.5 against that 0.17 / 11.0 control, so `clears_the_at` is true on a like-for-like comparison. @unvalidated whether 0.23 here equals 0.23 in the rows measured on 2026-09-29 - what would settle it is re-running all 36 under one implementation."
   },
   {
    "trail": "standing-stone",

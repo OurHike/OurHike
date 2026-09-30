@@ -32,10 +32,11 @@ import {
   deleteArchive,
   downloadArchive,
   readDownloadProgress,
+  readDownloadProgresses,
   type CheckProgress,
   type DownloadProgress,
 } from './archiveDownload'
-import { readArchiveSize } from './archiveStore'
+import { readArchiveSize, readArchiveSizes } from './archiveStore'
 import {
   completedMarker,
   readPersistence,
@@ -138,82 +139,110 @@ export function useArchiveDownloads(requests: readonly ArchiveDownloadRequest[])
   //
   // EACH PACKAGE IS READ ONCE, HOWEVER THE SET GROWS (#1301). The set is not
   // fixed at mount: App.tsx registers every coverage cell the moment a cell
-  // index arrives, so it goes from the offered sheets to several dozen more
-  // packages, twice, on a launch with signal. This effect re-runs on each
-  // growth, and it used to start every package's reads over - three IndexedDB
-  // round trips per package, for packages whose status it already held - on
-  // the same thread the first frame was waiting on. A package whose status
-  // has landed is skipped; one whose reads were cancelled mid-flight by a
-  // growth has no status yet and is asked again on the next run.
+  // index arrives, so it goes from the offered sheets to several hundred more
+  // packages, three times, on a launch with signal. This effect re-runs on
+  // each growth, and it used to start every package's reads over - three
+  // IndexedDB round trips per package, for packages whose status it already
+  // held - on the same thread the first frame was waiting on. A package whose
+  // status has landed is skipped; one whose reads were cancelled mid-flight
+  // by a growth has no status yet and is asked again on the next run.
+  //
+  // THE WHOLE SET IN THREE TRANSACTIONS AND ONE STATE UPDATE, not three
+  // transactions and one update per package. With ~800 cells registered the
+  // per-package form was ~2,400 one-key transactions, and each answer spread
+  // the whole status record again - React replaying that updater was the
+  // second-largest slice of the phone's map-build window, 159-322 ms at 4x
+  // CPU (#1632; the reads themselves a further ~200 ms, LAUNCH_BUDGET.md
+  // §7.3 item 5). `readArchiveSizes` and `readDownloadProgresses` are one
+  // `getMany` each, and the answers land as a single `setStatuses`, so
+  // `statusesKnown` flips once rather than 800 times. Which status a package
+  // gets is decided exactly as before: a finished archive by its marker's
+  // byte count, else a resumable partial, else the eviction marker's say.
   const answered = useRef(new Set<string>())
   useEffect(() => {
     let cancelled = false
+    const unanswered = packageKeys.filter(
+      (packageKey) => !answered.current.has(packageKey),
+    )
+    if (unanswered.length === 0) return
 
-    for (const packageKey of packageKeys) {
-      if (answered.current.has(packageKey)) continue
-      void (async () => {
-        try {
-          // The marker's own byte count, not an assembled Blob: this runs for
-          // every package on every mount, and since #553 an archive is a run of
-          // segment records that would otherwise all be read to learn a number
-          // the completion marker already holds.
-          const finishedBytes = await readArchiveSize(packageKey)
-          if (cancelled) return
-          if (finishedBytes !== null) {
+    void (async () => {
+      const landed: Record<string, DownloadStatus> = {}
+      // Every package the reads have not yet decided - all of them until the
+      // first transaction answers, then the ones with no finished archive.
+      let undecided: readonly string[] = unanswered
+      try {
+        // The marker's own byte count, not an assembled Blob: this runs for
+        // every package on every mount, and since #553 an archive is a run of
+        // segment records that would otherwise all be read to learn a number
+        // the completion marker already holds.
+        const finishedBytes = await readArchiveSizes(unanswered)
+        if (cancelled) return
+        const stillUndecided: string[] = []
+        unanswered.forEach((packageKey, at) => {
+          const bytes = finishedBytes[at]
+          if (bytes !== null && bytes !== undefined) {
             answered.current.add(packageKey)
-            setStatus(packageKey, {
+            landed[packageKey] = {
               state: 'downloaded',
-              totalBytes: finishedBytes,
+              totalBytes: bytes,
               completedAt: new Date(),
-            })
-            return
+            }
+          } else {
+            stillUndecided.push(packageKey)
           }
+        })
+        undecided = stillUndecided
 
-          const partial = await readDownloadProgress(packageKey)
-          if (cancelled) return
-          if (partial !== null) {
-            answered.current.add(packageKey)
-            setStatus(packageKey, { state: 'failed', ...partial })
-            return
-          }
-
+        const partials = await readDownloadProgresses(stillUndecided)
+        if (cancelled) return
+        stillUndecided.forEach((packageKey, at) => {
+          const partial = partials[at]
+          answered.current.add(packageKey)
           // No blob, no partial - but if the completion marker says an
           // archive finished here, this is an eviction, and saying "not
           // downloaded" would be the FarOut failure: a map that silently
           // vanished offered back as if it had never existed (#190).
-          answered.current.add(packageKey)
-          setStatus(packageKey, absentStatus(packageKey))
-        } catch {
-          // The reads above are IndexedDB, which can fail outright - storage
-          // evicted under pressure, a corrupt database, private browsing.
-          // Unhandled that was an unhandled rejection on app start; handled,
-          // the marker still gets its say: an unreadable database on a phone
-          // that completed a download is closer to "your map is gone" than to
-          // "no map downloaded", and the marker lives in localStorage, which
-          // is still readable in exactly the incidents this guards against.
-          //
-          // Deliberately not surfaced as an error: this runs before the hiker
-          // has asked for anything. A failure they DID ask for still reports
-          // itself - see the catch in `run`.
-          //
-          // AND NOT RECORDED AS ANSWERED (#1301, and a defect an adversarial
-          // review of it found): a database that refused this read is not the
-          // same as one that answered, and marking it answered would make a
-          // transient refusal permanent for the session - a downloaded
-          // archive reading as absent, and the map rebuilt around the live
-          // sheet, until the app is relaunched. Left unmarked, the next run
-          // of this effect asks again. The status is still set either way, so
-          // nothing waits on a package that cannot answer.
-          if (cancelled) return
-          setStatus(packageKey, absentStatus(packageKey))
+          landed[packageKey] =
+            partial !== null && partial !== undefined
+              ? { state: 'failed', ...partial }
+              : absentStatus(packageKey)
+        })
+      } catch {
+        // The reads above are IndexedDB, which can fail outright - storage
+        // evicted under pressure, a corrupt database, private browsing.
+        // Unhandled that was an unhandled rejection on app start; handled,
+        // the marker still gets its say: an unreadable database on a phone
+        // that completed a download is closer to "your map is gone" than to
+        // "no map downloaded", and the marker lives in localStorage, which
+        // is still readable in exactly the incidents this guards against.
+        //
+        // Deliberately not surfaced as an error: this runs before the hiker
+        // has asked for anything. A failure they DID ask for still reports
+        // itself - see the catch in `run`.
+        //
+        // AND NOT RECORDED AS ANSWERED (#1301, and a defect an adversarial
+        // review of it found): a database that refused this read is not the
+        // same as one that answered, and marking it answered would make a
+        // transient refusal permanent for the session - a downloaded
+        // archive reading as absent, and the map rebuilt around the live
+        // sheet, until the app is relaunched. Left unmarked, the next run
+        // of this effect asks again. The status is still set either way, so
+        // nothing waits on a package that cannot answer. A package the first
+        // transaction had already found downloaded keeps that answer.
+        if (cancelled) return
+        for (const packageKey of undecided) {
+          if (landed[packageKey] === undefined)
+            landed[packageKey] = absentStatus(packageKey)
         }
-      })()
-    }
+      }
+      setStatuses((previous) => ({ ...previous, ...landed }))
+    })()
 
     return () => {
       cancelled = true
     }
-  }, [packageKeys, setStatus])
+  }, [packageKeys])
 
   // The standing durability answer, without prompting anyone: persisted()
   // reports what the browser already decided, so the Downloads screen can be

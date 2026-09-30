@@ -92,7 +92,7 @@
 // is still the only answer that costs nobody their data allowance. What it does
 // retire is the DOUBLE requirement a resume used to carry - see `shortfall`.
 
-import { get, set, del } from 'idb-keyval'
+import { get, getMany, set, del } from 'idb-keyval'
 import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
 import {
   clearCompleted,
@@ -1113,6 +1113,17 @@ export async function readDownloadProgress(
   packageKey: string,
 ): Promise<DownloadProgress | null> {
   return ((await get(progressKeyFor(packageKey))) as DownloadProgress | undefined) ?? null
+}
+
+/** `readDownloadProgress` for a package set in one transaction - the launch
+ *  sweep's read, for the reason lib/archiveStore.ts's readArchiveSizes gives:
+ *  one `getMany` over ~800 keys where there were ~800 one-key transactions. */
+export async function readDownloadProgresses(
+  packageKeys: readonly string[],
+): Promise<Array<DownloadProgress | null>> {
+  if (packageKeys.length === 0) return []
+  const stored = await getMany(packageKeys.map(progressKeyFor))
+  return stored.map((value) => (value as DownloadProgress | undefined) ?? null)
 }
 
 /** Reclaims one package's space, partial bytes included - someone deleting a

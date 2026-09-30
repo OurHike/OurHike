@@ -385,8 +385,13 @@ describe('how often a launch walks the waypoint list (#1303)', () => {
     await screen.findByRole('tab', { name: 'Today' })
     await releaseRead()
 
-    expect(vi.mocked(getMany).mock.calls.length).toBeGreaterThan(0)
-    expect(vi.mocked(getMany).mock.calls[0][0]).toContain(POIS_KEY)
+    // Some `getMany` carries the waypoints - not necessarily the first: the
+    // archive sweep's marker read (#1726) is a `getMany` too, and which lands
+    // first is a race between two effects that nothing here orders.
+    const releaseReads = vi
+      .mocked(getMany)
+      .mock.calls.filter((call) => call[0].includes(POIS_KEY))
+    expect(releaseReads).toHaveLength(1)
   })
 
   it('packs the waypoints for the worker exactly once', async () => {

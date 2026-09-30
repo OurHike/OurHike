@@ -7,6 +7,7 @@ import {
   deleteArchive,
   downloadArchive,
   readDownloadProgress,
+  readDownloadProgresses,
   ArchiveSizeMismatchError,
   ArchiveHashMismatchError,
 } from './archiveDownload'
@@ -42,6 +43,7 @@ vi.mock('./archiveDownload', async (importOriginal) => {
     downloadArchive: vi.fn(),
     deleteArchive: vi.fn(),
     readDownloadProgress: vi.fn(),
+    readDownloadProgresses: vi.fn(),
   }
 })
 
@@ -50,7 +52,17 @@ const ARTIFACT = 'background_z12.pmtiles'
 
 beforeEach(() => {
   vi.mocked(get).mockResolvedValue(undefined)
+  // The mount sweep reads the whole package set at once (readArchiveSizes,
+  // readDownloadProgresses); `getMany` follows whatever `get` is doing, so a
+  // test that sets up one package's records through `get` is still read the
+  // way the app reads it.
+  vi.mocked(getMany).mockImplementation((keys) =>
+    Promise.all(keys.map((key) => vi.mocked(get)(key))),
+  )
   vi.mocked(readDownloadProgress).mockResolvedValue(null)
+  vi.mocked(readDownloadProgresses).mockImplementation(async (keys) =>
+    keys.map(() => null),
+  )
   vi.mocked(downloadArchive).mockResolvedValue(undefined)
   vi.mocked(deleteArchive).mockResolvedValue(undefined)
 })
@@ -110,10 +122,9 @@ describe('useArchiveDownload on mount', () => {
   it('offers to resume an interrupted one rather than starting it over', async () => {
     // WIREFRAMES.md 7a: a transfer interrupted by the app closing is resumable
     // on the next launch, not just within one session.
-    vi.mocked(readDownloadProgress).mockResolvedValue({
-      receivedBytes: 40,
-      totalBytes: 100,
-    })
+    vi.mocked(readDownloadProgresses).mockResolvedValue([
+      { receivedBytes: 40, totalBytes: 100 },
+    ])
 
     const { result } = renderHook(() =>
       useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
@@ -150,7 +161,7 @@ describe('useArchiveDownload on mount', () => {
   })
 
   it('survives the progress read failing after the archive read succeeded', async () => {
-    vi.mocked(readDownloadProgress).mockRejectedValue(new Error('IndexedDB is gone'))
+    vi.mocked(readDownloadProgresses).mockRejectedValue(new Error('IndexedDB is gone'))
 
     let hook: ReturnType<
       typeof renderHook<ReturnType<typeof useArchiveDownload>, unknown>
@@ -183,7 +194,9 @@ describe('useArchiveDownload on mount', () => {
       release(undefined)
     })
 
-    expect(vi.mocked(readDownloadProgress)).not.toHaveBeenCalled()
+    // The sweep's second read never starts once the screen is gone, so
+    // nothing downstream of it can set state on the unmounted hook.
+    expect(vi.mocked(readDownloadProgresses)).not.toHaveBeenCalled()
   })
 })
 
@@ -336,9 +349,10 @@ describe('useArchiveDownload when the download fails', () => {
 
   it('keeps the partial bytes visible as resumable', async () => {
     vi.mocked(downloadArchive).mockRejectedValue(new ArchiveSizeMismatchError(100, 60))
-    vi.mocked(readDownloadProgress)
-      .mockResolvedValueOnce(null) // the mount read
-      .mockResolvedValue({ receivedBytes: 60, totalBytes: 100 })
+    vi.mocked(readDownloadProgress).mockResolvedValue({
+      receivedBytes: 60,
+      totalBytes: 100,
+    })
 
     const { result } = renderHook(() =>
       useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
@@ -636,10 +650,9 @@ describe('eviction, told apart from absence (#190)', () => {
 
   it('a resumable partial outranks the marker - resume is the better offer', async () => {
     recordCompleted(CORRIDOR_ARCHIVE_KEY)
-    vi.mocked(readDownloadProgress).mockResolvedValue({
-      receivedBytes: 40,
-      totalBytes: 100,
-    })
+    vi.mocked(readDownloadProgresses).mockResolvedValue([
+      { receivedBytes: 40, totalBytes: 100 },
+    ])
 
     const { result } = renderHook(() =>
       useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),

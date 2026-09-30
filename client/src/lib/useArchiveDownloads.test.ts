@@ -100,6 +100,30 @@ afterEach(() => {
 })
 
 describe('holding several packages at once', () => {
+  it('reads the whole set in three transactions and lands every status in one update (#1726)', async () => {
+    withStore()
+    let renders = 0
+
+    const { result } = renderHook(() => {
+      renders += 1
+      return useArchiveDownloads(BOTH)
+    })
+    await waitFor(() => expect(result.current.statusesKnown).toBe(true))
+
+    // Markers, then the legacy records of the unmarked, then their partials:
+    // three `getMany` calls for two packages, and the same three for 800.
+    expect(vi.mocked(getMany)).toHaveBeenCalledTimes(3)
+    // The mount render, the persistence answer, and the one sweep update -
+    // never one render per package.
+    expect(renders).toBeLessThanOrEqual(3)
+    expect(result.current.statusFor(SHEET.packageKey)).toEqual({
+      state: 'not-downloaded',
+    })
+    expect(result.current.statusFor(TERRAIN.packageKey)).toEqual({
+      state: 'not-downloaded',
+    })
+  })
+
   it('downloads two packages and reports each one’s own size', async () => {
     withStore()
     mockFetch({ [SHEET.url]: SHEET_BYTES, [TERRAIN.url]: TERRAIN_BYTES })

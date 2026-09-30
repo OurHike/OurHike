@@ -63,7 +63,7 @@
 // too, so a Blob found under the bare package key is served as the archive it
 // is. A finished download replaces it - see `markComplete`.
 
-import { get, set, del } from 'idb-keyval'
+import { get, getMany, set, del } from 'idb-keyval'
 
 /** The only two generations there are - see the header. Fixed rather than
  *  counted, so `deleteArchiveRecords` can sweep all of them by construction. */
@@ -196,7 +196,13 @@ export async function readSegmentRun(
  * MAX_SEGMENTS. Anything that is not a marker this module wrote is not a marker.
  */
 export async function readComplete(packageKey: string): Promise<ArchiveComplete | null> {
-  const stored = await get(completeKeyFor(packageKey))
+  return completeFrom(await get(completeKeyFor(packageKey)))
+}
+
+/** `readComplete`'s shape check over a value already read, so the batched
+ *  read (`readArchiveSizes`) and the single one cannot disagree about what a
+ *  marker is. */
+export function completeFrom(stored: unknown): ArchiveComplete | null {
   if (stored === null || typeof stored !== 'object') return null
   const { generation, segments, totalBytes, priorSegments } =
     stored as Partial<ArchiveComplete>
@@ -241,10 +247,44 @@ export async function readArchive(packageKey: string): Promise<Blob | undefined>
  * record read instead of reassembling every segment.
  */
 export async function readArchiveSize(packageKey: string): Promise<number | null> {
-  const complete = await readComplete(packageKey)
-  if (complete !== null) return complete.totalBytes
-  const legacy = (await get(packageKey)) as Blob | undefined
-  return legacy instanceof Blob ? legacy.size : null
+  return (await readArchiveSizes([packageKey]))[0] ?? null
+}
+
+/**
+ * `readArchiveSize` for a whole package set, in two transactions rather than
+ * two per package.
+ *
+ * The launch sweep (lib/useArchiveDownload.ts) asks this for every offered
+ * sheet and every coverage cell of three families - about 800 packages on a
+ * release with the cells cut - so as single reads it was ~2,400 one-key
+ * transactions on the thread the first frame is drawn on. Measured
+ * 2026-09-17 at 4x CPU, features/LAUNCH_BUDGET.md §7.3 item 5: 358-423 ms as
+ * single reads against 121-207 ms batched. `getMany` is one readonly
+ * transaction over the keys and hands the values back in the order asked.
+ *
+ * The decision per package is exactly the single read's, in the same order:
+ * the completion marker's byte count, else a legacy whole-archive Blob's
+ * size, else null. Only the packages with no marker are asked for a legacy
+ * record, so the second transaction is empty on a phone whose archives all
+ * finished through markComplete.
+ */
+export async function readArchiveSizes(
+  packageKeys: readonly string[],
+): Promise<Array<number | null>> {
+  if (packageKeys.length === 0) return []
+  const markers = await getMany(packageKeys.map(completeKeyFor))
+  const sizes = markers.map((stored) => completeFrom(stored)?.totalBytes ?? null)
+  const unmarked: Array<{ at: number; key: string }> = []
+  packageKeys.forEach((key, at) => {
+    if (sizes[at] === null) unmarked.push({ at, key })
+  })
+  if (unmarked.length === 0) return sizes
+  const legacy = await getMany(unmarked.map(({ key }) => key))
+  legacy.forEach((blob, at) => {
+    const found = unmarked[at]
+    if (found !== undefined && blob instanceof Blob) sizes[found.at] = blob.size
+  })
+  return sizes
 }
 
 /** Appends one segment. Callers write them in order from 0 within a generation

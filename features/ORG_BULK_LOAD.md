@@ -209,8 +209,12 @@ because the split it assumed does not survive contact with the registry. `source
 and an organization that states nothing is `maintainer_authorisation`. So the reviewer's decision
 is the same one 17 times — is this licence reading right — and splitting it bought nothing.
 
-**229,160 features across the 18 probed, 2.67× the 136,941 that shipped before.** COTREX alone is
-96,897, which is 71% of the previous total, from one state.
+**229,160 features across the 18 probed.** COTREX alone is 96,897, which is 71% of the previous
+total, from one state. **The 17 that were registered carry 225,855** — `njgin`'s 3,305 were probed
+and not registered — so against the 136,941 that shipped before, the ceiling is 362,796 and the
+multiple is **2.65×**. (An earlier draft of this paragraph and `d1fde477`'s commit message both said
+2.67×, which double-counts `njgin`. The number is also a **ceiling rather than a measurement**:
+source features are not export records, and the exporter clips and filters before it counts.)
 
 **Three things only opening the URLs could find**, and each is a correction to the catalogue rather
 than to the plan:
@@ -237,6 +241,28 @@ no constant** — nothing can name those, and `blm_trails`' own row records it.
 **Four pull requests, and the fourth is the only one that changes a hiker's map.** The gate
 SOURCE_REGISTRY.md and DATA_RELEASES.md exist to protect is untouched, because registering and
 shipping were already two acts and `reaches_hikers` already separates them.
+
+### Batch 4 ran on 2026-09-30 ([#1785](https://github.com/OurHike/OurHike/issues/1785)), after one more gate than the plan knew about
+
+The flip is **17 rows, `reaches_hikers` false to true, and nothing else**. The four sources that stay
+at `false` — ATC's `bridges` and `at_treadway`, `gatc_water_sources` and `usgs_3dhp` — are held for
+their own reasons and are untouched, which is the check worth stating: a flip that read "set every
+`false` to `true`" would have bypassed four holdbacks nobody reviewed, and §2's warning about the NYS
+OPRHP holdback is the same failure written down before it happened.
+
+**It waited on a second gate the plan did not predict.** #1231's scope question was answered by
+#1775, as above. But #1775's own measurement turned up
+**[#1776 — Half the sketch's "through routes" are name collisions](https://github.com/OurHike/OurHike/issues/1776)**:
+`_named_lengths` summed every row sharing a name inside one organization, and `usfs_trails` is one
+organization covering the country, so 27 unrelated trails called `GREEN MOUNTAIN` became a single
+"through route" spanning 50.5° of longitude with the Long Path's casing and badge.
+
+That is a defect about **one national source**, and this batch adds four more: NPS at 31,485 features
+across every state, BLM at 19,532, COTREX at 96,897, Utah at 48,132. Flipping first would have taken
+a known defect and multiplied it onto a hiker's map — so the flip is sequenced **after** #1776's fix
+rather than beside it. The cost of that fix is
+[#1783](https://github.com/OurHike/OurHike/issues/1783), and it is written down there rather than
+absorbed here.
 
 ### This is existing practice, not a new lane
 

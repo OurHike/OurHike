@@ -1,6 +1,37 @@
 version: 2
 
 seeds:
+  - name: dbt_project_evaluator_exceptions
+    description: >
+      The findings dbt_project_evaluator is told to skip, and why. The
+      evaluator is enforced (dbt_project.yml), so a finding either gets
+      fixed or gets a row here. Every row's `comment` says why the finding
+      is a deliberate state rather than a defect, what ends it, and the
+      issue it rests on by number AND title;
+      pipeline/tests/test_dbt_evaluator_exceptions.py refuses a row
+      without them. `id_to_exclude` is a SQL LIKE pattern, so `_` matches
+      any one character and `%` any run: keep a pattern as narrow as the
+      models it means, because a wide one switches a rule off silently.
+
+      Not every rule can be excepted here. valid_test_coverage and
+      documentation coverage compare one project-wide percentage to a
+      target and take no exceptions, so the answer there is a test or a
+      description on the model.
+    config:
+      column_types:
+        fct_name: varchar
+        column_name: varchar
+        id_to_exclude: varchar
+        comment: varchar
+    columns:
+      - name: fct_name
+        description: The evaluator model whose findings the row filters.
+      - name: column_name
+        description: The column of that model the pattern is matched against.
+      - name: id_to_exclude
+        description: A SQL LIKE pattern; findings whose column matches it are skipped.
+      - name: comment
+        description: Why, what ends it, and the issue by number and title.
   - name: poi_type_mapping
     description: >
       Source-system codes -> the one unified poi_type, transcribed from code

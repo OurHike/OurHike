@@ -77,9 +77,9 @@ import {
   formatDistance,
   formatElevation,
   formatShortDistance,
-  MIN_STATED_FEET,
   type UnitSystem,
 } from '../lib/units'
+import { formatWaterDistance } from '../lib/waterProvenance'
 import { PoiRow } from '../chrome/PoiRow'
 import { StepRail } from '../chrome/StepRail'
 import { SheetGripLoader } from '../chrome/SheetGripLoader'
@@ -521,9 +521,13 @@ export function DayHikeCard({
                       meta={[
                         `${formatDistance(alongMi, units)} in`,
                         stop.capacity !== undefined ? `sleeps ${stop.capacity}` : null,
+                        // Floored and marked in lib/waterProvenance.ts, the
+                        // one home the card and the builder's rows read too:
+                        // "water ~250 ft" for a steward's estimate (#1728).
                         stop.waterDistanceFt !== undefined
-                          ? `water ${formatShortDistance(
-                              Math.max(MIN_STATED_FEET, stop.waterDistanceFt),
+                          ? `water ${formatWaterDistance(
+                              stop.waterDistanceFt,
+                              stop.waterDistanceSource,
                               units,
                             )}`
                           : null,

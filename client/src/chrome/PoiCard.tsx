@@ -108,6 +108,7 @@ import { poiColor, poiGlyphPath } from '../map/poiIcons'
 import { MapIcon } from '../map/MapIcon'
 import { siteDistanceFeet } from '../map/poiSites'
 import { describeNearby, type NearbyPart } from '../lib/nearbyClause'
+import { formatWaterDistance } from '../lib/waterProvenance'
 import { waypointDistance } from '../lib/waypointDistance'
 import { isSafeLink } from '../lib/safeLink'
 import type { HikeDirection } from './Header'
@@ -115,7 +116,6 @@ import {
   feetFromMetres,
   formatRoundShortDistance,
   formatShortDistance,
-  MIN_STATED_FEET,
   type UnitSystem,
 } from '../lib/units'
 import { PhotoUnusable, preparePhoto } from '../lib/reportPhoto'
@@ -185,6 +185,15 @@ export interface PoiDetail {
    * published one, never "no water" - the capacity rule.
    */
   waterDistanceFt?: number
+  /**
+   * How ATC arrived at that figure - `StoredPoi.waterDistanceSource`, CSI's
+   * own provenance value (#1728). partDistance hands it to
+   * lib/waterProvenance.ts, which puts a tilde in front of a steward's
+   * estimate and nothing in front of a measurement. Absent where the figure
+   * is, and on a download from before the column, when the figure prints as
+   * it always has.
+   */
+  waterDistanceSource?: string
   /**
    * One sentence about the place - what it is built of, what it has, when it
    * went up - for shelters and campsites.
@@ -470,19 +479,6 @@ function coordinates(lat: number, lon: number): string {
 }
 
 /**
- * One metre, in feet - lib/units.ts's `MIN_STATED_FEET`, aliased here so the
- * call site below reads as it always has.
- *
- * It lived in this file as a private constant until #1198, which gave the
- * figure a second reader: a day hike's stop rows print the same published
- * `water_distance_ft` and must floor it the same way. The reasoning moved
- * with it - see the constant's own note, and pipeline/lib/poi_description.py,
- * which floors what it publishes for the same reason. #694 floored it at a
- * metre back when this line printed only metres.
- */
-const MIN_PART_FT = MIN_STATED_FEET
-
-/**
  * How far a part of the site is from the pin, for its chip.
  *
  * FROM THE PIN, NOT FROM THE PART CURRENTLY OPEN. The pin is the one point on
@@ -523,13 +519,21 @@ const MIN_PART_FT = MIN_STATED_FEET
  * hands #694: ATC states it in feet, the artifact publishes it in feet, and
  * feet is what lib/units.ts formats from. It reached this line as metres only
  * because this line printed metres.
+ *
+ * AND IT PRINTS IN THE VOICE ITS PROVENANCE EARNS (#1728). A stated figure
+ * goes through lib/waterProvenance.ts, the one home every surface printing
+ * the column reads - the nearby sentence, a day hike's stop rows - which
+ * floors it at the metre this file used to floor it at (its private
+ * `MIN_PART_FT` moved there with the mark) and puts "~" in front of a
+ * steward's estimate: "Water ~250 ft" on the chip, "~250 ft away" on the
+ * meta line. A measured member's offset is a position, not a stated figure,
+ * and prints exactly as before.
  */
 function partDistance(pin: PoiDetail, part: PoiDetail, units: UnitSystem): string {
-  const feet =
-    part.type === 'water' && part.waterDistanceFt !== undefined
-      ? Math.max(MIN_PART_FT, part.waterDistanceFt)
-      : siteDistanceFeet(pin, part)
-  return formatShortDistance(feet, units)
+  if (part.type === 'water' && part.waterDistanceFt !== undefined) {
+    return formatWaterDistance(part.waterDistanceFt, part.waterDistanceSource, units)
+  }
+  return formatShortDistance(siteDistanceFeet(pin, part), units)
 }
 
 /**

@@ -609,7 +609,11 @@ describe('trail data', () => {
           site_name: 'Mt. Algo Shelter',
           nearby: [
             { phrase: 'a multi-seat moldering privy', distance_ft: 131.2 },
-            { phrase: 'water', distance_ft: 295.3 },
+            // Where a stated figure came from rides the part (#1728) ...
+            { phrase: 'water', distance_ft: 295.3, source: 'OSA_Field_Estimate' },
+            // ... and only as a string: a part with an unreadable one is
+            // still a part, in the voice it always had.
+            { phrase: 'a campsite', distance_ft: 82, source: 7 },
           ],
         },
       ]),
@@ -618,7 +622,8 @@ describe('trail data', () => {
 
     expect((store.get(POIS_KEY) as StoredPoi[])[0].nearby).toEqual([
       { phrase: 'a multi-seat moldering privy', distance_ft: 131.2 },
-      { phrase: 'water', distance_ft: 295.3 },
+      { phrase: 'water', distance_ft: 295.3, source: 'OSA_Field_Estimate' },
+      { phrase: 'a campsite', distance_ft: 82 },
     ])
   })
 
@@ -776,6 +781,7 @@ describe('trail data', () => {
           lon: -69.26,
           confidence: 'high',
           water_distance_ft: 120,
+          water_distance_source: 'OSA_Field_Estimate',
         },
         {
           id: 'atc_csi:abc',
@@ -786,6 +792,7 @@ describe('trail data', () => {
           confidence: 'low',
           source: 'atc_csi',
           water_distance_ft: 120,
+          water_distance_source: 'OSA_Field_Estimate',
         },
       ]),
     )
@@ -794,6 +801,66 @@ describe('trail data', () => {
     const pois = store.get(POIS_KEY) as StoredPoi[]
     expect(pois[0].waterDistanceFt).toBe(120)
     expect(pois[1].waterDistanceFt).toBe(120)
+    // And where ATC got it, on both carriers (#1728): the chip and the
+    // nearby sentence print the same figure and have to mark it the same way.
+    expect(pois[0].waterDistanceSource).toBe('OSA_Field_Estimate')
+    expect(pois[1].waterDistanceSource).toBe('OSA_Field_Estimate')
+  })
+
+  it('keeps where ATC got the water distance only beside a figure it kept (#1728)', async () => {
+    serve(
+      poiCollection([
+        {
+          id: 'atc_shelters:a',
+          poi_type: 'shelter',
+          name: 'A',
+          lat: 1,
+          lon: 2,
+          water_distance_ft: 250,
+          water_distance_source: 'OSA_Field_Estimate',
+        },
+        // A provenance beside a figure this build refused is a fact about
+        // nothing - there is no number for it to qualify.
+        {
+          id: 'atc_shelters:b',
+          poi_type: 'shelter',
+          name: 'B',
+          lat: 1,
+          lon: 2,
+          water_distance_ft: null,
+          water_distance_source: 'FarOut',
+        },
+        // Null and "" are what the artifact writes where the reference file
+        // did not say; neither is a provenance, and the figure stays.
+        {
+          id: 'atc_shelters:c',
+          poi_type: 'shelter',
+          name: 'C',
+          lat: 1,
+          lon: 2,
+          water_distance_ft: 120,
+          water_distance_source: null,
+        },
+        {
+          id: 'atc_shelters:d',
+          poi_type: 'shelter',
+          name: 'D',
+          lat: 1,
+          lon: 2,
+          water_distance_ft: 120,
+          water_distance_source: '',
+        },
+      ]),
+    )
+    await downloadTrailData()
+
+    const [a, b, c, d] = store.get(POIS_KEY) as StoredPoi[]
+    expect(a.waterDistanceSource).toBe('OSA_Field_Estimate')
+    expect(b).not.toHaveProperty('waterDistanceFt')
+    expect(b).not.toHaveProperty('waterDistanceSource')
+    expect(c.waterDistanceFt).toBe(120)
+    expect(c).not.toHaveProperty('waterDistanceSource')
+    expect(d).not.toHaveProperty('waterDistanceSource')
   })
 
   it.each([

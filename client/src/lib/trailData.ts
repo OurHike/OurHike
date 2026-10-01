@@ -134,6 +134,21 @@ export interface StoredPoi {
    */
   waterDistanceFt?: number
   /**
+   * How ATC arrived at that figure - CSI's own `Nearest_Water_Source` value,
+   * verbatim from the artifact's `water_distance_source` (#1728). `FarOut`,
+   * `NHDP_HR_Stream` and `NHDP_HR_Pond` are measured against a mapped point;
+   * `OSA_Field_Estimate` is a steward's round number, and 42 of the 305
+   * published figures are one. lib/waterProvenance.ts turns it into the mark
+   * every surface prints in front of an estimate.
+   *
+   * Absent where the release predates the column or the reference file did
+   * not say, and then the figure prints in the voice it always has: absent
+   * means unknown, never "measured" and never "estimate". Never present
+   * without `waterDistanceFt` - a provenance beside no figure is a fact about
+   * nothing, and readPois drops it with the figure.
+   */
+  waterDistanceSource?: string
+  /**
    * One sentence about the place, for every POI type ATC's own facility
    * layers feed - shelters, campsites, viewpoints, parking areas, privies.
    *
@@ -303,6 +318,7 @@ interface PoiProperties {
   source?: unknown
   capacity?: unknown
   water_distance_ft?: unknown
+  water_distance_source?: unknown
   description?: unknown
   photo_key?: unknown
   photos?: unknown
@@ -415,7 +431,15 @@ function readNearbyList(value: unknown): NearbyPart[] {
     ) {
       continue
     }
-    parts.push({ phrase, distance_ft: distance })
+    // Where a stated figure came from (#1728), kept only when it is a string
+    // worth keeping: the part reads fine without it, in the voice it always
+    // had, and an unreadable provenance must not cost the part itself.
+    const source = stringProp(record.source)
+    parts.push({
+      phrase,
+      distance_ft: distance,
+      ...(source !== undefined ? { source } : {}),
+    })
   }
   return parts
 }
@@ -462,6 +486,10 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
     const photoList = readPhotoList(props.photos)
     const capacity = capacityProp(props.capacity)
     const waterDistanceFt = waterDistanceProp(props.water_distance_ft)
+    // Only beside a figure this build kept (#1728): a provenance next to a
+    // distance it refused - a null, a zero - is a fact about nothing.
+    const waterDistanceSource =
+      waterDistanceFt === undefined ? undefined : stringProp(props.water_distance_source)
     const description = stringProp(props.description)
     // #523's grouping (pipeline/lib/poi_sites.py). Read here rather than
     // dropped, because these three are what let the map draw one pin for a
@@ -517,6 +545,7 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
       // a number.
       ...(capacity !== undefined ? { capacity } : {}),
       ...(waterDistanceFt !== undefined ? { waterDistanceFt } : {}),
+      ...(waterDistanceSource !== undefined ? { waterDistanceSource } : {}),
       ...(description !== undefined ? { description } : {}),
       // All three ride together or not at all: a role with no site to belong
       // to cannot be acted on, and map/poiSites.ts would treat it as a POI in

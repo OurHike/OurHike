@@ -1027,6 +1027,54 @@ describe('the parts of one site', () => {
     expect(screen.getByRole('button', { name: 'Water 37 m' })).toBeInTheDocument()
   })
 
+  it('prints a steward’s estimate as "~" and a measurement bare, on the chip and the meta line (#1728)', () => {
+    // 42 of the 305 water distances ATC publishes are a steward's round
+    // number rather than a measurement, and until #1728 this chip printed
+    // both as "Water 120 ft". The provenance rides the member from the
+    // artifact (lib/trailData.ts), and lib/waterProvenance.ts turns it into
+    // the one mark the maintainer chose by poll, 2026-09-30.
+    const water = (waterDistanceSource: string): PoiDetail => ({
+      id: 'atc_csi:xyz',
+      name: 'Water near Chairback Gap Lean-to',
+      type: 'water',
+      lat: SHELTER.lat,
+      lon: SHELTER.lon,
+      confidence: 'low',
+      source: 'atc_csi',
+      waterDistanceFt: 120,
+      waterDistanceSource,
+    })
+    const { container } = renderSite([SHELTER, PRIVY, water('OSA_Field_Estimate')])
+    const meta = () => container.querySelector('.poi-card__meta')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Water ~120 ft' }))
+
+    // The meta line prints the same figure through the same function, so the
+    // mark moves down with the distance when the chip's own words are hidden.
+    expect(meta()).toHaveTextContent('~120 ft away')
+
+    // A measurement against a mapped point earns no mark.
+    cleanup()
+    renderSite([SHELTER, PRIVY, water('FarOut')])
+
+    expect(screen.getByRole('button', { name: 'Water 120 ft' })).toBeInTheDocument()
+
+    // And in metres the mark stays in front of the converted figure.
+    cleanup()
+    render(
+      <PoiCard
+        poi={SHELTER}
+        site={[SHELTER, water('OSA_Field_Estimate')]}
+        map={null}
+        units="metric"
+        onClose={vi.fn()}
+      />,
+    )
+    open()
+
+    expect(screen.getByRole('button', { name: 'Water ~37 m' })).toBeInTheDocument()
+  })
+
   it('carries the same icon the map draws for each part', () => {
     // One copy of the pin, which is the rule map/MapIcon.tsx is built on: a chip
     // that drew its own privy silhouette would drift from the map's the first

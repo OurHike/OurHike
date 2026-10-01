@@ -16,6 +16,7 @@ the warehouse reads; a table that halves is refused.
 
 import json
 from datetime import date, timedelta
+from urllib.parse import parse_qs, urlsplit
 
 import duckdb
 import pytest
@@ -25,6 +26,7 @@ from extract import _kinds, _run
 from extract._contract import Resource
 from extract._kinds import (
     ArcgisLayer,
+    BucketListing,
     ClubPdf,
     GuidePages,
     HydrographyWatch,
@@ -812,3 +814,93 @@ def test_an_nws_answer_that_is_not_a_feature_collection_refuses_and_the_last_ale
     con, counts = warehouse(store)
     assert counts["raw_nws__alerts"] == 1, "the refused run left nothing behind for the next load to pick up"
     assert con.execute('select feature_id from raw."raw_nws__alerts"').fetchone()[0].endswith(".3")
+
+
+S3_PAGE = """<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">{contents}<IsTruncated>{truncated}</IsTruncated>{token}</ListBucketResult>"""
+
+
+def s3_object(key, etag="e1", size=10):
+    return (
+        f"<Contents><Key>{key}</Key><LastModified>2023-11-17T17:48:41.000Z</LastModified>"
+        f'<ETag>"{etag}"</ETag><Size>{size}</Size><StorageClass>STANDARD</StorageClass></Contents>'
+    )
+
+
+class FakeBucket:
+    """A public S3 bucket answering ListObjectsV2 in pages of `page_size`, as prd-tnm.s3.amazonaws.com does."""
+
+    def __init__(self, requests_mock, keys, *, page_size=2, drop_token=False):
+        self.objects = {key: "e1" for key in keys}
+        self.page_size, self.drop_token, self.prefixes = page_size, drop_token, []
+        requests_mock.get("https://prd-tnm.s3.amazonaws.com/", text=self.answer)
+
+    def answer(self, request, context):
+        query = parse_qs(urlsplit(request.url).query)  # request.qs lowercases values, and keys are case-sensitive
+        prefix = query["prefix"][0]
+        self.prefixes.append(prefix)
+        start = int(query.get("continuation-token", ["0"])[0])
+        keys = sorted(k for k in self.objects if k.startswith(prefix))
+        page = keys[start : start + self.page_size]
+        more = start + self.page_size < len(keys)
+        token = "" if not more or self.drop_token else f"<NextContinuationToken>{start + self.page_size}</NextContinuationToken>"
+        contents = "".join(s3_object(k, self.objects[k]) for k in page)
+        return S3_PAGE.format(contents=contents, truncated="true" if more else "false", token=token)
+
+
+DEM_PREFIX = "StagedProducts/Elevation/13/TIFF/current/"
+
+
+def dem_listing():
+    return BucketListing(key="3dep_13_current", club="usgs", type="elevation")
+
+
+def test_a_bucket_listing_walks_every_page_of_its_fetchers_prefix_and_lands_no_object(requests_mock):
+    keys = [f"{DEM_PREFIX}n4{i}w074/USGS_13_n4{i}w074.{ext}" for i in range(3) for ext in ("tif", "xml")]
+    bucket = FakeBucket(requests_mock, keys)
+    proofs = {}
+    rows = list(dem_listing().rows(proofs))
+    assert dem_listing().table == "raw_usgs__3dep_13_current"
+    assert [row["key"] for row in rows] == sorted(keys), "every object, the .xml beside each tile included"
+    assert proofs["raw_usgs__3dep_13_current"] == 6
+    assert set(bucket.prefixes) == {DEM_PREFIX}, "the prefix is fetch_elevation.py's TILE_URL_TEMPLATE up to its first {cell}"
+    assert len(bucket.prefixes) == 3, "three pages of two"
+    assert rows[0] == {
+        "key": sorted(keys)[0],
+        "size": 10,
+        "etag": '"e1"',
+        "last_modified": "2023-11-17T17:48:41.000Z",
+        "storage_class": "STANDARD",
+    }
+    assert requests_mock.last_request.headers["User-Agent"] == USER_AGENT
+
+
+def test_a_bucket_listing_is_fresh_until_one_object_is_replaced(requests_mock):
+    keys = [f"{DEM_PREFIX}n41w074/USGS_13_n41w074.tif", f"{DEM_PREFIX}n42w074/USGS_13_n42w074.tif"]
+    bucket = FakeBucket(requests_mock, keys)
+    verdict, marker = dem_listing().change_check(None)
+    assert verdict is Freshness.STALE and marker["objects"] == 2
+    assert dem_listing().change_check(marker) == (Freshness.FRESH, marker)
+    bucket.objects[keys[1]] = "e2"
+    assert dem_listing().change_check(marker)[0] is Freshness.STALE, "a republished tile, under the same name and date"
+
+
+def test_a_truncated_listing_with_no_continuation_token_refuses_rather_than_reading_as_the_whole_bucket(requests_mock):
+    FakeBucket(requests_mock, [f"{DEM_PREFIX}n4{i}w074/t.tif" for i in range(3)], drop_token=True)
+    with pytest.raises(RuntimeError, match="no continuation token"):
+        list(dem_listing().rows({}))
+    assert dem_listing().change_check(None) == (Freshness.UNKNOWN, None), "a check that errors fetches"
+
+
+def test_the_nhd_listing_reads_lib_nhds_prefix_through_the_lane(store, requests_mock):
+    keys = [f"StagedProducts/Hydrography/NHD/HU4/GPKG/NHD_H_0{h}_HU4_GPKG.zip" for h in ("102", "103", "202")]
+    bucket = FakeBucket(requests_mock, [*keys, "StagedProducts/Hydrography/NHD/HU4/Shape/NHD_H_0102_HU4_Shape.zip"])
+    listing = BucketListing(
+        key="nhd_hu4_gpkg", club="usgs", type="points_of_interest", cadence_override="hourly", cadence_reason="a test"
+    )
+    report = lane(store, listing)
+    assert report.rows["raw_usgs__nhd_hu4_gpkg"] == 3, "the Shape folder is outside the prefix"
+    assert set(bucket.prefixes) == {"StagedProducts/Hydrography/NHD/HU4/GPKG/NHD_H_"}
+    con, counts = warehouse(store)
+    assert counts["raw_usgs__nhd_hu4_gpkg"] == 3
+    assert con.execute('select sum(size) from raw."raw_usgs__nhd_hu4_gpkg"').fetchone()[0] == 30

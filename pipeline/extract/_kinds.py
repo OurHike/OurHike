@@ -22,6 +22,7 @@ The kinds built so far for stage 2 (#1793 â€” Rebuild the data platform as dlt â
     club_pdf(key)           a club's PDF, one row per row its lib/club_pdfs.py parser reads
     opentrail_feed()        opentrail.org's A.T. waypoints, comments left out (no registry row)
     hydrography_watch(key)  the usgs_3dhp watch: 3DHP's work units at five probes on the trail
+    bucket_listing(key)     a public S3 bucket's objects under one prefix (3DEP's tiles, NHD's GeoPackages)
     nws_alerts()            every active NWS alert, read in full each hour (no registry row)
     reviewed_input(key)     a registry entry whose rows a person reviews into a
                             file in git (ATC's Trail Updates), loaded from that file
@@ -51,6 +52,7 @@ import requests
 from check_freshness import CORRIDOR_PROBES
 from extract._contract import EXTRACT_DIR, PIPELINE_DIR, Resource, read_club_file, slug_for_folder
 from fetch_club_pdfs import extract_page_texts
+from fetch_elevation import TILE_URL_TEMPLATE as DEM_TILE_URL_TEMPLATE
 from fetch_hikefinder import sign_in as hikefinder_sign_in
 from fetch_opentrail import API_URL as OPENTRAIL_API_URL
 from fetch_opentrail import strip_comments as strip_opentrail_comments
@@ -65,6 +67,7 @@ from lib.hikefinder import listing_count as hikefinder_listing_count
 from lib.hikefinder import listing_ids as hikefinder_listing_ids
 from lib.hikefinder import parse_gpx, parse_hike
 from lib.http_retry import request_with_retry
+from lib.nhd import NHD_GPKG_URL
 from lib.nws_alerts import ACCEPT as NWS_ACCEPT
 from lib.nws_alerts import ALERTS_URL as NWS_ALERTS_URL
 from lib.nws_alerts import check_response as check_nws_response
@@ -896,6 +899,106 @@ def hydrography_watch(key: str, **overrides) -> HydrographyWatch:
     if not (entry.get("freshness") or {}).get("url"):
         raise KeyError(f"{key} has no freshness.url to ask 3DHP at")
     return HydrographyWatch(key=key, **overrides)
+
+
+S3_NS = {"s": "http://s3.amazonaws.com/doc/2006-03-01/"}
+S3_MAX_PAGES = 50
+
+# The bucket listings the extract reads, by key: each one the URL template a
+# fetcher downloads from, so the listing covers exactly what that fetcher
+# reads and the prefix has one home. None of these is a sources.json row
+# (ELT.md, "What moves"); both are USGS's public `prd-tnm` bucket.
+BUCKET_LISTINGS = {
+    "3dep_13_current": DEM_TILE_URL_TEMPLATE,
+    "nhd_hu4_gpkg": NHD_GPKG_URL,
+}
+
+
+def _bucket_and_prefix(template: str) -> tuple[str, str]:
+    """`https://host/a/b/c_{x}.zip` -> ("https://host", "a/b/c_"): everything before the first placeholder."""
+    parsed = urlparse(template)
+    return f"{parsed.scheme}://{parsed.netloc}", parsed.path.lstrip("/").split("{", 1)[0]
+
+
+@dataclass(frozen=True)
+class BucketListing(Resource):
+    """A public S3 bucket's objects under one prefix, one row per object: key, size, ETag, LastModified. Never the objects.
+
+    A manifest, not a fetch. 3DEP's tiles are Cloud-Optimized GeoTIFFs read
+    in place at build time, and NHD's subregions are ~270 MB zips read
+    offline, so what lands is the listing that says whether either moved.
+    One ListObjectsV2 walk replaces fetch_elevation.py's 476 HEADs (ELT.md,
+    "The skip-unchanged check, by platform"). Measured 2026-10-01: 3DEP's
+    `current/` lists 5,967 objects (1,449 of them tiles) in 6 pages, 1.8 MB
+    and 1.8 s; NHD's HU4 GeoPackages 735 objects in 1 page, 195 KB and 0.8 s.
+    Every object lands, the `.xml` and `.jpg` beside each file included,
+    because the only filter before dbt is one the request carries.
+
+    The change check walks the same listing and hashes every (key, ETag,
+    size), so a replaced object moves the marker however its date reads.
+    The walk raises unless the last page says it is the last, so a listing
+    cut short is never read as the whole bucket.
+    """
+
+    def _walk(self) -> list[dict]:
+        bucket, prefix = _bucket_and_prefix(BUCKET_LISTINGS[self.key])
+        http, token, objects = session(), None, []
+        for _ in range(S3_MAX_PAGES):
+            params = {"list-type": "2", "prefix": prefix}
+            if token:
+                params["continuation-token"] = token
+            page = ElementTree.fromstring(request_with_retry(f"{bucket}/", session=http, params=params, timeout=60).content)
+            for item in page.findall("s:Contents", S3_NS):
+                objects.append(
+                    {
+                        "key": item.findtext("s:Key", namespaces=S3_NS),
+                        "size": int(item.findtext("s:Size", namespaces=S3_NS)),
+                        "etag": item.findtext("s:ETag", namespaces=S3_NS),
+                        "last_modified": item.findtext("s:LastModified", namespaces=S3_NS),
+                        "storage_class": item.findtext("s:StorageClass", namespaces=S3_NS),
+                    }
+                )
+            if page.findtext("s:IsTruncated", namespaces=S3_NS) != "true":
+                return objects
+            token = page.findtext("s:NextContinuationToken", namespaces=S3_NS)
+            if not token:
+                raise RuntimeError(f"{self.key}: a truncated page with no continuation token")
+        raise RuntimeError(f"{self.key}: still truncated after {S3_MAX_PAGES} pages")
+
+    def column_hints(self) -> dict:
+        return {
+            "key": {"data_type": "text"},
+            "size": {"data_type": "bigint"},
+            "etag": {"data_type": "text"},
+            "last_modified": {"data_type": "text"},
+            "storage_class": {"data_type": "text"},
+        }
+
+    @staticmethod
+    def _marker(objects: list[dict]) -> dict:
+        digest = hashlib.sha256(json.dumps(sorted((o["key"], o["etag"], o["size"]) for o in objects)).encode()).hexdigest()
+        return {"objects": len(objects), "sha256": digest}
+
+    def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
+        try:
+            marker = self._marker(self._walk())
+        except (requests.RequestException, ElementTree.ParseError, RuntimeError) as error:
+            print(f"  {self.key}: change check failed ({error}); fetching")
+            return Freshness.UNKNOWN, None
+        if recorded is None:
+            return Freshness.STALE, marker
+        return compare_marker(_canonical(recorded), _canonical(marker)), marker
+
+    def rows(self, proofs: dict[str, int]):
+        objects = self._walk()
+        proofs[self.table] = len(objects)
+        yield from objects
+
+
+def bucket_listing(key: str, **overrides) -> BucketListing:
+    if key not in BUCKET_LISTINGS:
+        raise KeyError(f"{key}: no bucket listing by that name in extract/_kinds.py's BUCKET_LISTINGS")
+    return BucketListing(key=key, **overrides)
 
 
 # NWS's alert properties, as /alerts/active served them on 2026-10-01: all 30

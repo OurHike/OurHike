@@ -24,8 +24,10 @@ there (podcast episodes, shelter capacity, highlights, work projects), and
 opentrail's A.T. waypoints through `opentrail_feed()`, a non-registry input
 whose file says why it claims nothing (`UNREGISTERED`), the `usgs_3dhp`
 watch through `hydrography_watch(key)`, and every active NWS alert through
-`nws_alerts()`, hourly. Not built yet: `_shared/`'s other fetched resources
-(NBM, the rest of USGS, OSM, Wikimedia, NDMC, OurHike's Postgres), the as-sent copy, the raw lake, fixture mode, and any run against
+`nws_alerts()`, hourly, and 3DEP's and NHD's bucket listings through
+`bucket_listing(key)`. Not built yet: `_shared/`'s other fetched resources
+(NBM, OSM, NDMC, OurHike's Postgres; EPQS and Wikimedia, which query by POI
+and so wait for stage 3's `points_of_interest`), the as-sent copy, the raw lake, fixture mode, and any run against
 R2. Every other
 source still comes from the old fetchers (`fetch_*.py`, `lib/arcgis.py`,
 `lib/socrata.py`) and `load_raw.py`; a change to one of those follows its own

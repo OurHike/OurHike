@@ -64,16 +64,16 @@ vars:
     # so these ten cover the eleven marts - trail_ is both trail_lines and
     # trail_network, and a name with no underscore (closures, warnings,
     # podcasts, challenges, elevation, places, sources) reads as itself
-    # plus `_`. `dim_` stays only while today's dim_pois does, and leaves
-    # with it when the points_of_interest mart replaces it.
+    # plus `_`. No `dim_`: the maintainer's review, 2026-10-01, "No dim_ !",
+    # so today's POI mart, once dim_pois, is points_of_interest already, in
+    # models/marts/points_of_interest/, and stage 3 rebuilds it in place.
     #
     # A prefix outranks a folder in the evaluator's typing, so a future
     # trail_* model outside models/marts/ is flagged by fct_model_directories
     # rather than slipping through - wanted. Measured 2026-10-01 with
     # evaluator 1.4.0, on dbt 2.0.6 and again on dbt-oss 2.0.5, against a
     # scratch copy holding one model for each of the eleven names under
-    # models/marts/<name>/: no naming or directory finding for any of them,
-    # and dim_pois still passing.
+    # models/marts/<name>/: no naming or directory finding for any of them.
     marts_prefixes:
       - trail_
       - points_
@@ -85,7 +85,6 @@ vars:
       - places_
       - suggested_
       - sources_
-      - dim_
 
 # dbt_utils has no DuckDB version of `deduplicate`, and its default joins the
 # kept rows back with a NATURAL JOIN, where NULL never equals NULL: every row

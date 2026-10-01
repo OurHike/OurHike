@@ -92,7 +92,7 @@ Rather than migrating all ~12 registered ATC sources at once, Phase A targets on
 
 ```
 stg_atc__shelters  ─┐
-stg_atc__campsites ─┼─→ int_pois_unioned ─→ dim_pois
+stg_atc__campsites ─┼─→ int_pois_unioned ─→ points_of_interest  (dim_pois until 2026-10-01)
 stg_opentrail__waypoints ─┘
 ```
 
@@ -121,7 +121,7 @@ A known duplication risk gets a real test, not just a comment: `poi_type_mapping
 
 | Package | Version (verified real, via GitHub tags — dbt Hub registry itself wasn't reachable from this environment) | Purpose here |
 |---|---|---|
-| `dbt-labs/dbt_utils` | 1.4.1 | Generic tests (`accepted_range`, `expression_is_true`) and `generate_surrogate_key` for `dim_pois`'s primary key. |
+| `dbt-labs/dbt_utils` | 1.4.1 | Generic tests (`accepted_range`, `expression_is_true`) and `generate_surrogate_key`, for every model's key since decision 40 of #1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads (pipeline/ELT.md, "One key per table"); `dim_pois`, its first user, is `points_of_interest` since 2026-10-01. |
 | `dbt-labs/dbt_project_evaluator` | 1.4.0 (1.3.2 before dbt v2) | Project-structure/convention linting — undocumented models, untested models, naming, fanned-out sources. Run as its own `dbt build -s package:dbt_project_evaluator` step, kept separate from the data-test build so "did my data pass" and "does my project follow conventions" stay independently readable in CI. **Enforced since #1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads**: a finding fails the job unless a row in `seeds/dbt_project_evaluator_exceptions.csv` excepts it with its reason. |
 | `dbt-labs/codegen` | 0.14.1 | Bootstraps `sources.yml`/staging model stubs from real loaded tables — the sanctioned way both Phase A's initial slice and every future source (Phase B/D) get scaffolded, rather than hand-typing column lists. |
 

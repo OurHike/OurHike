@@ -153,7 +153,7 @@ models:
           config:
             severity: warn
     description: >
-      Bridges staged but NOT unioned into dim_pois - the poi_type_mapping
+      Bridges staged but NOT unioned into points_of_interest - the poi_type_mapping
       seed records the layer as deliberately-unmapped and #99 records the
       product call as open. No poi_type column at all, so a future union
       branch has to be a decision, not an accident.

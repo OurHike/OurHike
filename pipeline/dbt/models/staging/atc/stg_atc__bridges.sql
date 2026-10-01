@@ -1,7 +1,7 @@
--- Staged but NOT unioned into dim_pois: whether a bridge is a hiker-facing
--- POI type is a product call (#99), recorded as deliberately-unmapped in
--- the poi_type_mapping seed - the same greppable posture as opentrail's
--- 'c' and 't' codes - rather than decided in passing by a staging model.
+-- Staged but NOT unioned into points_of_interest: whether a bridge is a hiker-
+-- facing POI type is a product call (#99), recorded as deliberately-unmapped in
+-- the poi_type_mapping seed - the same greppable posture as opentrail's 'c' and
+-- 't' codes - rather than decided in passing by a staging model.
 with source as (
     select * from {{ source('atc', 'raw_atc__bridges') }}
 ),

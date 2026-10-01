@@ -1,11 +1,11 @@
 version: 2
 
 models:
-  - name: dim_pois
+  - name: points_of_interest
     description: >
       One row per source POI across every loaded source system, keyed by
       each staging model's own poi_key (decision 40). 1:1 with int_pois_unioned - held to
-      that by assert_dim_pois_matches_int_pois_unioned. poi_type is null
+      that by assert_points_of_interest_matches_int_pois_unioned. poi_type is null
       exactly where the source code is documented-but-unmapped.
 
       Three organizations as of Phase D (#100): ATC, opentrail and NYS DEC.

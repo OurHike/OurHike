@@ -741,7 +741,7 @@ dbt seed --profiles-dir .
 dbt build --profiles-dir .  # models + all tests; add --exclude package:dbt_project_evaluator to skip the convention lint
 ```
 
-What loads is decided by `sources.json`'s registry plus `load_raw.py`'s one hand entry (opentrail), never a glob; a registered-but-unfetched layer is reported and skipped. The first slice lands `dim_pois` in the `marts` schema - shelters + campsites + opentrail waypoints on one unified shape. The mart is warehouse-internal: `export_poi.py` still owns the published artifacts. CI runs the same sequence against synthetic fixtures (`make_dbt_fixtures.py`) in the `dbt` job of `pipeline-tests.yml`; lint with `OURHIKE_WAREHOUSE=data/warehouse.duckdb sqlfluff lint dbt/models dbt/tests` from `pipeline/`.
+What loads is decided by `sources.json`'s registry plus `load_raw.py`'s one hand entry (opentrail), never a glob; a registered-but-unfetched layer is reported and skipped. The first slice lands `points_of_interest` (named `dim_pois` until 2026-10-01) in the `marts` schema - shelters + campsites + opentrail waypoints on one unified shape. The mart is warehouse-internal: `export_poi.py` still owns the published artifacts. CI runs the same sequence against synthetic fixtures (`make_dbt_fixtures.py`) in the `dbt` job of `pipeline-tests.yml`; lint with `OURHIKE_WAREHOUSE=data/warehouse.duckdb sqlfluff lint dbt/models dbt/tests` from `pipeline/`.
 
 ## Next steps
 

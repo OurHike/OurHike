@@ -23,7 +23,7 @@ models:
           config:
             severity: warn
     description: >
-      DEC lean-tos as `shelter` - the first non-A.T. rows in dim_pois.
+      DEC lean-tos as `shelter` - the first non-A.T. rows in points_of_interest.
       poi_type, id, name and public flag are all sources.json's declared
       fields for this entry rather than calls made in SQL. The model's own
       comment carries the reasoning the other five DEC POI models refer to,

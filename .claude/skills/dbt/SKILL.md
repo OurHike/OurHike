@@ -49,7 +49,7 @@ which project you are in before you follow anything below.
 | dbt | `dbt-core==1.12.2` and `dbt-duckdb==1.11.0`, pinned in `pipeline/requirements-dbt.txt` | **`dbt==2.0.6`**, the full distribution, one version everywhere (decision 32); `dbt-oss` 2.0.5 is the documented fallback, which ran the same project green. `dbt-duckdb` and `sqlfluff-templater-dbt` are gone | the same |
 | DuckDB | `duckdb==1.5.5`, the same pin as `requirements.in` | Python's 1.5.5 writes the fixture warehouse, and dbt reads it with its bundled 1.5.4, through an ADBC driver it downloads (measured on a runner, 2026-10-01) | the same |
 | Packages | `dbt_utils` 1.4.1, `dbt_project_evaluator` 1.3.2, `codegen` 0.14.1 (`packages.yml`) | evaluator 1.4.0 | the same |
-| Models | `staging/<org>/` for `atc`, `dec`, `mohonk`, `nynjtc`, `opentrail`, `oprhp`; `intermediate/int_pois_unioned.sql`; one mart, `marts/core/dim_pois.sql` | the same models, with v2-shaped YAML and one `_<org>__models.yml` per org folder | `base_` → `stg_` → `int_` → eleven unprefixed marts (below) |
+| Models | `staging/<org>/` for `atc`, `dec`, `mohonk`, `nynjtc`, `opentrail`, `oprhp`; `intermediate/int_pois_unioned.sql`; one mart, `marts/core/dim_pois.sql` | the same models, with v2-shaped YAML, one `_<org>__models.yml` per org folder, a measured key on every model, and the mart renamed `marts/points_of_interest/points_of_interest.sql` (the maintainer's review: *"No dim_ !"*) | `base_` → `stg_` → `int_` → eleven unprefixed marts (below) |
 | Loader | `load_raw.py` reads `data/raw/` into `data/warehouse.duckdb`'s `raw` schema | the same | dlt, under `pipeline/extract/` (see [the dlt skill](../dlt/SKILL.md)) |
 | Evaluator | its own CI step, warn-only (`pipeline/DBT.md:184`) | enforced at `error`, with an 8-row exceptions seed | `error`, two exception rows |
 | Lint | SQLFluff, `templater = dbt`, after the load and `dbt seed` | SQLFluff, `templater = jinja`, first in the job and enforced; `dbt lint` after `dbt parse` (decision 33) | the same |
@@ -173,8 +173,8 @@ because a `marts` row would switch naming off for every mart:
 vars:
   dbt_project_evaluator:
     marts_prefixes: ['trail_', 'points_', 'elevation_', 'closures_', 'warnings_',
-                     'podcasts_', 'challenges_', 'places_', 'suggested_', 'sources_',
-                     'dim_']  # dim_ only while today's dim_pois exists
+                     'podcasts_', 'challenges_', 'places_', 'suggested_', 'sources_']
+                     # never dim_ or fct_: the maintainer, in review, "No dim_ !"
 ```
 
 The evaluator reads a prefix as `split_part(name, '_', 1) || '_'`, so `trail_`

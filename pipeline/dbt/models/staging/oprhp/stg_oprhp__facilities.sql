@@ -1,5 +1,5 @@
 -- NYS Parks' facility points - 8,823 statewide, measured 2026-08-18 - staged
--- and DELIBERATELY NOT UNIONED into dim_pois, the same posture
+-- and DELIBERATELY NOT UNIONED into points_of_interest, the same posture
 -- stg_atc__bridges and stg_dec__backcountry_features hold.
 --
 -- WHY NOT UNIONED, stated carefully because this layer DOES publish POIs

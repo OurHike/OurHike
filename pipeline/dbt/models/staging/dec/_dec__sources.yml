@@ -6,7 +6,7 @@ sources:
       NYS DEC's Info Locator feature layers - eight of them, fetched by
       fetch_external_layers.py into data/raw/external/ and loaded untouched
       by load_raw.py. The largest block of non-A.T. data the warehouse holds,
-      and the one that makes dim_pois genuinely multi-organization rather
+      and the one that makes points_of_interest genuinely multi-organization rather
       than multi-layer.
 
       SIX OF THE EIGHT DECLARE THEIR OWN `poi_type` IN sources.json, which is

@@ -1096,10 +1096,10 @@ select * from {{ ref('int_warnings__unioned') }}      -- NWS, serious reports, h
 | `points_of_interest` | `water_claim_source varchar`, `water_claim_edited_at timestamp` | set only when rule 3's join has run; a water field with no claim source is not a water claim |
 
 
-**`points_of_interest` replaces `dim_pois`, and becomes the one home of the `public_use` rule.** The renames:
+**`points_of_interest` replaces `dim_pois`, and becomes the one home of the `public_use` rule.** The mart's own rename is done: the maintainer's review, 2026-10-01, *"No dim_ !"*, so `dim_pois` is `marts/points_of_interest/points_of_interest.sql` already, with `dim_` gone from `marts_prefixes` and the evaluator still at 77 of 77, and its singular test is `assert_points_of_interest_matches_int_pois_unioned`. The renames still to come with stage 3:
 
 - `int_pois_unioned` → `int_points_of_interest__unioned`.
-- `assert_dim_pois_matches_int_pois_unioned` → `assert_points_of_interest_matches_int_points_of_interest__unioned`. The same SQL passed on 1.12.2 under the interim name `assert_points_of_interest_matches_int_pois_unioned` (measured), while the two models are 1:1.
+- `assert_points_of_interest_matches_int_pois_unioned` → `assert_points_of_interest_matches_int_points_of_interest__unioned`, once the union is renamed. The same SQL passed on 1.12.2 under today's name (measured), while the two models are 1:1.
 - Once the filters land, that test becomes `…_accounts_for_every_unioned_row`: the union's rows equal the mart's rows plus `int_points_of_interest__dropped`'s, each with a reason.
 - `assert_int_pois_unioned_matches_staging_sum` → `assert_int_points_of_interest__unioned_matches_staging_sum`. Its branch list stays typed by hand, which its own header names as the duplication that makes it worth having; decision 14's layout pytest fails when that list disagrees with the clubs whose `points_of_interest.py` is available (Reasoned).
 

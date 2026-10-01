@@ -2127,8 +2127,16 @@ def test_a_through_route_stays_in_the_sketch_however_short_its_sections_are(monk
             "name": "Long Path",
             "blaze_color": "Aqua",
             "trail_status": "open",
-            # A mile each, which is well under one pixel at the seam.
-            "wkt": _straight(-74.0 + n * 0.02, 41.0, 1_609.34),
+            # A mile each, well under one pixel at the seam, and each
+            # starting where the last ended - 55 miles of ONE CONTINUOUS
+            # trail. The sections have to meet (#1776): they were drawn
+            # 0.02 degrees apart, side by side, which is 55 parallel lines
+            # rather than a trail, and qualification now asks whether a
+            # name's rows share tread rather than only what they sum to.
+            # The real Long Path is continuous - 43 section records end to
+            # end as of #1019's measurement - so the fixture was wrong about
+            # the very thing this test is named for.
+            "wkt": _straight(-74.0, 41.0 + n * (1_609.34 / 111_320), 1_609.34),
         }
         for n in range(sections)
     ]
@@ -2170,3 +2178,146 @@ def test_the_sketch_is_cut_for_its_own_top_zoom_and_not_the_ats(monkeypatch, tmp
     )
     assert entry["tolerance_m"] == ex.OVERVIEW_SEAM_TOLERANCE_M
     assert entry["min_feature_m"] == ex.OVERVIEW_MIN_FEATURE_M
+
+
+# --- a trail whose name is the layer (#1778) --------------------------------------
+#
+# Some stewards publish one trail as a layer with no name column: PCTA's
+# centerline is a single feature carrying OBJECTID and Shape__Length. The name
+# is not missing from that layer, it is the layer - so a row may declare
+# `name_constant`, and these hold the two halves of letting it.
+
+
+def test_a_layer_that_is_one_trail_takes_its_name_from_the_registry():
+    # PCTA's real shape: no name column anywhere, so declared_name has nothing
+    # to read and the feature would reach the export nameless - into the
+    # unnamed haze, at the thinnest weight the sketch draws, for the trail
+    # whose own steward published it.
+    source = {"key": "pcta_centerline", "name_constant": "Pacific Crest Trail"}
+    assert ex.declared_name(source, {"OBJECTID": 1, "Shape__Length": 44.27}) == "Pacific Crest Trail"
+    # Every feature, not just the first: CDTC publishes eight, one per state
+    # run, and a name on one of them would draw seven anonymous lines beside it.
+    assert ex.declared_name(source, {"OBJECTID": 8}) == "Pacific Crest Trail"
+
+
+def test_a_name_constant_does_not_quietly_beat_a_name_column():
+    # The registry may say where to read a name or that there is nowhere to
+    # read it, never both - declared_name takes the constant and never opens
+    # the column, so a row claiming both would leave a column name sitting in
+    # sources.json looking enforced while nothing read it.
+    both = {"key": "confused", "name_constant": "Some Trail", "name_field": "TRLNAME"}
+    assert ex.name_constant_conflicts([both]) == ["confused"]
+    assert ex.name_constant_conflicts([{"key": "a", "name_field": "TRLNAME"}]) == []
+    assert ex.name_constant_conflicts([{"key": "b", "name_constant": "Ice Age Trail"}]) == []
+
+
+def test_a_placeholder_is_still_read_as_no_name_where_a_column_exists():
+    # #1432's rule is untouched by #1778: a steward writing "Name TBD" into a
+    # column that cannot be empty is saying "no name", and the constant is for
+    # the different case of no column at all.
+    source = {"key": "nyc_parks_trails", "name_field": "trail_name", "name_placeholders": ["Name TBD"]}
+    assert ex.declared_name(source, {"trail_name": "Name TBD"}) is None
+    assert ex.declared_name(source, {"trail_name": "Shore Road Path"}) == "Shore Road Path"
+
+
+def _one_named_row(key: str, source: str, name: str, lon: float, lat: float, metres: float) -> dict:
+    """One named row of a trail, for the #1776 qualification cases."""
+    return {
+        "id": key,
+        "source": source,
+        "name": name,
+        "blaze_color": "Blue",
+        "trail_status": "open",
+        "wkt": _straight(lon, lat, metres),
+    }
+
+
+def _chained_run(source: str, name: str, lon: float, lat: float, miles: int, tag: str) -> list[dict]:
+    """`miles` one-mile sections chained end to end, running north from
+    (lon, lat) - one continuous trail of that length."""
+    step = 1_609.34 / 111_320
+    return [_one_named_row(f"{tag}{n}", source, name, lon, lat + n * step, 1_609.34) for n in range(miles)]
+
+
+def test_one_name_in_two_places_is_two_trails_and_neither_is_a_through_route(monkeypatch, tmp_path):
+    """#1776's defect: usfs_trails publishes 27 unrelated GREEN MOUNTAINs in 27
+    national forests, and summing every row that shares a name inside one
+    organization made them a single 82-mile "through route" spanning 50.5
+    degrees of longitude - drawn with the casing and the badge the Long Path
+    was given.
+
+    Two runs of 30 miles, a continent apart. Together they clear the 50-mile
+    threshold and separately neither does, so the old pass qualified them and
+    this one must not."""
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path / "processed")
+    records = _chained_run("usfs_trails", "GREEN MOUNTAIN", -122.0, 44.0, 30, "west") + _chained_run(
+        "usfs_trails", "GREEN MOUNTAIN", -72.0, 44.0, 30, "east"
+    )
+    assert 60 > ex.NAMED_TRAIL_THRESHOLD_MILES, "the two runs must sum past the threshold"
+    assert 30 < ex.NAMED_TRAIL_THRESHOLD_MILES, "and neither run may reach it alone"
+
+    ex.write_overview(records)
+
+    body = json.loads((ex.OUT_DIR / ex.OVERVIEW_ARTIFACT_NAME).read_text())
+    assert [f for f in body["features"] if f["properties"].get("through_route")] == []
+
+
+def test_a_trail_whose_rows_touch_is_a_through_route_however_they_are_spelled(monkeypatch, tmp_path):
+    """The other half of #1776: USFS publishes the Continental Divide under
+    five spellings, each qualified separately, so one trail became several
+    features and any spelling whose rows fell under the threshold dropped into
+    the haze while its siblings kept a casing.
+
+    Two spellings the reviewed alias table folds into one trail, meeting end to
+    end, 30 miles each. Neither reaches the threshold alone."""
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path / "processed")
+    step = 1_609.34 / 111_320
+    records = _chained_run("usfs_trails", "CONTINENTAL DIVIDE", -106.5, 39.0, 30, "a") + _chained_run(
+        "usfs_trails", "CDNST", -106.5, 39.0 + 30 * step, 30, "b"
+    )
+
+    ex.write_overview(records)
+
+    body = json.loads((ex.OUT_DIR / ex.OVERVIEW_ARTIFACT_NAME).read_text())
+    named = [f for f in body["features"] if f["properties"].get("through_route")]
+    # ONE feature, under the TRAIL's name rather than either spelling: a map
+    # labelling 30 of these miles "CDNST" has told a hiker less than it knows.
+    assert [f["properties"]["name"] for f in named] == ["Continental Divide Trail"]
+
+
+def test_two_organizations_sharing_a_name_are_still_never_summed(monkeypatch, tmp_path):
+    """The restraint #1307 already had, which #1776 must not spend. Two
+    stewards' 30-mile trails called the same thing, drawn on top of each other
+    so they would chain if the source were not part of the identity."""
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path / "processed")
+    records = _chained_run("oprhp_trails", "Ridge Trail", -74.0, 41.0, 30, "a") + _chained_run(
+        "dec_hiking_trails", "Ridge Trail", -74.0, 41.0, 30, "b"
+    )
+
+    ex.write_overview(records)
+
+    body = json.loads((ex.OUT_DIR / ex.OVERVIEW_ARTIFACT_NAME).read_text())
+    assert [f for f in body["features"] if f["properties"].get("through_route")] == []
+
+
+def test_the_join_distance_is_twice_the_simplification_it_reads():
+    """CHAIN_TOLERANCE_M is derived rather than picked, and the derivation is
+    the thing worth holding: the records qualification reads have been through
+    OVERVIEW_SIMPLIFY_TOLERANCE_M, and Douglas-Peucker may move a point that
+    far - so two rows that really met can sit at twice it, one having moved
+    that far each way. A smaller join would let the simplification break
+    chains that exist in the source."""
+    assert ex.CHAIN_TOLERANCE_M == 2 * ex.OVERVIEW_SIMPLIFY_TOLERANCE_M
+
+
+def test_every_alias_spelling_belongs_to_a_source_the_network_exports():
+    """A spelling filed under a source this export never reads is a reviewed
+    row that can never fire - and it would look like coverage."""
+    table = json.loads(ex.TRAIL_ALIASES_PATH.read_text())
+    index = ex._alias_index()
+    assert index, "the alias table must not read as empty"
+    for entry in table["trails"].values():
+        for source, spellings in entry["published_as"].items():
+            assert spellings, f"{entry['trail']} lists {source} with no spelling"
+            for spelling in spellings:
+                assert index[(source, spelling)] == entry["trail"]

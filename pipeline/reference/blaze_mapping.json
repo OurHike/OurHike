@@ -843,6 +843,70 @@
           "settles_it": "A rule for co-aligned blazes, decided once and applied to every source that publishes them - oprhp_trails' Blaze_2/Blaze_3 and njdep_park_trails' ALT_TRL_COLOR are the same question. Until then the neutral is the honest render."
         }
       }
+    },
+    "ct_deep_blue_blazed": {
+      "_note": [
+        "Connecticut Forest & Park Association's Blue-Blazed Hiking Trails, published by CT DEEP.",
+        "The layer carries TWO colour-ish columns and this reads `Map_Color`, not `Blaze`.",
+        "`Blaze` is colour AND shape in one string - 'Blue Rectangle', 'CFPA Blue Rectangle',",
+        "'White Horseshoe Rectangle', 25 distinct - and this palette is colour-only, so reading it",
+        "would mean parsing prose to throw the shape away. `Map_Color` is already the colour alone,",
+        "11 distinct. Both measured live 2026-09-30 with returnDistinctValues against the",
+        "FeatureServer; 351 features in the layer.",
+        "SHAPE IS LOST EITHER WAY and that is a real cost, not a tidy one: a white circle and a",
+        "white rectangle are different blazes at a junction, and this palette cannot say so."
+      ],
+      "mapped": {
+        "Blue": "Blue",
+        "Green": "Green",
+        "Orange": "Orange",
+        "Purple": "Purple",
+        "Red": "Red",
+        "Yellow": "Yellow"
+      },
+      "deferred": {
+        "Violet": {
+          "why": "CFPA publishes Violet and Purple as SEPARATE values in this same column, so they are two paints to the people who paint them; collapsing Violet onto Purple would flatten a distinction a hiker uses at a junction. The Light Blue row above is the same decision for the same reason.",
+          "settles_it": "An admission review: a hex that clears the bars in client/src/lib/blaze.ts next to Purple, or CFPA confirming the two are one paint."
+        },
+        "Pink": {
+          "why": "Not a member of the closed palette in client/src/lib/blaze.ts, and not a spelling of Red or Purple - CFPA publishes all three.",
+          "settles_it": "An admission review, or a count low enough that folding it to Other is honest."
+        },
+        "Black": {
+          "why": "Not a palette member. Black on a tree is a real blaze in some systems and a placeholder in others, and which this is cannot be told from the value.",
+          "settles_it": "Asking CFPA, or reading the trails carrying it against their guide."
+        },
+        "Gray": {
+          "why": "Not a palette member, and likelier a cartographic choice for an unblazed or retired section than a paint anybody applied.",
+          "settles_it": "Asking CFPA whether Gray means unblazed; if it does, this is None rather than a colour."
+        },
+        "#00CCFF": {
+          "why": "THE ONLY HEX AMONG TEN COLOUR NAMES in this column, which makes it likelier a data-entry slip than a paint. It reads as a bright cyan and Aqua is the nearest palette member, but mapping a hex nobody explained onto a named paint is exactly the invention this file exists to refuse.",
+          "settles_it": "Asking CFPA which trail carries it and what is on the tree."
+        }
+      }
+    },
+    "nc_mst_trail": {
+      "_note": [
+        "North Carolina's Mountains-to-Sea Trail, state-published. `Blaze` is colour and shape in",
+        "one string and there is no colour-only column, so the shape is dropped here - the MST's",
+        "own blaze is a white circle and this palette can carry only the white.",
+        "6 distinct values measured live 2026-09-30 with returnDistinctValues; 328 features."
+      ],
+      "mapped": {
+        "White Circle": "White",
+        "WhiteCircle": "White",
+        "Blue Circle": "Blue",
+        "Red Circle": "Red",
+        "Red Square": "Red"
+      },
+      "deferred": {
+        " ": {
+          "why": "A single space. It is not a paint, and it is not a statement that there is no blaze - which of those two it means cannot be told from the value, and they are different things to a hiker looking for a mark.",
+          "settles_it": "Asking NC State Parks whether a blank means unblazed or unrecorded. If unblazed it is None; if unrecorded it is correctly Unknown."
+        }
+      }
     }
   }
 }

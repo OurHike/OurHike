@@ -38,6 +38,14 @@ import { HIDEABLE_TYPES, hiddenTypesFrom, toggleType } from '../lib/waypointVisi
 import { MapStylePicker } from './MapStylePicker'
 import { ThemePicker } from './ThemePicker'
 import { UnitPicker } from './UnitPicker'
+import {
+  NO_PODCAST_EPISODES,
+  PODCAST_APP_NAMES,
+  appsEveryEpisodeOpensIn,
+  podcastAppsToList,
+  type PodcastApp,
+} from '../lib/podcasts'
+import { usePodcastApp, writePodcastApp } from '../lib/podcastApp'
 import './settings.css'
 
 /** The full prop bag every group below draws from - kept as one interface,
@@ -77,6 +85,9 @@ export interface SettingsProps {
    * should do.
    */
   onChangeBackground?: (next: BackgroundSource) => void
+  /** The podcast apps the Podcast app row offers - DisplaySettingsProps says
+   *  what they are and what absent means. */
+  podcastApps?: readonly PodcastApp[]
   /**
    * What has reached the hiker's account, and whether this device is still
    * sending (#894).
@@ -815,9 +826,18 @@ export function MapSettings({
 export interface DisplaySettingsProps {
   preferences: UserPreferences
   onChange: (patch: Partial<UserPreferences>) => void
+  /** The podcast apps on offer - lib/podcasts.ts's appsEveryEpisodeOpensIn
+   *  over the published list, the same set the podcast cards' picker offers.
+   *  Absent (a Settings with no list to read), Spotify alone: the one app
+   *  every episode is known to open in. */
+  podcastApps?: readonly PodcastApp[]
 }
 
-export function DisplaySettings({ preferences, onChange }: DisplaySettingsProps) {
+export function DisplaySettings({
+  preferences,
+  onChange,
+  podcastApps = appsEveryEpisodeOpensIn(NO_PODCAST_EPISODES),
+}: DisplaySettingsProps) {
   return (
     <section className="settings__group">
       <h2 className="settings__heading">Display</h2>
@@ -832,7 +852,44 @@ export function DisplaySettings({ preferences, onChange }: DisplaySettingsProps)
         value={preferences.unit_system}
         onChange={(unit_system) => onChange({ unit_system })}
       />
+
+      <PodcastAppRow apps={podcastApps} />
     </section>
+  )
+}
+
+/**
+ * Which podcast app the podcast cards open episodes in (#1690, the
+ * maintainer's frame 4). Kept on this phone like the mode and the default
+ * place, never a UserPreferences key (lib/podcastApp.ts says why). "Ask me"
+ * is offered only while nothing is picked, the reporter row's rule: an app
+ * that keeps offering to un-say an answer invites it. The apps are the ones
+ * every episode opens in, plus the hiker's own pick if it has since dropped
+ * out - lib/podcasts.ts's podcastAppsToList, the card picker's rule.
+ */
+function PodcastAppRow({ apps }: { apps: readonly PodcastApp[] }) {
+  const app = usePodcastApp()
+  return (
+    <label className="settings__row">
+      <span className="settings__label">Podcast app</span>
+      <select
+        className="settings__value"
+        name="podcast_app"
+        value={app ?? ''}
+        onChange={(event) =>
+          writePodcastApp(
+            event.target.value === '' ? null : (event.target.value as PodcastApp),
+          )
+        }
+      >
+        {app === null && <option value="">Ask me</option>}
+        {podcastAppsToList(apps, app).map((option) => (
+          <option key={option} value={option}>
+            {PODCAST_APP_NAMES[option]}
+          </option>
+        ))}
+      </select>
+    </label>
   )
 }
 

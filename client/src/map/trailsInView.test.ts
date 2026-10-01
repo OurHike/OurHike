@@ -64,6 +64,36 @@ function line(
   }
 }
 
+/** A map framed on a real place, for a line whose badge depends on WHERE
+ *  it is (#1781): the box map/longTrailNames.ts checks a vertex against.
+ *  One degree either side, so the mock's degree-space frame holds it. */
+function mapOver(
+  [lon, lat]: [number, number],
+  byLayer: Record<string, unknown[]>,
+): MockMap {
+  const map = mapWith(byLayer)
+  map.bounds = { west: lon - 1, south: lat - 1, east: lon + 1, north: lat + 1 }
+  return map
+}
+
+/** Three vertices a tenth of a degree apart, starting at a real place. */
+function near([lon, lat]: [number, number]): Array<[number, number]> {
+  return [
+    [lon, lat],
+    [lon + 0.1, lat + 0.05],
+    [lon + 0.2, lat + 0.1],
+  ]
+}
+
+/** Places inside each trail's box, measured 2026-09-30 (the rows' `extent`
+ *  in pipeline/reference/trail_name_aliases.json). */
+const IN_KENTUCKY: [number, number] = [-84.2, 37.6] // Sheltowee Trace
+const IN_MICHIGAN: [number, number] = [-85.9, 44.3] // North Country Trail
+const IN_GEORGIA: [number, number] = [-84.3, 34.7] // Benton MacKaye
+const IN_ALABAMA_TALLADEGA: [number, number] = [-85.7, 33.6] // Pinhoti
+const IN_ARKANSAS: [number, number] = [-93.5, 34.7] // Ouachita
+const IN_UTAH: [number, number] = [-111.7, 37.9] // Great Western Trail
+
 /** The A.T. through Harriman, every vertex in view. */
 const AT = line(
   'Appalachian National Scenic Trail',
@@ -366,19 +396,15 @@ describe("a long trail inside somebody else's layer (#1543)", () => {
   // inside the Forest Service's nationwide layer.
 
   it('earns a badge and its steward mark, from a source that badges nothing by itself', () => {
-    const map = mapWith({
+    const map = mapOver(IN_KENTUCKY, {
       [BLAZE_LAYER_ID]: [
         line(
           'SHELTOWEE TRACE',
           'usfs_trails',
-          // In the mock's frame rather than Kentucky's: this fixture maps
-          // degrees straight to pixels, so the coordinates only have to be
-          // on screen. What is under test is the NAME.
-          [
-            [-74.2, 41.2],
-            [-74.1, 41.25],
-            [-74.0, 41.3],
-          ],
+          // In Kentucky since #1781: the badge now checks where the line is
+          // as well as what it is called, so a fixture has to be inside the
+          // trail's box. What is under test here is still the NAME.
+          near(IN_KENTUCKY),
           'White',
         ),
       ],
@@ -402,26 +428,11 @@ describe("a long trail inside somebody else's layer (#1543)", () => {
     // map telling a hiker there are two trails where there is one. The
     // dedupe was keyed on the published name; it is keyed on the resolved
     // trail now.
-    const map = mapWith({
+    const [one, two, three] = near(IN_MICHIGAN)
+    const map = mapOver(IN_MICHIGAN, {
       [BLAZE_LAYER_ID]: [
-        line(
-          'NORTH COUNTRY TRAIL',
-          'usfs_trails',
-          [
-            [-74.2, 41.2],
-            [-74.1, 41.25],
-          ],
-          'Blue',
-        ),
-        line(
-          'NORTH COUNTRY NATIONAL SCENIC',
-          'usfs_trails',
-          [
-            [-74.1, 41.25],
-            [-74.0, 41.3],
-          ],
-          'Blue',
-        ),
+        line('NORTH COUNTRY TRAIL', 'usfs_trails', [one, two], 'Blue'),
+        line('NORTH COUNTRY NATIONAL SCENIC', 'usfs_trails', [two, three], 'Blue'),
       ],
     })
     const trails = trailsInView(map as unknown as MapLibreMap)
@@ -432,25 +443,15 @@ describe("a long trail inside somebody else's layer (#1543)", () => {
 
   it("prints the steward's name rather than the publisher's shout-case", () => {
     // USFS publishes a GIS table's spelling. A hiker reads a trail's name.
-    for (const [published, printed] of [
-      ['SHELTOWEE TRACE', 'Sheltowee Trace'],
-      ['BENTON MACKAYE', 'Benton MacKaye Trail'],
-      ['PINHOTI NRT', 'Pinhoti Trail'],
-      ['NORTH COUNTRY NATIONAL SCENIC', 'North Country Trail'],
-      ['OUACHITA NRT', 'Ouachita Trail'],
+    for (const [published, printed, where] of [
+      ['SHELTOWEE TRACE', 'Sheltowee Trace', IN_KENTUCKY],
+      ['BENTON MACKAYE', 'Benton MacKaye Trail', IN_GEORGIA],
+      ['PINHOTI NRT', 'Pinhoti Trail', IN_ALABAMA_TALLADEGA],
+      ['NORTH COUNTRY NATIONAL SCENIC', 'North Country Trail', IN_MICHIGAN],
+      ['OUACHITA NRT', 'Ouachita Trail', IN_ARKANSAS],
     ] as const) {
-      const map = mapWith({
-        [BLAZE_LAYER_ID]: [
-          line(
-            published,
-            'usfs_trails',
-            [
-              [-74.2, 41.2],
-              [-74.0, 41.3],
-            ],
-            'White',
-          ),
-        ],
+      const map = mapOver(where, {
+        [BLAZE_LAYER_ID]: [line(published, 'usfs_trails', near(where), 'White')],
       })
       const trails = trailsInView(map as unknown as MapLibreMap)
       expect(trails[0].name).toBe(printed)
@@ -524,17 +525,9 @@ describe("a long trail inside somebody else's layer (#1543)", () => {
   it('badges a trail with no steward marker as a plate and a name', () => {
     // 7 of the 20 badged trails have no marker anybody could find. They are
     // still trails worth naming on a map.
-    const map = mapWith({
+    const map = mapOver(IN_UTAH, {
       [BLAZE_LAYER_ID]: [
-        line(
-          'GREAT WESTERN TRAIL',
-          'usfs_trails',
-          [
-            [-74.2, 41.2],
-            [-74.0, 41.3],
-          ],
-          'White',
-        ),
+        line('GREAT WESTERN TRAIL', 'usfs_trails', near(IN_UTAH), 'White'),
       ],
     })
     const trails = trailsInView(map as unknown as MapLibreMap)
@@ -542,6 +535,38 @@ describe("a long trail inside somebody else's layer (#1543)", () => {
     const { features } = badgeFeatures(trails)
     expect(features[0].properties?.[BADGE_MARK_PROPERTY]).toBe('')
     expect(features[0].properties?.[BADGE_FIT_PROPERTY]).toBe('full')
+  })
+})
+
+describe('a long trail name somewhere the trail is not (#1781)', () => {
+  // THE DEFECT. The Forest Service publishes "BARTRAM" for the Georgia-North
+  // Carolina Bartram Trail and for Tuskegee National Forest's own Bartram
+  // trail in Alabama, and a badge keyed on the name alone put the first
+  // trail's name and its steward's marker on the second. Measured 2026-09-30:
+  // usfs_trails:8251537 and :8280457, 7.8 miles at lon -85.65..-85.56, lat
+  // 32.45..32.48.
+  const TUSKEGEE: [number, number] = [-85.65, 32.45]
+  const RABUN_COUNTY: [number, number] = [-83.37, 34.86]
+
+  it('lists the Alabama BARTRAM as an ordinary line, with no badge', () => {
+    const map = mapOver(TUSKEGEE, {
+      [BLAZE_LAYER_ID]: [line('BARTRAM', 'usfs_trails', near(TUSKEGEE), 'Unknown')],
+    })
+    const trails = trailsInView(map as unknown as MapLibreMap)
+    expect(trails).toHaveLength(1)
+    expect(trails[0].longTrail).toBeNull()
+    expect(trails[0].throughRoute).toBe(false)
+    expect(badgeFeatures(trails).features).toHaveLength(0)
+  })
+
+  it('still badges the Georgia BARTRAM, which is the trail', () => {
+    const map = mapOver(RABUN_COUNTY, {
+      [BLAZE_LAYER_ID]: [line('BARTRAM', 'usfs_trails', near(RABUN_COUNTY), 'Unknown')],
+    })
+    const trails = trailsInView(map as unknown as MapLibreMap)
+    expect(trails[0].longTrail).toBe('bartram')
+    expect(trails[0].name).toBe('Bartram Trail')
+    expect(badgeFeatures(trails).features).toHaveLength(1)
   })
 })
 

@@ -1027,6 +1027,54 @@ describe('the parts of one site', () => {
     expect(screen.getByRole('button', { name: 'Water 37 m' })).toBeInTheDocument()
   })
 
+  it('prints a steward’s estimate as "~" and a measurement bare, on the chip and the meta line (#1728)', () => {
+    // 42 of the 305 water distances ATC publishes are a steward's round
+    // number rather than a measurement, and until #1728 this chip printed
+    // both as "Water 120 ft". The provenance rides the member from the
+    // artifact (lib/trailData.ts), and lib/waterProvenance.ts turns it into
+    // the one mark the maintainer chose by poll, 2026-09-30.
+    const water = (waterDistanceSource: string): PoiDetail => ({
+      id: 'atc_csi:xyz',
+      name: 'Water near Chairback Gap Lean-to',
+      type: 'water',
+      lat: SHELTER.lat,
+      lon: SHELTER.lon,
+      confidence: 'low',
+      source: 'atc_csi',
+      waterDistanceFt: 120,
+      waterDistanceSource,
+    })
+    const { container } = renderSite([SHELTER, PRIVY, water('OSA_Field_Estimate')])
+    const meta = () => container.querySelector('.poi-card__meta')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Water ~120 ft' }))
+
+    // The meta line prints the same figure through the same function, so the
+    // mark moves down with the distance when the chip's own words are hidden.
+    expect(meta()).toHaveTextContent('~120 ft away')
+
+    // A measurement against a mapped point earns no mark.
+    cleanup()
+    renderSite([SHELTER, PRIVY, water('FarOut')])
+
+    expect(screen.getByRole('button', { name: 'Water 120 ft' })).toBeInTheDocument()
+
+    // And in metres the mark stays in front of the converted figure.
+    cleanup()
+    render(
+      <PoiCard
+        poi={SHELTER}
+        site={[SHELTER, water('OSA_Field_Estimate')]}
+        map={null}
+        units="metric"
+        onClose={vi.fn()}
+      />,
+    )
+    open()
+
+    expect(screen.getByRole('button', { name: 'Water ~37 m' })).toBeInTheDocument()
+  })
+
   it('carries the same icon the map draws for each part', () => {
     // One copy of the pin, which is the rule map/MapIcon.tsx is built on: a chip
     // that drew its own privy silhouette would drift from the map's the first
@@ -1815,5 +1863,64 @@ describe('how far ahead the place is (#953)', () => {
     )
 
     expect(screen.getByText('480 m ahead')).toBeInTheDocument()
+  })
+})
+
+describe('Listen here (#1718 - Tag podcast episodes to the places they talk about)', () => {
+  // The shell's renderer, reduced to what the card needs from it: something
+  // for an id that has episodes, and null for one that has none.
+  const listenHere = (poiId: string) =>
+    poiId === SHELTER.id ? <p>An episode about {poiId}</p> : null
+
+  it('is the last section on the opened card, below where the pin came from', () => {
+    render(<PoiCard poi={SHELTER} map={null} listenHere={listenHere} onClose={vi.fn()} />)
+    open()
+
+    const sections = screen
+      .getAllByRole('heading', { level: 3 })
+      .map((h) => h.textContent)
+    expect(sections.at(-1)).toBe('Listen here')
+    expect(sections.indexOf('About this place')).toBe(sections.length - 2)
+    expect(screen.getByText(`An episode about ${SHELTER.id}`)).toBeInTheDocument()
+  })
+
+  it('is absent where no episode is tagged, heading and all', () => {
+    const elsewhere = { ...SHELTER, id: 'atc_shelters:untagged' }
+    render(
+      <PoiCard poi={elsewhere} map={null} listenHere={listenHere} onClose={vi.fn()} />,
+    )
+    open()
+
+    expect(screen.queryByRole('heading', { name: 'Listen here' })).toBeNull()
+    expect(screen.queryByTestId('poi-card-listen')).toBeNull()
+  })
+
+  it('stays off the peek, which holds only what a hiker standing there needs', () => {
+    render(<PoiCard poi={SHELTER} map={null} listenHere={listenHere} onClose={vi.fn()} />)
+
+    expect(screen.queryByTestId('poi-card-listen')).toBeNull()
+  })
+
+  it('follows a chip to the part it names, whose tags are its own', () => {
+    const summit: PoiDetail = {
+      ...SHELTER,
+      id: 'atc_viewpoints:summit',
+      name: 'Summit',
+      type: 'viewpoint',
+    }
+    render(
+      <PoiCard
+        poi={SHELTER}
+        site={[SHELTER, summit]}
+        map={null}
+        listenHere={listenHere}
+        onClose={vi.fn()}
+      />,
+    )
+    open()
+    expect(screen.getByTestId('poi-card-listen')).toBeInTheDocument()
+
+    fireEvent.click(screen.getAllByTestId('poi-card-chip')[1]!)
+    expect(screen.queryByTestId('poi-card-listen')).toBeNull()
   })
 })

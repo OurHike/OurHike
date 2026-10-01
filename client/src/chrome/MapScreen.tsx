@@ -224,6 +224,10 @@ export interface MapScreenProps {
   /** The card's conditions section, passed straight through to PoiCard -
    *  the shell is what holds the notes and the write path. */
   noteContext?: FieldNoteContext
+  /** The waypoint card's "Listen here" section (#1718), passed straight
+   *  through to PoiCard: the shell renders the episodes tagged to one POI id,
+   *  or null where none is. */
+  poiListenHere?: (poiId: string) => ReactNode
   /** The corridor view's attribution, already in map coordinates (#598).
    *  Coordinates rather than mile ranges for the reason `closures` gives. */
   corridor?: CorridorFeatureCollection
@@ -890,6 +894,7 @@ export function MapScreen({
   closures,
   pinCondition,
   noteContext,
+  poiListenHere,
   corridor,
   maintainerLine,
   onSelectHighlight,
@@ -1751,6 +1756,7 @@ export function MapScreen({
                 map={liveMap}
                 units={units}
                 noteContext={noteContext}
+                {...(poiListenHere === undefined ? {} : { listenHere: poiListenHere })}
                 {...(hikerMile === undefined ? {} : { hikerMile })}
                 {...(direction === undefined ? {} : { direction })}
                 onClose={onClosePoi}

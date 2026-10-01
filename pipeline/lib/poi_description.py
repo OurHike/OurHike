@@ -105,6 +105,8 @@ implementation of the same wording. What leaves is the unit and the punctuation
 holding it - which is the smallest cut that lets the phone answer.
 """
 
+from typing import NamedTuple
+
 # Exterior_M's coded domain, as adjectives rather than the inventory's own
 # noun phrases: "Log shelter" reads; "Log & Stone shelter" does not.
 EXTERIOR_MATERIALS = {
@@ -627,18 +629,39 @@ def _nearby_part(poi_type: str, properties: dict) -> str:
     return f"{article} {poi_type}"
 
 
-def nearby_parts(members: list[tuple[str, float, dict]]) -> list[dict]:
+class NearbyMember(NamedTuple):
+    """One part of a site as export_poi.attach_nearby hands it over: its type,
+    how far it is in FEET, its ATC attributes, and - only for the one part that
+    is a published figure rather than a measured position, ATC's
+    distance-to-water - where that figure came from (#1728). A plain
+    (poi_type, feet, properties) tuple is the same member with nothing to say
+    about provenance, which is what every measured part is: its distance is
+    its position, and a position has no provenance beyond its coordinates."""
+
+    poi_type: str
+    feet: float
+    properties: dict
+    source: str | None = None
+
+
+def nearby_parts(members: list[NearbyMember | tuple[str, float, dict]]) -> list[dict]:
     """What an anchor publishes about the parts around it, for the phone to
     make a sentence of.
 
         [{"phrase": "a multi-seat moldering privy", "distance_ft": 131.2},
          {"phrase": "a group campsite", "distance_ft": 82.0},
-         {"phrase": "water", "distance_ft": 295.3}]
+         {"phrase": "water", "distance_ft": 295.3, "source": "OSA_Field_Estimate"}]
 
-    Takes (poi_type, FEET, ATC attributes) per member and returns the parts in
-    the order the sentence says them, or [] when there is nothing to say - so a
-    POI in no site publishes nothing and describes itself exactly as it did
-    before sites existed.
+    Takes a NearbyMember (or a bare (poi_type, FEET, ATC attributes) tuple) per
+    member and returns the parts in the order the sentence says them, or []
+    when there is nothing to say - so a POI in no site publishes nothing and
+    describes itself exactly as it did before sites existed.
+
+    `source` is published only where the member carried one - ATC's stated
+    water distance, with CSI's provenance value verbatim (#1728) - so the phone
+    can write "water ~150 ft" for a steward's estimate and "water 339 ft" for a
+    measurement. A measured part has no key rather than a null, the same
+    omit-don't-write rule as every optional column the export publishes.
 
     STRUCTURE, NOT PROSE (#625). This returned the finished clause until a
     hiker who had chosen Feet read metres on it; the module docstring has the
@@ -665,18 +688,19 @@ def nearby_parts(members: list[tuple[str, float, dict]]) -> list[dict]:
     sorting these again would be a second opinion about which part comes first.
     """
     ranked = sorted(
-        members,
+        (NearbyMember(*member) for member in members),
         key=lambda member: (
-            NEARBY_ORDER.index(member[0]) if member[0] in NEARBY_ORDER else len(NEARBY_ORDER),
-            member[1],
+            NEARBY_ORDER.index(member.poi_type) if member.poi_type in NEARBY_ORDER else len(NEARBY_ORDER),
+            member.feet,
         ),
     )
     return [
         {
-            "phrase": _nearby_part(poi_type, properties or {}),
-            "distance_ft": round(max(MIN_PART_FT, feet), 1),
+            "phrase": _nearby_part(member.poi_type, member.properties or {}),
+            "distance_ft": round(max(MIN_PART_FT, member.feet), 1),
+            **({"source": member.source} if member.source else {}),
         }
-        for poi_type, feet, properties in ranked
+        for member in ranked
     ]
 
 

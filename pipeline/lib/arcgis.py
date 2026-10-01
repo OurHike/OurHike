@@ -1,7 +1,9 @@
 """Shared fetcher for ArcGIS FeatureServer layers.
 
 Handles pagination via resultOffset since ArcGIS servers cap how many
-features they'll return per request (maxRecordCount).
+features they'll return per request (maxRecordCount) - and, since #1790,
+halves the page when a server refuses one, because some also cap the bytes
+an answer may carry and say so only by answering an error page.
 
 Every request goes through lib/http_retry (#659): this module used to do
 bare requests.get, so one transient ATC 5xx failed a whole fetch_all run -
@@ -47,6 +49,24 @@ def fetch_layer_geojson(
     reaches it - a default bound at definition time would have captured the
     original forever. `lib/http_retry.py`'s `sleep` argument carries the same
     note for the same reason.
+
+    A PAGE THE SERVER REFUSES IS ASKED FOR AGAIN AT HALF THE SIZE (#1790).
+    `maxRecordCount` is a count, and some servers also cap the BYTES one
+    answer may carry, which no metadata states. Measured 2026-10-01 against
+    the two on-prem ArcGIS Server 10.91 layers that broke every vector
+    publish after #1787: PASDA's 684 DCNR trails answer a 1,000-feature page
+    with a 7,058-byte HTML error page (HTTP 200), a 500-feature page as
+    37.5 MB of GeoJSON in 3.6 s; CDTC's 8-feature centerline answers 1,000
+    with the same HTML page and 4 features as 29.3 MB in 10 s. With `f=json`
+    the same requests answer `{"error": {"code": 500, "message": "Error
+    performing query operation"}}`, which is why a refusal is either an
+    unparsable body or an error object. The halving repeats the SAME offset
+    at the smaller size, keeps that size for the rest of the layer, and
+    gives up at a page of one with the server's own words, so a layer that
+    is genuinely broken still fails - after at most ten extra requests
+    (1,000 halves to 1 in ten steps), which is what a wrong registration
+    costs here instead of a silent skip. Whether a server refuses by count
+    or by bytes is not distinguished, because it does not change what to do.
     """
     query_url = layer_url.rstrip("/") + "/query"
     records = PAGE_SIZE if page_size is None else page_size
@@ -64,12 +84,40 @@ def fetch_layer_geojson(
         if geometry_precision is not None:
             params["geometryPrecision"] = geometry_precision
         resp = request_with_retry(query_url, params=params, timeout=60)
+        refusal = page_refusal(resp)
+        if refusal is not None:
+            if records <= 1:
+                raise RuntimeError(f"{query_url} {refusal} at a page of 1 feature")
+            smaller = records // 2
+            print(f"  {query_url} {refusal} at a page of {records}; retrying at {smaller}")
+            records = smaller
+            continue
         batch = resp.json().get("features", [])
         if not batch:
             break
         features.extend(batch)
         offset += len(batch)
     return {"type": "FeatureCollection", "features": features}
+
+
+def page_refusal(resp) -> str | None:
+    """Why this answer is not a page of features, or None when it is one.
+
+    Two shapes, both seen from the same servers on 2026-10-01 (see
+    fetch_layer_geojson): a body that is not JSON at all - an HTML error
+    page sent with HTTP 200, which `request_with_retry` cannot tell from a
+    good answer - and a JSON error object in place of a feature collection.
+    A collection with no `features` key is NOT a refusal: that is a server
+    saying "nothing here", and the caller's stop condition owns it.
+    """
+    try:
+        body = resp.json()
+    except ValueError:
+        return f"answered {resp.headers.get('content-type', 'no content type')} rather than JSON"
+    error = body.get("error") if isinstance(body, dict) else None
+    if error:
+        return f"answered error {error.get('code')}: {error.get('message')}"
+    return None
 
 
 def fetch_layer_to_file(

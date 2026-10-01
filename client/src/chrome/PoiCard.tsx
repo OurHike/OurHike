@@ -108,6 +108,7 @@ import { poiColor, poiGlyphPath } from '../map/poiIcons'
 import { MapIcon } from '../map/MapIcon'
 import { siteDistanceFeet } from '../map/poiSites'
 import { describeNearby, type NearbyPart } from '../lib/nearbyClause'
+import { formatWaterDistance } from '../lib/waterProvenance'
 import { waypointDistance } from '../lib/waypointDistance'
 import { isSafeLink } from '../lib/safeLink'
 import type { HikeDirection } from './Header'
@@ -115,7 +116,6 @@ import {
   feetFromMetres,
   formatRoundShortDistance,
   formatShortDistance,
-  MIN_STATED_FEET,
   type UnitSystem,
 } from '../lib/units'
 import { PhotoUnusable, preparePhoto } from '../lib/reportPhoto'
@@ -128,6 +128,8 @@ import { syncOutbox } from '../lib/outboxSync'
 import { FieldNoteSection, type FieldNoteContext } from './FieldNoteSection'
 import { remainingLabel, sharePhase, takenClaimForShare } from '../lib/photoShare'
 import { PoiShareSheet } from './PoiShareSheet'
+import { WeatherPeekLine, WeatherSection } from './WeatherBand'
+import { useWaypointWeather } from '../lib/weatherData'
 import type { PoiPhotoSummary } from '../lib/api'
 
 export interface PoiDetail {
@@ -183,6 +185,15 @@ export interface PoiDetail {
    * published one, never "no water" - the capacity rule.
    */
   waterDistanceFt?: number
+  /**
+   * How ATC arrived at that figure - `StoredPoi.waterDistanceSource`, CSI's
+   * own provenance value (#1728). partDistance hands it to
+   * lib/waterProvenance.ts, which puts a tilde in front of a steward's
+   * estimate and nothing in front of a measurement. Absent where the figure
+   * is, and on a download from before the column, when the figure prints as
+   * it always has.
+   */
+  waterDistanceSource?: string
   /**
    * One sentence about the place - what it is built of, what it has, when it
    * went up - for shelters and campsites.
@@ -301,6 +312,17 @@ export interface PoiCardProps {
    * gets rather than a guess.
    */
   direction?: HikeDirection
+  /**
+   * The podcast episodes tagged to a place (#1718 - Tag podcast episodes to
+   * the places they talk about, and show them last on each place's card), as
+   * the shell renders them for one POI id, or null where none is tagged.
+   *
+   * A function of the id rather than a node, because a chip swap is a
+   * different place with its own tags, exactly as it has its own notes.
+   * Absent means the shell has not wired podcasts, and the card renders as it
+   * did before they existed.
+   */
+  listenHere?: (poiId: string) => ReactNode
   onClose: () => void
   /** Where the share sheet's portal lands - the map screen's root, so the
    *  sheet hides with the held map instead of floating over another tab
@@ -460,19 +482,6 @@ function coordinates(lat: number, lon: number): string {
 }
 
 /**
- * One metre, in feet - lib/units.ts's `MIN_STATED_FEET`, aliased here so the
- * call site below reads as it always has.
- *
- * It lived in this file as a private constant until #1198, which gave the
- * figure a second reader: a day hike's stop rows print the same published
- * `water_distance_ft` and must floor it the same way. The reasoning moved
- * with it - see the constant's own note, and pipeline/lib/poi_description.py,
- * which floors what it publishes for the same reason. #694 floored it at a
- * metre back when this line printed only metres.
- */
-const MIN_PART_FT = MIN_STATED_FEET
-
-/**
  * How far a part of the site is from the pin, for its chip.
  *
  * FROM THE PIN, NOT FROM THE PART CURRENTLY OPEN. The pin is the one point on
@@ -513,13 +522,21 @@ const MIN_PART_FT = MIN_STATED_FEET
  * hands #694: ATC states it in feet, the artifact publishes it in feet, and
  * feet is what lib/units.ts formats from. It reached this line as metres only
  * because this line printed metres.
+ *
+ * AND IT PRINTS IN THE VOICE ITS PROVENANCE EARNS (#1728). A stated figure
+ * goes through lib/waterProvenance.ts, the one home every surface printing
+ * the column reads - the nearby sentence, a day hike's stop rows - which
+ * floors it at the metre this file used to floor it at (its private
+ * `MIN_PART_FT` moved there with the mark) and puts "~" in front of a
+ * steward's estimate: "Water ~250 ft" on the chip, "~250 ft away" on the
+ * meta line. A measured member's offset is a position, not a stated figure,
+ * and prints exactly as before.
  */
 function partDistance(pin: PoiDetail, part: PoiDetail, units: UnitSystem): string {
-  const feet =
-    part.type === 'water' && part.waterDistanceFt !== undefined
-      ? Math.max(MIN_PART_FT, part.waterDistanceFt)
-      : siteDistanceFeet(pin, part)
-  return formatShortDistance(feet, units)
+  if (part.type === 'water' && part.waterDistanceFt !== undefined) {
+    return formatWaterDistance(part.waterDistanceFt, part.waterDistanceSource, units)
+  }
+  return formatShortDistance(siteDistanceFeet(pin, part), units)
 }
 
 /**
@@ -560,6 +577,9 @@ function usePinAnchor(
    *  pulled open (#941), which is a sheet or a docked column and is placed by
    *  the stylesheet - there is no pin-relative answer to give. */
   tethered: boolean,
+  /** Anything else that changes the card's height while it hangs off its
+   *  pin - the forecast line arriving after the card has opened (#1056). */
+  heightKey?: unknown,
 ): CardPlacement | null {
   const [placement, setPlacement] = useState<CardPlacement | null>(null)
 
@@ -611,9 +631,18 @@ function usePinAnchor(
     // shorter than its shelter (no capacity, usually no description, often no
     // photo credit), and a card placed BELOW its pin is positioned by its own
     // height, so a stale one sits over the pin it is describing.
-  }, [map, anchor, shown, card, tethered])
+  }, [map, anchor, shown, card, tethered, heightKey])
 
   return placement
+}
+
+/** The peek's pull, named for what is behind it (#941): "Notes & details" only
+ *  where there are notes, and weather named only where a forecast is. */
+function expandLabel(notes: boolean, weather: boolean): string {
+  if (notes && weather) return 'Notes, weather & details'
+  if (notes) return 'Notes & details'
+  if (weather) return 'Weather & details'
+  return 'Details'
 }
 
 export function PoiCard({
@@ -624,6 +653,7 @@ export function PoiCard({
   noteContext,
   hikerMile,
   direction,
+  listenHere,
   onClose,
   sheetContainer,
   challengeSection,
@@ -689,7 +719,11 @@ export function PoiCard({
   // Tethered only while it peeks: an opened card has let go of its pin, so
   // there is nothing for the geometry to answer and re-measuring it on every
   // frame of a pan would re-render a sheet to move it nowhere.
-  const placement = usePinAnchor(map, poi, shown, cardRef, !open)
+  // NOAA's forecast at the square the shown part is in (#1056). `none` until
+  // there is one to show - see lib/weatherData.ts for every case that stays
+  // `none`, and why that leaves the card exactly as it was before weather.
+  const weather = useWaypointWeather(shown.lon, shown.lat)
+  const placement = usePinAnchor(map, poi, shown, cardRef, !open, weather)
   const source = sourceLabel(shown.source)
   // Whether the conditions surface will render anything - the same question
   // FieldNoteSection answers for itself by returning null, asked here because
@@ -1331,6 +1365,8 @@ export function PoiCard({
       />
     )
 
+  const listening = open ? (listenHere?.(shown.id) ?? null) : null
+
   return (
     <div
       ref={cardRef}
@@ -1832,6 +1868,19 @@ export function PoiCard({
                 </section>
               )}
 
+              {/* After Conditions and before About, where the mock the
+                  maintainer chose put it (#1056, 2026-09-30): what the field
+                  says about this place first, then what NOAA expects here,
+                  then where the pin came from. */}
+              {weather.kind === 'forecast' && (
+                <WeatherSection
+                  weather={weather}
+                  units={units}
+                  lat={shown.lat}
+                  lon={shown.lon}
+                />
+              )}
+
               {/* Where the coordinates and the provenance went. They are
                   facts about where the pin CAME FROM, and #941's complaint
                   was that they outranked the answer the hiker tapped the pin
@@ -1875,6 +1924,17 @@ export function PoiCard({
                   )}
                 </p>
               </section>
+
+              {/* "Listen here" (#1718), the maintainer's frame P1: the
+                  episodes tagged to this place, LAST - under the facts that
+                  keep a hiker safe and under where the pin came from, never
+                  above either. `shown`, for the reason `conditions` gives. */}
+              {listening !== null && (
+                <section className="poi-card__section" data-testid="poi-card-listen">
+                  <h3 className="poi-card__section-title">Listen here</h3>
+                  {listening}
+                </section>
+              )}
             </div>
           </div>
         </>
@@ -1915,6 +1975,18 @@ export function PoiCard({
               says which comes first if that ever changes. */}
           {partsStrip(peekId)}
 
+          {/* One line of forecast under the chips - frame A of the mock the
+              maintainer chose over a peek without it (#1056, poll
+              2026-09-30). */}
+          {weather.kind === 'forecast' && (
+            <WeatherPeekLine
+              weather={weather}
+              units={units}
+              lat={shown.lat}
+              lon={shown.lon}
+            />
+          )}
+
           {unverifiedLine}
           {conditions('peek')}
 
@@ -1929,7 +2001,7 @@ export function PoiCard({
             aria-expanded={false}
             onClick={() => setOpen(true)}
           >
-            {notesShown ? 'Notes & details' : 'Details'}
+            {expandLabel(notesShown, weather.kind === 'forecast')}
             <span className="poi-card__expand-caret" aria-hidden="true">
               ▲
             </span>

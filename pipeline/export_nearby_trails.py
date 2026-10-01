@@ -480,27 +480,183 @@ def _miles_all(geoms: np.ndarray) -> list[float]:
     return (shapely.length(reproject(geoms, _TO_METRIC)) / METERS_PER_MILE).tolist()
 
 
-def _named_lengths(records: list[dict]) -> dict[tuple[str, str], float]:
-    """Total real-world length per (source, name), for every record whose
-    name is more than whitespace.
+# How close two rows must come to count as the same tread, in EPSG:5070
+# metres like every other distance here.
+#
+# DERIVED FROM THE SIMPLIFICATION ABOVE, not picked. The records this reads
+# have already been through OVERVIEW_SIMPLIFY_TOLERANCE_M, and
+# Douglas-Peucker's guarantee is that no point moved further than the
+# tolerance - so two rows that really did meet can now sit at twice it,
+# one having moved that far each way. Anything less would let the
+# simplification break chains that exist in the source.
+#
+# The answer does not turn on it, which is the more useful fact. Swept over
+# release 2026-09-16-4's own 74,035 named usfs_trails rows (2026-09-30), from
+# 17 m to 4,264 m - 250x - the qualifying count moves only between 79 and 87,
+# and the count of qualifying routes spanning more than 5 degrees of longitude
+# stays at 0 throughout. A threshold whose whole plausible range gives the
+# same answer is not a threshold anybody has to defend.
+CHAIN_TOLERANCE_M = 2 * OVERVIEW_SIMPLIFY_TOLERANCE_M
 
-    Summed once here rather than per record: #1307's "a trail whose segments
-    total at least some threshold" is a claim about the whole trail, and one
-    trail is ordinarily many rows - NYNJTC's Long Path alone published 43
-    section records as of #1019's measurement. Keyed by (source, name)
-    rather than by name alone, so two different organizations' trails that
-    happen to share a name are never summed together - the same restraint
-    suppressed_by_owner takes on the same two fields, for the same reason.
+#: Where a record carries the trail it was found to be part of, set once after
+#: qualification and read at grouping. Underscored because it is this module's
+#: bookkeeping rather than anything a source published or an artifact carries.
+_THROUGH_ROUTE_KEY = "_through_route_trail"
+
+#: Which published spelling is which long trail, per source - the reviewed
+#: half, in pipeline/reference/ because deciding that CDNST is the Continental
+#: Divide Trail is a judgement somebody signs for (#1543, extended by #1776).
+#: client/src/map/longTrailNames.ts is the same table on the client, and
+#: tests/test_trail_name_aliases.py keeps the two in step.
+TRAIL_ALIASES_PATH = ROOT / "reference" / "trail_name_aliases.json"
+
+
+def _alias_index() -> dict[tuple[str, str], str]:
+    """(source, published spelling) -> the trail's own name.
+
+    Exact after the publisher's own spelling, never a prefix: USFS publishes
+    "BARTRAM NRT - CHEOAH RD", and a road named after a trail is not it. That
+    refusal is the alias table's, and this only reads it.
     """
-    named = [record for record in records if record.get("name") is not None and str(record["name"]).strip()]
-    totals: dict[tuple[str, str], float] = {}
-    for record, miles in zip(named, _miles_all(from_wkt_all([record["wkt"] for record in named]))):
-        key = (record["source"], record["name"])
-        totals[key] = totals.get(key, 0.0) + miles
-    return totals
+    table = json.loads(TRAIL_ALIASES_PATH.read_text())
+    return {
+        (source, spelling): entry["trail"]
+        for entry in table["trails"].values()
+        for source, spellings in entry["published_as"].items()
+        for spelling in spellings
+    }
 
 
-def _above_the_seam_floor(records: list[dict], qualifying: set[tuple[str, str]]) -> list[dict]:
+def _trail_identity(record: dict, aliases: dict[tuple[str, str], str]) -> tuple[str, str] | None:
+    """(source, trail) for a record, or None where it names no trail.
+
+    A published spelling the alias table knows becomes the trail's own name,
+    so USFS's five spellings of the Continental Divide are one trail here
+    rather than five - each qualifying separately today, and any of them whose
+    rows fall under the threshold dropped into the haze while its siblings
+    keep a casing. Everything else keeps the name its steward published.
+
+    THE SOURCE STAYS IN THE KEY, which is #1307's own restraint and not this
+    change's to spend: two organizations' trails that happen to share a name
+    are never summed together. Folding it out was tried here and chained two
+    stewards' 30-mile "Ridge Trail"s into one 60-mile through route - the
+    defect this whole pass exists to remove, reintroduced one level up.
+    """
+    name = record.get("name")
+    if name is None or not str(name).strip():
+        return None
+    source = record["source"]
+    return source, aliases.get((source, name), name)
+
+
+def _chain_labels(records: list[dict], tolerance_m: float) -> list[int]:
+    """One label per record, equal where two records share tread.
+
+    Union-find over every vertex, snapped to a `tolerance_m` grid, so the cost
+    is linear in vertices rather than quadratic in records - this runs over
+    136,941 of them. Any shared vertex joins, not only a shared endpoint: a
+    long trail is commonly cut at an agency boundary rather than at its own
+    junctions, so a row often meets the MIDDLE of its neighbour.
+
+    Snapping to a grid means two points just either side of a cell edge do not
+    meet. That is why the tolerance is twice what it strictly needs to be, and
+    the sweep above is what says the residue does not matter.
+    """
+    parent = list(range(len(records)))
+
+    def find(index: int) -> int:
+        while parent[index] != index:
+            parent[index] = parent[parent[index]]
+            index = parent[index]
+        return index
+
+    def union(a: int, b: int) -> None:
+        root_a, root_b = find(a), find(b)
+        if root_a != root_b:
+            parent[root_a] = root_b
+
+    metric = reproject(from_wkt_all([record["wkt"] for record in records]), _TO_METRIC)
+    cells: dict[tuple[int, int], int] = {}
+    for index, geometry in enumerate(metric):
+        for x, y in shapely.get_coordinates(geometry):
+            cell = (int(x // tolerance_m), int(y // tolerance_m))
+            first = cells.setdefault(cell, index)
+            if first != index:
+                union(first, index)
+    return [find(index) for index in range(len(records))]
+
+
+def _through_routes(records: list[dict]) -> dict[int, str]:
+    """Index of every record on a qualifying through route, to its trail's name.
+
+    WHAT #1307 ASKED FOR AND WHAT IT GOT (#1776). The rule was "a trail whose
+    segments total at least NAMED_TRAIL_THRESHOLD_MILES", summed per
+    (source, name) so that two organizations' trails sharing a name were never
+    added together. Inside ONE organization it still summed every row with the
+    same name - and usfs_trails is one organization covering the country,
+    where a trail name is not unique and never was. Measured against release
+    2026-09-16-4's published artifact on 2026-09-30: 146 usfs_trails names
+    cleared the threshold and 75 of them were spread over more than 5 degrees
+    of longitude, which no single trail is. "GREEN MOUNTAIN" was 27 unrelated
+    trails in 27 national forests, summed to 82 miles and drawn with the
+    casing and the badge the Long Path was given, across 50.5 degrees - the
+    width of the country.
+
+    SO A TRAIL IS A RUN OF SHARED TREAD, not a spelling. Rows are chained
+    where they touch, within one trail identity, and each CHAIN is measured
+    against the threshold. That is what "one trail" means, and it needs no
+    threshold on how far a name may spread: on the same data every one of
+    those 146 names that spanned the country falls out, 81 features qualify,
+    and none spans more than 2.9 degrees - the Appalachian Trail's own share
+    of Virginia.
+
+    IT IS CHAINED WITHIN AN IDENTITY RATHER THAN ACROSS THE SOURCE, and that
+    boundary is load-bearing. Chaining every named row regardless of spelling
+    was tried on the same data and merged trails that merely cross: the
+    Appalachian Trail came out at 514 miles having absorbed GLENWOOD HORSE and
+    ALLEGHENY TRAIL, and one component reached 185 miles over 25 spellings by
+    running the length of a trail NETWORK. In a network everything touches
+    eventually. The name says which trail; the tread says whether it is one.
+
+    WHAT IT COSTS, because it is not free: a section its publisher draws
+    disconnected from the rest of its trail falls into the unnamed haze. On
+    the same measurement that is 464 of the 2,139 miles carried by the eight
+    names the issue lists as real - and it is still DRAWN, at haze weight,
+    just not cased or badged. The alias table is what recovers most of it, by
+    making five spellings of one trail one identity before any of this runs.
+    """
+    aliases = _alias_index()
+    # Each named record's own index in `records`, carried alongside, so the
+    # answer can be returned against the caller's list however this one is
+    # filtered and regrouped below.
+    named: list[tuple[int, dict, tuple[str, str]]] = []
+    for index, record in enumerate(records):
+        trail = _trail_identity(record, aliases)
+        if trail is not None:
+            named.append((index, record, trail))
+    if not named:
+        return {}
+
+    miles = _miles_all(from_wkt_all([record["wkt"] for _, record, _ in named]))
+
+    by_trail: dict[tuple[str, str], list[int]] = {}
+    for position, (_, _, trail) in enumerate(named):
+        by_trail.setdefault(trail, []).append(position)
+
+    qualifying: dict[int, str] = {}
+    for trail, members in by_trail.items():
+        labels = _chain_labels([named[position][1] for position in members], CHAIN_TOLERANCE_M)
+        chains: dict[int, list[int]] = {}
+        for position, label in zip(members, labels):
+            chains.setdefault(label, []).append(position)
+        for chain in chains.values():
+            if sum(miles[position] for position in chain) >= NAMED_TRAIL_THRESHOLD_MILES:
+                for position in chain:
+                    qualifying[named[position][0]] = trail[1]
+    return qualifying
+
+
+def _above_the_seam_floor(records: list[dict]) -> list[dict]:
     """`records` without the ones too small to be a line at OVERVIEW_SEAM_ZOOM.
 
     The test is the whole record's bounding-box diagonal against
@@ -518,6 +674,12 @@ def _above_the_seam_floor(records: list[dict], qualifying: set[tuple[str, str]])
     section while a single-row trail of the same length survived. That is the
     Long Path's own shape: 43 section records as of #1019's measurement.
 
+    WHICH RECORDS THOSE ARE IS READ OFF THE RECORD, not looked up by name.
+    Since #1776 two rows can carry one name and belong to different runs of
+    tread, one a through route and one not, so a name is no longer enough to
+    answer this - `_through_routes` decides it and leaves the answer on each
+    record under `_THROUGH_ROUTE_KEY`.
+
     In EPSG:5070 metres, like every other distance this export takes, which is
     equal-area rather than conformal - so a "pixel" here is a few percent off
     a screen pixel across CONUS. Consistency with `simplify_records`' own
@@ -530,10 +692,7 @@ def _above_the_seam_floor(records: list[dict], qualifying: set[tuple[str, str]])
     spans = np.hypot(bounds[:, 2] - bounds[:, 0], bounds[:, 3] - bounds[:, 1]).tolist()
     kept = []
     for record, span in zip(records, spans):
-        name = record.get("name")
-        if name is not None and (record["source"], name) in qualifying:
-            kept.append(record)
-        elif span >= OVERVIEW_MIN_FEATURE_M:
+        if record.get(_THROUGH_ROUTE_KEY) is not None or span >= OVERVIEW_MIN_FEATURE_M:
             kept.append(record)
     return kept
 
@@ -870,7 +1029,34 @@ def declared_name(source: dict, properties: dict):
 
     Matched case-insensitively on the stripped value, because a placeholder
     is prose typed by whoever surveyed the segment rather than a coded domain.
+
+    `name_constant` IS THE SAME RULE POINTING THE OTHER WAY (#1778). Some
+    stewards publish one trail as a layer with no name column at all: PCTA's
+    `PCTA_Centerline` is a single feature with two fields, `OBJECTID` and
+    `Shape__Length`. The trail's name is not missing from that layer, it is
+    the layer - and dropping it into the unnamed haze would be as wrong as
+    reading `Name TBD` as a name. So a source may declare `name_constant`, and
+    every feature it ships carries that name.
+
+    THE REGISTRY HAS TO EARN IT, because this is the one place the pipeline
+    writes a name no steward published. A row carrying `name_constant` records
+    the measurement that identifies the trail, and the three registered under
+    #1778 were each checked end to end on 2026-09-30 before the name was
+    written: PCTA's one feature is 2,653 miles from 32.59 deg N to 49.00 deg N -
+    Mexico to Canada, against the PCT's published 2,650 - and CDTC's eight
+    total 3,060 miles from 31.50 to 49.05 against the CDT's 3,028. Wisconsin
+    DNR's single `Ice Age Trail` feature is 711 miles, which is the BUILT
+    segments of a trail planned at about 1,200, and its row says so rather
+    than implying the whole route is there.
+
+    A source may not declare both: `name_field` says where to read the name
+    and `name_constant` says there is nowhere to read it, so a row claiming
+    both has not decided what it is. `name_constant_conflicts` below is the
+    check, and it runs over the registry rather than per feature.
     """
+    constant = source.get("name_constant")
+    if constant is not None:
+        return constant
     raw = properties.get(source.get("name_field", "Name"))
     placeholders = source.get("name_placeholders")
     if not placeholders or raw is None:
@@ -878,6 +1064,19 @@ def declared_name(source: dict, properties: dict):
     if str(raw).strip().casefold() in {str(p).strip().casefold() for p in placeholders}:
         return None
     return raw
+
+
+def name_constant_conflicts(sources: list[dict]) -> list[str]:
+    """The registry keys that declare both a name column and a name constant.
+
+    A stop rather than a warning, on missing_declared_fields' own argument: a
+    row that says both has not decided which is true, and `declared_name`
+    would silently take the constant and never read the column - so the
+    column's name would sit in the registry looking enforced while nothing
+    read it, which is the decoration `usfs_trails`' own entry records having
+    removed once already.
+    """
+    return [s["key"] for s in sources if s.get("name_constant") is not None and s.get("name_field") is not None]
 
 
 def build_records(source: dict, features: list[dict], owned: dict[str, str], boundary=None) -> tuple[list[dict], dict]:
@@ -1388,8 +1587,9 @@ def write_overview(records: list[dict]) -> dict:
     initially. All the long distance trails should show. At least the
     LongPath should be visible" - the maintainer, on the opening camera this
     sketch draws. A source's rows sharing one NAME_TRAIL_THRESHOLD_MILES's
-    worth of real length (_named_lengths, in miles over export_trails.py's
-    own EPSG:5070 transform) keep that name and a `through_route: true` flag
+    worth of real length on ONE RUN OF SHARED TREAD (_through_routes, in miles
+    over export_trails.py's own EPSG:5070 transform) keep that trail's name
+    and a `through_route: true` flag
     instead of folding into the (source, blaze_color, trail_status) haze - so
     map/trailsInView.ts can badge them the same way it already badges the
     A.T. (TAPPABLE_BLAZE_LAYER_IDS), and map/style.ts can draw them at their
@@ -1408,10 +1608,22 @@ def write_overview(records: list[dict]) -> dict:
     of it was a single nationwide source's.
 
     Re-measured 2026-09-30 by running THIS function over the 136,941 records
-    read back out of that release's own nearby_trails.geojson:
+    read back out of that release's own nearby_trails.geojson, first when
+    #1775 cut it and again once #1776 changed what qualifies:
 
-        136,941 -> 26,864 records kept, 616,517 -> 98,948 coordinates,
-        12,238,110 -> 1,811,212 bytes raw, 3,344,736 -> 407,480 gzipped
+                              shipped      #1775      #1776
+        records kept          136,941     26,864     25,350
+        coordinates           616,517     98,948     95,854
+        raw bytes          12,238,110  1,811,212  1,735,301
+        gzipped             3,344,736    407,480    393,227
+        features                  201        188         93
+        through routes            142        142         47
+
+    THE FEATURE COUNT HALVES AND ALMOST NO BYTES GO WITH IT, which is the
+    shape of #1776 rather than a disappointment: what stopped being a named
+    feature did not stop being drawn, it folded back into the haze group it
+    always belonged in. 95 fewer features for 76 KB is the sketch saying less
+    about lines it was never entitled to name.
 
     14.8%. The prototype #1775 was argued from said 13.0%, applying one
     937 m pass to the published sketch; this code applies 937 m to the 100 m
@@ -1425,14 +1637,16 @@ def write_overview(records: list[dict]) -> dict:
     """
     coarse = simplify_records(records, OVERVIEW_SIMPLIFY_TOLERANCE_M)
 
-    named_lengths = _named_lengths(coarse)
-    qualifying = {key for key, miles in named_lengths.items() if miles >= NAMED_TRAIL_THRESHOLD_MILES}
+    qualifying = _through_routes(coarse)
+    for index, record in enumerate(coarse):
+        record[_THROUGH_ROUTE_KEY] = qualifying.get(index)
 
     # QUALIFICATION IS MEASURED BEFORE THE RESIZE AND IS UNCHANGED BY IT
-    # (#1775). The 100 m pass above is still what _named_lengths reads, so
-    # which trails clear NAMED_TRAIL_THRESHOLD_MILES is exactly what it was -
-    # measuring a trail's length off a 937 m simplification would shorten a
-    # switchbacked one enough to cost it its own feature and its casing.
+    # (#1775). The 100 m pass above is still what _through_routes reads, so
+    # measuring a trail's length off the 937 m simplification below cannot
+    # shorten a switchbacked one enough to cost it its own feature and its
+    # casing. Since #1776 the same applies to the CHAINING: at 937 m the seam
+    # geometry would join tread that never meets.
     #
     # Then the floor, then the seam tolerance, in that order: dropping first
     # means the second simplification only walks the segments that survived.
@@ -1440,7 +1654,7 @@ def write_overview(records: list[dict]) -> dict:
     # Douglas-Peucker's guarantee composes - no point has moved further than
     # 100 + 937 m from where it started, which is under a pixel and a half at
     # the seam and a fourteenth of one at the opening camera.
-    kept = _above_the_seam_floor(coarse, qualifying)
+    kept = _above_the_seam_floor(coarse)
     seam = simplify_records(kept, OVERVIEW_SEAM_TOLERANCE_M)
 
     # The group key is always this four-tuple, name "" standing for "not a
@@ -1451,9 +1665,25 @@ def write_overview(records: list[dict]) -> dict:
     groups: dict[tuple[str, str, str, str], list[list[list[float]]]] = {}
     coarse_lines = _overview_coordinates_all(from_wkt_all([record["wkt"] for record in seam]), OVERVIEW_SEAM_DECIMALS)
     for record, lines in zip(seam, coarse_lines):
-        name = record.get("name")
-        qualifies = name is not None and (record["source"], name) in qualifying
-        key = (record["source"], name if qualifies else "", record["blaze_color"], record["trail_status"])
+        # THE NAME WRITTEN IS THE TRAIL'S, not the spelling the steward
+        # published: USFS's "PCT: MT HOOD" and "PCNST" are both the Pacific
+        # Crest Trail, and a map labelling one of them "PCNST" has told a
+        # hiker less than it knows. client/src/map/longTrailNames.ts folds the
+        # same table, so a badge still resolves - and the trail's own name is
+        # already one of the spellings that table lists.
+        #
+        # `_THROUGH_ROUTE_KEY` rides the record rather than being looked up
+        # again here, because this list is two transformations downstream of
+        # the one qualification measured: the floor dropped rows and both
+        # simplifications returned copies. Re-deriving it would mean chaining
+        # the seam geometry, which is 937 m coarse and would join tread that
+        # does not meet.
+        key = (
+            record["source"],
+            record.get(_THROUGH_ROUTE_KEY) or "",
+            record["blaze_color"],
+            record["trail_status"],
+        )
         groups.setdefault(key, []).extend(lines)
 
     def feature_properties(key: tuple[str, str, str, str]) -> dict:
@@ -1628,6 +1858,16 @@ def write_artifact(records: list[dict], per_source: dict) -> dict:
 def main() -> dict:
     registry = load_registry(SOURCES_PATH)
     sources = network_line_sources(registry)
+    # Over the registry rather than per feature, and before anything is
+    # fetched: a row claiming both a name column and a name constant is a
+    # contradiction in the file, not a fault in the data (#1778).
+    conflicts = name_constant_conflicts(sources)
+    if conflicts:
+        raise SystemExit(
+            f"{', '.join(conflicts)}: sources.json declares both name_field and name_constant. "
+            "declared_name takes the constant and never reads the column, so the column would sit "
+            "in the registry looking enforced while nothing read it. Keep whichever is true."
+        )
     owned = owned_route_names(registry)
     print(f"Route names owned by their steward: {owned}")
 

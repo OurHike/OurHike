@@ -87,7 +87,7 @@ import { POI_LAYER_ID } from './poiLayers'
 import { onSettled } from './settle'
 import { TAPPABLE_BLAZE_LAYER_IDS } from './style'
 import { whenStyleReady } from './styleReady'
-import { longTrailDisplayName, longTrailForName, neverShout } from './longTrailNames'
+import { longTrailDisplayName, longTrailForLine, neverShout } from './longTrailNames'
 import {
   registryNameForSource,
   BADGE_ANCHOR_PROPERTY,
@@ -822,13 +822,19 @@ export function trailsInView(
     // were already being downloaded and drawn as anonymous lines inside the
     // Forest Service's nationwide layer. The source test stays because two
     // feeds ARE one trail each; the name test is what reaches the rest.
-    const longTrail = longTrailForName(name)
+    //
+    // AND WHERE THE LINE IS, since 2026-09-30 (#1781): the name alone put
+    // the Georgia-North Carolina Bartram Trail's badge on Tuskegee National
+    // Forest's own "BARTRAM" in Alabama. Any vertex answers, because every
+    // vertex of a tile-clipped piece lies on the line.
+    const parts = partsOf(feature.geometry)
+    const longTrail = longTrailForLine(name, parts[0]?.[0])
     const throughRoute = BADGE_SOURCES.includes(source) || longTrail !== null
     // WHAT THE BADGE PRINTS, which is not what the publisher spells it. USFS
     // publishes SHELTOWEE TRACE, BENTON MACKAYE and NORTH COUNTRY NATIONAL
     // SCENIC; a hiker reads "Sheltowee Trace", "Benton MacKaye Trail" and
     // "North Country Trail". Same decision lib/trails.ts already took for the
-    // A.T.'s federal designation, applied to the other nineteen.
+    // A.T.'s federal designation, applied to the other twenty-one.
     const printed = neverShout(
       (longTrail !== null && longTrailDisplayName(longTrail)) || name,
     )
@@ -845,7 +851,7 @@ export function trailsInView(
     // them (candidatesOf), so no piece is thrown away for being short.
     const runs: Run[] = []
     const clearRuns: Run[] = []
-    for (const part of partsOf(feature.geometry)) {
+    for (const part of parts) {
       runs.push(...visibleRuns(part, view))
       if (clear !== view) clearRuns.push(...visibleRuns(part, clear))
     }

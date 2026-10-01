@@ -308,6 +308,10 @@ jobs:
           # sending begins the day this variable has a value. Wired now so that
           # day is a Variables-tab edit and not a code change.
           VITE_API_BASE_URL: ${{ vars.API_BASE_URL }}
+          # The Spotify app's client id, for the podcast card's one-tap save
+          # (#1683). Public by design (PKCE, no secret). Unset is supported:
+          # the card then offers Play and "Open in Spotify" and no Save.
+          VITE_SPOTIFY_CLIENT_ID: ${{ vars.SPOTIFY_CLIENT_ID }}
         run: npm run build
 
       # Proves what actually got inlined, rather than trusting that it did. The

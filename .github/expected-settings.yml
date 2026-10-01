@@ -198,6 +198,18 @@ settings:
       without the other falls back to production rather than building a UA
       that cannot sign anyone in.
 
+  SPOTIFY_CLIENT_ID:
+    where: variable
+    required: false
+    why: >-
+      The Spotify app the podcast card's one-tap "Save to Spotify" signs in to
+      (#1683). Optional because unset is a supported state: the card then
+      offers Spotify's player and an "Open in Spotify" link, and no Save.
+      On the Variables tab because a PKCE client id is public by design - it
+      ships inside the bundle and carries no secret. The Spotify app it names
+      must list each origin's spotify-callback.html as a redirect URI, and in
+      Spotify's Development Mode serves at most five accounts added by hand.
+
   UA_API_BASE_URL:
     where: variable
     required: false

@@ -200,9 +200,107 @@ transfer size), which is what a reviewer needs and what `sources.json`'s existin
 record by hand. `nh_granit_trails` is the standard to meet: four column findings, each measured, each
 dated.
 
+### The probe ran on 2026-09-30, and batches 2 and 3 became one
+
+**#1778** opened all 19 endpoints and registered **17 rows** — not the 8 + 3 this table predicted,
+because the split it assumed does not survive contact with the registry. `sources.json`'s
+`licence_basis` has three values and `public_domain` is not one of them: a federal layer is
+`stated_by_org` on `usfs_trails`' own reasoning (17 U.S.C. 105 leaves the agency nothing to grant),
+and an organization that states nothing is `maintainer_authorisation`. So the reviewer's decision
+is the same one 17 times — is this licence reading right — and splitting it bought nothing.
+
+**229,160 features across the 18 probed.** COTREX alone is 96,897, which is 71% of the previous
+total, from one state. **The 17 that were registered carry 225,855** — `njgin`'s 3,305 were probed
+and not registered — so against the 136,941 that shipped before, the ceiling is 362,796 and the
+multiple is **2.65×**. (An earlier draft of this paragraph and `d1fde477`'s commit message both said
+2.67×, which double-counts `njgin`. The number is also a **ceiling rather than a measurement**:
+source features are not export records, and the exporter clips and filters before it counts.)
+
+**Three things only opening the URLs could find**, and each is a correction to the catalogue rather
+than to the plan:
+
+- **`njgin` was already registered.** It resolves to exactly the URL `njdep_park_trails` carries, so
+  it is not one of the 17: registering it would have drawn New Jersey's park trails twice.
+- **`ncta`'s entry is wrong twice.** Listed as `ogc_features` at `gis.northcountrytrail.org`, a host
+  that is an ArcGIS Hub *site* serving HTML with no OGC API at all. NCTA's own layer is elsewhere and
+  holds 4,004 features.
+- **`wa-rco` is recorded as 0 miles** and holds 22,454 trail features across 51 fields.
+
+Six more catalogue "endpoints" were Hub landing pages rather than layers. **`osm` is still
+unregistered**: a Geofabrik extract needs a different instrument than an ArcGIS probe.
+
+**Four layers carry no name field, and three of them ARE one trail.** PCTA publishes the Pacific
+Crest Trail as a single feature with two columns; CDTC's eight are the Continental Divide; Wisconsin
+DNR's one is the Ice Age Trail. Without a name each would reach the export anonymous and draw in the
+generic haze — so registering the PCT's own steward would have changed nothing a hiker sees. The
+maintainer's call on 2026-09-30 was to let the registry name them, and `export_nearby_trails.py`'s
+`name_constant` is that, with each name checked end to end before it was written (PCTA's feature runs
+32.59°N to 49.00°N at 2,653 miles against a published 2,650). **BLM's 19,532 unnamed features get
+no constant** — nothing can name those, and `blm_trails`' own row records it.
+
 **Four pull requests, and the fourth is the only one that changes a hiker's map.** The gate
 SOURCE_REGISTRY.md and DATA_RELEASES.md exist to protect is untouched, because registering and
 shipping were already two acts and `reaches_hikers` already separates them.
+
+### Batch 4 ran on 2026-09-30 ([#1785](https://github.com/OurHike/OurHike/issues/1785)), after one more gate than the plan knew about
+
+The flip is **17 rows, `reaches_hikers` false to true, and nothing else**. The four sources that stay
+at `false` — ATC's `bridges` and `at_treadway`, `gatc_water_sources` and `usgs_3dhp` — are held for
+their own reasons and are untouched, which is the check worth stating: a flip that read "set every
+`false` to `true`" would have bypassed four holdbacks nobody reviewed, and §2's warning about the NYS
+OPRHP holdback is the same failure written down before it happened.
+
+**It waited on a second gate the plan did not predict.** #1231's scope question was answered by
+#1775, as above. But #1775's own measurement turned up
+**[#1776 — Half the sketch's "through routes" are name collisions](https://github.com/OurHike/OurHike/issues/1776)**:
+`_named_lengths` summed every row sharing a name inside one organization, and `usfs_trails` is one
+organization covering the country, so 27 unrelated trails called `GREEN MOUNTAIN` became a single
+"through route" spanning 50.5° of longitude with the Long Path's casing and badge.
+
+That is a defect about **one national source**, and this batch adds four more: NPS at 31,485 features
+across every state, BLM at 19,532, COTREX at 96,897, Utah at 48,132. Flipping first would have taken
+a known defect and multiplied it onto a hiker's map — so the flip is sequenced **after** #1776's fix
+rather than beside it. The cost of that fix is
+[#1783](https://github.com/OurHike/OurHike/issues/1783), and it is written down there rather than
+absorbed here.
+
+### And the flip was not the last step after all ([#1787](https://github.com/OurHike/OurHike/issues/1787))
+
+**The publish that followed it succeeded and put none of the seventeen on the map.** `reaches_hikers`
+gates `publish.py`. What decides whether an exporter READS a source is a different field:
+`network_line_sources()` is `"blaze_field" in s or "blaze_default" in s`, and none of the seventeen
+carried either. Its own docstring said so — *"an external layer that is not lines… carries no blaze
+keys and is skipped here without needing to be named"* — and seventeen trail-line layers were
+registered as though they were facilities points.
+
+**So this plan had a fifth step nobody wrote down**, and the table above is wrong where it says batch
+4 is the one that changes a hiker's map. Registering, shipping, and being *readable by an exporter*
+are three acts, not two.
+
+**The near-misses are recorded per row rather than left for the next person to re-check.** The first
+pass used a name filter, and a filter only finds what it was told to look for; asked whether that was
+certain, every one of the seventeen had its full field list read live on 2026-09-30. `nps_trails`'
+`TRLCLASS`, `blm_trails`' `PLAN_ASSET_CLASS`, `wa_rco_trails`' `trail_class` and `alaska_trails`'
+`TrailClass` are construction standards and designations, not paint; `utah_sgid_trails`' `CartoCode`
+sounded like symbology and is a use class. **Two of the seventeen do publish paint** —
+`ct_deep_blue_blazed` through a `Map_Color` column the first pass never saw, and `nc_mst_trail`
+through `Blaze` — and they now read it, with reviewed rows in `reference/blaze_mapping.json`.
+
+### And two of the seventeen had never fetched ([#1790](https://github.com/OurHike/OurHike/issues/1790))
+
+**The green publish above hid a sixth act.** Its fetch step runs `continue-on-error`, and its log
+already said `FAILED: Expecting value` for `pasda_dcnr_trails` and `cdtc_centerline` — nothing read
+those files, so nothing missed them. #1787's fix made `export_nearby_trails.py` read the seventeen,
+and the next three publishes (runs 154, 155 and 156, 2026-10-01) died on the first missing file
+instead. The cause is a cap the layer metadata does not state: both are on-prem ArcGIS Server 10.91,
+both advertise pagination and geoJSON, both answer `returnCountOnly` — which is all the #1778 probe
+asked — and both answer the fetcher's 1,000-feature page with a 7 KB HTML error page under HTTP 200,
+because the page's *bytes* (PASDA's 684 trails are 51.7 MB; CDTC's 8 centerline pieces are 86.5 MB)
+exceed a limit of their own. `lib/arcgis.py` now halves a refused page and keeps going (measured
+2026-10-01: PASDA fetches in two pages of 500, CDTC in pages of 3 after eight halvings). So the
+probe a registration owes is one more line than §"The probe" lists: **a page of geometry at the
+fetcher's own size, not only a count** — `returnCountOnly` proves the layer exists, not that it can
+be read.
 
 ### This is existing practice, not a new lane
 

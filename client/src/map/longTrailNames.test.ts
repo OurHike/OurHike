@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   longTrailDisplayName,
+  longTrailForLine,
   longTrailForName,
   longTrailHasMarker,
   neverShout,
@@ -12,8 +13,31 @@ import { badgeMarkImageId, BADGE_SOURCES, stewardMarkImageId } from './trailBadg
 // the table caught in the badge's own mark resolver.
 
 describe('longTrailForName', () => {
-  it('holds all 33 measured spellings, so a dropped row goes red here', () => {
-    expect(LONG_TRAIL_NAME_COUNT).toBe(33)
+  it('holds all 142 measured spellings and the 10 trail names they lack, so a dropped row goes red here', () => {
+    // 33 until #1776, which added 94 usfs_trails spellings. The jump is one
+    // trail's doing more than the other three's together: USFS publishes the
+    // Pacific Crest Trail under 81 names - PCNST, PCT: MT HOOD, PCT SECTION
+    // 2 through 38 and the rest - and the pipeline now folds them into one
+    // identity before it decides what is a through route, so a spelling
+    // missing from this table is a stretch of trail drawn as anonymous haze
+    // rather than only a badge that does not draw.
+    //
+    // Then 15 more: the Florida, Ice Age and Mountains-to-Sea sections and the
+    // Bartram and Benton MacKaye ranger-district spellings (2026-09-30). And
+    // 10 rows' own trail names, which the sketch writes on a through route
+    // and which no spelling of theirs equalled - "Benton MacKaye Trail",
+    // "Pinhoti Trail" (the header above has the measurement).
+    expect(LONG_TRAIL_NAME_COUNT).toBe(152)
+  })
+
+  it("resolves the trail name the sketch writes, not only the publisher's spelling", () => {
+    // pipeline/export_nearby_trails.py names a through route by its row's
+    // `trail`. UA release 2026-09-30-3 shipped these three that way, and none
+    // of them resolved before.
+    expect(longTrailForName('Benton MacKaye Trail')).toBe('bmt')
+    expect(longTrailForName('Maah Daah Hey Trail')).toBe('mdh')
+    expect(longTrailForName('Pinhoti Trail')).toBe('pinhoti')
+    expect(longTrailForName('Mountains-to-Sea Trail')).toBe('mst')
   })
 
   it('resolves the Forest Service shout-case a hiker never sees', () => {
@@ -27,9 +51,11 @@ describe('longTrailForName', () => {
 
   it('resolves a trail its steward and the Forest Service name differently', () => {
     // The association calls it the Ouachita Trail; USFS calls it by its
-    // National Recreation Trail designation. One trail, two spellings.
+    // National Recreation Trail designation. One trail, two spellings - and
+    // since #1776 both resolve, because the sketch writes the row's own name
+    // on a through route (the case below).
     expect(longTrailForName('OUACHITA NRT')).toBe('ouachita')
-    expect(longTrailForName('Ouachita Trail')).toBeNull()
+    expect(longTrailForName('Ouachita Trail')).toBe('ouachita')
   })
 
   it('folds five spellings of the Continental Divide onto one trail', () => {
@@ -55,14 +81,44 @@ describe('longTrailForName', () => {
     }
   })
 
-  it('leaves a spur, a connector and a road section as ordinary lines', () => {
+  it('resolves the section spellings of the Florida, Ice Age and Mountains-to-Sea trails', () => {
+    // The Forest Service publishes these three only as designation plus
+    // section - "FNST - OSCEOLA SECTION", "ICE AGE NST-B", and "MST - PISGAH
+    // RD", where RD is a ranger district - so no spelling is the bare trail
+    // name and the name probe never found them. Added on the maintainer's
+    // instruction, 2026-09-30.
+    expect(longTrailForName('FNST - OSCEOLA SECTION')).toBe('fnst')
+    expect(longTrailForName('FNST - APALACH SECTION')).toBe('fnst')
+    expect(longTrailForName('ICE AGE NST-A')).toBe('iat')
+    expect(longTrailForName('ICE AGE NST-C')).toBe('iat')
+    expect(longTrailForName('MST - GRANDFATHER RD')).toBe('mst')
+    expect(longTrailForName('MST - NANTAHALA RD')).toBe('mst')
+  })
+
+  it('resolves the Bartram and Benton MacKaye ranger-district spellings', () => {
+    // Added on the maintainer's poll, 2026-09-30: 73 miles of the Bartram
+    // Trail and 31 of the Benton MacKaye in North Carolina's Nantahala
+    // National Forest, which had drawn as anonymous lines because the table
+    // read RD as a road.
+    expect(longTrailForName('BARTRAM NRT - NANTAHALA RD')).toBe('bartram')
+    expect(longTrailForName('BARTRAM NRT - CHEOAH RD')).toBe('bartram')
+    expect(longTrailForName('BENTON MACKAYE -CHEOAH RD')).toBe('bmt')
+  })
+
+  it('leaves a spur, a connector, a loop and an unreviewed section as ordinary lines', () => {
     // Exact after folding, never a prefix. Every one of these is published
-    // by a layer this app draws, and none of them is the trail.
+    // by a layer this app draws, and none of them is in the reviewed join:
+    // the first six are not the trail, and the last is a section of it
+    // nobody has reviewed as a row. "BARTRAM NRT - CHEOAH RD" was listed here
+    // as a road section until 2026-09-30; RD is a ranger district, and it is
+    // a reviewed spelling now (the next case).
     for (const notATrail of [
       'Northville-Placid Trail Spur',
-      'BARTRAM NRT - CHEOAH RD',
       'Finger Lakes Trail Spur',
       'SHELTOWEE CONNECTOR',
+      'FNST - WESTERN CONNECTOR',
+      'FNST - CAMEL LAKE SPUR',
+      'ICE AGE LOOP',
       'ARIZONA TRAIL CANELO HILLS',
     ]) {
       expect(longTrailForName(notATrail)).toBeNull()
@@ -73,8 +129,17 @@ describe('longTrailForName', () => {
     // Each of these is a real line in a layer this app draws, whose name
     // matches a long trail and whose location says it is a different trail:
     // a NY State Parks "Long Trail" 200 miles from Vermont, a "PALMETTO" in
-    // California, a "CUMBERLAND" in Colorado. The evidence is in
+    // California, a "CUMBERLAND" in Colorado, an "Ice Age Trail" in New
+    // Jersey. The evidence is in
     // pipeline/reference/trail_name_aliases.json's `rejected` block.
+    //
+    // SIXTEEN UNTIL #1776, WHICH RESOLVED ONE RATHER THAN OVERTURNING IT.
+    // 'CDNST - COLORADO' was refused as a COLORADO TRAIL candidate, and the
+    // rejection said why: it is the Continental Divide trail in Colorado.
+    // That is now where it is listed, so it resolves to `cdt` here and no
+    // longer belongs in a list of things that resolve to nothing. Bare
+    // 'COLORADO' stays, still unresolved and still refused. New Jersey's
+    // 'Ice Age Trail' joined the list on 2026-09-30, so it is sixteen again.
     for (const lookAlike of [
       'Long Trail',
       'LONG',
@@ -90,16 +155,51 @@ describe('longTrailForName', () => {
       'BLACK CANYON',
       'LONE STAR',
       'COLORADO',
-      'CDNST - COLORADO',
       'JOHN MUIR NATIONAL RECREATION',
     ]) {
       expect(longTrailForName(lookAlike)).toBeNull()
     }
+    // New Jersey's "Ice Age Trail" is the sixteenth, and the one a name
+    // cannot refuse: it is spelled exactly as the `iat` row's own name, which
+    // the table holds for the sketch. What refuses it is the box. Measured
+    // 2026-09-30 at lon -74.66, lat 40.90, fifteen degrees east of the
+    // Wisconsin segments.
+    expect(longTrailForName('Ice Age Trail')).toBe('iat')
+    expect(longTrailForLine('Ice Age Trail', [-74.66, 40.9])).toBeNull()
+    // The one that moved, asserted rather than merely absent from the list
+    // above - a name dropped from a refusal list and nowhere else is a name
+    // nothing checks.
+    expect(longTrailForName('CDNST - COLORADO')).toBe('cdt')
   })
 
   it('trims and folds, because a published name carries whatever it carries', () => {
     expect(longTrailForName('  sheltowee trace  ')).toBe('sheltowee')
     expect(longTrailForName('')).toBeNull()
+  })
+})
+
+describe('longTrailForLine', () => {
+  // #1781. The same spelling can be two trails: USFS "BARTRAM" is the
+  // Georgia-North Carolina Bartram Trail and Tuskegee National Forest's own
+  // trail in Alabama. The badge asks this, not longTrailForName.
+
+  it("refuses a name outside its trail's box", () => {
+    // usfs_trails:8251537's first vertex, lon -85.65, lat 32.45, measured
+    // 2026-09-30.
+    expect(longTrailForLine('BARTRAM', [-85.65, 32.45])).toBeNull()
+  })
+
+  it('accepts the same name inside the box', () => {
+    expect(longTrailForLine('BARTRAM', [-83.37, 34.86])).toBe('bartram')
+    expect(longTrailForLine('BARTRAM NRT - NANTAHALA RD', [-83.5, 35.1])).toBe('bartram')
+  })
+
+  it('answers null with no vertex to check, rather than trusting the name', () => {
+    expect(longTrailForLine('BARTRAM', undefined)).toBeNull()
+  })
+
+  it('answers null for a name the table does not hold, wherever it is', () => {
+    expect(longTrailForLine('SOME CREEK', [-83.37, 34.86])).toBeNull()
   })
 })
 
@@ -187,6 +287,9 @@ describe('what a badge prints', () => {
       'bst',
       'jmt',
       'npt',
+      'fnst',
+      'iat',
+      'mst',
     ]) {
       const printed = longTrailDisplayName(slug)
       expect(printed).not.toBeNull()

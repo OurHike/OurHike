@@ -87,6 +87,14 @@ export interface DayHikeStop {
    */
   capacity?: number
   waterDistanceFt?: number
+  /**
+   * Where ATC got `waterDistanceFt` - `StoredPoi.waterDistanceSource`,
+   * carried verbatim so the row can print a steward's estimate as one
+   * ("water ~250 ft", lib/waterProvenance.ts) rather than in the voice of a
+   * measurement (#1728). Absent where the figure is, and where the download
+   * predates the column.
+   */
+  waterDistanceSource?: string
 }
 
 /**
@@ -163,7 +171,12 @@ export function orderStops(
       // "nobody published this" distinguishable from "this is zero".
       ...(poi.capacity !== undefined ? { capacity: poi.capacity } : {}),
       ...(poi.waterDistanceFt !== undefined
-        ? { waterDistanceFt: poi.waterDistanceFt }
+        ? {
+            waterDistanceFt: poi.waterDistanceFt,
+            ...(poi.waterDistanceSource !== undefined
+              ? { waterDistanceSource: poi.waterDistanceSource }
+              : {}),
+          }
         : {}),
     })
   }

@@ -644,6 +644,7 @@ export function More({
           <DisplaySettings
             preferences={settings.preferences}
             onChange={settings.onChange}
+            podcastApps={settings.podcastApps}
           />
           {/* Directly under the unit picker, which is the setting it reads
               with: a pace is a speed, so its own labels follow imperial or

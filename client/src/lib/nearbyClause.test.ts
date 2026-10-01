@@ -69,6 +69,36 @@ describe('the sentence naming a site’s parts', () => {
     )
   })
 
+  it('marks a steward’s estimate with a tilde and a measurement with nothing (#1728)', () => {
+    // 42 of the 305 water distances ATC publishes are a steward's round
+    // number, and until #1728 this sentence said "water 150 ft" over them in
+    // the same voice as a figure measured to the foot. The provenance rides
+    // the part from the artifact; lib/waterProvenance.ts turns it into the
+    // one mark, which the maintainer chose by poll, 2026-09-30.
+    const ESTIMATE: NearbyPart = {
+      phrase: 'water',
+      distance_ft: 150,
+      source: 'OSA_Field_Estimate',
+    }
+    const MEASURED: NearbyPart = {
+      phrase: 'water',
+      distance_ft: 339,
+      source: 'NHDP_HR_Stream',
+    }
+
+    expect(describeNearby([PRIVY, ESTIMATE], 'imperial')).toBe(
+      'Nearby: a multi-seat moldering privy 131 ft away and water ~150 ft.',
+    )
+    // In front of the converted figure, not the feet it was published in.
+    expect(describeNearby([ESTIMATE], 'metric')).toBe('Nearby: water ~46 m away.')
+    expect(describeNearby([PRIVY, MEASURED], 'imperial')).toBe(
+      'Nearby: a multi-seat moldering privy 131 ft away and water 339 ft.',
+    )
+    // No provenance - a download from before the column - reads as it
+    // always has: absent means unknown, never "estimate".
+    expect(describeNearby([WATER], 'imperial')).toBe('Nearby: water 295 ft away.')
+  })
+
   it('says nothing at all when there is nothing around', () => {
     // Null and not "", so the card renders no paragraph rather than an empty
     // one - a gap in the layout reads as something that failed to load.

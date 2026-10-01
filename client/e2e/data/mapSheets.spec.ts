@@ -83,6 +83,17 @@ const SKETCHES_BOUND_MS = 90_000
  */
 test.describe.configure({ timeout: 180_000 })
 
+/**
+ * The card's one pull, by every name it can carry (chrome/PoiCard.tsx's
+ * `expandLabel`): "Notes & details" where the type takes notes, "Details"
+ * where it does not, and either with weather named in it once a forecast for
+ * the waypoint's square has arrived (#1056) - "Notes, weather & details",
+ * "Weather & details". The forecast arrives after the card does, so the name
+ * can change while a test is looking at it; anchoring on every form is what
+ * keeps that from being a race.
+ */
+const THE_PULL = /^(Notes, weather & details|Notes & details|Weather & details|Details)$/
+
 /** On the map tab, past first run, at whatever camera the caller seeded. */
 async function openMap(page: Page): Promise<void> {
   await seedPreferences(page)
@@ -301,7 +312,7 @@ test.describe('a waypoint’s card', () => {
     // PoiCard.test.tsx's "Parts of Chairback Gap Lean-to" cases and the same
     // group in App.flows.test.tsx.
     await expect(card.locator('.poi-card__name')).not.toBeEmpty()
-    const pull = card.getByRole('button', { name: /Notes & details|Details/ })
+    const pull = card.getByRole('button', { name: THE_PULL })
     await expect(pull).toBeVisible()
 
     await pull.click()
@@ -627,7 +638,7 @@ test.describe('what the field has said about a place', () => {
       .getByRole('button')
       .count()
 
-    await card.getByRole('button', { name: /Notes & details|Details/ }).click()
+    await card.getByRole('button', { name: THE_PULL }).click()
     await expect(card).toHaveClass(/poi-card--open/)
 
     // SAME QUESTION, MORE ANSWERS. The group keeps its name, so the opened
@@ -699,7 +710,7 @@ test.describe('a photo the hiker keeps, and the ask before it leaves', () => {
       .click()
     const card = page.getByRole('dialog', { name: 'Waypoint' })
     await expect(card).toBeVisible()
-    await card.getByRole('button', { name: /Notes & details|Details/ }).click()
+    await card.getByRole('button', { name: THE_PULL }).click()
     await expect(card).toHaveClass(/poi-card--open/)
 
     await card.locator('input[type=file]').last().setInputFiles(A_PICTURE_NOBODY_TOOK)

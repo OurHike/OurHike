@@ -427,7 +427,7 @@ describe('a transient failure', () => {
   })
 })
 
-// --- One challenge's tags in the order they were made (#1780) -------------
+// --- One challenge's tags in the order they were made (Challenges) ---------
 
 describe("a challenge's tag that fails for want of signal", () => {
   const AT = '2026-06-01T00:00:00.000Z'

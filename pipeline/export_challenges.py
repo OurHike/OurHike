@@ -364,8 +364,9 @@ def _kinds(record: dict) -> str:
 
 
 def main(today: date | None = None) -> dict:
-    # UTC, like every stamp this pipeline writes: a mystery item unseals on
-    # the first run on or after its reveal_on, and "today" must not depend on
+    # UTC, like every stamp this pipeline writes: a mystery item ships in the
+    # clear from the first run AFTER its reveal_on (lib/challenges.py's
+    # `resolve_item` seals through the day itself), and "today" must not depend on
     # which timezone the runner happens to be in.
     today = datetime.now(timezone.utc).date() if today is None else today
 

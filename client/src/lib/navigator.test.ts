@@ -25,7 +25,7 @@ const HOME = NAV_HOME as NavState<string>
 describe('applyMove', () => {
   it('keeps each stacked challenge page on its own challenge, so Back returns to the first', () => {
     // Held beside the stack, the id was the last one opened, and Back showed
-    // the second challenge again (second review of #1780, 2026-10-01).
+    // the second challenge again (second Challenges review, 2026-10-01).
     const first = { kind: 'more', page: 'challenge', challengeId: 'atc-list' } as const
     const second = { kind: 'more', page: 'challenge', challengeId: 'lp-list' } as const
     const back = at(

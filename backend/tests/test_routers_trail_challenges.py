@@ -170,7 +170,7 @@ def test_a_tag_naming_an_id_the_pipeline_could_never_publish_is_422(client):
     assert _tag(client, str(uuid.uuid4()), item_id="../McAfee Knob").status_code == 422
 
 
-def test_a_tag_for_a_challenge_no_club_has_saved_is_accepted_and_not_late(client):
+def test_a_tag_for_a_challenge_no_club_has_saved_is_accepted_with_no_late_field(client):
     """The ATC's draft publishes from the reviewed file alone; its tags must
     not wait on a console row."""
     response = _tag(client, str(uuid.uuid4()), challenge_id="atc-summer-bucket-list-2027")

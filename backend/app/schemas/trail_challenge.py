@@ -19,9 +19,11 @@ from app.schemas.common import EmailAddress
 ChallengeId = Annotated[str, StringConstraints(pattern=ID_PATTERN, max_length=ID_MAX_CHARS)]
 ItemId = Annotated[str, StringConstraints(pattern=ID_PATTERN, max_length=ID_MAX_CHARS)]
 
-#: One entry names at most this many items. @unvalidated: picked as roughly
-#: five times the ATC's 97-item list, the only challenge that exists, so that
-#: no real list meets it and a runaway client does. What would settle it: the
+#: One entry names at most this many items. @unvalidated: picked as five
+#: times the ATC's list, the only challenge that exists - 100 items in
+#: pipeline/reference/challenges/atc/ (counted 2026-10-01: the PDF's 97
+#: lines and the three mystery items its _README describes) - so that no
+#: real list meets it and a runaway client does. What would settle it: the
 #: longest list a club actually publishes.
 ENTRY_MAX_ITEMS = 500
 

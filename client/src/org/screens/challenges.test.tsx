@@ -1,5 +1,5 @@
 /**
- * The console's Challenges page and its Finishers sub-page (#1780, frame #2a).
+ * The console's Challenges page and its Finishers sub-page (#1780, frame 2a).
  *
  * WHAT THESE HOLD, beyond "it renders": the guardrail's rules that survive into
  * the console (features/CHALLENGES.md, "The guardrail argument") - a count the
@@ -77,7 +77,7 @@ function labelledControls(): { control: Element; label: string }[] {
 }
 
 describe('the Challenges table', () => {
-  it('draws the five columns frame #2a draws', () => {
+  it('draws the five columns frame 2a draws', () => {
     drawChallenges()
 
     const headers = screen.getAllByRole('columnheader').map((th) => th.textContent)

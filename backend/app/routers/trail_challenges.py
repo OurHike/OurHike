@@ -92,15 +92,18 @@ ChallengeIdPath = Annotated[str, Path(pattern=ID_PATTERN, max_length=ID_MAX_CHAR
 NOT_TAKING_ENTRIES = "This challenge's club is not taking entries through OurHike yet."
 ALREADY_SENT = "You have already sent an entry for this challenge."
 
-#: The largest definition a save takes, as JSON text. @unvalidated: about ten
-#: times the ATC's reviewed file (26,327 bytes for 100 items, measured
-#: 2026-09-30), so that no list a club writes by hand meets it and a script
-#: posting megabytes into a column does. What would settle it: the largest
-#: list a club actually publishes.
+#: The largest definition a save takes, as JSON text. @unvalidated: about
+#: 12.7 times the ATC's reviewed definition as this check measures it -
+#: 20,638 characters of `json.dumps` for 100 items (measured 2026-10-01 on
+#: pipeline/reference/challenges/atc/, whose indented file is 26,394 bytes) -
+#: so that no list a club writes by hand meets it and a script posting
+#: megabytes into a column does. What would settle it: the largest list a
+#: club actually publishes.
 DEFINITION_MAX_CHARS = 262_144
 
-#: How deeply a definition may nest. Reasoned: the reviewed file's deepest
-#: path is items[].match.places[].<field>, five levels; twelve leaves room for
+#: How deeply a definition may nest. Measured, then reasoned: the reviewed
+#: file's deepest path is items[].match.pois[], five levels by `_depth`
+#: (2026-10-01, pipeline/reference/challenges/atc/); twelve leaves room for
 #: the shape to grow and none for a hostile one.
 DEFINITION_MAX_DEPTH = 12
 

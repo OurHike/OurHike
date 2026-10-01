@@ -1,5 +1,5 @@
 // "On the A.T. Summer Bucket List" on McAfee Knob Summit's card (#1780,
-// frames #2 and #2c).
+// frames 2 and 2c).
 //
 // WHAT THIS SHOT IS EVIDENCE FOR. The section above "About this place": the
 // two items at this place - the shuttle hike and the Triple Crown - each
@@ -24,7 +24,7 @@
 import { seedChallenges } from './fixtures/challenges.mjs'
 
 export const caption =
-  'A place card’s challenge section: McAfee Knob Summit on the ATC’s draft list, before its window opens (#1780, seeded hiker)'
+  'A place card’s challenge section: McAfee Knob Summit on the ATC’s draft list, before its window opens (features/CHALLENGES.md, seeded hiker)'
 export const alt =
   'A waypoint card for McAfee Knob Summit, opened, with a section headed On the A.T. Summer Bucket List listing two items with a draft label, one marked done and one saying when the list opens instead of offering a Tag it button; or, where the build has no waypoint data, the search panel'
 

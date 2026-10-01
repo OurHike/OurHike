@@ -22,6 +22,7 @@ import { localDay } from './passedToday'
 import type { MileRange } from './walkedMiles'
 import { mergeRange, walkedWithin } from './walkedMiles'
 import {
+  isOpen,
   isPlaceItem,
   isSealed,
   itemPlaces,
@@ -273,8 +274,8 @@ export function itemDoneAt(
  * How a completed item says it was done when it leaves the phone: `hand` if
  * any tag it rests on was made by hand. A Triple Crown with two peaks pressed
  * on their cards and the third walked was sent as `gps` - the completing
- * tag's own - and the club's CSV read all three as walked (second review of
- * #1780, 2026-10-01). Rounded toward the claim a club checks harder.
+ * tag's own - and the club's CSV read all three as walked (second Challenges
+ * review, 2026-10-01). Rounded toward the claim a club checks harder.
  */
 export function completionHow(
   item: ChallengeItem,
@@ -376,8 +377,8 @@ export function removeTag(
  * tag carries a place (`tag` drops it for every other kind), so a tag
  * without one is the item's only tag, whichever of its places' cards asks.
  * Before this, the "Tagged" pill on a single-place item's card compared
- * `undefined` with the card's POI id and removed nothing (second review of
- * #1780, 2026-10-01).
+ * `undefined` with the card's POI id and removed nothing (second Challenges
+ * review, 2026-10-01).
  */
 function atPlace(tag: ChallengeTag, poi: string | undefined): boolean {
   return poi === undefined || tag.poi === undefined || tag.poi === poi
@@ -496,7 +497,7 @@ export function matchDay(input: DayInput): DayCandidate[] {
   if (todayRanges.length === 0) return []
   const out: DayCandidate[] = []
   for (const challenge of input.joined) {
-    if (challenge.trail !== trail || !isOpenOn(challenge, today)) continue
+    if (challenge.trail !== trail || !isOpen(challenge, today)) continue
     const tags = tagsFor(state, challenge.id)
     for (const item of challenge.items) {
       if (isSealed(item, today) || isItemDone(item, challenge.id, tags)) continue
@@ -585,7 +586,7 @@ export function autoTags(
     if (challenge.trail !== trail) continue
     const joinedAt =
       state.joined.find((entry) => entry.challengeId === challenge.id)?.at ?? ''
-    const open = isOpenOn(challenge, today)
+    const open = isOpen(challenge, today)
     for (const item of challenge.items) {
       if (
         isSealed(item, today) ||
@@ -832,7 +833,7 @@ export function browse(input: {
   const byClubAndOpen = input.challenges.filter(
     (challenge) =>
       (filters.org === null || challenge.org === filters.org) &&
-      (!filters.openNow || isOpenOn(challenge, today)),
+      (!filters.openNow || isOpen(challenge, today)),
   )
   const shown = byClubAndOpen.filter(
     (challenge) => filters.trail === null || challenge.trail === filters.trail,
@@ -888,11 +889,6 @@ function localNoon(day: string, fallback: Date): Date {
   const [year, month, date] = day.split('-').map(Number)
   if (!year || !month || !date) return fallback
   return new Date(year, month - 1, date, 12)
-}
-
-function isOpenOn(challenge: Challenge, today: string): boolean {
-  const { opens, closes } = challenge.window
-  return (opens === null || today >= opens) && (closes === null || today <= closes)
 }
 
 // ---------------------------------------------------------------------------

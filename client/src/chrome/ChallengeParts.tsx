@@ -1,8 +1,8 @@
 // Small pieces every challenge surface shares (#1780): the diamond, the draft
-// label, the finish bar, the Tag it pill, an organization's mark, and the one
-// way a challenge row is worded. One copy of each, so the list, a challenge's
-// own page, the place card, Today's camp card and Plan's card cannot drift
-// into five spellings of the same thing.
+// label, the finish bar, the Tag it pill and an organization's mark. One copy
+// of each, so the list, a challenge's own page, the place card, Today's camp
+// card and Plan's card cannot drift into five spellings of the same thing.
+// Components only: the words a row prints are lib/challengeText.ts's.
 
 import { CHALLENGE_WORDS } from '../lib/challengeWords'
 import { draftLabel, type Challenge } from '../lib/challenges'
@@ -43,12 +43,10 @@ export function FinishBar({ tagged, finish }: { tagged: number; finish: number }
 export function TagPill({
   tagged,
   onPress,
-  disabled = false,
   label,
 }: {
   tagged: boolean
   onPress: () => void
-  disabled?: boolean
   /** The accessible name, which must say WHICH item - a list of ten
    *  identical "Tag it" buttons is a list nobody can use by ear. */
   label: string
@@ -59,7 +57,6 @@ export function TagPill({
       className="challenge-tag"
       aria-pressed={tagged}
       aria-label={label}
-      disabled={disabled}
       onClick={onPress}
     >
       {tagged ? CHALLENGE_WORDS.done : CHALLENGE_WORDS.act}

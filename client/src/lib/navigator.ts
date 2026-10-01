@@ -95,7 +95,7 @@ export type Screen =
      *  challenge a 'challenge' page shows - on the screen, like 'hike''s
      *  `id`, so two stacked challenge pages are two challenges. Held beside
      *  the stack by the shell, a second page made Back show the second
-     *  challenge again (second review of #1780, 2026-10-01). */
+     *  challenge again (second Challenges review, 2026-10-01). */
     | {
         readonly kind: 'more'
         readonly page: MorePageAway

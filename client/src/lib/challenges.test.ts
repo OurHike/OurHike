@@ -214,7 +214,7 @@ describe('what screens ask of a challenge', () => {
   })
 })
 
-describe('what the review of 2026-09-30 tightened', () => {
+describe('parseChallenges reads the publisher domain, https-only photos and off-trail matches', () => {
   it('reads the publisher’s domain and whether the club takes entries here', () => {
     const [published] = parseChallenges({
       challenges: [

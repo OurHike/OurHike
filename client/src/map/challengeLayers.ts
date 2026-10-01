@@ -1,7 +1,7 @@
 // Challenge places on the canvas: the source, the one symbol layer that draws
 // them, and the switch (#1780 — Let a club publish a challenge — places on
 // its own trails that hikers opt into and tag at camp — starting with the
-// ATC's A.T. Summer Bucket List; features/CHALLENGES.md, frame #1).
+// ATC's A.T. Summer Bucket List; features/CHALLENGES.md, frame 1).
 //
 // workdayLayers.ts's shape, with drought's switch (droughtLayers.ts) and
 // with the differences a challenge place actually has. Which places, and

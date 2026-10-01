@@ -8878,7 +8878,7 @@ function App() {
         onBrowse={() => pushScreen({ kind: 'more', page: 'challenge-browse' })}
       />
     )
-  // The map layer (frame #1): its Legend row and pins, owned by
+  // The map layer (frame 1): its Legend row and pins, owned by
   // chrome/challengePanel.ts and spread into <MapScreen> as one line.
   const { setLayerShown: setChallengeLayerShown } = challenges
   const challengeLayerShown = challenges.state.layerShown
@@ -8893,7 +8893,7 @@ function App() {
     chosenTrail: chosenTrailId,
     onToggle: toggleChallengePlaces,
   })
-  // Today's camp card (frame #3): asked once, after the day is over, and only
+  // Today's camp card (frame 3): asked once, after the day is over, and only
   // about what the day's walked miles passed.
   const challengeDayEnded = dayHasEnded({
     now,
@@ -8930,7 +8930,7 @@ function App() {
     />
   ) : null
 
-  // Plan's card (frames #6 and #6b): the joined challenges' places on this
+  // Plan's card (frames 6 and 6b): the joined challenges' places on this
   // route by day, or - when none touches it - the one best suggestion. The
   // hike key scopes "Hide" to this trip.
   const challengeHikeKey = currentTrip?.id ?? 'plan'

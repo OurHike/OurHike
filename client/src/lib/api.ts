@@ -643,9 +643,12 @@ export async function sendClosure(item: OutboxItem): Promise<void> {
 
 /**
  * Sends one completed challenge item (#1780). `authored_at` travels for the
- * reason `sendClosure`'s `reported_at` does: the server flags a tag made
- * after the window closed, and a tag queued inside the window must not
- * arrive looking late because the phone found signal late.
+ * reason `sendClosure`'s `reported_at` does: the server stores when the tag
+ * was made, not when the phone found signal, so a tag queued on the last
+ * evening of the window and flushed in town a week later still reads as
+ * made inside it. The server judges nothing by it - it once answered with a
+ * `late` flag, which told any caller whether an id had an owner and a date,
+ * and was taken out.
  */
 export async function sendChallengeTag(item: OutboxItem): Promise<void> {
   await authedFetch('/challenges/tags', {
@@ -688,12 +691,12 @@ export async function sendChallengeEntry(item: OutboxItem): Promise<void> {
 /**
  * Sends one queued outbox item, whatever it carries.
  *
- * The outbox holds eight families now: condition reports (the original
+ * The outbox holds nine kinds of item now: condition reports (the original
  * cargo), photo actions (#577/#579 - share, withdraw, report), app-failure
  * reports (#848), field notes (features/FIELD_NOTES.md), volunteer hours
- * (#761), closures (#832), and challenge tags and entries (#1780). One dispatcher, so `flushOutbox` keeps its
- * single `send`
- * seam and the queue stays one queue - a hiker's unsent work is one list.
+ * (#761), closures (#832), and challenge tags, their removals and entries
+ * (features/CHALLENGES.md). One dispatcher, so `flushOutbox` keeps its single `send` seam and
+ * the queue stays one queue - a hiker's unsent work is one list.
  */
 export async function sendOutboxItem(item: OutboxItem): Promise<void> {
   if (item.action !== undefined) return sendPhotoAction(item.action, item.photo)
@@ -847,7 +850,7 @@ const HIKER_SENTENCE =
  * organization's entries are held until somebody at it is confirmed
  * again" - is what the admin needs. `ApiError.message` is
  * "POST /clubs/… failed: 409", which the console showed instead (second
- * review of #1780, 2026-10-01). A validation failure's `detail` is a list,
+ * Challenges review, 2026-10-01). A validation failure's `detail` is a list,
  * not a sentence, and gets the fallback.
  */
 export function refusalSentence(error: unknown, fallback: string): string {

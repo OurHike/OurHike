@@ -6,6 +6,7 @@ import { ATC_CHALLENGE } from './challenges.fixtures'
 // un-tag, a Leave and a rejoin each queue what makes the server agree with
 // the phone. The outbox and the published list are stubbed; nothing else is.
 const queued: { kind: string; body: unknown }[] = []
+let entryRefused = false
 vi.mock('./outbox', () => ({
   enqueueChallengeTag: async (body: unknown) => {
     queued.push({ kind: 'tag', body })
@@ -16,6 +17,7 @@ vi.mock('./outbox', () => ({
     return { id: `u${queued.length}` }
   },
   enqueueChallengeEntry: async (body: unknown) => {
+    if (entryRefused) throw new Error('IndexedDB is not available')
     queued.push({ kind: 'entry', body })
     return { id: `e${queued.length}` }
   },
@@ -30,6 +32,7 @@ vi.mock('./challengeFeed', async (original) => ({
 
 afterEach(() => {
   queued.length = 0
+  entryRefused = false
   kept = [ATC_CHALLENGE]
   localStorage.clear()
 })
@@ -99,6 +102,25 @@ describe('useChallenges keeps the server where the phone is', () => {
       }),
     )
     await vi.waitFor(() => expect(result.current.state.sent[0]?.outboxId).toBeDefined())
+  })
+
+  it('takes the sent record back when the entry could not be queued at all', async () => {
+    // Otherwise the finish screen reads "waiting" for an entry the outbox
+    // never held, forever.
+    entryRefused = true
+    const { result } = await hook()
+    act(() =>
+      result.current.sendEntry({
+        challenge_id: ATC_CHALLENGE.id,
+        org_domain: 'appalachiantrail.org',
+        name: 'Sam Roe',
+        email: 'sam@example.org',
+        item_ids: ['trivia-quiz'],
+        consented: true,
+      }),
+    )
+    expect(result.current.state.sent).toHaveLength(1)
+    await vi.waitFor(() => expect(result.current.state.sent).toHaveLength(0))
   })
 })
 

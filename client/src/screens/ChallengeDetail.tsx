@@ -1,4 +1,4 @@
-// One challenge (#1780, frames #5, #7, #4b, #8b and #8c).
+// One challenge (#1780, frames 5, 7, 4b, 8b and 8c).
 //
 // The pine header names it, its window and - only when the club set one - the
 // finish line; a strip lays its places along the trail in mile order. Filter
@@ -152,7 +152,7 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
   // After the render that closed the sheet, not in the handler: "Remove this
   // tag" leaves an item that is no longer done, and that same render turns
   // its row from a button into text. Focus sent to the button before it was
-  // replaced fell to <body> (second review of #1780, 2026-10-01); the title
+  // replaced fell to <body> (second Challenges review, 2026-10-01); the title
   // is always there.
 
   const sheet =

@@ -541,7 +541,7 @@ describe('the stored record', () => {
   })
 })
 
-describe('what the review of 2026-09-30 found, held', () => {
+describe('the edges of plan suggestions, Browse distance, workday stamps and removeTag', () => {
   const OTHER_TRAIL = { ...ATC_CHALLENGE, id: 'lp-list', trail: 'LP' }
 
   it('lays nothing from another trail on an A.T. plan, however its miles line up', () => {
@@ -562,7 +562,7 @@ describe('what the review of 2026-09-30 found, held', () => {
     expect(picked).toBeNull()
   })
 
-  it('measures Browse distance to the nearest planned day, never below zero', () => {
+  it("measures Browse distance from the nearest planned day to the list's nearest place", () => {
     const groups = browse({
       challenges: [ATC_CHALLENGE],
       filters: { trail: null, org: null, openNow: false },
@@ -575,8 +575,9 @@ describe('what the review of 2026-09-30 found, held', () => {
       planTrail: 'AT',
     })
     const [entry] = groups.elsewhere
-    expect(entry.milesFromPlan).not.toBeNull()
-    expect(entry.milesFromPlan as number).toBeGreaterThanOrEqual(0)
+    // Dragon's Tooth (mile 703.114) is the list's nearest place, 103.114
+    // miles past day 1's end - not McAfee Knob, and not zero.
+    expect(entry.milesFromPlan).toBeCloseTo(103.114, 3)
   })
 
   it('never offers an off-trail "any waypoint" item at camp', () => {

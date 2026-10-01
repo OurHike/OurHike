@@ -1,4 +1,4 @@
-// "On your challenges" on a place card (#1780, frames #2 and #2c).
+// "On your challenges" on a place card (#1780, frames 2 and 2c).
 //
 // One row per challenge item at this place - the item, whose list it is on
 // and whose club set it, and Tag it - so where two clubs' lists meet at one
@@ -114,7 +114,7 @@ export function PoiChallenges(props: PoiChallengesProps) {
                     // Tags only count inside the window, so outside it the
                     // card says when it is rather than offering one -
                     // ChallengeDetail.tsx's rule, which this card had missed
-                    // (second review of #1780, 2026-10-01). A tag already
+                    // (second Challenges review, 2026-10-01). A tag already
                     // made keeps its pill, so it can still be taken back.
                     <span className="challenge-row__done">
                       {windowNow(challenge, today)}

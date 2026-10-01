@@ -305,10 +305,10 @@ export interface LegendProps {
    * `layerShown`), not the synced preferences.
    */
   challengePlacesShown?: boolean
-  /** Flips it. Omitted - which the shell does whenever no joined challenge
-   *  is on the chosen trail (chrome/challengePanel.ts) - no row is drawn at
-   *  all: a switch over a layer with nothing of this trail's in it is a
-   *  control that visibly does nothing. */
+  /** Flips it. Omitted - which the shell does unless a joined challenge is
+   *  on the chosen trail AND has a place to pin (chrome/challengePanel.ts's
+   *  `offered`) - no row is drawn at all: a switch over a layer with nothing
+   *  of this trail's in it is a control that visibly does nothing. */
   onToggleChallengePlaces?: () => void
   /** What the bands say, for that row's summary line. Empty when none
    *  arrived, which draws no numbers rather than a confident zero. */
@@ -1101,7 +1101,7 @@ export function Legend({
         </label>
       )}
 
-      {/* CHALLENGE PLACES (#1780, features/CHALLENGES.md frame #1), with the
+      {/* CHALLENGE PLACES (#1780, features/CHALLENGES.md frame 1), with the
           layer switches rather than at the head: the Blaze colors row is the
           most prominent thing here at the maintainer's ask, and a layer a
           hiker opted into is a quieter thing than how every trail is inked.

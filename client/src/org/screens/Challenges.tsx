@@ -1,6 +1,6 @@
 /**
  * Org home → Challenges: the club's lists of places, and the one being edited
- * (#1780, features/CHALLENGES.md, the handoff's frame #2a).
+ * (#1780, features/CHALLENGES.md, the handoff's frame 2a).
  *
  * **A PLACE IS NEVER TYPED HERE.** A challenge item names a published POI id
  * and the exporter copies that record's own mile, coordinate and name into
@@ -43,7 +43,7 @@ import type {
   OrgTrail,
 } from '../orgApi'
 
-/** The four kinds of item a club picks from, in the order frame #2a draws
+/** The four kinds of item a club picks from, in the order frame 2a draws
  *  them. `places_all` counts as a named place (it is several of them, all
  *  required); `elevation_min_ft` and `self_report` are not offered here -
  *  the first is the ATC's own "reach 4,000 feet" line, the second is the
@@ -810,7 +810,7 @@ export function Challenges({
               )}
 
               {definition.items.length > 0 ? (
-                // Folded by default: frame #2a draws no item list, and the
+                // Folded by default: frame 2a draws no item list, and the
                 // ATC's own file has 97 items, which unfolded would make the
                 // editor a page long before anybody asked for a note.
                 <details className="org-field">

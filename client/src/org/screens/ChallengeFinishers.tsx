@@ -19,6 +19,7 @@
 import { useState } from 'react'
 import { PageHeader } from '../components'
 import { refusalSentence } from '../../lib/api'
+import { CHALLENGE_WORDS } from '../../lib/challengeWords'
 import type { OrgChallengeRow } from '../orgApi'
 import { hikersInLabel } from './Challenges'
 
@@ -216,9 +217,10 @@ export function ChallengeFinishers({
       {row.status === 'draft' ? (
         <div className="org-callout" data-tone="info">
           <span>
-            <strong>A draft takes no entries.</strong> Hikers can join it, walk it and tag
-            its places; the finish screen tells them your club has not confirmed the list
-            yet, rather than collecting an entry nobody agreed to run.
+            <strong>A draft takes no entries.</strong> Hikers can join it, walk it and{' '}
+            {CHALLENGE_WORDS.noun} its places; the finish screen tells them your club has
+            not confirmed the list yet, rather than collecting an entry nobody agreed to
+            run.
           </span>
         </div>
       ) : null}
@@ -247,8 +249,9 @@ export function ChallengeFinishers({
         </p>
         <p className="org-panel__note">
           An entry carries what the finisher chose to send — a name, and an email or a
-          mailing address — and the places they tagged, each marked as found by GPS or
-          tagged by hand. What a hand tag is worth is yours to decide.
+          mailing address — and the places they {CHALLENGE_WORDS.past}, each marked as
+          found by GPS or {CHALLENGE_WORDS.past} by hand. What a hand{' '}
+          {CHALLENGE_WORDS.noun} is worth is yours to decide.
         </p>
         <div className="org-inline">
           <button

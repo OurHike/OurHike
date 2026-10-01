@@ -1,0 +1,98 @@
+version: 2
+
+models:
+  # --- Phase D: the non-A.T. organizations (#100) --------------------------
+  #
+  # Four providers, fourteen models, and the thing worth noticing is how
+  # little had to change to hold them: the column shape, the naming, the
+  # seed and the reconciliation tests all generalized as designed. What did
+  # NOT generalize is recorded in DBT.md's Phase D section.
+  #
+  # This was a section header in the one staging.yml every org shared. That
+  # file is now one _<org>__models.yml per org directory, so each test sits
+  # beside its model, which dbt_project_evaluator's fct_test_directories
+  # enforces; the other three Phase D providers are in nynjtc/, mohonk/ and
+  # oprhp/.
+  - name: stg_dec__lean_tos
+    description: >
+      DEC lean-tos as `shelter` - the first non-A.T. rows in dim_pois.
+      poi_type, id, name and public flag are all sources.json's declared
+      fields for this entry rather than calls made in SQL. The model's own
+      comment carries the reasoning the other five DEC POI models refer to,
+      including why PUBLICUSE is carried rather than applied.
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]
+      - name: poi_type
+        data_tests: [not_null]
+  - name: stg_dec__primitive_campsites
+    description: >
+      DEC primitive campsites as `campsite`. 2,078 rows on the live layer
+      (counted 2026-08-27) - the largest single block of POIs Phase D adds.
+      One row is one backcountry tent site.
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]
+      - name: poi_type
+        data_tests: [not_null]
+  - name: stg_dec__scenic_vistas
+    description: >
+      DEC scenic vistas as `viewpoint`. One of three DEC services landing on
+      that type; they stay three models with three `source` values, and
+      cross-source dedup remains deferred as it was in Phase A.
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]
+      - name: poi_type
+        data_tests: [not_null]
+  - name: stg_dec__firetowers
+    description: >
+      DEC firetowers as `viewpoint`, and the one Phase D poi_type carrying an
+      @unvalidated caveat into the model: the layer publishes no open/closed
+      state, so a hiker who reaches a closed tower finds a locked cab. See
+      the model comment.
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]
+      - name: poi_type
+        data_tests: [not_null]
+  - name: stg_dec__viewing_areas
+    description: >
+      DEC viewing areas as `viewpoint`. Same shape as stg_dec__lean_tos.
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]
+      - name: poi_type
+        data_tests: [not_null]
+  - name: stg_dec__parking_areas
+    description: >
+      DEC parking areas as `parking`. The layer states no seasonal access -
+      seasonality lives in DEC's free-text NOTES, so no column here claims
+      it.
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]
+      - name: poi_type
+        data_tests: [not_null]
+  - name: stg_dec__hiking_trails
+    description: >
+      DEC's statewide trail attributes - the non-A.T. twin of
+      stg_atc__centerline_segments, geometry left to the Python spatial
+      scripts. Carries both id columns because the stable one (GLOBALID) is
+      spelled where lib/feature_id.py does not look, so published ids fall
+      back to OBJECTID. No accepted_values on `marker`: 2,929 of 5,286 rows
+      are blank and one reads 'ORANGE AND RED', which DEC's own domain does
+      not declare.
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]
+  - name: stg_dec__backcountry_features
+    description: >
+      DEC's asset inventory, staged and NOT unioned - the same posture
+      stg_atc__bridges holds. The entry declares no poi_type because 68% of
+      the layer is things no hiker wants a pin for; what publishes from it
+      goes through export_nearby_poi.py's allowlist, which is not
+      reproduced here.
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]

@@ -1,0 +1,36 @@
+version: 2
+
+# NO PRIMARY-KEY TEST ON EITHER MODEL, because neither layer has a recorded
+# id (each description says why, and DBT.md's Phase D section has the
+# argument against OGC_FID). dbt_project_evaluator's
+# fct_missing_primary_key_tests is excepted for these two in
+# seeds/dbt_project_evaluator_exceptions.csv, and the row says what ends it:
+# one field-metadata read of each service.
+#
+# The `loaded_at` not_null test is the one invariant these models can state
+# today: load_raw.py stamps `_loaded_at` on every row it loads, and source
+# freshness reads it. It is here because the evaluator's test coverage target
+# (100%, its default) cannot be excepted per model, and it is a weak test -
+# it says the load's bookkeeping survived staging, nothing about the rows.
+# The same arrangement holds in mohonk/ and oprhp/.
+models:
+  - name: stg_nynjtc__long_path
+    description: >
+      The Long Path's per-segment attributes - the first trail in this
+      warehouse that is not the A.T. NO source_id column: sources.json
+      records no id field for this layer, and ST_Read's OGC_FID is GDAL's
+      row number rather than NYNJTC's identity. `blaze` is a plain string
+      ('aqua' on all 43 rows), passed through undecoded.
+    columns:
+      - name: loaded_at
+        description: load_raw.py's `_loaded_at` for the load this row came from, naive UTC.
+        data_tests: [not_null]
+  - name: stg_nynjtc__highlands_trail
+    description: >
+      The Highlands Trail's 12 sections. NO BLAZE COLUMN, because the layer
+      publishes no blaze field - a stated absence, not a gap to fill. No
+      source_id, for the same reason as its sibling.
+    columns:
+      - name: loaded_at
+        description: load_raw.py's `_loaded_at` for the load this row came from, naive UTC.
+        data_tests: [not_null]

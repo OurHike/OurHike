@@ -21,6 +21,17 @@ too - so the *dbt* job pays the same fetch without any test mentioning it. A
 hardcoded list of jobs would have inherited that blind spot. These tests ask
 which jobs run DuckDB-touching entrypoints and require seeding of each, so a
 new job that loads the warehouse is covered by construction.
+
+ONE FETCH THIS DOES NOT COVER, since dbt v2 (#1793 — Rebuild the data
+platform as dlt → dbt: seven contracted marts, a monthly refresh, published
+docs, and lighter phone downloads). The dbt job's `dbt` binary is dbt 2.0.6,
+which runs DuckDB 1.5.4 through an ADBC driver it downloads from
+public.cdn.getdbt.com, and fetches its own spatial build from
+extensions.duckdb.org on a cold cache (measured 2026-10-01; dbt-oss 2.0.5,
+before decision 32, did the same). The seeding held here is the Python
+duckdb's, which load_raw.py uses. The dbt job caches dbt's two downloads with
+actions/cache instead, and its comments say what is measured about that half
+and what is not.
 """
 
 from __future__ import annotations

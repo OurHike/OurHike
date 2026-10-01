@@ -36,15 +36,18 @@ models:
           semantics, which is the deliberately-unmapped case.
         data_tests:
           - relationships:
-              to: ref('poi_type_mapping')
-              field: poi_type
+              arguments:
+                to: ref('poi_type_mapping')
+                field: poi_type
       - name: longitude
         data_tests:
           - dbt_utils.accepted_range:
-              min_value: -180
-              max_value: 180
+              arguments:
+                min_value: -180
+                max_value: 180
       - name: latitude
         data_tests:
           - dbt_utils.accepted_range:
-              min_value: -90
-              max_value: 90
+              arguments:
+                min_value: -90
+                max_value: 90

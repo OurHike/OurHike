@@ -117,6 +117,9 @@ Google/Apple/email sign-in, email verification, optional MFA, recommended techni
 - Contextual Leave No Trace reminders (e.g., bear-country food storage) tied to location/season
 - No location-sharing or contact exchange without explicit, per-instance consent. **This principle's real test case, design drafted 2026-07-28: see [COMMUNITY_BUILDING.md](features/COMMUNITY_BUILDING.md)** - Tramily group-forming, on-demand or ~30-min check-in location sharing, and content-attached "@" mentions, all scoped opt-in/mutual/revocable rather than loosened for this feature.
 
+### Challenges *(#1, #2, #9)*
+- **A club's list of places on its own trails that a hiker opts into, walks, and tags at camp** — a date window, an optional finish line, an optional reward, most with none. The first is the ATC's A.T. Summer Bucket List, today a PDF and an August email form. **Design 2026-09-30: see [CHALLENGES.md](features/CHALLENGES.md)**, which argues its way past VOLUNTEERING.md §5's "no progress bar toward a target nobody set": the target is the publishing club's, shown only to someone who joined, and measured in days on trail rather than taps. Never comparative, never a lack-state, private by default, counting real places and never points. Nothing changes in the walking view; the question is asked once at camp.
+
 ### Data openness & portability *(#3, #6)*
 - User data export (routes, saved hikes) in open formats (GPX/GeoJSON/CSV)
 - Public read API for trail/POI data

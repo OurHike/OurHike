@@ -20,6 +20,16 @@
 #   scripts/test.sh --list      what would run and why, without running it
 #   scripts/test.sh --since X   compare against X rather than origin/main
 #   scripts/test.sh --coverage  measure coverage too, as CI does
+#   scripts/test.sh --no-dbt-deps  use pipeline/dbt/dbt_packages/ as it is
+#
+# THE DBT SUITE is pipeline-tests.yml's `dbt` job: SQLFluff and dbt lint,
+# then dbt against fixtures, the evaluator enforced. It needs a toolchain
+# this script does not install - the dbt version requirements-dbt.txt pins,
+# first on PATH, with that environment's python and sqlfluff beside it - and is
+# SKIPPED, said in the last line, without one. --no-dbt-deps is for a
+# sandbox whose proxy cannot fetch dbt's package tarballs: put the packages
+# in dbt_packages/ by hand (the dbt skill has the clone commands) and skip
+# the step that would empty it.
 #
 # COVERAGE IS OFF UNLESS ASKED FOR, and that is a saving rather than a
 # shortcut: it is visibility-only in all four suites by deliberate decision -
@@ -77,6 +87,7 @@ run_all=false
 list_only=false
 with_coverage=false
 skip_flow=false
+skip_dbt_deps=false
 base_ref=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -84,6 +95,7 @@ while [ $# -gt 0 ]; do
     --list) list_only=true ;;
     --coverage) with_coverage=true ;;
     --no-flow) skip_flow=true ;;
+    --no-dbt-deps) skip_dbt_deps=true ;;
     # The missing-value case checked here, not left to `shift` (#660): a
     # trailing `--since` used to hit the loop's own shift with nothing
     # left, and `set -e` killed the script with exit 1 and no output - the
@@ -181,7 +193,7 @@ scope_for_suite_workflows() {
 # every PR" is "run it whenever anything changed", and the suite is cheap
 # enough to carry that.
 
-suite_names=(client backend pipeline settings)
+suite_names=(client backend pipeline dbt settings)
 
 scope_for_suite() {
   scope_for_suite_workflows "$1"
@@ -314,6 +326,28 @@ if [ -z "$PY" ] && { selected_has pipeline || selected_has backend || selected_h
   exit 1
 fi
 
+# THE DBT TOOLCHAIN, found rather than installed. CI's `dbt` job runs on its
+# own Python with its own requirements file (requirements-dbt.txt), which
+# shares nothing with the pytest suites' beyond duckdb, so it cannot borrow
+# $PY. What counts is the `dbt` first on PATH, if it reports the dbt version
+# that file pins (read from the file, one home), and the python and sqlfluff
+# of the same environment beside it - a venv's bin/ always has both.
+# Anything else is an environment gap and is said, never guessed around:
+# another dbt on PATH is the dbt-core 1.x this project left, or the dbt-oss
+# distribution decision 32 moved off (`dbt --version` names which: "dbt
+# 2.0.6" for the full distribution, "dbt-oss 2.0.5" for the other).
+DBT_PIN="$(sed -n 's/^dbt==\([^ ;]*\).*/\1/p' pipeline/requirements-dbt.txt | head -1)"
+DBT_DIR=""
+dbt_found="none"
+if selected_has dbt && command -v dbt >/dev/null 2>&1; then
+  dbt_found="$(dbt --version 2>/dev/null | head -1)"
+  candidate="$(dirname "$(command -v dbt)")"
+  if [ -n "$DBT_PIN" ] && [ "$dbt_found" = "dbt ${DBT_PIN}" ] &&
+     [ -x "$candidate/python" ] && [ -x "$candidate/sqlfluff" ]; then
+    DBT_DIR="$candidate"
+  fi
+fi
+
 # Suites run one at a time, each using every core internally rather than four
 # suites fighting over them. Measured on a four-core machine: run concurrently,
 # the three big suites took 100s, 104s and 209s; run one after another with the
@@ -361,6 +395,10 @@ if selected_has settings; then
   step "settings ruff check"   "$PY" -m ruff check .github/tests
   step "settings ruff format"  "$PY" -m ruff format --check .github/tests
 fi
+if selected_has dbt && [ -n "$DBT_DIR" ]; then
+  # The jinja templater, as CI runs it: no warehouse, no packages needed.
+  step "dbt sqlfluff lint"     env -C pipeline "$DBT_DIR/sqlfluff" lint dbt/models dbt/tests
+fi
 if selected_has client; then
   step "client lint"           npm --prefix client run lint
   step "client format:check"   npm --prefix client run format:check
@@ -376,6 +414,59 @@ if selected_has pipeline; then
 fi
 if selected_has backend; then
   step "backend tests"  env -C backend "$PY" -m pytest -q "${PYTEST_PARALLEL[@]}" "${PYTEST_COVERAGE[@]}"
+fi
+
+# pipeline-tests.yml's `dbt` job, step for step and in its order, with three
+# differences and each one on purpose:
+#   - the fixtures and the warehouse go to a temporary directory, never to
+#     pipeline/data/. make_dbt_fixtures.py refuses to write over a real
+#     fetch, and load_raw.py would replace a real warehouse; on a CI runner
+#     pipeline/data/ is empty, here it may be somebody's afternoon of fetching;
+#   - nothing is installed: no pip, and no spatial seeding. load_raw.py's
+#     INSTALL spatial finds the extension a web session's hook seeded, or
+#     fetches it on a machine with real network;
+#   - --no-dbt-deps can skip `dbt deps`, out loud.
+# Telemetry is off for the same reason, and by the same documented opt-out,
+# as in CI: the workflow's dbt job says why that variable and no other.
+# The docs site's three parts are checked the same way the workflow step
+# checks them; that step is the home of what the site must contain.
+dbt_docs_site_complete() {
+  local site="$1"
+  test -s "$site/index.html" || { echo "no $site/index.html" >&2; return 1; }
+  test -n "$(find "$site/assets" -type f -print -quit 2>/dev/null)" || { echo "no $site/assets" >&2; return 1; }
+  test -n "$(find "$site" -name '*.parquet' -print -quit)" || { echo "no Parquet under $site" >&2; return 1; }
+}
+if selected_has dbt; then
+  if [ -z "$DBT_DIR" ]; then
+    echo "-- dbt suite: SKIPPED, no dbt ${DBT_PIN:-?} first on PATH (found: ${dbt_found})."
+    echo "   Make a venv outside the repository, install the pins, and put it first on PATH:"
+    echo "     python3.12 -m venv ~/.venvs/ourhike-dbt"
+    echo "     ~/.venvs/ourhike-dbt/bin/pip install -r pipeline/requirements-dbt.txt"
+    echo "     PATH=~/.venvs/ourhike-dbt/bin:\$PATH scripts/test.sh"
+    echo "   CI runs it regardless (.github/workflows/pipeline-tests.yml's dbt job)."
+    skipped+=("dbt suite (no dbt ${DBT_PIN:-?} on PATH)")
+  else
+    dbt_tmp="$(mktemp -d)"
+    trap 'rm -rf "$dbt_tmp"' EXIT
+    dbt_cmd=(env -C pipeline/dbt DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS=false
+             "OURHIKE_WAREHOUSE=$dbt_tmp/warehouse.duckdb" "$DBT_DIR/dbt")
+    if $skip_dbt_deps; then
+      echo "-- dbt deps: skipped (--no-dbt-deps), using pipeline/dbt/dbt_packages/ as it is"
+      skipped+=("dbt deps (--no-dbt-deps)")
+    else
+      step "dbt deps"            "${dbt_cmd[@]}" deps --profiles-dir .
+    fi
+    step "dbt parse"             "${dbt_cmd[@]}" parse --profiles-dir .
+    step "dbt lint"              "${dbt_cmd[@]}" lint --profiles-dir .
+    step "dbt fixtures"          env -C pipeline "$DBT_DIR/python" make_dbt_fixtures.py --raw-dir "$dbt_tmp/raw"
+    step "dbt load warehouse"    env -C pipeline "$DBT_DIR/python" load_raw.py --raw-dir "$dbt_tmp/raw" --warehouse "$dbt_tmp/warehouse.duckdb"
+    step "dbt seed"              "${dbt_cmd[@]}" seed --profiles-dir .
+    step "dbt build"             "${dbt_cmd[@]}" build --profiles-dir . --exclude package:dbt_project_evaluator
+    step "dbt source freshness"  "${dbt_cmd[@]}" source freshness --profiles-dir .
+    step "dbt docs generate"     "${dbt_cmd[@]}" docs generate --profiles-dir . --output-dir target/docs
+    step "dbt docs site"         dbt_docs_site_complete pipeline/dbt/target/docs
+    step "dbt project evaluator" env DBT_PROJECT_EVALUATOR_SEVERITY=error "${dbt_cmd[@]}" build -s package:dbt_project_evaluator --profiles-dir .
+  fi
 fi
 if selected_has client; then
   # The build is part of the client's checks rather than an extra: npm run

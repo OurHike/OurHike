@@ -49,8 +49,57 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 #: Extensions that are data rather than source: something a script fetched,
 #: derived, or exported. Deliberately not exhaustive - it names the shapes
 #: this pipeline actually produces, and a new one is a line here.
+#: `.duckdb` is the warehouse load_raw.py and dbt build, and `.wal` its
+#: write-ahead log beside it: a warehouse holds every raw layer whole, so one
+#: committed by accident publishes every source at once.
 DATA_SUFFIXES = frozenset(
-    {".geojson", ".fgb", ".gpkg", ".pmtiles", ".tif", ".tiff", ".parquet", ".csv", ".sqlite", ".db", ".osm", ".zip"}
+    {
+        ".geojson",
+        ".fgb",
+        ".gpkg",
+        ".pmtiles",
+        ".tif",
+        ".tiff",
+        ".parquet",
+        ".csv",
+        ".sqlite",
+        ".db",
+        ".duckdb",
+        ".wal",
+        ".osm",
+        ".zip",
+    }
+)
+
+#: What dbt writes inside its project and must never be tracked
+#: (pipeline/dbt/.gitignore lists the same five). target/ is the one that
+#: matters most: compiled SQL, the manifest, run results, and since dbt v2 a
+#: docs site whose Parquet artifacts are read straight from the warehouse it
+#: was built against (#1793 — Rebuild the data platform as dlt → dbt: seven
+#: contracted marts, a monthly refresh, published docs, and lighter phone
+#: downloads). Matched by path, because most of it is .json and .sql, which
+#: no suffix rule here can see.
+DBT_GENERATED = (
+    "pipeline/dbt/target/",
+    "pipeline/dbt/dbt_packages/",
+    "pipeline/dbt/dbt_internal_packages/",
+    "pipeline/dbt/logs/",
+    "pipeline/dbt/.user.yml",
+)
+
+#: JSON is source almost everywhere in this tree - package manifests,
+#: tsconfig, the backend's OpenAPI baselines, iOS asset catalogues - so
+#: `.json` cannot join DATA_SUFFIXES: 55 tracked files would trip it, the 58
+#: tracked .json files less the 3 under ALLOWED_DATA_PATHS (counted
+#: 2026-10-01). Under pipeline/ it is the other way round. Every exporter
+#: writes JSON (trail_miles.json, trail_graph.json, the conditions/ files),
+#: so a tracked .json there is exported data unless it is one of these: the
+#: reviewed joins in reference/ (held to MAX_REFERENCE_LINES below), test
+#: fixtures, and the hand-edited source registry.
+PIPELINE_JSON_ALLOWED = (
+    "pipeline/reference/",
+    "pipeline/tests/fixtures/",
+    "pipeline/sources.json",
 )
 
 #: Paths that are allowed to hold data-shaped files, each for a stated
@@ -137,6 +186,22 @@ def tracked_files() -> list[str]:
     return [line for line in result.stdout.splitlines() if line]
 
 
+def is_data_shaped_outside_the_allowlist(path: str) -> bool:
+    return Path(path).suffix.lower() in DATA_SUFFIXES and not any(path.startswith(allowed) for allowed in ALLOWED_DATA_PATHS)
+
+
+def is_dbt_generated(path: str) -> bool:
+    return any(path == generated or path.startswith(generated) for generated in DBT_GENERATED)
+
+
+def is_pipeline_json_outside_the_allowlist(path: str) -> bool:
+    return (
+        path.startswith("pipeline/")
+        and Path(path).suffix.lower() == ".json"
+        and not any(path == allowed or path.startswith(allowed) for allowed in PIPELINE_JSON_ALLOWED)
+    )
+
+
 @pytest.fixture(scope="module")
 def tracked() -> list[str]:
     files = tracked_files()
@@ -166,11 +231,7 @@ def test_no_data_shaped_file_is_tracked_outside_the_allowlist(tracked):
     asset (allowlisted, with its reason) or a dataset somebody published
     permanently without meaning to.
     """
-    offenders = [
-        path
-        for path in tracked
-        if Path(path).suffix.lower() in DATA_SUFFIXES and not any(path.startswith(allowed) for allowed in ALLOWED_DATA_PATHS)
-    ]
+    offenders = [path for path in tracked if is_data_shaped_outside_the_allowlist(path)]
 
     assert offenders == [], (
         "These look like fetched or derived data committed to the repository. Data belongs "
@@ -179,6 +240,78 @@ def test_no_data_shaped_file_is_tracked_outside_the_allowlist(tracked):
         f"still being established while it sits on disk. If one of these is genuinely an app "
         f"asset, add its directory to ALLOWED_DATA_PATHS with the reason: {offenders}"
     )
+
+
+def test_nothing_dbt_generates_is_tracked(tracked):
+    """pipeline/dbt/.gitignore keeps these out, and `git add -f` walks past a
+    gitignore. target/ is the dangerous one: a docs build's Parquet carries
+    whatever the warehouse it read held, and a compiled model or a
+    run_results.json carries the runner's paths."""
+    committed = [path for path in tracked if is_dbt_generated(path)]
+
+    assert committed == [], (
+        "dbt writes these and none of them is source: build them in CI, never commit them "
+        f"(pipeline/dbt/.gitignore). Tracked: {committed[:5]}"
+    )
+
+
+def test_no_exported_json_is_tracked_under_pipeline(tracked):
+    """The pipeline's exporters write JSON, so a .json committed under
+    pipeline/ is an export that skipped R2 - unless it is a reviewed join,
+    a fixture, or the registry."""
+    offenders = [path for path in tracked if is_pipeline_json_outside_the_allowlist(path)]
+
+    assert offenders == [], (
+        "These are JSON under pipeline/ outside reference/, tests/fixtures/ and sources.json, "
+        "which is where exported data lands. Data belongs in pipeline/data/ and reaches hikers "
+        "through R2; if one of these is a reviewed join, it belongs in reference/ and its "
+        f"ceiling applies. Tracked: {offenders}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("path", "flagged_by"),
+    [
+        # What the three rules exist to catch.
+        ("pipeline/dbt/target/manifest.json", "dbt"),
+        ("pipeline/dbt/target/docs/info_schema/v1/dbt.models.parquet", "dbt"),
+        ("pipeline/dbt/target/docs/index.html", "dbt"),
+        ("pipeline/dbt/dbt_packages/dbt_utils/dbt_project.yml", "dbt"),
+        ("pipeline/dbt/dbt_internal_packages/x/macros.sql", "dbt"),
+        ("pipeline/dbt/logs/dbt.log", "dbt"),
+        ("pipeline/dbt/.user.yml", "dbt"),
+        ("pipeline/dbt/warehouse.duckdb", "suffix"),
+        ("pipeline/data.duckdb.wal", "suffix"),
+        ("ci.duckdb", "suffix"),
+        ("pipeline/trail_miles.json", "json"),
+        ("pipeline/dbt/manifest.json", "json"),
+        # What they must leave alone: the reviewed seeds and joins, the
+        # registry, fixtures, and JSON that is source outside pipeline/.
+        ("pipeline/dbt/seeds/dbt_project_evaluator_exceptions.csv", None),
+        ("pipeline/dbt/seeds/poi_type_mapping.csv", None),
+        ("pipeline/dbt/dbt_project.yml", None),
+        ("pipeline/reference/water_distance.json", None),
+        ("pipeline/reference/challenges/publishers.json", None),
+        ("pipeline/sources.json", None),
+        ("pipeline/tests/fixtures/example.json", None),
+        ("client/package.json", None),
+        ("backend/openapi_baselines/v1.json", None),
+    ],
+)
+def test_each_rule_catches_what_it_names_and_leaves_the_rest(path, flagged_by):
+    """The three tracked-file tests above pass trivially on a clean tree, so
+    this is what shows they can fail: each rule against paths it must refuse
+    and paths it must let through, the seeds and reference/ among them."""
+    rules = {
+        "dbt": is_dbt_generated(path),
+        "suffix": is_data_shaped_outside_the_allowlist(path),
+        "json": is_pipeline_json_outside_the_allowlist(path),
+    }
+
+    if flagged_by is None:
+        assert not any(rules.values()), f"{path} is source and must not be flagged: {rules}"
+    else:
+        assert rules[flagged_by], f"{path} must be caught by the {flagged_by} rule: {rules}"
 
 
 def test_reference_files_stay_small_enough_for_a_human_to_review(tracked):

@@ -2,6 +2,8 @@
 raises on any unmocked request, which is the isolation guarantee this suite
 relies on (see TESTING.md)."""
 
+import pytest
+
 from lib import arcgis
 from lib.arcgis import (
     fetch_layer_geojson,
@@ -199,6 +201,98 @@ def test_a_custom_page_size_still_stops_only_on_an_empty_page(requests_mock):
 
     assert len(fc["features"]) == 4
     assert requests_mock.call_count == 3
+
+
+# --- a page the server refuses (#1790) ---------------------------------------
+#
+# What PASDA and CDTC answered on 2026-10-01 to the fetcher's 1,000-feature
+# page, verbatim in shape: an HTML error page with HTTP 200 for f=geojson, and
+# a JSON error object for f=json. Both servers answer smaller pages.
+
+HTML_ERROR_PAGE = '\n\n<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"><html>Error</html>'
+QUERY_ERROR = {"error": {"code": 500, "message": "Error performing query operation", "details": []}}
+
+
+def _page(count: int, start: int = 0) -> dict:
+    return {"features": [{"type": "Feature", "properties": {"id": start + i}, "geometry": None} for i in range(count)]}
+
+
+def test_fetch_layer_geojson_halves_a_page_the_server_answers_with_an_html_error_page(requests_mock):
+    """PASDA's shape: 1,000 features is an HTML page, 500 is GeoJSON. The
+    retry asks for the SAME offset at half the size, keeps that size for
+    the rest of the layer, and every feature arrives exactly once."""
+    query_url = LAYER_URL + "/query"
+    requests_mock.get(
+        query_url,
+        [
+            {"text": HTML_ERROR_PAGE, "headers": {"Content-Type": "text/html"}},
+            {"json": _page(500)},
+            {"json": _page(184, start=500)},
+            {"json": {"features": []}},
+        ],
+    )
+
+    fc = fetch_layer_geojson(LAYER_URL)
+
+    assert [f["properties"]["id"] for f in fc["features"]] == list(range(684))
+    asked = [(r.qs["resultoffset"][0], r.qs["resultrecordcount"][0]) for r in requests_mock.request_history]
+    assert asked == [("0", "1000"), ("0", "500"), ("500", "500"), ("684", "500")]
+
+
+def test_fetch_layer_geojson_halves_on_a_json_error_object_too(requests_mock):
+    """The same servers' f=json shape - and what any ArcGIS server says when
+    a query fails for a reason it will name. Halved like the HTML page: the
+    caller cannot tell a byte cap from a count cap and does not need to."""
+    query_url = LAYER_URL + "/query"
+    requests_mock.get(
+        query_url,
+        [
+            {"json": QUERY_ERROR},
+            {"json": QUERY_ERROR},
+            {"json": _page(3)},
+            {"json": {"features": []}},
+        ],
+    )
+
+    fc = fetch_layer_geojson(LAYER_URL)
+
+    assert len(fc["features"]) == 3
+    assert [r.qs["resultrecordcount"][0] for r in requests_mock.request_history] == ["1000", "500", "250", "250"]
+
+
+def test_fetch_layer_geojson_gives_up_at_a_page_of_one_with_the_servers_words(requests_mock):
+    """A layer that is genuinely broken still fails, after the ten halvings
+    from 1,000 to 1 - never a silent skip, and never forever. The error
+    carries what the server said, so the fetch log names the cause."""
+    query_url = LAYER_URL + "/query"
+    requests_mock.get(query_url, json=QUERY_ERROR)
+
+    with pytest.raises(RuntimeError, match="error 500: Error performing query operation at a page of 1 feature"):
+        fetch_layer_geojson(LAYER_URL)
+
+    assert [r.qs["resultrecordcount"][0] for r in requests_mock.request_history] == [
+        "1000",
+        "500",
+        "250",
+        "125",
+        "62",
+        "31",
+        "15",
+        "7",
+        "3",
+        "1",
+    ]
+
+
+def test_an_answer_with_no_features_key_is_a_stop_and_not_a_refusal(requests_mock):
+    """`{}` and `{"features": []}` both mean "nothing here" and end the loop
+    on the first request; only an error object or an unparsable body is
+    asked again smaller."""
+    query_url = LAYER_URL + "/query"
+    requests_mock.get(query_url, json={})
+
+    assert fetch_layer_geojson(LAYER_URL)["features"] == []
+    assert requests_mock.call_count == 1
 
 
 # --- the substitute markers (#1311) -----------------------------------------

@@ -37,6 +37,7 @@ from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.org_registry import OrgPark, OrgSection, OrgTrail
 from app.models.org_role import RoleInvite
 from app.models.profile import Profile
+from app.models.trail_challenge import ChallengeEntry, ClubChallenge
 from app.models.volunteer_hours import HoursState, VolunteerHoursRecord
 from app.schemas.org import (
     OrgAdminInvite,
@@ -643,6 +644,16 @@ def delete_org(
     a row that says it is gone.
     """
     access.club.state = OrgState.deleted
+    # **Except the challenge entries it collected**, which are the opposite
+    # case: a hiker's name and address, sent to THIS organization for its
+    # drawing, which nobody can download once it is gone and nobody should
+    # keep. They go with it, and its challenge ids are released so the
+    # names stop being held by an org that no longer exists. The hikers'
+    # own tags stay: those are theirs, like their hours.
+    owned = [row.challenge_id for row in db.query(ClubChallenge).filter(ClubChallenge.club_id == access.club.id)]
+    if owned:
+        db.query(ChallengeEntry).filter(ChallengeEntry.challenge_id.in_(owned)).delete(synchronize_session=False)
+        db.query(ClubChallenge).filter(ClubChallenge.club_id == access.club.id).delete(synchronize_session=False)
     db.commit()
     response.status_code = status.HTTP_204_NO_CONTENT
     return response
@@ -688,6 +699,7 @@ def export_org(
     """
     from app.models.org_registry import OrgPark, OrgSection, OrgTrail
     from app.models.org_role import OrgRole
+    from app.models.trail_challenge import ClubChallenge
     from app.models.work_project import WorkProject
     from app.routers.org_roles import read_roster
 
@@ -715,6 +727,14 @@ def export_org(
         "workdays": [
             row(w, ("id", "title", "starts_on", "ends_on", "meet_point", "status", "cap", "source"))
             for w in db.query(WorkProject).filter(WorkProject.club_id == club.id).all()
+        ],
+        # The challenges it has saved (#1780) - its own definitions, which it
+        # wrote. Not the entries hikers sent it: those are people's names and
+        # addresses, already the club's to download as the finishers' CSV, and
+        # an export is not a second route to them.
+        "challenges": [
+            row(c, ("challenge_id", "definition", "window_closes", "takes_entries", "pr_url", "updated_at"))
+            for c in db.query(ClubChallenge).filter(ClubChallenge.club_id == club.id).order_by(ClubChallenge.challenge_id).all()
         ],
         "admins": [
             row(a, ("id", "person_id", "title", "is_codeowner", "approved_at", "declined_at"))

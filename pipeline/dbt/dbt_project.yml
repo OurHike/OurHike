@@ -32,3 +32,57 @@ models:
 seeds:
   ourhike:
     +schema: seeds
+  # The evaluator ships an empty dbt_project_evaluator_exceptions seed of its
+  # own, and its filter_exceptions() macro ignores every exception while that
+  # copy is the one in the graph. Disabling it lets ref() land on ours,
+  # seeds/dbt_project_evaluator_exceptions.csv; its entry in seeds/seeds.yml
+  # says what a row must carry.
+  dbt_project_evaluator:
+    dbt_project_evaluator_exceptions:
+      +enabled: false
+
+# dbt_project_evaluator is ENFORCED: every finding fails the evaluator step
+# in pipeline-tests.yml's `dbt` job, rather than warning (#1793 — Rebuild
+# the data platform as dlt → dbt: seven contracted marts, a monthly refresh,
+# published docs, and lighter phone downloads; the maintainer's words were
+# "Enforce all standards in that tool"). A finding is fixed, or excepted by a
+# row in the exceptions seed that says why. The env var is the evaluator's
+# own documented switch, for a local survey of what would fail:
+#   DBT_PROJECT_EVALUATOR_SEVERITY=warn dbt build -s package:dbt_project_evaluator
+# Not a global --warn-error, which would also escalate dbt's deprecation
+# warnings and every deliberate `warn`, such as source freshness.
+data_tests:
+  dbt_project_evaluator:
+    +severity: "{{ env_var('DBT_PROJECT_EVALUATOR_SEVERITY', 'error') }}"
+
+vars:
+  dbt_project_evaluator:
+    # The mart names the maintainer chose carry no dim_/fct_ prefix
+    # ("do not keep the dim_ and fct_ prefixes in the marts folders. Just
+    # use the names I provided"). The evaluator reads a model's prefix as
+    # everything before its first underscore plus the underscore,
+    # so these ten cover the eleven marts - trail_ is both trail_lines and
+    # trail_network, and a name with no underscore (closures, warnings,
+    # podcasts, challenges, elevation, places, sources) reads as itself
+    # plus `_`. `dim_` stays only while today's dim_pois does, and leaves
+    # with it when the points_of_interest mart replaces it.
+    #
+    # A prefix outranks a folder in the evaluator's typing, so a future
+    # trail_* model outside models/marts/ is flagged by fct_model_directories
+    # rather than slipping through - wanted. Measured 2026-10-01 with
+    # evaluator 1.4.0, on dbt 2.0.6 and again on dbt-oss 2.0.5, against a
+    # scratch copy holding one model for each of the eleven names under
+    # models/marts/<name>/: no naming or directory finding for any of them,
+    # and dim_pois still passing.
+    marts_prefixes:
+      - trail_
+      - points_
+      - elevation_
+      - closures_
+      - warnings_
+      - podcasts_
+      - challenges_
+      - places_
+      - suggested_
+      - sources_
+      - dim_

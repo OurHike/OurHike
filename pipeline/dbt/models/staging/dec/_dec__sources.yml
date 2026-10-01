@@ -29,14 +29,15 @@ sources:
       in the registry, not an omission here, and nothing in this source
       group mints a `water` poi_type.
     schema: raw
-    loaded_at_field: _loaded_at
-    freshness:
-      # load_raw.py's cadence, not DEC's - and DEC is the one provider where
-      # there is no upstream editingInfo to compare against at all (on-prem
-      # MapServers publish none), so the substitute marker is a max(UPDATED)
-      # statistics query the fetcher runs. @unvalidated threshold, same open
-      # question as _atc__sources.yml.
-      warn_after: {count: 7, period: day}
+    config:
+      loaded_at_field: _loaded_at
+      freshness:
+        # load_raw.py's cadence, not DEC's - and DEC is the one provider where
+        # there is no upstream editingInfo to compare against at all (on-prem
+        # MapServers publish none), so the substitute marker is a max(UPDATED)
+        # statistics query the fetcher runs. @unvalidated threshold, same open
+        # question as _atc__sources.yml.
+        warn_after: {count: 7, period: day}
     tables:
       - name: raw_dec__dec_hiking_trails
         description: >

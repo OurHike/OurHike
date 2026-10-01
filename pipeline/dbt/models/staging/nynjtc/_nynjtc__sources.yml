@@ -12,15 +12,16 @@ sources:
       Descriptions below are transcribed from sources.json's own measured
       notes, not authored here.
     schema: raw
-    loaded_at_field: _loaded_at
-    freshness:
-      # Measures "how recently did load_raw.py run", NOT upstream NYNJTC
-      # staleness - the fetcher owns real upstream change-detection via
-      # editingInfo.dataLastEditDate. @unvalidated: 7 days is inherited from
-      # the atc source's threshold and nobody has measured what load cadence
-      # actually makes a warehouse stale here. What would settle it is one
-      # bake cadence being decided; see _atc__sources.yml for the same tag.
-      warn_after: {count: 7, period: day}
+    config:
+      loaded_at_field: _loaded_at
+      freshness:
+        # Measures "how recently did load_raw.py run", NOT upstream NYNJTC
+        # staleness - the fetcher owns real upstream change-detection via
+        # editingInfo.dataLastEditDate. @unvalidated: 7 days is inherited from
+        # the atc source's threshold and nobody has measured what load cadence
+        # actually makes a warehouse stale here. What would settle it is one
+        # bake cadence being decided; see _atc__sources.yml for the same tag.
+        warn_after: {count: 7, period: day}
     tables:
       - name: raw_nynjtc__nynjtc_long_path
         description: >

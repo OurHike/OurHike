@@ -95,6 +95,8 @@ function crumbsFor(
       embeds: ['Put this on your own website', '3 public · 1 private'],
       emails: ['What we email on your behalf', 'every message, in full'],
       leaving: ['Settings and leaving', 'export, remove, unpublish, delete'],
+      challenges: ['Challenges', 'places, dates, what counts'],
+      finishers: ['Finishers', 'entries sent to you'],
     }
     const [here, aside] = names[route.page]
     return { trail: [group, here], aside }
@@ -138,6 +140,12 @@ export function OrgShell({
       { key: 'signoff', label: 'Registry sign-off', route: setup('signoff') },
       { key: 'addtrail', label: 'Add a trail', route: setup('addtrail') },
       { key: 'embeds', label: 'Put this on your site', route: setup('embeds') },
+      // Under the registry gate with the rest of this group, because a
+      // challenge is built from places on trails the org publishes and the
+      // publishing is an admin's act (features/CHALLENGES.md, frame #2a).
+      // Its Finishers page has no rail entry of its own: it is one
+      // challenge's sub-page, and `isHere` marks this row while it is open.
+      { key: 'challenges', label: 'Challenges', route: setup('challenges') },
     ]
 
     // Add a trail is the one management item the registry gate owns: it is a
@@ -195,6 +203,13 @@ export function OrgShell({
       )
     }
     if (route.kind === 'tread') return false
+    if (
+      item.key === 'challenges' &&
+      route.kind === 'setup' &&
+      route.page === 'finishers'
+    ) {
+      return true
+    }
     return item.route.page === route.page
   }
 

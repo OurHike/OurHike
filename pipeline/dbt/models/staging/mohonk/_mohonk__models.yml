@@ -1,0 +1,15 @@
+version: 2
+
+# No primary-key test, and a `loaded_at` not_null test instead: the layer
+# has no recorded id. nynjtc/_nynjtc__models.yml says why both, once.
+models:
+  - name: stg_mohonk__trails
+    description: >
+      Mohonk Preserve's 304 curated segments. `blaze` here IS a coded field,
+      unlike NYNJTC's two - three organizations, three different answers to
+      the same question. Still no accepted_values: 124 of 304 rows carry the
+      literal string 'N/A' and 7 carry no value at all.
+    columns:
+      - name: loaded_at
+        description: load_raw.py's `_loaded_at` for the load this row came from, naive UTC.
+        data_tests: [not_null]

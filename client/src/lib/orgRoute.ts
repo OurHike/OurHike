@@ -88,6 +88,8 @@ export type SetupPage =
   | 'embeds'
   | 'emails'
   | 'leaving'
+  | 'challenges'
+  | 'finishers'
 
 export const SETUP_PAGES: readonly SetupPage[] = [
   'home',
@@ -98,10 +100,29 @@ export const SETUP_PAGES: readonly SetupPage[] = [
   'embeds',
   'emails',
   'leaving',
+  'challenges',
+  'finishers',
 ]
 
+/** The two pages that are about ONE challenge, and so carry `?challenge=`.
+ *
+ *  Finishers is a sub-page of one challenge (features/CHALLENGES.md, frame
+ *  #2a: "Org home -> Challenges, and its Finishers sub-page"), so a bookmark
+ *  of it has to say whose finishers - the same reason `?person=` rides on the
+ *  volunteer profile. The Challenges page reads it too, so the way back from
+ *  Finishers reopens the editor on the challenge somebody was looking at. On
+ *  every other console page it would be a parameter nothing reads, so it is
+ *  dropped rather than carried. */
+const CHALLENGE_PAGES: readonly SetupPage[] = ['challenges', 'finishers']
+
 export type OrgRoute =
-  | { readonly kind: 'setup'; readonly slug: string; readonly page: SetupPage }
+  | {
+      readonly kind: 'setup'
+      readonly slug: string
+      readonly page: SetupPage
+      /** Which challenge, on the two pages in `CHALLENGE_PAGES` only. */
+      readonly challenge?: string
+    }
   | {
       readonly kind: 'volunteers'
       readonly slug: string
@@ -214,7 +235,10 @@ export function parseOrgRoute(
   if (parts[0] === 'org' && parts.length === 3 && parts[1]) {
     const slug = parts[1]
     if (parts[2] === 'setup') {
-      return { kind: 'setup', slug, page: asSetupPage(parsed.searchParams.get('page')) }
+      const page = asSetupPage(parsed.searchParams.get('page'))
+      const challenge = parsed.searchParams.get('challenge')
+      const route: OrgRoute = { kind: 'setup', slug, page }
+      return challenge && CHALLENGE_PAGES.includes(page) ? { ...route, challenge } : route
     }
     if (parts[2] === 'volunteers') {
       const person = parsed.searchParams.get('person')

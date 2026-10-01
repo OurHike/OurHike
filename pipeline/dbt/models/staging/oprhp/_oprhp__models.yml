@@ -1,0 +1,43 @@
+version: 2
+
+# No primary-key test on any of the three, and a `loaded_at` not_null test
+# instead; nynjtc/_nynjtc__models.yml says why both, once. The trails and
+# closures layers have no recorded id. The facilities layer does - sources.json
+# declares id_field OBJECTID, as every DEC layer does - and this model does not
+# stage it yet; its row in seeds/dbt_project_evaluator_exceptions.csv says
+# what the fix touches.
+models:
+  - name: stg_oprhp__trails
+    description: >
+      NYS Parks' 16,641 statewide segments, the largest layer in the
+      warehouse. Two blaze columns rather than the three the layer has: only
+      `Blaze` and `Map_Blaze` were ever written down. `status` and
+      `public_flag` are staged and nothing filters on them, because what they
+      gate is unmeasured.
+    columns:
+      - name: loaded_at
+        description: load_raw.py's `_loaded_at` for the load this row came from, naive UTC.
+        data_tests: [not_null]
+  - name: stg_oprhp__trail_closures
+    description: >
+      OPRHP's temporary closure polygons - a safety surface, and the layer
+      whose freshness matters most of anything Phase D stages. TWO COLUMNS
+      ONLY: no full field list was ever measured, and a closure model with
+      invented columns is the worst place for one. No row-count floor test
+      either: an honest count of zero is the expected answer in a good week.
+    columns:
+      - name: loaded_at
+        description: load_raw.py's `_loaded_at` for the load this row came from, naive UTC.
+        data_tests: [not_null]
+  - name: stg_oprhp__facilities
+    description: >
+      NYS Parks' 8,823 facility points, staged and NOT unioned. The entry
+      declares no poi_type because typing it is a WATER change - `Sub_Asset`
+      holds 136 'Water Spigot' and 15 'Drinking Fountain' among its 158
+      values - needing export_poi.py's confidence and provenance treatment
+      rather than a point dump. Both public flags are staged; the obvious one
+      (`Public_`, Y on all 8,823) discriminates nothing.
+    columns:
+      - name: loaded_at
+        description: load_raw.py's `_loaded_at` for the load this row came from, naive UTC.
+        data_tests: [not_null]

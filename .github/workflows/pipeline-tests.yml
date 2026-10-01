@@ -162,16 +162,39 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: python -m pytest -v
 
-  # The dbt transform layer (pipeline/DBT.md's CI plan, #100). Its own job
-  # rather than steps on `pytest`: it pins Python 3.12 deliberately - dbt
-  # tends to lag the newest CPython the pytest job runs bleeding-edge - and
-  # its dependency set (requirements-dbt.txt) shares nothing with the
-  # pytest job's beyond duckdb. Same no-`if:`-on-the-job rule as above.
+  # The dbt transform layer (pipeline/DBT.md's CI plan, #100), on dbt v2:
+  # the full `dbt` 2.0.6 distribution, one dbt version everywhere (#1793 —
+  # Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly
+  # refresh, published docs, and lighter phone downloads; decision 32 chose it
+  # over dbt-oss 2.0.5, which also ran every step of this job green and stays
+  # the documented fallback - requirements-dbt.in says how). Its own job
+  # rather than steps on `pytest`, because its dependency set
+  # (requirements-dbt.txt) shares nothing with the pytest job's beyond
+  # duckdb. Same no-`if:`-on-the-job rule as above, and the job id stays
+  # `dbt`: it is a required check (.github/expected-protections.yml), and a
+  # renamed required job hangs the merge queue (.github/workflows/README.md).
+  #
+  # The order is cheapest failure first: lint and `dbt parse` need no
+  # warehouse, so a style slip or a YAML shape v2 refuses fails in seconds,
+  # before fixtures are built.
   dbt:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: pipeline
+    # TELEMETRY OFF, by the opt-out dbt documents. The dbt Product Licensing
+    # Agreement (§2.3) has dbt collect usage information, and v2 sends it to
+    # p.vx.dbt.com on every invocation unless this is set (docs.getdbt.com,
+    # "Anonymous usage stats" and "dbt v2 networking requirements"). It is the
+    # documented switch and nothing more: §3.2 forbids disabling licence
+    # validation or anything else that talks to dbt's services, so no other
+    # switch is set here, ever. Measured 2026-10-01 through a proxy that logs
+    # every host: without this, each dbt 2.0.6 command tried (parse, show)
+    # opened p.vx.dbt.com; with it, parse, show and build opened none.
+    # DO_NOT_TRACK=1, which the same docs page offers, still opened it, so it
+    # is not used.
+    env:
+      DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS: "false"
     steps:
       - uses: actions/checkout@v7
 
@@ -179,13 +202,17 @@ jobs:
         uses: ./.github/actions/changed-paths
         with:
           # Narrower than the pytest job's list: this job builds the dbt
-          # project off load_raw.py's warehouse, and nothing else in
-          # pipeline/ reaches it. sources.json is here because it is
-          # load_raw.py's registry - a row added there changes what loads.
+          # project off load_raw.py's warehouse, and the files below are the
+          # rest of pipeline/ that reaches it. sources.json is here because it
+          # is load_raw.py's registry - a row added there changes what loads -
+          # and lib/source_registry.py because load_raw.py reads the registry
+          # through it. seed_spatial_extension.py is a step of this job.
           paths: >-
             pipeline/dbt/
             pipeline/load_raw.py
+            pipeline/lib/source_registry.py
             pipeline/make_dbt_fixtures.py
+            pipeline/seed_spatial_extension.py
             pipeline/sources.json
             pipeline/requirements-dbt.in
             pipeline/requirements-dbt.txt
@@ -193,6 +220,12 @@ jobs:
             .github/workflows/pipeline-tests.yml
             .github/actions/changed-paths/
 
+      # Python 3.12, still. It used to be forced: dbt-core lagged the newest
+      # CPython the pytest job runs. dbt v2 is not a Python program - its
+      # wheel is a Rust binary tagged cp311-abi3, so any CPython >= 3.11
+      # runs it (PyPI, read 2026-10-01). What still ties this job to 3.12 is
+      # requirements-dbt.txt, which pip-compile resolved on 3.12; moving the
+      # version means recompiling that file on the new one.
       - uses: actions/setup-python@v7
         if: steps.scope.outputs.run == 'true'
         with:
@@ -200,9 +233,92 @@ jobs:
           cache: pip
           cache-dependency-path: pipeline/requirements-dbt.txt
 
+      # WHAT dbt FETCHES AT RUN TIME, CACHED. Neither v2 distribution ships a
+      # database driver. On its first command dbt downloads the ADBC driver
+      # for the profile's adapter from public.cdn.getdbt.com
+      # (docs.getdbt.com, "dbt v2 networking requirements"), and its DuckDB
+      # then installs spatial from extensions.duckdb.org. Measured 2026-10-01
+      # from an empty HOME, dbt 2.0.6: libadbc_driver_duckdb-1.5.4.so,
+      # 70,458,712 bytes, into ~/.cache/com.getdbt/adbc/, and the 1.5.4
+      # spatial build, 80,848,518 bytes, into ~/.duckdb/extensions/v1.5.4/.
+      #
+      # Cached, because with both present dbt 2.0.6 parsed and built all 153
+      # nodes with every outbound connection refused (measured the same day).
+      # So a warm cache turns an outage of either host into nothing, which is
+      # #321 — Pin the Python dependency sets and cache the DuckDB spatial
+      # extension in CI's argument, and saves about 151 MB a run. It is not a
+      # way around anything dbt does: the docs' own answer for an offline
+      # machine is to pre-cache drivers (`dbt system install-drivers`, which
+      # fetches all seven adapters' drivers, so not used here), and dbt still
+      # makes its per-command call to public.cdn.getdbt.com either way
+      # (measured: one connection per command with the driver already
+      # cached; dbt-oss 2.0.5 made none. What it carries is not in the debug
+      # log, and nothing here touches it).
+      #
+      # What a cache cannot do: a miss (the first run on a new requirements
+      # hash, or an entry GitHub evicted) downloads both again. And the two
+      # paths are what dbt wrote here, not a documented location: if a later
+      # dbt moves them, this restores files nothing reads and the run
+      # downloads as before - slower, never wrong. The key is the
+      # requirements file, which pins dbt, and the driver comes with the dbt
+      # version (its checksums ship inside the binary, per the same docs page).
+      - name: Restore dbt's DuckDB driver and v2's spatial extension
+        id: dbt-runtime
+        if: steps.scope.outputs.run == 'true'
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cache/com.getdbt/adbc
+            ~/.duckdb/extensions/v1.5.4
+          key: dbt-v2-runtime-${{ runner.os }}-${{ hashFiles('pipeline/requirements-dbt.txt') }}
+
+      # dbt 2.0.6 is a 3,291-byte sdist on PyPI whose build step downloads the
+      # real wheel from public.cdn.getdbt.com/fs/wheels and checks its sha256
+      # (requirements-dbt.in says more). So a cold install depends on dbt's
+      # CDN as well as PyPI. pip keeps the wheel it built in its cache, which
+      # the setup step above restores, so a warm run should not repeat the
+      # download (Reasoned, from how pip caches wheels built from an sdist;
+      # not yet watched on a runner).
       - name: Install dependencies
         if: steps.scope.outputs.run == 'true'
         run: pip install -r requirements-dbt.txt
+
+      # The jinja templater (pipeline/.sqlfluff says why not the dbt one), so
+      # this needs no warehouse and no packages: it runs before anything is
+      # built. The enforced lint (decision 33): 0 violations on the 32 files,
+      # 3.8 s serial (measured 2026-10-01).
+      - name: sqlfluff lint
+        if: steps.scope.outputs.run == 'true'
+        run: sqlfluff lint dbt/models dbt/tests
+
+      - name: dbt deps
+        if: steps.scope.outputs.run == 'true'
+        working-directory: pipeline/dbt
+        run: dbt deps --profiles-dir .
+
+      # The first dbt command after deps (parse needs the packages), and the
+      # v2 gate: dbt-oss 2.0.5 refused this project's v1-shaped YAML with 64
+      # errors until the YAML moved to v2's shape, and 2.0.6 parses the moved
+      # YAML clean (both measured 2026-10-01). Parse needs no warehouse, so a
+      # regression to the old shape fails here, in about a second, rather
+      # than after the fixtures load.
+      - name: dbt parse
+        if: steps.scope.outputs.run == 'true'
+        working-directory: pipeline/dbt
+        run: dbt parse --profiles-dir .
+
+      # dbt's own linter, beside SQLFluff and not instead of it (decision
+      # 33). It reads pipeline/.sqlfluff but warns that it supports only
+      # SQLFluff's `dbt` templater ("Continuing anyway"), and it misses some
+      # of what SQLFluff reports: measured 2026-10-01 on dbt 2.0.6, it linted
+      # the 32 files in 0.08 s and failed on a planted CP01 (keyword case) but
+      # passed a planted LT01 (a space before a comma) that SQLFluff fails.
+      # After deps and parse because it loads the whole project, and with no
+      # dbt_packages/ it installs the packages itself.
+      - name: dbt lint
+        if: steps.scope.outputs.run == 'true'
+        working-directory: pipeline/dbt
+        run: dbt lint --profiles-dir .
 
       # Take the spatial extension from PyPI instead of extensions.duckdb.org
       # (#321). `INSTALL spatial` is a live network fetch, and it is the one
@@ -214,6 +330,20 @@ jobs:
       # back out of the requirements file: extensions are ABI-locked to the
       # exact build, and the installed one is the only version that has to
       # match. Same script the web session hook runs, for the same reason.
+      #
+      # TWO DUCKDBS RUN IN THIS JOB, AND THIS SEEDS ONLY ONE OF THEM. Python's
+      # duckdb 1.5.5 (requirements-dbt.in) is what load_raw.py writes the
+      # fixture warehouse with, and what this step seeds. dbt runs DuckDB
+      # 1.5.4, through the ADBC driver it downloads, with its own extension
+      # directory, which the cache step above covers instead. Measured
+      # 2026-10-01 in a web session, not on a runner, on dbt 2.0.6 and on
+      # dbt-oss 2.0.5 alike:
+      #   - dbt reads the warehouse 1.5.5 wrote: the build below ran 153 nodes
+      #     green and source freshness passed on all 28 tables;
+      #   - dbt loads spatial itself: from an empty extension cache it fetched
+      #     its 1.5.4 build into ~/.duckdb/extensions/v1.5.4/ and ran st_point.
+      # @unvalidated in CI until this job's first run: that a runner reaches
+      # public.cdn.getdbt.com and extensions.duckdb.org on a cache miss.
       - name: Seed the duckdb spatial extension
         if: steps.scope.outputs.run == 'true'
         run: |
@@ -228,21 +358,10 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: python load_raw.py
 
-      - name: dbt deps
-        if: steps.scope.outputs.run == 'true'
-        working-directory: pipeline/dbt
-        run: dbt deps --profiles-dir .
-
       - name: dbt seed
         if: steps.scope.outputs.run == 'true'
         working-directory: pipeline/dbt
         run: dbt seed --profiles-dir .
-
-      - name: sqlfluff lint
-        if: steps.scope.outputs.run == 'true'
-        env:
-          OURHIKE_WAREHOUSE: data/warehouse.duckdb
-        run: sqlfluff lint dbt/models dbt/tests
 
       - name: dbt build
         if: steps.scope.outputs.run == 'true'
@@ -254,14 +373,47 @@ jobs:
         working-directory: pipeline/dbt
         run: dbt source freshness --profiles-dir .
 
+      # v2's docs are a directory, not v1's one file: index.html, an assets/
+      # folder and the Parquet artifacts the page reads with DuckDB-WASM
+      # (measured 2026-10-01 on dbt 2.0.6: 315 assets and 38 Parquet files,
+      # 12,301,390 bytes; dbt-oss 2.0.5 wrote the same counts in 12,291,821
+      # bytes). Written to target/docs, inside the gitignored target/, so
+      # nothing here can be committed; .github/tests/test_no_committed_data.py
+      # refuses any path under pipeline/dbt/target/ besides. The checks after
+      # it fail the step when v2 stops writing one of the three parts. Nothing
+      # publishes the site yet; the plan puts it at ourhike.org/data/.
       - name: dbt docs generate
         if: steps.scope.outputs.run == 'true'
         working-directory: pipeline/dbt
-        run: dbt docs generate --profiles-dir .
+        run: |
+          dbt docs generate --profiles-dir . --output-dir target/docs
+          test -s target/docs/index.html || { echo "::error::no target/docs/index.html"; exit 1; }
+          test -n "$(find target/docs/assets -type f -print -quit)" || { echo "::error::no target/docs/assets"; exit 1; }
+          test -n "$(find target/docs -name '*.parquet' -print -quit)" || { echo "::error::no Parquet under target/docs"; exit 1; }
+          echo "docs: $(find target/docs/assets -type f | wc -l) assets, $(find target/docs -name '*.parquet' | wc -l) Parquet files"
 
       # Separate from the data build so "did my data pass" and "does my
       # project follow conventions" stay independently readable (DBT.md).
+      # ENFORCED: dbt_project.yml sets every evaluator test's severity from
+      # this variable, so a finding fails the job. Set here rather than left
+      # to the default so the step says what it does. A finding is fixed, or
+      # excepted with a reason in dbt/seeds/dbt_project_evaluator_exceptions.csv.
       - name: dbt project evaluator
         if: steps.scope.outputs.run == 'true'
         working-directory: pipeline/dbt
+        env:
+          DBT_PROJECT_EVALUATOR_SEVERITY: error
         run: dbt build -s package:dbt_project_evaluator --profiles-dir .
+
+      # Saved on a miss, and on a failed run too: the downloads happen on the
+      # job's first dbt command, so a run that fails later still holds them
+      # (test_cache_keys_are_content_addressed.py's rule for every save).
+      - name: Save dbt's DuckDB driver and v2's spatial extension
+        if: always() && steps.scope.outputs.run == 'true' && steps.dbt-runtime.outputs.cache-hit != 'true' && hashFiles('pipeline/requirements-dbt.txt') != ''
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cache/com.getdbt/adbc
+            ~/.duckdb/extensions/v1.5.4
+          key: dbt-v2-runtime-${{ runner.os }}-${{ hashFiles('pipeline/requirements-dbt.txt') }}

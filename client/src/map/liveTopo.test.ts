@@ -65,6 +65,7 @@ import { DAY_HIKE_TICK_LABEL_LAYER_ID } from './dayHikeLayers'
 import { WARNING_LAYER_ID } from './warningLayers'
 import { POSITION_ACCURACY_LAYER_ID, POSITION_LAYER_ID } from './positionLayers'
 import { WORKDAY_LAYER_ID } from './workdayLayers'
+import { CHALLENGE_LAYER_ID } from './challengeLayers'
 import { DISPUTE_LAYER_ID } from './disputeLayers'
 import { COVERAGE_SEAM_LABEL_LAYER_ID, COVERAGE_SEAM_LAYER_ID } from './coverageLayers'
 import { ATC_UPDATE_LAYER_ID, ATC_UPDATE_POINT_LAYER_ID } from '../lib/atcUpdateStyle'
@@ -882,6 +883,11 @@ describe('the offline-only background', () => {
       // empty whenever the feed is stale - the shell passes nothing - so
       // drawing it here costs a phone with an out-of-date feed nothing.
       WORKDAY_LAYER_ID,
+      // The challenge places (#1780), over the workdays and hidden until the
+      // hiker's legend switch shows them. Offline for the reason the
+      // workdays are: the definitions ship in the data refresh, and a hiker
+      // walking to a bucket-list summit is usually out of signal on it.
+      CHALLENGE_LAYER_ID,
       // The hiker's mark and its accuracy ring (#1581), over every place and
       // under every hazard - drawn offline above all, because a phone with
       // no signal is exactly the one whose owner is standing somewhere

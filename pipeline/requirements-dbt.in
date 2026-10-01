@@ -1,13 +1,47 @@
 # The dbt job's own dependency set (pipeline/DBT.md's CI plan), compiled to
 # requirements-dbt.txt with pip-compile on Python 3.12 - the version that job
-# pins deliberately, because dbt tends to lag the newest CPython the pytest
-# job runs. Separate from requirements.in on purpose: the pytest job never
-# needs dbt, and the dbt job never needs rasterio/pillow/pmtiles.
+# pins (pipeline-tests.yml's `dbt` job says why it still does). Separate from
+# requirements.in on purpose: the pytest job never needs dbt, and the dbt job
+# never needs rasterio/pillow/pmtiles.
 #
 # duckdb is pinned identically to requirements.in's hand-written pin, and for
-# the same ABI reason - the spatial extension the profiles.yml loads is
-# ABI-locked to the exact DuckDB version. Keep the two pins moving together.
+# the same ABI reason - the spatial extension is ABI-locked to the exact
+# DuckDB version. Keep the two pins moving together. In this file it serves
+# load_raw.py, which writes the fixture warehouse; dbt itself does not import
+# it (next paragraph).
 duckdb==1.5.5
-dbt-duckdb
-sqlfluff
-sqlfluff-templater-dbt
+#
+# dbt v2, the full `dbt` distribution, one version everywhere with no
+# dbt-core 1.x beside it (#1793 — Rebuild the data platform as dlt → dbt:
+# seven contracted marts, a monthly refresh, published docs, and lighter phone
+# downloads; decision 32 in its planning log). The maintainer chose it over
+# the Apache-2.0 `dbt-oss`: "We get expanded features that way I believe".
+# It is licensed under the dbt Product Licensing Agreement, not an open-source
+# licence - its PyPI metadata carries no licence field at all. That agreement
+# (§2.3) has dbt collect usage information unless the documented opt-out is
+# set, which pipeline-tests.yml's `dbt` job and scripts/test.sh both set;
+# §3.2 forbids switching off licence validation or anything else that talks
+# to dbt's services, so nothing here does.
+#
+# dbt-oss 2.0.5 is the documented fallback: the same project files ran green
+# on it, every CI step (measured 2026-10-01). Swapping back is this one line,
+# a recompile, and scripts/test.sh's version check, which reads this file.
+#
+# v2 is a Rust binary, not a Python program, and neither distribution ships a
+# database driver: on first use it downloads an ADBC driver for the profile's
+# adapter from public.cdn.getdbt.com (docs.getdbt.com, "dbt v2 networking
+# requirements"), for DuckDB a driver built on DuckDB 1.5.4, not the 1.5.5
+# above. pipeline-tests.yml's `dbt` job says what is measured about that split.
+#
+# HOW IT INSTALLS, read from PyPI 2026-10-01, because it is not a wheel: PyPI
+# holds one 3,291-byte sdist for 2.0.6 whose build backend (`_dbt_sa_build`,
+# the same code dbt-oss's sdist carries) downloads the prebuilt wheel for this
+# platform from public.cdn.getdbt.com/fs/wheels and refuses it unless its
+# sha256 matches the sdist's own `assets.json`. So an install reaches dbt's
+# CDN as well as PyPI. The wheels are cp311-abi3 (Linux x86-64 and ARM,
+# macOS, Windows x86-64): any CPython >= 3.11, which is `Requires-Python`.
+dbt==2.0.6
+#
+# SQLFluff with its own jinja templater (pipeline/.sqlfluff). 4.3.0 is the
+# newest release on PyPI, read 2026-10-01.
+sqlfluff==4.3.0

@@ -692,6 +692,18 @@ export const suggestedHikeDetailKey = (id: string): string =>
 // "nothing to search yet" and never as a failed download.
 export const PLACES_KEY = 'places.json'
 
+// Clubs' challenges - places on their own trails that a hiker opts into and
+// tags at camp (#1780, features/CHALLENGES.md) - published by
+// pipeline/export_challenges.py from the reviewed files under
+// pipeline/reference/challenges/. Every place is already resolved to its
+// published POI's mile, coordinate and name, so matching a day's walk needs
+// nothing else loaded.
+//
+// @release optional - the exporter writes a manifest publish.py collects; a
+// release built before it existed has none, which lib/challenges.ts reads as
+// "no challenges yet" and never as a failed download.
+export const CHALLENGES_KEY = 'challenges.json'
+
 // 'crossing' IS GONE, AND ON PURPOSE (#1674). It was the stream crossings
 // pipeline/fetch_trail_water.py derived by intersecting every walking route
 // with both hydrographies - 5,318 of them on production release 2026-09-04,

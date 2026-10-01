@@ -150,6 +150,7 @@ import type { BackgroundSource, UnitSystem } from '../lib/userPreferences'
 import { formatDistance } from '../lib/units'
 import type { BackgroundOverride } from '../lib/dataSaver'
 import type { DownloadActivity } from '../lib/downloadActivity'
+import { CHALLENGE_WORDS } from '../lib/challengeWords'
 
 // The two picker entries that are not a category. Sentinels rather than the
 // empty string, so no waypoint type can ever collide with one, and not exported
@@ -295,6 +296,20 @@ export interface LegendProps {
   /** Flips it. Omitted, no switch is drawn - the rule every control on this
    *  panel keeps. */
   onToggleBlazeColors?: () => void
+  /**
+   * Whether the challenge places are drawn (#1780 — Let a club publish a
+   * challenge — places on its own trails that hikers opt into and tag at
+   * camp — starting with the ATC's A.T. Summer Bucket List). Off by
+   * default: features/CHALLENGES.md principle 2, "the map layer is off by
+   * default". The hiker's record holds it (lib/challengeProgress.ts's
+   * `layerShown`), not the synced preferences.
+   */
+  challengePlacesShown?: boolean
+  /** Flips it. Omitted - which the shell does whenever no joined challenge
+   *  is on the chosen trail (chrome/challengePanel.ts) - no row is drawn at
+   *  all: a switch over a layer with nothing of this trail's in it is a
+   *  control that visibly does nothing. */
+  onToggleChallengePlaces?: () => void
   /** What the bands say, for that row's summary line. Empty when none
    *  arrived, which draws no numbers rather than a confident zero. */
   droughtSummary?: { miles: number; weekStart: Date | null }
@@ -442,6 +457,8 @@ export function Legend({
   onToggleDrought,
   blazeColorsShown = true,
   onToggleBlazeColors,
+  challengePlacesShown = false,
+  onToggleChallengePlaces,
   droughtSummary,
   units = 'imperial',
   onToggleVerifiedOnly,
@@ -471,6 +488,8 @@ export function Legend({
   const [allTrails, setAllTrails] = useState(false)
   // The blaze toggle's name span, which the switch button is labelled by.
   const blazeNameId = useId()
+  // The challenge switch's, for the same reason.
+  const challengeNameId = useId()
   if (!open && !persistent) return null
 
   // TWO LISTS, AND KEEPING THEM APART IS THE WHOLE OF #723.
@@ -1080,6 +1099,46 @@ export function Legend({
             onChange={onToggleDrought}
           />
         </label>
+      )}
+
+      {/* CHALLENGE PLACES (#1780, features/CHALLENGES.md frame #1), with the
+          layer switches rather than at the head: the Blaze colors row is the
+          most prominent thing here at the maintainer's ask, and a layer a
+          hiker opted into is a quieter thing than how every trail is inked.
+          The Blaze row's `role="switch"` and its track and knob, at the
+          Drought row's weight.
+
+          LISTED ONLY WHEN IT CAN DRAW SOMETHING. The shell passes the
+          handler only while a joined challenge is on the chosen trail
+          (chrome/challengePanel.ts), so a hiker who joined nothing - which
+          is nearly everybody - never sees the row.
+
+          NO COUNT, in the name or the sentence. "Places on your challenges"
+          and not "12 places": principle 2 keeps counts off the walking
+          view, and the guardrail's "no lack-state" rule (features/
+          CHALLENGES.md) keeps a tally of what is left off every surface.
+          The sentence is a key instead - what a
+          hollow diamond means - because this panel is where a hiker looks up
+          a mark they do not recognise. */}
+      {onToggleChallengePlaces !== undefined && (
+        <div className="legend__challenges">
+          <span className="legend__challenges-name" id={challengeNameId}>
+            Challenge places
+            <span className="legend__challenges-detail">
+              {`Places on your challenges, hollow until ${CHALLENGE_WORDS.past}.`}
+            </span>
+          </span>
+          <button
+            type="button"
+            role="switch"
+            className="legend__switch"
+            aria-checked={challengePlacesShown}
+            aria-labelledby={challengeNameId}
+            onClick={onToggleChallengePlaces}
+          >
+            <span className="legend__switch-knob" aria-hidden="true" />
+          </button>
+        </div>
       )}
 
       {/* THE DOWNLOADED MAP, ALL OF IT, IN ONE BLOCK AT THE FOOT.

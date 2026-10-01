@@ -1,12 +1,26 @@
 # The three packages DBT.md's design names, pinned to the versions it
 # verified against GitHub tags (the Hub registry itself was unreachable
-# from the design pass's environment; it is reachable from CI and from the
-# current sandbox, and dbt deps resolves transitive pins itself - a git-pin
-# variant collides with the evaluator's own transitive dbt_utils).
+# from the design pass's environment; it is reachable from CI, and dbt deps
+# resolves transitive pins itself - a git-pin variant collides with the
+# evaluator's own transitive dbt_utils).
+#
+# dbt_project_evaluator moved 1.3.2 -> 1.4.0 with dbt v2 (#1793 — Rebuild the
+# data platform as dlt → dbt: seven contracted marts, a monthly refresh,
+# published docs, and lighter phone downloads). All three declare
+# require-dbt-version <3.0.0, and all three parse and run on dbt 2.0.6 and
+# on dbt-oss 2.0.5 (measured 2026-10-01, the evaluator through
+# pipeline-tests.yml's enforced step). package-lock.yml is the file dbt-oss
+# 2.0.5's `dbt deps` wrote, before decision 32 moved the project to dbt 2.0.6;
+# 2.0.6 read it unchanged.
+#
+# A web session's proxy still fails the package tarballs, which come from
+# codeload.github.com rather than the Hub (measured 2026-10-01: HTTP 500 on
+# dbt_utils 1.4.1, while the Hub's own API answered 200). Workaround there,
+# never committed: clone each package at its tag into dbt_packages/.
 packages:
   - package: dbt-labs/dbt_utils
     version: 1.4.1
   - package: dbt-labs/dbt_project_evaluator
-    version: 1.3.2
+    version: 1.4.0
   - package: dbt-labs/codegen
     version: 0.14.1

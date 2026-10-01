@@ -403,6 +403,14 @@ jobs:
           # would file test reports into the moderation queue a club works from.
           # Reports still queue in the outbox exactly as they do offline, which
           # is the behaviour worth previewing anyway.
+          #
+          # The Spotify client id IS set (#1683), so the podcast card's recipe
+          # photographs the Save button hikers get. Tapping it on a preview
+          # reaches Spotify's own "invalid redirect URI" page, because a
+          # redirect URI is registered per origin and a preview's origin is
+          # not one of them - nothing is saved and nothing is sent anywhere
+          # but Spotify's sign-in page.
+          VITE_SPOTIFY_CLIENT_ID: ${{ vars.SPOTIFY_CLIENT_ID }}
         run: npm run build
 
       # The pictures that go in the comment below (#988, #998).

@@ -206,9 +206,11 @@ const STEWARD_MARKS_BY_SLUG: Readonly<Record<string, string>> = {
 }
 
 /** The steward marker for a long trail's slug, or null where no marker was
- *  found for it. Four of the nineteen trails map/longTrailNames.ts badges have
- *  none: `bst`, `gwt`, `jmt` and `pinhoti`, whose steward domain serves spam.
- *  Recounted 2026-09-30 - this said five. */
+ *  found for it. Five of the twenty-two trails map/longTrailNames.ts badges
+ *  have none: `bst`, `gwt`, `jmt` and `pinhoti`, whose steward domain serves
+ *  spam, and `mst`, which has no trail_marks row. Recounted 2026-09-30 when
+ *  the Mountains-to-Sea Trail was added - this said four of nineteen, and
+ *  before that five. */
 export function stewardMarkForSlug(slug: string): string | null {
   return STEWARD_MARKS_BY_SLUG[slug] ?? null
 }

@@ -10,7 +10,8 @@
 //
 // GENERATED FROM pipeline/reference/trail_name_aliases.json, which is the
 // reviewed half and carries the evidence: every spelling here was measured
-// against its publisher's live service on 2026-09-30 and then checked
+// on 2026-09-30 - against its publisher's live service, or, for the rows and
+// spellings added later that day, against what UA ships - and then checked
 // GEOGRAPHICALLY against the states the trail runs through. That second step
 // rejected 16 names the first step accepted - a New York State Parks line
 // called "Long Trail" 200 miles from Vermont, a "PALMETTO" in California, a
@@ -19,13 +20,29 @@
 //
 // EXACT AFTER FOLDING, NEVER A PREFIX, which is the same refusal
 // lib/trails.ts makes and the reason spurs stay ordinary lines: DEC publishes
-// "Northville-Placid Trail Spur", USFS publishes "BARTRAM NRT - CHEOAH RD",
-// and neither is the trail.
+// "Northville-Placid Trail Spur", USFS publishes "FNST - WESTERN CONNECTOR",
+// and neither is the trail. A SECTION IS the trail - "MST - PISGAH RD" is the
+// Mountains-to-Sea Trail in the Pisgah Ranger District - but only the section
+// spellings somebody reviewed are here. This comment used to call
+// "BARTRAM NRT - CHEOAH RD" a road-walk. RD is a ranger district, and that
+// spelling has been in the table since 2026-09-30.
 //
 // THE COST OF BEING WRONG IS NOT SYMMETRIC, so where a name was ambiguous it
 // was left out. Bare "COLORADO" is 90 USFS segments in roughly the right part
 // of Colorado and might well be the Colorado Trail; it is not here, because a
 // badge naming the wrong trail is worse than a trail with no badge.
+//
+// AND EACH ROW'S OWN TRAIL NAME, not only its published spellings. Since
+// #1776 pipeline/export_nearby_trails.py writes a through route's TRAIL name
+// on the sketch rather than the spelling - "Benton MacKaye Trail", not
+// "BENTON MACKAYE" - and says this table "already" lists it. For 10 of the 22
+// rows it did not, among them the Bartram, Benton MacKaye, Pinhoti and
+// Superior Hiking trails. MEASURED 2026-09-30 on UA release 2026-09-30-3
+// (a632bf73), the first that export built: its sketch names through routes
+// "Benton MacKaye Trail", "Maah Daah Hey Trail" and "Pinhoti Trail", and the
+// table resolved none of the three, so those lines drew unbadged below z5.
+// Every row's name is its own reviewed trail, and the extent gate below still
+// applies to it.
 const LONG_TRAIL_BY_NAME: Readonly<Record<string, string>> = {
   '7 - finger lakes trail': 'flt',
   appalachian: 'at',
@@ -34,7 +51,12 @@ const LONG_TRAIL_BY_NAME: Readonly<Record<string, string>> = {
   arizona: 'azt',
   'arizona trail': 'azt',
   bartram: 'bartram',
+  'bartram nrt - cheoah rd': 'bartram',
+  'bartram nrt - nantahala rd': 'bartram',
+  'bartram trail': 'bartram',
   'benton mackaye': 'bmt',
+  'benton mackaye -cheoah rd': 'bmt',
+  'benton mackaye trail': 'bmt',
   'bonneville shoreline trail': 'bst',
   'boss lake/cdnst': 'cdt',
   cdnst: 'cdt',
@@ -48,12 +70,29 @@ const LONG_TRAIL_BY_NAME: Readonly<Record<string, string>> = {
   'finger lakes': 'flt',
   'finger lakes trail': 'flt',
   'finger lakes trail (orange)': 'flt',
+  'florida trail': 'fnst',
+  'fnst - apalach section': 'fnst',
+  'fnst - lake george section': 'fnst',
+  'fnst - osceola section': 'fnst',
+  'fnst - seminole section': 'fnst',
+  'fnst - wakulla section': 'fnst',
   'great western trail': 'gwt',
   'hancock lake/cdnst': 'cdt',
   'hunt lake/cdnst': 'cdt',
+  'ice age nst-a': 'iat',
+  'ice age nst-b': 'iat',
+  'ice age nst-c': 'iat',
+  'ice age trail': 'iat',
   'john muir': 'jmt',
+  'john muir trail': 'jmt',
   'maah daah hey': 'mdh',
+  'maah daah hey trail': 'mdh',
   'monarch crest-cdnst': 'cdt',
+  'mountains-to-sea trail': 'mst',
+  'mst - appalachian rd': 'mst',
+  'mst - grandfather rd': 'mst',
+  'mst - nantahala rd': 'mst',
+  'mst - pisgah rd': 'mst',
   'north country national 187-188': 'nct',
   'north country national 188-604': 'nct',
   'north country national 202-383': 'nct',
@@ -66,6 +105,7 @@ const LONG_TRAIL_BY_NAME: Readonly<Record<string, string>> = {
   'north country trail (hiking)': 'nct',
   'northville-placid trail': 'npt',
   'ouachita nrt': 'ouachita',
+  'ouachita trail': 'ouachita',
   'ozark highlands trail': 'oht',
   'pacific crest': 'pct',
   'pacific crest national scenic': 'pct',
@@ -150,15 +190,82 @@ const LONG_TRAIL_BY_NAME: Readonly<Record<string, string>> = {
   'pct: wenatchee river south': 'pct',
   pinhoti: 'pinhoti',
   'pinhoti nrt': 'pinhoti',
+  'pinhoti trail': 'pinhoti',
   'sheltowee trace': 'sheltowee',
   'superior hiking': 'sht',
+  'superior hiking trail': 'sht',
   'tahoe rim trail': 'tahoe-rim',
   'tunnel lake/cdnst': 'cdt',
 }
 
-/** The long trail a published line name is, or null. Folded and trimmed. */
+/** The long trail a published line name is, or null. Folded and trimmed.
+ *  Name only: the badge asks longTrailForLine below, which also checks
+ *  where the line is. */
 export function longTrailForName(name: string): string | null {
   return LONG_TRAIL_BY_NAME[name.trim().toLowerCase()] ?? null
+}
+
+/**
+ * The box, [west, south, east, north] in degrees, that a line must lie in to
+ * wear each trail's badge (#1781).
+ *
+ * WHY A NAME IS NOT ENOUGH. The Forest Service publishes "BARTRAM" for the
+ * Georgia-North Carolina Bartram Trail and for Tuskegee National Forest's own
+ * Bartram trail in Alabama, and until 2026-09-30 the Alabama lines wore the
+ * first one's badge and its steward's marker. Same spelling, different trail;
+ * only where the line is can tell them apart.
+ *
+ * GENERATED FROM each row's `extent` in trail_name_aliases.json, whose
+ * `_extent` says how the boxes were measured: the accepted features in UA and
+ * production, padded by 0.25 degrees (@unvalidated there). A box is drawn
+ * round what was reviewed rather than round the whole trail, so a segment
+ * published later outside it goes unbadged until the box is widened - a
+ * missing badge, never a wrong one.
+ */
+const LONG_TRAIL_EXTENT: Readonly<
+  Record<string, readonly [number, number, number, number]>
+> = {
+  at: [-84.45, 34.37, -72.04, 43.98],
+  azt: [-112.44, 32.92, -110.87, 37.16],
+  bartram: [-83.94, 34.61, -82.91, 35.58],
+  bmt: [-84.78, 34.37, -83.54, 35.71],
+  bst: [-112.2, 39.97, -111.35, 41.59],
+  cdt: [-114.19, 32.14, -105.88, 47.49],
+  flt: [-79.15, 41.74, -75.05, 42.99],
+  fnst: [-85.27, 28.72, -81.28, 30.6],
+  gwt: [-112.56, 34.76, -111.09, 38.48],
+  iat: [-91.2, 44.78, -90.03, 45.59],
+  jmt: [-119.43, 37.38, -118.83, 37.98],
+  mdh: [-103.93, 46.34, -103.02, 47.84],
+  mst: [-83.29, 35.05, -81.52, 36.34],
+  nct: [-97.72, 41.19, -78.59, 47.39],
+  npt: [-74.88, 42.95, -73.76, 44.52],
+  oht: [-94.28, 35.41, -92.65, 36.15],
+  ouachita: [-95.21, 34.4, -92.5, 35.13],
+  pct: [-123.51, 33.29, -116.31, 49.26],
+  pinhoti: [-86.34, 32.94, -84.27, 35.15],
+  sheltowee: [-84.99, 36.35, -83.11, 38.65],
+  sht: [-91.23, 47.29, -89.65, 48.18],
+  'tahoe-rim': [-120.49, 38.47, -119.63, 39.58],
+}
+
+/**
+ * The long trail a published line is, checked by name AND by where it is:
+ * null unless the name resolves and `at` - any vertex of the line - lies
+ * inside that trail's box. A tile-clipped piece's vertices all lie on the
+ * line, so any one of them answers for the piece.
+ */
+export function longTrailForLine(
+  name: string,
+  at: readonly [number, number] | undefined,
+): string | null {
+  const slug = longTrailForName(name)
+  if (slug === null || at === undefined) return null
+  const box = LONG_TRAIL_EXTENT[slug]
+  if (box === undefined) return null
+  const [lon, lat] = at
+  const [west, south, east, north] = box
+  return lon >= west && lon <= east && lat >= south && lat <= north ? slug : null
 }
 
 /** How many spellings the table holds, so a dropped row goes red in a test
@@ -169,11 +276,13 @@ export const LONG_TRAIL_NAME_COUNT = Object.keys(LONG_TRAIL_BY_NAME).length
  * The badged trails a steward marker actually exists for.
  *
  * WHY THIS IS NOT DERIVED FROM THE TABLE ABOVE. Earning a badge and having a
- * marker are different facts: 4 of the 19 trails this badges publish no
- * per-trail symbol anybody could find - `bst`, `gwt`, `jmt` and `pinhoti`,
- * whose steward domain serves spam. Recounted 2026-09-30; this said "6 of the
- * 20" after the `msg` slug was dropped and the PCT and the A.T. gained marks,
- * and none of the three changes had updated it. Those wear the plate
+ * marker are different facts: 5 of the 22 trails this badges have no
+ * per-trail symbol in the tree - `bst`, `gwt`, `jmt` and `pinhoti`, whose
+ * steward domain serves spam, and `mst`, which has no trail_marks row.
+ * Recounted 2026-09-30 when the Florida, Ice Age and Mountains-to-Sea rows
+ * were added; before that it said "4 of the 19", and earlier "6 of the 20"
+ * after the `msg` slug was dropped and the PCT and the A.T. gained marks,
+ * and none of those three changes had updated it. Those wear the plate
  * and their name. The PCT left that group on 2026-09-30: PCTA still requires
  * written permission for its own files, but the Forest Service administers
  * the trail and publishes the emblem itself, so `pct-logo.png` is the federal
@@ -207,6 +316,8 @@ const SLUGS_WITH_A_STEWARD_MARKER: ReadonlySet<string> = new Set([
   'bmt',
   'cdt',
   'flt',
+  'fnst',
+  'iat',
   'mdh',
   'nct',
   'npt',
@@ -243,7 +354,7 @@ export function longTrailMarkerSlugs(): readonly string[] {
  * hiker do. This is the same decision lib/trails.ts already took for the
  * A.T. - "the maintainer asked on 2026-09-16 for the app to say
  * 'Appalachian Trail' wherever a hiker reads it" - applied to the other
- * eighteen of the nineteen slugs this table produces.
+ * twenty-one of the twenty-two slugs this table produces.
  *
  * The names come from trail_emblems.json through trail_name_aliases.json, so
  * they are the steward's own spelling rather than a case transform of the
@@ -257,9 +368,12 @@ const LONG_TRAIL_DISPLAY_NAME: Readonly<Record<string, string>> = {
   bst: 'Bonneville Shoreline Trail',
   cdt: 'Continental Divide Trail',
   flt: 'Finger Lakes Trail',
+  fnst: 'Florida Trail',
   gwt: 'Great Western Trail',
+  iat: 'Ice Age Trail',
   jmt: 'John Muir Trail',
   mdh: 'Maah Daah Hey Trail',
+  mst: 'Mountains-to-Sea Trail',
   nct: 'North Country Trail',
   npt: 'Northville-Placid Trail',
   oht: 'Ozark Highlands Trail',

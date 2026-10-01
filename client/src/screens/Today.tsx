@@ -33,6 +33,12 @@ import shelterPhoto from '../design-system/assets/photos/section-shelter.jpg'
 import { StatusStrip } from '../chrome/StatusStrip'
 import { ModeSwitch } from '../chrome/ModeSwitch'
 import { WelcomeBackCard, type WelcomeBackCardProps } from '../chrome/WelcomeBackCard'
+import { PodcastCard } from '../chrome/PodcastCard'
+import {
+  NO_PODCAST_EPISODES,
+  type PodcastApp,
+  type PodcastEpisode,
+} from '../lib/podcasts'
 import { ElevationRibbon, type RibbonSubject } from '../chrome/ElevationRibbon'
 import type { RibbonView } from '../lib/ribbonView'
 import type { HikerMode } from '../lib/hikerMode'
@@ -133,6 +139,14 @@ export interface TodayProps {
    * describe the same hike differently.
    */
   longHike?: LongHikeToday | null
+  /** The podcast episodes picked for today's leg (#1683) - already matched
+   *  by the shell against the leg's A.T. miles (lib/podcasts.ts,
+   *  `episodesForMiles`). Drawn under "Today on your hike" in the long mode
+   *  only, and only while there is a leg; empty draws nothing. */
+  podcastEpisodes?: readonly PodcastEpisode[]
+  /** The podcast apps the card's picker offers, from the whole published
+   *  list (PodcastCardProps.offeredApps). */
+  podcastApps?: readonly PodcastApp[]
 
   /** Every searchable POI, client mile axis - the journal ranks a scoped
    *  subset (lib/todayJournal.ts). */
@@ -419,6 +433,8 @@ export function Today({
   onChangeMode,
   modePending = false,
   longHike = null,
+  podcastEpisodes = NO_PODCAST_EPISODES,
+  podcastApps,
   pois,
   currentMile,
   direction,
@@ -1131,6 +1147,19 @@ export function Today({
     // Null in every other mode, which is what keeps one ordered record
     // rather than three lists with a hole in two of them (#1317).
     hikeDay: hikeDayCard,
+    // Under the leg it is about (#1683, the maintainer's frame 3), and only
+    // while there is a leg: the episodes were matched to its miles, so with
+    // no leg there is nothing they were matched to.
+    podcasts:
+      longHike?.day == null || podcastEpisodes.length === 0 ? null : (
+        <PodcastCard
+          episodes={podcastEpisodes}
+          eyebrow="♪ For today’s stretch"
+          heading={`Picked for ${longHike.day.title}`}
+          online={online}
+          offeredApps={podcastApps}
+        />
+      ),
     resume: longHike?.resume == null ? null : <WelcomeBackCard {...longHike.resume} />,
   }
   const order =
@@ -1181,6 +1210,7 @@ export function Today({
             // for what happened while they were gone.
             'resume',
             'hikeDay',
+            'podcasts',
             'crews',
             'alerts',
             'journal',

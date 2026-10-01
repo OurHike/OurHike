@@ -115,6 +115,7 @@ jobs:
             client/src/lib/hikingDetail.ts
             client/src/lib/packages.ts
             client/src/lib/mapSheets.ts
+            client/src/lib/podcasts.ts
             client/src/lib/publishedConditions.ts
             .github/workflows/pipeline-tests.yml
             .github/actions/changed-paths/

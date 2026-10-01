@@ -108,6 +108,14 @@ ALLOWED_EXTENSIONS = frozenset({"geojson", "fgb", "pmtiles", "json", "tif", "jpg
 #: deliberate act, and needing no prune job for the reason `conditions/`
 #: needs none - one object per snapshot, overwritten in place, never
 #: accumulating.
+#:
+#: `podcasts/` holds one object, `podcasts/episodes.json`: the episodes the
+#: maintainer picked for each hike (#1683), written by export_podcasts.py
+#: when a person dispatches publish-podcasts.yml. At the root rather than in
+#: a release folder on the maintainer's decision (2026-09-26): the list is
+#: live, so a new episode reaches phones on their next fetch without an app
+#: release. Hiker-facing, overwritten in place, never accumulating - so like
+#: `conditions/` it needs no prune job.
 TOP_LEVEL_PREFIXES = frozenset(
     {
         "releases",
@@ -117,6 +125,7 @@ TOP_LEVEL_PREFIXES = frozenset(
         "originals",
         "archive",
         "archive__nynjtc_photos__do_not_delete",
+        "podcasts",
     }
 )
 

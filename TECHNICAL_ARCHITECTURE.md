@@ -173,7 +173,7 @@ The fallback copy names which screen went and says the rest still works, because
 |---|---|
 | Client (phone + web) | React + TypeScript, MapLibre GL JS, PMTiles, Capacitor |
 | Data pipeline | Python, DuckDB (spatial extension) |
-| Data transform (design decided 2026-07-29, not yet built) | dbt-core + dbt-duckdb (SQL, staging/intermediate/marts inside the same DuckDB file) - see [pipeline/DBT.md](pipeline/DBT.md) |
+| Data transform (design decided 2026-07-29; built from 2026-08-18 under #100 — Build the dbt ELT transform layer before NYNJTC's own trail network arrives) | dbt-oss 2.0.5, dbt v2 with its DuckDB driver built in, since #1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads (dbt-core + dbt-duckdb before it) - SQL, staging/intermediate/marts inside the same DuckDB file - see [pipeline/DBT.md](pipeline/DBT.md) |
 | Backend (MVP: auth, reports/moderation, closures; Phase 2+: multi-club admin, donations) | Python (FastAPI), Postgres/PostGIS if/when needed |
 | Hosting | Static hosting/CDN (map/POI data) + a small managed backend, both MVP as of 2026-07-28 |
 

@@ -24,7 +24,7 @@ afterEach(() => {
 describe('fetchChallenges', () => {
   it('keeps nothing from a document with no list in it', async () => {
     vi.stubGlobal('fetch', async () => new Response(JSON.stringify({}), { status: 200 }))
-    const { fetchChallenges } = await import('./challenges')
+    const { fetchChallenges } = await import('./challengeFeed')
     expect(await fetchChallenges()).toBeNull()
     expect(remembered).toEqual([])
   })
@@ -34,7 +34,7 @@ describe('fetchChallenges', () => {
       'fetch',
       async () => new Response(JSON.stringify({ challenges: [] }), { status: 200 }),
     )
-    const { fetchChallenges } = await import('./challenges')
+    const { fetchChallenges } = await import('./challengeFeed')
     expect(await fetchChallenges()).toEqual([])
     expect(remembered).toHaveLength(1)
   })

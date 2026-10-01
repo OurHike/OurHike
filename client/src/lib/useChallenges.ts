@@ -25,7 +25,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DATA_CONFIGURED } from './config'
 import type { Challenge, ChallengeItem } from './challenges'
-import { NO_CHALLENGES, fetchChallenges, recallChallenges } from './challenges'
+import { NO_CHALLENGES } from './challenges'
 import {
   autoTags,
   hideSuggestion,
@@ -103,8 +103,10 @@ export function useChallenges(
   useEffect(() => {
     if (!ready) return
     let wanted = true
-    void Promise.resolve()
-      .then(recallChallenges)
+    // The parser is loaded here rather than imported: lib/challengeFeed.ts
+    // says why (#1806).
+    void import('./challengeFeed')
+      .then((feed) => feed.recallChallenges())
       .then((kept) => {
         if (wanted && !fetched.current && kept !== null) setAll(kept)
       })
@@ -118,7 +120,8 @@ export function useChallenges(
     if (!DATA_CONFIGURED || !online || !ready) return
     const controller = new AbortController()
     let wanted = true
-    void fetchChallenges(controller.signal)
+    void import('./challengeFeed')
+      .then((feed) => feed.fetchChallenges(controller.signal))
       .then((fresh) => {
         if (!wanted || fresh === null) return
         fetched.current = true

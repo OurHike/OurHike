@@ -8,7 +8,8 @@
 // challenge is invented for tests - a club list with no reward - and is
 // named so: nothing here ships as data.
 
-import { parseChallenges, type Challenge } from './challenges'
+import type { Challenge } from './challenges'
+import { parseChallenges } from './challengeFeed'
 
 function place(
   poi: string,

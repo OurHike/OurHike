@@ -978,6 +978,7 @@ A server's row id (`OBJECTID`, `FID`) is never an input on its own, because a tr
 | `raw_extract__orgs` (`trail_orgs.json`) | `slug` | 173 of 173 |
 | opentrail | `dbid` | 246 of 246 over 44 days; its top-level `id` is the row's position and is never used |
 | `podcast_episodes.json`, `shelter_capacity.json`, `highlights.json` | `spotify_id`, `poi_id`, `id` | 71, 280, 10 |
+| `green_tunnel_podcast`, The Green Tunnel's RSS feed (`atc/podcasts.py`) | `guid` | 51 of 51, every episode the show has published (Apple counts 51) |
 | NWS alerts | `id` | one per message; an update is a new message ([Stable upstream keys](#stable-upstream-keys)) |
 | OurHike's Postgres rows | `id` | the UUID primary key |
 

@@ -161,6 +161,17 @@ PUBLISHED_HIKES = "published_hikes"
 # fetch_all.py skips it like everything not ArcGIS.
 SOCRATA_GEOJSON_LAYER = "socrata_geojson_layer"
 
+# A podcast's own RSS feed, read whole for its episode list - The Green
+# Tunnel first, which ATC sponsors (the maintainer, reviewing #1793's pull
+# request on 2026-10-01). Its rows are episode metadata (title, date, guid,
+# links), never audio: an episode is linked, never re-hosted (#1683 — Offer
+# podcast episodes picked for the hike, with a one-tap Spotify save and an
+# in-app player). Read by pipeline/extract/'s podcast_feed builder only;
+# fetch_all.py skips it like everything not ArcGIS, and no exporter reads it.
+# reference/podcast_episodes.json stays the editorial file that decides which
+# episode a hike offers.
+PODCAST_FEED = "podcast_feed"
+
 KNOWN_KINDS = frozenset(
     {
         ARCGIS_FEATURE_LAYER,
@@ -173,6 +184,7 @@ KNOWN_KINDS = frozenset(
         GUIDE_PAGES,
         PUBLISHED_HIKES,
         SOCRATA_GEOJSON_LAYER,
+        PODCAST_FEED,
     }
 )
 

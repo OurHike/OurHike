@@ -22,7 +22,7 @@ import pytest
 
 from extract import _kinds
 from extract._contract import Resource
-from extract._kinds import ArcgisLayer, ReviewedFile, catalogue_row, reviewed_input
+from extract._kinds import ArcgisLayer, PodcastFeed, ReviewedFile, catalogue_row, reviewed_input
 from extract._run import ExtractRefused, Planned, make_pipeline, run_check, run_pipeline
 from extract._warehouse import load_warehouse
 from lib.freshness_state import Freshness
@@ -32,6 +32,14 @@ AGOL = "https://services1.arcgis.com/orgid/arcgis/rest/services"
 LINES_URL = f"{AGOL}/Trails/FeatureServer/0"
 CLOSURES_URL = f"{AGOL}/Closures/FeatureServer/0"
 ONPREM_URL = "https://gis.example.gov/arcgis/rest/services/assets/MapServer/3"
+FEED_URL = "https://feeds.example.org/show.xml"
+FEED = b"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+<channel><title>A Trail Show</title><link>https://example.org/show</link>
+<item><title>Founding the Trail</title><guid>g-1</guid><pubDate>Tue, 07 May 2024 10:15:00 +0000</pubDate>
+<enclosure url="https://example.org/1.mp3" length="39549437" type="audio/mpeg"/><itunes:duration>34:00</itunes:duration></item>
+<item><title>Give Me Shelter</title><guid>g-2</guid><pubDate>Tue, 30 Apr 2024 10:15:00 +0000</pubDate></item>
+</channel></rss>"""
 
 FIELDS = [
     {"name": "OBJECTID", "type": "esriFieldTypeOID"},
@@ -89,6 +97,7 @@ def registry(tmp_path, monkeypatch):
                     {"key": "closures_layer", "url": CLOSURES_URL},
                     {"key": "onprem_dated", "url": ONPREM_URL, "freshness": {"kind": "arcgis_max_field", "field": "UPDATED"}},
                     {"key": "onprem_undated", "url": ONPREM_URL},
+                    {"key": "a_podcast", "url": FEED_URL, "kind": "podcast_feed"},
                 ]
             }
         )
@@ -326,3 +335,31 @@ def test_a_note_past_its_recheck_date_is_overdue():
     note = NotAvailable(confirmed=date(2026, 1, 1), checked=("x",), where=("https://example.org",), recheck_after_days=30)
     assert note.overdue(date(2026, 3, 1))
     assert not note.overdue(date(2026, 1, 15))
+
+
+def test_a_podcast_feed_lands_one_row_per_episode_and_never_the_audio(registry, requests_mock):
+    requests_mock.get(FEED_URL, content=FEED, headers={"ETag": 'W/"v1"'})
+    feed = PodcastFeed(key="a_podcast", club="testclub", type="podcasts")
+    proofs = {}
+    rows = list(feed.rows(proofs))
+    assert [row["guid"] for row in rows] == ["g-1", "g-2"]
+    assert proofs["raw_testclub__a_podcast"] == 2
+    assert rows[0]["show_title"] == "A Trail Show"
+    assert rows[0]["itunes_duration"] == "34:00"
+    assert rows[0]["enclosure_url"] == "https://example.org/1.mp3"
+    assert not any(r.url.endswith(".mp3") for r in requests_mock.request_history), "audio is linked, never fetched"
+
+
+def test_an_unchanged_podcast_feed_answers_304_and_is_fresh(registry, requests_mock):
+    def answer(request, context):
+        if request.headers.get("If-None-Match") == 'W/"v1"':
+            context.status_code = 304
+            return b""
+        context.headers["ETag"] = 'W/"v1"'
+        return FEED
+
+    requests_mock.get(FEED_URL, content=answer)
+    feed = PodcastFeed(key="a_podcast", club="testclub", type="podcasts")
+    verdict, marker = feed.change_check(None)
+    assert verdict is Freshness.STALE
+    assert feed.change_check(marker) == (Freshness.FRESH, marker)

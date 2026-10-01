@@ -290,9 +290,14 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
 
     This test is expected to change when an organization answers. It should
     change by somebody editing it deliberately, with the org's answer in hand.
+
+    THE SECOND `unresolved` (2026-10-01) is The Green Tunnel's feed,
+    `green_tunnel_podcast`: registered because the maintainer reviewed it as
+    ATC-sponsored, with nobody yet asked what of the feed may show, and
+    `reaches_hikers: false` until somebody is.
     """
     counts: dict[str, int] = {}
     for source in REGISTRY["sources"]:
         counts[source["licence_basis"]] = counts.get(source["licence_basis"], 0) + 1
 
-    assert counts == {"maintainer_authorisation": 32, "stated_by_org": 30, "unresolved": 1}
+    assert counts == {"maintainer_authorisation": 32, "stated_by_org": 30, "unresolved": 2}

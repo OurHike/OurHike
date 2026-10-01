@@ -20,6 +20,7 @@ The four kinds stage 2 of #1793 needs for ATC and NYS DEC:
                             row of its own (water_distance.json)
     reviewed_dir(path)      a folder of reviewed files, one row per file (a
                             club's challenges)
+    podcast_feed(key)       a podcast's RSS feed, one row per episode
     catalogue_row()         the club's own trail_orgs.json row, for org.py
 """
 
@@ -28,6 +29,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import xml.etree.ElementTree as ElementTree
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -39,7 +41,7 @@ from extract._contract import EXTRACT_DIR, PIPELINE_DIR, Resource, read_club_fil
 from lib.arcgis import iter_layer_pages, layer_count
 from lib.freshness_state import Freshness, compare_marker
 from lib.http_retry import request_with_retry
-from lib.source_registry import load_registry
+from lib.source_registry import PODCAST_FEED, load_registry, source_kind
 from lib.user_agent import USER_AGENT
 
 REGISTRY_PATH = PIPELINE_DIR / "sources.json"
@@ -444,3 +446,88 @@ class CatalogueRow(Resource):
 
 def catalogue_row() -> CatalogueRow:
     return CatalogueRow(key="reference/trail_orgs.json")
+
+
+# RSS and the namespaces a podcast feed's items use. Each child of an <item>
+# becomes a column named by its tag, the namespace written as a short prefix
+# (itunes_duration), so nothing a feed carries is dropped before dbt sees it.
+FEED_NAMESPACES = {
+    "http://www.itunes.com/dtds/podcast-1.0.dtd": "itunes",
+    "http://purl.org/rss/1.0/modules/content/": "content",
+    "https://podcastindex.org/namespace/1.0": "podcast",
+}
+
+
+def _feed_column(tag: str) -> str:
+    if tag.startswith("{"):
+        uri, name = tag[1:].split("}", 1)
+        return f"{FEED_NAMESPACES.get(uri, 'ns')}_{name}"
+    return tag
+
+
+@dataclass(frozen=True)
+class PodcastFeed(Resource):
+    """A podcast's RSS feed, one row per episode: its metadata, never its audio.
+
+    Change check: a conditional GET with the feed's own validators. A 304 is
+    FRESH. A feed is a change signal only on a safety path (an RSS window is not
+    a list of current items; ELT.md, "The skip-unchanged check, by platform"),
+    and podcasts are not one. A podcast feed lists the whole show: The Green
+    Tunnel's held 51 items against Apple's count of 51 episodes (2026-10-01).
+    Each episode's `guid` is the key it is staged on (51 of 51 unique, the
+    same day).
+
+    An <enclosure> is kept as its URL, length and type, and is never fetched.
+    """
+
+    @property
+    def entry(self) -> dict:
+        return registry_entry(self.key)
+
+    def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
+        headers = {}
+        if recorded:
+            if recorded.get("etag"):
+                headers["If-None-Match"] = recorded["etag"]
+            if recorded.get("last_modified"):
+                headers["If-Modified-Since"] = recorded["last_modified"]
+        try:
+            response = request_with_retry(self.entry["url"], session=session(), headers=headers or None, timeout=30)
+        except requests.RequestException as error:
+            print(f"  {self.key}: change check failed ({error}); fetching")
+            return Freshness.UNKNOWN, None
+        if response.status_code == 304:
+            return Freshness.FRESH, recorded
+        marker = {"etag": response.headers.get("ETag"), "last_modified": response.headers.get("Last-Modified")}
+        if not marker["etag"] and not marker["last_modified"]:
+            return Freshness.UNKNOWN, None
+        if recorded is None:
+            return Freshness.STALE, marker
+        return compare_marker(_canonical(recorded), _canonical(marker)), marker
+
+    def rows(self, proofs: dict[str, int]):
+        response = request_with_retry(self.entry["url"], session=session(), timeout=60)
+        channel = ElementTree.fromstring(response.content).find("channel")
+        if channel is None:
+            raise ValueError(f"{self.key}: the answer is not an RSS feed (no <channel>)")
+        items = channel.findall("item")
+        proofs[self.table] = len(items)
+        show = {"show_title": channel.findtext("title"), "show_link": channel.findtext("link")}
+        for item in items:
+            row = dict(show)
+            for child in item:
+                column = _feed_column(child.tag)
+                if column == "enclosure":
+                    row["enclosure_url"] = child.get("url")
+                    row["enclosure_length"] = child.get("length")
+                    row["enclosure_type"] = child.get("type")
+                else:
+                    row[column] = (child.text or "").strip() or None
+            yield row
+
+
+def podcast_feed(key: str, **overrides) -> PodcastFeed:
+    entry = registry_entry(key)
+    if source_kind(entry) != PODCAST_FEED:
+        raise ValueError(f"{key} is a {source_kind(entry)}, not a {PODCAST_FEED}")
+    return PodcastFeed(key=key, **overrides)

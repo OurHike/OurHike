@@ -172,6 +172,20 @@
       "licence_basis": "maintainer_authorisation"
     },
     {
+      "key": "green_tunnel_podcast",
+      "title": "The Green Tunnel (podcast feed)",
+      "provider": "ATC",
+      "kind": "podcast_feed",
+      "url": "https://rss.libsyn.com/shows/433527/destinations/3616113.xml",
+      "attribution": "The Green Tunnel, Roy Rosenzweig Center for History and New Media at George Mason University",
+      "licence": "The feed's own <copyright> reads 'Roy Rosenzweig Center for History and New Media' (read 2026-10-01). Nothing in the feed, on the show's page or its About page grants reuse, and none of them names a sponsor. Episodes are only ever linked, never re-hosted (#1683 — Offer podcast episodes picked for the hike, with a one-tap Spotify save and an in-app player). Not on any phone until the maintainer decides what of the feed may show; reference/podcast_episodes.json's editorial picks of this show already ship under that file's own review.",
+      "licence_basis": "unresolved",
+      "reaches_hikers": false,
+      "sponsor_note": "The maintainer, reviewing the pull request for #1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads, on 2026-10-01: 'The green tunnel is officially sponsored by the atc.' The show's feed, page and About page, and George Mason University's 2024-03 announcement, name RRCHNM as producer and say nothing of a sponsor (read 2026-10-01), so the sponsorship rests on the maintainer's statement. It is why this feed is extracted in pipeline/extract/atc/podcasts.py.",
+      "discovered_via": "The maintainer's review comment on pipeline/extract/atc/podcasts.py (the pull request for #1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads, 2026-10-01). The feed URL is Apple's lookup API answer for the show's id, 1585683274, which reference/podcast_episodes.json's Apple links carry. Registered by hand.",
+      "discovered_date": "2026-10-01"
+    },
+    {
       "key": "gatc_water_sources",
       "title": "GATC Water Sources (approach trail + Georgia A.T.)",
       "provider": "GATC",

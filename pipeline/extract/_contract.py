@@ -349,6 +349,42 @@ def discover(root: Path = EXTRACT_DIR) -> list[ClubFile]:
     return files
 
 
+def shared_folders(root: Path = EXTRACT_DIR) -> list[Path]:
+    """Every folder under _shared/: national services, aggregators and OurHike's own data (ELT.md, "_shared/")."""
+    shared = root / SHARED_FOLDER
+    if not shared.is_dir():
+        return []
+    return sorted(p for p in shared.iterdir() if p.is_dir() and not p.name.startswith(("_", ".")))
+
+
+def read_shared_file(path: Path) -> ClubFile:
+    """One _shared/ file. Free-form, so its type is the `TYPE` it declares rather than its name.
+
+    The folder plays the club's part in the table name (`raw_<folder>__<key>`),
+    which is why the layout test holds _shared/ folder names apart from club
+    folder names. A file with no `TYPE` (a `notes.py`) declares no resource.
+    """
+    folder = path.parent.name
+    module = _load_module(path, f"_shared.{folder}")
+    type_ = getattr(module, "TYPE", None)
+    resources = tuple(replace(resource, club=folder, type=type_) for resource in getattr(module, "RESOURCES", ()) or ())
+    return ClubFile(
+        club=folder,
+        type=type_,
+        path=path,
+        claims=tuple(getattr(module, "CLAIMS", ()) or ()),
+        resources=resources,
+        shares=None,
+        note=getattr(module, "NOT_AVAILABLE", None),
+        same_as=tuple(getattr(module, "SAME_AS", ()) or ()),
+    )
+
+
+def discover_shared(root: Path = EXTRACT_DIR) -> list[ClubFile]:
+    """Every file in every _shared/ folder, in a stable order. not_clubs.py sits beside the folders and declares none."""
+    return [read_shared_file(path) for folder in shared_folders(root) for path in sorted(folder.glob("*.py"))]
+
+
 def all_resources(files: list[ClubFile]) -> list[Resource]:
     """Every Resource the club files declare. A SHARES file adds none: its sibling's resource is the one row."""
     return [resource for club_file in files for resource in club_file.resources]

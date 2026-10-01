@@ -18,6 +18,8 @@ not evidence for it.
 
 from __future__ import annotations
 
+import json
+
 import duckdb
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -27,6 +29,38 @@ from extract._run import RUNS_TABLE, _client, committed_load_ids, run_log_rows, 
 
 class BuildRefused(RuntimeError):
     """A table the run log says exists has no committed file to read."""
+
+
+# dlt data types -> DuckDB, for a proven-empty table created from its hints.
+# `json` lands VARCHAR, as the filesystem destination's Parquet writes it
+# (ELT.md, rule 1 of the four measured hazards), so a base model casts both alike.
+DUCKDB_TYPES = {
+    "bigint": "BIGINT",
+    "double": "DOUBLE",
+    "text": "VARCHAR",
+    "json": "VARCHAR",
+    "bool": "BOOLEAN",
+    "timestamp": "TIMESTAMP",
+    "date": "DATE",
+}
+
+
+def _create_proven_empty(con, schema: str, table: str, hints: dict, pipeline) -> None:
+    """An empty table with the columns its resource hinted, plus dlt's own, under dlt's naming.
+
+    Only for a load the run log shows as a proven zero: no rows, and the
+    upstream's own count read zero in the same run. dlt writes no file for a
+    table's first load when it holds no rows (a later empty replace does write
+    a zero-row file), so without this a closures layer that is empty the first
+    time it is read would refuse the whole build.
+    """
+    naming = pipeline.default_schema.naming
+    columns = {
+        naming.normalize_identifier(name): DUCKDB_TYPES.get(hint.get("data_type"), "VARCHAR") for name, hint in hints.items()
+    }
+    columns.update({"_loaded_at": "TIMESTAMP", "_dlt_load_id": "VARCHAR", "_dlt_id": "VARCHAR"})
+    body = ", ".join(f'"{name}" {type_}' for name, type_ in columns.items())
+    con.execute(f'CREATE OR REPLACE TABLE "{schema}"."{table}" ({body})')
 
 
 def committed_tables(pipeline) -> dict[str, str]:
@@ -47,9 +81,15 @@ def load_warehouse(con: duckdb.DuckDBPyConnection, pipeline, schema: str = "raw"
     client = _client(pipeline)
     con.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
     loaded = {}
+    log_rows = {(row["table_name"], row.get("load_id")): row for row in run_log_rows(pipeline)}
     for table, load_id in sorted(committed_tables(pipeline).items()):
         files = table_files(pipeline, table, load_id)
         if not files:
+            row = log_rows.get((table, load_id)) or {}
+            if row.get("rows") == 0 and row.get("count_proof") == 0 and row.get("column_hints") is not None:
+                _create_proven_empty(con, schema, table, json.loads(row["column_hints"]), pipeline)
+                loaded[table] = 0
+                continue
             raise BuildRefused(f"{table}: no committed file from load {load_id}; refusing rather than reading it as empty")
         arrow = pa.concat_tables([pq.read_table(client.fs_client.open(path)) for path in files], promote_options="permissive")
         con.register("_committed", arrow)

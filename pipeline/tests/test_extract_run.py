@@ -653,3 +653,24 @@ def test_a_club_pdf_whose_layout_changed_refuses_rather_than_relabelling(registr
     requests_mock.get(PDF_URL, content=b"%PDF-1.7 water")
     with pytest.raises(ValueError):
         list(water().rows({}))
+
+
+def test_a_layer_empty_on_its_first_read_lands_as_an_empty_table_with_its_hinted_columns(registry, store, requests_mock):
+    """dlt writes no file for a table's first load when it holds no rows; the proven zero must still build."""
+    FakeLayer(requests_mock, CLOSURES_URL, [])
+    report = lane(store, closures())
+    assert report.outcome == "loaded" and report.proofs["raw_testclub__closures_layer"] == 0
+    con, counts = warehouse(store)
+    assert counts["raw_testclub__closures_layer"] == 0
+    columns = {row[0] for row in con.execute('describe raw."raw_testclub__closures_layer"').fetchall()}
+    assert {"objectid", "globalid", "name", "geometry", "_loaded_at", "_dlt_load_id"} <= columns
+    assert "ranger" not in columns, "a person field is never hinted, so it is never created"
+
+
+def test_an_empty_reviewed_file_lands_as_an_empty_table(store, tmp_path):
+    reviewed = tmp_path / "work.json"
+    reviewed.write_text(json.dumps({"_README": ["x"], "reviewed_at": "2026-10-01", "rows": []}))
+    resource = ReviewedFile(key="work", club="testclub", type="closures", path=str(reviewed), rows_key="rows")
+    lane(store, resource)
+    con, counts = warehouse(store)
+    assert counts["raw_testclub__work"] == 0

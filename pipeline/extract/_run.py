@@ -46,7 +46,7 @@ os.environ.setdefault("SCHEMA__NAMING", "sql_ci_v1")
 import dlt  # noqa: E402
 import pyarrow.parquet as pq  # noqa: E402
 
-from extract._contract import CADENCES, Resource, all_resources, discover  # noqa: E402
+from extract._contract import CADENCES, Resource, all_resources, discover, discover_shared  # noqa: E402
 from extract._kinds import ORGS_TABLE  # noqa: E402
 from lib.freshness_state import Freshness  # noqa: E402
 
@@ -95,6 +95,9 @@ class RunReport:
     proofs: dict[str, int] = field(default_factory=dict)
     verdicts: dict[str, str] = field(default_factory=dict)
     problems: list[str] = field(default_factory=list)
+    # Each table's column hints, as to_dlt handed them to dlt. Kept in the run
+    # log only for a proven zero, which is the one case the warehouse needs them.
+    hints: dict[str, dict] = field(default_factory=dict)
 
 
 def utc_now_naive() -> datetime:
@@ -155,8 +158,11 @@ def recorded_markers(pipeline) -> dict[str, dict | None]:
     return {name: state.get("marker") for name, state in resources.items()}
 
 
-def to_dlt(resource: Resource, marker: dict | None, proofs: dict[str, int], loaded_at: datetime):
-    """Wrap one Resource in the dlt settings every resource shares."""
+def to_dlt(resource: Resource, marker: dict | None, proofs: dict[str, int], loaded_at: datetime, hints=None):
+    """Wrap one Resource in the dlt settings every resource shares. `hints` collects each table's column hints."""
+    columns = resource.column_hints()
+    if hints is not None:
+        hints[resource.table] = columns
 
     @dlt.resource(
         name=resource.name,
@@ -166,7 +172,7 @@ def to_dlt(resource: Resource, marker: dict | None, proofs: dict[str, int], load
         # into a child table, which is how the A.T. centerline once became
         # 2,072,165 rows in 4 tables and reported LOADED (#1363's spike).
         max_table_nesting=0,
-        columns=resource.column_hints(),
+        columns=columns,
         schema_contract=resource.schema_contract,
         file_format="parquet",
     )
@@ -313,6 +319,7 @@ RUNS_COLUMNS = {
     "load_id": {"data_type": "text"},
     "outcome": {"data_type": "text", "nullable": False},
     "checked_at": {"data_type": "timestamp"},
+    "column_hints": {"data_type": "text"},
 }
 
 
@@ -339,6 +346,12 @@ def write_run_log(pipeline, report: RunReport, planned: list[Planned], checked_a
                 "load_id": None if skipped else report.load_id,
                 "outcome": "skipped" if skipped else report.outcome,
                 "checked_at": checked_at,
+                # A proven zero writes no file on a table's first load (dlt keeps no
+                # schema for a table that never held a row, measured 2026-10-01), so
+                # its hints are what lets the warehouse create it empty.
+                "column_hints": json.dumps(report.hints[resource.table], sort_keys=True)
+                if not skipped and report.rows.get(resource.table, 0) == 0 and resource.table in report.hints
+                else None,
             }
         )
 
@@ -366,7 +379,7 @@ def run_pipeline(
     if lane not in LANES:
         raise ValueError(f"no lane {lane!r}; lanes are {sorted(LANES)}")
     if resources is None:
-        resources = all_resources(discover())
+        resources = all_resources(discover() + discover_shared())
     plan_resources = lane_resources(lane, resources)
     checked_at = utc_now_naive()
     report = RunReport(run_id=checked_at.strftime("%Y%m%dT%H%M%S.%fZ"), lane=lane, outcome="loaded")
@@ -386,7 +399,7 @@ def run_pipeline(
 
     if to_run:
         source = dlt.source(
-            lambda: [to_dlt(item.resource, item.marker, report.proofs, checked_at) for item in to_run],
+            lambda: [to_dlt(item.resource, item.marker, report.proofs, checked_at, report.hints) for item in to_run],
             name=SOURCE_NAME,
         )
         pipeline.extract(source(), loader_file_format="parquet")

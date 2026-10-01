@@ -106,7 +106,7 @@ def build(files, *, pois=(KNOB, PRIEST), centerline=None, publishers=PUBLISHERS,
         pois=pois,
         centerline=centerline,
         today=today,
-        org_domains=exporter.publisher_domains(publishers),
+        org_domains=exporter.publisher_domains(publishers, organizations, pois),
     )
 
 
@@ -559,7 +559,7 @@ def test_the_real_committed_files_publish_when_their_anchors_exist():
     org_trails, refused = exporter.publisher_scope(exporter.load_publishers(), exporter.load_organizations(), pois)
     output, resolution = exporter.build_output(
         files,
-        org_domains=exporter.publisher_domains(exporter.load_publishers()),
+        org_domains=exporter.publisher_domains(exporter.load_publishers(), exporter.load_organizations(), pois),
         org_trails=org_trails,
         organizations=exporter.load_organizations(),
         pois=pois,
@@ -600,3 +600,23 @@ class TestPublisherDomain:
     def test_the_committed_publishers_file_names_a_domain_for_every_row(self):
         rows = exporter.load_publishers()
         assert all(exporter.publisher_domain(row) for row in rows)
+
+
+class TestTheSavingDomain:
+    def test_a_refused_publisher_row_cannot_supply_the_domain(self):
+        """A row with no `why` ahead of the real one used to publish its
+        domain as the org's."""
+        rows = [{"org": "atc", "trails": ["AT"], "domain": "evil.example"}, *PUBLISHERS]
+
+        assert exporter.publisher_domains(rows, ORGANIZATIONS, [KNOB]) == {"atc": "appalachiantrail.org"}
+
+    def test_a_file_saved_by_another_domain_is_refused(self):
+        output, resolution = build([(Path("atc/summer-list.json"), challenge(published_by_domain="evil.example"))])
+
+        assert output["challenges"] == []
+        assert "not the domain publishers.json names" in resolution.dropped[0][1]
+
+    def test_a_file_saved_by_the_publishers_own_domain_publishes(self):
+        output, _ = build([(Path("atc/summer-list.json"), challenge(published_by_domain="appalachiantrail.org"))])
+
+        assert len(output["challenges"]) == 1

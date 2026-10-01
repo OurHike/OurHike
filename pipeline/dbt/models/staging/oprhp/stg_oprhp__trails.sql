@@ -23,23 +23,31 @@
 -- trail is.
 with source as (
     select * from {{ source('oprhp', 'raw_oprhp__oprhp_trails') }}
+),
+
+renamed as (
+    select
+        {{ dbt_utils.generate_surrogate_key([
+            "'oprhp_trails'",
+            'globalid',
+        ]) }} as trail_segment_key,
+        name,
+        alt_name,
+        unit,
+        blaze,
+        map_blaze,
+        surface,
+        status,
+        public_ as public_flag,
+        foot,
+        bike,
+        horse,
+        xc,
+        ss,
+        snowmb,
+        miles,
+        _loaded_at as loaded_at
+    from source
 )
 
-select
-    name,
-    alt_name,
-    unit,
-    blaze,
-    map_blaze,
-    surface,
-    status,
-    public_ as public_flag,
-    foot,
-    bike,
-    horse,
-    xc,
-    ss,
-    snowmb,
-    miles,
-    _loaded_at as loaded_at
-from source
+{{ dedupe('renamed', 'trail_segment_key', 'trail_segment_key') }}

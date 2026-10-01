@@ -44,16 +44,24 @@
 -- the display-outruns-its-source failure in miniature.
 with source as (
     select * from {{ source('oprhp', 'raw_oprhp__oprhp_facilities') }}
+),
+
+renamed as (
+    select
+        {{ dbt_utils.generate_surrogate_key([
+            "'oprhp_facilities'",
+            'globalid',
+        ]) }} as poi_key,
+        name as feature_name,
+        facility as park_name,
+        asset as asset_code,
+        sub_asset,
+        parksapp as in_parks_app,
+        public_ as public_flag,
+        st_x(geom) as longitude,
+        st_y(geom) as latitude,
+        _loaded_at as loaded_at
+    from source
 )
 
-select
-    name as feature_name,
-    facility as park_name,
-    asset as asset_code,
-    sub_asset,
-    parksapp as in_parks_app,
-    public_ as public_flag,
-    st_x(geom) as longitude,
-    st_y(geom) as latitude,
-    _loaded_at as loaded_at
-from source
+{{ dedupe('renamed', 'poi_key', 'poi_key') }}

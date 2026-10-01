@@ -1,5 +1,9 @@
--- The unified POI mart - ROADMAP.md's "Unified POI schema" item. Adds
--- exactly one thing over the union: a stable surrogate key.
+-- The unified POI mart - ROADMAP.md's "Unified POI schema" item. It used to
+-- add one thing over the union, a surrogate of (source, source_id). Since
+-- decision 40 of #1793 every staging model keys its own rows, over the
+-- columns measured unique for that layer (pipeline/ELT.md, "One key per
+-- table"), and this model carries that key through. The old key hashed
+-- DEC's OBJECTID, which a truncate-and-reload re-mints.
 --
 -- MULTI-ORGANIZATION SINCE PHASE D (#100): ATC, opentrail and NYS DEC, which
 -- is the first time this table has held a POI that is not on the A.T.
@@ -12,7 +16,7 @@
 -- this table and absent from everything a hiker sees. Anything that ever
 -- publishes from here reads public_use first.
 select
-    {{ dbt_utils.generate_surrogate_key(['source', 'source_id']) }} as poi_key,
+    poi_key,
     source,
     source_id,
     name,

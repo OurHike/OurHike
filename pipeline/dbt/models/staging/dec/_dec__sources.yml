@@ -40,6 +40,11 @@ sources:
         warn_after: {count: 7, period: day}
     tables:
       - name: raw_dec__dec_hiking_trails
+        data_tests:
+          # Rows sharing stg_dec__hiking_trails's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'dec_hiking_trails'", "globalid"]
         description: >
           NYS DEC Hiking Trails, statewide (sources.json: discovered
           2026-08-25). 5,286 polyline segments - 4,931 LineString, 355
@@ -73,6 +78,11 @@ sources:
               Reading M as "maintained for foot travel" is ours rather than
               DEC's and is made in export_nearby_trails.py, not here.
       - name: raw_dec__dec_lean_tos
+        data_tests:
+          # Rows sharing stg_dec__lean_tos's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'dec_lean_tos'", "asset_uid"]
         description: >
           NYS DEC Lean-tos, statewide (sources.json: discovered 2026-08-27).
           315 rows, counted live that day. Registered as LAYER 0 ONLY - layer
@@ -96,6 +106,11 @@ sources:
               to drop nothing, and is carried anyway so a service DEC later
               widens cannot quietly bring internal assets with it.
       - name: raw_dec__dec_primitive_campsites
+        data_tests:
+          # Rows sharing stg_dec__primitive_campsites's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'dec_primitive_campsites'", "asset_uid", "md5(st_astext(geom))"]
         description: >
           NYS DEC Primitive Campsites, statewide (discovered 2026-08-27).
           2,078 rows counted live that day, and exactly the big layer's
@@ -105,6 +120,11 @@ sources:
           - name: OBJECTID
             data_tests: [not_null, unique]
       - name: raw_dec__dec_scenic_vistas
+        data_tests:
+          # Rows sharing stg_dec__scenic_vistas's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'dec_scenic_vistas'", "asset_uid"]
         description: >
           NYS DEC Scenic Vistas, statewide (discovered 2026-08-27). 134 rows
           counted live that day, matching the big layer's 134 PUBLICUSE 'Y'
@@ -113,6 +133,11 @@ sources:
           - name: OBJECTID
             data_tests: [not_null, unique]
       - name: raw_dec__dec_firetowers
+        data_tests:
+          # Rows sharing stg_dec__firetowers's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'dec_firetowers'", "asset_uid"]
         description: >
           NYS DEC Firetowers, statewide (discovered 2026-08-27). 35 rows
           counted live that day against 34 in the big layer's public slice -
@@ -121,6 +146,11 @@ sources:
           - name: OBJECTID
             data_tests: [not_null, unique]
       - name: raw_dec__dec_viewing_areas
+        data_tests:
+          # Rows sharing stg_dec__viewing_areas's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'dec_viewing_areas'", "asset_uid"]
         description: >
           NYS DEC Viewing Areas, statewide (discovered 2026-08-27). 34 rows
           counted live that day against 33 OBSERVATION PLATFORM rows in the
@@ -131,6 +161,11 @@ sources:
           - name: OBJECTID
             data_tests: [not_null, unique]
       - name: raw_dec__dec_parking_areas
+        data_tests:
+          # Rows sharing stg_dec__parking_areas's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'dec_parking_areas'", "asset_uid", "md5(st_astext(geom))"]
         description: >
           NYS DEC Parking, statewide (discovered 2026-08-27). 1,852 rows
           counted live that day against 1,857 parking-shaped rows in the big
@@ -142,6 +177,11 @@ sources:
           - name: OBJECTID
             data_tests: [not_null, unique]
       - name: raw_dec__dec_backcountry_features
+        data_tests:
+          # Rows sharing stg_dec__backcountry_features's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'dec_backcountry_features'", "asset_uid", "name", "md5(st_astext(geom))"]
         description: >
           NYS DEC Back Country Features (discovered 2026-08-27). 21,468
           points counted live that day, and NOT A POI LAYER - DEC's own

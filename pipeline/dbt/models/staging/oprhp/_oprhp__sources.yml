@@ -23,6 +23,11 @@ sources:
         warn_after: {count: 7, period: day}
     tables:
       - name: raw_oprhp__oprhp_trails
+        data_tests:
+          # Rows sharing stg_oprhp__trails's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'oprhp_trails'", "globalid"]
         description: >
           NYS Parks Trails, statewide Transportation layer (sources.json:
           discovered 2026-08-18). 16,641 polyline segments, measured that
@@ -37,6 +42,11 @@ sources:
               were written down; the other two are staged nowhere rather than
               guessed at.
       - name: raw_oprhp__oprhp_trail_closures
+        data_tests:
+          # Rows sharing stg_oprhp__trail_closures's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'oprhp_trail_closures'", "name", "md5(st_astext(geom))"]
         description: >
           NYS Parks Temporary Trail Closures (sources.json: discovered
           2026-08-18). TEMPORARY closure polygons - 4 features on 2026-08-18,
@@ -48,6 +58,11 @@ sources:
           `place_field` (Descript), and those two are all
           stg_oprhp__trail_closures stages.
       - name: raw_oprhp__oprhp_facilities
+        data_tests:
+          # Rows sharing stg_oprhp__facilities's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'oprhp_facilities'", "globalid"]
         description: >
           NYS Parks Facilities (sources.json: discovered 2026-08-18). 8,823
           point features statewide. The layer's own display name is 'NY State

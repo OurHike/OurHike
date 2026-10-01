@@ -6,14 +6,22 @@
 -- accepted_values test yet: the domain is the finding, not a constraint.
 with source as (
     select * from {{ source('atc', 'raw_atc__side_trails') }}
+),
+
+renamed as (
+    select
+        {{ dbt_utils.generate_surrogate_key([
+            "'side_trails'",
+            'globalid',
+        ]) }} as trail_segment_key,
+        cast(globalid as varchar) as source_id,
+        name,
+        status,
+        type as trail_type,
+        blaze,
+        length_ft,
+        _loaded_at as loaded_at
+    from source
 )
 
-select
-    cast(globalid as varchar) as source_id,
-    name,
-    status,
-    type as trail_type,
-    blaze,
-    length_ft,
-    _loaded_at as loaded_at
-from source
+{{ dedupe('renamed', 'trail_segment_key', 'source_id') }}

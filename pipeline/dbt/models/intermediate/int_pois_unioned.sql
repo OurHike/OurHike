@@ -12,8 +12,14 @@
 --
 -- POSITIONAL, so column order is a semantic contract shared by every model
 -- above (which is why .sqlfluff turns ST06 off, with that reason). The
--- shape is: source, source_id, name, poi_type, confidence, public_use,
--- longitude, latitude, loaded_at.
+-- shape is: poi_key, source, source_id, name, poi_type, confidence,
+-- public_use, longitude, latitude, loaded_at.
+--
+-- poi_key is each staging model's own key (decision 40 of #1793, pipeline/
+-- ELT.md "One key per table"): dbt_utils.generate_surrogate_key over the
+-- registry key and the columns measured unique for that layer. It is unique
+-- across the union because the registry key is one of its inputs, which the
+-- unique test on this model holds.
 --
 -- `public_use` is the column Phase D added, and it is CARRIED rather than
 -- APPLIED - null where the publishing organization declares no

@@ -132,8 +132,8 @@ Present, among others: `ST_LineLocatePoint`, `ST_LineInterpolatePoints`,
 
 | Layer | Name | Folder | Reads | Does |
 |---|---|---|---|---|
-| base | `base_<steward>__<layer>` | `staging/<steward>/base/` | one `source()` | once per upstream dataset, in the folder that extracts it (decision 34): `base_usfs__trails`, never one per club. Rename, cast, `st_setcrs(st_geomfromgeojson(geometry), 'OGC:CRS84')`, lowercase aliases. No filter, no join |
-| staging | `stg_<club>__<mart>` | `staging/<club>/` | that club's base models | conform to the mart's shape; apply the club's own review gate |
+| base | `base_<steward>__<layer>` | `staging/<steward>/base/` | one `source()` | once per upstream dataset, in the folder that extracts it (decision 34): `base_usfs__trails`, never one per club. Rename, cast, `st_setcrs(st_geomfromgeojson(geometry), 'OGC:CRS84')`, lowercase aliases, the key and the dedupe ([below](#one-key-per-table)). No filter, no join |
+| staging | `stg_<club>__<mart>` | `staging/<club>/` | that club's base models | conform to the mart's shape: rename to its columns, carry the key. No filter: the club's review gate goes in its intermediate (decision 40) |
 | union | `int_<mart>__unioned` | `intermediate/<mart>/` | every `stg_<club>__<mart>` | `union all by name`, no filter |
 | heavy | `int_<mart>__<verb>` | `intermediate/<mart>/` | unions, intermediates, `stg_derived__*` | dedup, corridor, water distance, mile axis, graph |
 | stewardship | `int_<mart>__stewardship` | `intermediate/<mart>/` | the deduplicated intermediate, `stg_registry__orgs`, ATC's club sections | one row per (feature, club, basis, evidence): which clubs steward each feature. It assigns, never copies |
@@ -202,6 +202,44 @@ stay `table` in every option.
 cadence is the fastest among its upstream sources, and each lane runs
 `dbt build --select config.meta.cadence:<lane>+` (measured selecting correctly
 on 2.0.5, 2026-10-01).
+
+## One key per table
+
+Decision 40, the maintainer's: *"every table needs a unique id. Use the
+dbt_utils package in dbt, and call the generate_surrogate_key() macro to create
+the key based on current values... staging tables should only do 2 main things.
+data type conversion / field renaming & dedupe source tables."* `pipeline/ELT.md`,
+"One key per table", has every table's measured key. On every model that reads
+a `source()` (today's `stg_`, the target's `base_`):
+
+- **The first column is the key**: `<what one row is>_key`, built with
+  `{{ dbt_utils.generate_surrogate_key([...]) }}`. Its first input is the
+  registry key as a literal (`"'dec_primitive_campsites'"`), so keys stay
+  unique across the union. Then the upstream's own unique id, or the smallest
+  set of current values measured unique, with `geometry_key('geom')` where no
+  attribute tells two rows apart. Never `OBJECTID` or `FID` alone: a reload
+  mints them again.
+- **Measure the key before writing it**, on the live layer:
+  `pipeline/spike_table_keys.py` finds the smallest unique set and counts the
+  exact copies. Do not trust a key because a field is called an id. DEC's
+  `ASSET_UID` names two different campsites four times over.
+- **The model ends with `{{ dedupe('renamed', '<key>', '<order>') }}`**, the
+  project's QUALIFY macro. Never `dbt_utils.deduplicate`: on DuckDB it falls
+  back to a natural join, and that drops every row holding a NULL (measured
+  2026-10-01).
+- **The raw table gets `duplicates_are_exact`** in `_<club>__sources.yml`,
+  with the same key expressions (`geometry_key('geom')` written out as
+  `md5(st_astext(geom))`). It fails the build when rows sharing a key differ,
+  so a dedupe only ever removes exact copies.
+- **The model's YAML** tests the key `unique` and `not_null`, and carries a
+  `dbt_utils.equal_rowcount` against its source at `severity: warn`, which says
+  how many copies the dedupe removed.
+- `pipeline/tests/test_dbt_keys.py` checks all of that without a warehouse,
+  and holds the model's key list equal to its source test's.
+- **Nothing else happens in that model**: renames and casts, the key, the
+  dedupe. Classification literals, seed lookups and review gates are
+  intermediate work. Today's POI staging models still carry `poi_type` and
+  `confidence` literals; they move when stage 3 rebuilds staging.
 
 ## Publication is decided once, in SQL, before dedup
 
@@ -496,11 +534,13 @@ exactly the club's available types, `photos` included and `org` excluded.
    gets no base model here: the club's portion of it is rows in
    `int_<mart>__stewardship` (decision 34). dlt lands the geometry as `JSON` in DuckDB and
    `VARCHAR` in Parquet (measured 2026-10-01), so cast it before
-   `st_geomfromgeojson`. Set CRS84, alias every column in lowercase, key it on
-   the layer's stable upstream id (`pipeline/ELT.md`, "Stable upstream keys").
+   `st_geomfromgeojson`. Set CRS84, alias every column in lowercase, and give
+   it its key and dedupe ([One key per table](#one-key-per-table)): measure the
+   key first, on the live layer.
 3. **One `stg_<club>__<mart>.sql` per available type**, conformed to the mart's
-   columns so `union all by name` lines up. The club's own review gate goes
-   here, never in the union.
+   columns so `union all by name` lines up. Renaming and the key only: the
+   club's own review gate is a filter, and filters go in the club's
+   intermediate (decision 40), never in staging and never in the union.
 4. **`staging/<club>/_<club>__models.yml`** holds the club's model tests, in the
    club's own folder. Testing club models from one shared `staging.yml` is what
    gives today's 55 `fct_test_directories` findings.

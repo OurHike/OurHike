@@ -2,6 +2,14 @@ version: 2
 
 models:
   - name: stg_opentrail__waypoints
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('opentrail', 'raw_opentrail__at')
+          config:
+            severity: warn
     description: >
       opentrail waypoints with `icon` resolved to a unified poi_type via
       the poi_type_mapping seed. poi_type is null on
@@ -9,5 +17,12 @@ models:
       export_poi.py's module docstring says why); the row stays so layers
       remain 1:1 and reconciliation tests stay meaningful.
     columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          opentrail_at, source.dbid,
+          the registry key first and then the columns measured unique for
+          this layer.
+        data_tests: [not_null, unique]
       - name: source_id
         data_tests: [not_null, unique]

@@ -175,6 +175,8 @@ def _oprhp_trails_layer():
     """oprhp_trails' measured field list (sources.json notes, 2026-08-18).
 
     `Blaze` and `Map_Blaze` are the two blaze columns sources.json names.
+    GlobalID is the key (decision 40): unique on 16,641 of 16,641 rows,
+    measured 2026-10-01.
     The notes say the layer carries "up to three Blaze colours" but spell
     only one of them, so only the spelled one is here - two invented column
     names would be two staging columns nothing upstream answers for.
@@ -193,8 +195,24 @@ def _oprhp_trails_layer():
     }
     return _features(
         [
-            {**common, "Name": "Fixture Ridge Trail", "Alt_Name": "Ridge", "Blaze": "Blue", "Map_Blaze": "Blue", "Miles": 1.4},
-            {**common, "Name": "Fixture Loop Trail", "Alt_Name": None, "Blaze": "Red", "Map_Blaze": "Red", "Miles": 0.8},
+            {
+                **common,
+                "GlobalID": "{00000000-0000-4000-8000-000000000401}",
+                "Name": "Fixture Ridge Trail",
+                "Alt_Name": "Ridge",
+                "Blaze": "Blue",
+                "Map_Blaze": "Blue",
+                "Miles": 1.4,
+            },
+            {
+                **common,
+                "GlobalID": "{00000000-0000-4000-8000-000000000402}",
+                "Name": "Fixture Loop Trail",
+                "Alt_Name": None,
+                "Blaze": "Red",
+                "Map_Blaze": "Red",
+                "Miles": 0.8,
+            },
         ],
         _line,
     )
@@ -222,10 +240,13 @@ def _oprhp_facilities_layer():
     here because export_nearby_poi.py reads the N side as low confidence
     rather than dropping it. `Asset` is the coded integer 1-17 whose domain
     the service does not publish - carried as the integer it is, undecoded.
+    GlobalID is the key (decision 40): unique on 8,823 of 8,823 rows,
+    measured 2026-10-01, where the registry's `id_field` still says OBJECTID.
     """
     return _features(
         [
             {
+                "GlobalID": "{00000000-0000-4000-8000-000000000501}",
                 "Name": "Fixture Spigot",
                 "Facility": "Fixture State Park",
                 "Asset": 7,
@@ -234,6 +255,7 @@ def _oprhp_facilities_layer():
                 "Public_": "Y",
             },
             {
+                "GlobalID": "{00000000-0000-4000-8000-000000000502}",
                 "Name": None,
                 "Facility": "Fixture State Park",
                 "Asset": 7,
@@ -241,7 +263,15 @@ def _oprhp_facilities_layer():
                 "ParksApp": "N",
                 "Public_": "Y",
             },
-            {"Name": None, "Facility": "Fixture State Park", "Asset": 3, "Sub_Asset": "Lean-to", "ParksApp": "N", "Public_": "Y"},
+            {
+                "GlobalID": "{00000000-0000-4000-8000-000000000503}",
+                "Name": None,
+                "Facility": "Fixture State Park",
+                "Asset": 3,
+                "Sub_Asset": "Lean-to",
+                "ParksApp": "N",
+                "Public_": "Y",
+            },
         ],
         _point,
     )
@@ -293,7 +323,8 @@ def _nynjtc_highlands_trail_layer():
 def _mohonk_trails_layer():
     """Measured 2026-08-25. Blaze is a genuine coded field whose live values
     include the literal string 'N/A' (124 of 304 rows) and, on 7 rows, no
-    value at all - both shapes appear here."""
+    value at all - both shapes appear here. GlobalID is the key (decision 40):
+    unique on 304 of 304 rows, measured 2026-10-01."""
     common = {
         "General_Classification": "Trail",
         "Classification": "Foot",
@@ -303,10 +334,30 @@ def _mohonk_trails_layer():
     }
     return _features(
         [
-            {**common, "Name": "Fixture Carriage Road", "Blaze": "Blue", "Mileage": 1.1, "Owner": "Mohonk Preserve"},
-            {**common, "Name": "Fixture Ledge Path", "Blaze": "N/A", "Mileage": 0.6, "Owner": "Mohonk Preserve"},
+            {
+                **common,
+                "GlobalID": "{00000000-0000-4000-8000-000000000301}",
+                "Name": "Fixture Carriage Road",
+                "Blaze": "Blue",
+                "Mileage": 1.1,
+                "Owner": "Mohonk Preserve",
+            },
+            {
+                **common,
+                "GlobalID": "{00000000-0000-4000-8000-000000000302}",
+                "Name": "Fixture Ledge Path",
+                "Blaze": "N/A",
+                "Mileage": 0.6,
+                "Owner": "Mohonk Preserve",
+            },
             # No Blaze key at all - the 7-row shape, not an oversight.
-            {**common, "Name": "Marakill Woods North", "Mileage": 0.4, "Owner": "NYS OPRHP/PIPC"},
+            {
+                **common,
+                "GlobalID": "{00000000-0000-4000-8000-000000000303}",
+                "Name": "Marakill Woods North",
+                "Mileage": 0.4,
+                "Owner": "NYS OPRHP/PIPC",
+            },
         ],
         _line,
     )
@@ -1109,6 +1160,7 @@ def _dec_lean_tos_layer():
             {
                 **common,
                 "OBJECTID": 11,
+                "ASSET_UID": 5011,
                 "NAME": "Fixture Lean-to",
                 "DESCRIP": "fixture row",
                 "NOTES": "-99",
@@ -1118,6 +1170,7 @@ def _dec_lean_tos_layer():
             {
                 **common,
                 "OBJECTID": 12,
+                "ASSET_UID": 5012,
                 "NAME": "Fixture Brook Lean-to",
                 "DESCRIP": None,
                 "NOTES": None,
@@ -1127,6 +1180,7 @@ def _dec_lean_tos_layer():
             {
                 **common,
                 "OBJECTID": 13,
+                "ASSET_UID": 5013,
                 "NAME": "Fixture Maintenance Lean-to",
                 "DESCRIP": None,
                 "NOTES": None,
@@ -1138,29 +1192,46 @@ def _dec_lean_tos_layer():
     )
 
 
-def _dec_asset_layer(asset, names, publicuse=("Y",)):
+def _dec_asset_layer(asset, names, publicuse=("Y",), asset_uids=None, places=None):
     """The five other DEC per-type asset services.
 
-    Six columns, and only six: sources.json records these layers' counts and
-    their `id_field`/`name_field`/`asset_field`/`facility_field`/
+    Seven columns, and only seven: sources.json records these layers' counts
+    and their `id_field`/`name_field`/`asset_field`/`facility_field`/
     `public_field` plus a `freshness` field of UPDATED, and does NOT record a
     full field list the way it does for dec_lean_tos. dec_lean_tos' other
     columns are NOT assumed to carry across - a sibling service is evidence
     about itself, not about its siblings.
+
+    ASSET_UID is the seventh, and the key (decision 40, pipeline/ELT.md "One
+    key per table"): measured on all seven DEC point services on 2026-10-01,
+    unique on four of them and NOT unique on three. Primitive campsites hold
+    four ids that two different sites share, at different places and mostly
+    under different names, plus one exact duplicate record; parking areas
+    hold one id two lots share. So `asset_uids` and `places` let a fixture
+    reuse an id at another place, and repeat a row exactly (same id, same
+    place, a new OBJECTID), which are the two shapes the key and the staging
+    dedupe must get right. `places[i]` is the index of the point row i sits
+    at; by default every row has its own.
     """
-    return _features(
+    asset_uids = asset_uids or [900 + i for i in range(len(names))]
+    places = places or list(range(len(names)))
+    return _feature_collection(
         [
             {
-                "OBJECTID": 100 + i,
-                "NAME": name,
-                "ASSET": asset,
-                "FACILITY": "Fixture Wild Forest",
-                "PUBLICUSE": publicuse[i % len(publicuse)],
-                "UPDATED": "2026-08-18",
+                "type": "Feature",
+                "properties": {
+                    "OBJECTID": 100 + i,
+                    "ASSET_UID": asset_uids[i],
+                    "NAME": name,
+                    "ASSET": asset,
+                    "FACILITY": "Fixture Wild Forest",
+                    "PUBLICUSE": publicuse[i % len(publicuse)],
+                    "UPDATED": "2026-08-18",
+                },
+                "geometry": _point(places[i]),
             }
             for i, name in enumerate(names)
-        ],
-        _point,
+        ]
     )
 
 
@@ -1272,14 +1343,20 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         "external/nyc_drinking_fountains.geojson": _nyc_drinking_fountains_layer(),
         "external/dec_hiking_trails.geojson": _dec_hiking_trails_layer(),
         "external/dec_lean_tos.geojson": _dec_lean_tos_layer(),
+        # Two sites under one ASSET_UID at two places, and one record repeated
+        # exactly: the two shapes the live layer has (measured 2026-10-01).
         "external/dec_primitive_campsites.geojson": _dec_asset_layer(
-            "PRIMITIVE TENT SITE", ["Fixture Tent Site 1", "Fixture Tent Site 2"]
+            "PRIMITIVE TENT SITE",
+            ["Fixture Tent Site 1", "Fixture Tent Site 2", "Fixture Tent Site 3", "Fixture Tent Site 3"],
+            asset_uids=[15723, 15723, 3640, 3640],
+            places=[0, 1, 2, 2],
         ),
         "external/dec_scenic_vistas.geojson": _dec_asset_layer("SCENIC VISTA", ["Fixture Vista"]),
         "external/dec_firetowers.geojson": _dec_asset_layer("FIRE TOWER", ["Fixture Mountain Firetower"]),
         "external/dec_viewing_areas.geojson": _dec_asset_layer("OBSERVATION PLATFORM", ["Fixture Viewing Area"]),
+        # Two lots under one ASSET_UID, differing only by place (measured 2026-10-01).
         "external/dec_parking_areas.geojson": _dec_asset_layer(
-            "UNPAVED PARKING LOT", ["Fixture Trailhead Parking", "Fixture Hunter Parking"]
+            "UNPAVED PARKING LOT", ["Fixture Trailhead Parking", "Fixture Hunter Parking"], asset_uids=[3048, 3048]
         ),
         # The one DEC layer that is NOT a POI layer: an asset inventory whose
         # largest value is CULVERT at 4,290 features and whose PUBLICUSE flag
@@ -1298,8 +1375,16 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         # `Fixture Culvert` is a NAME, not a type: both rows below are typed
         # PRIVY. The name is there to read as an inventory, and a model that
         # keyed on it rather than on `ASSET` would pass this fixture wrongly.
+        #
+        # The third row shares the first one's ASSET_UID and place under another
+        # name: one group on the live layer does exactly that (measured
+        # 2026-10-01), which is why this layer's key adds NAME.
         "external/dec_backcountry_features.geojson": _dec_asset_layer(
-            "PRIVY", ["Fixture Privy", "Fixture Culvert"], publicuse=("Y", "N")
+            "PRIVY",
+            ["Fixture Privy", "Fixture Culvert", "Fixture Privy (renamed)"],
+            publicuse=("Y", "N"),
+            asset_uids=[228015, 228016, 228015],
+            places=[0, 1, 0],
         ),
         # #1778's seventeen, each with the one column its registry row declares
         # spelled the way sources.json spells it - so a rename fails here

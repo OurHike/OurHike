@@ -24,17 +24,25 @@
 -- and 6 read 'NYS OPRHP/PIPC' with Manager still Mohonk.
 with source as (
     select * from {{ source('mohonk', 'raw_mohonk__mohonk_trails') }}
+),
+
+renamed as (
+    select
+        {{ dbt_utils.generate_surrogate_key([
+            "'mohonk_trails'",
+            'globalid',
+        ]) }} as trail_segment_key,
+        name,
+        general_classification,
+        classification,
+        use_ as permitted_use,
+        blaze,
+        mileage,
+        surface,
+        owner,
+        manager,
+        _loaded_at as loaded_at
+    from source
 )
 
-select
-    name,
-    general_classification,
-    classification,
-    use_ as permitted_use,
-    blaze,
-    mileage,
-    surface,
-    owner,
-    manager,
-    _loaded_at as loaded_at
-from source
+{{ dedupe('renamed', 'trail_segment_key', 'trail_segment_key') }}

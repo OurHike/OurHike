@@ -4,15 +4,23 @@
 -- 'c' and 't' codes - rather than decided in passing by a staging model.
 with source as (
     select * from {{ source('atc', 'raw_atc__bridges') }}
+),
+
+renamed as (
+    select
+        {{ dbt_utils.generate_surrogate_key([
+            "'bridges'",
+            'globalid',
+        ]) }} as poi_key,
+        cast(globalid as varchar) as source_id,
+        name,
+        status,
+        type as bridge_type,
+        super_stru as superstructure,
+        st_x(geom) as longitude,
+        st_y(geom) as latitude,
+        _loaded_at as loaded_at
+    from source
 )
 
-select
-    cast(globalid as varchar) as source_id,
-    name,
-    status,
-    type as bridge_type,
-    super_stru as superstructure,
-    st_x(geom) as longitude,
-    st_y(geom) as latitude,
-    _loaded_at as loaded_at
-from source
+{{ dedupe('renamed', 'poi_key', 'source_id') }}

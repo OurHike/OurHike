@@ -27,14 +27,24 @@
 -- is publishable at all; it is carried, not applied - see stg_dec__lean_tos.
 with source as (
     select * from {{ source('dec', 'raw_dec__dec_backcountry_features') }}
+),
+
+renamed as (
+    select
+        {{ dbt_utils.generate_surrogate_key([
+            "'dec_backcountry_features'",
+            'asset_uid',
+            'name',
+            geometry_key('geom'),
+        ]) }} as poi_key,
+        cast(objectid as varchar) as source_id,
+        name,
+        facility,
+        asset,
+        publicuse as public_use,
+        updated,
+        _loaded_at as loaded_at
+    from source
 )
 
-select
-    cast(objectid as varchar) as source_id,
-    name,
-    facility,
-    asset,
-    publicuse as public_use,
-    updated,
-    _loaded_at as loaded_at
-from source
+{{ dedupe('renamed', 'poi_key', 'source_id') }}

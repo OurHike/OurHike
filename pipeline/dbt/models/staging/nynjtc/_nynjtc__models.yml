@@ -15,6 +15,14 @@ version: 2
 # The same arrangement holds in mohonk/ and oprhp/.
 models:
   - name: stg_nynjtc__long_path
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nynjtc', 'raw_nynjtc__nynjtc_long_path')
+          config:
+            severity: warn
     description: >
       The Long Path's per-segment attributes - the first trail in this
       warehouse that is not the A.T. NO source_id column: sources.json
@@ -22,15 +30,37 @@ models:
       row number rather than NYNJTC's identity. `blaze` is a plain string
       ('aqua' on all 43 rows), passed through undecoded.
     columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nynjtc_long_path, lp_section, mileage,
+          the registry key first and then the columns measured unique for
+          this layer.
+        data_tests: [not_null, unique]
       - name: loaded_at
         description: load_raw.py's `_loaded_at` for the load this row came from, naive UTC.
         data_tests: [not_null]
   - name: stg_nynjtc__highlands_trail
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nynjtc', 'raw_nynjtc__nynjtc_highlands_trail')
+          config:
+            severity: warn
     description: >
       The Highlands Trail's 12 sections. NO BLAZE COLUMN, because the layer
       publishes no blaze field - a stated absence, not a gap to fill. No
       source_id, for the same reason as its sibling.
     columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nynjtc_highlands_trail, section_name,
+          the registry key first and then the columns measured unique for
+          this layer.
+        data_tests: [not_null, unique]
       - name: loaded_at
         description: load_raw.py's `_loaded_at` for the load this row came from, naive UTC.
         data_tests: [not_null]

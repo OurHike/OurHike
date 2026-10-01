@@ -7,7 +7,7 @@ This is the design for **#1793 — Rebuild the data platform as dlt → dbt: sev
 - [Overview](#overview): what was asked, every decision, what this reverses, the shape, the three clocks
 - [Extract and load (dlt)](#extract-and-load-dlt): the folder contract, one extraction per dataset, who may publish and what may be fetched, no rasters, status layers, dlt's requirements, change checks
 - [The data checks](#the-data-checks): the layout test, the run check after every load, note ageing
-- [The dbt project](#the-dbt-project): v2, extensions, layers, the eleven marts, status and water rules, contracts, Python steps, publish (reverse ETL), the evaluator, SQLFluff, state, docs
+- [The dbt project](#the-dbt-project): v2, extensions, layers, one key per table, the eleven marts, status and water rules, contracts, Python steps, publish (reverse ETL), the evaluator, SQLFluff, state, docs
 - [Keeping every rule we already built](#keeping-every-rule-we-already-built): parity, SQL first, the 179-row ledger, the human gates, state
 - [Club by club](#club-by-club): the folder roster, the five tiers, deduplication after the load
 - [Making the download smaller](#making-the-download-smaller): today's download, the three tiers, the four kinds of phone file, simplification
@@ -42,7 +42,7 @@ A number in brackets is a row of [Decisions](#decisions).
 | "Not… download the entire duckdb… blazing fast" | no phone downloads a DuckDB file; the whole data set shrinks (9) | [Making the download smaller](#making-the-download-smaller) |
 | "Simplify any geometries… a few feet off" | navigation line stays 1 m; bytes from encoding and per-zoom tiles (8) | [Making the download smaller](#making-the-download-smaller) |
 | "Don't lose any transformation work… org by org plan" | every rule with its file, line, target model and tests | [Keeping every rule we already built](#keeping-every-rule-we-already-built), [Club by club](#club-by-club) |
-| "Ask me questions… all the tables you need… a dbt skillset"; "check if dlt also has a skillset" | 39 numbered decisions, most by poll; four marts added, and what still reaches a phone from no mart; dbt and dlt repo skills (5, 11, 16) | [Decisions](#decisions), [The eleven marts](#the-eleven-marts), [Skills](#skills) |
+| "Ask me questions… all the tables you need… a dbt skillset"; "check if dlt also has a skillset" | 40 numbered decisions, most by poll; four marts added, and what still reaches a phone from no mart; dbt and dlt repo skills (5, 11, 16) | [Decisions](#decisions), [The eleven marts](#the-eleven-marts), [Skills](#skills) |
 | "1 folder per org… the same # of files"; "data checks… each of the different file types" | 11-file club folders, dated `NOT_AVAILABLE` notes, three checks (12–14) | [Extract and load (dlt)](#extract-and-load-dlt) |
 | "Recheck that each org has all the potential data loaded" | `pipeline/ORG_COVERAGE_SURVEY.md` (15) | [Club by club](#club-by-club) |
 | "Load ALL the clubs… deduplication after the extract-load" | every managing club extracted, and each candidate steward once it has a reviewed catalogue row; dedup in intermediates | [Load everything, gate publication downstream](#load-everything-gate-publication-downstream), [The folder roster](#the-folder-roster), [Deduplication after the load, mart by mart](#deduplication-after-the-load-mart-by-mart) |
@@ -57,7 +57,7 @@ A number in brackets is a row of [Decisions](#decisions).
 
 ### Decisions
 
-Settled by the maintainer on 2026-10-01, most by poll; 4 and 11 went without a picture, and 12, 14 and 15 began as the maintainer's own unprompted asks, as did 20–25, 28–29, 32 and 34–35. Nothing below re-argues them. Under "Offered and not taken", "—" means nothing offered was left: the maintainer gave the direction in their own words, or (5) took every option offered. "Not recorded" means a poll whose other options the decisions log did not keep.
+Settled by the maintainer on 2026-10-01, most by poll; 4 and 11 went without a picture, and 12, 14 and 15 began as the maintainer's own unprompted asks, as did 20–25, 28–29, 32, 34–35 and 40. Nothing below re-argues them. Under "Offered and not taken", "—" means nothing offered was left: the maintainer gave the direction in their own words, or (5) took every option offered. "Not recorded" means a poll whose other options the decisions log did not keep.
 
 | # | Question | Chosen | Offered and not taken |
 |---|---|---|---|
@@ -100,6 +100,7 @@ Settled by the maintainer on 2026-10-01, most by poll; 4 and 11 went without a p
 | 37 | Layers that say "internal use", "not for distribution" or "all rights reserved" (about 16) | **"Publish under GIS presumption"**: 21(a) extends to them when they are served anonymously on a public GIS endpoint. This is the maintainer's decision against the items' own words, which stay quoted in `sources.json`. Still excluded: person fields, the four `refuse` orgs until permission is recorded, and anything that is not an anonymous public endpoint ([Who may publish](#who-may-publish), rule 3) | Hold and ask each publisher; drop them |
 | 38 | Layers that carry conditions rather than refusals (about 9) | **"Publish, honouring each"**: each condition travels with its layer in the `sources` mart and is enforced downstream. A condition that cannot be met holds its layer ([Who may publish](#who-may-publish), rule 5) | Hold all |
 | 39 | Fetch terms: browser-only hosts, no-automation terms, waiver gates | **"Allow ArcGIS copies, else ask"**: a club's own public ArcGIS layer counts as published whatever its website's waiver says, so ONDA's `ODT Tracks` is extracted. **The pipeline never imitates a browser**: it always sends its own honest user agent, and a host that refuses it holds until the org answers. Other no-automation terms and waivers mean ask. ATC's trail-updates scrape stays as today, on **#458 — Confirm with the ATC what may be republished from their Trail Updates** ([What may be fetched](#what-may-be-fetched)) | Never imitate, and ask, with ONDA's ArcGIS copy held too; allow a browser UA where served |
+| 40 | A key for every table | **"every table needs a unique id. Use the dbt_utils package in dbt, and call the generate_surrogate_key() macro to create the key based on current values"**, with the columns found by researching each table, and **"staging tables should only do 2 main things. data type conversion / field renaming & dedupe source tables"**. The key's inputs are the registry key, then the upstream's own primary key where one is unique, else the smallest set of current values measured unique; never a server row id alone ([One key per table](#one-key-per-table)) | — |
 
 Settled outside the numbered rows:
 
@@ -119,7 +120,7 @@ Session calls, not polled, stated so a reviewer can disagree: **T1** stay on dbt
 | dlt declined | **#1294 — Evaluated and declined: dlt for the fetch layer, and a weekly cadence for non-alert data** (open; a 2026-10-01 comment records the reversal) and its spike, pull request **#1363 — Port the ArcGIS fetch to dlt and count it, instead of estimating what it replaces**, closed unmerged on the maintainer's decision 2026-09-09; its verdict was "dlt is still the wrong tool for this layer". Code on `claude/dlt-data-pipelines-ttlhje` @ `41c85849` | dlt does every extract and load |
 | "**Extract** — unchanged: `fetch_all.py`, `fetch_opentrail.py`, `fetch_topo_quads.py` keep pulling…"; "Extract stays where it is" | `pipeline/DBT.md:27`; `pipeline/load_raw.py:7-9` | extraction moves to `pipeline/extract/`; `load_raw.py` is replaced and its 13 tests become requirements on the dlt load |
 | the dlt verdict is "the evaluation this design rests on" | `pipeline/INCREMENTAL.md:36-38` | its tiers and clocks stand, with dlt as the mechanism |
-| `atc_trail_updates`, `nynjtc_trail_alerts` not staged ("no per-feature GeoJSON"; "would freeze a schema nobody has decided on") | `pipeline/DBT.md:173-174` | both staged into `closures`/`warnings`; decision 7 is the missing schema decision; each review gate becomes a staging filter |
+| `atc_trail_updates`, `nynjtc_trail_alerts` not staged ("no per-feature GeoJSON"; "would freeze a schema nobody has decided on") | `pipeline/DBT.md:173-174` | both staged into `closures`/`warnings`; decision 7 is the missing schema decision; each review gate becomes an intermediate filter (decision 40 keeps filters out of staging) |
 | `usdm_drought` not staged ("the WEEK… lives in the filename") | `pipeline/DBT.md:177` | **partly stands**: extracted by dlt (the manifest row keeps the week), in no mart (decision 2), clipped by `export_drought.py` as today |
 | `load` verdict decides whether a club gets a `sources.json` row (`ship` "Becomes a sources.json row"; `via` "No entry of its own") | `pipeline/reference/trail_orgs.json`, `_load_values` | every managing club extracted; `licence_basis` and `attribution` travel into `sources`, and every mart filters on a derived `may_publish` |
 | "**A row in `dim_pois` is not a publishable POI**"; a SQL `public_use` filter "beside the tested Python one" would be a second pipeline | `pipeline/DBT.md:166`, `:193` | `points_of_interest` becomes **the one home** of the filter; `export_nearby_poi.py`'s copy is deleted at cutover, so the one-home argument holds and the home moves |
@@ -872,8 +873,8 @@ pipeline/dbt/
 
 | Layer | Name | Reads | Does |
 |---|---|---|---|
-| base | `base_<steward>__<layer>`, in `staging/<steward>/base/`: the folder that extracts the layer, once per dataset (decision 34), so `base_usfs__trails` and never one per club | one `source()` | Renames and casts; `st_setcrs(st_geomfromgeojson(geometry), 'OGC:CRS84')`; aliases every column in lowercase. No filter, no join. One source per model is what `fct_multiple_sources_joined` requires, and one child per source keeps `fct_source_fanout` at 0 (Reasoned) |
-| staging | `stg_<club>__<mart>` | that club's base models | Conforms to the mart's shape and applies the club's own review gate (for example ATC's reviewed file). One per available file in the 11-file contract. `org.py` lands in the shared `stg_registry__orgs`, and `photos.py` in `stg_<club>__photos`, which feeds POIs and no mart |
+| base | `base_<steward>__<layer>`, in `staging/<steward>/base/`: the folder that extracts the layer, once per dataset (decision 34), so `base_usfs__trails` and never one per club | one `source()` | Renames and casts; `st_setcrs(st_geomfromgeojson(geometry), 'OGC:CRS84')`; aliases every column in lowercase; builds the row's key and dedupes on it ([One key per table](#one-key-per-table), decision 40). No filter, no join. One source per model is what `fct_multiple_sources_joined` requires, and one child per source keeps `fct_source_fanout` at 0 (Reasoned) |
+| staging | `stg_<club>__<mart>` | that club's base models | Conforms to the mart's shape: renames to the mart's columns and carries the base model's key. Nothing else, by decision 40, so the club's own review gate (for example ATC's reviewed file) is a filter in its `int_<mart>__` model, not here. One per available file in the 11-file contract. `org.py` lands in the shared `stg_registry__orgs`, and `photos.py` in `stg_<club>__photos`, which feeds POIs and no mart |
 | union | `int_<mart>__unioned` | every `stg_<club>__<mart>` | `union all by name`, no filter |
 | heavy | `int_<mart>__<verb>` | unions, intermediates, `stg_derived__*` | dedup, corridor, water distance, mile axis, graph |
 | stewardship | `int_<mart>__stewardship` | the mart's deduplicated intermediate, `stg_registry__orgs`, ATC's club sections | one row per (feature, club, basis, evidence): which clubs steward each feature, by the ATC club-section polygons, the club's trail list in `trail_orgs.json`, or a name or ID match (decision 34). It assigns a portion and never copies a feature |
@@ -908,6 +909,80 @@ Consumers call `st_linelocatepoint`, then interpolate between anchors. The held-
 | POI identity across releases | `reconcile_poi_identity.py:127-218` | Python step → `int_points_of_interest__identified` |
 
 `lib/duplicates.py`'s constants were chosen, not fitted, against one measured pair: **#1453 — Measure whether New York City's two registered layers draw the same tread twice — 2,095 greenway segments sit on NYC Parks ground** found 23.6% of DPR-jurisdiction greenway length within 25 m of an NYC Parks line (2026-09-15). 10 m borrows `lib/concurrency.py`'s measured 8–10 m knee, and at 10 m and 50% 269 of the 1,828 DPR segments count as duplicates; both round toward missing a duplicate (the module's docstring). For any other pair they are `@unvalidated` until that pair's overlap is measured. **Publication filters run before dedup.** If a row that may ship and one that may not are judged duplicates, the unshippable one must not win and then vanish, taking the place with it (the `lost` harm; Reasoned). **Every metre threshold here is measured in EPSG:5070** with `always_xy := true`, never with `ST_Distance_Sphere` or a `_Spheroid` function on (lon, lat) points, which DuckDB reads as (lat, lon): a 30 m east–west pair at 41°N read 39.71 m that way (measured 2026-10-01, [Geometry rules every mart obeys](#geometry-rules-every-mart-obeys)).
+
+### One key per table
+
+**Decision 40, the maintainer's, 2026-10-01:** *"every table needs a unique id. Use the dbt_utils package in dbt, and call the generate_surrogate_key() macro to create the key based on current values. You are going to have to research each table to find the combination of fields that make that unique key. staging tables should only do 2 main things. data type conversion / field renaming & dedupe source tables."*
+
+**How a key is built.** Every staging model's first column is its key, `<what one row is>_key` (`poi_key`, `trail_segment_key`, `closure_key`, `club_section_key`, `mile_marker_key`), built with `dbt_utils.generate_surrogate_key`. Its inputs, in order:
+
+1. the registry key as a literal, such as `'dec_primitive_campsites'`, so a key stays unique once every org is unioned;
+2. the upstream's own primary key where one is unique on every row: a GlobalID, `ASSET_UID`, `Point_ID`, a Socrata natural key;
+3. otherwise the smallest set of current values measured unique, a geometry included where no attribute tells two rows apart (`geometry_key()`, md5 of the shape's text at full precision).
+
+A server's row id (`OBJECTID`, `FID`) is never an input on its own, because a truncate-and-reload mints it again ([Stable upstream keys](#stable-upstream-keys)). "Based on current values" means a feature whose key columns change gets a new key: a moved DEC campsite is a new row. Intermediate and mart models carry the staging key through. `dim_pois` used to hash `(source, source_id)`, which for DEC's six layers was `OBJECTID`.
+
+**Staging does two jobs**, by decision 40: type conversion with renaming, and the dedupe. The dedupe is the project's `dedupe()` macro (`pipeline/dbt/macros/dedupe.sql`), `QUALIFY row_number() over (partition by <key>) = 1`.
+
+- **Not `dbt_utils.deduplicate`.** dbt_utils has no DuckDB version of it, and its default joins the kept rows back with a natural join, where NULL never equals NULL.
+  - Measured 2026-10-01 on DuckDB 1.5.5: deduplicating `(1, 'a', NULL), (2, 'b', 'x'), (3, 'b', 'x')` on the second column kept only `(2, 'b', 'x')`, so the first row was lost for holding a null.
+  - Every ATC staging model carries a null `public_use`, so it would have emptied them.
+- **Today's staging models still carry classification literals** (`'shelter' as poi_type`, `'high' as confidence`) and `stg_opentrail__waypoints`' join to the `poi_type_mapping` seed. Decision 40 puts those in the intermediate layer. They move when stage 3 rebuilds staging on the dlt tables, and the models written then follow the rule from the start.
+
+**A dedupe may only remove exact copies, and the build proves it.** The generic test `duplicates_are_exact` (`pipeline/dbt/tests/generic/`) runs on every raw table, at error. It takes the same key expressions the model builds, and fails when two rows share the key and differ in any column other than the server's own row ids (`OBJECTID`, `FID`, GDAL's `OGC_FID`, dlt's `_dlt_id`).
+
+- So a key missing a column fails the build. It never drops a real feature quietly.
+- Checked both ways on the CI fixtures, 2026-10-01: with `dec_primitive_campsites`' key cut to `ASSET_UID`, that test failed; with the measured key it passes.
+- A `dbt_utils.equal_rowcount` test at warn on each staging model says how many rows the dedupe removed.
+- `pipeline/tests/test_dbt_keys.py` holds the model's key expressions and its raw table's test arguments equal, since the two are written in two files.
+
+**The keys, measured.** For each registry table: the inputs after the registry key, and the count that shows they are unique. Live reads, 2026-10-01. Thirteen were measured that afternoon by `pipeline/spike_table_keys.py`, a spike that reads every attribute and every vertex at 6 decimal places and can be rerun. The rest are from that morning's incremental research. "Exact copies" are rows equal on every column but the server's row ids, which is what the dedupe removes before the count.
+
+| table | key inputs | measured |
+|---|---|---|
+| ATC: `trail_club_sections`, `centerline`, `side_trails`, `at_treadway`, `shelters`, `campsites`, `parking`, `viewpoints`, `privies`, `bridges`, `communities` | `GlobalID` | unique on every row of each, 30 to 3,025 rows; the six POI layers' ids also survived 44 days |
+| `half_mile_points_from_springer` | `Point_ID` | 4,395 of 4,395; the layer has no GlobalID |
+| `dec_hiking_trails` | `GLOBALID` | 5,292 of 5,292 |
+| `dec_lean_tos`, `dec_scenic_vistas`, `dec_firetowers`, `dec_viewing_areas` | `ASSET_UID` | 315, 134, 35, 34: unique on every row |
+| `dec_primitive_campsites` | `ASSET_UID`, geometry | 2,092 of 2,092 after 1 exact copy. **`ASSET_UID` alone is 2,088 of 2,093**: DEC gave four ids to two different sites at two places, mostly under two names |
+| `dec_parking_areas` | `ASSET_UID`, geometry | 1,852 of 1,852; one id is shared by two lots that differ only by place |
+| `dec_backcountry_features` | `ASSET_UID`, `NAME`, geometry | 21,472 of 21,472 after 4 exact copies; `ASSET_UID` and geometry leave one pair at one place under two names |
+| `oprhp_trails`, `oprhp_facilities`, `oprhp_park_polygons` | `GlobalID` | 16,641, 8,823, 858. The registry's `id_field` still names OBJECTID on facilities |
+| `oprhp_trail_closures` | `Name`, geometry | 4 of 4. No id field: `UID` is null on all 4 |
+| `nynjtc_long_path` | `LP_Section`, `Mileage` | 43 of 43; `LP_Section` with `Trail_Name` is 40 of 43 |
+| `nynjtc_highlands_trail` | `Section_Name` | 12 of 12 |
+| `mohonk_trails` | `GlobalID` | 304 of 304 |
+| `usfs_trails`, `usfs_rec_sites` | `globalid` | 86,417 and 31,415 |
+| `njdep_park_trails`, `nj_statewide_trails` | `GLOBALID` | 3,305 and 13,296 |
+| `nps_trails` | `GEOMETRYID` | 31,484 of 31,484; no GlobalID |
+| `blm_trails` | geometry, `BLM_MILES`, `ROUTE_PLAN_ID`, `DEF_FET2`, `PLAN_SEASON_RSTRCT_CODE`, `ROUTE_PRMRY_NM` | 19,530 of 19,530 after 2 exact copies. Geometry alone is 19,515: 14 shapes carry two or more route records, and only these five attributes tell them apart. Each of the five is null on between 478 and 15,786 rows. The longest key here, and the one most likely to break; @unvalidated whether BLM means those rows as separate routes, settled by asking BLM's GTLF stewards |
+| `cotrex_trails` | `feature_id` | 96,897 of 96,897 |
+| `wa_rco_trails`, `ncta_trail`, `azgeo_arizona_trail`, `tahoe_rim_trail`, `duluth_superior_hiking_trail` | `GlobalID` | 22,454, 4,004, 145, 132, 67 |
+| `utah_sgid_trails` | `Unique_ID` | 48,132 of 48,132 |
+| `alaska_trails` | `TrailName`, `TrailType`, geometry | 1,595 of 1,595 after 7 exact copies; `TrailType` is null on 126. Without it, one line carries two named trails |
+| `pasda_dcnr_trails` | `TRAILID` | 684 of 684 |
+| `ct_deep_blue_blazed` | `TrailName`, `Par_Name`, geometry | 351 of 351. **`TrailName` with `Par_Name` is 350 of 351**, against 351 that morning |
+| `nc_mst_trail` | `TRAILNAME`, geometry | 328 of 328. **`Section` with `TRAILNAME` is 126 of 328**, not the 328 the morning's table recorded |
+| `massgis_long_distance_trails` | `GLOBALID` | 32 of 32 |
+| `cdtc_centerline` | `STATE` | 8 of 8, one row per state |
+| `pcta_centerline`, `wi_ice_age_trail` | the registry key alone | one row each |
+| `nyc_drinking_fountains`, `nyc_park_polygons` | `system`, `gispropnum` | 3,195 and 2,061 |
+| `nyc_cscl_paths`, `nyc_park_drives` | `globalid` | 6,496 of 6,496; the drives are a filtered subset of the same dataset |
+| `nyc_dot_greenways` | `segmentid` | 2,995 of 2,995 **after 44 exact copies**: every repeated `segmentid` was a repeated record |
+| `nyc_parks_trails` | geometry, `date_collected` | 7,055 of 7,055 after 4 exact copies; `date_collected` is null on 4 |
+| `nyc_public_restrooms` | geometry | 973 of 973 after 2 exact copies |
+| `atc_trail_updates` (`reference/atc_updates.json`) | `atc_id`, ATC's slug | 35 of 35 |
+| `reference/water_distance.json` | `atc_global_id` | 512 of 512 |
+| `reference/challenges/<org>/` | the file's `id` | one file per challenge |
+| `raw_extract__orgs` (`trail_orgs.json`) | `slug` | 173 of 173 |
+| opentrail | `dbid` | 246 of 246 over 44 days; its top-level `id` is the row's position and is never used |
+| `podcast_episodes.json`, `shelter_capacity.json`, `highlights.json` | `spotify_id`, `poi_id`, `id` | 71, 280, 10 |
+| NWS alerts | `id` | one per message; an update is a new message ([Stable upstream keys](#stable-upstream-keys)) |
+| OurHike's Postgres rows | `id` | the UUID primary key |
+
+**Exact copies are real.** Seven of the thirteen layers measured that afternoon hold some: DEC primitive campsites 1, DEC back-country 4, BLM 2, Alaska 7, NYC park trails 4, NYC restrooms 2 and NYC DOT greenways 44. So the dedupe decision 40 asks for has work to do. The maintainer had expected sources should have none, "but I guess they could".
+
+**Not measured yet**, so each key is written when its staging model is: `gatc_water_sources` (a PDF manifest), `osm_water`, `usgs_3dhp`, `usdm_drought`, `nynjtc_trail_alerts` (the WordPress post id, Reasoned), `nynjtc_long_path_guide`, `nynjtc_hike_finder`, and every layer the coverage audit found that has no registry row yet. The rule holds for them: no staging model merges without its key, its exactness test and the counts that chose it.
 
 ### The eleven marts
 
@@ -2588,6 +2663,8 @@ If a source ever becomes too big to reload, three facts come with it, read from 
 - `hard_delete` works on DuckDB and DuckLake only.
 
 ### Stable upstream keys
+
+**Decision 40 makes a key a rule for every table**, built with `dbt_utils.generate_surrogate_key`; the key chosen for each table, and the count behind it, are in [One key per table](#one-key-per-table). What follows is about which keys survive a reload.
 
 **A stable key matters in three places:** a dbt snapshot's `unique_key` (options B and C below), the POI ledger's tier 1, and every id `lib/feature_id.py` publishes. A full reload under option (A) needs none (Reasoned).
 

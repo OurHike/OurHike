@@ -42,20 +42,28 @@
 -- ASSET 'SNOWMOBILE TRAIL' and 456 are unpaved roads.
 with source as (
     select * from {{ source('dec', 'raw_dec__dec_hiking_trails') }}
+),
+
+renamed as (
+    select
+        {{ dbt_utils.generate_surrogate_key([
+            "'dec_hiking_trails'",
+            'globalid',
+        ]) }} as trail_segment_key,
+        cast(objectid as varchar) as source_id,
+        globalid as stable_id,
+        name,
+        unit,
+        facility,
+        asset,
+        descrip as description,
+        miles,
+        marker,
+        foot,
+        publicuse as public_use,
+        updated,
+        _loaded_at as loaded_at
+    from source
 )
 
-select
-    cast(objectid as varchar) as source_id,
-    globalid as stable_id,
-    name,
-    unit,
-    facility,
-    asset,
-    descrip as description,
-    miles,
-    marker,
-    foot,
-    publicuse as public_use,
-    updated,
-    _loaded_at as loaded_at
-from source
+{{ dedupe('renamed', 'trail_segment_key', 'source_id') }}

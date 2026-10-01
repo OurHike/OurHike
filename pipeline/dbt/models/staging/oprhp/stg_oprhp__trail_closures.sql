@@ -33,10 +33,19 @@
 -- anything about.
 with source as (
     select * from {{ source('oprhp', 'raw_oprhp__oprhp_trail_closures') }}
+),
+
+renamed as (
+    select
+        {{ dbt_utils.generate_surrogate_key([
+            "'oprhp_trail_closures'",
+            'name',
+            geometry_key('geom'),
+        ]) }} as closure_key,
+        name as closure_reason,
+        descript as closure_place,
+        _loaded_at as loaded_at
+    from source
 )
 
-select
-    name as closure_reason,
-    descript as closure_place,
-    _loaded_at as loaded_at
-from source
+{{ dedupe('renamed', 'closure_key', 'closure_key') }}

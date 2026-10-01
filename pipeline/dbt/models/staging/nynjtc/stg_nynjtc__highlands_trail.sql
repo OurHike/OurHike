@@ -20,12 +20,20 @@
 -- has already taken the word.
 with layer as (
     select * from {{ source('nynjtc', 'raw_nynjtc__nynjtc_highlands_trail') }}
+),
+
+renamed as (
+    select
+        {{ dbt_utils.generate_surrogate_key([
+            "'nynjtc_highlands_trail'",
+            'section_name',
+        ]) }} as trail_segment_key,
+        trail_name,
+        section_name,
+        source as published_by,
+        maporder as map_order,
+        _loaded_at as loaded_at
+    from layer
 )
 
-select
-    trail_name,
-    section_name,
-    source as published_by,
-    maporder as map_order,
-    _loaded_at as loaded_at
-from layer
+{{ dedupe('renamed', 'trail_segment_key', 'trail_segment_key') }}

@@ -3,8 +3,8 @@ version: 2
 models:
   - name: dim_pois
     description: >
-      One row per source POI across every loaded source system, keyed by a
-      surrogate of (source, source_id). 1:1 with int_pois_unioned - held to
+      One row per source POI across every loaded source system, keyed by
+      each staging model's own poi_key (decision 40). 1:1 with int_pois_unioned - held to
       that by assert_dim_pois_matches_int_pois_unioned. poi_type is null
       exactly where the source code is documented-but-unmapped.
 
@@ -13,7 +13,7 @@ models:
       comment.
     columns:
       - name: poi_key
-        description: dbt_utils.generate_surrogate_key over (source, source_id).
+        description: The staging model's key, carried through int_pois_unioned. dbt_utils.generate_surrogate_key over the registry key and the columns measured unique for that layer (decision 40).
         data_tests: [not_null, unique]
       - name: source
         data_tests: [not_null]

@@ -10,16 +10,25 @@
 -- column this layer publishes.
 with source as (
     select * from {{ source('dec', 'raw_dec__dec_primitive_campsites') }}
+),
+
+renamed as (
+    select
+        {{ dbt_utils.generate_surrogate_key([
+            "'dec_primitive_campsites'",
+            'asset_uid',
+            geometry_key('geom'),
+        ]) }} as poi_key,
+        'dec_primitive_campsites' as source,
+        cast(objectid as varchar) as source_id,
+        name,
+        'campsite' as poi_type,
+        'high' as confidence,
+        publicuse as public_use,
+        st_x(geom) as longitude,
+        st_y(geom) as latitude,
+        _loaded_at as loaded_at
+    from source
 )
 
-select
-    'dec_primitive_campsites' as source,
-    cast(objectid as varchar) as source_id,
-    name,
-    'campsite' as poi_type,
-    'high' as confidence,
-    publicuse as public_use,
-    st_x(geom) as longitude,
-    st_y(geom) as latitude,
-    _loaded_at as loaded_at
-from source
+{{ dedupe('renamed', 'poi_key', 'source_id') }}

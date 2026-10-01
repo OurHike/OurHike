@@ -28,16 +28,25 @@
 -- has already taken the word.
 with layer as (
     select * from {{ source('nynjtc', 'raw_nynjtc__nynjtc_long_path') }}
+),
+
+renamed as (
+    select
+        {{ dbt_utils.generate_surrogate_key([
+            "'nynjtc_long_path'",
+            'lp_section',
+            'mileage',
+        ]) }} as trail_segment_key,
+        trail_name,
+        blaze,
+        maintainer,
+        source as published_by,
+        mileage,
+        lp_section,
+        guideurl as guide_url,
+        comments,
+        _loaded_at as loaded_at
+    from layer
 )
 
-select
-    trail_name,
-    blaze,
-    maintainer,
-    source as published_by,
-    mileage,
-    lp_section,
-    guideurl as guide_url,
-    comments,
-    _loaded_at as loaded_at
-from layer
+{{ dedupe('renamed', 'trail_segment_key', 'trail_segment_key') }}

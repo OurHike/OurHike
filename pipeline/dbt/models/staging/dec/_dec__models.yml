@@ -14,6 +14,14 @@ models:
   # enforces; the other three Phase D providers are in nynjtc/, mohonk/ and
   # oprhp/.
   - name: stg_dec__lean_tos
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('dec', 'raw_dec__dec_lean_tos')
+          config:
+            severity: warn
     description: >
       DEC lean-tos as `shelter` - the first non-A.T. rows in dim_pois.
       poi_type, id, name and public flag are all sources.json's declared
@@ -21,60 +29,150 @@ models:
       comment carries the reasoning the other five DEC POI models refer to,
       including why PUBLICUSE is carried rather than applied.
     columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          dec_lean_tos, asset_uid,
+          the registry key first and then the columns measured unique for
+          this layer.
+        data_tests: [not_null, unique]
       - name: source_id
         data_tests: [not_null, unique]
       - name: poi_type
         data_tests: [not_null]
   - name: stg_dec__primitive_campsites
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('dec', 'raw_dec__dec_primitive_campsites')
+          config:
+            severity: warn
     description: >
       DEC primitive campsites as `campsite`. 2,078 rows on the live layer
       (counted 2026-08-27) - the largest single block of POIs Phase D adds.
       One row is one backcountry tent site.
     columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          dec_primitive_campsites, asset_uid, geometry_key('geom'),
+          the registry key first and then the columns measured unique for
+          this layer.
+        data_tests: [not_null, unique]
       - name: source_id
         data_tests: [not_null, unique]
       - name: poi_type
         data_tests: [not_null]
   - name: stg_dec__scenic_vistas
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('dec', 'raw_dec__dec_scenic_vistas')
+          config:
+            severity: warn
     description: >
       DEC scenic vistas as `viewpoint`. One of three DEC services landing on
       that type; they stay three models with three `source` values, and
       cross-source dedup remains deferred as it was in Phase A.
     columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          dec_scenic_vistas, asset_uid,
+          the registry key first and then the columns measured unique for
+          this layer.
+        data_tests: [not_null, unique]
       - name: source_id
         data_tests: [not_null, unique]
       - name: poi_type
         data_tests: [not_null]
   - name: stg_dec__firetowers
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('dec', 'raw_dec__dec_firetowers')
+          config:
+            severity: warn
     description: >
       DEC firetowers as `viewpoint`, and the one Phase D poi_type carrying an
       @unvalidated caveat into the model: the layer publishes no open/closed
       state, so a hiker who reaches a closed tower finds a locked cab. See
       the model comment.
     columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          dec_firetowers, asset_uid,
+          the registry key first and then the columns measured unique for
+          this layer.
+        data_tests: [not_null, unique]
       - name: source_id
         data_tests: [not_null, unique]
       - name: poi_type
         data_tests: [not_null]
   - name: stg_dec__viewing_areas
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('dec', 'raw_dec__dec_viewing_areas')
+          config:
+            severity: warn
     description: >
       DEC viewing areas as `viewpoint`. Same shape as stg_dec__lean_tos.
     columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          dec_viewing_areas, asset_uid,
+          the registry key first and then the columns measured unique for
+          this layer.
+        data_tests: [not_null, unique]
       - name: source_id
         data_tests: [not_null, unique]
       - name: poi_type
         data_tests: [not_null]
   - name: stg_dec__parking_areas
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('dec', 'raw_dec__dec_parking_areas')
+          config:
+            severity: warn
     description: >
       DEC parking areas as `parking`. The layer states no seasonal access -
       seasonality lives in DEC's free-text NOTES, so no column here claims
       it.
     columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          dec_parking_areas, asset_uid, geometry_key('geom'),
+          the registry key first and then the columns measured unique for
+          this layer.
+        data_tests: [not_null, unique]
       - name: source_id
         data_tests: [not_null, unique]
       - name: poi_type
         data_tests: [not_null]
   - name: stg_dec__hiking_trails
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('dec', 'raw_dec__dec_hiking_trails')
+          config:
+            severity: warn
     description: >
       DEC's statewide trail attributes - the non-A.T. twin of
       stg_atc__centerline_segments, geometry left to the Python spatial
@@ -84,9 +182,24 @@ models:
       are blank and one reads 'ORANGE AND RED', which DEC's own domain does
       not declare.
     columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          dec_hiking_trails, globalid,
+          the registry key first and then the columns measured unique for
+          this layer.
+        data_tests: [not_null, unique]
       - name: source_id
         data_tests: [not_null, unique]
   - name: stg_dec__backcountry_features
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('dec', 'raw_dec__dec_backcountry_features')
+          config:
+            severity: warn
     description: >
       DEC's asset inventory, staged and NOT unioned - the same posture
       stg_atc__bridges holds. The entry declares no poi_type because 68% of
@@ -94,5 +207,12 @@ models:
       goes through export_nearby_poi.py's allowlist, which is not
       reproduced here.
     columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          dec_backcountry_features, asset_uid, name, geometry_key('geom'),
+          the registry key first and then the columns measured unique for
+          this layer.
+        data_tests: [not_null, unique]
       - name: source_id
         data_tests: [not_null, unique]

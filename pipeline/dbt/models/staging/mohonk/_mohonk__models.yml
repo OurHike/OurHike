@@ -4,12 +4,27 @@ version: 2
 # has no recorded id. nynjtc/_nynjtc__models.yml says why both, once.
 models:
   - name: stg_mohonk__trails
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('mohonk', 'raw_mohonk__mohonk_trails')
+          config:
+            severity: warn
     description: >
       Mohonk Preserve's 304 curated segments. `blaze` here IS a coded field,
       unlike NYNJTC's two - three organizations, three different answers to
       the same question. Still no accepted_values: 124 of 304 rows carry the
       literal string 'N/A' and 7 carry no value at all.
     columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          mohonk_trails, globalid,
+          the registry key first and then the columns measured unique for
+          this layer.
+        data_tests: [not_null, unique]
       - name: loaded_at
         description: load_raw.py's `_loaded_at` for the load this row came from, naive UTC.
         data_tests: [not_null]

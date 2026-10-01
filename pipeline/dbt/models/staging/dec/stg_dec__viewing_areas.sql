@@ -6,16 +6,24 @@
 -- meaning. Nothing here matches on it.
 with source as (
     select * from {{ source('dec', 'raw_dec__dec_viewing_areas') }}
+),
+
+renamed as (
+    select
+        {{ dbt_utils.generate_surrogate_key([
+            "'dec_viewing_areas'",
+            'asset_uid',
+        ]) }} as poi_key,
+        'dec_viewing_areas' as source,
+        cast(objectid as varchar) as source_id,
+        name,
+        'viewpoint' as poi_type,
+        'high' as confidence,
+        publicuse as public_use,
+        st_x(geom) as longitude,
+        st_y(geom) as latitude,
+        _loaded_at as loaded_at
+    from source
 )
 
-select
-    'dec_viewing_areas' as source,
-    cast(objectid as varchar) as source_id,
-    name,
-    'viewpoint' as poi_type,
-    'high' as confidence,
-    publicuse as public_use,
-    st_x(geom) as longitude,
-    st_y(geom) as latitude,
-    _loaded_at as loaded_at
-from source
+{{ dedupe('renamed', 'poi_key', 'source_id') }}

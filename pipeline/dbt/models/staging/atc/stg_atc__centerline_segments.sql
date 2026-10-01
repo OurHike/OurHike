@@ -4,15 +4,23 @@
 -- inventory the exports do not read: surface, status, the club acronym.
 with source as (
     select * from {{ source('atc', 'raw_atc__centerline') }}
+),
+
+renamed as (
+    select
+        {{ dbt_utils.generate_surrogate_key([
+            "'centerline'",
+            'globalid',
+        ]) }} as trail_segment_key,
+        cast(globalid as varchar) as source_id,
+        name,
+        status,
+        surface,
+        reg_acro as region_acronym,
+        acronym as club_acronym,
+        length_ft,
+        _loaded_at as loaded_at
+    from source
 )
 
-select
-    cast(globalid as varchar) as source_id,
-    name,
-    status,
-    surface,
-    reg_acro as region_acronym,
-    acronym as club_acronym,
-    length_ft,
-    _loaded_at as loaded_at
-from source
+{{ dedupe('renamed', 'trail_segment_key', 'source_id') }}

@@ -24,6 +24,11 @@ sources:
         warn_after: {count: 7, period: day}
     tables:
       - name: raw_nynjtc__nynjtc_long_path
+        data_tests:
+          # Rows sharing stg_nynjtc__long_path's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nynjtc_long_path'", "lp_section", "mileage"]
         description: >
           NYNJTC Long Path (sources.json: discovered 2026-08-24). 43 polyline
           segments, measured live that day - the same count and field list
@@ -42,6 +47,11 @@ sources:
           - name: Trail_Name
             description: The route name; 'Long Path' on all 43 rows.
       - name: raw_nynjtc__nynjtc_highlands_trail
+        data_tests:
+          # Rows sharing stg_nynjtc__highlands_trail's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nynjtc_highlands_trail'", "section_name"]
         description: >
           NYNJTC Highlands Trail, NY and NJ sections (sources.json:
           discovered 2026-08-24). 12 section features, measured live that

@@ -196,8 +196,9 @@ Three things the AVAILABLE column is **not**, so nobody reads it as more than it
   (Measured by six persistence batches).
 - **The NPS Data API's `DEMO_KEY` ran out within each batch** (`x-ratelimit-limit: 10`). A
   production fetch needs a registered api.data.gov key.
-- Several batch files carry an aside about the dbt version. Decisions 17 and 19 settled it:
-  dbt-oss 2.0.5 everywhere, one version.
+- Several batch files carry an aside about the dbt version. Decisions 17 and 19 settled it as
+  dbt-oss 2.0.5 everywhere, one version, and decision 32 then moved that one version to the
+  full `dbt` 2.0.6.
 
 ### From markdown to rows
 
@@ -495,12 +496,12 @@ mistake. Each batch stopped on reading the rule.
 
 | kind | where | what it blocks |
 |---|---|---|
-| **The four `refuse` rows** | `rtc`: TrailLink terms are personal and non-commercial, consent required; RTC's own ArcGIS org (252 services) carries a "contact RTC" licence. `onda`: guidebook, GPS data and water caching behind a waiver form. `avenza`: terms forbid automated access; USFS maps frozen there since April 2026. `buckeye`: BTA's terms and its own layer's "Permission … is required before use!" | Round 5's "note now, load on permission" stands. Two copies would route around a refusal unless the steward agrees: Oregon State Parks' "Oregon Desert Trail" item and ODNR's 1,288.7-mi Buckeye Trail line. ONDA's own public `ODT Tracks` layer (28 sections, no licence) asks a different question: does the waiver govern it, or decision 21(a)? (p06). c12 recommends `_shared/rtc/` and `_shared/avenza/`, since decision 18 keeps umbrellas and aggregators out of club folders |
-| **No-automation terms** | ADK (no bots, scripts or scrapers; written permission); ATC's website terms (2025-11-21: no "systematic or automated data collection"), which cover `lib/atc_scrape.py` and rest on **#458 — Confirm with the ATC what may be republished from their Trail Updates**; WTA (Crawl-delay 60; internal use only); Save Mount Diablo; Tennessee Trails Association (robots.txt names ClaudeBot); Colorado Mountain Club (§3(e)); OuterSpatial (robots.txt disallows ClaudeBot; personal, non-commercial); COTREX app terms | Extraction waits for written permission |
+| **The four `refuse` rows** | `rtc`: TrailLink terms are personal and non-commercial, consent required; RTC's own ArcGIS org (252 services) carries a "contact RTC" licence. `onda`: guidebook, GPS data and water caching behind a waiver form. `avenza`: terms forbid automated access; USFS maps frozen there since April 2026. `buckeye`: BTA's terms and its own layer's "Permission … is required before use!" | Round 5's "note now, load on permission" stands. Two copies would route around a refusal unless the steward agrees: Oregon State Parks' "Oregon Desert Trail" item and ODNR's 1,288.7-mi Buckeye Trail line. ONDA's own public `ODT Tracks` layer (28 sections, no licence) asked a different question: does the waiver govern it, or decision 21(a)? (p06). Decision 39 answered it on 2026-10-01: a club's own public ArcGIS layer counts as published whatever its website's waiver says, so `ODT Tracks` is extracted. Whether it may publish while `onda` is a `refuse` row is put to the maintainer in `pipeline/ELT.md`'s open questions. c12 recommends `_shared/rtc/` and `_shared/avenza/`, since decision 18 keeps umbrellas and aggregators out of club folders |
+| **No-automation terms** | ADK (no bots, scripts or scrapers; written permission); ATC's website terms (2025-11-21: no "systematic or automated data collection"), which cover `lib/atc_scrape.py` and rest on **#458 — Confirm with the ATC what may be republished from their Trail Updates**; WTA (Crawl-delay 60; internal use only); Save Mount Diablo; Tennessee Trails Association (robots.txt names ClaudeBot); Colorado Mountain Club (§3(e)); OuterSpatial (robots.txt disallows ClaudeBot; personal, non-commercial); COTREX app terms | Extraction waits for written permission (decision 39, 2026-10-01: no-automation terms mean ask, and the plan drafts each request). ATC's trail-updates scrape stays as today, on **#458 — Confirm with the ATC what may be republished from their Trail Updates** |
 | **Consent or negotiated licence** | Trail Finder and Maine Trail Finder (UVTA): "may not be … redistributed by third-parties without the express written consent"; Maricopa County (written authorisation); SHTA (data request form; its public layers say "internal use"); TKO's Oregon Hikers Field Guide; Ohio to Erie (ClubExpress terms); avalanche.org | A permission ask |
 | **Walls** (Cloudflare, Akamai, Incapsula, Sucuri, SiteGround, WAFs) | `parks.ny.gov`, `floridastateparks.org`, `dem.ri.gov`, `rivcoparks.org`, `sawpa.gov`, `ksoutdoors.gov`, `mass.gov`, `dep.nj.gov`, `depdata.ct.gov`, `outdoornebraska.gov`, `coloradotrail.org`, `greenway.org`, `mountainstoseatrail.org`, `montanatrail.org`, `railtrails.vermont.gov`, `schuylkillriver.org`, `nptrail.org`, the Mountaineers, `foothillstrail.org`'s REST API, `olympicdiscoverytrail.org` (after about six requests), and several umbrellas | UNKNOWN rows (§10) |
-| **Hosts that filter by user agent** | `tnstateparks.com` refuses an identified bot and serves a Chrome UA; `www.fws.gov` does the opposite; `dec.ny.gov`, `parks.ny.gov` and `empiretrail.ny.gov` challenge a browser imitation but serve an honest UA; LSHT's ClubExpress files need a browser UA plus a session cookie; CFI's sitemap rejects some non-browser UAs | Sending a browser's identity to pass is a maintainer decision. The honest-UA hosts need none |
-| **Waiver gates** | ONDA (above); Greater Hells Canyon Council's Blue Mountains Trail maps and databook; Ala Kahakai Trail Association's Waikapuna land (a waiver for access, which a `places` row must carry) | Not signed |
+| **Hosts that filter by user agent** | `tnstateparks.com` refuses an identified bot and serves a Chrome UA; `www.fws.gov` does the opposite; `dec.ny.gov`, `parks.ny.gov` and `empiretrail.ny.gov` challenge a browser imitation but serve an honest UA; LSHT's ClubExpress files need a browser UA plus a session cookie; CFI's sitemap rejects some non-browser UAs | Decided 2026-10-01 (decision 39): the pipeline never imitates a browser and always sends its own honest user agent, so `tnstateparks.com` and LSHT's files hold until the org answers. The honest-UA hosts need nothing |
+| **Waiver gates** | ONDA (above; its own public ArcGIS layer is extracted under decision 39, and the waivered files are not); Greater Hells Canyon Council's Blue Mountains Trail maps and databook; Ala Kahakai Trail Association's Waikapuna land (a waiver for access, which a `places` row must carry) | Not signed |
 | **Paid apps and products** | FarOut (Foothills, STC, WVSTA, MSTA, CTF, FMST, Sheltowee), Avenza (MATC, Cohos), OutraGIS ($10 Sheltowee files), onX (Montana Trail 406), Bigfoot mapset ($20), Beartooth High Route map pack ($20), Cohos map ($16.95 / $16.99), FLTC map zips, WVSTA guidebook, LIGTC maps, Uwharrie Trailblazers map ($10), Coeur d'Alene GPS files, Trailforks (RMC) | Not bought. Republishing something a club also sells is a question to ask first |
 | **Geocaching and closed apps** | PA DCNR GeoTrail (geocaching.com terms unread), Maine GeoTour (geocaching.com login), NH State Parks on Goosechase, Millstone Valley audio tour on TravelStorys, RMFI's podcast on Spotify only | Not fetched |
 | **Members-only and social** | TEHCC post bodies; LIGTC's "Members-Only" newsletter (publicly linked); Facebook for dozens of clubs, including the only closure channel for the Tanglefoot, the Pinhoti, the GWT and the San Diego Trans-County Trail; GHCC's Instagram | Meta's terms bar automated collection (Reasoned; not re-read) |
@@ -570,6 +571,17 @@ applications"; NJDEP's hosted trails item says "should not be used for orienteer
 **The question, in one line:** for the layers marked "No" above, does OurHike publish under
 attribution, publish only the layers whose words limit *sale* or *profit*, or hold every one
 until its publisher answers?
+
+**Answered by the maintainer, 2026-10-01, by poll** (decisions 36–38 in `pipeline/ELT.md`):
+profit-, sale- and commercial-limited layers publish with attribution, because OurHike is
+non-commercial, and California State Parks' "altered" does not cover reprojection, tiling or
+simplification for display (36); internal-use, not-for-distribution and all-rights-reserved
+layers on anonymous public GIS endpoints publish under the GIS presumption, against their own
+words (37); conditions publish and are honoured downstream, and a condition that cannot be met
+holds its layer, as the Pacific Northwest Trail's "not intended for trip planning" does (38).
+Person fields, the four `refuse` orgs without permission, and items that are not anonymous
+public endpoints stay out. The table above stays as the record of what each layer's own text
+says.
 
 ---
 

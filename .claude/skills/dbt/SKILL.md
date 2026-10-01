@@ -36,27 +36,27 @@ tests.
 "Decision N" below is a row of the maintainer's decisions table in
 `pipeline/ELT.md`, "Overview".
 
-## Read this first: `pipeline/ELT.md` is a plan
+## Read this first: which project you are in
 
 `pipeline/ELT.md` is the design that issue's pull request adds, on branch
-`claude/intelligent-feynman-sw3ewm`. **It describes the intended state, not
-what is on `main`.** Most of this file is that target, because that is what
-the branch is building. Check which project you are in before you follow
-anything below.
+`claude/intelligent-feynman-sw3ewm`. **Stage 1, the dbt tooling, is built on
+that branch; the rest of `pipeline/ELT.md` is the intended state.** Most of
+this file is that target, because that is what the branch is building. Check
+which project you are in before you follow anything below.
 
-| | Today, on `main` (read 2026-10-01 at 23fca25) | Target (`pipeline/ELT.md`) |
-|---|---|---|
-| dbt | `dbt-core==1.12.2` and `dbt-duckdb==1.11.0`, pinned in `pipeline/requirements-dbt.txt` (compiled on Python 3.12, which the job pins) | `dbt-oss==2.0.5`, one version everywhere (decisions 17 and 19). `dbt-duckdb` and `sqlfluff-templater-dbt` leave, because v2 bundles its own DuckDB driver and the templater needs dbt-core |
-| DuckDB | `duckdb==1.5.5`, the same pin as `requirements.in` | v2 bundles 1.5.4. Whether that opens a file 1.5.5 wrote is `@unvalidated`; one CI run settles it |
-| Packages | `dbt_utils` 1.4.1, `dbt_project_evaluator` 1.3.2, `codegen` 0.14.1 (`packages.yml`) | evaluator 1.4.0 |
-| Models | `staging/<org>/` for `atc`, `dec`, `mohonk`, `nynjtc`, `opentrail`, `oprhp`; `intermediate/int_pois_unioned.sql` (a view); one mart, `marts/core/dim_pois.sql` | `base_` → `stg_` → `int_` → eleven unprefixed marts (below) |
-| Loader | `load_raw.py` reads `data/raw/` into `data/warehouse.duckdb`'s `raw` schema | dlt, under `pipeline/extract/` (see [the dlt skill](../dlt/SKILL.md)) |
-| Evaluator | runs as its own CI step, warn-only (`pipeline/DBT.md:184`): its findings never fail the job | `error` severity |
-| SQLFluff | `templater = dbt`, run after the load and `dbt seed` | `templater = jinja`, first in the job |
-| `scripts/test.sh` | runs neither dbt nor SQLFluff | runs the `dbt` job's steps in CI's order |
+| | `main` (read 2026-10-01 at 22e8a2be) | This branch, stage 1 built (2026-10-01) | Target (`pipeline/ELT.md`) |
+|---|---|---|---|
+| dbt | `dbt-core==1.12.2` and `dbt-duckdb==1.11.0`, pinned in `pipeline/requirements-dbt.txt` | **`dbt==2.0.6`**, the full distribution, one version everywhere (decision 32); `dbt-oss` 2.0.5 is the documented fallback, which ran the same project green. `dbt-duckdb` and `sqlfluff-templater-dbt` are gone | the same |
+| DuckDB | `duckdb==1.5.5`, the same pin as `requirements.in` | Python's 1.5.5 writes the fixture warehouse, and dbt reads it with its bundled 1.5.4, through an ADBC driver it downloads (measured on a runner, 2026-10-01) | the same |
+| Packages | `dbt_utils` 1.4.1, `dbt_project_evaluator` 1.3.2, `codegen` 0.14.1 (`packages.yml`) | evaluator 1.4.0 | the same |
+| Models | `staging/<org>/` for `atc`, `dec`, `mohonk`, `nynjtc`, `opentrail`, `oprhp`; `intermediate/int_pois_unioned.sql`; one mart, `marts/core/dim_pois.sql` | the same models, with v2-shaped YAML and one `_<org>__models.yml` per org folder | `base_` → `stg_` → `int_` → eleven unprefixed marts (below) |
+| Loader | `load_raw.py` reads `data/raw/` into `data/warehouse.duckdb`'s `raw` schema | the same | dlt, under `pipeline/extract/` (see [the dlt skill](../dlt/SKILL.md)) |
+| Evaluator | its own CI step, warn-only (`pipeline/DBT.md:184`) | enforced at `error`, with an 8-row exceptions seed | `error`, two exception rows |
+| Lint | SQLFluff, `templater = dbt`, after the load and `dbt seed` | SQLFluff, `templater = jinja`, first in the job and enforced; `dbt lint` after `dbt parse` (decision 33) | the same |
+| `scripts/test.sh` | runs neither dbt nor SQLFluff | runs the `dbt` job's steps as its dbt suite ([below](#the-commands-ci-runs-today)) | plus the target's extra steps |
 
-On any other branch the project is today's: a change must pass today's `dbt`
-job on dbt-core 1.12.2. Do not write v2-only YAML into it.
+On `main`, or a branch cut from it, the project is `main`'s: a change must pass
+that `dbt` job on dbt-core 1.12.2. Do not write v2-only YAML into it.
 
 ## The order of work
 
@@ -88,16 +88,17 @@ ledger.
 2. **SQL with the `spatial` extension.**
 3. **SQL with a community extension**: `h3`, `geography`, `a5`, `raster`. All
    four install and load on DuckDB 1.5.5 (measured 2026-10-01). Whether
-   dbt-oss 2.0.5 loads a community extension from `profiles.yml`, and whether
+   dbt 2.0.6 loads a community extension from `profiles.yml`, and whether
    these four have builds for its bundled 1.5.4, are both `@unvalidated`; one
    CI run settles each. The fallback is a pre-hook
    `INSTALL … FROM community; LOAD …`.
 4. **A Python step.**
 
-**There are no dbt Python models here.** dbt-oss 2.0.5 refuses them: a
-three-line `def model(dbt, session)` failed with `Internal Error: Python models
-are not supported for duckdb adapter` (measured 2026-10-01, `pipeline/ELT.md`,
-"SQL first, then an extension, then Python"). Re-run that probe at each dbt bump. A
+**There are no dbt Python models here.** v2 refuses them on DuckDB, on dbt
+2.0.6 as on dbt-oss 2.0.5: a three-line `def model(dbt, session)` parses, and
+then fails at `dbt build` with `Internal Error: Python models are not supported
+for duckdb adapter` (both measured 2026-10-01, `pipeline/ELT.md`, "Tests move
+with their rule"). Re-run that probe at each dbt bump. A
 Python rule runs as a step between dbt invocations:
 
 - it reads named intermediates and writes a table in the `derived` schema;
@@ -131,10 +132,11 @@ Present, among others: `ST_LineLocatePoint`, `ST_LineInterpolatePoints`,
 
 | Layer | Name | Folder | Reads | Does |
 |---|---|---|---|---|
-| base | `base_<club>__<layer>` | `staging/<club>/base/` | one `source()` | rename, cast, `st_setcrs(st_geomfromgeojson(geometry), 'OGC:CRS84')`, lowercase aliases. No filter, no join |
+| base | `base_<steward>__<layer>` | `staging/<steward>/base/` | one `source()` | once per upstream dataset, in the folder that extracts it (decision 34): `base_usfs__trails`, never one per club. Rename, cast, `st_setcrs(st_geomfromgeojson(geometry), 'OGC:CRS84')`, lowercase aliases. No filter, no join |
 | staging | `stg_<club>__<mart>` | `staging/<club>/` | that club's base models | conform to the mart's shape; apply the club's own review gate |
 | union | `int_<mart>__unioned` | `intermediate/<mart>/` | every `stg_<club>__<mart>` | `union all by name`, no filter |
 | heavy | `int_<mart>__<verb>` | `intermediate/<mart>/` | unions, intermediates, `stg_derived__*` | dedup, corridor, water distance, mile axis, graph |
+| stewardship | `int_<mart>__stewardship` | `intermediate/<mart>/` | the deduplicated intermediate, `stg_registry__orgs`, ATC's club sections | one row per (feature, club, basis, evidence): which clubs steward each feature. It assigns, never copies |
 | mart | one of the eleven names | `marts/<mart>/` | intermediates | contract, `access: public`, exposures |
 | reporting | `rpt_<thing>` | `reporting/` | marts | counts for the docs page |
 | publish | `pub_<file>` | `publish/` | the marts its exposure names | writes one phone file |
@@ -146,6 +148,17 @@ written `_`. That renames two of today's folders: `dec` becomes `nysdec` and
 and one folder per shared source (`nws/`, `osm/`, `usgs/`, `opentrail/`,
 `podcasts/`, `ourhike/`).
 
+**A club's portion of another org's layer is an assignment, not a model of its
+own** (decision 34; the maintainer: *"each club can take that data and assign
+their portion"*). A club whose trail lives in USFS's layer has no base or
+staging model for it. Its portion is rows in `int_<mart>__stewardship`, whose
+basis is one of three: the ATC club-section polygons
+(`raw_atc__trail_club_sections`), the club's `trails` list in
+`trail_orgs.json`, or a name or ID match. Each feature reaches its mart once,
+with its stewards attached. Dedup in intermediates is only for independent
+datasets of the same ground, such as a club's own GPS line against USFS's;
+a republished copy is a `SAME_AS` note in extract and never reaches dbt.
+
 **The eleven marts, exactly:** `trail_lines`, `points_of_interest`,
 `elevation`, `closures`, `warnings`, `podcasts`, `challenges`,
 `trail_network`, `places`, `suggested_hikes`, `sources`. Never `dim_` or
@@ -156,17 +169,20 @@ folders. Just use the names I provided"*.
 because a `marts` row would switch naming off for every mart:
 
 ```yaml
-# pipeline/dbt/dbt_project.yml
+# pipeline/dbt/dbt_project.yml (the file writes it as a block list)
 vars:
-  marts_prefixes: ['trail_', 'points_', 'elevation_', 'closures_', 'warnings_',
-                   'podcasts_', 'challenges_', 'places_', 'suggested_', 'sources_']
+  dbt_project_evaluator:
+    marts_prefixes: ['trail_', 'points_', 'elevation_', 'closures_', 'warnings_',
+                     'podcasts_', 'challenges_', 'places_', 'suggested_', 'sources_',
+                     'dim_']  # dim_ only while today's dim_pois exists
 ```
 
 The evaluator reads a prefix as `split_part(name, '_', 1) || '_'`, so `trail_`
-covers both `trail_lines` and `trail_network`. Measured on 1.12.2 with the
-first seven prefixes: passing, and failing `dim_pois`. On 2.0.5 it is
-`@unvalidated` until the first evaluator run there. Whether `pub_` needs adding
-to `other_prefixes` beside `rpt_` is `@unvalidated` the same way.
+covers both `trail_lines` and `trail_network`. Measured 2026-10-01 on dbt
+2.0.6 and on dbt-oss 2.0.5, against a scratch copy with one model for each of
+the eleven names under `models/marts/<name>/`: no naming or directory finding
+for any of them. Whether `pub_` needs adding to `other_prefixes` beside `rpt_`
+is `@unvalidated` until the first `pub_` model meets the evaluator.
 
 **Union by name, never by position.** Today's `int_pois_unioned.sql` unions
 positionally with `select *`. Under that union a swapped `st_x`/`st_y` in one
@@ -196,9 +212,13 @@ on 2.0.5, 2026-10-01).
   **and** the row's own verdict says it ships (`reaches_hikers` in
   `sources.json`, or a `trail_orgs.json` `load` of `ship` or `via`). Null,
   `unstated` and `unresolved` are false. An absent licence is not permission.
-  The whole rule, with the public-GIS presumption, the clearinghouse ruling,
-  the batched licence question and the `refuse` orgs, is `pipeline/ELT.md`,
-  "Who may publish".
+  The whole rule is `pipeline/ELT.md`, "Who may publish": the public-GIS
+  presumption, which decision 37 extends to internal-use and
+  not-for-distribution layers on anonymous public endpoints; the
+  clearinghouse ruling; the licence batch's other answers (decision 36,
+  non-commercial use publishes; decision 38, each condition travels with its
+  layer and a condition that cannot be met holds it); and the `refuse` orgs.
+  A restriction no decision names stays `may_publish` false.
 - **The `public_use` rule has one home: `int_points_of_interest__publishable`.**
   `export_nearby_poi.py`'s `public_verdict()` and `confidence_for()` are
   deleted at cutover, not kept beside the SQL.
@@ -210,8 +230,10 @@ on 2.0.5, 2026-10-01).
 
 Every mart is a contracted table (`contract: {enforced: true}`), `access:
 public`, with every column described. Intermediates are `protected`. Every mart
-carries `club varchar`, `source_key varchar` (with a relationships test to
-`sources`) and `_loaded_at timestamp`.
+carries `club varchar` (the folder that extracted the row), `source_key
+varchar` (with a relationships test to `sources`) and `_loaded_at timestamp`,
+and each feature appears once, its stewards attached from
+`int_<mart>__stewardship`.
 
 | Trap | Evidence | What to do |
 |---|---|---|
@@ -243,7 +265,12 @@ table before adding a column to a mart a hiker's safety turns on.
   (`fct_name, column_name, id_to_exclude, comment`), with the package's own copy
   disabled and `id_to_exclude` as a SQL `LIKE` pattern. **Every `comment`
   carries its reason and an issue number with its full title**, and a pytest
-  refuses a row without them. The intended state is two rows, both citing
+  refuses a row without them. **Stage 1's seed holds 8 rows today**:
+  `fct_too_many_joins` on `int_%unioned` (today's `int_pois_unioned`),
+  `fct_unused_sources` on `raw_oprhp__oprhp_park_polygons`, and six
+  `fct_missing_primary_key_tests` rows for the staging models with no
+  recorded id. Each leaves with the stage that fixes it. The intended state
+  is two rows, both citing
   **#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a
   monthly refresh, published docs, and lighter phone downloads**:
   `fct_too_many_joins` on `int_%__unioned` ("union branches, not joins": one
@@ -269,6 +296,15 @@ Whether a project macro a model calls renders correctly under it is
 `@unvalidated` until the first such macro is linted. ST06 comes back once the
 last positional union is gone, since that union is its only stated reason.
 
+**`dbt lint` is a fast, dbt-aware first pass, never the gate** (decision 33).
+It reads `pipeline/.sqlfluff` and warns that it supports only SQLFluff's `dbt`
+templater ("Continuing anyway"). Measured 2026-10-01 on 2.0.6: 32 files in
+0.05–0.08 s here and 0.04 s on a runner; it failed a planted CP01 (keyword
+case) and passed a planted LT01 (a space before a comma) that SQLFluff fails.
+So **SQLFluff stays the enforced check**: a clean `dbt lint` is not a clean
+lint. Run it after `dbt deps`, because without `dbt_packages/` it installs
+the packages itself, which in a sandbox empties them (below).
+
 ## State, for a pull request
 
 State buys a pull request two answers and no time: a 13-node deferred build
@@ -292,10 +328,12 @@ dbt build --profiles-dir . --select state:modified --state "$BASE/pipeline/dbt/t
 dbt ls --profiles-dir . --select state:modified+ --state "$BASE/pipeline/dbt/target"
 ```
 
-The breaking-change check exited 2 on 1.12.2 (measured). On 2.0.5 `dbt build
---help` does not list `--warn-error-options`, though `dbt parse` accepts it, so
-its exit there is `@unvalidated` until a probe drops a column. That
-`state:modified+` reaches the exposures was measured on 2.0.5 (2026-10-01).
+The breaking-change check exited 2 on 1.12.2 (measured). On 2.0.5 and 2.0.6
+`dbt build --help` does not list `--warn-error-options`, though 2.0.5's `dbt
+parse` accepts it, so its exit on v2 is `@unvalidated` until a probe drops a
+column. That `state:modified+` reaches the exposures was measured on 2.0.5
+and again on 2.0.6 (2026-10-01): one edited staging model selected itself,
+its two downstream models and the exposure on them.
 `scripts/pipelines.sh` still answers every path dbt does not own. Remove the
 worktree afterwards with `git worktree remove "$BASE"`.
 
@@ -326,10 +364,11 @@ R2 keys, format, coordinate decimals, offline tier and size budget.
 ## Docs and charts are built, never committed
 
 - **dbt docs publish at `https://ourhike.org/data/`, never under `/app/`**
-  (decision 10: counts only, no maps). On 2.0.5 the output is `index.html`, 330
-  assets (13 MB) and Parquet, and `--static` and `--empty-catalog` no longer
-  exist (`dbt docs generate --help`, read 2026-10-01). The site build makes
-  them.
+  (decision 10: counts only, no maps). On v2 the output is `index.html`, an
+  assets directory and Parquet: on stage 1's fixtures, 315 assets and 38
+  Parquet files, 12,301,390 bytes on 2.0.6 (2026-10-01). `--static` and
+  `--empty-catalog` exist on neither 2.0.5 nor 2.0.6 (`dbt docs generate
+  --help`, read 2026-10-01). The site build makes them.
 - **dbt Charts boards are YAML in `pipeline/dbt/charts/`, rendered only once
   dbt Charts supports dbt v2** (decision 19): `dbt-charts` 0.8.0 pins
   `dbt-core>=1.8,<2`. That is a named external blocker. Do not work around it
@@ -342,40 +381,67 @@ R2 keys, format, coordinate decimals, offline tier and size budget.
 
 ## The commands CI runs today
 
-The `dbt` job in `.github/workflows/pipeline-tests.yml`, on Python 3.12, from
-`pipeline/`:
+The `dbt` job in `.github/workflows/pipeline-tests.yml` on this branch, on
+Python 3.12, from `pipeline/`, with the job-level
+`DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS=false` on every step. It ran green on
+a runner in 46 s on 2026-10-01:
 
 ```sh
-pip install -r requirements-dbt.txt
+# restore ~/.cache/com.getdbt/adbc and ~/.duckdb/extensions/v1.5.4 (actions/cache, keyed on requirements-dbt.txt)
+pip install -r requirements-dbt.txt                    # dbt==2.0.6, sqlfluff==4.3.0, duckdb==1.5.5
+sqlfluff lint dbt/models dbt/tests                     # the enforced lint; needs no warehouse
+cd dbt
+dbt deps --profiles-dir .
+dbt parse --profiles-dir .                             # the v2 gate
+dbt lint --profiles-dir .                              # the fast first pass, not the gate
+cd ..
 pip install "duckdb-extension-spatial==$(python -c 'import duckdb; print(duckdb.__version__)')"
-python seed_spatial_extension.py
+python seed_spatial_extension.py                       # Python's 1.5.5 only; dbt's 1.5.4 is cached, or dbt fetches it
 python make_dbt_fixtures.py
 python load_raw.py
-(cd dbt && dbt deps --profiles-dir . && dbt seed --profiles-dir .)
-OURHIKE_WAREHOUSE=data/warehouse.duckdb sqlfluff lint dbt/models dbt/tests
 cd dbt
+dbt seed --profiles-dir .
 dbt build --profiles-dir . --exclude package:dbt_project_evaluator
 dbt source freshness --profiles-dir .
-dbt docs generate --profiles-dir .
-dbt build -s package:dbt_project_evaluator --profiles-dir .
+dbt docs generate --profiles-dir . --output-dir target/docs   # then checks index.html, assets/ and Parquet exist
+DBT_PROJECT_EVALUATOR_SEVERITY=error dbt build -s package:dbt_project_evaluator --profiles-dir .
+# save the cache on a miss, even when a step failed
 ```
 
-The job runs only when its own changed-paths list matches: `pipeline/dbt/`,
-`load_raw.py`, `make_dbt_fixtures.py`, `sources.json`, the two
-`requirements-dbt` files, `pipeline/.sqlfluff`, the workflow and the
-changed-paths action.
+**Telemetry off is the only switch.** `DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS=false`
+is the documented opt-out. Measured 2026-10-01 through a logging proxy:
+without it each 2.0.6 command tried (parse, show) opened `p.vx.dbt.com`; with
+it parse, show and build opened none; and `DO_NOT_TRACK=1` did not stop it. The dbt Product Licensing Agreement's §3.2
+forbids disabling licence validation or anything else that talks to dbt's
+services, so never set `DBT_SKIP_REMOTE_LICENSE` or any other undocumented
+switch, and leave alone the call 2.0.6 makes to `public.cdn.getdbt.com` once
+per command.
 
-**`scripts/test.sh` runs none of this today.** It has no dbt or SQLFluff step,
-and `scripts/suite_scopes.py`'s `scope_for` returns only the first
-changed-paths step in a workflow, which in `pipeline-tests.yml` is the pytest
-job's. `.claude/hooks/session-start.sh` does not install
-`requirements-dbt.txt` either. So for a dbt change, make a Python 3.12
-virtualenv **outside the repository** (the session's scratchpad), install
-`requirements-dbt.txt` into it, run the block above by hand, and say in the
-pull request that you did. In the target, `test.sh` runs the `dbt` job's steps
-in CI's order: lint, deps, parse, breaking-change check, the extract layout
-pytest, dlt fixture mode, the build, freshness and docs, the evaluator
-(`pipeline/ELT.md`, "Running it").
+The job runs only when its own changed-paths list matches: `pipeline/dbt/`,
+`load_raw.py`, `lib/source_registry.py`, `make_dbt_fixtures.py`,
+`seed_spatial_extension.py`, `sources.json`, the two `requirements-dbt`
+files, `pipeline/.sqlfluff`, the workflow and the changed-paths action.
+
+**`scripts/test.sh` runs the same steps as its dbt suite**, read from that
+job's own changed-paths step, in CI's order, with telemetry off the same way.
+The fixtures and the warehouse go to a temporary directory, never to
+`pipeline/data/`. It installs nothing: it needs the `dbt` that
+`requirements-dbt.txt` pins first on `PATH` (`dbt --version` reading `dbt
+2.0.6`), with that environment's `python` and `sqlfluff` beside it, and
+otherwise reports the suite SKIPPED in its last line. A `dbt-oss 2.0.5` first
+on `PATH` is reported by name and skipped. `.claude/hooks/session-start.sh`
+does not install `requirements-dbt.txt`, so make a Python 3.12 virtualenv
+**outside the repository** (the session's scratchpad) and put it first:
+
+```sh
+python3.12 -m venv "$SCRATCH/dbtvenv"
+"$SCRATCH/dbtvenv/bin/pip" install -r pipeline/requirements-dbt.txt
+PATH="$SCRATCH/dbtvenv/bin:$PATH" scripts/test.sh --no-dbt-deps   # after the clones below
+```
+
+In the target, the suite gains the breaking-change check, the extract layout
+pytest, dlt fixture mode and `build_marts.py` (`pipeline/ELT.md`, "Running
+it").
 
 ## `dbt deps` in a sandbox
 
@@ -386,10 +452,11 @@ pytest, dlt fixture mode, the build, freshness and docs, the evaluator
   `200`. The hub resolves the version; codeload serves the tarball.
 - dbt-core 1.12.2 fails with "not a gzip file" (measured in the same planning
   research, 2026-10-01).
-- dbt-oss 2.0.5 fails with `Failed to get tarball from
-  https://codeload.github.com/…; status: 500`, **and prints `Installed` for
-  `codegen` and `dbt_utils` while leaving both folders empty.** Check that
-  each folder has files before trusting a run.
+- dbt 2.0.6 fails the same way as dbt-oss 2.0.5: `Failed to get tarball from
+  https://codeload.github.com/…; status: 500`, exit 1, **and it prints
+  `Installed 3 packages` while leaving all three folders empty** (2.0.6,
+  measured 2026-10-01; 2.0.5 printed `Installed` for two). Check that each
+  folder has files before trusting a run.
 
 The workaround is to clone each package at the tag `packages.yml` pins. The
 evaluator's tags carry a `v`; the other two do not (`git ls-remote --tags`,
@@ -400,17 +467,18 @@ cd pipeline/dbt
 rm -rf dbt_packages && mkdir dbt_packages
 git clone -q --depth 1 --branch 1.4.1  https://github.com/dbt-labs/dbt-utils             dbt_packages/dbt_utils
 git clone -q --depth 1 --branch 0.14.1 https://github.com/dbt-labs/dbt-codegen           dbt_packages/codegen
-git clone -q --depth 1 --branch v1.3.2 https://github.com/dbt-labs/dbt-project-evaluator dbt_packages/dbt_project_evaluator
+git clone -q --depth 1 --branch v1.4.0 https://github.com/dbt-labs/dbt-project-evaluator dbt_packages/dbt_project_evaluator
 ```
 
-With the evaluator at `v1.4.0`, `dbt parse` on dbt-oss 2.0.5 then finished in
-645 ms (measured 2026-10-01). **v2 still asks hub.getdbt.com on every
-invocation**, and a build failed with the hub unreachable although
-`dbt_packages/` was present (measured 2026-10-01, `pipeline/ELT.md`, "Where data
-lives between runs"). So the clones get a v2 run past codeload, not past an
-unreachable hub. `pipeline/ELT.md` plans for the session-start hook to do this
-clone; until it does, do it by hand. Read the tags from `packages.yml`, not
-from this file, when they move.
+Then run `scripts/test.sh --no-dbt-deps`, which skips `dbt deps` (and so does
+not empty the clones) and says so in its last line. `dbt parse` over the
+clones finished in 645 ms on dbt-oss 2.0.5 and in under a second on 2.0.6
+(measured 2026-10-01). **On dbt-oss 2.0.5 a build failed with hub.getdbt.com
+unreachable although `dbt_packages/` was present**; on 2.0.6, with the
+packages, the driver and spatial in place, parse and build passed with every
+outbound connection refused (both measured 2026-10-01). `pipeline/ELT.md`
+plans for the session-start hook to do this clone; until it does, do it by
+hand. Read the tags from `packages.yml`, not from this file, when they move.
 
 ## Adding a club's staging models
 
@@ -423,8 +491,10 @@ exactly the club's available types, `photos` included and `org` excluded.
    `config:` block holding `loaded_at_field: _loaded_at` and `freshness`,
    `meta.cadence`, and an explicit `database:`. An unstaged declaration fails
    `fct_unused_sources`.
-2. **One `base/base_<club>__<layer>.sql` per raw table**, documented in
-   `base/_<club>__base.yml`. dlt lands the geometry as `JSON` in DuckDB and
+2. **One `base/base_<club>__<layer>.sql` per raw table the club extracts**,
+   documented in `base/_<club>__base.yml`. A layer another folder extracts
+   gets no base model here: the club's portion of it is rows in
+   `int_<mart>__stewardship` (decision 34). dlt lands the geometry as `JSON` in DuckDB and
    `VARCHAR` in Parquet (measured 2026-10-01), so cast it before
    `st_geomfromgeojson`. Set CRS84, alias every column in lowercase, key it on
    the layer's stable upstream id (`pipeline/ELT.md`, "Stable upstream keys").
@@ -441,4 +511,5 @@ exactly the club's available types, `photos` included and `org` excluded.
    from `trail_orgs.json`'s `states`; a `national` row keeps the national
    bound. Every margin is `@unvalidated` until a pass over a live fetch reports
    each layer's real extent.
-7. **Run the job** ([above](#the-commands-ci-runs-today)), evaluator included.
+7. **Run the job** ([above](#the-commands-ci-runs-today)), evaluator included:
+   `scripts/test.sh`, with `--no-dbt-deps` in a sandbox.

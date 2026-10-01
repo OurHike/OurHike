@@ -1,11 +1,11 @@
 # The dlt → dbt data platform — design and migration plan
 
-This is the design for **#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads**: every source extracted and loaded by dlt into a private raw store, transformed by one dbt-oss 2.0.5 project into eleven contracted marts, and published to phones as files.
+This is the design for **#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads**: every source extracted and loaded by dlt into a private raw store, transformed by one dbt 2.0.6 project into eleven contracted marts, and published to phones as files.
 
 ## Contents
 
 - [Overview](#overview): what was asked, every decision, what this reverses, the shape, the three clocks
-- [Extract and load (dlt)](#extract-and-load-dlt): the folder contract, who may publish, status layers, dlt's requirements, change checks
+- [Extract and load (dlt)](#extract-and-load-dlt): the folder contract, one extraction per dataset, who may publish and what may be fetched, no rasters, status layers, dlt's requirements, change checks
 - [The data checks](#the-data-checks): the layout test, the run check after every load, note ageing
 - [The dbt project](#the-dbt-project): v2, extensions, layers, the eleven marts, status and water rules, contracts, Python steps, publish (reverse ETL), the evaluator, SQLFluff, state, docs
 - [Keeping every rule we already built](#keeping-every-rule-we-already-built): parity, SQL first, the 179-row ledger, the human gates, state
@@ -20,7 +20,7 @@ This is the design for **#1793 — Rebuild the data platform as dlt → dbt: sev
 
 ## Overview
 
-**Status: planned 2026-10-01 under #1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads (branch `claude/intelligent-feynman-sw3ewm`). Nothing in this document is built yet.** It describes the intended state and the order it is built in. The implementation lands as one pull request on that branch, built in stages and merged by the maintainer as a single go/no-go change (decisions 29–31, [Phases](#phases)).
+**Status: planned 2026-10-01 under #1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads (branch `claude/intelligent-feynman-sw3ewm`). Only stage 1's dbt tooling is built so far**: dbt 2.0.6, the YAML moved to v2's shape, the evaluator enforced, and SQLFluff and `dbt lint` in CI and `scripts/test.sh`, green on a GitHub runner on 2026-10-01 ([Phases](#phases)). Everything else here describes the intended state and the order it is built in. The implementation lands as one pull request on that branch, built in stages and merged by the maintainer as a single go/no-go change (decisions 29–31, [Phases](#phases)).
 
 **What "report N", "the decisions log" and "a probe" mean here.** The planning session kept its working files in a private scratch directory, and none of them is committed. They are six research reports, cited by number: 1, dlt for extraction; 2, the geometry marts (trail lines, POIs, elevation); 3, closures, warnings and podcasts; 4, CI and publishing; 5, what a phone downloads, and geometry; 6, dbt tooling. Then three later studies: storage formats and DuckLake, incremental loading per source and per mechanism, and each node's cadence. Then the decisions log, which records the maintainer's answers and which [Decisions](#decisions) restates. A probe is a throwaway project built to measure one behaviour. A reader cannot open any of these, so this document restates what it takes from them, with the date and what each figure was measured against.
 
@@ -32,7 +32,7 @@ A number in brackets is a row of [Decisions](#decisions).
 |---|---|---|
 | "All pipelines a dlt implementation… once per month… a true elt approach" | dlt in `pipeline/extract/`; monthly reference lane, hourly lanes kept (1) | [Extract and load (dlt)](#extract-and-load-dlt), [Three clocks](#three-clocks) |
 | "dbt project evaluator. Enforce all standards" | severity `error`; exceptions only through a commented seed | [The dbt project](#the-dbt-project) |
-| "Implement sql fluff" | jinja templater, in CI and `scripts/test.sh` (19) | [The dbt project](#the-dbt-project) |
+| "Implement sql fluff" | jinja templater, in CI and `scripts/test.sh` (19); `dbt lint` as a fast first pass, not the gate (33) | [The dbt project](#the-dbt-project) |
 | "7 marts… a data contract"; "do not keep the dim_ and fct_ prefixes" | 11 contracted marts, named exactly as given (5) | [The dbt project](#the-dbt-project) |
 | "A staging for each org… Union… in the intermediate… heavy transformation… on that unified model" | `base_` → `stg_<club>__<mart>` → `int_<mart>__unioned` → heavy intermediates → mart | [The dbt project](#the-dbt-project), [Club by club](#club-by-club) |
 | "dbt state to only run models that have changed" | what state buys on a PR, and on a monthly reload | [The dbt project](#the-dbt-project) |
@@ -42,21 +42,22 @@ A number in brackets is a row of [Decisions](#decisions).
 | "Not… download the entire duckdb… blazing fast" | no phone downloads a DuckDB file; the whole data set shrinks (9) | [Making the download smaller](#making-the-download-smaller) |
 | "Simplify any geometries… a few feet off" | navigation line stays 1 m; bytes from encoding and per-zoom tiles (8) | [Making the download smaller](#making-the-download-smaller) |
 | "Don't lose any transformation work… org by org plan" | every rule with its file, line, target model and tests | [Keeping every rule we already built](#keeping-every-rule-we-already-built), [Club by club](#club-by-club) |
-| "Ask me questions… all the tables you need… a dbt skillset"; "check if dlt also has a skillset" | 31 numbered decisions, most by poll; four marts added, and what still reaches a phone from no mart; dbt and dlt repo skills (5, 11, 16) | [Decisions](#decisions), [The eleven marts](#the-eleven-marts), [Skills](#skills) |
+| "Ask me questions… all the tables you need… a dbt skillset"; "check if dlt also has a skillset" | 39 numbered decisions, most by poll; four marts added, and what still reaches a phone from no mart; dbt and dlt repo skills (5, 11, 16) | [Decisions](#decisions), [The eleven marts](#the-eleven-marts), [Skills](#skills) |
 | "1 folder per org… the same # of files"; "data checks… each of the different file types" | 11-file club folders, dated `NOT_AVAILABLE` notes, three checks (12–14) | [Extract and load (dlt)](#extract-and-load-dlt) |
 | "Recheck that each org has all the potential data loaded" | `pipeline/ORG_COVERAGE_SURVEY.md` (15) | [Club by club](#club-by-club) |
 | "Load ALL the clubs… deduplication after the extract-load" | every managing club extracted, and each candidate steward once it has a reviewed catalogue row; dedup in intermediates | [Load everything, gate publication downstream](#load-everything-gate-publication-downstream), [The folder roster](#the-folder-roster), [Deduplication after the load, mart by mart](#deduplication-after-the-load-mart-by-mart) |
-| "The most recent version of dbt… v2"; "Keep the dbt versions aligned" | dbt-oss 2.0.5, one version (17, 19) | [The dbt project](#the-dbt-project) |
-| "DEC is allowed if it is part of their GIS clearinghouse"; "the same goes for OPRHP"; "The GIS info almost always is reusable" | one publication rule per layer, with a presumption for public GIS (20–22); no GIS-shaped type noted as unavailable until a fixed checklist is worked (21b) | [Who may publish](#who-may-publish), [The folder contract](#the-folder-contract), [Club by club](#club-by-club) |
+| "The most recent version of dbt… v2"; "Keep the dbt versions aligned"; "see if we can use just plain dbt?" | `dbt` 2.0.6, one version everywhere (17, 19, 32) | [Version: dbt 2.0.6, one version everywhere](#version-dbt-206-one-version-everywhere) |
+| "DEC is allowed if it is part of their GIS clearinghouse"; "the same goes for OPRHP"; "The GIS info almost always is reusable" | one publication rule per layer, with a presumption for public GIS (20–22); no GIS-shaped type noted as unavailable until a fixed checklist is worked (21b); the licence batch answered (36–38) and the fetch terms (39) | [Who may publish](#who-may-publish), [The folder contract](#the-folder-contract), [Club by club](#club-by-club) |
 | "Attempt to load a duckdb extension and use sql before going the route of a python model" | core SQL, then `spatial`, then a community extension, then Python (23) | [Keeping every rule we already built](#keeping-every-rule-we-already-built) |
 | "Think of that final step as reverse etl"; "dbt can output to specific external files" | every phone file is a dbt exposure, written by a `phone_file` model; `publish.py`, not dbt, writes R2, because a DuckDB write to the bucket loses gzip and cache headers (24) | [Publish (reverse ETL)](#publish-reverse-etl), [Four kinds of phone file](#four-kinds-of-phone-file) |
 | "Should all of these files… load data to parquet? Should ducklake be used"; "the dlt job should run incrementally" | Parquet raw, DuckLake at two named phases, full reload behind a skip check; how dbt builds is left open (25–27) | [Where data lives between runs](#where-data-lives-between-runs) |
 | "Apply a meta tag that classifies each as hourly/daily/weekly/monthly" | `meta.cadence` on every source, exposure and resource (28) | [Every node carries its cadence](#every-node-carries-its-cadence) |
 | "We are going to implement this in 1 big pr… a go / no go change" | one pull request, parity plus a UA soak, new data published in it (29–31) | [Phases](#phases), [The go/no-go gate](#the-gono-go-gate) |
+| "Are we landing the same data, multiple times? We shouldn't"; "Are we landing many rasters?" | each upstream dataset extracted once, a republished copy a `SAME_AS` note, a club's portion an assignment (34); no raster lands as data (35) | [One extraction per upstream dataset](#one-extraction-per-upstream-dataset), [No raster lands as data](#no-raster-lands-as-data) |
 
 ### Decisions
 
-Settled by the maintainer on 2026-10-01, most by poll; 4 and 11 went without a picture, and 12, 14 and 15 began as the maintainer's own unprompted asks, as did 20–25 and 28–29. Nothing below re-argues them. Under "Offered and not taken", "—" means nothing offered was left: the maintainer gave the direction in their own words, or (5) took every option offered. "Not recorded" means a poll whose other options the decisions log did not keep.
+Settled by the maintainer on 2026-10-01, most by poll; 4 and 11 went without a picture, and 12, 14 and 15 began as the maintainer's own unprompted asks, as did 20–25, 28–29, 32 and 34–35. Nothing below re-argues them. Under "Offered and not taken", "—" means nothing offered was left: the maintainer gave the direction in their own words, or (5) took every option offered. "Not recorded" means a poll whose other options the decisions log did not keep.
 
 | # | Question | Chosen | Offered and not taken |
 |---|---|---|---|
@@ -76,11 +77,11 @@ Settled by the maintainer on 2026-10-01, most by poll; 4 and 11 went without a p
 | 14 | Data checks (maintainer, unprompted) | Layout test per PR; run check after each dlt run; note ageing monthly (180 days, `@unvalidated` until one recheck cycle shows how often a note turns out wrong) | — |
 | 15 | Coverage audit (maintainer, unprompted) | **Now, in this plan**: `pipeline/ORG_COVERAGE_SURVEY.md`, which seeds the first notes | not recorded |
 | 16 | dlt agent skills | **Repo dlt skill only** (dltHub's AI Harness licence permits use "solely in connection with dltHub Services") | the Harness; `dlt-mcp` 0.3.0 |
-| 17 | dbt version | **dbt-oss 2.0.5** (Apache-2.0, 2026-09-18). **Supersedes the session's call to stay on 1.12.x** (T1). The YAML moves to v2's shape (the 64 parse errors measured on today's project). v2 bundles DuckDB 1.5.4 against the pipeline's 1.5.5 pin: whether v2 reads a 1.5.5-written warehouse and loads spatial in CI is `@unvalidated`, settled by one CI run. Its side-environment half is superseded by 19 | `dbt` 2.0.6 (no licence on PyPI); 1.12.x |
+| 17 | dbt version | **dbt-oss 2.0.5** (Apache-2.0, 2026-09-18). **Supersedes the session's call to stay on 1.12.x** (T1). The YAML moves to v2's shape (the 64 parse errors measured on today's project). v2 bundles DuckDB 1.5.4 against the pipeline's 1.5.5 pin: whether v2 reads a 1.5.5-written warehouse and loads spatial in CI is `@unvalidated`, settled by one CI run (that run happened on 2026-10-01: [Version](#version-dbt-206-one-version-everywhere)). Its side-environment half is superseded by 19, and **its distribution by 32** (`dbt` 2.0.6) | `dbt` 2.0.6 (no licence on PyPI); 1.12.x |
 | 18 | Which orgs get folders | **Managing orgs only**: 145 of `trail_orgs.json`'s 173 rows by `type` (173 − 12 `national_umbrella` − 13 `route_only` − 3 `aggregator`, counted 2026-10-01). Umbrellas and route-only: a dated line each in `_shared/not_clubs.py`; aggregators (osm, outerspatial, avenza) in `_shared/` | All 173 (1,903 files) |
-| 19 | One dbt version | *"Keep the dbt versions aligned."* **dbt-oss 2.0.5 everywhere, no side environment** (supersedes that half of 17); SQLFluff jinja templater (measured 3.0 s serial, 0 violations on the 32 current files); docs now; Charts boards as YAML in `pipeline/dbt/charts/`, rendered once dbt Charts supports v2 (`dbt-charts` 0.8.0 and its `main` pin `dbt-core<2`, read 2026-10-01): a named external blocker | dbt-core 1.12.5 until Charts supports v2; v2 plus Evidence.dev |
+| 19 | One dbt version | *"Keep the dbt versions aligned."* **dbt-oss 2.0.5 everywhere, no side environment** (supersedes that half of 17; 32 later changed the distribution to `dbt` 2.0.6, and one version everywhere still holds); SQLFluff jinja templater (measured 3.0 s serial, 0 violations on the 32 current files); docs now; Charts boards as YAML in `pipeline/dbt/charts/`, rendered once dbt Charts supports v2 (`dbt-charts` 0.8.0 and its `main` pin `dbt-core<2`, read 2026-10-01): a named external blocker | dbt-core 1.12.5 until Charts supports v2; v2 plus Evidence.dev |
 | 20 | DEC's GIS data | The maintainer: *"DEC is allowed if it is part of their GIS clearinghouse."* **A DEC dataset listed in the NYS GIS Clearinghouse may be published**, as a maintainer decision and not a grant from DEC; the item's own restrictive text stays quoted beside it. Person fields never ship. `nysdec`'s `public_domain` becomes `maintainer_clearinghouse` | — |
-| 21 | Don't give up on an org | *"The GIS info almost always is reusable."* **(a)** A GIS layer an org publishes anonymously on a public endpoint is presumed reusable (`public_gis`); explicit restrictive text goes to the maintainer as one batched question; the presumption does not reach photos, audio or prose. **(b)** No GIS-shaped row is accepted as unavailable until a fixed discovery checklist is worked and written down | — |
+| 21 | Don't give up on an org | *"The GIS info almost always is reusable."* **(a)** A GIS layer an org publishes anonymously on a public endpoint is presumed reusable (`public_gis`); explicit restrictive text goes to the maintainer as one batched question (answered the same day by 36–38); the presumption does not reach photos, audio or prose. **(b)** No GIS-shaped row is accepted as unavailable until a fixed discovery checklist is worked and written down | — |
 | 22 | OPRHP's GIS data | *"ANd the same goes for OPRHP. We can use that."* The same footing as DEC; all four `oprhp_*` layers publish, credited "NY State Parks"; `nysparks` becomes `maintainer_clearinghouse` | — |
 | 23 | SQL first | *"Attempt to load a duckdb extension and use sql before going the route of a python model."* **Core SQL, then `spatial`, then a community extension, then Python**, each step down on a written reason | — |
 | 24 | The last step | *"Think of that final step as 'reverse etl'."* **Publish (reverse ETL)**: every phone output is a dbt exposure; four kinds of file; the follow-up asked for dbt to write the files | — |
@@ -90,7 +91,15 @@ Settled by the maintainer on 2026-10-01, most by poll; 4 and 11 went without a p
 | 28, 28a | Cadence | *"Apply a meta tag that classifies each as hourly/daily/weekly/monthly."* **`meta.cadence` on every source, exposure and dlt resource**; each node built only by the lane equal to its fastest upstream; `warnings` owned by the conditions job | — |
 | 29 | One pull request | *"This should be a go / no go change."* **One pull request**, closing the issue this plan belongs to, built in stages on one branch; supersedes the issue's "phases become their own issues" | — |
 | 30 | What decides go | **"Parity + UA soak"**: frozen inputs through both pipelines; every R2 key byte-equal or listed with a reason; all suites and checks green; one monthly run plus 7 days of hourly runs on UA | Suites + UA soak with no byte diff; parity only |
-| 31 | New club data | **"Publish new data in this PR"**, with a new-data review report; the batched licence question and the open terms questions block go | Extract all, publish after go |
+| 31 | New club data | **"Publish new data in this PR"**, with a new-data review report; the batched licence question and the open terms questions block go. The same day, 36–38 answered the licence batch and 39 the fetch terms; what still blocks go is in [The go/no-go gate](#the-gono-go-gate) | Extract all, publish after go |
+| 32 | dbt distribution | The maintainer: *"maybe we should be using dbt, not dbt-oss … see if we can use just plain dbt? We get expanded features that way I believe"*, after reading dbt Labs' `docs.getdbt.com/blog/comparing-dbt-and-dbt-oss`. **`dbt` 2.0.6, one distribution everywhere**: CI, `scripts/test.sh`, the skills and the docs. **Supersedes the distribution part of 17 and 19** (dbt-oss 2.0.5 → `dbt` 2.0.6); one version everywhere still holds. It is under the dbt Product Licensing Agreement, and only its documented opt-outs are used. dbt-oss 2.0.5 stays the documented fallback, because the same project files ran green on it ([Version](#version-dbt-206-one-version-everywhere)) | Keep dbt-oss 2.0.5 |
+| 33 | Linting under the full distribution | **"SQLFluff enforced + dbt lint"**: SQLFluff with the jinja templater stays the enforced check (the original ask), and `dbt lint` runs as a fast, dbt-aware first pass, never the only gate ([SQLFluff](#sqlfluff)) | `dbt lint` only; SQLFluff only |
+| 34 | Landing data once | *"Are we landing the same data, multiple times? We shouldn't. Like for USFS, that should get landed as a 'base' layer (subset of staging) Then each club can take that data and assign their portion."* **Each upstream dataset is extracted once, in its steward's folder.** A republished copy is a `SAME_AS` note and is never extracted. A club's portion is an assignment in `int_<mart>__stewardship`, so each feature reaches its mart once, with its stewards attached ([One extraction per upstream dataset](#one-extraction-per-upstream-dataset)) | — |
+| 35 | Rasters | *"Are we landing many rasters?"* **No raster lands in the raw store or the warehouse as data.** The DEM is read in place and only its samples are cached; NBM grids leave only their derived squares; the topo and hiking-sheet rasters belong to the background map ([No raster lands as data](#no-raster-lands-as-data)) | — |
+| 36 | Layers that bar profit, sale or commercial use (about 10) | **"Non-commercial: publish"**, with each publisher's attribution: OurHike is non-commercial in these terms' sense. California State Parks' "may not be … altered" is read as not covering reprojection, tiling or simplification for display, and its interagency-only admin-code fields are dropped ([Who may publish](#who-may-publish), rule 5) | Treat as commercial and hold; ask each publisher |
+| 37 | Layers that say "internal use", "not for distribution" or "all rights reserved" (about 16) | **"Publish under GIS presumption"**: 21(a) extends to them when they are served anonymously on a public GIS endpoint. This is the maintainer's decision against the items' own words, which stay quoted in `sources.json`. Still excluded: person fields, the four `refuse` orgs until permission is recorded, and anything that is not an anonymous public endpoint ([Who may publish](#who-may-publish), rule 3) | Hold and ask each publisher; drop them |
+| 38 | Layers that carry conditions rather than refusals (about 9) | **"Publish, honouring each"**: each condition travels with its layer in the `sources` mart and is enforced downstream. A condition that cannot be met holds its layer ([Who may publish](#who-may-publish), rule 5) | Hold all |
+| 39 | Fetch terms: browser-only hosts, no-automation terms, waiver gates | **"Allow ArcGIS copies, else ask"**: a club's own public ArcGIS layer counts as published whatever its website's waiver says, so ONDA's `ODT Tracks` is extracted. **The pipeline never imitates a browser**: it always sends its own honest user agent, and a host that refuses it holds until the org answers. Other no-automation terms and waivers mean ask. ATC's trail-updates scrape stays as today, on **#458 — Confirm with the ATC what may be republished from their Trail Updates** ([What may be fetched](#what-may-be-fetched)) | Never imitate, and ask, with ONDA's ArcGIS copy held too; allow a browser UA where served |
 
 Settled outside the numbered rows:
 
@@ -101,7 +110,7 @@ Settled outside the numbered rows:
 | *"Load ALL the clubs… deduplication after the extract-load"* | `load` stops gating extraction, keeps gating publication |
 | Poll, unnumbered: the four `refuse` rows, **note now, load on permission** | dated notes quoting the terms until permission; a permission request drafted to each (not taken: load privately, never publish). The poll said each gets a club folder; decision 18 came later, and by `type` only onda and buckeye (`regional_nonprofit`) are clubs, so rtc (`national_umbrella`) and avenza (`aggregator`) carry their notes in `_shared/`. Reasoned from the order; not put to the maintainer |
 
-Session calls, not polled, stated so a reviewer can disagree: **T1** stay on dbt-core 1.12.x — **superseded** by 17, then 19. **T2** the evaluator var `marts_prefixes` lists each mart name's first word plus `_` (the seven-prefix list measured passing on 1.12.2, where it fails `dim_pois` as wanted; `@unvalidated` on 2.0.5 and for the four added prefixes until the first v2 evaluator run). **T3** `base_` → `stg_` → `int_<mart>__unioned`, with one exceptions row for `fct_too_many_joins` on `int_%__unioned` ("union branches, not joins"). **T4** docs at `https://ourhike.org/data/`, never under `/app/`. T2–T4 stand; [The dbt project](#the-dbt-project) and [Running it](#running-it) carry them.
+Session calls, not polled, stated so a reviewer can disagree: **T1** stay on dbt-core 1.12.x — **superseded** by 17, then 19. **T2** the evaluator var `marts_prefixes` lists each mart name's first word plus `_` (the seven-prefix list measured passing on 1.12.2, where it fails `dim_pois` as wanted; measured again 2026-10-01 on dbt 2.0.6 and on dbt-oss 2.0.5, with one scratch model for each of the eleven names under `models/marts/<name>/`: no naming or directory finding for any of them). **T3** `base_` → `stg_` → `int_<mart>__unioned`, with one exceptions row for `fct_too_many_joins` on `int_%__unioned` ("union branches, not joins"). **T4** docs at `https://ourhike.org/data/`, never under `/app/`. T2–T4 stand; [The dbt project](#the-dbt-project) and [Running it](#running-it) carry them.
 
 ### What this reverses, on purpose
 
@@ -115,7 +124,7 @@ Session calls, not polled, stated so a reviewer can disagree: **T1** stay on dbt
 | `load` verdict decides whether a club gets a `sources.json` row (`ship` "Becomes a sources.json row"; `via` "No entry of its own") | `pipeline/reference/trail_orgs.json`, `_load_values` | every managing club extracted; `licence_basis` and `attribution` travel into `sources`, and every mart filters on a derived `may_publish` |
 | "**A row in `dim_pois` is not a publishable POI**"; a SQL `public_use` filter "beside the tested Python one" would be a second pipeline | `pipeline/DBT.md:166`, `:193` | `points_of_interest` becomes **the one home** of the filter; `export_nearby_poi.py`'s copy is deleted at cutover, so the one-home argument holds and the home moves |
 | "Not attempted: cross-source POI deduplication"; "Not staged: geometry" | `pipeline/DBT.md:194-195` | dedup in intermediates; geometry staged as real `GEOMETRY` |
-| Stay on dbt 1.12.x | this session (T1) | dbt-oss 2.0.5 (17, 19) |
+| Stay on dbt 1.12.x | this session (T1) | `dbt` 2.0.6, after dbt-oss 2.0.5 (17, 19, 32) |
 | "the implementation phases become their own issues once the plan is agreed" | **#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads** | one pull request, built in stages (29) |
 | `licence_basis: public_domain` on `nysdec` and `nysparks` | `pipeline/reference/trail_orgs.json` | `maintainer_clearinghouse` (20, 22), a correction in the first build stage ([Who may publish](#who-may-publish)) |
 | NWS alerts are the alerts half of `publish-weather.yml` | `publish-weather.yml`'s header | the conditions job (`publish-conditions.yml`) owns `warnings`, so NWS moves to its `:40` run (28a) |
@@ -139,9 +148,9 @@ flowchart TD
   RAWS[("private raw store, R2<br/>dlt rows and file manifest rows,<br/>file bytes (dlt from decision 4's second step)")]
   subgraph WH["DuckDB warehouse (private)"]
     RAW["raw schema"]
-    BASE["base_{club}__{layer}<br/>one source each"]
+    BASE["base_{steward}__{layer}<br/>one source each, once per dataset"]
     STG["stg_{club}__{mart}"]
-    INT["int_{mart}__unioned, then heavy intermediates<br/>union all clubs, dedup, heavy work"]
+    INT["int_{mart}__unioned, then heavy intermediates<br/>union all clubs, dedup, stewardship, heavy work"]
     MARTS["11 contracted marts"]
   end
   PYS["Python steps, outside dbt<br/>DEM sampling, noding,<br/>route forming, identity ledger write"]
@@ -183,7 +192,7 @@ An hourly cron here fires about every four hours: **#1346 — Every cron in this
 | **Hourly conditions** | `closures` (ATC rows that block the trail, OPRHP, OurHike's verified closures, every club's closure layers); `warnings` (ATC notices that do not block, every NYNJTC alert until classified, OurHike's serious reports, NWS alerts, by decision 7's split); work projects; drought, which stays in this bake and in no mart | `publish-conditions.yml`, `40 * * * *`: median gap 4.0 h, max 6.3 h over 40 runs to 2026-09-25 (`features/CONDITIONS_DELIVERY.md:106-107`). OPRHP's temporary closures still ride the dispatched vector publish and join this lane (**#1152 — Move OPRHP's temporary closures onto the conditions clock, where a safety layer belongs**) | the client re-reads hourly (`CONDITIONS_REFRESH_MS`, `client/src/lib/useConditions.ts:58`); `pipeline/check_deployment.py:127` alarms past 3 h (its comment reasons from an hourly firing; the measured median gap is 4.0 h); work-project rows give way to an out-of-date notice after 48 h (`client/src/lib/workProjects.ts:60`, `@unvalidated` in its own comment); the maintainer's tolerance is "a closure can be latent by a day" (`features/CONDITIONS_DELIVERY.md:111`). A month puts a hiker in front of a closed trail |
 | **Hourly weather** | the NBM forecast, outside dbt. NWS alerts move to the conditions lane, which owns `warnings` (decision 28a) | `publish-weather.yml`, `55 * * * *`, UA only (`OURHIKE_DATA_ENV: ua` at `:104`, `:184`) | storm warnings are scheduled for a median 43 min (15,238 severe thunderstorm warnings) and 31 min (1,311 tornado warnings), 2026-06-01 to 09-01 (`pipeline/export_weather_alerts.py:30-32`). The alerts file is the offline fallback for a phone that cannot ask NWS itself (`:33-37`); a month-old one holds none that are live (Reasoned) |
 
-Every source, exposure and dlt resource carries one of four cadences, and each node is built only by the lane equal to its fastest upstream ([Every node carries its cadence](#every-node-carries-its-cadence)). NYNJTC's alert taxonomy terms are the one daily resource, and nothing is weekly. Each fast lane runs dlt and then dbt on its own marts only. Hazard POIs reach `warnings` from the latest monthly POI build, read hourly through `--defer` and not refetched (measured on dbt-oss 2.0.5 in a probe project).
+Every source, exposure and dlt resource carries one of four cadences, and each node is built only by the lane equal to its fastest upstream ([Every node carries its cadence](#every-node-carries-its-cadence)). NYNJTC's alert taxonomy terms are the one daily resource, and nothing is weekly. Each fast lane runs dlt and then dbt on its own marts only. Hazard POIs reach `warnings` from the latest monthly POI build, read hourly through `--defer` and not refetched (measured on dbt-oss 2.0.5 in a probe project, before decision 32).
 
 ### What stays outside dbt, and why
 
@@ -195,7 +204,7 @@ Every source, exposure and dlt resource carries one of four cadences, and each n
 | Photo bytes | `fetch_atc_photos.py`, `fetch_poi_images.py` → `photos/<digest>.jpg` | binary; manifest rows load through dlt |
 | Per-cell files | `cut_trail_graph.py`, `cut_cells.py` | one file per 1° cell, and dbt has no per-cell model fan-out. The cell *assignment* can be SQL; the cutting stays Python ([Four kinds of phone file](#four-kinds-of-phone-file)) |
 | The upload | `publish.py` | gzip, cache headers, key validation, the release folder and the manifest. A DuckDB `COPY` to S3 stored every object with no `Content-Encoding` and no `Cache-Control` (measured 2026-10-01 against a local S3 stand-in), so dbt never writes the public bucket ([Publish (reverse ETL)](#publish-reverse-etl)) |
-| Python-only steps | DEM sampling (`export_elevation.ElevationSampler`), noding (`build_trail_graph.py`), route forming (`lib/hike_route_builder.py`), the identity ledger's write (`reconcile_poi_identity.py`); HTML scrapes (`lib/atc_scrape.py`) as extraction | dbt-oss 2.0.5 refuses Python models on DuckDB (measured 2026-10-01), and decision 23 sends everything else to SQL first. Each of the four steps has its measured reason in [SQL first, then an extension, then Python](#sql-first-then-an-extension-then-python); where each runs relative to dbt is [Python steps, outside dbt](#python-steps-outside-dbt) |
+| Python-only steps | DEM sampling (`export_elevation.ElevationSampler`), noding (`build_trail_graph.py`), route forming (`lib/hike_route_builder.py`), the identity ledger's write (`reconcile_poi_identity.py`); HTML scrapes (`lib/atc_scrape.py`) as extraction | dbt 2.0.6 refuses Python models on DuckDB, as dbt-oss 2.0.5 did (both measured 2026-10-01), and decision 23 sends everything else to SQL first. Each of the four steps has its measured reason in [SQL first, then an extension, then Python](#sql-first-then-an-extension-then-python); where each runs relative to dbt is [Python steps, outside dbt](#python-steps-outside-dbt) |
 
 **What moved into dbt.** The file writers are `pub_` models with a `phone_file` materialisation (decision 26), measured byte-identical to the Python writers apart from a trailing newline; PMTiles build inside dbt through GDAL. Mile calibration and the gain scan are SQL attempts with their Python kept as the fallback. The false claim that DuckDB's `COPY` cannot set GDAL's coordinate precision is corrected, with its measurement, in [Making the download smaller](#making-the-download-smaller).
 
@@ -273,6 +282,27 @@ The lane belongs to the type. That puts `oprhp_trail_closures` in `nysparks/clos
 - `atc/closures.py` defines ATC's Trail Updates resource and claims `atc_trail_updates`. `atc/warnings.py` holds `SHARES = "closures"` and no `CLAIMS`, so the claim test still sees the key once.
 - NYNJTC's alerts all read `category: null` (`lib/nynjtc_alerts.py:278`) and land in warnings, so `nynjtc/warnings.py` defines the resource and `nynjtc/closures.py` holds `SHARES = "warnings"`.
 
+#### One extraction per upstream dataset
+
+**Each upstream dataset is extracted exactly once, in its steward's folder** (decision 34; the maintainer: *"Are we landing the same data, multiple times? We shouldn't."*). USFS's national trail layer is extracted by `usfs/trail_lines.py` and nowhere else. A club whose portion lives in that layer extracts nothing for it: its `trail_lines.py` is a dated note naming the resource it draws from, which is the `via` rule of [Load everything, gate publication downstream](#load-everything-gate-publication-downstream). `trail_orgs.json` has 79 `via` rows (counted 2026-10-01): 30 point at `atc`, 21 at `nps`, 11 at `usfs`, 3 at `pasda`, and 14 at twelve other folders.
+
+**A republished copy is not a second dataset.** When an org republishes a dataset that another resource already extracts, the copy is a `SAME_AS` note naming the original resource, and the copy is never extracted. The coverage audit's examples, each measured 2026-10-01 (a bracketed name such as (b3) is the audit batch it comes from, as in [Club by club](#club-by-club)):
+
+- **DEC's ArcGIS Online twins of its on-prem layers.** `DEC_Trails/1` holds the same 5,292 segments as `dil_trails/2`, and `NYS_State_Land_Assets` layers 27, 28, 31, 35, 37 and 38 hold the same counts as the six point services loaded today (b3). The on-prem layers stay the extraction.
+- **DEC's 2025 `DEC_pointsinterest/FeatureServer/0`**: 4,317 points, last edited 2025-10-14, an older copy of the same assets (b3).
+- **CDTC's NPS POI views**: `Camping_view` (420), `NPS_Points_of_Interest_view` (742) and `2026_NPS_Campsites_view` (59) republish NPS data, which `nps` extracts (b7).
+- **CPW's three COTREX copies**: `CPWAdminData/FeatureServer/15` (83,008 lines, edited 2026-08-27), `COTREX_Spring26/0` (83,008, 2026-05-13) and `COTREX_Trails_Populated_2026/FeatureServer/54` (82,300, 2026-08-12). The newest is extracted, in place of the 2024 Boulder County snapshot `cotrex_trails` loads today (`ORG_COVERAGE_SURVEY.md` §3d), and the other two are notes (b7).
+
+A `SAME_AS` note is the whole file when a copy is all the org publishes for that type, and sits beside `CLAIMS` when the org also publishes data of its own, as CDTC does with its water caches. **It ages out and is rechecked like a `NOT_AVAILABLE` note** ([3. Note ageing](#3-note-ageing-on-the-monthly-run)), because a copy can stop being one: once its publisher edits it apart from the original, it is an independent dataset and gets a resource of its own. **The layout test fails if two resources point at the same upstream URL or item id** ([1. Layout](#1-layout-every-pull-request-pipelineteststest_extract_layoutpy)).
+
+**A club's portion is an assignment, not a copy.** dbt stages the steward's layer once, as `base_<steward>__<layer>` under `staging/<steward>/base/`: `base_usfs__trails` in `staging/usfs/base/`, never one per club. Which features are which club's is `int_<mart>__stewardship`, one row per (feature, club, basis, evidence), where the basis is one of three:
+
+- the ATC club-section polygons (`raw_atc__trail_club_sections`), for the A.T. maintaining clubs;
+- the club's trail list in `trail_orgs.json` (its `trails` field);
+- a name or ID match against the steward's own attributes.
+
+So each feature lands in its mart once, with its stewards attached, and no feature is duplicated per club or counted twice ([Layers and naming](#layers-and-naming)). **Post-load dedupe is only for independent datasets of the same ground**, such as a club's own GPS line against USFS's line ([Deduplication after the load, mart by mart](#deduplication-after-the-load-mart-by-mart)).
+
 #### Folder name = `trail_orgs.json` slug, with `-` written `_`
 
 The folder name is `trail_orgs.json`'s reviewed `slug` with `-` written `_`, because Python cannot import a hyphen. 41 of the 173 slugs have one, and none has an underscore, so the mapping reverses exactly (measured 2026-10-01).
@@ -340,10 +370,24 @@ class Resource(Protocol):
         """The dlt resource. Called only when the verdict is not FRESH."""
 
 
+@dataclass(frozen=True)
+class SameAs:
+    """A republished copy of a dataset that another resource extracts (decision 34). Never
+    extracted, and aged and rechecked like a NotAvailable, because a copy can stop being one."""
+
+    original: str  # the sources.json key whose resource extracts the dataset
+    copy: tuple[str, ...]  # the copy's URLs or ArcGIS item ids, which the layout test compares
+    confirmed: date  # the day a person compared them; never in the future
+    checked: tuple[str, ...]  # what shows it is the same data: row counts, edit dates, the item's text
+    recheck_after_days: int = RECHECK_AFTER_DAYS
+
+
 # A type file defines exactly one of:
 #   CLAIMS + RESOURCES      the keys it owns, and a Resource for each
 #   SHARES = "<type>"       a sibling file whose resource also feeds this type; no CLAIMS of its own
 #   NOT_AVAILABLE           a NotAvailable
+#   SAME_AS                 a tuple of SameAs, when a copy is all the org publishes for this type
+# and a CLAIMS file may also carry SAME_AS for the copies it does not extract.
 ```
 
 ```python
@@ -435,7 +479,7 @@ The maintainer, round 5: *"We should just load ALL the clubs now and handle any 
 | `load` | rows | extracted | published |
 |---|---|---|---|
 | `ship` | 24 | everything it publishes | a registered layer: its own sources.json `reaches_hikers` and `licence_basis` |
-| `via` | 79 | its own notices, POIs, hikes, challenges, podcasts. Its own geometry too if it publishes any (deduplicated in `int_trail_lines__unioned`); otherwise `trail_lines.py` is a note naming the folder its `via` column points to | as `ship` |
+| `via` | 79 | its own notices, POIs, hikes, challenges, podcasts. Its own geometry too if it publishes an independent line (deduplicated in `int_trail_lines__deduplicated`), and a `SAME_AS` note for a copy. Otherwise `trail_lines.py` is a note naming the resource its `via` column points to, and its portion is assigned in `int_trail_lines__stewardship` ([One extraction per upstream dataset](#one-extraction-per-upstream-dataset)) | as `ship` |
 | `hold` | 38 | every endpoint that exists; "no endpoint" is a note | a registered layer as `ship`; anything without a sources.json row, no, until a person lifts the hold |
 | `none` · `retired` | 1 · 1 | `cdt-society`: notes. `nh-granit`: notes quoting its retirement reason (below) | no |
 | `refuse` | 2 | notes quoting the terms, until permission | no |
@@ -444,17 +488,22 @@ The maintainer, round 5: *"We should just load ALL the clubs now and handle any 
 
 ### Who may publish
 
-This is the one statement of the publication rule. [The dbt project](#the-dbt-project) implements it once, in `int_sources__publication`, rule by rule. Decisions 20, 21 and 22 are the maintainer's, 2026-10-01; they are not grants from the agencies.
+This is the one statement of the publication rule. [The dbt project](#the-dbt-project) implements it once, in `int_sources__publication`, rule by rule. Decisions 20, 21, 22 and 36–39 are the maintainer's, 2026-10-01; they are not grants from the agencies.
 
 1. **A layer registered in `sources.json` publishes on its own row**: its `reaches_hikers` must be true, and its `licence_basis` must be one the `publishable_licence_bases` seed lists.
 2. **`trail_orgs.json`'s `load` decides only for a layer with no `sources.json` row.** That is most of what round 5 newly extracts, and it is where "keeps gating publication" does its work: `ship` and `via` may publish with a publishable basis; `hold`, `none` and `retired` may not until a person registers the layer.
 3. **A GIS layer an org publishes itself, anonymously, on a public endpoint is presumed reusable** for rendering into OurHike's maps with attribution (decision 21a). Public endpoints are an ArcGIS REST feature or map service, WFS, a shapefile, GeoJSON or KML download, and an open-data portal listing. The row records `licence_basis: public_gis` (maintainer, 2026-10-01). So an unstated licence on a public GIS layer no longer blocks it, and a null or `unstated` basis on anything else still does.
+   - **Decision 37 extends the presumption to layers whose own words refuse reuse**: "internal use", "not for distribution" or "all rights reserved". Served anonymously on a public GIS endpoint, they publish with attribution. That is the maintainer's decision against the items' own words, which stay quoted beside it in `sources.json`, as DEC's do under rule 4, so a reader sees both. Among them: Wisconsin DNR's park closures view, the Florida Park Service POIs, Florida Forest Service burns, Colorado Springs' and El Paso County's layers, SANDAG's SDRP trail layer, Des Moines' trails, Lancaster County's Conestoga Trail, SHTA's layers, Oregon Metro's access points, avalanche.org's map layer, the Great Plains Trail working-group layer and CPW's staff boundaries.
+   - **Still excluded**: person fields (rule 8), the four `refuse` orgs until their permission is recorded (rule 7), and anything that is not an anonymous public endpoint at all, such as login-gated apps, the PA DCNR emergency dashboard and IN DNR's restricted natural areas, because the presumption needs a public endpoint.
 4. **A DEC or OPRHP dataset listed in the NYS GIS Clearinghouse (`data.gis.ny.gov`) publishes under `licence_basis: maintainer_clearinghouse`** (decisions 20 and 22). The item's own text stays quoted beside the decision in `sources.json`, so a reader sees both: DEC's `licenseInfo` "Secondary Distribution of the data is not allowed" or "not for distribution to third parties", and OPRHP's Property item "Credit source of NY State Parks. Do not redistribute." (both re-read 2026-10-01).
    - **Measured 2026-10-01:** 21 queries against the clearinghouse's search API found 75 DEC items and 7 OPRHP items (owner `NYS.Parks.Admin`), among them DEC Trails, NYS State Land Assets, Campgrounds, Campsite Amenities (campground water spigots), NY State Parks Trails and NY State Parks Property (the `NYS_Park_Polygons` loaded today).
    - **Reasoned:** the on-prem `gisservices.dec.ny.gov` layers loaded today (`dil_trails`, `dil_land_assets_*`) are the same datasets served from a second host, so the decision covers them by dataset, not by URL.
    - **Not found in the clearinghouse** by those queries: `Current_HAB_Reports_DIL`, `Pheasant_Release`, `big_game_CopyFeatures`, `mz_deer`, `Small_Game_Seasons`, the on-prem-only `dec_backcountry_features`, and the kiosk survey. They stay under the maintainer's 2026-08-25 authorisation that `sources.json`'s `dec_licence` records (its scope followed **#1019 — A survey's proposed ring decides which of NYS Parks' and NYNJTC's trails ship, and DEC's ship not at all**), and are listed for the maintainer.
    - OPRHP's two loaded layers that are not in the clearinghouse publish under rule 3: `NY_State_Parks_Temporary_Trail_Closure` has an empty `licenseInfo`, and `NY_State_Park_Facilities` carries an accuracy disclaimer only. So all four `oprhp_*` layers publish, credited "NY State Parks".
-5. **Explicit restrictive text on any other GIS layer**, where no maintainer ruling covers it yet, is extracted and staged anyway. (A ruling already recorded, such as a `sources.json` licence block the maintainer signed off, stands.) It is quoted verbatim on the row, the row's `may_publish` is false, and every such row goes to the maintainer as **one batched question**, not one per org (decision 21a). The audit's examples are in [Club by club](#club-by-club), tier 5. Under decision 31 that question blocks go.
+5. **Other restrictive text on a GIS layer is decided by the maintainer's answers to the licence batch** (decisions 36 and 38, 2026-10-01). Each layer's own words stay quoted beside the decision in `sources.json`. (A ruling recorded earlier, such as a `sources.json` licence block the maintainer signed off, stands.)
+   - **Profit, sale or commercial use barred (decision 36): publish**, with each publisher's attribution, because OurHike is non-commercial in these terms' sense. The layers: TPWD, Virginia DCR, Idaho Parks, California State Parks, Minnesota DNR, Maricopa County, King County, Cumberland/TDEC and FWS's SHARP. California State Parks' "may not be sold or altered" is read as not covering reprojection, tiling or simplification for display (a maintainer decision), and its admin-code fields, which CSP limits to interagency use, are dropped.
+   - **Conditions rather than refusals (decision 38): publish, honouring each.** The condition travels with its layer in the `sources` mart and is enforced downstream: RIDEM's disclaimer is shown wherever its data is drawn; NHT alignments are held to zooms at or coarser than 1:100,000; Vermont ANR's CC BY-SA keeps a share-alike notice on derived files; Albuquerque's "Closed" open-space parcels are never drawn; SanGIS is not credited below 1:24,000; NJDEP's Data Distribution Agreement is read in full under **#1293 — Register New Jersey's two trail layers — NJDEP's State Park Service Trails and the Geospatial Forum's Statewide Trails — after reading the NJDEP Data Distribution Agreement in full**. **A condition that cannot be met holds its layer**: the Pacific Northwest Trail line's "not intended for trip planning" cannot be met on a line hikers plan with, so it does not publish.
+   - **Restrictive text that no decision names** is still extracted and staged, quoted verbatim on its row, with `may_publish` false, and goes to the maintainer (Reasoned: decisions 20, 22 and 36–38 answered the layers the audit found, not every wording a later layer may carry). Of the audited layers due to load, PA DCNR's Explore PA Trails ("intended for demonstration, education, planning, and monitoring purposes only … save the Commonwealth harmless") is the one none of them names. Under decision 31 such a question blocks go.
 6. **Photos, audio and page prose keep their own licence rows.** The GIS presumption does not reach them (decision 21a, "Reasoned, not decided" in the maintainer's own table). Nor do decisions 20 and 22 reach DEC's web pages (the weekly closures page, day hikes, the Fire Tower Challenge, stated climbs), which DEC's Website Content Usage policy still governs, or parks.ny.gov's pages and OPRHP's Flickr (all rights reserved).
 7. **The four `refuse` orgs (`rtc`, `onda`, `avenza`, `buckeye`) never publish until their permission is recorded** (the poll: "note now, load on permission").
 8. **Person fields never load, whatever the licence.** They are excluded inside the dlt resource, never filtered in dbt, so no copy of them exists to leak. Examples: Forest Ranger Contact's `RANGER`, `PHONE_CELL`, `PHONE_ALT`, `EMAIL`, `SUPERVISOR` and `SUPERVIS_1` (field list read 2026-10-01; the territory polygon and `REGION` are kept, and the statewide line 833-NYS-RANGERS goes in `nysdec/org.py`); OPRHP's survey views with patron contact fields, the Palisades Bear Program results among them; and the Central Iowa Trail Association status API's `updateByDisplay` and `trail.stewards`. A pytest refuses any resource whose hints or requested field list name a field on the person-field denylist, and the purge for a slip is in [Purging a field that should never have loaded](#purging-a-field-that-should-never-have-loaded).
@@ -473,6 +522,15 @@ This is the one statement of the publication rule. [The dbt project](#the-dbt-pr
 - `buckeye/trail_lines.py` lists the Ohio DNR copy through OuterSpatial among what it checked.
 
 **GATC's PDF stays review-only.** `gatc/points_of_interest.py` loads it as a manifest row plus `lib/club_pdfs.py`'s fused-string rows. Its `reaches_hikers: false` keeps it out of every mart.
+
+#### What may be fetched
+
+Decision 39, **"Allow ArcGIS copies, else ask"**, settles the fetch terms the audit found (browser-only hosts, no-automation terms, waiver gates):
+
+- **A club's own public ArcGIS layer counts as published, whatever its website's waiver says.** So ONDA's public `ODT Tracks` layer (28 sections, no licence stated; audit p06) is extracted, while the GPX, CalTopo maps and Databook behind ONDA's waiver are not fetched. Extracting it does not by itself publish it: `onda` is one of the four `refuse` rows, and rule 7 and decision 37 keep those off phones until permission is recorded. Until the maintainer says whether decision 39 also lifts that for `ODT Tracks`, its `may_publish` stays false, the cautious reading ([Open questions](#open-questions-for-the-maintainer)).
+- **The pipeline never imitates a browser.** Every request sends `lib/user_agent.py`'s own named agent (`CONTACTABLE_USER_AGENT` for Wikimedia). A host that refuses it, such as `tnstateparks.com` or LSHT's ClubExpress files, holds until the org answers.
+- **Other no-automation terms and waivers mean ask.** The plan drafts each request, and the maintainer sends it ([Club by club](#club-by-club), tier 5).
+- **ATC's trail-updates scrape stays as today**, on the open thread **#458 — Confirm with the ATC what may be republished from their Trail Updates**.
 
 ### `_shared/`
 
@@ -509,7 +567,7 @@ The files stay in `pipeline/reference/`, with its row-by-row review and its line
 | HTML: ATC Trail Updates, Long Path guide, Hike Finder, Greenbelly | `lib/atc_scrape.py`, `fetch_nynjtc_long_path_guide.py`, `fetch_hikefinder.py`, `build_shelter_capacity.py` | custom `@dlt.resource` around the existing parser; the cached pages go into the as-sent copy. ATC's paginated listing and its 24 h `CACHE_TTL` re-reads (`lib/atc_scrape.py:58`) give way to the trail-updates sitemap, with an update page fetched only when its `lastmod` moves ([The skip-unchanged check, by platform](#the-skip-unchanged-check-by-platform)) |
 | reviewed reference JSON | read by exporters | a JSON-file resource, **not dbt seeds**: the rows nest (`states` lists, mile arrays) and seeds are CSV |
 | OurHike Postgres | `export_conditions.py` | one `sql_table` per artifact whose `query_adapter_callback` returns that artifact's `PUBLIC_*_SQL` text whole, as `sa.text(...)` |
-| PBF, GeoPackage, COG, PDF, GPX, photos | per fetcher | decision 4: a manifest row (url, size, sha256, last_modified) with the bytes in the raw store; the filesystem destination later. Pixels never enter DuckDB |
+| PBF, GeoPackage, KML and KMZ, PDF, GPX, photos | per fetcher | decision 4: a manifest row (url, size, sha256, last_modified) with the bytes in the raw store; the filesystem destination later. Pixels never enter DuckDB, and no raster lands at all ([No raster lands as data](#no-raster-lands-as-data)) |
 
 **Decision 6 adds SQLAlchemy.** `sql_database` raises `MissingDependencyException` without it (measured 2026-10-01, dlt 1.30.0). This reverses `requirements.in:30-33`'s "Raw psycopg rather than SQLAlchemy on purpose".
 
@@ -517,6 +575,25 @@ The files stay in `pipeline/reference/`, with its row-by-row review and its line
 - **Privacy survives because the query text does not change.** `verified_by` and `reporter_id` never leave the database, the same split `backend/tests/test_conditions_publisher_contract.py` already holds.
 - Whether `sql_table`'s reflected column hints survive a query with computed columns (`accounts`, `latest_at`) is @unvalidated. One test against the local Postgres `backend/scripts/local-postgres.sh` starts would settle it.
 - `reader_problem()` runs first. If it reports a problem, the verdict is UNKNOWN and the run is refused, because "empty is indistinguishable from a quiet trail" (`export_conditions.py:470`).
+
+#### No raster lands as data
+
+The maintainer asked *"Are we landing many rasters?"* (decision 35). None lands, in the raw store or in the warehouse:
+
+- **The DEM** is read in place from USGS 3DEP's Cloud-Optimized GeoTIFFs by HTTP range read (`fetch_elevation.py`'s docstring: "Nothing is downloaded"). Only the sampled values are cached, as `derived.dem_samples` in the step cache ([Python steps, outside dbt](#python-steps-outside-dbt)), and `_shared/usgs/` holds the tile manifest, not tiles. The state DEMs the audit found (WDNR's, NC OneMap's, Colorado's) are recorded in notes, not loaded, because 3DEP covers the same ground.
+- **NBM forecast grids** are read in Python on the hourly weather lane, and only the derived squares are kept. `_shared/noaa_nbm/` holds the cycle manifest.
+- **The topo quads and the hiking-sheet rasters** (`fetch_topo_quads.py`, `fetch_and_mosaic_cell.py`, `assemble_raster.py`, `render_cell_tiles.py`; "~14GB across ~1,654 files" of quads, `DBT.md:31`) belong to the background map, which is out of scope ([Background map: the plan, not the change](#background-map-the-plan-not-the-change)), and that raster build is withdrawn under **#855 — Withdraw the USGS raster sheet from the app and stop building it, until it earns the compute back**.
+- **Photos** are file bytes with a manifest row (decision 4), not raster data.
+- **DuckDB's GDAL integration is vector-only**: neither DuckDB build lists a raster driver such as `GTiff` or `COG` (below).
+
+#### Reading a file-shaped source
+
+**Measured 2026-10-01**: Python's DuckDB 1.5.5 and dbt's bundled DuckDB 1.5.4 list the same 54 GDAL drivers through `ST_Drivers()`, all of them vector. GPKG, ESRIJSON, GeoJSON, KML, GPX, FlatGeobuf, PMTiles, MVT, OpenFileGDB, ESRI Shapefile, OSM, WFS, OAPIF and XLSX are among them. What that means for each file kind:
+
+- **KML** reads directly with `ST_Read`. **KMZ** does not ("Could not open GDAL dataset"), because there is no LIBKML driver; it reads through `/vsizip/<file>.kmz/doc.kml`.
+- **GPX** reads one layer at a time: `layer='waypoints'` for points, `layer='tracks'` for lines.
+- **An OSM PBF** reads natively with `ST_ReadOSM`.
+- **Fetching stays in dlt**, even though GDAL's network drivers (WFS, OAPIF) are present. A GDAL read inside DuckDB would bypass the change check, the retrying session, the project's own user agent and the run check (Reasoned, from [dlt configuration requirements](#dlt-configuration-requirements)), so DuckDB reads only bytes dlt has already landed.
 
 ### Status layers are often stale
 
@@ -551,7 +628,7 @@ The signals also disagree in the other direction: an R06 order still reads `Clos
 | change checks stay ours, before dlt, one per platform ([The skip-unchanged check, by platform](#the-skip-unchanged-check-by-platform)), and none on a safety path may be able to answer FRESH while the data moved | a cursor never sees a deleted row, and neither does an on-prem service ETag or a `max(edit date)` alone, so a lifted closure would persist | spike: pre-check 0.7 s vs a 7.5–11.2 s fetch. Measured 2026-10-01: on-prem ArcGIS ETags hash the response body (in the linked section) |
 | a 304 never reaches dlt | a 304 raises `PipelineStepFailed` | spike. The conditional request is ours; 304 means FRESH |
 | `RESTClient(session=RetryingSession(posture))` per caller, where `RetryingSession` is new: a `requests.Session` whose `send` applies `lib/http_retry.py`'s mechanism with the caller's `retryable_statuses` and `backoff`. No global `RUNTIME__REQUEST_*` | `lib/http_retry.py:24-35` keeps postures different on purpose (**#536 — One transient 504 from USGS throws away an entire publish**) | Read from dlt 1.30.0's source, 2026-10-01: a passed session replaces dlt's retrying `Client` (`dlt/sources/helpers/rest_client/client.py:89-99`), and `RESTClient` calls only `session.send` (`:155`), so the retry has to sit on `send`. That leaves one retry layer, the caller's |
-| dbt runs as its own CLI step, not `dlt.dbt` | dlt's default is `dbt ">=1.7,<2"` (`dlt/helpers/dbt/__init__.py:14`); decision 19 is dbt-oss 2.0.5 | read 2026-10-01 |
+| dbt runs as its own CLI step, not `dlt.dbt` | dlt's default is `dbt ">=1.7,<2"` (`dlt/helpers/dbt/__init__.py:14`); decision 32 is `dbt` 2.0.6 | read 2026-10-01 |
 | `dlt[filesystem,parquet,sql_database]==1.30.0` in `requirements.in` | pins install "in a job holding R2 write credentials" (CONTRIBUTING.md, "Changing a Python dependency") | **measured 2026-10-01** (`uv pip compile --universal --python-version 3.11`, the command `requirements.txt`'s header records): a fresh compile of today's `requirements.in` gives 33 pin lines (30 packages; the committed `requirements.txt` holds 27), and adding the dlt line gives 74 (71 packages), so dlt brings 41, SQLAlchemy, pyarrow, fsspec and s3fs among them. A separate `requirements-extract.in` (`requirements-dbt.in`'s precedent) would keep those 41 out of the jobs that hold the public bucket's write keys. That is the reviewer's call |
 
 ### Change checks, verdicts and `_loaded_at`
@@ -645,7 +722,8 @@ The maintainer: *"we should probably add data checks to make sure each of the di
 
 - Club folders equal the managing slugs in `trail_orgs.json` (a subset until step 2). Every umbrella and route-only slug has one `not_clubs.py` line.
 - Each folder holds exactly the 11 `TYPES` files.
-- Each file is `CLAIMS` with a non-empty `RESOURCES`, a `SHARES` naming a sibling type that has them, or a `NotAvailable`. A note needs `confirmed` not in the future, non-empty `checked` and `where`, and `recheck_after_days > 0`. `org.py` is never a note.
+- Each file is `CLAIMS` with a non-empty `RESOURCES`, a `SHARES` naming a sibling type that has them, a `NotAvailable`, or `SAME_AS` notes alone; a `CLAIMS` file may carry `SAME_AS` notes too. A note of either kind needs `confirmed` not in the future, non-empty `checked`, and `recheck_after_days > 0`; a `NotAvailable` needs a non-empty `where`, and a `SameAs` a non-empty `copy` and an `original` that some file claims. `org.py` is never a note.
+- **No upstream is extracted twice** (decision 34): no two claimed keys share a `sources.json` `url` or ArcGIS item id, and no `SameAs` copy is a claimed key's `url` or item id. Whether two spellings of one layer (a trailing `/query`, `http` against `https`) slip past this comparison is `@unvalidated` until the full catalogue first runs through it.
 - A `stg_<club>__<type>` exists for exactly the available types. Photos are included; `org` is not, because it feeds `sources` through one shared model.
 - Every sources.json key is claimed once, and every claim resolves.
 - No table sits on two pipelines, and every resource carries exactly one `meta.cadence`, with a reason wherever it overrides its type's default (decision 28a's check 1, resource side).
@@ -674,7 +752,7 @@ where not (r.outcome = 'loaded' or (r.outcome = 'skipped' and r.verdict = 'fresh
 
 ### 3. Note ageing, on the monthly run
 
-A `NotAvailable` past `confirmed + recheck_after_days` fails a separate monthly job that is **not upstream of publish**. A stale podcast note is news, not a reason to hold back this month's water data, which is DATA_RELEASES.md §1's argument for treating staleness as news. **The 180-day default is @unvalidated.** It is settled by how often the next re-survey after `ORG_COVERAGE_SURVEY.md` overturns a note of a given age.
+A `NotAvailable` or `SameAs` past `confirmed + recheck_after_days` fails a separate monthly job that is **not upstream of publish**. A `SameAs` ages because a copy can stop being one: once its publisher edits it apart from the original, it is an independent dataset with a resource of its own (decision 34). A stale podcast note is news, not a reason to hold back this month's water data, which is DATA_RELEASES.md §1's argument for treating staleness as news. **The 180-day default is @unvalidated.** It is settled by how often the next re-survey after `ORG_COVERAGE_SURVEY.md` overturns a note of a given age.
 
 ### What each check catches that the others cannot
 
@@ -682,11 +760,13 @@ A `NotAvailable` past `confirmed + recheck_after_days` fails a separate monthly 
 |---|---|---|---|
 | a missing folder, a twelfth file, a file that is neither resource nor note | ✓ | — | — |
 | a registered layer nobody extracts, or one claimed twice | ✓ | — | — |
+| one upstream dataset extracted twice, under two keys or in two folders | ✓ | — | — |
 | a staging model for a type that is only a note, or an available type with no staging model | ✓ | — | — |
 | a resource that never ran this lane, or a zero nobody can prove | — | ✓ | — |
 | an upstream that 403s, empties, halves, or cannot be asked | — | ✓ | — |
 | a load that fails part-way: an emptied, cut-short or uncommitted table | — | ✓ (after the load) | — |
 | an org that started publishing after somebody looked | — | — | ✓ |
+| a `SAME_AS` copy that has drifted from its original | — | — | ✓ |
 
 ### Tests under the socket guard
 
@@ -694,21 +774,40 @@ Every extract test runs under `pipeline/tests/conftest.py:115-143`'s `no_outside
 
 ## The dbt project
 
-Unless a line says otherwise, every measured figure here comes from the planning research of 2026-10-01: a scratch copy of `pipeline/`, the fixtures `make_dbt_fixtures.py` writes, and the evaluator cloned at `v1.4.0`. **Most ran on dbt-core 1.12.2 with the Python adapter dbt-duckdb 1.11.0, before decision 17 moved the project to v2**, and each one says so where it matters.
+Unless a line says otherwise, every measured figure here comes from the planning research of 2026-10-01: a scratch copy of `pipeline/`, the fixtures `make_dbt_fixtures.py` writes, and the evaluator cloned at `v1.4.0`. **Most ran on dbt-core 1.12.2 with the Python adapter dbt-duckdb 1.11.0, before decision 17 moved the project to v2**, and each one says so where it matters. A figure marked 2.0.5 ran on dbt-oss 2.0.5, before decision 32 moved the project to `dbt` 2.0.6. Where the same probe has been re-run on 2.0.6, the line says so; where it has not, the figure is the fallback distribution's, and that it carries over is Reasoned from stage 1's CI job passing unchanged on both.
 
-### Version: dbt-oss 2.0.5, one version everywhere
+### Version: dbt 2.0.6, one version everywhere
 
 | Item | Evidence | Consequence |
 |---|---|---|
-| Version | `dbt-oss` 2.0.5, Apache-2.0, released 2026-09-18 (decision 17) | `requirements-dbt.in` pins `dbt-oss==2.0.5`. `dbt-duckdb` leaves (v2 bundles its own DuckDB driver), and so does `sqlfluff-templater-dbt` (it needs dbt-core) |
-| One version | Decision 19: *"Keep the dbt versions aligned"* | No dbt-core 1.12 anywhere: not for SQLFluff, not for charts, not for docs. **Supersedes decision 17's side environment and the session's call T1** |
-| YAML | Measured: 2.0.5 refuses today's project with **64 parse errors**. 56 are `loaded_at_field`/`freshness`, which must move under `config:`. 8 are generic-test arguments, which must move under `arguments:` (1.12 already warns `MissingArgumentsPropertyInGenericTestDeprecation` for those) | All 64 are in YAML. With them fixed in a scratch copy, 2.0.5 built every node green (measured) |
-| Speed | Measured on the fixtures: **2.0.5 built 146 nodes (29 models, 116 tests, 1 seed) in 4.1 s, against 7.1 s for the full build on 1.12.2**, which counted 141 nodes | A real-data build is untimed (`@unvalidated`; the first monthly run's log settles it) |
-| Packages | `dbt_utils` 1.4.1, `codegen` 0.14.1 and evaluator 1.4.0 accept dbt `<3.0.0`; the evaluator's `require-dbt-version` reads `[">=1.10.6", "<3.0.0"]` | The evaluator moves 1.3.2 → 1.4.0. Measured working on v2, with the same 5 warnings |
-| DuckDB | v2 bundles **1.5.4**. The pipeline pins **1.5.5**, where `duckdb-extension-spatial` stops. v2 installed its own spatial extension under `~/.duckdb/extensions/v1.5.4`, which `seed_spatial_extension.py` does not seed | In the sandbox a plain `.duckdb` file round-tripped 1.5.5 → 1.5.4 → 1.5.5, and both versions shared a DuckLake catalog (Measured 2026-10-01, [DuckLake at phases 3 and 4](#ducklake-at-phases-3-and-4)). `@unvalidated`: the same on a runner, and whether v2 loads spatial there without reaching extensions.duckdb.org. **One CI run settles both.** Fallback: pin Python's `duckdb` to the 1.5.4 that dbt-oss bundles, so the whole pipeline runs one DuckDB version as it runs one dbt version (Reasoned). `duckdb-extension-spatial` 1.5.4 is on PyPI (checked 2026-10-01); whether the rest of the pipeline accepts the step down from 1.5.5 is `@unvalidated`, settled by the pytest suite on 1.5.4 |
+| Version | `dbt` 2.0.6, the full distribution (decision 32, which superseded decision 17's `dbt-oss` 2.0.5) | `requirements-dbt.in` pins `dbt==2.0.6`, and `requirements-dbt.txt` is its pip-compile on Python 3.12. `dbt-duckdb` and `sqlfluff-templater-dbt` left with dbt-core |
+| Licence | the dbt Product Licensing Agreement, not an open-source licence. 2.0.6's PyPI metadata carries no licence field at all (read 2026-10-01) | only documented opt-outs are used (below) |
+| One version | Decision 19: *"Keep the dbt versions aligned"* | No dbt-core 1.12 anywhere, and no second v2 distribution beside the first: not for SQLFluff, not for charts, not for docs. **Supersedes decision 17's side environment and the session's call T1.** Decision 32 changed which distribution, not how many |
+| Fallback | `dbt-oss` 2.0.5 (Apache-2.0, released 2026-09-18) ran the same project files green through every step of the CI job (measured 2026-10-01) | swapping back is one line in `requirements-dbt.in`, a recompile, and `scripts/test.sh`'s version check, which reads that file |
+| On a runner | **Measured 2026-10-01, run 36876123026 at e8dc1692**: the `dbt` job passed every step in 46 s on GitHub's `ubuntu-latest`, on 2.0.6: SQLFluff, deps, parse, `dbt lint` (32 files in 0.04 s), seed, build 153 of 153, source freshness, docs (315 assets and 38 Parquet files), and the evaluator 77 of 77 | stage 1's job is the gate every later stage passes. Its runtime cache missed on that run, so the runner downloaded dbt's driver and spatial itself |
+| YAML | Measured: 2.0.5 refused the v1-shaped project with **64 parse errors**. 56 were `loaded_at_field`/`freshness`, which must move under `config:`. 8 were generic-test arguments, which must move under `arguments:` (1.12 already warns `MissingArgumentsPropertyInGenericTestDeprecation` for those) | All 64 were in YAML, and stage 1 moved them. 2.0.6 parses the moved YAML clean (measured 2026-10-01) |
+| Speed | Measured on the fixtures: **2.0.5 built 146 nodes (29 models, 116 tests, 1 seed) in 4.1 s, against 7.1 s for the full build on 1.12.2**, which counted 141 nodes. On the runner run above, 2.0.6 built stage 1's 153 nodes in 1.5 s | A real-data build is untimed (`@unvalidated`; the first monthly run's log settles it) |
+| Packages | `dbt_utils` 1.4.1, `codegen` 0.14.1 and evaluator 1.4.0 accept dbt `<3.0.0`; the evaluator's `require-dbt-version` reads `[">=1.10.6", "<3.0.0"]` | The evaluator moved 1.3.2 → 1.4.0. All three parse and run on 2.0.6 and on 2.0.5 (measured 2026-10-01); `package-lock.yml` is the file dbt-oss wrote, read unchanged by 2.0.6 |
+| DuckDB | Both distributions bundle **1.5.4**. The pipeline pins **1.5.5**, where `duckdb-extension-spatial` stops. v2 installs its own spatial extension under `~/.duckdb/extensions/v1.5.4`, which `seed_spatial_extension.py` does not seed | **Measured on the runner run above**: dbt 2.0.6 read the warehouse Python's 1.5.5 wrote and built 153 nodes green, after fetching its own 1.5.4 spatial on the cache miss. In the sandbox, a plain `.duckdb` file round-tripped 1.5.5 → 1.5.4 → 1.5.5, both versions shared a DuckLake catalog ([DuckLake at phases 3 and 4](#ducklake-at-phases-3-and-4)), and with the driver and spatial cached, 2.0.6 parsed and built with every outbound connection refused. `@unvalidated`: that a cache-hit run on a runner never reaches extensions.duckdb.org; the job's next run on the same requirements hash settles it. Fallback: pin Python's `duckdb` to the 1.5.4 that dbt bundles, so the whole pipeline runs one DuckDB version as it runs one dbt version (Reasoned). `duckdb-extension-spatial` 1.5.4 is on PyPI (checked 2026-10-01); whether the rest of the pipeline accepts the step down from 1.5.5 is `@unvalidated`, settled by the pytest suite on 1.5.4 |
 | dbt Charts | `dbt-charts` 0.8.0 and `main` pin `dbt-core>=1.8,<2` (read 2026-10-01) | A named external blocker ([Docs and charts](#docs-and-charts)) |
 
-**The gate.** In the `dbt` job, `dbt parse` on 2.0.5 is the first dbt command, after lint and `dbt deps` (parse needs the packages) and before fixtures and load, so a YAML shape v2 refuses fails in seconds. The job id stays `dbt`: it is a required check (`.github/expected-protections.yml:77`), and renaming a job hangs the merge queue (`.github/workflows/README.md:19-29`).
+**The licence.** `dbt` 2.0.6 is licensed under the dbt Product Licensing Agreement. Its FAQ reads: "You can use the full version of dbt internally, for free and without restriction. This includes using dbt to provide transformed data to other customers." Its limits are a hosted or managed service for third parties, which OurHike does not run, and §4, which applies only if the binary is redistributed (Reasoned: CI installs it from PyPI and dbt's CDN, and nothing OurHike ships carries it). Two clauses decide how it runs here:
+
+- **§2.3** says dbt collects usage information, and documents how to opt out.
+- **§3.2** forbids disabling licence validation "or any functionality that causes the Products to interact with the dbt Platform or online services of Provider".
+
+So **only documented opt-outs are used.** Telemetry is off through dbt's "anonymous usage stats" switch, and `DBT_SKIP_REMOTE_LICENSE` and every similar undocumented switch are never set.
+
+**Telemetry is off, by `DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS=false`**, set as job-level `env:` on the `dbt` job in `pipeline-tests.yml` and on every dbt command `scripts/test.sh` runs. Measured 2026-10-01 through a proxy that logs every connection: without it, each 2.0.6 command tried (parse, show) opened `p.vx.dbt.com`; with it, parse, show and build opened none, and neither did the whole job. `DO_NOT_TRACK=1`, which the same docs page offers, still opened `p.vx.dbt.com`, so it is not used.
+
+**What dbt downloads at run time, and the cache.** Neither v2 distribution ships a database driver. On its first command dbt downloads the ADBC driver for the profile's adapter from `public.cdn.getdbt.com`, and its DuckDB then installs spatial from extensions.duckdb.org. Measured 2026-10-01 from an empty HOME on 2.0.6: `libadbc_driver_duckdb-1.5.4.so`, 70,458,712 bytes, into `~/.cache/com.getdbt/adbc/`, and the 1.5.4 spatial build, 80,848,518 bytes, into `~/.duckdb/extensions/v1.5.4/`. dbt-oss 2.0.5's cold run downloaded the same driver file.
+
+- **The `dbt` job caches both paths**, keyed on `requirements-dbt.txt`'s hash, because with both present 2.0.6 parsed and built 153 of 153 nodes with every outbound connection refused (measured the same day). A warm cache turns an outage of either host into nothing and saves about 151 MB a run.
+- **A miss downloads both again**, and the paths are where dbt wrote, not a documented location. If a later dbt moves them, the restore puts back files nothing reads and the run downloads as before: slower, never wrong.
+- **2.0.6 still opens `public.cdn.getdbt.com` once per command**, with its driver cached; dbt-oss 2.0.5 did not (measured 2026-10-01). What that call carries is not in the debug log, and nothing here touches it, because §3.2 forbids it.
+- **Installing 2.0.6 reaches the same CDN.** PyPI holds a 3,291-byte sdist whose build step downloads the real wheel from `public.cdn.getdbt.com/fs/wheels` and refuses it unless its sha256 matches the sdist's own `assets.json` (read 2026-10-01).
+
+**The gate.** In the `dbt` job, `dbt parse` is the first dbt command after `dbt deps` (parse needs the packages), and `dbt lint` follows it. Both run before the fixtures and the load, so a YAML shape v2 refuses fails in seconds: on the runner run above, parse took 354 ms and lint 387 ms. The job id stays `dbt`: it is a required check (`.github/expected-protections.yml:77`), and renaming a job hangs the merge queue (`.github/workflows/README.md:19-29`).
 
 ### Extensions dbt loads
 
@@ -731,7 +830,7 @@ Only `h3` is listed, because only `h3` has a ledger row today. `geography`, `a5`
 
 **Two `@unvalidated` checks, one CI run each:**
 
-1. Whether dbt-oss 2.0.5's DuckDB adapter loads a community extension from `profiles.yml` at all. The shape above is dbt-duckdb's; v2 does not load dbt-duckdb, and it was measured installing `spatial` from the profile only.
+1. Whether dbt 2.0.6's DuckDB adapter loads a community extension from `profiles.yml` at all (not tried on either v2 distribution). The shape above is dbt-duckdb's; v2 does not load dbt-duckdb, and it was measured installing `spatial` from the profile only.
 2. Whether `h3`, `geography` and `a5` have builds for v2's bundled DuckDB 1.5.4. They were measured installing on 1.5.5 only, so the CI run probes all three, not only the one listed.
 
 **The fallback**, if either fails, is a pre-hook on the models that need the extension:
@@ -754,12 +853,12 @@ pipeline/dbt/
 │   │   ├── <club>/                        # each managing club with ≥1 available extract file
 │   │   │   ├── _<club>__sources.yml       # every raw table dlt writes for the club
 │   │   │   ├── _<club>__models.yml
-│   │   │   ├── base/  _<club>__base.yml, base_<club>__<layer>.sql    # one source() each
+│   │   │   ├── base/  _<club>__base.yml, base_<club>__<layer>.sql    # one source() each, only in the folder that extracts the layer
 │   │   │   └── stg_<club>__<mart>.sql     # one per available file: at most nine marts, plus stg_<club>__photos
 │   │   ├── registry/                      # sources.json, trail_orgs.json, org.py rows
 │   │   ├── nws/ osm/ usgs/ opentrail/ podcasts/ ourhike/   # _shared/ sources
 │   │   └── derived/                       # tables the Python steps write
-│   ├── intermediate/<mart>/   int_<mart>__unioned.sql, int_<mart>__<verb>.sql
+│   ├── intermediate/<mart>/   int_<mart>__unioned.sql, int_<mart>__<verb>.sql, int_<mart>__stewardship.sql
 │   ├── intermediate/sources/  int_sources__publication.sql      # the one home of may_publish
 │   ├── marts/<mart>/          <mart>.sql, _<mart>__models.yml   # eleven folders
 │   ├── reporting/             rpt_counts_by_club_and_mart.sql, rpt_source_freshness.sql
@@ -773,10 +872,11 @@ pipeline/dbt/
 
 | Layer | Name | Reads | Does |
 |---|---|---|---|
-| base | `base_<club>__<layer>` | one `source()` | Renames and casts; `st_setcrs(st_geomfromgeojson(geometry), 'OGC:CRS84')`; aliases every column in lowercase. No filter, no join. One source per model is what `fct_multiple_sources_joined` requires, and one child per source keeps `fct_source_fanout` at 0 (Reasoned) |
+| base | `base_<steward>__<layer>`, in `staging/<steward>/base/`: the folder that extracts the layer, once per dataset (decision 34), so `base_usfs__trails` and never one per club | one `source()` | Renames and casts; `st_setcrs(st_geomfromgeojson(geometry), 'OGC:CRS84')`; aliases every column in lowercase. No filter, no join. One source per model is what `fct_multiple_sources_joined` requires, and one child per source keeps `fct_source_fanout` at 0 (Reasoned) |
 | staging | `stg_<club>__<mart>` | that club's base models | Conforms to the mart's shape and applies the club's own review gate (for example ATC's reviewed file). One per available file in the 11-file contract. `org.py` lands in the shared `stg_registry__orgs`, and `photos.py` in `stg_<club>__photos`, which feeds POIs and no mart |
 | union | `int_<mart>__unioned` | every `stg_<club>__<mart>` | `union all by name`, no filter |
 | heavy | `int_<mart>__<verb>` | unions, intermediates, `stg_derived__*` | dedup, corridor, water distance, mile axis, graph |
+| stewardship | `int_<mart>__stewardship` | the mart's deduplicated intermediate, `stg_registry__orgs`, ATC's club sections | one row per (feature, club, basis, evidence): which clubs steward each feature, by the ATC club-section polygons, the club's trail list in `trail_orgs.json`, or a name or ID match (decision 34). It assigns a portion and never copies a feature |
 | mart | one of the eleven names | intermediates | contract, `access: public`, exposures |
 
 The base → staging → union shape was measured on 1.12.2 against the evaluator: `int_pois_unioned`'s direct parents fell from 13 to 3 and no new finding appeared. The evaluator already knows the `base` layer (its 1.4.0 defaults carry `base_prefixes: ['base_']` and `base_folder_name: 'base'`) and treats `rpt_` as `other_prefixes`. **`union all by name` replaces today's positional `select *`** in `int_pois_unioned.sql` (the model's own header calls the column order "a semantic contract"). Under the positional union a swapped `st_x`/`st_y` put every DEC lean-to in Antarctica on a green run, `PASS=145` (`assert_pois_land_in_the_region_this_build_covers.sql`'s header). By-name matching closes that route (Reasoned), and the region test stays because a swap inside one base model still unions cleanly. This replaces `DBT.md:82`'s `int_<entity>_<verb>` and `dim_`/`fct_` names, and its views for intermediates (today's `dbt_project.yml` sets `intermediate: +materialized: view`).
@@ -811,7 +911,7 @@ Consumers call `st_linelocatepoint`, then interpolate between anchors. The held-
 
 ### The eleven marts
 
-Every mart carries `club varchar`, `source_key varchar` (with a relationships test to `sources`) and `_loaded_at timestamp`. Every mart except `sources` keeps only rows whose source has `may_publish` (from `int_sources__publication`); `sources` keeps every registered row, because it is where the flag is read. Keys are `varchar` unless the table says otherwise.
+Every mart carries `club varchar` (the folder that extracted the row), `source_key varchar` (with a relationships test to `sources`) and `_loaded_at timestamp`. Each feature appears once, with its stewards attached from `int_<mart>__stewardship`, never once per club (decision 34). Every mart except `sources` keeps only rows whose source has `may_publish` (from `int_sources__publication`); `sources` keeps every registered row, because it is where the flag is read. Keys are `varchar` unless the table says otherwise.
 
 | Mart | One row per | Key | Lane | From | Phone files, by today's exporter (each file is an exposure; its writer, key and format are in [Publish (reverse ETL)](#publish-reverse-etl)) |
 |---|---|---|---|---|---|
@@ -862,7 +962,8 @@ select
     case
         when org.load = 'refuse' and org.permission_recorded_on is null then false        -- rule 7
         when layer.restrictive_text is not null
-             and layer.ruled_on is null then false            -- rule 5: no maintainer ruling yet, so the batched question
+             and layer.ruled_on is null then false            -- rule 5: restrictive text that no decision names
+        when layer.condition_unmet then false                 -- rule 5 (decision 38): a condition that cannot be met holds the layer
         when layer.licence_basis = 'public_gis' and not layer.is_gis then false           -- rule 6: no presumption for photos, audio, prose
         when layer.licence_basis = 'public_domain' and org.type <> 'federal' then false   -- only a federal work is public domain
         when layer.registered then layer.reaches_hikers and basis.licence_basis is not null           -- rule 1
@@ -870,7 +971,8 @@ select
     end as may_publish,
     layer.licence_basis,         -- rules 3 and 4 arrive as public_gis and maintainer_clearinghouse
     layer.restrictive_text,      -- quoted verbatim, and kept beside a ruling so a reader sees both (rule 4)
-    layer.ruled_on               -- the date of the maintainer's ruling: decisions 20 and 22, or an earlier licence block
+    layer.ruled_on,              -- the date of the maintainer's ruling: decisions 20, 22 and 36–38, or an earlier licence block
+    layer.conditions             -- decision 38's conditions, verbatim, for the writer or filter that enforces each
 from {{ ref('stg_registry__layers') }} as layer
 inner join {{ ref('stg_registry__orgs') }} as org using (club)
 left join {{ ref('publishable_licence_bases') }} as basis using (licence_basis)
@@ -979,11 +1081,11 @@ where public_field is null or public_flag_sets_confidence or flagged_public     
 | Access, exposures | Measured: public + contract + described columns passes `fct_public_models_without_contract` and `fct_undocumented_public_models`; an exposure on a public table passes | Marts public, intermediates protected. One exposure per phone output (decision 24), described in [Publish (reverse ETL)](#publish-reverse-etl) |
 | Versions | — | None at first: one consumer family per mart (Reasoned) |
 
-**Every "measured" above ran on 1.12.2 through dbt-duckdb, an adapter v2 does not load.** Three of them have since been measured on 2.0.5 against a plain DuckDB file (2026-10-01, [Where data lives between runs](#where-data-lives-between-runs)): a `check` violation failed the build in `__dbt_tmp` and kept the old table, although dbt warned the check "will be ignored"; a known, different CRS (`EPSG:4326` against `OGC:CRS84`) failed the build; and a CRS-less geometry passed. `primary_key` and `check` both fail any build into DuckLake. `UnversionedBreakingChange` and a dropped column are still `@unvalidated` on 2.0.5. What is known: 2.0.5's `dbt build --help` does not list `--warn-error-options`, but `dbt parse` accepts the flag and refuses a malformed value with exit 2, so the flag is parsed. One probe run settles the rest: a dropped column must fail.
+**Every "measured" above ran on 1.12.2 through dbt-duckdb, an adapter v2 does not load.** Three of them have since been measured on 2.0.5 against a plain DuckDB file (2026-10-01, [Where data lives between runs](#where-data-lives-between-runs)): a `check` violation failed the build in `__dbt_tmp` and kept the old table, although dbt warned the check "will be ignored"; a known, different CRS (`EPSG:4326` against `OGC:CRS84`) failed the build; and a CRS-less geometry passed. `primary_key` and `check` both fail any build into DuckLake. `UnversionedBreakingChange` and a dropped column are still `@unvalidated` on 2.0.5. What is known: 2.0.5's `dbt build --help` does not list `--warn-error-options`, but `dbt parse` accepts the flag and refuses a malformed value with exit 2, so the flag is parsed. 2.0.6's `dbt build --help` does not list it either (read 2026-10-01), and none of these contract probes has been re-run on 2.0.6. One probe run on 2.0.6 settles the rest: a dropped column must fail.
 
 ### Python steps, outside dbt
 
-**dbt-oss 2.0.5 refuses Python models on DuckDB** ("Python models are not supported for duckdb adapter", measured 2026-10-01 in [Keeping every rule we already built](#keeping-every-rule-we-already-built)), and decision 19 allows one dbt version. So a rule that must stay Python runs outside dbt, in one of two places:
+**dbt refuses Python models on DuckDB, on 2.0.6 as on dbt-oss 2.0.5** ("Python models are not supported for duckdb adapter", both measured 2026-10-01 in [Keeping every rule we already built](#keeping-every-rule-we-already-built)), and decision 19 allows one dbt version. So a rule that must stay Python runs outside dbt, in one of two places:
 
 - **before a dbt invocation**, as a step that reads named intermediates and writes a `derived` table. dbt reads that table as a source, staged as `stg_derived__<thing>`, because an intermediate reading a source trips `fct_marts_or_intermediate_dependent_on_source`. An exposure `step_<name>` on the step's inputs makes the docs show both halves.
 - **after the marts**, as a cell cutter (`cut_cells.py`, `cut_trail_graph.py`) that reads the files the `pub_` writers wrote ([Publish (reverse ETL)](#publish-reverse-etl)), or before dbt as a dlt resource.
@@ -1015,7 +1117,7 @@ The maintainer, decision 24: *"maybe we should think of that final step as "reve
 
 The four kinds of file, and which phone output is which, are one table in [Four kinds of phone file](#four-kinds-of-phone-file).
 
-**What exposures give, measured on dbt-oss 2.0.5:**
+**What exposures give, measured on dbt-oss 2.0.5** (re-run on 2.0.6 below):
 
 - An exposure parsed into the manifest with its `depends_on` and `meta` intact.
 - `dbt ls --select +exposure:<name>` listed exactly its upstream models, so `dbt build --select +exposure:<name>` builds what one file needs.
@@ -1023,7 +1125,14 @@ The four kinds of file, and which phone output is which, are one table in [Four 
 - Docs lineage (`dbt.edges`) carried model → exposure edges.
 - The evaluator's `fct_exposure_parents_materializations` passed, because it flags only `view` and `ephemeral` parents.
 
-**How `state:modified+` decides which writers run.** On a pull request, CI selects `state:modified+` against the merge-base manifest. Every writer is a `pub_` model that its file's exposure depends on, so that selection already holds the writers whose files the change can alter, and no others (Reasoned from the measurement above). CI then reads the selected exposures out of `manifest.json`, since 2.0.5 refuses `dbt ls --resource-type exposure` (measured, 2026-10-01), and their `meta.r2_keys` are the phone files the pull request stales. The monthly and hourly lanes run every writer their selector reaches. `scripts/pipelines.sh` still answers for the paths dbt does not own, such as the cell cutters and the basemap (Reasoned).
+**On dbt 2.0.6, measured 2026-10-01**, on a scratch copy of stage 1's `pipeline/dbt/` against the fixture warehouse, with one exposure, `poi_files`, on `dim_pois`:
+
+- It parsed into the manifest with its `depends_on` and `meta` intact.
+- `dbt ls --select +exposure:poi_files --resource-type model` listed the same 15 models as `+dim_pois`, and `dbt build --select +exposure:poi_files` built them green: 15 models, 82 tests and 1 seed.
+- After one staging model was edited, `state:modified+` selected it, its two downstream models and `poi_files`.
+- The manifest's `child_map` carries the model → exposure edge. The docs' `dbt.edges` and the evaluator rule above were not re-run on 2.0.6.
+
+**How `state:modified+` decides which writers run.** On a pull request, CI selects `state:modified+` against the merge-base manifest. Every writer is a `pub_` model that its file's exposure depends on, so that selection already holds the writers whose files the change can alter, and no others (Reasoned from the measurement above). CI then reads the selected exposures out of `manifest.json`, since v2 refuses `dbt ls --resource-type exposure` (measured 2026-10-01 on 2.0.5 and on 2.0.6, whose accepted values stop at `model, source, seed, snapshot, test, unit_test, analysis, function, semantic_model, metric, saved_query, check`), and their `meta.r2_keys` are the phone files the pull request stales. The monthly and hourly lanes run every writer their selector reaches. `scripts/pipelines.sh` still answers for the paths dbt does not own, such as the cell cutters and the basemap (Reasoned).
 
 ```yaml
 # pipeline/dbt/models/exposures.yml (shape: one entry per phone output)
@@ -1084,12 +1193,12 @@ Whether the evaluator accepts `pub_` models in `models/publish/` as they stand, 
 
 Two conditions come with it:
 
-- **A second spatial seed.** v2 put its spatial extension under `~/.duckdb/extensions/v1.5.4/`, and `seed_spatial_extension.py` seeds only Python's 1.5.5. A runner without access to extensions.duckdb.org therefore needs a second seed, which is CI step 3 in [Running it](#running-it) (`@unvalidated`).
+- **A second spatial seed.** v2 put its spatial extension under `~/.duckdb/extensions/v1.5.4/`, and `seed_spatial_extension.py` seeds only Python's 1.5.5. A runner without access to extensions.duckdb.org therefore needs a second seed or a cache, which is CI step 3 in [Running it](#running-it). Stage 1's job caches that directory with dbt's driver ([Version](#version-dbt-206-one-version-everywhere)); that a cache hit keeps a runner off extensions.duckdb.org is `@unvalidated`.
 - **The header-zoom check moves.** `write_tiles` asserts the header's zooms, against "a creation option GDAL silently ignored". That assertion becomes a check inside the materialisation.
 
 The SQL alternative builds tiles with `ST_TileEnvelope` + `ST_AsMVTGeom` + `ST_AsMVT`. It came out 5.1% smaller (3,496,685 B against 3,685,407 B from today's GDAL call) and took 7.07 s against 3.37 s (Measured). It fits decision 23 and gives per-zoom control. It is adopted only when the tiles change for another reason, after a tile-by-tile parity check against the GDAL archive (`@unvalidated`: visual parity was not compared).
 
-**Why not dbt's `external` materialisation.** It works on dbt-oss 2.0.5, and it does not fit (Measured):
+**Why not dbt's `external` materialisation.** It works on dbt-oss 2.0.5, and it does not fit (Measured on 2.0.5, not re-run on 2.0.6):
 
 | What `external` does on 2.0.5 | Consequence |
 |---|---|
@@ -1121,12 +1230,12 @@ Neither is anything a phone reads.
 
 | Setting | Value and reason |
 |---|---|
-| Severity | `+severity: "{{ env_var('DBT_PROJECT_EVALUATOR_SEVERITY', 'error') }}"`: error everywhere by default, `warn` for a local survey. Measured on 1.12.2: `error` on today's project gives 5 FAIL, exit 1. On 2.0.5 the warn-only run reports the same five (measured); the `error` run there is `@unvalidated`, settled by the first v2 CI run |
+| Severity | `+severity: "{{ env_var('DBT_PROJECT_EVALUATOR_SEVERITY', 'error') }}"`: error everywhere by default, `warn` for a local survey. Measured on 1.12.2: `error` on the then-current project gives 5 FAIL, exit 1. On 2.0.5 the warn-only run reported the same five (measured). On v2 the `error` run is measured too, 2026-10-01 on 2.0.6 and on 2.0.5: with the exceptions seed emptied and one coverage test removed, `error` failed with 4 errors (exit 1), and `warn` exited 0. Stage 1's CI runs it at `error`: 77 of 77 on the runner run in [Version](#version-dbt-206-one-version-everywhere) |
 | No global `--warn-error` | It escalated 8 deprecations (measured, 1.12.2) and would fail every deliberate `warn`, such as freshness. Errors are named in `--warn-error-options` instead |
-| `marts_prefixes` | `['trail_','points_','elevation_','closures_','warnings_','podcasts_','challenges_','places_','suggested_','sources_']`, replacing the default `['fct_', 'dim_']`. The evaluator's prefix is `split_part(name,'_',1) || '_'`, so `trail_` covers both `trail_lines` and `trail_network`. Measured on 1.12.2 with the first seven prefixes: passing, and failing `dim_pois` as wanted. On 2.0.5 it is `@unvalidated` (session call T2) until the first evaluator run there. A var rather than an exceptions row, because a `marts` row would switch naming off for every mart |
+| `marts_prefixes` | `['trail_','points_','elevation_','closures_','warnings_','podcasts_','challenges_','places_','suggested_','sources_']`, replacing the default `['fct_', 'dim_']`. The evaluator's prefix is `split_part(name,'_',1) \|\| '_'`, so `trail_` covers both `trail_lines` and `trail_network`. Measured on 1.12.2 with the first seven prefixes: passing, and failing `dim_pois` as wanted. Measured again 2026-10-01 on 2.0.6 and on 2.0.5 (session call T2), against a scratch copy with one model for each of the eleven names under `models/marts/<name>/`: no naming or directory finding for any of them (`dbt_project.yml`'s comment). Whether `pub_` models also need `other_prefixes` is the open half, in [Publish (reverse ETL)](#publish-reverse-etl). A var rather than an exceptions row, because a `marts` row would switch naming off for every mart |
 | Coverage | `test_coverage_target` and `documentation_coverage_target` both stay at their default of 100. They cannot be excepted per model, so every model carries its primary-key test, which the primary-key rule demands anyway, and a description |
 
-**The exceptions seed** is `seeds/dbt_project_evaluator_exceptions.csv` (`fct_name, column_name, id_to_exclude, comment`), with the package's copy disabled and `id_to_exclude` as a SQL `LIKE` pattern. **Every comment carries its reason and an issue number with title**, and a pytest refuses a row without them. The intended state has two rows, both citing **#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads**:
+**The exceptions seed** is `seeds/dbt_project_evaluator_exceptions.csv` (`fct_name, column_name, id_to_exclude, comment`), with the package's copy disabled and `id_to_exclude` as a SQL `LIKE` pattern. **Every comment carries its reason and an issue number with title**, and a pytest refuses a row without them. **Stage 1's seed holds 8 rows today**, each with its reason: `fct_too_many_joins` on `int_%unioned` (today's `int_pois_unioned` and its 13 parents), `fct_unused_sources` on `raw_oprhp__oprhp_park_polygons` (loaded, not yet staged), and six `fct_missing_primary_key_tests` rows for the staging models with no recorded id (NYNJTC's two, Mohonk's and OPRHP's three). Each leaves with the stage that fixes it. The intended state has two rows, both citing **#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads**:
 
 | `fct_name` | `column_name` | `id_to_exclude` | reason |
 |---|---|---|---|
@@ -1149,25 +1258,27 @@ The column names are the ones each rule's SQL selects in evaluator 1.4.0.
 
 ### SQLFluff
 
-`pipeline/.sqlfluff` keeps the `duckdb` dialect, ST06 off and RF04 ignoring `name`/`source`, each with its reason in the file's header. **The templater becomes `jinja`, in CI and locally** (decision 19), because `sqlfluff-templater-dbt` needs dbt-core 1.x. Measured on today's 32 files (sqlfluff 4.3.0), both find 0 violations: the dbt templater takes 9.7 s serial or 4.7 s with 4 processes, the jinja templater **3.0 s or 2.0 s**. The jinja templater needs no warehouse, so lint moves from after the load (`pipeline-tests.yml`'s `sqlfluff lint` step, after `dbt seed`) to first in the job.
+`pipeline/.sqlfluff` keeps the `duckdb` dialect, ST06 off and RF04 ignoring `name`/`source`, each with its reason in the file's header. **The templater becomes `jinja`, in CI and locally** (decision 19), because `sqlfluff-templater-dbt` needs dbt-core 1.x, which neither v2 distribution is. Measured on today's 32 files (sqlfluff 4.3.0), both find 0 violations: the dbt templater takes 9.7 s serial or 4.7 s with 4 processes, the jinja templater **3.0 s or 2.0 s**. The jinja templater needs no warehouse, so lint moves from after the load (`pipeline-tests.yml`'s `sqlfluff lint` step, after `dbt seed`) to first in the job.
 
 The measured configuration was `templater = jinja`, `apply_dbt_builtins = True` and `library_path = dbt/sqlfluff_libs`, whose `dbt_utils/__init__.py` is a two-line Python stub of `generate_surrogate_key`. Adding `load_macros_from_path = dbt/macros`, so the project's own macros render, was measured 2026-10-01 on a copy of today's 32 files: still 0 violations. That shows only that the macro file loads, because today's only macro, `generate_schema_name.sql`, is not called from a model. Whether a project macro a model does call renders correctly under the jinja templater is `@unvalidated` until the first such macro is linted.
 
 | The jinja templater cannot see | Covered by |
 |---|---|
-| compiled `ref()`/`source()` relations; `var()` values | `dbt build` on the fixtures, on 2.0.5 |
+| compiled `ref()`/`source()` relations; `var()` values | `dbt build` on the fixtures, on 2.0.6 |
 | package macro expansions (stubbed) and macro bodies (never linted) | the same build, plus the contracts. Optionally, a second pass over the compiled SQL with the `raw` templater and layout rules excluded. How noisy that is is `@unvalidated`; one pass over today's 32 compiled files counts it |
 
 **ST06 returns** once the last union is by name, since the positional union is its only stated reason (Reasoned). Measured 2026-10-01: sqlfluff 4.3.0's `duckdb` dialect parses `union all by name` as a `set_operator`, and a formatted two-branch file lints clean. Lint time at full load is `@unvalidated`: if about 1,500 files arrive (the 215 to 221 club folders [Club by club](#club-by-club) counts, with about 7 base and staging models each, a guess), 2.0 s per 32 files scales to about 94 s with 4 processes. Timing lint on the first full-load build stage settles it.
 
-**`scripts/test.sh` must start running the `dbt` job**, lint included; today it runs neither dbt nor SQLFluff. [`scripts/test.sh` must run it](#scriptstestsh-must-run-it) has the change.
+**`dbt lint` runs beside SQLFluff as a fast, dbt-aware first pass, never instead of it** (decision 33). It reads `pipeline/.sqlfluff`, and warns that it supports only SQLFluff's `dbt` templater ("Continuing anyway"). Measured 2026-10-01 on 2.0.6: it linted the 32 files in 0.05–0.08 s in the sandbox and 0.04 s on the runner, against SQLFluff's 3.8 s serial. It failed on a planted CP01 (keyword case), and it passed a planted LT01 (a space before a comma) that SQLFluff fails. So **SQLFluff stays the enforced check.** `dbt lint` runs after `dbt deps` and `dbt parse`, because it loads the whole project, and without `dbt_packages/` it installs the packages itself.
+
+**`scripts/test.sh` runs the `dbt` job since stage 1**, SQLFluff and `dbt lint` included ([`scripts/test.sh` runs it](#scriptstestsh-runs-it)).
 
 ### What dbt state buys, honestly
 
 | Where | Buys | Evidence |
 |---|---|---|
 | PR | Breaking-change detection | Measured, exit 2 (above) |
-| PR | Which phone files a change stales: `state:modified+` reaches the exposures downstream of an edited model | Measured on 2.0.5 ([Publish (reverse ETL)](#publish-reverse-etl)) |
+| PR | Which phone files a change stales: `state:modified+` reaches the exposures downstream of an edited model | Measured on 2.0.5 and on 2.0.6 ([Publish (reverse ETL)](#publish-reverse-etl)) |
 | PR | Selection, but no time: `state:modified+` picks 12 nodes for a comment-only edit to one base model, and a 13-node deferred build took 6.9 s against 7.1 s for the full 141-node build | Measured on 1.12.2 fixtures; parse and startup dominate. So PR jobs build everything and use state for contracts only |
 | PR | Narrowing lint and the evaluator to changed files | Possible, not taken: lint is 2.0 s today, and the evaluator judges the whole graph (Reasoned). Lint narrowing is worth revisiting if full-load lint really takes the minute estimated above |
 | PR | The base manifest, from `dbt parse` of the merge-base in a `git worktree` in the same job | Reasoned: no storage, no credentials (PR jobs hold none, research report 4) |
@@ -1182,15 +1293,15 @@ The measured configuration was `templater = jinja`, `apply_dbt_builtins = True` 
 
 **The large saving is not dbt's.** It is in the Python steps, through step-cache keys: **#1651 — The two graph-elevation steps resample all 656,621 edges every run, and re-read 9.5M DEM points whenever the Actions cache is cold**. What `fresher+` saves is `@unvalidated` until a real build is timed.
 
-**Everything in this table is `@unvalidated` on v2.** 2.0.5's `dbt build --help` lists `--defer` and `--state` (read 2026-10-01); listing a flag is not behaving the same. One probe run settles it: 12 nodes selected, the breaking change exiting non-zero, a deferred build working, and `fresher+` selecting correctly against two consecutive artifacts.
+**Everything in this table is `@unvalidated` on v2.** 2.0.5's and 2.0.6's `dbt build --help` list `--defer` and `--state` (read 2026-10-01); listing a flag is not behaving the same. One probe run settles it: 12 nodes selected, the breaking change exiting non-zero, a deferred build working, and `fresher+` selecting correctly against two consecutive artifacts.
 
 ### Docs and charts
 
-**dbt docs publish now at `https://ourhike.org/data/`**, never under `/app/` (decision 10, T4); [Running it](#running-it) owns the wiring. Under one version, v2's shape is the one published. **This reverses half of the session's docs call:** as first written, T4 built the page with `dbt docs generate --static --empty-catalog`, and 2.0.5's `dbt docs generate --help` offers neither flag (read 2026-10-01). T4's location stands.
+**dbt docs publish now at `https://ourhike.org/data/`**, never under `/app/` (decision 10, T4); [Running it](#running-it) owns the wiring. Under one version, v2's shape is the one published. **This reverses half of the session's docs call:** as first written, T4 built the page with `dbt docs generate --static --empty-catalog`, and neither 2.0.5's nor 2.0.6's `dbt docs generate --help` offers either flag (read 2026-10-01). T4's location stands.
 
-| | v1 `--static` (measured on 1.12.2; not used under decision 19) | v2 (measured on 2.0.5) |
+| | v1 `--static` (measured on 1.12.2; not used under decision 19) | v2 (measured on 2.0.5; stage 1's CI on 2.0.6) |
 |---|---|---|
-| Output | one 3.8 MB file (708 KB gzipped) | `index.html` + 330 assets (13 MB) + Parquet, as a directory written to `--output-dir` |
+| Output | one 3.8 MB file (708 KB gzipped) | `index.html` + 330 assets (13 MB) + Parquet, as a directory written to `--output-dir`. On stage 1's fixtures (2026-10-01), 315 assets and 38 Parquet files: 12,301,390 bytes on 2.0.6 and 12,291,821 on 2.0.5 |
 | External requests | none | `duckdb-wasm@1.32.0` from cdn.jsdelivr.net by default; `--duckdb-cdn-base <URL>` points it at a mirror ("the site never bundles it", per `--help`) |
 | Without a warehouse | `--empty-catalog` against an empty DuckDB file, 8.5 s, types from YAML | No such flag. The command compiles first unless `--no-compile` exports an index a previous run wrote. Whether compiling against an empty DuckDB file works is `@unvalidated`; one CI docs build settles it |
 
@@ -1199,7 +1310,7 @@ Open before the first publish:
 - **A third-party request.** By default visitors contact jsDelivr. Serving DuckDB-WASM from ourhike.org through `--duckdb-cdn-base` is `@unvalidated`, settled by one preview build pointing at a copy; the site's CSP covers only `/app/*` today (`HEADERS_PATH`, `client/scripts/csp.mjs:238`).
 - **No rows (decision 10).** Building against an empty warehouse should leave none (Reasoned); one listing of the Parquet columns confirms it.
 
-**dbt Charts boards are YAML in `pipeline/dbt/charts/` now, rendered once dbt Charts supports dbt-oss 2.x** (decision 19). That is the named external blocker. dbt Labs' proprietary `dbt` 2.x gaining support would not lift it, because decision 17 chose `dbt-oss` 2.0.5 over `dbt` 2.0.6, which carries no licence on PyPI.
+**dbt Charts boards are YAML in `pipeline/dbt/charts/` now, rendered once dbt Charts supports dbt v2** (decision 19). That is the named external blocker: `dbt-charts` 0.8.0 and its `main` pin `dbt-core>=1.8,<2` (read 2026-10-01). Under decision 32 the project runs the full `dbt` 2.0.6, so support for that distribution is what would lift it. Until then no second dbt version is installed to render them.
 
 | Board | Shows | Reads |
 |---|---|---|
@@ -1275,7 +1386,7 @@ Differences already known before any run:
 | a dbt SQL model | one dbt unit test per pytest case, named after it. The family's parity stage lists each case beside its unit test, then deletes the cases it replaced; a file whose other cases test a rule that stays Python keeps those. A SQL attempt that fails one of these cases keeps the Python and quotes the failing case in the ledger row |
 | a dbt data test (`unique`, `accepted_values`, contract, relationship, singular) | cases that asserted a property of the output move there |
 
-**dbt unit tests run on dbt-oss 2.0.5.** Measured 2026-10-01 on a scratch copy of `pipeline/dbt/` with report 6's v2 YAML migration, against the fixture warehouse. A unit test on `stg_opentrail__waypoints` took a `format: sql` input that builds geometry with `st_point`, and passed in 1.3 s. With one expectation changed it failed and printed the row that differed (`high -> low`). This proves the mechanism works, not that every case ports; each family's parity stage settles each case. A ported case looks like this:
+**dbt unit tests run on v2: on dbt-oss 2.0.5, and on dbt 2.0.6.** Measured 2026-10-01 on a scratch copy of `pipeline/dbt/` with report 6's v2 YAML migration, against the fixture warehouse. A unit test on `stg_opentrail__waypoints` took a `format: sql` input that builds geometry with `st_point`, and passed in 1.3 s. With one expectation changed it failed and printed the row that differed (`high -> low`). Re-run the same day on 2.0.6, against stage 1's project and its fixture warehouse: the same unit test passed (0.21 s for the test, 1.3 s for the command), and with one expectation changed it failed with exit 1, printing `high -> low`. This proves the mechanism works, not that every case ports; each family's parity stage settles each case. A ported case looks like this:
 
 ```yaml
 unit_tests:
@@ -1288,15 +1399,15 @@ unit_tests:
       rows: [{atc_id: x, problem_kind: reversed_range}]
 ```
 
-**dbt-oss 2.0.5 refuses Python models on DuckDB.** Measured the same day in the same copy: a three-line `def model(dbt, session)` failed with `Internal Error: Python models are not supported for duckdb adapter`. On the one dbt version (decision 19), a rule that must stay Python therefore runs outside dbt, in one of two places:
+**v2 refuses Python models on DuckDB, on dbt 2.0.6 as on dbt-oss 2.0.5.** Measured the same day in the same copy: a three-line `def model(dbt, session)` failed with `Internal Error: Python models are not supported for duckdb adapter`. Re-run on 2.0.6 against stage 1's project, 2026-10-01: `dbt parse` accepted the file, and `dbt build` failed it with the same message, from dbt's DuckDB table materialisation (exit 1). On the one dbt version (decision 19), a rule that must stay Python therefore runs outside dbt, in one of two places:
 
 - a **step**: Python that runs before a dbt invocation and writes a `derived` table that dbt reads as a source ([Python steps](#python-steps-outside-dbt) has the shape);
 - the **edge**: a dlt resource or a scrape before dbt, or a cell cutter or reviewed-file builder after the marts.
 
 Contracts do not cover Python models anyway (report 6). Two open checks:
 
-- Whether a later 2.x adds Python models is `@unvalidated`. Re-running the three-line probe at each dbt bump settles it.
-- Whether a step on DuckDB 1.5.5 and dbt v2's bundled 1.5.4 can share one warehouse file. In the sandbox a plain `.duckdb` file round-tripped 1.5.5 → 1.5.4 → 1.5.5 (Measured, [DuckLake at phases 3 and 4](#ducklake-at-phases-3-and-4)); on a runner it stays `@unvalidated` until one CI run.
+- Whether a later 2.x adds Python models is `@unvalidated`. Re-running the three-line probe at each dbt bump settles it; at the move to 2.0.6 it was still refused.
+- Whether a step on DuckDB 1.5.5 and dbt v2's bundled 1.5.4 can share one warehouse file. In the sandbox a plain `.duckdb` file round-tripped 1.5.5 → 1.5.4 → 1.5.5 (Measured, [DuckLake at phases 3 and 4](#ducklake-at-phases-3-and-4)). On a runner, dbt 2.0.6's 1.5.4 read and wrote the file Python's 1.5.5 wrote (stage 1's CI job, 2026-10-01); a 1.5.5 read after it stays `@unvalidated` until a Python step runs after dbt on a runner.
 
 ### SQL first, then an extension, then Python
 
@@ -1318,7 +1429,7 @@ The maintainer, decision 23: *"All the dbt models should be sql-first. We deeply
 | community, install and load | `h3`, `geography`, `raster`, `a5`, `webbed` |
 | community, no build | `duckpgq` (graph queries): HTTP 404, no build for v1.5.5 |
 
-**Two `@unvalidated` checks decide whether rung 3 is open inside dbt**: whether dbt-oss 2.0.5's DuckDB adapter loads community extensions from `profiles.yml`, and whether `h3`, `geography` and `a5` have builds for dbt v2's bundled DuckDB 1.5.4. One CI run settles each. The configuration and its fallback are in [Extensions dbt loads](#extensions-dbt-loads).
+**Two `@unvalidated` checks decide whether rung 3 is open inside dbt**: whether dbt 2.0.6's DuckDB adapter loads community extensions from `profiles.yml`, and whether `h3`, `geography` and `a5` have builds for dbt v2's bundled DuckDB 1.5.4. One CI run settles each. The configuration and its fallback are in [Extensions dbt loads](#extensions-dbt-loads).
 
 **Metres are measured in EPSG:5070**, never with `ST_Distance_Sphere` or the `_Spheroid` functions on (lon, lat) points, which DuckDB reads as (lat, lon). Every distance rule below (TL28, PO09, PO18, PO21, PO35, TN05, SH06, CH04) carries that rule; the measurement is in [Geometry rules every mart obeys](#geometry-rules-every-mart-obeys).
 
@@ -1634,7 +1745,7 @@ Other reviewed files in `pipeline/reference/` also decide what ships, though non
 
 ### The count
 
-dbt Python models are 0 because dbt-oss 2.0.5 refuses them on DuckDB (measured above). The rules that stay Python are the step and edge columns together. A SQL attempt counts in neither: it is SQL unless its parity tests send it back, and then the ledger row says which case failed.
+dbt Python models are 0 because dbt refuses them on DuckDB, on 2.0.6 as on dbt-oss 2.0.5 (measured above). The rules that stay Python are the step and edge columns together. A SQL attempt counts in neither: it is SQL unless its parity tests send it back, and then the ledger row says which case failed.
 
 | Mart | Rows | S | G | P | SQL | SQL attempt | dbt Python model | Python step | Python edge | Report 2 | Report 3 | Found here | Test files, cases |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -1708,7 +1819,7 @@ The audit also recommends six agency folders that have no candidate row yet (Rea
 
 ### The order clubs move, and what each tier leaves true
 
-Every tier uses the same mechanism. A builder takes a sources.json key, never a URL (Extract), so each new upstream is a reviewed sources.json row before it is a resource. `may_publish` then decides per row whether a mart carries it ([The dbt project](#the-dbt-project)), so a row can be extracted and staged with `reaches_hikers: false` and reach no phone. Decision 21(a) presumes public GIS layers reusable, but decision 21 says the presumption "does not reach … page prose". So a club's closure *posts* (RSS, WordPress REST, pages) extract and stage now, and publish once the maintainer settles their basis in one batched question, the shape decision 21(a) uses for restrictive GIS text (rules 5 and 6 of [Who may publish](#who-may-publish); joining the posts to that question is this plan's reading, not a decision).
+Every tier uses the same mechanism. A builder takes a sources.json key, never a URL (Extract), so each new upstream is a reviewed sources.json row before it is a resource. `may_publish` then decides per row whether a mart carries it ([The dbt project](#the-dbt-project)), so a row can be extracted and staged with `reaches_hikers: false` and reach no phone. Decision 21(a) presumes public GIS layers reusable, but decision 21 says the presumption "does not reach … page prose". So a club's closure *posts* (RSS, WordPress REST, pages) extract and stage now, and publish once the maintainer settles their basis (rule 6 of [Who may publish](#who-may-publish)). Decisions 36–38 answered the batched question about restrictive GIS text, not page prose, so the posts' basis is the part of it still open.
 
 #### Tier 1: everything loaded today, ported with parity
 
@@ -1769,7 +1880,7 @@ The 27 folders are the ten named rows plus those 17.
 | `blm` | points_of_interest · monthly | 61 potable water points, 36 group shelters, 10 cabins | `gis.blm.gov/arcgis/rest/services/recreation/BLM_Natl_Recs_pts/MapServer` | — |
 | `_shared/osm` | points_of_interest · monthly | water beyond the 14 A.T. states: 25,911 `drinking_water` and 39,692 `spring` across the US; the licence (ODbL) is already attributed | Geofabrik extracts | every steward's water |
 
-ATA's, FTA's and GAP's rows are posts, not GIS layers, so they wait on the batched licence question above.
+ATA's, FTA's and GAP's rows are posts, not GIS layers, so they wait on the posts' basis above. FTA's `FNST Master` layer and the other GIS rows do not: they publish under rules 1 to 5 of [Who may publish](#who-may-publish).
 
 **Rules that come with these loads**, each from the audit's own evidence:
 
@@ -1788,11 +1899,11 @@ ATA's, FTA's and GAP's rows are posts, not GIS layers, so they wait on the batch
 
 **What moves.** Clubs and agencies publishing their own ArcGIS, GeoJSON, KML or GPX lines or points that no loaded row carries. A text match on `org_coverage.json`'s evidence finds such a row for 74 managing orgs and 78 candidates (Reasoned: the match also catches land managers' data about a club's trail). The largest gaps the audit measured: the Arizona Trail main line (layer `/3`, 831.6 mi, against today's connectors); the Florida Trail's `FNST Master` (1,568.8 mi, against about 184 mi today); NPS's Potomac Heritage Trail centerline (about 855 mi, road miles marked); the Empire State Trail's `EST_Public/FeatureServer/4` (763 mi); Michigan's Iron Belle (816 segments); CT DEEP's Trails Set (13,883 segments, CC0); the Bay Circuit Alliance (753 polylines); and NPS's 35,639 public POIs, held for a corridor clip and a type allowlist a person reads (c9).
 
-**What it leaves true.** The 20 dual-source pairs that the steward-and-redistributor issue lists are registered on both sides, steward senior, and none ships until its overlap is measured ([below](#deduplication-after-the-load-mart-by-mart)).
+**What it leaves true.** The 20 dual-source pairs that the steward-and-redistributor issue lists are registered on both sides, steward senior, and none ships until its overlap is measured ([below](#deduplication-after-the-load-mart-by-mart)). A pair whose redistributor turns out to be a republished copy leaves dedup as a `SAME_AS` note instead (decision 34).
 
 #### Tier 4: via clubs' own notices, hikes, challenges and podcasts
 
-**What moves.** Most `via` rows, the A.T. clubs among them, hold no geometry of their own. What they publish is page-shaped: MATC's Kennebec ferry page, the Smoky Mountains Hiking Club's hazard reports, the Carolina Mountain Club's eight challenge programmes, RATC's shelter-and-water page, MRATC's weekly bulletins. Across the 145 managing orgs, `org_coverage.json` counts AVAILABLE_NOT_LOADED rows for `suggested_hikes` 117, `challenges` 91 and `podcasts` 39. Each needs a parser and a reviewed file, as the Long Path guide has. Two shapes constrain what lands:
+**What moves.** Most `via` rows, the A.T. clubs among them, hold no geometry of their own. Their trails reach the marts as an assignment in `int_<mart>__stewardship`, by ATC's club-section polygons or the club's trail list, and are never extracted a second time (decision 34). What they publish is page-shaped: MATC's Kennebec ferry page, the Smoky Mountains Hiking Club's hazard reports, the Carolina Mountain Club's eight challenge programmes, RATC's shelter-and-water page, MRATC's weekly bulletins. Across the 145 managing orgs, `org_coverage.json` counts AVAILABLE_NOT_LOADED rows for `suggested_hikes` 117, `challenges` 91 and `podcasts` 39. Each needs a parser and a reviewed file, as the Long Path guide has. Two shapes constrain what lands:
 
 - **Challenges** port only as places on the publisher's own trails (CH01–CH03); a mileage log or a children's passport stays a note.
 - **Podcasts** key on a 22-character Spotify id (PC01), so a show found only as an RSS feed needs its Spotify ids first (Reasoned from PC01).
@@ -1806,7 +1917,8 @@ The poll on the four `refuse` rows chose **"Note now, load on permission"**, and
 | who | the gate (quoted in their notes) | ask |
 |---|---|---|
 | `rtc` (TrailLink) | "custom, by agreement"; Detour Notice prose on 5,641 trail pages | the letter below |
-| `onda`, `ghcc` | the GPX, CalTopo maps and Databook are released only after a liability waiver | the letter. The waiver is a safety posture to respect (`trail_orgs.json`'s `onda` row), not a form for anyone here to sign |
+| `onda`, `ghcc` | the GPX, CalTopo maps and Databook are released only after a liability waiver | the letter, for those files. ONDA's own public `ODT Tracks` ArcGIS layer is extracted regardless (decision 39; [What may be fetched](#what-may-be-fetched)). The waiver is a safety posture to respect (`trail_orgs.json`'s `onda` row), not a form for anyone here to sign |
+| hosts that refuse the pipeline's own user agent | `tnstateparks.com` serves only a browser's identity; LSHT's ClubExpress files need a browser user agent and a session cookie | the letter. The pipeline never imitates a browser (decision 39) |
 | `buckeye` | its terms: "You may not download … without our express written consent"; its own ArcGIS line: "Permission from the Buckeye Trail Assocation is required before use!" | the letter |
 | `avenza` | "commercial, per publisher"; frozen since April 2026 (c12) | none to Avenza: ask the publishing club instead (MATC, Cohos) |
 | `adk` | its terms bar access "through automated or non-human means" | the letter, covering the Conditions Report, lodging and the Fire Tower Challenge |
@@ -1816,7 +1928,9 @@ The poll on the four `refuse` rows chose **"Note now, load on permission"**, and
 | platforms that hold a manager's data | OuterSpatial ("personal, non-commercial"): Buckeye via Ohio DNR, the Society for the Protection of NH Forests, Land Between The Lakes | ask the manager for an export, which OuterSpatial's guidebook says it gives the data's owner |
 | DEC's web pages | not covered by decision 20; governed by DEC's Website Content Usage policy | the letter to DEC, for the weekly backcountry pages and the Catskills Fire Tower Challenge |
 
-**Three gates get no letter.** Restrictive text on a GIS item goes to the maintainer as **one batched question** (decision 21a): IDPR ("not … in 3rd party apps without source attribution"), Virginia DCR ("re-distribution … for profit is prohibited"), TPWD, Oregon Metro's single-use layers, PA DCNR's "save the Commonwealth harmless", RIGIS's required display disclaimer, USFS R6's PNT line ("not intended for trip planning"). Whether to read Facebook-only channels and members-only pages (TEHCC's posts, LIGTC's *Footnotes*) is the maintainer's decision, so no letter asks it. And where a public agency carries a steward's gated route, loading the agency's copy would route around the steward (c8, c20): Ohio DNR's 1,288.7-mi Buckeye line, OPRD's Oregon Desert Trail and Blue Mountains Trail. That too is the maintainer's call, named so nobody takes it by writing an extractor.
+**Restrictive text on a GIS item needs no letter: the maintainer answered it as one batch** (decisions 36–38, 2026-10-01; [Who may publish](#who-may-publish), rules 3 and 5). IDPR ("not … in 3rd party apps without source attribution"), Virginia DCR ("re-distribution … for profit is prohibited") and TPWD publish as non-commercial use with attribution. Oregon Metro's single-use layers publish under the GIS presumption, against their own words. RIGIS's required display disclaimer is honoured wherever its data is drawn. USFS R6's PNT line ("not intended for trip planning") is held, because that condition cannot be met on a line hikers plan with. PA DCNR's "save the Commonwealth harmless" is the one audited text none of the three decisions names, so it is still held for the maintainer.
+
+**Two gates get no letter.** Whether to read Facebook-only channels and members-only pages (TEHCC's posts, LIGTC's *Footnotes*) is the maintainer's decision, so no letter asks it. And where a public agency carries a steward's gated route, loading the agency's copy would route around the steward (c8, c20): Ohio DNR's 1,288.7-mi Buckeye line, OPRD's Oregon Desert Trail and Blue Mountains Trail. That too is the maintainer's call, named so nobody takes it by writing an extractor.
 
 **Never extracted, whatever permission says**, held by the person-field denylist pytest ([Who may publish](#who-may-publish), rule 8). These are personal data or sensitive sites the audit found anonymously queryable: Mohonk's volunteer Survey123 table; OPRHP's Palisades Bear Program results (343 rows with patron emails, phones and addresses); NJDEP's mapping-activity view; IATA's Survey123 `email_address`; PA DCNR's gate `KeyOrComboCodes`; VTrans' public-comment layers; the Rio Grande Trail's segment contacts; finisher and member rosters (Cranberry Lake 50, Ocean to Lake, GATC's GA-4000, SMHC's 900 Miler members); DEC's Forest Ranger names and cell numbers (decision 20); Mohonk's peregrine nest observations. The audit says Mohonk, OPRHP and NJDEP "should probably be told" about their exposed tables; telling them is the maintainer's to do.
 
@@ -1840,16 +1954,19 @@ Each reply is quoted, with its date, in the club's `trail_orgs.json` licence fie
 
 ### Deduplication after the load, mart by mart
 
-Three rules hold for every mart:
+Four rules hold for every mart:
 
+- **Dedup is only for independent datasets of the same ground** (decision 34): a club's own GPS line against USFS's line, or OPRHP's own A.T. line against ATC's. A republished copy never reaches it, because it is a `SAME_AS` note and is never extracted ([One extraction per upstream dataset](#one-extraction-per-upstream-dataset)). Where this section calls another publisher's line an "A.T. copy", it means a line that publisher drew or edited itself.
 - **Publication filters run before dedup** ([The dbt project](#the-dbt-project)). An unshippable row must never win a merge and vanish, taking the place with it.
 - **Dedup never removes the only record of something.** **#1459 — Two New York City agencies draw the same tread and the map draws both lines, because nothing dedupes geometry across sources** names the case: on the 76% of NYC Parks-jurisdiction greenway length that does not overlap, DOT's line is the only record of the path.
 - **A threshold is measured for its pair, or it is `@unvalidated`.** The only measured pair is New York City's (23.6% of length within 25 m, a control at 0.9%; **#1453 — Measure whether New York City's two registered layers draw the same tread twice — 2,095 greenway segments sit on NYC Parks ground**). **#1709 — Register the steward and the redistributor both, and declare which one wins where they overlap** requires one overlap measurement per steward and redistributor pair, on `spike_nyc_overlap.py`'s pattern, before either ships, and holds everything until **#1231 — usfs_trails and usfs_rec_sites ship nationwide (Arizona and beyond), when only the region near the corridor was the point of registering them** has an answer. That issue was closed "not planned" on 2026-09-16; whether the closure is the answer is the maintainer's to say.
 
+**A steward–redistributor pair is checked for a copy first** (Reasoned from decision 34). A redistributor's layer that is a republished copy of the steward's (the same rows and edit dates, or an item naming the original) becomes a `SAME_AS` note and leaves dedup; one drawn or edited apart stays a pair, steward senior. For a key loaded today that changes which org `stewards.json` credits, which a hiker sees, so it waits for the maintainer, like the folder-placement questions in [The folder roster](#the-folder-roster).
+
 | mart | intermediate (The dbt project) | rule | overlapping publishers (examples) | open |
 |---|---|---|---|---|
 | `trail_lines` | `int_trail_lines__deduplicated`; `__shared_ground` | **Owner wins by name** (TL11): `owns_route_names` gives "Appalachian Trail" to `centerline` and "Long Path" to `nynjtc_long_path`; **#771 — Spike: Harriman's crossing trails next to the AT — find what a trail network breaks that a linear trail never could** measured OPRHP's A.T. copy at 1.8 m median, diverging past 150 m on 14% of its in-park length. **Declared duplicates** (TL18): within 10 m for ≥ 50% of its length, the junior is removed; the senior takes its `name`, `trail_status` and `blaze_color` only where it has none, and keeps the junior's id as `duplicate_of`. **Shared ground** (TL19) is annotated, never removed. The steward-and-redistributor issue above adds `duplicate_of` pairs, steward senior, with per-field precedence: geometry and name from the steward, and a description or photo only the redistributor carries is kept | ATC vs every land manager's A.T. copy. MassGIS's Bay Circuit (7 features, 241.76 mi) vs the Bay Circuit Alliance's `BCT_202411251` (753 polylines). USFS vs FTA, ATA, PNTA, CDTC, PCTA, Sheltowee and Ozark Highlands. CT DEEP's Blue-Blazed copy (edited 2024-05-17) vs CFPA's (edited 2026-09-29). The Empire State Trail from OPRHP, PTNY and Canal Corp | 10 m / 50% outside NYC is `@unvalidated` (The dbt project). NJDEP's two copies are one publisher, not a dedup: the question is which copy to fetch (b5) |
-| `points_of_interest` | `int_points_of_interest__deduplicated`, `__identified` | Today: OSM water within 25 m of opentrail is dropped (PO09; measured 41 of 174). Intended: `features/POI_DEDUPLICATION.md`'s unbuilt design: a 25 m candidate radius, evidence tiers, no merge where names distinguish, per-field precedence (location never averaged), corroboration never raising confidence, each merge a line in the identity ledger | NPS's 35,639 public POIs vs the A.T. points already loaded under ATC keys from the NPS-hosted `ANST_Facilities`. GRSM's shelter capacity vs ATC `shelters` vs Greenbelly vs `ATX_Ratings/17`, where capacity is a field and the steward's figure wins. CDTC's NPS copies (420 camping, 742 POIs) go to `nps`. OSM shelters vs every steward | the ledger's size: **#1026 — The POI identity ledger doubled and crossed the reference-dir ceiling, so the publish path is blocked at both ends** (Keeping every rule) |
+| `points_of_interest` | `int_points_of_interest__deduplicated`, `__identified` | Today: OSM water within 25 m of opentrail is dropped (PO09; measured 41 of 174). Intended: `features/POI_DEDUPLICATION.md`'s unbuilt design: a 25 m candidate radius, evidence tiers, no merge where names distinguish, per-field precedence (location never averaged), corroboration never raising confidence, each merge a line in the identity ledger | NPS's 35,639 public POIs vs the A.T. points already loaded under ATC keys from the NPS-hosted `ANST_Facilities`. GRSM's shelter capacity vs ATC `shelters` vs Greenbelly vs `ATX_Ratings/17`, where capacity is a field and the steward's figure wins. CDTC's NPS views (420 camping, 742 POIs) are `SAME_AS` notes naming `nps`'s resource, and are never extracted (decision 34). OSM shelters vs every steward | the ledger's size: **#1026 — The POI identity ledger doubled and crossed the reference-dir ceiling, so the publish path is blocked at both ends** (Keeping every rule) |
 | `closures` · `warnings` | `int_closures__unioned`, `int_closures__gate` | **No closure is ever removed by dedup.** Notices that describe one event from two publishers are grouped for display, every source named. The group obstructs if any member does, and it lifts only when no member remains. That rounds toward the "in front of something dangerous" harm (Reasoned; a proposal, not yet in The dbt project) | NPS `iatr` alerts vs IATA's layer ("deduplicate them after extract-load", c10). PTNY's layer vs `canals.ny.gov` vs `empiretrail.ny.gov`. USFS regional orders vs ATC Trail Updates on the same forest | what counts as "one event", and at what distance, is `@unvalidated`; a month of both lanes' rows settles it |
 | `elevation` | `int_elevation__profile` | One DEM source (3DEP), so dedup happens upstream: a line is profiled once because `trail_lines` already deduplicated it. Club-stated climbs (DEC's pages; CT DEEP's `Gains`/`Losses`) are checks like EL15, never a second profile | — | — |
 | `places` | `int_places__resolved` | One place per named unit (PL02). The managing agency is senior to a clearinghouse copy | The Trustees' own 137 property polygons vs MassGIS open space's 613 Trustees rows (c4); Friends of the Blue Hills vs DCR's Blue Hills polygons (c4) | precedence beyond PL02, unmeasured |
@@ -2135,7 +2252,7 @@ This section is the one home for three things:
 
 [Extract and load (dlt)](#extract-and-load-dlt), [The dbt project](#the-dbt-project) and [Running it](#running-it) link here rather than repeat it.
 
-**Where the evidence comes from.** Everything marked Measured below ran on 2026-10-01 in the planning sandbox, on dlt 1.30.0, Python DuckDB 1.5.5 with the spatial extension, and dbt-oss 2.0.5, which bundles DuckDB 1.5.4.
+**Where the evidence comes from.** Everything marked Measured below ran on 2026-10-01 in the planning sandbox, on dlt 1.30.0, Python DuckDB 1.5.5 with the spatial extension, and dbt-oss 2.0.5, which bundles DuckDB 1.5.4. Those dbt probes ran before decision 32 moved the project to `dbt` 2.0.6 and have not been re-run on it. 2.0.6 bundles the same DuckDB 1.5.4, and stage 1's CI job passed unchanged on both, so that they carry over is Reasoned, not measured.
 
 - **Object storage was a local S3 stand-in**, moto 5.2.3. The request counts are dlt's and DuckDB's real S3 behaviour, but **R2 itself is `@unvalidated` everywhere in this section**.
 - **Upstream behaviour** (ETags, counts, keys) was probed live against each publisher, metadata first, one request at a time, under the project's User-Agent and each host's robots.txt.
@@ -2160,7 +2277,7 @@ Decision 26, "tiers as drawn". INCREMENTAL.md's private key validator governs bo
 | **Step cache, `raw_inputs`** | a copy of exactly the raw files one build read | Parquet, as read | `steps/raw_inputs/<raw_run>/<table>.parquet`, write-once | build job · the promotion build | From phase 3 the monthly tables' pin is a DuckLake snapshot id, and `raw_inputs/` holds only what the lake does not | Reasoned: `replace` deletes the files a UA build read the next time that table is extracted, so without this copy a mid-month dispatch would silently change what gets promoted |
 | **Warehouse** | every dbt model, the `raw` schema included | one `warehouse.duckdb` per monthly build; marts are contracted tables | step cache, `steps/dbt_warehouse/<data_environment>/<raw_run>/warehouse.duckdb`, write-once, with that build's `manifest.json`, `sources.json` and `run_results.json` beside it, because a manifest is only useful for `--defer` together with the warehouse it describes | build job · the next monthly build (restored) and each hourly leg (`--defer`, attached read-only) | **DuckLake at phase 4**, once contracts with `primary_key` and `check` work there | Measured: `--defer` needs the previous `.duckdb` for every table upstream; ATTACH read-only over httpfs works. Using the step cache rather than `browse/`, and this key shape, are Reasoned |
 | **Browse copy** | the warehouse, for a person with a laptop | read-only `.duckdb` | step cache, `browse/ourhike.duckdb`, overwritten per publish | build job · people, with a personal read-only token. **No step reads it** | unchanged | Reasoned (INCREMENTAL.md: "That copy is never a store any step reads") |
-| **Docs** | dbt-oss 2.0.5's docs site | `index.html`, assets and **38 metadata Parquet files**, which are dbt's own and not a tier | Pages, `ourhike.org/data/`, built in CI and never committed | the site workflows | unchanged | Measured on the probe project: 355 files, 13 MB, and no data row in any of them (searched for coordinates and WKT). `dbt_rt.invocations` records `args` and `vars_override`, so CI never passes a secret through `--vars` |
+| **Docs** | dbt 2.0.6's docs site (probed on dbt-oss 2.0.5) | `index.html`, assets and **38 metadata Parquet files**, which are dbt's own and not a tier | Pages, `ourhike.org/data/`, built in CI and never committed | the site workflows | unchanged | Measured on the probe project: 355 files, 13 MB, and no data row in any of them (searched for coordinates and WKT). `dbt_rt.invocations` records `args` and `vars_override`, so CI never passes a secret through `--vars` |
 | **Phone outputs** | what phones download | **Unchanged formats**: GeoJSON at 6 dp, PMTiles, JSON. `.parquet` and `.duckdb` stay outside `r2_keys.ALLOWED_EXTENSIONS` | public bucket, `pipeline/R2_LAYOUT.md`'s keys | dbt writes them into `pipeline/data/processed/` ([Publish (reverse ETL)](#publish-reverse-etl)) · `publish.py` uploads them | formats unchanged (decision 9, [Making the download smaller](#making-the-download-smaller)) | Decided |
 
 **Which warehouse a later run restores.** The next monthly build restores the previous monthly key of its own environment. Each hourly leg attaches the warehouse whose `raw_run` its environment currently serves, so production closures are placed on the promoted `trail_lines` and never on UA's. That `raw_run` is read from the environment's published manifest over public HTTPS, which already says what each environment serves, so no second pointer object is needed (Reasoned; the manifest gains a `raw_run` field for it). Under option (A) a missing warehouse means a cold rebuild, because the step cache is "an optimisation, never a source". Under option (B) or (C) the warehouse holds snapshot history, which nothing else holds, so a missing previous warehouse **refuses** the snapshot step rather than starting history over (Reasoned; see [How should dbt build](#how-should-dbt-build-tables-snapshots-or-incremental-models)).
@@ -2210,7 +2327,7 @@ DuckLake is a catalog that keeps versions of Parquet files: each write commits a
 
 1. dlt's `ducklake` destination with `DATA_PATH` on the real raw store: `replace` under `insert-from-staging`, one injected load-job failure that must leave the previous rows, rollback through `drop_pending_packages()`, and a read with the build job's read-only token.
 2. The catalog object's download and upload on R2, with `If-Match` refusing a deliberately stale writer.
-3. dbt-oss 2.0.5 on a runner, loading `ducklake` for its bundled DuckDB 1.5.4 and attaching the raw lake through `on-run-start` at `SNAPSHOT_VERSION`.
+3. dbt 2.0.6 on a runner, loading `ducklake` for its bundled DuckDB 1.5.4 and attaching the raw lake through `on-run-start` at `SNAPSHOT_VERSION`.
 
 If any run fails, the monthly lane stays on plain Parquet with the committed-load read and `raw_inputs/`, which close the same hole without a lake (Reasoned).
 
@@ -2221,9 +2338,9 @@ If any run fails, the monthly lane stays on plain Parquet with the committed-loa
 - A DuckDB-file catalog cannot be attached twice in one process ("Unique file handle conflict"), so the pinned alias is the only attach of that file.
 - `state:modified+`, `--defer --state`, `source_status:fresher+` and `read_only: true` all behaved against lake sources as against a plain file.
 
-**DuckDB 1.5.4 and 1.5.5 share a catalog.** They alternately wrote one catalog four times on each of three backends (a DuckDB file, SQLite, local Postgres 16.14), and every geometry came back exact. Both write DuckLake format `1.0` (Measured). A plain `.duckdb` file also round-tripped 1.5.5 → 1.5.4 → 1.5.5. That settles, in this sandbox, decision 17's file-format question; whether v2 loads spatial on a runner is still open.
+**DuckDB 1.5.4 and 1.5.5 share a catalog.** They alternately wrote one catalog four times on each of three backends (a DuckDB file, SQLite, local Postgres 16.14), and every geometry came back exact. Both write DuckLake format `1.0` (Measured). A plain `.duckdb` file also round-tripped 1.5.5 → 1.5.4 → 1.5.5. That settles, in this sandbox, decision 17's file-format question, and stage 1's CI job settled the runner half: dbt 2.0.6 read the warehouse Python's 1.5.5 wrote and loaded spatial there (2026-10-01, [Version](#version-dbt-206-one-version-everywhere)).
 
-The coupling to watch is the format version (Reasoned). DuckLake 1.0 made catalog migration explicit (`AUTOMATIC_MIGRATION` defaults to false, per its ATTACH docs). A future DuckDB that brings a new format therefore needs a migration, after which dbt's bundled DuckDB cannot attach until dbt-oss moves too. So CI reads `ducklake_metadata.version` through both DuckDB builds and refuses a mismatch. Whether duckdb 1.5.6 (on PyPI 2026-09-28) still writes `1.0` was not checked.
+The coupling to watch is the format version (Reasoned). DuckLake 1.0 made catalog migration explicit (`AUTOMATIC_MIGRATION` defaults to false, per its ATTACH docs). A future DuckDB that brings a new format therefore needs a migration, after which dbt's bundled DuckDB cannot attach until dbt moves too. So CI reads `ducklake_metadata.version` through both DuckDB builds and refuses a mismatch. Whether duckdb 1.5.6 (on PyPI 2026-09-28) still writes `1.0` was not checked.
 
 **Maturity, read 2026-10-01.** DuckLake v1.0 shipped in DuckDB 1.5.2 on 2026-04-13 as "a production-ready release with guaranteed backward-compatibility". Each of 0.1 → 0.2 → 0.3 → 1.0 changed the catalog schema. Deletion vectors are still "experimental", and spatial file pruning is not implemented.
 
@@ -2702,7 +2819,7 @@ Only `spike_opentrail_towns.py` uses one of these functions today (grep, 2026-10
 | R2 behind dlt's filesystem destination: `replace` truncates and writes as on moto; HeadBucket and ListObjects answer as moto does | the first extract run, its call counts compared with R2's usage metrics |
 | DuckLake on R2: PUT, range GET, `DeleteObjects` and LIST behave as against moto; `insert-from-staging` and the last-good pin hold against the real bucket | go/no-go run 1, with one injected load-job failure |
 | `If-Match` on the catalog object refuses a stale writer on R2 | go/no-go run 2 |
-| dbt-oss 2.0.5 loads `ducklake` for 1.5.4 on a runner and attaches the raw lake at a pinned snapshot | go/no-go run 3 |
+| dbt 2.0.6 loads `ducklake` for 1.5.4 on a runner and attaches the raw lake at a pinned snapshot | go/no-go run 3 |
 | A torn read of a catalog object being replaced | a reader looping attach while a writer re-uploads, against R2 |
 | Retention long enough for UA → promotion plus the parity window | the release train's recorded gaps |
 | The cost of the monthly lake maintenance step | its first run |
@@ -2842,7 +2959,7 @@ Two requirements follow, both Reasoned:
 - **OurHike's Postgres rows land in per-environment raw tables** (`raw_ourhike_production__*`, `raw_ourhike_ua__*`). Otherwise one bake serves one database to both audiences, which the matrix exists to prevent (`:232-237`).
 - **Each leg defers to its own environment's warehouse.** Production closures are placed on the promoted `trail_lines`, never on UA's. Which stored warehouse that is, and how the leg finds it, is in [Storage tiers](#storage-tiers).
 
-**The budget is tight.** The job's `timeout-minutes: 10` (`:231`) predates **#1318 — A slow ATC fetch silently cancels the whole conditions publish, because continue-on-error does not survive a job timeout**; what that issue added is four step caps (4 + 1 + 2 + 1 min) sized to fit inside it, from run 381's measured 2m19s and 2m22s per leg (`:389-406`). Whether dlt, a dbt-oss install and a deferred build fit beside those caps is `@unvalidated`; one timed run settles it.
+**The budget is tight.** The job's `timeout-minutes: 10` (`:231`) predates **#1318 — A slow ATC fetch silently cancels the whole conditions publish, because continue-on-error does not survive a job timeout**; what that issue added is four step caps (4 + 1 + 2 + 1 min) sized to fit inside it, from run 381's measured 2m19s and 2m22s per leg (`:389-406`). Whether dlt, a dbt 2.0.6 install (an sdist whose build downloads the wheel from dbt's CDN) and a deferred build fit beside those caps is `@unvalidated`; one timed run settles it.
 
 ### Every node carries its cadence
 
@@ -2929,29 +3046,34 @@ In an hourly job, freshness runs after `publish.py`, scoped by selector to that 
 
 The id stays `dbt`. It is a required check (`.github/expected-protections.yml:77`), so it gets no `name:`, because a rename hangs the merge queue (`.github/workflows/README.md:19-29`), and no job-level `if:`, the rule `pipeline-tests.yml` keeps for both its jobs (`:70-74`, `:169`).
 
+**What it runs since stage 1**, on Python 3.12 with the job-level `env:` `DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS=false`: changed-paths; restore dbt's driver and v2's spatial from the cache; `pip install -r requirements-dbt.txt`; `sqlfluff lint dbt/models dbt/tests`; `dbt deps`; `dbt parse`; `dbt lint`; seed Python's spatial; `make_dbt_fixtures.py` and `load_raw.py`; `dbt seed`; `dbt build --exclude package:dbt_project_evaluator`; `dbt source freshness`; `dbt docs generate --output-dir target/docs`, with checks that the site has its `index.html`, assets and Parquet; the evaluator at `error`; and a cache save on a miss. It ran green on a runner in 46 s on 2026-10-01 ([Version](#version-dbt-206-one-version-everywhere)).
+
+**The target**, as the later stages change it:
+
 | # | Step | Note |
 |---|---|---|
 | 1 | changed-paths | Gains `pipeline/extract/`, `pipeline/.dlt/` and the extract pins; drops `load_raw.py` once deleted |
-| 2 | Install | `dbt-oss==2.0.5`, `sqlfluff`, the dlt pins. No `dbt-duckdb`, no `sqlfluff-templater-dbt` |
-| 3 | Seed extensions | `spatial` for Python's DuckDB 1.5.5 **and** v2's bundled 1.5.4 (`@unvalidated`, decision 17); from phase 3, `ducklake` for both as well; and each community extension the profile lists, such as `h3`, for 1.5.4 ([Extensions dbt loads](#extensions-dbt-loads)) |
-| 4 | `sqlfluff lint` | Jinja templater, first, because it needs no warehouse (measured 2.0 s, 4 processes) |
-| 5 | `dbt parse` | The v2 gate; the only engine, so no second parse (decision 19). The cadence checks then read its `manifest.json` ([Every node carries its cadence](#every-node-carries-its-cadence)) |
-| 6 | Breaking-change check | The merge-base, parsed in a `git worktree`, is `--state`; `state:modified` runs with `--warn-error-options '{"error":["UnversionedBreakingChange"]}'`, measured exiting 2 on 1.12.2. On 2.0.5 `dbt build --help` does not list the flag, though `dbt parse` accepts it (The dbt project), so the exit is `@unvalidated` until the phase-1 probe drops a column. Nothing stored; PR jobs hold no R2 credential |
-| 7 | `pytest tests/test_extract_layout.py` | Decision 14 check 1, also collected by the pytest job; this copy puts a layout break under `dbt` |
-| 8 | dlt fixture mode | `make_dbt_fixtures.py` (upstream answers) → `python -m extract._run --pipeline all --fixtures` → `extract._warehouse`. Replaces `load_raw.py` (`pipeline-tests.yml:225-229`) |
-| 9 | `build_marts.py --fixtures` | deps, seed, stages A and B with contracts enforced, then the `pub_` writers |
-| 10 | `dbt source freshness`, `dbt docs generate` | Freshness stays `warn`; docs here, so the site build is never first to break |
-| 11 | Evaluator | `dbt build -s package:dbt_project_evaluator`, severity `error` via `DBT_PROJECT_EVALUATOR_SEVERITY` |
+| 2 | Install | `requirements-dbt.txt` (`dbt==2.0.6`, `sqlfluff==4.3.0`), plus the dlt pins. No `dbt-duckdb`, no `sqlfluff-templater-dbt`. dbt's runtime downloads stay cached, as stage 1 caches them |
+| 3 | Seed extensions | `spatial` for Python's DuckDB 1.5.5 (from PyPI) **and** v2's bundled 1.5.4 (stage 1 caches what dbt fetches; a runner fetched it on a cache miss, measured 2026-10-01, and that a hit fetches nothing is `@unvalidated`); from phase 3, `ducklake` for both as well; and each community extension the profile lists, such as `h3`, for 1.5.4 ([Extensions dbt loads](#extensions-dbt-loads)) |
+| 4 | `sqlfluff lint` | Jinja templater, first, because it needs no warehouse (measured 2.0 s with 4 processes; 3.8 s serial). The enforced lint (decision 33) |
+| 5 | `dbt parse` | The v2 gate, after `dbt deps`; the only engine, so no second parse (decision 19). The cadence checks then read its `manifest.json` ([Every node carries its cadence](#every-node-carries-its-cadence)) |
+| 6 | `dbt lint` | dbt's linter beside SQLFluff, never instead of it (decision 33). After deps and parse, because it loads the whole project ([SQLFluff](#sqlfluff)) |
+| 7 | Breaking-change check | The merge-base, parsed in a `git worktree`, is `--state`; `state:modified` runs with `--warn-error-options '{"error":["UnversionedBreakingChange"]}'`, measured exiting 2 on 1.12.2. On 2.0.5 and 2.0.6 `dbt build --help` does not list the flag, though 2.0.5's `dbt parse` accepts it (The dbt project), so the exit is `@unvalidated` until the phase-1 probe drops a column. Nothing stored; PR jobs hold no R2 credential |
+| 8 | `pytest tests/test_extract_layout.py` | Decision 14 check 1, also collected by the pytest job; this copy puts a layout break under `dbt` |
+| 9 | dlt fixture mode | `make_dbt_fixtures.py` (upstream answers) → `python -m extract._run --pipeline all --fixtures` → `extract._warehouse`. Replaces `load_raw.py` (`pipeline-tests.yml:225-229`) |
+| 10 | `build_marts.py --fixtures` | deps, seed, stages A and B with contracts enforced, then the `pub_` writers |
+| 11 | `dbt source freshness`, `dbt docs generate` | Freshness stays `warn`; docs here, so the site build is never first to break |
+| 12 | Evaluator | `dbt build -s package:dbt_project_evaluator`, severity `error` via `DBT_PROJECT_EVALUATOR_SEVERITY` |
 
-#### `scripts/test.sh` must run it
+#### `scripts/test.sh` runs it
 
-"Run what CI runs" is false today. `scripts/suite_scopes.py`'s `scope_for` (`:39-45`) returns each workflow's **first** changed-paths step, which in `pipeline-tests.yml` is the pytest job's, so `test.sh` runs no dbt or SQLFluff (`:352-375`). Intended:
+Since stage 1, "run what CI runs" holds for dbt. `scripts/suite_scopes.py` has a `dbt` entry read from the `dbt` job's own changed-paths step (`WORKFLOWS`, `:43`), and `test.sh`'s dbt suite runs the job's steps in CI's order: SQLFluff, deps, parse, `dbt lint`, the fixtures and the load into a temporary directory (never `pipeline/data/`), seed, build, freshness, docs, and the evaluator at `error`, every dbt command with `DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS=false`. Later stages add steps 7–10 to it in the same order.
 
-- `suite_scopes.py` gains a `dbt` entry beside its three (`WORKFLOWS`, `:31-35`; `settings` is the fourth suite, unscoped), read from the `dbt` job's own changed-paths step, and `test.sh` runs steps 4–11 in CI's order.
-- Without `dbt` 2.0.5 installed, `test.sh` refuses and says why, as it does for a Python that cannot import ruff (`:303-314`).
-- `.claude/hooks/session-start.sh` installs the dbt pins and clones packages into `dbt_packages/`, because `dbt deps` gets a 403 from codeload.github.com in the sandbox (research report 6; on v2, `@unvalidated`).
+- **It finds the toolchain and never installs it.** It needs the `dbt` that `requirements-dbt.txt` pins first on `PATH` (`dbt --version` reading `dbt 2.0.6`), with that environment's `python` and `sqlfluff` beside it. Without one, the suite is SKIPPED, said in the last line with the commands that make a venv. A `dbt-oss 2.0.5` first on `PATH` is reported by name and skipped, not run as if it were the pin.
+- **`--no-dbt-deps` is the sandbox workaround.** `dbt deps` cannot download packages through the sandbox's proxy: measured 2026-10-01 on 2.0.6, it failed with `Failed to get tarball from https://codeload.github.com/…; status: 500`, and still printed `Installed 3 packages` while leaving all three folders empty, as dbt-oss 2.0.5 did. So clone the packages into `pipeline/dbt/dbt_packages/` at the tags `packages.yml` pins (the dbt skill has the commands), and run `scripts/test.sh --no-dbt-deps`, which skips the step that would empty them and says so.
+- `.claude/hooks/session-start.sh` installs neither the dbt pins nor the packages yet. Adding the clone there is the remaining intended change.
 
-Cost on fixtures, measured: about 2 s of lint and 4.1 s of build. Fixture-mode extract is untimed.
+Cost on fixtures, measured: about 2 s of lint and 4.1 s of build on 2.0.5; on the runner, 2.0.6's whole job took 46 s, most of it setup and install. Fixture-mode extract is untimed.
 
 #### `scripts/pipelines.sh` must learn the new layout
 
@@ -3015,11 +3137,11 @@ The hourly extract steps hold `R2_RAW_WRITE_*` beside the database URLs they alr
 
 | `.claude/skills/dbt/SKILL.md` (decision 11) holds | `.claude/skills/dlt/SKILL.md` (decision 16) holds |
 |---|---|
-| **First, in one line: SQL first, then an extension, then Python** (decision 23). The `dbt` job's step order, shared with `scripts/test.sh`; the sandbox `dbt deps` clone | The folder contract: `pipeline/extract/<club>/`, exactly 11 files, each a resource or a dated `NotAvailable`; `_shared/` free-form; never `pipeline/dlt/` |
-| Naming: `base_<club>__<layer>` → `stg_<club>__<mart>` → `int_<mart>__unioned` → `int_<mart>__<verb>` → the eleven names, never `dim_`/`fct_`; `marts_prefixes` | Four hazards as rules: geometry carries `{"data_type": "json"}`; an unchanged upstream is **left out, never run empty**; `RUNTIME__DLTHUB_TELEMETRY=false`; change checks stay ours, three-valued. Plus `value_step` paging and one retrying session per caller |
+| **First, in one line: SQL first, then an extension, then Python** (decision 23). `dbt` 2.0.6 with telemetry off by its documented opt-out (decision 32); `dbt lint` beside the enforced SQLFluff (decision 33); the `dbt` job's step order, shared with `scripts/test.sh`; the sandbox `dbt deps` clone and `--no-dbt-deps` | The folder contract: `pipeline/extract/<club>/`, exactly 11 files, each a resource, a dated `NotAvailable`, or `SAME_AS` notes; one extraction per upstream dataset (decision 34); `_shared/` free-form; never `pipeline/dlt/` |
+| Naming: `base_<steward>__<layer>`, once per dataset → `stg_<club>__<mart>` → `int_<mart>__unioned` → `int_<mart>__<verb>` and `int_<mart>__stewardship` → the eleven names, never `dim_`/`fct_`; `marts_prefixes` | Four hazards as rules: geometry carries `{"data_type": "json"}`; an unchanged upstream is **left out, never run empty**; `RUNTIME__DLTHUB_TELEMETRY=false`; change checks stay ours, three-valued. Plus `value_step` paging and one retrying session per caller |
 | Contracts: lowercase aliases, `st_setcrs(…, 'OGC:CRS84')`; a contract misses a lon/lat swap, so the region test stays | The three checks, and what each catches that the others cannot |
 | The exceptions seed: a reason and an issue number with title on every row, enforced by a pytest | Adding a club: `trail_orgs.json` row → sources.json row per layer → folder from the template → notes → staging |
-| Python in steps, never Python models (2.0.5 refuses them on DuckDB, measured); `public_use` and `may_publish` in SQL, once, before dedup | The refusal rule: notes quoting the terms; load only on written permission |
+| Python in steps, never Python models (2.0.6 and 2.0.5 refuse them on DuckDB, measured); `public_use` and `may_publish` in SQL, once, before dedup | The refusal rule: notes quoting the terms; load only on written permission. Never imitate a browser, and a club's own public ArcGIS layer counts as published (decision 39) |
 | Phone files through `phone_file`, run last; the bounds test on every geometry mart; metres in EPSG:5070, never `_Sphere`/`_Spheroid` on (lon, lat) ([Where data lives between runs](#where-data-lives-between-runs)) | The after-run check and committed-load reads; person fields never loaded, and the purge if one is ([Where data lives between runs](#where-data-lives-between-runs)) |
 | State and `--defer` (explicit `database:` on sources); `meta.cadence` and the one-lane-per-node selectors; the project's `@unvalidated` thresholds; docs and charts never committed | Each resource's `meta.cadence`, and the status rules: carry the layer's own edit date, filter on the agency's own status field |
 
@@ -3045,7 +3167,7 @@ The marketplace name and its plugins (`dbt`, `dbt-migration`, `dbt-extras`) were
 | Stage | What it builds | Leaves true | After the merge, a hiker sees |
 |---|---|---|---|
 | 0 | This plan; `pipeline/ORG_COVERAGE_SURVEY.md`; the draft pull request | Every decision written down; a dated per-club snapshot | nothing |
-| 1 | Foundations: dbt-oss 2.0.5 and the YAML migration (64 parse errors → 0); evaluator at `error`, two exception rows; per-club model YAML (`fct_test_directories` 55 → 0); SQLFluff jinja in CI and `test.sh`; the extensions profile; the `extract/` skeleton with every `NOT_AVAILABLE` note from the survey, the layout test and the cadence home; the publication corrections ([Who may publish](#who-may-publish)); both skills and the plugin | CI enforces the shape everything later fits. No published byte moves | nothing |
+| 1 | Foundations: `dbt` 2.0.6 (decision 32; built first on dbt-oss 2.0.5, which ran the same files green) and the YAML migration (64 parse errors → 0); evaluator at `error`, with 8 exception rows today and two in the intended state; per-club model YAML (`fct_test_directories` 55 → 0); SQLFluff jinja and `dbt lint` in CI and `test.sh`. **Those are built** (commits `2c9454af` to `d01c6cbf`, green on a runner on 2026-10-01). Still to build in this stage: the extensions profile; the `extract/` skeleton with every `NOT_AVAILABLE` note from the survey, the layout test and the cadence home; the publication corrections ([Who may publish](#who-may-publish)). Both skills and the plugin came with this plan | CI enforces the shape everything later fits. No published byte moves | nothing |
 | 2 | dlt for the ArcGIS, Socrata and WordPress clubs, **in shadow**, into the private raw store (needs the buckets) | The raw store fills; `_extract_runs` measures each run; today's fetchers still feed exporters | nothing |
 | 3 | `trail_lines`, `points_of_interest`, `elevation`, `trail_network`, each through shadow-run parity, with decision 23's SQL attempts proven or sent back by their unit tests. The monthly raw lane moves to DuckLake at the first step, once its three go/no-go runs pass; decision 27 is answered before the POI marts port | `pub_` writers read marts; each family's old transform is deleted in its own stage ([Keeping every rule we already built](#keeping-every-rule-we-already-built), step 5) | each approved difference, such as graph `length_m` on full resolution lengthening day-hike miles, at the next promotion |
 | 4 | `closures` and `warnings` on the hourly lane, NWS and OPRHP's closures included (**#1152 — Move OPRHP's temporary closures onto the conditions clock, where a safety layer belongs**); the status, water and expiry rules. The warehouse moves to DuckLake once contracts with `primary_key` and `check` work there | One closures mart for every club plus OurHike; decision 7's split, held by a partition test | **within hours of the merge**: the bake writes production |
@@ -3073,7 +3195,7 @@ Then the maintainer merges, and production promotion goes through the release tr
 - a map shot recipe per region, under the four rules of `.claude/skills/pr-screenshot/SKILL.md`, a dispersed campsite at a readable zoom among them;
 - a line-by-line list of every new closure, warning, water and shelter source, for review.
 
-**So two things block go**: the batched licence question (rule 5) and the open terms questions in [Club by club](#club-by-club), tier 5. Nothing with explicit restrictive text publishes until the maintainer rules. Person fields, and the `refuse` orgs without recorded permission, never publish.
+**What blocks go now.** The batched licence question that decision 31 named was answered the same day (decisions 36–38), and so were the fetch terms (39). Still open, and each blocks go: restrictive text no decision names (rule 5's last case, PA DCNR's Explore PA Trails among it); the closure posts' basis (rule 6); whether decision 39 lets ONDA's `ODT Tracks` publish while `onda` is a `refuse` row; and the permission letters in [Club by club](#club-by-club), tier 5. Until each is answered, its rows stay `may_publish` false. Person fields, and the `refuse` orgs without recorded permission, never publish.
 
 ## Risks and what nobody has checked
 
@@ -3082,7 +3204,7 @@ Then the maintainer merges, and production promotion goes through the release tr
 | Risk | Harm | Guard |
 |---|---|---|
 | A monthly publish evicted from `publish-data`, as above | stale lines, water and miles on UA, then promoted | `confirm` turns it red |
-| v2's DuckDB 1.5.4 cannot open a 1.5.5 warehouse or load spatial | every build | one CI run in phase 1; fallback: pin Python's DuckDB to v2's 1.5.4 (`duckdb-extension-spatial` 1.5.4 is on PyPI, checked 2026-10-01; whether the pipeline passes on it is `@unvalidated`) |
+| v2's DuckDB 1.5.4 cannot open a 1.5.5 warehouse or load spatial | every build | measured not to happen on a runner on 2026-10-01: dbt 2.0.6 read the 1.5.5 warehouse and loaded spatial ([Version](#version-dbt-206-one-version-everywhere)). Fallback if a later pin breaks it: pin Python's DuckDB to v2's 1.5.4 (`duckdb-extension-spatial` 1.5.4 is on PyPI, checked 2026-10-01; whether the pipeline passes on it is `@unvalidated`) |
 | The hourly bake overruns 10 minutes | closures (in front of danger) | a timed run before phase 4; per-step ceilings |
 | A merged dbt edit to closures reaches production within hours | in front of danger | parity before merge, and decision 30's 7 days of hourly runs on UA with no failed check ([The go/no-go gate](#the-gono-go-gate)); open question 4 asks about after the merge |
 | The monthly cron never fires | UA goes stale | the 35-day alarm; dispatch |
@@ -3091,7 +3213,7 @@ Then the maintainer merges, and production promotion goes through the release tr
 | Production closures placed on UA's lines | in front of danger | per-environment defer |
 | UA's Postgres rows reach production | a test closure on a hiker's map | per-environment raw tables |
 | Promotion built from different raw than UA verified | anything | the pinned `raw_run`: `steps/raw_inputs/`, then a raw-lake snapshot |
-| A DuckDB bump changes DuckLake's catalog format | every monthly build: dbt-oss's bundled DuckDB cannot attach the lake | CI reads `ducklake_metadata.version` through both DuckDB builds and refuses a mismatch |
+| A DuckDB bump changes DuckLake's catalog format | every monthly build: dbt's bundled DuckDB cannot attach the lake | CI reads `ducklake_metadata.version` through both DuckDB builds and refuses a mismatch |
 | A reader attaches a catalog object while its writer replaces it | a torn read of the raw or warehouse lake | readers copy the object with one GET, then attach the copy |
 | A person's name or phone number is loaded by mistake | privacy | excluded in the dlt resource; a denylist pytest; the purge in [Purging a field that should never have loaded](#purging-a-field-that-should-never-have-loaded) |
 | The counts page leaks rows | private locations | counts-only models; the boards pytest refuses map chart types |
@@ -3101,7 +3223,7 @@ Then the maintainer merges, and production promotion goes through the release tr
 | A water attribute rendered as a water claim | out of water | the land manager's alerts joined before any water field becomes a claim; an undocumented value is never yes |
 | A metre threshold measured with `_Sphere` or `_Spheroid` on (lon, lat) points | lost, through teleport guards and joins about 32% wrong at 41°N | metres in EPSG:5070, and a unit test with a known 30 m pair in both directions ([Geometry rules every mart obeys](#geometry-rules-every-mart-obeys)) |
 | A mart holding metres in a lon/lat column, which the CRS contract accepts | lost | the bounds test on every geometry mart |
-| A layer with restrictive terms published by mistake | an org's trust; the licence | rule 5's `may_publish` false until the batched question is answered, and the new-data review report |
+| A layer with restrictive terms published by mistake | an org's trust; the licence | each publishes only under the decision that names it (20, 22, 36–38), its own words quoted beside the decision and its conditions enforced; anything no decision names stays `may_publish` false (rule 5); the new-data review report |
 
 ### Every `@unvalidated` claim in this design
 
@@ -3109,13 +3231,13 @@ From the decisions log, the six research reports and every section.
 
 | Claim | Home | Settled by |
 |---|---|---|
-| v2's DuckDB 1.5.4 opens a 1.5.5 warehouse and loads spatial on a runner | decision 17 | one CI run |
+| A cache-hit run of the `dbt` job never reaches extensions.duckdb.org. Opening a 1.5.5 warehouse and loading spatial on a runner were measured on 2026-10-01, on a cache miss | decisions 17 and 32; The dbt project | the job's next run on the same requirements hash |
 | The pipeline runs on DuckDB 1.5.4 if Python's pin steps down to v2's (`duckdb-extension-spatial` 1.5.4 is on PyPI, checked 2026-10-01) | The dbt project | the pytest suite on 1.5.4 |
-| `marts_prefixes` passes on 2.0.5, and with the four added prefixes | The dbt project | the first v2 evaluator run |
-| Contracts on v2: enforcement, `__dbt_tmp` swap, CRS types, `UnversionedBreakingChange` (2.0.5's `dbt build --help` does not list `--warn-error-options`) | The dbt project | one probe: a check violation, a CRS mismatch, a dropped column |
+| `pub_` models pass the evaluator as they stand, or need `pub_` in `other_prefixes`. (`marts_prefixes` itself was measured passing on 2.0.6 and 2.0.5, 2026-10-01) | The dbt project | one evaluator run with the first `pub_` model |
+| Contracts on v2: enforcement, `__dbt_tmp` swap, CRS types, `UnversionedBreakingChange` (neither 2.0.5's nor 2.0.6's `dbt build --help` lists `--warn-error-options`) | The dbt project | one probe: a check violation, a CRS mismatch, a dropped column |
 | State on v2: 12-node selection, breaking-change exit, defer, `source_status:fresher+` | The dbt project; Extract | one probe across two artifacts |
-| A later 2.x runs Python models | Keeping every rule | the three-line probe at each bump |
-| dbt-oss 2.0.5 loads a community extension from `profiles.yml`; `h3`, `geography` and `a5` have builds for its bundled 1.5.4 | decision 23; The dbt project | one CI run each; the fallback is a pre-hook `INSTALL … FROM community; LOAD …` |
+| A later 2.x runs Python models (2.0.6 still refuses them, measured 2026-10-01) | Keeping every rule | the three-line probe at each bump |
+| dbt 2.0.6 loads a community extension from `profiles.yml`; `h3`, `geography` and `a5` have builds for its bundled 1.5.4 | decision 23; The dbt project | one CI run each; the fallback is a pre-hook `INSTALL … FROM community; LOAD …` |
 | Each SQL attempt of decision 23 passes its rule's parity unit tests (22 ledger rows); a recursive-CTE route search (SH03) and gain scan (EL10, EL11) are fast enough | Keeping every rule | each family's parity stage; the first full build's timings |
 | Each status source's freshness limit, and each page or seasonal closure's expiry | The dbt project, status rules | the publisher's stated schedule, else a quarter of the source's recorded edit dates |
 | Per-cadence freshness thresholds (hourly 7 h / 14 h … monthly 35 d / 70 d); the cadence checks on the full manifest; NWS fits the conditions job's 10 minutes | decision 28a; this section | the p99 of `checked_at` gaps in `_extract_runs`; the first pull request stage with generated sources; one timed run |
@@ -3124,7 +3246,7 @@ From the decisions log, the six research reports and every section.
 | The monthly run fits 180 min; the extract fits 120 | this section | the first run's `_extract_runs` and job times |
 | The hourly lane fits 10 min, downloading or attaching the warehouse | this section; The dbt project | one timed run |
 | A monthly cron fires monthly; the 3rd is quieter than the 1st; the 35-day alarm | this section | a year of runs |
-| `dbt deps` on v2 in the sandbox | this section | one session |
+| The session-start hook clones the dbt packages, so a sandbox runs the dbt suite without cloning by hand. (`dbt deps` itself is measured failing there on 2.0.6 and 2.0.5, 2026-10-01) | this section | the hook's first run with the clone added |
 | v2 docs without a warehouse; self-hosted DuckDB-WASM | The dbt project | one build each |
 | About 1,500 files lint in about 94 s with 4 processes (the `union all by name` parse is measured, not open) | The dbt project | timing lint on the first full-load build stage |
 | The jinja templater misses nothing the dbt templater caught; noise of a raw pass over compiled SQL; `load_macros_from_path` rendering the project's own macros | decision 19; The dbt project | both templaters on phase 1's tree; one pass over the 32 compiled files; one lint run |
@@ -3140,6 +3262,7 @@ From the decisions log, the six research reports and every section.
 | OSM extracts' 30-day maximum age, "the maintainer's round number" | `INCREMENTAL.md:366-368`; **#1652 — Download OSM's Geofabrik extracts at most once a month, into a private raw bucket that outlives the 7-day Actions cache** | the extract job's OSM rows in `_extract_runs` (`INCREMENTAL.md`'s `log.json`) |
 | An organization's feature id (`lib/feature_id.py`'s chain) survives its own republish | The dbt project | the raw store's snapshot log, (id, geometry) across one upstream edit |
 | 10 m / 50% dedup outside New York City's agency pair | The dbt project | each pair's measured overlap |
+| Two spellings of one upstream (a trailing `/query`, `http` against `https`) slip past the layout test's same-upstream check | Extract | the full catalogue's first run through it |
 | Region-box margins, per club from `trail_orgs.json`'s `states` | The dbt project | a pass over a live fetch reporting each layer's real extent |
 | `ST_LineLocatePoint` matches shapely to 0.001 mi | The dbt project | parity |
 | `ST_Simplify` matches shapely vertex for vertex | Making the download smaller | `test_simplify_trails.py` on both |
@@ -3170,6 +3293,6 @@ From the decisions log, the six research reports and every section.
 6. **jsDelivr.** v2 docs make every visitor fetch DuckDB-WASM from cdn.jsdelivr.net. Accept it, or hold phase 7 for self-hosting?
 7. **How dbt builds** (decision 27): tables throughout, snapshots of every source with incremental models, or snapshots for POIs and closures only. Decided at the phase that ports the POI marts; the options, the measured trade-offs and the POI-ledger proposal are in [How should dbt build: tables, snapshots, or incremental models?](#how-should-dbt-build-tables-snapshots-or-incremental-models).
 8. **Contracts on the warehouse lake at phase 4.** DuckLake refuses `primary_key` and `check`. Build marts in a local file and copy them in after the tests pass, or turn those rules into tests? `No visual:` this is about what the build refuses, not anything a hiker sees ([DuckLake at phases 3 and 4](#ducklake-at-phases-3-and-4)).
-9. **The batched licence question** (decision 21a, rule 5 of [Who may publish](#who-may-publish)): every GIS layer with explicit restrictive text and no ruling yet, quoted row by row, in one question. It blocks go (decision 31). The rows the audit already found are in [Club by club](#club-by-club), tier 5, and the closure posts that page prose keeps out of the GIS presumption join them.
-10. **ONDA's public ArcGIS copy of the Oregon Desert Trail.** ONDA gates its GPX behind a liability waiver, and publishes the route itself, without a licence, on ArcGIS Online (audit p06). Does the waiver govern the public copy? Decision 21(a) presumes the layer reusable, and the waiver says otherwise for the GPX.
+9. **What the licence batch left open** (rules 5 and 6 of [Who may publish](#who-may-publish)). Decisions 36–38 answered the GIS layers the audit found. Two things remain, and each blocks go (decision 31): PA DCNR's Explore PA Trails ("intended for demonstration, education, planning, and monitoring purposes only … save the Commonwealth harmless"), which none of the three names; and the basis for clubs' closure posts, which page prose keeps out of the GIS presumption.
+10. **Does ONDA's `ODT Tracks` publish?** Decision 39 answered the waiver question: ONDA's own public ArcGIS layer counts as published, so it is extracted. But `onda` is a `refuse` row, and rule 7 and decision 37 keep the four `refuse` orgs off phones until permission is recorded. Does decision 39 lift that for this one layer? Until you say, its `may_publish` stays false ([What may be fetched](#what-may-be-fetched)).
 11. Open elsewhere, gathered here: trailheads and parking in the safety core ([Making the download smaller](#making-the-download-smaller)); the identity ledger split under **#1026 — The POI identity ledger doubled and crossed the reference-dir ceiling, so the publish path is blocked at both ends** ([Keeping every rule we already built](#keeping-every-rule-we-already-built)); `njdep` → `njgin`, `requirements-extract.in` and whether `nh-granit` is reloaded after **#1711 — Ship only hiking trails: remove NH GRANIT, and drop USFS motorized trails nationwide** ([Extract and load (dlt)](#extract-and-load-dlt)); the drought fetch under **#1804 — fetch_drought.py fetches droughtmonitor.unl.edu/data/, a path the Drought Monitor's robots.txt disallows for every user agent**; loading an agency's copy of a steward's gated route, and reading Facebook-only and members-only channels ([Club by club](#club-by-club), tier 5); the attribute strip reversing **#1116 — The vector basemap ships six layers and thirty attributes the sheet never draws** ([Background map: the plan, not the change](#background-map-the-plan-not-the-change)).

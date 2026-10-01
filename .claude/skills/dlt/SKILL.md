@@ -1,6 +1,6 @@
 ---
 name: dlt
-description: Work on the extract-and-load layer in pipeline/extract/ - the dlt resources that land every club's and every shared source's data in the private raw store. Use when adding a club, adding or changing a resource, writing or rechecking a NOT_AVAILABLE note, touching .dlt/config.toml, writing an extract test, or when a dlt run check refuses a load. Covers the folder contract, the note format, the four measured hazards as rules, the three data checks, loading every club while gating publication downstream, the rule that terms are never routed around, how to add a club, testing under the socket guard, the purge for a field that should never have loaded, and why dltHub's AI harness is not installed.
+description: Work on the extract-and-load layer in pipeline/extract/ - the dlt resources that land every club's and every shared source's data in the private raw store. Use when adding a club, adding or changing a resource, writing or rechecking a NOT_AVAILABLE or SAME_AS note, touching .dlt/config.toml, writing an extract test, or when a dlt run check refuses a load. Covers the folder contract, one extraction per upstream dataset, the note format, the four measured hazards as rules, the three data checks, loading every club while gating publication downstream, the rule that terms are never routed around, how to add a club, testing under the socket guard, the purge for a field that should never have loaded, and why dltHub's AI harness is not installed.
 user-invocable: true
 ---
 
@@ -57,7 +57,8 @@ The maintainer asked whether dlt has a skill set to add, and chose by poll
 ## The order of work
 
 1. **Registry rows first**: a reviewed `pipeline/reference/trail_orgs.json` row
-   for the club, and a `pipeline/sources.json` row for every upstream.
+   for the club, and a `pipeline/sources.json` row for every upstream that no
+   other folder already extracts ([below](#one-extraction-per-upstream-dataset)).
 2. **The folder**: eleven files, each a resource, a share or a dated note.
 3. **The traps**: the four hazards below, checked line by line.
 4. **The tests**, under the socket guard.
@@ -116,6 +117,9 @@ belongs to the type. Each type file defines exactly one of:
   upstream is one resource and one raw table even when it feeds two types, so
   `atc/warnings.py` holds `SHARES = "closures"` and no `CLAIMS`.
 - **`NOT_AVAILABLE`**: a dated note (below).
+- **`SAME_AS`**: a tuple of `SameAs` notes, when a republished copy of another
+  resource's dataset is all the org publishes for this type. A `CLAIMS` file
+  may carry `SAME_AS` notes too, for the copies it does not extract.
 
 **A builder takes a `sources.json` key, never a URL.** A club file therefore
 cannot fetch anything the registry does not hold, and every new upstream is a
@@ -127,6 +131,48 @@ exactly as written. A real run keeps that name under both `snake_case` and
 `sql_ci_v1`, but dlt's `normalize_table_identifier()` called on its own
 collapses the `__` to `raw_nysdec_dec_lean_tos` (measured 2026-10-01, dlt
 1.30.0), so no code here builds a table name by calling it.
+
+## One extraction per upstream dataset
+
+The maintainer, decision 34: *"Are we landing the same data, multiple times?
+We shouldn't. Like for USFS, that should get landed as a 'base' layer (subset
+of staging) Then each club can take that data and assign their portion."*
+
+- **Each upstream dataset is extracted exactly once, in its steward's
+  folder**: USFS's national trail layer in `usfs/trail_lines.py`, and nowhere
+  else. A club whose portion lives in that layer writes no resource for it;
+  its file is a dated note naming the resource it draws from (the `via` rule).
+  The club's portion is assigned in dbt, in `int_<mart>__stewardship`, by
+  ATC's club-section polygons, the club's `trails` list in `trail_orgs.json`,
+  or a name or ID match ([the dbt skill](../dbt/SKILL.md)).
+- **A republished copy is a `SAME_AS` note, never a resource.** Before
+  writing a resource, check that the layer is not a copy of one another folder
+  extracts: the same row count and edit dates, an ArcGIS Online view or twin of
+  an on-prem layer, or an item whose description names the original. The
+  coverage audit's examples, each measured 2026-10-01: DEC's ArcGIS Online
+  twins of its on-prem layers (`DEC_Trails/1` holds the same 5,292 segments
+  as `dil_trails/2`), DEC's 2025 `DEC_pointsinterest` copy, CDTC's views of
+  NPS POIs, and CPW's three COTREX copies, of which the newest is extracted.
+- **A `SAME_AS` note ages like a `NOT_AVAILABLE` note**: `confirmed`,
+  `checked` and `recheck_after_days`, failed by the monthly ageing check and
+  rechecked by a person, because a copy can stop being one. Once its publisher
+  edits it apart from the original, it is an independent dataset and gets a
+  resource of its own.
+- **The layout test fails two resources that point at the same upstream URL
+  or ArcGIS item id**, and a `SAME_AS` copy that some file also claims.
+- **Post-load dedup is only for independent datasets of the same ground**,
+  such as a club's own GPS line against USFS's line. Never load a copy
+  so that dedup can remove it.
+
+```python
+@dataclass(frozen=True)
+class SameAs:  # pipeline/extract/_contract.py (shape)
+    original: str  # the sources.json key whose resource extracts the dataset
+    copy: tuple[str, ...]  # the copy's URLs or ArcGIS item ids
+    confirmed: date  # the day a person compared them
+    checked: tuple[str, ...]  # what shows it is the same data
+    recheck_after_days: int = RECHECK_AFTER_DAYS
+```
 
 ## The `NOT_AVAILABLE` note
 
@@ -264,7 +310,7 @@ local `file://` destination; R2 is `@unvalidated`).
 - `_loaded_at` (naive UTC) is stamped in the map step **only when a resource
   runs**, so a `FRESH` table keeps its old stamp.
 - dbt runs as its own CLI step, never through `dlt.dbt`, whose default is
-  `dbt>=1.7,<2` while this project runs dbt-oss 2.0.5.
+  `dbt>=1.7,<2` while this project runs `dbt` 2.0.6 (decision 32).
 
 ## Load every club, gate publication downstream
 
@@ -284,10 +330,15 @@ deduplication after the extract-load."*
 - **Deduplication is dbt's**, in intermediates, after every club has loaded.
 - **Public GIS is presumed reusable** (decision 21a): a layer an org publishes
   itself, anonymously, over a public endpoint gets `licence_basis: public_gis`.
-  **Explicit restrictive text on a GIS item** is still extracted and staged,
-  quoted verbatim on its row, and goes to the maintainer as **one batched
-  question**, with `may_publish` false until it is answered. DEC's and OPRHP's
-  clearinghouse datasets are the maintainer's own rulings (decisions 20 and 22).
+  Decision 37 extends that to layers whose own words say "internal use", "not
+  for distribution" or "all rights reserved", against those words. DEC's and
+  OPRHP's clearinghouse datasets are the maintainer's own rulings (decisions 20
+  and 22), and so are the licence batch's other answers: profit- and
+  sale-limited layers publish as non-commercial use (36), and conditions
+  travel with their layer, a condition that cannot be met holding it (38).
+  **Whatever a layer's words say, extract it and quote them verbatim** on its
+  `sources.json` row; dbt decides publication. Restrictive text that no
+  decision names keeps `may_publish` false and goes to the maintainer.
 
 **People never ship, and are never loaded.** A resource excludes person fields
 in its requested field list, so they never reach the raw store, whatever the
@@ -314,10 +365,22 @@ finisher and member rosters the coverage audit found. The full list is in
   can see who is asking from one line of their log. ATC's host refuses the
   default `python-requests` agent (403) and accepts this one (200, measured
   2026-08-24, in that module's docstring): its block was on an anonymous
-  agent, and saying who we are is not getting around it. **Never send a
-  browser's or another client's User-Agent without the maintainer's
-  decision.** A host that refuses our own named agent has refused us: record
-  it as `UNKNOWN` and report it in the pull request; do not try another agent.
+  agent, and saying who we are is not getting around it.
+- **Never imitate a browser** (decision 39, the maintainer's poll of
+  2026-10-01). Never send a browser's or another client's User-Agent, not even
+  for a host that serves one: `tnstateparks.com` and LSHT's ClubExpress files
+  refuse our agent, so they hold until the org answers. A host that refuses
+  our own named agent has refused us: record it as `UNKNOWN` and report it in
+  the pull request; do not try another agent.
+- **A club's own public ArcGIS layer counts as published, whatever its
+  website's waiver says** (decision 39, "Allow ArcGIS copies, else ask"). So
+  ONDA's public `ODT Tracks` layer is extracted, while the GPX, CalTopo maps
+  and Databook behind its waiver are not fetched. Whether it may publish
+  while `onda` is a `refuse` row is the maintainer's open question, so its
+  `may_publish` stays false. Other no-automation terms and waivers mean ask:
+  a dated note quoting them, and a request the maintainer sends. ATC's
+  trail-updates scrape stays as it is, on **#458 — Confirm with the ATC what
+  may be republished from their Trail Updates**.
 - **Honour `Crawl-delay`.** Two of today's fetchers do not: `lib/atc_scrape.py`
   sends ATC's listing pages with no throttle against its `Crawl-delay: 10`, and
   `fetch_hikefinder.py` sends 2 requests a second against Hike Finder's
@@ -334,9 +397,9 @@ finisher and member rosters the coverage audit found. The full list is in
 
 | check | when | what it holds |
 |---|---|---|
-| **1. Layout**, `pipeline/tests/test_extract_layout.py` | every pull request | club folders equal the managing slugs; exactly the 11 files; each a resource, a share naming a type that has one, or a well-formed note (`confirmed` not in the future, non-empty `checked` and `where`, `recheck_after_days > 0`); `org.py` never a note; a `stg_<club>__<type>` for exactly the available types; every `sources.json` key claimed once and every claim resolving; no table on two lanes. **A note's shape, never its age**, so the calendar cannot turn an unrelated pull request red |
+| **1. Layout**, `pipeline/tests/test_extract_layout.py` | every pull request | club folders equal the managing slugs; exactly the 11 files; each a resource, a share naming a type that has one, a well-formed note (`confirmed` not in the future, non-empty `checked` and `where`, `recheck_after_days > 0`), or `SAME_AS` notes whose `original` is claimed; no two resources pointing at the same upstream URL or ArcGIS item id; `org.py` never a note; a `stg_<club>__<type>` for exactly the available types; every `sources.json` key claimed once and every claim resolving; no table on two lanes. **A note's shape, never its age**, so the calendar cannot turn an unrelated pull request red |
 | **2. Run check**, in `_run.py` | after every dlt run | *before the load*: each available resource loaded or recorded `FRESH`; `rows > 0` unless the type may be empty and the upstream's own count proves the zero; rows ≥ 0.5 × the last loaded count, except closures and warnings, which have no floor (the floors are `@unvalidated`; six monthly runs settle them); `org.py` produces exactly one row. A failure drops the package, so nothing loads and no marker advances. *After the load*: `committed()` checks the load is in `_dlt_loads`, the rows on disk equal the rows normalized, and every count proof holds; a failure records `unverified` and the build refuses |
-| **3. Note ageing** | the monthly run, not upstream of publish | a note past `confirmed + recheck_after_days` fails, and a person rechecks it |
+| **3. Note ageing** | the monthly run, not upstream of publish | a `NOT_AVAILABLE` or `SAME_AS` note past `confirmed + recheck_after_days` fails, and a person rechecks it |
 
 Check 2 also reaches dbt as source tests on `raw._extract_runs`, so a build
 cannot quietly consume a run that was refused: one copy at `error` for closures
@@ -354,7 +417,8 @@ and warnings, one at `warn` for the rest.
    basis recorded, before any resource names it.
 3. **`pipeline/extract/<folder>/` with the eleven files.** `org.py` is
    `RESOURCES = [catalogue_row()]`. Each other file is a resource built from
-   `_kinds.py`, a `SHARES`, or a note. Start from the club's rows in
+   `_kinds.py`, a `SHARES`, a note, or `SAME_AS` notes. Never a second
+   resource for a dataset another folder already extracts. Start from the club's rows in
    `pipeline/ORG_COVERAGE_SURVEY.md`, and work the discovery list above before
    any note on a GIS-shaped type.
 4. **Exclude person fields** in every field list, and check them against the

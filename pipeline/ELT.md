@@ -689,8 +689,8 @@ Measured 2026-10-01 on a local `file://` destination: two `replace` runs left on
 
 **Fixture mode** replaces `make_dbt_fixtures.py` → `load_raw.py` (`pipeline-tests.yml:225-229`):
 
-- `make_dbt_fixtures.py` emits **upstream answers**: layer metadata with `fields` and `maxRecordCount`, query pages, Socrata pages, WordPress posts.
-- `python -m extract._run --pipeline all --fixtures` runs the real resources inside `requests_mock`, then `_warehouse.py` loads them.
+- **Built** (stage 3) as `python -m extract._fixtures --raw-dir <fixtures> --warehouse <warehouse.duckdb>`, a module of its own rather than a flag on `_run.py`. `make_dbt_fixtures.py` still writes one GeoJSON file per layer, and `FixtureAdapter`, a `requests` transport mounted on `_kinds.session()`, answers each file as its server would: ArcGIS metadata, counts and pages, Socrata's `count(*)` and pages, and opentrail's feed. No `requests_mock`, so the dbt job adds no test dependency. A layer's `fields` are the file's property names, typed by the fixture's own values, because no file records the live types. Socrata answers are keyed on the dataset and the entry's `where`, because NYC's paths and park drives are two slices of one dataset.
+- It runs every resource that has a fixture file, 56 of them, on both lanes, and `_warehouse.py` loads them: 6.8 s here. Against `load_raw.py` on the same files, every table has the same row count and the same columns, except GDAL's `ogc_fid`, which no upstream sends, and two names GDAL rewrote, Mohonk's `use_` and OPRHP's `public_`, which dlt keeps as `use` and `public` (measured 2026-10-01).
 - CI therefore exercises the real paginator, hints, flatten step and naming, where the 2,072,165-row default would have gone red.
 - `make_dbt_fixtures.py:12-22`'s "Nothing here is invented" extends to the `fields` lists.
 
@@ -3143,7 +3143,7 @@ The id stays `dbt`. It is a required check (`.github/expected-protections.yml:77
 | 6 | `dbt lint` | dbt's linter beside SQLFluff, never instead of it (decision 33). After deps and parse, because it loads the whole project ([SQLFluff](#sqlfluff)) |
 | 7 | Breaking-change check | The merge-base, parsed in a `git worktree`, is `--state`; `state:modified` runs with `--warn-error-options '{"error":["UnversionedBreakingChange"]}'`, measured exiting 2 on 1.12.2. On 2.0.5 and 2.0.6 `dbt build --help` does not list the flag, though 2.0.5's `dbt parse` accepts it (The dbt project), so the exit is `@unvalidated` until the phase-1 probe drops a column. Nothing stored; PR jobs hold no R2 credential |
 | 8 | `pytest tests/test_extract_layout.py` | Decision 14 check 1, also collected by the pytest job; this copy puts a layout break under `dbt` |
-| 9 | dlt fixture mode | `make_dbt_fixtures.py` (upstream answers) → `python -m extract._run --pipeline all --fixtures` → `extract._warehouse`. Replaces `load_raw.py` (`pipeline-tests.yml:225-229`) |
+| 9 | dlt fixture mode | `make_dbt_fixtures.py` → `python -m extract._fixtures` → `extract._warehouse` (built, stage 3). Replaces `load_raw.py` (`pipeline-tests.yml:225-229`) |
 | 10 | `build_marts.py --fixtures` | deps, seed, stages A and B with contracts enforced, then the `pub_` writers |
 | 11 | `dbt source freshness`, `dbt docs generate` | Freshness stays `warn`; docs here, so the site build is never first to break |
 | 12 | Evaluator | `dbt build -s package:dbt_project_evaluator`, severity `error` via `DBT_PROJECT_EVALUATOR_SEVERITY` |

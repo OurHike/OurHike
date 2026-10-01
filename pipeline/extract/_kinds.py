@@ -832,7 +832,10 @@ class OpentrailFeed(Resource):
         return (Freshness.STALE if recorded is None else compare_marker(recorded.get("etag"), etag)), {"etag": etag}
 
     def column_hints(self) -> dict:
-        return {"geometry": {"data_type": "json"}}
+        # feature_id hinted so the column exists when no feature carries an id,
+        # as on CI's fixtures (extract/_fixtures.py); dlt creates no column it
+        # never saw a value for.
+        return {"geometry": {"data_type": "json"}, "feature_id": {"data_type": "text"}}
 
     def rows(self, proofs: dict[str, int]):
         response = self._get()

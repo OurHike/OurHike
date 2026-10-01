@@ -111,9 +111,15 @@ export function PlanChallenges(props: PlanChallengesProps) {
         <OrgMark challenge={challenge} />
         <span className="challenge-row__text">
           <span className="challenges__eyebrow">Challenge on your route</span>
-          <span className="challenge-row__title" id="plan-suggestion-title">
+          {/* Read it before joining it: the name opens the challenge. */}
+          <button
+            type="button"
+            className="challenge-link challenge-row__title"
+            id="plan-suggestion-title"
+            onClick={() => props.onOpen(challenge.id)}
+          >
             {challenge.name}
-          </span>
+          </button>
           <DraftLabel challenge={challenge} />
         </span>
       </div>
@@ -130,7 +136,15 @@ export function PlanChallenges(props: PlanChallengesProps) {
           </li>
         ))}
       </ul>
-      {more > 0 && <p className="challenges__note">+{more} more on this hike</p>}
+      {more > 0 && (
+        <button
+          type="button"
+          className="challenge-link challenges__note"
+          onClick={() => props.onOpen(challenge.id)}
+        >
+          +{more} more on this hike
+        </button>
+      )}
       <div className="challenge-actions">
         <button
           type="button"

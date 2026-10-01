@@ -18,6 +18,7 @@
 // composite score across challenges, no rank and no average, because
 // features/VOLUNTEERING.md §5 rule 1 is kept rather than waived.
 
+import { localDay } from './passedToday'
 import type { MileRange } from './walkedMiles'
 import { mergeRange, walkedWithin } from './walkedMiles'
 import {
@@ -68,8 +69,16 @@ export interface ChallengeState {
   /** The Legend's "Challenge places" switch. Off by default (principle 2). */
   layerShown: boolean
   /** Challenges this hiker has sent an entry for, or told the club they
-   *  finished - so the finish screen can say it went. */
-  sent: readonly { challengeId: string; at: string; kind: 'entry' | 'finished' }[]
+   *  finished. `outboxId` is the queued item, so the finish screen can tell
+   *  "waiting for signal" from "the server refused it" by reading the outbox
+   *  rather than claiming it went - absent on a record from before it was
+   *  kept. */
+  sent: readonly {
+    challengeId: string
+    at: string
+    kind: 'entry' | 'finished'
+    outboxId?: string
+  }[]
 }
 
 export const EMPTY_CHALLENGE_STATE: ChallengeState = {
@@ -135,7 +144,8 @@ export function storedChallengeState(value: unknown): ChallengeState {
           isRecord(entry) &&
           typeof entry.challengeId === 'string' &&
           typeof entry.at === 'string' &&
-          (entry.kind === 'entry' || entry.kind === 'finished'),
+          (entry.kind === 'entry' || entry.kind === 'finished') &&
+          (entry.outboxId === undefined || typeof entry.outboxId === 'string'),
       )
     : []
   return {
@@ -292,15 +302,54 @@ export function tag(
 }
 
 /** Un-tags a hand-made tag, the "Tag it" pill pressed twice. A tag the day's
- *  walk made is not undone by a tap - the pill reads done, not Tagged. */
+ *  walk made is not undone by a tap - the pill reads done, not Tagged.
+ *
+ *  `poi` narrows it to one place, which is what a place card means: the pill
+ *  on McAfee Knob's card un-tags McAfee Knob, not the Triple Crown's other
+ *  two peaks. Without it, every hand tag of the item goes. */
 export function untag(
   state: ChallengeState,
   challengeId: string,
   itemId: string,
+  poi?: string,
 ): ChallengeState {
   const tags = state.tags.filter(
     (tag) =>
-      !(tag.challengeId === challengeId && tag.itemId === itemId && tag.how === 'hand'),
+      !(
+        tag.challengeId === challengeId &&
+        tag.itemId === itemId &&
+        tag.how === 'hand' &&
+        (poi === undefined || tag.poi === poi)
+      ),
+  )
+  return tags.length === state.tags.length ? state : { ...state, tags }
+}
+
+/**
+ * Takes a tag back, however it was made - the tagged-place sheet's "Remove
+ * this tag", for the hiker who walked past McAfee Knob's junction without
+ * going up and pressed Tag all anyway. `poi` narrows it to one place, as for
+ * `untag`.
+ *
+ * WHAT IT CANNOT UNDO: a tag that already reached the server stays there, as
+ * one more count in the club's numbers. It leaves the finish, so it is never
+ * in an entry. The kinds that tag themselves are not offered it (the sheet
+ * does not open for them): autoTags would put the same tag back the moment
+ * it next read the same day.
+ */
+export function removeTag(
+  state: ChallengeState,
+  challengeId: string,
+  itemId: string,
+  poi?: string,
+): ChallengeState {
+  const tags = state.tags.filter(
+    (tag) =>
+      !(
+        tag.challengeId === challengeId &&
+        tag.itemId === itemId &&
+        (poi === undefined || tag.poi === poi)
+      ),
   )
   return tags.length === state.tags.length ? state : { ...state, tags }
 }
@@ -408,14 +457,17 @@ export interface DayInput {
  *
  * Off-trail places are never candidates (a mile interval says nothing about
  * a town), sealed mystery items never are, and neither are the kinds that
- * tag themselves or are done at home.
+ * tag themselves or are done at home. Nor is anything outside the
+ * challenge's window: a walk in April is not a summer list's walk, and the
+ * camp card would be asking the hiker to tag something the club will not
+ * count.
  */
 export function matchDay(input: DayInput): DayCandidate[] {
   const { state, todayRanges, trail, pois, today } = input
   if (todayRanges.length === 0) return []
   const out: DayCandidate[] = []
   for (const challenge of input.joined) {
-    if (challenge.trail !== trail) continue
+    if (challenge.trail !== trail || !isOpenOn(challenge, today)) continue
     const tags = tagsFor(state, challenge.id)
     for (const item of challenge.items) {
       if (isSealed(item, today) || isItemDone(item, challenge.id, tags)) continue
@@ -434,7 +486,9 @@ export function matchDay(input: DayInput): DayCandidate[] {
             if (item.match.kind === 'place') break
           }
         }
-      } else if (item.match.kind === 'poi_type') {
+      } else if (item.match.kind === 'poi_type' && !item.match.offTrail) {
+        // An off-trail type - an A.T. Community, a town - is walked into, so
+        // passing its mile says nothing about a visit; it is a hand tag only.
         const type = item.match.type
         const passed = pois
           .filter(
@@ -485,7 +539,11 @@ export interface AutoInput {
  *
  * A section counts miles walked SINCE JOINING, because the coverage is only
  * accumulated here, from the day's ranges, after the join. Walking a section
- * last summer is a fact about last summer.
+ * last summer is a fact about last summer. And only inside the window, for
+ * the same reason and matchDay's: the section and the height are read from
+ * today, so they wait for a today the challenge is open on. A workday is
+ * read from its own date instead, so hours logged in September for an August
+ * day still count.
  */
 export function autoTags(
   input: AutoInput,
@@ -498,6 +556,7 @@ export function autoTags(
     if (challenge.trail !== trail) continue
     const joinedAt =
       state.joined.find((entry) => entry.challengeId === challenge.id)?.at ?? ''
+    const open = isOpenOn(challenge, today)
     for (const item of challenge.items) {
       if (
         isSealed(item, today) ||
@@ -506,7 +565,10 @@ export function autoTags(
         continue
       const match = item.match
       let done = false
+      let workedOn: string | null = null
       let place: DayCandidate['place'] | null = null
+      if ((match.kind === 'section_walked' || match.kind === 'elevation_min_ft') && !open)
+        continue
       if (match.kind === 'section_walked') {
         const key = `${challenge.id}/${item.id}`
         let covered = state.sectionWalked[key] ?? []
@@ -534,26 +596,53 @@ export function autoTags(
         done = highest !== null && highest >= match.valueFt
         place = { poi: '', name: item.title ?? '', mile: todayRanges[0]?.startMile ?? 0 }
       } else if (match.kind === 'workday') {
-        const joinedDay = joinedAt.slice(0, 10)
-        done = input.hours.some(
-          (record) =>
-            !record.disputed &&
-            record.mile !== null &&
-            record.workedOn >= joinedDay &&
-            (challenge.window.opens === null ||
-              record.workedOn >= challenge.window.opens) &&
-            (challenge.window.closes === null ||
-              record.workedOn <= challenge.window.closes) &&
-            // A match naming the challenge's own org can be checked against
-            // the workday's club; one naming another org cannot be yet, and
-            // is left for a later build rather than guessed.
-            (match.org === null ||
-              (match.org === challenge.org && record.clubName === challenge.orgName)),
+        // No join record, no "since joining" to measure from - and `''`
+        // would have counted every workday the hiker ever logged.
+        if (joinedAt === '') continue
+        // The hiker's own day, as `workedOn` is: a join at 9 pm in New York
+        // is already tomorrow in UTC.
+        const joinedDay = localDay(new Date(joinedAt))
+        const days = new Set(
+          input.hours
+            .filter(
+              (record) =>
+                !record.disputed &&
+                record.mile !== null &&
+                record.workedOn >= joinedDay &&
+                (challenge.window.opens === null ||
+                  record.workedOn >= challenge.window.opens) &&
+                (challenge.window.closes === null ||
+                  record.workedOn <= challenge.window.closes) &&
+                // A match naming the challenge's own org can be checked against
+                // the workday's club; one naming another org cannot be yet, and
+                // is left for a later build rather than guessed.
+                (match.org === null ||
+                  (match.org === challenge.org && record.clubName === challenge.orgName)),
+            )
+            .map((record) => record.workedOn),
         )
+        // ONE LOGGED DAY ANSWERS ONE WORKDAY ITEM. The ATC's list has three -
+        // a maintenance event, a Trail Crew, an invasive-species removal -
+        // and an hours record does not say which kind of day it was, so one
+        // record ticking all three was three claims made from one fact. Each distinct day answers the next unanswered item
+        // in published order. `@unvalidated` whether that is the item the
+        // day was: what would settle it is the hours record carrying the
+        // kind of work, which lib/volunteerHours.ts does not.
+        const tags = tagsFor(state, challenge.id)
+        const answered = challenge.items.filter(
+          (other) =>
+            other.match.kind === 'workday' && isItemDone(other, challenge.id, tags),
+        ).length
+        done = days.size > answered
+        // Stamped on the day worked rather than the day the phone noticed:
+        // August 31's hours first seen on September 5 still happened inside
+        // a window that closed September 1.
+        if (done) workedOn = [...days].sort()[answered]
         place = { poi: '', name: item.title ?? '', mile: 0 }
       }
       if (done && place !== null) {
-        const result = tag(state, challenge, item, { at: now, how: 'gps' })
+        const at = workedOn === null ? now : localNoon(workedOn, now)
+        const result = tag(state, challenge, item, { at, how: 'gps' })
         state = result.state
         if (result.completed) completed.push({ challenge, item, place })
       }
@@ -588,7 +677,12 @@ export function planRows(
   challenge: Challenge,
   days: readonly PlanDayRange[],
   today: string,
+  /** The trail the plan's miles are on. A mile means something on one trail
+   *  only, so a challenge on another trail lays nothing on this plan however
+   *  its miles happen to line up. */
+  planTrail?: string,
 ): PlanRow[] {
+  if (planTrail !== undefined && challenge.trail !== planTrail) return []
   const rows: PlanRow[] = []
   for (const item of challenge.items) {
     if (!isPlaceItem(item) || isSealed(item, today)) continue
@@ -621,21 +715,27 @@ export function suggestion(input: {
   hikeKey: string
   today: string
   maintainedMiles: (challenge: Challenge) => number
+  planTrail?: string
 }): { challenge: Challenge; rows: PlanRow[] } | null {
   const { challenges, state, days, hikeKey, today } = input
   if (days.length === 0) return null
   const scored = challenges.map((challenge) => ({
     challenge,
-    rows: planRows(challenge, days, today),
+    rows: planRows(challenge, days, today, input.planTrail),
   }))
   if (
     scored.some(({ challenge, rows }) => rows.length > 0 && isJoined(state, challenge.id))
   )
     return null
   const hidden = new Set(state.hiddenSuggestions[hikeKey] ?? [])
+  // Never one that has closed: suggesting a list the hiker can no longer
+  // walk is an invitation to a door already shut.
   const candidates = scored.filter(
     ({ challenge, rows }) =>
-      rows.length > 0 && !hidden.has(challenge.id) && !isJoined(state, challenge.id),
+      rows.length > 0 &&
+      !hidden.has(challenge.id) &&
+      !isJoined(state, challenge.id) &&
+      (challenge.window.closes === null || today <= challenge.window.closes),
   )
   if (candidates.length === 0) return null
   candidates.sort(
@@ -691,6 +791,7 @@ export function browse(input: {
   filters: BrowseFilters
   days: readonly PlanDayRange[]
   today: string
+  planTrail?: string
 }): BrowseGroups {
   const { filters, days, today } = input
   const byClubAndOpen = input.challenges.filter(
@@ -701,29 +802,33 @@ export function browse(input: {
   const shown = byClubAndOpen.filter(
     (challenge) => filters.trail === null || challenge.trail === filters.trail,
   )
-  const planLow =
-    days.length > 0
-      ? Math.min(...days.map((day) => Math.min(day.startMile, day.endMile)))
-      : null
-  const planHigh =
-    days.length > 0
-      ? Math.max(...days.map((day) => Math.max(day.startMile, day.endMile)))
-      : null
   const onPlan: BrowseGroups['onPlan'] = []
   const elsewhere: BrowseGroups['elsewhere'] = []
   for (const challenge of shown) {
-    const placesOnPlan = planRows(challenge, days, today).length
+    const placesOnPlan = planRows(challenge, days, today, input.planTrail).length
     if (placesOnPlan > 0) {
       onPlan.push({ challenge, placesOnPlan })
       continue
     }
+    // To the nearest planned day, never below zero: measured against the
+    // plan's whole span, a place in the gap between two days read "-46.0 mi
+    // from your plan" and sorted first (review, 2026-09-30). Sealed places
+    // are not measured - where they are is the mystery.
     let milesFromPlan: number | null = null
-    if (planLow !== null && planHigh !== null) {
+    const comparable =
+      days.length > 0 &&
+      (input.planTrail === undefined || challenge.trail === input.planTrail)
+    if (comparable) {
       for (const item of challenge.items) {
+        if (isSealed(item, today)) continue
         for (const place of itemPlaces(item)) {
-          const distance =
-            place.mile < planLow ? planLow - place.mile : place.mile - planHigh
-          if (milesFromPlan === null || distance < milesFromPlan) milesFromPlan = distance
+          for (const day of days) {
+            const low = Math.min(day.startMile, day.endMile)
+            const high = Math.max(day.startMile, day.endMile)
+            const distance = Math.max(0, low - place.mile, place.mile - high)
+            if (milesFromPlan === null || distance < milesFromPlan)
+              milesFromPlan = distance
+          }
         }
       }
     }
@@ -740,6 +845,14 @@ export function browse(input: {
       a.challenge.name.localeCompare(b.challenge.name),
   )
   return { onPlan, elsewhere, hiddenByTrail: byClubAndOpen.length - shown.length }
+}
+
+/** Noon on a YYYY-MM-DD on the hiker's own clock - a day's stamp that no
+ *  time zone can push onto its neighbour. `fallback` for a malformed day. */
+function localNoon(day: string, fallback: Date): Date {
+  const [year, month, date] = day.split('-').map(Number)
+  if (!year || !month || !date) return fallback
+  return new Date(year, month - 1, date, 12)
 }
 
 function isOpenOn(challenge: Challenge, today: string): boolean {

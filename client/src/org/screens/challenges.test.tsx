@@ -432,3 +432,26 @@ describe('Finishers', () => {
     expect(document.body.textContent).not.toMatch(FORBIDDEN)
   })
 })
+
+describe('when the list could not be read', () => {
+  it('says so, and offers nothing that could overwrite a challenge it cannot see', () => {
+    drawChallenges({ rows: [], rowsUnread: true })
+    expect(screen.getByText('Could not read your challenges')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '+ New challenge' })).toBeNull()
+    expect(screen.queryByText('No challenges yet')).toBeNull()
+  })
+
+  it('says a stale Finishers address names no challenge, rather than showing another one', () => {
+    render(
+      <ChallengeFinishers
+        rows={DEMO_CHALLENGES}
+        challengeId="no-such-challenge"
+        onPick={() => {}}
+        onBack={() => {}}
+        fetchEntries={async () => ''}
+        save={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('That challenge is not here')).toBeInTheDocument()
+  })
+})

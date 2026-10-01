@@ -30,7 +30,13 @@ import { hikersInLabel } from './Challenges'
  *  revoke is deferred for the reason `downloadArchive` gives - Safari reads
  *  the blob after the click returns, and an early revoke saves an empty file. */
 function saveCsv(filename: string, text: string): void {
-  const blob = new Blob([text], { type: 'text/csv;charset=utf-8' })
+  // The byte-order mark goes back on. The server writes one so Excel reads
+  // "Zoë" as UTF-8, and `Response.text()` strips it on the way in - so the
+  // file the club opened read "ZoÃ«" (review, 2026-09-30).
+  const bom = '\uFEFF'
+  const blob = new Blob([text.startsWith(bom) ? text : bom + text], {
+    type: 'text/csv;charset=utf-8',
+  })
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url
@@ -49,6 +55,8 @@ export function entriesFilename(challengeId: string, now: Date = new Date()): st
 
 export interface ChallengeFinishersProps {
   readonly rows: readonly OrgChallengeRow[]
+  /** The list could not be read - said, rather than "none". */
+  readonly rowsUnread?: boolean
   /** From `?challenge=`; the first challenge when absent or unknown. */
   readonly challengeId: string | null
   readonly onPick: (challengeId: string) => void
@@ -67,13 +75,19 @@ type Download =
 
 export function ChallengeFinishers({
   rows,
+  rowsUnread = false,
   challengeId,
   onPick,
   onBack,
   fetchEntries,
   save = saveCsv,
 }: ChallengeFinishersProps) {
-  const row = rows.find((candidate) => candidate.challenge_id === challengeId) ?? rows[0]
+  // The challenge asked for, never a different one in its place: a stale
+  // `?challenge=` showed the first row's finishers under no warning.
+  const row =
+    challengeId === null
+      ? rows[0]
+      : rows.find((candidate) => candidate.challenge_id === challengeId)
   const [download, setDownload] = useState<Download>({ state: 'idle' })
 
   const header = (
@@ -97,6 +111,48 @@ export function ChallengeFinishers({
       }
     />
   )
+
+  if (rowsUnread) {
+    return (
+      <>
+        {header}
+        <div className="org-empty">
+          <h3>Could not read your challenges</h3>
+          <p>
+            OurHike did not answer with this organization’s challenges. Reload the page to
+            try again.
+          </p>
+        </div>
+      </>
+    )
+  }
+
+  if (!row && challengeId !== null && rows.length > 0) {
+    return (
+      <>
+        {header}
+        <div className="org-empty">
+          <h3>That challenge is not here</h3>
+          <p>
+            This organization has no challenge called {challengeId}. Pick one of its
+            challenges from the list.
+          </p>
+          <div className="org-stack">
+            {rows.map((candidate) => (
+              <button
+                key={candidate.challenge_id}
+                type="button"
+                className="org-btn org-btn--ghost org-btn--small"
+                onClick={() => onPick(candidate.challenge_id)}
+              >
+                {candidate.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      </>
+    )
+  }
 
   if (!row) {
     return (

@@ -9,8 +9,20 @@
 // day's walk tagged it, Tag it where a hand tag is allowed, and the two towns
 // saying they are off the trail and tagged by hand.
 //
+// The Triple Crown row lists its three peaks, each its own Tag it (review,
+// 2026-09-30), and Leave this challenge asks before it leaves.
+//
+// THE CLOCK IS INSIDE THE WINDOW, fixed by `before` the way the camp card's
+// recipe fixes its evening: the ATC's 2027 draft opens May 15, and on any
+// earlier day the page offers no Tag it at all and says "Opens May 15" -
+// which is right, and is not what this shot is for.
+//
 // SEEDED, AND SAID SO: fixtures/challenges.mjs.
-import { openChallenges, seedChallenges } from './fixtures/challenges.mjs'
+import { EVENING, openChallenges, seedChallenges } from './fixtures/challenges.mjs'
+
+export async function before(page) {
+  await page.clock.setFixedTime(EVENING)
+}
 
 export const caption =
   'One challenge: the ATC’s list, its places along the trail, On the trail (#1780, seeded hiker)'

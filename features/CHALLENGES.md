@@ -156,10 +156,10 @@ against is the number every other screen already shows.
 |---|---|---|
 | `place` | its mile falls inside today's walked miles, confirmed on Today; or by hand from the place card or the list. An `off_trail` place by hand only | yes |
 | `places_all` | as `place`, per place; the item is done — and its tag leaves the phone — when the last one is ("Virginia's Triple Crown") | yes |
-| `poi_type` | a published POI of that type whose mile falls inside today's walked miles, confirmed on Today ("you passed Campbell Shelter") | Today only |
+| `poi_type` | a published POI of that type whose mile falls inside today's walked miles, confirmed on Today ("you passed Campbell Shelter"); or by hand from the list. A type marked `off_trail` — an A.T. Community, a town — by hand only, because passing a town's mile is no evidence of a visit | Today only |
 | `elevation_min_ft` | automatically, when today's walked miles include a mile whose profile elevation is at or above the value | no |
-| `section_walked` | automatically, when the miles walked inside the section **since joining** cover `min_fraction` of it; the ends are POI ids | Plan only |
-| `workday` | automatically, when the hiker's own logged hours (not disputed, since joining, inside the window) name a mile on the challenge's trail — and, when the match names the challenge's own org, a workday of that club | no |
+| `section_walked` | automatically, when the miles walked inside the section **since the day of joining** cover `min_fraction` of it; the ends are POI ids. "The day of", not "the moment": the phone keeps a day's merged miles and no times inside it, so a section walked that morning and joined that evening counts | Plan only |
+| `workday` | automatically, when the hiker's own logged hours (not disputed, since the day of joining, inside the window) name a mile on the challenge's trail — and, when the match names the challenge's own org, a workday of that club. **One logged day answers one workday item**, in published order, and the tag is stamped on the day worked; which kind of day it was the hours record does not say (`@unvalidated`) | no |
 | `self_report` | a tap on the challenge's own page, and only there | no |
 
 **A place must lie within its own radius of the trail, or say `"off_trail": true`.**
@@ -184,7 +184,10 @@ An item may carry `"mystery": { "number": 2, "reveal_on": "2027-07-20" }`. Expor
 that date, its title does not appear in the artifact in the clear: it ships as `sealed_title`,
 base64 of the text, and the phone decodes it on or after the date with no network. **Base64 is
 a spoiler guard, not a secret** — the rot13 on a puzzle answer. Anyone reading the artifact
-with a decoder can read an item early, and nothing here claims otherwise. The ATC's 2025 list
+with a decoder can read an item early, and nothing here claims otherwise. The clear title
+ships only from the release built the day AFTER `reveal_on` in UTC: a release built just past
+midnight UTC on the day is still the evening before on the A.T., and the phone opens its
+sealed copy on the hiker's own date anyway. The ATC's 2025 list
 announced its three mystery items only on social media, so the transcription carries them with
 no title and no date. They show as "Sealed — announced by the ATC", and the ATC reveals one by
 republishing.
@@ -199,6 +202,8 @@ challenge record is the reviewed file with every POI resolved:
   "challenges": [{
     "id": "…", "org": "atc", "trail": "AT", "name": "…", "status": "draft",
     "org_name": "Appalachian Trail Conservancy", "org_short": "ATC",  // sources.json's name, provider
+    "org_domain": "appalachiantrail.org",                              // publishers.json's domain
+    "takes_entries": false,                                            // the club collects entries here
     "window": {…}, "finish": {…} | null, "reward": {…} | null, "sections": […],
     "items": [{ "id": "mcafee-knob", "section": "experience", "title": "…",
                 "note": null, "note_by": null, "photo": null,
@@ -212,7 +217,14 @@ challenge record is the reviewed file with every POI resolved:
 The coordinates travel so that matching a day's track needs nothing else loaded, and so do
 `org_name` and `org_short` — `sources.json`'s `organizations.orgs["org:<org>"]` `name` and
 `provider` — because "ATC · until Sep 1" and "Draft · not yet confirmed by the ATC" are
-rendered from them and the phone has no other source for either. The artifact carries no
+rendered from them and the phone has no other source for either. `org_domain` is the
+publisher's web domain from `publishers.json`, which a maintainer checks against the
+organization's own site: an entry carries it back, and the server gives the entry only to a
+club that proved that domain — a slug is whatever a registrant typed, so neither the slug nor
+first-come ownership of an id says a club is the ATC. `takes_entries` is the reviewed file's
+own switch, true only on a published challenge with a reward; without it the finish screen
+points at the club's rules instead of asking for a name and address the server would refuse.
+Photo and art URLs are https or absent. The artifact carries no
 `generated_at`: a stamp would change its sha256 on every run and publish a new version when
 no challenge changed. Each record's `reviewed` is the date that means something.
 
@@ -224,17 +236,36 @@ no challenge changed. Each record's `reviewed` is the date that means something.
 | `ourhike:challenge-state` | joined challenges, tags (item, time, `gps`/`hand`, optional register line), the mile intervals walked inside a `section_walked` item since joining, the Plan suggestions a hiker hid per hike, the day the Today card was last answered, the map layer switch | the hiker's own — device-only until a sync for it is built; the tags also reach the server |
 
 An item's completion enqueues one `challengeTag` outbox cargo: challenge id, item id, authored
-time, `gps`/`hand`. A `places_all` item queues nothing until its last place. The register line
-never leaves the phone (principle 6).
+time, `gps`/`hand`. A `places_all` item queues nothing until its last place. An item that
+stops being done — a hand tag pressed again, "Remove this tag" on the tagged place, a Triple
+Crown peak taken back — queues a `challengeUntag` behind it, and Leave queues one for the
+whole challenge; the flush is in order, so the server ends where the phone did. Rejoining
+sends the kept tags again. The register line never leaves the phone (principle 6).
+
+Tags are offered only inside the window, and the day-matching kinds read only days inside it.
+Both ends are inclusive days, so a one-day window is a window.
 
 ### On the server
 
-`challenge_tags` (id is the outbox idempotency key; unique on user, challenge, item) and
-`challenge_entries` (name, email or mailing address, the tagged item ids, consent time). Four
-routes: `POST /challenges/tags`, `POST /challenges/{id}/entries`,
-`GET /orgs/{slug}/challenges/{id}/counts` (a count, never names) and
-`GET /orgs/{slug}/challenges/{id}/entries` (org admins, CSV). A tag after the window closes is
-accepted and flagged; an entry after it closes is refused with a reason the phone shows.
+`challenge_tags` (id is the outbox idempotency key; unique on user, challenge, item; a walked
+tag upgrades a hand one) and `challenge_entries` (name, email or mailing address, the tagged
+item ids, consent time). The hiker's routes: `POST /challenges/tags`,
+`DELETE /challenges/{id}/items/{item}/tag`, `DELETE /challenges/{id}/tags` (Leave) and
+`POST /challenges/{id}/entries`. The club's, admins of a `claimed` org only:
+`GET /clubs/{slug}/challenges/{id}/counts` (counts, never names) and
+`GET /clubs/{slug}/challenges/{id}/entries` (CSV, every cell quoted and formula-guarded, with a
+column for listed items the server holds no tag for). A tag after the window closes is
+accepted; an entry after it closes is refused with a sentence the phone shows. The window
+closes at 12:00 UTC the day after its closing date — midnight at UTC-12 — so no hiker
+anywhere is refused on their closing evening. There is no `late` flag on a tag's answer and
+no count of late tags: the first was an oracle for an id's owner and closing date, the second
+could be differenced into one hiker's day by re-saving the date (review, 2026-09-30).
+
+Caps, each `@unvalidated` and each saying what would settle it in the code: 2,000 tags per
+account, 25 saved challenges per organization (each can become a branch and a pull request
+here), and a definition of at most 262,144 characters nested at most 12 deep. Deleting an
+organization deletes the entries it collected and releases its challenge ids; the hikers'
+own tags stay theirs.
 Nothing here blocks the phone: until the backend is hosted, tags stay queued and the screen
 says so.
 
@@ -246,7 +277,7 @@ says so.
 | #5 Challenge detail, #7 mystery | `screens/ChallengeDetail.tsx` — filters *On the trail · each section's short name · Mystery* |
 | #4b Tagged place | a sheet over the detail: the hiker's own photo (matched on the phone by time and place, never uploaded) or the club's photo labelled so, the moment, the club's note, the line walked, a private register line |
 | #5a Browse | `screens/ChallengeBrowse.tsx` — Trail, Club and Open-now filters; "On your plan" first, then the rest by distance from the plan. **No popularity sort and no hiker counts.** |
-| #1 Map layer | a Legend switch "Challenge places", **off by default**, listed only when a joined challenge is on the chosen trail; a diamond pin from `map/poiIcons.ts`, hollow until tagged. The trail line is never recoloured. |
+| #1 Map layer | a Legend switch "Challenge places", **off by default**, listed only when a joined challenge is on the chosen trail; a diamond pin from `map/poiIcons.ts`, hollow until tagged, drawn over the place's own waypoint pin at that pin's size at every zoom — the waypoint layer's own zoom ramp and quiet-type scale (maintainer poll, 2026-09-30, from frames at z7/z9/z11/z13; a fixed 36.8 px diamond was the first build). The trail line is never recoloured. |
 | #2, #2c Place card | "On your challenges" under the description, one row per item, **Tag it** |
 | #3 Today | "From today's walk", once, after the day's walk ends, only when something was passed |
 | #6, #6b Plan | the places on this route by day; when no joined challenge touches the route, the one best match, dashed, with Join and Hide |
@@ -283,9 +314,24 @@ says so.
 
 ## Open questions
 
+- **The licence of the ATC's list.** `reference/challenges/atc/…json` carries the 2025 PDF's
+  item lines verbatim (co-branded "ATC × Altra"). CONTRIBUTING.md's "A note on data and
+  licences" says to establish a source's licence first and record it, and none is recorded.
+  The maintainer's decision (poll, 2026-10-01): keep the text verbatim and ask the ATC; the
+  pull request is not to merge until the ATC's written permission is recorded in
+  `sources.json`.
 - **The ATC's written terms** for sweepstakes entries collected through OurHike, and who is
   the data controller for an entry. Until they exist, the ATC's list stays `draft` and takes
   no entries.
+- **What "from your walk" means.** A `gps` tag says a day's merged mile intervals covered the
+  place — fixes snapped to the trail within three miles (`trailPosition.ts`) — not that
+  anybody stood on the summit. A car on a road beside the trail would "walk" those miles. The
+  club's CSV labels such a tag walked; whether that label overclaims is unanswered.
+- **A slug can still be squatted.** The domain check means a stranger who registers the slug
+  `atc` collects no entry, but they can save `atc-…` ids first and lock the real ATC out of
+  saving its own; a maintainer resolves that by hand today.
+- **Floors and sock puppets.** 24 accounts an admin controls plus one real hiker lift
+  "Hikers in" over the floor. Nothing here tells an aged account from a new one.
 - **Whether "Hikers in" is shown at all below a k-anonymity floor.** EVENTING.md uses k = 25.
   The console shows "fewer than 25" below it, which is this doc's placeholder rather than
   anybody's decision.

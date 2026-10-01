@@ -30,6 +30,9 @@ export interface ChallengeBrowseProps {
   days: readonly PlanDayRange[]
   /** "Pearisburg → Daleville", for the first group's heading. */
   planName: string | null
+  /** The trail the plan's days are measured on; a challenge on another trail
+   *  is never "on your plan" or a distance from it. */
+  planTrail?: string
   today: string
   units: UnitSystem
   onOpen: (challengeId: string) => void
@@ -55,7 +58,13 @@ export function ChallengeBrowse(props: ChallengeBrowseProps) {
   const [org, setOrg] = useState<string | null>(null)
   const [openNow, setOpenNow] = useState(false)
 
-  const groups = browse({ challenges, filters: { trail, org, openNow }, days, today })
+  const groups = browse({
+    challenges,
+    filters: { trail, org, openNow },
+    days,
+    today,
+    planTrail: props.planTrail,
+  })
   const shownCount = groups.onPlan.length + groups.elsewhere.length
 
   return (
@@ -106,11 +115,31 @@ export function ChallengeBrowse(props: ChallengeBrowseProps) {
         </button>
       </div>
 
-      {challenges.length === 0 && (
+      {challenges.length === 0 ? (
+        // The phone cannot tell "none published" from "none downloaded yet"
+        // (a first run with no signal, a release before the list existed),
+        // so it says what it knows.
         <p className="challenges__empty">
-          No club has published a challenge yet. They arrive with the data refresh, so
-          this list works with no signal once one has.
+          No challenge has reached this phone yet. They arrive with the data refresh, and
+          the list works with no signal once one has.
         </p>
+      ) : (
+        shownCount === 0 && (
+          <p className="challenges__empty">
+            Nothing matches these filters.{' '}
+            <button
+              type="button"
+              className="challenge-link"
+              onClick={() => {
+                setTrail(null)
+                setOrg(null)
+                setOpenNow(false)
+              }}
+            >
+              Show every challenge
+            </button>
+          </p>
+        )
       )}
 
       {groups.onPlan.length > 0 && (

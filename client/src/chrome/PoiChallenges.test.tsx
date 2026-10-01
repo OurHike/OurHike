@@ -90,3 +90,25 @@ describe('a place card’s challenges', () => {
     expect(container).toBeEmptyDOMElement()
   })
 })
+
+describe('a place card, before and after joining', () => {
+  it('lets a hiker read a list before joining it', async () => {
+    const onOpen = vi.fn()
+    render(
+      <PoiChallenges
+        poiIds={[MCAFEE]}
+        challenges={[ATC_CHALLENGE]}
+        state={EMPTY_CHALLENGE_STATE}
+        today={TODAY}
+        onTag={vi.fn()}
+        onUntag={vi.fn()}
+        onJoin={vi.fn()}
+        onOpen={onOpen}
+      />,
+    )
+    await userEvent.click(
+      screen.getByRole('button', { name: /On the A\.T\. Summer Bucket List/ }),
+    )
+    expect(onOpen).toHaveBeenCalledWith(ATC_CHALLENGE.id)
+  })
+})

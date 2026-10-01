@@ -108,6 +108,11 @@ interface OrgData {
   readonly workdays: readonly Workday[]
   readonly coverage: Coverage | null
   readonly challenges: readonly OrgChallengeRow[]
+  /** The challenges read failed (a 403 for a non-admin, a network error, a
+   *  backend without the route). Kept apart from an empty list: "no
+   *  challenges yet" over a failed read let an admin save a new challenge
+   *  over one it could not see (review, 2026-09-30). */
+  readonly challengesUnread: boolean
   readonly error: string | null
   readonly loading: boolean
 }
@@ -121,6 +126,7 @@ const EMPTY: OrgData = {
   workdays: [],
   coverage: null,
   challenges: [],
+  challengesUnread: false,
   error: null,
   loading: true,
 }
@@ -146,6 +152,7 @@ function demoData(): OrgData {
     // to the public embeds and two derivations would drift.
     coverage: DEMO_COVERAGE,
     challenges: DEMO_CHALLENGES,
+    challengesUnread: false,
     error: null,
     loading: false,
   }
@@ -202,10 +209,12 @@ function useOrgData(slug: string | null): OrgData {
             optional(() => orgApi.roster(slug, signal), [] as RosterEntry[]),
             optional(() => orgApi.workdays(slug, 60, signal), [] as Workday[]),
             optional(() => orgApi.coverage(slug, undefined, signal), null),
-            // An admin read like the registry's; a 403 for anybody else, or a
-            // backend that has not shipped the route yet, is an empty list
-            // rather than a broken console.
-            optional(() => orgApi.challenges(slug, signal), [] as OrgChallengeRow[]),
+            // An admin read like the registry's. A failure is null rather than
+            // an empty list, so the screens can say they could not read it.
+            optional(
+              () => orgApi.challenges(slug, signal),
+              null as readonly OrgChallengeRow[] | null,
+            ),
           ])
         if (signal.aborted) return
         setData({
@@ -216,7 +225,8 @@ function useOrgData(slug: string | null): OrgData {
           roster,
           workdays,
           coverage,
-          challenges,
+          challenges: challenges ?? [],
+          challengesUnread: challenges === null,
           error: null,
           loading: false,
         })
@@ -647,6 +657,7 @@ export function OrgConsole({
               key={route.challenge ?? ''}
               orgSlug={route.slug}
               rows={data.challenges}
+              rowsUnread={data.challengesUnread}
               trails={data.registry.flatMap((park) => park.trails)}
               initialId={route.challenge ?? null}
               canEdit={data.access?.can_touch_registry ?? false}
@@ -661,6 +672,7 @@ export function OrgConsole({
           return (
             <ChallengeFinishers
               rows={data.challenges}
+              rowsUnread={data.challengesUnread}
               challengeId={route.challenge ?? null}
               onPick={(challenge) =>
                 go({ kind: 'setup', slug: route.slug, page: 'finishers', challenge })

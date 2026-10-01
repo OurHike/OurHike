@@ -58,7 +58,14 @@ export type ChallengeMatch =
       offTrail: boolean
       places: ChallengePlace[]
     }
-  | { kind: 'poi_type'; type: string; radiusM: number }
+  | {
+      kind: 'poi_type'
+      type: string
+      radiusM: number
+      /** Its waypoints are places a hiker walks into (a town): never offered
+       *  at camp from a mile interval, only tagged by hand. */
+      offTrail: boolean
+    }
   | { kind: 'elevation_min_ft'; valueFt: number }
   | {
       kind: 'section_walked'
@@ -102,6 +109,11 @@ export interface Challenge {
   orgName: string
   /** "ATC" */
   orgShort: string
+  /** "appalachiantrail.org" - the publisher's web domain (publishers.json),
+   *  which an entry carries and the server makes a club prove. Null on a
+   *  document from before it was published: such a challenge takes no
+   *  entries from this phone. */
+  orgDomain: string | null
   trail: string
   name: string
   status: 'draft' | 'published'
@@ -112,6 +124,10 @@ export interface Challenge {
   finish: { count: number; label: string | null } | null
   /** Null for most challenges - a finish needs no reward. */
   reward: { kind: RewardKind; rulesUrl: string | null; art: string | null } | null
+  /** Whether the club collects entries through OurHike. False: the finish
+   *  screen sends the hiker to the club's own rules rather than asking for a
+   *  name and address the server would refuse. */
+  takesEntries: boolean
   photo: string | null
   sections: ChallengeSection[]
   items: ChallengeItem[]
@@ -187,7 +203,14 @@ function parseMatch(value: unknown): ChallengeMatch | null {
     }
     case 'poi_type': {
       const type = text(value.type)
-      return type === null ? null : { kind, type, radiusM: finite(value.radius_m) ?? 0 }
+      return type === null
+        ? null
+        : {
+            kind,
+            type,
+            radiusM: finite(value.radius_m) ?? 0,
+            offTrail: value.off_trail === true,
+          }
     }
     case 'elevation_min_ft': {
       const valueFt = finite(value.value)
@@ -246,7 +269,7 @@ function parseItem(
     sealedTitle,
     note: text(value.note),
     noteBy: text(value.note_by),
-    photo: text(value.photo),
+    photo: httpsOnly(value.photo),
     match,
     mystery,
   }
@@ -299,7 +322,7 @@ function parseChallenge(value: unknown): Challenge | null {
       reward = {
         kind,
         rulesUrl: rulesUrl !== null && rulesUrl.startsWith('https://') ? rulesUrl : null,
-        art: text(value.reward.art),
+        art: httpsOnly(value.reward.art),
       }
     }
   }
@@ -309,6 +332,7 @@ function parseChallenge(value: unknown): Challenge | null {
     org,
     orgName: text(value.org_name) ?? org,
     orgShort: text(value.org_short) ?? org.toUpperCase(),
+    orgDomain: text(value.org_domain),
     trail,
     name,
     status,
@@ -316,11 +340,21 @@ function parseChallenge(value: unknown): Challenge | null {
     window: { opens: day(window.opens), closes: day(window.closes) },
     finish,
     reward,
-    photo: text(value.photo),
+    takesEntries:
+      value.takes_entries === true && reward !== null && status === 'published',
+    photo: httpsOnly(value.photo),
     sections,
     items,
     reviewed: text(value.reviewed) ?? '',
   }
+}
+
+/** An https URL or nothing. A club's photo is a request from the hiker's
+ *  phone to whoever hosts it; the pipeline refuses anything else, and this
+ *  holds the line for a document that did not come through it. */
+function httpsOnly(value: unknown): string | null {
+  const url = text(value)
+  return url !== null && url.startsWith('https://') ? url : null
 }
 
 /**
@@ -362,7 +396,10 @@ export async function fetchChallenges(signal?: AbortSignal): Promise<Challenge[]
     const response = await fetch(dataUrl(CHALLENGES_KEY), { signal })
     if (!response.ok) return null
     const document: unknown = await response.json()
-    if (!isRecord(document)) return null
+    // A document with no list at all - `{}`, or a release whose exporter
+    // broke - parses to nothing, and keeping it would replace a good copy
+    // and take every joined challenge off every screen (review, 2026-09-30).
+    if (!isRecord(document) || !Array.isArray(document.challenges)) return null
     const challenges = parseChallenges(document)
     // Kept raw, so the same validation runs on the way back out; and only
     // once it has parsed, so a broken document never replaces a good one.
@@ -466,6 +503,18 @@ export function windowLine(challenge: Challenge): string {
   if (closes !== null) return `until ${shortDate(closes)}`
   if (opens !== null) return `from ${shortDate(opens)}`
   return 'no end date'
+}
+
+/**
+ * The window as it stands today, for a line that has room for one phrase:
+ * "opens May 15" before it opens, "closed Sep 1" after, otherwise what is
+ * left of it. A list that opens next May no longer reads "until Sep 1".
+ */
+export function windowNow(challenge: Challenge, today: string): string {
+  const { opens, closes } = challenge.window
+  if (opens !== null && today < opens) return `opens ${shortDate(opens)}`
+  if (closes !== null && today > closes) return `closed ${shortDate(closes)}`
+  return closes !== null ? `until ${shortDate(closes)}` : 'no end date'
 }
 
 /** One item's places, in trail order - empty for anything but a place kind. */

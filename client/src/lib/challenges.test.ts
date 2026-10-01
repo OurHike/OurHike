@@ -213,3 +213,71 @@ describe('what screens ask of a challenge', () => {
     expect(itemsAtPoi(parsed, 'atc_viewpoints:elsewhere')).toEqual([])
   })
 })
+
+describe('what the review of 2026-09-30 tightened', () => {
+  it('reads the publisher’s domain and whether the club takes entries here', () => {
+    const [published] = parseChallenges({
+      challenges: [
+        challenge({
+          status: 'published',
+          org_domain: 'appalachiantrail.org',
+          takes_entries: true,
+        }),
+      ],
+    })
+    expect(published.orgDomain).toBe('appalachiantrail.org')
+    expect(published.takesEntries).toBe(true)
+    // A draft never does, whatever its file says.
+    const [draft] = parseChallenges({ challenges: [challenge({ takes_entries: true })] })
+    expect(draft.takesEntries).toBe(false)
+    expect(draft.orgDomain).toBeNull()
+  })
+
+  it('keeps only https photos, the line the pipeline holds', () => {
+    const [read] = parseChallenges({
+      challenges: [
+        challenge({
+          photo: 'http://club.example/p.jpg',
+          items: [
+            {
+              id: 'trivia',
+              section: 'experience',
+              title: 'Take our A.T. trivia quiz.',
+              photo: 'javascript:alert(1)',
+              match: { kind: 'self_report' },
+            },
+          ],
+          finish: null,
+          reward: null,
+        }),
+      ],
+    })
+    expect(read.photo).toBeNull()
+    expect(read.items[0].photo).toBeNull()
+  })
+
+  it('reads an off-trail "any waypoint" item as off the trail', () => {
+    const [read] = parseChallenges({
+      challenges: [
+        challenge({
+          finish: null,
+          reward: null,
+          items: [
+            {
+              id: 'meal-in-a-community',
+              section: 'experience',
+              title: 'Have a meal in an A.T. Community.',
+              match: {
+                kind: 'poi_type',
+                type: 'resupply',
+                radius_m: 800,
+                off_trail: true,
+              },
+            },
+          ],
+        }),
+      ],
+    })
+    expect(read.items[0].match).toMatchObject({ kind: 'poi_type', offTrail: true })
+  })
+})

@@ -51,7 +51,7 @@ import type { PoiDetail } from './chrome/PoiCard'
 import { TabBar } from './chrome/TabBar'
 import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
 import { useNavigator, topOf } from './lib/navigator'
-import type { TabId } from './chrome/tabs'
+import { TABS, type TabId } from './chrome/tabs'
 import { BailSheet } from './chrome/BailSheet'
 import { formatBytes } from './lib/formatBytes'
 import { nightsBehind } from './lib/nightsBehind'
@@ -814,6 +814,10 @@ const NO_NEARBY_PLACES: NearbyPlace[] = []
 /** One hour, for the roll-up clock above `noteRollups` - the coarsest
  *  tick the pins' staleness rings can ever move on. */
 const HOUR_MS = 60 * 60 * 1000
+
+/** One empty identity for "no walk today", so the challenge memos below do
+ *  not re-run on a fresh `[]` every render. */
+const NO_CHALLENGE_RANGES: readonly MileRange[] = []
 
 function App() {
   // THE ORGANIZATION CONSOLE (#1539-#1542), and the whole of its footprint in
@@ -8673,8 +8677,14 @@ function App() {
       }),
     [hoursRecords, workProjects],
   )
+  // Today's walk only if it IS today's: passedToday resets on the day's
+  // first fix, so on a zero day or in town it still holds yesterday's miles,
+  // and the camp card would ask about yesterday's places (review,
+  // 2026-09-30).
+  const challengeTodayRanges =
+    passedToday.day === challengeToday ? passedToday.ranges : NO_CHALLENGE_RANGES
   const challenges = useChallenges(online, afterFirstFrame, () => void syncOutbox(), {
-    todayRanges: passedToday.ranges,
+    todayRanges: challengeTodayRanges,
     trail: DEFAULT_TRAIL_ID,
     today: challengeToday,
     maxElevationFt: (ranges) => profileMaxFt(elevation, ranges),
@@ -8694,17 +8704,55 @@ function App() {
       ).length,
     [challenges.all, challenges.state, chosenTrailId],
   )
+  // Pushed rather than replaced, so Back returns to wherever it was opened
+  // from - Plan, a place card, Browse - and not always to the list.
   const openChallenge = useCallback(
     (challengeId: string) => {
       setOpenChallengeId(challengeId)
-      setMorePage('challenge')
+      pushScreen({ kind: 'more', page: 'challenge' })
     },
-    [setMorePage],
+    [pushScreen],
   )
+  const moreStack = nav.state.stacks.more
+  const challengesUp = useMemo(() => {
+    const top = moreStack[moreStack.length - 1]
+    const below = moreStack[moreStack.length - 2]
+    const label =
+      top?.from !== undefined
+        ? (TABS.find((tab) => tab.id === top.from)?.label ?? 'Back')
+        : below?.kind === 'more' && below.page === 'challenge-browse'
+          ? 'Browse'
+          : below?.kind === 'more' && below.page === 'challenges'
+            ? 'Challenges'
+            : 'More'
+    return { label, onPress: goBack }
+  }, [moreStack, goBack])
   const openChallengeRecord =
     openChallengeId === null
       ? null
       : (challenges.all.find((entry) => entry.id === openChallengeId) ?? null)
+  // What became of the open challenge's entry, from the outbox itself rather
+  // than from the moment Send was pressed: still queued, refused with the
+  // server's sentence, or gone (sent). Until the queued id is known the
+  // entry is plainly still waiting.
+  const openChallengeEntryState = useMemo(() => {
+    if (openChallengeRecord === null) return undefined
+    const sent = challenges.state.sent.find(
+      (entry) => entry.challengeId === openChallengeRecord.id,
+    )
+    if (sent === undefined) return undefined
+    if (sent.outboxId === undefined) return { kind: 'waiting' as const }
+    const queued = queuedItems.find((item) => item.id === sent.outboxId)
+    if (queued === undefined) return undefined
+    return queued.failure !== undefined
+      ? { kind: 'refused' as const, reason: queued.failure.reason }
+      : { kind: 'waiting' as const }
+  }, [openChallengeRecord, challenges.state.sent, queuedItems])
+  // Joined, and no longer in the published list: the list says so rather
+  // than silently shrinking.
+  const missingChallenges = challenges.state.joined.filter(
+    (entry) => !challenges.all.some((challenge) => challenge.id === entry.challengeId),
+  ).length
   const challengesScreenNode =
     morePage === 'challenge' && openChallengeRecord !== null ? (
       <ChallengeDetail
@@ -8716,8 +8764,11 @@ function App() {
         defaultName={preferences.trail_name ?? undefined}
         onJoin={() => challenges.join(openChallengeRecord.id)}
         onLeave={() => challenges.leave(openChallengeRecord.id)}
-        onTag={(item) => challenges.tagItem(openChallengeRecord, item, 'hand')}
-        onUntag={(item) => challenges.untagItem(openChallengeRecord, item)}
+        onTag={(item, poi) => challenges.tagItem(openChallengeRecord, item, 'hand', poi)}
+        onUntag={(item, poi) => challenges.untagItem(openChallengeRecord, item, poi)}
+        onRemoveTag={(item, poi) => challenges.removeTag(openChallengeRecord, item, poi)}
+        entryState={openChallengeEntryState}
+        onForgetEntry={() => challenges.forgetEntry(openChallengeRecord.id)}
         onSetNote={(item, note) => challenges.setNote(openChallengeRecord, item, note)}
         onSendEntry={challenges.sendEntry}
         // An arrow, because openSignIn is declared further down the shell.
@@ -8730,6 +8781,7 @@ function App() {
         state={challenges.state}
         chosenTrail={chosenTrailId}
         days={challengePlanDays}
+        planTrail={DEFAULT_TRAIL_ID}
         planName={currentTrip?.name ?? null}
         today={challengeToday}
         units={units}
@@ -8740,9 +8792,13 @@ function App() {
       <Challenges
         joined={challenges.joined}
         state={challenges.state}
+        today={challengeToday}
+        // Only once a list has arrived: before the kept copy is read, every
+        // joined id would count as missing.
+        missing={challenges.all.length > 0 ? missingChallenges : 0}
         onOffer={challengesOnOffer}
         onOpen={openChallenge}
-        onBrowse={() => setMorePage('challenge-browse')}
+        onBrowse={() => pushScreen({ kind: 'more', page: 'challenge-browse' })}
       />
     )
   // The map layer (frame #1): its Legend row and pins, owned by
@@ -8776,12 +8832,12 @@ function App() {
       matchDay({
         joined: challenges.joined,
         state: challenges.state,
-        todayRanges: passedToday.ranges,
+        todayRanges: challengeTodayRanges,
         trail: DEFAULT_TRAIL_ID,
         pois,
         today: challengeToday,
       }),
-    [challenges.joined, challenges.state, passedToday.ranges, pois, challengeToday],
+    [challenges.joined, challenges.state, challengeTodayRanges, pois, challengeToday],
   )
   const challengeCampNode = campCardShows({
     dayEnded: challengeDayEnded,
@@ -8804,7 +8860,7 @@ function App() {
   const planChallengeRows = useMemo(
     () =>
       challenges.joined.flatMap((challenge) =>
-        planRows(challenge, challengePlanDays, challengeToday),
+        planRows(challenge, challengePlanDays, challengeToday, DEFAULT_TRAIL_ID),
       ),
     [challenges.joined, challengePlanDays, challengeToday],
   )
@@ -8818,6 +8874,9 @@ function App() {
             days: challengePlanDays,
             hikeKey: challengeHikeKey,
             today: challengeToday,
+            // A long hike's plan is on the A.T., the trail passedToday and
+            // every plan day measure.
+            planTrail: DEFAULT_TRAIL_ID,
             // The handoff's tie-break is the org that maintains the most of
             // the route; the phone holds no org-to-miles map for challenge
             // publishers yet, so every tie falls through to the name. Said
@@ -10598,6 +10657,7 @@ function App() {
                   onRetryReport={handleRetryReport}
                   onDiscardReport={handleDiscardReport}
                   challengesScreen={challengesScreenNode}
+                  challengesUp={challengesUp}
                   challengesSummary={challengesSummary}
                   volunteerScreen={
                     <Volunteer
@@ -11239,6 +11299,8 @@ function App() {
                   challenges.tagItem(challenge, item, 'hand', poi),
                 onUntag: challenges.untagItem,
                 onJoin: challenges.join,
+                onOpen: openChallenge,
+                signedIn: account !== null,
               }}
               // The route builder's three, from the same kind of hook (#991).
               {...routeBuilder.mapScreen}

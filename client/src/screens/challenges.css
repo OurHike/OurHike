@@ -232,6 +232,12 @@
   color: var(--fg-chrome-2);
 }
 
+.challenge-head__rules {
+  font-size: 13px;
+  color: var(--fg-chrome-1);
+  text-decoration: underline;
+}
+
 /* The strip: every place on the list laid along the trail in mile order,
    ends labelled with the first and last place rather than any count. */
 .challenge-strip {
@@ -331,8 +337,39 @@
   cursor: pointer;
 }
 
-.challenge-row__open:disabled {
+.challenge-row__open:disabled,
+div.challenge-row__open {
   cursor: default;
+}
+
+/* A Triple Crown's peaks, each its own tag (review, 2026-09-30): the row
+   wraps so the peaks sit under the item, full width, one per line. */
+.challenge-row:has(> .challenge-subrows) {
+  flex-wrap: wrap;
+}
+
+.challenge-subrows {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.challenge-subrow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: var(--min-touch-target, 44px);
+  padding-left: 22px;
+}
+
+.challenge-subrow__name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
 }
 
 .challenge-row__text {

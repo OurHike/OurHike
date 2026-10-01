@@ -13,6 +13,7 @@ import {
   matchDay,
   planRows,
   progress,
+  removeTag,
   setRegisterNote,
   storedChallengeState,
   suggestion,
@@ -20,6 +21,7 @@ import {
   untag,
   type ChallengeState,
 } from './challengeProgress'
+import { localDay } from './passedToday'
 
 const NOW = new Date('2027-07-14T22:00:00Z')
 const TODAY = '2027-07-14'
@@ -108,6 +110,21 @@ describe('tagging', () => {
       how: 'gps',
     }).state
     expect(untag(walked, ATC_CHALLENGE.id, 'mcafee-knob')).toBe(walked)
+  })
+
+  it('un-tags one Triple Crown peak from its own card and keeps the other two', () => {
+    const crown = item('virginia-triple-crown')
+    const places = crown.match.kind === 'places_all' ? crown.match.places : []
+    let state = joinedAtc
+    for (const place of places) {
+      state = tag(state, ATC_CHALLENGE, crown, {
+        poi: place.poi,
+        at: NOW,
+        how: 'hand',
+      }).state
+    }
+    const after = untag(state, ATC_CHALLENGE.id, crown.id, places[1].poi)
+    expect(after.tags.map((entry) => entry.poi)).toEqual([places[0].poi, places[2].poi])
   })
 
   it('keeps the register line on the tag and nowhere else', () => {
@@ -241,6 +258,18 @@ describe('matchDay - the camp card lists what was passed and nothing else', () =
     expect(day(tagged, 710, 716).map((row) => row.item.id)).not.toContain('mcafee-knob')
   })
 
+  it('offers nothing on a day outside the challenge’s window', () => {
+    const before = matchDay({
+      joined: [ATC_CHALLENGE],
+      state: joinedAtc,
+      todayRanges: [{ startMile: 710, endMile: 716 }],
+      trail: 'AT',
+      pois: SHELTERS,
+      today: '2027-05-14',
+    })
+    expect(before).toEqual([])
+  })
+
   it('reads miles only against the trail they were measured on', () => {
     expect(
       matchDay({
@@ -318,6 +347,63 @@ describe('autoTags - the items that tag themselves', () => {
       NOW,
     )
     expect(logged.completed.map((done) => done.item.id)).toEqual(['trail-crew'])
+  })
+
+  it('answers one workday item per logged day, in published order', () => {
+    const workday = (id: string) => ({
+      id,
+      section: 'protect',
+      title: id,
+      sealedTitle: null,
+      note: null,
+      noteBy: null,
+      photo: null,
+      mystery: null,
+      match: { kind: 'workday' as const, org: null, trail: 'AT' },
+    })
+    const three = {
+      ...ATC_CHALLENGE,
+      items: [
+        ...ATC_CHALLENGE.items.filter((entry) => entry.match.kind !== 'workday'),
+        workday('volunteer-event'),
+        workday('trail-crew'),
+        workday('invasive-removal'),
+      ],
+    }
+    const logged = (...days: string[]) =>
+      autoTags(
+        {
+          ...base,
+          joined: [three],
+          state: joinedAtc,
+          todayRanges: [],
+          hours: days.map((workedOn) => ({
+            workedOn,
+            mile: 1400,
+            clubName: null,
+            disputed: false,
+          })),
+        },
+        NOW,
+      ).completed.map((done) => done.item.id)
+    expect(logged('2027-06-20')).toEqual(['volunteer-event'])
+    // Two records on one day are still one day.
+    expect(logged('2027-06-20', '2027-06-20')).toEqual(['volunteer-event'])
+    expect(logged('2027-06-20', '2027-06-27')).toEqual(['volunteer-event', 'trail-crew'])
+  })
+
+  it('reads a summit only on a day the challenge is open', () => {
+    const early = autoTags(
+      {
+        ...base,
+        today: '2027-05-14',
+        maxElevationFt: () => 4_010,
+        state: joinedAtc,
+        todayRanges: [{ startMile: 1860, endMile: 1866 }],
+      },
+      NOW,
+    )
+    expect(early.completed).toEqual([])
   })
 })
 
@@ -441,5 +527,107 @@ describe('the stored record', () => {
 
   it('defaults the map layer off', () => {
     expect(storedChallengeState(undefined).layerShown).toBe(false)
+  })
+})
+
+describe('what the review of 2026-09-30 found, held', () => {
+  const OTHER_TRAIL = { ...ATC_CHALLENGE, id: 'lp-list', trail: 'LP' }
+
+  it('lays nothing from another trail on an A.T. plan, however its miles line up', () => {
+    const days = [{ dayNumber: 1, startMile: 700, endMile: 725 }]
+    expect(planRows(OTHER_TRAIL, days, TODAY, 'AT')).toEqual([])
+    expect(planRows(ATC_CHALLENGE, days, TODAY, 'AT').length).toBeGreaterThan(0)
+  })
+
+  it('never suggests a challenge that has closed', () => {
+    const picked = suggestion({
+      challenges: [ATC_CHALLENGE],
+      state: EMPTY_CHALLENGE_STATE,
+      days: [{ dayNumber: 1, startMile: 700, endMile: 725 }],
+      hikeKey: 'hike',
+      today: '2027-09-02',
+      maintainedMiles: () => 0,
+    })
+    expect(picked).toBeNull()
+  })
+
+  it('measures Browse distance to the nearest planned day, never below zero', () => {
+    const groups = browse({
+      challenges: [ATC_CHALLENGE],
+      filters: { trail: null, org: null, openNow: false },
+      // A gap from 600 to 900 holds McAfee Knob (mile 714.9) between two days.
+      days: [
+        { dayNumber: 1, startMile: 590, endMile: 600 },
+        { dayNumber: 2, startMile: 900, endMile: 910 },
+      ],
+      today: TODAY,
+      planTrail: 'AT',
+    })
+    const [entry] = groups.elsewhere
+    expect(entry.milesFromPlan).not.toBeNull()
+    expect(entry.milesFromPlan as number).toBeGreaterThanOrEqual(0)
+  })
+
+  it('never offers an off-trail "any waypoint" item at camp', () => {
+    const towns = {
+      ...ATC_CHALLENGE,
+      items: ATC_CHALLENGE.items.map((entry) =>
+        entry.match.kind === 'poi_type'
+          ? { ...entry, match: { ...entry.match, offTrail: true } }
+          : entry,
+      ),
+    }
+    const rows = matchDay({
+      joined: [towns],
+      state: joinedAtc,
+      todayRanges: [{ startMile: 710, endMile: 716 }],
+      trail: 'AT',
+      pois: SHELTERS,
+      today: TODAY,
+    })
+    expect(rows.some((row) => row.item.match.kind === 'poi_type')).toBe(false)
+  })
+
+  it('stamps a workday tag on the day worked, not the day the phone noticed', () => {
+    const result = autoTags(
+      {
+        joined: [ATC_CHALLENGE],
+        state: joinedAtc,
+        todayRanges: [],
+        trail: 'AT',
+        today: '2027-09-05',
+        maxElevationFt: () => null,
+        hours: [{ workedOn: '2027-08-31', mile: 1400, clubName: null, disputed: false }],
+      },
+      new Date('2027-09-05T20:00:00Z'),
+    )
+    const made = result.state.tags.find((entry) => entry.itemId === 'trail-crew')
+    expect(made).toBeDefined()
+    expect(localDay(new Date(made!.at))).toBe('2027-08-31')
+  })
+
+  it('counts no workday for a challenge with no join record', () => {
+    const result = autoTags(
+      {
+        joined: [ATC_CHALLENGE],
+        state: EMPTY_CHALLENGE_STATE,
+        todayRanges: [],
+        trail: 'AT',
+        today: TODAY,
+        maxElevationFt: () => null,
+        hours: [{ workedOn: '2020-06-01', mile: 1400, clubName: null, disputed: false }],
+      },
+      NOW,
+    )
+    expect(result.completed).toEqual([])
+  })
+
+  it('takes a walked tag back with removeTag, which untag will not', () => {
+    const walked = tag(joinedAtc, ATC_CHALLENGE, item('mcafee-knob'), {
+      at: NOW,
+      how: 'gps',
+    }).state
+    expect(untag(walked, ATC_CHALLENGE.id, 'mcafee-knob')).toBe(walked)
+    expect(removeTag(walked, ATC_CHALLENGE.id, 'mcafee-knob').tags).toHaveLength(0)
   })
 })

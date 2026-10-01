@@ -25,6 +25,8 @@ function challenge(id: string, trail: string): Challenge {
     org: 'atc',
     orgName: 'Appalachian Trail Conservancy',
     orgShort: 'ATC',
+    orgDomain: 'appalachiantrail.org',
+    takesEntries: false,
     trail,
     name: id,
     status: 'draft',
@@ -138,5 +140,21 @@ describe('useChallengePanel', () => {
       'at-list:summit',
       'lp-list:summit',
     ])
+  })
+})
+
+describe('the Legend row, when nothing could be drawn', () => {
+  it('offers no switch for a joined list with no place on the map', () => {
+    const atHome = {
+      ...AT_LIST,
+      items: AT_LIST.items.map((entry) => ({
+        ...entry,
+        match: { kind: 'self_report' as const },
+      })),
+    }
+    const { props } = panel([atHome], state(true, atHome.id), 'AT')
+
+    expect(props.onToggleChallengePlaces).toBeUndefined()
+    expect(props.showChallengePins).toBe(false)
   })
 })

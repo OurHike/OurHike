@@ -385,6 +385,11 @@ export interface ChallengeDefinition {
   /** Null is a challenge with no finish, just a record. */
   finish: { count: number; label?: string | null } | null
   reward: { kind: ChallengeRewardKind; rules_url?: string | null } | null
+  /** Collect entries through OurHike. The reviewed file carries it so the
+   *  phone knows whether to ask a finisher for a name and an address; the
+   *  backend row's own flag is set from it on save. Only a published
+   *  challenge with a reward can. */
+  takes_entries?: boolean
   sections: ChallengeDefinitionSection[]
   items: ChallengeDefinitionItem[]
   /** What the club said counts, for whoever reviews the file and picks the
@@ -689,7 +694,12 @@ export const orgApi = {
   saveChallenge: (slug: string, challengeId: string, definition: ChallengeDefinition) =>
     writeOrg<unknown>(`${org(slug)}/challenges/${encodeURIComponent(challengeId)}`, {
       method: 'PUT',
-      body: JSON.stringify({ definition }),
+      // The row's flag and the file's, in one place, so the server's answer
+      // and the phone's offer cannot disagree.
+      body: JSON.stringify({
+        definition,
+        takes_entries: definition.takes_entries === true,
+      }),
     }),
   publishChallenge: (slug: string, challengeId: string) =>
     writeOrg<ChallengePublishResult>(

@@ -17,6 +17,10 @@
 // Crown's first two peaks queue nothing. What leaves is the challenge id, the
 // item id, how it was tagged, and when (lib/challengeDrafts.ts). The private
 // register line never does.
+//
+// AND IS TAKEN BACK WHEN IT STOPS BEING DONE: an un-tag, a "Remove this tag"
+// or a Leave queues the removal behind the tag, and the flush is in order, so
+// the server ends where the phone did. Rejoining sends the kept tags again.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DATA_CONFIGURED } from './config'
@@ -25,12 +29,16 @@ import { NO_CHALLENGES, fetchChallenges, recallChallenges } from './challenges'
 import {
   autoTags,
   hideSuggestion,
+  isItemDone,
+  itemDoneAt,
   join,
   joinedChallenges,
   leave,
   readChallengeState,
+  removeTag,
   setRegisterNote,
   tag,
+  tagsFor,
   untag,
   writeChallengeState,
   type AutoInput,
@@ -39,7 +47,12 @@ import {
   type TagHow,
 } from './challengeProgress'
 import type { ChallengeEntryDraft } from './challengeDrafts'
-import { enqueueChallengeEntry, enqueueChallengeTag } from './outbox'
+import {
+  enqueueChallengeEntry,
+  enqueueChallengeTag,
+  enqueueChallengeUntag,
+  removeQueued,
+} from './outbox'
 
 export interface ChallengesApi {
   /** Every challenge this phone holds, joined or not. */
@@ -50,7 +63,10 @@ export interface ChallengesApi {
   join: (challengeId: string) => void
   leave: (challengeId: string) => void
   tagItem: (challenge: Challenge, item: ChallengeItem, how: TagHow, poi?: string) => void
-  untagItem: (challenge: Challenge, item: ChallengeItem) => void
+  untagItem: (challenge: Challenge, item: ChallengeItem, poi?: string) => void
+  /** Takes a tag back however it was made - the tagged-place sheet's
+   *  "Remove this tag". */
+  removeTag: (challenge: Challenge, item: ChallengeItem, poi?: string) => void
   setNote: (challenge: Challenge, item: ChallengeItem, note: string) => void
   /** Tags every camp-card row and marks today's card answered. */
   tagAll: (candidates: readonly DayCandidate[], today: string) => void
@@ -60,6 +76,9 @@ export interface ChallengesApi {
   hideSuggestion: (hikeKey: string, challengeId: string) => void
   setLayerShown: (shown: boolean) => void
   sendEntry: (entry: ChallengeEntryDraft) => void
+  /** Forgets a refused entry - its queued item and the "sent" record - so the
+   *  finish screen shows the form again. */
+  forgetEntry: (challengeId: string) => void
 }
 
 /**
@@ -137,6 +156,29 @@ export function useChallenges(
     [],
   )
 
+  const enqueueUntag = useCallback((challengeId: string, itemId: string | null) => {
+    void enqueueChallengeUntag({ challenge_id: challengeId, item_id: itemId })
+      .then(() => queued.current())
+      .catch(() => {})
+  }, [])
+
+  // An item that was done and no longer is - its last hand tag pressed
+  // again, a Triple Crown peak taken back - leaves the server too. One that
+  // never completed never left, so there is nothing to take back.
+  const takeBack = useCallback(
+    (challenge: Challenge, item: ChallengeItem, next: ChallengeState) => {
+      const before = stateRef.current
+      commit(next)
+      if (
+        next !== before &&
+        isItemDone(item, challenge.id, before.tags) &&
+        !isItemDone(item, challenge.id, next.tags)
+      )
+        enqueueUntag(challenge.id, item.id)
+    },
+    [commit, enqueueUntag],
+  )
+
   const tagItem = useCallback(
     (challenge: Challenge, item: ChallengeItem, how: TagHow, poi?: string) => {
       const at = new Date()
@@ -181,11 +223,22 @@ export function useChallenges(
   useEffect(() => {
     const input = autoRef.current
     if (input === null || joined.length === 0) return
-    const at = new Date()
-    const result = autoTags({ ...input, joined, state: stateRef.current }, at)
+    const result = autoTags({ ...input, joined, state: stateRef.current }, new Date())
     commit(result.state)
-    for (const done of result.completed)
-      enqueueTag(done.challenge.id, done.item.id, 'gps', at)
+    for (const done of result.completed) {
+      // The tag's own time - a workday is stamped on the day worked.
+      const made = itemDoneAt(
+        done.item,
+        done.challenge.id,
+        tagsFor(result.state, done.challenge.id),
+      )
+      enqueueTag(
+        done.challenge.id,
+        done.item.id,
+        'gps',
+        made ? new Date(made.at) : new Date(),
+      )
+    }
   }, [autoKey, joined, commit, enqueueTag])
 
   return {
@@ -193,18 +246,47 @@ export function useChallenges(
     joined,
     state,
     join: useCallback(
-      (challengeId: string) => commit(join(stateRef.current, challengeId, new Date())),
-      [commit],
+      (challengeId: string) => {
+        const before = stateRef.current
+        const next = join(before, challengeId, new Date())
+        commit(next)
+        if (next === before) return
+        // Rejoining: the tags kept on the phone were taken back on the
+        // server when the hiker left, so each done item goes again.
+        const challenge = all.find((entry) => entry.id === challengeId)
+        if (challenge === undefined) return
+        const tags = tagsFor(next, challengeId)
+        for (const item of challenge.items) {
+          const made = itemDoneAt(item, challengeId, tags)
+          if (made !== null) enqueueTag(challengeId, item.id, made.how, new Date(made.at))
+        }
+      },
+      [commit, enqueueTag, all],
     ),
     leave: useCallback(
-      (challengeId: string) => commit(leave(stateRef.current, challengeId)),
-      [commit],
+      (challengeId: string) => {
+        const before = stateRef.current
+        const next = leave(before, challengeId)
+        commit(next)
+        if (next !== before && tagsFor(before, challengeId).length > 0)
+          enqueueUntag(challengeId, null)
+      },
+      [commit, enqueueUntag],
     ),
     tagItem,
     untagItem: useCallback(
-      (challenge: Challenge, item: ChallengeItem) =>
-        commit(untag(stateRef.current, challenge.id, item.id)),
-      [commit],
+      (challenge: Challenge, item: ChallengeItem, poi?: string) =>
+        takeBack(challenge, item, untag(stateRef.current, challenge.id, item.id, poi)),
+      [takeBack],
+    ),
+    removeTag: useCallback(
+      (challenge: Challenge, item: ChallengeItem, poi?: string) =>
+        takeBack(
+          challenge,
+          item,
+          removeTag(stateRef.current, challenge.id, item.id, poi),
+        ),
+      [takeBack],
     ),
     setNote: useCallback(
       (challenge: Challenge, item: ChallengeItem, note: string) =>
@@ -229,7 +311,20 @@ export function useChallenges(
       (entry: ChallengeEntryDraft) => {
         const at = new Date()
         void enqueueChallengeEntry(entry, at)
-          .then(() => queued.current())
+          .then((item) => {
+            // The queued id, so the finish screen reads the outbox for what
+            // happened to it rather than saying it went.
+            const current = stateRef.current
+            commit({
+              ...current,
+              sent: current.sent.map((sent) =>
+                sent.challengeId === entry.challenge_id && sent.at === at.toISOString()
+                  ? { ...sent, outboxId: item.id }
+                  : sent,
+              ),
+            })
+            queued.current()
+          })
           .catch(() => {})
         const current = stateRef.current
         commit({
@@ -242,6 +337,18 @@ export function useChallenges(
               kind: entry.finished_only === true ? 'finished' : 'entry',
             },
           ],
+        })
+      },
+      [commit],
+    ),
+    forgetEntry: useCallback(
+      (challengeId: string) => {
+        const current = stateRef.current
+        const sent = current.sent.find((entry) => entry.challengeId === challengeId)
+        if (sent?.outboxId !== undefined) void removeQueued(sent.outboxId).catch(() => {})
+        commit({
+          ...current,
+          sent: current.sent.filter((entry) => entry.challengeId !== challengeId),
         })
       },
       [commit],

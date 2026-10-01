@@ -647,6 +647,7 @@ export const ATC_CHALLENGE = {
   reviewed: '2026-09-30',
   org_name: 'Appalachian Trail Conservancy',
   org_short: 'ATC',
+  org_domain: 'appalachiantrail.org',
 }
 
 const place = (poi, name, mile, lat, lon) => ({
@@ -664,6 +665,7 @@ export const RECORD_CHALLENGE = {
   org: 'preview',
   org_name: 'A club (preview)',
   org_short: 'CLUB',
+  org_domain: 'club.example',
   trail: 'AT',
   name: 'Three Roanoke peaks (preview)',
   status: 'published',

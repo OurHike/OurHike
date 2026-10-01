@@ -81,14 +81,18 @@ export function useChallengePanel({
     [joined, state, today],
   )
 
+  // And only when there is a pin to draw: a joined list of at-home items
+  // offered a switch that put nothing on the map (review, 2026-09-30).
+  const offered = onChosenTrail && challengePins.features.length > 0
+
   const mapScreen = useMemo<ChallengeMapProps>(
     () => ({
       challengePins,
-      showChallengePins: state.layerShown && onChosenTrail,
+      showChallengePins: state.layerShown && offered,
       challengePlacesShown: state.layerShown,
-      onToggleChallengePlaces: onChosenTrail ? onToggle : undefined,
+      onToggleChallengePlaces: offered ? onToggle : undefined,
     }),
-    [challengePins, state.layerShown, onChosenTrail, onToggle],
+    [challengePins, state.layerShown, offered, onToggle],
   )
 
   return { mapScreen }

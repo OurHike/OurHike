@@ -146,3 +146,20 @@ describe('when Today asks', () => {
     ).toBe(true)
   })
 })
+
+describe('the camp card, read aloud', () => {
+  it('asks in a heading, and labels a draft list as a draft', () => {
+    render(
+      <ChallengeCampCard
+        candidates={passed(710, 716)}
+        today={TODAY}
+        onTagAll={vi.fn()}
+        onNotTonight={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole('heading', { name: /You passed places/ })).toBeInTheDocument()
+    expect(
+      screen.getAllByText('Draft · not yet confirmed by the ATC').length,
+    ).toBeGreaterThan(0)
+  })
+})

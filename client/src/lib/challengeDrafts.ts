@@ -28,10 +28,27 @@ export interface ChallengeTagDraft {
  */
 export interface ChallengeEntryDraft {
   challenge_id: string
+  /** The web domain of the org the finish screen named - the published
+   *  list's `org_domain`, which a maintainer reviewed (publishers.json). The
+   *  server gives the entry only to a club that proved that domain, so an id
+   *  claimed by anybody else - under any slug - collects nothing the hiker
+   *  meant for the ATC. */
+  org_domain: string
   name: string
   email?: string
   mailing_address?: string
   item_ids: string[]
   consented: true
   finished_only?: boolean
+}
+
+/**
+ * A tag taken back (#1780): the hiker's "Remove this tag", a hand tag pressed
+ * twice, or Leave. By item, not by tag id, because the server keeps one row
+ * per hiker per item and it may carry the id of their other device. A null
+ * `item_id` is every tag on the challenge - Leave.
+ */
+export interface ChallengeUntagDraft {
+  challenge_id: string
+  item_id: string | null
 }

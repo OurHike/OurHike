@@ -658,6 +658,21 @@ export async function sendChallengeTag(item: OutboxItem): Promise<void> {
   })
 }
 
+/** Takes back a challenge tag, or every tag on a challenge (#1780). The
+ *  server answers 204 whether or not there was one, so a resend after a lost
+ *  response is harmless. */
+export async function sendChallengeUntag(item: OutboxItem): Promise<void> {
+  const untag = item.challengeUntag
+  if (untag === undefined) return
+  const challenge = encodeURIComponent(untag.challenge_id)
+  await authedFetch(
+    untag.item_id === null
+      ? `/challenges/${challenge}/tags`
+      : `/challenges/${challenge}/items/${encodeURIComponent(untag.item_id)}/tag`,
+    { method: 'DELETE' },
+  )
+}
+
 /** Sends one challenge entry (#1780) - the only thing about a hiker a club
  *  ever receives, and only because they pressed send. */
 export async function sendChallengeEntry(item: OutboxItem): Promise<void> {
@@ -688,6 +703,7 @@ export async function sendOutboxItem(item: OutboxItem): Promise<void> {
   if (item.closure !== undefined) return sendClosure(item)
   if (item.challengeTag !== undefined) return sendChallengeTag(item)
   if (item.challengeEntry !== undefined) return sendChallengeEntry(item)
+  if (item.challengeUntag !== undefined) return sendChallengeUntag(item)
   return sendReport(item)
 }
 
@@ -807,6 +823,26 @@ const PERMANENT_REASONS: Record<number, string> = {
   409: 'The server already has a different report filed under this one’s id.',
 }
 
+/**
+ * A challenge entry's refusals are sentences the server wrote for the hiker
+ * (backend/app/routers/trail_challenges.py's NOT_TAKING_ENTRIES and
+ * ALREADY_SENT, and app/core/trail_challenge.py's closed_sentence, whose
+ * docstring says the phone shows it verbatim). They arrive as 409s, and
+ * PERMANENT_REASONS' 409 - "a different report filed under this one's id" -
+ * would tell somebody whose club is not taking entries that their report
+ * collided. Matched by opening words because they are the contract the
+ * backend's tests hold (test_routers_trail_challenges.py); a sentence this
+ * list does not know falls through to the generic reason, never to silence.
+ */
+const HIKER_SENTENCE =
+  /^(This challenge['’]s club is not taking entries|You have already sent an entry|Entries for this challenge closed)/
+
+function hikerSentence(error: ApiError): string | null {
+  if (error.status !== 409) return null
+  const detail = (error.detail as { detail?: unknown } | null)?.detail
+  return typeof detail === 'string' && HIKER_SENTENCE.test(detail) ? detail : null
+}
+
 // The backend returns 422 for two unrelated reasons, and the entry above is
 // written for only one of them (#412).
 //
@@ -857,6 +893,9 @@ function namesAuthoredAt(detail: unknown): boolean {
  */
 export function permanentFailureReason(error: unknown): string | null {
   if (!(error instanceof ApiError)) return null
+
+  const written = hikerSentence(error)
+  if (written !== null) return written
 
   // A 422 that does not name `authored_at` is validation failing on some
   // other field, which this build cannot fix by trying again - but a newer

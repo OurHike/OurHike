@@ -78,3 +78,30 @@ describe('a plan’s challenge places', () => {
     expect(container.textContent).not.toMatch(SCORING)
   })
 })
+
+describe('the suggestion, read before joining', () => {
+  it('opens the challenge from its name and from "more"', async () => {
+    const picked = suggestion({
+      challenges: [ATC_CHALLENGE],
+      state: EMPTY_CHALLENGE_STATE,
+      days: DAYS,
+      hikeKey: 'trip-1',
+      today: TODAY,
+      maintainedMiles: () => 0,
+    })
+    const onOpen = vi.fn()
+    render(
+      <PlanChallenges
+        rows={[]}
+        state={EMPTY_CHALLENGE_STATE}
+        suggestion={picked}
+        today={TODAY}
+        onJoin={vi.fn()}
+        onHide={vi.fn()}
+        onOpen={onOpen}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: ATC_CHALLENGE.name }))
+    expect(onOpen).toHaveBeenCalledWith(ATC_CHALLENGE.id)
+  })
+})

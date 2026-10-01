@@ -108,6 +108,13 @@ export interface MoreProps extends SettingsProps {
    * plan). Absent means the row leads to an empty page, never a crash.
    */
   challengesScreen?: ReactNode
+  /**
+   * Back from one challenge or from Browse, and what it names. They are
+   * pushed (App.tsx's openChallenge), so Back returns to wherever they were
+   * opened - Plan, a place card, Browse, the list - rather than always to the
+   * list. Absent: up one level, as before.
+   */
+  challengesUp?: { label: string; onPress: () => void }
   /** The Challenges row's second line, e.g. the joined challenges' names. */
   challengesSummary?: string
   /**
@@ -332,6 +339,7 @@ export function More({
   yourWork,
   volunteerScreen,
   challengesScreen,
+  challengesUp,
   challengesSummary = 'Places clubs invite you to walk',
   onOpenModeration,
   onOpenRegistry,
@@ -495,10 +503,16 @@ export function More({
           <button
             type="button"
             className="more__back"
-            onClick={() => onNavigate(up.page)}
+            onClick={() =>
+              page !== 'challenges' && challengesUp !== undefined
+                ? challengesUp.onPress()
+                : onNavigate(up.page)
+            }
           >
             <span aria-hidden="true">‹ </span>
-            {up.label}
+            {page !== 'challenges' && challengesUp !== undefined
+              ? challengesUp.label
+              : up.label}
           </button>
         </div>
         {challengesScreen}

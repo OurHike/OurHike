@@ -14,7 +14,7 @@
 //     one of them - design principle 5's "not a special case".
 
 import { CHALLENGE_WORDS } from '../lib/challengeWords'
-import { isPlaceItem, shortDate, type Challenge } from '../lib/challenges'
+import { isPlaceItem, isSealed, windowNow, type Challenge } from '../lib/challenges'
 import {
   isItemDone,
   progress,
@@ -31,6 +31,11 @@ export interface ChallengesProps {
   onOffer: number
   onOpen: (challengeId: string) => void
   onBrowse: () => void
+  /** The hiker's local YYYY-MM-DD, for the window and for sealed places. */
+  today?: string
+  /** Joined challenges a later release no longer carries. Their tags stay on
+   *  the phone; this says so rather than the list silently shrinking. */
+  missing?: number
 }
 
 export function Challenges({
@@ -39,6 +44,8 @@ export function Challenges({
   onOffer,
   onOpen,
   onBrowse,
+  today = '',
+  missing = 0,
 }: ChallengesProps) {
   return (
     <section className="challenges" aria-labelledby="challenges-title">
@@ -46,7 +53,7 @@ export function Challenges({
       <h1 className="challenges__title" id="challenges-title">
         {CHALLENGE_WORDS.yours}
       </h1>
-      {joined.length === 0 ? (
+      {joined.length === 0 && missing === 0 ? (
         <p className="challenges__empty">
           A challenge is a club’s list of places on its own trails - walk there, and{' '}
           {CHALLENGE_WORDS.noun} them at camp. Join as many as you like.
@@ -57,9 +64,19 @@ export function Challenges({
             key={challenge.id}
             challenge={challenge}
             state={state}
+            today={today}
             onOpen={() => onOpen(challenge.id)}
           />
         ))
+      )}
+      {missing > 0 && (
+        <p className="challenges__note">
+          {missing === 1
+            ? 'A challenge you joined is no longer in the published list.'
+            : `${missing} challenges you joined are no longer in the published list.`}{' '}
+          What you {CHALLENGE_WORDS.past} stays on this phone, and returns if the club
+          publishes it again.
+        </p>
       )}
       <button type="button" className="challenge-browse-row" onClick={onBrowse}>
         <span>
@@ -76,20 +93,24 @@ export function Challenges({
 function ChallengeCard({
   challenge,
   state,
+  today,
   onOpen,
 }: {
   challenge: Challenge
   state: ChallengeState
+  today: string
   onOpen: () => void
 }) {
   const { tagged, finish } = progress(challenge, state)
   const tags = tagsFor(state, challenge.id)
-  const places = challenge.items.filter(isPlaceItem)
+  // Not a sealed mystery's place: a diamond for it would be the answer.
+  const places = challenge.items.filter(
+    (item) => isPlaceItem(item) && !isSealed(item, today),
+  )
   const allSections = challenge.items.every(
     (item) => item.match.kind === 'section_walked',
   )
-  const { closes } = challenge.window
-  const eyebrow = `${challenge.orgShort} · ${closes !== null ? `until ${shortDate(closes)}` : 'no end date'}`
+  const eyebrow = `${challenge.orgShort} · ${windowNow(challenge, today)}`
   return (
     <button
       type="button"

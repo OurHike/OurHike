@@ -61,12 +61,14 @@ export function itemTrailing(item: ChallengeItem): string | undefined {
   return undefined
 }
 
-/** Whether a hiker may tag this item by a tap: an at-home item, or a named
- *  place (the hand tag for GPS gaps and for places off the trail). The kinds
- *  that tag themselves - a section, a height, a workday - never take a tap,
- *  which is design principle 1 holding. */
+/** Whether a hiker may tag this item by a tap: an at-home item, a named
+ *  place (the hand tag for GPS gaps and for places off the trail), or "any
+ *  shelter" - which the camp card offers only on the day it was passed, so
+ *  without a tap here a "Not tonight" would lose it for good. The kinds that
+ *  tag themselves - a section, a height, a workday - never take a tap, which
+ *  is design principle 1 holding. */
 export function handTaggable(item: ChallengeItem): boolean {
-  return isSelfReport(item) || isPlaceItem(item)
+  return isSelfReport(item) || isPlaceItem(item) || item.match.kind === 'poi_type'
 }
 
 /** The title as it reads today, or the sealed line. */
@@ -99,6 +101,13 @@ const MONTHS = [
 
 /** "Jul 14" from "2027-07-14" or an ISO instant. */
 export function formatDay(value: string): string {
+  // A tag's `at` is an ISO instant in UTC; its first ten characters are the
+  // UTC date, which is tomorrow for a tag made after 8 pm in New York. Read
+  // an instant on the hiker's own clock, and a bare YYYY-MM-DD as written.
+  if (value.length > 10) {
+    const at = new Date(value)
+    if (!Number.isNaN(at.getTime())) return `${MONTHS[at.getMonth()]} ${at.getDate()}`
+  }
   const [year, month, day] = value.slice(0, 10).split('-').map(Number)
   if (!year || !month || !day) return value
   return `${MONTHS[month - 1]} ${day}`

@@ -38,7 +38,11 @@
 import { get, update } from 'idb-keyval'
 
 import { BUILD_INFO } from './buildInfo'
-import type { ChallengeEntryDraft, ChallengeTagDraft } from './challengeDrafts'
+import type {
+  ChallengeEntryDraft,
+  ChallengeTagDraft,
+  ChallengeUntagDraft,
+} from './challengeDrafts'
 import type { ClosureDraft } from './closureDraft'
 import type { FieldNoteDraft } from './fieldNotes'
 import type { VolunteerHoursDraft } from './volunteerHours'
@@ -357,6 +361,13 @@ export interface OutboxItem {
    * drawing" on a ridge works the same as in town.
    */
   challengeEntry?: ChallengeEntryDraft
+  /**
+   * A challenge tag taken back (#1780) - the ninth cargo. Queued behind the
+   * tag it undoes, and the flush is in order, so a tag made and removed with
+   * no signal goes out as a tag and then its removal, and the server ends
+   * where the phone did.
+   */
+  challengeUntag?: ChallengeUntagDraft
   /**
    * The photo, as bytes, already downscaled and re-encoded (lib/reportPhoto.ts).
    *
@@ -802,6 +813,21 @@ export async function enqueueChallengeEntry(
     id: crypto.randomUUID(),
     authoredAt: authoredAt.toISOString(),
     challengeEntry,
+  }
+
+  await mutateQueue((queue) => [...queue, item])
+  return item
+}
+
+/** Queue a challenge tag's removal (#1780) - see `challengeUntag`. */
+export async function enqueueChallengeUntag(
+  challengeUntag: ChallengeUntagDraft,
+  authoredAt: Date = new Date(),
+): Promise<OutboxItem> {
+  const item: OutboxItem = {
+    id: crypto.randomUUID(),
+    authoredAt: authoredAt.toISOString(),
+    challengeUntag,
   }
 
   await mutateQueue((queue) => [...queue, item])

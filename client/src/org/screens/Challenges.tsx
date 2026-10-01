@@ -232,7 +232,9 @@ export function newChallengeId(orgSlug: string, name: string): string {
   const org = challengeId(orgSlug)
   const own = challengeId(name)
   if (own === '') return ''
-  return own === org || own.startsWith(`${org}-`) ? own : `${org}-${own}`
+  // Always a hyphen after the slug: the backend refuses an id that is only
+  // the slug, or does not start with `<slug>-` (_checked_definition).
+  return own.startsWith(`${org}-`) ? own : `${org}-${own}`
 }
 
 /** Why the editor's Publish button cannot be pressed yet, or null. */
@@ -248,8 +250,9 @@ export function publishBlocker(
   }
   if (definition.trail === '') return 'Pick the trail it lives on.'
   const { opens, closes } = definition.window
-  if (opens !== null && closes !== null && closes <= opens) {
-    return 'It closes on or before the day it opens.'
+  // Both days are inclusive, so opening and closing on one day is a window.
+  if (opens !== null && closes !== null && closes < opens) {
+    return 'It closes before the day it opens.'
   }
   if (definition.finish !== null) {
     const { count } = definition.finish
@@ -281,6 +284,9 @@ export interface ChallengesProps {
   /** Written into a new challenge's `org`. */
   readonly orgSlug: string
   readonly rows: readonly OrgChallengeRow[]
+  /** The list could not be read. Nothing is offered that could overwrite a
+   *  challenge this page cannot see. */
+  readonly rowsUnread?: boolean
   /**
    * The organization's own trails, and only those.
    *
@@ -308,6 +314,7 @@ export interface ChallengesProps {
 export function Challenges({
   orgSlug,
   rows,
+  rowsUnread = false,
   trails,
   initialId = null,
   canEdit,
@@ -414,6 +421,13 @@ export function Challenges({
       // A reward with no finish line has no moment to be claimed at, and the
       // exporter refuses the pair - so clearing the finish clears it here.
       reward: definition.finish === null ? null : definition.reward,
+      // Only a published challenge with a reward takes entries; the server
+      // refuses the switch otherwise, so it is never sent on anything else.
+      takes_entries:
+        definition.takes_entries === true &&
+        definition.status === 'published' &&
+        definition.finish !== null &&
+        definition.reward !== null,
     }
     setBusy(true)
     setOutcome(null)
@@ -449,7 +463,7 @@ export function Challenges({
           </>
         }
         actions={
-          canEdit ? (
+          canEdit && !rowsUnread ? (
             <button
               type="button"
               className="org-btn org-btn--ghost org-btn--small"
@@ -463,7 +477,15 @@ export function Challenges({
 
       <div className="org-split">
         <div className="org-stack">
-          {rows.length === 0 ? (
+          {rowsUnread ? (
+            <div className="org-empty">
+              <h3>Could not read your challenges</h3>
+              <p>
+                OurHike did not answer with this organization’s challenges, so nothing can
+                be added or changed here until it does. Reload the page to try again.
+              </p>
+            </div>
+          ) : rows.length === 0 ? (
             <div className="org-empty">
               <h3>No challenges yet</h3>
               <p>
@@ -763,6 +785,28 @@ export function Challenges({
                   Hikers see it labelled not yet confirmed, and it takes no entries.
                 </span>
               </label>
+
+              {definition.reward !== null && definition.finish !== null && (
+                <label className="org-inline">
+                  <input
+                    type="checkbox"
+                    checked={definition.takes_entries === true}
+                    disabled={definition.status === 'draft'}
+                    onChange={(event) =>
+                      update((current) => ({
+                        ...current,
+                        takes_entries: event.target.checked,
+                      }))
+                    }
+                  />
+                  <span className="org-field__label">Take entries through OurHike</span>
+                  <span className="org-field__hint">
+                    {definition.status === 'draft'
+                      ? 'A draft takes no entries.'
+                      : 'Finishers send their name and an email or mailing address here, and you download them as a spreadsheet. Leave it off if you collect entries yourself; the app then points finishers at your rules.'}
+                  </span>
+                </label>
+              )}
 
               {definition.items.length > 0 ? (
                 // Folded by default: frame #2a draws no item list, and the

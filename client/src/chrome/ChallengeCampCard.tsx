@@ -16,7 +16,7 @@ import { CHALLENGE_WORDS } from '../lib/challengeWords'
 import type { DayCandidate } from '../lib/challengeProgress'
 import { itemTitle } from '../lib/challenges'
 import { mileLabel } from '../lib/challengeText'
-import { Diamond } from './ChallengeParts'
+import { Diamond, DraftLabel } from './ChallengeParts'
 
 export interface ChallengeCampCardProps {
   /** What today's walk passed and the hiker has not tagged. */
@@ -37,9 +37,10 @@ export function ChallengeCampCard({
   return (
     <section className="challenge-camp" aria-labelledby="challenge-camp-ask">
       <p className="challenges__eyebrow">From today’s walk</p>
-      <p className="challenge-camp__ask" id="challenge-camp-ask">
+      {/* A heading, so a screen reader's list of Today's headings finds it. */}
+      <h2 className="challenge-camp__ask" id="challenge-camp-ask">
         You passed places on your challenges. {ask}
-      </p>
+      </h2>
       <ul className="challenge-rows">
         {candidates.map(({ challenge, item, place }) => (
           <li key={`${challenge.id}/${item.id}/${place.poi}`} className="challenge-row">
@@ -56,6 +57,7 @@ export function ChallengeCampCard({
                   : ''}
                 {challenge.name}
               </span>
+              <DraftLabel challenge={challenge} />
             </span>
             <span className="challenge-row__trailing">{mileLabel(place.mile)}</span>
           </li>

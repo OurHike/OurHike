@@ -37,8 +37,13 @@ export interface PoiChallengesProps {
   state: ChallengeState
   today: string
   onTag: (challenge: Challenge, item: ChallengeItem, poi: string) => void
-  onUntag: (challenge: Challenge, item: ChallengeItem) => void
+  /** `poi` is this card's place, so a Triple Crown peak un-tags alone. */
+  onUntag: (challenge: Challenge, item: ChallengeItem, poi: string) => void
   onJoin: (challengeId: string) => void
+  /** Opens the challenge's own page, so a hiker can read it before joining. */
+  onOpen?: (challengeId: string) => void
+  /** Tags leave the phone only for a signed-in account; the note says so. */
+  signedIn?: boolean
 }
 
 interface Row {
@@ -82,8 +87,13 @@ export function PoiChallenges(props: PoiChallengesProps) {
                 item.match.kind === 'places_all'
                   ? tags.some((tag) => tag.itemId === item.id && tag.poi === poi)
                   : isItemDone(item, challenge.id, tags)
+              // Per place for a Triple Crown: another peak walked is no reason
+              // to take away this one's hand-tag undo.
               const fromWalk = tags.some(
-                (tag) => tag.itemId === item.id && tag.how === 'gps',
+                (tag) =>
+                  tag.itemId === item.id &&
+                  tag.how === 'gps' &&
+                  (item.match.kind !== 'places_all' || tag.poi === poi),
               )
               const title = itemTitle(item, today) ?? ''
               return (
@@ -104,7 +114,7 @@ export function PoiChallenges(props: PoiChallengesProps) {
                       label={`${done ? CHALLENGE_WORDS.done : CHALLENGE_WORDS.act}: ${title}`}
                       onPress={() =>
                         done
-                          ? props.onUntag(challenge, item)
+                          ? props.onUntag(challenge, item, poi)
                           : props.onTag(challenge, item, poi)
                       }
                     />
@@ -114,17 +124,33 @@ export function PoiChallenges(props: PoiChallengesProps) {
             })}
           </ul>
           <p className="challenges__note">
-            {API_CONFIGURED
-              ? 'Saved on this phone. With signal, OurHike counts it for the club - never your name.'
-              : 'Saved on this phone. It waits here until OurHike’s server is running.'}
+            {!API_CONFIGURED
+              ? 'Saved on this phone. It waits here until OurHike’s server is running.'
+              : props.signedIn === false
+                ? 'Saved on this phone. Once you sign in and have signal, OurHike counts it for the club - never your name.'
+                : 'Saved on this phone. With signal, OurHike counts it for the club - never your name.'}
           </p>
         </>
+      )}
+      {offers.length > 0 && joinedRows.length === 0 && (
+        <h3 className="poi-card__section-title">On a club’s challenge</h3>
       )}
       {offers.map((challenge) => (
         <div key={challenge.id} className="challenge-row">
           <Diamond done={false} />
           <span className="challenge-row__text">
-            <span className="challenge-row__title">On the {challenge.name}</span>
+            {props.onOpen !== undefined ? (
+              // Read it before joining it: the name opens the challenge.
+              <button
+                type="button"
+                className="challenge-link challenge-row__title"
+                onClick={() => props.onOpen?.(challenge.id)}
+              >
+                On the {challenge.name}
+              </button>
+            ) : (
+              <span className="challenge-row__title">On the {challenge.name}</span>
+            )}
             <span className="challenge-row__meta">{challenge.orgName}</span>
             <DraftLabel challenge={challenge} />
           </span>

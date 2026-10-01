@@ -220,7 +220,6 @@ jobs:
             pipeline/fetch_elevation.py
             pipeline/fetch_hikefinder.py
             pipeline/fetch_opentrail.py
-            pipeline/load_raw.py
             pipeline/make_dbt_fixtures.py
             pipeline/sources.json
             pipeline/reference/trail_orgs.json

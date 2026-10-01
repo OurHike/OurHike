@@ -694,7 +694,7 @@ Measured 2026-10-01 on a local `file://` destination: two `replace` runs left on
 - CI therefore exercises the real paginator, hints, flatten step and naming, where the 2,072,165-row default would have gone red.
 - `make_dbt_fixtures.py:12-22`'s "Nothing here is invented" extends to the `fields` lists.
 
-**`load_raw.py` is deleted once `_warehouse.py` loads the same tables.** Its 13 tests (`tests/test_load_raw.py`):
+**`load_raw.py` is deleted once `_warehouse.py` loads the same tables.** Since stage 3 CI's dbt job no longer runs it: fixture mode loads the same 56 tables, with the same rows (above). **It stays until stage 4 wires the extract lanes**, because until then it is the one way to build a warehouse from a laptop's already-fetched `data/raw/`, and the old fetchers still write there for the old exporters. Of its 13 tests (`tests/test_load_raw.py`), every survivor below now exists, the injected load failure included (`test_a_load_that_dies_before_it_commits_is_never_read_as_the_current_closures`), except `_source_path`, which waits on the as-sent copy:
 
 | test | survives as |
 |---|---|

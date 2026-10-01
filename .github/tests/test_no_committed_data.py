@@ -49,7 +49,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 #: Extensions that are data rather than source: something a script fetched,
 #: derived, or exported. Deliberately not exhaustive - it names the shapes
 #: this pipeline actually produces, and a new one is a line here.
-#: `.duckdb` is the warehouse load_raw.py and dbt build, and `.wal` its
+#: `.duckdb` is the warehouse extract/_warehouse.py (or load_raw.py) and dbt build, and `.wal` its
 #: write-ahead log beside it: a warehouse holds every raw layer whole, so one
 #: committed by accident publishes every source at once.
 DATA_SUFFIXES = frozenset(
@@ -123,7 +123,7 @@ ALLOWED_DATA_PATHS = (
     # judgement, reviewed row by row - poi_type_mapping.csv is eleven lines
     # transcribed from ICON_LEGEND/OPENTRAIL_ICON_MAP/DIRECT_SOURCES and
     # held to them by pipeline/tests/test_dbt_seed_sync.py. Fetched or
-    # derived data does not belong here either; load_raw.py's warehouse
+    # derived data does not belong here either; the warehouse
     # under pipeline/data/ is where that goes, gitignored.
     "pipeline/dbt/seeds/",
 )

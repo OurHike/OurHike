@@ -56,8 +56,6 @@ NOT_YET_EXTRACTED = frozenset(
         # is the maintainer's to create: #1652 — Download OSM's Geofabrik extracts at
         # most once a month, into a private raw bucket that outlives the 7-day Actions cache.
         "osm_water",
-        # A watch, not a fetch: _shared/usgs/'s, not built yet.
-        "usgs_3dhp",
         # Waiting on #1804 — fetch_drought.py fetches droughtmonitor.unl.edu/data/, a
         # path the Drought Monitor's robots.txt disallows for every user agent. The
         # extract does not rebuild a fetch robots.txt refuses.

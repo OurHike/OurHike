@@ -21,6 +21,7 @@ The kinds built so far for stage 2 (#1793 â€” Rebuild the data platform as dlt â
     published_hikes(key)    the Hike Finder export, one row per hike, GPX as served
     club_pdf(key)           a club's PDF, one row per row its lib/club_pdfs.py parser reads
     opentrail_feed()        opentrail.org's A.T. waypoints, comments left out (no registry row)
+    hydrography_watch(key)  the usgs_3dhp watch: 3DHP's work units at five probes on the trail
     reviewed_input(key)     a registry entry whose rows a person reviews into a
                             file in git (ATC's Trail Updates), loaded from that file
     reviewed_file(path)     a reviewed pipeline/reference/ file with no registry
@@ -46,6 +47,7 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 
+from check_freshness import CORRIDOR_PROBES
 from extract._contract import EXTRACT_DIR, PIPELINE_DIR, Resource, read_club_file, slug_for_folder
 from fetch_club_pdfs import extract_page_texts
 from fetch_hikefinder import sign_in as hikefinder_sign_in
@@ -834,6 +836,62 @@ class OpentrailFeed(Resource):
 
 def opentrail_feed(**overrides) -> OpentrailFeed:
     return OpentrailFeed(key="at", **overrides)
+
+
+@dataclass(frozen=True)
+class HydrographyWatch(Resource):
+    """The usgs_3dhp watch: which 3DHP work units the corridor's flowlines come from, one row per probe box.
+
+    A watch, not a fetch (lib/source_registry.py's WATCHED_ONLY): no 3DHP
+    geometry lands, only the answer that says whether USGS has resurveyed the
+    corridor. The boxes are check_freshness.py's CORRIDOR_PROBES, five
+    0.04-degree envelopes on the footpath, and the query is the registry row's
+    `freshness.url`. Every box must name a work unit, or the read raises, so a
+    resurveyed stretch cannot hide behind four boxes that still say `NHD`
+    (check_freshness.py's `upstream_hydrography_marker`, whose rule this
+    keeps). Measured 2026-08-14: all five answer `NHD`.
+    """
+
+    def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
+        """UNKNOWN: five one-row queries a month cost less than a marker that could lie."""
+        return Freshness.UNKNOWN, None
+
+    def rows(self, proofs: dict[str, int]):
+        url = registry_entry(self.key)["freshness"]["url"]
+        http = session()
+        rows = []
+        for index, (west, south, east, north) in enumerate(CORRIDOR_PROBES):
+            answer = request_with_retry(
+                url,
+                session=http,
+                params={
+                    "f": "json",
+                    "where": "1=1",
+                    "outFields": "workunitid",
+                    "returnGeometry": "false",
+                    "returnDistinctValues": "true",
+                    "geometry": f"{west},{south},{east},{north}",
+                    "geometryType": "esriGeometryEnvelope",
+                    "inSR": 4326,
+                    "spatialRel": "esriSpatialRelIntersects",
+                },
+                timeout=30,
+            ).json()
+            units = sorted(
+                {str(unit) for feature in answer["features"] if (unit := (feature.get("attributes") or {}).get("workunitid"))}
+            )
+            if not units:
+                raise RuntimeError(f"{self.key}: probe {index} named no work unit, which is not an answer about that stretch")
+            rows.append({"probe": index, "west": west, "south": south, "east": east, "north": north, "workunitids": units})
+        proofs[self.table] = len(CORRIDOR_PROBES)
+        yield from rows
+
+
+def hydrography_watch(key: str, **overrides) -> HydrographyWatch:
+    entry = registry_entry(key)
+    if not (entry.get("freshness") or {}).get("url"):
+        raise KeyError(f"{key} has no freshness.url to ask 3DHP at")
+    return HydrographyWatch(key=key, **overrides)
 
 
 @dataclass(frozen=True)

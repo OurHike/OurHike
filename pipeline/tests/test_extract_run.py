@@ -26,6 +26,7 @@ from extract._kinds import (
     ArcgisLayer,
     ClubPdf,
     GuidePages,
+    HydrographyWatch,
     OpentrailFeed,
     PodcastFeed,
     PublishedHikes,
@@ -55,6 +56,7 @@ WP = "https://club.example.org/wp-json/wp/v2"
 GUIDE = "https://club.example.org/guide/"
 HIKES = "https://hikes.example.org/hikefinder/"
 PDF_URL = "https://club.example.org/wp-content/uploads/water.pdf"
+HYDRO_URL = "https://3dhp.example.gov/arcgis/rest/services/all/FeatureServer/50/query"
 GREENWAY_WHERE = "status='Current' AND grnwy='Greenway'"
 FEED = b"""<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
@@ -125,6 +127,12 @@ def registry(tmp_path, monkeypatch):
                     {"key": "nynjtc_long_path_guide", "url": GUIDE, "kind": "guide_pages"},
                     {"key": "hikes", "url": HIKES, "kind": "published_hikes"},
                     {"key": "gatc_water_sources", "url": PDF_URL, "kind": "club_pdf"},
+                    {
+                        "key": "usgs_3dhp",
+                        "url": "https://3dhp.example.gov/arcgis/rest/services/all/FeatureServer",
+                        "kind": "watched_only",
+                        "freshness": {"kind": "arcgis_distinct_values", "url": HYDRO_URL},
+                    },
                     {
                         "key": "greenways",
                         "url": "https://data.example.gov/d/abcd-1234",
@@ -698,3 +706,19 @@ def test_opentrail_lands_its_waypoints_without_a_single_comment(registry, reques
     assert requests_mock.last_request.headers["User-Agent"] == USER_AGENT
     verdict, marker = feed.change_check(None)
     assert verdict is Freshness.STALE and marker == {"etag": '"o1"'}
+
+
+def test_the_3dhp_watch_lands_each_probes_work_units_and_a_silent_box_refuses(registry, requests_mock):
+    answers = iter([["NHD"], ["NHD"], ["NHD", "3DHP_MA_01"], ["NHD"], ["NHD"]])
+    requests_mock.get(
+        HYDRO_URL, json=lambda request, context: {"features": [{"attributes": {"workunitid": u}} for u in next(answers)]}
+    )
+    watch = HydrographyWatch(key="usgs_3dhp", club="usgs", type="points_of_interest")
+    proofs = {}
+    rows = list(watch.rows(proofs))
+    assert [row["workunitids"] for row in rows] == [["NHD"], ["NHD"], ["3DHP_MA_01", "NHD"], ["NHD"], ["NHD"]]
+    assert proofs["raw_usgs__usgs_3dhp"] == 5
+    assert all(r.qs["returndistinctvalues"] == ["true"] for r in requests_mock.request_history)
+    requests_mock.get(HYDRO_URL, json={"features": [{"attributes": {"workunitid": None}}]})
+    with pytest.raises(RuntimeError, match="named no work unit"):
+        list(watch.rows({}))

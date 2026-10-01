@@ -53,7 +53,7 @@ import httpx
 
 from app.config import settings
 from app.core.registry_file import org_dir, registry_files
-from app.core.trail_challenge import ID_RE, challenge_dir, challenge_file
+from app.core.trail_challenge import ID_RE, challenge_dir, challenge_file, may_publish_as
 from app.models.club import Club, OrgState
 
 GITHUB_API = "https://api.github.com"
@@ -210,12 +210,19 @@ def _put_up_for_review(
 def _plain(name: str) -> str:
     """A club's name as inert text in a commit, a PR title and a PR body.
 
-    The name is whatever the organization typed. Unescaped, "Closes #1" in a
-    merged commit message closes issue 1, and "@someone" pings them; brackets
-    and backticks make links and code. Those characters are dropped rather
-    than escaped, because a commit message has no escaping at all.
+    The name is whatever the organization typed. Unescaped, a closing keyword
+    and an issue number in a merged commit message closes that issue, an
+    `@` pings somebody, and brackets, backticks and URLs make links and code.
+    So the name keeps only letters, digits, spaces and plain punctuation
+    (`. , ' & -`), with a `GH-` reference broken apart, and is cut at 120
+    characters - a commit message has no escaping at all, so this is a
+    whitelist rather than a list of dangers (second security review,
+    2026-10-01).
     """
-    return " ".join(re.sub(r"[@#`\[\]<>()*_~|\\]", "", name).split()) or "An organization"
+    kept = "".join(ch for ch in name if ch.isalnum() or ch in " .,'&-")
+    kept = re.sub(r"(?i)\bGH-(?=\d)", "GH ", kept)
+    kept = " ".join(kept.split())[:120].strip()
+    return kept or "An organization"
 
 
 def open_registry_pr(db, club: Club, *, client: httpx.Client | None = None) -> OpenedPr:
@@ -254,7 +261,7 @@ def open_challenge_pr(
 ) -> OpenedPr:
     """Put one of this organization's challenges up for a maintainer to review.
 
-    Writes exactly one file, `pipeline/reference/challenges/<slug>/<id>.json`,
+    Writes exactly one file, `pipeline/reference/challenges/<org>/<id>.json`,
     and nothing else. It is a request for review and nothing more: the
     pipeline's own checks (pipeline/lib/challenges.py) run on the pull
     request, and a person merges it or does not.
@@ -269,21 +276,36 @@ def open_challenge_pr(
     """
     _refuse_unless_switched_on()
     slug = _refuse_unless_claimed(club)
-    if not ID_RE.match(challenge_id) or not ID_RE.match(slug):
+    # The directory is the definition's org: the club's own slug, or a
+    # publisher whose domain this club proved (the save route already held
+    # it to one of the two; checked again here because this builds a path).
+    org = definition.get("org") if isinstance(definition.get("org"), str) else slug
+    if not may_publish_as(org, slug=slug, domain=club.domain):
+        org = slug
+    if not ID_RE.match(challenge_id) or not ID_RE.match(org):
         # Both are validated at the wire already; this is the opener refusing
         # to build a path from anything it has not checked itself.
         raise RegistryPrRefused("A challenge id or organization address is not a plain path segment.")
+    domain = (club.domain or "").strip().lower()
+    # The domain the saving org proved travels in the file, so the pipeline
+    # can refuse a file under `atc/` saved by anybody but the domain
+    # publishers.json names - a reviewer reading a long JSON diff should not
+    # be the only thing standing between a squatter and the ATC's rules link.
+    reviewed = {**definition, "published_by_domain": domain}
 
     return _put_up_for_review(
         client if client is not None else httpx.Client(),
-        files={challenge_file(slug, challenge_id): json.dumps(definition, indent=2, ensure_ascii=False) + "\n"},
-        inside=f"{challenge_dir(slug)}/",
-        branch=challenge_branch_for(slug, challenge_id),
+        files={challenge_file(org, challenge_id): json.dumps(reviewed, indent=2, ensure_ascii=False) + "\n"},
+        inside=f"{challenge_dir(org)}/",
+        branch=challenge_branch_for(org, challenge_id),
         message=f"{_plain(club.name)}: challenge {challenge_id} as saved in the console",
         title=f"{_plain(club.name)}: challenge {challenge_id}",
         body=(
             f"{_plain(club.name)}'s challenge `{challenge_id}`, as its admins saved it in the organization console "
-            "(#1780, features/CHALLENGES.md).\n\n"
+            "(features/CHALLENGES.md).\n\n"
+            f"Saved by an organization that proved the domain `{domain}`. "
+            f"`pipeline/reference/challenges/publishers.json` must name that domain for `{org}`, "
+            "and the pipeline refuses the file if it does not.\n\n"
             "The pipeline checks every place against the club's own trails when this runs; a maintainer "
             "reviews the list and merges it or does not.\n\n"
             "**Nothing here merges itself.**"

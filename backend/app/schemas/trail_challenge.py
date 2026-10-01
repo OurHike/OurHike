@@ -118,7 +118,7 @@ class ChallengeEntryCreate(BaseModel):
     #: publishers.json). The route takes the entry only when the club that
     #: owns the challenge id has proved this domain - see `send_entry`.
     org_domain: Annotated[
-        str, StringConstraints(strip_whitespace=True, to_lower=True, min_length=3, max_length=253, pattern=r"^[a-z0-9.-]+$")
+        str, StringConstraints(strip_whitespace=True, to_lower=True, min_length=3, max_length=253, pattern=r"^[A-Za-z0-9.-]+$")
     ]
     name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=ENTRY_NAME_MAX_CHARS)]
     email: EmailAddress | None = None

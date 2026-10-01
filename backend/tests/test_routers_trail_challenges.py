@@ -25,14 +25,15 @@ import httpx
 import pytest
 
 from app.core.registry_pr import open_challenge_pr
-from app.core.trail_challenge import CHALLENGE_COUNT_FLOOR
+from app.core.trail_challenge import CHALLENGE_COUNT_FLOOR, has_closed, spreadsheet_safe
 from app.models.club import OrgState
 from app.models.trail_challenge import ChallengeEntry, ChallengeTag, ClubChallenge, TagHow
 from app.routers.trail_challenges import CSV_COLUMNS
 from tests.factories import make_admin, make_org, make_profile
 from tests.tokens import auth_headers
 
-CHALLENGE = "ramapo-fire-towers-2027"
+# `<slug>-<name>`, the shape the save route requires of an id.
+CHALLENGE = "ramapo-trail-conference-fire-towers-2027"
 
 
 def _definition(challenge_id: str = CHALLENGE, **fields) -> dict:
@@ -60,7 +61,9 @@ def _own(db_session, club, challenge_id: str = CHALLENGE, **fields) -> ClubChall
     row = ClubChallenge(
         challenge_id=challenge_id,
         club_id=club.id,
-        definition=_definition(challenge_id),
+        # Published: a draft takes no entries and no finished notice, and
+        # the save route would refuse `takes_entries` on one.
+        definition=_definition(challenge_id, status="published"),
         **{"takes_entries": True, "window_closes": None, **fields},
     )
     db_session.add(row)
@@ -83,6 +86,8 @@ def _tag(client, user_id: str, **overrides):
 def _enter(client, user_id: str, challenge_id: str = CHALLENGE, **overrides):
     body = {
         "id": str(uuid.uuid4()),
+        # make_org's domain: the publisher domain the phone was shown.
+        "org_domain": "ramapotrails.org",
         "name": "Jane Doe",
         "email": "jane@example.com",
         "item_ids": ["jackie-jones"],
@@ -130,13 +135,14 @@ def test_a_tag_resent_under_its_own_id_is_201_then_200_and_one_row(client, db_se
 def test_the_same_place_tagged_again_under_a_new_id_returns_the_first_tag_with_200(client, db_session):
     """Two devices, one hiker, one place: the same fact arriving twice."""
     user_id = str(uuid.uuid4())
-    first = _tag(client, user_id, how="hand")
+    first = _tag(client, user_id, how="gps")
 
-    again = _tag(client, user_id, how="gps")
+    again = _tag(client, user_id, how="hand")
 
     assert again.status_code == 200
     assert again.json()["id"] == first.json()["id"]
-    assert again.json()["how"] == "hand"
+    # The first stands - a later hand tap does not demote a walked tag.
+    assert again.json()["how"] == "gps"
     assert db_session.query(ChallengeTag).count() == 1
 
 
@@ -169,26 +175,23 @@ def test_a_tag_for_a_challenge_no_club_has_saved_is_accepted_and_not_late(client
     response = _tag(client, str(uuid.uuid4()), challenge_id="atc-summer-bucket-list-2027")
 
     assert response.status_code == 201
-    assert response.json()["late"] is False
+    # No `late` in the answer: it was an oracle for an id's owner and date.
+    assert "late" not in response.json()
 
 
-@pytest.mark.parametrize(
-    "authored_at,late",
-    [
-        ("2025-08-30T15:00:00Z", False),
-        # 9 p.m. EDT on the closing day is already September 2 in UTC.
-        # CLOSE_LEEWAY is what keeps this from reading as late.
-        ("2025-09-02T01:00:00Z", False),
-        ("2025-09-10T12:00:00Z", True),
-    ],
-)
-def test_a_tag_after_window_closes_is_accepted_and_flagged_late(client, db_session, club, authored_at, late):
+@pytest.mark.parametrize("authored_at", ["2025-08-30T15:00:00Z", "2025-09-10T12:00:00Z"])
+def test_a_tag_after_window_closes_is_accepted(client, db_session, club, authored_at):
     _own(db_session, club, window_closes=dt.date(2025, 9, 1))
 
     response = _tag(client, str(uuid.uuid4()), authored_at=authored_at)
 
     assert response.status_code == 201
-    assert response.json()["late"] is late
+
+
+def test_the_window_closes_when_the_closing_day_has_ended_everywhere():
+    """CLOSE_LEEWAY: 12:00 UTC the next day is midnight at UTC-12."""
+    assert not has_closed(dt.date(2025, 9, 1), dt.datetime(2025, 9, 2, 11, 59))
+    assert has_closed(dt.date(2025, 9, 1), dt.datetime(2025, 9, 2, 12, 0))
 
 
 def test_a_tag_is_stored_in_utc_from_the_phones_own_offset(client, db_session):
@@ -216,6 +219,20 @@ def test_an_entry_when_takes_entries_is_off_is_409_not_taking_entries(client, db
 
     assert response.status_code == 409
     assert response.json()["detail"] == "This challenge's club is not taking entries through OurHike yet."
+
+
+def test_an_entry_is_409_when_the_club_owning_the_id_has_not_proved_the_domain_the_hiker_was_shown(client, db_session, club):
+    """Owning an id is first come and a slug is whatever a registrant typed. A
+    hiker whose finish screen named the ATC sends the ATC's domain, and a club
+    that proved any other domain collects nothing - even one that registered
+    the slug `atc` and saved the ATC's id."""
+    _own(db_session, club)
+
+    response = _enter(client, str(uuid.uuid4()), org_domain="appalachiantrail.org")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "This challenge's club is not taking entries through OurHike yet."
+    assert db_session.query(ChallengeEntry).count() == 0
 
 
 def test_an_entry_for_a_challenge_owned_by_a_club_that_is_not_claimed_is_409(client, db_session, club):
@@ -407,34 +424,7 @@ def test_counts_show_hikers_in_at_challenge_count_floor_and_never_a_name(client,
     body = client.get(f"/clubs/{club.slug}/challenges/{CHALLENGE}/counts", headers=auth_headers(admin.id)).json()
 
     assert body["hikers_in"] == CHALLENGE_COUNT_FLOOR
-    assert set(body) == {"hikers_in", "hikers_in_floor", "tags_after_close", "finished"}
-
-
-def test_tags_after_close_is_floored_on_distinct_hikers_not_on_tags(client, db_session, club, admin):
-    """One hiker's thirty late tags would pass a floor on tags and describe
-    one person."""
-    _own(db_session, club, window_closes=dt.date(2025, 9, 1))
-    loner = make_profile(db_session)
-    for n in range(CHALLENGE_COUNT_FLOOR + 5):
-        db_session.add(
-            ChallengeTag(
-                id=str(uuid.uuid4()),
-                user_id=loner.id,
-                challenge_id=CHALLENGE,
-                item_id=f"item-{n}",
-                how=TagHow.hand,
-                authored_at=dt.datetime(2025, 9, 20),
-            )
-        )
-    db_session.commit()
-    url = f"/clubs/{club.slug}/challenges/{CHALLENGE}/counts"
-
-    one_hiker = client.get(url, headers=auth_headers(admin.id)).json()
-    _hikers_tag(db_session, CHALLENGE_COUNT_FLOOR, authored_at=dt.datetime(2025, 9, 20))
-    enough = client.get(url, headers=auth_headers(admin.id)).json()
-
-    assert one_hiker["tags_after_close"] is None
-    assert enough["tags_after_close"] == 2 * CHALLENGE_COUNT_FLOOR + 5
+    assert set(body) == {"hikers_in", "hikers_in_floor", "finished"}
 
 
 def test_the_challenges_list_carries_name_status_window_and_counts(client, db_session, club, admin):
@@ -446,7 +436,8 @@ def test_the_challenges_list_carries_name_status_window_and_counts(client, db_se
     assert len(rows) == 1
     assert rows[0]["challenge_id"] == CHALLENGE
     assert rows[0]["name"] == "Fire towers of the Ramapos"
-    assert rows[0]["status"] == "draft"
+    # `_own` saves a published definition: only those take entries.
+    assert rows[0]["status"] == "published"
     assert rows[0]["window"] == {"opens": "2027-05-15", "closes": "2027-09-01"}
     assert rows[0]["hikers_in"] is None
     assert rows[0]["hikers_in_floor"] == CHALLENGE_COUNT_FLOOR
@@ -521,6 +512,8 @@ def test_the_entries_csv_lists_hand_tagged_item_ids_and_finished_only(client, db
     assert entries[0]["item_count"] == "3"
     assert entries[0]["item_ids"] == "jackie-jones;pine-meadow;claudius-smith"
     assert entries[0]["hand_tagged_item_ids"] == "pine-meadow"
+    # Never tagged on the server at all - not "from the walk" by omission.
+    assert entries[0]["untagged_item_ids"] == "claudius-smith"
     assert entries[0]["finished_only"] == "false"
     assert entries[0]["sent_at"].endswith("Z")
     assert entries[1]["name"] == "Sam Roe"
@@ -570,6 +563,27 @@ def test_put_is_409_when_another_club_owns_the_challenge_id(client, db_session, 
     assert response.json()["detail"] == "Another organization already has a challenge with this id. Pick another."
     db_session.expire_all()
     assert db_session.get(ClubChallenge, CHALLENGE).club_id == other.id
+
+
+def test_put_is_422_for_another_orgs_name_or_an_id_without_this_clubs_slug(client, club, admin):
+    """The squat the save route closes: a claimed club saving the ATC's id
+    first, with `org: atc` in it, owned it - and the ATC's own save was then
+    refused as taken."""
+    atc_id = "atc-summer-bucket-list-2027"
+    as_the_atc = client.put(
+        f"/clubs/{club.slug}/challenges/{atc_id}",
+        json={"definition": _definition(atc_id, org="atc")},
+        headers=auth_headers(admin.id),
+    )
+    another_org = client.put(
+        f"/clubs/{club.slug}/challenges/{CHALLENGE}",
+        json={"definition": _definition(org="atc")},
+        headers=auth_headers(admin.id),
+    )
+
+    assert as_the_atc.status_code == 422
+    assert another_org.status_code == 422
+    assert another_org.json()["detail"] == "definition.org must be 'ramapo-trail-conference', the organization saving it."
 
 
 def test_put_is_409_for_an_organization_nobody_has_confirmed(client, db_session):
@@ -722,3 +736,120 @@ def test_the_org_export_carries_saved_challenges_and_no_hikers_entries(client, d
 
     assert [row["challenge_id"] for row in exported["challenges"]] == [CHALLENGE]
     assert "Jane Doe" not in str(exported)
+
+
+def test_a_finished_notice_is_409_for_a_draft(client, db_session, club):
+    """ "A draft takes no entries" reaches the notice too: it carries a name."""
+    row = _own(db_session, club, takes_entries=False)
+    row.definition = _definition(CHALLENGE)
+    db_session.commit()
+
+    response = _enter(client, str(uuid.uuid4()), email=None, item_ids=[], finished_only=True)
+
+    assert response.status_code == 409
+    assert db_session.query(ChallengeEntry).count() == 0
+
+
+def test_a_frozen_organization_reads_no_entries(client, db_session, club, admin):
+    """Two people contesting one org: neither reads its entrants' addresses."""
+    _own(db_session, club)
+    club.state = OrgState.frozen
+    db_session.commit()
+
+    response = client.get(f"/clubs/{club.slug}/challenges/{CHALLENGE}/entries", headers=auth_headers(admin.id))
+
+    assert response.status_code == 409
+
+
+def test_put_is_422_for_a_definition_past_the_size_cap(client, club, admin):
+    huge = _definition(
+        items=[{"id": f"i{n}", "section": "towers", "title": "x" * 500, "match": {"kind": "self_report"}} for n in range(600)]
+    )
+
+    response = client.put(f"/clubs/{club.slug}/challenges/{CHALLENGE}", json={"definition": huge}, headers=auth_headers(admin.id))
+
+    assert response.status_code == 422
+
+
+def test_a_hiker_takes_back_one_tag_by_place_and_every_tag_on_leaving(client, db_session):
+    hiker = str(uuid.uuid4())
+    _tag(client, hiker, item_id="jackie-jones")
+    _tag(client, hiker, item_id="pine-meadow")
+    stranger = str(uuid.uuid4())
+    _tag(client, stranger, item_id="jackie-jones")
+
+    one = client.delete(f"/challenges/{CHALLENGE}/items/jackie-jones/tag", headers=auth_headers(hiker))
+    again = client.delete(f"/challenges/{CHALLENGE}/items/jackie-jones/tag", headers=auth_headers(hiker))
+    assert (one.status_code, again.status_code) == (204, 204)
+    assert {t.item_id for t in db_session.query(ChallengeTag).filter(ChallengeTag.user_id == hiker)} == {"pine-meadow"}
+
+    left = client.delete(f"/challenges/{CHALLENGE}/tags", headers=auth_headers(hiker))
+    assert left.status_code == 204
+    assert db_session.query(ChallengeTag).filter(ChallengeTag.user_id == hiker).count() == 0
+    # Only the caller's own.
+    assert db_session.query(ChallengeTag).filter(ChallengeTag.user_id == stranger).count() == 1
+
+
+def test_a_walked_tag_upgrades_a_hand_tag_of_the_same_item(client, db_session):
+    hiker = str(uuid.uuid4())
+    _tag(client, hiker, how="hand")
+
+    again = _tag(client, hiker, how="gps")
+
+    assert again.status_code == 200
+    assert again.json()["how"] == "gps"
+    assert _tag(client, hiker, how="hand").json()["how"] == "gps"
+
+
+def test_tags_past_the_per_hiker_cap_are_refused(client, monkeypatch):
+    monkeypatch.setattr("app.routers.trail_challenges.TAGS_PER_HIKER_CAP", 2)
+    hiker = str(uuid.uuid4())
+
+    codes = [_tag(client, hiker, item_id=f"item-{n}").status_code for n in range(3)]
+
+    assert codes == [201, 201, 409]
+
+
+def test_saving_past_the_per_club_cap_is_refused(client, club, admin, monkeypatch):
+    monkeypatch.setattr("app.routers.trail_challenges.CHALLENGES_PER_CLUB_CAP", 1)
+
+    first = _save(client, club, admin)
+    second = _save(client, club, admin, challenge_id=f"{club.slug}-another")
+
+    assert (first.status_code, second.status_code) == (200, 409)
+
+
+def test_put_is_422_for_a_definition_nested_past_the_cap(client, club, admin):
+    deep: dict = {}
+    node = deep
+    for _ in range(40):
+        node["x"] = {}
+        node = node["x"]
+
+    response = client.put(
+        f"/clubs/{club.slug}/challenges/{CHALLENGE}",
+        json={"definition": _definition(extra=deep)},
+        headers=auth_headers(admin.id),
+    )
+
+    assert response.status_code == 422
+
+
+def test_deleting_an_organization_purges_its_entries_and_releases_its_ids(client, db_session, club, admin):
+    _own(db_session, club)
+    _enter(client, str(uuid.uuid4()))
+    hiker = str(uuid.uuid4())
+    _tag(client, hiker)
+
+    assert client.delete(f"/clubs/{club.slug}", headers=auth_headers(admin.id)).status_code == 204
+
+    assert db_session.query(ChallengeEntry).count() == 0
+    assert db_session.query(ClubChallenge).count() == 0
+    # The hiker's own tag is theirs and stays.
+    assert db_session.query(ChallengeTag).filter(ChallengeTag.user_id == hiker).count() == 1
+
+
+def test_the_spreadsheet_guard_reads_a_folded_lead_and_a_line_feed():
+    assert spreadsheet_safe("\uff1dcmd") == "'\uff1dcmd"
+    assert spreadsheet_safe("\n=1+1") == "'\n=1+1"
+    assert spreadsheet_safe("Zo\u00eb") == "Zo\u00eb"

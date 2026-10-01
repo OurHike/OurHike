@@ -75,11 +75,11 @@ class ChallengeTagCreate(BaseModel):
 
 
 class ChallengeTagOut(BaseModel):
-    """A tag as stored, and whether it was made after the window closed.
+    """A tag as stored.
 
-    `late` is computed when the tag is answered, not stored: a club that moves
-    its closing date moves the flag with it. A late tag is accepted and
-    flagged, never refused (features/CHALLENGES.md "On the server").
+    No `late` flag: one here told any signed-in caller, by binary search on
+    `authored_at`, whether a challenge id was owned and when it closed - and
+    every probe was a tag counted in that club's numbers (review, 2026-09-30).
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -90,7 +90,6 @@ class ChallengeTagOut(BaseModel):
     how: TagHow
     authored_at: UtcDatetime
     received_at: UtcDatetime
-    late: bool
 
 
 class ChallengeEntryCreate(BaseModel):
@@ -114,6 +113,13 @@ class ChallengeEntryCreate(BaseModel):
     """
 
     id: uuid.UUID
+    #: The web domain of the org the hiker's finish screen named, from the
+    #: published list a maintainer reviewed (pipeline/reference/challenges/
+    #: publishers.json). The route takes the entry only when the club that
+    #: owns the challenge id has proved this domain - see `send_entry`.
+    org_domain: Annotated[
+        str, StringConstraints(strip_whitespace=True, to_lower=True, min_length=3, max_length=253, pattern=r"^[a-z0-9.-]+$")
+    ]
     name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=ENTRY_NAME_MAX_CHARS)]
     email: EmailAddress | None = None
     mailing_address: Annotated[str, StringConstraints(strip_whitespace=True, max_length=MAILING_ADDRESS_MAX_CHARS)] | None = None
@@ -229,13 +235,15 @@ class ClubChallengeSummary(BaseModel):
 class ChallengeCountsOut(BaseModel):
     """What a club may know about who is walking its challenge: counts, never names.
 
-    `hikers_in` and `tags_after_close` are both null while fewer than
-    `hikers_in_floor` distinct hikers stand behind them.
+    `hikers_in` is null while fewer than `hikers_in_floor` distinct hikers
+    stand behind it. There is no count of tags made after closing: the club
+    sets the closing date and can re-save it, and two reads a day apart
+    differenced one hiker's late day out of a floored number (review,
+    2026-09-30).
     """
 
     hikers_in: int | None
     hikers_in_floor: int = CHALLENGE_COUNT_FLOOR
-    tags_after_close: int | None
     finished: int
 
 

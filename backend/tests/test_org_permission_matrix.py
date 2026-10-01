@@ -526,7 +526,8 @@ def test_recording_attendance_reaches_supervisors_too(client, db_session, org_wo
 # runs crews and does none of these - `/clubs/{slug}/export`'s line.
 # ------------------------------------------------------------------ #
 
-CHALLENGE = "ramapo-fire-towers-2027"
+# `<slug>-<name>`, the shape the save route requires of an id.
+CHALLENGE = "ramapo-trail-conference-fire-towers-2027"
 
 
 def _challenge_definition() -> dict:

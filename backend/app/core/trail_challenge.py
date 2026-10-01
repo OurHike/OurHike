@@ -15,6 +15,7 @@ cell in the finishers' CSV is kept from being read as a formula.
 from __future__ import annotations
 
 import re
+import unicodedata
 from datetime import date, datetime, time, timedelta
 
 #: A challenge id and an item id are lowercase words joined by hyphens.
@@ -42,20 +43,23 @@ ID_MAX_CHARS = 120
 #: below the floor is features/CHALLENGES.md's open question, not settled here.
 CHALLENGE_COUNT_FLOOR = 25
 
-#: How far past its closing date a window is still open, in UTC.
+#: How far past the end of its closing date, in UTC, a window is still open.
 #:
 #: Reasoned. A window's `closes` is a calendar day in the hiker's own time
 #: ("complete at least 25 items by September 1"), and this server compares in
 #: UTC. The A.T. is four or five hours behind UTC, so comparing UTC dates
 #: straight would refuse an entry sent at 9 p.m. on the closing day and flag a
-#: tag written at camp that evening as late. One day covers every offset in
-#: use (the furthest behind UTC is twelve hours). The cost is the other
-#: direction: something sent in the first hours of the day after closing is
-#: accepted and not flagged. That is the direction to be wrong in - the club
+#: tag written at camp that evening as late. Twelve hours is exactly the
+#: furthest offset behind UTC in use (UTC-12), so the closing day has ended
+#: everywhere on Earth at the instant this closes, and nowhere before. It was
+#: a whole day until the review of 2026-09-30 found that accepted all of the
+#: next day's daylight on the A.T. The cost that remains is the other
+#: direction: in New York, anything sent before 8 a.m. the day after closing
+#: is accepted and not flagged. That is the direction to be wrong in - the club
 #: sees `sent_at` in its CSV and applies its own rule, where a hiker refused on
 #: the last evening has nothing to appeal to. volunteer_hours' `worked_on`
 #: gives the same day of leeway for the same reason.
-CLOSE_LEEWAY = timedelta(days=1)
+CLOSE_LEEWAY = timedelta(hours=12)
 
 #: Where a club's reviewed challenge files live. The pipeline reads
 #: `reference/challenges/<org>/<id>.json` (pipeline/lib/challenges.py), and the
@@ -66,8 +70,13 @@ CHALLENGES_DIR = "pipeline/reference/challenges"
 #: The characters that make a spreadsheet treat a cell as a formula. The four
 #: the design names (= + - @) plus tab and carriage return, which OWASP's CSV
 #: injection guidance adds because some spreadsheets strip them and then read
-#: what follows as the start of the cell.
-_FORMULA_LEADS = ("=", "+", "-", "@", "\t", "\r")
+#: what follows as the start of the cell - and line feed, the same whitespace
+#: argument, added in the review of 2026-09-30. The schema strips leading
+#: whitespace from a name, but this helper is what the CSV actually relies on.
+#: Full-width `＝` and its kin are caught by folding the cell with NFKC before
+#: the check; whether any spreadsheet would run one is not known here, and
+#: the quote costs a legitimate cell nothing.
+_FORMULA_LEADS = ("=", "+", "-", "@", "\t", "\r", "\n")
 
 
 def closed_from(closes: date) -> datetime:
@@ -76,7 +85,7 @@ def closed_from(closes: date) -> datetime:
     One definition, so the entry refusal, the `late` flag on a tag and the
     console's count of late tags cannot draw the line in three places.
     """
-    return datetime.combine(closes + CLOSE_LEEWAY + timedelta(days=1), time.min)
+    return datetime.combine(closes + timedelta(days=1), time.min) + CLOSE_LEEWAY
 
 
 def has_closed(closes: date | None, moment: datetime) -> bool:
@@ -133,6 +142,8 @@ def spreadsheet_safe(cell: str) -> str:
     leading single quote is the convention both spreadsheets read as "this is
     text", and it costs a legitimate cell nothing but the quote.
     """
-    if cell and cell.startswith(_FORMULA_LEADS):
+    # Read the lead after NFKC folding, so a full-width `＝` is judged as the
+    # `=` some spreadsheets will fold it to - and write the cell unchanged.
+    if cell and unicodedata.normalize("NFKC", cell).startswith(_FORMULA_LEADS):
         return "'" + cell
     return cell

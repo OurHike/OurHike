@@ -37,6 +37,7 @@ from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.org_registry import OrgPark, OrgSection, OrgTrail
 from app.models.org_role import RoleInvite
 from app.models.profile import Profile
+from app.models.trail_challenge import ChallengeEntry, ClubChallenge
 from app.models.volunteer_hours import HoursState, VolunteerHoursRecord
 from app.schemas.org import (
     OrgAdminInvite,
@@ -643,6 +644,16 @@ def delete_org(
     a row that says it is gone.
     """
     access.club.state = OrgState.deleted
+    # **Except the challenge entries it collected**, which are the opposite
+    # case: a hiker's name and address, sent to THIS organization for its
+    # drawing, which nobody can download once it is gone and nobody should
+    # keep. They go with it, and its challenge ids are released so the
+    # names stop being held by an org that no longer exists. The hikers'
+    # own tags stay: those are theirs, like their hours.
+    owned = [row.challenge_id for row in db.query(ClubChallenge).filter(ClubChallenge.club_id == access.club.id)]
+    if owned:
+        db.query(ChallengeEntry).filter(ChallengeEntry.challenge_id.in_(owned)).delete(synchronize_session=False)
+        db.query(ClubChallenge).filter(ClubChallenge.club_id == access.club.id).delete(synchronize_session=False)
     db.commit()
     response.status_code = status.HTTP_204_NO_CONTENT
     return response

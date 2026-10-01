@@ -215,3 +215,12 @@ class TestAChallenge:
             open_challenge_pr(club, "harriman-shelters", self.DEFINITION, client=httpx.Client(transport=recorder.transport()))
 
         assert recorder.calls == []
+
+
+def test_a_club_name_reaches_a_commit_and_a_pull_request_as_inert_text():
+    """ "Closes #1" in a merged commit message closes issue 1; "@x" pings x."""
+    from app.core.registry_pr import _plain
+
+    assert _plain("Closes #1 @maintainer [x](y)") == "Closes 1 maintainer xy"
+    assert _plain("@#") == "An organization"
+    assert _plain("Ramapo Trail Conference") == "Ramapo Trail Conference"

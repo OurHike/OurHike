@@ -45,6 +45,7 @@ from __future__ import annotations
 import base64
 import json
 import posixpath
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -206,6 +207,17 @@ def _put_up_for_review(
     return OpenedPr(number=opened["number"], url=opened.get("html_url", ""))
 
 
+def _plain(name: str) -> str:
+    """A club's name as inert text in a commit, a PR title and a PR body.
+
+    The name is whatever the organization typed. Unescaped, "Closes #1" in a
+    merged commit message closes issue 1, and "@someone" pings them; brackets
+    and backticks make links and code. Those characters are dropped rather
+    than escaped, because a commit message has no escaping at all.
+    """
+    return " ".join(re.sub(r"[@#`\[\]<>()*_~|\\]", "", name).split()) or "An organization"
+
+
 def open_registry_pr(db, club: Club, *, client: httpx.Client | None = None) -> OpenedPr:
     """Put this organization's registry up for its codeowners to approve."""
     _refuse_unless_switched_on()
@@ -216,10 +228,10 @@ def open_registry_pr(db, club: Club, *, client: httpx.Client | None = None) -> O
         files=registry_files(db, club),
         inside=f"{org_dir(slug)}/",
         branch=branch_for(slug),
-        message=f"{club.name}: registry as its codeowners signed it off",
-        title=f"{club.name}: registry",
+        message=f"{_plain(club.name)}: registry as its codeowners signed it off",
+        title=f"{_plain(club.name)}: registry",
         body=(
-            f"The registry {club.name} signed off, as files.\n\n"
+            f"The registry {_plain(club.name)} signed off, as files.\n\n"
             "Its codeowners are requested on this automatically - "
             "`.github/CODEOWNERS` names them against this directory.\n\n"
             "**Nothing here merges itself.**"
@@ -267,10 +279,10 @@ def open_challenge_pr(
         files={challenge_file(slug, challenge_id): json.dumps(definition, indent=2, ensure_ascii=False) + "\n"},
         inside=f"{challenge_dir(slug)}/",
         branch=challenge_branch_for(slug, challenge_id),
-        message=f"{club.name}: challenge {challenge_id} as saved in the console",
-        title=f"{club.name}: challenge {challenge_id}",
+        message=f"{_plain(club.name)}: challenge {challenge_id} as saved in the console",
+        title=f"{_plain(club.name)}: challenge {challenge_id}",
         body=(
-            f"{club.name}'s challenge `{challenge_id}`, as its admins saved it in the organization console "
+            f"{_plain(club.name)}'s challenge `{challenge_id}`, as its admins saved it in the organization console "
             "(#1780, features/CHALLENGES.md).\n\n"
             "The pipeline checks every place against the club's own trails when this runs; a maintainer "
             "reviews the list and merges it or does not.\n\n"

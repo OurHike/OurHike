@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 from datetime import date
 from typing import Annotated, Any
 
@@ -56,7 +57,6 @@ from app.core.trail_challenge import (
     CHALLENGE_COUNT_FLOOR,
     ID_MAX_CHARS,
     ID_PATTERN,
-    closed_from,
     closed_sentence,
     has_closed,
     spreadsheet_safe,
@@ -87,6 +87,30 @@ ChallengeIdPath = Annotated[str, Path(pattern=ID_PATTERN, max_length=ID_MAX_CHAR
 NOT_TAKING_ENTRIES = "This challenge's club is not taking entries through OurHike yet."
 ALREADY_SENT = "You have already sent an entry for this challenge."
 
+#: The largest definition a save takes, as JSON text. @unvalidated: about ten
+#: times the ATC's reviewed file (26,327 bytes for 100 items, measured
+#: 2026-09-30), so that no list a club writes by hand meets it and a script
+#: posting megabytes into a column does. What would settle it: the largest
+#: list a club actually publishes.
+DEFINITION_MAX_CHARS = 262_144
+
+#: How deeply a definition may nest. Reasoned: the reviewed file's deepest
+#: path is items[].match.places[].<field>, five levels; twelve leaves room for
+#: the shape to grow and none for a hostile one.
+DEFINITION_MAX_DEPTH = 12
+
+#: Saved challenges per organization. @unvalidated: the ATC publishes one a
+#: year; 25 is room for a decade of drafts and a ceiling on how many branches
+#: and pull requests one admin can open here. What would settle it: a club
+#: that runs more.
+CHALLENGES_PER_CLUB_CAP = 25
+
+#: Tags one account may hold, across every challenge. @unvalidated: the ATC's
+#: list has 100 items and a hiker might join a dozen lists; 2,000 is far past
+#: that and stops a script filling the table under invented ids. What would
+#: settle it: the most tags any real hiker holds.
+TAGS_PER_HIKER_CAP = 2000
+
 #: A definition's statuses, pipeline/lib/challenges.py's `STATUSES`.
 DEFINITION_STATUSES = ("draft", "published")
 
@@ -102,6 +126,10 @@ CSV_COLUMNS = (
     "item_count",
     "item_ids",
     "hand_tagged_item_ids",
+    # Items the entry lists that this hiker never sent a tag for. Without it
+    # an item reads as tagged from the walk by not appearing in the column
+    # above - the one column a club reads to judge an entry.
+    "untagged_item_ids",
     "finished_only",
 )
 
@@ -109,11 +137,6 @@ CSV_COLUMNS = (
 # ------------------------------------------------------------------ #
 # A hiker's tags
 # ------------------------------------------------------------------ #
-
-
-def _late(db: Session, tag: ChallengeTag) -> bool:
-    owned = db.get(ClubChallenge, tag.challenge_id)
-    return owned is not None and has_closed(owned.window_closes, tag.authored_at)
 
 
 def _tag_out(db: Session, tag: ChallengeTag) -> ChallengeTagOut:
@@ -124,7 +147,6 @@ def _tag_out(db: Session, tag: ChallengeTag) -> ChallengeTagOut:
         how=tag.how,
         authored_at=tag.authored_at,
         received_at=tag.received_at,
-        late=_late(db, tag),
     )
 
 
@@ -170,7 +192,10 @@ def tag_a_place(
     And on the place itself: the same item tagged again under a NEW id is the
     same hiker on a second device, which is the same fact arriving twice, not
     an error - the row already here comes back with 200, and the first tag to
-    arrive stands, including how it was made.
+    arrive stands, except that a walked tag upgrades a hand one.
+
+    **Capped per hiker** at `TAGS_PER_HIKER_CAP`, because the server cannot
+    tell a published challenge id from an invented one and stores both.
     """
     tag_id = str(payload.id)
 
@@ -178,8 +203,20 @@ def tag_a_place(
         db, current_user.id, payload.challenge_id, payload.item_id
     )
     if settled is not None:
+        # A walk outranks a tap. The phone's hand tag arrived first and its
+        # day's walk confirmed it later (or another device walked it): the
+        # club's CSV should read walked, not hand.
+        if settled.how == TagHow.hand and payload.how == TagHow.gps:
+            settled.how = TagHow.gps
+            commit_and_refresh(db, settled)
         response.status_code = status.HTTP_200_OK
         return _tag_out(db, settled)
+
+    if db.query(func.count(ChallengeTag.id)).filter(ChallengeTag.user_id == current_user.id).scalar() >= TAGS_PER_HIKER_CAP:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This account has more challenge tags than any list could need, so this one was not kept.",
+        )
 
     tag = ChallengeTag(
         id=tag_id,
@@ -208,6 +245,50 @@ def tag_a_place(
         response.status_code = status.HTTP_200_OK
         return _tag_out(db, settled)
     return _tag_out(db, tag)
+
+
+@router.delete("/challenges/{challenge_id}/items/{item_id}/tag", status_code=status.HTTP_204_NO_CONTENT)
+def take_back_a_tag(
+    challenge_id: ChallengeIdPath,
+    item_id: ChallengeIdPath,
+    current_user: Profile = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Take back the caller's own tag of one item - the phone's "Remove this
+    tag", or a hand tag pressed twice, after it already left the phone.
+
+    By place rather than by id, because the row here may carry the id of the
+    hiker's other device (`tag_a_place` keeps the first to arrive). 204
+    whether or not there was one: the outbox resends this until it lands, and
+    "already gone" is the answer it wants.
+    """
+    db.query(ChallengeTag).filter(
+        ChallengeTag.user_id == current_user.id,
+        ChallengeTag.challenge_id == challenge_id,
+        ChallengeTag.item_id == item_id,
+    ).delete(synchronize_session=False)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete("/challenges/{challenge_id}/tags", status_code=status.HTTP_204_NO_CONTENT)
+def leave_a_challenge(
+    challenge_id: ChallengeIdPath,
+    current_user: Profile = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Take back every one of the caller's tags on one challenge - Leave.
+
+    A hiker who left is not one of the club's "Hikers in". Their tags stay on
+    their phone, and rejoining sends them again. An entry already sent is not
+    touched: that went to the club because the hiker sent it.
+    """
+    db.query(ChallengeTag).filter(
+        ChallengeTag.user_id == current_user.id,
+        ChallengeTag.challenge_id == challenge_id,
+    ).delete(synchronize_session=False)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # ------------------------------------------------------------------ #
@@ -258,9 +339,9 @@ def send_entry(
     Then, in this order, each a 409 whose `detail` the phone shows as it is:
     already sent (under another id), no club here takes entries for this
     challenge, and the window has closed. A finished notice skips the second
-    refusal's `takes_entries` half and nothing else: it is accepted whenever
-    a claimed club owns the challenge, because telling a club you finished is
-    not entering its drawing.
+    refusal's `takes_entries` half: it is accepted whenever a claimed club
+    owns the challenge and has published it, because telling a club you
+    finished is not entering its drawing - but a draft takes nothing.
 
     **Judged by when it arrives, and that is a known gap.** The outbox queues
     entries, so one sent at camp on the closing evening and flushed in town
@@ -285,9 +366,26 @@ def send_entry(
     # A club that is not `claimed` - held, contested, deleted - collects
     # nobody's name and address, whatever its row says: `claimed` is the one
     # state in which somebody at the organization proved its domain.
-    if owned is None or club is None or club.state != OrgState.claimed:
+    # And it is the org the hiker was shown, proved by its domain. Owning an id
+    # is first come, and a slug is whatever a registrant typed, so neither
+    # says the club is the ATC. The published list names its publisher's web
+    # domain (publishers.json, reviewed by a maintainer), the phone sends it,
+    # and a club holds the entry only if it proved that domain - which is
+    # what `claimed` means. A stranger who registered the slug `atc` with a
+    # domain of their own collects nothing.
+    if (
+        owned is None
+        or club is None
+        or club.state != OrgState.claimed
+        or (club.domain or "").strip().lower() != payload.org_domain
+    ):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=NOT_TAKING_ENTRIES)
     if not payload.finished_only and not owned.takes_entries:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=NOT_TAKING_ENTRIES)
+    # "A draft takes no entries" (features/CHALLENGES.md) covers the finished
+    # notice too: it carries a name, and a club whose list is not published
+    # yet has told no hiker it is collecting any.
+    if payload.finished_only and (owned.definition or {}).get("status") != "published":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=NOT_TAKING_ENTRIES)
 
     now = utc_now()
@@ -335,6 +433,18 @@ def _owned(db: Session, access: OrgAccess, challenge_id: str) -> ClubChallenge:
     if row is None or row.club_id != access.club.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="This organization has no such challenge")
     return row
+
+
+def _refuse_unless_claimed(access: OrgAccess) -> None:
+    """A claimed organization reads its entrants and its counts; a frozen one -
+    two people contesting the same org - does not, whoever of them is an admin
+    today. The save and the entry routes already stop at anything but
+    `claimed`."""
+    if access.club.state != OrgState.claimed:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This organization's entries are held until somebody at it is confirmed again.",
+        )
 
 
 def _floored(count: int) -> int | None:
@@ -412,31 +522,12 @@ def read_challenge_counts(
     access: OrgAccess = Depends(require_org_admin),
     db: Session = Depends(get_db),
 ) -> ChallengeCountsOut:
-    """How many are walking it, how many tagged after it closed, how many finished.
-
-    **The floor is on PEOPLE, for both withheld numbers.** `tags_after_close`
-    counts tags, and one hiker can make thirty - so a tag count of thirty can
-    describe one person. It is shown only when at least the floor's number of
-    distinct hikers made late tags, which is the floor's actual promise
-    ("a count of three is a description of three people", EVENTING.md §6).
-    """
-    row = _owned(db, access, challenge_id)
+    """How many are walking it and how many finished - counts, never names."""
+    _owned(db, access, challenge_id)
+    _refuse_unless_claimed(access)
     hikers = _hikers_in(db, [challenge_id]).get(challenge_id, 0)
-
-    late_tags = late_hikers = 0
-    if row.window_closes is not None:
-        late_tags, late_hikers = (
-            db.query(func.count(ChallengeTag.id), func.count(func.distinct(ChallengeTag.user_id)))
-            .filter(
-                ChallengeTag.challenge_id == challenge_id,
-                ChallengeTag.authored_at >= closed_from(row.window_closes),
-            )
-            .one()
-        )
-
     return ChallengeCountsOut(
         hikers_in=_floored(hikers),
-        tags_after_close=int(late_tags) if late_hikers >= CHALLENGE_COUNT_FLOOR else None,
         finished=_finished(db, [challenge_id]).get(challenge_id, 0),
     )
 
@@ -468,6 +559,7 @@ def download_entries(
     `utf-8-sig` ignore it.
     """
     _owned(db, access, challenge_id)
+    _refuse_unless_claimed(access)
     entries = (
         db.query(ChallengeEntry)
         .filter(ChallengeEntry.challenge_id == challenge_id)
@@ -475,18 +567,20 @@ def download_entries(
         .all()
     )
     hand_tagged: set[tuple[str, str]] = set()
+    tagged: set[tuple[str, str]] = set()
     if entries:
-        hand_tagged = {
-            (user_id, item_id)
-            for user_id, item_id in db.query(ChallengeTag.user_id, ChallengeTag.item_id).filter(
-                ChallengeTag.challenge_id == challenge_id,
-                ChallengeTag.how == TagHow.hand,
-                ChallengeTag.user_id.in_({entry.user_id for entry in entries}),
-            )
-        }
+        for user_id, item_id, how in db.query(ChallengeTag.user_id, ChallengeTag.item_id, ChallengeTag.how).filter(
+            ChallengeTag.challenge_id == challenge_id,
+            ChallengeTag.user_id.in_({entry.user_id for entry in entries}),
+        ):
+            tagged.add((user_id, item_id))
+            if how == TagHow.hand:
+                hand_tagged.add((user_id, item_id))
 
     buffer = io.StringIO()
-    writer = csv.writer(buffer)
+    # Every cell quoted: an Excel set to a `;` separator splits an unquoted
+    # `Jo;=1+1` into a second cell that starts with `=`, past the guard.
+    writer = csv.writer(buffer, quoting=csv.QUOTE_ALL)
     writer.writerow(CSV_COLUMNS)
     for entry in entries:
         item_ids = [str(item) for item in (entry.item_ids or [])]
@@ -500,6 +594,7 @@ def download_entries(
             str(len(item_ids)),
             ";".join(item_ids),
             ";".join(item for item in item_ids if (entry.user_id, item) in hand_tagged),
+            ";".join(item for item in item_ids if (entry.user_id, item) not in tagged),
             "true" if entry.finished_only else "false",
         )
         writer.writerow([spreadsheet_safe(cell) for cell in cells])
@@ -513,7 +608,18 @@ def download_entries(
     )
 
 
-def _checked_definition(challenge_id: str, definition: dict[str, Any]) -> tuple[date | None, str, bool]:
+def _depth(value: Any, level: int = 0) -> int:
+    """How deeply `value` nests, stopping early past the cap."""
+    if level > DEFINITION_MAX_DEPTH:
+        return level
+    if isinstance(value, dict):
+        return max((_depth(child, level + 1) for child in value.values()), default=level + 1)
+    if isinstance(value, list):
+        return max((_depth(child, level + 1) for child in value), default=level + 1)
+    return level
+
+
+def _checked_definition(challenge_id: str, definition: dict[str, Any], slug: str) -> tuple[date | None, str, bool]:
     """(window closes, status, has a reward), or a 422 naming what is wrong.
 
     **Only as far as this backend reads it.** The id, the org and the name
@@ -528,11 +634,26 @@ def _checked_definition(challenge_id: str, definition: dict[str, Any]) -> tuple[
     def refuse(detail: str) -> HTTPException:
         return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail)
 
+    if len(json.dumps(definition)) > DEFINITION_MAX_CHARS:
+        raise refuse(f"definition is larger than {DEFINITION_MAX_CHARS:,} characters.")
+    if _depth(definition) > DEFINITION_MAX_DEPTH:
+        # A definition nested hundreds deep saved fine and then failed every
+        # list read with a 500 - one admin breaking the club's whole console.
+        raise refuse(f"definition is nested deeper than {DEFINITION_MAX_DEPTH} levels.")
     if definition.get("id") != challenge_id:
         raise refuse(f"definition.id must be {challenge_id!r}, the challenge id in the address.")
-    org = definition.get("org")
-    if not isinstance(org, str) or not org.strip():
-        raise refuse("definition.org must name the organization publishing the challenge.")
+    # The org is the club saving it, and the id starts with the club's slug -
+    # the two rules the console already follows (org/screens/Challenges.tsx's
+    # newChallengeId) and the pipeline already holds for the org, which must
+    # be the directory its reviewed file sits in. Here they stop a club from
+    # saving another org's id first and locking that org out of its own
+    # challenge. Not airtight: slug `ramapo` can still save
+    # `ramapo-trail-conference-...`, which is why the entry route also
+    # checks the org the hiker was shown.
+    if definition.get("org") != slug:
+        raise refuse(f"definition.org must be {slug!r}, the organization saving it.")
+    if not challenge_id.startswith(f"{slug}-"):
+        raise refuse(f"A challenge id starts with the organization's slug: {slug}-…")
     name = definition.get("name")
     if not isinstance(name, str) or not name.strip():
         raise refuse("definition.name must not be empty.")
@@ -589,12 +710,23 @@ def save_club_challenge(
             detail=("Only a claimed organization can save a challenge. Somebody at the organization has to confirm it first."),
         )
 
-    closes, challenge_status, has_reward = _checked_definition(challenge_id, payload.definition)
+    closes, challenge_status, has_reward = _checked_definition(challenge_id, payload.definition, club.slug)
 
     row = db.get(ClubChallenge, challenge_id)
     taken = "Another organization already has a challenge with this id. Pick another."
     if row is not None and row.club_id != club.id:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=taken)
+    if (
+        row is None
+        and db.query(func.count(ClubChallenge.challenge_id)).filter(ClubChallenge.club_id == club.id).scalar()
+        >= CHALLENGES_PER_CLUB_CAP
+    ):
+        # Each saved id can become a branch and a pull request in this
+        # repository (`/publish`); the cap is what bounds them.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"An organization can keep {CHALLENGES_PER_CLUB_CAP} challenges. Delete one to save another.",
+        )
 
     takes_entries = payload.takes_entries if payload.takes_entries is not None else (row.takes_entries if row else False)
     if takes_entries and (challenge_status != "published" or not has_reward):

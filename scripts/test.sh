@@ -466,7 +466,9 @@ if selected_has dbt; then
     step "dbt build"             "${dbt_cmd[@]}" build --profiles-dir . --exclude package:dbt_project_evaluator path:models/publish
     mkdir -p "$dbt_tmp/processed"
     step "dbt publish"           "${dbt_cmd[@]}" build --profiles-dir . -s path:models/publish
-    step "dbt parity"            env -C pipeline "$PY" parity.py podcasts --new "$dbt_tmp/processed/podcasts_episodes.json"
+    for family in podcasts:podcasts_episodes stewards:stewards registry:registry; do
+      step "dbt parity ${family%%:*}" env -C pipeline "$PY" parity.py "${family%%:*}" --new "$dbt_tmp/processed/${family#*:}.json"
+    done
     step "dbt source freshness"  "${dbt_cmd[@]}" source freshness --profiles-dir .
     step "dbt docs generate"     "${dbt_cmd[@]}" docs generate --profiles-dir . --output-dir target/docs
     step "dbt docs site"         dbt_docs_site_complete pipeline/dbt/target/docs

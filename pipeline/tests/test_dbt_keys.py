@@ -24,15 +24,16 @@ import yaml
 
 DBT = Path(__file__).resolve().parent.parent / "dbt"
 STAGING = DBT / "models" / "staging"
-# Every model that keys and dedupes a raw table: the stg_ models of the first 28, and the
-# base_ models stage 3 adds for the rest (ELT.md, "The dbt project").
-MODELS = sorted([*STAGING.rglob("stg_*.sql"), *STAGING.rglob("base_*.sql")])
-
 KEY_LINE = re.compile(r"\{\{\s*dbt_utils\.generate_surrogate_key\((\[.*?\])\)\s*\}\}\s+as\s+(\w+_key)\b", re.S)
 DEDUPE = re.compile(
     r"\{\{\s*dbt_utils\.deduplicate\(\s*relation='renamed',\s*partition_by='(\w+)',\s*order_by='(\w+)'\s*\)\s*\}\}\s*$"
 )
 SOURCE = re.compile(r"source\('([a-z_]+)',\s*'([a-z_]+)'\)")
+# Every model that keys and dedupes a raw table, which is every staging model that reads a
+# source() (decision 40): the stg_ models of the first 28, and the base_ models stage 3 adds
+# for the rest (ELT.md, "The dbt project"). A stg_ model that reads a base model, as the
+# registry's do, has its key from that base model.
+MODELS = sorted(path for path in [*STAGING.rglob("stg_*.sql"), *STAGING.rglob("base_*.sql")] if SOURCE.search(path.read_text()))
 # A staging model's `geom`, as its raw table holds it: dlt lands geometry as
 # GeoJSON text, and every model casts it in its source CTE with exactly this.
 RAW_GEOMETRY = "st_geomfromgeojson(cast(geometry as varchar))"
@@ -89,6 +90,8 @@ def test_only_the_reviewed_file_models_read_no_geometry():
     assert {path.stem for path in MODELS} - {path.stem for path in SPATIAL_MODELS} == {
         "base_podcasts__podcast_episodes",
         "base_ourhike__poi_identity",
+        "base_registry__sources",
+        "base_registry__nynjtc_paper_maps",
     }
 
 

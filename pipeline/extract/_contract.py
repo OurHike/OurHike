@@ -107,11 +107,11 @@ def raw_table(folder: str, key: str) -> str:
     normalizer: `normalize_table_identifier()` alone collapses the `__` to one
     underscore, while a run keeps the name as written (measured 2026-10-01,
     dlt 1.30.0, ELT.md "Folder name = trail_orgs.json slug"). A key that is a
-    reference/ path is written as its path under reference/, without `.json`:
-    `reference/challenges/atc` lands as `raw_atc__challenges_atc`.
+    file path is written without `.json`, and under reference/ as its path
+    there: `reference/challenges/atc` lands as `raw_atc__challenges_atc`, and
+    the registry's own `sources.json` as `raw_registry__sources`.
     """
-    if key.startswith("reference/"):
-        key = key.removeprefix("reference/").removesuffix(".json").replace("/", "_")
+    key = key.removeprefix("reference/").removesuffix(".json").replace("/", "_")
     return f"raw_{folder}__{key.replace('-', '_')}"
 
 

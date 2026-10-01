@@ -142,10 +142,14 @@ def test_every_claim_is_a_registry_key_or_a_reviewed_file_and_is_claimed_once():
     claims = Counter(key for f in EVERY_FILE for key in f.claims)
     twice = sorted(key for key, n in claims.items() if n > 1)
     assert not twice, f"claimed by more than one file: {twice}"
+    # A reviewed file is a path under reference/, or the registry itself, which _shared/registry/ lands whole.
+    reviewed = {REGISTRY_PATH.relative_to(PIPELINE_DIR).as_posix()}
     unresolved = sorted(
-        key for key in claims if key not in registry and not (key.startswith("reference/") and (PIPELINE_DIR / key).exists())
+        key
+        for key in claims
+        if key not in registry and key not in reviewed and not (key.startswith("reference/") and (PIPELINE_DIR / key).exists())
     )
-    assert not unresolved, f"claims that are neither a sources.json key nor a pipeline/reference/ path: {unresolved}"
+    assert not unresolved, f"claims that are neither a sources.json key nor a reviewed file in git: {unresolved}"
 
 
 def test_a_claiming_file_has_a_resource_for_each_claim_and_no_other():
@@ -196,6 +200,7 @@ def test_raw_table_names_keep_the_double_underscore():
     assert raw_table("nysdec", "dec_lean_tos") == "raw_nysdec__dec_lean_tos"
     assert raw_table("atc", "reference/water_distance.json") == "raw_atc__water_distance"
     assert raw_table("atc", "reference/challenges/atc") == "raw_atc__challenges_atc"
+    assert raw_table("registry", "sources.json") == "raw_registry__sources"
 
 
 def test_a_club_file_never_names_a_url_to_fetch():

@@ -398,7 +398,10 @@ R2 keys, format, coordinate decimals, offline tier and size budget.
   `--select path:models/publish`, because `dbt build` tests a model after
   building it and a writer would otherwise write before its own tests run.
 - **They write only under `var('processed_dir')`**, which is
-  `pipeline/data/processed/`. **dbt never writes the public bucket**: a
+  `pipeline/data/processed/dbt/` while a family's Python writer still runs,
+  because `export_sources.py` writes the same file names into
+  `data/processed/` and its manifests hash what it wrote. Stage 4 points it
+  at `data/processed/`. **dbt never writes the public bucket**: a
   DuckDB `COPY … TO 's3://…'` stored every object with no `Content-Encoding`
   and no `Cache-Control` (measured 2026-10-01 against a local S3 stand-in, not
   R2), and phones rely on both. `publish.py` uploads.

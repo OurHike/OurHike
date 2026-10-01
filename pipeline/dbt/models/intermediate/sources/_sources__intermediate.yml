@@ -1,0 +1,226 @@
+version: 2
+
+models:
+  - name: int_sources__paper_maps
+    description: >
+      Each landed paper-map table (#1574), its products in the shape a store
+      record publishes, and the first problem export_sources.py's
+      `_paper_maps` would refuse it for.
+    columns:
+      - name: file_path
+        description: The table's path under pipeline/, which a store block's `paper_maps` names.
+        data_tests: [not_null, unique]
+      - name: products
+        description: Each product, in the file's order, with its store URL before any referral.
+      - name: problem
+        description: >
+          The first problem, in `_paper_maps`'s order, with values rendered
+          as JSON. Null if the table publishes. It fails the build only
+          through int_sources__stewards, for a table a shipping steward's
+          store names.
+  - name: int_sources__stewards
+    description: >
+      One record per steward whose data reaches a hiker (#927, SR01-SR06):
+      the name, trust tier, licence, attribution and terms stewards.json
+      prints, and the donate line and paper-map store where the organization
+      has asked for one.
+    data_tests:
+      # SR04, SR05: a malformed support or store block stops the build, as
+      # export_sources.py's SystemExit stops the publish, because a block
+      # missing its surfaces is not a block with none. To see which, from
+      # pipeline/dbt:
+      #   dbt show --profiles-dir . --inline "select provider, problem
+      #     from intermediate.int_sources__stewards where problem is not null"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "problem is null"
+          config:
+            severity: error
+    columns:
+      - name: provider
+        description: The registry `provider`, one per steward.
+        data_tests: [not_null, unique]
+      - name: steward_name
+        description: >
+          The steward's own name where every shipping source gives the same
+          one, else its licence block's author, else the provider key.
+      - name: steward_trust
+        description: The tier, only where every shipping source declares the same one (SR06).
+      - name: licence
+        description: The licence block's short `license` terms (SR03). Null where no block joins.
+      - name: attribution
+        description: The credit line every source gives, else the licence block's (SR02).
+      - name: support_record
+        description: The donate line (#932), or null where the organization has not asked for one.
+      - name: store_record
+        description: The paper-map store (#1574), or null where none is recorded.
+      - name: problem
+        description: Why the record cannot publish, in export_sources.py's words. Null if it can.
+  - name: int_sources__registered
+    description: >
+      Every registered source, shipping or not, with what registry.json says
+      of it (#929, SR07): copied fields, the steward the row reports, whether
+      that steward has asked for support, and where its mark ask stands.
+    columns:
+      - name: source_key
+        description: The registry key.
+        data_tests: [not_null, unique]
+      - name: steward
+        description: The source's own steward, else its organization's name.
+      - name: supports_donation
+        description: Whether a support block names the steward this row reports.
+
+unit_tests:
+  - name: int_sources__paper_maps_refuses_what_paper_maps_refuses
+    description: >
+      One table per branch of export_sources.py's `_paper_maps`, and two
+      where this model is deliberately stricter (rows 16 and 17: a sheet or
+      handle with a trailing newline, which re.match's `$` lets through).
+      tests/test_dbt_sources_parity.py runs `_paper_maps` over the same
+      tables and fails where the two disagree anywhere else.
+    model: int_sources__paper_maps
+    given:
+      - input: ref('base_registry__nynjtc_paper_maps')
+        rows:
+          - {file_path: 'reference/maps_00.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": "north-map", "title": "North-Map Map", "sheets": ["100", "101"], "covers": ["A Park"], "sheet_covers": {"100": ["A Park"], "101": ["A Park"]}}, {"handle": "south-map", "title": "South-Map Map", "sheets": ["102"], "sheet_covers": {"102": ["A Park"]}}]}'}
+          - {file_path: 'reference/maps_01.json', document_json: '{"store": {"base": "https://store.example.org"}}'}
+          - {file_path: 'reference/maps_02.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": []}'}
+          - {file_path: 'reference/maps_03.json', document_json: '{"store": {"base": "http://store.example.org"}, "maps": [{"handle": "a-map", "title": "A-Map Map", "sheets": ["100"], "covers": ["A Park"], "sheet_covers": {"100": ["A Park"]}}]}'}
+          - {file_path: 'reference/maps_04.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": "Bad Handle", "title": "Bad Handle Map", "sheets": ["100"], "covers": ["A Park"], "sheet_covers": {"100": ["A Park"]}}]}'}
+          - {file_path: 'reference/maps_05.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": null, "title": "X Map", "sheets": ["100"], "covers": ["A Park"], "sheet_covers": {"100": ["A Park"]}}]}'}
+          - {file_path: 'reference/maps_06.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": "a-map", "title": "  ", "sheets": ["100"], "covers": ["A Park"], "sheet_covers": {"100": ["A Park"]}}]}'}
+          - {file_path: 'reference/maps_07.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": "a-map", "title": "A-Map Map", "sheets": [], "covers": ["A Park"], "sheet_covers": {}}]}'}
+          - {file_path: 'reference/maps_08.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": "a-map", "title": "A-Map Map", "sheets": ["12"], "covers": ["A Park"], "sheet_covers": {"12": ["A Park"]}}]}'}
+          - {file_path: 'reference/maps_09.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": "a-map", "title": "A-Map Map", "sheets": [118], "covers": ["A Park"], "sheet_covers": {"118": ["A Park"]}}]}'}
+          - {file_path: 'reference/maps_10.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": "a-map", "title": "A-Map Map", "sheets": ["100"], "covers": ["A Park"], "sheet_covers": {"100": ["A Park"]}}, {"handle": "b-map", "title": "B-Map Map", "sheets": ["101", "100"], "covers": ["A Park"], "sheet_covers": {"101": ["A Park"], "100": ["A Park"]}}]}'}
+          - {file_path: 'reference/maps_11.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": "a-map", "title": "A-Map Map", "sheets": ["100", "100"], "covers": ["A Park"], "sheet_covers": {"100": ["A Park"]}}]}'}
+          - {file_path: 'reference/maps_12.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": "a-map", "title": "A-Map Map", "sheets": ["100", "101"], "covers": ["A Park"], "sheet_covers": {"100": ["A Park"]}}]}'}
+          - {file_path: 'reference/maps_13.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": "a-map", "title": "A-Map Map", "sheets": ["100", "101"], "covers": ["A Park"], "sheet_covers": {"100": ["A Park"], "101": ["", "B Park"]}}]}'}
+          - {file_path: 'reference/maps_14.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": "a-map", "title": "A-Map Map", "sheets": ["100"], "covers": null, "sheet_covers": {"100": ["A Park"]}}]}'}
+          - {file_path: 'reference/maps_15.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": "a-map", "title": "A-Map Map", "sheets": ["100"], "covers": ["A Park", 5], "sheet_covers": {"100": ["A Park"]}}]}'}
+          - {file_path: 'reference/maps_16.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": "a-map", "title": "A-Map Map", "sheets": ["100\n"], "covers": ["A Park"], "sheet_covers": {"100\n": ["A Park"]}}]}'}
+          - {file_path: 'reference/maps_17.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": "a-map\n", "title": "A-Map\n Map", "sheets": ["100"], "covers": ["A Park"], "sheet_covers": {"100": ["A Park"]}}]}'}
+    expect:
+      rows:
+        - {file_path: 'reference/maps_00.json', problem: null}
+        - {file_path: 'reference/maps_01.json', problem: 'reference/maps_01.json carries no `maps` - the paper-map table needs at least one product'}
+        - {file_path: 'reference/maps_02.json', problem: 'reference/maps_02.json carries no `maps` - the paper-map table needs at least one product'}
+        - {file_path: 'reference/maps_03.json', problem: 'reference/maps_03.json needs `store.base` - the https origin every product handle is a path under'}
+        - {file_path: 'reference/maps_04.json', problem: 'reference/maps_04.json: product handle "Bad Handle" is not a Shopify handle (lowercase words joined by ''-'')'}
+        - {file_path: 'reference/maps_05.json', problem: 'reference/maps_05.json: product handle null is not a Shopify handle (lowercase words joined by ''-'')'}
+        - {file_path: 'reference/maps_06.json', problem: 'reference/maps_06.json: product a-map has no title - the phone prints the title verbatim, so it cannot be blank'}
+        - {file_path: 'reference/maps_07.json', problem: 'reference/maps_07.json: product a-map lists no sheets'}
+        - {file_path: 'reference/maps_08.json', problem: 'reference/maps_08.json: product a-map lists sheet "12", which is not a sheet number like 118 or 106A'}
+        - {file_path: 'reference/maps_09.json', problem: 'reference/maps_09.json: product a-map lists sheet 118, which is not a sheet number like 118 or 106A'}
+        - {file_path: 'reference/maps_10.json', problem: 'reference/maps_10.json: sheet 100 is listed by both a-map and b-map; a sheet belongs to one product'}
+        - {file_path: 'reference/maps_11.json', problem: 'reference/maps_11.json: sheet 100 is listed by both a-map and a-map; a sheet belongs to one product'}
+        - {file_path: 'reference/maps_12.json', problem: 'reference/maps_12.json: product a-map needs a `sheet_covers` entry for every sheet it lists and no other'}
+        - {file_path: 'reference/maps_13.json', problem: 'reference/maps_13.json: product a-map, sheet 101: `sheet_covers` must be a list of place names'}
+        - {file_path: 'reference/maps_14.json', problem: 'reference/maps_14.json: product a-map: `covers` must be a list of place names'}
+        - {file_path: 'reference/maps_15.json', problem: 'reference/maps_15.json: product a-map: `covers` must be a list of place names'}
+        - {file_path: 'reference/maps_16.json', problem: 'reference/maps_16.json: product a-map lists sheet "100\n", which is not a sheet number like 118 or 106A'}
+        - {file_path: 'reference/maps_17.json', problem: 'reference/maps_17.json: product handle "a-map\n" is not a Shopify handle (lowercase words joined by ''-'')'}
+  - name: int_sources__stewards_refuses_what_export_sources_refuses
+    description: >
+      One steward per branch of export_sources.py's `_support_record` and
+      `_store_record`, and the joins around them: a block found through
+      `also_covers` (N), the first of two blocks winning (P), a steward
+      named by its licence block when its sources disagree (L) or by the
+      provider key when nothing names it (K), and a provider that ships
+      nothing, which has no record at all (O). tests/test_dbt_sources_
+      parity.py runs build_output() over the same registry and fails where
+      the two disagree, except H, which both refuse in different words:
+      SQL sees the warehouse, not the checkout.
+    model: int_sources__stewards
+    given:
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: a_01, provider: A, steward: 'Org A', reaches_hikers: true}
+          - {source_key: b_02, provider: B, steward: 'Org B', reaches_hikers: true}
+          - {source_key: c_03, provider: C, steward: 'Org C', reaches_hikers: true}
+          - {source_key: d_04, provider: D, steward: 'Org D', reaches_hikers: true}
+          - {source_key: e_05, provider: E, steward: 'Org E', reaches_hikers: true}
+          - {source_key: f_06, provider: F, steward: 'Org F', reaches_hikers: true}
+          - {source_key: g_07, provider: G, steward: 'Org G', reaches_hikers: true}
+          - {source_key: h_08, provider: H, steward: 'Org H', reaches_hikers: true}
+          - {source_key: i_09, provider: I, steward: 'Org I', reaches_hikers: true}
+          - {source_key: j_10, provider: J, steward: 'Org J', reaches_hikers: true}
+          - {source_key: k_11, provider: K, steward: null, reaches_hikers: true}
+          - {source_key: k_12, provider: K, steward: null, reaches_hikers: true}
+          - {source_key: l_13, provider: L, steward: 'Org L', reaches_hikers: true}
+          - {source_key: l_14, provider: L, steward: 'Org L Two', reaches_hikers: true}
+          - {source_key: n_15, provider: N, steward: 'Org N', reaches_hikers: true}
+          - {source_key: o_16, provider: O, steward: 'Org O', reaches_hikers: false}
+          - {source_key: p_17, provider: P, steward: 'Org P', reaches_hikers: true}
+          - {source_key: q_18, provider: Q, steward: 'Org Q', reaches_hikers: true}
+      - input: ref('stg_registry__top_level')
+        format: sql
+        rows: |
+          select 'a_licence' as entry_name, 1 as entry_position, 'licence' as block_kind, cast('Org A' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org A", "license": "Org A terms", "attribution": "\u00a9 Org A"}' as json) as entry_value
+          union all
+          select 'a_support' as entry_name, 2 as entry_position, 'support' as block_kind, cast('Org A' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org A", "donate_url": "https://example.org/give", "donate_cta": "Give", "donate_surfaces": ["sources_screen", "trail_card"]}' as json) as entry_value
+          union all
+          select 'a_store' as entry_name, 3 as entry_position, 'store' as block_kind, cast('Org A' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org A", "store_url": "https://example.org/maps", "store_cta": "Maps", "store_surfaces": ["sources_screen"], "referral": "utm_source=ourhike", "paper_maps": "reference/maps_00.json"}' as json) as entry_value
+          union all
+          select 'b_support' as entry_name, 4 as entry_position, 'support' as block_kind, cast('Org B' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org B", "donate_url": "https://example.org/give", "donate_surfaces": ["sources_screen", "trail_card"]}' as json) as entry_value
+          union all
+          select 'c_support' as entry_name, 5 as entry_position, 'support' as block_kind, cast('Org C' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org C", "donate_url": "https://example.org/give", "donate_cta": "Give", "donate_surfaces": "sources_screen"}' as json) as entry_value
+          union all
+          select 'd_support' as entry_name, 6 as entry_position, 'support' as block_kind, cast('Org D' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org D", "donate_url": "https://example.org/give", "donate_cta": "Give", "donate_surfaces": ["sources_screen", "map"]}' as json) as entry_value
+          union all
+          select 'e_store' as entry_name, 7 as entry_position, 'store' as block_kind, cast('Org E' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org E", "store_url": "https://example.org/maps", "store_cta": "", "store_surfaces": ["sources_screen"], "referral": "utm_source=ourhike"}' as json) as entry_value
+          union all
+          select 'f_store' as entry_name, 8 as entry_position, 'store' as block_kind, cast('Org F' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org F", "store_url": "https://example.org/maps", "store_cta": "Maps", "store_surfaces": {"a": 1}, "referral": "utm_source=ourhike", "paper_maps": "reference/maps_00.json"}' as json) as entry_value
+          union all
+          select 'g_store' as entry_name, 9 as entry_position, 'store' as block_kind, cast('Org G' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org G", "store_url": "https://example.org/maps", "store_cta": "Maps", "store_surfaces": ["map"], "referral": "utm_source=ourhike", "paper_maps": "reference/maps_00.json"}' as json) as entry_value
+          union all
+          select 'h_store' as entry_name, 10 as entry_position, 'store' as block_kind, cast('Org H' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org H", "store_url": "https://example.org/maps", "store_cta": "Maps", "store_surfaces": ["sources_screen"], "referral": "utm_source=ourhike", "paper_maps": "reference/none.json"}' as json) as entry_value
+          union all
+          select 'i_store' as entry_name, 11 as entry_position, 'store' as block_kind, cast('Org I' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org I", "store_url": "https://example.org/maps", "store_cta": "Maps", "store_surfaces": ["sources_screen"], "referral": 5, "paper_maps": "reference/maps_00.json"}' as json) as entry_value
+          union all
+          select 'j_store' as entry_name, 12 as entry_position, 'store' as block_kind, cast('Org J' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org J", "store_url": "https://example.org/maps", "store_cta": "Maps", "store_surfaces": ["sources_screen"], "referral": "utm_source=ourhike", "paper_maps": "reference/maps_04.json"}' as json) as entry_value
+          union all
+          select 'l_licence' as entry_name, 13 as entry_position, 'licence' as block_kind, cast('Org L Two' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org L Two", "license": "Org L Two terms", "attribution": "\u00a9 Org L Two"}' as json) as entry_value
+          union all
+          select 'n_support' as entry_name, 14 as entry_position, 'support' as block_kind, cast('City N' as varchar) as author, cast(['Org N'] as varchar[]) as also_covers, cast('{"author": "City N", "donate_cta": "Give", "donate_surfaces": ["sources_screen", "trail_card"], "also_covers": ["Org N"]}' as json) as entry_value
+          union all
+          select 'o_support' as entry_name, 15 as entry_position, 'support' as block_kind, cast('Org O' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org O", "donate_cta": "Give", "donate_surfaces": ["sources_screen", "trail_card"]}' as json) as entry_value
+          union all
+          select 'p_support' as entry_name, 16 as entry_position, 'support' as block_kind, cast('Org P' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org P", "donate_cta": "Give", "donate_surfaces": ["sources_screen", "trail_card"]}' as json) as entry_value
+          union all
+          select 'p2_support' as entry_name, 17 as entry_position, 'support' as block_kind, cast('Org P' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org P", "donate_url": "https://example.org/give", "donate_cta": "Give", "donate_surfaces": ["sources_screen", "trail_card"]}' as json) as entry_value
+          union all
+          select 'q_support' as entry_name, 18 as entry_position, 'support' as block_kind, cast(null as varchar) as author, cast(['Org Q'] as varchar[]) as also_covers, cast('{"author": null, "donate_url": "https://example.org/give", "donate_cta": "Give", "donate_surfaces": ["sources_screen", "trail_card"], "also_covers": ["Org Q"]}' as json) as entry_value
+      - input: ref('stg_registry__organizations')
+        rows: []
+      - input: ref('int_sources__paper_maps')
+        format: sql
+        rows: |
+          select 'reference/maps_00.json' as file_path, cast([] as json[]) as products, cast(null as varchar) as problem
+          union all
+          select 'reference/maps_04.json' as file_path, cast([] as json[]) as products, cast('reference/maps_04.json: product handle "Bad Handle" is not a Shopify handle (lowercase words joined by ''-'')' as varchar) as problem
+      - input: ref('registry_surfaces')
+        rows:
+          - {block_kind: support, surface: day_hike_summary}
+          - {block_kind: support, surface: sources_screen}
+          - {block_kind: support, surface: trail_card}
+          - {block_kind: store, surface: hike_detail}
+          - {block_kind: store, surface: sources_screen}
+          - {block_kind: store, surface: trail_sheet}
+    expect:
+      rows:
+        - {provider: A, steward_name: 'Org A', problem: null}
+        - {provider: B, steward_name: 'Org B', problem: 'support block for Org B is missing: donate_cta'}
+        - {provider: C, steward_name: 'Org C', problem: 'donate_surfaces for Org C must be a list, got str'}
+        - {provider: D, steward_name: 'Org D', problem: 'donate_surfaces for Org D names surfaces that do not exist: map'}
+        - {provider: E, steward_name: 'Org E', problem: 'store block for Org E is missing: store_cta, paper_maps'}
+        - {provider: F, steward_name: 'Org F', problem: 'store_surfaces for Org F must be a list, got dict'}
+        - {provider: G, steward_name: 'Org G', problem: 'store_surfaces for Org G names surfaces that do not exist: map'}
+        - {provider: H, steward_name: 'Org H', problem: 'store block for Org H names reference/none.json, and no resource in extract/_shared/registry/ lands it'}
+        - {provider: I, steward_name: 'Org I', problem: 'referral for Org I must be a query string, got int'}
+        - {provider: J, steward_name: 'Org J', problem: 'reference/maps_04.json: product handle "Bad Handle" is not a Shopify handle (lowercase words joined by ''-'')'}
+        - {provider: K, steward_name: 'K', problem: null}
+        - {provider: L, steward_name: 'Org L Two', problem: null}
+        - {provider: N, steward_name: 'Org N', problem: 'support block for City N is missing: donate_url'}
+        - {provider: P, steward_name: 'Org P', problem: 'support block for Org P is missing: donate_url'}
+        - {provider: Q, steward_name: 'Org Q', problem: 'support block for (no author) is missing: author'}

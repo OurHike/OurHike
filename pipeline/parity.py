@@ -1,6 +1,7 @@
 """Shadow-run parity: a family's file from today's exporter against the dbt writer's, record by record.
 
     python parity.py podcasts --new data/processed/podcasts_episodes.json
+    python parity.py stewards --new data/processed/stewards.json
 
 pipeline/ELT.md, "How a rule moves: shadow-run parity", is the design: both
 paths read the same input, records are paired by their key, and each
@@ -51,8 +52,23 @@ def _podcasts_old() -> dict:
     return document
 
 
+def _stewards_old() -> dict:
+    import export_sources
+
+    return export_sources.build_output()
+
+
+def _registry_old() -> dict:
+    import export_sources
+
+    return export_sources.build_registry()
+
+
 FAMILIES: dict[str, Family] = {
     "podcasts": Family(old=_podcasts_old, records="episodes", key="spotify_id", ordered=True),
+    "stewards": Family(old=_stewards_old, records="stewards", key="provider", ordered=True),
+    # `organizations`, beside the records, is compared whole as a top-level field.
+    "registry": Family(old=_registry_old, records="sources", key="key", ordered=True),
 }
 
 

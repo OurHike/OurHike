@@ -22,6 +22,37 @@ models:
           The episodes in the file's order, each as lib/podcasts.py's
           as_published() writes one, `minutes` left out where null.
         data_type: json[]
+  - name: pub_stewards
+    description: >
+      Writes stewards.json, "Where this map comes from" on the phone (#927),
+      from the sources mart: one record per steward whose data reaches a
+      hiker. parity.py compares it with export_sources.py's build_output().
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: stewards
+        description: The steward records, by provider.
+        data_type: json[]
+        data_tests: [not_null, unique]
+  - name: pub_registry
+    description: >
+      Writes registry.json, the org console's list of every registered
+      source (#929), from the sources mart. parity.py compares it with
+      export_sources.py's build_registry().
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: sources
+        description: Every registered source, by provider and key.
+        data_type: json[]
+        data_tests: [not_null, unique]
+      - name: organizations
+        description: Every organization, by provider.
+        data_type: json[]
 
 exposures:
   - name: podcasts_episodes_json
@@ -48,4 +79,45 @@ exposures:
         format: json
         # The lane that reads its source. A person's dispatch of
         # publish-podcasts.yml is what ships an edit today, on no schedule.
+        cadence: monthly
+  - name: stewards_json
+    label: stewards.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      Whose data is on the phone, and on what terms (#927 — Say where the
+      map comes from: one card per registered steward, with its own licence
+      and its own donate line): the sources screen's list. Only stewards with a shipping source are on it,
+      credits.ts's rule taken whole. Published in the release folder by
+      publish-vector-data.yml from export_sources.py's file until stage 4 of
+      #1793 moves it to this writer's.
+    depends_on:
+      - ref('sources')
+      - ref('pub_stewards')
+    config:
+      meta:
+        r2_keys: [stewards.json]
+        format: json
+        cadence: monthly
+  - name: registry_json
+    label: registry.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      Every registered source, shipping or not, for the org console (#929 —
+      The org console: two seats over one registry, where approving a source
+      opens a pull request and never changes a phone): an admin surface, not
+      a hiker's. Published in the release folder by publish-vector-data.yml
+      from export_sources.py's file until stage 4 of #1793.
+    depends_on:
+      - ref('sources')
+      - ref('pub_registry')
+    config:
+      meta:
+        r2_keys: [registry.json]
+        format: json
         cadence: monthly

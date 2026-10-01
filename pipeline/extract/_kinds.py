@@ -1246,7 +1246,9 @@ class ReviewedFile(Resource):
     hints: tuple[tuple[str, str], ...] = ()
     # For a file a gate checks field by field, such as the podcast episodes:
     # each row lands whole in one `row_json` column, as the JSON text of what the
-    # reviewer wrote, and dbt reads its fields. Typed columns would hide the
+    # reviewer wrote, and dbt reads its fields. With no `rows_key`, the whole
+    # document is that one row, which is how sources.json lands: its blocks
+    # sit beside its rows, and dbt reads both. Typed columns would hide the
     # typos the gate exists to refuse. Measured 2026-10-01 on dlt 1.30.0: a
     # bigint hint landed "minutes": "34" as 34, a text hint landed
     # "title": 5 as "5", sql_ci_v1 folded a misspelt "At_Miles" into
@@ -1274,7 +1276,8 @@ class ReviewedFile(Resource):
         if self.rows_key is None:
             body = {name: value for name, value in document.items() if name != "_README"}
             proofs[self.table] = 1
-            yield {**body, "_path": self.path}
+            fields = {"row_json": json.dumps(body, ensure_ascii=False), "_row": 0} if self.verbatim else body
+            yield {**fields, "_path": self.path}
             return
         rows = document[self.rows_key]
         if self.map_key is not None:
@@ -1316,8 +1319,6 @@ def reviewed_file(
 ) -> ReviewedFile:
     if not (PIPELINE_DIR / path).is_file():
         raise FileNotFoundError(path)
-    if verbatim and rows_key is None:
-        raise ValueError(f"{path}: verbatim lands each row of a list or map, and rows_key names none")
     return ReviewedFile(
         key=path,
         path=path,

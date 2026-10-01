@@ -39,10 +39,16 @@ def test_every_fixture_file_with_a_resource_lands_whole(fixtures):
 def test_the_reviewed_files_land_from_git_whole(fixtures):
     root, counts = fixtures
     reviewed = [r for r in fixture_resources(root / "raw")[0] if isinstance(r, ReviewedFile)]
-    assert {r.table for r in reviewed} >= {"raw_podcasts__podcast_episodes", "raw_ourhike__poi_identity"}
+    assert {r.table for r in reviewed} >= {
+        "raw_podcasts__podcast_episodes",
+        "raw_ourhike__poi_identity",
+        "raw_registry__sources",
+        "raw_registry__nynjtc_paper_maps",
+    }
     for resource in reviewed:
         document = json.loads(resource.file.read_text())
-        assert counts[resource.table] == len(document[resource.rows_key]), resource.table
+        rows = 1 if resource.rows_key is None else len(document[resource.rows_key])
+        assert counts[resource.table] == rows, resource.table
 
 
 def test_a_verbatim_reviewed_file_lands_each_row_as_its_reviewer_wrote_it(fixtures):

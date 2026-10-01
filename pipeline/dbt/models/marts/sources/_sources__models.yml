@@ -1,0 +1,95 @@
+version: 2
+
+models:
+  - name: sources
+    description: >
+      Every source the registry registers, one row per layer or feed, with
+      the record of the steward it is credited to on a hiker's phone. The
+      steward's columns are null for a provider that ships nothing.
+      stewards.json and registry.json are written from it.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: source_key
+        description: The registry key, e.g. `atc_shelters`.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests: [not_null, unique]
+      - name: title
+        description: The registry's own name for the layer.
+        data_type: varchar
+      - name: provider
+        description: Who publishes it, as the registry keys organizations.
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: steward_id
+        description: The organization's stable id (#929).
+        data_type: varchar
+      - name: steward
+        description: The steward this source reports, its own or its organization's name.
+        data_type: varchar
+      - name: kind
+        description: >
+          The registry's `kind`, null where a source declares none: twelve
+          entries do, which the fetcher reads as an ArcGIS layer, and that
+          default is the fetcher's, not the registration's.
+        data_type: varchar
+      - name: trust
+        description: The source's own trust tier, where it declares one.
+        data_type: varchar
+      - name: reaches_hikers
+        description: Whether an exporter ships this source's data.
+        data_type: boolean
+        constraints:
+          - type: not_null
+      - name: licence_basis
+        description: What the licence rests on, as a field (sources.json's licence_basis_comment).
+        data_type: varchar
+      - name: freshness_kind
+        description: How the registry checks the layer for change.
+        data_type: varchar
+      - name: supports_donation
+        description: Whether the reported steward has asked for a donate line.
+        data_type: boolean
+      - name: mark_state
+        description: Where OurHike's ask for the organization's mark stands (#933).
+        data_type: varchar
+      - name: org_name
+        description: The organization's name in the `organizations` block.
+        data_type: varchar
+      - name: org_note
+        description: The `organizations` block's note on it.
+        data_type: varchar
+      - name: steward_name
+        description: The steward's name as the phone prints it. Null for a provider that ships nothing.
+        data_type: varchar
+      - name: steward_trust
+        description: The steward's tier, only where every shipping source agrees.
+        data_type: varchar
+      - name: steward_licence
+        description: The steward's short licence terms, from its licence block.
+        data_type: varchar
+      - name: steward_attribution
+        description: The credit line the steward's licence obliges.
+        data_type: varchar
+      - name: steward_terms
+        description: The terms quoted whole, where a licence block quotes them.
+        data_type: varchar
+      - name: steward_terms_source
+        description: Where those terms were read.
+        data_type: varchar
+      - name: steward_support
+        description: The donate line, as stewards.json writes it, or null.
+        data_type: json
+      - name: steward_store
+        description: The paper-map store, as stewards.json writes it, or null.
+        data_type: json
+      - name: list_position
+        description: The source's place in sources.json, from 1.
+        data_type: bigint
+        constraints:
+          - type: not_null

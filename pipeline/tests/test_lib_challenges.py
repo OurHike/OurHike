@@ -291,7 +291,7 @@ class TestTheOtherMatchKinds:
     def test_poi_type_takes_the_default_any_shelter_radius(self):
         published, why = one_item({"kind": "poi_type", "type": "shelter"})
         assert why == ""
-        assert published["match"] == {"kind": "poi_type", "type": "shelter", "radius_m": 60}
+        assert published["match"] == {"kind": "poi_type", "type": "shelter", "radius_m": 60, "off_trail": False}
 
     @pytest.mark.parametrize("poi_type", ["trailhead", "crossing", "fire_tower", None])
     def test_poi_type_must_be_a_type_that_is_published(self, poi_type):
@@ -400,7 +400,7 @@ class TestItems:
     @pytest.mark.parametrize("item_id", ["McAfee Knob", "", None, "mcafee_knob"])
     def test_an_item_id_must_be_lowercase_words_joined_by_hyphens(self, item_id):
         _, dropped, _ = run(challenge(items=[item(id=item_id), item(id="kept")]))
-        assert dropped[0][1] == "item id must be lowercase words joined by hyphens"
+        assert dropped[0][1] == "item id must be lowercase words joined by hyphens, at most 120 characters"
 
 
 class TestSealedMysteryItems:
@@ -431,13 +431,15 @@ class TestSealedMysteryItems:
         assert unseal(published["sealed_title"]) == self.TITLE
         assert published["mystery"] == {"number": 2, "reveal_on": "2027-07-20"}
 
-    def test_on_its_date_the_title_ships_in_the_clear(self):
-        # "On or after reveal_on", the phone's rule too - so an export run on
-        # the day and a phone decoding on the day agree.
+    def test_on_its_date_the_title_is_still_sealed(self):
+        # `today` is the build's UTC day. A release built after midnight UTC
+        # on the reveal day is the evening before on the A.T., so the clear
+        # title waits a day; the phone opens the sealed copy on the hiker's
+        # own date either way.
         record, _, _ = run(challenge(items=[self.mystery("2026-09-30")]))
         published = record["items"][0]
-        assert published["title"] == self.TITLE
-        assert "sealed_title" not in published
+        assert published["title"] is None
+        assert unseal(published["sealed_title"]) == self.TITLE
 
     def test_after_its_date_the_title_ships_in_the_clear(self):
         record, _, _ = run(challenge(items=[self.mystery("2026-07-20")]))
@@ -512,13 +514,39 @@ class TestTheWholeChallenge:
         _, _, why = run(challenge(finish={"count": 1}, reward={"kind": "cash"}))
         assert "reward kind" in why
 
-    @pytest.mark.parametrize(
-        "window",
-        [{"opens": "2027-09-01", "closes": "2027-05-15"}, {"opens": "2027-09-01", "closes": "2027-09-01"}],
-    )
-    def test_a_window_that_closes_on_or_before_it_opens_is_refused(self, window):
-        _, _, why = run(challenge(window=window))
-        assert why == "window closes on or before it opens"
+    def test_a_window_that_closes_before_it_opens_is_refused(self):
+        _, _, why = run(challenge(window={"opens": "2027-09-01", "closes": "2027-05-15"}))
+        assert why == "window closes before it opens"
+
+    def test_a_one_day_window_is_a_window(self):
+        # Both ends are inclusive wherever they are read.
+        record, _, why = run(challenge(window={"opens": "2027-09-01", "closes": "2027-09-01"}))
+        assert why == ""
+        assert record["window"] == {"opens": "2027-09-01", "closes": "2027-09-01"}
+
+    def test_an_id_past_the_backends_length_is_refused(self):
+        # backend/app/core/trail_challenge.py's ID_MAX_CHARS: past it, every
+        # tag of the challenge would be refused forever.
+        _, _, why = run(challenge(id="a" * 121))
+        assert "at most 120 characters" in why
+
+    @pytest.mark.parametrize("field", ["photo"])
+    def test_a_photo_that_is_not_https_is_refused(self, field):
+        _, _, why = run(challenge(**{field: "http://club.example/p.jpg"}))
+        assert why == "photo must be an https URL"
+        record, dropped, _ = run(challenge(items=[item(), item(id="second", photo="javascript:alert(1)")]))
+        assert [entry["id"] for entry in record["items"]] == ["mcafee-knob"]
+        assert dropped == [("second", "photo must be an https URL")]
+
+    def test_takes_entries_only_for_a_published_challenge_with_a_reward(self):
+        reward = {"finish": {"count": 1}, "reward": {"kind": "drawing"}}
+        published, _, _ = run(challenge(status="published", takes_entries=True, **reward))
+        draft, _, _ = run(challenge(status="draft", takes_entries=True, **reward))
+        no_reward, _, _ = run(challenge(status="published", takes_entries=True))
+        unset, _, _ = run(challenge(status="published", **reward))
+        assert [r["takes_entries"] for r in (published, draft, no_reward, unset)] == [True, False, False, False]
+        _, _, why = run(challenge(takes_entries="yes"))
+        assert why == "takes_entries must be true or false"
 
     @pytest.mark.parametrize("window", [{"opens": None, "closes": None}, {"opens": None, "closes": "2027-09-01"}])
     def test_either_end_of_the_window_may_be_open(self, window):
@@ -645,3 +673,13 @@ class TestTrailDistanceIndex:
         # latitude a 0.05-degree cell of longitude still exceeds MAX_RADIUS_M,
         # so no place inside its radius can read as infinitely far.
         assert haversine_m(-68.92, 45.90, -68.87, 45.90) > MAX_RADIUS_M
+
+
+def test_an_any_waypoint_item_can_say_its_waypoints_are_off_the_trail():
+    """A town is walked into, so a mile interval passing it is no evidence of
+    a visit; the phone offers it only as a hand tag."""
+    published, why = one_item({"kind": "poi_type", "type": "shelter", "off_trail": True})
+    assert why == ""
+    assert published["match"]["off_trail"] is True
+    plain, _ = one_item({"kind": "poi_type", "type": "shelter"})
+    assert plain["match"]["off_trail"] is False

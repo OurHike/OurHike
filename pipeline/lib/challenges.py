@@ -111,6 +111,27 @@ MAX_RADIUS_M = 2000
 DEFAULT_MIN_FRACTION = 0.9
 
 _ID = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+
+#: The backend's ID_MAX_CHARS (backend/app/core/trail_challenge.py). An id
+#: past it would publish here and every tag of it would be refused there,
+#: forever, so the pipeline holds the same line.
+ID_MAX_CHARS = 120
+
+
+def _id_ok(value: object) -> bool:
+    return isinstance(value, str) and len(value) <= ID_MAX_CHARS and _ID.match(value) is not None
+
+
+def _https_or_none(value: object) -> tuple[str | None, bool]:
+    """(url or None, acceptable). A photo the phone would load is an https URL
+    or nothing: a club's `http://` image is a request from the hiker's phone
+    in the clear, naming what they opened."""
+    text = _text(value)
+    if text == "":
+        return None, True
+    return (text, True) if text.startswith("https://") else (None, False)
+
+
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
@@ -265,7 +286,15 @@ def resolve_match(
         poi_type = match.get("type")
         if poi_type not in poi_types:
             return None, f"poi type {poi_type!r} is not a published type"
-        return {"kind": kind, "type": poi_type, "radius_m": radius}, ""
+        # `off_trail` says the waypoints of this type are places a hiker walks
+        # INTO - an A.T. Community is a town, 2,867 m off the centerline at
+        # Monson - so a mile interval passing one is no evidence of a visit.
+        # The phone then never offers it at camp, only as a hand tag, which is
+        # the rule a named off-trail place already follows (review, 2026-09-30).
+        off_trail = match.get("off_trail", False)
+        if not isinstance(off_trail, bool):
+            return None, "off_trail must be true or false"
+        return {"kind": kind, "type": poi_type, "radius_m": radius, "off_trail": off_trail}, ""
 
     if kind == "elevation_min_ft":
         value = match.get("value")
@@ -363,6 +392,9 @@ def resolve_item(
     )
     if match is None:
         return None, why
+    photo, photo_ok = _https_or_none(raw.get("photo"))
+    if not photo_ok:
+        return None, "photo must be an https URL"
 
     out: dict = {
         "id": raw["id"],
@@ -370,14 +402,18 @@ def resolve_item(
         "title": title or None,
         "note": _text(raw.get("note")) or None,
         "note_by": _text(raw.get("note_by")) or None,
-        "photo": _text(raw.get("photo")) or None,
+        "photo": photo,
         "match": match,
     }
     if mystery is not None:
         out["mystery"] = mystery
         reveal = _date(mystery["reveal_on"])
-        if title and reveal is not None and reveal > today:
-            # Sealed until the date: the clear title never enters the artifact.
+        if title and reveal is not None and reveal >= today:
+            # Sealed until the date, and THROUGH it: `today` is the build's
+            # UTC day, and a release built after midnight UTC on the reveal
+            # day is still the evening before on the A.T. The phone opens the
+            # sealed copy on the hiker's own date, so the clear title only
+            # needs to ship once the day has passed everywhere.
             out["title"] = None
             out["sealed_title"] = seal(title)
         elif not title:
@@ -401,8 +437,8 @@ def resolve_challenge(
     if not isinstance(raw, Mapping):
         return None, [], "file is not an object"
     challenge_id = raw.get("id")
-    if not isinstance(challenge_id, str) or not _ID.match(challenge_id):
-        return None, [], "id must be lowercase words joined by hyphens"
+    if not _id_ok(challenge_id):
+        return None, [], f"id must be lowercase words joined by hyphens, at most {ID_MAX_CHARS} characters"
 
     # isinstance before `in` on the org, the trail, a section and a workday's
     # org: a list typed where a string belongs is unhashable, and the set or
@@ -431,15 +467,17 @@ def resolve_challenge(
     closes = _date(closes_raw) if closes_raw is not None else None
     if (opens_raw is not None and opens is None) or (closes_raw is not None and closes is None):
         return None, [], "window dates must be YYYY-MM-DD or null"
-    if opens is not None and closes is not None and closes <= opens:
-        return None, [], "window closes on or before it opens"
+    # Both ends are inclusive days everywhere they are read, so a one-day
+    # challenge (opens and closes on the same Saturday) is a real window.
+    if opens is not None and closes is not None and closes < opens:
+        return None, [], "window closes before it opens"
 
     sections_raw = raw.get("sections")
     if not isinstance(sections_raw, list) or not sections_raw:
         return None, [], "challenge declares no sections"
     sections = []
     for section in sections_raw:
-        if not isinstance(section, Mapping) or not isinstance(section.get("id"), str) or not _ID.match(section["id"]):
+        if not isinstance(section, Mapping) or not _id_ok(section.get("id")):
             return None, [], "a section has no usable id"
         title = _text(section.get("title"))
         if title == "":
@@ -459,8 +497,8 @@ def resolve_challenge(
     seen: set[str] = set()
     for item in items_raw:
         item_id = item.get("id") if isinstance(item, Mapping) else None
-        if not isinstance(item_id, str) or not _ID.match(item_id):
-            dropped.append(("<no id>", "item id must be lowercase words joined by hyphens"))
+        if not _id_ok(item_id):
+            dropped.append(("<no id>", f"item id must be lowercase words joined by hyphens, at most {ID_MAX_CHARS} characters"))
             continue
         if item_id in seen:
             # Tags are keyed by item id; a second row with the same id would
@@ -506,7 +544,23 @@ def resolve_challenge(
         rules_url = _text(reward.get("rules_url"))
         if rules_url and not rules_url.startswith("https://"):
             return None, dropped, "reward rules_url must be https"
-        reward = {"kind": reward["kind"], "rules_url": rules_url or None, "art": _text(reward.get("art")) or None}
+        art, art_ok = _https_or_none(reward.get("art"))
+        if not art_ok:
+            return None, dropped, "reward art must be an https URL"
+        reward = {"kind": reward["kind"], "rules_url": rules_url or None, "art": art}
+
+    # Whether the club collects entries through OurHike, which the phone must
+    # know before it asks a hiker for a name and an address: without it every
+    # reward offered a form the server then refused (review, 2026-09-30). Only
+    # a published challenge with a reward can; anything else is false.
+    takes_entries = raw.get("takes_entries", False)
+    if not isinstance(takes_entries, bool):
+        return None, dropped, "takes_entries must be true or false"
+    takes_entries = takes_entries and status == "published" and reward is not None
+
+    photo, photo_ok = _https_or_none(raw.get("photo"))
+    if not photo_ok:
+        return None, dropped, "photo must be an https URL"
 
     reviewed = raw.get("reviewed")
     if _date(reviewed) is None:
@@ -523,7 +577,8 @@ def resolve_challenge(
             "window": {"opens": opens_raw, "closes": closes_raw},
             "finish": finish,
             "reward": reward,
-            "photo": _text(raw.get("photo")) or None,
+            "takes_entries": takes_entries,
+            "photo": photo,
             "sections": sections,
             "items": items,
             "reviewed": reviewed,

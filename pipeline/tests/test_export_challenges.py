@@ -33,7 +33,7 @@ ORGANIZATIONS = {
     "org:nynjtc": {"provider": "NYNJTC", "name": "New York-New Jersey Trail Conference"},
 }
 
-PUBLISHERS = [{"org": "atc", "trails": ["AT"], "why": "The A.T.'s route owner."}]
+PUBLISHERS = [{"org": "atc", "trails": ["AT"], "why": "The A.T.'s route owner.", "domain": "AppalachianTrail.org"}]
 
 KNOB = {
     "id": "atc_viewpoints:knob",
@@ -106,6 +106,7 @@ def build(files, *, pois=(KNOB, PRIEST), centerline=None, publishers=PUBLISHERS,
         pois=pois,
         centerline=centerline,
         today=today,
+        org_domains=exporter.publisher_domains(publishers),
     )
 
 
@@ -226,13 +227,17 @@ class TestPublisherScope:
     def test_a_trail_no_published_poi_carries_is_refused_and_the_org_keeps_an_empty_scope(self):
         # `at` for `AT` is exactly how this happens. The org stays, so its
         # challenges drop as "not a trail atc publishes" - which is then true.
-        scope, refused = exporter.publisher_scope([{"org": "atc", "trails": ["at"], "why": "x"}], ORGANIZATIONS, [KNOB])
+        scope, refused = exporter.publisher_scope(
+            [{"org": "atc", "trails": ["at"], "why": "x", "domain": "appalachiantrail.org"}], ORGANIZATIONS, [KNOB]
+        )
 
         assert scope == {"atc": set()}
         assert refused == ["atc: trail 'at' is carried by no published POI"]
 
     def test_only_the_bad_trail_of_a_row_is_refused(self):
-        scope, refused = exporter.publisher_scope([{"org": "atc", "trails": ["AT", "LP"], "why": "x"}], ORGANIZATIONS, [KNOB])
+        scope, refused = exporter.publisher_scope(
+            [{"org": "atc", "trails": ["AT", "LP"], "why": "x", "domain": "appalachiantrail.org"}], ORGANIZATIONS, [KNOB]
+        )
 
         assert scope == {"atc": {"AT"}}
         assert len(refused) == 1
@@ -402,14 +407,20 @@ class TestMain:
         first = exporter.main(today=TODAY)["sha256"]
         assert exporter.main(today=TODAY)["sha256"] == first
 
-    def test_a_sealed_title_opens_on_the_first_run_on_or_after_its_date(self, sandbox):
+    def test_a_sealed_title_opens_on_the_first_run_after_its_date(self, sandbox):
         exporter.main(today=TODAY)
         before = json.loads((sandbox / "challenges.json").read_text())["challenges"][0]["items"][1]
         assert before["title"] is None
         assert unseal(before["sealed_title"]) == "Find the hidden spring."
         assert "Find the hidden spring" not in (sandbox / "challenges.json").read_text()
 
+        # On the day itself it is still sealed - a UTC build day is the
+        # evening before on the A.T. - and the phone opens it locally.
         exporter.main(today=date(2027, 7, 20))
+        on_the_day = json.loads((sandbox / "challenges.json").read_text())["challenges"][0]["items"][1]
+        assert on_the_day["title"] is None
+
+        exporter.main(today=date(2027, 7, 21))
         after = json.loads((sandbox / "challenges.json").read_text())["challenges"][0]["items"][1]
         assert after["title"] == "Find the hidden spring."
 
@@ -548,6 +559,7 @@ def test_the_real_committed_files_publish_when_their_anchors_exist():
     org_trails, refused = exporter.publisher_scope(exporter.load_publishers(), exporter.load_organizations(), pois)
     output, resolution = exporter.build_output(
         files,
+        org_domains=exporter.publisher_domains(exporter.load_publishers()),
         org_trails=org_trails,
         organizations=exporter.load_organizations(),
         pois=pois,
@@ -570,3 +582,21 @@ def test_the_real_committed_files_publish_when_their_anchors_exist():
     assert all(i["title"] is None and "sealed_title" not in i for i in mysteries)
     # And it serializes the way main() writes it.
     json.dumps(output, indent=2, sort_keys=True, ensure_ascii=False)
+
+
+class TestPublisherDomain:
+    def test_a_row_with_no_domain_is_refused(self):
+        scope, refused = exporter.publisher_scope([{"org": "atc", "trails": ["AT"], "why": "x"}], ORGANIZATIONS, [KNOB])
+
+        assert scope == {}
+        assert refused == ["atc: the row gives no web `domain` (like appalachiantrail.org)"]
+
+    def test_every_challenge_carries_its_publishers_domain_lower_cased(self):
+        """What an entry carries back, and what the backend makes a club prove."""
+        output, _ = build([(Path("atc/summer-list.json"), challenge())])
+
+        assert {c["org_domain"] for c in output["challenges"]} == {"appalachiantrail.org"}
+
+    def test_the_committed_publishers_file_names_a_domain_for_every_row(self):
+        rows = exporter.load_publishers()
+        assert all(exporter.publisher_domain(row) for row in rows)

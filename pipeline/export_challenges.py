@@ -56,6 +56,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sys
 from collections import Counter
 from collections.abc import Mapping
@@ -187,6 +188,10 @@ def publisher_scope(
         "ATC · until Sep 1";
       - the row must say `why` - the file's own README promises one reason per
         row, and a scope nobody explained is a scope nobody reviewed;
+      - the row must name the organization's web `domain` - the one the
+        backend makes a club prove before it receives anybody's entry
+        (`send_entry`). A slug is whatever a registrant typed; the domain is
+        what a maintainer can check against the organization's own site;
       - each trail must be carried by at least one published POI's `trail_id`.
         A trail with nothing placed on it can hold no challenge place, and a
         trail id spelled differently from the POIs' (`at` for `AT`) is exactly
@@ -217,6 +222,9 @@ def publisher_scope(
         if not _text(row.get("why")):
             refused.append(f"{org}: the row gives no `why`")
             continue
+        if publisher_domain(row) is None:
+            refused.append(f"{org}: the row gives no web `domain` (like appalachiantrail.org)")
+            continue
         trails = row.get("trails")
         if not isinstance(trails, list):
             refused.append(f"{org}: `trails` is not a list")
@@ -234,6 +242,26 @@ def _text(value: object) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
+_DOMAIN = re.compile(r"^[a-z0-9-]+(?:\.[a-z0-9-]+)+$")
+
+
+def publisher_domain(row: object) -> str | None:
+    """A publishers.json row's web domain, lower-cased, or None if it has none
+    a server could compare against a club's proved domain."""
+    domain = _text(row.get("domain")).lower() if isinstance(row, Mapping) else ""
+    return domain if _DOMAIN.match(domain) else None
+
+
+def publisher_domains(rows: list[object]) -> dict[str, str]:
+    """org -> its domain, for every row that names one."""
+    out: dict[str, str] = {}
+    for row in rows:
+        domain = publisher_domain(row)
+        if domain is not None and isinstance(row.get("org"), str):
+            out.setdefault(row["org"], domain)
+    return out
+
+
 def build_output(
     files: list[tuple[Path, object]],
     *,
@@ -242,6 +270,7 @@ def build_output(
     pois: list[dict],
     centerline: list[list[tuple[float, float]]] | None,
     today: date,
+    org_domains: Mapping[str, str] | None = None,
 ) -> tuple[dict, Resolution]:
     """The artifact, and everything that did not make it in.
 
@@ -290,7 +319,14 @@ def build_output(
         # What the phone prints as "ATC · until Sep 1" and "Draft · not yet
         # confirmed by the ATC". The registry's own two spellings, so the
         # club reads its name the way every other screen already spells it.
-        challenges.append({**record, "org_name": name, "org_short": short})
+        domain = (org_domains or {}).get(record["org"])
+        if domain is None:
+            # publisher_scope refuses a row with no domain, so as above.
+            resolution.dropped.append((record["id"], f"publishers.json gives 'org:{record['org']}' no domain"))
+            continue
+        # `org_domain` is what an entry carries back to the server, which
+        # gives it only to a club that proved this domain.
+        challenges.append({**record, "org_name": name, "org_short": short, "org_domain": domain})
     resolution.challenges = challenges
 
     output = {
@@ -347,6 +383,7 @@ def main(today: date | None = None) -> dict:
     org_trails, refused = publisher_scope(publishers, organizations, pois)
     output, resolution = build_output(
         files,
+        org_domains=publisher_domains(publishers),
         org_trails=org_trails,
         organizations=organizations,
         pois=pois,

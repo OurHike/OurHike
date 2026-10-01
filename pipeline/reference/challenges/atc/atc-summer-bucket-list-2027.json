@@ -26,7 +26,7 @@
     "fire tower, a waterfall, a hostel or Amicalola Falls (on the approach trail,",
     "not the A.T.), and inventing a point for one is what this file must not do.",
     "",
-    "TOWNS ARE OFF THE TRAIL AND SAY SO. The Harpers Ferry community point is 236 m",
+    "TOWNS ARE OFF THE TRAIL AND SAY SO, the 'any A.T. Community' item included. The Harpers Ferry community point is 236 m",
     "from the centerline and Monson's is 2,867 m (measured 2026-09-30, release",
     "2026-09-24-2), so their items carry off_trail and an 800 m radius around the",
     "town point. The 800 m is @unvalidated - a town-sized guess, not a measurement.",
@@ -468,7 +468,8 @@
       "match": {
         "kind": "poi_type",
         "type": "resupply",
-        "radius_m": 800
+        "radius_m": 800,
+        "off_trail": true
       }
     },
     {

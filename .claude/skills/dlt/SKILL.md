@@ -22,10 +22,10 @@ route-only lines (`NotClub` in `_contract.py`). `_shared/` files declare a
 `TYPE` and are found by `discover_shared()`; the four reviewed files load
 there (podcast episodes, shelter capacity, highlights, work projects), and
 opentrail's A.T. waypoints through `opentrail_feed()`, a non-registry input
-whose file says why it claims nothing (`UNREGISTERED`), and the `usgs_3dhp`
-watch through `hydrography_watch(key)`. Not built yet: `_shared/`'s other
-fetched resources (NWS, NBM, the rest of USGS, OSM, Wikimedia, NDMC, OurHike's
-Postgres), the as-sent copy, the raw lake, fixture mode, and any run against
+whose file says why it claims nothing (`UNREGISTERED`), the `usgs_3dhp`
+watch through `hydrography_watch(key)`, and every active NWS alert through
+`nws_alerts()`, hourly. Not built yet: `_shared/`'s other fetched resources
+(NBM, the rest of USGS, OSM, Wikimedia, NDMC, OurHike's Postgres), the as-sent copy, the raw lake, fixture mode, and any run against
 R2. Every other
 source still comes from the old fetchers (`fetch_*.py`, `lib/arcgis.py`,
 `lib/socrata.py`) and `load_raw.py`; a change to one of those follows its own
@@ -144,6 +144,15 @@ belongs to the type. Each type file defines exactly one of:
 cannot fetch anything the registry does not hold, and every new upstream is a
 `sources.json` row first, with its licence established and recorded
 ([CONTRIBUTING.md](../../../CONTRIBUTING.md), "A note on data and licences").
+
+**A builder imports nothing the extract job does not install.** The job
+installs `requirements-extract.txt` alone, while the pipeline suite's
+environment holds every build dependency, so an import that only the build
+jobs pin passes every test and fails the job. Borrowing one constant from a
+fetcher brings that fetcher's imports with it: `export_weather_alerts.py`
+imports shapely, so the NWS endpoint and its response check moved to
+`lib/nws_alerts.py`. `tests/test_extract_layout.py` walks the extract's own
+imports and fails on one with no pin.
 
 **Raw tables are named `raw_<folder>__<key>`**, passed to dlt as `table_name=`
 exactly as written. A real run keeps that name under both `snake_case` and

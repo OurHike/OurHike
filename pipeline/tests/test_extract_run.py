@@ -19,6 +19,7 @@ from datetime import date, timedelta
 
 import duckdb
 import pytest
+from dlt.pipeline.exceptions import PipelineStepFailed
 
 from extract import _kinds, _run
 from extract._contract import Resource
@@ -27,6 +28,7 @@ from extract._kinds import (
     ClubPdf,
     GuidePages,
     HydrographyWatch,
+    NwsAlerts,
     OpentrailFeed,
     PodcastFeed,
     PublishedHikes,
@@ -41,6 +43,7 @@ from extract._run import ExtractRefused, Planned, make_pipeline, run_check, run_
 from extract._warehouse import load_warehouse
 from fetch_opentrail import API_URL as OPENTRAIL_API_URL
 from lib.freshness_state import Freshness
+from lib.nws_alerts import ALERTS_URL as NWS_ALERTS_URL
 from lib.user_agent import USER_AGENT
 from tests.test_fetch_nynjtc_long_path_guide import INDEX, section_page
 from tests.test_lib_club_pdfs import PAGE_1, PAGE_2
@@ -722,3 +725,90 @@ def test_the_3dhp_watch_lands_each_probes_work_units_and_a_silent_box_refuses(re
     requests_mock.get(HYDRO_URL, json={"features": [{"attributes": {"workunitid": None}}]})
     with pytest.raises(RuntimeError, match="named no work unit"):
         list(watch.rows({}))
+
+
+def nws_alert(n, *, status="Actual", message_type="Alert", geometry=None):
+    """One feature in the shape /alerts/active serves, JSON-LD keys included."""
+    url = f"https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.{n}"
+    return {
+        "id": url,
+        "type": "Feature",
+        "geometry": geometry,
+        "properties": {
+            "@id": url,
+            "@type": "wx:Alert",
+            "id": f"urn:oid:2.49.0.1.840.0.{n}",
+            "areaDesc": "Northern Grafton",
+            "geocode": {"SAME": ["033009"], "UGC": ["NHZ003"]},
+            "affectedZones": ["https://api.weather.gov/zones/forecast/NHZ003"],
+            "references": [],
+            "sent": "2026-10-01T15:38:00-04:00",
+            "status": status,
+            "messageType": message_type,
+            "event": "Wind Advisory",
+            "ends": None,
+            "instruction": None,
+        },
+    }
+
+
+def nws_body(*features, **extra):
+    return {
+        "type": "FeatureCollection",
+        "title": "Current watches, warnings, and advisories",
+        "updated": "2026-10-01T19:38:46+00:00",
+        "features": list(features),
+        **extra,
+    }
+
+
+def nws():
+    return NwsAlerts(key="alerts", club="nws", type="warnings")
+
+
+def test_nws_lands_every_alert_and_leaves_test_messages_and_cancellations_to_staging(requests_mock):
+    box = {"type": "Polygon", "coordinates": [[[-72, 44], [-71, 44], [-71, 45], [-72, 44]]]}
+    requests_mock.get(
+        NWS_ALERTS_URL,
+        json=nws_body(nws_alert(1, geometry=box), nws_alert(2, status="Test"), nws_alert(3, message_type="Cancel")),
+    )
+    proofs = {}
+    rows = list(nws().rows(proofs))
+    assert nws().table == "raw_nws__alerts"
+    assert [row["status"] for row in rows] == ["Actual", "Test", "Actual"], "WN01 is staging's filter, not the extract's"
+    assert proofs["raw_nws__alerts"] == 3, "the body's own count is the proof"
+    assert not any(name.startswith("@") for row in rows for name in row), "JSON-LD's @id is feature_id, and @type is constant"
+    assert rows[0]["feature_id"] == "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.1"
+    assert rows[0]["geometry"] == box and rows[1]["geometry"] is None
+    assert rows[0]["collection_updated"] == "2026-10-01T19:38:46+00:00"
+    assert requests_mock.last_request.headers["User-Agent"] == USER_AGENT
+    assert requests_mock.last_request.headers["Accept"] == "application/geo+json"
+    assert nws().change_check({"anything": 1}) == (Freshness.UNKNOWN, None), "NWS ignores both validators"
+
+
+def test_a_quiet_hour_from_nws_lands_as_an_empty_warnings_table_with_every_column(store, requests_mock):
+    requests_mock.get(NWS_ALERTS_URL, json=nws_body())
+    report = lane(store, nws())
+    assert report.outcome == "loaded" and report.proofs["raw_nws__alerts"] == 0
+    con, counts = warehouse(store)
+    assert counts["raw_nws__alerts"] == 0
+    columns = {row[0]: row[1] for row in con.execute('describe raw."raw_nws__alerts"').fetchall()}
+    assert {"id", "event", "ends", "instruction", "areadesc", "messagetype", "geometry", "feature_id"} <= set(columns)
+    assert columns["sent"] == "VARCHAR", "NWS's own offset survives; staging casts"
+
+
+def test_an_nws_answer_that_is_not_a_feature_collection_refuses_and_the_last_alerts_stay(store, requests_mock):
+    requests_mock.get(NWS_ALERTS_URL, json=nws_body(nws_alert(1), nws_alert(2)))
+    lane(store, nws())
+
+    requests_mock.get(NWS_ALERTS_URL, json={"type": "https://api.weather.gov/problems/Unexpected", "status": 500})
+    with pytest.raises(PipelineStepFailed, match="did not answer with a FeatureCollection"):
+        lane(store, nws())
+    _, counts = warehouse(store)
+    assert counts["raw_nws__alerts"] == 2, "a changed API must never read as no warnings"
+
+    requests_mock.get(NWS_ALERTS_URL, json=nws_body(nws_alert(3)))
+    lane(store, nws())
+    con, counts = warehouse(store)
+    assert counts["raw_nws__alerts"] == 1, "the refused run left nothing behind for the next load to pick up"
+    assert con.execute('select feature_id from raw."raw_nws__alerts"').fetchone()[0].endswith(".3")

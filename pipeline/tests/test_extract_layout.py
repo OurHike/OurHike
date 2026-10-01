@@ -18,6 +18,7 @@ empty, the full rule holds and the list goes.
 
 import ast
 import re
+import sys
 from collections import Counter
 from datetime import date
 from pathlib import Path
@@ -265,6 +266,70 @@ def test_the_dlt_pin_is_the_same_in_the_extract_and_dev_requirements():
         return lines[0].split("==")[1]
 
     assert pin(PIPELINE_DIR / "requirements-extract.in") == pin(PIPELINE_DIR / "requirements-dev.in")
+
+
+def _repository_imports(start: list[Path]) -> set[str]:
+    """Top-level names the repository's own code imports, following its local modules from `start`.
+
+    Read from the source rather than from sys.modules, because a pinned
+    package's optional imports are its business: pyarrow imports numpy when
+    numpy is installed, and the extract job runs without it.
+    """
+
+    def local(name: str) -> Path | None:
+        parts = name.split(".")
+        for candidate in (PIPELINE_DIR.joinpath(*parts).with_suffix(".py"), PIPELINE_DIR.joinpath(*parts, "__init__.py")):
+            if candidate.exists():
+                return candidate
+        return None
+
+    seen, outside, queue = set(), set(), list(start)
+    while queue:
+        path = queue.pop()
+        if path in seen:
+            continue
+        seen.add(path)
+        for node in ast.walk(ast.parse(path.read_text())):
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                names = [node.module, *(f"{node.module}.{alias.name}" for alias in node.names)]
+            else:
+                continue
+            for name in names:
+                if found := local(name):
+                    queue.append(found)
+                elif not local(name.split(".")[0]) and name.split(".")[0] not in {"extract", "lib"}:
+                    outside.add(name.split(".")[0])
+    return outside - set(sys.stdlib_module_names) - {"__future__"}
+
+
+def test_every_module_the_extract_imports_is_pinned_in_its_own_requirements():
+    """The extract job installs requirements-extract.txt and nothing else, so a club file must import nothing more.
+
+    A fetcher's module pulled in for one constant brings its imports along:
+    export_weather_alerts.py imports shapely, which is why the NWS endpoint and
+    its check live in lib/nws_alerts.py. The pipeline suite's environment holds
+    every build dependency, so without this a missing pin shows up first as
+    the extract job failing at import.
+    """
+    from importlib.metadata import packages_distributions
+
+    start = [*EXTRACT_DIR.glob("_*.py"), *(file.path for file in EVERY_FILE)]
+    imported = _repository_imports(start)
+    providers = packages_distributions()
+
+    def canonical(name: str) -> str:
+        return re.sub(r"[-_.]+", "-", name).lower()
+
+    pinned = {
+        canonical(match[1])
+        for line in (PIPELINE_DIR / "requirements-extract.txt").read_text().splitlines()
+        if (match := re.match(r"^([A-Za-z0-9][A-Za-z0-9._-]*)==", line))
+    }
+    assert {"dlt", "requests"} <= imported, "the walk did not reach the extract's own imports, so it checked nothing"
+    unpinned = sorted(name for name in imported if not any(canonical(d) in pinned for d in providers.get(name, [name])))
+    assert not unpinned, f"imported by the extract's code and not in requirements-extract.txt: {unpinned}"
 
 
 def _shared_module(relative: str):

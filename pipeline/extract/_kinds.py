@@ -22,6 +22,7 @@ The kinds built so far for stage 2 (#1793 â€” Rebuild the data platform as dlt â
     club_pdf(key)           a club's PDF, one row per row its lib/club_pdfs.py parser reads
     opentrail_feed()        opentrail.org's A.T. waypoints, comments left out (no registry row)
     hydrography_watch(key)  the usgs_3dhp watch: 3DHP's work units at five probes on the trail
+    nws_alerts()            every active NWS alert, read in full each hour (no registry row)
     reviewed_input(key)     a registry entry whose rows a person reviews into a
                             file in git (ATC's Trail Updates), loaded from that file
     reviewed_file(path)     a reviewed pipeline/reference/ file with no registry
@@ -64,6 +65,9 @@ from lib.hikefinder import listing_count as hikefinder_listing_count
 from lib.hikefinder import listing_ids as hikefinder_listing_ids
 from lib.hikefinder import parse_gpx, parse_hike
 from lib.http_retry import request_with_retry
+from lib.nws_alerts import ACCEPT as NWS_ACCEPT
+from lib.nws_alerts import ALERTS_URL as NWS_ALERTS_URL
+from lib.nws_alerts import check_response as check_nws_response
 from lib.nynjtc_long_path_guide import parse_index as parse_guide_index
 from lib.nynjtc_long_path_guide import parse_section as parse_guide_section
 from lib.socrata import dataset_url, fetch_dataset_geojson
@@ -892,6 +896,99 @@ def hydrography_watch(key: str, **overrides) -> HydrographyWatch:
     if not (entry.get("freshness") or {}).get("url"):
         raise KeyError(f"{key} has no freshness.url to ask 3DHP at")
     return HydrographyWatch(key=key, **overrides)
+
+
+# NWS's alert properties, as /alerts/active served them on 2026-10-01: all 30
+# on each of 353 alerts, besides JSON-LD's `@id` (the feature's own `id`, on
+# 353 of 353) and `@type` (`wx:Alert` on all 353), which are left out.
+# Hinting every one is what makes a column exist when it is null on every
+# alert of a run, or when a quiet hour lands no alert at all (ELT.md, "dlt
+# configuration requirements"). The times stay text: dlt reads an ISO stamp as
+# a timestamp and normalises it to UTC (measured 2026-10-01, dlt 1.30.0),
+# which loses the issuing office's offset that NWS's own words carry, and the
+# exporter relays these fields exactly (export_weather_alerts.py's RELAYED).
+NWS_TEXT_PROPERTIES = (
+    "id",
+    "areaDesc",
+    "sent",
+    "effective",
+    "onset",
+    "expires",
+    "ends",
+    "status",
+    "messageType",
+    "category",
+    "severity",
+    "certainty",
+    "urgency",
+    "event",
+    "sender",
+    "senderName",
+    "headline",
+    "description",
+    "instruction",
+    "response",
+    "note",
+    "scope",
+    "code",
+    "language",
+    "web",
+)
+NWS_JSON_PROPERTIES = ("geocode", "affectedZones", "references", "parameters", "eventCode")
+
+
+@dataclass(frozen=True)
+class NwsAlerts(Resource):
+    """Every active NWS alert in the US, one row per message, read in full every run.
+
+    The endpoint is lib/nws_alerts.py's, shared with export_weather_alerts.py,
+    which bakes today's `conditions/weather_alerts.json` from the same body.
+    NWS is a non-registry input (ELT.md, "What moves"). Nothing is filtered
+    here: `Test` messages and cancellations land, and staging leaves them out
+    (WN01, `stg_nws__warnings`), because a filter belongs in the extract only
+    when the request itself carries it (the dlt skill, "Load every club, gate
+    publication downstream").
+
+    No change check. `/alerts/active` ignores both If-None-Match and
+    If-Modified-Since: each returned 200 with the same ETag (measured
+    2026-10-01, ELT.md, "The skip-unchanged check, by platform"). So every run
+    reads it, which is one request a run.
+
+    THE ZERO. A quiet hour is a real answer, and warnings may be empty, so the
+    proof is the body's own feature count. A 200 FeatureCollection with no
+    features proves the zero. Anything else raises in check_nws_response, and
+    a failed request raises in request_with_retry, so the run refuses before
+    the load and the last good table stands. A failed request never becomes an
+    empty table (ELT.md, "Source kinds"), which would read as "no warnings".
+    """
+
+    def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
+        return Freshness.UNKNOWN, None
+
+    def column_hints(self) -> dict:
+        hints = {name: {"data_type": "text"} for name in (*NWS_TEXT_PROPERTIES, "feature_id", "collection_updated")}
+        hints.update({name: {"data_type": "json"} for name in (*NWS_JSON_PROPERTIES, "geometry")})
+        return hints
+
+    def rows(self, proofs: dict[str, int]):
+        http = session()
+        http.headers["Accept"] = NWS_ACCEPT
+        body = request_with_retry(NWS_ALERTS_URL, session=http, timeout=60, label="NWS active alerts").json()
+        features = check_nws_response(body)
+        proofs[self.table] = len(features)
+        for feature in features:
+            row = {name: value for name, value in (feature.get("properties") or {}).items() if not name.startswith("@")}
+            row["feature_id"] = feature.get("id")
+            row["geometry"] = feature.get("geometry")
+            # The collection's own `updated`, which the bake publishes as
+            # `nws_updated`. A run that lands no alert has nowhere to keep it;
+            # `_extract_runs.checked_at` is when that run asked.
+            row["collection_updated"] = body.get("updated")
+            yield row
+
+
+def nws_alerts(**overrides) -> NwsAlerts:
+    return NwsAlerts(key="alerts", **overrides)
 
 
 @dataclass(frozen=True)

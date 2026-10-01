@@ -5,10 +5,10 @@ import {
   isSealed,
   itemTitle,
   itemsAtPoi,
-  parseChallenges,
   unseal,
   windowLine,
 } from './challenges'
+import { parseChallenges } from './challengeFeed'
 
 // The artifact's own shape, as pipeline/export_challenges.py writes it.
 function place(poi: string, mile: number, name = poi) {

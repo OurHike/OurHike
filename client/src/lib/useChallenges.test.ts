@@ -21,8 +21,8 @@ vi.mock('./outbox', () => ({
   },
   removeQueued: async () => {},
 }))
-vi.mock('./challenges', async (original) => ({
-  ...(await original<typeof import('./challenges')>()),
+vi.mock('./challengeFeed', async (original) => ({
+  ...(await original<typeof import('./challengeFeed')>()),
   recallChallenges: async () => [ATC_CHALLENGE],
   fetchChallenges: async () => null,
 }))

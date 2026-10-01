@@ -26,7 +26,7 @@ import {
   CHALLENGE_TAGGED_PROPERTY,
   type ChallengePinFeatureCollection,
   type ChallengePinProperties,
-} from './challengeLayers'
+} from './challengePinData'
 
 /**
  * Whether the hiker has tagged THIS place for THIS item.

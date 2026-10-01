@@ -26,5 +26,5 @@ models:
           this layer.
         data_tests: [not_null, unique]
       - name: loaded_at
-        description: load_raw.py's `_loaded_at` for the load this row came from, naive UTC.
+        description: The extract's `_loaded_at` for the read this row came from, naive UTC.
         data_tests: [not_null]

@@ -3,7 +3,12 @@
 -- calibration, not in SQL views). What this stages is the per-segment
 -- inventory the exports do not read: surface, status, the club acronym.
 with source as (
-    select * from {{ source('atc', 'raw_atc__centerline') }}
+    -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
+    -- hint); cast here, as decision 40 has staging do.
+    select
+        * exclude (geometry),
+        st_geomfromgeojson(cast(geometry as varchar)) as geom
+    from {{ source('atc', 'raw_atc__centerline') }}
 ),
 
 renamed as (

@@ -32,7 +32,12 @@
 -- layer whose staleness nobody can state is worse than one nobody claimed
 -- anything about.
 with source as (
-    select * from {{ source('oprhp', 'raw_oprhp__oprhp_trail_closures') }}
+    -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
+    -- hint); cast here, as decision 40 has staging do.
+    select
+        * exclude (geometry),
+        st_geomfromgeojson(cast(geometry as varchar)) as geom
+    from {{ source('oprhp', 'raw_nysparks__oprhp_trail_closures') }}
 ),
 
 renamed as (

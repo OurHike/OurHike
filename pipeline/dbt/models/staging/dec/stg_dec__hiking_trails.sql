@@ -41,7 +41,12 @@
 -- travel is allowed on it, not because it is a footpath - 446 rows are
 -- ASSET 'SNOWMOBILE TRAIL' and 456 are unpaved roads.
 with source as (
-    select * from {{ source('dec', 'raw_dec__dec_hiking_trails') }}
+    -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
+    -- hint); cast here, as decision 40 has staging do.
+    select
+        * exclude (geometry),
+        st_geomfromgeojson(cast(geometry as varchar)) as geom
+    from {{ source('dec', 'raw_nysdec__dec_hiking_trails') }}
 ),
 
 renamed as (

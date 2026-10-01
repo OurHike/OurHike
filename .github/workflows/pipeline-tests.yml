@@ -202,20 +202,32 @@ jobs:
         uses: ./.github/actions/changed-paths
         with:
           # Narrower than the pytest job's list: this job builds the dbt
-          # project off load_raw.py's warehouse, and the files below are the
-          # rest of pipeline/ that reaches it. sources.json is here because it
-          # is load_raw.py's registry - a row added there changes what loads -
-          # and lib/source_registry.py because load_raw.py reads the registry
-          # through it. seed_spatial_extension.py is a step of this job.
+          # project off the warehouse fixture mode writes (extract/_fixtures.py,
+          # the real extract over make_dbt_fixtures.py's files), and the paths
+          # below are the rest of pipeline/ that reaches it. extract/, lib/ and
+          # the six top-level modules are the extract's own imports, which
+          # tests/test_extract_layout.py holds this list to; sources.json and
+          # reference/trail_orgs.json are what a resource reads its URL and
+          # its club from.
           paths: >-
             pipeline/dbt/
+            pipeline/extract/
+            pipeline/lib/
+            pipeline/.dlt/
+            pipeline/check_freshness.py
+            pipeline/export_conditions.py
+            pipeline/fetch_club_pdfs.py
+            pipeline/fetch_elevation.py
+            pipeline/fetch_hikefinder.py
+            pipeline/fetch_opentrail.py
             pipeline/load_raw.py
-            pipeline/lib/source_registry.py
             pipeline/make_dbt_fixtures.py
-            pipeline/seed_spatial_extension.py
             pipeline/sources.json
+            pipeline/reference/trail_orgs.json
             pipeline/requirements-dbt.in
             pipeline/requirements-dbt.txt
+            pipeline/requirements-extract.in
+            pipeline/requirements-extract.txt
             pipeline/.sqlfluff
             .github/workflows/pipeline-tests.yml
             .github/actions/changed-paths/
@@ -231,7 +243,9 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: pipeline/requirements-dbt.txt
+          cache-dependency-path: |
+            pipeline/requirements-dbt.txt
+            pipeline/requirements-extract.txt
 
       # WHAT dbt FETCHES AT RUN TIME, CACHED. Neither v2 distribution ships a
       # database driver. On its first command dbt downloads the ADBC driver
@@ -321,43 +335,38 @@ jobs:
         working-directory: pipeline/dbt
         run: dbt lint --profiles-dir .
 
-      # Take the spatial extension from PyPI instead of extensions.duckdb.org
-      # (#321). `INSTALL spatial` is a live network fetch, and it is the one
-      # standing exception to TESTING.md's "tests never touch the network" -
-      # so an extension-repo outage reddens this suite for a reason that has
-      # nothing to do with the change under test.
+      # FIXTURE MODE (pipeline/ELT.md, "Fixture mode"): the warehouse comes
+      # from the extract itself, run over make_dbt_fixtures.py's files by
+      # extract/_fixtures.py, so every staging model here reads a table dlt
+      # wrote, as it will in production. Until stage 3 of #1793 it came from
+      # load_raw.py's ST_Read, whose tables no extract run would ever write.
       #
-      # The version is duckdb's OWN, asked of the interpreter rather than read
-      # back out of the requirements file: extensions are ABI-locked to the
-      # exact build, and the installed one is the only version that has to
-      # match. Same script the web session hook runs, for the same reason.
+      # ITS OWN VENV, because requirements-extract.txt and
+      # requirements-dbt.txt cannot share one: click is 8.5.0 in the first
+      # and 8.4.2 in the second (2026-10-01). The extract pins are the extract
+      # jobs' own, so this is the dependency set the fixtures run under in
+      # production too. No secret is in this job.
       #
-      # TWO DUCKDBS RUN IN THIS JOB, AND THIS SEEDS ONLY ONE OF THEM. Python's
-      # duckdb 1.5.5 (requirements-dbt.in) is what load_raw.py writes the
-      # fixture warehouse with, and what this step seeds. dbt runs DuckDB
-      # 1.5.4, through the ADBC driver it downloads, with its own extension
-      # directory, which the cache step above covers instead. Measured
-      # 2026-10-01 in a web session, not on a runner, on dbt 2.0.6 and on
-      # dbt-oss 2.0.5 alike:
-      #   - dbt reads the warehouse 1.5.5 wrote: the build below ran 153 nodes
-      #     green and source freshness passed on all 28 tables;
-      #   - dbt loads spatial itself: from an empty extension cache it fetched
-      #     its 1.5.4 build into ~/.duckdb/extensions/v1.5.4/ and ran st_point.
-      # @unvalidated in CI until this job's first run: that a runner reaches
-      # public.cdn.getdbt.com and extensions.duckdb.org on a cache miss.
-      - name: Seed the duckdb spatial extension
+      # No spatial seeding any more. It was for load_raw.py's ST_Read; the
+      # extract reads no geometry, landing it as GeoJSON text, and dbt loads
+      # its own spatial build through the cache step above.
+      - name: Install the extract's own pins
         if: steps.scope.outputs.run == 'true'
         run: |
-          pip install "duckdb-extension-spatial==$(python -c 'import duckdb; print(duckdb.__version__)')"
-          python seed_spatial_extension.py
+          python -m venv "$RUNNER_TEMP/extract"
+          "$RUNNER_TEMP/extract/bin/pip" install -r requirements-extract.txt
 
       - name: Generate synthetic raw fixtures
         if: steps.scope.outputs.run == 'true'
         run: python make_dbt_fixtures.py
 
-      - name: Load the warehouse
+      - name: Load the warehouse through the extract (fixture mode)
         if: steps.scope.outputs.run == 'true'
-        run: python load_raw.py
+        env:
+          RUNTIME__DLTHUB_TELEMETRY: "false"
+        run: >-
+          "$RUNNER_TEMP/extract/bin/python" -m extract._fixtures
+          --raw-dir data/raw --warehouse data/warehouse.duckdb
 
       - name: dbt seed
         if: steps.scope.outputs.run == 'true'

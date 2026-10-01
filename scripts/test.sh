@@ -416,11 +416,10 @@ fi
 # differences and each one on purpose:
 #   - the fixtures and the warehouse go to a temporary directory, never to
 #     pipeline/data/. make_dbt_fixtures.py refuses to write over a real
-#     fetch, and load_raw.py would replace a real warehouse; on a CI runner
+#     fetch, and fixture mode would replace a real warehouse; on a CI runner
 #     pipeline/data/ is empty, here it may be somebody's afternoon of fetching;
-#   - nothing is installed: no pip, and no spatial seeding. load_raw.py's
-#     INSTALL spatial finds the extension a web session's hook seeded, or
-#     fetches it on a machine with real network;
+#   - nothing is installed: no pip. Fixture mode runs under the suites' own
+#     Python rather than a venv of requirements-extract.txt;
 #   - --no-dbt-deps can skip `dbt deps`, out loud.
 # Telemetry is off for the same reason, and by the same documented opt-out,
 # as in CI: the workflow's dbt job says why that variable and no other.
@@ -457,8 +456,11 @@ if selected_has dbt; then
     step "dbt sqlfluff lint"     env -C pipeline "$DBT_DIR/sqlfluff" lint dbt/models dbt/tests
     step "dbt parse"             "${dbt_cmd[@]}" parse --profiles-dir .
     step "dbt lint"              "${dbt_cmd[@]}" lint --profiles-dir .
-    step "dbt fixtures"          env -C pipeline "$DBT_DIR/python" make_dbt_fixtures.py --raw-dir "$dbt_tmp/raw"
-    step "dbt load warehouse"    env -C pipeline "$DBT_DIR/python" load_raw.py --raw-dir "$dbt_tmp/raw" --warehouse "$dbt_tmp/warehouse.duckdb"
+    # Fixture mode, as CI runs it: the extract over the fixture files, under
+    # the suites' own Python, which carries dlt (requirements-dev.in) where the
+    # dbt venv does not. CI gives it a venv of requirements-extract.txt.
+    step "dbt fixtures"          env -C pipeline "$PY" make_dbt_fixtures.py --raw-dir "$dbt_tmp/raw"
+    step "dbt load warehouse"    env -C pipeline RUNTIME__DLTHUB_TELEMETRY=false "$PY" -m extract._fixtures --raw-dir "$dbt_tmp/raw" --warehouse "$dbt_tmp/warehouse.duckdb" --store "$dbt_tmp/store"
     step "dbt seed"              "${dbt_cmd[@]}" seed --profiles-dir .
     step "dbt build"             "${dbt_cmd[@]}" build --profiles-dir . --exclude package:dbt_project_evaluator
     step "dbt source freshness"  "${dbt_cmd[@]}" source freshness --profiles-dir .

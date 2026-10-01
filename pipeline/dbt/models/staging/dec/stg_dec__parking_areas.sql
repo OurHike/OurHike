@@ -7,7 +7,12 @@
 -- PROSE and not as a field. A model that invented an `open_seasonally`
 -- column would be answering a question DEC has not answered.
 with source as (
-    select * from {{ source('dec', 'raw_dec__dec_parking_areas') }}
+    -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
+    -- hint); cast here, as decision 40 has staging do.
+    select
+        * exclude (geometry),
+        st_geomfromgeojson(cast(geometry as varchar)) as geom
+    from {{ source('dec', 'raw_nysdec__dec_parking_areas') }}
 ),
 
 renamed as (

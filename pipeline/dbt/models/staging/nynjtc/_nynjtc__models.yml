@@ -8,7 +8,7 @@ version: 2
 # one field-metadata read of each service.
 #
 # The `loaded_at` not_null test is the one invariant these models can state
-# today: load_raw.py stamps `_loaded_at` on every row it loads, and source
+# today: the extract stamps `_loaded_at` on every row it loads, and source
 # freshness reads it. It is here because the evaluator's test coverage target
 # (100%, its default) cannot be excepted per model, and it is a weak test -
 # it says the load's bookkeeping survived staging, nothing about the rows.
@@ -38,7 +38,7 @@ models:
           this layer.
         data_tests: [not_null, unique]
       - name: loaded_at
-        description: load_raw.py's `_loaded_at` for the load this row came from, naive UTC.
+        description: The extract's `_loaded_at` for the read this row came from, naive UTC.
         data_tests: [not_null]
   - name: stg_nynjtc__highlands_trail
     data_tests:
@@ -62,5 +62,5 @@ models:
           this layer.
         data_tests: [not_null, unique]
       - name: loaded_at
-        description: load_raw.py's `_loaded_at` for the load this row came from, naive UTC.
+        description: The extract's `_loaded_at` for the read this row came from, naive UTC.
         data_tests: [not_null]

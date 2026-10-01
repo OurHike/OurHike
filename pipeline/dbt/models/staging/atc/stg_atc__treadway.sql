@@ -1,6 +1,11 @@
 -- The 30 built treadway segments with their construction inventory.
 with source as (
-    select * from {{ source('atc', 'raw_atc__at_treadway') }}
+    -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
+    -- hint); cast here, as decision 40 has staging do.
+    select
+        * exclude (geometry),
+        st_geomfromgeojson(cast(geometry as varchar)) as geom
+    from {{ source('atc', 'raw_atc__at_treadway') }}
 ),
 
 renamed as (

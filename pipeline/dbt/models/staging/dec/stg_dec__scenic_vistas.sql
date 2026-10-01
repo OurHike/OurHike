@@ -8,7 +8,12 @@
 -- with separate `source` values, and cross-source deduplication remains
 -- deferred exactly as it was in Phase A.
 with source as (
-    select * from {{ source('dec', 'raw_dec__dec_scenic_vistas') }}
+    -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
+    -- hint); cast here, as decision 40 has staging do.
+    select
+        * exclude (geometry),
+        st_geomfromgeojson(cast(geometry as varchar)) as geom
+    from {{ source('dec', 'raw_nysdec__dec_scenic_vistas') }}
 ),
 
 renamed as (

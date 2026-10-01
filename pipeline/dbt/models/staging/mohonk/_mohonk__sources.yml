@@ -10,7 +10,7 @@ sources:
     config:
       loaded_at_field: _loaded_at
       freshness:
-        # As for every source here: this measures load_raw.py's cadence, not
+        # As for every source here: this measures the extract's cadence, not
         # Mohonk's. @unvalidated, same threshold and same open question as
         # _atc__sources.yml.
         warn_after: {count: 7, period: day}

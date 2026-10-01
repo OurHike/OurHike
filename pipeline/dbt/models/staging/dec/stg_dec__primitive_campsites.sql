@@ -9,7 +9,12 @@
 -- encodes that difference - it is a note for whoever unifies the two, not a
 -- column this layer publishes.
 with source as (
-    select * from {{ source('dec', 'raw_dec__dec_primitive_campsites') }}
+    -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
+    -- hint); cast here, as decision 40 has staging do.
+    select
+        * exclude (geometry),
+        st_geomfromgeojson(cast(geometry as varchar)) as geom
+    from {{ source('dec', 'raw_nysdec__dec_primitive_campsites') }}
 ),
 
 renamed as (

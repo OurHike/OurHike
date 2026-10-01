@@ -27,7 +27,12 @@
 -- line nobody should have to read twice. The convention bends where upstream
 -- has already taken the word.
 with layer as (
-    select * from {{ source('nynjtc', 'raw_nynjtc__nynjtc_long_path') }}
+    -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
+    -- hint); cast here, as decision 40 has staging do.
+    select
+        * exclude (geometry),
+        st_geomfromgeojson(cast(geometry as varchar)) as geom
+    from {{ source('nynjtc', 'raw_nynjtc__nynjtc_long_path') }}
 ),
 
 renamed as (

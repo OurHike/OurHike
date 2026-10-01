@@ -19,7 +19,7 @@ models:
       # (duplicates_are_exact on the raw table), so this only reports.
       - dbt_utils.equal_rowcount:
           arguments:
-            compare_model: source('dec', 'raw_dec__dec_lean_tos')
+            compare_model: source('dec', 'raw_nysdec__dec_lean_tos')
           config:
             severity: warn
     description: >
@@ -46,7 +46,7 @@ models:
       # (duplicates_are_exact on the raw table), so this only reports.
       - dbt_utils.equal_rowcount:
           arguments:
-            compare_model: source('dec', 'raw_dec__dec_primitive_campsites')
+            compare_model: source('dec', 'raw_nysdec__dec_primitive_campsites')
           config:
             severity: warn
     description: >
@@ -71,7 +71,7 @@ models:
       # (duplicates_are_exact on the raw table), so this only reports.
       - dbt_utils.equal_rowcount:
           arguments:
-            compare_model: source('dec', 'raw_dec__dec_scenic_vistas')
+            compare_model: source('dec', 'raw_nysdec__dec_scenic_vistas')
           config:
             severity: warn
     description: >
@@ -96,7 +96,7 @@ models:
       # (duplicates_are_exact on the raw table), so this only reports.
       - dbt_utils.equal_rowcount:
           arguments:
-            compare_model: source('dec', 'raw_dec__dec_firetowers')
+            compare_model: source('dec', 'raw_nysdec__dec_firetowers')
           config:
             severity: warn
     description: >
@@ -122,7 +122,7 @@ models:
       # (duplicates_are_exact on the raw table), so this only reports.
       - dbt_utils.equal_rowcount:
           arguments:
-            compare_model: source('dec', 'raw_dec__dec_viewing_areas')
+            compare_model: source('dec', 'raw_nysdec__dec_viewing_areas')
           config:
             severity: warn
     description: >
@@ -145,7 +145,7 @@ models:
       # (duplicates_are_exact on the raw table), so this only reports.
       - dbt_utils.equal_rowcount:
           arguments:
-            compare_model: source('dec', 'raw_dec__dec_parking_areas')
+            compare_model: source('dec', 'raw_nysdec__dec_parking_areas')
           config:
             severity: warn
     description: >
@@ -170,7 +170,7 @@ models:
       # (duplicates_are_exact on the raw table), so this only reports.
       - dbt_utils.equal_rowcount:
           arguments:
-            compare_model: source('dec', 'raw_dec__dec_hiking_trails')
+            compare_model: source('dec', 'raw_nysdec__dec_hiking_trails')
           config:
             severity: warn
     description: >
@@ -197,7 +197,7 @@ models:
       # (duplicates_are_exact on the raw table), so this only reports.
       - dbt_utils.equal_rowcount:
           arguments:
-            compare_model: source('dec', 'raw_dec__dec_backcountry_features')
+            compare_model: source('dec', 'raw_nysdec__dec_backcountry_features')
           config:
             severity: warn
     description: >

@@ -5,7 +5,12 @@
 -- "Unknown", "Gold"), which is exactly why the column carries no
 -- accepted_values test yet: the domain is the finding, not a constraint.
 with source as (
-    select * from {{ source('atc', 'raw_atc__side_trails') }}
+    -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
+    -- hint); cast here, as decision 40 has staging do.
+    select
+        * exclude (geometry),
+        st_geomfromgeojson(cast(geometry as varchar)) as geom
+    from {{ source('atc', 'raw_atc__side_trails') }}
 ),
 
 renamed as (

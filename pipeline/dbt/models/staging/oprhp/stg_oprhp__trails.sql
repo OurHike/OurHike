@@ -12,7 +12,7 @@
 -- upstream cannot answer for. What would settle it is one field-metadata
 -- read of the service.
 --
--- `status` AND `public_` ARE STAGED AND NOTHING FILTERS ON THEM, which
+-- `status` AND `public` ARE STAGED AND NOTHING FILTERS ON THEM, which
 -- matches what the fetch already does. What those two columns gate is
 -- UNMEASURED - the registry says so outright and defers it to a separate
 -- measurement - so the fetch takes every row rather than guessing, and this
@@ -22,7 +22,12 @@
 -- and it is staged because it is how OPRHP's own stewards talk about where a
 -- trail is.
 with source as (
-    select * from {{ source('oprhp', 'raw_oprhp__oprhp_trails') }}
+    -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
+    -- hint); cast here, as decision 40 has staging do.
+    select
+        * exclude (geometry),
+        st_geomfromgeojson(cast(geometry as varchar)) as geom
+    from {{ source('oprhp', 'raw_nysparks__oprhp_trails') }}
 ),
 
 renamed as (
@@ -38,7 +43,7 @@ renamed as (
         map_blaze,
         surface,
         status,
-        public_ as public_flag,
+        public as public_flag,
         foot,
         bike,
         horse,

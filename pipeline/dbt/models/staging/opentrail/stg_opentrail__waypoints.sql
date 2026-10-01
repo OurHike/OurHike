@@ -5,7 +5,12 @@
 -- layer stays 1:1 with its input and the row-count reconciliation tests
 -- keep meaning something.
 with source as (
-    select * from {{ source('opentrail', 'raw_opentrail__at') }}
+    -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
+    -- hint); cast here, as decision 40 has staging do.
+    select
+        * exclude (geometry),
+        st_geomfromgeojson(cast(geometry as varchar)) as geom
+    from {{ source('opentrail', 'raw_opentrail__at') }}
 ),
 
 mapping as (

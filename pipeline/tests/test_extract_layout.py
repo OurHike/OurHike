@@ -268,8 +268,8 @@ def test_the_dlt_pin_is_the_same_in_the_extract_and_dev_requirements():
     assert pin(PIPELINE_DIR / "requirements-extract.in") == pin(PIPELINE_DIR / "requirements-dev.in")
 
 
-def _repository_imports(start: list[Path]) -> set[str]:
-    """Top-level names the repository's own code imports, following its local modules from `start`.
+def _import_closure(start: list[Path]) -> tuple[set[Path], set[str]]:
+    """(the local files reached, the third-party top-level names imported), following local modules from `start`.
 
     Read from the source rather than from sys.modules, because a pinned
     package's optional imports are its business: pyarrow imports numpy when
@@ -301,7 +301,12 @@ def _repository_imports(start: list[Path]) -> set[str]:
                     queue.append(found)
                 elif not local(name.split(".")[0]) and name.split(".")[0] not in {"extract", "lib"}:
                     outside.add(name.split(".")[0])
-    return outside - set(sys.stdlib_module_names) - {"__future__"}
+    return seen, outside - set(sys.stdlib_module_names) - {"__future__"}
+
+
+def _repository_imports(start: list[Path]) -> set[str]:
+    """Top-level names the repository's own code imports, following its local modules from `start`."""
+    return _import_closure(start)[1]
 
 
 def test_every_module_the_extract_imports_is_pinned_in_its_own_requirements():
@@ -330,6 +335,22 @@ def test_every_module_the_extract_imports_is_pinned_in_its_own_requirements():
     assert {"dlt", "requests"} <= imported, "the walk did not reach the extract's own imports, so it checked nothing"
     unpinned = sorted(name for name in imported if not any(canonical(d) in pinned for d in providers.get(name, [name])))
     assert not unpinned, f"imported by the extract's code and not in requirements-extract.txt: {unpinned}"
+
+
+def test_the_dbt_jobs_scope_covers_every_local_module_the_extract_imports():
+    """pipeline-tests.yml's dbt job builds its warehouse through the extract (fixture mode), so a change to any module
+    the extract imports must run that job. Its `paths:` list is hand-written, and this holds it to the import walk."""
+    import yaml
+
+    workflow = yaml.safe_load((PIPELINE_DIR.parent / ".github" / "workflows" / "pipeline-tests.yml").read_text())
+    scope = next(step for step in workflow["jobs"]["dbt"]["steps"] if step.get("id") == "scope")["with"]["paths"].split()
+    reached, _ = _import_closure([*EXTRACT_DIR.glob("_*.py"), *(file.path for file in EVERY_FILE)])
+    uncovered = sorted(
+        str(path.relative_to(PIPELINE_DIR.parent))
+        for path in reached
+        if not any(str(path.relative_to(PIPELINE_DIR.parent)).startswith(prefix) for prefix in scope)
+    )
+    assert not uncovered, f"imported by the extract and outside the dbt job's paths: {uncovered}"
 
 
 def _shared_module(relative: str):

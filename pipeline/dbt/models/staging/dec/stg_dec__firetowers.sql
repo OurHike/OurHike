@@ -9,7 +9,12 @@
 -- DEC's own tower-status list, which is prose on their website rather than a
 -- field here. Nothing in this model may be read as "the tower is climbable".
 with source as (
-    select * from {{ source('dec', 'raw_dec__dec_firetowers') }}
+    -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
+    -- hint); cast here, as decision 40 has staging do.
+    select
+        * exclude (geometry),
+        st_geomfromgeojson(cast(geometry as varchar)) as geom
+    from {{ source('dec', 'raw_nysdec__dec_firetowers') }}
 ),
 
 renamed as (

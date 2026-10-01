@@ -2,7 +2,12 @@
 -- (#652): export_elevation and every published POI mile ride these values.
 -- Point_ID is the identity; the layer has no GlobalID.
 with source as (
-    select * from {{ source('atc', 'raw_atc__half_mile_points_from_springer') }}
+    -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
+    -- hint); cast here, as decision 40 has staging do.
+    select
+        * exclude (geometry),
+        st_geomfromgeojson(cast(geometry as varchar)) as geom
+    from {{ source('atc', 'raw_atc__half_mile_points_from_springer') }}
 ),
 
 renamed as (

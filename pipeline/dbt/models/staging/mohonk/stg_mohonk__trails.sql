@@ -23,7 +23,12 @@
 -- staged because they differ - 298 of 304 rows read Owner 'Mohonk Preserve'
 -- and 6 read 'NYS OPRHP/PIPC' with Manager still Mohonk.
 with source as (
-    select * from {{ source('mohonk', 'raw_mohonk__mohonk_trails') }}
+    -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
+    -- hint); cast here, as decision 40 has staging do.
+    select
+        * exclude (geometry),
+        st_geomfromgeojson(cast(geometry as varchar)) as geom
+    from {{ source('mohonk', 'raw_mohonk__mohonk_trails') }}
 ),
 
 renamed as (
@@ -35,7 +40,7 @@ renamed as (
         name,
         general_classification,
         classification,
-        use_ as permitted_use,
+        use as permitted_use,
         blaze,
         mileage,
         surface,

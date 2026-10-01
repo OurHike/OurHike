@@ -5,7 +5,12 @@
 -- (' Viewing Area'), which sources.json records as hygiene rather than
 -- meaning. Nothing here matches on it.
 with source as (
-    select * from {{ source('dec', 'raw_dec__dec_viewing_areas') }}
+    -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
+    -- hint); cast here, as decision 40 has staging do.
+    select
+        * exclude (geometry),
+        st_geomfromgeojson(cast(geometry as varchar)) as geom
+    from {{ source('dec', 'raw_nysdec__dec_viewing_areas') }}
 ),
 
 renamed as (

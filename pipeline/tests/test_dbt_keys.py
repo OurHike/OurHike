@@ -31,6 +31,9 @@ DEDUPE = re.compile(
     r"\{\{\s*dbt_utils\.deduplicate\(\s*relation='renamed',\s*partition_by='(\w+)',\s*order_by='(\w+)'\s*\)\s*\}\}\s*$"
 )
 SOURCE = re.compile(r"source\('([a-z_]+)',\s*'([a-z_]+)'\)")
+# A staging model's `geom`, as its raw table holds it: dlt lands geometry as
+# GeoJSON text, and every model casts it in its source CTE with exactly this.
+RAW_GEOMETRY = "st_geomfromgeojson(cast(geometry as varchar))"
 
 
 def geometry_key_body() -> str:
@@ -69,6 +72,12 @@ def test_there_are_staging_models_to_check():
 
 
 @pytest.mark.parametrize("path", MODELS, ids=lambda p: p.stem)
+def test_each_staging_model_casts_geometry_from_its_raw_table_the_one_way(path):
+    """The source CTE's cast is what RAW_GEOMETRY stands for, so a model that casts differently fails here, not in a key."""
+    assert f"{RAW_GEOMETRY} as geom" in path.read_text(), f"{path.name} does not cast its raw geometry with {RAW_GEOMETRY}"
+
+
+@pytest.mark.parametrize("path", MODELS, ids=lambda p: p.stem)
 def test_each_staging_model_builds_its_key_and_dedupes_on_it(path):
     key_column, inputs = model_key(path)
     assert inputs and inputs[0].startswith("'") and inputs[0].endswith("'"), (
@@ -97,7 +106,7 @@ def test_the_raw_tables_exactness_test_checks_the_key_the_model_builds(path):
     source = SOURCE.search(path.read_text()).groups()
     tests = [t["duplicates_are_exact"] for t in source_tests()[source] if isinstance(t, dict) and "duplicates_are_exact" in t]
     assert len(tests) == 1, f"{source[1]} needs one duplicates_are_exact test"
-    expected = [item.replace("source.", "") for item in inputs]
+    expected = [item.replace("source.", "").replace("(geom)", f"({RAW_GEOMETRY})") for item in inputs]
     assert tests[0]["arguments"]["key_columns"] == expected, (
         f"{path.stem} builds its key from {expected}, but {source[1]}'s duplicates_are_exact checks "
         f"{tests[0]['arguments']['key_columns']}"

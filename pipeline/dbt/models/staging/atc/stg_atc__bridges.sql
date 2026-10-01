@@ -3,7 +3,12 @@
 -- the poi_type_mapping seed - the same greppable posture as opentrail's 'c' and
 -- 't' codes - rather than decided in passing by a staging model.
 with source as (
-    select * from {{ source('atc', 'raw_atc__bridges') }}
+    -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
+    -- hint); cast here, as decision 40 has staging do.
+    select
+        * exclude (geometry),
+        st_geomfromgeojson(cast(geometry as varchar)) as geom
+    from {{ source('atc', 'raw_atc__bridges') }}
 ),
 
 renamed as (

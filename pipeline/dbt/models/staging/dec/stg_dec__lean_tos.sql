@@ -30,7 +30,12 @@
 -- named in DBT.md: anything that ever publishes FROM points_of_interest must
 -- read public_use first, and a row here is not a shippable POI.
 with source as (
-    select * from {{ source('dec', 'raw_dec__dec_lean_tos') }}
+    -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
+    -- hint); cast here, as decision 40 has staging do.
+    select
+        * exclude (geometry),
+        st_geomfromgeojson(cast(geometry as varchar)) as geom
+    from {{ source('dec', 'raw_nysdec__dec_lean_tos') }}
 ),
 
 renamed as (

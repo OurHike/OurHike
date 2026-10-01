@@ -43,7 +43,12 @@
 -- publishing 'Beaver Island State Park' as the name of a bridge inside it is
 -- the display-outruns-its-source failure in miniature.
 with source as (
-    select * from {{ source('oprhp', 'raw_oprhp__oprhp_facilities') }}
+    -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
+    -- hint); cast here, as decision 40 has staging do.
+    select
+        * exclude (geometry),
+        st_geomfromgeojson(cast(geometry as varchar)) as geom
+    from {{ source('oprhp', 'raw_nysparks__oprhp_facilities') }}
 ),
 
 renamed as (
@@ -57,7 +62,7 @@ renamed as (
         asset as asset_code,
         sub_asset,
         parksapp as in_parks_app,
-        public_ as public_flag,
+        public as public_flag,
         st_x(geom) as longitude,
         st_y(geom) as latitude,
         _loaded_at as loaded_at

@@ -13,7 +13,7 @@ models:
       # (duplicates_are_exact on the raw table), so this only reports.
       - dbt_utils.equal_rowcount:
           arguments:
-            compare_model: source('oprhp', 'raw_oprhp__oprhp_trails')
+            compare_model: source('oprhp', 'raw_nysparks__oprhp_trails')
           config:
             severity: warn
     description: >
@@ -31,7 +31,7 @@ models:
           this layer.
         data_tests: [not_null, unique]
       - name: loaded_at
-        description: load_raw.py's `_loaded_at` for the load this row came from, naive UTC.
+        description: The extract's `_loaded_at` for the read this row came from, naive UTC.
         data_tests: [not_null]
   - name: stg_oprhp__trail_closures
     data_tests:
@@ -39,7 +39,7 @@ models:
       # (duplicates_are_exact on the raw table), so this only reports.
       - dbt_utils.equal_rowcount:
           arguments:
-            compare_model: source('oprhp', 'raw_oprhp__oprhp_trail_closures')
+            compare_model: source('oprhp', 'raw_nysparks__oprhp_trail_closures')
           config:
             severity: warn
     description: >
@@ -57,7 +57,7 @@ models:
           this layer.
         data_tests: [not_null, unique]
       - name: loaded_at
-        description: load_raw.py's `_loaded_at` for the load this row came from, naive UTC.
+        description: The extract's `_loaded_at` for the read this row came from, naive UTC.
         data_tests: [not_null]
   - name: stg_oprhp__facilities
     data_tests:
@@ -65,7 +65,7 @@ models:
       # (duplicates_are_exact on the raw table), so this only reports.
       - dbt_utils.equal_rowcount:
           arguments:
-            compare_model: source('oprhp', 'raw_oprhp__oprhp_facilities')
+            compare_model: source('oprhp', 'raw_nysparks__oprhp_facilities')
           config:
             severity: warn
     description: >
@@ -84,5 +84,5 @@ models:
           this layer.
         data_tests: [not_null, unique]
       - name: loaded_at
-        description: load_raw.py's `_loaded_at` for the load this row came from, naive UTC.
+        description: The extract's `_loaded_at` for the read this row came from, naive UTC.
         data_tests: [not_null]

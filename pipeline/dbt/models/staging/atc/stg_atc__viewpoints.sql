@@ -2,7 +2,12 @@
 -- poi_type/confidence/source literals mirror export_poi.py's DIRECT_SOURCES
 -- row for this layer, held together by test_dbt_seed_sync.py via the seed.
 with source as (
-    select * from {{ source('atc', 'raw_atc__viewpoints') }}
+    -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
+    -- hint); cast here, as decision 40 has staging do.
+    select
+        * exclude (geometry),
+        st_geomfromgeojson(cast(geometry as varchar)) as geom
+    from {{ source('atc', 'raw_atc__viewpoints') }}
 ),
 
 renamed as (

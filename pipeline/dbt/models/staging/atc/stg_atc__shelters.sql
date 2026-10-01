@@ -3,7 +3,12 @@
 -- row for this layer; the seed carries the same pair and
 -- test_dbt_seed_sync.py holds all three together.
 with source as (
-    select * from {{ source('atc', 'raw_atc__shelters') }}
+    -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
+    -- hint); cast here, as decision 40 has staging do.
+    select
+        * exclude (geometry),
+        st_geomfromgeojson(cast(geometry as varchar)) as geom
+    from {{ source('atc', 'raw_atc__shelters') }}
 ),
 
 renamed as (

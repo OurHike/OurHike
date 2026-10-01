@@ -1,5 +1,6 @@
 # The dbt transform layer - the T of the ELT architecture DBT.md specifies
-# (#100). load_raw.py puts fetched raw layers into data/warehouse.duckdb's
+# (#100). The extract (pipeline/extract/, dlt) lands raw layers, and
+# extract/_warehouse.py loads their committed files into data/warehouse.duckdb's
 # `raw` schema; everything from there to a mart is owned by the models here.
 name: ourhike
 version: "1.0.0"

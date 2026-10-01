@@ -25,7 +25,12 @@
 -- `publicuse` splits the layer 7,645 Y / 13,823 N and is the only reason it is
 -- publishable at all; it is carried, not applied - see stg_dec__lean_tos.
 with source as (
-    select * from {{ source('dec', 'raw_dec__dec_backcountry_features') }}
+    -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
+    -- hint); cast here, as decision 40 has staging do.
+    select
+        * exclude (geometry),
+        st_geomfromgeojson(cast(geometry as varchar)) as geom
+    from {{ source('dec', 'raw_nysdec__dec_backcountry_features') }}
 ),
 
 renamed as (

@@ -1,6 +1,11 @@
 -- Same shape as stg_atc__shelters, same reasoning - see that model.
 with source as (
-    select * from {{ source('atc', 'raw_atc__campsites') }}
+    -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
+    -- hint); cast here, as decision 40 has staging do.
+    select
+        * exclude (geometry),
+        st_geomfromgeojson(cast(geometry as varchar)) as geom
+    from {{ source('atc', 'raw_atc__campsites') }}
 ),
 
 renamed as (

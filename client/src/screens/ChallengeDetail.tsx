@@ -748,6 +748,9 @@ function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
     sent !== null && props.entryState?.kind === 'refused' ? props.entryState : null
   const draft = challenge.status === 'draft'
   const closed = challenge.window.closes !== null && today > challenge.window.closes
+  // Reachable only if the published window moved after the tags were made;
+  // the server would take the entry, and the club would count it early.
+  const early = challenge.window.opens !== null && today < challenge.window.opens
   const reward = challenge.reward
   const words = reward === null ? null : REWARD_WORDS[reward.kind]
   const [name, setName] = useState(props.defaultName ?? '')
@@ -777,9 +780,11 @@ function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
     ? `The ${challenge.orgShort} has not confirmed this list yet, so there is nobody to send anything to through OurHike.`
     : closed && challenge.window.closes !== null
       ? `Entries closed on ${formatDay(challenge.window.closes)}.`
-      : orgDomain === null
-        ? `This phone's copy of the list is too old to send anything to the ${challenge.orgShort}. It updates with the next data refresh.`
-        : null
+      : early && challenge.window.opens !== null
+        ? `Entries open on ${formatDay(challenge.window.opens)}.`
+        : orgDomain === null
+          ? `This phone's copy of the list is too old to send anything to the ${challenge.orgShort}. It updates with the next data refresh.`
+          : null
 
   // Where a sent entry stands: refused (with the server's own sentence and a
   // way back to the form), waiting in the outbox, or gone.

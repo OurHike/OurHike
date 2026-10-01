@@ -8752,7 +8752,7 @@ function App() {
         if (result !== null) handleSynced(result)
       })
       .finally(() => void refreshOutbox())
-  }, [refreshOutbox, syncOutbox, handleSynced])
+  }, [refreshOutbox, handleSynced])
   const challenges = useChallenges(online, afterFirstFrame, onChallengeQueued, {
     todayRanges: challengeTodayRanges,
     trail: DEFAULT_TRAIL_ID,
@@ -8760,7 +8760,6 @@ function App() {
     maxElevationFt: (ranges) => profileMaxFt(elevation, ranges),
     hours: challengeHours,
   })
-  const [openChallengeId, setOpenChallengeId] = useState<string | null>(null)
   const challengePlanDays = useMemo(
     () => (plan === null ? [] : planDayRanges(planDayViews(plan))),
     [plan],
@@ -8778,12 +8777,16 @@ function App() {
   // from - Plan, a place card, Browse - and not always to the list.
   const openChallenge = useCallback(
     (challengeId: string) => {
-      setOpenChallengeId(challengeId)
-      pushScreen({ kind: 'more', page: 'challenge' })
+      pushScreen({ kind: 'more', page: 'challenge', challengeId })
     },
     [pushScreen],
   )
   const moreStack = nav.state.stacks.more
+  // The challenge the top of More shows, read off the screen itself.
+  const openChallengeId =
+    moreTop?.kind === 'more' && moreTop.page === 'challenge'
+      ? (moreTop.challengeId ?? null)
+      : null
   const challengesUp = useMemo(() => {
     const top = moreStack[moreStack.length - 1]
     const below = moreStack[moreStack.length - 2]
@@ -8865,9 +8868,11 @@ function App() {
         joined={challenges.joined}
         state={challenges.state}
         today={challengeToday}
-        // Only once a list has arrived: before the kept copy is read, every
-        // joined id would count as missing.
-        missing={challenges.all.length > 0 ? missingChallenges : 0}
+        // Only once a list has been read: before the kept copy is read, every
+        // joined id would count as missing. Not `all.length > 0`, which hid
+        // the note for a release that publishes no challenges at all - the
+        // one case where every joined challenge really was withdrawn.
+        missing={challenges.loaded ? missingChallenges : 0}
         onOffer={challengesOnOffer}
         onOpen={openChallenge}
         onBrowse={() => pushScreen({ kind: 'more', page: 'challenge-browse' })}

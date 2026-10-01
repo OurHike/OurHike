@@ -127,6 +127,17 @@ describe('tagging', () => {
     expect(after.tags.map((entry) => entry.poi)).toEqual([places[0].poi, places[2].poi])
   })
 
+  it("un-tags a single place's hand tag from that place's own card", () => {
+    // A tag of any kind but places_all is stored with no place, so the card's
+    // POI id must not be what decides whether it matches.
+    const knob = item('mcafee-knob')
+    const poi = knob.match.kind === 'place' ? knob.match.places[0].poi : ''
+    const hand = tag(joinedAtc, ATC_CHALLENGE, knob, { poi, at: NOW, how: 'hand' }).state
+    expect(hand.tags[0].poi).toBeUndefined()
+    expect(untag(hand, ATC_CHALLENGE.id, knob.id, poi).tags).toHaveLength(0)
+    expect(removeTag(hand, ATC_CHALLENGE.id, knob.id, poi).tags).toHaveLength(0)
+  })
+
   it('keeps the register line on the tag and nowhere else', () => {
     const tagged = tag(joinedAtc, ATC_CHALLENGE, item('mcafee-knob'), {
       at: NOW,
@@ -604,6 +615,25 @@ describe('what the review of 2026-09-30 found, held', () => {
     const made = result.state.tags.find((entry) => entry.itemId === 'trail-crew')
     expect(made).toBeDefined()
     expect(localDay(new Date(made!.at))).toBe('2027-08-31')
+  })
+
+  it("never stamps today's workday later than the moment it was noticed", () => {
+    // Hours for today logged at 9 am: noon has not happened yet.
+    const morning = new Date(2027, 7, 20, 9, 0)
+    const result = autoTags(
+      {
+        joined: [ATC_CHALLENGE],
+        state: joinedAtc,
+        todayRanges: [],
+        trail: 'AT',
+        today: '2027-08-20',
+        maxElevationFt: () => null,
+        hours: [{ workedOn: '2027-08-20', mile: 1400, clubName: null, disputed: false }],
+      },
+      morning,
+    )
+    const made = result.state.tags.find((entry) => entry.itemId === 'trail-crew')
+    expect(made?.at).toBe(morning.toISOString())
   })
 
   it('counts no workday for a challenge with no join record', () => {

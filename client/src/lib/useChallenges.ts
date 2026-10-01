@@ -28,6 +28,7 @@ import type { Challenge, ChallengeItem } from './challenges'
 import { NO_CHALLENGES } from './challenges'
 import {
   autoTags,
+  completionHow,
   hideSuggestion,
   isItemDone,
   itemDoneAt,
@@ -57,6 +58,11 @@ import {
 export interface ChallengesApi {
   /** Every challenge this phone holds, joined or not. */
   all: readonly Challenge[]
+  /** Whether a list has been read at all - the kept copy or the release.
+   *  Before then `all` is empty because nothing has been read, which is not
+   *  the same as a release that publishes no challenges, and only the
+   *  second means a joined one was withdrawn. */
+  loaded: boolean
   /** The ones this hiker joined, in the published order. */
   joined: readonly Challenge[]
   state: ChallengeState
@@ -95,6 +101,7 @@ export function useChallenges(
   auto: Omit<AutoInput, 'joined' | 'state'> | null,
 ): ChallengesApi {
   const [all, setAll] = useState<readonly Challenge[]>(NO_CHALLENGES)
+  const [loaded, setLoaded] = useState(false)
   const [state, setState] = useState<ChallengeState>(readChallengeState)
   const fetched = useRef(false)
   const queued = useRef(onQueued)
@@ -108,7 +115,10 @@ export function useChallenges(
     void import('./challengeFeed')
       .then((feed) => feed.recallChallenges())
       .then((kept) => {
-        if (wanted && !fetched.current && kept !== null) setAll(kept)
+        if (wanted && !fetched.current && kept !== null) {
+          setAll(kept)
+          setLoaded(true)
+        }
       })
       .catch(() => {})
     return () => {
@@ -126,6 +136,7 @@ export function useChallenges(
         if (!wanted || fresh === null) return
         fetched.current = true
         setAll(fresh)
+        setLoaded(true)
       })
       .catch(() => {})
     return () => {
@@ -188,7 +199,13 @@ export function useChallenges(
       const result = tag(stateRef.current, challenge, item, { poi, at, how })
       commit(result.state)
       // A double tap that changes nothing completes nothing, so cannot queue.
-      if (result.completed) enqueueTag(challenge.id, item.id, how, at)
+      if (result.completed)
+        enqueueTag(
+          challenge.id,
+          item.id,
+          completionHow(item, challenge.id, result.state.tags),
+          at,
+        )
     },
     [commit, enqueueTag],
   )
@@ -209,7 +226,13 @@ export function useChallenges(
         next = result.state
       }
       commit({ ...next, answeredDay: today })
-      for (const done of completed) enqueueTag(done.challenge.id, done.item.id, 'gps', at)
+      for (const done of completed)
+        enqueueTag(
+          done.challenge.id,
+          done.item.id,
+          completionHow(done.item, done.challenge.id, next.tags),
+          at,
+        )
     },
     [commit, enqueueTag],
   )
@@ -238,7 +261,7 @@ export function useChallenges(
       enqueueTag(
         done.challenge.id,
         done.item.id,
-        'gps',
+        completionHow(done.item, done.challenge.id, result.state.tags),
         made ? new Date(made.at) : new Date(),
       )
     }
@@ -246,6 +269,7 @@ export function useChallenges(
 
   return {
     all,
+    loaded,
     joined,
     state,
     join: useCallback(
@@ -261,7 +285,13 @@ export function useChallenges(
         const tags = tagsFor(next, challengeId)
         for (const item of challenge.items) {
           const made = itemDoneAt(item, challengeId, tags)
-          if (made !== null) enqueueTag(challengeId, item.id, made.how, new Date(made.at))
+          if (made !== null)
+            enqueueTag(
+              challengeId,
+              item.id,
+              completionHow(item, challengeId, tags),
+              new Date(made.at),
+            )
         }
       },
       [commit, enqueueTag, all],

@@ -15,9 +15,11 @@
 import { API_CONFIGURED } from '../lib/api'
 import { CHALLENGE_WORDS } from '../lib/challengeWords'
 import {
+  isOpen,
   isSealed,
   itemTitle,
   itemsAtPoi,
+  windowNow,
   type Challenge,
   type ChallengeItem,
 } from '../lib/challenges'
@@ -108,6 +110,15 @@ export function PoiChallenges(props: PoiChallengesProps) {
                   </span>
                   {done && fromWalk ? (
                     <span className="challenge-row__done">done</span>
+                  ) : !done && !isOpen(challenge, today) ? (
+                    // Tags only count inside the window, so outside it the
+                    // card says when it is rather than offering one -
+                    // ChallengeDetail.tsx's rule, which this card had missed
+                    // (second review of #1780, 2026-10-01). A tag already
+                    // made keeps its pill, so it can still be taken back.
+                    <span className="challenge-row__done">
+                      {windowNow(challenge, today)}
+                    </span>
                   ) : (
                     <TagPill
                       tagged={done}

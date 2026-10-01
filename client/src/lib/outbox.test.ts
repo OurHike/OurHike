@@ -446,10 +446,13 @@ describe("a challenge's tag that fails for want of signal", () => {
     withStoredQueue([tag('t1', 'atc', 'mcafee'), untag('u1', 'atc', 'mcafee')])
     const sent: string[] = []
 
-    const result = await flushOutbox(async (item) => {
-      if (item.id === 't1') throw new Error('offline')
-      sent.push(item.id)
-    }, () => null)
+    const result = await flushOutbox(
+      async (item) => {
+        if (item.id === 't1') throw new Error('offline')
+        sent.push(item.id)
+      },
+      () => null,
+    )
 
     expect(sent).toEqual([])
     expect(result).toEqual({ sent: 0, failed: 2, stuck: 0, held: 0 })
@@ -466,10 +469,13 @@ describe("a challenge's tag that fails for want of signal", () => {
     ])
     const sent: string[] = []
 
-    await flushOutbox(async (item) => {
-      if (item.id === 't1') throw new Error('offline')
-      sent.push(item.id)
-    }, () => null)
+    await flushOutbox(
+      async (item) => {
+        if (item.id === 't1') throw new Error('offline')
+        sent.push(item.id)
+      },
+      () => null,
+    )
 
     expect(sent).toEqual([])
   })
@@ -482,10 +488,13 @@ describe("a challenge's tag that fails for want of signal", () => {
     ])
     const sent: string[] = []
 
-    await flushOutbox(async (item) => {
-      if (item.id === 't1') throw new Error('offline')
-      sent.push(item.id)
-    }, () => null)
+    await flushOutbox(
+      async (item) => {
+        if (item.id === 't1') throw new Error('offline')
+        sent.push(item.id)
+      },
+      () => null,
+    )
 
     expect(sent).toEqual(['u2', 'r1'])
   })

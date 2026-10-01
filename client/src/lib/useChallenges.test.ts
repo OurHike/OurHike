@@ -21,14 +21,16 @@ vi.mock('./outbox', () => ({
   },
   removeQueued: async () => {},
 }))
+let kept: unknown[] = [ATC_CHALLENGE]
 vi.mock('./challengeFeed', async (original) => ({
   ...(await original<typeof import('./challengeFeed')>()),
-  recallChallenges: async () => [ATC_CHALLENGE],
+  recallChallenges: async () => kept,
   fetchChallenges: async () => null,
 }))
 
 afterEach(() => {
   queued.length = 0
+  kept = [ATC_CHALLENGE]
   localStorage.clear()
 })
 
@@ -53,6 +55,20 @@ describe('useChallenges keeps the server where the phone is', () => {
       challenge_id: ATC_CHALLENGE.id,
       item_id: 'trivia-quiz',
     })
+  })
+
+  it('sends a Triple Crown as hand-tagged when any of its peaks was', async () => {
+    const crown = ATC_CHALLENGE.items.find(
+      (entry) => entry.id === 'virginia-triple-crown',
+    )!
+    const places = crown.match.kind === 'places_all' ? crown.match.places : []
+    const { result } = await hook()
+    act(() => result.current.join(ATC_CHALLENGE.id))
+    act(() => result.current.tagItem(ATC_CHALLENGE, crown, 'hand', places[0].poi))
+    act(() => result.current.tagItem(ATC_CHALLENGE, crown, 'hand', places[1].poi))
+    act(() => result.current.tagItem(ATC_CHALLENGE, crown, 'gps', places[2].poi))
+    await vi.waitFor(() => expect(queued).toHaveLength(1))
+    expect(queued[0].body).toMatchObject({ item_id: crown.id, how: 'hand' })
   })
 
   it('takes every tag back on Leave, and sends them again on rejoining', async () => {
@@ -83,5 +99,18 @@ describe('useChallenges keeps the server where the phone is', () => {
       }),
     )
     await vi.waitFor(() => expect(result.current.state.sent[0]?.outboxId).toBeDefined())
+  })
+})
+
+describe('useChallenges says when a list has been read', () => {
+  it('counts a published list with no challenges in it as read', async () => {
+    // So a joined challenge a release withdrew is reported missing, rather
+    // than the empty list being mistaken for nothing read yet.
+    kept = []
+    const { useChallenges } = await import('./useChallenges')
+    const { result } = renderHook(() => useChallenges(false, true, () => {}, null))
+    expect(result.current.loaded).toBe(false)
+    await vi.waitFor(() => expect(result.current.loaded).toBe(true))
+    expect(result.current.all).toEqual([])
   })
 })

@@ -14,10 +14,10 @@ the `atc/` and `nysdec/` folders, with `tests/test_extract_layout.py` and
 registered layers are all ArcGIS (`nysparks/`, `usfs/`, `pcta/` and the rest),
 claiming 26 keys; `nycparks/` and `nycdot/` through the Socrata kind, 7
 more; and `nynjtc/` through the WordPress, guide-page and Hike Finder kinds,
-5 more, with the daily rule in `_run.py`. 4 keys remain on
-`NOT_YET_EXTRACTED`. Not built yet: `_shared/`, `gatc/` and the club-PDF
-kind, the other clubs, the as-sent copy, the raw lake, fixture mode, and any
-run against R2. Every other
+5 more, with the daily rule in `_run.py`; and `gatc/` through the club-PDF
+kind. 3 keys remain on `NOT_YET_EXTRACTED`, each with its blocker beside it.
+Not built yet: `_shared/`, the other clubs, the as-sent copy, the raw lake,
+fixture mode, and any run against R2. Every other
 source still comes from the old fetchers (`fetch_*.py`, `lib/arcgis.py`,
 `lib/socrata.py`) and `load_raw.py`; a change to one of those follows its own
 docstring and tests. On `main` none of this exists until the pull request

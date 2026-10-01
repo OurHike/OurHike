@@ -87,6 +87,8 @@ pyarrow==25.0.1
     # via dlt
 pygments==2.21.0
     # via rich
+pypdf==6.19.0
+    # via -r pipeline/requirements-extract.in
 python-dateutil==2.9.0.post0
     # via
     #   aiobotocore

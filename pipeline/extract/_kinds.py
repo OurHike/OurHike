@@ -19,6 +19,7 @@ The kinds built so far for stage 2 (#1793 â€” Rebuild the data platform as dlt â
     wordpress_terms(key, t) that site's taxonomy terms, daily, for dbt to resolve
     guide_pages(key)        a guide published as web pages, one row per section
     published_hikes(key)    the Hike Finder export, one row per hike, GPX as served
+    club_pdf(key)           a club's PDF, one row per row its lib/club_pdfs.py parser reads
     reviewed_input(key)     a registry entry whose rows a person reviews into a
                             file in git (ATC's Trail Updates), loaded from that file
     reviewed_file(path)     a reviewed pipeline/reference/ file with no registry
@@ -45,8 +46,10 @@ from urllib.parse import urljoin, urlparse
 import requests
 
 from extract._contract import EXTRACT_DIR, PIPELINE_DIR, Resource, read_club_file, slug_for_folder
+from fetch_club_pdfs import extract_page_texts
 from fetch_hikefinder import sign_in as hikefinder_sign_in
 from lib.arcgis import iter_layer_pages, layer_count
+from lib.club_pdfs import PARSERS as CLUB_PDF_PARSERS
 from lib.freshness_state import Freshness, compare_marker
 from lib.hikefinder import DETAIL_PATH as HIKEFINDER_DETAIL_PATH
 from lib.hikefinder import GPX_PATH as HIKEFINDER_GPX_PATH
@@ -710,6 +713,75 @@ class PublishedHikes(Resource):
 def published_hikes(key: str, **overrides) -> PublishedHikes:
     registry_entry(key)
     return PublishedHikes(key=key, **overrides)
+
+
+@dataclass(frozen=True)
+class ClubPdf(Resource):
+    """A PDF a club publishes: one row per row its parser reads, each carrying the document's own manifest.
+
+    The registry row's `url` is the PDF. lib/club_pdfs.py's parser for the key
+    turns the text layer into rows, and raises on a layout it has not seen, so
+    a changed document refuses the run rather than relabelling a column. The
+    manifest (url, ETag, Last-Modified, sha256, bytes) rides every row as
+    `_document`, so the date the club put on the file is in the warehouse.
+    The PDF's own bytes go to the as-sent copy, which is not built yet. The
+    text comes from fetch_club_pdfs.py's `extract_page_texts`, which needs
+    pypdf: requirements-extract.in pins it, and requirements.in's note says
+    why the build jobs do not.
+    """
+
+    def _get(self, headers: dict | None = None) -> requests.Response:
+        return request_with_retry(registry_entry(self.key)["url"], session=session(), headers=headers or None, timeout=120)
+
+    def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
+        """A conditional GET, then the body's sha256: WordPress re-serves the same bytes without a 304.
+
+        GATC's file answers with its validators (fetch_club_pdfs.py), so a 304
+        is FRESH; a 200 with the same sha256 as the last load is FRESH too.
+        """
+        headers = {}
+        if recorded:
+            if recorded.get("etag"):
+                headers["If-None-Match"] = recorded["etag"]
+            if recorded.get("last_modified"):
+                headers["If-Modified-Since"] = recorded["last_modified"]
+        try:
+            response = self._get(headers)
+        except requests.RequestException as error:
+            print(f"  {self.key}: change check failed ({error}); fetching")
+            return Freshness.UNKNOWN, None
+        if response.status_code == 304:
+            return Freshness.FRESH, recorded
+        marker = {
+            "sha256": hashlib.sha256(response.content).hexdigest(),
+            "etag": response.headers.get("ETag"),
+            "last_modified": response.headers.get("Last-Modified"),
+        }
+        if not recorded or not recorded.get("sha256"):
+            return Freshness.STALE, marker
+        return (Freshness.FRESH if recorded["sha256"] == marker["sha256"] else Freshness.STALE), marker
+
+    def rows(self, proofs: dict[str, int]):
+        response = self._get()
+        response.raise_for_status()
+        body = response.content
+        rows = CLUB_PDF_PARSERS[self.key](extract_page_texts(body))
+        document = {
+            "url": registry_entry(self.key)["url"],
+            "etag": response.headers.get("ETag"),
+            "last_modified": response.headers.get("Last-Modified"),
+            "sha256": hashlib.sha256(body).hexdigest(),
+            "bytes": len(body),
+        }
+        for row in rows:
+            yield {**row, "_document": document}
+
+
+def club_pdf(key: str, **overrides) -> ClubPdf:
+    registry_entry(key)
+    if key not in CLUB_PDF_PARSERS:
+        raise KeyError(f"{key}: lib/club_pdfs.py has no parser for it, so there is nothing to load but bytes")
+    return ClubPdf(key=key, **overrides)
 
 
 @dataclass(frozen=True)

@@ -43,3 +43,11 @@ requests
 
 # The Postgres driver sql_database talks through (the conditions lane).
 psycopg[binary]
+
+# fetch_club_pdfs.py's text extraction, for extract/_kinds.py's club_pdf kind
+# (GATC's water-sources PDF, gatc/points_of_interest.py). requirements.in keeps
+# it out of the build jobs on purpose and says the day a workflow needs the
+# fetch is the day to pin it; the monthly extract lane is that workflow, and
+# this file is its own pins, so the build jobs' lockfiles do not move. Pure
+# Python, about 2 MB, with no dependencies of its own on Python 3.12.
+pypdf

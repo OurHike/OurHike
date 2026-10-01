@@ -24,6 +24,7 @@ from extract import _kinds, _run
 from extract._contract import Resource
 from extract._kinds import (
     ArcgisLayer,
+    ClubPdf,
     GuidePages,
     PodcastFeed,
     PublishedHikes,
@@ -39,6 +40,7 @@ from extract._warehouse import load_warehouse
 from lib.freshness_state import Freshness
 from lib.user_agent import USER_AGENT
 from tests.test_fetch_nynjtc_long_path_guide import INDEX, section_page
+from tests.test_lib_club_pdfs import PAGE_1, PAGE_2
 from tests.test_lib_hikefinder import GPX, page
 
 AGOL = "https://services1.arcgis.com/orgid/arcgis/rest/services"
@@ -50,6 +52,7 @@ SOCRATA = "https://data.example.gov/resource/abcd-1234"
 WP = "https://club.example.org/wp-json/wp/v2"
 GUIDE = "https://club.example.org/guide/"
 HIKES = "https://hikes.example.org/hikefinder/"
+PDF_URL = "https://club.example.org/wp-content/uploads/water.pdf"
 GREENWAY_WHERE = "status='Current' AND grnwy='Greenway'"
 FEED = b"""<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
@@ -119,6 +122,7 @@ def registry(tmp_path, monkeypatch):
                     {"key": "alerts", "url": "https://club.example.org/category/trail-alerts/", "kind": "published_notices"},
                     {"key": "nynjtc_long_path_guide", "url": GUIDE, "kind": "guide_pages"},
                     {"key": "hikes", "url": HIKES, "kind": "published_hikes"},
+                    {"key": "gatc_water_sources", "url": PDF_URL, "kind": "club_pdf"},
                     {
                         "key": "greenways",
                         "url": "https://data.example.gov/d/abcd-1234",
@@ -609,3 +613,43 @@ def test_a_category_of_exactly_one_full_page_never_asks_for_the_page_past_it(reg
     assert len(list(alerts().rows(proofs))) == 100 and proofs["raw_testclub__alerts"] == 100
     asked = [r.qs.get("page") for r in requests_mock.request_history if r.path.endswith("/posts")]
     assert asked == [["1"]], "page 2 would be a 400 from the posts route"
+
+
+def water():
+    return ClubPdf(key="gatc_water_sources", club="testclub", type="points_of_interest")
+
+
+def test_a_club_pdf_lands_its_parsed_rows_each_with_the_documents_manifest(registry, requests_mock, monkeypatch):
+    monkeypatch.setattr(_kinds, "extract_page_texts", lambda body: [PAGE_1, PAGE_2])
+    requests_mock.get(
+        PDF_URL, content=b"%PDF-1.7 water", headers={"ETag": '"w1"', "Last-Modified": "Mon, 02 Mar 2026 00:00:00 GMT"}
+    )
+    rows = list(water().rows({}))
+    assert [row["mile"] for row in rows] == [0.8, 7.3, 0.2, 2.8, 38.0, 80.7]
+    assert rows[0]["_document"]["etag"] == '"w1"' and rows[0]["_document"]["bytes"] == 14
+    assert rows[0]["_document"]["last_modified"] == "Mon, 02 Mar 2026 00:00:00 GMT", "the club's own date is in the warehouse"
+
+
+def test_a_club_pdf_is_fresh_on_a_304_or_the_same_bytes_and_stale_on_new_ones(registry, requests_mock):
+    def answer(request, context):
+        if request.headers.get("If-None-Match") == '"w1"':
+            context.status_code = 304
+            return b""
+        context.headers["ETag"] = '"w1"'
+        return document["bytes"]
+
+    document = {"bytes": b"%PDF-1.7 water"}
+    requests_mock.get(PDF_URL, content=answer)
+    verdict, marker = water().change_check(None)
+    assert verdict is Freshness.STALE and marker["etag"] == '"w1"'
+    assert water().change_check(marker) == (Freshness.FRESH, marker), "a 304"
+    assert water().change_check({"sha256": marker["sha256"]})[0] is Freshness.FRESH, "WordPress re-served the same bytes"
+    document["bytes"] = b"%PDF-1.7 water, revised"
+    assert water().change_check({"sha256": marker["sha256"]})[0] is Freshness.STALE
+
+
+def test_a_club_pdf_whose_layout_changed_refuses_rather_than_relabelling(registry, requests_mock, monkeypatch):
+    monkeypatch.setattr(_kinds, "extract_page_texts", lambda body: ["A table in a new shape"])
+    requests_mock.get(PDF_URL, content=b"%PDF-1.7 water")
+    with pytest.raises(ValueError):
+        list(water().rows({}))

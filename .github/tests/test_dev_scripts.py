@@ -65,7 +65,7 @@ def test_the_dbt_suite_reads_the_dbt_jobs_own_scope_not_the_pytest_jobs():
     """pipeline-tests.yml carries two suites, and the scope reading used to
     stop at the first changed-paths step it met - the pytest job's - so the
     dbt job's list was never read and scripts/test.sh ran no dbt at all
-    (#1793 - Rebuild the data platform as dlt → dbt: seven contracted marts,
+    (#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts,
     a monthly refresh, published docs, and lighter phone downloads). The
     dbt job's list names files inside pipeline/ one by one; the pytest
     job's names pipeline/ whole."""

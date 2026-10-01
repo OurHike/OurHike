@@ -11,8 +11,8 @@
 # imports it (next paragraph).
 duckdb==1.5.5
 #
-# dbt v2, the Apache-2.0 distribution (#1793 - Rebuild the data platform as
-# dlt -> dbt: seven contracted marts, a monthly refresh, published docs, and
+# dbt v2, the Apache-2.0 distribution (#1793 — Rebuild the data platform as
+# dlt → dbt: seven contracted marts, a monthly refresh, published docs, and
 # lighter phone downloads; the maintainer chose dbt-oss 2.0.5 over dbt 2.0.6,
 # whose PyPI page carries no licence). One version everywhere, no dbt-core
 # 1.x beside it. v2 is a Rust binary with its own DuckDB driver built in, so

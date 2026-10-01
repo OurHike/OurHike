@@ -22,7 +22,7 @@ hardcoded list of jobs would have inherited that blind spot. These tests ask
 which jobs run DuckDB-touching entrypoints and require seeding of each, so a
 new job that loads the warehouse is covered by construction.
 
-ONE FETCH THIS DOES NOT COVER, since dbt v2 (#1793 - Rebuild the data
+ONE FETCH THIS DOES NOT COVER, since dbt v2 (#1793 — Rebuild the data
 platform as dlt → dbt: seven contracted marts, a monthly refresh, published
 docs, and lighter phone downloads). The dbt job's `dbt` binary is dbt-oss
 2.0.5, which bundles its own DuckDB (1.5.4) and fetches its own spatial build

@@ -75,7 +75,7 @@ DATA_SUFFIXES = frozenset(
 #: (pipeline/dbt/.gitignore lists the same five). target/ is the one that
 #: matters most: compiled SQL, the manifest, run results, and since dbt v2 a
 #: docs site whose Parquet artifacts are read straight from the warehouse it
-#: was built against (#1793 - Rebuild the data platform as dlt → dbt: seven
+#: was built against (#1793 — Rebuild the data platform as dlt → dbt: seven
 #: contracted marts, a monthly refresh, published docs, and lighter phone
 #: downloads). Matched by path, because most of it is .json and .sql, which
 #: no suffix rule here can see.

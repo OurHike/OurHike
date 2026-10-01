@@ -35,7 +35,7 @@ ROOT = Path(__file__).resolve().parent.parent
 #: the dbt job, each with its own changed-paths list, and the first-job rule
 #: could only ever read the pytest one. That is how a dbt-only change used to
 #: reach scripts/test.sh as "the pipeline suite" and run no dbt at all
-#: (#1793 - Rebuild the data platform as dlt → dbt: seven contracted marts,
+#: (#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts,
 #: a monthly refresh, published docs, and lighter phone downloads).
 WORKFLOWS = {
     "client": (".github/workflows/client-tests.yml", "test"),

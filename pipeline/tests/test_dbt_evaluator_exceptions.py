@@ -5,7 +5,7 @@ fixed or gets a row in dbt/seeds/dbt_project_evaluator_exceptions.csv. A row
 is a rule switched off for the models it matches, and nothing in dbt asks
 for a reason: the package's own `comment` column is optional. This file
 makes the reason structural, as the seed's description in seeds.yml
-promises (#1793 - Rebuild the data platform as dlt → dbt: seven contracted
+promises (#1793 — Rebuild the data platform as dlt → dbt: seven contracted
 marts, a monthly refresh, published docs, and lighter phone downloads):
 
 - every column is filled, and `comment` is a sentence, not a word;

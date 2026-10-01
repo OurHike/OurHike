@@ -163,7 +163,7 @@ jobs:
         run: python -m pytest -v
 
   # The dbt transform layer (pipeline/DBT.md's CI plan, #100), on dbt v2:
-  # dbt-oss 2.0.5, one dbt version everywhere (#1793 - Rebuild the data
+  # dbt-oss 2.0.5, one dbt version everywhere (#1793 — Rebuild the data
   # platform as dlt → dbt: seven contracted marts, a monthly refresh,
   # published docs, and lighter phone downloads). Its own job rather than
   # steps on `pytest`, because its dependency set (requirements-dbt.txt)
@@ -274,8 +274,10 @@ jobs:
       #     its 1.5.4 build (80,848,518 bytes) into
       #     ~/.duckdb/extensions/v1.5.4/ and ran st_point.
       # @unvalidated in CI until this job's first v2 run: that the runner
-      # reaches extensions.duckdb.org from v2. That fetch is #321's network
-      # dependency again, for dbt's half only. Seeding it would mean taking
+      # reaches extensions.duckdb.org from v2. That fetch is the network
+      # dependency that #321 — Pin the Python dependency sets and cache the
+      # DuckDB spatial extension in CI removed, back for dbt's half only.
+      # Seeding it would mean taking
       # duckdb-extension-spatial==1.5.4 from PyPI with --no-deps (its wheel
       # pins duckdb==1.5.4, which would replace load_raw.py's 1.5.5) and
       # unpacking it into that directory. Not done: one CI run first.
@@ -315,7 +317,7 @@ jobs:
       # nothing here can be committed; .github/tests/test_no_committed_data.py
       # refuses any path under pipeline/dbt/target/ besides. The checks after
       # it fail the step when v2 stops writing one of the three parts. Nothing
-      # publishes the site yet; where it goes is ourhike.org/data/ (#1793).
+      # publishes the site yet; the plan puts it at ourhike.org/data/.
       - name: dbt docs generate
         if: steps.scope.outputs.run == 'true'
         working-directory: pipeline/dbt

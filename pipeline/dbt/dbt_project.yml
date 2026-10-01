@@ -42,7 +42,7 @@ seeds:
       +enabled: false
 
 # dbt_project_evaluator is ENFORCED: every finding fails the evaluator step
-# in pipeline-tests.yml's `dbt` job, rather than warning (#1793 - Rebuild
+# in pipeline-tests.yml's `dbt` job, rather than warning (#1793 — Rebuild
 # the data platform as dlt → dbt: seven contracted marts, a monthly refresh,
 # published docs, and lighter phone downloads; the maintainer's words were
 # "Enforce all standards in that tool"). A finding is fixed, or excepted by a
@@ -59,8 +59,8 @@ vars:
   dbt_project_evaluator:
     # The mart names the maintainer chose carry no dim_/fct_ prefix
     # ("do not keep the dim_ and fct_ prefixes in the marts folders. Just
-    # use the names I provided", #1793). The evaluator reads a model's
-    # prefix as everything before its first underscore plus the underscore,
+    # use the names I provided"). The evaluator reads a model's prefix as
+    # everything before its first underscore plus the underscore,
     # so these ten cover the eleven marts - trail_ is both trail_lines and
     # trail_network, and a name with no underscore (closures, warnings,
     # podcasts, challenges, elevation, places, sources) reads as itself

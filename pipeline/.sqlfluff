@@ -1,8 +1,8 @@
 # SQLFluff over the dbt models (pipeline/DBT.md's linting section); duckdb
 # dialect to match the warehouse.
 #
-# THE JINJA TEMPLATER, NOT THE DBT ONE, since dbt v2 (#1793 - Rebuild the
-# data platform as dlt -> dbt: seven contracted marts, a monthly refresh,
+# THE JINJA TEMPLATER, NOT THE DBT ONE, since dbt v2 (#1793 — Rebuild the
+# data platform as dlt → dbt: seven contracted marts, a monthly refresh,
 # published docs, and lighter phone downloads). sqlfluff-templater-dbt
 # compiles through dbt-core 1.x, and the maintainer chose one dbt version
 # everywhere: dbt-oss 2.0.5, with no dbt-core beside it. The jinja templater

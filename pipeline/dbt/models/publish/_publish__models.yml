@@ -1,0 +1,51 @@
+version: 2
+
+models:
+  - name: pub_podcasts_episodes
+    description: >
+      Writes podcasts/episodes.json, the podcast list a phone reads, from the
+      podcasts mart: one row, `source` and `episodes`, which the phone_file
+      materialisation copies to processed_dir/podcasts_episodes.json as one
+      JSON document. parity.py compares it with export_podcasts.py's file,
+      record by record, in the dbt job.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: source
+        description: export_podcasts.py's literal, the reviewed file the list comes from.
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: episodes
+        description: >
+          The episodes in the file's order, each as lib/podcasts.py's
+          as_published() writes one, `minutes` left out where null.
+        data_type: json[]
+
+exposures:
+  - name: podcasts_episodes_json
+    label: podcasts/episodes.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The podcast episodes picked for hikes (#1683 — Offer podcast episodes
+      picked for the hike, with a one-tap Spotify save and an in-app player),
+      read by client/src/lib/podcasts.ts. A live key at the bucket root,
+      outside every release folder (client/src/lib/dataRelease.ts's
+      ROOT_SCOPED_PREFIXES), rewritten in place, so a bad upload is served
+      until the next one. Uploaded by publish-podcasts.yml from
+      export_podcasts.py's file until stage 4 of #1793 moves the upload to
+      this writer's.
+    depends_on:
+      - ref('podcasts')
+      - ref('pub_podcasts_episodes')
+    config:
+      meta:
+        r2_keys: [podcasts/episodes.json]
+        format: json
+        # The lane that reads its source. A person's dispatch of
+        # publish-podcasts.yml is what ships an edit today, on no schedule.
+        cadence: monthly

@@ -22,10 +22,14 @@ no file records the live layer's types. A field that is null on every
 fixture row is typed as a string, the safest guess for a column nobody has
 seen a value in (Reasoned).
 
+THE REVIEWED FILES RUN AS THEY ARE. Their upstream is a file in git under
+pipeline/reference/, so CI reads the real thing: the podcast episodes, the
+POI identity ledger, ATC's reviewed Trail Updates and the rest.
+
 What is left out of the run, and why:
-- every resource whose key has no fixture file, because CI fetches nothing;
-- OurHike's conditions queries and the reviewed files: no Postgres in the
-  dbt job, and the reviewed files are not what staging reads yet.
+- every fetched resource whose key has no fixture file, because CI fetches
+  nothing;
+- OurHike's conditions queries: no Postgres in the dbt job.
 
 An unknown URL raises, so a resource that reaches past its fixture fails
 loudly rather than reaching the network.
@@ -44,7 +48,7 @@ from requests.structures import CaseInsensitiveDict
 
 from extract import _kinds
 from extract._contract import all_resources, discover, discover_shared
-from extract._kinds import ArcgisLayer, OpentrailFeed, SocrataDataset, registry_entry
+from extract._kinds import ArcgisLayer, OpentrailFeed, ReviewedFile, SocrataDataset, registry_entry
 from extract._run import LANES, lane_resources, make_pipeline, run_pipeline
 from extract._warehouse import load_warehouse
 from lib.socrata import dataset_url
@@ -147,6 +151,9 @@ def fixture_resources(raw_dir: Path) -> tuple[list, FixtureAdapter]:
     """The extract's own resources that have a fixture file, and the adapter that answers them."""
     arcgis, socrata, feeds, chosen = {}, {}, {}, []
     for resource in all_resources(discover() + discover_shared()):
+        if isinstance(resource, ReviewedFile):
+            chosen.append(resource)  # a committed file is its own fixture
+            continue
         path = fixture_file(raw_dir, resource.key)
         if path is None:
             continue

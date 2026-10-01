@@ -73,7 +73,26 @@ def test_there_are_staging_models_to_check():
     assert len(MODELS) >= 27 + 28
 
 
-@pytest.mark.parametrize("path", MODELS, ids=lambda p: p.stem)
+def _reviewed_tables() -> set[str]:
+    """The raw tables the extract loads from reviewed files in git, which carry no geometry."""
+    from extract._contract import all_resources, discover, discover_shared
+    from extract._kinds import ReviewedDir, ReviewedFile
+
+    resources = all_resources(discover() + discover_shared())
+    return {resource.table for resource in resources if isinstance(resource, ReviewedFile | ReviewedDir)}
+
+
+SPATIAL_MODELS = [path for path in MODELS if SOURCE.search(path.read_text()).group(2) not in _reviewed_tables()]
+
+
+def test_only_the_reviewed_file_models_read_no_geometry():
+    assert {path.stem for path in MODELS} - {path.stem for path in SPATIAL_MODELS} == {
+        "base_podcasts__podcast_episodes",
+        "base_ourhike__poi_identity",
+    }
+
+
+@pytest.mark.parametrize("path", SPATIAL_MODELS, ids=lambda p: p.stem)
 def test_each_staging_model_casts_geometry_from_its_raw_table_the_one_way(path):
     """The source CTE's cast is what RAW_GEOMETRY stands for, so a model that casts differently fails here, not in a key."""
     assert f"{RAW_GEOMETRY} as geom" in path.read_text(), f"{path.name} does not cast its raw geometry with {RAW_GEOMETRY}"

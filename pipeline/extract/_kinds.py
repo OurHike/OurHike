@@ -1228,14 +1228,34 @@ class ReviewedFile(Resource):
     The change marker is the file's sha256: the file is its own upstream, so
     it is FRESH exactly when its bytes are, and its row count is its own proof.
     `rows_key` names the list a file keeps its rows under; None loads the
-    whole document as one row. `_README` is the file's documentation and never
-    a column. Every other top-level field (who reviewed it and when, the
-    upstream marker it was reviewed against) rides each row as `_file`, so the
-    "as of" a phone prints is in the warehouse and not only in git.
+    whole document as one row. With `map_key` set, `rows_key` names a map of
+    id -> row instead, and each row lands with its id under that column: the
+    POI identity ledger keeps its 8,563 POIs that way. `_README` is the
+    file's documentation and never a column. Every other top-level field (who
+    reviewed it and when, the upstream marker it was reviewed against) rides
+    each row as `_file`, so the "as of" a phone prints is in the warehouse and
+    not only in git.
     """
 
     path: str = ""
     rows_key: str | None = None
+    map_key: str | None = None
+    # (column, dlt data type) pairs, for a file whose schema is written down
+    # somewhere: dlt creates no column it never saw a value for, so a field no
+    # row carries yet would otherwise be missing from the table.
+    hints: tuple[tuple[str, str], ...] = ()
+    # For a file a gate checks field by field, such as the podcast episodes:
+    # each row lands whole in one `row_json` column, as the JSON text of what the
+    # reviewer wrote, and dbt reads its fields. Typed columns would hide the
+    # typos the gate exists to refuse. Measured 2026-10-01 on dlt 1.30.0: a
+    # bigint hint landed "minutes": "34" as 34, a text hint landed
+    # "title": 5 as "5", sql_ci_v1 folded a misspelt "At_Miles" into
+    # at_miles, and a field null on every row made no column at all.
+    verbatim: bool = False
+
+    def column_hints(self) -> dict:
+        hints = {name: {"data_type": data_type} for name, data_type in self.hints}
+        return {**hints, "row_json": {"data_type": "text"}} if self.verbatim else hints
 
     @property
     def file(self) -> Path:
@@ -1257,10 +1277,19 @@ class ReviewedFile(Resource):
             yield {**body, "_path": self.path}
             return
         rows = document[self.rows_key]
+        if self.map_key is not None:
+            if not isinstance(rows, dict):
+                raise ValueError(f"{self.path}: {self.rows_key} is not a map, so it has no ids for {self.map_key}")
+            if any(self.map_key in row for row in rows.values()):
+                raise ValueError(f"{self.path}: a row already carries {self.map_key}, so the map's id cannot land there")
+            rows = [{self.map_key: row_id, **row} for row_id, row in rows.items()]
         context = {name: value for name, value in document.items() if name not in ("_README", self.rows_key)}
         proofs[self.table] = len(rows)
-        for row in rows:
-            yield {**row, "_file": context, "_path": self.path}
+        # `_row` is the row's place in the file, because a reviewed file's order is
+        # often the published order (export_podcasts.py keeps it) and SQL has none.
+        for index, row in enumerate(rows):
+            fields = {"row_json": json.dumps(row, ensure_ascii=False)} if self.verbatim else row
+            yield {**fields, "_row": index, "_file": context, "_path": self.path}
 
 
 def reviewed_input(key: str, rows_key: str, **overrides) -> ReviewedFile:
@@ -1277,10 +1306,27 @@ def reviewed_input(key: str, rows_key: str, **overrides) -> ReviewedFile:
     return ReviewedFile(key=key, path=path, rows_key=rows_key, **overrides)
 
 
-def reviewed_file(path: str, rows_key: str | None, **overrides) -> ReviewedFile:
+def reviewed_file(
+    path: str,
+    rows_key: str | None,
+    map_key: str | None = None,
+    hints: dict[str, str] | None = None,
+    verbatim: bool = False,
+    **overrides,
+) -> ReviewedFile:
     if not (PIPELINE_DIR / path).is_file():
         raise FileNotFoundError(path)
-    return ReviewedFile(key=path, path=path, rows_key=rows_key, **overrides)
+    if verbatim and rows_key is None:
+        raise ValueError(f"{path}: verbatim lands each row of a list or map, and rows_key names none")
+    return ReviewedFile(
+        key=path,
+        path=path,
+        rows_key=rows_key,
+        map_key=map_key,
+        hints=tuple(sorted((hints or {}).items())),
+        verbatim=verbatim,
+        **overrides,
+    )
 
 
 @dataclass(frozen=True)

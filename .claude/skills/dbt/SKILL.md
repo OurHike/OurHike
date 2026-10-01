@@ -272,7 +272,7 @@ a `source()` (today's `stg_`, the target's `base_`):
 Every mart is a contracted table (`contract: {enforced: true}`), `access:
 public`, with every column described. Intermediates are `protected`. Every mart
 carries `club varchar` (the folder that extracted the row), `source_key
-varchar` (with a relationships test to `sources`) and `_loaded_at timestamp`,
+varchar` (with a relationships test to `sources`) and `_loaded_at timestamptz`,
 and each feature appears once, its stewards attached from
 `int_<mart>__stewardship`.
 
@@ -280,7 +280,7 @@ and each feature appears once, its stewards attached from
 |---|---|---|
 | `geometry('OGC:CRS84')` refuses only a *different, known* CRS. It accepts a geometry with no CRS, and a `.duckdb` file never keeps one | measured 2026-10-01 on 2.0.5: a mart holding EPSG:5070 metres built green | every geometry mart carries a bounds test (lon in [-180, 180], lat in [-90, 90], plus the club's own box from `trail_orgs.json`'s `states`) beside the lon/lat swap test |
 | column names are compared case-sensitively | measured on 1.12.2: ATC's `Name` failed until aliased | alias every column in lowercase in the base model |
-| `_loaded_at` is `TIMESTAMP`, not `TIMESTAMPTZ` | measured on 1.12.2; the value is naive UTC (`load_raw.py:201-206`) | declare `timestamp` |
+| `_loaded_at` is `TIMESTAMPTZ` on every dlt raw table, though `extract/_run.py` stamps naive UTC | measured 2026-10-01, dlt 1.30.0 filesystem destination: 63 of 64 fixture-mode tables, and `_warehouse.py`'s proven-empty table was the 64th until it was made the same. `TIMESTAMP` was `load_raw.py`'s, measured on 1.12.2 | declare `timestamptz` |
 | no `foreign_key` constraint | Reasoned: DuckDB refuses to drop a table a foreign key references, and every rebuild drops it | a relationships test instead |
 | `primary_key` and `check` fail any build into DuckLake | measured 2026-10-01 on 2.0.5 | why the warehouse moves to DuckLake only at phase 4 |
 | v2 refuses `contract` on a snapshot; a contracted incremental model must set `on_schema_change` | measured 2026-10-01 on 2.0.5 | matters only once decision 27 is answered |
@@ -406,6 +406,19 @@ R2 keys, format, coordinate decimals, offline tier and size budget.
   and `format='gdal'`, and writes an all-NULL row for an empty model (measured).
 - **Coalesce `features` to `[]`**: `list()` over zero rows writes
   `"features":null`, and an empty closures file is a normal state.
+- **`location` is a bare file name**, which `phone_file` refuses otherwise:
+  `COPY` creates no directory (measured 2026-10-01). The phone's key, slash
+  and all, is the exposure's `meta.r2_keys`.
+- **A writer is `access: public` with an enforced contract**, as the
+  evaluator wants of a model an exposure reads, and `phone_file` asserts it:
+  a custom materialisation enforces none on its own (measured 2026-10-01 on
+  dbt 2.0.6, a wrong contract type built and wrote its file until
+  `phone_file` called `get_assert_columns_equivalent`).
+- **`pub_` is in the evaluator's `other_prefixes`** beside `rpt_`, which
+  `fct_model_naming_conventions` needed (measured 2026-10-01).
+- **A writer's family gets a `parity.py` row** and a CI step comparing it
+  with today's exporter, until the exporter is deleted (ELT.md, "How a rule
+  moves").
 
 ## Docs and charts are built, never committed
 

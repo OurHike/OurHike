@@ -338,19 +338,27 @@ def test_every_module_the_extract_imports_is_pinned_in_its_own_requirements():
 
 
 def test_the_dbt_jobs_scope_covers_every_local_module_the_extract_imports():
-    """pipeline-tests.yml's dbt job builds its warehouse through the extract (fixture mode), so a change to any module
-    the extract imports must run that job. Its `paths:` list is hand-written, and this holds it to the import walk."""
+    """pipeline-tests.yml's dbt job builds its warehouse through the extract (fixture mode) and checks parity with
+    parity.py, so a change to any module either imports, or to a reviewed file fixture mode loads, must run that job.
+    Its `paths:` list is hand-written, and this holds it to the import walk and to the reviewed files."""
     import yaml
+
+    from extract._kinds import ReviewedDir, ReviewedFile
 
     workflow = yaml.safe_load((PIPELINE_DIR.parent / ".github" / "workflows" / "pipeline-tests.yml").read_text())
     scope = next(step for step in workflow["jobs"]["dbt"]["steps"] if step.get("id") == "scope")["with"]["paths"].split()
-    reached, _ = _import_closure([*EXTRACT_DIR.glob("_*.py"), *(file.path for file in EVERY_FILE)])
+    reached, _ = _import_closure([*EXTRACT_DIR.glob("_*.py"), *(file.path for file in EVERY_FILE), PIPELINE_DIR / "parity.py"])
+    reviewed = {
+        PIPELINE_DIR / resource.path
+        for resource in all_resources(discover() + discover_shared())
+        if isinstance(resource, ReviewedFile | ReviewedDir)
+    }
     uncovered = sorted(
         str(path.relative_to(PIPELINE_DIR.parent))
-        for path in reached
+        for path in reached | reviewed
         if not any(str(path.relative_to(PIPELINE_DIR.parent)).startswith(prefix) for prefix in scope)
     )
-    assert not uncovered, f"imported by the extract and outside the dbt job's paths: {uncovered}"
+    assert not uncovered, f"read by the dbt job and outside its paths: {uncovered}"
 
 
 def _shared_module(relative: str):

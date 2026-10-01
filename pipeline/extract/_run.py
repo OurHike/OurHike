@@ -424,7 +424,7 @@ def run_pipeline(
     # this bites a reused one: a laptop, a cached runner.
     if pipeline.has_pending_data:
         print(f"::warning title={lane} dropped an uncommitted load::a previous run died before its load committed")
-        pipeline.drop_pending_packages()
+        pipeline.abort_packages()
     pipeline.sync_destination()
     recorded = recorded_markers(pipeline)
     plan_resources = due(plan_resources, run_log_rows(pipeline), checked_at)

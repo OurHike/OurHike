@@ -444,7 +444,8 @@ if selected_has dbt; then
     dbt_tmp="$(mktemp -d)"
     trap 'rm -rf "$dbt_tmp"' EXIT
     dbt_cmd=(env -C pipeline/dbt DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS=false
-             "OURHIKE_WAREHOUSE=$dbt_tmp/warehouse.duckdb" "$DBT_DIR/dbt")
+             "OURHIKE_WAREHOUSE=$dbt_tmp/warehouse.duckdb"
+             "OURHIKE_PROCESSED_DIR=$dbt_tmp/processed" "$DBT_DIR/dbt")
     if $skip_dbt_deps; then
       echo "-- dbt deps: skipped (--no-dbt-deps), using pipeline/dbt/dbt_packages/ as it is"
       skipped+=("dbt deps (--no-dbt-deps)")
@@ -462,7 +463,10 @@ if selected_has dbt; then
     step "dbt fixtures"          env -C pipeline "$PY" make_dbt_fixtures.py --raw-dir "$dbt_tmp/raw"
     step "dbt load warehouse"    env -C pipeline RUNTIME__DLTHUB_TELEMETRY=false "$PY" -m extract._fixtures --raw-dir "$dbt_tmp/raw" --warehouse "$dbt_tmp/warehouse.duckdb" --store "$dbt_tmp/store"
     step "dbt seed"              "${dbt_cmd[@]}" seed --profiles-dir .
-    step "dbt build"             "${dbt_cmd[@]}" build --profiles-dir . --exclude package:dbt_project_evaluator
+    step "dbt build"             "${dbt_cmd[@]}" build --profiles-dir . --exclude package:dbt_project_evaluator path:models/publish
+    mkdir -p "$dbt_tmp/processed"
+    step "dbt publish"           "${dbt_cmd[@]}" build --profiles-dir . -s path:models/publish
+    step "dbt parity"            env -C pipeline "$PY" parity.py podcasts --new "$dbt_tmp/processed/podcasts_episodes.json"
     step "dbt source freshness"  "${dbt_cmd[@]}" source freshness --profiles-dir .
     step "dbt docs generate"     "${dbt_cmd[@]}" docs generate --profiles-dir . --output-dir target/docs
     step "dbt docs site"         dbt_docs_site_complete pipeline/dbt/target/docs

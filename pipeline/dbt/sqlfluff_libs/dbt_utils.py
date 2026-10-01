@@ -31,6 +31,7 @@ scripts/test.sh. Without them, every model fails to render with this file's
 message rather than with a jinja one.
 """
 
+import re
 from pathlib import Path
 
 import jinja2
@@ -87,7 +88,9 @@ class _Macros:
         context = {"adapter": self, "dbt": _Dbt(), "var": self.var, "return": _return}
         for path in sorted(folder.rglob("*.sql")):
             text = path.read_text()
-            if "{% test " in text or "{%- test " in text:
+            # A generic test or a materialisation is a dbt block tag, which plain
+            # Jinja cannot compile, and no model calls either as a macro.
+            if re.search(r"{%-?\s*(test|materialization)\s", text):
                 continue
             module = self.env.from_string(text).make_module(context)
             found.update({name: getattr(module, name) for name in dir(module) if not name.startswith("_")})

@@ -29,6 +29,15 @@ models:
       # Final, tested, documented - the only layer materialized as tables.
       +materialized: table
       +schema: marts
+    publish:
+      # The pub_ writers (pipeline/ELT.md, "Publish (reverse ETL)"): each
+      # builds a table and copies it to a phone file under processed_dir
+      # (macros/materializations/phone_file.sql). They run last, as their own
+      # `--select path:models/publish` once every other test has passed,
+      # because `dbt build` tests a model after building it, and a writer
+      # would otherwise write its file before the tests upstream of it fail.
+      +materialized: phone_file
+      +schema: publish
 
 seeds:
   ourhike:
@@ -57,6 +66,18 @@ data_tests:
     +severity: "{{ env_var('DBT_PROJECT_EVALUATOR_SEVERITY', 'error') }}"
 
 vars:
+  # Where the pub_ writers write, relative to pipeline/dbt/. publish.py
+  # uploads from pipeline/data/processed/ by its manifests, never by a glob,
+  # so a file written here reaches no bucket until stage 4 of #1793 names it.
+  # scripts/test.sh points it at a temporary directory.
+  processed_dir: "{{ env_var('OURHIKE_PROCESSED_DIR', '../data/processed') }}"
+
+  # lib/podcasts.py's two scalar rules, read by int_podcasts__checked.
+  # tests/test_dbt_podcasts_parity.py holds them to the Python constants
+  # until stage 5 of #1793 deletes the Python, when these become the one home.
+  podcast_spotify_id_pattern: "^[0-9A-Za-z]{22}$"
+  podcast_max_at_mile: 2300
+
   dbt_project_evaluator:
     # The mart names the maintainer chose carry no dim_/fct_ prefix
     # ("do not keep the dim_ and fct_ prefixes in the marts folders. Just
@@ -86,6 +107,14 @@ vars:
       - places_
       - suggested_
       - sources_
+    # The phone-file writers (models/publish/pub_<file>). pipeline/ELT.md
+    # left open whether the evaluator accepts pub_ as it stands; it does not:
+    # measured 2026-10-01 on dbt 2.0.6, fct_model_naming_conventions typed
+    # pub_podcasts_episodes as `other` and wanted rpt_, the default's only
+    # other prefix. rpt_ stays, for the reporting models ELT.md plans.
+    other_prefixes:
+      - rpt_
+      - pub_
 
 # dbt_utils has no DuckDB version of `deduplicate`, and its default joins the
 # kept rows back with a NATURAL JOIN, where NULL never equals NULL: every row

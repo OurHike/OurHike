@@ -208,12 +208,18 @@ jobs:
           # the six top-level modules are the extract's own imports, which
           # tests/test_extract_layout.py holds this list to; sources.json and
           # reference/trail_orgs.json are what a resource reads its URL and
-          # its club from.
+          # its club from, and the rest of reference/ holds the reviewed
+          # files fixture mode loads as they are. parity.py and the exporter
+          # it runs (export_podcasts.py) are the parity step's; the same test
+          # holds the list to their imports too.
           paths: >-
             pipeline/dbt/
             pipeline/extract/
             pipeline/lib/
             pipeline/.dlt/
+            pipeline/reference/
+            pipeline/parity.py
+            pipeline/export_podcasts.py
             pipeline/check_freshness.py
             pipeline/export_conditions.py
             pipeline/fetch_club_pdfs.py
@@ -222,7 +228,6 @@ jobs:
             pipeline/fetch_opentrail.py
             pipeline/make_dbt_fixtures.py
             pipeline/sources.json
-            pipeline/reference/trail_orgs.json
             pipeline/requirements-dbt.in
             pipeline/requirements-dbt.txt
             pipeline/requirements-extract.in
@@ -375,7 +380,27 @@ jobs:
       - name: dbt build
         if: steps.scope.outputs.run == 'true'
         working-directory: pipeline/dbt
-        run: dbt build --profiles-dir . --exclude package:dbt_project_evaluator
+        run: dbt build --profiles-dir . --exclude package:dbt_project_evaluator path:models/publish
+
+      # THE WRITERS RUN LAST, once every test above has passed (pipeline/ELT.md,
+      # "Publish (reverse ETL)"): `dbt build` tests a model after building it,
+      # so a writer in the build above would write its file before a failing
+      # test upstream stopped it. They write under data/processed/, which
+      # COPY does not create, and nothing here uploads anything.
+      - name: dbt publish (the pub_ writers)
+        if: steps.scope.outputs.run == 'true'
+        working-directory: pipeline/dbt
+        run: |
+          mkdir -p ../data/processed
+          dbt build --profiles-dir . -s path:models/publish
+
+      # Shadow-run parity (ELT.md, "How a rule moves"): each family the dbt
+      # path writes, against today's exporter on the same input, record by
+      # record. The podcast list's input is a file in git, so CI holds the
+      # real data here, not a fixture. Fails on any difference.
+      - name: Parity with today's exporters
+        if: steps.scope.outputs.run == 'true'
+        run: python parity.py podcasts --new data/processed/podcasts_episodes.json
 
       - name: dbt source freshness
         if: steps.scope.outputs.run == 'true'

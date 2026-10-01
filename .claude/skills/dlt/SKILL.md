@@ -346,7 +346,8 @@ cannot see it (measured 2026-10-01). So:
 
 Each platform's check is in `pipeline/ELT.md`, "The skip-unchanged check, by
 platform". **A marker advances only when a load commits**: after
-`drop_pending_packages()` the old marker came back, and `sync_destination()`
+`abort_packages()` (measured as `drop_pending_packages()`, its alias, deprecated
+in dlt 1.30.0) the old marker came back, and `sync_destination()`
 restored it on a fresh pipeline directory (measured 2026-10-01 on DuckDB and a
 local `file://` destination; R2 is `@unvalidated`).
 

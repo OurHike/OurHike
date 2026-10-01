@@ -1,0 +1,35 @@
+version: 2
+
+sources:
+  - name: podcasts
+    description: >
+      OurHike's own podcast selection, landed by the extract's
+      _shared/podcasts/ folder (pipeline/extract/_shared/podcasts/) from
+      reference/podcast_episodes.json, a file in git a person reviews row by
+      row. A show a club publishes is that club's source, not this one.
+    schema: raw
+    config:
+      meta:
+        cadence: monthly
+      # No freshness: a reviewed file's `_loaded_at` moves only when its
+      # bytes do (its change marker is the file's sha256), so a week-old
+      # stamp means nobody edited the list, not that the extract stopped.
+    tables:
+      - name: raw_podcasts__podcast_episodes
+        data_tests:
+          # Rows sharing base_podcasts__podcast_episodes's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'reference/podcast_episodes.json'", "_row"]
+        description: >
+          reference/podcast_episodes.json's `episodes`, one row per row of
+          the file, each landed whole in `row_json` as the JSON its reviewer
+          wrote (ReviewedFile's `verbatim`), so the gate in
+          int_podcasts__checked sees the typos it refuses. Key: `_row`, the
+          row's place in the file, unique by construction.
+        columns:
+          - name: row_json
+            description: The row as written, as JSON text. Never typed by the extract.
+            data_tests: [not_null]
+          - name: _row
+            description: The row's place in the file, from 0. The published order.

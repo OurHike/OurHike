@@ -60,6 +60,12 @@ dialect = duckdb
 templater = jinja
 sql_file_ext = .sql
 exclude_rules = ST06
+# 0 turns off the skip for files over 20,000 bytes. A skipped file is an
+# unlinted file, and SQLFluff says so only as a warning, so the step stays
+# green: int_podcasts__checked.sql, 20,789 bytes, was skipped that way
+# (2026-10-01, sqlfluff 4.3.0). The skip guards against parser lock on
+# generated SQL, and every file here is written by hand.
+large_file_skip_byte_limit = 0
 
 # apply_dbt_builtins gives ref/source/config/var/is_incremental stand-ins.
 # library_path makes dbt/sqlfluff_libs/dbt_utils.py the `dbt_utils`
@@ -69,6 +75,9 @@ exclude_rules = ST06
 apply_dbt_builtins = True
 library_path = dbt/sqlfluff_libs
 load_macros_from_path = dbt/macros
+# phone_file.sql is a `{% materialization %}`, a dbt tag plain Jinja does not
+# have, and no model calls it as a macro.
+exclude_macros_from_path = dbt/macros/materializations
 
 [sqlfluff:indentation]
 indented_joins = false

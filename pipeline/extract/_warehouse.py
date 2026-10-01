@@ -58,7 +58,11 @@ def _create_proven_empty(con, schema: str, table: str, hints: dict, pipeline) ->
     columns = {
         naming.normalize_identifier(name): DUCKDB_TYPES.get(hint.get("data_type"), "VARCHAR") for name, hint in hints.items()
     }
-    columns.update({"_loaded_at": "TIMESTAMP", "_dlt_load_id": "VARCHAR", "_dlt_id": "VARCHAR"})
+    # TIMESTAMPTZ, as dlt writes `_loaded_at` into every table it loads: a
+    # naive UTC stamp lands `TIMESTAMP WITH TIME ZONE` (measured 2026-10-01,
+    # dlt 1.30.0, filesystem destination, Parquet). An empty closures table is
+    # a normal state, so its type must not differ from a full one's.
+    columns.update({"_loaded_at": "TIMESTAMPTZ", "_dlt_load_id": "VARCHAR", "_dlt_id": "VARCHAR"})
     body = ", ".join(f'"{name}" {type_}' for name, type_ in columns.items())
     con.execute(f'CREATE OR REPLACE TABLE "{schema}"."{table}" ({body})')
 

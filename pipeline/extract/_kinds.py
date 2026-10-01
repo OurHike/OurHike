@@ -24,6 +24,7 @@ The kinds built so far for stage 2 (#1793 â€” Rebuild the data platform as dlt â
     hydrography_watch(key)  the usgs_3dhp watch: 3DHP's work units at five probes on the trail
     bucket_listing(key)     a public S3 bucket's objects under one prefix (3DEP's tiles, NHD's GeoPackages)
     nws_alerts()            every active NWS alert, read in full each hour (no registry row)
+    conditions_query(key)   one of OurHike's own conditions artifacts, from Postgres, through the bake's own query
     reviewed_input(key)     a registry entry whose rows a person reviews into a
                             file in git (ATC's Trail Updates), loaded from that file
     reviewed_file(path)     a reviewed pipeline/reference/ file with no registry
@@ -47,10 +48,13 @@ from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
+import psycopg
 import requests
+from psycopg.rows import dict_row
 
+import export_conditions
 from check_freshness import CORRIDOR_PROBES
-from extract._contract import EXTRACT_DIR, PIPELINE_DIR, Resource, read_club_file, slug_for_folder
+from extract._contract import EXTRACT_DIR, PIPELINE_DIR, Resource, Unavailable, read_club_file, slug_for_folder
 from fetch_club_pdfs import extract_page_texts
 from fetch_elevation import TILE_URL_TEMPLATE as DEM_TILE_URL_TEMPLATE
 from fetch_hikefinder import sign_in as hikefinder_sign_in
@@ -1092,6 +1096,126 @@ class NwsAlerts(Resource):
 
 def nws_alerts(**overrides) -> NwsAlerts:
     return NwsAlerts(key="alerts", **overrides)
+
+
+# Each of OurHike's own conditions artifacts: the table its reader must be
+# able to see, and the bake's own query text, run unchanged. The text is
+# export_conditions.py's, held to the served schemas in both directions by
+# backend/tests/test_conditions_publisher_contract.py, so what reaches the raw
+# store is what reaches a phone today.
+CONDITIONS_QUERIES = {
+    "closures": ("closures", export_conditions.PUBLIC_CLOSURES_SQL),
+    "reports": ("reports", export_conditions.PUBLIC_REPORTS_SQL),
+    "notes": ("field_notes", export_conditions.PUBLIC_NOTES_SQL),
+    "disputes": ("field_notes", export_conditions.PUBLIC_DISPUTES_SQL),
+}
+
+# The person columns the four query texts leave in the database: who reported,
+# who verified, who hid a note, which maintainer. A second line behind the
+# query text, so that a column added under one of these names fails the read
+# rather than landing (#252, #430).
+WITHHELD_COLUMNS = frozenset({"reported_by", "reporter_id", "verified_by", "hidden_by", "maintainer_id"})
+
+# Postgres type names -> dlt data types, for describing a query's own columns.
+# A type not listed, such as an enum, loads as a string in psycopg, so it lands
+# as text.
+POSTGRES_TYPES = {
+    "bool": "bool",
+    "int2": "bigint",
+    "int4": "bigint",
+    "int8": "bigint",
+    "float4": "double",
+    "float8": "double",
+    "numeric": "decimal",
+    "date": "date",
+    "timestamp": "timestamp",
+    "timestamptz": "timestamp",
+    "json": "json",
+    "jsonb": "json",
+}
+
+
+@dataclass(frozen=True)
+class ConditionsQuery(Resource):
+    """One of OurHike's own conditions artifacts, read from its Postgres through the bake's own query.
+
+    Decision 6: moderator-verified rows only, hourly. The query is
+    export_conditions.py's PUBLIC_*_SQL, whole, so its moderation predicate,
+    its 90-day and five-per-place windows, and its two-account dispute rule
+    all hold here as they hold in the bake, and `verified_by` and
+    `reporter_id` never leave the database. The connection is the bake's own
+    CONDITIONS_DATABASE_URL, so each conditions leg reads its own environment.
+
+    Not dlt's sql_table. Its reflected column hints are the base table's,
+    not the query's (measured 2026-10-01 on Postgres 16): for closures they
+    name `reported_by` and `verified_by`, the two columns the query withholds,
+    and for disputes they name `field_notes`' columns and miss the computed
+    `accounts`, `latest_at` and `maintainer_said`. So the hints come from
+    describing the query itself.
+
+    The check runs reader_problem() first, as the bake does: a missing grant
+    or policy reads as zero rows, and "empty is indistinguishable from a quiet
+    trail". On a table export_conditions.py's PENDING_READER_SETUP names, the
+    problem is Unavailable, and the lane carries on without it. On any other
+    table it stops the lane. The read asks again, in the same transaction as
+    the rows, so a policy dropped between the check and the read cannot prove
+    a false zero. The proof is the query's own `count(*)`, under REPEATABLE
+    READ with the rows.
+    """
+
+    @property
+    def source_table(self) -> str:
+        return CONDITIONS_QUERIES[self.key][0]
+
+    @property
+    def sql(self) -> str:
+        return CONDITIONS_QUERIES[self.key][1]
+
+    def _problem(self, conn) -> str | None:
+        return export_conditions.reader_problem(conn, self.source_table)
+
+    def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
+        """UNKNOWN when the reader can see the table: a few hundred rows an hour cost less than a marker that could lie."""
+        with psycopg.connect(export_conditions.connection_url(), connect_timeout=10) as conn:
+            problem = self._problem(conn)
+        if problem is None:
+            return Freshness.UNKNOWN, None
+        pending = export_conditions.PENDING_READER_SETUP.get(self.source_table)
+        if pending is None:
+            raise RuntimeError(problem)
+        raise Unavailable(f"{problem} {pending}")
+
+    def column_hints(self) -> dict:
+        with psycopg.connect(export_conditions.connection_url(), connect_timeout=10) as conn:
+            cursor = conn.execute(f"SELECT * FROM ({self.sql}) AS public_rows LIMIT 0")
+            return {
+                column.name: {
+                    "data_type": POSTGRES_TYPES.get(getattr(conn.adapters.types.get(column.type_code), "name", None), "text")
+                }
+                for column in cursor.description
+            }
+
+    def rows(self, proofs: dict[str, int]):
+        with psycopg.connect(export_conditions.connection_url(), connect_timeout=10) as conn:
+            conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+            problem = self._problem(conn)
+            if problem is not None:
+                raise RuntimeError(f"{self.key}: {problem}")
+            (count,) = conn.execute(f"SELECT count(*) FROM ({self.sql}) AS public_rows").fetchone()
+            with conn.cursor(row_factory=dict_row) as cursor:
+                cursor.execute(self.sql)
+                withheld = WITHHELD_COLUMNS & {column.name for column in cursor.description}
+                if withheld:
+                    raise RuntimeError(f"{self.key}: the query now selects {sorted(withheld)}, which never leave the database")
+                rows = cursor.fetchall()
+        proofs[self.table] = count
+        yield from rows
+
+
+def conditions_query(key: str, **overrides) -> ConditionsQuery:
+    if key not in CONDITIONS_QUERIES:
+        raise KeyError(f"{key}: not one of export_conditions.py's artifacts {sorted(CONDITIONS_QUERIES)}")
+    return ConditionsQuery(key=key, **overrides)
 
 
 @dataclass(frozen=True)

@@ -203,6 +203,21 @@ class SameAs:
         return problems
 
 
+class Unavailable(Exception):
+    """A change check's answer that the upstream cannot be read here, and that its own rule leaves out of the lane.
+
+    Not a fourth Freshness. FRESH says "checked, nothing changed" and keeps the
+    last rows. This says nobody can tell, so extract/_run.py leaves the
+    resource out of the run and logs it `unavailable`, and
+    extract/_warehouse.py withdraws the table rather than serving its last rows
+    as current. Absent means unknown, never zero (CLAUDE.md). The one raiser
+    today is export_conditions.py's PENDING_READER_SETUP, which omits notes
+    and disputes when `field_notes` is not configured for the reader, while
+    closures and reports carry on. Any other failure raises as itself and
+    stops the lane.
+    """
+
+
 @dataclass(frozen=True)
 class Resource:
     """One upstream, landing as one raw table. Subclassed per source kind in extract/_kinds.py.

@@ -24,7 +24,7 @@ import duckdb
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from extract._run import RUNS_TABLE, _client, committed_load_ids, run_log_rows, table_files
+from extract._run import RUNS_TABLE, UNAVAILABLE, _client, committed_load_ids, run_log_rows, table_files
 
 
 class BuildRefused(RuntimeError):
@@ -64,16 +64,27 @@ def _create_proven_empty(con, schema: str, table: str, hints: dict, pipeline) ->
 
 
 def committed_tables(pipeline) -> dict[str, str]:
-    """{table: the load id holding its current rows}, from each table's latest `loaded` run that committed."""
+    """{table: the load id holding its current rows}, from each table's latest `loaded` run that committed.
+
+    A table whose latest run found it unavailable is withdrawn, whatever it
+    loaded before: rows the reader can no longer see are not current, and an
+    absent table is how the build says unknown (extract/_contract.py's
+    Unavailable).
+    """
     complete = committed_load_ids(pipeline)
     latest: dict[str, tuple[str, str]] = {}
+    withdrawn: dict[str, str] = {}
     for row in run_log_rows(pipeline):
+        table = row["table_name"]
+        if row.get("outcome") == UNAVAILABLE:
+            withdrawn[table] = max(withdrawn.get(table, ""), row["run_id"])
+            continue
         if row.get("outcome") != "loaded" or not row.get("load_id") or row["load_id"] not in complete:
             continue
-        previous = latest.get(row["table_name"])
+        previous = latest.get(table)
         if previous is None or row["run_id"] > previous[0]:
-            latest[row["table_name"]] = (row["run_id"], row["load_id"])
-    return {table: load_id for table, (_, load_id) in latest.items()}
+            latest[table] = (row["run_id"], row["load_id"])
+    return {table: load_id for table, (run_id, load_id) in latest.items() if run_id > withdrawn.get(table, "")}
 
 
 def load_warehouse(con: duckdb.DuckDBPyConnection, pipeline, schema: str = "raw") -> dict[str, int]:

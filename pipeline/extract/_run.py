@@ -46,7 +46,7 @@ os.environ.setdefault("SCHEMA__NAMING", "sql_ci_v1")
 import dlt  # noqa: E402
 import pyarrow.parquet as pq  # noqa: E402
 
-from extract._contract import CADENCES, Resource, all_resources, discover, discover_shared  # noqa: E402
+from extract._contract import CADENCES, Resource, Unavailable, all_resources, discover, discover_shared  # noqa: E402
 from extract._kinds import ORGS_TABLE  # noqa: E402
 from lib.freshness_state import Freshness  # noqa: E402
 
@@ -63,6 +63,9 @@ DUE_AFTER = {"daily": timedelta(hours=24)}
 DATASET = "raw"
 SOURCE_NAME = "extract"
 RUNS_TABLE = "_extract_runs"
+# The verdict and outcome a resource is logged with when its change check
+# raised Unavailable: left out of the run, and withdrawn from the warehouse.
+UNAVAILABLE = "unavailable"
 
 # @unvalidated: a table whose type may not be empty fails the run when it
 # lands below this share of its last loaded size. 0.5 is fetch_opentrail.py's
@@ -98,6 +101,8 @@ class RunReport:
     # Each table's column hints, as to_dlt handed them to dlt. Kept in the run
     # log only for a proven zero, which is the one case the warehouse needs them.
     hints: dict[str, dict] = field(default_factory=dict)
+    # Resources whose change check raised Unavailable, by name: why each was left out.
+    unavailable: dict[str, str] = field(default_factory=dict)
 
 
 def utc_now_naive() -> datetime:
@@ -323,9 +328,31 @@ RUNS_COLUMNS = {
 }
 
 
-def write_run_log(pipeline, report: RunReport, planned: list[Planned], checked_at: datetime) -> None:
-    """Append one `_extract_runs` row per planned resource. INCREMENTAL.md's log.json, as one append-only table."""
-    log = []
+def write_run_log(
+    pipeline, report: RunReport, planned: list[Planned], checked_at: datetime, unavailable: list[Resource] = ()
+) -> None:
+    """Append one `_extract_runs` row per planned resource, and per unavailable one. INCREMENTAL.md's log.json, as one append-only table."""
+    log = [
+        {
+            "run_id": report.run_id,
+            "pipeline": report.lane,
+            "cadence": resource.cadence,
+            "club": resource.club,
+            "type": resource.type,
+            "resource_name": resource.name,
+            "table_name": resource.table,
+            "verdict": UNAVAILABLE,
+            "recorded_marker": None,
+            "upstream_marker": None,
+            "rows": None,
+            "count_proof": None,
+            "load_id": None,
+            "outcome": UNAVAILABLE,
+            "checked_at": checked_at,
+            "column_hints": None,
+        }
+        for resource in unavailable
+    ]
     for item in planned:
         resource = item.resource
         skipped = item.verdict is Freshness.FRESH
@@ -388,14 +415,25 @@ def run_pipeline(
     pipeline.sync_destination()
     recorded = recorded_markers(pipeline)
     plan_resources = due(plan_resources, run_log_rows(pipeline), checked_at)
-    planned = []
+    planned, unavailable = [], []
     for resource in plan_resources:
         before = recorded.get(resource.name)
-        verdict, marker = resource.change_check(before)
+        try:
+            verdict, marker = resource.change_check(before)
+        except Unavailable as reason:
+            # An annotation, so the gap reaches the run summary rather than only the step log.
+            print(f"::warning title={resource.name} is unavailable::{reason}")
+            unavailable.append(resource)
+            report.unavailable[resource.name] = str(reason)
+            report.verdicts[resource.name] = UNAVAILABLE
+            continue
         planned.append(Planned(resource, verdict, before, marker))
         report.verdicts[resource.name] = verdict.value
     to_run = [item for item in planned if item.verdict is not Freshness.FRESH]
-    print(f"{lane}: {len(planned)} resources, {len(to_run)} to read, {len(planned) - len(to_run)} fresh")
+    print(
+        f"{lane}: {len(planned) + len(unavailable)} resources, {len(to_run)} to read, "
+        f"{len(planned) - len(to_run)} fresh, {len(unavailable)} unavailable"
+    )
 
     if to_run:
         source = dlt.source(
@@ -413,15 +451,15 @@ def run_pipeline(
         if report.problems:
             pipeline.abort_packages()
             report.outcome = "refused"
-            write_run_log(pipeline, report, planned, checked_at)
+            write_run_log(pipeline, report, planned, checked_at, unavailable)
             raise ExtractRefused("Extract run check:\n  " + "\n  ".join(report.problems))
         report.load_id = pipeline.load().loads_ids[0]
         report.problems = committed(pipeline, report.load_id, report.rows, planned)
         if report.problems:
             report.outcome = "unverified"
-            write_run_log(pipeline, report, planned, checked_at)
+            write_run_log(pipeline, report, planned, checked_at, unavailable)
             raise ExtractRefused("Extract after-run check:\n  " + "\n  ".join(report.problems))
-    write_run_log(pipeline, report, planned, checked_at)
+    write_run_log(pipeline, report, planned, checked_at, unavailable)
     return report
 
 

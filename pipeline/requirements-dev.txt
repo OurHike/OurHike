@@ -213,8 +213,6 @@ six==1.17.0
     #   python-dateutil
 smmap==5.0.3
     # via gitdb
-sqlalchemy==2.1.1
-    # via dlt
 sqlglot==30.21.0
     # via dlt
 tenacity==9.1.4
@@ -226,7 +224,6 @@ typing-extensions==4.16.0
     #   -c pipeline/requirements.txt
     #   dlt
     #   psycopg
-    #   sqlalchemy
 tzdata==2026.4
     # via
     #   dlt

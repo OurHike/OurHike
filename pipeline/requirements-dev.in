@@ -27,4 +27,4 @@ ruff
 # json.JSONDecodeError around `response.json()` passes in production and fails
 # here. One test expected that error and now expects ValueError
 # (test_spike_hike_photo_sources.py).
-dlt[parquet,sql_database]==1.30.0
+dlt[parquet]==1.30.0

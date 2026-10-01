@@ -4,8 +4,8 @@
 until club admin tooling replaces it (lib/work_projects.py). A reviewed file
 is its own proof, so an empty one loads as an empty table rather than being
 refused, and a cancelled project clears with the next load (ELT.md, CL18).
-OurHike's Postgres rows join this folder when the conditions lane's
-sql_database resources are built.
+OurHike's Postgres rows sit beside it, in closures.py, reports.py and
+field_notes.py.
 """
 
 from extract._kinds import reviewed_file

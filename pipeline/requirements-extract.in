@@ -8,10 +8,10 @@
 # A separate file rather than a line in requirements.in, on purpose:
 # requirements.txt is installed "in a job holding R2 write credentials"
 # (CONTRIBUTING.md, "Changing a Python dependency"), and dlt with these extras
-# resolves to 58 pins with the three lines below it (counted 2026-10-01), SQLAlchemy, pyarrow, fsspec
-# and s3fs among them. An extract job holds the PRIVATE raw bucket's keys only
-# (ELT.md, "Where data lands"), so none of that sits beside the public
-# bucket's write keys. requirements-dbt.in is the precedent for the split.
+# resolves to 58 pins with the lines below it (counted 2026-10-01), pyarrow,
+# fsspec and s3fs among them. An extract job holds the PRIVATE raw bucket's
+# keys only (ELT.md, "Where data lands"), so none of that sits beside the
+# public bucket's write keys. requirements-dbt.in is the precedent for the split.
 #
 # Not constrained by requirements.txt, unlike requirements-dev.txt, because it
 # cannot be: s3fs 2026.9.0 needs aiobotocore 3.9.2, which pins botocore
@@ -25,13 +25,15 @@
 # pipeline/tests/test_extract_layout.py holds the two pins equal.
 
 # filesystem: the raw store (R2 through s3fs). parquet: the format the
-# filesystem destination writes. sql_database: OurHike's own Postgres rows on
-# the hourly lane, through each artifact's PUBLIC_*_SQL text (ELT.md,
-# decision 6), which is what brings SQLAlchemy in - reversing requirements.in's
-# "Raw psycopg rather than SQLAlchemy on purpose" for the extract jobs only.
-# dbt is not an extra here: dlt's dbt helper wants dbt-core 1.x, and dbt runs
-# as its own CLI step on dbt 2 (requirements-dbt.in).
-dlt[filesystem,parquet,sql_database]==1.30.0
+# filesystem destination writes. Not sql_database: OurHike's own Postgres rows
+# are read through psycopg below, by each artifact's PUBLIC_*_SQL text
+# (extract/_kinds.py's ConditionsQuery), because sql_table hints a text
+# query with its base table's columns rather than the query's own (measured
+# 2026-10-01). So SQLAlchemy stays out, as requirements.in's "Raw psycopg
+# rather than SQLAlchemy on purpose" asks. dbt is not an extra here: dlt's
+# dbt helper wants dbt-core 1.x, and dbt runs as its own CLI step on dbt 2
+# (requirements-dbt.in).
+dlt[filesystem,parquet]==1.30.0
 
 # The same ABI-locked pin as requirements.in, for extract/_warehouse.py, which
 # writes the warehouse the dbt job reads.
@@ -41,7 +43,8 @@ duckdb==1.5.5
 # goes through.
 requests
 
-# The Postgres driver sql_database talks through (the conditions lane).
+# The Postgres driver, as export_conditions.py's own: OurHike's conditions rows on
+# the hourly lane (extract/_kinds.py's ConditionsQuery).
 psycopg[binary]
 
 # fetch_club_pdfs.py's text extraction, for extract/_kinds.py's club_pdf kind

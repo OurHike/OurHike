@@ -201,7 +201,7 @@ jobs:
             echo "::warning::Building a SUBSET. assemble and publish are skipped - a partial corridor must never ship."
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: corridor-inputs
           path: |
@@ -262,7 +262,7 @@ jobs:
 
       # Each cell's tiles+overview+receipt cross to assemble as one artifact.
       # Retention is minimal: intermediates that exist only to cross runners.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: raster-cell-${{ matrix.cell }}
           path: pipeline/data/processed/raster_cells/
@@ -325,7 +325,7 @@ jobs:
       - name: What was built
         run: ls -la data/processed/*.pmtiles && df -h /
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: pmtiles-archives
           path: pipeline/data/processed/*.pmtiles

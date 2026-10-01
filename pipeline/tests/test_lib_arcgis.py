@@ -16,6 +16,12 @@ from lib.arcgis import (
 LAYER_URL = "https://services1.arcgis.com/fake/arcgis/rest/services/Fake/FeatureServer/0"
 
 
+def _page_requests(requests_mock) -> list:
+    """The page requests only: every fetch now ends with one returnCountOnly
+    query (#1730) that these tests are not counting."""
+    return [r for r in requests_mock.request_history if "returncountonly" not in r.qs]
+
+
 def test_get_layer_edit_date_returns_date_when_present(requests_mock):
     requests_mock.get(LAYER_URL, json={"editingInfo": {"dataLastEditDate": 1781785000304}})
     assert get_layer_edit_date(LAYER_URL) == 1781785000304
@@ -43,7 +49,7 @@ def test_fetch_layer_geojson_paginates_until_empty_page(requests_mock):
 
     assert len(fc["features"]) == 1001
     assert fc["type"] == "FeatureCollection"
-    assert requests_mock.call_count == 3  # short page2 must not stop the loop early
+    assert len(_page_requests(requests_mock)) == 3  # short page2 must not stop the loop early
 
 
 def test_fetch_layer_geojson_handles_server_cap_below_page_size(requests_mock, monkeypatch):
@@ -62,6 +68,8 @@ def test_fetch_layer_geojson_handles_server_cap_below_page_size(requests_mock, m
     total_features = 1500
 
     def responder(request, context):
+        if "returncountonly" in request.qs:
+            return {}
         offset = int(request.qs["resultoffset"][0])
         ids = range(offset, min(offset + server_cap, total_features))
         features = [{"type": "Feature", "properties": {"id": i}, "geometry": None} for i in ids]
@@ -72,7 +80,7 @@ def test_fetch_layer_geojson_handles_server_cap_below_page_size(requests_mock, m
     fc = arcgis.fetch_layer_geojson(LAYER_URL)
 
     assert [f["properties"]["id"] for f in fc["features"]] == list(range(total_features))
-    assert requests_mock.call_count == 4  # three 500-item pages + one empty page to confirm the end
+    assert len(_page_requests(requests_mock)) == 4  # three 500-item pages + one empty page to confirm the end
 
 
 def test_get_field_coded_domain_returns_code_to_label_mapping_when_present(requests_mock):
@@ -200,7 +208,7 @@ def test_a_custom_page_size_still_stops_only_on_an_empty_page(requests_mock):
     fc = fetch_layer_geojson(LAYER_URL, page_size=2000)
 
     assert len(fc["features"]) == 4
-    assert requests_mock.call_count == 3
+    assert len(_page_requests(requests_mock)) == 3
 
 
 # --- a page the server refuses (#1790) ---------------------------------------
@@ -235,7 +243,7 @@ def test_fetch_layer_geojson_halves_a_page_the_server_answers_with_an_html_error
     fc = fetch_layer_geojson(LAYER_URL)
 
     assert [f["properties"]["id"] for f in fc["features"]] == list(range(684))
-    asked = [(r.qs["resultoffset"][0], r.qs["resultrecordcount"][0]) for r in requests_mock.request_history]
+    asked = [(r.qs["resultoffset"][0], r.qs["resultrecordcount"][0]) for r in _page_requests(requests_mock)]
     assert asked == [("0", "1000"), ("0", "500"), ("500", "500"), ("684", "500")]
 
 
@@ -257,7 +265,7 @@ def test_fetch_layer_geojson_halves_on_a_json_error_object_too(requests_mock):
     fc = fetch_layer_geojson(LAYER_URL)
 
     assert len(fc["features"]) == 3
-    assert [r.qs["resultrecordcount"][0] for r in requests_mock.request_history] == ["1000", "500", "250", "250"]
+    assert [r.qs["resultrecordcount"][0] for r in _page_requests(requests_mock)] == ["1000", "500", "250", "250"]
 
 
 def test_fetch_layer_geojson_gives_up_at_a_page_of_one_with_the_servers_words(requests_mock):
@@ -270,7 +278,7 @@ def test_fetch_layer_geojson_gives_up_at_a_page_of_one_with_the_servers_words(re
     with pytest.raises(RuntimeError, match="error 500: Error performing query operation at a page of 1 feature"):
         fetch_layer_geojson(LAYER_URL)
 
-    assert [r.qs["resultrecordcount"][0] for r in requests_mock.request_history] == [
+    assert [r.qs["resultrecordcount"][0] for r in _page_requests(requests_mock)] == [
         "1000",
         "500",
         "250",
@@ -292,7 +300,62 @@ def test_an_answer_with_no_features_key_is_a_stop_and_not_a_refusal(requests_moc
     requests_mock.get(query_url, json={})
 
     assert fetch_layer_geojson(LAYER_URL)["features"] == []
-    assert requests_mock.call_count == 1
+    assert len(_page_requests(requests_mock)) == 1
+
+
+# --- a layer the server says holds more than it handed over (#1730) ----------
+
+
+def _pages_then_count(pages: list[dict], count_answer: dict) -> list:
+    """Page answers in order, then the count query's answer last."""
+    return [{"json": p} for p in pages] + [{"json": count_answer}]
+
+
+def test_a_layer_shorter_than_the_servers_own_count_is_a_failed_fetch_not_a_small_layer(requests_mock):
+    """The 200-with-an-early-empty-page shape: 3 features arrive, the count
+    says 4. Written as a file, `fetch_all` would record the layer as up to
+    date and never fetch it again."""
+    requests_mock.get(LAYER_URL + "/query", _pages_then_count([_page(3), {"features": []}], {"count": 4}))
+
+    with pytest.raises(RuntimeError, match="holds 4 features but 3 were fetched"):
+        fetch_layer_geojson(LAYER_URL)
+
+
+def test_a_layer_matching_the_servers_count_is_returned(requests_mock):
+    requests_mock.get(LAYER_URL + "/query", _pages_then_count([_page(3), {"features": []}], {"count": 3}))
+
+    assert len(fetch_layer_geojson(LAYER_URL)["features"]) == 3
+
+
+def test_more_features_than_the_count_is_not_a_failure(requests_mock):
+    """A layer edited between the pages and the count can move either way;
+    an overshoot loses nothing, so only a shortfall raises."""
+    requests_mock.get(LAYER_URL + "/query", _pages_then_count([_page(3), {"features": []}], {"count": 2}))
+
+    assert len(fetch_layer_geojson(LAYER_URL)["features"]) == 3
+
+
+@pytest.mark.parametrize(
+    "count_answer",
+    [QUERY_ERROR, {}, {"count": "4"}],
+    ids=["error object", "no count key", "count that is not an integer"],
+)
+def test_a_count_that_cannot_be_read_skips_the_check_rather_than_failing_the_fetch(requests_mock, count_answer):
+    """Whether every registered server supports returnCountOnly is unmeasured
+    (@unvalidated in check_not_truncated), so an unreadable count is not a
+    verdict either way."""
+    requests_mock.get(LAYER_URL + "/query", _pages_then_count([_page(3), {"features": []}], count_answer))
+
+    assert len(fetch_layer_geojson(LAYER_URL)["features"]) == 3
+
+
+def test_a_count_request_that_fails_outright_skips_the_check(requests_mock):
+    requests_mock.get(
+        LAYER_URL + "/query",
+        [{"json": _page(3)}, {"json": {"features": []}}, {"text": "not json", "headers": {"Content-Type": "text/html"}}],
+    )
+
+    assert len(fetch_layer_geojson(LAYER_URL)["features"]) == 3
 
 
 # --- the substitute markers (#1311) -----------------------------------------
@@ -329,3 +392,11 @@ def test_get_service_etag_is_none_when_the_service_sends_none(requests_mock):
     requests_mock.head(SERVICE_URL, headers={})
 
     assert get_service_etag(SERVICE_URL) is None
+
+
+def test_a_server_that_ignores_the_offset_is_refused_rather_than_read_forever(requests_mock):
+    """A non-paginating server answers every resultOffset with page one; the loop stops only on an empty page."""
+    page = {"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"OBJECTID": 1}, "geometry": None}]}
+    requests_mock.get(LAYER_URL + "/query", json=page)
+    with pytest.raises(RuntimeError, match="ignores resultOffset"):
+        list(arcgis.iter_layer_pages(LAYER_URL))

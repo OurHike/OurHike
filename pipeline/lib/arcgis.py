@@ -14,6 +14,8 @@ directory away from the module that never called it.
 import json
 from pathlib import Path
 
+import requests
+
 from lib.http_retry import request_with_retry
 
 PAGE_SIZE = 1000
@@ -69,12 +71,55 @@ def fetch_layer_geojson(
     or by bytes is not distinguished, because it does not change what to do.
     """
     query_url = layer_url.rstrip("/") + "/query"
-    records = PAGE_SIZE if page_size is None else page_size
     features = []
+    for batch in iter_layer_pages(layer_url, out_fields=out_fields, geometry_precision=geometry_precision, page_size=page_size):
+        features.extend(batch)
+    check_not_truncated(query_url, len(features))
+    return {"type": "FeatureCollection", "features": features}
+
+
+def iter_layer_pages(
+    layer_url: str,
+    *,
+    out_fields: str = "*",
+    geometry_precision: int | None = None,
+    page_size: int | None = None,
+    where: str = "1=1",
+    session=None,
+):
+    """Yield each page of GeoJSON features `fetch_layer_geojson` would collect, in order.
+
+    The loop itself, with every rule fetch_layer_geojson's docstring states:
+    stop on an empty page and never a short one, advance by the rows the
+    page returned, halve a refused page. It is a generator so the dlt
+    resource in extract/_kinds.py can yield page by page through THIS loop
+    rather than a second one (#1793, pipeline/ELT.md) - a second pager is
+    the thing #1295 removed, and dlt's own OffsetPaginator steps by `limit`
+    rather than by rows returned, which skips rows on any server whose
+    `maxRecordCount` sits below the page asked for (ELT.md, "dlt
+    configuration requirements": 4 of 10 rows, measured 2026-10-01).
+
+    `where` is the entry's own filter, for a layer read only through the
+    agency's status field (ELT.md, "Status layers are often stale"). The
+    count that proves a short read must be taken under the same clause, so
+    `layer_count` takes it too. `session` is the caller's, so a caller that
+    names itself to the server (lib/user_agent.py) does so on every page.
+
+    A SERVER THAT IGNORES `resultOffset` IS REFUSED, not looped on. One that
+    does not support pagination answers every offset with page one, and
+    this loop, which stops only on an empty page, would never stop (ELT.md
+    asks for a `maximum_offset` on every layer for this reason; @unvalidated
+    against a live server, since none registered here has been seen doing
+    it). Two consecutive pages identical feature for feature cannot come
+    from one layer read in order, so the second one raises.
+    """
+    query_url = layer_url.rstrip("/") + "/query"
+    records = PAGE_SIZE if page_size is None else page_size
     offset = 0
+    previous = None
     while True:
         params = {
-            "where": "1=1",
+            "where": where,
             "outFields": out_fields,
             "outSR": 4326,
             "f": "geojson",
@@ -83,7 +128,7 @@ def fetch_layer_geojson(
         }
         if geometry_precision is not None:
             params["geometryPrecision"] = geometry_precision
-        resp = request_with_retry(query_url, params=params, timeout=60)
+        resp = request_with_retry(query_url, session=session, params=params, timeout=60)
         refusal = page_refusal(resp)
         if refusal is not None:
             if records <= 1:
@@ -94,10 +139,60 @@ def fetch_layer_geojson(
             continue
         batch = resp.json().get("features", [])
         if not batch:
-            break
-        features.extend(batch)
+            return
+        if batch == previous:
+            raise RuntimeError(f"{query_url} answered offset {offset} with the page before it; it ignores resultOffset")
+        yield batch
+        previous = batch
         offset += len(batch)
-    return {"type": "FeatureCollection", "features": features}
+
+
+def check_not_truncated(query_url: str, fetched: int) -> None:
+    """Raise when the server says the layer holds more features than were fetched (#1730).
+
+    The loop above stops on an empty page, which a server can also answer
+    in place of an error part-way through a layer - the file is then
+    written short and `fetch_all` records the layer as up to date, so no
+    later run fetches it again. One `returnCountOnly=true` query after the
+    loop is the cheap cross-check: a server that holds 4,395 features and
+    handed over 3,000 is a failed fetch, not a small layer.
+
+    ONE DIRECTION ONLY. Fewer fetched than counted raises. More fetched
+    than counted does not: a layer edited between the count and the pages
+    can move either way, and an overshoot loses nothing. A count that
+    cannot be read (an error object, a non-JSON body, no `count` key, a
+    refused request) is printed and skipped, never treated as a pass or a
+    fail - whether every server this repo fetches from supports
+    `returnCountOnly` is unmeasured, and failing the fetch on that would
+    turn a missing capability into an outage. @unvalidated: the support
+    is asserted by the ArcGIS REST spec, not checked per registered source.
+    """
+    count = layer_count(query_url)
+    if count is not None and fetched < count:
+        raise RuntimeError(f"{query_url} holds {count} features but {fetched} were fetched; the layer was truncated")
+
+
+def layer_count(query_url: str, *, where: str = "1=1", session=None) -> int | None:
+    """The server's own `returnCountOnly` count for `where`, or None when it cannot be read.
+
+    Split out of check_not_truncated so the extract run check can record
+    the count as the proof an empty or short table needs (pipeline/ELT.md,
+    "A full reload that cannot empty a safety table"). None is printed with
+    its reason and is never a count of zero: an allowed-empty closures layer
+    without a readable count is UNKNOWN there, not a quiet trail.
+    """
+    try:
+        resp = request_with_retry(
+            query_url, session=session, params={"where": where, "returnCountOnly": "true", "f": "json"}, timeout=60
+        )
+        count = resp.json().get("count")
+    except (ValueError, AttributeError, requests.RequestException) as exc:
+        print(f"  {query_url} count check skipped: {exc}")
+        return None
+    if not isinstance(count, int):
+        print(f"  {query_url} count check skipped: no integer count in the answer")
+        return None
+    return count
 
 
 def page_refusal(resp) -> str | None:

@@ -10,3 +10,21 @@ pytest-xdist
 requests-mock
 moto[s3]
 ruff
+
+# The extract tests (pipeline/tests/test_extract_*.py) import dlt. The same pin
+# as requirements-extract.in, without its `filesystem` extra: that extra's
+# aiobotocore pins a botocore requirements.txt's boto3 cannot share, and the
+# tests write to a local directory, which needs no s3fs. test_extract_layout.py
+# holds the two pins equal. Compiled at --python-version 3.12 since this
+# change, because requirements.txt's numpy 2.5.2 needs 3.12 and the 3.11
+# command the header used to record no longer resolves (measured 2026-10-01).
+#
+# What it changes for every other test: dlt requires simplejson, and requests
+# bases its JSONDecodeError on simplejson's whenever simplejson is installed,
+# so in this environment that error is no longer a json.JSONDecodeError (it is
+# still a ValueError). The build jobs install requirements.txt, which has no
+# simplejson, so a test here is the stricter of the two: code that catches
+# json.JSONDecodeError around `response.json()` passes in production and fails
+# here. One test expected that error and now expects ValueError
+# (test_spike_hike_photo_sources.py).
+dlt[parquet,sql_database]==1.30.0

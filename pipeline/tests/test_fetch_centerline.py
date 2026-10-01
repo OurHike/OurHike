@@ -62,7 +62,8 @@ def test_a_short_page_does_not_end_the_fetch(registered, requests_mock):
 
     written = json.loads(registered.read_text())
     assert len(written["features"]) == 3025
-    assert requests_mock.call_count == 4  # three short pages, then the empty one that ends it
+    pages_asked = [r for r in requests_mock.request_history if "returncountonly" not in r.qs]
+    assert len(pages_asked) == 4  # three short pages, then the empty one that ends it
 
 
 def test_it_asks_for_geometry_only_at_reduced_precision(registered, requests_mock):

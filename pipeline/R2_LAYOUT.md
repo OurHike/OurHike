@@ -52,6 +52,8 @@ put here is published, not stored. Also never: credentials, mirrors of raw upstr
 about generated data), and anything whose licence has not been established
 ([CONTRIBUTING.md](../CONTRIBUTING.md)).
 
+**Decision 42 of `pipeline/ELT.md` (2026-10-01) reverses the next two paragraphs**: the maintainer chose to keep raw and the step cache in this bucket rather than in new private ones (*"If we made that decision, we can undo that decision"*). Because this bucket is world-readable, a raw table whose rows this project never publishes stays out of it. That covers the four the paragraph below names, and any layer whose terms refuse redistribution. The prefixes, their key rules and that hold-out list are designed at stage 4 of **#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads**, when the workflows first write raw here; until then nothing does. The record of the earlier design:
+
 **There is a design for a raw store, and it is a different bucket** —
 [INCREMENTAL.md](INCREMENTAL.md), designed 2026-09-09, unbuilt. It exists to keep the
 fetchers' outputs between runs, which is exactly the "mirror of raw upstream pulls" the

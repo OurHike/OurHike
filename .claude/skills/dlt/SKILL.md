@@ -53,8 +53,10 @@ wins over both, and where this file and CLAUDE.md could be read as
 disagreeing, this file has a bug. "Decision N" below is a row of the
 maintainer's decisions table in `pipeline/ELT.md`, "Overview".
 
-Three terms are used throughout. **The raw store** is the private R2 bucket
-`R2_RAW_BUCKET`, which no phone reads. **The raw lake** is the DuckLake form
+Three terms are used throughout. **The raw store** is where the extract lands
+raw: the private R2 bucket `R2_RAW_BUCKET` as first designed, and, by ELT.md's
+decision 42, the current bucket under its own prefix, with every table this
+project never publishes held off it. The app never reads it. **The raw lake** is the DuckLake form
 the monthly lane's raw tables move to at phase 3 (decision 26). **A lane** is
 the scheduled job that reads a resource, set by its `meta.cadence`: closures,
 warnings, NWS alerts, the NBM forecast manifest, the drought feed and OurHike's

@@ -16,6 +16,7 @@ the warehouse reads; a table that halves is refused.
 
 import json
 from datetime import date, timedelta
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import duckdb
@@ -159,6 +160,12 @@ def registry(tmp_path, monkeypatch):
 @pytest.fixture
 def store(tmp_path):
     return {"bucket_url": (tmp_path / "raw-store").as_uri(), "pipelines_dir": str(tmp_path / "pipelines")}
+
+
+def store_root(store):
+    from urllib.parse import urlparse
+
+    return Path(urlparse(store["bucket_url"]).path)
 
 
 def lane(store, *resources):
@@ -904,3 +911,42 @@ def test_the_nhd_listing_reads_lib_nhds_prefix_through_the_lane(store, requests_
     con, counts = warehouse(store)
     assert counts["raw_usgs__nhd_hu4_gpkg"] == 3
     assert con.execute('select sum(size) from raw."raw_usgs__nhd_hu4_gpkg"').fetchone()[0] == 30
+
+
+def test_a_load_that_dies_before_it_commits_is_never_read_as_the_current_closures(registry, store, requests_mock, monkeypatch):
+    """The committed-load read, held: a load that wrote files and never committed must not become what the build reads.
+
+    dlt's filesystem destination commits a load by writing its `_dlt_loads`
+    row in complete_load(); a runner that dies before that leaves the new
+    Parquet beside no commit. Under `replace` the old table's files are gone
+    by then, so the honest outcomes are the previous rows or a refused build,
+    never the half-load (ELT.md, "A full reload that cannot empty a safety
+    table").
+    """
+    from dlt.destinations.impl.filesystem.filesystem import FilesystemClient
+
+    from extract._warehouse import BuildRefused
+
+    layer = FakeLayer(requests_mock, CLOSURES_URL, [feature(10), feature(11)])
+    lane(store, closures())
+
+    layer.features, layer.etag = [feature(12)], "v2"
+
+    def dies(self, load_id):
+        raise RuntimeError("the runner went away before the load committed")
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(FilesystemClient, "complete_load", dies)
+        with pytest.raises(PipelineStepFailed, match="before the load committed"):
+            lane(store, closures())
+
+    # What a glob would read: the uncommitted file, one closure where the trail has two or one.
+    on_disk = [path for path in (store_root(store) / "raw").rglob("*.parquet") if "closures_layer" in str(path)]
+    assert [duckdb.sql(f"select count(*) from '{path}'").fetchone()[0] for path in on_disk] == [1]
+    # Measured 2026-10-01: the replace had already removed the committed load's file, so the build refuses.
+    with pytest.raises(BuildRefused, match="no committed file"):
+        warehouse(store)
+
+    lane(store, closures())
+    _, counts = warehouse(store)
+    assert counts["raw_testclub__closures_layer"] == 1, "the next good run commits and is read"

@@ -315,6 +315,13 @@ cannot see it (measured 2026-10-01). So:
 - **`append` only for `_extract_runs`.** An empty `append` makes no load
   package, so "the newest load on disk" kept serving lifted closures
   (measured).
+- **A pending package is dropped before the run syncs.** A run that died
+  between extract and commit leaves its package and its resource state in
+  the working directory. Kept, the next run read that uncommitted marker and
+  answered FRESH, and the run log's own `pipeline.run()` committed the dead
+  package with no `_extract_runs` row (measured 2026-10-01). `_run.py` drops
+  it, warns, then syncs, and refuses a load that commits more than one
+  package. Runners start empty, so this bites a reused directory.
 - **An allowed zero counts only with the upstream's own count, read in the
   same run**: ArcGIS `returnCountOnly=true`, Socrata `count(*)` under the
   entry's `where`, WordPress `X-WP-Total`, the slug count of ATC's

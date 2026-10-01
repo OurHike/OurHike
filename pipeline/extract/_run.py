@@ -412,6 +412,19 @@ def run_pipeline(
     report = RunReport(run_id=checked_at.strftime("%Y%m%dT%H%M%S.%fZ"), lane=lane, outcome="loaded")
 
     pipeline = make_pipeline(lane, bucket_url, pipelines_dir)
+    # A run that died after its extract and before its load committed leaves
+    # its package pending in the working directory, and its resource state
+    # with it. Kept, the next run reads that uncommitted marker as recorded and
+    # answers FRESH for a change it never loaded, and the run log's own
+    # pipeline.run() commits the dead package without an `_extract_runs` row
+    # (measured 2026-10-01: tests/test_extract_run.py's
+    # test_a_load_that_dies_before_it_commits...). Dropped first, then synced,
+    # the committed marker comes back (the dlt skill, "A marker advances only
+    # when a load commits"). CI's runners start with no working directory, so
+    # this bites a reused one: a laptop, a cached runner.
+    if pipeline.has_pending_data:
+        print(f"::warning title={lane} dropped an uncommitted load::a previous run died before its load committed")
+        pipeline.drop_pending_packages()
     pipeline.sync_destination()
     recorded = recorded_markers(pipeline)
     plan_resources = due(plan_resources, run_log_rows(pipeline), checked_at)
@@ -453,7 +466,10 @@ def run_pipeline(
             report.outcome = "refused"
             write_run_log(pipeline, report, planned, checked_at, unavailable)
             raise ExtractRefused("Extract run check:\n  " + "\n  ".join(report.problems))
-        report.load_id = pipeline.load().loads_ids[0]
+        loads = pipeline.load().loads_ids
+        if len(loads) != 1:
+            raise ExtractRefused(f"one load expected from this run, and {len(loads)} committed: {loads}")
+        report.load_id = loads[0]
         report.problems = committed(pipeline, report.load_id, report.rows, planned)
         if report.problems:
             report.outcome = "unverified"

@@ -26,6 +26,7 @@ from extract._kinds import (
     ArcgisLayer,
     ClubPdf,
     GuidePages,
+    OpentrailFeed,
     PodcastFeed,
     PublishedHikes,
     ReviewedFile,
@@ -37,6 +38,7 @@ from extract._kinds import (
 )
 from extract._run import ExtractRefused, Planned, make_pipeline, run_check, run_pipeline
 from extract._warehouse import load_warehouse
+from fetch_opentrail import API_URL as OPENTRAIL_API_URL
 from lib.freshness_state import Freshness
 from lib.user_agent import USER_AGENT
 from tests.test_fetch_nynjtc_long_path_guide import INDEX, section_page
@@ -674,3 +676,25 @@ def test_an_empty_reviewed_file_lands_as_an_empty_table(store, tmp_path):
     lane(store, resource)
     con, counts = warehouse(store)
     assert counts["raw_testclub__work"] == 0
+
+
+def test_opentrail_lands_its_waypoints_without_a_single_comment(registry, requests_mock):
+    collection = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "id": "w1",
+                "properties": {"title": "Spring", "icon": "w", "comments": [{"author": "A. Person"}], "commentCount": 1},
+                "geometry": {"type": "Point", "coordinates": [-84.2, 34.6]},
+            }
+        ],
+    }
+    requests_mock.get(OPENTRAIL_API_URL, json=collection, headers={"ETag": '"o1"'})
+    feed = OpentrailFeed(key="at", club="opentrail", type="points_of_interest")
+    rows = list(feed.rows({}))
+    assert feed.table == "raw_opentrail__at", "the name dbt already reads"
+    assert rows == [{"title": "Spring", "icon": "w", "feature_id": "w1", "geometry": collection["features"][0]["geometry"]}]
+    assert requests_mock.last_request.headers["User-Agent"] == USER_AGENT
+    verdict, marker = feed.change_check(None)
+    assert verdict is Freshness.STALE and marker == {"etag": '"o1"'}

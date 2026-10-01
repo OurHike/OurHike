@@ -153,6 +153,9 @@ def test_a_claiming_file_has_a_resource_for_each_claim_and_no_other():
     for club_file in EVERY_FILE:
         if club_file.type == "org" or club_file.form != "claims":
             continue
+        if club_file.unregistered:
+            assert not club_file.claims, f"{club_file.path}: an unregistered input claims nothing"
+            continue
         # A key may feed two resources (NYNJTC's alerts: posts and terms), so the sets must match.
         assert sorted(set(club_file.claims)) == sorted({r.key for r in club_file.resources}), (
             f"{club_file.club}/{club_file.type}.py: CLAIMS and the RESOURCES' keys must match"
@@ -307,4 +310,6 @@ def test_shared_folders_never_share_a_name_with_a_club_and_each_resource_names_i
         assert shared.club not in clubs, f"_shared/{shared.club}/ has a club folder's name"
         if shared.resources:
             assert shared.type in TYPES, f"_shared/{shared.club}/{shared.path.name} declares no TYPE among {TYPES}"
-            assert shared.claims, f"_shared/{shared.club}/{shared.path.name} has resources and no CLAIMS"
+            assert shared.claims or shared.unregistered, (
+                f"_shared/{shared.club}/{shared.path.name} has resources, no CLAIMS, and no UNREGISTERED reason"
+            )

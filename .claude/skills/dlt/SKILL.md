@@ -20,10 +20,12 @@ The other 118 managing clubs have their folders too, every type a dated note,
 so all 145 exist, and `_shared/not_clubs.py` holds the 25 umbrella and
 route-only lines (`NotClub` in `_contract.py`). `_shared/` files declare a
 `TYPE` and are found by `discover_shared()`; the four reviewed files load
-there (podcast episodes, shelter capacity, highlights, work projects). Not
-built yet: `_shared/`'s fetched resources (NWS, NBM, USGS, OSM, Wikimedia,
-NDMC, opentrail, OurHike's Postgres), the as-sent copy, the raw lake,
-fixture mode, and any run against R2. Every other
+there (podcast episodes, shelter capacity, highlights, work projects), and
+opentrail's A.T. waypoints through `opentrail_feed()`, a non-registry input
+whose file says why it claims nothing (`UNREGISTERED`). Not built yet:
+`_shared/`'s other fetched resources (NWS, NBM, USGS, OSM, Wikimedia, NDMC,
+OurHike's Postgres), the as-sent copy, the raw lake, fixture mode, and any
+run against R2. Every other
 source still comes from the old fetchers (`fetch_*.py`, `lib/arcgis.py`,
 `lib/socrata.py`) and `load_raw.py`; a change to one of those follows its own
 docstring and tests. On `main` none of this exists until the pull request

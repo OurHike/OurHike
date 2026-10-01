@@ -285,6 +285,9 @@ class ClubFile:
     shares: str | None = None
     note: NotAvailable | None = None
     same_as: tuple[SameAs, ...] = ()
+    # A _shared/ input with no sources.json row says why here, and claims nothing:
+    # its fetcher's own constant is its one home (ELT.md, "What moves").
+    unregistered: str | None = None
 
     @property
     def form(self) -> str:
@@ -377,6 +380,7 @@ def read_shared_file(path: Path) -> ClubFile:
         shares=None,
         note=getattr(module, "NOT_AVAILABLE", None),
         same_as=tuple(getattr(module, "SAME_AS", ()) or ()),
+        unregistered=getattr(module, "UNREGISTERED", None),
     )
 
 

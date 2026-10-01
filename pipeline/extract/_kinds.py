@@ -20,6 +20,7 @@ The kinds built so far for stage 2 (#1793 â€” Rebuild the data platform as dlt â
     guide_pages(key)        a guide published as web pages, one row per section
     published_hikes(key)    the Hike Finder export, one row per hike, GPX as served
     club_pdf(key)           a club's PDF, one row per row its lib/club_pdfs.py parser reads
+    opentrail_feed()        opentrail.org's A.T. waypoints, comments left out (no registry row)
     reviewed_input(key)     a registry entry whose rows a person reviews into a
                             file in git (ATC's Trail Updates), loaded from that file
     reviewed_file(path)     a reviewed pipeline/reference/ file with no registry
@@ -48,6 +49,8 @@ import requests
 from extract._contract import EXTRACT_DIR, PIPELINE_DIR, Resource, read_club_file, slug_for_folder
 from fetch_club_pdfs import extract_page_texts
 from fetch_hikefinder import sign_in as hikefinder_sign_in
+from fetch_opentrail import API_URL as OPENTRAIL_API_URL
+from fetch_opentrail import strip_comments as strip_opentrail_comments
 from lib.arcgis import iter_layer_pages, layer_count
 from lib.club_pdfs import PARSERS as CLUB_PDF_PARSERS
 from lib.freshness_state import Freshness, compare_marker
@@ -782,6 +785,55 @@ def club_pdf(key: str, **overrides) -> ClubPdf:
     if key not in CLUB_PDF_PARSERS:
         raise KeyError(f"{key}: lib/club_pdfs.py has no parser for it, so there is nothing to load but bytes")
     return ClubPdf(key=key, **overrides)
+
+
+@dataclass(frozen=True)
+class OpentrailFeed(Resource):
+    """opentrail.org's A.T. waypoints, one row per feature, with every user comment left out.
+
+    The API URL is fetch_opentrail.py's `API_URL`, its one home: opentrail is
+    a non-registry input (ELT.md, "What moves"), so it has no sources.json row
+    to read one from. Comments are dropped inside the resource, before dlt
+    sees a row, because they are named individuals' own contributions and not
+    ours to redistribute (fetch_opentrail.py's `strip_comments`). The
+    API documents ETag and If-None-Match, so the change check is a
+    conditional GET and a 304 is FRESH. The key is `at`, so the table keeps
+    the name dbt already reads, `raw_opentrail__at`.
+    """
+
+    def _get(self, etag: str | None = None) -> requests.Response:
+        headers = {"If-None-Match": etag} if etag else None
+        return request_with_retry(OPENTRAIL_API_URL, session=session(), params={"trail": "AT"}, headers=headers, timeout=60)
+
+    def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
+        try:
+            response = self._get((recorded or {}).get("etag"))
+        except requests.RequestException as error:
+            print(f"  {self.key}: change check failed ({error}); fetching")
+            return Freshness.UNKNOWN, None
+        if response.status_code == 304:
+            return Freshness.FRESH, recorded
+        etag = response.headers.get("ETag")
+        if not etag:
+            return Freshness.UNKNOWN, None
+        return (Freshness.STALE if recorded is None else compare_marker(recorded.get("etag"), etag)), {"etag": etag}
+
+    def column_hints(self) -> dict:
+        return {"geometry": {"data_type": "json"}}
+
+    def rows(self, proofs: dict[str, int]):
+        response = self._get()
+        response.raise_for_status()
+        collection = strip_opentrail_comments(response.json())
+        for feature in collection["features"]:
+            row = {name: value for name, value in (feature.get("properties") or {}).items() if name.lower() not in PERSON_FIELDS}
+            row["feature_id"] = feature.get("id")
+            row["geometry"] = feature.get("geometry")
+            yield row
+
+
+def opentrail_feed(**overrides) -> OpentrailFeed:
+    return OpentrailFeed(key="at", **overrides)
 
 
 @dataclass(frozen=True)

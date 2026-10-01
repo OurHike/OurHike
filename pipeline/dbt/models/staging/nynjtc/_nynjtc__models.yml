@@ -1,0 +1,15 @@
+version: 2
+
+models:
+  - name: stg_nynjtc__long_path
+    description: >
+      The Long Path's per-segment attributes - the first trail in this
+      warehouse that is not the A.T. NO source_id column: sources.json
+      records no id field for this layer, and ST_Read's OGC_FID is GDAL's
+      row number rather than NYNJTC's identity. `blaze` is a plain string
+      ('aqua' on all 43 rows), passed through undecoded.
+  - name: stg_nynjtc__highlands_trail
+    description: >
+      The Highlands Trail's 12 sections. NO BLAZE COLUMN, because the layer
+      publishes no blaze field - a stated absence, not a gap to fill. No
+      source_id, for the same reason as its sibling.

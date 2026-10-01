@@ -1,0 +1,25 @@
+version: 2
+
+models:
+  - name: stg_oprhp__trails
+    description: >
+      NYS Parks' 16,641 statewide segments, the largest layer in the
+      warehouse. Two blaze columns rather than the three the layer has: only
+      `Blaze` and `Map_Blaze` were ever written down. `status` and
+      `public_flag` are staged and nothing filters on them, because what they
+      gate is unmeasured.
+  - name: stg_oprhp__trail_closures
+    description: >
+      OPRHP's temporary closure polygons - a safety surface, and the layer
+      whose freshness matters most of anything Phase D stages. TWO COLUMNS
+      ONLY: no full field list was ever measured, and a closure model with
+      invented columns is the worst place for one. No row-count floor test
+      either: an honest count of zero is the expected answer in a good week.
+  - name: stg_oprhp__facilities
+    description: >
+      NYS Parks' 8,823 facility points, staged and NOT unioned. The entry
+      declares no poi_type because typing it is a WATER change - `Sub_Asset`
+      holds 136 'Water Spigot' and 15 'Drinking Fountain' among its 158
+      values - needing export_poi.py's confidence and provenance treatment
+      rather than a point dump. Both public flags are staged; the obvious one
+      (`Public_`, Y on all 8,823) discriminates nothing.

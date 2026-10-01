@@ -69,10 +69,11 @@ vars:
     #
     # A prefix outranks a folder in the evaluator's typing, so a future
     # trail_* model outside models/marts/ is flagged by fct_model_directories
-    # rather than slipping through - wanted. Measured 2026-10-01 on dbt-oss
-    # 2.0.5 with evaluator 1.4.0, against a scratch copy holding one model
-    # for each of the eleven names under models/marts/<name>/: no naming or
-    # directory finding for any of them, and dim_pois still passing.
+    # rather than slipping through - wanted. Measured 2026-10-01 with
+    # evaluator 1.4.0, on dbt 2.0.6 and again on dbt-oss 2.0.5, against a
+    # scratch copy holding one model for each of the eleven names under
+    # models/marts/<name>/: no naming or directory finding for any of them,
+    # and dim_pois still passing.
     marts_prefixes:
       - trail_
       - points_

@@ -5,9 +5,16 @@
 # data platform as dlt → dbt: seven contracted marts, a monthly refresh,
 # published docs, and lighter phone downloads). sqlfluff-templater-dbt
 # compiles through dbt-core 1.x, and the maintainer chose one dbt version
-# everywhere: dbt-oss 2.0.5, with no dbt-core beside it. The jinja templater
-# needs no dbt and no warehouse, so lint can run first in the CI job, before
-# anything is built.
+# everywhere: dbt v2 (the full dbt 2.0.6 since decision 32; dbt-oss 2.0.5
+# before it), with no dbt-core beside it. The jinja templater needs no dbt
+# and no warehouse, so lint can run first in the CI job, before anything is
+# built.
+#
+# `dbt lint` reads this file too (decision 33 runs it beside SQLFluff in the
+# CI job). It warns that it supports only SQLFluff's `dbt` templater and
+# carries on, and it is not the enforced lint: measured 2026-10-01 on dbt
+# 2.0.6, it failed a planted CP01 but passed a planted LT01 that SQLFluff
+# fails. SQLFluff, with this file as written, is the gate.
 #
 # What that costs: `ref()` and `source()` render as placeholder names rather
 # than the relations dbt compiles, `var()` has no project values, and a

@@ -7,7 +7,8 @@ logs/
 target/
 .user.yml
 # dbt-oss 2.0.5 appended this line itself on its first `dbt deps` here
-# (2026-10-01). The directory never appeared in this sandbox, where deps
-# cannot finish, so what v2 keeps in it is unread; it is ignored so that
-# wherever v2 does write it, it cannot be committed.
+# (2026-10-01), before decision 32 moved the project to the full dbt 2.0.6.
+# The directory never appeared in this sandbox under either distribution,
+# where deps cannot finish, so what v2 keeps in it is unread; it is ignored
+# so that wherever v2 does write it, it cannot be committed.
 dbt_internal_packages/

@@ -504,3 +504,78 @@ def test_extracts_already_on_disk_cost_nothing(tmp_path, monkeypatch):
     monkeypatch.setattr(trail_water, "fetch_states", boom)
 
     trail_water.ensure_state_extracts()
+
+
+# --- the elevation cache is written in batches (#1768) ----------------------
+
+
+def _fake_epqs(monkeypatch, tmp_path):
+    """Point the cache at tmp_path, answer every EPQS call with 1000 ft, and
+    count how many times the cache file is written."""
+    cache_path = tmp_path / "epqs_elevations.json"
+    monkeypatch.setattr(trail_water, "ELEVATION_CACHE_PATH", cache_path)
+    monkeypatch.setattr(trail_water, "_ELEVATION_CACHE", None)
+    monkeypatch.setattr(trail_water, "_ELEVATION_UNSAVED", 0)
+    writes = []
+    real_write = trail_water._write_elevation_cache
+    monkeypatch.setattr(trail_water, "_write_elevation_cache", lambda cache: (writes.append(len(cache)), real_write(cache)))
+
+    class Answer:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"value": 1000.0}
+
+    monkeypatch.setattr(trail_water.requests, "get", lambda *a, **k: Answer())
+    return cache_path, writes
+
+
+def test_a_run_of_lookups_writes_the_cache_once_per_batch_not_once_per_lookup(tmp_path, monkeypatch):
+    """Before #1768, 120 lookups meant 120 writes of 1..120 rows (7,260 rows).
+    With a batch of 50: two writes mid-run, one at the flush - 100 + 100 + 120
+    rows, counted here as writes, not timed."""
+    cache_path, writes = _fake_epqs(monkeypatch, tmp_path)
+
+    for i in range(120):
+        assert trail_water.elevation_ft(40.0 + i / 1000, -75.0) == 1000.0
+    trail_water.flush_elevation_cache()
+
+    assert writes == [50, 100, 120]
+    assert len(json.loads(cache_path.read_text())) == 120
+
+
+def test_a_flush_with_nothing_new_writes_nothing(tmp_path, monkeypatch):
+    _cache_path, writes = _fake_epqs(monkeypatch, tmp_path)
+
+    trail_water.flush_elevation_cache()
+
+    assert writes == []
+
+
+def test_a_cached_lookup_is_neither_asked_again_nor_a_reason_to_write(tmp_path, monkeypatch):
+    _cache_path, writes = _fake_epqs(monkeypatch, tmp_path)
+    trail_water.elevation_ft(40.0, -75.0)
+    trail_water.flush_elevation_cache()
+
+    monkeypatch.setattr(trail_water.requests, "get", lambda *a, **k: (_ for _ in ()).throw(AssertionError("asked again")))
+    assert trail_water.elevation_ft(40.0, -75.0) == 1000.0
+    trail_water.flush_elevation_cache()
+
+    assert writes == [1]
+
+
+def test_main_flushes_the_cache_even_when_it_refuses(tmp_path, monkeypatch):
+    """The refusal path returns 1 before any output is written; the lookups
+    already answered must still reach disk or the next run re-asks EPQS."""
+    cache_path, _writes = _fake_epqs(monkeypatch, tmp_path)
+    monkeypatch.setattr(trail_water, "fetch_atc_features", lambda layer: [])
+
+    def refuse(_sites):
+        trail_water.elevation_ft(40.0, -75.0)
+        raise ValueError("no streams")
+
+    monkeypatch.setattr(trail_water, "collect_streams", refuse)
+
+    assert trail_water.main([]) == 1
+    assert len(json.loads(cache_path.read_text())) == 1

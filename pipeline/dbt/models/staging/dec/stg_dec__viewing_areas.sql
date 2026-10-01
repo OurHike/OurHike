@@ -26,4 +26,6 @@ renamed as (
     from source
 )
 
-{{ dedupe('renamed', 'poi_key', 'source_id') }}
+{{ dbt_utils.deduplicate(
+    relation='renamed', partition_by='poi_key', order_by='source_id'
+) }}

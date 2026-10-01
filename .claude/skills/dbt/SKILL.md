@@ -223,10 +223,13 @@ a `source()` (today's `stg_`, the target's `base_`):
   `pipeline/spike_table_keys.py` finds the smallest unique set and counts the
   exact copies. Do not trust a key because a field is called an id. DEC's
   `ASSET_UID` names two different campsites four times over.
-- **The model ends with `{{ dedupe('renamed', '<key>', '<order>') }}`**, the
-  project's QUALIFY macro. Never `dbt_utils.deduplicate`: on DuckDB it falls
-  back to a natural join, and that drops every row holding a NULL (measured
-  2026-10-01).
+- **The model ends with `{{ dbt_utils.deduplicate(relation='renamed',
+  partition_by='<key>', order_by='<order>') }}`**, the package's own macro.
+  dbt_utils has no DuckDB version of it, and its default natural join drops
+  every row holding a NULL (measured 2026-10-01), so `dbt_project.yml`'s
+  `dispatch` block finds the project's `macros/duckdb__deduplicate.sql` (a
+  QUALIFY) first. Never write a dedupe of your own, and never remove that
+  dispatch block.
 - **The raw table gets `duplicates_are_exact`** in `_<club>__sources.yml`,
   with the same key expressions (`geometry_key('geom')` written out as
   `md5(st_astext(geom))`). It fails the build when rows sharing a key differ,
@@ -323,10 +326,15 @@ table before adding a column to a mart a hiker's safety turns on.
 `pipeline/.sqlfluff` keeps the `duckdb` dialect, ST06 off and RF04 ignoring
 `name` and `source`, each with its reason in the file's header. **The templater
 becomes `jinja`, in CI and locally** (decision 19), with `apply_dbt_builtins =
-True`, `library_path = dbt/sqlfluff_libs` (a two-line stub of
-`dbt_utils.generate_surrogate_key`) and `load_macros_from_path = dbt/macros`.
-On today's 32 files it took 2.0 s with 4 processes and found 0 violations
-(measured 2026-10-01). It needs no warehouse, so it runs first.
+True`, `library_path = dbt/sqlfluff_libs` and `load_macros_from_path =
+dbt/macros`. `dbt/sqlfluff_libs/dbt_utils.py` renders the REAL dbt_utils from
+`dbt_packages/`, never a hand-written copy (the maintainer: *"Get the actual
+dbt_utils package. Dont reinvent the wheel"*): it supplies only the dbt
+built-ins the package's macros call, and on 2026-10-01 its output equalled dbt
+2.0.6's compile on all 27 staging models. It needs no warehouse but does need
+the packages, so it runs right after `dbt deps`. Never add a macro body to that
+file; if a new dbt_utils macro fails to render, the missing piece is a dbt
+built-in it calls.
 
 The jinja templater cannot see compiled `ref()` and `source()` relations,
 `var()` values or macro bodies; `dbt build` on the fixtures covers those.

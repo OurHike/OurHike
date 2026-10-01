@@ -64,4 +64,6 @@ renamed as (
     from source
 )
 
-{{ dedupe('renamed', 'poi_key', 'poi_key') }}
+{{ dbt_utils.deduplicate(
+    relation='renamed', partition_by='poi_key', order_by='poi_key'
+) }}

@@ -48,4 +48,6 @@ renamed as (
     from source
 )
 
-{{ dedupe('renamed', 'closure_key', 'closure_key') }}
+{{ dbt_utils.deduplicate(
+    relation='renamed', partition_by='closure_key', order_by='closure_key'
+) }}

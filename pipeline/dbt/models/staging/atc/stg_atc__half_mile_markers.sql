@@ -20,4 +20,6 @@ renamed as (
     from source
 )
 
-{{ dedupe('renamed', 'mile_marker_key', 'source_id') }}
+{{ dbt_utils.deduplicate(
+    relation='renamed', partition_by='mile_marker_key', order_by='source_id'
+) }}

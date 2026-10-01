@@ -395,10 +395,6 @@ if selected_has settings; then
   step "settings ruff check"   "$PY" -m ruff check .github/tests
   step "settings ruff format"  "$PY" -m ruff format --check .github/tests
 fi
-if selected_has dbt && [ -n "$DBT_DIR" ]; then
-  # The jinja templater, as CI runs it: no warehouse, no packages needed.
-  step "dbt sqlfluff lint"     env -C pipeline "$DBT_DIR/sqlfluff" lint dbt/models dbt/tests
-fi
 if selected_has client; then
   step "client lint"           npm --prefix client run lint
   step "client format:check"   npm --prefix client run format:check
@@ -456,6 +452,9 @@ if selected_has dbt; then
     else
       step "dbt deps"            "${dbt_cmd[@]}" deps --profiles-dir .
     fi
+    # The jinja templater, as CI runs it: no warehouse, but after deps, because
+    # dbt_utils' macros render from dbt_packages/ (dbt/sqlfluff_libs/dbt_utils.py).
+    step "dbt sqlfluff lint"     env -C pipeline "$DBT_DIR/sqlfluff" lint dbt/models dbt/tests
     step "dbt parse"             "${dbt_cmd[@]}" parse --profiles-dir .
     step "dbt lint"              "${dbt_cmd[@]}" lint --profiles-dir .
     step "dbt fixtures"          env -C pipeline "$DBT_DIR/python" make_dbt_fixtures.py --raw-dir "$dbt_tmp/raw"

@@ -17,10 +17,14 @@
 # fails. SQLFluff, with this file as written, is the gate.
 #
 # What that costs: `ref()` and `source()` render as placeholder names rather
-# than the relations dbt compiles, `var()` has no project values, and a
-# package macro renders as the stand-in in dbt/sqlfluff_libs/ rather than
-# its real body. The lint sees the SQL a model's author wrote, around those
-# holes; `dbt build` on the fixtures is what checks the compiled result.
+# than the relations dbt compiles. Package macros do NOT cost anything any
+# more: dbt/sqlfluff_libs/dbt_utils.py renders each dbt_utils macro from the
+# installed package's own files (the maintainer on the hand-written stand-in
+# that file used to be: "Get the actual dbt_utils package. Dont reinvent the
+# wheel."), and on 2026-10-01 its output equalled dbt 2.0.6's compile on all
+# 27 staging models' key and dedupe lines. So the lint needs `dbt deps` to
+# have run, and runs after it, in CI and in scripts/test.sh. `dbt build` on
+# the fixtures is still what checks the compiled result.
 # Measured 2026-10-01 on the 32 files under dbt/models and dbt/tests,
 # sqlfluff 4.3.0: 0 violations either way, 3.0 s serial on the jinja
 # templater against 9.7 s on the dbt templater (plan/06-dbt-tooling.md).
@@ -58,7 +62,8 @@ sql_file_ext = .sql
 exclude_rules = ST06
 
 # apply_dbt_builtins gives ref/source/config/var/is_incremental stand-ins.
-# library_path holds stand-ins for package macros (dbt_utils.*), and
+# library_path makes dbt/sqlfluff_libs/dbt_utils.py the `dbt_utils`
+# namespace, which renders the real package from dbt/dbt_packages/, and
 # load_macros_from_path lets a model call this project's own macros.
 [sqlfluff:templater:jinja]
 apply_dbt_builtins = True

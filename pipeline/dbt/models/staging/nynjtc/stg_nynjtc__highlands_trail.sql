@@ -36,4 +36,6 @@ renamed as (
     from layer
 )
 
-{{ dedupe('renamed', 'trail_segment_key', 'trail_segment_key') }}
+{{ dbt_utils.deduplicate(
+    relation='renamed', partition_by='trail_segment_key', order_by='trail_segment_key'
+) }}

@@ -86,3 +86,16 @@ vars:
       - suggested_
       - sources_
       - dim_
+
+# dbt_utils has no DuckDB version of `deduplicate`, and its default joins the
+# kept rows back with a NATURAL JOIN, where NULL never equals NULL: every row
+# holding a null in any column disappears (measured 2026-10-01, DuckDB 1.5.5:
+# of (1,'a',NULL), (2,'b','x'), (3,'b','x') deduplicated on the second
+# column, it kept only (2,'b','x')). Every ATC staging model carries a null
+# public_use. Dispatch is dbt_utils' own way for a project to supply an
+# adapter's implementation, so models call `dbt_utils.deduplicate` and dbt
+# finds macros/duckdb__deduplicate.sql here first. Measured on dbt 2.0.6, the
+# same three rows came back as (1,'a',NULL), (2,'b','x').
+dispatch:
+  - macro_namespace: dbt_utils
+    search_order: ["ourhike", "dbt_utils"]

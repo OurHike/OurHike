@@ -1,7 +1,8 @@
 {#-
     Fails when two raw rows share a key and differ in any other column.
 
-    Staging dedupes on its key (macros/dedupe.sql), and a dedupe on a key that
+    Staging dedupes on its key (dbt_utils.deduplicate, whose DuckDB version is
+    macros/duckdb__deduplicate.sql), and a dedupe on a key that
     is missing a column deletes a real feature: DEC's primitive campsites hold
     two different sites under one ASSET_UID (measured 2026-10-01), so a key of
     ASSET_UID alone would have dropped one of them. This test is what makes

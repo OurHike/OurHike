@@ -27,7 +27,9 @@ STAGING = DBT / "models" / "staging"
 MODELS = sorted(STAGING.rglob("stg_*.sql"))
 
 KEY_LINE = re.compile(r"\{\{\s*dbt_utils\.generate_surrogate_key\((\[.*?\])\)\s*\}\}\s+as\s+(\w+_key)\b", re.S)
-DEDUPE = re.compile(r"\{\{\s*dedupe\('renamed',\s*'(\w+)',\s*'(\w+)'\)\s*\}\}\s*$")
+DEDUPE = re.compile(
+    r"\{\{\s*dbt_utils\.deduplicate\(\s*relation='renamed',\s*partition_by='(\w+)',\s*order_by='(\w+)'\s*\)\s*\}\}\s*$"
+)
 SOURCE = re.compile(r"source\('([a-z_]+)',\s*'([a-z_]+)'\)")
 
 
@@ -74,7 +76,9 @@ def test_each_staging_model_builds_its_key_and_dedupes_on_it(path):
     )
     assert len(inputs) >= 2, "a key needs at least one column beside the registry key"
     dedupe = DEDUPE.search(path.read_text().rstrip())
-    assert dedupe, f"{path.name} must end with {{{{ dedupe('renamed', '{key_column}', ...) }}}}"
+    assert dedupe, (
+        f"{path.name} must end with {{{{ dbt_utils.deduplicate(relation='renamed', partition_by='{key_column}', ...) }}}}"
+    )
     assert dedupe.group(1) == key_column
 
 

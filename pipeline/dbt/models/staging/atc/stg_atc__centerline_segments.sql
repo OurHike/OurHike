@@ -23,4 +23,6 @@ renamed as (
     from source
 )
 
-{{ dedupe('renamed', 'trail_segment_key', 'source_id') }}
+{{ dbt_utils.deduplicate(
+    relation='renamed', partition_by='trail_segment_key', order_by='source_id'
+) }}

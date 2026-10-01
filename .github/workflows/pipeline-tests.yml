@@ -283,18 +283,19 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: pip install -r requirements-dbt.txt
 
-      # The jinja templater (pipeline/.sqlfluff says why not the dbt one), so
-      # this needs no warehouse and no packages: it runs before anything is
-      # built. The enforced lint (decision 33): 0 violations on the 32 files,
-      # 3.8 s serial (measured 2026-10-01).
-      - name: sqlfluff lint
-        if: steps.scope.outputs.run == 'true'
-        run: sqlfluff lint dbt/models dbt/tests
-
       - name: dbt deps
         if: steps.scope.outputs.run == 'true'
         working-directory: pipeline/dbt
         run: dbt deps --profiles-dir .
+
+      # The jinja templater (pipeline/.sqlfluff says why not the dbt one), so
+      # this needs no warehouse. It does need the packages: dbt_utils' macros
+      # render from dbt_packages/ (dbt/sqlfluff_libs/dbt_utils.py), so it runs
+      # after deps. The enforced lint (decision 33): 0 violations, 3.8 s serial
+      # on the 32 files of 2026-10-01.
+      - name: sqlfluff lint
+        if: steps.scope.outputs.run == 'true'
+        run: sqlfluff lint dbt/models dbt/tests
 
       # The first dbt command after deps (parse needs the packages), and the
       # v2 gate: dbt-oss 2.0.5 refused this project's v1-shaped YAML with 64

@@ -743,7 +743,7 @@ def elevation_ft(lat: float, lon: float) -> float | None:
             elevation = None if value is None else float(value)
             if elevation is not None:
                 cache[key] = elevation
-                _write_elevation_cache(cache)
+                _note_elevation_added(cache)
             return elevation
         except Exception:  # noqa: BLE001 - retried, then declined
             time.sleep(2**attempt)
@@ -758,6 +758,32 @@ def _elevation_cache() -> dict[str, float]:
     if _ELEVATION_CACHE is None:
         _ELEVATION_CACHE = json.loads(ELEVATION_CACHE_PATH.read_text()) if ELEVATION_CACHE_PATH.exists() else {}
     return _ELEVATION_CACHE
+
+
+# How many new lookups pile up before the cache file is rewritten (#1768).
+# The file used to be rewritten whole after every lookup, so a run adding N
+# points wrote 1 + 2 + ... + N rows. Now a crash loses at most this many
+# answered lookups, which the next run asks EPQS for again - the cost of the
+# crash safety, in place of N^2/2 rows written. @unvalidated: 50 is picked,
+# not measured; what would settle it is `time python fetch_trail_water.py`
+# against an empty cache with this at 1 and at 50, which nobody has run.
+ELEVATION_FLUSH_EVERY = 50
+_ELEVATION_UNSAVED = 0
+
+
+def _note_elevation_added(cache: dict[str, float]) -> None:
+    global _ELEVATION_UNSAVED
+    _ELEVATION_UNSAVED += 1
+    if _ELEVATION_UNSAVED >= ELEVATION_FLUSH_EVERY:
+        flush_elevation_cache()
+
+
+def flush_elevation_cache() -> None:
+    """Write the cache if any lookup has been added since the last write."""
+    global _ELEVATION_UNSAVED
+    if _ELEVATION_UNSAVED and _ELEVATION_CACHE is not None:
+        _write_elevation_cache(_ELEVATION_CACHE)
+    _ELEVATION_UNSAVED = 0
 
 
 def _write_elevation_cache(cache: dict[str, float]) -> None:
@@ -963,6 +989,13 @@ def render(document: dict) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    try:
+        return _run(argv)
+    finally:
+        flush_elevation_cache()  # also on a refusal or a crash, so answered lookups are kept
+
+
+def _run(argv: list[str] | None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.parse_args(argv)
 

@@ -7,6 +7,7 @@ its fixture to the network. conftest.py's socket guard stays on.
 """
 
 import json
+from pathlib import Path
 
 import duckdb
 import pytest
@@ -68,3 +69,11 @@ def test_a_url_with_no_fixture_fails_rather_than_reaching_the_network():
 )
 def test_a_fields_type_is_read_off_the_fixtures_own_values(values, expected):
     assert esri_type(values) == expected
+
+
+def test_relative_paths_work_as_ci_passes_them(tmp_path, monkeypatch):
+    """pipeline-tests.yml runs `--raw-dir data/raw --warehouse data/warehouse.duckdb` from pipeline/: relative paths."""
+    make_dbt_fixtures.write_fixtures(tmp_path / "data" / "raw")
+    monkeypatch.chdir(tmp_path)
+    counts = build(Path("data/raw"), Path("data/warehouse.duckdb"), Path("data/fixture-store"))
+    assert counts["raw_atc__shelters"] == 3

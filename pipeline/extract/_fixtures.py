@@ -169,6 +169,8 @@ def fixture_resources(raw_dir: Path) -> tuple[list, FixtureAdapter]:
 
 def build(raw_dir: Path, warehouse: Path, store: Path) -> dict[str, int]:
     """Run every lane over the fixtures into a `file://` store under `store`, then load the warehouse. Returns {table: rows}."""
+    # Resolved, because CI passes paths relative to pipeline/, and a file:// URI must be absolute.
+    raw_dir, warehouse, store = raw_dir.resolve(), warehouse.resolve(), store.resolve()
     resources, adapter = fixture_resources(raw_dir)
     if not resources:
         raise SystemExit(f"no fixture file in {raw_dir} matches an extract resource; run make_dbt_fixtures.py first")

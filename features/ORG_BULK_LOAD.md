@@ -264,6 +264,28 @@ rather than beside it. The cost of that fix is
 [#1783](https://github.com/OurHike/OurHike/issues/1783), and it is written down there rather than
 absorbed here.
 
+### And the flip was not the last step after all ([#1787](https://github.com/OurHike/OurHike/issues/1787))
+
+**The publish that followed it succeeded and put none of the seventeen on the map.** `reaches_hikers`
+gates `publish.py`. What decides whether an exporter READS a source is a different field:
+`network_line_sources()` is `"blaze_field" in s or "blaze_default" in s`, and none of the seventeen
+carried either. Its own docstring said so — *"an external layer that is not lines… carries no blaze
+keys and is skipped here without needing to be named"* — and seventeen trail-line layers were
+registered as though they were facilities points.
+
+**So this plan had a fifth step nobody wrote down**, and the table above is wrong where it says batch
+4 is the one that changes a hiker's map. Registering, shipping, and being *readable by an exporter*
+are three acts, not two.
+
+**The near-misses are recorded per row rather than left for the next person to re-check.** The first
+pass used a name filter, and a filter only finds what it was told to look for; asked whether that was
+certain, every one of the seventeen had its full field list read live on 2026-09-30. `nps_trails`'
+`TRLCLASS`, `blm_trails`' `PLAN_ASSET_CLASS`, `wa_rco_trails`' `trail_class` and `alaska_trails`'
+`TrailClass` are construction standards and designations, not paint; `utah_sgid_trails`' `CartoCode`
+sounded like symbology and is a use class. **Two of the seventeen do publish paint** —
+`ct_deep_blue_blazed` through a `Map_Color` column the first pass never saw, and `nc_mst_trail`
+through `Blaze` — and they now read it, with reviewed rows in `reference/blaze_mapping.json`.
+
 ### This is existing practice, not a new lane
 
 Worth stating plainly, because the batching sounds like a shortcut and is not. **GATC and all four

@@ -55,7 +55,8 @@ seeds:
               # source_system nobody added a row for is a typo, not a new
               # organization - but adding one is now a one-line change here
               # rather than a re-think.
-              values: ["atc", "opentrail", "dec"]
+              arguments:
+                values: ["atc", "opentrail", "dec"]
       - name: code
         description: >
           The raw value as upstream sends it - an opentrail `icon` letter,
@@ -78,18 +79,20 @@ seeds:
           # tests/test_dbt_seed_sync.py holds the seed inside POI_TYPES
           # from the Python side.
           - accepted_values:
-              values:
-                - shelter
-                - campsite
-                - water
-                - resupply
-                - viewpoint
-                - parking
-                - privy
+              arguments:
+                values:
+                  - shelter
+                  - campsite
+                  - water
+                  - resupply
+                  - viewpoint
+                  - parking
+                  - privy
       - name: confidence
         description: >
           lib/poi_schema.py's CONFIDENCE_* tier for POIs minted from this
           code; empty exactly where poi_type is empty.
         data_tests:
           - accepted_values:
-              values: ["high", "low"]
+              arguments:
+                values: ["high", "low"]

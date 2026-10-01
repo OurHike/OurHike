@@ -130,7 +130,9 @@ const NO_GLYPH: Glyph = []
  * (map/challengeLayers.ts puts them there) - no sliver of the waypoint's
  * accent pokes out past an edge. Tip to tip that is 36.8 px, inside the same
  * 38 px footprint a waypoint claims; the shadow below the bottom tip loses
- * 0.2 px to the image edge, which nobody can see.
+ * 0.2 px to the image edge, which nobody can see. Those are icon-size 1
+ * figures; the layer scales the image with the waypoint's own size
+ * expression, so the match holds at every zoom (map/challengeLayers.ts).
  *
  * Not larger than that: a challenge is something the hiker opted into, and
  * a pin drawn bigger than the waypoints around it would be claiming a

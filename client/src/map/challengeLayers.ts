@@ -13,22 +13,42 @@
 // showing it draws pins and nothing more - no label, no count, no live
 // region, no notification (chrome/MapScreen.test.tsx holds that last half).
 //
-// **DRAWN OVER THE PLACE'S OWN WAYPOINT PIN, AND WHAT THAT COVERS.** Every
+// **DRAWN OVER THE PLACE'S OWN WAYPOINT PIN, AT THAT PIN'S SIZE.** Every
 // challenge place is a published POI (lib/challenges.ts's ChallengePlace
-// carries the POI's own coordinate), so its waypoint pin is already on the
-// map at the same point. The diamond is drawn concentric with that pin and
-// just big enough to cover it (map/challengePin.ts), so with the layer on the
-// place reads as a diamond, which is what the handoff's frame draws. The
-// cost, stated rather than smoothed over: with the layer on, that place's
-// category glyph, its hollow-if-unverified fill, its staleness ring and any
-// dispute mark (map/disputeLayers.ts, drawn on the pin's edge) are under the
-// diamond. A site's member badges fan out past it and stay visible. In the
-// ATC draft (pipeline/reference/challenges/atc/, 2026-09-30) the pinned places
-// are viewpoints, communities and one shelter (The Priest) - no water - and
-// a tap still opens that waypoint's card, which carries every one of those
-// facts in words. `@unvalidated` whether hikers read the swap correctly;
-// what would settle it is somebody with the layer on being asked what is at
-// a diamond, which nobody has tried.
+// carries the POI's own coordinate and type), so its waypoint pin is already
+// on the map at the same point. The diamond is drawn concentric with that pin
+// and exactly big enough to cover it (map/challengePin.ts), at every zoom:
+// `icon-size` is the waypoint layer's own POI_ICON_SIZE_EXPRESSION, read
+// against the place's `poi_type`, so it shrinks with the same zoom ramp and
+// the same quiet-type scale as the pin under it. With the layer on, the place
+// reads as a diamond, which is what the handoff's frame draws.
+//
+// SIZED TO THE PIN, ON THE MAINTAINER'S PICK (poll, 2026-09-30), from three
+// options drawn at z7/z9/z11/z13 around McAfee Knob with the real A.T.
+// waypoints under them. The first build drew every diamond at icon-size 1, a
+// 36.8 px diamond at every zoom: bigger than every waypoint pin below z13, and
+// at z7 the Triple Crown's three places piled into one blot. The frames were
+// a simulation rather than this renderer - a greedy pass in POI_PRIORITY
+// order approximating the collision engine, no site folding - and on them a
+// 300 px window at z7 lost 3 pins under the old diamonds and 2 under these.
+// The option not taken, a small diamond at the place below z11 like the
+// waypoints' dot rank, is the one to reach for if the remaining cost below
+// turns out to matter.
+//
+// WHAT IT STILL COVERS, stated rather than smoothed over. Where the waypoint
+// lost its pin to a neighbour and fell back to its dot, the diamond is still
+// pin-sized, over the dot and part of whatever beat it; in the simulation
+// that was most places below z11, because the list's places are mostly
+// viewpoints, the lowest-priority pins. And with the layer on, the covered
+// pin's category glyph, its hollow-if-unverified fill, its staleness ring and
+// any dispute mark (map/disputeLayers.ts, drawn on the pin's edge) are under
+// the diamond. A site's member badges fan out past it and stay visible. In
+// the ATC draft (pipeline/reference/challenges/atc/, 2026-09-30) the pinned
+// places are viewpoints, communities and one shelter (The Priest) - no water
+// - and a tap still opens that waypoint's card, which carries every one of
+// those facts in words. `@unvalidated` whether hikers read the swap
+// correctly; what would settle it is somebody with the layer on being asked
+// what is at a diamond, which nobody has tried.
 //
 // **IT TAKES NO PART IN PLACEMENT**, unlike the workday pin. The workday
 // submits to the collision engine so an invitation never shoves a waypoint
@@ -61,7 +81,7 @@ import {
   CHALLENGE_TAGGED_ICON_ID,
 } from './challengePin'
 import { POI_PIN_INK_SIZE, POI_PIN_PIXEL_RATIO, POI_PIN_SIZE } from './poiIcons'
-import { POI_PIN_MIN_ZOOM } from './poiLayers'
+import { POI_ICON_SIZE_EXPRESSION, POI_PIN_MIN_ZOOM } from './poiLayers'
 import { whenStyleReady } from './styleReady'
 
 export const CHALLENGE_SOURCE_ID = 'challenge-places'
@@ -77,6 +97,9 @@ export interface ChallengePinProperties {
   /** The POI's own published name - not an item title, which for a mystery
    *  item is the thing a pin must not give away. */
   name: string
+  /** The POI's own published type, under the key the waypoint layer's size
+   *  expression reads, so the diamond takes its pin's size tier. */
+  poi_type: string
   /** Filled rather than hollow - see map/challengePins.ts's
    *  `challengePinFeatures`, which decides it. */
   [CHALLENGE_TAGGED_PROPERTY]: boolean
@@ -104,18 +127,18 @@ export function buildChallengeSource(): GeoJSONSourceSpecification {
 }
 
 /**
- * Where the diamond's centre sits from the place's coordinate, in CSS px: on
- * the centre of the full-size waypoint pin standing on that coordinate.
+ * Where the diamond's centre sits from the place's coordinate, in CSS px at
+ * icon-size 1: on the centre of the waypoint pin standing on that coordinate.
  *
  * A waypoint pin stands on its point (map/poiLayers.ts: `icon-anchor:
  * 'bottom'` plus PIN_OFFSET_EXPRESSION, so the drawn pin's bottom edge is
- * the coordinate), which puts its centre POI_PIN_INK_SIZE / 2 above the
- * place at full size. Centring the diamond there is what lets it cover the
- * pin exactly, and at every smaller size the zoom shrinks a pin to it still
- * covers it: a smaller pin stands on the same point, lower inside the same
- * diamond. The coordinate itself stays inside the diamond, 13 px below its
- * centre and 5.4 px above its bottom tip - the place is under the mark, not
- * beside it, which is poiLayers.ts's objection to an offset.
+ * the coordinate), which puts its centre POI_PIN_INK_SIZE / 2 above the place
+ * at icon-size 1. MapLibre multiplies `icon-offset` by `icon-size`, and both
+ * layers take their size from POI_ICON_SIZE_EXPRESSION, so at every zoom and
+ * type tier the diamond's centre moves with the pin's and its apothem stays
+ * the pin's radius. The coordinate itself stays inside the diamond, at the
+ * pin's bottom edge - the place is under the mark, not beside it, which is
+ * poiLayers.ts's objection to an offset.
  */
 export const CHALLENGE_PIN_OFFSET: [number, number] = [0, -POI_PIN_INK_SIZE / 2]
 
@@ -142,7 +165,9 @@ export function buildChallengeLayer(
         CHALLENGE_TAGGED_ICON_ID,
         CHALLENGE_ICON_ID,
       ],
-      'icon-size': 1,
+      // The waypoint's own size, read against the place's `poi_type` - see
+      // the header, "at that pin's size".
+      'icon-size': POI_ICON_SIZE_EXPRESSION as unknown as number,
       'icon-offset': CHALLENGE_PIN_OFFSET,
       // See the header: always drawn, claims no space.
       'icon-allow-overlap': true,

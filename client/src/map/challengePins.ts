@@ -106,6 +106,7 @@ export function challengePinFeatures(
             properties: {
               poi: place.poi,
               name: place.name,
+              poi_type: place.poiType,
               [CHALLENGE_TAGGED_PROPERTY]: tagged,
               challengeId: challenge.id,
               itemId: item.id,

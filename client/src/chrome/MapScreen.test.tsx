@@ -1715,6 +1715,7 @@ describe('challenge places leave the walking view alone (#1780, principle 2)', (
         properties: {
           poi: 'atc_viewpoints:mcafee',
           name: 'McAfee Knob Summit',
+          poi_type: 'viewpoint',
           tagged: false,
           challengeId: 'bucket',
           itemId: 'mcafee-knob',

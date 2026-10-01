@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createExpression, latest } from '@maplibre/maplibre-gl-style-spec'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
-import { POI_PIN_MIN_ZOOM } from './poiLayers'
+import { POI_ICON_SIZE_EXPRESSION, POI_PIN_MIN_ZOOM } from './poiLayers'
 import { POI_PIN_INK_SIZE, POI_PIN_PIXEL_RATIO } from './poiIcons'
 import { buildMapStyle } from './style'
 import { WORKDAY_LAYER_ID } from './workdayLayers'
@@ -46,6 +46,7 @@ const PINS: ChallengePinFeatureCollection = {
       properties: {
         poi: 'atc_viewpoints:mcafee',
         name: 'McAfee Knob Summit',
+        poi_type: 'viewpoint',
         tagged: true,
         challengeId: 'bucket',
         itemId: 'mcafee-knob',
@@ -94,12 +95,35 @@ describe('the layer', () => {
     expect(layout()['icon-ignore-placement']).toBe(true)
   })
 
-  it('centres each diamond on its place’s own full-size waypoint pin, which stands on the point', () => {
+  it('centres each diamond on its place’s own waypoint pin, which stands on the point', () => {
     // map/poiLayers.ts bottom-anchors a waypoint so its drawn edge touches
-    // the coordinate; its centre is half the drawn pin above it.
+    // the coordinate; its centre is half the drawn pin above it. MapLibre
+    // scales `icon-offset` by `icon-size`, and the two layers share one, so
+    // this icon-size-1 figure holds at every size.
     expect(CHALLENGE_PIN_OFFSET).toEqual([0, -POI_PIN_INK_SIZE / 2])
     expect(layout()['icon-offset']).toEqual(CHALLENGE_PIN_OFFSET)
     expect(layout()['icon-anchor'] ?? 'center').toBe('center')
+  })
+
+  it('takes the waypoint pin’s own size at every zoom, read against the place’s type', () => {
+    // The maintainer's pick of 2026-09-30 (option B, "sized to the pin"): a
+    // diamond drawn at icon-size 1 was 36.8 px at z7, where the pins round it
+    // are 15-21 px. The same expression, and the same `poi_type` key it
+    // reads, is what keeps the apothem equal to the covered pin's radius.
+    expect(layout()['icon-size']).toBe(POI_ICON_SIZE_EXPRESSION)
+    const size = createExpression(
+      POI_ICON_SIZE_EXPRESSION,
+      latest.layout_symbol['icon-size'] as never,
+    )
+    if (size.result !== 'success') throw new Error('icon-size did not compile')
+    const at = (zoom: number, poiType: string) =>
+      size.value.evaluate({ zoom }, {
+        type: 'Point',
+        properties: { poi_type: poiType },
+      } as never) as number
+    expect(at(POI_PIN_MIN_ZOOM, 'viewpoint')).toBeLessThan(at(13, 'viewpoint'))
+    expect(at(13, 'viewpoint')).toBeLessThan(at(13, 'shelter'))
+    expect(at(13, 'shelter')).toBe(1)
   })
 
   it('prints nothing beside the pin - no name, no count', () => {

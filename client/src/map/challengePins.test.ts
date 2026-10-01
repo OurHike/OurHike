@@ -53,6 +53,8 @@ function challenge(id: string, items: ChallengeItem[], trail = 'AT'): Challenge 
     org: 'atc',
     orgName: 'Appalachian Trail Conservancy',
     orgShort: 'ATC',
+    orgDomain: 'appalachiantrail.org',
+    takesEntries: false,
     trail,
     name: `Challenge ${id}`,
     status: 'draft',
@@ -80,7 +82,7 @@ const SELF_REPORT: ChallengeItem = {
 }
 const ANY_SHELTER: ChallengeItem = {
   ...placeItem('any-shelter', [MCAFEE]),
-  match: { kind: 'poi_type', type: 'shelter', radiusM: 60 },
+  match: { kind: 'poi_type', type: 'shelter', radiusM: 60, offTrail: false },
 }
 
 const BUCKET = challenge('bucket', [MCAFEE_ITEM, TRIPLE_CROWN, SELF_REPORT, ANY_SHELTER])
@@ -114,6 +116,8 @@ describe('challengePinFeatures', () => {
     expect(mcafee.properties).toEqual({
       poi: MCAFEE.poi,
       name: MCAFEE.name,
+      // The waypoint layer's size expression reads this key.
+      poi_type: MCAFEE.poiType,
       tagged: false,
       // The first item naming it, in published order.
       challengeId: 'bucket',

@@ -10,8 +10,12 @@ user-invocable: true
 Stage 2a built `pipeline/extract/` (`_contract.py`, `_kinds.py`, `_run.py`,
 `_warehouse.py`), `pipeline/.dlt/config.toml`, `requirements-extract.in`, and
 the `atc/` and `nysdec/` folders, with `tests/test_extract_layout.py` and
-`tests/test_extract_run.py`. Not built yet: `_shared/`, the other clubs, the
-as-sent copy, the raw lake, fixture mode, and any run against R2. Every other
+`tests/test_extract_run.py`. Stage 2b's first half added the 21 providers whose
+registered layers are all ArcGIS (`nysparks/`, `usfs/`, `pcta/` and the rest),
+claiming 26 keys; 16 keys remain on `NOT_YET_EXTRACTED`. Not built yet:
+`_shared/`, `gatc/`, `nynjtc/`, `nycparks/`, `nycdot/`, the Socrata, WordPress,
+guide-page, hike-finder and club-PDF kinds, the other clubs, the as-sent copy,
+the raw lake, fixture mode, and any run against R2. Every other
 source still comes from the old fetchers (`fetch_*.py`, `lib/arcgis.py`,
 `lib/socrata.py`) and `load_raw.py`; a change to one of those follows its own
 docstring and tests. On `main` none of this exists until the pull request
@@ -215,6 +219,19 @@ clearinghouse, land-manager and data.gov items are worked and written in.
 Check the survey before writing any note: its ATC × elevation row found a
 Z-enabled centerline (`ATX_Ratings/FeatureServer/9`), so `atc/elevation.py` is
 a resource once that layer has a `sources.json` row, not a note.
+
+**A note drafted from the coverage audit restates `reference/org_coverage.json`,
+never the batch files behind it.** Stage 2b's 183 notes were drafted that way:
+`checked` is the row's evidence, the docstring its note, and `where` the URLs
+the text names, with each host-less ArcGIS service name resolved to a full URL
+by a live `?f=json` read (2026-10-01). The batch files (`b1`-`b7`, `c1`-`c21`,
+`p01`-`p10`, `q01`, `r01`) were never committed and were never scrubbed: the
+JSON replaced every email address, phone number, personal ArcGIS account and
+named private individual with a description, and the files still hold them.
+Their text goes into a note only after a person has read it. The ten
+persistence-pass rows in stage 2b were read and carry their full seven-item
+checklist; every other note keeps the trimmed, scrubbed copy, and says so in
+its last line.
 
 **A GIS-shaped type is not given up early** (decision 21b; the maintainer:
 *"Make sure for all of these orgs that you dont give up to easily. The GIS

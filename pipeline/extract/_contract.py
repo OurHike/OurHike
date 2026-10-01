@@ -157,6 +157,22 @@ class NotAvailable:
 
 
 @dataclass(frozen=True)
+class NotClub:
+    """Why a trail_orgs.json row has no club folder: one dated line in _shared/not_clubs.py (decision 18).
+
+    An umbrella or a route-only trail publishes through somebody else, so it
+    has nothing of its own to extract. `why` is the reason in this file's own
+    words; `terms` quotes a refusal verbatim where the row carries one (RTC's,
+    ELT.md "Decision 18 overrides round 5 for two refusals").
+    """
+
+    type: str
+    confirmed: date
+    why: str
+    terms: str | None = None
+
+
+@dataclass(frozen=True)
 class SameAs:
     """A republished copy of a dataset another resource already extracts: noted, never loaded.
 

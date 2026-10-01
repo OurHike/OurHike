@@ -17,8 +17,11 @@ more; and `nynjtc/` through the WordPress, guide-page and Hike Finder kinds,
 5 more, with the daily rule in `_run.py`; and `gatc/` through the club-PDF
 kind. 3 keys remain on `NOT_YET_EXTRACTED`, each with its blocker beside it.
 The other 118 managing clubs have their folders too, every type a dated note,
-so all 145 exist. Not built yet: `_shared/` (with `not_clubs.py`), the as-sent
-copy, the raw lake, fixture mode, and any run against R2. Every other
+so all 145 exist, and `_shared/not_clubs.py` holds the 25 umbrella and
+route-only lines (`NotClub` in `_contract.py`). Not built yet: `_shared/`'s
+resources (NWS, NBM, USGS, OSM, Wikimedia, NDMC, opentrail, Greenbelly,
+podcasts, OurHike's Postgres), the as-sent copy, the raw lake, fixture mode,
+and any run against R2. Every other
 source still comes from the old fetchers (`fetch_*.py`, `lib/arcgis.py`,
 `lib/socrata.py`) and `load_raw.py`; a change to one of those follows its own
 docstring and tests. On `main` none of this exists until the pull request

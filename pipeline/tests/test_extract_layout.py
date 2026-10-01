@@ -261,3 +261,37 @@ def test_the_dlt_pin_is_the_same_in_the_extract_and_dev_requirements():
         return lines[0].split("==")[1]
 
     assert pin(PIPELINE_DIR / "requirements-extract.in") == pin(PIPELINE_DIR / "requirements-dev.in")
+
+
+def _shared_module(relative: str):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(relative.replace("/", "."), EXTRACT_DIR / "_shared" / relative)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_every_umbrella_and_route_only_row_has_exactly_one_not_clubs_line():
+    """Decision 18: a row with no folder is still accounted for, so a survey never spends a search on it twice."""
+    from extract._contract import NotClub
+
+    orgs = _trail_orgs(TRAIL_ORGS_PATH)
+    expected = {slug for slug, row in orgs.items() if row.get("type") in ("national_umbrella", "route_only")}
+    not_clubs = _shared_module("not_clubs.py").NOT_CLUBS
+    assert set(not_clubs) == expected
+    for slug, line in not_clubs.items():
+        assert isinstance(line, NotClub) and line.type == orgs[slug]["type"]
+        assert line.why.strip() and line.confirmed <= TODAY
+
+
+def test_every_aggregator_has_a_shared_folder_or_waits_on_a_listed_key():
+    """osm, outerspatial and avenza live in _shared/; osm's folder comes with osm_water, which is still listed."""
+    orgs = _trail_orgs(TRAIL_ORGS_PATH)
+    for slug in sorted(slug for slug, row in orgs.items() if row.get("type") == "aggregator"):
+        folder = EXTRACT_DIR / "_shared" / folder_for_slug(slug)
+        if not folder.is_dir():
+            assert slug == "osm" and "osm_water" in NOT_YET_EXTRACTED, f"{slug} has no _shared/ folder"
+            continue
+        note = _shared_module(f"{folder_for_slug(slug)}/notes.py").NOT_AVAILABLE
+        assert note.problems(TODAY) == [] and note.terms, f"{slug}'s note quotes the terms that refuse it"

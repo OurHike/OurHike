@@ -824,18 +824,39 @@ const PERMANENT_REASONS: Record<number, string> = {
 }
 
 /**
- * A challenge entry's refusals are sentences the server wrote for the hiker
- * (backend/app/routers/trail_challenges.py's NOT_TAKING_ENTRIES and
- * ALREADY_SENT, and app/core/trail_challenge.py's closed_sentence, whose
- * docstring says the phone shows it verbatim). They arrive as 409s, and
- * PERMANENT_REASONS' 409 - "a different report filed under this one's id" -
- * would tell somebody whose club is not taking entries that their report
- * collided. Matched by opening words because they are the contract the
- * backend's tests hold (test_routers_trail_challenges.py); a sentence this
- * list does not know falls through to the generic reason, never to silence.
+ * A challenge entry's or tag's refusals are sentences the server wrote for
+ * the hiker (backend/app/routers/trail_challenges.py's NOT_TAKING_ENTRIES,
+ * ALREADY_SENT and the per-hiker tag cap, and app/core/trail_challenge.py's
+ * closed_sentence, whose docstring says the phone shows it verbatim). They
+ * arrive as 409s, and PERMANENT_REASONS' 409 - "a different report filed
+ * under this one's id" - would tell somebody whose club is not taking
+ * entries, or whose tag hit the cap, that their report collided. Matched by
+ * opening words because they are the contract the backend's tests hold
+ * (test_routers_trail_challenges.py); a sentence this list does not know
+ * falls through to the generic reason, never to silence.
  */
 const HIKER_SENTENCE =
-  /^(This challenge['’]s club is not taking entries|You have already sent an entry|Entries for this challenge closed)/
+  /^(This challenge['’]s club is not taking entries|You have already sent an entry|Entries for this challenge closed|This account has more challenge tags)/
+
+/**
+ * The sentence a refused request's server wrote, or `fallback`.
+ *
+ * For screens whose reader is an admin (the org console): FastAPI puts a
+ * route's own refusal in `detail` as a string, and that sentence - "Ask
+ * OurHike to remove one you no longer need before saving another", "This
+ * organization's entries are held until somebody at it is confirmed
+ * again" - is what the admin needs. `ApiError.message` is
+ * "POST /clubs/… failed: 409", which the console showed instead (second
+ * review of #1780, 2026-10-01). A validation failure's `detail` is a list,
+ * not a sentence, and gets the fallback.
+ */
+export function refusalSentence(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    const detail = (error.detail as { detail?: unknown } | null)?.detail
+    if (typeof detail === 'string' && detail.trim() !== '') return detail
+  }
+  return error instanceof Error ? error.message : fallback
+}
 
 function hikerSentence(error: ApiError): string | null {
   if (error.status !== 409) return null

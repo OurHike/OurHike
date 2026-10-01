@@ -29,6 +29,7 @@
 
 import { useState } from 'react'
 import { isSafeLink } from '../../lib/safeLink'
+import { refusalSentence } from '../../lib/api'
 import { CHALLENGE_WORDS } from '../../lib/challengeWords'
 import { PageHeader } from '../components'
 import type {
@@ -441,7 +442,7 @@ export function Challenges({
     } catch (error) {
       setOutcome({
         tone: 'stop',
-        detail: error instanceof Error ? error.message : 'The server did not answer.',
+        detail: refusalSentence(error, 'The server did not answer.'),
       })
     } finally {
       setBusy(false)

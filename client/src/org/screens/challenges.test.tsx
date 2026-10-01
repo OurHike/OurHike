@@ -22,6 +22,7 @@ import {
   windowLabel,
 } from './Challenges'
 import { ChallengeFinishers } from './ChallengeFinishers'
+import { ApiError } from '../../lib/api'
 import { DEMO_CHALLENGES, DEMO_REGISTRY, DEMO_ROSTER, DEMO_SLUG } from '../demoOrg'
 import type {
   ChallengeDefinition,
@@ -247,6 +248,24 @@ describe('the editor', () => {
     const link = await screen.findByRole('link', { name: /Open the pull request/ })
     expect(link).toHaveAttribute('href', 'https://github.com/OurHike/OurHike/pull/1')
     expect(link.closest('.org-callout')).toHaveAttribute('data-tone', 'good')
+  })
+
+  it("shows the server's own refusal, not the request line", async () => {
+    const cap = 'Ask OurHike to remove one you no longer need before saving another.'
+    const onPublish = vi.fn(async (): Promise<ChallengePublishResult> => {
+      throw new ApiError(409, 'POST /clubs/demo/challenges/x failed: 409', {
+        detail: cap,
+      })
+    })
+    drawChallenges({ onPublish })
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Publish with next refresh' }),
+    )
+
+    const said = await screen.findByText(cap)
+    expect(said.closest('.org-callout')).toHaveAttribute('data-tone', 'stop')
+    expect(screen.queryByText(/failed: 409/)).toBeNull()
   })
 
   it('says what the server said when no pull request was opened', async () => {

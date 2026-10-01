@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { useState } from 'react'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ChallengeDetail, type ChallengeDetailProps } from './ChallengeDetail'
@@ -8,6 +9,7 @@ import { ATC_CHALLENGE, RECORD_CHALLENGE } from '../lib/challenges.fixtures'
 import {
   EMPTY_CHALLENGE_STATE,
   join,
+  removeTag,
   tag,
   type ChallengeState,
 } from '../lib/challengeProgress'
@@ -333,6 +335,46 @@ describe('holes the review found, closed', () => {
       item(ATC_CHALLENGE, 'mcafee-knob'),
       undefined,
     )
+  })
+
+  it('puts focus on the title when Remove takes the row it came from away', async () => {
+    // The removal re-renders the row as text, so the button that opened the
+    // sheet is gone; focus must not fall to <body>.
+    const start = tag(
+      join(EMPTY_CHALLENGE_STATE, ATC_CHALLENGE.id, new Date('2027-06-01T12:00:00Z')),
+      ATC_CHALLENGE,
+      item(ATC_CHALLENGE, 'mcafee-knob'),
+      { at: new Date('2027-07-02T15:00:00Z'), how: 'gps' },
+    ).state
+    function Harness() {
+      const [state, setState] = useState(start)
+      return (
+        <ChallengeDetail
+          challenge={ATC_CHALLENGE}
+          state={state}
+          today={TODAY}
+          walked={[]}
+          signedIn={false}
+          onJoin={vi.fn()}
+          onLeave={vi.fn()}
+          onTag={vi.fn()}
+          onUntag={vi.fn()}
+          onSetNote={vi.fn()}
+          onSendEntry={vi.fn()}
+          onRemoveTag={(removed, poi) =>
+            setState((current) => removeTag(current, ATC_CHALLENGE.id, removed.id, poi))
+          }
+        />
+      )
+    }
+    render(<Harness />)
+    await userEvent.click(
+      screen.getByRole('button', { name: /Take the McAfee Knob shuttle/ }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Remove this tag' }))
+    expect(
+      screen.getByRole('heading', { level: 1, name: ATC_CHALLENGE.name }),
+    ).toHaveFocus()
   })
 
   it('says why a record cannot tell its club after the window closed, rather than going quiet', async () => {

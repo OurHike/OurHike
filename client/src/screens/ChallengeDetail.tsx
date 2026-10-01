@@ -96,8 +96,17 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
   const [view, setView] = useState<'list' | 'finish'>('list')
   const [sheetItem, setSheetItem] = useState<string | null>(null)
   const [confirmingLeave, setConfirmingLeave] = useState(false)
-  // Where focus goes back to when the sheet closes - the row that opened it.
+  // Where focus goes back to when the sheet closes - the row that opened it,
+  // or the page's title when that row is gone.
   const opener = useRef<HTMLElement | null>(null)
+  const title = useRef<HTMLHeadingElement | null>(null)
+  const [refocus, setRefocus] = useState(false)
+  useEffect(() => {
+    if (!refocus) return
+    setRefocus(false)
+    if (opener.current?.isConnected) opener.current.focus()
+    else title.current?.focus()
+  }, [refocus])
   // Tags only count inside the window, so nothing offers one outside it
   // (review, 2026-09-30: the ATC's 2027 draft is on phones in 2026).
   const open = isOpen(challenge, today)
@@ -138,8 +147,13 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
 
   const closeSheet = () => {
     setSheetItem(null)
-    opener.current?.focus()
+    setRefocus(true)
   }
+  // After the render that closed the sheet, not in the handler: "Remove this
+  // tag" leaves an item that is no longer done, and that same render turns
+  // its row from a button into text. Focus sent to the button before it was
+  // replaced fell to <body> (second review of #1780, 2026-10-01); the title
+  // is always there.
 
   const sheet =
     sheetItem === null
@@ -152,7 +166,7 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
         <p className="challenges__eyebrow">
           {challenge.orgShort} · {trailLabel(challenge.trail)} · {windowLine(challenge)}
         </p>
-        <h1 className="challenges__title" id="challenge-title">
+        <h1 className="challenges__title" id="challenge-title" ref={title} tabIndex={-1}>
           {challenge.name}
         </h1>
         <DraftLabel challenge={challenge} />

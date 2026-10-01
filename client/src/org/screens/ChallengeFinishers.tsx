@@ -18,6 +18,7 @@
 
 import { useState } from 'react'
 import { PageHeader } from '../components'
+import { refusalSentence } from '../../lib/api'
 import type { OrgChallengeRow } from '../orgApi'
 import { hikersInLabel } from './Challenges'
 
@@ -179,7 +180,7 @@ export function ChallengeFinishers({
     } catch (error) {
       setDownload({
         state: 'failed',
-        detail: error instanceof Error ? error.message : 'The server did not answer.',
+        detail: refusalSentence(error, 'The server did not answer.'),
       })
     }
   }

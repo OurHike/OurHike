@@ -12,10 +12,11 @@ Stage 2a built `pipeline/extract/` (`_contract.py`, `_kinds.py`, `_run.py`,
 the `atc/` and `nysdec/` folders, with `tests/test_extract_layout.py` and
 `tests/test_extract_run.py`. Stage 2b's first half added the 21 providers whose
 registered layers are all ArcGIS (`nysparks/`, `usfs/`, `pcta/` and the rest),
-claiming 26 keys; 16 keys remain on `NOT_YET_EXTRACTED`. Not built yet:
-`_shared/`, `gatc/`, `nynjtc/`, `nycparks/`, `nycdot/`, the Socrata, WordPress,
-guide-page, hike-finder and club-PDF kinds, the other clubs, the as-sent copy,
-the raw lake, fixture mode, and any run against R2. Every other
+claiming 26 keys, and `nycparks/` and `nycdot/` through the Socrata kind,
+7 more; 9 keys remain on `NOT_YET_EXTRACTED`. Not built yet: `_shared/`,
+`gatc/`, `nynjtc/`, the WordPress, guide-page, hike-finder and club-PDF kinds,
+the other clubs, the as-sent copy, the raw lake, fixture mode, and any run
+against R2. Every other
 source still comes from the old fetchers (`fetch_*.py`, `lib/arcgis.py`,
 `lib/socrata.py`) and `load_raw.py`; a change to one of those follows its own
 docstring and tests. On `main` none of this exists until the pull request

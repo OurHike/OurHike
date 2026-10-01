@@ -11,9 +11,10 @@ are; extract/_run.py wraps each one in a dlt resource. That keeps the layout
 test, which imports every club file, free of the run machinery, and keeps one
 place deciding the dlt settings every resource shares.
 
-The four kinds stage 2 of #1793 needs for ATC and NYS DEC:
+The kinds built so far for stage 2 (#1793 — Rebuild the data platform as dlt → dbt):
 
     arcgis_layer(key)       an ArcGIS FeatureServer or MapServer layer
+    socrata_dataset(key)    a Socrata dataset, under the entry's own `where`
     reviewed_input(key)     a registry entry whose rows a person reviews into a
                             file in git (ATC's Trail Updates), loaded from that file
     reviewed_file(path)     a reviewed pipeline/reference/ file with no registry
@@ -41,6 +42,7 @@ from extract._contract import EXTRACT_DIR, PIPELINE_DIR, Resource, read_club_fil
 from lib.arcgis import iter_layer_pages, layer_count
 from lib.freshness_state import Freshness, compare_marker
 from lib.http_retry import request_with_retry
+from lib.socrata import dataset_url, fetch_dataset_geojson
 from lib.source_registry import PODCAST_FEED, load_registry, source_kind
 from lib.user_agent import USER_AGENT
 
@@ -292,6 +294,88 @@ class ArcgisLayer(Resource):
 def arcgis_layer(key: str, **overrides) -> ArcgisLayer:
     registry_entry(key)  # a key that is not registered fails at import, in the layout test, not mid-run
     return ArcgisLayer(key=key, **overrides)
+
+
+@dataclass(frozen=True)
+class SocrataDataset(Resource):
+    """A Socrata dataset read as GeoJSON through lib/socrata.py's own loop, under the entry's `where`.
+
+    The `where` is a SoQL predicate the portal applies, and it is the one
+    filter that runs before dbt here: NYC DOT's bike network is about 29,700
+    rows, of which the entry's predicate keeps the off-street greenways
+    (lib/socrata.py). Pages come from `fetch_dataset_geojson`, ordered on
+    `:id` so an offset is safe, and the read is held to the portal's own
+    `count(*)` under the same `where` afterwards, the Socrata half of ELT.md's
+    "an allowed zero counts only with the upstream's own count".
+    """
+
+    @property
+    def entry(self) -> dict:
+        return registry_entry(self.key)
+
+    @property
+    def where(self) -> str | None:
+        return self.entry.get("where") or None
+
+    def _soql(self, select: str) -> dict:
+        params = {"$select": select}
+        if self.where:
+            params["$where"] = self.where
+        url = dataset_url(self.entry["domain"], self.entry["dataset_id"], extension="json")
+        rows = request_with_retry(url, session=session(), params=params, timeout=60).json()
+        return rows[0] if rows else {}
+
+    def count(self) -> int | None:
+        value = self._soql("count(*) as n").get("n")
+        return int(value) if value is not None else None
+
+    def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
+        """`count(*)` and `max(:updated_at)` under the entry's own `where`, with the `where` text kept.
+
+        Measured 2026-10-01 (ELT.md, "The skip-unchanged check, by platform"):
+        SODA ignores `If-None-Match`, `viewLastModified` is wrong in both
+        directions, and `rowsUpdatedAt` is dataset-wide, so `nyc_park_drives`'
+        filtered rows max at 2026-08-16 while the dataset reads 2026-09-26. A
+        delete lowers the count (Reasoned). The `where` is in the marker because
+        tightening a filter changes the rows while every date stays put.
+        """
+        try:
+            answer = self._soql("count(*) as n, max(:updated_at) as updated")
+        except (requests.RequestException, ValueError, KeyError, IndexError) as error:
+            print(f"  {self.key}: change check failed ({error}); fetching")
+            return Freshness.UNKNOWN, None
+        if answer.get("n") is None or answer.get("updated") is None:
+            return Freshness.UNKNOWN, None
+        marker = {"n": str(answer["n"]), "max_updated_at": str(answer["updated"]), "where": self.where or ""}
+        if recorded is None:
+            return Freshness.STALE, marker
+        return compare_marker(_canonical(recorded), _canonical(marker)), marker
+
+    def rows(self, proofs: dict[str, int]):
+        """Every row under the `where`, as properties plus `geometry` and Socrata's `:id` as `_socrata_id`.
+
+        Read whole before the first row is yielded, as ArcgisLayer does, so a
+        short read raises before dlt normalizes anything.
+        """
+        collection = fetch_dataset_geojson(self.entry["domain"], self.entry["dataset_id"], where=self.where, session=session())
+        features = collection["features"]
+        count = self.count()
+        if count is not None:
+            if len(features) < count:
+                raise RuntimeError(f"{self.key}: the portal counts {count} rows and {len(features)} were read")
+            proofs[self.table] = count
+        for feature in features:
+            row = {name: value for name, value in (feature.get("properties") or {}).items() if name.lower() not in PERSON_FIELDS}
+            row["_socrata_id"] = feature.get("id")
+            row["geometry"] = feature.get("geometry")
+            yield row
+
+
+def socrata_dataset(key: str, **overrides) -> SocrataDataset:
+    entry = registry_entry(key)
+    if not entry.get("domain") or not entry.get("dataset_id"):
+        raise KeyError(f"{key} has no domain and dataset_id in sources.json")
+    return SocrataDataset(key=key, **overrides)
 
 
 @dataclass(frozen=True)

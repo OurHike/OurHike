@@ -40,6 +40,7 @@ from extract._contract import (
 )
 from extract._kinds import ORGS_TABLE, _registry, _trail_orgs
 from extract._run import LANES
+from lib.socrata import dataset_url
 
 REGISTRY_PATH = PIPELINE_DIR / "sources.json"
 TRAIL_ORGS_PATH = PIPELINE_DIR / "reference" / "trail_orgs.json"
@@ -59,13 +60,6 @@ NOT_YET_EXTRACTED = frozenset(
         "nynjtc_trail_alerts",
         "nynjtc_long_path_guide",
         "nynjtc_hike_finder",
-        "nyc_parks_trails",
-        "nyc_public_restrooms",
-        "nyc_drinking_fountains",
-        "nyc_park_polygons",
-        "nyc_dot_greenways",
-        "nyc_cscl_paths",
-        "nyc_park_drives",
     }
 )
 
@@ -220,16 +214,29 @@ def test_a_same_as_note_is_well_formed_and_its_original_is_claimed(club_file):
         )
 
 
+def upstream(entry: dict) -> tuple[str, str]:
+    """What a resource reads: the dataset's address, and the filter the server applies to it.
+
+    A Socrata dataset is its domain and four-four id, which is what the resource
+    fetches (`nyc_public_restrooms`' `url` names a different dataset;
+    ORG_COVERAGE_SURVEY.md §3b). The `where` is part of it because two
+    server-side filters over one dataset are two slices, not two copies: NYC's
+    Centerline is read once for its paths and once for its park drives, and the
+    two predicates shared 0 rows (measured 2026-10-01: 6,496 and 124).
+    """
+    address = dataset_url(entry["domain"], entry["dataset_id"]) if entry.get("dataset_id") else entry["url"].rstrip("/")
+    return address, entry.get("where") or ""
+
+
 def test_no_dataset_is_extracted_twice_and_no_copy_is_also_a_resource():
     """Decision 34: each upstream dataset is landed once, in its steward's folder."""
     registry = _registry(REGISTRY_PATH)
-    urls = Counter(
-        registry[r.key]["url"].rstrip("/") for r in all_resources(FILES) if r.key in registry and "url" in registry[r.key]
-    )
-    twice = sorted(url for url, n in urls.items() if n > 1)
+    reads = Counter(upstream(registry[r.key]) for r in all_resources(FILES) if r.key in registry and "url" in registry[r.key])
+    twice = sorted(read for read, n in reads.items() if n > 1)
     assert not twice, f"two resources read the same upstream: {twice}"
     copies = {url.rstrip("/") for f in FILES for note in f.same_as for url in note.copy}
-    assert not (copies & set(urls)), f"a SAME_AS copy is also extracted: {sorted(copies & set(urls))}"
+    addresses = {address for address, _ in reads}
+    assert not (copies & addresses), f"a SAME_AS copy is also extracted: {sorted(copies & addresses)}"
 
 
 def test_dlt_telemetry_is_off_and_names_keep_their_case_folding_in_the_committed_config():

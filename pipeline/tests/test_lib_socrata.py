@@ -11,12 +11,15 @@ ceiling), so nothing in production exercises this loop and nothing in
 production would notice it breaking. That is exactly the case worth pinning.
 """
 
+import requests
+
 from lib import socrata
 from lib.socrata import (
     dataset_url,
     fetch_dataset_geojson,
     get_dataset_updated_at,
 )
+from lib.user_agent import USER_AGENT
 
 DOMAIN = "data.example.gov"
 DATASET = "abcd-1234"
@@ -130,6 +133,24 @@ def test_fetch_dataset_geojson_sends_no_filter_when_none_is_registered(requests_
     fetch_dataset_geojson(DOMAIN, DATASET)
 
     assert "$where" not in requests_mock.last_request.qs
+
+
+def test_fetch_dataset_geojson_sends_every_page_through_the_callers_session(requests_mock):
+    """extract/'s Socrata resource passes the session carrying lib/user_agent.py's
+    agent, and every page must go out with it rather than with requests' default."""
+    requests_mock.get(
+        RESOURCE_URL,
+        [
+            {"json": {"type": "FeatureCollection", "features": _features(0, 2)}},
+            {"json": {"type": "FeatureCollection", "features": []}},
+        ],
+    )
+    named = requests.Session()
+    named.headers["User-Agent"] = USER_AGENT
+
+    fetch_dataset_geojson(DOMAIN, DATASET, session=named)
+
+    assert [r.headers["User-Agent"] for r in requests_mock.request_history] == [USER_AGENT, USER_AGENT]
 
 
 def test_fetch_dataset_geojson_asks_for_the_row_id_and_promotes_it(requests_mock):

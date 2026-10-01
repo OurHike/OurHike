@@ -87,6 +87,7 @@ def fetch_dataset_geojson(
     *,
     where: str | None = None,
     page_size: int | None = None,
+    session=None,
 ) -> dict:
     """Fetch every row of a Socrata dataset as a GeoJSON FeatureCollection.
 
@@ -102,6 +103,11 @@ def fetch_dataset_geojson(
     in the signature, so a test monkeypatching `socrata.PAGE_SIZE` still
     reaches it - the same note lib/arcgis.py and lib/http_retry.py carry for
     the same reason.
+
+    `session` is the caller's, so its headers ride every page: extract/'s
+    Socrata resource passes the one that carries lib/user_agent.py's agent
+    (decision 39 of #1793: the pipeline never sends a default or borrowed
+    one). None keeps this function's old behaviour, a bare `requests` call.
     """
     url = dataset_url(domain, dataset_id)
     records = PAGE_SIZE if page_size is None else page_size
@@ -119,7 +125,7 @@ def fetch_dataset_geojson(
         }
         if where:
             params["$where"] = where
-        resp = request_with_retry(url, params=params, timeout=120)
+        resp = request_with_retry(url, session=session, params=params, timeout=120)
         batch = resp.json().get("features", [])
         if not batch:
             break

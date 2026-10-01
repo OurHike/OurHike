@@ -22,7 +22,7 @@ import pytest
 
 from extract import _kinds
 from extract._contract import Resource
-from extract._kinds import ArcgisLayer, PodcastFeed, ReviewedFile, catalogue_row, reviewed_input
+from extract._kinds import ArcgisLayer, PodcastFeed, ReviewedFile, SocrataDataset, catalogue_row, reviewed_input
 from extract._run import ExtractRefused, Planned, make_pipeline, run_check, run_pipeline
 from extract._warehouse import load_warehouse
 from lib.freshness_state import Freshness
@@ -33,6 +33,8 @@ LINES_URL = f"{AGOL}/Trails/FeatureServer/0"
 CLOSURES_URL = f"{AGOL}/Closures/FeatureServer/0"
 ONPREM_URL = "https://gis.example.gov/arcgis/rest/services/assets/MapServer/3"
 FEED_URL = "https://feeds.example.org/show.xml"
+SOCRATA = "https://data.example.gov/resource/abcd-1234"
+GREENWAY_WHERE = "status='Current' AND grnwy='Greenway'"
 FEED = b"""<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
 <channel><title>A Trail Show</title><link>https://example.org/show</link>
@@ -98,6 +100,14 @@ def registry(tmp_path, monkeypatch):
                     {"key": "onprem_dated", "url": ONPREM_URL, "freshness": {"kind": "arcgis_max_field", "field": "UPDATED"}},
                     {"key": "onprem_undated", "url": ONPREM_URL},
                     {"key": "a_podcast", "url": FEED_URL, "kind": "podcast_feed"},
+                    {
+                        "key": "greenways",
+                        "url": "https://data.example.gov/d/abcd-1234",
+                        "kind": "socrata_geojson_layer",
+                        "domain": "data.example.gov",
+                        "dataset_id": "abcd-1234",
+                        "where": GREENWAY_WHERE,
+                    },
                 ]
             }
         )
@@ -363,3 +373,67 @@ def test_an_unchanged_podcast_feed_answers_304_and_is_fresh(registry, requests_m
     verdict, marker = feed.change_check(None)
     assert verdict is Freshness.STALE
     assert feed.change_check(marker) == (Freshness.FRESH, marker)
+
+
+class FakeSocrata:
+    """One Socrata dataset: `count(*)` and `max(:updated_at)` under a `where`, and GeoJSON pages ordered on `:id`."""
+
+    def __init__(self, requests_mock, rows, *, updated="2026-09-16T20:43:14.951Z", count=None):
+        self.rows, self.updated, self.count = rows, updated, count
+        requests_mock.get(SOCRATA + ".json", json=self.soql)
+        requests_mock.get(SOCRATA + ".geojson", json=self.pages)
+
+    def soql(self, request, context):
+        assert request.qs["$where"] == [GREENWAY_WHERE.lower()], "every request carries the entry's own where"
+        n = len(self.rows) if self.count is None else self.count
+        return [{"n": str(n), "updated": self.updated}]
+
+    def pages(self, request, context):
+        assert request.qs["$where"] == [GREENWAY_WHERE.lower()]
+        offset, limit = int(request.qs["$offset"][0]), int(request.qs["$limit"][0])
+        features = [
+            {
+                "type": "Feature",
+                "properties": {"segmentid": n, ":id": f"row-{n}"},
+                "geometry": {"type": "Point", "coordinates": [-73.9, 40.7]},
+            }
+            for n in self.rows[offset : offset + limit]
+        ]
+        return {"type": "FeatureCollection", "features": features}
+
+
+def greenways():
+    return SocrataDataset(key="greenways", club="testclub", type="trail_lines")
+
+
+def test_a_socrata_dataset_lands_its_filtered_rows_with_the_portals_count_as_proof(registry, requests_mock):
+    FakeSocrata(requests_mock, [1, 2, 3])
+    proofs = {}
+    rows = list(greenways().rows(proofs))
+    assert [row["segmentid"] for row in rows] == [1, 2, 3]
+    assert [row["_socrata_id"] for row in rows] == ["row-1", "row-2", "row-3"]
+    assert ":id" not in rows[0]
+    assert proofs["raw_testclub__greenways"] == 3
+    assert all(r.headers["User-Agent"] == USER_AGENT for r in requests_mock.request_history)
+
+
+def test_a_socrata_read_shorter_than_the_portals_count_raises(registry, requests_mock):
+    FakeSocrata(requests_mock, [1, 2], count=3)
+    with pytest.raises(RuntimeError, match="counts 3 rows and 2 were read"):
+        list(greenways().rows({}))
+
+
+def test_a_socrata_marker_moves_with_the_filtered_rows_and_keeps_the_where(registry, requests_mock):
+    fake = FakeSocrata(requests_mock, [1, 2, 3])
+    verdict, marker = greenways().change_check(None)
+    assert verdict is Freshness.STALE
+    assert marker == {"n": "3", "max_updated_at": "2026-09-16T20:43:14.951Z", "where": GREENWAY_WHERE}
+    assert greenways().change_check(marker) == (Freshness.FRESH, marker)
+    fake.rows = [1, 2]  # a delete moves no date, and lowers the count
+    assert greenways().change_check(marker)[0] is Freshness.STALE
+    assert greenways().change_check({**marker, "where": "status='Current'"})[0] is Freshness.STALE
+
+
+def test_a_socrata_change_check_that_errors_is_unknown(registry, requests_mock):
+    requests_mock.get(SOCRATA + ".json", status_code=503)
+    assert greenways().change_check(None) == (Freshness.UNKNOWN, None)

@@ -61,6 +61,37 @@ def test_suite_scopes_reads_every_suites_workflow():
     assert "backend/" in _scope("backend")
 
 
+def test_the_dbt_suite_reads_the_dbt_jobs_own_scope_not_the_pytest_jobs():
+    """pipeline-tests.yml carries two suites, and the scope reading used to
+    stop at the first changed-paths step it met - the pytest job's - so the
+    dbt job's list was never read and scripts/test.sh ran no dbt at all
+    (#1793 - Rebuild the data platform as dlt → dbt: seven contracted marts,
+    a monthly refresh, published docs, and lighter phone downloads). The
+    dbt job's list names files inside pipeline/ one by one; the pytest
+    job's names pipeline/ whole."""
+    dbt = _scope("dbt").split()
+    pipeline = _scope("pipeline").split()
+
+    assert "pipeline/dbt/" in dbt
+    assert "pipeline/.sqlfluff" in dbt
+    assert "pipeline/" not in dbt, "this is the pytest job's scope, read for the dbt suite"
+    assert "pipeline/" in pipeline
+
+
+def test_test_sh_runs_every_suite_suite_scopes_knows():
+    """A suite added to suite_scopes.py and not to test.sh's suite_names is
+    read, matched, and then never run - the quiet half of the drift #660
+    was about."""
+    test_sh = (REPO_ROOT / "scripts" / "test.sh").read_text(encoding="utf-8")
+    names_line = next(line for line in test_sh.splitlines() if line.startswith("suite_names=("))
+    named = set(names_line.split("(", 1)[1].rstrip(")").split())
+
+    listed = subprocess.run([sys.executable, str(SUITE_SCOPES)], capture_output=True, text=True, check=True)
+    known = {line.split()[0] for line in listed.stdout.splitlines() if line.strip()}
+
+    assert known <= named, f"suites test.sh never runs: {sorted(known - named)}"
+
+
 def test_the_client_scope_carries_the_entries_whose_absence_was_the_drift():
     """threads.sh's hand copy was missing exactly these (#660), so the
     ledger reported `none (docs only)` for changes CI runs the client suite

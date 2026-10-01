@@ -164,7 +164,7 @@ jobs:
       # Short-lived: this is evidence for one run, not a data channel.
       - name: Upload the verdict
         if: steps.check.outputs.status != '' && steps.check.outputs.no_state != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: freshness-verdict
           path: pipeline/freshness.json

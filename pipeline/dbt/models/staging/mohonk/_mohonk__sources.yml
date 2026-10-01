@@ -4,8 +4,9 @@ sources:
   - name: mohonk
     description: >
       Mohonk Preserve's public trails-and-carriage-roads extract on their own
-      ArcGIS org, fetched by fetch_external_layers.py into
-      data/raw/external/. Transcribed from sources.json's measured notes.
+      ArcGIS org, landed by the extract's mohonk/ folder
+      (pipeline/extract/mohonk/). Transcribed from sources.json's measured
+      notes.
     schema: raw
     config:
       loaded_at_field: _loaded_at

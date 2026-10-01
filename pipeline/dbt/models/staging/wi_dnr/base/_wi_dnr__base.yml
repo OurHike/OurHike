@@ -1,0 +1,22 @@
+version: 2
+
+models:
+  - name: base_wi_dnr__wi_ice_age_trail
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('wi_dnr', 'raw_wi_dnr__wi_ice_age_trail')
+          config:
+            severity: warn
+    description: >
+      Ice Age National Scenic Trail in Wisconsin (WDNR), every row, keyed and
+      deduped. Nothing reads it yet: the stage-3 unions of #1793 do.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          wi_ice_age_trail, geometry_key(geom), the registry key first and
+          then the columns measured unique for this layer.
+        data_tests: [not_null, unique]

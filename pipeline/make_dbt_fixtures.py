@@ -1271,6 +1271,52 @@ def _registered_trail_lines_layer(key: str, name_field: str | None):
     return _features(rows, _line)
 
 
+# Each layer's KEY columns, for the base models that key and dedupe it (pipeline/ELT.md, "One key per
+# table", decision 40). The NAMES are measured: each is the column ELT.md's key table records as
+# unique on the live layer, 2026-10-01, spelled as the upstream spells it. The VALUES are not: they
+# are placeholders that keep each row's key distinct, of a type nobody measured, and say so by
+# starting with "fixture". Applied after each layer's own builder, so no builder changes shape.
+KEY_FIELDS = {
+    "external/wa_rco_trails.geojson": {"GlobalID": lambda i: f"{{fixture-wa-rco-{i}}}"},
+    "external/ncta_trail.geojson": {"GlobalID": lambda i: f"{{fixture-ncta-{i}}}"},
+    "external/azgeo_arizona_trail.geojson": {"GlobalID": lambda i: f"{{fixture-azgeo-{i}}}"},
+    "external/tahoe_rim_trail.geojson": {"GlobalID": lambda i: f"{{fixture-tahoe-rim-{i}}}"},
+    "external/duluth_superior_hiking_trail.geojson": {"GlobalID": lambda i: f"{{fixture-duluth-{i}}}"},
+    "external/massgis_long_distance_trails.geojson": {"GLOBALID": lambda i: f"{{fixture-massgis-{i}}}"},
+    "external/njdep_park_trails.geojson": {"GLOBALID": lambda i: f"{{fixture-njdep-{i}}}"},
+    "external/nj_statewide_trails.geojson": {"GLOBALID": lambda i: f"{{fixture-nj-statewide-{i}}}"},
+    "external/usfs_trails.geojson": {"globalid": lambda i: f"{{fixture-usfs-trail-{i}}}"},
+    "external/usfs_rec_sites.geojson": {"globalid": lambda i: f"{{fixture-usfs-site-{i}}}"},
+    "external/nps_trails.geojson": {"GEOMETRYID": lambda i: f"{{fixture-nps-{i}}}"},
+    "external/utah_sgid_trails.geojson": {"Unique_ID": lambda i: f"fixture-utah-{i}"},
+    "external/pasda_dcnr_trails.geojson": {"TRAILID": lambda i: f"fixture-pasda-{i}"},
+    "external/cotrex_trails.geojson": {"feature_id": lambda i: f"fixture-cotrex-{i}"},
+    "external/ct_deep_blue_blazed.geojson": {"Par_Name": lambda i: f"Fixture Park {i}"},
+    "external/nc_mst_trail.geojson": {"TRAILNAME": lambda i: f"Fixture MST Trail {i}"},
+    # TrailType is null on 126 of the live 1,595 rows (ELT.md), so one fixture row carries none.
+    "external/alaska_trails.geojson": {"TrailType": lambda i: None if i else "fixture-type"},
+    "external/cdtc_centerline.geojson": {"STATE": lambda i: f"fixture-state-{i}"},
+    "external/blm_trails.geojson": {
+        "BLM_MILES": lambda i: 1.5 + i,
+        "ROUTE_PLAN_ID": lambda i: f"fixture-plan-{i}",
+        "DEF_FET2": lambda i: "fixture-feature",
+        "PLAN_SEASON_RSTRCT_CODE": lambda i: "fixture-season",
+        "ROUTE_PRMRY_NM": lambda i: f"Fixture BLM Route {i}",
+    },
+    "external/nyc_drinking_fountains.geojson": {"system": lambda i: f"fixture-system-{i}"},
+    "external/nyc_park_polygons.geojson": {"system": lambda i: f"fixture-system-{i}"},
+    "external/nyc_cscl_paths.geojson": {"globalid": lambda i: f"{{fixture-cscl-{i}}}"},
+    "external/nyc_park_drives.geojson": {"globalid": lambda i: f"{{fixture-drive-{i}}}"},
+}
+
+
+def _with_key_fields(content: str, fields: dict) -> str:
+    collection = json.loads(content)
+    for index, feature in enumerate(collection["features"]):
+        feature["properties"] = {**(feature.get("properties") or {}), **{name: value(index) for name, value in fields.items()}}
+    return json.dumps(collection)
+
+
 def write_fixtures(raw_dir: Path) -> list[str]:
     files = {
         "shelters.geojson": _atc_layer("Shelter", 3),
@@ -1414,6 +1460,8 @@ def write_fixtures(raw_dir: Path) -> list[str]:
             "real fetched layers, and this script only fills an empty CI workspace."
         )
     for name, content in files.items():
+        if name in KEY_FIELDS:
+            content = _with_key_fields(content, KEY_FIELDS[name])
         path = raw_dir / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)

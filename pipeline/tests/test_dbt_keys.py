@@ -24,7 +24,9 @@ import yaml
 
 DBT = Path(__file__).resolve().parent.parent / "dbt"
 STAGING = DBT / "models" / "staging"
-MODELS = sorted(STAGING.rglob("stg_*.sql"))
+# Every model that keys and dedupes a raw table: the stg_ models of the first 28, and the
+# base_ models stage 3 adds for the rest (ELT.md, "The dbt project").
+MODELS = sorted([*STAGING.rglob("stg_*.sql"), *STAGING.rglob("base_*.sql")])
 
 KEY_LINE = re.compile(r"\{\{\s*dbt_utils\.generate_surrogate_key\((\[.*?\])\)\s*\}\}\s+as\s+(\w+_key)\b", re.S)
 DEDUPE = re.compile(
@@ -52,7 +54,7 @@ def model_key(path: Path) -> tuple[str, list[str]]:
 
 def models_yaml() -> dict:
     found = {}
-    for path in STAGING.rglob("_*__models.yml"):
+    for path in [*STAGING.rglob("_*__models.yml"), *STAGING.rglob("_*__base.yml")]:
         for model in yaml.safe_load(path.read_text())["models"]:
             found[model["name"]] = model
     return found
@@ -68,7 +70,7 @@ def source_tests() -> dict:
 
 
 def test_there_are_staging_models_to_check():
-    assert len(MODELS) >= 27
+    assert len(MODELS) >= 27 + 28
 
 
 @pytest.mark.parametrize("path", MODELS, ids=lambda p: p.stem)

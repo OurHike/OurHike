@@ -1,0 +1,26 @@
+version: 2
+
+sources:
+  - name: cotrex
+    description: >
+      Colorado Parks & Wildlife's registered layers, landed by the extract's
+      cotrex/ folder (pipeline/extract/cotrex/) as raw_cotrex__<key>, and
+      staged once each by a base model here. Descriptions transcribed from
+      sources.json's titles.
+    schema: raw
+    config:
+      loaded_at_field: _loaded_at
+      freshness:
+        # The extract's cadence, not the steward's. @unvalidated, the same
+        # threshold and open question as _atc__sources.yml.
+        warn_after: {count: 7, period: day}
+    tables:
+      - name: raw_cotrex__cotrex_trails
+        data_tests:
+          # Rows sharing base_cotrex__trails's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'cotrex_trails'", "feature_id"]
+        description: >
+          Colorado trails statewide (COTREX) (sources.json `cotrex_trails`).
+          Key: feature_id unique on 96,897 of 96,897 live rows.

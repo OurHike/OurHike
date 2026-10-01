@@ -1,0 +1,43 @@
+version: 2
+
+models:
+  - name: base_njgin__nj_statewide_trails
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('njgin', 'raw_njgin__nj_statewide_trails')
+          config:
+            severity: warn
+    description: >
+      Statewide Trails in New Jersey (NJ Geospatial Forum Trails Task Force,
+      hosted by NJDEP), every row, keyed and deduped. Nothing reads it yet:
+      the stage-3 unions of #1793 do.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nj_statewide_trails, globalid, the registry key first and then the
+          columns measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_njgin__njdep_park_trails
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('njgin', 'raw_njgin__njdep_park_trails')
+          config:
+            severity: warn
+    description: >
+      NJ State Park Service Trails (NJDEP Bureau of GIS, Features/Land layer
+      63), every row, keyed and deduped. Nothing reads it yet: the stage-3
+      unions of #1793 do.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          njdep_park_trails, globalid, the registry key first and then the
+          columns measured unique for this layer.
+        data_tests: [not_null, unique]

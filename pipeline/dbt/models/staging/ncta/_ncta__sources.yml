@@ -1,0 +1,25 @@
+version: 2
+
+sources:
+  - name: ncta
+    description: >
+      NCTA's registered layers, landed by the extract's ncta/ folder
+      (pipeline/extract/ncta/) as raw_ncta__<key>, and staged once each by a
+      base model here. Descriptions transcribed from sources.json's titles.
+    schema: raw
+    config:
+      loaded_at_field: _loaded_at
+      freshness:
+        # The extract's cadence, not the steward's. @unvalidated, the same
+        # threshold and open question as _atc__sources.yml.
+        warn_after: {count: 7, period: day}
+    tables:
+      - name: raw_ncta__ncta_trail
+        data_tests:
+          # Rows sharing base_ncta__trail's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'ncta_trail'", "globalid"]
+        description: >
+          North Country National Scenic Trail (NCTA's own layer) (sources.json
+          `ncta_trail`). Key: GlobalID unique on 4,004 live rows.

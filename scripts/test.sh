@@ -22,10 +22,10 @@
 #   scripts/test.sh --coverage  measure coverage too, as CI does
 #   scripts/test.sh --no-dbt-deps  use pipeline/dbt/dbt_packages/ as it is
 #
-# THE DBT SUITE is pipeline-tests.yml's `dbt` job: SQLFluff, then dbt-oss
-# against fixtures, the evaluator enforced. It needs a toolchain this script
-# does not install - the dbt-oss version requirements-dbt.txt pins, first on
-# PATH, with that environment's python and sqlfluff beside it - and is
+# THE DBT SUITE is pipeline-tests.yml's `dbt` job: SQLFluff and dbt lint,
+# then dbt against fixtures, the evaluator enforced. It needs a toolchain
+# this script does not install - the dbt version requirements-dbt.txt pins,
+# first on PATH, with that environment's python and sqlfluff beside it - and is
 # SKIPPED, said in the last line, without one. --no-dbt-deps is for a
 # sandbox whose proxy cannot fetch dbt's package tarballs: put the packages
 # in dbt_packages/ by hand (the dbt skill has the clone commands) and skip
@@ -329,18 +329,20 @@ fi
 # THE DBT TOOLCHAIN, found rather than installed. CI's `dbt` job runs on its
 # own Python with its own requirements file (requirements-dbt.txt), which
 # shares nothing with the pytest suites' beyond duckdb, so it cannot borrow
-# $PY. What counts is the `dbt` first on PATH, if it reports the dbt-oss
-# version that file pins (read from the file, one home), and the python and
-# sqlfluff of the same environment beside it - a venv's bin/ always has both.
+# $PY. What counts is the `dbt` first on PATH, if it reports the dbt version
+# that file pins (read from the file, one home), and the python and sqlfluff
+# of the same environment beside it - a venv's bin/ always has both.
 # Anything else is an environment gap and is said, never guessed around:
-# another dbt on PATH is exactly the dbt-core 1.x this project left.
-DBT_PIN="$(sed -n 's/^dbt-oss==\([^ ;]*\).*/\1/p' pipeline/requirements-dbt.txt | head -1)"
+# another dbt on PATH is the dbt-core 1.x this project left, or the dbt-oss
+# distribution decision 32 moved off (`dbt --version` names which: "dbt
+# 2.0.6" for the full distribution, "dbt-oss 2.0.5" for the other).
+DBT_PIN="$(sed -n 's/^dbt==\([^ ;]*\).*/\1/p' pipeline/requirements-dbt.txt | head -1)"
 DBT_DIR=""
 dbt_found="none"
 if selected_has dbt && command -v dbt >/dev/null 2>&1; then
   dbt_found="$(dbt --version 2>/dev/null | head -1)"
   candidate="$(dirname "$(command -v dbt)")"
-  if [ -n "$DBT_PIN" ] && [ "$dbt_found" = "dbt-oss ${DBT_PIN}" ] &&
+  if [ -n "$DBT_PIN" ] && [ "$dbt_found" = "dbt ${DBT_PIN}" ] &&
      [ -x "$candidate/python" ] && [ -x "$candidate/sqlfluff" ]; then
     DBT_DIR="$candidate"
   fi
@@ -424,6 +426,8 @@ fi
 #     INSTALL spatial finds the extension a web session's hook seeded, or
 #     fetches it on a machine with real network;
 #   - --no-dbt-deps can skip `dbt deps`, out loud.
+# Telemetry is off for the same reason, and by the same documented opt-out,
+# as in CI: the workflow's dbt job says why that variable and no other.
 # The docs site's three parts are checked the same way the workflow step
 # checks them; that step is the home of what the site must contain.
 dbt_docs_site_complete() {
@@ -434,17 +438,18 @@ dbt_docs_site_complete() {
 }
 if selected_has dbt; then
   if [ -z "$DBT_DIR" ]; then
-    echo "-- dbt suite: SKIPPED, no dbt-oss ${DBT_PIN:-?} first on PATH (found: ${dbt_found})."
+    echo "-- dbt suite: SKIPPED, no dbt ${DBT_PIN:-?} first on PATH (found: ${dbt_found})."
     echo "   Make a venv outside the repository, install the pins, and put it first on PATH:"
     echo "     python3.12 -m venv ~/.venvs/ourhike-dbt"
     echo "     ~/.venvs/ourhike-dbt/bin/pip install -r pipeline/requirements-dbt.txt"
     echo "     PATH=~/.venvs/ourhike-dbt/bin:\$PATH scripts/test.sh"
     echo "   CI runs it regardless (.github/workflows/pipeline-tests.yml's dbt job)."
-    skipped+=("dbt suite (no dbt-oss ${DBT_PIN:-?} on PATH)")
+    skipped+=("dbt suite (no dbt ${DBT_PIN:-?} on PATH)")
   else
     dbt_tmp="$(mktemp -d)"
     trap 'rm -rf "$dbt_tmp"' EXIT
-    dbt_cmd=(env -C pipeline/dbt "OURHIKE_WAREHOUSE=$dbt_tmp/warehouse.duckdb" "$DBT_DIR/dbt")
+    dbt_cmd=(env -C pipeline/dbt DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS=false
+             "OURHIKE_WAREHOUSE=$dbt_tmp/warehouse.duckdb" "$DBT_DIR/dbt")
     if $skip_dbt_deps; then
       echo "-- dbt deps: skipped (--no-dbt-deps), using pipeline/dbt/dbt_packages/ as it is"
       skipped+=("dbt deps (--no-dbt-deps)")
@@ -452,6 +457,7 @@ if selected_has dbt; then
       step "dbt deps"            "${dbt_cmd[@]}" deps --profiles-dir .
     fi
     step "dbt parse"             "${dbt_cmd[@]}" parse --profiles-dir .
+    step "dbt lint"              "${dbt_cmd[@]}" lint --profiles-dir .
     step "dbt fixtures"          env -C pipeline "$DBT_DIR/python" make_dbt_fixtures.py --raw-dir "$dbt_tmp/raw"
     step "dbt load warehouse"    env -C pipeline "$DBT_DIR/python" load_raw.py --raw-dir "$dbt_tmp/raw" --warehouse "$dbt_tmp/warehouse.duckdb"
     step "dbt seed"              "${dbt_cmd[@]}" seed --profiles-dir .

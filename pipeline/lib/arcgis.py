@@ -14,6 +14,8 @@ directory away from the module that never called it.
 import json
 from pathlib import Path
 
+import requests
+
 from lib.http_retry import request_with_retry
 
 PAGE_SIZE = 1000
@@ -97,7 +99,41 @@ def fetch_layer_geojson(
             break
         features.extend(batch)
         offset += len(batch)
+    check_not_truncated(query_url, len(features))
     return {"type": "FeatureCollection", "features": features}
+
+
+def check_not_truncated(query_url: str, fetched: int) -> None:
+    """Raise when the server says the layer holds more features than were fetched (#1730).
+
+    The loop above stops on an empty page, which a server can also answer
+    in place of an error part-way through a layer - the file is then
+    written short and `fetch_all` records the layer as up to date, so no
+    later run fetches it again. One `returnCountOnly=true` query after the
+    loop is the cheap cross-check: a server that holds 4,395 features and
+    handed over 3,000 is a failed fetch, not a small layer.
+
+    ONE DIRECTION ONLY. Fewer fetched than counted raises. More fetched
+    than counted does not: a layer edited between the count and the pages
+    can move either way, and an overshoot loses nothing. A count that
+    cannot be read (an error object, a non-JSON body, no `count` key, a
+    refused request) is printed and skipped, never treated as a pass or a
+    fail - whether every server this repo fetches from supports
+    `returnCountOnly` is unmeasured, and failing the fetch on that would
+    turn a missing capability into an outage. @unvalidated: the support
+    is asserted by the ArcGIS REST spec, not checked per registered source.
+    """
+    try:
+        resp = request_with_retry(query_url, params={"where": "1=1", "returnCountOnly": "true", "f": "json"}, timeout=60)
+        count = resp.json().get("count")
+    except (ValueError, AttributeError, requests.RequestException) as exc:
+        print(f"  {query_url} count check skipped: {exc}")
+        return
+    if not isinstance(count, int):
+        print(f"  {query_url} count check skipped: no integer count in the answer")
+        return
+    if fetched < count:
+        raise RuntimeError(f"{query_url} holds {count} features but {fetched} were fetched; the layer was truncated")
 
 
 def page_refusal(resp) -> str | None:

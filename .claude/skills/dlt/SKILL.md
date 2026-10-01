@@ -6,12 +6,16 @@ user-invocable: true
 
 # dlt in this repository
 
-**This file describes the TARGET until phase 1 of `pipeline/ELT.md` lands.**
-On `main` today (read 2026-10-01 at 23fca25) there is no `pipeline/extract/`,
-no `pipeline/.dlt/`, and no `dlt` in `pipeline/requirements.in`. The fetchers
-(`fetch_*.py`, `lib/arcgis.py`, `lib/socrata.py`) and `load_raw.py` are what
-runs. A change to one of those follows its own docstring and tests; nothing
-below applies to it yet.
+**Part of this is built, on the #1793 branch, and part is still the target.**
+Stage 2a built `pipeline/extract/` (`_contract.py`, `_kinds.py`, `_run.py`,
+`_warehouse.py`), `pipeline/.dlt/config.toml`, `requirements-extract.in`, and
+the `atc/` and `nysdec/` folders, with `tests/test_extract_layout.py` and
+`tests/test_extract_run.py`. Not built yet: `_shared/`, the other clubs, the
+as-sent copy, the raw lake, fixture mode, and any run against R2. Every other
+source still comes from the old fetchers (`fetch_*.py`, `lib/arcgis.py`,
+`lib/socrata.py`) and `load_raw.py`; a change to one of those follows its own
+docstring and tests. On `main` none of this exists until the pull request
+merges.
 
 This layer is planned because the maintainer reversed a written decision, on
 2026-10-01: *"So that was you claude who pushed so hard on not using dlt. Trust
@@ -299,12 +303,16 @@ local `file://` destination; R2 is `@unvalidated`).
 - Column hints from each ArcGIS layer's `fields`, so an all-null column is
   still created; `esriFieldTypeDate` lands `bigint` and base models convert it.
 - Schema contract `{"columns": "evolve", "data_type": "freeze"}` on ArcGIS.
-- **The paginator steps by rows returned** (`value_step = len(page)`), as
-  `lib/arcgis.py` does. dlt's `OffsetPaginator` steps by `limit`: against a
-  server capping pages at 4, `limit=10` loaded 4 of 10 rows (measured
-  2026-10-01). Set `maximum_offset` on every layer as well.
-- **One retrying session per caller**: `RESTClient(session=RetryingSession(posture))`,
-  never a global `RUNTIME__REQUEST_*`. Retry postures differ on purpose
+- **ArcGIS pages come from `lib/arcgis.py`'s `iter_layer_pages()`, never a
+  second pager.** It steps by rows returned, stops on an empty page, halves a
+  refused page and refuses a server that repeats a page. dlt's
+  `OffsetPaginator` steps by `limit`: against a server capping pages at 4,
+  `limit=10` loaded 4 of 10 rows (measured 2026-10-01). A later kind that does
+  use `rest_api` sets `value_step = len(page)` and `maximum_offset`.
+- **One retrying session per caller**, never a global `RUNTIME__REQUEST_*`:
+  `extract/_kinds.py`'s `session()` (named by `lib/user_agent.py`) passed to
+  `lib/http_retry.py`, or `RESTClient(session=RetryingSession(posture))` for a
+  `rest_api` kind. Retry postures differ on purpose
   (`lib/http_retry.py`; **#536 — One transient 504 from USGS throws away an
   entire publish**).
 - `_loaded_at` (naive UTC) is stamped in the map step **only when a resource

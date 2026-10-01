@@ -5,6 +5,10 @@ personal_reference/
 # so anything personal belongs in settings.local.json, the file Claude Code
 # reserves for exactly that.
 .claude/settings.local.json
+# Isolated git worktrees that Claude Code agents create while they work.
+# Each holds a full checkout of this repository, so committing one would
+# nest a copy of the tree inside itself.
+.claude/worktrees/
 
 # Coverage data, when pytest is run from the repo root rather than backend/
 # (backend/.gitignore only covers the backend/ subtree).

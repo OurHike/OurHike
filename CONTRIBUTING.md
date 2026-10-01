@@ -29,7 +29,7 @@ This repository keeps two different kinds of writing, and the difference is wort
 | [ROADMAP.md](ROADMAP.md) | Phase narrative — where the project is and what each phase means |
 | [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md) | Ordered runbook for getting v1 deployed |
 | [RELEASING.md](RELEASING.md) | How a release is versioned, named, gated and shipped, and the three environments it moves through |
-| [pipeline/DBT.md](pipeline/DBT.md), [pipeline/DATA_RELEASES.md](pipeline/DATA_RELEASES.md) | Data platform designs |
+| [pipeline/ELT.md](pipeline/ELT.md), [pipeline/DBT.md](pipeline/DBT.md), [pipeline/DATA_RELEASES.md](pipeline/DATA_RELEASES.md) | Data platform designs: ELT.md is the dlt → dbt target, DBT.md the history of the dbt layer built so far |
 | [pipeline/R2_LAYOUT.md](pipeline/R2_LAYOUT.md) | Where an artifact goes in the bucket and what it may be called |
 | [pipeline/SOURCE_SURVEY.md](pipeline/SOURCE_SURVEY.md) | Upstream A.T. data sources, surveyed and qualified (dated snapshot) |
 | [pipeline/NYC_SOURCE_SURVEY.md](pipeline/NYC_SOURCE_SURVEY.md) | Trail sources within a day of NYC — DEC, NYNJTC, the NJ side — surveyed and qualified (dated snapshot) |
@@ -37,6 +37,7 @@ This repository keeps two different kinds of writing, and the difference is wort
 | [pipeline/POI_COVERAGE_SURVEY.md](pipeline/POI_COVERAGE_SURVEY.md) | Which POI types each org publishes and which of them ship — the matrix, its evidence, and what it refuses (dated snapshot) |
 | [pipeline/WATER_SOURCES.md](pipeline/WATER_SOURCES.md) | Water near shelters — measurements against every candidate source, and the options (dated snapshot) |
 | [pipeline/WATER_CONDITIONS.md](pipeline/WATER_CONDITIONS.md) | Whether the water is *flowing* — the hydrology and drought sources that carry a current low-water signal (dated snapshot) |
+| [pipeline/ORG_COVERAGE_SURVEY.md](pipeline/ORG_COVERAGE_SURVEY.md) | What every organization publishes, type by type, against what is loaded — the survey the dlt club folders start from (dated snapshot, October 2026) |
 
 **Issues track the delta between that and reality** — anything with a state, an owner or a date. Open work, bugs, decisions still to make.
 

@@ -729,6 +729,8 @@ whole files by name with the reason. The client half is `client/src/lib/useTrail
 
 ## The dbt transform layer (#100, Phase A)
 
+**The rebuild this layer is moving to is [ELT.md](ELT.md)**: dlt for every extract, dbt-oss 2.0.5 and eleven contracted marts, planned 2026-10-01 under **#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads** and not built yet. What follows is how the layer runs today.
+
 [DBT.md](DBT.md) is the design; Phase A of it is built. After a fetch:
 
 ```

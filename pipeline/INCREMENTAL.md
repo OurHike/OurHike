@@ -35,7 +35,7 @@ design the weekly candidate build: that is DATA_RELEASES.md §2, still unbuilt, 
 belongs to that document under the one-home rule. It also does not re-argue the fetch
 framework question — **[#1294 — Evaluated and declined: dlt for the fetch layer, and a
 weekly cadence for non-alert data](https://github.com/OurHike/OurHike/issues/1294)** is
-the evaluation this design rests on.
+the evaluation this design rests on. **On 2026-10-01 the maintainer adopted dlt**, reversing that evaluation (*"Trust me, it will make things easier"*): [ELT.md](ELT.md) keeps this document's tiers and clocks and uses dlt as the mechanism for them, and its Overview lists what that changes here.
 
 ## What already exists
 

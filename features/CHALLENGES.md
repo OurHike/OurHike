@@ -180,8 +180,8 @@ past a junction was asked.
 
 ### Mystery items
 
-An item may carry `"mystery": { "number": 2, "reveal_on": "2027-07-20" }`. Exported before
-that date, its title does not appear in the artifact in the clear: it ships as `sealed_title`,
+An item may carry `"mystery": { "number": 2, "reveal_on": "2027-07-20" }`. Exported on or
+before that date, its title does not appear in the artifact in the clear: it ships as `sealed_title`,
 base64 of the text, and the phone decodes it on or after the date with no network. **Base64 is
 a spoiler guard, not a secret** — the rot13 on a puzzle answer. Anyone reading the artifact
 with a decoder can read an item early, and nothing here claims otherwise. The clear title
@@ -189,7 +189,7 @@ ships only from the release built the day AFTER `reveal_on` in UTC: a release bu
 midnight UTC on the day is still the evening before on the A.T., and the phone opens its
 sealed copy on the hiker's own date anyway. The ATC's 2025 list
 announced its three mystery items only on social media, so the transcription carries them with
-no title and no date. They show as "Sealed — announced by the ATC", and the ATC reveals one by
+no title and no date. They show as "Sealed · announced by the ATC", and the ATC reveals one by
 republishing.
 
 ### The published artifact
@@ -249,7 +249,15 @@ Both ends are inclusive days, so a one-day window is a window.
 
 `challenge_tags` (id is the outbox idempotency key; unique on user, challenge, item; a walked
 tag upgrades a hand one) and `challenge_entries` (name, email or mailing address, the tagged
-item ids, consent time). The hiker's routes: `POST /challenges/tags`,
+item ids, consent time, the `club_id` it was given to, and which listed items the server held
+as hand-tagged or not at all *as the entry arrived*). The CSV selects by `club_id`, so a
+challenge id that changes hands never hands earlier entries to the new owner, and its tag
+columns are that snapshot rather than a live read, so a hiker who pressed Leave after entering
+does not turn into an entry with nothing tagged (second Challenges review, 2026-10-01; revision
+`d922b35687d9`). An entry is taken only from a club that owns the id, is `claimed`, and proved
+the publisher's domain: `publishers.json`'s `domain` for the org, held equal to the backend's
+`PUBLISHER_DOMAINS` by a contract test. The same table reserves a publisher's slug at
+registration and decides who may save under its ids. The hiker's routes: `POST /challenges/tags`,
 `DELETE /challenges/{id}/items/{item}/tag`, `DELETE /challenges/{id}/tags` (Leave) and
 `POST /challenges/{id}/entries`. The club's, admins of a `claimed` org only:
 `GET /clubs/{slug}/challenges/{id}/counts` (counts, never names) and
@@ -261,9 +269,11 @@ anywhere is refused on their closing evening. There is no `late` flag on a tag's
 no count of late tags: the first was an oracle for an id's owner and closing date, the second
 could be differenced into one hiker's day by re-saving the date (review, 2026-09-30).
 
-Caps, each `@unvalidated` and each saying what would settle it in the code: 2,000 tags per
-account, 25 saved challenges per organization (each can become a branch and a pull request
-here), and a definition of at most 262,144 characters nested at most 12 deep. Deleting an
+Caps, each saying what would settle it in the code: 2,000 tags per account and 25 saved
+challenges per organization (each can become a branch and a pull request here), both
+`@unvalidated` and both checked under a Postgres advisory lock so two requests at once cannot
+step past them; and a definition of at most 262,144 characters (`@unvalidated`: 12.7 times the
+ATC's 20,638) nested at most 12 deep (measured 5 for the ATC's, then reasoned). Deleting an
 organization deletes the entries it collected and releases its challenge ids; the hikers'
 own tags stay theirs.
 Nothing here blocks the phone: until the backend is hosted, tags stay queued and the screen
@@ -277,8 +287,8 @@ says so.
 | #5 Challenge detail, #7 mystery | `screens/ChallengeDetail.tsx` — filters *On the trail · each section's short name · Mystery* |
 | #4b Tagged place | a sheet over the detail: the hiker's own photo (matched on the phone by time and place, never uploaded) or the club's photo labelled so, the moment, the club's note, the line walked, a private register line |
 | #5a Browse | `screens/ChallengeBrowse.tsx` — Trail, Club and Open-now filters; "On your plan" first, then the rest by distance from the plan. **No popularity sort and no hiker counts.** |
-| #1 Map layer | a Legend switch "Challenge places", **off by default**, listed only when a joined challenge is on the chosen trail; a diamond pin from `map/poiIcons.ts`, hollow until tagged, drawn over the place's own waypoint pin at that pin's size at every zoom — the waypoint layer's own zoom ramp and quiet-type scale (maintainer poll, 2026-09-30, from frames at z7/z9/z11/z13; a fixed 36.8 px diamond was the first build). The trail line is never recoloured. |
-| #2, #2c Place card | "On your challenges" under the description, one row per item, **Tag it** |
+| #1 Map layer | a Legend switch "Challenge places", **off by default**, listed only when a joined challenge is on the chosen trail and has a place to pin; a diamond pin from `map/poiIcons.ts`, hollow until tagged, drawn over the place's own waypoint pin at that pin's size at every zoom — the waypoint layer's own zoom ramp and quiet-type scale (maintainer poll, 2026-09-30, from frames at z7/z9/z11/z13; a fixed 36.8 px diamond was the first build). The trail line is never recoloured. |
+| #2, #2c Place card | "On your challenges" above "About this place", one row per item, **Tag it** inside the window and the window's date ("opens May 15") outside it |
 | #3 Today | "From today's walk", once, after the day's walk ends, only when something was passed |
 | #6, #6b Plan | the places on this route by day; when no joined challenge touches the route, the one best match, dashed, with Join and Hide |
 | #8b, #8c Finish | with a reward, the entry; with none, "You walked …" and Done |
@@ -311,6 +321,31 @@ says so.
   the hiker having been somewhere.
 - **Not a photo upload.** The hiker's photo on a tagged place is matched on the phone and
   stays there.
+
+## The reviews
+
+Comments across the feature cite "review, 2026-09-30" and "second Challenges review,
+2026-10-01". Both were adversarial reads of the whole feature, and this is where each one lives:
+
+- **2026-09-30**, before the first merge, in **OurHike/OurHike#1798 — Challenges: a club's
+  list of places on its own trails, joined and tagged at camp, starting with the ATC's Summer
+  Bucket List**. It moved entries behind a proved publisher domain, added the routes that take
+  a tag back, made window ends inclusive and the close a UTC-12 midnight, sized the diamond to
+  the pin under it, and took the `late` flag off a tag's answer.
+- **2026-10-01**, after that merge, in **OurHike/OurHike#1807 — Challenges follow-up: back
+  under the launch budget, entries bound to their club, and eight phone fixes from the second
+  review**. It bound an entry to the club it was sent to and froze its CSV tag columns, closed
+  the accomplice-invite path at claim, and serialised the caps. It kept one challenge's queued
+  items in order. It fixed the place card's untag and window, a stacked challenge page, a
+  workday stamped in the future, a Triple Crown read as walked, and a withdrawn list going
+  unremarked. It also changed the consent sentence, which had read "OurHike keeps nothing it
+  did not need to send" while the server stores the entry for the club with no expiry. It now
+  says what happens: OurHike holds the entry for the club, deleting the account removes it,
+  and a copy the club has downloaded is the club's.
+
+Not changed by either, and open: a walked Triple Crown peak has no Remove of its own (G5 in
+the second review). Adding one puts a control on a row a hiker sees, so it goes to the
+maintainer as a picture first.
 
 ## Open questions
 

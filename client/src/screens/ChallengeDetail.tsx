@@ -197,11 +197,16 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
         <PlaceStrip challenge={challenge} tags={tags} today={today} />
       </header>
 
-      {joined && !open && (
+      {/* To everyone, not only a hiker who joined: somebody deciding whether
+          to join a list that does not open until May is the one this is for
+          (second Challenges review, 2026-10-01). */}
+      {!open && (
         <p className="challenges__note">
           {challenge.window.opens !== null && today < challenge.window.opens
             ? `Opens ${shortDate(challenge.window.opens)}. ${capitalised(CHALLENGE_WORDS.nounPlural)} count from then.`
-            : `Closed ${shortDate(challenge.window.closes ?? today)}. What you ${CHALLENGE_WORDS.past} stays here as a record.`}
+            : joined
+              ? `Closed ${shortDate(challenge.window.closes ?? today)}. What you ${CHALLENGE_WORDS.past} stays here as a record.`
+              : `Closed ${shortDate(challenge.window.closes ?? today)}.`}
         </p>
       )}
 
@@ -1044,12 +1049,19 @@ function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
                   value={contact}
                   autoComplete="email"
                   aria-invalid={contact.trim() !== '' && !contactOk}
+                  // The reason, read with the field: aria-invalid alone says
+                  // only that something is wrong.
+                  aria-describedby={
+                    contact.trim() !== '' && !contactOk
+                      ? 'challenge-email-error'
+                      : undefined
+                  }
                   onChange={(event) => setContact(event.target.value)}
                 />
               )}
             </label>
             {!words.physical && contact.trim() !== '' && !contactOk && (
-              <p className="challenges__note">
+              <p className="challenges__note" id="challenge-email-error">
                 That does not look like an email address.
               </p>
             )}
@@ -1059,9 +1071,17 @@ function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
                 checked={consented}
                 onChange={(event) => setConsented(event.target.checked)}
               />
+              {/* What happens to them, said as the server does it rather than
+                  as a promise: the entry is stored for the club to download,
+                  and only deleting the account or the club's organization
+                  removes it (app/core/account_deletion.py, routers/clubs.py's
+                  delete_org). It used to read "OurHike keeps nothing it did
+                  not need to send", which the stored copy outlived (second
+                  Challenges review, 2026-10-01). */}
               <span>
-                Send these to the {challenge.orgName} for {words.thing}. OurHike keeps
-                nothing it did not need to send.
+                Send these to the {challenge.orgName} for {words.thing}. OurHike holds
+                them for the club, and deleting your account removes them here; a copy the
+                club has downloaded is the club&rsquo;s to keep.
               </span>
             </label>
             <div className="challenge-actions">

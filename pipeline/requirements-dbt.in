@@ -1,13 +1,35 @@
 # The dbt job's own dependency set (pipeline/DBT.md's CI plan), compiled to
 # requirements-dbt.txt with pip-compile on Python 3.12 - the version that job
-# pins deliberately, because dbt tends to lag the newest CPython the pytest
-# job runs. Separate from requirements.in on purpose: the pytest job never
-# needs dbt, and the dbt job never needs rasterio/pillow/pmtiles.
+# pins (pipeline-tests.yml's `dbt` job says why it still does). Separate from
+# requirements.in on purpose: the pytest job never needs dbt, and the dbt job
+# never needs rasterio/pillow/pmtiles.
 #
 # duckdb is pinned identically to requirements.in's hand-written pin, and for
-# the same ABI reason - the spatial extension the profiles.yml loads is
-# ABI-locked to the exact DuckDB version. Keep the two pins moving together.
+# the same ABI reason - the spatial extension is ABI-locked to the exact
+# DuckDB version. Keep the two pins moving together. In this file it serves
+# load_raw.py, which writes the fixture warehouse; dbt itself no longer
+# imports it (next paragraph).
 duckdb==1.5.5
-dbt-duckdb
-sqlfluff
-sqlfluff-templater-dbt
+#
+# dbt v2, the Apache-2.0 distribution (#1793 - Rebuild the data platform as
+# dlt -> dbt: seven contracted marts, a monthly refresh, published docs, and
+# lighter phone downloads; the maintainer chose dbt-oss 2.0.5 over dbt 2.0.6,
+# whose PyPI page carries no licence). One version everywhere, no dbt-core
+# 1.x beside it. v2 is a Rust binary with its own DuckDB driver built in, so
+# dbt-duckdb leaves, and so does sqlfluff-templater-dbt, which needs dbt-core.
+#
+# HOW IT INSTALLS, read from PyPI 2026-10-01, because it is not a wheel: PyPI
+# holds one 5,062-byte sdist for 2.0.5 whose build backend
+# (`_dbt_sa_build`) downloads the prebuilt wheel for this platform from
+# github.com/dbt-labs/dbt/releases/download/v2.0.5 and refuses it unless its
+# sha256 matches the sdist's own `assets.json`. So an install reaches GitHub
+# as well as PyPI. The wheels are cp311-abi3 (Linux x86-64 and ARM, macOS,
+# Windows x86-64): any CPython >= 3.11, which is `Requires-Python`.
+#
+# The DuckDB v2 bundles is 1.5.4, not the 1.5.5 above. pipeline-tests.yml's
+# `dbt` job says what is measured about that split and what is not.
+dbt-oss==2.0.5
+#
+# SQLFluff with its own jinja templater (pipeline/.sqlfluff). 4.3.0 is the
+# newest release on PyPI, read 2026-10-01.
+sqlfluff==4.3.0

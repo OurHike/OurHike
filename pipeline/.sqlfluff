@@ -1,10 +1,25 @@
-# SQLFluff over the dbt models (pipeline/DBT.md's linting section). The dbt
-# templater so {{ ref() }}/{{ source() }} lint as what they compile to;
-# duckdb dialect to match the warehouse.
+# SQLFluff over the dbt models (pipeline/DBT.md's linting section); duckdb
+# dialect to match the warehouse.
 #
-# Lint from pipeline/ with OURHIKE_WAREHOUSE=data/warehouse.duckdb - the dbt
-# templater compiles against the real profile, whose default path is
-# relative to dbt/ where dbt itself runs.
+# THE JINJA TEMPLATER, NOT THE DBT ONE, since dbt v2 (#1793 - Rebuild the
+# data platform as dlt -> dbt: seven contracted marts, a monthly refresh,
+# published docs, and lighter phone downloads). sqlfluff-templater-dbt
+# compiles through dbt-core 1.x, and the maintainer chose one dbt version
+# everywhere: dbt-oss 2.0.5, with no dbt-core beside it. The jinja templater
+# needs no dbt and no warehouse, so lint can run first in the CI job, before
+# anything is built.
+#
+# What that costs: `ref()` and `source()` render as placeholder names rather
+# than the relations dbt compiles, `var()` has no project values, and a
+# package macro renders as the stand-in in dbt/sqlfluff_libs/ rather than
+# its real body. The lint sees the SQL a model's author wrote, around those
+# holes; `dbt build` on the fixtures is what checks the compiled result.
+# Measured 2026-10-01 on the 32 files under dbt/models and dbt/tests,
+# sqlfluff 4.3.0: 0 violations either way, 3.0 s serial on the jinja
+# templater against 9.7 s on the dbt templater (plan/06-dbt-tooling.md).
+#
+# Lint from pipeline/: `sqlfluff lint dbt/models dbt/tests`. The two paths
+# below resolve relative to this file.
 #
 # DBT.md's instruction was to run the default rules against the real models
 # first and prune only what proves noisy, with the evidence. Two prunes:
@@ -31,13 +46,17 @@
 #   vocabulary between the warehouse and the export.
 [sqlfluff]
 dialect = duckdb
-templater = dbt
+templater = jinja
 sql_file_ext = .sql
 exclude_rules = ST06
 
-[sqlfluff:templater:dbt]
-project_dir = ./dbt
-profiles_dir = ./dbt
+# apply_dbt_builtins gives ref/source/config/var/is_incremental stand-ins.
+# library_path holds stand-ins for package macros (dbt_utils.*), and
+# load_macros_from_path lets a model call this project's own macros.
+[sqlfluff:templater:jinja]
+apply_dbt_builtins = True
+library_path = dbt/sqlfluff_libs
+load_macros_from_path = dbt/macros
 
 [sqlfluff:indentation]
 indented_joins = false

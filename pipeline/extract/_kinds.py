@@ -15,6 +15,10 @@ The kinds built so far for stage 2 (#1793 â€” Rebuild the data platform as dlt â
 
     arcgis_layer(key)       an ArcGIS FeatureServer or MapServer layer
     socrata_dataset(key)    a Socrata dataset, under the entry's own `where`
+    wordpress_posts(key)    one WordPress category's posts (NYNJTC's Trail Alerts)
+    wordpress_terms(key, t) that site's taxonomy terms, daily, for dbt to resolve
+    guide_pages(key)        a guide published as web pages, one row per section
+    published_hikes(key)    the Hike Finder export, one row per hike, GPX as served
     reviewed_input(key)     a registry entry whose rows a person reviews into a
                             file in git (ATC's Trail Updates), loaded from that file
     reviewed_file(path)     a reviewed pipeline/reference/ file with no registry
@@ -30,18 +34,30 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import time
 import xml.etree.ElementTree as ElementTree
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
 
 from extract._contract import EXTRACT_DIR, PIPELINE_DIR, Resource, read_club_file, slug_for_folder
+from fetch_hikefinder import sign_in as hikefinder_sign_in
 from lib.arcgis import iter_layer_pages, layer_count
 from lib.freshness_state import Freshness, compare_marker
+from lib.hikefinder import DETAIL_PATH as HIKEFINDER_DETAIL_PATH
+from lib.hikefinder import GPX_PATH as HIKEFINDER_GPX_PATH
+from lib.hikefinder import LISTING_PATH as HIKEFINDER_LISTING_PATH
+from lib.hikefinder import as_cache_entry as as_hike_row
+from lib.hikefinder import listing_count as hikefinder_listing_count
+from lib.hikefinder import listing_ids as hikefinder_listing_ids
+from lib.hikefinder import parse_gpx, parse_hike
 from lib.http_retry import request_with_retry
+from lib.nynjtc_long_path_guide import parse_index as parse_guide_index
+from lib.nynjtc_long_path_guide import parse_section as parse_guide_section
 from lib.socrata import dataset_url, fetch_dataset_geojson
 from lib.source_registry import PODCAST_FEED, load_registry, source_kind
 from lib.user_agent import USER_AGENT
@@ -376,6 +392,324 @@ def socrata_dataset(key: str, **overrides) -> SocrataDataset:
     if not entry.get("domain") or not entry.get("dataset_id"):
         raise KeyError(f"{key} has no domain and dataset_id in sources.json")
     return SocrataDataset(key=key, **overrides)
+
+
+# WordPress lists cap `per_page` at 100 and page the rest; a short page is the
+# last one. MAX_PAGES is a ceiling, so a misbehaving site cannot spin a run
+# forever, and reaching it raises rather than loading a truncated list.
+WP_PAGE_SIZE = 100
+WP_MAX_PAGES = 20
+# Taxonomy terms are refreshed once a day, riding the hourly lane when due:
+# a renamed term does not touch a post's `modified` (ELT.md, "Every node
+# carries its cadence"; Reasoned).
+TERMS_CADENCE_REASON = "a renamed term does not touch a post's modified, so terms are read daily (ELT.md)"
+
+
+def _wp_api(entry: dict) -> str:
+    """The site's REST root, at the origin of the page the registry row names for a person."""
+    parsed = urlparse(entry["url"])
+    return f"{parsed.scheme}://{parsed.netloc}/wp-json/wp/v2"
+
+
+def wp_list(api: str, route: str, params: dict, http: requests.Session) -> tuple[list, int | None]:
+    """Every page of a WordPress list route, and the site's own `X-WP-Total` for it.
+
+    Stops at `X-WP-TotalPages` as well as on a short page: a list of exactly
+    100 fills page 1, and the posts route answers a page past the last with
+    HTTP 400 `rest_post_invalid_page_number` (measured on NYNJTC 2026-10-01;
+    its taxonomy routes answer 200 and an empty list instead).
+    """
+    collected, total = [], None
+    for page in range(1, WP_MAX_PAGES + 1):
+        response = request_with_retry(
+            f"{api}/{route}", session=http, params={"per_page": WP_PAGE_SIZE, "page": page, **params}, timeout=60
+        )
+        if total is None and response.headers.get("X-WP-Total") is not None:
+            total = int(response.headers["X-WP-Total"])
+        batch = response.json()
+        if not isinstance(batch, list):
+            raise ValueError(f"{route} answered {type(batch).__name__}, not a list: the site's API has changed shape")
+        collected.extend(batch)
+        last_page = response.headers.get("X-WP-TotalPages")
+        if len(batch) < WP_PAGE_SIZE or (last_page is not None and page >= int(last_page)):
+            return collected, total
+    raise RuntimeError(f"{route}: still paging at {WP_MAX_PAGES} pages, which is a ceiling rather than an ending")
+
+
+@dataclass(frozen=True)
+class WordpressPosts(Resource):
+    """One WordPress category's posts, a row each, from the site's REST API.
+
+    The registry row's `url` is the category page a person reads
+    (`/category/<slug>/`); the REST root is that page's origin plus
+    `/wp-json/wp/v2`, and the category's id is looked up by its slug each run,
+    so a renumbered category is a refused run rather than an empty one. Posts
+    land as WordPress serves them, `title` and `content` still rendered, with
+    their taxonomy ids: the terms are their own daily table
+    (`wordpress_terms`), resolved in dbt (ELT.md, "Source kinds").
+    """
+
+    @property
+    def entry(self) -> dict:
+        return registry_entry(self.key)
+
+    @property
+    def api(self) -> str:
+        return _wp_api(self.entry)
+
+    @property
+    def category_slug(self) -> str:
+        parts = [part for part in urlparse(self.entry["url"]).path.split("/") if part]
+        if len(parts) < 2 or parts[-2] != "category":
+            raise KeyError(f"{self.key}: url is not a /category/<slug>/ page: {self.entry['url']}")
+        return parts[-1]
+
+    def category_id(self, http: requests.Session) -> int:
+        found, _ = wp_list(self.api, "categories", {"slug": self.category_slug, "_fields": "id,slug"}, http)
+        ids = [term["id"] for term in found if term.get("slug") == self.category_slug]
+        if len(ids) != 1:
+            raise RuntimeError(f"{self.key}: category {self.category_slug!r} resolves to {len(ids)} ids")
+        return ids[0]
+
+    def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
+        """A hash of the category's (id, modified) set, and its `X-WP-Total`.
+
+        One small request: `_fields=id,modified_gmt,slug`. An unpublished post
+        leaves the set, so a lifted closure moves the marker. The site's feed
+        ETag and `Last-Modified` are site-wide (GATC's alerts and events feeds
+        returned the same validator, measured 2026-10-01), so no feed validator
+        ever decides FRESH here.
+        """
+        try:
+            http = session()
+            posts, total = wp_list(
+                self.api, "posts", {"categories": self.category_id(http), "_fields": "id,modified_gmt,slug"}, http
+            )
+        except (requests.RequestException, ValueError, KeyError, RuntimeError) as error:
+            print(f"  {self.key}: change check failed ({error}); fetching")
+            return Freshness.UNKNOWN, None
+        if total is None:
+            return Freshness.UNKNOWN, None
+        pairs = sorted((post.get("id"), post.get("modified_gmt")) for post in posts)
+        marker = {"total": str(total), "set_sha256": hashlib.sha256(json.dumps(pairs).encode()).hexdigest()}
+        if recorded is None:
+            return Freshness.STALE, marker
+        return compare_marker(_canonical(recorded), _canonical(marker)), marker
+
+    def rows(self, proofs: dict[str, int]):
+        http = session()
+        posts, total = wp_list(self.api, "posts", {"categories": self.category_id(http)}, http)
+        if total is not None:
+            if len(posts) < total:
+                raise RuntimeError(f"{self.key}: the site counts {total} posts and {len(posts)} were read")
+            proofs[self.table] = total
+        for post in posts:
+            yield {name: value for name, value in post.items() if name not in WP_DROPPED and name.lower() not in PERSON_FIELDS}
+
+
+# Fields a post carries that are WordPress plumbing or name a person. `author`
+# is a user id that resolves to a person, and Yoast's SEO blocks
+# (`yoast_head`, `yoast_head_json`) spell that person's name out ("Written
+# by"); `_links` is the API's own hypermedia. Read off NYNJTC's 18 posts,
+# 2026-10-01.
+WP_DROPPED = frozenset(
+    {
+        "author",
+        "_links",
+        "guid",
+        "ping_status",
+        "comment_status",
+        "template",
+        "meta",
+        "yoast_head",
+        "yoast_head_json",
+        "class_list",
+    }
+)
+
+
+@dataclass(frozen=True)
+class WordpressTerms(Resource):
+    """The site's place taxonomies' terms, a row each with its taxonomy: the lookup a post's ids resolve against.
+
+    Its own table, `<posts table>_terms`, and its own daily cadence (a
+    renamed term moves no post). The taxonomies are the registry row's
+    `taxonomies`, or lib/nynjtc_alerts.py's PLACE_TAXONOMIES, which NYNJTC's
+    fetcher reads today.
+    """
+
+    taxonomies: tuple[str, ...] = ()
+
+    @property
+    def table(self) -> str:
+        return super().table + "_terms"
+
+    @property
+    def part(self) -> str:
+        return "terms"
+
+    @property
+    def api(self) -> str:
+        return _wp_api(registry_entry(self.key))
+
+    def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
+        """Always read when due: four small lists, once a day, cost less than a marker that could lie."""
+        return Freshness.UNKNOWN, None
+
+    def rows(self, proofs: dict[str, int]):
+        http = session()
+        rows, totals = [], []
+        for taxonomy in self.taxonomies:
+            terms, total = wp_list(self.api, taxonomy, {"_fields": "id,name,slug,count"}, http)
+            if not terms:
+                # An empty vocabulary is a route that stopped answering in the shape
+                # expected, not a site that tags nothing (fetch_nynjtc_alerts.py's rule).
+                raise RuntimeError(f"{self.key}: the {taxonomy!r} taxonomy came back empty, which is a broken read")
+            if total is not None and len(terms) < total:
+                raise RuntimeError(f"{self.key}: {taxonomy} counts {total} terms and {len(terms)} were read")
+            totals.append(total)
+            rows.extend({**term, "taxonomy": taxonomy} for term in terms)
+        if all(total is not None for total in totals):
+            proofs[self.table] = sum(totals)
+        yield from rows
+
+
+def wordpress_posts(key: str, **overrides) -> WordpressPosts:
+    resource = WordpressPosts(key=key, **overrides)
+    resource.category_slug  # a url that is not a category page fails at import, in the layout test
+    return resource
+
+
+def wordpress_terms(key: str, taxonomies: tuple[str, ...], **overrides) -> WordpressTerms:
+    registry_entry(key)
+    if not taxonomies:
+        raise ValueError(f"{key}: wordpress_terms needs the taxonomies a post is tagged from")
+    overrides.setdefault("cadence_override", "daily")
+    overrides.setdefault("cadence_reason", TERMS_CADENCE_REASON)
+    return WordpressTerms(key=key, taxonomies=tuple(taxonomies), **overrides)
+
+
+# fetch_nynjtc_long_path_guide.py's throttle, one request every half second.
+# nynjtc.org's robots.txt answered 200 and empty on 2026-10-01, so it asks
+# for no crawl delay.
+GUIDE_THROTTLE_SECONDS = 0.5
+
+# The parsers a guide's pages are read with, by registry key. A guide is HTML
+# written for people, so each one needs its own reading; a key with none here
+# cannot be built.
+GUIDE_PARSERS = {"nynjtc_long_path_guide": (parse_guide_index, parse_guide_section)}
+
+
+@dataclass(frozen=True)
+class GuidePages(Resource):
+    """A guide an organization publishes as web pages: one row per section, as the guide's parser reads it.
+
+    The registry row's `url` is the guide's index; each section page it links
+    is read and parsed (ELT.md, "Source kinds": an HTML parse is extraction,
+    rule SH01). A page the parser does not recognise raises, so a run never
+    lands the sections that still happened to parse. Each row keeps the
+    page's own sha256 beside the parse; the page's bytes go to the as-sent
+    copy, which is not built yet.
+    """
+
+    @property
+    def parsers(self):
+        return GUIDE_PARSERS[self.key]
+
+    def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
+        """UNKNOWN: there is no cheap marker, so the monthly lane reads the guide whole.
+
+        NYNJTC serves neither validator on these pages (read 2026-09-08), and
+        every body differs on every render, by a WordPress gallery's random
+        `galleryId` (fetch_nynjtc_long_path_guide.py). What moves is the
+        parse, and seeing it means reading every page.
+        """
+        return Freshness.UNKNOWN, None
+
+    def rows(self, proofs: dict[str, int]):
+        parse_index, parse_section = self.parsers
+        http = session()
+        index = request_with_retry(registry_entry(self.key)["url"], session=http, timeout=60).text
+        pages = parse_index(index)
+        if not pages:
+            raise RuntimeError(f"{self.key}: the index links no section page, which is a broken read")
+        sections = []
+        for number, url in pages:
+            time.sleep(GUIDE_THROTTLE_SECONDS)
+            html = request_with_retry(url, session=http, timeout=60, retryable_statuses=(429, 500, 502, 503, 504)).text
+            section = parse_section(html, url, expected_number=number)
+            sections.append({**section.to_dict(), "page_sha256": hashlib.sha256(html.encode("utf-8")).hexdigest()})
+        proofs[self.table] = len(pages)
+        yield from sections
+
+
+def guide_pages(key: str, **overrides) -> GuidePages:
+    registry_entry(key)
+    if key not in GUIDE_PARSERS:
+        raise KeyError(f"{key}: no guide parser is registered in extract/_kinds.py's GUIDE_PARSERS")
+    return GuidePages(key=key, **overrides)
+
+
+# The Hike Finder's host asks for this: robots.txt `Crawl-delay: 10`, read
+# 2026-10-01. fetch_hikefinder.py sends two a second; this layer does as the
+# host asks, so its 385 pages and 113 tracks take about 83 minutes on the
+# monthly lane (ELT.md, "The skip-unchanged check, by platform").
+HIKEFINDER_THROTTLE_SECONDS = 10
+
+
+@dataclass(frozen=True)
+class PublishedHikes(Resource):
+    """NYNJTC's hike write-ups through the Hike Finder export, one row per hike as lib/hikefinder.py parses it.
+
+    The listing names every hike and states its own total, which is the
+    proof the run check holds the rows to; a listing whose links and stated
+    total disagree raises, as fetch_hikefinder.py refuses it. A hike with a
+    published track carries the GPX as served in `gpx`, never as parsed
+    points, because the track is somebody's survey and a later parse may want
+    what this one did not keep. The export is behind a site password, read
+    from HIKEFINDER_PASSWORD (Extract's credential table in ELT.md); with no
+    password the listing is a login form, links no hike, and the run raises
+    rather than landing an empty table.
+    """
+
+    def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
+        """UNKNOWN: `hikes.php` serves neither an ETag nor a Last-Modified and there is no feed (measured 2026-09-15)."""
+        return Freshness.UNKNOWN, None
+
+    def _get(self, http: requests.Session, url: str) -> str:
+        return request_with_retry(url, session=http, timeout=60, throttle_seconds=HIKEFINDER_THROTTLE_SECONDS).text
+
+    def rows(self, proofs: dict[str, int]):
+        base = registry_entry(self.key)["url"].rstrip("/") + "/"
+        http = session()
+        signed_in = hikefinder_sign_in(http, base)
+        listing = self._get(http, urljoin(base, HIKEFINDER_LISTING_PATH))
+        ids = hikefinder_listing_ids(listing)
+        if not ids:
+            hint = "the password was refused or the form changed" if signed_in else "no HIKEFINDER_PASSWORD was set"
+            raise RuntimeError(f"{self.key}: the listing links no hike ({hint})")
+        stated = hikefinder_listing_count(listing)
+        if stated is not None and stated != len(ids):
+            raise RuntimeError(f"{self.key}: the listing says {stated} hikes and links {len(ids)}")
+        if stated is not None:
+            proofs[self.table] = stated
+        stamp = datetime.now(UTC).isoformat(timespec="seconds")
+        for hike_id in ids:
+            url = urljoin(base, HIKEFINDER_DETAIL_PATH.format(id=hike_id))
+            hike = parse_hike(self._get(http, url), hike_id, url)
+            if hike is None:
+                raise RuntimeError(f"{self.key}: hike {hike_id} did not parse, which is the export changing shape")
+            row = as_hike_row(hike, stamp)
+            row["gpx"] = None
+            if hike.has_published_route:
+                track = self._get(http, urljoin(base, HIKEFINDER_GPX_PATH.format(id=hike_id)))
+                row["gpx"] = track if parse_gpx(track) is not None else None
+            yield row
+
+
+def published_hikes(key: str, **overrides) -> PublishedHikes:
+    registry_entry(key)
+    return PublishedHikes(key=key, **overrides)
 
 
 @dataclass(frozen=True)

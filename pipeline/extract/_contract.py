@@ -214,6 +214,16 @@ class Resource:
         return self.table
 
     @property
+    def part(self) -> str:
+        """Which part of its key's upstream this resource reads, when one key feeds two: "" for the whole of it.
+
+        NYNJTC's Trail Alerts is the case: one registry row, read as its posts
+        (hourly) and as the site's taxonomy terms (daily), two resources and two
+        tables. The layout test's one-extraction rule tells them apart by this.
+        """
+        return ""
+
+    @property
     def schema_contract(self) -> dict | None:
         """dlt's schema contract for the table, or None for dlt's default."""
         return None

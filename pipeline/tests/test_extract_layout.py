@@ -55,11 +55,6 @@ NOT_YET_EXTRACTED = frozenset(
         "osm_water",
         "usgs_3dhp",
         "usdm_drought",
-        "nynjtc_long_path",
-        "nynjtc_highlands_trail",
-        "nynjtc_trail_alerts",
-        "nynjtc_long_path_guide",
-        "nynjtc_hike_finder",
     }
 )
 
@@ -149,7 +144,8 @@ def test_a_claiming_file_has_a_resource_for_each_claim_and_no_other():
     for club_file in FILES:
         if club_file.type == "org" or club_file.form != "claims":
             continue
-        assert sorted(club_file.claims) == sorted(r.key for r in club_file.resources), (
+        # A key may feed two resources (NYNJTC's alerts: posts and terms), so the sets must match.
+        assert sorted(set(club_file.claims)) == sorted({r.key for r in club_file.resources}), (
             f"{club_file.club}/{club_file.type}.py: CLAIMS and the RESOURCES' keys must match"
         )
 
@@ -231,11 +227,13 @@ def upstream(entry: dict) -> tuple[str, str]:
 def test_no_dataset_is_extracted_twice_and_no_copy_is_also_a_resource():
     """Decision 34: each upstream dataset is landed once, in its steward's folder."""
     registry = _registry(REGISTRY_PATH)
-    reads = Counter(upstream(registry[r.key]) for r in all_resources(FILES) if r.key in registry and "url" in registry[r.key])
+    reads = Counter(
+        (*upstream(registry[r.key]), r.part) for r in all_resources(FILES) if r.key in registry and "url" in registry[r.key]
+    )
     twice = sorted(read for read, n in reads.items() if n > 1)
     assert not twice, f"two resources read the same upstream: {twice}"
     copies = {url.rstrip("/") for f in FILES for note in f.same_as for url in note.copy}
-    addresses = {address for address, _ in reads}
+    addresses = {address for address, _, _ in reads}
     assert not (copies & addresses), f"a SAME_AS copy is also extracted: {sorted(copies & addresses)}"
 
 

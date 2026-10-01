@@ -15,18 +15,31 @@ the warehouse reads; a table that halves is refused.
 """
 
 import json
-from datetime import date
+from datetime import date, timedelta
 
 import duckdb
 import pytest
 
-from extract import _kinds
+from extract import _kinds, _run
 from extract._contract import Resource
-from extract._kinds import ArcgisLayer, PodcastFeed, ReviewedFile, SocrataDataset, catalogue_row, reviewed_input
+from extract._kinds import (
+    ArcgisLayer,
+    GuidePages,
+    PodcastFeed,
+    PublishedHikes,
+    ReviewedFile,
+    SocrataDataset,
+    WordpressPosts,
+    WordpressTerms,
+    catalogue_row,
+    reviewed_input,
+)
 from extract._run import ExtractRefused, Planned, make_pipeline, run_check, run_pipeline
 from extract._warehouse import load_warehouse
 from lib.freshness_state import Freshness
 from lib.user_agent import USER_AGENT
+from tests.test_fetch_nynjtc_long_path_guide import INDEX, section_page
+from tests.test_lib_hikefinder import GPX, page
 
 AGOL = "https://services1.arcgis.com/orgid/arcgis/rest/services"
 LINES_URL = f"{AGOL}/Trails/FeatureServer/0"
@@ -34,6 +47,9 @@ CLOSURES_URL = f"{AGOL}/Closures/FeatureServer/0"
 ONPREM_URL = "https://gis.example.gov/arcgis/rest/services/assets/MapServer/3"
 FEED_URL = "https://feeds.example.org/show.xml"
 SOCRATA = "https://data.example.gov/resource/abcd-1234"
+WP = "https://club.example.org/wp-json/wp/v2"
+GUIDE = "https://club.example.org/guide/"
+HIKES = "https://hikes.example.org/hikefinder/"
 GREENWAY_WHERE = "status='Current' AND grnwy='Greenway'"
 FEED = b"""<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
@@ -100,6 +116,9 @@ def registry(tmp_path, monkeypatch):
                     {"key": "onprem_dated", "url": ONPREM_URL, "freshness": {"kind": "arcgis_max_field", "field": "UPDATED"}},
                     {"key": "onprem_undated", "url": ONPREM_URL},
                     {"key": "a_podcast", "url": FEED_URL, "kind": "podcast_feed"},
+                    {"key": "alerts", "url": "https://club.example.org/category/trail-alerts/", "kind": "published_notices"},
+                    {"key": "nynjtc_long_path_guide", "url": GUIDE, "kind": "guide_pages"},
+                    {"key": "hikes", "url": HIKES, "kind": "published_hikes"},
                     {
                         "key": "greenways",
                         "url": "https://data.example.gov/d/abcd-1234",
@@ -437,3 +456,156 @@ def test_a_socrata_marker_moves_with_the_filtered_rows_and_keeps_the_where(regis
 def test_a_socrata_change_check_that_errors_is_unknown(registry, requests_mock):
     requests_mock.get(SOCRATA + ".json", status_code=503)
     assert greenways().change_check(None) == (Freshness.UNKNOWN, None)
+
+
+def wp_post(number, modified="2026-09-01T00:00:00"):
+    return {
+        "id": number,
+        "slug": f"alert-{number}",
+        "modified_gmt": modified,
+        "link": f"https://club.example.org/alert-{number}/",
+        "title": {"rendered": f"Alert {number}"},
+        "content": {"rendered": "<p>The bridge is out.</p>"},
+        "author": 7,
+        "yoast_head_json": {"author": "A. Person"},
+        "trail": [11],
+    }
+
+
+class FakeWordpress:
+    """One WordPress site: a category found by slug, its posts with `X-WP-Total`, and taxonomy routes."""
+
+    def __init__(self, requests_mock, posts, terms=None):
+        self.posts = posts
+        requests_mock.get(WP + "/categories", json=[{"id": 6, "slug": "trail-alerts"}])
+        requests_mock.get(WP + "/posts", json=self.answer)
+        for taxonomy, items in (terms or {}).items():
+            requests_mock.get(f"{WP}/{taxonomy}", json=items, headers={"X-WP-Total": str(len(items))})
+
+    def answer(self, request, context):
+        assert request.qs["categories"] == ["6"], "posts are asked for by the category id the slug resolved to"
+        size, page = int(request.qs["per_page"][0]), int(request.qs["page"][0])
+        pages = max(1, -(-len(self.posts) // size))
+        if page > pages:
+            context.status_code = 400
+            return {"code": "rest_post_invalid_page_number"}
+        context.headers["X-WP-Total"] = str(len(self.posts))
+        context.headers["X-WP-TotalPages"] = str(pages)
+        posts = self.posts[(page - 1) * size : page * size]
+        if "_fields" in request.qs:
+            return [{name: post[name] for name in ("id", "modified_gmt", "slug")} for post in posts]
+        return posts
+
+
+def alerts():
+    return WordpressPosts(key="alerts", club="testclub", type="closures")
+
+
+def terms():
+    return WordpressTerms(
+        key="alerts", club="testclub", type="closures", taxonomies=("trail",), cadence_override="daily", cadence_reason="a test"
+    )
+
+
+def test_wordpress_posts_land_with_the_sites_total_and_without_the_person_fields(registry, requests_mock):
+    FakeWordpress(requests_mock, [wp_post(1), wp_post(2)])
+    proofs = {}
+    rows = list(alerts().rows(proofs))
+    assert [row["slug"] for row in rows] == ["alert-1", "alert-2"]
+    assert proofs["raw_testclub__alerts"] == 2
+    assert not {"author", "yoast_head_json"} & set(rows[0]), "a post's author never loads, by id or by name"
+    assert rows[0]["trail"] == [11], "the taxonomy ids land; dbt resolves them against the terms table"
+    assert all(r.headers["User-Agent"] == USER_AGENT for r in requests_mock.request_history)
+
+
+def test_a_wordpress_marker_moves_when_a_post_is_edited_or_unpublished(registry, requests_mock):
+    site = FakeWordpress(requests_mock, [wp_post(1), wp_post(2)])
+    verdict, marker = alerts().change_check(None)
+    assert verdict is Freshness.STALE and marker["total"] == "2"
+    assert alerts().change_check(marker) == (Freshness.FRESH, marker)
+    site.posts = [wp_post(1), wp_post(2, modified="2026-09-30T12:00:00")]
+    assert alerts().change_check(marker)[0] is Freshness.STALE
+    site.posts = [wp_post(1)]  # a lifted closure is a post taken down
+    assert alerts().change_check(marker)[0] is Freshness.STALE
+
+
+def test_wordpress_terms_are_their_own_daily_table_and_an_empty_vocabulary_is_refused(registry, requests_mock):
+    FakeWordpress(requests_mock, [], {"trail": [{"id": 11, "name": "Allis Trail", "slug": "allis-trail", "count": 1}]})
+    resource = terms()
+    proofs = {}
+    assert list(resource.rows(proofs)) == [
+        {"id": 11, "name": "Allis Trail", "slug": "allis-trail", "count": 1, "taxonomy": "trail"}
+    ]
+    assert resource.table == "raw_testclub__alerts_terms" and resource.part == "terms"
+    assert resource.cadence == "daily" and proofs[resource.table] == 1
+    requests_mock.get(WP + "/trail", json=[], headers={"X-WP-Total": "0"})
+    with pytest.raises(RuntimeError, match="came back empty"):
+        list(terms().rows({}))
+
+
+def test_a_daily_resource_rides_the_hourly_lane_once_a_day(registry, store, requests_mock, monkeypatch):
+    FakeWordpress(requests_mock, [], {"trail": [{"id": 11, "name": "Allis Trail", "slug": "allis-trail", "count": 1}]})
+    FakeLayer(requests_mock, CLOSURES_URL, [feature(10)])
+    clock = {"now": _run.utc_now_naive()}
+    monkeypatch.setattr(_run, "utc_now_naive", lambda: clock["now"])
+    first = lane(store, closures(), terms())
+    assert set(first.verdicts) == {"raw_testclub__closures_layer", "raw_testclub__alerts_terms"}
+    clock["now"] += timedelta(hours=1)
+    second = lane(store, closures(), terms())
+    assert set(second.verdicts) == {"raw_testclub__closures_layer"}, "checked an hour ago, so not due"
+    clock["now"] += timedelta(hours=24)
+    third = lane(store, closures(), terms())
+    assert "raw_testclub__alerts_terms" in third.verdicts
+    con, counts = warehouse(store)
+    assert counts["raw_testclub__alerts_terms"] == 1
+
+
+def test_a_guide_lands_one_row_per_section_and_a_page_that_stops_parsing_raises(registry, requests_mock, monkeypatch):
+    monkeypatch.setattr(_kinds, "GUIDE_THROTTLE_SECONDS", 0)
+    requests_mock.get(GUIDE, text=INDEX)
+    requests_mock.get("https://www.nynjtc.org/lp-section-1/", text=section_page(1))
+    requests_mock.get("https://www.nynjtc.org/lp-section-2/", text=section_page(2))
+    guide = GuidePages(key="nynjtc_long_path_guide", club="testclub", type="points_of_interest")
+    proofs = {}
+    rows = list(guide.rows(proofs))
+    assert [row["number"] for row in rows] == [1, 2] and proofs[guide.table] == 2
+    assert all(len(row["page_sha256"]) == 64 for row in rows)
+    requests_mock.get("https://www.nynjtc.org/lp-section-2/", text="<main>a page in a new shape</main>")
+    with pytest.raises(ValueError):
+        list(guide.rows({}))
+
+
+def test_the_hike_finder_lands_each_hike_with_its_track_as_served(registry, requests_mock, monkeypatch):
+    monkeypatch.setattr(_kinds, "HIKEFINDER_THROTTLE_SECONDS", 0)
+    monkeypatch.delenv("HIKEFINDER_PASSWORD", raising=False)
+    listing = 'Results (2 hikes found) <a href="hike.php?id=1">a</a><a href="hike.php?id=2">b</a>'
+    requests_mock.get(HIKES + "hikes.php", text=listing)
+    requests_mock.get(HIKES + "hike.php?id=1", text=page(gpx=True))
+    requests_mock.get(HIKES + "hike.php?id=2", text=page(title="Bear Mountain Loop"))
+    requests_mock.get(HIKES + "download_gpx.php?id=1", text=GPX)
+    hikes = PublishedHikes(key="hikes", club="testclub", type="suggested_hikes")
+    proofs = {}
+    rows = list(hikes.rows(proofs))
+    assert proofs[hikes.table] == 2 and len(rows) == 2
+    assert rows[0]["gpx"] == GPX and rows[1]["gpx"] is None
+    assert not any(r.method == "POST" for r in requests_mock.request_history), "no password set, so none is sent"
+
+
+def test_a_hike_finder_listing_that_links_nothing_or_miscounts_raises(registry, requests_mock, monkeypatch):
+    monkeypatch.setattr(_kinds, "HIKEFINDER_THROTTLE_SECONDS", 0)
+    monkeypatch.delenv("HIKEFINDER_PASSWORD", raising=False)
+    hikes = PublishedHikes(key="hikes", club="testclub", type="suggested_hikes")
+    requests_mock.get(HIKES + "hikes.php", text="<form>password</form>")
+    with pytest.raises(RuntimeError, match="no HIKEFINDER_PASSWORD was set"):
+        list(hikes.rows({}))
+    requests_mock.get(HIKES + "hikes.php", text='Results (3 hikes found) <a href="hike.php?id=1">a</a>')
+    with pytest.raises(RuntimeError, match="says 3 hikes and links 1"):
+        list(hikes.rows({}))
+
+
+def test_a_category_of_exactly_one_full_page_never_asks_for_the_page_past_it(registry, requests_mock):
+    FakeWordpress(requests_mock, [wp_post(n) for n in range(1, 101)])
+    proofs = {}
+    assert len(list(alerts().rows(proofs))) == 100 and proofs["raw_testclub__alerts"] == 100
+    asked = [r.qs.get("page") for r in requests_mock.request_history if r.path.endswith("/posts")]
+    assert asked == [["1"]], "page 2 would be a 400 from the posts route"

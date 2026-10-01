@@ -33,7 +33,7 @@ import os
 import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 # Before dlt is imported, and here as well as in .dlt/config.toml, so a run
 # started from any directory has both: telemetry is on by default, to
@@ -53,7 +53,13 @@ from lib.freshness_state import Freshness  # noqa: E402
 # Which cadences each lane carries. Daily and weekly resources would ride the
 # hourly pipeline when due (ELT.md); none of the folders extracted so far has
 # one, so no lane carries them yet and the layout test refuses one.
-LANES = {"monthly": ("monthly",), "hourly": ("hourly",)}
+LANES = {"monthly": ("monthly",), "hourly": ("hourly", "daily")}
+# A daily resource has no job of its own: it rides the hourly lane and runs
+# when its last good check is a day old, so no second job writes the hourly
+# lane's raw store (ELT.md, "Every node carries its cadence"). NYNJTC's alert
+# taxonomy terms are the one daily resource; a renamed term moves no post's
+# `modified`, so the posts' own marker cannot see it (Reasoned).
+DUE_AFTER = {"daily": timedelta(hours=24)}
 DATASET = "raw"
 SOURCE_NAME = "extract"
 RUNS_TABLE = "_extract_runs"
@@ -98,6 +104,33 @@ def utc_now_naive() -> datetime:
 
 def lane_resources(lane: str, resources: list[Resource]) -> list[Resource]:
     return [resource for resource in resources if resource.cadence in LANES[lane]]
+
+
+def _naive_utc(stamp: datetime) -> datetime:
+    return stamp.astimezone(UTC).replace(tzinfo=None) if stamp.tzinfo else stamp
+
+
+def due(resources: list[Resource], log: list[dict], now: datetime) -> list[Resource]:
+    """The resources this run should check: all of them, less any slower one checked within its interval.
+
+    A check counts when its run loaded or found the resource fresh; a refused
+    run's check does not, so a daily resource whose last run was refused is
+    due again on the next hourly firing. A resource left out keeps its last
+    committed rows, exactly as a FRESH one does.
+    """
+    last: dict[str, datetime] = {}
+    for row in log:
+        if row.get("outcome") in ("loaded", "skipped") and row.get("checked_at") is not None:
+            stamp = _naive_utc(row["checked_at"])
+            name = row["resource_name"]
+            last[name] = max(last.get(name, stamp), stamp)
+    return [
+        resource
+        for resource in resources
+        if resource.cadence not in DUE_AFTER
+        or resource.name not in last
+        or now - last[resource.name] >= DUE_AFTER[resource.cadence]
+    ]
 
 
 def make_pipeline(lane: str, bucket_url: str, pipelines_dir: str | None = None):
@@ -341,6 +374,7 @@ def run_pipeline(
     pipeline = make_pipeline(lane, bucket_url, pipelines_dir)
     pipeline.sync_destination()
     recorded = recorded_markers(pipeline)
+    plan_resources = due(plan_resources, run_log_rows(pipeline), checked_at)
     planned = []
     for resource in plan_resources:
         before = recorded.get(resource.name)

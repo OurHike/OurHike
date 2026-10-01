@@ -1983,9 +1983,15 @@ function App() {
   // Two facts, not one number. A report waiting for signal resolves itself;
   // a report the server refused never will, and showing them as one count is
   // what let a phone with a wrong clock say "waiting to send" forever (#243).
+  // When the queue was last read, for readers that must tell "not in the
+  // queue" from "not read since it was queued" - the challenge finish screen
+  // (openChallengeEntryState below) says "Sent" only on the first.
+  const [queueReadAt, setQueueReadAt] = useState(0)
   const refreshOutbox = useCallback(async () => {
+    const readAt = Date.now()
     const queue = await listQueued()
     setQueuedItems(queue)
+    setQueueReadAt(readAt)
   }, [])
 
   // Re-read after either thing that can add to the queue closes. `reporting`
@@ -8735,7 +8741,19 @@ function App() {
   // 2026-09-30).
   const challengeTodayRanges =
     passedToday.day === challengeToday ? passedToday.ranges : NO_CHALLENGE_RANGES
-  const challenges = useChallenges(online, afterFirstFrame, () => void syncOutbox(), {
+  // What the other doors do after queueing (handleLogHours's shape): read the
+  // queue now, flush, and read it again - so the finish screen's "waiting",
+  // "refused" and "sent" come from the outbox rather than from the moment
+  // Send was pressed.
+  const onChallengeQueued = useCallback(() => {
+    void refreshOutbox()
+    void syncOutbox()
+      .then((result) => {
+        if (result !== null) handleSynced(result)
+      })
+      .finally(() => void refreshOutbox())
+  }, [refreshOutbox, syncOutbox, handleSynced])
+  const challenges = useChallenges(online, afterFirstFrame, onChallengeQueued, {
     todayRanges: challengeTodayRanges,
     trail: DEFAULT_TRAIL_ID,
     today: challengeToday,
@@ -8795,11 +8813,13 @@ function App() {
     if (sent === undefined) return undefined
     if (sent.outboxId === undefined) return { kind: 'waiting' as const }
     const queued = queuedItems.find((item) => item.id === sent.outboxId)
-    if (queued === undefined) return undefined
+    // Absent from a queue read before it was queued says nothing yet.
+    if (queued === undefined)
+      return queueReadAt < Date.parse(sent.at) ? { kind: 'waiting' as const } : undefined
     return queued.failure !== undefined
       ? { kind: 'refused' as const, reason: queued.failure.reason }
       : { kind: 'waiting' as const }
-  }, [openChallengeRecord, challenges.state.sent, queuedItems])
+  }, [openChallengeRecord, challenges.state.sent, queuedItems, queueReadAt])
   // Joined, and no longer in the published list: the list says so rather
   // than silently shrinking.
   const missingChallenges = challenges.state.joined.filter(

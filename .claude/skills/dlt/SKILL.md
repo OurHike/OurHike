@@ -16,8 +16,9 @@ claiming 26 keys; `nycparks/` and `nycdot/` through the Socrata kind, 7
 more; and `nynjtc/` through the WordPress, guide-page and Hike Finder kinds,
 5 more, with the daily rule in `_run.py`; and `gatc/` through the club-PDF
 kind. 3 keys remain on `NOT_YET_EXTRACTED`, each with its blocker beside it.
-Not built yet: `_shared/`, the other clubs, the as-sent copy, the raw lake,
-fixture mode, and any run against R2. Every other
+The other 118 managing clubs have their folders too, every type a dated note,
+so all 145 exist. Not built yet: `_shared/` (with `not_clubs.py`), the as-sent
+copy, the raw lake, fixture mode, and any run against R2. Every other
 source still comes from the old fetchers (`fetch_*.py`, `lib/arcgis.py`,
 `lib/socrata.py`) and `load_raw.py`; a change to one of those follows its own
 docstring and tests. On `main` none of this exists until the pull request
@@ -230,10 +231,13 @@ by a live `?f=json` read (2026-10-01). The batch files (`b1`-`b7`, `c1`-`c21`,
 `p01`-`p10`, `q01`, `r01`) were never committed and were never scrubbed: the
 JSON replaced every email address, phone number, personal ArcGIS account and
 named private individual with a description, and the files still hold them.
-Their text goes into a note only after a person has read it. The ten
-persistence-pass rows in stage 2b were read and carry their full seven-item
-checklist; every other note keeps the trimmed, scrubbed copy, and says so in
-its last line.
+Their text goes into a note only after a person has read it. The twelve
+persistence-pass rows in the 23 registry providers' folders were read and
+carry their full seven-item checklist; every other note keeps the trimmed,
+scrubbed copy, and says so in its last line. The 118 folders with no
+registry row keep it throughout: screened, their 109 persisted rows' batch
+text held personal ArcGIS account names (an email-based account, several
+individuals' handles), 146,504 characters too many to read with care.
 
 **A GIS-shaped type is not given up early** (decision 21b; the maintainer:
 *"Make sure for all of these orgs that you dont give up to easily. The GIS

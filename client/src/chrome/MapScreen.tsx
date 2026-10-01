@@ -57,6 +57,7 @@ import type { DroughtBand } from '../map/droughtLayers'
 import type { ClosureBand } from '../map/closureLayers'
 import type { CorridorFeatureCollection } from '../map/corridorLayers'
 import type { WorkdayPoint } from '../map/workdayLayers'
+import type { ChallengePinFeatureCollection } from '../map/challengeLayers'
 import type { WorkdayRow, WorkdayWindowId } from '../lib/workProjects'
 import type { DisputePoint } from '../map/disputeLayers'
 import type { AtcUpdatePoint } from '../map/atcUpdateLayers'
@@ -98,6 +99,7 @@ import {
 import type { SearchablePoi } from '../lib/searchPoi'
 import type { Place } from '../lib/places'
 import { TrailDataUpdate, type TrailDataUpdateProps } from './TrailDataUpdate'
+import { PoiChallenges, type PoiChallengesProps } from './PoiChallenges'
 import './chrome.css'
 
 export interface MapScreenProps {
@@ -687,6 +689,30 @@ export interface MapScreenProps {
    *  that goes nowhere is worse than none, the legend's rule for every
    *  control it offers. */
   onToggleBlazeColors?: () => void
+  /**
+   * The challenge places (#1780 — Let a club publish a challenge — places on
+   * its own trails that hikers opt into and tag at camp — starting with the
+   * ATC's A.T. Summer Bucket List), all four from chrome/challengePanel.ts
+   * and passed straight through: the pins and whether they are drawn to the
+   * canvas, the switch's state and handler to the legend.
+   *
+   * NOTHING ELSE ON THIS SCREEN READS THEM, and that is the design's
+   * principle 2 rather than an omission: no banner, no count, no live
+   * region and no plate change near a challenge place.
+   * chrome/MapScreen.test.tsx renders with and without them and compares.
+   */
+  challengePins?: ChallengePinFeatureCollection
+  showChallengePins?: boolean
+  challengePlacesShown?: boolean
+  onToggleChallengePlaces?: () => void
+  /**
+   * What the place card's "On your challenges" section needs (#1780, frames
+   * #2 and #2c): every challenge on the phone, the hiker's record, and the
+   * three things a row can do. Data rather than a rendered node, so the
+   * section's component loads with this deferred screen instead of in front
+   * of the first frame. Absent, the card has no challenge section.
+   */
+  challengeCard?: Omit<PoiChallengesProps, 'poiIds'>
 
   /** Opening camera only; later moves are the hiker's. */
   center?: [number, number]
@@ -976,6 +1002,11 @@ export function MapScreen({
   redLight = false,
   blazeColorsShown = true,
   onToggleBlazeColors,
+  challengePins,
+  showChallengePins = false,
+  challengePlacesShown = false,
+  onToggleChallengePlaces,
+  challengeCard,
   detail = 'standard',
   center,
   zoom,
@@ -1635,6 +1666,8 @@ export function MapScreen({
               onSelectWarning={onSelectWarning}
               workdays={workdays}
               onSelectWorkday={onSelectWorkday}
+              challengePins={challengePins}
+              showChallengePins={showChallengePins}
               disputes={disputes}
               warnings={warnings}
               routeDrawing={routeDrawing}
@@ -1728,6 +1761,17 @@ export function MapScreen({
                 {...(direction === undefined ? {} : { direction })}
                 onClose={onClosePoi}
                 sheetContainer={screenRoot}
+                challengeSection={
+                  challengeCard === undefined ? undefined : (
+                    <PoiChallenges
+                      poiIds={[
+                        selectedPoi.id,
+                        ...(selectedSite ?? []).map((part) => part.id),
+                      ]}
+                      {...challengeCard}
+                    />
+                  )
+                }
               />
             )}
 
@@ -1866,6 +1910,8 @@ export function MapScreen({
             onToggleDrought={onToggleDrought}
             blazeColorsShown={blazeColorsShown}
             onToggleBlazeColors={onToggleBlazeColors}
+            challengePlacesShown={challengePlacesShown}
+            onToggleChallengePlaces={onToggleChallengePlaces}
             units={units}
             maintainerLine={maintainerLine}
             droughtSummary={

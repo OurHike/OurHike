@@ -137,6 +137,28 @@ export const VolunteerImpact = screen(
   () => import('./VolunteerImpact').then((m) => m.VolunteerImpact),
   'VolunteerImpact',
 )
+// Challenges (#1780): the list, one challenge, and Browse - reached from
+// More, never on a first frame.
+export const Challenges = screen(
+  () => import('./Challenges').then((m) => m.Challenges),
+  'Challenges',
+)
+export const ChallengeDetail = screen(
+  () => import('./ChallengeDetail').then((m) => m.ChallengeDetail),
+  'ChallengeDetail',
+)
+export const ChallengeCampCard = screen(
+  () => import('../chrome/ChallengeCampCard').then((m) => m.ChallengeCampCard),
+  'ChallengeCampCard',
+)
+export const PlanChallenges = screen(
+  () => import('../chrome/PlanChallenges').then((m) => m.PlanChallenges),
+  'PlanChallenges',
+)
+export const ChallengeBrowse = screen(
+  () => import('./ChallengeBrowse').then((m) => m.ChallengeBrowse),
+  'ChallengeBrowse',
+)
 export const FindHike = screen(
   () => import('./FindHike').then((m) => m.FindHike),
   'FindHike',

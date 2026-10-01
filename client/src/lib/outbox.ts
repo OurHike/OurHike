@@ -38,6 +38,11 @@
 import { get, update } from 'idb-keyval'
 
 import { BUILD_INFO } from './buildInfo'
+import type {
+  ChallengeEntryDraft,
+  ChallengeTagDraft,
+  ChallengeUntagDraft,
+} from './challengeDrafts'
 import type { ClosureDraft } from './closureDraft'
 import type { FieldNoteDraft } from './fieldNotes'
 import type { VolunteerHoursDraft } from './volunteerHours'
@@ -342,6 +347,27 @@ export interface OutboxItem {
    * trust it more.
    */
   closure?: ClosureDraft
+  /**
+   * One completed challenge item (#1780, features/CHALLENGES.md) - the
+   * seventh cargo. Tagged at camp, which is where there is no signal, so it
+   * queues like everything else here; `authoredAt` is the moment of the tag
+   * and travels as `authored_at`, because a tag queued on the last evening of
+   * the window and flushed in town a week later still happened in time.
+   */
+  challengeTag?: ChallengeTagDraft
+  /**
+   * The one entry a hiker chooses to send a club at a challenge's finish
+   * (#1780) - the eighth cargo. Queued rather than sent inline so "Enter the
+   * drawing" on a ridge works the same as in town.
+   */
+  challengeEntry?: ChallengeEntryDraft
+  /**
+   * A challenge tag taken back (#1780) - the ninth cargo. Queued behind the
+   * tag it undoes, and the flush is in order, so a tag made and removed with
+   * no signal goes out as a tag and then its removal, and the server ends
+   * where the phone did.
+   */
+  challengeUntag?: ChallengeUntagDraft
   /**
    * The photo, as bytes, already downscaled and re-encoded (lib/reportPhoto.ts).
    *
@@ -750,6 +776,58 @@ export async function enqueueClosure(
     id: crypto.randomUUID(),
     authoredAt: authoredAt.toISOString(),
     closure,
+  }
+
+  await mutateQueue((queue) => [...queue, item])
+  return item
+}
+
+/**
+ * Queue a completed challenge item (#1780). Same queue, same four
+ * properties - `POST /challenges/tags` takes the id as its idempotency key.
+ */
+export async function enqueueChallengeTag(
+  challengeTag: ChallengeTagDraft,
+  authoredAt: Date = new Date(),
+): Promise<OutboxItem> {
+  const item: OutboxItem = {
+    id: crypto.randomUUID(),
+    authoredAt: authoredAt.toISOString(),
+    challengeTag,
+  }
+
+  await mutateQueue((queue) => [...queue, item])
+  return item
+}
+
+/**
+ * Queue a challenge entry (#1780). The id is the server's idempotency key,
+ * so a flush that commits and loses its response cannot send a club the
+ * same hiker twice.
+ */
+export async function enqueueChallengeEntry(
+  challengeEntry: ChallengeEntryDraft,
+  authoredAt: Date = new Date(),
+): Promise<OutboxItem> {
+  const item: OutboxItem = {
+    id: crypto.randomUUID(),
+    authoredAt: authoredAt.toISOString(),
+    challengeEntry,
+  }
+
+  await mutateQueue((queue) => [...queue, item])
+  return item
+}
+
+/** Queue a challenge tag's removal (#1780) - see `challengeUntag`. */
+export async function enqueueChallengeUntag(
+  challengeUntag: ChallengeUntagDraft,
+  authoredAt: Date = new Date(),
+): Promise<OutboxItem> {
+  const item: OutboxItem = {
+    id: crypto.randomUUID(),
+    authoredAt: authoredAt.toISOString(),
+    challengeUntag,
   }
 
   await mutateQueue((queue) => [...queue, item])

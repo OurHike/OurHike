@@ -607,6 +607,32 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     flow: { status: 'covered', spec: 'e2e/more.spec.ts' },
   },
   'screens/Registry.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  // Challenges (#1780): joined, one, Browse - and the pieces every challenge
+  // surface shares. e2e/challenges.spec.ts walks join, tag and the list.
+  'screens/Challenges.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/challenges.spec.ts' },
+  },
+  'screens/ChallengeDetail.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/challenges.spec.ts' },
+  },
+  'screens/ChallengeBrowse.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/challenges.spec.ts' },
+  },
+  'chrome/ChallengeParts.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/challenges.spec.ts' },
+  },
+  // The camp card is Today's (F2); the place-card section and Plan's card
+  // are driven by unit tests and recipes, not yet by a flow.
+  'chrome/ChallengeCampCard.tsx': {
+    step: 'F2 Today',
+    flow: { status: 'covered', spec: 'e2e/challenges.spec.ts' },
+  },
+  'chrome/PoiChallenges.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
+  'chrome/PlanChallenges.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
   'screens/GpsTrace.tsx': {
     step: 'F13 More',
     flow: { status: 'covered', spec: 'e2e/more.spec.ts' },
@@ -871,6 +897,16 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
   },
   'org/screens/Workdays.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  // A club's challenges and who sent an entry (#1780); each address is in
+  // that spec's "every console address lands on its own screen" list.
+  'org/screens/Challenges.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/ChallengeFinishers.tsx': {
     step: 'F14 org console',
     flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
   },

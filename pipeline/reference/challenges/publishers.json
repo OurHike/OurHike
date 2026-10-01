@@ -1,0 +1,33 @@
+{
+  "_README": [
+    "Which trails each organization may put a challenge on (#1780, design principle 5:",
+    "'a challenge can only use places on trails its organization publishes').",
+    "",
+    "A REVIEWED JUDGEMENT, NOT A DERIVATION, and it is its own file on purpose. The",
+    "pipeline has no single map from an organization to the trail ids its published",
+    "POIs carry: sources.json keys organizations as 'org:atc', a POI names its layer",
+    "as 'atc_viewpoints' (which sources.json does not list), and trail_emblems.json",
+    "spells trails as 'at' and 'long-path' where POIs say 'AT' and 'LP'. Letting a",
+    "challenge declare its own trail would make the scope rule circular, so the",
+    "scope lives here, one row per organization, with the reason it is true.",
+    "",
+    "export_challenges.py checks every row: the org must be an organization in",
+    "sources.json, and every trail id must be carried by at least one published POI",
+    "(a trail with nothing placed on it can hold no challenge place).",
+    "",
+    "`domain` IS THE ORGANIZATION'S OWN WEB DOMAIN, the one its staff's email is at.",
+    "The backend gives a challenge's entries only to a club that proved this domain",
+    "(backend/app/routers/trail_challenges.py send_entry), because a slug is whatever",
+    "a registrant typed. Check it against the organization's own site before merging."
+  ],
+  "publishers": [
+    {
+      "org": "atc",
+      "trails": [
+        "AT"
+      ],
+      "why": "The ATC is the A.T.'s route owner (sources.json org:atc) and every A.T. POI layer that ships - shelters, vistas, parking, privies, campsites, communities - is the ATC's. Its domain is appalachiantrail.org: the Summer Bucket List PDF and its sweepstakes rules are both served from it.",
+      "domain": "appalachiantrail.org"
+    }
+  ]
+}

@@ -884,6 +884,23 @@ jobs:
       - name: Export curated highlights
         run: python export_highlights.py
 
+      # The clubs' challenges (#1780, features/CHALLENGES.md), from the
+      # reviewed files under reference/challenges/. AFTER "Export POIs" for
+      # highlights' reason one step up - every item names a published POI
+      # id and copies that record's own mile and coordinate - and AFTER
+      # "Export trail lines", because each place is measured against the
+      # published centerline in trails.geojson and refused if it lies past
+      # its own tag radius without saying `off_trail`.
+      #
+      # No `if:` guard and no network. Drops are reported, not fatal: an
+      # unresolvable item or challenge is a stderr line and a `::warning::`
+      # annotation, and the trail data this job publishes is never held back
+      # by one bad row. A missing trails.geojson skips the distance check
+      # and says so as an annotation rather than passing unmeasured places
+      # quietly.
+      - name: Export challenges
+        run: python export_challenges.py
+
       # Who the map's data belongs to (#927). Reads sources.json in this
       # checkout and nothing else - no raw snapshot, no network - so it could
       # sit anywhere in this leg. Placed beside the club sections because the

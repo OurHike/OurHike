@@ -475,6 +475,21 @@ describe('permanentFailureReason', () => {
     expect(permanentFailureReason('a string, somehow')).toBeNull()
     expect(permanentFailureReason(undefined)).toBeNull()
   })
+
+  it('shows a challenge entry’s refusal in the server’s own sentence, not as an id collision', () => {
+    // backend/app/routers/trail_challenges.py's NOT_TAKING_ENTRIES, held by
+    // test_routers_trail_challenges.py.
+    const refusal = "This challenge's club is not taking entries through OurHike yet."
+    expect(permanentFailureReason(apiError(409, { detail: refusal }))).toBe(refusal)
+    const closed = 'Entries for this challenge closed on September 1, 2027.'
+    expect(permanentFailureReason(apiError(409, { detail: closed }))).toBe(closed)
+    // Any other 409 keeps the generic reason.
+    expect(
+      permanentFailureReason(
+        apiError(409, { detail: 'That tag id belongs to someone else.' }),
+      ),
+    ).toMatch(/different report filed under this one’s id/)
+  })
 })
 
 describe('sendReport idempotency', () => {

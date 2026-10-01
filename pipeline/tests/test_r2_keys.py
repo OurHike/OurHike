@@ -34,6 +34,9 @@ def test_every_artifact_name_publish_can_produce_is_a_legal_key():
         "trails.fgb",
         "elevation_profile.json",
         "spurs.json",
+        # The clubs' challenges (#1780, export_challenges.py), collected from
+        # challenges_manifest.json beside highlights.json.
+        "challenges.json",
         # The junction graph and the three files index-aligned with its edges
         # (#974, #1011, #1045). One family, spelled here together, because the
         # alignment invariant is the reason they share a stem and a rename of

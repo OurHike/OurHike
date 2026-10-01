@@ -73,6 +73,11 @@ export type MorePageAway =
    *  phone has reported, and its own photos and notes. */
   | 'reports'
   | 'work'
+  /** Under their own row (#1780): the challenges joined, one challenge (its
+   *  id held by the shell beside this page), and Browse. */
+  | 'challenges'
+  | 'challenge'
+  | 'challenge-browse'
 
 /**
  * Every screen a stack can hold. Grows with the phases that add one (the

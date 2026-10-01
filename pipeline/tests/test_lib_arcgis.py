@@ -392,3 +392,11 @@ def test_get_service_etag_is_none_when_the_service_sends_none(requests_mock):
     requests_mock.head(SERVICE_URL, headers={})
 
     assert get_service_etag(SERVICE_URL) is None
+
+
+def test_a_server_that_ignores_the_offset_is_refused_rather_than_read_forever(requests_mock):
+    """A non-paginating server answers every resultOffset with page one; the loop stops only on an empty page."""
+    page = {"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"OBJECTID": 1}, "geometry": None}]}
+    requests_mock.get(LAYER_URL + "/query", json=page)
+    with pytest.raises(RuntimeError, match="ignores resultOffset"):
+        list(arcgis.iter_layer_pages(LAYER_URL))

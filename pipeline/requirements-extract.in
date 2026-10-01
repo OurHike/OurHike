@@ -1,0 +1,45 @@
+# The extract jobs' own dependency set: dlt, for pipeline/extract/ (#1793 —
+# Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly
+# refresh, published docs, and lighter phone downloads; pipeline/ELT.md,
+# "dlt configuration requirements"). Compiled to requirements-extract.txt:
+#
+#   uv pip compile --universal --python-version 3.12 pipeline/requirements-extract.in -o pipeline/requirements-extract.txt
+#
+# A separate file rather than a line in requirements.in, on purpose:
+# requirements.txt is installed "in a job holding R2 write credentials"
+# (CONTRIBUTING.md, "Changing a Python dependency"), and dlt with these extras
+# resolves to 58 pins with the three lines below it (counted 2026-10-01), SQLAlchemy, pyarrow, fsspec
+# and s3fs among them. An extract job holds the PRIVATE raw bucket's keys only
+# (ELT.md, "Where data lands"), so none of that sits beside the public
+# bucket's write keys. requirements-dbt.in is the precedent for the split.
+#
+# Not constrained by requirements.txt, unlike requirements-dev.txt, because it
+# cannot be: s3fs 2026.9.0 needs aiobotocore 3.9.2, which pins botocore
+# 1.43.106 exactly, while requirements.txt's boto3 pins botocore 1.43.89, and
+# uv finds no resolution with both (measured 2026-10-01). The extract jobs
+# never import boto3, so they take the s3fs stack's botocore instead.
+#
+# The pytest job runs the extract tests from requirements-dev.in, which pins
+# the same dlt without the `filesystem` extra (that extra is the botocore
+# clash above; the tests write to a local directory, which needs no s3fs).
+# pipeline/tests/test_extract_layout.py holds the two pins equal.
+
+# filesystem: the raw store (R2 through s3fs). parquet: the format the
+# filesystem destination writes. sql_database: OurHike's own Postgres rows on
+# the hourly lane, through each artifact's PUBLIC_*_SQL text (ELT.md,
+# decision 6), which is what brings SQLAlchemy in - reversing requirements.in's
+# "Raw psycopg rather than SQLAlchemy on purpose" for the extract jobs only.
+# dbt is not an extra here: dlt's dbt helper wants dbt-core 1.x, and dbt runs
+# as its own CLI step on dbt 2 (requirements-dbt.in).
+dlt[filesystem,parquet,sql_database]==1.30.0
+
+# The same ABI-locked pin as requirements.in, for extract/_warehouse.py, which
+# writes the warehouse the dbt job reads.
+duckdb==1.5.5
+
+# lib/http_retry.py and lib/arcgis.py, which every builder in extract/_kinds.py
+# goes through.
+requests
+
+# The Postgres driver sql_database talks through (the conditions lane).
+psycopg[binary]

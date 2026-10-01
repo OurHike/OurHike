@@ -32,3 +32,7 @@ node_modules/
 # file was the only one outside them.
 __pycache__/
 *.py[cod]
+
+# dlt credentials never live in the repository (pipeline/.dlt/config.toml says why the
+# rest of that folder is committed). A local secrets file is ignored so it cannot be.
+pipeline/.dlt/secrets.toml

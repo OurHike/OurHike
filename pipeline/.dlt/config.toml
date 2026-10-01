@@ -1,0 +1,15 @@
+# dlt's configuration for pipeline/extract/ (#1793; pipeline/ELT.md, "dlt
+# configuration requirements"). Committed because nothing here is a secret;
+# credentials never go in this directory (CONTRIBUTING.md). dlt reads it from
+# the working directory, which is pipeline/ for every script and test here;
+# extract/_run.py sets the same two values in the environment as well, so a
+# run started elsewhere cannot fall back to dlt's defaults.
+
+[runtime]
+# On by default, to telemetry.scalevector.ai, from jobs holding R2 write keys.
+dlthub_telemetry = false
+
+[schema]
+# `snake_case`, the default, turns `GlobalID` into `global_id`; 16 staging
+# models read `globalid`.
+naming = "sql_ci_v1"

@@ -4,25 +4,187 @@ version: 2
 # dlt → dbt: seven contracted marts, a monthly refresh, published docs, and
 # lighter phone downloads): the junction graph a day hike routes over, which
 # build_trail_graph.py builds today. The rules are pipeline/ELT.md's TN rows,
-# applied in that file's order.
+# applied in that file's order: the routable lines (TN01-TN03), the cuts
+# (TN05, with TN04's cutting in step_node_lines), the node grid and the
+# welds (TN06), the edges (TN07). tests/test_dbt_trail_network_parity.py
+# holds each unit test below to build_trail_graph.py on the same rows.
 models:
+  - name: int_trail_network__routable
+    description: >
+      The trail lines a route may run on, one row per line part in
+      routable_lines()' order, and one row per refusal with its reason: a
+      closed line, a line with no usable geometry, a part with fewer than two
+      coordinates (TN01-TN03). Every network line of the trail_lines mart,
+      then the A.T.'s centerline and side trails whole.
+    data_tests:
+      # Every part that routes has a place in the order, and no refusal does.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(part_order is null) = (refused_because is not null)"
+    columns:
+      - name: part_id
+        description: >
+          The part's key: its line's trail_id, `#`, and the part's place in
+          the line from 1; a refused line's is its trail_id and `#`.
+        data_tests: [not_null, unique]
+      - name: part_order
+        description: The part's place in routable_lines()' list, from 0; null on a refusal.
+        data_tests:
+          - unique
+      - name: line_order
+        description: >
+          The line's place in the collection build() merges: the network's
+          lines in nearby_trails.geojson's order, then the A.T.'s in
+          trails.geojson's.
+        data_tests: [not_null]
+      - name: part_index
+        description: The part's place in its line, from 1; null where the whole line is refused.
+      - name: trail_id
+        description: The line's `id` in the trail_lines mart, published on each edge as `trail_id`.
+        data_tests: [not_null]
+      - name: source_key
+        description: The line's registry key, published on each edge as `source`.
+        data_tests: [not_null]
+      - name: is_at
+        description: Whether the line is the A.T.'s, from trails.geojson, rather than the network's.
+        data_tests: [not_null]
+      - name: refused_because
+        description: >
+          Why the part routes nowhere: 'closed' (the line's trail_status,
+          stripped and lower-cased), 'empty' (no geometry, an empty one, or
+          a part with fewer than two coordinates), 'not_a_line'; null on a
+          part that routes.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [closed, empty, not_a_line]
+      - name: geom_wkt
+        description: The part as WKT in lon/lat, every vertex the mart's double; null on a refusal.
+
+  - name: int_trail_network__cuts
+    description: >
+      Where the routable parts are cut (TN05, and TN04's inputs): one row
+      per pair of parts that cross or touch, and one per line end within
+      trail_network_endpoint_snap_m (8 m, @unvalidated) of a part its own
+      does not cross, among pairs whose envelopes meet, in EPSG:5070 metres.
+      step_node_lines makes the cuts.
+    columns:
+      - name: cut_key
+        description: >
+          The cut's key: its kind, the two parts, and on a join the end
+          (`endpoint_join:<end part>|<other part>|start`).
+        data_tests: [not_null, unique]
+      - name: cut_order
+        description: >
+          node_lines()' loop order where SQL can follow it: the lower part,
+          the higher, then the four ends, start first. The welds are made in
+          it.
+        data_tests: [not_null, unique]
+      - name: cut_kind
+        description: "'crossing' or 'endpoint_join'."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [crossing, endpoint_join]
+      - name: line_part_id
+        description: On a crossing, the lower part, the one node_lines() intersects first; on a join, the part whose end joins.
+        data_tests: [not_null]
+      - name: other_part_id
+        description: On a crossing, the higher part; on a join, the part the end lands on.
+        data_tests: [not_null]
+      - name: end_side
+        description: On a join, 'start' or 'end', which end of line_part_id; null on a crossing.
+      - name: end_point_wkt
+        description: >
+          On a join, that end as a WKT point in EPSG:5070 metres, the first
+          of the two points the weld makes one node; null on a crossing.
+
+  - name: int_trail_network__node_lookups
+    description: >
+      Every point build_graph() asks its node grid about, in the order it
+      asks (each piece's start and end, then each weld's end and landing),
+      and the node it is (TN06): the first node within
+      trail_network_node_quant_m (0.5 m, @unvalidated) in the grid's scan
+      order, or a new one.
+    data_tests:
+      # A weld's point that makes a node of its own is the one place the
+      # cut order, which is not STRtree's, reaches the graph
+      # (int_trail_network__cuts): a node no piece reaches can then differ
+      # from build_trail_graph.py's. Warn and name it.
+      - dbt_utils.expression_is_true:
+          name: int_trail_network__node_lookups_no_weld_point_makes_a_node
+          arguments:
+            expression: "not (makes_node and lookup_kind in ('weld_end', 'weld_landing'))"
+          config:
+            severity: warn
+    columns:
+      - name: seq
+        description: The question's place in build_graph()'s order, from 0.
+        data_tests: [not_null, unique]
+      - name: lookup_kind
+        description: "'piece_start', 'piece_end', 'weld_end' or 'weld_landing'."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [piece_start, piece_end, weld_end, weld_landing]
+      - name: status
+        description: >
+          'makes' where the point makes a node, 'finds' where it finds one.
+          Null only if trail_network_node_rounds rounds did not settle it,
+          which fails the build through node_raw.
+      - name: makes_node
+        description: Whether this point made its node.
+      - name: node_raw
+        description: >
+          The node's number in build_graph()'s `points`, before the welds
+          merge any; null only where the rounds did not settle the point,
+          which is refused.
+        data_tests: [not_null]
+
+  - name: int_trail_network__raw_edges
+    description: >
+      Every piece build_graph() keeps before compaction, with the node each
+      end becomes once the welds have merged nodes (the group's lowest), the
+      published node numbers, its length, and whether compaction drops it as
+      a loop no longer than 0.5 m (TN06).
+    columns:
+      - name: edge_rank
+        description: The kept piece's place in order, from 0.
+        data_tests: [not_null, unique]
+      - name: piece_rank
+        description: The piece's place among all pieces, from 0.
+        data_tests: [not_null, unique]
+      - name: from_node
+        description: The published `from`.
+        data_tests: [not_null]
+      - name: to_node
+        description: The published `to`.
+        data_tests: [not_null]
+      - name: length_m
+        description: The piece's EPSG:5070 length at 2 decimals, as published.
+        data_tests: [not_null]
+      - name: dropped_as_a_loop
+        description: Whether compaction drops it, its two ends one node and its published length at most 0.5 m.
+        data_tests: [not_null]
+
   - name: int_trail_network__edges
     description: >
       One row per junction-graph edge: a piece of a maintained trail line
       between two junctions, carrying its parent line's id, source, name and
-      blaze, in the order trail_graph.json lists them. The elevation family's
-      network models read it, as export_network_elevation.py and
-      export_network_profile.py read trail_graph.json and
-      trail_graph_geometry.json today: an edge's `source`, its two nodes and
-      its published vertices, by its place in the file. Zero rows until the
-      noding lands.
+      blaze, in the order trail_graph.json lists them (TN07). The trail_network
+      mart publishes it, and the elevation family's network models read it,
+      as export_network_elevation.py and export_network_profile.py read
+      trail_graph.json and trail_graph_geometry.json today: an edge's
+      `source`, its two nodes and its published vertices, by its place in
+      the file.
     columns:
       - name: edge_id
         description: >
           The edge's key: its parent line's trail_id, then `#`, the part of
-          that line it lies on and the piece along that part, each counted
-          from 1 (`centerline:chain:12#1.3`). The text after the last `#` is
-          always two integers, so no two edges share one. Positions are
+          that line it lies on and, after `.`, the piece along that part,
+          each counted from 1 (`centerline:chain:12#1.3`). Positions are
           global to a build: noding is global, so one changed line moves the
           pieces of every line it crosses (pipeline/ELT.md).
         data_tests: [not_null, unique]
@@ -63,4 +225,56 @@ models:
           The edge's vertices as a GeoJSON LineString in lon/lat (EPSG:4326),
           from its `from` node to its `to` node. Its `coordinates` are the
           edge's entry in trail_graph_geometry.json, each rounded to 6
-          decimals as build_trail_graph.py rounds them.
+          decimals as build_trail_graph.py rounds them, and always an array
+          of two or more.
+
+  - name: int_trail_network__nodes
+    description: >
+      trail_graph.json's `nodes`: one row per published node in build_graph()'s
+      order, as [lon, lat] at 6 decimals, the point where the node grid first
+      made it. Public with an enforced contract, because pub_trail_graph and
+      its exposure read it beside the trail_network mart.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: node_index
+        description: The node's place in `nodes`, from 0; an edge's from_node and to_node index it.
+        data_type: integer
+        constraints:
+          - type: not_null
+        data_tests: [not_null, unique]
+      - name: lon
+        description: Longitude, 6 decimals.
+        data_type: double
+        constraints:
+          - type: not_null
+      - name: lat
+        description: Latitude, 6 decimals.
+        data_type: double
+        constraints:
+          - type: not_null
+
+exposures:
+  - name: step_node_lines
+    label: step_node_lines.py
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The Python step that cuts every routable part where
+      int_trail_network__cuts says (pipeline/step_node_lines.py, TN04),
+      between the dbt invocation that builds its two inputs and the one that
+      reads its answer back as source('derived', 'graph_pieces'). It is
+      Python because the pieces must be the ones shapely's `substring` makes,
+      to the bit, and it cuts with build_trail_graph.py's own _split_all.
+      Shown here so the docs draw both halves of the step.
+    depends_on:
+      - ref('int_trail_network__routable')
+      - ref('int_trail_network__cuts')
+    config:
+      meta:
+        writes: derived.graph_pieces
+        cadence: monthly

@@ -101,6 +101,14 @@ STEPS: list[Step] = [
         command=("step_dem_sampling.py", "--warehouse", "{warehouse}"),
         fixture_args=("--index", "{raw_dir}/elevation/tile_index.json"),
     ),
+    # TN04: every routable trail part cut where int_trail_network__cuts says,
+    # with build_trail_graph.py's own _split_all. Its inputs are the
+    # warehouse's alone, so --fixtures adds nothing.
+    Step(
+        name="step_node_lines",
+        table="graph_pieces",
+        command=("step_node_lines.py", "--warehouse", "{warehouse}"),
+    ),
 ]
 
 

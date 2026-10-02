@@ -64,3 +64,45 @@ sources:
           - name: _loaded_at
             description: When the step wrote the table, UTC.
             data_tests: [not_null]
+      - name: graph_pieces
+        data_tests:
+          # Rows sharing stg_derived__graph_pieces's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'graph_pieces'", "row_kind", "part_id", "piece_index", "cut_key"]
+        description: >
+          The junction graph's pieces, written by step_node_lines
+          (pipeline/step_node_lines.py) with build_trail_graph.py's own
+          _split_all: every routable part of int_trail_network__routable cut
+          where int_trail_network__cuts says (TN04), one `piece` row per
+          piece in its order along the part, and one `landing` row per line
+          end the cuts join to another line, the point it lands on.
+        columns:
+          - name: row_kind
+            description: "'piece' or 'landing'."
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: [piece, landing]
+          - name: part_id
+            description: On a piece, the routable part it was cut from; null on a landing.
+          - name: piece_index
+            description: On a piece, its place along the part, from 1; null on a landing.
+          - name: piece_rank
+            description: >
+              On a piece, its place among every piece, from 0: the parts in
+              part_order and each part's pieces along it, the order
+              build_graph() walks them in. Null on a landing.
+          - name: cut_key
+            description: On a landing, the int_trail_network__cuts row that joined the end; null on a piece.
+          - name: geometry
+            description: >
+              The piece (a LineString) or the landing (a Point) as GeoJSON
+              text in EPSG:5070 metres, the CRS the cuts were made in.
+              Python's json.dumps writes each coordinate at the shortest
+              length that reads back to the same double.
+            data_tests: [not_null]
+          - name: _loaded_at
+            description: When the step wrote the table, UTC.
+            data_tests: [not_null]

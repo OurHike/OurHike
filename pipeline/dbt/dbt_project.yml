@@ -296,6 +296,38 @@ vars:
   # METERS_PER_FOOT, the international foot: a DEM metre over this is a foot.
   elevation_metres_per_foot: 0.3048
 
+  # The trail_network family (tl-net), the junction graph a day hike routes
+  # over: build_trail_graph.py's constants, read by the int_trail_network__
+  # models and held to the Python's own by
+  # tests/test_dbt_trail_network_parity.py until stage 5 of #1793 — Rebuild
+  # the data platform as dlt → dbt: seven contracted marts, a monthly
+  # refresh, published docs, and lighter phone downloads — deletes the
+  # Python.
+  #
+  # AT_GRAPH_SOURCES: the trails.geojson sources that become edges, the
+  # centerline and the blue-blazed side trails; road approaches and anything
+  # else stay out (#931 — Roads and connectors: a loop that only closes
+  # along a shoulder, drawn honestly or not at all).
+  trail_network_at_sources: [centerline, side_trails]
+  # ENDPOINT_SNAP_M, @unvalidated: a line whose END lies within this many
+  # metres of another line it does not cross is joined to it. Chosen under
+  # build_water_distance.py's measured 21 m median offset for points, on the
+  # reasoning that a trail end is surveyed more carefully and that missing a
+  # junction fails safe; build_trail_graph.py --sweep against real layers
+  # (the knee where components stop falling) is what settles it.
+  trail_network_endpoint_snap_m: 8.0
+  # NODE_QUANT_M, @unvalidated: two ends this close are one node, and a
+  # piece no longer than this between one node and itself is float noise.
+  # The Python calls it housekeeping for float noise; nobody has measured
+  # the largest gap between two ends of one junction on real layers, which
+  # is what would settle it.
+  trail_network_node_quant_m: 0.5
+  # Not a rule: how many rounds int_trail_network__node_lookups gives the
+  # first-come node grid to settle, each a chain of ends closer than
+  # NODE_QUANT_M one step longer. An end still unsettled after the last
+  # round fails the build rather than guessing a node.
+  trail_network_node_rounds: 8
+
   dbt_project_evaluator:
     # The mart names the maintainer chose carry no dim_/fct_ prefix
     # ("do not keep the dim_ and fct_ prefixes in the marts folders. Just

@@ -10,9 +10,18 @@ Its change check is the file's sha256. Moving the check to ATC's
 trail-updates sitemap, so a changed post is noticed without a person, is
 ELT.md's design ("The skip-unchanged check, by platform") and not built yet;
 propose_atc_updates.py proposes from ATC's site today.
+
+Each row lands whole, as the JSON its reviewer wrote (ReviewedFile's
+`verbatim`), because lib/atc_updates.py's row checks are about JSON types:
+a mile written "476.6" is "not a mile", and `obstructs_trail` must be a
+real boolean. Typed columns would hide exactly those typos. Measured on dlt
+1.30.0 for the podcast file: a bigint hint landed "34" as 34, and
+sql_ci_v1 folded a misspelt key into the right column. dbt's
+int_closures__atc_checked reads the fields and refuses what the Python
+refuses.
 """
 
 from extract._kinds import reviewed_input
 
 CLAIMS = ("atc_trail_updates",)
-RESOURCES = [reviewed_input("atc_trail_updates", rows_key="updates")]
+RESOURCES = [reviewed_input("atc_trail_updates", rows_key="updates", verbatim=True)]

@@ -495,41 +495,44 @@ jobs:
         # FixtureConnection (extract/_fixtures.py), which imports dlt, and
         # requirements.txt has no dlt (measured: "No module named 'dlt'" on a
         # venv of requirements.txt alone, and no differences on the extract's).
+        # --json-dir writes each family's result as data/processed/parity/
+        # <family>.json for gate_report.py (decision 30's per-key report); the
+        # console lines and the exit codes are the same without it.
         run: |
-          "$RUNNER_TEMP/pipeline/bin/python" parity.py podcasts --new data/processed/dbt/podcasts_episodes.json
-          "$RUNNER_TEMP/pipeline/bin/python" parity.py stewards --new data/processed/dbt/stewards.json
-          "$RUNNER_TEMP/pipeline/bin/python" parity.py registry --new data/processed/dbt/registry.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity podcasts --new data/processed/dbt/podcasts_episodes.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity stewards --new data/processed/dbt/stewards.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity registry --new data/processed/dbt/registry.json
           # The hourly conditions files. atc_updates reads
           # reference/atc_updates.json from git; the other three read the
           # answers under data/raw/conditions/ that fixture mode built the
           # warehouse from, since their upstreams are a website and a database.
-          "$RUNNER_TEMP/pipeline/bin/python" parity.py atc_updates --new data/processed/dbt/conditions_atc_updates.json
-          "$RUNNER_TEMP/pipeline/bin/python" parity.py nynjtc_alerts --new data/processed/dbt/conditions_nynjtc_alerts.json
-          "$RUNNER_TEMP/extract/bin/python" parity.py closures --new data/processed/dbt/conditions_closures.json
-          "$RUNNER_TEMP/extract/bin/python" parity.py reports --new data/processed/dbt/conditions_reports.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity atc_updates --new data/processed/dbt/conditions_atc_updates.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity nynjtc_alerts --new data/processed/dbt/conditions_nynjtc_alerts.json
+          "$RUNNER_TEMP/extract/bin/python" parity.py --json-dir data/processed/parity closures --new data/processed/dbt/conditions_closures.json
+          "$RUNNER_TEMP/extract/bin/python" parity.py --json-dir data/processed/parity reports --new data/processed/dbt/conditions_reports.json
           # The trail lines network, whose input is the fixture warehouse, not
           # a file in git.
-          "$RUNNER_TEMP/pipeline/bin/python" parity.py nearby_trails --new data/processed/dbt/nearby_trails.geojson
-          "$RUNNER_TEMP/pipeline/bin/python" parity.py network_overview --new data/processed/dbt/network_overview.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity nearby_trails --new data/processed/dbt/nearby_trails.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity network_overview --new data/processed/dbt/network_overview.geojson
           # The A.T.'s files, on the fixture's layers (ATC's are not in git); parity.py applies decision 8's 6 dp to the old side.
-          "$RUNNER_TEMP/pipeline/bin/python" parity.py trails --new data/processed/dbt/trails.geojson
-          "$RUNNER_TEMP/pipeline/bin/python" parity.py trail_miles --new data/processed/dbt/trail_miles.json
-          "$RUNNER_TEMP/pipeline/bin/python" parity.py trails_overview --new data/processed/dbt/trails_overview.geojson
-          "$RUNNER_TEMP/pipeline/bin/python" parity.py spurs --new data/processed/dbt/spurs.json
-          "$RUNNER_TEMP/pipeline/bin/python" parity.py club_sections --new data/processed/dbt/club_sections.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity trails --new data/processed/dbt/trails.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity trail_miles --new data/processed/dbt/trail_miles.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity trails_overview --new data/processed/dbt/trails_overview.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity spurs --new data/processed/dbt/spurs.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity club_sections --new data/processed/dbt/club_sections.json
           # The elevation profile's input is a fixture, not a file in git: the
           # fixture centerline, markers and DEM tile make_dbt_fixtures.py wrote.
           # export_elevation.py reads the DEM through rasterio, so this runs on
           # the pipeline's own pins, the venv step_dem_sampling.py runs in.
-          "$RUNNER_TEMP/pipeline/bin/python" parity.py elevation --new data/processed/dbt/elevation_profile.json --raw-dir data/raw
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity elevation --new data/processed/dbt/elevation_profile.json --raw-dir data/raw
           # The points_of_interest family's ten files, on the fixture warehouse
           # and the reviewed files in git (water distances, capacities, the
           # identity ledger).
           for poi_type in shelter campsite water resupply viewpoint parking privy trailhead; do
-            "$RUNNER_TEMP/pipeline/bin/python" parity.py "poi_$poi_type" --new "data/processed/dbt/poi_$poi_type.geojson"
+            "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity "poi_$poi_type" --new "data/processed/dbt/poi_$poi_type.geojson"
           done
-          "$RUNNER_TEMP/pipeline/bin/python" parity.py nearby_poi --new data/processed/dbt/nearby_poi.geojson
-          "$RUNNER_TEMP/pipeline/bin/python" parity.py retired_poi --new data/processed/dbt/retired_poi.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity nearby_poi --new data/processed/dbt/nearby_poi.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity retired_poi --new data/processed/dbt/retired_poi.geojson
           # The suggested hikes: the Hike Finder pages fixture mode served,
           # under data/raw/hikefinder/, read through fetch_hikefinder.py's
           # parse and routed by route_hikefinder.py over the warehouse's graph,
@@ -541,9 +544,9 @@ jobs:
           # run on the pipeline's own pins, the venv step_form_route.py runs
           # in, so the old side routes with the same duckdb and lib/ the step
           # does; none imports dlt.
-          "$RUNNER_TEMP/pipeline/bin/python" parity.py suggested_hikes --new data/processed/dbt/suggested_hikes.json --raw-dir data/raw
-          "$RUNNER_TEMP/pipeline/bin/python" parity.py suggested_hikes_detail --new data/processed/dbt/suggested_hikes_detail.json --raw-dir data/raw
-          "$RUNNER_TEMP/pipeline/bin/python" parity.py highlights --new data/processed/dbt/highlights.json --raw-dir data/raw
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity suggested_hikes --new data/processed/dbt/suggested_hikes.json --raw-dir data/raw
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity suggested_hikes_detail --new data/processed/dbt/suggested_hikes_detail.json --raw-dir data/raw
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity highlights --new data/processed/dbt/highlights.json --raw-dir data/raw
           # places.json, on the same fixture warehouse: OPRHP's park layer and
           # ATC's Communities, measured over today's nearby_trails.geojson and
           # trails.geojson (cut to 6 dp, decision 8), listing today's
@@ -551,7 +554,23 @@ jobs:
           # above builds it. Its old side imports export_nearby_trails.py and
           # export_poi.py, so it runs on the pipeline's pins, and nothing it
           # imports needs dlt.
-          "$RUNNER_TEMP/pipeline/bin/python" parity.py places --new data/processed/dbt/places.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity places --new data/processed/dbt/places.json
+
+      # The parity results, kept with the run so gate_report.py can read them
+      # without a rebuild: python gate_report.py --parity-dir <the downloaded
+      # folder> --out <dir>, beside the dbt manifest. Uploaded when the parity
+      # step fails too: every family before the failing line wrote its file,
+      # and the failing family's says what differed. The records in it are the
+      # fixtures' and the reviewed files' in git, nothing a hiker sent; kept
+      # seven days, as the other short-lived uploads are.
+      - name: Upload the parity results
+        if: always() && steps.scope.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: parity-results
+          path: pipeline/data/processed/parity/
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: dbt source freshness
         if: steps.scope.outputs.run == 'true'

@@ -316,7 +316,9 @@ A generator walks `v(previous)..v(next)` and emits:
    No PR numbers in this half.
 2. **What changed in the repository** — every merged pull request, its issue, grouped
    by the `client` / `backend` / `pipeline` / `data` / `ops` / `docs` labels.
-3. **Which data release this build pins**, and whether that moved.
+3. **Which data release this build pins**, and whether that moved. Since decision 44
+   (§10's amendment) that is two answers: the release `channels.json` names for
+   production, and the build's compiled fallback, `DATA_RELEASE`.
 4. **What is knowingly not validated** — §8d. This section is never empty, and a
    release whose author believes it is has not looked.
 5. **Compatibility** — anything a hiker must do, or the sentence saying nothing.
@@ -582,6 +584,20 @@ The change is an improvement rather than a delay: it gives a data release the on
 thing its own verification battery cannot provide, which is a real client fetching it
 through a real browser before anyone depends on it.
 
+**Amended 2026-10-02 by decision 44** ([pipeline/ELT.md](pipeline/ELT.md), "Versions
+and channels"; stage 4 of **#1793 — Rebuild the data platform as dlt → dbt: seven
+contracted marts, a monthly refresh, published docs, and lighter phone downloads**).
+The constant above was built (#1333), and the trains now meet at a committed file
+instead: `channels.json`, at the repository root, names per data environment and
+schema version the release folder phones read. Promoting data is a reviewed commit to
+it plus a dispatch of `publish.py --channels`, which uploads it beside `latest.json`;
+no tag and no app release are needed, so a monthly refresh reaches installed phones.
+Rolling it back is reverting that commit and dispatching again. `DATA_RELEASE` stays,
+as the compiled fallback a first run reads before it has reached the pointer, and
+`pages.yml` and `ua.yml` assert that both resolve against their own base.
+[pipeline/DATA_RELEASES.md](pipeline/DATA_RELEASES.md) §4 has the rest. Which
+dispatch runs the upload is the release train's to wire, and none does yet.
+
 ## 11. What never waits for a release
 
 **Closures, hazard warnings and condition reports are not in a release.** They live in
@@ -621,7 +637,11 @@ than a hope:
 - **The data release must be rollable too.** It is: folders under `releases/` are
   written once and never overwritten, and retention keeps a superseded release 90 days
   past being superseded with a floor of three (DATA_RELEASES.md, Retention). Rolling
-  back the tag rolls back the pinned constant with it.
+  back the tag rolls back the pinned constant with it. Since decision 44 (§10's
+  amendment) the constant is only a first run's fallback, and the data a phone reads
+  rolls back on its own: revert the `channels.json` commit and dispatch
+  `publish.py --channels`, with no tag involved. A phone follows the reverted entry
+  from its next launch after reading it.
 - **A migration must not have burned the bridge.** §8c's expand-and-contract rule is
   what keeps the previous release able to run against the current schema. It is a
   rollback rule as much as a compatibility one.

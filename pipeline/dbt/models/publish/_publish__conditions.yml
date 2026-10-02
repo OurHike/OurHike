@@ -114,8 +114,8 @@ exposures:
       publish-conditions.yml from export_atc_updates.py's file until stage 4
       of #1793 moves the upload to this writer's.
     depends_on:
-      - ref('closures')
-      - ref('warnings')
+      - ref('closures', v=1)
+      - ref('warnings', v=1)
       - ref('pub_conditions_atc_updates')
     config:
       meta:
@@ -137,8 +137,8 @@ exposures:
       publish-conditions.yml from export_nynjtc_alerts.py's file until stage
       4 of #1793.
     depends_on:
-      - ref('closures')
-      - ref('warnings')
+      - ref('closures', v=1)
+      - ref('warnings', v=1)
       - ref('pub_conditions_nynjtc_alerts')
     config:
       meta:
@@ -158,8 +158,8 @@ exposures:
       PUBLISHED_CLOSURES_KEY. Uploaded by publish-conditions.yml from
       export_conditions.py's file until stage 4 of #1793.
     depends_on:
-      - ref('closures')
-      - ref('warnings')
+      - ref('closures', v=1)
+      - ref('warnings', v=1)
       - ref('pub_conditions_closures')
     config:
       meta:
@@ -203,7 +203,7 @@ exposures:
       data/raw/weather/squares.json, which no extract lands, so the mart
       holds every US alert and this file only the ones over the trail.
     depends_on:
-      - ref('warnings')
+      - ref('warnings', v=1)
     config:
       meta:
         r2_keys: [conditions/weather_alerts.json]

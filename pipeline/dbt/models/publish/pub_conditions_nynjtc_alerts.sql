@@ -26,7 +26,7 @@ with nynjtc_rows as (
         locality,
         updated_at,
         source_url
-    from {{ ref('closures') }}
+    from {{ ref('closures', v=1) }}
     where source_key = 'nynjtc_trail_alerts'
     union all
     select
@@ -36,7 +36,7 @@ with nynjtc_rows as (
         locality,
         updated_at,
         source_url
-    from {{ ref('warnings') }}
+    from {{ ref('warnings', v=1) }}
     where source_key = 'nynjtc_trail_alerts' and warning_kind = 'org_notice'
 ),
 

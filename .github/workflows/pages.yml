@@ -341,11 +341,13 @@ jobs:
           fi
 
       # The pinned release must actually be there, checked against THIS
-      # build's own base (#1333). dataRelease.ts names one folder and nothing
-      # else selects a dataset, so a pin naming a folder the bucket does not
-      # have is a build that deploys and then 404s every artifact - no map,
-      # not a stale one, and the client has no fallback path for it
-      # (trailData.ts throws; App.tsx stops before the archive).
+      # build's own base (#1333). Since decision 44 the pin is the compiled
+      # fallback: what a session reads until this phone has verified a
+      # channels.json entry, which is every first run (lib/dataRelease.ts). A
+      # fallback naming a folder the bucket does not have is a first run that
+      # deploys and then 404s every artifact - no map, not a stale one, and
+      # the client has no fallback behind it (trailData.ts throws; App.tsx
+      # stops before the archive).
       #
       # AGAINST THIS BUILD'S BASE is the load-bearing half, and it is the
       # reason one committed constant is safe across two data environments.
@@ -373,6 +375,46 @@ jobs:
             echo "Pinned release ${release} resolves at ${DATA_URL%/}."
           else
             echo "::error::DATA_RELEASE is pinned to ${release}, but ${manifest} does not resolve. A build deployed against this base would 404 every artifact."
+            exit 1
+          fi
+
+      # Decision 44's pointer, against the same base: channels.json's entry
+      # for this build's data environment and schema version must resolve here
+      # too (pipeline/ELT.md, "Versions and channels"). The client refuses an
+      # entry whose manifest does not resolve and keeps its last release
+      # (lib/dataRelease.ts's readDataChannel), so a bad entry cannot strand a
+      # phone; this is the louder, earlier half, a red deploy rather than
+      # phones that quietly never move. Both this and the step above hold for
+      # as long as the compiled fallback exists, because a first run reads the
+      # fallback before it has reached the pointer. The environment is read
+      # off the base as the client reads it: `.../environments/<name>` is that
+      # environment's, anything else production's.
+      - name: Confirm channels.json's release exists
+        working-directory: client
+        env:
+          DATA_URL: ${{ steps.data.outputs.url }}
+        run: |
+          if [ -z "$DATA_URL" ]; then
+            echo "No data source configured - skipping the check."
+            exit 0
+          fi
+          schema=$(sed -n "s/^export const DATA_SCHEMA_VERSION = '\\(.*\\)'$/\\1/p" src/lib/dataRelease.ts)
+          if [ -z "$schema" ]; then
+            echo "::error::Could not read DATA_SCHEMA_VERSION out of client/src/lib/dataRelease.ts. It has been restructured, and this guard must be updated rather than left checking nothing."
+            exit 1
+          fi
+          base="${DATA_URL%/}"
+          environment=production
+          case "$base" in */environments/*) environment="${base##*/environments/}" ;; esac
+          if ! release=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))[sys.argv[2]][sys.argv[3]])' ../channels.json "$environment" "$schema"); then
+            echo "::error::channels.json names no ${schema} release for ${environment}, so this build's phones would never move off the release they hold."
+            exit 1
+          fi
+          manifest="${base}/releases/${release}/manifest.json"
+          if curl -fsS --retry 3 --max-time 30 -o /dev/null "$manifest"; then
+            echo "channels.json's ${environment} ${schema} release ${release} resolves at ${base}."
+          else
+            echo "::error::channels.json points ${environment}'s ${schema} at ${release}, but ${manifest} does not resolve. Phones would refuse it and stay on the release they hold."
             exit 1
           fi
 

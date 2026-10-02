@@ -2,6 +2,7 @@
 
     python parity.py podcasts --new data/processed/podcasts_episodes.json
     python parity.py stewards --new data/processed/stewards.json
+    python parity.py elevation --new data/processed/dbt/elevation_profile.json --raw-dir data/raw
 
 pipeline/ELT.md, "How a rule moves: shadow-run parity", is the design: both
 paths read the same input, records are paired by their key, and each
@@ -40,6 +41,13 @@ class Family:
     key: str
     ordered: bool = False
     volatile: tuple[str, ...] = ()
+    # The file is a bare JSON array of records, as elevation_profile.json is,
+    # rather than an object holding them: the new file is read as
+    # {records: <the array>}, the shape `old` returns it in.
+    bare_list: bool = False
+    # The old document is built from make_dbt_fixtures.py's raw files rather
+    # than from a file in git, so `old` takes the --raw-dir they are in.
+    reads_raw_dir: bool = False
 
 
 def _podcasts_old() -> dict:
@@ -64,11 +72,40 @@ def _registry_old() -> dict:
     return export_sources.build_registry()
 
 
+def _elevation_old(raw_dir: Path) -> dict:
+    """export_elevation.build_profile over the raw files the warehouse was loaded from.
+
+    The DEM is read through a copy of the tile index in a directory of its
+    own, so the sampler's cache, which lives beside the index, starts cold:
+    no elevation comes from what step_dem_sampling read on the dbt side, and
+    two paths that read the DEM at different points cannot agree through it."""
+    import shutil
+    import tempfile
+
+    import export_elevation
+
+    with tempfile.TemporaryDirectory() as scratch:
+        index = Path(scratch) / "tile_index.json"
+        shutil.copy(raw_dir / "elevation" / "tile_index.json", index)
+        records, _ = export_elevation.build_profile(
+            raw_dir / "centerline.geojson",
+            raw_dir / "half_mile_points_from_springer.geojson",
+            index,
+            export_elevation.SAMPLE_INTERVAL_METERS,
+        )
+    return {"samples": records}
+
+
 FAMILIES: dict[str, Family] = {
     "podcasts": Family(old=_podcasts_old, records="episodes", key="spotify_id", ordered=True),
     "stewards": Family(old=_stewards_old, records="stewards", key="provider", ordered=True),
     # `organizations`, beside the records, is compared whole as a top-level field.
     "registry": Family(old=_registry_old, records="sources", key="key", ordered=True),
+    # elevation_profile.json's records carry no id: each is keyed by its own
+    # mile, which the profile publishes strictly increasing, so it is unique.
+    "elevation": Family(
+        old=_elevation_old, records="samples", key="distance_mi", ordered=True, bare_list=True, reads_raw_dir=True
+    ),
 }
 
 
@@ -106,10 +143,16 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("family", choices=sorted(FAMILIES))
     parser.add_argument("--new", type=Path, required=True, help="the file the family's pub_ writer wrote")
+    parser.add_argument(
+        "--raw-dir", type=Path, default=Path("data/raw"), help="make_dbt_fixtures.py's files, for a family built from them"
+    )
     args = parser.parse_args(argv)
 
     family = FAMILIES[args.family]
-    old, new = family.old(), json.loads(args.new.read_text(encoding="utf-8"))
+    old = family.old(args.raw_dir) if family.reads_raw_dir else family.old()
+    new = json.loads(args.new.read_text(encoding="utf-8"))
+    if family.bare_list:
+        new = {family.records: new}
     found = differences(old, new, family)
     count = len(old.get(family.records) or [])
     if not found:

@@ -211,6 +211,19 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: max_within_gate
+      # The gate passes when it scored nothing: no piece with four snapped
+      # markers holds a marker out, and three errors of 0.0 clear every bar,
+      # as export_elevation.measure_marker_agreement's single 0.0 clears
+      # require_marker_agreement. A warning, not a refusal, because the CI
+      # fixture's axis holds no such piece; on ATC's live layers 2,020
+      # markers are scored (2026-10-02). Whether a gate that scored nothing
+      # should stop the build is the maintainer's call.
+      - dbt_utils.expression_is_true:
+          name: int_trail_lines__mile_axis_holdout_warns_when_it_scored_nothing
+          arguments:
+            expression: "holdout_marker_count > 0"
+          config:
+            severity: warn
     columns:
       - name: holdout_marker_count
         description: >

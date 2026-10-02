@@ -165,6 +165,10 @@ unit_tests:
           - {vocabulary: 'stream_flow', code: 'perennial', phrase: 'year-round'}
           - {vocabulary: 'stream_flow', code: 'intermittent', phrase: 'seasonal'}
           - {vocabulary: 'stream_flow', code: 'ephemeral', phrase: 'seasonal'}
+          - {vocabulary: 'water_kind', code: 'spring', phrase: 'Spring'}
+          - {vocabulary: 'water_kind', code: 'drinking_water', phrase: 'Drinking water point'}
+          - {vocabulary: 'water_kind', code: 'water_tap', phrase: 'Water tap'}
+          - {vocabulary: 'water_kind', code: 'water_well', phrase: 'Well'}
     expect:
       rows:
         - {poi_id: 'atc:the_sentence_reads_as_a_sentence', description: 'Two-storey clapboard shelter, sleeps 14, with a fireplace, a fire ring and a porch. Built 1915.'}
@@ -328,6 +332,10 @@ unit_tests:
           - {vocabulary: 'stream_flow', code: 'perennial', phrase: 'year-round'}
           - {vocabulary: 'stream_flow', code: 'intermittent', phrase: 'seasonal'}
           - {vocabulary: 'stream_flow', code: 'ephemeral', phrase: 'seasonal'}
+          - {vocabulary: 'water_kind', code: 'spring', phrase: 'Spring'}
+          - {vocabulary: 'water_kind', code: 'drinking_water', phrase: 'Drinking water point'}
+          - {vocabulary: 'water_kind', code: 'water_tap', phrase: 'Water tap'}
+          - {vocabulary: 'water_kind', code: 'water_well', phrase: 'Well'}
     expect:
       rows:
         - {poi_id: 'nearby:lean_to_in_capitals', description: 'Lean-To in Fixture Wild Forest.'}
@@ -413,6 +421,10 @@ unit_tests:
           - {vocabulary: 'stream_flow', code: 'perennial', phrase: 'year-round'}
           - {vocabulary: 'stream_flow', code: 'intermittent', phrase: 'seasonal'}
           - {vocabulary: 'stream_flow', code: 'ephemeral', phrase: 'seasonal'}
+          - {vocabulary: 'water_kind', code: 'spring', phrase: 'Spring'}
+          - {vocabulary: 'water_kind', code: 'drinking_water', phrase: 'Drinking water point'}
+          - {vocabulary: 'water_kind', code: 'water_tap', phrase: 'Water tap'}
+          - {vocabulary: 'water_kind', code: 'water_well', phrase: 'Well'}
     expect:
       rows:
         - {poi_id: 'nhd_stream:named_and_classified_by_usgs', description: 'Fixture Brook, where it runs closest to the site. USGS maps it as year-round.'}
@@ -428,6 +440,115 @@ unit_tests:
         - {poi_id: 'nhd_stream:a_claimant_nobody_knows', description: 'Fixture Creek, where it runs closest to the site. Mapped by USGS.'}
         - {poi_id: 'nhd_stream:a_source_nobody_knows', description: 'Fixture Creek, where it runs closest to the site.'}
         - {poi_id: 'nhd_stream:no_sources_is_no_stream_point', description: null}
+
+  - name: int_points_of_interest__described_says_what_describe_water_says
+    description: >
+      PO03's sentence: describe_water()'s OSM half, one row per case: what
+      was mapped (WATER_KINDS), "mapped as intermittent" for
+      intermittent=yes in any case, "mapped as seasonal" for any seasonal
+      value but no and the empty string, both joined by "and", "Marked not
+      drinking water." for drinking_water=no in any case, then the
+      attribution; no sentence for a kind the vocabulary does not hold or
+      no kind at all. An empty `sources` list is not a stream point.
+      tests/test_dbt_points_of_interest_parity.py runs export_poi.py's
+      attach_descriptions() over these rows.
+    model: int_points_of_interest__described
+    given:
+      - input: ref('int_points_of_interest__enriched')
+        rows:
+          - {poi_id: 'osm_water:a_spring', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "a_spring", "kind": "spring"}'}
+          - {poi_id: 'osm_water:a_drinking_water_point', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "a_drinking_water_point", "kind": "drinking_water", "name": "Fixture Fountain"}'}
+          - {poi_id: 'osm_water:a_tap', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "a_tap", "kind": "water_tap"}'}
+          - {poi_id: 'osm_water:a_well', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "a_well", "kind": "water_well"}'}
+          - {poi_id: 'osm_water:intermittent', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "intermittent", "kind": "spring", "intermittent": "yes"}'}
+          - {poi_id: 'osm_water:intermittent_in_capitals', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "intermittent_in_capitals", "kind": "spring", "intermittent": "YES"}'}
+          - {poi_id: 'osm_water:not_intermittent', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "not_intermittent", "kind": "spring", "intermittent": "no"}'}
+          - {poi_id: 'osm_water:seasonal', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "seasonal", "kind": "spring", "seasonal": "yes"}'}
+          - {poi_id: 'osm_water:seasonal_by_month', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "seasonal_by_month", "kind": "spring", "seasonal": "summer"}'}
+          - {poi_id: 'osm_water:not_seasonal', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "not_seasonal", "kind": "spring", "seasonal": "no"}'}
+          - {poi_id: 'osm_water:seasonal_empty', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "seasonal_empty", "kind": "spring", "seasonal": ""}'}
+          - {poi_id: 'osm_water:both_clauses', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "both_clauses", "kind": "spring", "intermittent": "yes", "seasonal": "yes"}'}
+          - {poi_id: 'osm_water:not_drinking_water', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "not_drinking_water", "kind": "water_tap", "drinking_water": "no"}'}
+          - {poi_id: 'osm_water:not_drinking_water_in_capitals', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "not_drinking_water_in_capitals", "kind": "water_tap", "drinking_water": "No"}'}
+          - {poi_id: 'osm_water:drinking_water_yes', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "drinking_water_yes", "kind": "water_tap", "drinking_water": "yes"}'}
+          - {poi_id: 'osm_water:everything', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "everything", "kind": "water_well", "intermittent": "yes", "seasonal": "yes", "drinking_water": "no"}'}
+          - {poi_id: 'osm_water:a_kind_nobody_knows', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "a_kind_nobody_knows", "kind": "fountain"}'}
+          - {poi_id: 'osm_water:no_kind', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "no_kind", "name": "Fixture Water"}'}
+          - {poi_id: 'osm_water:empty_sources_is_osm', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "empty_sources_is_osm", "kind": "spring", "sources": []}'}
+      - input: ref('poi_description_terms')
+        rows:
+          - {vocabulary: 'storeys', code: '2', phrase: 'Two-storey'}
+          - {vocabulary: 'storeys', code: '3', phrase: 'Three-storey'}
+          - {vocabulary: 'exterior_material', code: '0', phrase: 'block'}
+          - {vocabulary: 'exterior_material', code: '1', phrase: 'board-and-batten'}
+          - {vocabulary: 'exterior_material', code: '2', phrase: 'clapboard'}
+          - {vocabulary: 'exterior_material', code: '3', phrase: 'corrugated-metal'}
+          - {vocabulary: 'exterior_material', code: '4', phrase: 'timber'}
+          - {vocabulary: 'exterior_material', code: '5', phrase: 'log'}
+          - {vocabulary: 'exterior_material', code: '6', phrase: 'log-and-stone'}
+          - {vocabulary: 'exterior_material', code: '7', phrase: 'plywood'}
+          - {vocabulary: 'exterior_material', code: '8', phrase: 'post-and-beam'}
+          - {vocabulary: 'exterior_material', code: '11', phrase: 'steel'}
+          - {vocabulary: 'exterior_material', code: '12', phrase: 'stone'}
+          - {vocabulary: 'parking_surface', code: '0', phrase: 'asphalt'}
+          - {vocabulary: 'parking_surface', code: '1', phrase: 'concrete'}
+          - {vocabulary: 'parking_surface', code: '3', phrase: 'gravel'}
+          - {vocabulary: 'parking_surface', code: '4', phrase: 'dirt'}
+          - {vocabulary: 'parking_surface', code: '5', phrase: 'grass'}
+          - {vocabulary: 'privy_type', code: '0', phrase: 'composting'}
+          - {vocabulary: 'privy_type', code: '1', phrase: 'moldering'}
+          - {vocabulary: 'privy_type', code: '2', phrase: 'composting'}
+          - {vocabulary: 'privy_type', code: '3', phrase: 'pit'}
+          - {vocabulary: 'privy_type', code: '4', phrase: 'vault'}
+          - {vocabulary: 'vista_location', code: 'mtn/ridge/outcrop', phrase: 'a ridge or rock outcrop'}
+          - {vocabulary: 'vista_location', code: 'summit', phrase: 'a summit'}
+          - {vocabulary: 'vista_location', code: 'lookout tower', phrase: 'a lookout tower'}
+          - {vocabulary: 'vista_location', code: 'tower/platform', phrase: 'a tower platform'}
+          - {vocabulary: 'vista_location', code: 'viewing platform', phrase: 'a viewing platform'}
+          - {vocabulary: 'vista_location', code: 'overlook', phrase: 'an overlook'}
+          - {vocabulary: 'vista_location', code: 'bridge', phrase: 'a bridge'}
+          - {vocabulary: 'vista_location', code: 'water feature', phrase: 'the water'}
+          - {vocabulary: 'vista_location', code: 'utility corridor - powerline', phrase: 'a powerline corridor'}
+          - {vocabulary: 'vista_location', code: 'utility - powerline', phrase: 'a powerline corridor'}
+          - {vocabulary: 'vista_location', code: 'utility corridor - pipeline', phrase: 'a pipeline corridor'}
+          - {vocabulary: 'vista_location', code: 'open area', phrase: 'an open area'}
+          - {vocabulary: 'vista_location', code: 'open area - maintained', phrase: 'a maintained clearing'}
+          - {vocabulary: 'vista_location', code: 'open area - managed', phrase: 'a managed clearing'}
+          - {vocabulary: 'vista_location', code: 'open area - natural', phrase: 'a natural clearing'}
+          - {vocabulary: 'vista_location', code: 'shelter', phrase: 'a shelter'}
+          - {vocabulary: 'vista_location', code: 'campsite', phrase: 'a campsite'}
+          - {vocabulary: 'stream_source', code: 'nhd', phrase: 'USGS'}
+          - {vocabulary: 'stream_source', code: 'osm', phrase: 'OpenStreetMap contributors'}
+          - {vocabulary: 'stream_claim', code: 'nhd', phrase: 'maps it as'}
+          - {vocabulary: 'stream_claim', code: 'osm', phrase: 'tag it as'}
+          - {vocabulary: 'stream_flow', code: 'perennial', phrase: 'year-round'}
+          - {vocabulary: 'stream_flow', code: 'intermittent', phrase: 'seasonal'}
+          - {vocabulary: 'stream_flow', code: 'ephemeral', phrase: 'seasonal'}
+          - {vocabulary: 'water_kind', code: 'spring', phrase: 'Spring'}
+          - {vocabulary: 'water_kind', code: 'drinking_water', phrase: 'Drinking water point'}
+          - {vocabulary: 'water_kind', code: 'water_tap', phrase: 'Water tap'}
+          - {vocabulary: 'water_kind', code: 'water_well', phrase: 'Well'}
+    expect:
+      rows:
+        - {poi_id: 'osm_water:a_spring', description: 'Spring. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:a_drinking_water_point', description: 'Drinking water point. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:a_tap', description: 'Water tap. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:a_well', description: 'Well. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:intermittent', description: 'Spring, mapped as intermittent. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:intermittent_in_capitals', description: 'Spring, mapped as intermittent. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:not_intermittent', description: 'Spring. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:seasonal', description: 'Spring, mapped as seasonal. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:seasonal_by_month', description: 'Spring, mapped as seasonal. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:not_seasonal', description: 'Spring. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:seasonal_empty', description: 'Spring. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:both_clauses', description: 'Spring, mapped as intermittent and mapped as seasonal. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:not_drinking_water', description: 'Water tap. Marked not drinking water. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:not_drinking_water_in_capitals', description: 'Water tap. Marked not drinking water. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:drinking_water_yes', description: 'Water tap. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:everything', description: 'Well, mapped as intermittent and mapped as seasonal. Marked not drinking water. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:a_kind_nobody_knows', description: null}
+        - {poi_id: 'osm_water:no_kind', description: null}
+        - {poi_id: 'osm_water:empty_sources_is_osm', description: 'Spring. Mapped by OpenStreetMap contributors.'}
 
   - name: int_points_of_interest__sites_groups_like_lib_poi_sites
     description: >
@@ -858,15 +979,15 @@ unit_tests:
           - {geom: 'POLYGON ((-73.96 40.77, -73.95 40.77, -73.95 40.78, -73.96 40.78, -73.96 40.77))'}
     expect:
       rows:
-        - {poi_key: 'k-01', not_on_at: null}
-        - {poi_key: 'k-03', not_on_at: null}
-        - {poi_key: 'k-05', not_on_at: null}
-        - {poi_key: 'k-07', not_on_at: null}
-        - {poi_key: 'k-08', not_on_at: null}
-        - {poi_key: 'k-09', not_on_at: null}
-        - {poi_key: 'k-11', not_on_at: null}
-        - {poi_key: 'k-13', not_on_at: null}
-        - {poi_key: 'k-14', not_on_at: null}
+        - {poi_key: 'k-01', source_key: 'shelters'}
+        - {poi_key: 'k-03', source_key: 'shelters'}
+        - {poi_key: 'k-05', source_key: 'dec_lean_tos'}
+        - {poi_key: 'k-07', source_key: 'dec_parking_areas'}
+        - {poi_key: 'k-08', source_key: 'usfs_rec_sites'}
+        - {poi_key: 'k-09', source_key: 'nyc_drinking_fountains'}
+        - {poi_key: 'k-11', source_key: 'nyc_drinking_fountains'}
+        - {poi_key: 'k-13', source_key: 'opentrail_at'}
+        - {poi_key: 'k-14', source_key: 'dec_lean_tos'}
 
   - name: int_points_of_interest__in_corridor_applies_no_ring_without_a_network
     description: >
@@ -903,16 +1024,140 @@ unit_tests:
           - {geom: 'POLYGON ((-73.96 40.77, -73.95 40.77, -73.95 40.78, -73.96 40.78, -73.96 40.77))'}
     expect:
       rows:
-        - {poi_key: 'k-01', not_on_at: null}
-        - {poi_key: 'k-05', not_on_at: null}
-        - {poi_key: 'k-06', not_on_at: null}
-        - {poi_key: 'k-07', not_on_at: null}
-        - {poi_key: 'k-08', not_on_at: null}
-        - {poi_key: 'k-09', not_on_at: null}
-        - {poi_key: 'k-10', not_on_at: null}
-        - {poi_key: 'k-11', not_on_at: null}
-        - {poi_key: 'k-12', not_on_at: null}
-        - {poi_key: 'k-14', not_on_at: null}
+        - {poi_key: 'k-01', source_key: 'shelters'}
+        - {poi_key: 'k-05', source_key: 'dec_lean_tos'}
+        - {poi_key: 'k-06', source_key: 'dec_lean_tos'}
+        - {poi_key: 'k-07', source_key: 'dec_parking_areas'}
+        - {poi_key: 'k-08', source_key: 'usfs_rec_sites'}
+        - {poi_key: 'k-09', source_key: 'nyc_drinking_fountains'}
+        - {poi_key: 'k-10', source_key: 'nyc_drinking_fountains'}
+        - {poi_key: 'k-11', source_key: 'nyc_drinking_fountains'}
+        - {poi_key: 'k-12', source_key: 'dec_lean_tos'}
+        - {poi_key: 'k-14', source_key: 'dec_lean_tos'}
+
+  - name: int_points_of_interest__osm_water_reach_measures_like_measure_distances
+    description: >
+      PO06's distance half: build_osm_water_reach.py's measure_distances()
+      on OSM water points beside the centerline, a side trail another
+      organization also draws (the side trail wins the tie), the Long Path,
+      a line whose organization does not reach hikers (not measured), a
+      shelter, a campsite on the centerline's first vertex (the centerline
+      wins the tie), past the 100 ft gate, and further than 5 miles from
+      everything; a shelter POI beside them is not measured.
+      tests/test_dbt_points_of_interest_parity.py runs measure_distances()
+      over these rows written as the files it reads.
+    model: int_points_of_interest__osm_water_reach
+    given:
+      - input: ref('int_points_of_interest__in_corridor')
+        rows:
+          - {poi_key: 'r-01', source_key: 'osm_water', poi_type: 'water', source_feature_id: 'r-01', lon: -73.99982, lat: 41.002}
+          - {poi_key: 'r-02', source_key: 'osm_water', poi_type: 'water', source_feature_id: 'r-02', lon: -74.0198, lat: 41.002}
+          - {poi_key: 'r-03', source_key: 'osm_water', poi_type: 'water', source_feature_id: 'r-03', lon: -74.0998, lat: 41.005}
+          - {poi_key: 'r-04', source_key: 'osm_water', poi_type: 'water', source_feature_id: 'r-04', lon: -74.0499, lat: 41.006}
+          - {poi_key: 'r-05', source_key: 'osm_water', poi_type: 'water', source_feature_id: 'r-05', lon: -74.03, lat: 41.0022}
+          - {poi_key: 'r-06', source_key: 'osm_water', poi_type: 'water', source_feature_id: 'r-06', lon: -74.0, lat: 40.9998}
+          - {poi_key: 'r-07', source_key: 'osm_water', poi_type: 'water', source_feature_id: 'r-07', lon: -73.9994, lat: 41.003}
+          - {poi_key: 'r-08', source_key: 'osm_water', poi_type: 'water', source_feature_id: 'r-08', lon: -74.0, lat: 41.2}
+          - {poi_key: 'r-09', source_key: 'shelters', poi_type: 'shelter', source_feature_id: 'r-09', lon: -74.0001, lat: 41.002}
+      - input: ref('stg_atc__centerline_segments')
+        rows:
+          - {source_row: 0, source_id: 'fixture-centerline-0', geom: 'LINESTRING (-74 41, -74 41.005)'}
+          - {source_row: 1, source_id: 'fixture-centerline-1', geom: 'LINESTRING (-73.99 41.01, -73.99 41.015)'}
+      - input: ref('stg_atc__side_trails')
+        rows:
+          - {source_row: 0, source_id: 'unit-side-trail-0', name: 'Unit Side Trail', geom: 'LINESTRING (-74.02 41.0, -74.02 41.004)'}
+      - input: ref('int_trail_lines__network_published')
+        rows:
+          - {source_key: 'nynjtc_long_path', geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.0], [-74.1, 41.01]]}'}
+          - {source_key: 'nynjtc_highlands_trail', geom_geojson: '{"type": "LineString", "coordinates": [[-74.02, 41.0], [-74.02, 41.004]]}'}
+          - {source_key: 'unit_review_only_trails', geom_geojson: '{"type": "LineString", "coordinates": [[-74.05, 41.0], [-74.05, 41.01]]}'}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: 'nynjtc_long_path', reaches_hikers: true}
+          - {source_key: 'nynjtc_highlands_trail', reaches_hikers: true}
+          - {source_key: 'unit_review_only_trails', reaches_hikers: false}
+      - input: ref('int_points_of_interest__water_sites')
+        rows:
+          - {layer: 'shelters', global_id: 'unit-shelter', name: 'Unit Shelter', lat: 41.002, lon: -74.03}
+          - {layer: 'campsites', global_id: 'unit-campsite', name: 'Unit Campsite', lat: 41.006, lon: -74.04}
+          - {layer: 'campsites', global_id: 'unit-vertex-campsite', name: 'Unit Vertex Campsite', lat: 41.0, lon: -74.0}
+    expect:
+      rows:
+        - {poi_key: 'r-01', osm_id: 'r-01', nearest: 'centerline', nearest_source: null, nearest_m: '15.02', walk_key: '41.002000,-74.000000', passes_distance: true, reason: null}
+        - {poi_key: 'r-02', osm_id: 'r-02', nearest: 'side_trail', nearest_source: null, nearest_m: '16.69', walk_key: '41.002000,-74.020000', passes_distance: true, reason: null}
+        - {poi_key: 'r-03', osm_id: 'r-03', nearest: 'network_trail', nearest_source: 'nynjtc_long_path', nearest_m: '16.69', walk_key: '41.005000,-74.100000', passes_distance: true, reason: null}
+        - {poi_key: 'r-04', osm_id: 'r-04', nearest: 'campsite', nearest_source: null, nearest_m: '826.03', walk_key: '41.006000,-74.040000', passes_distance: false, reason: 'the nearest campsite is 2710 ft away, past the 100 ft a hiker walks for water'}
+        - {poi_key: 'r-05', osm_id: 'r-05', nearest: 'shelter', nearest_source: null, nearest_m: '22.39', walk_key: '41.002000,-74.030000', passes_distance: true, reason: null}
+        - {poi_key: 'r-06', osm_id: 'r-06', nearest: 'centerline', nearest_source: null, nearest_m: '22.39', walk_key: '41.000000,-74.000000', passes_distance: true, reason: null}
+        - {poi_key: 'r-07', osm_id: 'r-07', nearest: 'centerline', nearest_source: null, nearest_m: '50.06', walk_key: '41.003000,-74.000000', passes_distance: false, reason: 'the nearest centerline is 164 ft away, past the 100 ft a hiker walks for water'}
+        - {poi_key: 'r-08', osm_id: 'r-08', nearest: null, nearest_source: null, nearest_m: null, walk_key: null, passes_distance: false, reason: 'no trail, side trail, network trail, shelter or campsite within 5 miles'}
+
+  - name: int_points_of_interest__reached_gates_and_marks_like_export_poi
+    description: >
+      PO08 and PO10: an OSM water point reachable from the centerline
+      ships; one reachable from the Long Path ships carrying it as
+      not_on_at; one whose verdict says unreachable and one with no verdict
+      at all are dropped; opentrail's water, a shelter, another
+      organization's lean-to and the site water pass unjudged and unmarked.
+      tests/test_dbt_points_of_interest_parity.py runs
+      gate_osm_water_reach() and mark_off_trail_records() over these rows.
+    model: int_points_of_interest__reached
+    given:
+      - input: ref('int_points_of_interest__in_corridor')
+        rows:
+          - {poi_key: 'g-01', source_key: 'osm_water', source: 'osm_water', poi_type: 'water', phone_files: 'poi_by_type', source_feature_id: 'g-01'}
+          - {poi_key: 'g-02', source_key: 'osm_water', source: 'osm_water', poi_type: 'water', phone_files: 'poi_by_type', source_feature_id: 'g-02'}
+          - {poi_key: 'g-03', source_key: 'osm_water', source: 'osm_water', poi_type: 'water', phone_files: 'poi_by_type', source_feature_id: 'g-03'}
+          - {poi_key: 'g-04', source_key: 'osm_water', source: 'osm_water', poi_type: 'water', phone_files: 'poi_by_type', source_feature_id: 'g-04'}
+          - {poi_key: 'g-05', source_key: 'opentrail_at', source: 'opentrail_at', poi_type: 'water', phone_files: 'poi_by_type', source_feature_id: 'g-05'}
+          - {poi_key: 'g-06', source_key: 'shelters', source: 'atc_shelters', poi_type: 'shelter', phone_files: 'poi_by_type', source_feature_id: 'g-06'}
+          - {poi_key: 'g-07', source_key: 'dec_lean_tos', source: 'dec_lean_tos', poi_type: 'shelter', phone_files: 'nearby_poi', source_feature_id: 'g-07'}
+          - {poi_key: 'g-08', source_key: 'nhd_stream', source: 'nhd_stream', poi_type: 'water', phone_files: 'poi_by_type', source_feature_id: 'g-08'}
+      - input: ref('int_points_of_interest__osm_water_verdicts')
+        rows:
+          - {poi_key: 'g-01', osm_id: 'g-01', nearest: 'centerline', nearest_source: null, has_verdict: true, reachable: true}
+          - {poi_key: 'g-02', osm_id: 'g-02', nearest: 'network_trail', nearest_source: 'nynjtc_long_path', has_verdict: true, reachable: true}
+          - {poi_key: 'g-03', osm_id: 'g-03', nearest: 'network_trail', nearest_source: 'nynjtc_long_path', has_verdict: true, reachable: false}
+          - {poi_key: 'g-04', osm_id: 'g-04', nearest: 'shelter', nearest_source: null, has_verdict: false, reachable: null}
+    expect:
+      rows:
+        - {poi_key: 'g-01', not_on_at: null}
+        - {poi_key: 'g-02', not_on_at: 'nynjtc_long_path'}
+        - {poi_key: 'g-05', not_on_at: null}
+        - {poi_key: 'g-06', not_on_at: null}
+        - {poi_key: 'g-07', not_on_at: null}
+        - {poi_key: 'g-08', not_on_at: null}
+
+  - name: int_points_of_interest__deduplicated_drops_twins_like_dedupe_water
+    description: >
+      PO09: an OSM water point 11 m and one 22 m from an opentrail water
+      point are its twins and are dropped; one 28 m away is a neighbour and
+      ships; nothing that is not OSM water is ever dropped, and OSM points
+      near site water or near each other are not twins.
+      tests/test_dbt_points_of_interest_parity.py runs dedupe_water() over
+      these rows.
+    model: int_points_of_interest__deduplicated
+    given:
+      - input: ref('int_points_of_interest__reached')
+        rows:
+          - {poi_key: 'd-01', source_key: 'opentrail_at', source: 'opentrail_at', poi_type: 'water', lon: -74.0, lat: 41.0}
+          - {poi_key: 'd-02', source_key: 'osm_water', source: 'osm_water', poi_type: 'water', lon: -74.0, lat: 41.0001}
+          - {poi_key: 'd-03', source_key: 'osm_water', source: 'osm_water', poi_type: 'water', lon: -74.0, lat: 41.0002}
+          - {poi_key: 'd-04', source_key: 'osm_water', source: 'osm_water', poi_type: 'water', lon: -74.0, lat: 41.00025}
+          - {poi_key: 'd-05', source_key: 'shelters', source: 'atc_shelters', poi_type: 'shelter', lon: -74.0, lat: 41.0}
+          - {poi_key: 'd-06', source_key: 'nhd_stream', source: 'nhd_stream', poi_type: 'water', lon: -74.1, lat: 41.0}
+          - {poi_key: 'd-07', source_key: 'osm_water', source: 'osm_water', poi_type: 'water', lon: -74.1, lat: 41.00005}
+          - {poi_key: 'd-08', source_key: 'osm_water', source: 'osm_water', poi_type: 'water', lon: -74.2, lat: 41.0}
+          - {poi_key: 'd-09', source_key: 'osm_water', source: 'osm_water', poi_type: 'water', lon: -74.2, lat: 41.00005}
+    expect:
+      rows:
+        - {poi_key: 'd-01', source: 'opentrail_at'}
+        - {poi_key: 'd-04', source: 'osm_water'}
+        - {poi_key: 'd-05', source: 'atc_shelters'}
+        - {poi_key: 'd-06', source: 'nhd_stream'}
+        - {poi_key: 'd-07', source: 'osm_water'}
+        - {poi_key: 'd-08', source: 'osm_water'}
+        - {poi_key: 'd-09', source: 'osm_water'}
 
   - name: int_points_of_interest__trailheads_marks_like_mark_closed_trailheads
     description: >
@@ -1084,7 +1329,7 @@ unit_tests:
       runs apply_ledger_ids() over these rows with this ledger.
     model: int_points_of_interest__identified
     given:
-      - input: ref('int_points_of_interest__in_corridor')
+      - input: ref('int_points_of_interest__deduplicated')
         rows:
           - {poi_key: 'i-01', phone_files: 'poi_by_type', source: 'atc_shelters', source_feature_id: 'G1', derived_id: 'atc_shelters:G1'}
           - {poi_key: 'i-02', phone_files: 'poi_by_type', source: 'atc_shelters', source_feature_id: 'G2', derived_id: 'atc_shelters:G2'}
@@ -1312,6 +1557,10 @@ unit_tests:
           - {vocabulary: 'stream_flow', code: 'perennial', phrase: 'year-round'}
           - {vocabulary: 'stream_flow', code: 'intermittent', phrase: 'seasonal'}
           - {vocabulary: 'stream_flow', code: 'ephemeral', phrase: 'seasonal'}
+          - {vocabulary: 'water_kind', code: 'spring', phrase: 'Spring'}
+          - {vocabulary: 'water_kind', code: 'drinking_water', phrase: 'Drinking water point'}
+          - {vocabulary: 'water_kind', code: 'water_tap', phrase: 'Water tap'}
+          - {vocabulary: 'water_kind', code: 'water_well', phrase: 'Well'}
     expect:
       rows:
         - {poi_id: 'atc_shelters:E1', capacity: 8, nearby: '[{"phrase":"a multi-seat pit privy","distance_ft":98.4},{"phrase":"a privy with no enclosure","distance_ft":98.4},{"phrase":"water","distance_ft":120.0,"source":"FarOut"},{"phrase":"a group campsite","distance_ft":196.9}]'}

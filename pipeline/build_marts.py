@@ -116,6 +116,24 @@ STEPS: list[Step] = [
             "{raw_dir}/site_water/epqs_elevations.json",
         ),
     ),
+    # PO03: OSM's water points, a stand-in for the extract that waits on
+    # #1652. Under --fixtures it lands make_dbt_fixtures.py's points; otherwise
+    # it lands none (step_osm_water.py's docstring says why).
+    Step(
+        name="step_osm_water",
+        table="osm_water",
+        command=("step_osm_water.py", "--warehouse", "{warehouse}"),
+        fixture_args=("--points", "{raw_dir}/osm_water/points.geojson"),
+    ),
+    # PO06 and PO07: the grade half of OSM water's reach, over
+    # int_points_of_interest__osm_water_reach's distance pass. Under --fixtures
+    # it reads the EPQS answers make_dbt_fixtures.py wrote, never the network.
+    Step(
+        name="step_osm_water_grade",
+        table="osm_water_grade",
+        command=("step_osm_water_grade.py", "--warehouse", "{warehouse}"),
+        fixture_args=("--elevations", "{raw_dir}/osm_water/epqs_elevations.json"),
+    ),
 ]
 
 

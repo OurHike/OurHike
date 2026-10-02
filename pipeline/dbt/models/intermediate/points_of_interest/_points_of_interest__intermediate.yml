@@ -157,16 +157,101 @@ models:
       - name: poi_key
         description: The staging model's key.
         data_tests: [not_null, unique]
+
+  - name: int_points_of_interest__osm_water_reach
+    description: >
+      The distance half of OSM water's reach (PO06), one row per OSM water
+      point in the corridor: the nearest of the centerline, a side trail, a
+      published network line whose organization reaches hikers, a shelter
+      and a campsite, within the 5-mile ceiling, and whether it is within
+      fetch_trail_water.py's MATCH_RADIUS_FT (100 ft).
+      build_osm_water_reach.py's measure_distances(). step_osm_water_grade
+      reads it for the grade.
+    columns:
+      - name: poi_key
+        description: The staging model's key.
+        data_tests: [not_null, unique]
+      - name: osm_id
+        description: The OSM node id, which the verdicts are keyed by.
+        data_tests: [not_null, unique]
+      - name: nearest
+        description: >
+          centerline, side_trail, network_trail, shelter or campsite: which
+          one the point is nearest; null where nothing is within the ceiling.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [centerline, side_trail, network_trail, shelter, campsite]
+      - name: nearest_source
+        description: The network line's organization (its registry key), where the nearest is a network trail.
+      - name: nearest_m
+        description: The distance to the nearest, EPSG:5070 metres at 2 dp, as text.
+      - name: walk_key
+        description: >
+          The other end of the walk, the nearest point on the feature, as
+          the EPQS cache keys it: "lat,lon" at 6 dp.
+      - name: passes_distance
+        description: Within MATCH_RADIUS_FT of the nearest; false where nothing is near.
+        data_tests: [not_null]
+      - name: reason
+        description: Why the point fails the distance gate, in build_osm_water_reach.py's words; null where it passes.
+
+  - name: int_points_of_interest__osm_water_verdicts
+    description: >
+      Every corridor OSM water point's verdict, both halves as
+      build_osm_water_reach.py's verdict file holds them: the distance pass
+      beside the grade step_osm_water_grade took. `reachable` is null only
+      where the step wrote no verdict, which
+      assert_every_corridor_osm_water_point_has_a_verdict fails the build on.
+    columns:
+      - name: poi_key
+        description: The staging model's key.
+        data_tests: [not_null, unique]
+      - name: osm_id
+        description: The OSM node id.
+        data_tests: [not_null, unique]
+      - name: has_verdict
+        description: Whether the step wrote a verdict for the point.
+        data_tests: [not_null]
+      - name: reachable
+        description: Both gates passed, an ungraded point not reachable; null where there is no verdict.
+      - name: reason
+        description: Why the point is not reachable, the grade's reason where it has one, else the distance pass's.
+
+  - name: int_points_of_interest__reached
+    description: >
+      The corridor's POIs a hiker could reach (PO08, PO10): every row that
+      is not OSM water, and every OSM water point whose verdict says
+      reachable. A point with no verdict is dropped (export_poi.py's
+      gate_osm_water_reach()). A reachable point whose nearest walk is
+      another organization's trail carries that organization as not_on_at.
+    columns:
+      - name: poi_key
+        description: The staging model's key.
+        data_tests: [not_null, unique]
       - name: not_on_at
         description: >
-          The other organization's trail an A.T.-family point sits on, which
-          withholds its A.T. mile (PO10). Null on every row until OSM water
-          lands (#1652), the only source the Python ever marks.
+          The other organization's trail an OSM water point is reached from,
+          which withholds its A.T. mile (PO10, mark_off_trail_records());
+          null on every other row, as the Python marks no other source.
+
+  - name: int_points_of_interest__deduplicated
+    description: >
+      The reached POIs less each OSM water point within
+      WATER_DEDUP_RADIUS_M (25 m) of an opentrail water point (PO09,
+      export_poi.py's dedupe_water()): opentrail imports OSM, so the pair is
+      largely one node arriving through two doors, and the opentrail one
+      keeps its published id.
+    columns:
+      - name: poi_key
+        description: The staging model's key.
+        data_tests: [not_null, unique]
 
   - name: int_points_of_interest__dropped
     description: >
       Every unioned row that does not ship, with the first reason why, from
-      the three stages that drop: classified, publishable and in_corridor.
+      the five stages that drop: classified, publishable, in_corridor,
+      reached and deduplicated.
     columns:
       - name: poi_key
         description: The staging model's key.
@@ -431,4 +516,27 @@ exposures:
     config:
       meta:
         writes: derived.site_water
+        cadence: monthly
+  - name: step_osm_water_grade
+    label: step_osm_water_grade.py
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The Python step that takes the grade half of OSM water's reach
+      (pipeline/step_osm_water_grade.py, PO06 and PO07), between the dbt
+      invocation that builds int_points_of_interest__osm_water_reach and the
+      one that reads its verdicts back as source('derived',
+      'osm_water_grade'). It calls build_osm_water_reach.py's
+      apply_grade_gate() and write() guards unchanged, because the grade needs
+      USGS EPQS's elevations at both ends of each walk, a read SQL cannot make
+      in this build. Shown here so the docs draw both halves of the step.
+      step_osm_water.py, which lands the points, reads no intermediate and
+      has no exposure.
+    depends_on:
+      - ref('int_points_of_interest__osm_water_reach')
+    config:
+      meta:
+        writes: derived.osm_water_grade
         cadence: monthly

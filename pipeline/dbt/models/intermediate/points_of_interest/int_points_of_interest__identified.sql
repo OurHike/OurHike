@@ -21,7 +21,9 @@
 -- "Where state lives": the 20,506 nearby_poi.geojson features have no ledger
 -- rows, an open question for the maintainer).
 with in_corridor as (
-    select * from {{ ref('int_points_of_interest__in_corridor') }}
+    -- The corridor's POIs after the reach gate and the dedupe, in
+    -- build_enriched_records()' order: read_sources(), then the ledger.
+    select * from {{ ref('int_points_of_interest__deduplicated') }}
 ),
 
 live_ledger as (

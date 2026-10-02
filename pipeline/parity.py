@@ -589,6 +589,9 @@ def _poi_by_type_old(poi_type: str) -> Callable[[], dict]:
 
         export_poi.NETWORK_LINES_PATH = _published_network()
         export_poi.TRAIL_WATER_PATH = _site_water_old()
+        osm_water = _osm_water_old()
+        if osm_water is not None:
+            export_poi.OSM_WATER_FILENAME, export_poi.OSM_WATER_REACH_FILENAME = osm_water
         export_poi.main()
         return json.loads((export_poi.OUT_DIR / f"{poi_type}.geojson").read_text(encoding="utf-8"))
 
@@ -641,6 +644,55 @@ def _site_water_old() -> Path:
         fetch_trail_water.elevation_ft = live
     out.write_text(fetch_trail_water.render(document), encoding="utf-8")
     return out
+
+
+@functools.cache
+def _osm_water_old() -> tuple[str, str] | None:
+    """OSM water's points and verdicts as a publish run leaves them for export_poi.py: (the points' name under RAW_DIR, the verdict file).
+
+    fetch_osm_water.py reads fourteen Geofabrik extracts and
+    build_osm_water_reach.py asks EPQS, neither of which CI may do. So the
+    points are make_dbt_fixtures.py's osm_water/points.geojson, which
+    step_osm_water lands, and the verdicts are build_osm_water_reach.py's own
+    measure_distances(), apply_grade_gate() and write() over them, with the
+    fixture's layers and the published network (_published_network()) where
+    that script reads data/raw/ and nearby_trails.geojson, and the EPQS
+    answers step_osm_water_grade reads. write() runs unguarded: its floor of
+    40 reachable points watches a real scan, and the fixture has a dozen. With
+    no points file there is no OSM water, as on a run that never fetched it.
+    """
+    import contextlib
+    import io
+    import tempfile
+
+    import duckdb
+
+    import build_osm_water_reach as reach
+    import export_poi
+
+    raw = export_poi.RAW_DIR
+    points = raw / "osm_water" / "points.geojson"
+    if not points.exists():
+        return None
+    folder = Path(tempfile.mkdtemp(prefix="parity-osm-water-"))
+    for name in ("centerline.geojson", "side_trails.geojson", "shelters.geojson", "campsites.geojson"):
+        (folder / name).symlink_to(raw / name)
+    (folder / "osm_water.geojson").symlink_to(points)
+    answers = json.loads((raw / "osm_water" / "epqs_elevations.json").read_text(encoding="utf-8"))
+    network = _published_network()
+    live = (reach.RAW_DIR, reach.NETWORK_LINES_PATH, reach.OUT_PATH, reach.elevation_ft)
+    reach.RAW_DIR, reach.NETWORK_LINES_PATH, reach.OUT_PATH = folder, network, folder / "osm_water_reach.json"
+    reach.elevation_ft = lambda lat, lon: answers.get(f"{lat:.6f},{lon:.6f}")
+    try:
+        con = duckdb.connect()
+        con.execute("INSTALL spatial; LOAD spatial;")
+        with contextlib.redirect_stdout(io.StringIO()):
+            records = reach.measure_distances(con, quiet=True)
+            reach.apply_grade_gate(records, quiet=True)
+            reach.write(records, guard=False)
+    finally:
+        reach.RAW_DIR, reach.NETWORK_LINES_PATH, reach.OUT_PATH, reach.elevation_ft = live
+    return "osm_water/points.geojson", str(folder / "osm_water_reach.json")
 
 
 def _nearby_poi_old() -> dict:

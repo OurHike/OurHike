@@ -219,7 +219,9 @@ jobs:
           # export_elevation.py mile axis it imports), export_nearby_poi.py and
           # export_retired_poi.py; step_site_water.py is that family's step,
           # fetch_trail_water.py's rule, which imports build_water_distance.py
-          # and export_basemap.py.
+          # and export_basemap.py; step_osm_water.py and
+          # step_osm_water_grade.py are its OSM water steps, the second
+          # calling build_osm_water_reach.py's grade loop.
           paths: >-
             pipeline/dbt/
             pipeline/extract/
@@ -246,6 +248,9 @@ jobs:
             pipeline/fetch_trail_water.py
             pipeline/build_water_distance.py
             pipeline/export_basemap.py
+            pipeline/step_osm_water.py
+            pipeline/step_osm_water_grade.py
+            pipeline/build_osm_water_reach.py
             pipeline/requirements.txt
             pipeline/seed_spatial_extension.py
             pipeline/check_freshness.py

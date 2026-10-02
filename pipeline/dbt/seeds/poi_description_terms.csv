@@ -46,3 +46,7 @@ stream_claim,osm,tag it as
 stream_flow,perennial,year-round
 stream_flow,intermittent,seasonal
 stream_flow,ephemeral,seasonal
+water_kind,spring,Spring
+water_kind,drinking_water,Drinking water point
+water_kind,water_tap,Water tap
+water_kind,water_well,Well

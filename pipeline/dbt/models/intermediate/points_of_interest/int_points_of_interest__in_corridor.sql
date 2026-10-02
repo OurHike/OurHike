@@ -172,13 +172,7 @@ select
     judged.lon,
     judged.lat,
     judged.properties,
-    judged._loaded_at,
-    -- PO10, mark_off_trail_records(): the other organization's trail an
-    -- A.T.-family point sits on, which withholds its A.T. mile. Only OSM water
-    -- is ever marked, and no staging model lands OSM water yet, so no row here
-    -- is: null on every row, until OSM water lands with its reach verdicts'
-    -- `nearest_source`.
-    cast(null as varchar) as not_on_at
+    judged._loaded_at
 from judged
 cross join network_state
 where

@@ -88,3 +88,61 @@ models:
       - name: _loaded_at
         description: When step_site_water wrote the table, UTC.
         data_tests: [not_null]
+
+  - name: stg_derived__osm_water
+    data_tests:
+      # Says how many rows the dedupe dropped: fetch_osm_water.py's
+      # scan_states() already keeps one row per node, so none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('derived', 'osm_water')
+          config:
+            severity: warn
+    description: >
+      OSM's water points, from step_osm_water's derived.osm_water, one row
+      per node, its properties as fetch_osm_water.py writes them. Read by
+      int_points_of_interest__unioned. Only fixture mode lands rows until
+      #1652 — Download OSM's Geofabrik extracts at most once a month, into
+      a private raw bucket that outlives the 7-day Actions cache.
+    columns:
+      - name: osm_water_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the table's name and the OSM node id.
+        data_tests: [not_null, unique]
+      - name: osm_id
+        description: The OSM node id, which names the point (`osm_water:<osm_id>`).
+        data_tests: [not_null]
+      - name: properties
+        description: The feature's properties as JSON, absent tags absent.
+      - name: _loaded_at
+        description: When step_osm_water wrote the table, UTC.
+        data_tests: [not_null]
+
+  - name: stg_derived__osm_water_grade
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('derived', 'osm_water_grade')
+          config:
+            severity: warn
+    description: >
+      The verdict on every corridor OSM water point, from
+      step_osm_water_grade's derived.osm_water_grade. Read by
+      int_points_of_interest__reached, which drops every OSM point that is
+      not reachable or has no verdict.
+    columns:
+      - name: osm_water_grade_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the table's name and the OSM node id.
+        data_tests: [not_null, unique]
+      - name: osm_id
+        description: The OSM node id.
+        data_tests: [not_null]
+      - name: reachable
+        description: Both gates passed; an ungraded point is not reachable.
+        data_tests: [not_null]
+      - name: _loaded_at
+        description: When step_osm_water_grade wrote the table, UTC.
+        data_tests: [not_null]

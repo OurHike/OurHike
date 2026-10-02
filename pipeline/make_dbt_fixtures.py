@@ -1487,6 +1487,11 @@ def _with_key_fields(content: str, fields: dict) -> str:
 #   site_water/epqs_elevations.json (_site_water_fixtures), which
 #   step_site_water.py reads in place of the hydrography and the network, so
 #   fetch_trail_water.py's gates run on the grid's own sites in CI.
+# - OSM WATER'S POINTS AND ANSWERS (PO03, PO06, PO08, PO09): a dozen points in
+#   fetch_osm_water.py's shape and the EPQS answers for their walks
+#   (_osm_water_fixtures), which step_osm_water.py and step_osm_water_grade.py
+#   read, and one opentrail water waypoint beside a grid site for the dedupe
+#   to find a twin of.
 POI_REFERENCE_DIR = Path(__file__).parent / "reference"
 
 # Shelter, campsite, vista, parking and privy inventory, one tuple of values
@@ -1640,8 +1645,112 @@ def _site_water_fixtures(sites: list[dict]) -> dict[str, str]:
     }
 
 
+# OSM water (PO03, PO06, PO08, PO09): step_osm_water.py's points, in
+# fetch_osm_water.py's feature() shape, and the EPQS answers
+# step_osm_water_grade.py reads in place of the network, keyed "lat,lon" at
+# 6 dp as fetch_trail_water.py's cache keys them. They live under osm_water/
+# rather than at data/raw/osm_water.geojson, where export_poi.py would read
+# them and then refuse to run without build_osm_water_reach.py's verdicts.
+#
+# Each point is placed so the far end of its walk is a vertex or a site,
+# which ST_ClosestPoint returns exactly, so its answer has a key: past the
+# south end of the centerline's first segment, (-74.0, 41.0); past the far end
+# of the "Viewpoint Spur" side trail, (-74.004, 41.006); past the south end of
+# the Long Path's first piece in the fixture network, (-74.3, 41.5); or north
+# of a shelter or campsite of the grid above. Together they reach every
+# branch of build_osm_water_reach.py's gate and export_poi.py's handling:
+# reachable from the centerline, a site and another organization's trail
+# (which withholds the mile); past MATCH_RADIUS_FT; nothing within the 5-mile
+# ceiling; outside the corridor; steeper than MAX_GRADE; a walk shorter than
+# MIN_GRADE_RUN_FT the grade does not judge; an elevation EPQS would not
+# give; no geometry; and a twin of an opentrail water point within
+# WATER_DEDUP_RADIUS_M beside a neighbour that is not one. The tags vary so
+# describe_water()'s clauses all compose.
+_OSM_WATER_TWIN_DBID = 9001
+
+
+def _osm_water_fixtures(kept: list[dict]) -> tuple[dict[str, str], dict]:
+    """osm_water/points.geojson and osm_water/epqs_elevations.json over the grid's sites, and the opentrail waypoint the twin pairs with."""
+
+    def site(layer: str, nth: int) -> tuple[float, float]:
+        """The nth site of a layer past the ten the site water scenarios use."""
+        indices = [index for index, row in enumerate(kept) if row["layer"] == layer and index >= len(_SITE_WATER_SCENARIOS)]
+        lon, lat = _poi_site_point(indices[nth])["coordinates"]
+        return lon, lat
+
+    def key(lon: float, lat: float) -> str:
+        return f"{lat:.6f},{lon:.6f}"
+
+    shelter = site("shelters", 20)
+    campsite = site("campsites", 20)
+    twin_site = site("campsites", 30)
+    no_answer_site = site("shelters", 30)
+    features, elevations = [], {}
+
+    def point(osm_id, kind, coordinates, water_feet=None, walk=None, walk_feet=None, **tags):
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": None if coordinates is None else {"type": "Point", "coordinates": list(coordinates)},
+                "properties": {"osm_id": osm_id, "kind": kind, **tags},
+            }
+        )
+        if water_feet is not None:
+            elevations[key(*coordinates)] = water_feet
+        if walk_feet is not None:
+            elevations[key(*walk)] = walk_feet
+
+    # Reachable from the centerline: 22 m south of its first vertex, 2 ft of rise.
+    point("9100000001", "spring", (-74.0, 40.9998), 1000.0, (-74.0, 41.0), 1002.0, name="Fixture Spring", intermittent="yes")
+    # Reachable from a shelter, tagged not drinking water.
+    lon, lat = shelter
+    point("9100000002", "water_tap", (lon, round(lat + 0.0002, 6)), 1500.0, shelter, 1503.0, drinking_water="no")
+    # Past the side trail's far end, 20 ft below it over about 91 ft: too steep.
+    point("9100000003", "water_tap", (-74.0042, 41.0062), 980.0, (-74.004, 41.006), 1000.0)
+    # Reachable only from the Long Path, so it carries no A.T. mile.
+    point(
+        "9100000004",
+        "spring",
+        (-74.3, 41.4998),
+        1200.0,
+        (-74.3, 41.5),
+        1201.0,
+        name="Fixture Long Path Spring",
+        intermittent="yes",
+        seasonal="yes",
+    )
+    # About 59 m east of the centerline: past the 100 ft gate.
+    point("9100000005", "drinking_water", (-73.9993, 41.0025))
+    # In the corridor, and more than 5 miles from anything a hiker walks.
+    point("9100000006", "water_well", (-74.0, 41.3))
+    # Outside the corridor and every network line's ring: clipped before it is judged.
+    point("9100000007", "spring", (-80.0, 35.5))
+    # A walk of about 7 ft, too short for the grade to judge.
+    lon, lat = campsite
+    point("9100000008", "spring", (lon, round(lat + 0.00002, 6)), 997.0, campsite, 1000.0, seasonal="yes")
+    # EPQS gives the shelter's elevation and not the water's.
+    lon, lat = no_answer_site
+    point("9100000009", "spring", (lon, round(lat + 0.0002, 6)), None, no_answer_site, 1100.0)
+    # No geometry: skipped, as export_poi.py's has_geometry() skips it.
+    point("9100000010", "spring", None, name="Fixture Spring With No Point")
+    # Beside an opentrail water point: 11 m from it, a twin; 37 m from it, not.
+    lon, lat = twin_site
+    point("9100000011", "spring", (lon, round(lat + 0.00015, 6)), 1300.0, twin_site, 1301.0)
+    point("9100000012", "drinking_water", (round(lon + 0.0003, 6), lat), 1300.5, twin_site, 1301.0, name="Fixture Fountain")
+    waypoint = {
+        "type": "Feature",
+        "properties": {"dbid": _OSM_WATER_TWIN_DBID, "title": "Fixture Spring Waypoint", "icon": "w"},
+        "geometry": {"type": "Point", "coordinates": [lon, round(lat + 0.00025, 6)]},
+    }
+    files = {
+        "osm_water/points.geojson": _feature_collection(features),
+        "osm_water/epqs_elevations.json": json.dumps(elevations, indent=1),
+    }
+    return files, waypoint
+
+
 def _points_of_interest_fixtures(files: dict) -> dict:
-    """The POI family's additions to `files`: id fields, ATC's real shelters and campsites with inventory, facilities, a DEC privy, site water's inputs."""
+    """The POI family's additions to `files`: id fields, ATC's real shelters and campsites with inventory, facilities, a DEC privy, site and OSM water's inputs."""
     files = dict(files)
     id_fields = {
         "external/oprhp_facilities.geojson": ("OBJECTID", lambda i: 5501 + i),
@@ -1688,6 +1797,11 @@ def _points_of_interest_fixtures(files: dict) -> dict:
                 appended += 1
         files[name] = json.dumps(collection)
     files.update(_site_water_fixtures(kept))
+    osm_water, waypoint = _osm_water_fixtures(kept)
+    files.update(osm_water)
+    opentrail = json.loads(files["opentrail_at.geojson"])
+    opentrail["features"].append(waypoint)
+    files["opentrail_at.geojson"] = json.dumps(opentrail)
 
     for row, (name, facilities) in enumerate(_POI_FACILITIES.items()):
         collection = json.loads(files[name])

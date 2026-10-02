@@ -104,3 +104,75 @@ sources:
           - name: _loaded_at
             description: When the step wrote the table, UTC.
             data_tests: [not_null]
+      - name: osm_water
+        data_tests:
+          # Rows sharing stg_derived__osm_water's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'osm_water'", "osm_id"]
+        description: >
+          OSM's water point sources (natural=spring, amenity=drinking_water,
+          man_made=water_tap, man_made=water_well) in fetch_osm_water.py's
+          shape, written by step_osm_water (pipeline/step_osm_water.py): one
+          row per feature, its properties as the file holds them. A stand-in
+          for the extract, which waits on #1652 — Download OSM's Geofabrik
+          extracts at most once a month, into a private raw bucket that
+          outlives the 7-day Actions cache. Until then only fixture mode
+          lands points here and a live build lands none (pipeline/ELT.md's
+          PO03).
+        columns:
+          - name: feature_row
+            description: The feature's place in the file, from 0.
+            data_tests: [not_null]
+          - name: osm_id
+            description: The OSM node id, as text (fetch_osm_water.py's feature()).
+            data_tests: [not_null]
+          - name: kind
+            description: spring, drinking_water, water_tap or water_well (fetch_osm_water.py's POINT_SOURCE_TAGS).
+          - name: lon
+            description: The node's longitude, EPSG:4326; null where the feature has no geometry.
+          - name: lat
+            description: The node's latitude, EPSG:4326; null where the feature has no geometry.
+          - name: properties
+            description: >
+              The feature's properties as JSON, verbatim: osm_id, kind, and
+              name, seasonal, intermittent and drinking_water only where OSM
+              carries the tag. An absent tag is "nobody tagged it", never a
+              claim (lib/poi_description.py's describe_water()).
+          - name: _loaded_at
+            description: When the step wrote the table, UTC.
+            data_tests: [not_null]
+      - name: osm_water_grade
+        data_tests:
+          # Rows sharing stg_derived__osm_water_grade's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'osm_water_grade'", "osm_id"]
+        description: >
+          The verdict on every corridor OSM water point, written by
+          step_osm_water_grade (pipeline/step_osm_water_grade.py): the
+          distance pass int_points_of_interest__osm_water_reach measured,
+          and the grade build_osm_water_reach.apply_grade_gate() takes from
+          USGS EPQS for a point that passed it. One row per row of that
+          model (pipeline/ELT.md's PO06 and PO07).
+        columns:
+          - name: osm_id
+            description: The OSM node id.
+            data_tests: [not_null]
+          - name: passes_grade
+            description: Whether the walk is no steeper than MAX_GRADE, or too short to grade; null where the point was not graded.
+          - name: drop_ft
+            description: The elevation difference between the water and the feature it passed on, feet, 1 dp; null where ungraded.
+          - name: grade
+            description: Drop over run, 3 dp; null where ungraded.
+          - name: grade_floored
+            description: True where MIN_GRADE_RUN_FT, not the grade, let the point pass.
+            data_tests: [not_null]
+          - name: reachable
+            description: Both gates passed. An ungraded point is not reachable (build_osm_water_reach.is_reachable()).
+            data_tests: [not_null]
+          - name: reason
+            description: Why the point is not reachable, in build_osm_water_reach.py's words; null where it is.
+          - name: _loaded_at
+            description: When the step wrote the table, UTC.
+            data_tests: [not_null]

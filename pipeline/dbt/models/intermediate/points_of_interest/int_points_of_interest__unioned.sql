@@ -75,6 +75,25 @@ select
 from {{ ref(model) }} as staged
 union all by name
 {% endfor %}
+-- OSM's water points (PO03): export_poi.py's unify_all_sources() reading
+-- data/raw/osm_water.geojson, here step_osm_water's rows. The properties are
+-- the file's own JSON, so `kind` and the reliability tags reach the
+-- describer as describe_water() reads them, and a tag OSM does not carry is
+-- absent. No row lands outside fixture mode until #1652 — Download OSM's
+-- Geofabrik extracts at most once a month, into a private raw bucket that
+-- outlives the 7-day Actions cache.
+select
+    'osm_water' as source_key,
+    osm.osm_water_key as poi_key,
+    cast(osm.feature_row as bigint) as source_row,
+    case
+        when osm.lon is not null and osm.lat is not null
+            then st_point(osm.lon, osm.lat)
+    end as geom,
+    osm.properties,
+    osm._loaded_at
+from {{ ref('stg_derived__osm_water') }} as osm
+union all by name
 -- fetch_trail_water.py's site water (PO07, PO17), the step's verdicts, of
 -- which only a site that has water publishes a point: export_poi.py's
 -- load_trail_water(), reading data/raw/trail_water.json's `sites`. Its

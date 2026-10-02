@@ -203,7 +203,9 @@ seeds:
       PRIVY_TYPES (`privy_type`) and VISTA_LOCATIONS (`vista_location`, keyed
       on the lower-cased first value of ATC's `Location`), and the three a
       stream point's sentence reads, STREAM_SOURCES (`stream_source`),
-      STREAM_CLAIMS (`stream_claim`) and FLOW_WORDS (`stream_flow`). The Python
+      STREAM_CLAIMS (`stream_claim`) and FLOW_WORDS (`stream_flow`), and the
+      head an OSM water point's sentence opens with, WATER_KINDS
+      (`water_kind`). The Python
       transcribed ATC's coded domains on 2026-08-09, "dated so the next
       reader knows what to re-check", rather than fetching them. A code with
       no row drops its clause, so the sentence gets shorter rather than
@@ -226,7 +228,7 @@ seeds:
           - not_null
           - accepted_values:
               arguments:
-                values: [storeys, exterior_material, parking_surface, privy_type, vista_location, stream_source, stream_claim, stream_flow]
+                values: [storeys, exterior_material, parking_surface, privy_type, vista_location, stream_source, stream_claim, stream_flow, water_kind]
       - name: code
         description: ATC's value as the composer looks it up, a coded-domain code or a lower-cased landform.
         data_tests: [not_null]

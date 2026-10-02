@@ -291,6 +291,16 @@ models:
           - accepted_values:
               arguments:
                 values: [mapped, deferred, unmapped, absent]
+          # The loud one: a value nobody has reviewed draws neutral, and the
+          # Python prints a WARNING per feature naming it. A warn here counts
+          # them in the build's own output, where a person sees it; the fix
+          # is a row in reference/blaze_mapping.json.
+          - accepted_values:
+              name: int_trail_lines__blazes_every_blaze_value_is_reviewed
+              arguments:
+                values: [mapped, deferred, absent]
+              config:
+                severity: warn
 
   - name: int_trail_lines__network_navigation
     description: >

@@ -2,7 +2,7 @@
 // BRANCHING.md §2's pattern (#327), for #1780 — Let a club publish a
 // challenge — places on its own trails that hikers opt into and tag at camp —
 // starting with the ATC's A.T. Summer Bucket List (features/CHALLENGES.md,
-// frame #1 "Map layer").
+// frame 1 "Map layer").
 //
 // The hook returns a `Pick<MapScreenProps, …>` of exactly the four props this
 // feature owns, which the shell spreads into `<MapScreen>` as one line, so a
@@ -19,10 +19,12 @@
 //
 // WHEN THE ROW IS LISTED AT ALL. Only while a challenge the hiker joined is
 // on the chosen trail - the design's own words, "listed only when a joined
-// challenge is on the chosen trail". Off that trail the handler is withheld,
-// which is the legend's own signal for "no row", and the layer is hidden
-// whatever the switch says: a switch that is not on screen must not be the
-// reason something is drawn.
+// challenge is on the chosen trail" - and has at least one place to pin: a
+// joined list of at-home items offered a switch that put nothing on the map
+// (review, 2026-09-30). Otherwise the handler is withheld, which is the
+// legend's own signal for "no row", and the layer is hidden whatever the
+// switch says: a switch that is not on screen must not be the reason
+// something is drawn.
 
 import { useMemo } from 'react'
 import type { MapScreenProps } from './MapScreen'

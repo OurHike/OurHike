@@ -1,7 +1,7 @@
 // Challenge places on the canvas: the source, the one symbol layer that draws
 // them, and the switch (#1780 — Let a club publish a challenge — places on
 // its own trails that hikers opt into and tag at camp — starting with the
-// ATC's A.T. Summer Bucket List; features/CHALLENGES.md, frame #1).
+// ATC's A.T. Summer Bucket List; features/CHALLENGES.md, frame 1).
 //
 // workdayLayers.ts's shape, with drought's switch (droughtLayers.ts) and
 // with the differences a challenge place actually has. Which places, and
@@ -73,13 +73,16 @@ import type {
   GeoJSONSourceSpecification,
   LayerSpecification,
 } from '@maplibre/maplibre-gl-style-spec'
-import type { FeatureCollection, Point } from 'geojson'
 import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl'
 import {
   buildChallengeIcon,
   CHALLENGE_ICON_ID,
   CHALLENGE_TAGGED_ICON_ID,
 } from './challengePin'
+import {
+  CHALLENGE_TAGGED_PROPERTY,
+  type ChallengePinFeatureCollection,
+} from './challengePinData'
 import { POI_PIN_INK_SIZE, POI_PIN_PIXEL_RATIO, POI_PIN_SIZE } from './poiIcons'
 import { POI_ICON_SIZE_EXPRESSION, POI_PIN_MIN_ZOOM } from './poiLayers'
 import { whenStyleReady } from './styleReady'
@@ -87,40 +90,14 @@ import { whenStyleReady } from './styleReady'
 export const CHALLENGE_SOURCE_ID = 'challenge-places'
 export const CHALLENGE_LAYER_ID = 'challenge-place-pins'
 
-/** Where a pin says whether it is drawn filled. */
-export const CHALLENGE_TAGGED_PROPERTY = 'tagged'
-
-export interface ChallengePinProperties {
-  /** The published POI id the place is. The feature's identity: one pin per
-   *  POI, however many items name it. */
-  poi: string
-  /** The POI's own published name - not an item title, which for a mystery
-   *  item is the thing a pin must not give away. */
-  name: string
-  /** The POI's own published type, under the key the waypoint layer's size
-   *  expression reads, so the diamond takes its pin's size tier. */
-  poi_type: string
-  /** Filled rather than hollow - see map/challengePins.ts's
-   *  `challengePinFeatures`, which decides it. */
-  [CHALLENGE_TAGGED_PROPERTY]: boolean
-  /** The first joined item naming this POI, in published order. The card is
-   *  what lists every item at a place ("On your challenges"); these two are
-   *  for a caller that needs one of them to start from. */
-  challengeId: string
-  itemId: string
-}
-
-export type ChallengePinFeatureCollection = FeatureCollection<
-  Point,
-  ChallengePinProperties
->
-
-/** An empty collection with one identity, for defaults - a fresh literal
- *  would re-run every effect that depends on it on every render. */
-export const NO_CHALLENGE_PINS: ChallengePinFeatureCollection = {
-  type: 'FeatureCollection',
-  features: [],
-}
+// The pin's data shapes live in a leaf the shell can import without this
+// layer - map/challengePinData.ts says why. Re-exported for the map's callers.
+export {
+  CHALLENGE_TAGGED_PROPERTY,
+  NO_CHALLENGE_PINS,
+  type ChallengePinFeatureCollection,
+  type ChallengePinProperties,
+} from './challengePinData'
 
 export function buildChallengeSource(): GeoJSONSourceSpecification {
   return { type: 'geojson', data: { type: 'FeatureCollection', features: [] } }

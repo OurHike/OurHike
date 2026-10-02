@@ -427,6 +427,96 @@ describe('a transient failure', () => {
   })
 })
 
+// --- One challenge's tags in the order they were made (Challenges) ---------
+
+describe("a challenge's tag that fails for want of signal", () => {
+  const AT = '2026-06-01T00:00:00.000Z'
+  const tag = (id: string, challenge: string, item: string) => ({
+    id,
+    authoredAt: AT,
+    challengeTag: { challenge_id: challenge, item_id: item, how: 'hand' },
+  })
+  const untag = (id: string, challenge: string, item: string | null) => ({
+    id,
+    authoredAt: AT,
+    challengeUntag: { challenge_id: challenge, item_id: item },
+  })
+
+  it('holds back its removal, so the removal never lands before the tag', async () => {
+    withStoredQueue([tag('t1', 'atc', 'mcafee'), untag('u1', 'atc', 'mcafee')])
+    const sent: string[] = []
+
+    const result = await flushOutbox(
+      async (item) => {
+        if (item.id === 't1') throw new Error('offline')
+        sent.push(item.id)
+      },
+      () => null,
+    )
+
+    expect(sent).toEqual([])
+    expect(result).toEqual({ sent: 0, failed: 2, stuck: 0, held: 0 })
+  })
+
+  it("holds back that challenge's entry, which the server reads the tags for", async () => {
+    withStoredQueue([
+      tag('t1', 'atc', 'mcafee'),
+      {
+        id: 'e1',
+        authoredAt: AT,
+        challengeEntry: { challenge_id: 'atc', name: 'Jo', item_ids: ['mcafee'] },
+      },
+    ])
+    const sent: string[] = []
+
+    await flushOutbox(
+      async (item) => {
+        if (item.id === 't1') throw new Error('offline')
+        sent.push(item.id)
+      },
+      () => null,
+    )
+
+    expect(sent).toEqual([])
+  })
+
+  it("holds back nothing of another challenge's, nor any report", async () => {
+    withStoredQueue([
+      tag('t1', 'atc', 'mcafee'),
+      untag('u2', 'long-path', null),
+      { id: 'r1', authoredAt: AT, payload: { type: 'blowdown' } },
+    ])
+    const sent: string[] = []
+
+    await flushOutbox(
+      async (item) => {
+        if (item.id === 't1') throw new Error('offline')
+        sent.push(item.id)
+      },
+      () => null,
+    )
+
+    expect(sent).toEqual(['u2', 'r1'])
+  })
+
+  it('does not hold anything back behind a tag the server refused', async () => {
+    // A 4xx never reached the server's table, so nothing behind it can land
+    // out of order against it.
+    withStoredQueue([tag('t1', 'atc', 'mcafee'), untag('u1', 'atc', 'mcafee')])
+    const sent: string[] = []
+
+    await flushOutbox(
+      async (item) => {
+        if (item.id === 't1') throw new Error('refused')
+        sent.push(item.id)
+      },
+      () => 'This account has more challenge tags than one hiker can make.',
+    )
+
+    expect(sent).toEqual(['u1'])
+  })
+})
+
 // --- Carrying the photo, not a link to one (#234) -------------------------
 
 describe('a report queued with photos', () => {

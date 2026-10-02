@@ -19,9 +19,11 @@ from app.schemas.common import EmailAddress
 ChallengeId = Annotated[str, StringConstraints(pattern=ID_PATTERN, max_length=ID_MAX_CHARS)]
 ItemId = Annotated[str, StringConstraints(pattern=ID_PATTERN, max_length=ID_MAX_CHARS)]
 
-#: One entry names at most this many items. @unvalidated: picked as roughly
-#: five times the ATC's 97-item list, the only challenge that exists, so that
-#: no real list meets it and a runaway client does. What would settle it: the
+#: One entry names at most this many items. @unvalidated: picked as five
+#: times the ATC's list, the only challenge that exists - 100 items in
+#: pipeline/reference/challenges/atc/ (counted 2026-10-01: the PDF's 97
+#: lines and the three mystery items its _README describes) - so that no
+#: real list meets it and a runaway client does. What would settle it: the
 #: longest list a club actually publishes.
 ENTRY_MAX_ITEMS = 500
 
@@ -118,7 +120,7 @@ class ChallengeEntryCreate(BaseModel):
     #: publishers.json). The route takes the entry only when the club that
     #: owns the challenge id has proved this domain - see `send_entry`.
     org_domain: Annotated[
-        str, StringConstraints(strip_whitespace=True, to_lower=True, min_length=3, max_length=253, pattern=r"^[a-z0-9.-]+$")
+        str, StringConstraints(strip_whitespace=True, to_lower=True, min_length=3, max_length=253, pattern=r"^[A-Za-z0-9.-]+$")
     ]
     name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=ENTRY_NAME_MAX_CHARS)]
     email: EmailAddress | None = None

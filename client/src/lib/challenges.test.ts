@@ -5,10 +5,10 @@ import {
   isSealed,
   itemTitle,
   itemsAtPoi,
-  parseChallenges,
   unseal,
   windowLine,
 } from './challenges'
+import { parseChallenges } from './challengeFeed'
 
 // The artifact's own shape, as pipeline/export_challenges.py writes it.
 function place(poi: string, mile: number, name = poi) {
@@ -214,7 +214,7 @@ describe('what screens ask of a challenge', () => {
   })
 })
 
-describe('what the review of 2026-09-30 tightened', () => {
+describe('parseChallenges reads the publisher domain, https-only photos and off-trail matches', () => {
   it('reads the publisher’s domain and whether the club takes entries here', () => {
     const [published] = parseChallenges({
       challenges: [

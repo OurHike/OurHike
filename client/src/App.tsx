@@ -1983,9 +1983,15 @@ function App() {
   // Two facts, not one number. A report waiting for signal resolves itself;
   // a report the server refused never will, and showing them as one count is
   // what let a phone with a wrong clock say "waiting to send" forever (#243).
+  // When the queue was last read, for readers that must tell "not in the
+  // queue" from "not read since it was queued" - the challenge finish screen
+  // (openChallengeEntryState below) says "Sent" only on the first.
+  const [queueReadAt, setQueueReadAt] = useState(0)
   const refreshOutbox = useCallback(async () => {
+    const readAt = Date.now()
     const queue = await listQueued()
     setQueuedItems(queue)
+    setQueueReadAt(readAt)
   }, [])
 
   // Re-read after either thing that can add to the queue closes. `reporting`
@@ -8735,14 +8741,25 @@ function App() {
   // 2026-09-30).
   const challengeTodayRanges =
     passedToday.day === challengeToday ? passedToday.ranges : NO_CHALLENGE_RANGES
-  const challenges = useChallenges(online, afterFirstFrame, () => void syncOutbox(), {
+  // What the other doors do after queueing (handleLogHours's shape): read the
+  // queue now, flush, and read it again - so the finish screen's "waiting",
+  // "refused" and "sent" come from the outbox rather than from the moment
+  // Send was pressed.
+  const onChallengeQueued = useCallback(() => {
+    void refreshOutbox()
+    void syncOutbox()
+      .then((result) => {
+        if (result !== null) handleSynced(result)
+      })
+      .finally(() => void refreshOutbox())
+  }, [refreshOutbox, handleSynced])
+  const challenges = useChallenges(online, afterFirstFrame, onChallengeQueued, {
     todayRanges: challengeTodayRanges,
     trail: DEFAULT_TRAIL_ID,
     today: challengeToday,
     maxElevationFt: (ranges) => profileMaxFt(elevation, ranges),
     hours: challengeHours,
   })
-  const [openChallengeId, setOpenChallengeId] = useState<string | null>(null)
   const challengePlanDays = useMemo(
     () => (plan === null ? [] : planDayRanges(planDayViews(plan))),
     [plan],
@@ -8760,12 +8777,16 @@ function App() {
   // from - Plan, a place card, Browse - and not always to the list.
   const openChallenge = useCallback(
     (challengeId: string) => {
-      setOpenChallengeId(challengeId)
-      pushScreen({ kind: 'more', page: 'challenge' })
+      pushScreen({ kind: 'more', page: 'challenge', challengeId })
     },
     [pushScreen],
   )
   const moreStack = nav.state.stacks.more
+  // The challenge the top of More shows, read off the screen itself.
+  const openChallengeId =
+    moreTop?.kind === 'more' && moreTop.page === 'challenge'
+      ? (moreTop.challengeId ?? null)
+      : null
   const challengesUp = useMemo(() => {
     const top = moreStack[moreStack.length - 1]
     const below = moreStack[moreStack.length - 2]
@@ -8795,11 +8816,13 @@ function App() {
     if (sent === undefined) return undefined
     if (sent.outboxId === undefined) return { kind: 'waiting' as const }
     const queued = queuedItems.find((item) => item.id === sent.outboxId)
-    if (queued === undefined) return undefined
+    // Absent from a queue read before it was queued says nothing yet.
+    if (queued === undefined)
+      return queueReadAt < Date.parse(sent.at) ? { kind: 'waiting' as const } : undefined
     return queued.failure !== undefined
       ? { kind: 'refused' as const, reason: queued.failure.reason }
       : { kind: 'waiting' as const }
-  }, [openChallengeRecord, challenges.state.sent, queuedItems])
+  }, [openChallengeRecord, challenges.state.sent, queuedItems, queueReadAt])
   // Joined, and no longer in the published list: the list says so rather
   // than silently shrinking.
   const missingChallenges = challenges.state.joined.filter(
@@ -8845,15 +8868,17 @@ function App() {
         joined={challenges.joined}
         state={challenges.state}
         today={challengeToday}
-        // Only once a list has arrived: before the kept copy is read, every
-        // joined id would count as missing.
-        missing={challenges.all.length > 0 ? missingChallenges : 0}
+        // Only once a list has been read: before the kept copy is read, every
+        // joined id would count as missing. Not `all.length > 0`, which hid
+        // the note for a release that publishes no challenges at all - the
+        // one case where every joined challenge really was withdrawn.
+        missing={challenges.loaded ? missingChallenges : 0}
         onOffer={challengesOnOffer}
         onOpen={openChallenge}
         onBrowse={() => pushScreen({ kind: 'more', page: 'challenge-browse' })}
       />
     )
-  // The map layer (frame #1): its Legend row and pins, owned by
+  // The map layer (frame 1): its Legend row and pins, owned by
   // chrome/challengePanel.ts and spread into <MapScreen> as one line.
   const { setLayerShown: setChallengeLayerShown } = challenges
   const challengeLayerShown = challenges.state.layerShown
@@ -8868,7 +8893,7 @@ function App() {
     chosenTrail: chosenTrailId,
     onToggle: toggleChallengePlaces,
   })
-  // Today's camp card (frame #3): asked once, after the day is over, and only
+  // Today's camp card (frame 3): asked once, after the day is over, and only
   // about what the day's walked miles passed.
   const challengeDayEnded = dayHasEnded({
     now,
@@ -8905,7 +8930,7 @@ function App() {
     />
   ) : null
 
-  // Plan's card (frames #6 and #6b): the joined challenges' places on this
+  // Plan's card (frames 6 and 6b): the joined challenges' places on this
   // route by day, or - when none touches it - the one best suggestion. The
   // hike key scopes "Hide" to this trip.
   const challengeHikeKey = currentTrip?.id ?? 'plan'

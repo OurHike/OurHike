@@ -1,7 +1,7 @@
 // Which challenge places to pin, and how (#1780 — Let a club publish a
 // challenge — places on its own trails that hikers opt into and tag at camp —
 // starting with the ATC's A.T. Summer Bucket List; features/CHALLENGES.md,
-// frame #1).
+// frame 1).
 //
 // The pure half of the challenge layer: the hiker's joined challenges and
 // record in, GeoJSON points out. Its own module rather than a function in
@@ -26,7 +26,7 @@ import {
   CHALLENGE_TAGGED_PROPERTY,
   type ChallengePinFeatureCollection,
   type ChallengePinProperties,
-} from './challengeLayers'
+} from './challengePinData'
 
 /**
  * Whether the hiker has tagged THIS place for THIS item.

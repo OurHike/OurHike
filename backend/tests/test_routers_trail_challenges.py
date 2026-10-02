@@ -19,6 +19,7 @@ with every other org endpoint.
 import csv
 import datetime as dt
 import io
+import json
 import uuid
 
 import httpx
@@ -169,7 +170,7 @@ def test_a_tag_naming_an_id_the_pipeline_could_never_publish_is_422(client):
     assert _tag(client, str(uuid.uuid4()), item_id="../McAfee Knob").status_code == 422
 
 
-def test_a_tag_for_a_challenge_no_club_has_saved_is_accepted_and_not_late(client):
+def test_a_tag_for_a_challenge_no_club_has_saved_is_accepted_with_no_late_field(client):
     """The ATC's draft publishes from the reviewed file alone; its tags must
     not wait on a console row."""
     response = _tag(client, str(uuid.uuid4()), challenge_id="atc-summer-bucket-list-2027")
@@ -853,3 +854,82 @@ def test_the_spreadsheet_guard_reads_a_folded_lead_and_a_line_feed():
     assert spreadsheet_safe("\uff1dcmd") == "'\uff1dcmd"
     assert spreadsheet_safe("\n=1+1") == "'\n=1+1"
     assert spreadsheet_safe("Zo\u00eb") == "Zo\u00eb"
+
+
+# ------------------------------------------------------------------ #
+# The second security review (2026-10-01)
+# ------------------------------------------------------------------ #
+
+
+def test_the_csv_keeps_how_items_were_tagged_when_the_entry_arrived_even_after_leave(client, db_session, club, admin):
+    """An honest hiker who pressed Leave after entering took their tags back;
+    a CSV read live then listed every item as untagged."""
+    _own(db_session, club)
+    hiker = str(uuid.uuid4())
+    _tag(client, hiker, item_id="jackie-jones", how="hand")
+    _enter(client, hiker, item_ids=["jackie-jones"])
+    assert client.delete(f"/challenges/{CHALLENGE}/tags", headers=auth_headers(hiker)).status_code == 204
+
+    rows = _read_csv(client.get(f"/clubs/{club.slug}/challenges/{CHALLENGE}/entries", headers=auth_headers(admin.id)))
+    entry = dict(zip(rows[0], rows[1]))
+
+    assert entry["hand_tagged_item_ids"] == "jackie-jones"
+    assert entry["untagged_item_ids"] == ""
+
+
+def test_the_csv_gives_a_club_only_the_entries_it_was_given(client, db_session, club, admin):
+    """An id that changed hands - an org deleted, the id saved again - must
+    not pass the earlier owner's entrants to the new one."""
+    _own(db_session, club)
+    _enter(client, str(uuid.uuid4()))
+    earlier = db_session.query(ChallengeEntry).one()
+    other = make_org(db_session, slug="another-conference", state=OrgState.claimed)
+    earlier.club_id = other.id
+    db_session.commit()
+
+    rows = _read_csv(client.get(f"/clubs/{club.slug}/challenges/{CHALLENGE}/entries", headers=auth_headers(admin.id)))
+
+    assert rows == [list(CSV_COLUMNS)]
+
+
+def test_a_frozen_organization_reads_no_list_of_its_challenges(client, db_session, club, admin):
+    _own(db_session, club)
+    club.state = OrgState.frozen
+    db_session.commit()
+
+    assert client.get(f"/clubs/{club.slug}/challenges", headers=auth_headers(admin.id)).status_code == 409
+
+
+def test_a_definition_holding_nan_is_refused_rather_than_a_500(client, club, admin):
+    body = '{"definition": ' + json.dumps(_definition()).replace('"draft"', '"draft", "x": NaN', 1) + "}"
+
+    response = client.put(
+        f"/clubs/{club.slug}/challenges/{CHALLENGE}",
+        content=body,
+        headers={**auth_headers(admin.id), "Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_an_entrys_domain_is_compared_whatever_its_case(client, db_session, club):
+    _own(db_session, club)
+
+    assert _enter(client, str(uuid.uuid4()), org_domain="RamapoTrails.org").status_code == 201
+
+
+def test_a_club_that_proved_a_publishers_domain_saves_that_publishers_ids_under_its_own_slug(client, db_session):
+    """The real ATC, registered as anything but `atc`, could never own its
+    own challenge id; a squatter's domain still cannot."""
+    atc = make_org(db_session, slug="appalachian-trail-conservancy", domain="appalachiantrail.org", state=OrgState.claimed)
+    atc_admin = make_profile(db_session)
+    make_admin(db_session, atc, atc_admin)
+    atc_id = "atc-summer-bucket-list-2027"
+
+    saved = client.put(
+        f"/clubs/{atc.slug}/challenges/{atc_id}",
+        json={"definition": _definition(atc_id, org="atc")},
+        headers=auth_headers(atc_admin.id),
+    )
+
+    assert saved.status_code == 200

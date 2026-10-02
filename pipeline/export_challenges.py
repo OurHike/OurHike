@@ -252,13 +252,20 @@ def publisher_domain(row: object) -> str | None:
     return domain if _DOMAIN.match(domain) else None
 
 
-def publisher_domains(rows: list[object]) -> dict[str, str]:
-    """org -> its domain, for every row that names one."""
+def publisher_domains(rows: list[object], organizations: Mapping[str, dict], pois: list[dict]) -> dict[str, str]:
+    """org -> its domain, from the rows `publisher_scope` accepts and no
+    others. A refused row - no `why`, an unregistered org - must not supply
+    the domain either: a bad row ahead of the real one used to publish its
+    domain as the org's (second security review, 2026-10-01)."""
+    scope, _ = publisher_scope(rows, organizations, pois)
     out: dict[str, str] = {}
     for row in rows:
+        org = row.get("org") if isinstance(row, Mapping) else None
+        if org not in scope or org in out or not _text(row.get("why")) or not isinstance(row.get("trails"), list):
+            continue
         domain = publisher_domain(row)
-        if domain is not None and isinstance(row.get("org"), str):
-            out.setdefault(row["org"], domain)
+        if domain is not None:
+            out[org] = domain
     return out
 
 
@@ -294,6 +301,15 @@ def build_output(
         org = raw.get("org") if isinstance(raw, Mapping) else None
         if isinstance(org, str) and org != path.parent.name:
             misplaced.append((path.stem, f"file is under {path.parent.name}/ but its org is {org!r}"))
+            continue
+        # A file the console's pull request wrote records the domain the
+        # saving organization proved (backend/app/core/registry_pr.py). Under
+        # `atc/` it has to be the ATC's: a squatter's file reaching a
+        # reviewer's diff is the case this refuses mechanically. A file a
+        # maintainer wrote by hand carries none and is not asked.
+        saved_by = raw.get("published_by_domain") if isinstance(raw, Mapping) else None
+        if saved_by is not None and (org_domains or {}).get(str(org)) != str(saved_by).strip().lower():
+            misplaced.append((path.stem, f"saved by {saved_by!r}, which is not the domain publishers.json names for {org!r}"))
             continue
         candidates.append((path.stem, raw))
 
@@ -348,8 +364,9 @@ def _kinds(record: dict) -> str:
 
 
 def main(today: date | None = None) -> dict:
-    # UTC, like every stamp this pipeline writes: a mystery item unseals on
-    # the first run on or after its reveal_on, and "today" must not depend on
+    # UTC, like every stamp this pipeline writes: a mystery item ships in the
+    # clear from the first run AFTER its reveal_on (lib/challenges.py's
+    # `resolve_item` seals through the day itself), and "today" must not depend on
     # which timezone the runner happens to be in.
     today = datetime.now(timezone.utc).date() if today is None else today
 
@@ -383,7 +400,7 @@ def main(today: date | None = None) -> dict:
     org_trails, refused = publisher_scope(publishers, organizations, pois)
     output, resolution = build_output(
         files,
-        org_domains=publisher_domains(publishers),
+        org_domains=publisher_domains(publishers, organizations, pois),
         org_trails=org_trails,
         organizations=organizations,
         pois=pois,

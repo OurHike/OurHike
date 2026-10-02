@@ -1,0 +1,37 @@
+version: 2
+
+# OurHike's challenge scope file, in its own file beside _ourhike__sources.yml,
+# which declares OurHike's other reviewed files under the same source name:
+# dbt merges one source's tables across files (dbt 2.0.6, parsed 2026-10-02),
+# and each block's config applies to its own tables.
+sources:
+  - name: ourhike
+    description: >
+      OurHike's own data. This file holds reference/challenges/publishers.json,
+      landed by the extract's _shared/ourhike/challenge_publishers.py.
+    schema: raw
+    config:
+      meta:
+        cadence: monthly
+      # No freshness, as for the other reviewed files: the change marker is
+      # the file's sha256, so `_loaded_at` moves only when its bytes do.
+    tables:
+      - name: raw_ourhike__challenges_publishers
+        data_tests:
+          # Rows sharing base_ourhike__challenges_publishers's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'reference/challenges/publishers.json'", "_path"]
+        description: >
+          reference/challenges/publishers.json whole, as one row, verbatim:
+          which trails each organization may put a challenge on (#1780 — Let
+          a club publish a challenge — places on its own trails that hikers
+          opt into and tag at camp — starting with the ATC's A.T. Summer
+          Bucket List, design principle 5), one row per organization with its
+          reason and its web domain. One organization on 2026-10-02, the ATC.
+        columns:
+          - name: row_json
+            description: The file as written, `_README` aside, as JSON text.
+            data_tests: [not_null]
+          - name: _path
+            description: The file's path in the repository.

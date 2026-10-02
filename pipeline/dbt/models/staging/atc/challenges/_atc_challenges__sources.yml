@@ -1,0 +1,46 @@
+version: 2
+
+# ATC's challenge files, in their own file beside _atc__sources.yml, which
+# declares the club's ArcGIS layers under the same source name: dbt merges
+# one source's tables across files (dbt 2.0.6, parsed 2026-10-02, as
+# _nynjtc_alerts__sources.yml found), and each block's config applies to its
+# own tables.
+sources:
+  - name: atc
+    description: >
+      ATC's own layers and files, landed by the extract's atc/ folder. This
+      file holds its challenges, one reviewed file per challenge under
+      pipeline/reference/challenges/atc/, landed by atc/challenges.py.
+    schema: raw
+    config:
+      meta:
+        cadence: monthly
+      # No freshness, as for every reviewed file: ReviewedDir's change marker
+      # hashes the folder's names and bytes, so `_loaded_at` moves only when
+      # somebody edits a challenge, and a threshold would warn about a list
+      # nobody needed to change.
+    tables:
+      - name: raw_atc__challenges_atc
+        data_tests:
+          # Rows sharing base_atc__challenges_atc's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'reference/challenges/atc'", "_path"]
+        description: >
+          reference/challenges/atc/*.json, one row per file (#1780 — Let a
+          club publish a challenge — places on its own trails that hikers opt
+          into and tag at camp — starting with the ATC's A.T. Summer Bucket
+          List), each landed whole in `row_json` as the JSON its reviewer
+          wrote, `_README` aside (ReviewedDir's `verbatim`). One file on
+          2026-10-02, the Summer Bucket List. Key: `_path`, the file's path
+          in the repository, unique by construction.
+        columns:
+          - name: row_json
+            description: >
+              The file as json.loads read it, `_README` aside, as JSON text.
+              Null for a file that is not valid JSON.
+          - name: _parse_error
+            description: The JSON parser's complaint about a file that is not valid JSON; null otherwise.
+          - name: _path
+            description: The file's path, relative to pipeline/, such as reference/challenges/atc/atc-summer-bucket-list-2027.json.
+            data_tests: [not_null, unique]

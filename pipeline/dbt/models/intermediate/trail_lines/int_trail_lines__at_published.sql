@@ -129,6 +129,10 @@ select
     cast(null as varchar) as trail_status,
     cast(null as varchar) as trail_status_basis,
     cast(null as varchar) as closure_kind,
+    -- No A.T. line is split against a closed area: apply_area_closures()
+    -- reads the network's records only.
+    cast(null as varchar) as closure_reason,
+    cast(null as varchar) as closure_source,
     cast(null as varchar) as duplicate_of,
     st_asgeojson(
         case

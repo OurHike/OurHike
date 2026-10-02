@@ -219,6 +219,47 @@ class Unavailable(Exception):
 
 
 @dataclass(frozen=True)
+class Carried:
+    """What extract/_run.py hands a resource that reads only what moved (Resource.carries), before its read.
+
+    `committed` is the resource's table as its last committed load left it:
+    the load `_extract_runs` last recorded `loaded` for the table and
+    `_dlt_loads` records as complete, read from that load's own files by
+    name, never a glob (extract/_warehouse.py's rule), as plain rows with
+    dlt's own columns dropped. Empty on a first run.
+
+    `progress` is what an earlier read that ran out of budget had read and
+    kept (Incomplete below), none of it ever landed: extract/_run.py's
+    `_extract_progress` table, which nothing reads as the data.
+
+    `seconds` is how long the read may take from the moment it is handed
+    this, or None for no budget, in which case the read reads everything it
+    needs and never answers Incomplete.
+    """
+
+    committed: tuple[dict, ...] = ()
+    progress: tuple[dict, ...] = ()
+    seconds: float | None = None
+
+
+class Incomplete(Exception):
+    """A carrying resource's read that ran out of budget before it had every row its table must hold.
+
+    Nothing lands: the table keeps its last committed rows, or, on a first
+    run, stays not yet loaded, because a partial set landed under `replace`
+    would read as the whole and drop every row it had not reached yet.
+    `progress` is every row read so far that a later read may carry,
+    which extract/_run.py keeps in `_extract_progress` until the table
+    loads. `read` is how many rows this run read, and `needed` how many it
+    still lacks, for the run's summary.
+    """
+
+    def __init__(self, message: str, progress: list[dict], read: int, needed: int):
+        super().__init__(message)
+        self.progress, self.read, self.needed = progress, read, needed
+
+
+@dataclass(frozen=True)
 class Resource:
     """One upstream, landing as one raw table. Subclassed per source kind in extract/_kinds.py.
 
@@ -279,8 +320,39 @@ class Resource:
         """
         return Freshness.STALE, None
 
+    @property
+    def carries(self) -> bool:
+        """Whether a run reads this through rows_carried(): only what moved, the rest carried from the last load.
+
+        Such a resource still lands its whole table every run, under `replace`,
+        so the run check, a refused load and a skipped resource behave as for
+        any other; only the read is smaller. ATC's trail-updates pages are the
+        one (extract/_kinds.py's AtcTrailUpdatePages).
+        """
+        return False
+
+    @property
+    def exact_proof(self) -> bool:
+        """Whether the upstream's own count is exactly the rows the table must hold, so more rows refuse too.
+
+        False for a count read beside the rows, such as ArcGIS's
+        `returnCountOnly`, where a feature added between the count and the
+        last page is not an error. True where the rows are built from the
+        same answer the count is read from, so a difference either way is
+        this code's mistake.
+        """
+        return False
+
     def rows(self, proofs: dict[str, int]):
         """Yield the upstream's rows, recording the upstream's own count in `proofs[self.table]` where it has one."""
+        raise NotImplementedError
+
+    def rows_carried(self, proofs: dict[str, int], carried: Carried):
+        """rows(), for a resource that `carries`: read only what moved since `carried`, and yield the whole table.
+
+        Raises Incomplete, landing nothing, when `carried.seconds` ran out
+        before every row the table must hold had been read.
+        """
         raise NotImplementedError
 
     def column_hints(self) -> dict:

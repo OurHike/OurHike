@@ -58,7 +58,7 @@ import threading
 import time
 from collections import defaultdict
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -73,7 +73,16 @@ os.environ.setdefault("SCHEMA__NAMING", "sql_ci_v1")
 import dlt  # noqa: E402
 import pyarrow.parquet as pq  # noqa: E402
 
-from extract._contract import CADENCES, Resource, Unavailable, all_resources, discover, discover_shared  # noqa: E402
+from extract._contract import (  # noqa: E402
+    CADENCES,
+    Carried,
+    Incomplete,
+    Resource,
+    Unavailable,
+    all_resources,
+    discover,
+    discover_shared,
+)
 from extract._kinds import ORGS_TABLE, ConditionsQuery  # noqa: E402
 from lib.freshness_state import Freshness  # noqa: E402
 
@@ -106,6 +115,17 @@ RUNS_TABLE = "_extract_runs"
 # The verdict and outcome a resource is logged with when its change check
 # raised Unavailable: left out of the run, and withdrawn from the warehouse.
 UNAVAILABLE = "unavailable"
+# The outcome of a carrying resource whose read ran out of budget before it
+# had every row (extract/_contract.py's Incomplete): left out of the run, its
+# last committed table standing, or, never loaded, not yet loaded.
+INCOMPLETE = "incomplete"
+# What an incomplete read had read, kept for the next run to carry and never
+# read as the data: one row per page, `row_json` the row as the resource
+# yielded it, under `resource_name`. Written whole, `replace`, in the run
+# log's own load, which every run commits, refused or not, so what a read
+# fetched survives a run whose other tables were refused. extract/_warehouse.py
+# loads only the tables `_extract_runs` names, which this never is.
+PROGRESS_TABLE = "_extract_progress"
 
 # @unvalidated: a table whose type may not be empty fails the run when it
 # lands below this share of its last loaded size. 0.5 is fetch_opentrail.py's
@@ -133,6 +153,8 @@ class Planned:
     verdict: Freshness
     recorded: dict | None
     marker: dict | None
+    # A carrying resource's last committed rows and kept progress (carried_for()), handed to its read.
+    carried: Carried | None = None
 
 
 @dataclass
@@ -159,6 +181,14 @@ class RunReport:
     # logged `refused` (ISOLATED_OUTCOME); the command line then exits
     # PARTIAL_EXIT, so the run still goes red.
     isolated: dict[str, str] = field(default_factory=dict)
+    # Carrying resources whose read ran out of budget this run (Incomplete),
+    # by name, with how far it got: left out, their last committed table
+    # standing or, on a first run, not yet loaded. Not a refusal, so the exit
+    # stays 0; a read that fit no page at all raises instead, and is isolated.
+    incomplete: dict[str, str] = field(default_factory=dict)
+    # What each incomplete read had read, by name, which write_run_log keeps
+    # in PROGRESS_TABLE for the next run.
+    progress: dict[str, list[dict]] = field(default_factory=dict)
 
 
 @contextmanager
@@ -247,6 +277,12 @@ def read_each(report: RunReport, to_run: list[Planned], seconds: float | None) -
     Crawl-delay to fit (lib/http_retry.py's throttle is the resource's own);
     a daemon thread is abandoned, and dies with the process.
 
+    A carrying resource (Resource.carries) is handed what is left of the
+    budget, so it can stop before it is abandoned and keep what it read: one
+    that runs out answers Incomplete, lands nothing, and is in
+    `report.incomplete`, its progress in `report.progress`, rather than
+    refused.
+
     Returns the resources that answered, and {name: rows}. A resource whose
     read failed, or ran out of time, is in `report.isolated`, or, where
     stops_the_leg() says so, re-raised.
@@ -257,7 +293,11 @@ def read_each(report: RunReport, to_run: list[Planned], seconds: float | None) -
         for item in items:
             proofs: dict[str, int] = {}
             try:
-                rows = list(item.resource.rows(proofs))
+                if item.resource.carries:
+                    left = None if deadline is None else max(0.0, deadline - time.monotonic())
+                    rows = list(item.resource.rows_carried(proofs, replace(item.carried or Carried(), seconds=left)))
+                else:
+                    rows = list(item.resource.rows(proofs))
             except Exception as failure:  # noqa: BLE001 - every failure is recorded, and re-raised where it stops the leg
                 results[item.resource.name] = failure
             else:
@@ -282,6 +322,12 @@ def read_each(report: RunReport, to_run: list[Planned], seconds: float | None) -
         outcome = answered.get(name)
         if outcome is None:
             failure: BaseException = TimeoutError(f"no answer within the leg's {seconds:g} s read budget")
+        elif isinstance(outcome, Incomplete):
+            loaded_before = bool(item.carried and item.carried.committed)
+            report.incomplete[name] = f"{outcome}; {'its last committed table stands' if loaded_before else 'not yet loaded'}"
+            report.progress[name] = outcome.progress
+            print(f"::warning title={name} {'incomplete' if loaded_before else 'not yet loaded'}::{report.incomplete[name]}")
+            continue
         elif isinstance(outcome, BaseException):
             failure = outcome
         else:
@@ -355,11 +401,20 @@ def recorded_markers(pipeline) -> dict[str, dict | None]:
     return {name: state.get("marker") for name, state in resources.items()}
 
 
-def to_dlt(resource: Resource, marker: dict | None, proofs: dict[str, int], loaded_at: datetime, hints=None, read=None):
+def to_dlt(
+    resource: Resource,
+    marker: dict | None,
+    proofs: dict[str, int],
+    loaded_at: datetime,
+    hints=None,
+    read=None,
+    carried: Carried | None = None,
+):
     """Wrap one Resource in the dlt settings every resource shares. `hints` collects each table's column hints.
 
     `read` is the resource's rows already read (a conditions leg reads each
-    upstream on its own first, read_each()); None reads them here."""
+    upstream on its own first, read_each()); None reads them here, through
+    rows_carried() with `carried` and no budget for a resource that carries."""
     columns = resource.column_hints()
     if hints is not None:
         hints[resource.table] = columns
@@ -378,7 +433,13 @@ def to_dlt(resource: Resource, marker: dict | None, proofs: dict[str, int], load
     )
     def rows():
         dlt.current.resource_state()["marker"] = marker
-        for row in resource.rows(proofs) if read is None else (dict(row) for row in read):
+        if read is not None:
+            answer = (dict(row) for row in read)
+        elif resource.carries:
+            answer = resource.rows_carried(proofs, replace(carried or Carried(), seconds=None))
+        else:
+            answer = resource.rows(proofs)
+        for row in answer:
             row["_loaded_at"] = loaded_at
             yield row
 
@@ -416,6 +477,12 @@ def run_check(planned: list[Planned], rows: dict[str, int], proofs: dict[str, in
             continue
         if proof is not None and landed < proof:
             problems.append(f"{table}: {landed} rows, and the upstream counts {proof}")
+        elif resource.exact_proof and landed != proof:
+            # Rows built from the very answer the count is read from: more rows than it counts is a row twice, or
+            # a carried row the upstream no longer lists, and no count at all is a read that skipped its proof.
+            problems.append(
+                f"{table}: {landed} rows, and the upstream counts {proof}, which must be exactly the rows this table holds"
+            )
         prior = previous.get(table)
         if not resource.may_be_empty and prior and landed < COLLAPSE_FLOOR * prior:
             problems.append(f"{table}: {landed} rows against {prior} last time, below the {COLLAPSE_FLOOR:.0%} floor")
@@ -479,14 +546,79 @@ def committed(pipeline, load_id: str, rows: dict[str, int], planned: list[Planne
 
 
 def run_log_rows(pipeline) -> list[dict]:
-    files = table_files(pipeline, RUNS_TABLE)
-    if not files:
-        return []
+    return _read_rows(pipeline, table_files(pipeline, RUNS_TABLE))
+
+
+def _read_rows(pipeline, files: list[str]) -> list[dict]:
     client = _client(pipeline)
     rows = []
     for path in files:
         rows.extend(pq.read_table(client.fs_client.open(path)).to_pylist())
     return rows
+
+
+def committed_rows(pipeline, table: str, *, log: list[dict] | None = None, complete: set[str] | None = None) -> tuple[dict, ...]:
+    """The table's rows as its last committed load left them, dlt's own columns dropped; () where it has none.
+
+    The load is the one extract/_warehouse.py's committed_tables() would
+    serve (the table's latest `loaded` run whose load `_dlt_loads` records
+    complete, and not withdrawn since), and its files are listed by that
+    load id, never globbed, so nothing an uncommitted package left behind is
+    carried. Imported here rather than at the top, because that module
+    imports this one.
+    """
+    from extract._warehouse import committed_tables
+
+    load_id = committed_tables(pipeline, log=log, complete=complete).get(table)
+    if load_id is None:
+        return ()
+    rows = _read_rows(pipeline, table_files(pipeline, table, load_id))
+    return tuple({name: value for name, value in row.items() if not name.startswith("_dlt_")} for row in rows)
+
+
+def stored_progress(pipeline, complete: set[str] | None = None) -> dict[str, list[dict]]:
+    """What earlier incomplete reads kept (PROGRESS_TABLE), by resource name: the newest committed load's rows.
+
+    The files are those of one load, the newest that `_dlt_loads` records
+    complete and that wrote this table, picked out by the load id in each
+    file's name: a `replace` load deletes the files before it, so this is the
+    one snapshot there is, and a load cut short, which never commits, is
+    passed over for the last that did.
+    """
+    files = table_files(pipeline, PROGRESS_TABLE)
+    if not files:
+        return {}
+    complete = committed_load_ids(pipeline) if complete is None else complete
+    loads = {load_id: [path for path in files if os.path.basename(path).startswith(f"{load_id}.")] for load_id in complete}
+    written = sorted((load_id for load_id, paths in loads.items() if paths), key=float)
+    if not written:
+        return {}
+    kept: dict[str, list[dict]] = defaultdict(list)
+    for row in _read_rows(pipeline, loads[written[-1]]):
+        kept[row["resource_name"]].append(json.loads(row["row_json"]))
+    return dict(kept)
+
+
+def carried_for(pipeline, items: list[Planned], kept: dict[str, list[dict]], log: list[dict], complete: set[str]) -> None:
+    """Hand each carrying resource about to be read its last committed rows and its kept progress (Planned.carried)."""
+    for item in items:
+        if item.resource.carries:
+            item.carried = Carried(
+                committed=committed_rows(pipeline, item.resource.table, log=log, complete=complete),
+                progress=tuple(kept.get(item.resource.name, ())),
+            )
+
+
+def progress_after(kept: dict[str, list[dict]], report: RunReport, loaded: set[str]) -> dict[str, list[dict]]:
+    """What PROGRESS_TABLE holds after this run: a read that loaded drops its own, an incomplete one replaces it.
+
+    Anything else, a resource refused, isolated, not due or not read at all,
+    keeps what it had, so a run whose other tables were refused costs a
+    first run nothing it had already read.
+    """
+    after = {name: rows for name, rows in kept.items() if name not in loaded}
+    after.update(report.progress)
+    return {name: rows for name, rows in after.items() if rows}
 
 
 def last_loaded_counts(log: list[dict]) -> dict[str, int]:
@@ -523,10 +655,28 @@ RUNS_COLUMNS = {
 }
 
 
+# PROGRESS_TABLE's columns: whose progress, the run that wrote this snapshot, and the row as JSON text.
+PROGRESS_COLUMNS = {
+    "resource_name": {"data_type": "text", "nullable": False},
+    "run_id": {"data_type": "text", "nullable": False},
+    "row_json": {"data_type": "text", "nullable": False},
+}
+
+
 def write_run_log(
-    pipeline, report: RunReport, planned: list[Planned], checked_at: datetime, unavailable: list[Resource] = ()
+    pipeline,
+    report: RunReport,
+    planned: list[Planned],
+    checked_at: datetime,
+    unavailable: list[Resource] = (),
+    progress: dict[str, list[dict]] | None = None,
 ) -> None:
-    """Append one `_extract_runs` row per planned resource, and per unavailable one. INCREMENTAL.md's log.json, as one append-only table."""
+    """Append one `_extract_runs` row per planned resource, and per unavailable one. INCREMENTAL.md's log.json, as one append-only table.
+
+    `progress`, where the run has a carrying resource or kept progress
+    (progress_after()), replaces PROGRESS_TABLE in the same load, so what an
+    incomplete read fetched commits with the run log whatever else the run did.
+    """
     log = [
         {
             "run_id": report.run_id,
@@ -555,7 +705,12 @@ def write_run_log(
         # load, and as refused in its outcome: committed_tables() then keeps
         # reading its last committed load, and due() does not count the check.
         isolated = resource.name in report.isolated
-        skipped = item.verdict is Freshness.FRESH or isolated
+        # An incomplete read (a carrying resource out of budget) leaves the same
+        # nothing behind, and is logged `incomplete`; it keeps its column hints, so
+        # the warehouse can name a table not yet loaded rather than refuse the build.
+        incomplete = resource.name in report.incomplete
+        skipped = item.verdict is Freshness.FRESH or isolated or incomplete
+        outcome = ISOLATED_OUTCOME if isolated else INCOMPLETE if incomplete else "skipped" if skipped else report.outcome
         log.append(
             {
                 "run_id": report.run_id,
@@ -571,12 +726,14 @@ def write_run_log(
                 "rows": None if skipped else report.rows.get(resource.table, 0),
                 "count_proof": report.proofs.get(resource.table),
                 "load_id": None if skipped else report.load_id,
-                "outcome": ISOLATED_OUTCOME if isolated else "skipped" if skipped else report.outcome,
+                "outcome": outcome,
                 "checked_at": checked_at,
                 # A proven zero writes no file on a table's first load (dlt keeps no
                 # schema for a table that never held a row, measured 2026-10-01), so
                 # its hints are what lets the warehouse create it empty.
-                "column_hints": json.dumps(report.hints[resource.table], sort_keys=True)
+                "column_hints": json.dumps(resource.column_hints(), sort_keys=True)
+                if incomplete
+                else json.dumps(report.hints[resource.table], sort_keys=True)
                 if not skipped and report.rows.get(resource.table, 0) == 0 and resource.table in report.hints
                 else None,
             }
@@ -592,7 +749,25 @@ def write_run_log(
     def runs():
         yield log
 
-    pipeline.run(runs())
+    if progress is None:
+        pipeline.run(runs())
+        return
+
+    @dlt.resource(
+        name=PROGRESS_TABLE,
+        table_name=PROGRESS_TABLE,
+        write_disposition="replace",
+        file_format="parquet",
+        columns=PROGRESS_COLUMNS,
+    )
+    def kept():
+        yield [
+            {"resource_name": name, "run_id": report.run_id, "row_json": json.dumps(row, sort_keys=True)}
+            for name, rows in sorted(progress.items())
+            for row in rows
+        ]
+
+    pipeline.run([runs(), kept()])
 
 
 def run_pipeline(
@@ -673,6 +848,19 @@ def _run(
         f"{lane}: {len(planned) + len(unavailable)} resources, {len(to_run)} to read, "
         f"{len(planned) - len(to_run)} fresh, {len(unavailable)} unavailable"
     )
+    # A resource that reads only what moved (Resource.carries) is handed its
+    # last committed rows and what an earlier incomplete read kept, and every
+    # run log written below carries PROGRESS_TABLE forward: unchanged where the
+    # run refused, dropped for a read that loaded, replaced for one that ran out.
+    carrying = any(item.resource.carries for item in planned)
+    kept = {}
+    if carrying:
+        complete = committed_load_ids(pipeline)
+        kept = stored_progress(pipeline, complete)
+        carried_for(pipeline, to_run, kept, run_log_rows(pipeline), complete)
+
+    def progress(loaded: set[str] = frozenset()) -> dict[str, list[dict]] | None:
+        return progress_after(kept, report, loaded) if carrying else None
 
     # A CONDITIONS LEG ISOLATES EACH UPSTREAM. One club's failure must not hold
     # back another club's closures, so a leg reads every resource on its own
@@ -699,6 +887,7 @@ def _run(
                     checked_at,
                     report.hints,
                     None if read is None else read[item.resource.name],
+                    item.carried,
                 )
                 for item in items
             ]
@@ -718,7 +907,7 @@ def _run(
                 pipeline.abort_packages()
                 report.outcome = "refused"
                 with timed(report, "run log"):
-                    write_run_log(pipeline, report, planned, checked_at, unavailable)
+                    write_run_log(pipeline, report, planned, checked_at, unavailable, progress())
                 raise ExtractRefused("Extract run check:\n  " + "\n  ".join(report.problems), report)
             break
         refused = {}
@@ -733,7 +922,7 @@ def _run(
             report.problems = [problem for _, problems in refused.values() for problem in problems]
             report.outcome = "refused"
             with timed(report, "run log"):
-                write_run_log(pipeline, report, planned, checked_at, unavailable)
+                write_run_log(pipeline, report, planned, checked_at, unavailable, progress())
             raise ExtractRefused("Extract run check:\n  " + "\n  ".join(report.problems), report)
         for table, (items, problems) in refused.items():
             for item in items:
@@ -752,10 +941,10 @@ def _run(
         if report.problems:
             report.outcome = "unverified"
             with timed(report, "run log"):
-                write_run_log(pipeline, report, planned, checked_at, unavailable)
+                write_run_log(pipeline, report, planned, checked_at, unavailable, progress())
             raise ExtractRefused("Extract after-run check:\n  " + "\n  ".join(report.problems), report)
     with timed(report, "run log"):
-        write_run_log(pipeline, report, planned, checked_at, unavailable)
+        write_run_log(pipeline, report, planned, checked_at, unavailable, progress({item.resource.name for item in to_run}))
 
 
 def summary_markdown(report: RunReport | None, lane: str, *, failure: BaseException | None = None) -> str:
@@ -765,7 +954,8 @@ def summary_markdown(report: RunReport | None, lane: str, *, failure: BaseExcept
     and the upstream's own count read in the same run, blank where the
     platform has none and never written as 0 for it. A FRESH resource lands
     nothing and keeps its last committed table, so its rows read "kept"; an
-    unavailable one is withdrawn from the warehouse, and reads "withdrawn".
+    unavailable one is withdrawn from the warehouse, and reads "withdrawn"; a
+    carrying read that ran out of budget landed nothing, and reads so.
     A run that stopped before normalize has no counts at all, and its rows
     are left blank rather than written as zero.
     """
@@ -786,12 +976,17 @@ def summary_markdown(report: RunReport | None, lane: str, *, failure: BaseExcept
     if report.unavailable:
         lines += ["**Unavailable** (left out of the run, and withdrawn from the warehouse):", ""]
         lines += [*[f"- `{name}`: {why}" for name, why in sorted(report.unavailable.items())], ""]
+    if report.incomplete:
+        lines += ["**Read incomplete** (ran out of budget; nothing landed, and what it read is kept for the next run):", ""]
+        lines += [*[f"- `{name}`: {why}" for name, why in sorted(report.incomplete.items())], ""]
     normalized = "normalize" in report.timings and not (stopped and not report.rows)
     if report.verdicts:
         lines += ["| table | verdict | rows | upstream count |", "|---|---|---:|---:|"]
         for name, verdict in sorted(report.verdicts.items()):
             if name in report.isolated:
                 rows = "refused, last table stands"
+            elif name in report.incomplete:
+                rows = "incomplete, nothing landed"
             elif verdict == Freshness.FRESH.value:
                 rows = "kept"
             elif verdict == UNAVAILABLE:

@@ -45,6 +45,11 @@ today's path, the Python exporters' manifests. `dbt` takes every key a dbt
 exposure names from its pub_ writer's file instead (collect_dbt_phone_files),
 and `python publish.py --live podcasts/episodes.json` puts the one live root
 key in place from its writer. The cutover is setting it; nothing does yet.
+
+`python publish.py --channels` uploads the committed channels.json, decision
+44's pointer to the release folder each environment's phones read, and nothing
+else. It is the release train's step, run by a dispatch; publish() never does
+it, so no scheduled run can move what a phone reads.
 """
 
 from __future__ import annotations
@@ -73,7 +78,7 @@ from lib.manifest_paths import from_manifest_path, to_manifest_path
 from lib.photo_screen import load_decisions, unpublishable_digests
 from lib.photo_store import PHOTO_EXTENSION, PHOTO_PREFIX, PHOTOS_DIRNAME, photo_key
 from lib.poi_schema import WITHDRAWN_POI_TYPES
-from lib.r2_keys import assert_valid_keys
+from lib.r2_keys import RELEASE_ID_PATTERN, assert_valid_keys
 
 ROOT = Path(__file__).parent
 PROCESSED_DIR = ROOT / "data" / "processed"
@@ -2415,8 +2420,120 @@ def publish_live(
     return {"environment": environment, "uploaded": uploaded, "kept": sorted(set(keys) - set(uploaded))}
 
 
+#: The committed pointer (decision 44; pipeline/ELT.md, "Versions and
+#: channels"): which release folder a phone reads, per data environment and
+#: schema version, e.g. {"production": {"v1": "2026-09-24-2"}, "ua": {...}}.
+#: client/src/lib/dataRelease.ts reads the uploaded copy at each
+#: environment's root, beside latest.json.
+CHANNELS_PATH = ROOT.parent / "channels.json"
+CHANNELS_KEY = "channels.json"
+_SCHEMA_VERSION_PATTERN = re.compile(r"^v\d+$")
+
+
+def load_channels(path: Path | None = None) -> dict[str, dict[str, str]]:
+    """The committed channels.json, refused unless every part of it can be read
+    the way a phone reads it: data environments that exist (a typo such as
+    `prod` would name a channel no phone ever asks for), schema versions
+    spelled `v<n>`, and release ids lib/releases.next_release_id could have
+    written."""
+    path = path or CHANNELS_PATH
+    document = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(document, dict) or not document:
+        raise ValueError(f"{path} is not an object of data environments")
+    for environment, entries in document.items():
+        if environment not in data_env.ENVIRONMENTS:
+            raise ValueError(
+                f"{path} names {environment!r}, which is not a data environment ({', '.join(data_env.ENVIRONMENTS)})"
+            )
+        if not isinstance(entries, dict) or not entries:
+            raise ValueError(f"{path}'s {environment} is not an object of schema versions")
+        for version, release_id in entries.items():
+            if not _SCHEMA_VERSION_PATTERN.match(version):
+                raise ValueError(f"{path}'s {environment} names schema version {version!r}; versions are v1, v2 and so on")
+            if not isinstance(release_id, str) or not RELEASE_ID_PATTERN.match(release_id):
+                raise ValueError(f"{path}'s {environment} {version} names {release_id!r}, which is not a release id")
+    return document
+
+
+def publish_channels(
+    *,
+    path: Path | None = None,
+    s3_client=None,
+    bucket: str | None = None,
+    environment: str | None = None,
+) -> dict:
+    """Upload the committed channels.json to this environment's root.
+
+    THE PROMOTION AND THE ROLLBACK (decision 44): a reviewed commit moves an
+    entry, and this, run by a dispatch, is what puts it where phones read it.
+    Never part of publish(), so no scheduled run - the hourly conditions bake
+    included - can move what a phone reads; and never by a push, which no
+    publishing workflow here triggers on.
+
+    Refused, before anything is written, unless every release this
+    environment's entries name has its manifest in this environment's bucket
+    tree. A phone would refuse such an entry and keep its last release (the
+    client's readDataChannel checks the same thing), so uploading it would
+    only make the pointer lie.
+
+    Written as committed, byte for byte, both environments' entries in each
+    copy: a phone takes its own environment's, so one file serves both and a
+    reviewer reads exactly what the bucket holds. `no-cache`, as latest.json
+    is served, because this too says which release is current.
+    """
+    if not writes_enabled():
+        raise PermissionError(f"R2 writes are disabled. Set {WRITE_ENABLED_ENV_VAR}=true before publishing.")
+    environment = data_env.resolve(environment)
+    path = path or CHANNELS_PATH
+    document = load_channels(path)
+    entries = document.get(environment)
+    if not entries:
+        raise RuntimeError(f"{path.name} names no release for {environment}, so there is nothing for its phones to read.")
+    key = data_env.scope_key(environment, CHANNELS_KEY)
+    manifests = {
+        version: data_env.scope_key(environment, releases.release_key(release_id, releases.RELEASE_MANIFEST_NAME))
+        for version, release_id in sorted(entries.items())
+    }
+    assert_valid_keys([key, *manifests.values()])
+
+    if s3_client is None:
+        s3_client = boto3.client(
+            "s3",
+            endpoint_url=os.environ["R2_ENDPOINT_URL"],
+            aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
+            aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+        )
+    if bucket is None:
+        bucket = os.environ["R2_BUCKET"]
+
+    for version, manifest_key in manifests.items():
+        try:
+            s3_client.head_object(Bucket=bucket, Key=manifest_key)
+        except Exception as exc:
+            if "404" not in str(exc) and "NoSuchKey" not in str(exc) and "Not Found" not in str(exc):
+                raise
+            raise RuntimeError(
+                f"{path.name} points {environment}'s {version} at {entries[version]}, and {manifest_key} is not in "
+                "the bucket: a phone would refuse it and keep its last release. Nothing was uploaded."
+            ) from exc
+
+    s3_client.put_object(
+        Bucket=bucket,
+        Key=key,
+        Body=path.read_bytes(),
+        ContentType="application/json",
+        CacheControl=MANIFEST_CACHE_CONTROL,
+    )
+    return {"environment": environment, "key": key, "entries": dict(sorted(entries.items()))}
+
+
 def _arguments(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Upload the exported artifacts to R2 (see this module's docstring).")
+    parser.add_argument(
+        "--channels",
+        action="store_true",
+        help="upload the committed channels.json to this environment's root (a promotion or a rollback), and nothing else",
+    )
     parser.add_argument(
         "--live",
         action="append",
@@ -2439,6 +2556,10 @@ def main(argv: list[str] | None = None) -> dict:
     # The cutover switch, read as early and for the same reason.
     source = phone_files_source()
 
+    if args.channels:
+        result = publish_channels(environment=environment)
+        print(f"channels.json uploaded to {result['key']}: {result['entries']}.")
+        return result
     if args.live:
         result = publish_live(args.live, environment=environment)
         print(f"Live keys put in place in {environment}: {result['uploaded'] or 'none'}.")

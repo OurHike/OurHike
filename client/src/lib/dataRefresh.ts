@@ -29,6 +29,16 @@
 // this is built against `latest.json` as it stands, leaving RELEASING.md §10's
 // `DATA_RELEASE` pin to decide later which manifest is read.
 //
+// WHICH MANIFEST, SINCE DECISION 44. The one the session's release names
+// (lib/dataRelease.ts's SESSION_RELEASE), and that release is the pointer's -
+// `channels.json`, read on launch and followed from the next one - wherever
+// this phone has verified one. So a build promoted by moving the pointer is
+// offered here at the launch after the phone first reads it, with no app
+// release, under the 2026-08-21 decision that nothing is replaced unasked. The
+// maintainer's poll of 2026-10-02 settled the rest: this row is the whole flag
+// ("today's row is enough"), and an app whose schema version is past its
+// deprecation date says nothing ("2A: say nothing").
+//
 // WHY THE PUBLISHER GRADES THE CHANGE AND NOT THIS FILE
 //
 // A phone holds one side of the diff. Working out that a water point was
@@ -50,6 +60,7 @@ import {
   type ArtifactChange,
   type PublishedSnapshot,
 } from './dataManifest'
+import { SESSION_FOLLOWS_POINTER, SESSION_RELEASE } from './dataRelease'
 
 /** Where the record of what this phone downloaded lives. Beside the data it
  *  describes (`trailData.ts`'s keys), under the same `ourhike:` prefix. */
@@ -88,7 +99,22 @@ export interface StoredRelease {
   /** When it completed, epoch ms. Recorded so a prompt can say how old the
    *  data is rather than only that it is not the newest. */
   at: number
+  /** The release folder the bytes came from (decision 44). Absent from a
+   *  record written before `channels.json` existed, which came from the
+   *  compiled pin. */
+  release?: string
+  /** Whether that session's release came from the pointer rather than the
+   *  compiled fallback. Absent means the compiled pin, as above. */
+  fromPointer?: boolean
 }
+
+/** Which way this session reads, as availableRefresh weighs it. A parameter
+ *  so a test can hold each case; the app's value is lib/dataRelease.ts's. */
+export interface SessionRelease {
+  followsPointer: boolean
+}
+
+const THIS_SESSION: SessionRelease = { followsPointer: SESSION_FOLLOWS_POINTER }
 
 /** A connection good enough to spend megabytes on without asking twice.
  *
@@ -186,6 +212,7 @@ function rollUp(changes: ArtifactChange[]): {
 export function availableRefresh(
   stored: StoredRelease | null,
   snapshot: PublishedSnapshot,
+  session: SessionRelease = THIS_SESSION,
 ): AvailableRefresh | null {
   // Nothing downloaded yet, or a manifest that could not be read. The first
   // case is downloadTrailData's job; the second is not a claim about anything.
@@ -194,6 +221,16 @@ export function availableRefresh(
   // Offering it an update would be guessing, and the counts would be a fiction.
   if (stored.version === null) return null
   if (stored.version === snapshot.version) return null
+  // A SESSION ON THE COMPILED FALLBACK NEVER OFFERS IT OVER DATA THE POINTER
+  // BROUGHT (decision 44). The fallback is the release this build shipped
+  // with, and the pointer moves past it with every promotion, so offering it
+  // here would offer older water, closures and lines as "newer trail data".
+  // A session reads the fallback while holding pointer data only when the
+  // mirror of the pointer record was lost and the record and the data were
+  // not (lib/dataRelease.ts); the next launch reads the repaired mirror and
+  // asks honestly. A deliberate rollback is not this case: it moves the
+  // pointer, and a session following the pointer offers it like any move.
+  if (!session.followsPointer && stored.fromPointer === true) return null
 
   const keys = Object.keys(stored.hashes)
     .filter((key) => {
@@ -236,8 +273,16 @@ export function warnsAboutData(
   return refresh.bytes === null || refresh.bytes >= LARGE_UPDATE_BYTES
 }
 
+/** Written when a download completes. Stamped with the release folder the
+ *  bytes came from and whether that came from the pointer, because this
+ *  session's release IS where every one of them was fetched (it never moves
+ *  mid-session). A caller that names either keeps its own. */
 export async function rememberRelease(release: StoredRelease): Promise<void> {
-  await set(RELEASE_KEY, release)
+  await set(RELEASE_KEY, {
+    release: SESSION_RELEASE,
+    fromPointer: SESSION_FOLLOWS_POINTER,
+    ...release,
+  })
 }
 
 /**
@@ -253,13 +298,22 @@ export async function recallRelease(): Promise<StoredRelease | null> {
   const raw = await get(RELEASE_KEY)
   if (typeof raw !== 'object' || raw === null) return null
   const record = raw as Record<string, unknown>
-  const { version, hashes, at } = record
+  const { version, hashes, at, release, fromPointer } = record
   if (version !== null && typeof version !== 'string') return null
   if (typeof hashes !== 'object' || hashes === null) return null
   if (typeof at !== 'number' || !Number.isFinite(at)) return null
+  // Both optional: every record written before decision 44 has neither.
+  if (release !== undefined && typeof release !== 'string') return null
+  if (fromPointer !== undefined && typeof fromPointer !== 'boolean') return null
   const entries = Object.entries(hashes as Record<string, unknown>)
   if (!entries.every(([, value]) => typeof value === 'string')) return null
-  return { version, hashes: Object.fromEntries(entries) as Record<string, string>, at }
+  return {
+    version,
+    hashes: Object.fromEntries(entries) as Record<string, string>,
+    at,
+    ...(release === undefined ? {} : { release }),
+    ...(fromPointer === undefined ? {} : { fromPointer }),
+  }
 }
 
 /** Where a "not now" is remembered.

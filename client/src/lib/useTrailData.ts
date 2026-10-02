@@ -14,7 +14,8 @@
 // reasoning is.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { DATA_CONFIGURED, TRAILS_KEY } from './config'
+import { DATA_BASE_URL, DATA_CONFIGURED, TRAILS_KEY } from './config'
+import { readDataChannel } from './dataRelease'
 import type { TrailIndex } from './trailPosition'
 import { packPois, resolveTrailIndex } from './trailIndexBuild'
 import {
@@ -580,6 +581,12 @@ export function useTrailData(
 
     const controller = new AbortController()
     let wanted = true
+
+    // The pointer (decision 44, channels.json), read here because this is
+    // the check that runs on launch when online. What it names is this
+    // phone's release from the NEXT launch, never this one (lib/dataRelease.ts
+    // says why), so nothing below waits on it. It never rejects.
+    void readDataChannel(DATA_BASE_URL, { signal: controller.signal })
 
     void (async () => {
       const stored = await recallRelease()

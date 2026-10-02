@@ -107,8 +107,14 @@ jobs:
           # test: test_export_spurs.py reads it to hold the doc and
           # export_spurs.py to the same destination partition (#501), and the
           # edit that breaks that agreement is a docs-only pull request.
+          #
+          # channels.json too (decision 44's pointer, at the repository root):
+          # test_publish_channels.py reads it as publish.py --channels will,
+          # and the pull request that moves it - a promotion or a rollback -
+          # changes nothing else.
           paths: >-
             pipeline/
+            channels.json
             features/SPUR_TRAILS.md
             client/src/lib/blaze.ts
             client/src/lib/config.ts

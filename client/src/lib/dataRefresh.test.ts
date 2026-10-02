@@ -6,16 +6,27 @@
 // unknown never reads as reassuring, an undescribable hop never borrows
 // somebody else's counts, and an unknown size never reads as free.
 
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const idb = vi.hoisted(() => ({ store: new Map<string, unknown>() }))
+
+vi.mock('idb-keyval', () => ({
+  get: vi.fn(async (key: string) => idb.store.get(key)),
+  set: vi.fn(async (key: string, value: unknown) => void idb.store.set(key, value)),
+}))
 
 import {
   availableRefresh,
   connectionKind,
   LARGE_UPDATE_BYTES,
+  RELEASE_KEY,
+  recallRelease,
+  rememberRelease,
   warnsAboutData,
   type StoredRelease,
 } from './dataRefresh'
 import { CONSEQUENTIAL, ROUTINE, type PublishedSnapshot } from './dataManifest'
+import { DATA_RELEASE, SESSION_FOLLOWS_POINTER, SESSION_RELEASE } from './dataRelease'
 
 const stored = (
   version: string | null,
@@ -256,5 +267,100 @@ describe('reading the connection', () => {
 
   it('is unknown for a type it does not recognise', () => {
     expect(connectionKind({ type: 'bluetooth' })).toBe('unknown')
+  })
+})
+
+// Decision 44: which release a session reads is the pointer's, or the compiled
+// fallback where this phone has no pointer record (lib/dataRelease.ts).
+describe('a session reading the compiled fallback', () => {
+  const held = { 'poi_water.geojson': 'aaa' }
+  const newer = snapshot({
+    version: 'v2',
+    previousVersion: 'v1',
+    hashes: { 'poi_water.geojson': 'bbb' },
+    sizes: { 'poi_water.geojson': 1_000 },
+    changes: { 'poi_water.geojson': routine },
+  })
+
+  it('never offers the fallback over data the pointer brought, which is newer than it', () => {
+    // The mirror of the pointer record was lost and the data was not: offering
+    // the fallback here would offer older water as "newer trail data".
+    const fromPointer = { ...stored('v1', held), fromPointer: true }
+    expect(availableRefresh(fromPointer, newer, { followsPointer: false })).toBeNull()
+  })
+
+  it('offers a move of the pointer over data the pointer brought, a rollback included', () => {
+    const fromPointer = { ...stored('v1', held), fromPointer: true }
+    expect(availableRefresh(fromPointer, newer, { followsPointer: true })?.version).toBe(
+      'v2',
+    )
+  })
+
+  it('offers what it always offered over data the compiled pin brought', () => {
+    const fromPin = { ...stored('v1', held), fromPointer: false }
+    const writtenBeforeDecision44 = stored('v1', held)
+    expect(availableRefresh(fromPin, newer, { followsPointer: false })?.version).toBe(
+      'v2',
+    )
+    expect(
+      availableRefresh(writtenBeforeDecision44, newer, { followsPointer: false })
+        ?.version,
+    ).toBe('v2')
+  })
+})
+
+describe('what a finished download records', () => {
+  beforeEach(() => idb.store.clear())
+
+  it('stamps the release folder its bytes came from, and whether the pointer named it', async () => {
+    // This suite has no pointer record, so the session reads the fallback.
+    expect(SESSION_RELEASE).toBe(DATA_RELEASE)
+
+    await rememberRelease(stored('v1', { 'trails.geojson': 'aaa' }))
+
+    expect(idb.store.get(RELEASE_KEY)).toEqual({
+      version: 'v1',
+      hashes: { 'trails.geojson': 'aaa' },
+      at: 1_700_000_000_000,
+      release: SESSION_RELEASE,
+      fromPointer: SESSION_FOLLOWS_POINTER,
+    })
+    expect(await recallRelease()).toEqual(idb.store.get(RELEASE_KEY))
+  })
+
+  it('keeps a stamp the caller names', async () => {
+    await rememberRelease({
+      ...stored('v1', {}),
+      release: '2026-10-01',
+      fromPointer: true,
+    })
+
+    expect(await recallRelease()).toMatchObject({
+      release: '2026-10-01',
+      fromPointer: true,
+    })
+  })
+
+  it('reads back a record written before decision 44, which carries neither stamp', async () => {
+    idb.store.set(RELEASE_KEY, {
+      version: 'v1',
+      hashes: { 'trails.geojson': 'aaa' },
+      at: 1,
+    })
+
+    expect(await recallRelease()).toEqual({
+      version: 'v1',
+      hashes: { 'trails.geojson': 'aaa' },
+      at: 1,
+    })
+  })
+
+  it.each([
+    ['release', 42],
+    ['fromPointer', 'yes'],
+  ])('reads a record whose %s is the wrong type as no record', async (field, value) => {
+    idb.store.set(RELEASE_KEY, { version: 'v1', hashes: {}, at: 1, [field]: value })
+
+    expect(await recallRelease()).toBeNull()
   })
 })

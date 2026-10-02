@@ -105,28 +105,46 @@ points as (
     from publishable
 ),
 
+corridor_hits as (
+    -- keep_within_corridor(): the point intersects the corridor polygon.
+    select distinct points.poi_key
+    from points
+    inner join corridor
+        on st_intersects(st_point(points.lon, points.lat), corridor.geom)
+),
+
+ring_hits as (
+    -- near_network_sql(): the point buffered by the ring, and any published
+    -- line the disc intersects.
+    select distinct points.poi_key
+    from points
+    inner join network_lines
+        on st_intersects(
+            network_lines.geom_5070, st_buffer(points.point_5070, {{ ring_m }})
+        )
+),
+
+boundary_hits as (
+    -- inside_boundary_sql(): ST_Covers, so a point on the boundary line is
+    -- inside.
+    select distinct points.poi_key
+    from points
+    inner join boundaries
+        on
+            points.boundary_source = boundaries.boundary_source
+            and st_covers(boundaries.geom_5070, points.point_5070)
+),
+
 judged as (
     select
         points.*,
-        exists(
-            select 1 from corridor
-            where st_intersects(st_point(points.lon, points.lat), corridor.geom)
-        ) as in_at_corridor,
-        exists(
-            select 1 from network_lines
-            where
-                st_intersects(
-                    network_lines.geom_5070,
-                    st_buffer(points.point_5070, {{ ring_m }})
-                )
-        ) as near_network,
-        exists(
-            select 1 from boundaries
-            where
-                boundaries.boundary_source = points.boundary_source
-                and st_covers(boundaries.geom_5070, points.point_5070)
-        ) as inside_boundary
+        corridor_hits.poi_key is not null as in_at_corridor,
+        ring_hits.poi_key is not null as near_network,
+        boundary_hits.poi_key is not null as inside_boundary
     from points
+    left join corridor_hits on points.poi_key = corridor_hits.poi_key
+    left join ring_hits on points.poi_key = ring_hits.poi_key
+    left join boundary_hits on points.poi_key = boundary_hits.poi_key
 )
 
 select

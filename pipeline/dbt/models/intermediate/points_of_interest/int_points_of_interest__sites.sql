@@ -221,7 +221,9 @@ place_reach as (
             poi_id as start_id,
             poi_id as node_id
         from place_records
-        union
+        -- UNION DISTINCT, not ALL: a node reached twice is reached once, which
+        -- is what stops the walk on a cycle.
+        union distinct
         select
             reach.start_id,
             place_links.to_id
@@ -254,21 +256,26 @@ place_clusters as (
 
 place_anchors as (
     select
-        cluster_id,
-        poi_id as anchor_id,
-        name as anchor_name
+        ranked.cluster_id,
+        ranked.poi_id as anchor_id,
+        ranked.name as anchor_name
     from (
         select
             place_clusters.*,
             row_number() over (
                 partition by place_clusters.cluster_id
                 order by
-                    {{ poi_distance_m('lat', 'lon', 'mid_lat', 'mid_lon') }},
+                    {{ poi_distance_m(
+                        'place_clusters.lat',
+                        'place_clusters.lon',
+                        'place_clusters.mid_lat',
+                        'place_clusters.mid_lon'
+                    ) }},
                     cast(place_clusters.poi_id as varchar)
             ) as pick
         from place_clusters
-    )
-    where pick = 1
+    ) as ranked
+    where ranked.pick = 1
 ),
 
 place_sites as (

@@ -3319,6 +3319,32 @@ Then the maintainer merges, and production promotion goes through the release tr
 
 **What blocks go now.** The batched licence question that decision 31 named was answered the same day (decisions 36–38), and so were the fetch terms (39). Still open, and each blocks go: restrictive text no decision names (rule 5's last case, PA DCNR's Explore PA Trails among it); the closure posts' basis (rule 6); whether decision 39 lets ONDA's `ODT Tracks` publish while `onda` is a `refuse` row; and the permission letters in [Club by club](#club-by-club), tier 5. Until each is answered, its rows stay `may_publish` false. Person fields, and the `refuse` orgs without recorded permission, never publish.
 
+#### How to read the gate reports
+
+Two scripts write the reports decisions 30 and 31 ask for. Both read files and write files; neither runs a pipeline or touches a bucket.
+
+```sh
+python parity.py <family> --new <file> --json-dir data/processed/parity    # every line of CI's parity step does this
+python gate_report.py --parity-dir data/processed/parity --out <dir>        # decision 30, items 1 and 2
+python new_data_report.py --warehouse data/warehouse.duckdb --parity-dir data/processed/parity --out <dir>   # decision 31
+```
+
+**`gate_report.md` gives one answer for every R2 key today's pipeline publishes**, worst first:
+
+- **Differs**: parity found a difference nothing explains, or only one side wrote the file. A difference on a safety field (`gate_report.SAFETY_FIELDS`: water distance, capacity, `confidence`, `mile`, `trail_status`, the closure fields, elevation) is listed first, and is a defect until a decision names it.
+- **Not compared**: neither side wrote the file on this input, or today's exporter refused the input. Nothing was checked, so it does not pass.
+- **Not yet ported**: no parity result covers the key. The first group blocks go: a dbt writer owns the key and nothing compared its file. The other two are keys today's code writes under either setting of `OURHIKE_PHONE_FILES` (the raster archives, the cells, the graph files, the weather and drought files, the sidecars, photos), listed so none reads as passing.
+- **Equal apart from the listed differences**: nothing unexplained, and each item the comparison did not hold equal is listed with its reason: a difference the family's own `explained` covers, a timestamp held to its format, record order in an unordered file, a file with no records on this input. An item on a safety field says to approve each row on its own ([How a rule moves](#how-a-rule-moves-shadow-run-parity)).
+- **Equal**: every record and top-level field equal.
+
+**"Equal" is not "byte-equal".** parity.py compares canonical JSON (keys sorted, no whitespace) and never holds the old file's bytes, so the two files can differ in formatting: `podcasts/episodes.json` is 25,457 B from dbt against 33,234 B from `export_podcasts.py`, with no content difference (measured 2026-10-01). That formatting is the reviewed reason every equal key carries.
+
+**The key list is publish.py's, not this document's.** `gate_report.today_keys()` runs `publish.collect_artifacts()` over one stub of every manifest publish.py reads, adds the keys published outside it, and refuses to run when publish.py reads a manifest it has no stub for. `{cell}`, `{id}` and `{sha256}` stand for one key per cell, hike or photo.
+
+**`new_data_report.md` covers the rows parity cannot check**: rows per org × type × mart; every layer's licence basis and `may_publish`, from `int_sources__publication`; and every closure, warning, water and shelter source in the marts, with whether today's files carry it. "Not seen" lines come first: no record parity compared names that source. A file with no parity line, or whose records name no source (`conditions/closures.json`, `conditions/reports.json`), cannot show one, and the report names those files. It holds no person field and no location, so no dispersed campsite's, and refuses to write if either appears. Map shot recipes per region are not built; the report's last section says what one would need.
+
+**On the fixture warehouse** (2026-10-02, 29 parity results): 85 keys. 0 differ; 2 not compared (`suggested_hikes.json` and its detail files: no hike ships on the fixture); 56 not yet ported, none of them blocking (7 documented by an exposure with no writer, 49 named by none); 9 equal apart from listed differences; 18 equal. The new-data report: 9 marts, 6,512 rows; 70 layers, 65 may publish; 23 closure, warning, water and shelter sources, 4 not seen (`ourhike_closures` in both marts, `ourhike_reports`, `nws_alerts`). Each is in a file today's pipeline publishes, `conditions/closures.json`, `conditions/reports.json` and `conditions/weather_alerts.json`, whose records name no source or which has no parity line.
+
 ## Risks and what nobody has checked
 
 ### Register

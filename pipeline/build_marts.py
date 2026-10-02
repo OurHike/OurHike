@@ -185,6 +185,8 @@ STEPS: list[Step] = [
         table="weather_squares",
         command=("step_weather_squares.py", "--warehouse", "{warehouse}"),
         fixture_args=("--squares", "{raw_dir}/weather/squares.json"),
+        lane=HOURLY,
+        reads_no_model=True,
     ),
     # SH03, SH06: each Hike Finder hike's route formed from its description,
     # or its published track re-walked, over the junction graph. Last of the

@@ -24,7 +24,15 @@ PIPELINE_DIR = Path(build_marts.__file__).resolve().parent
 DBT_DIR = PIPELINE_DIR / "dbt"
 REPO_DIR = PIPELINE_DIR.parent
 PATHS = Paths(warehouse=Path("/w/warehouse.duckdb"), processed_dir=Path("/w/processed"), raw_dir=Path("/w/raw"))
-DEM_SAMPLING = STEPS[0]
+STEPS_BY_NAME = {step.name: step for step in STEPS}
+DEM_SAMPLING = STEPS_BY_NAME["step_dem_sampling"]
+# The two monthly steps STEPS held when the lane tests below were written
+# (904f2de1). Those tests spell plan()'s commands out argument by argument,
+# which is plan()'s behaviour rather than STEPS', so they run over this fixed
+# pair: a step another family adds to STEPS does not rewrite every expected
+# argv. The tests that must see the real list (main(), each script's flags, the
+# exposures, the derived sources) still read STEPS.
+PAIR = [STEPS_BY_NAME["step_dem_sampling"], STEPS_BY_NAME["step_form_route"]]
 # Every table STEPS writes, for the tests that run main() over the real STEPS:
 # its manifest check refuses a step whose table no source declares.
 STEP_TABLES = tuple(step.table for step in STEPS)
@@ -313,8 +321,8 @@ def test_ci_and_test_sh_build_only_through_build_marts_apart_from_the_evaluator(
 
 
 def test_the_monthly_lane_is_the_whole_plan_with_every_hourly_or_daily_node_excluded_from_each_dbt_build():
-    runs = plan(STEPS, dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="monthly")
-    everything = plan(STEPS, dbt="dbt", python="python", paths=PATHS, fixtures=False)
+    runs = plan(PAIR, dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="monthly")
+    everything = plan(PAIR, dbt="dbt", python="python", paths=PATHS, fixtures=False)
 
     assert [run.label for run in runs] == [run.label for run in everything]
     for lane_run, full_run in zip(runs, everything, strict=True):
@@ -353,7 +361,7 @@ SQUARES = Step(
 
 
 def test_the_hourly_lane_with_nothing_to_defer_to_builds_its_nodes_and_their_parents_then_its_writers():
-    runs = plan(STEPS, dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="hourly")
+    runs = plan(PAIR, dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="hourly")
 
     assert argvs(runs) == [
         (("dbt", "seed", "--profiles-dir", "."), DBT_DIR),
@@ -402,6 +410,9 @@ def test_the_hourly_lane_defers_every_build_to_the_state_it_is_given_and_takes_n
     runs = plan(STEPS, dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="hourly", state=Path("/m/target"))
 
     for run in runs[1:]:
+        if run.argv[0] == "python":
+            assert "--defer" not in run.argv, "a Python step reads the warehouse; it has nothing to defer"
+            continue
         assert run.argv[-3:] == ("--defer", "--state", "/m/target"), run.argv
         assert not set(build_marts.LANE_PARENTS) & set(run.argv), run.argv
         assert "--indirect-selection" not in run.argv
@@ -409,7 +420,7 @@ def test_the_hourly_lane_defers_every_build_to_the_state_it_is_given_and_takes_n
 
 
 def test_an_hourly_step_runs_in_the_hourly_lane_and_no_monthly_step_does():
-    runs = plan([*STEPS, SQUARES], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="hourly")
+    runs = plan([*PAIR, SQUARES], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="hourly")
 
     assert [run.label for run in runs if run.argv[0] == "python"] == ["step_weather_squares"]
     stage_a, unblocked = runs[1].argv, runs[3].argv
@@ -427,9 +438,9 @@ def test_an_hourly_step_runs_in_the_hourly_lane_and_no_monthly_step_does():
 
 
 def test_the_monthly_lane_leaves_an_hourly_step_out_with_everything_its_table_unblocks():
-    runs = plan([*STEPS, SQUARES], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="monthly")
+    runs = plan([*PAIR, SQUARES], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="monthly")
 
-    assert [run.label for run in runs if run.argv[0] == "python"] == [step.name for step in STEPS]
+    assert [run.label for run in runs if run.argv[0] == "python"] == [step.name for step in PAIR]
     for run in runs:
         if run.argv[:2] == ("dbt", "build"):
             assert "source:derived.weather_squares+" in run.argv, run.argv
@@ -437,7 +448,7 @@ def test_the_monthly_lane_leaves_an_hourly_step_out_with_everything_its_table_un
 
 def test_without_step_leaves_the_step_out_and_its_writers_unrun_so_publish_keeps_their_last_files():
     runs = plan(
-        [*STEPS, SQUARES],
+        [*PAIR, SQUARES],
         dbt="dbt",
         python="python",
         paths=PATHS,
@@ -459,7 +470,9 @@ def test_without_step_leaves_the_step_out_and_its_writers_unrun_so_publish_keeps
 def test_without_step_leaves_the_steps_table_unbuilt_in_a_build_with_no_lane_too():
     runs = plan(STEPS, dbt="dbt", python="python", paths=PATHS, fixtures=True, without=("step_form_route",))
 
-    assert [run.label for run in runs if run.argv[0] == "python"] == ["step_dem_sampling"]
+    assert [run.label for run in runs if run.argv[0] == "python"] == [
+        step.name for step in STEPS if step.name != "step_form_route"
+    ]
     for run in runs:
         if run.argv[:2] == ("dbt", "build"):
             assert "source:derived.formed_routes+" in run.argv, run.argv
@@ -519,7 +532,9 @@ def test_faster_nodes_follow_every_hourly_and_daily_source_down_to_what_it_reach
 
 
 def test_a_lane_passes_a_step_whose_exposure_reads_only_monthly_nodes():
-    manifest = _lane_manifest({step.name: ["model.ourhike.int_elevation__sample_points"] for step in STEPS})
+    manifest = _lane_manifest(
+        {step.name: ["model.ourhike.int_elevation__sample_points"] for step in STEPS if not step.reads_no_model}
+    )
 
     for lane in build_marts.LANES:
         assert build_marts.lane_problems(manifest, STEPS, lane) == []
@@ -528,7 +543,7 @@ def test_a_lane_passes_a_step_whose_exposure_reads_only_monthly_nodes():
 @pytest.mark.parametrize("lane", ["monthly", "hourly"])
 @pytest.mark.parametrize("node", ["model.ourhike.closures", "model.ourhike.int_warnings__terms"])
 def test_a_lane_refuses_a_monthly_step_that_reads_a_node_an_hourly_or_daily_source_reaches(lane, node):
-    manifest = _lane_manifest({DEM_SAMPLING.name: [node], **{step.name: [] for step in STEPS[1:]}})
+    manifest = _lane_manifest({**{step.name: [] for step in STEPS}, DEM_SAMPLING.name: [node]})
 
     problems = build_marts.lane_problems(manifest, STEPS, lane)
 
@@ -557,26 +572,26 @@ def _writers_manifest(steps: list[Step], feeds: str) -> dict:
 
 
 def test_a_lane_passes_an_hourly_step_whose_table_feeds_only_hourly_writers():
-    manifest = _writers_manifest([*STEPS, SQUARES], feeds="model.ourhike.closures")
+    manifest = _writers_manifest([*PAIR, SQUARES], feeds="model.ourhike.closures")
 
     for lane in build_marts.LANES:
-        assert build_marts.lane_problems(manifest, [*STEPS, SQUARES], lane) == []
+        assert build_marts.lane_problems(manifest, [*PAIR, SQUARES], lane) == []
 
 
 def test_a_lane_refuses_a_monthly_step_whose_table_feeds_only_the_hourly_lanes_writers():
     monthly_squares = Step(name="step_weather_squares", table="weather_squares", command=("step_weather_squares.py",))
-    manifest = _writers_manifest([*STEPS, monthly_squares], feeds="model.ourhike.closures")
+    manifest = _writers_manifest([*PAIR, monthly_squares], feeds="model.ourhike.closures")
 
-    assert build_marts.lane_problems(manifest, [*STEPS, monthly_squares], "monthly") == [
+    assert build_marts.lane_problems(manifest, [*PAIR, monthly_squares], "monthly") == [
         "step_weather_squares runs in the monthly lane, and every writer derived.weather_squares feeds is the hourly "
         f"lane's ({HOURLY_WRITER}): give its STEPS entry lane=HOURLY"
     ]
 
 
 def test_a_lane_refuses_an_hourly_step_whose_table_feeds_a_monthly_writer():
-    manifest = _writers_manifest([*STEPS, SQUARES], feeds="model.ourhike.int_elevation__sample_points")
+    manifest = _writers_manifest([*PAIR, SQUARES], feeds="model.ourhike.int_elevation__sample_points")
 
-    assert build_marts.lane_problems(manifest, [*STEPS, SQUARES], "hourly") == [
+    assert build_marts.lane_problems(manifest, [*PAIR, SQUARES], "hourly") == [
         "step_weather_squares runs in the hourly lane, and derived.weather_squares feeds monthly-lane writers "
         f"({MONTHLY_WRITER}), which no hourly or daily source reaches: the monthly lane leaves out what an hourly "
         "step unblocks, so nothing would write them"
@@ -594,7 +609,7 @@ def test_a_lane_refuses_a_step_with_no_exposure_naming_its_inputs_and_no_lane_do
 
 
 def test_main_refuses_after_the_seeds_when_the_monthly_lane_would_leave_a_steps_input_unbuilt(monkeypatch, tmp_path, capsys):
-    manifest = _lane_manifest({DEM_SAMPLING.name: ["model.ourhike.closures"], **{step.name: [] for step in STEPS[1:]}})
+    manifest = _lane_manifest({**{step.name: [] for step in STEPS}, DEM_SAMPLING.name: ["model.ourhike.closures"]})
 
     code, recorder = _main(monkeypatch, tmp_path, manifest, extra=("--lane", "monthly"))
 
@@ -604,7 +619,9 @@ def test_main_refuses_after_the_seeds_when_the_monthly_lane_would_leave_a_steps_
 
 
 def test_main_runs_the_monthly_lanes_plan_when_every_step_reads_monthly_nodes(monkeypatch, tmp_path):
-    manifest = _lane_manifest({step.name: ["model.ourhike.int_elevation__sample_points"] for step in STEPS})
+    manifest = _lane_manifest(
+        {step.name: ["model.ourhike.int_elevation__sample_points"] for step in STEPS if not step.reads_no_model}
+    )
 
     code, recorder = _main(monkeypatch, tmp_path, manifest, extra=("--lane", "monthly"))
 
@@ -632,20 +649,20 @@ def test_every_step_names_what_it_reads_in_an_exposure_of_its_own_name():
 
 def test_a_step_that_reads_no_model_needs_no_exposure_in_either_lane():
     file_only = Step(name="step_weather_squares", table="weather_squares", command=("x.py",), lane="hourly", reads_no_model=True)
-    manifest = _writers_manifest(STEPS, feeds="model.ourhike.closures")
+    manifest = _writers_manifest(PAIR, feeds="model.ourhike.closures")
 
     for lane in build_marts.LANES:
-        assert build_marts.lane_problems(manifest, [*STEPS, file_only], lane) == []
+        assert build_marts.lane_problems(manifest, [*PAIR, file_only], lane) == []
 
 
 def test_a_step_that_says_it_reads_no_model_and_whose_exposure_lists_one_is_refused():
     file_only = Step(name="step_weather_squares", table="weather_squares", command=("x.py",), lane="hourly", reads_no_model=True)
-    manifest = _writers_manifest(STEPS, feeds="model.ourhike.closures")
+    manifest = _writers_manifest(PAIR, feeds="model.ourhike.closures")
     manifest["exposures"]["exposure.ourhike.step_weather_squares"] = {
         "name": "step_weather_squares",
         "depends_on": {"nodes": ["model.ourhike.closures"]},
     }
 
-    assert build_marts.lane_problems(manifest, [*STEPS, file_only], "hourly") == [
+    assert build_marts.lane_problems(manifest, [*PAIR, file_only], "hourly") == [
         "step_weather_squares says it reads no dbt node (reads_no_model), and its exposure step_weather_squares lists some"
     ]

@@ -266,11 +266,15 @@ jobs:
       # THE PIN (ELT.md, "Storage tiers", the raw_inputs row). Write-once: a
       # rerun of this job finds the first attempt's pin and builds from it.
       # Otherwise the committed loads' as-landed files come down first,
-      # because fetch_elevation.py computes the DEM tile index from
-      # data/raw/centerline.geojson (it reads no dlt table, and finds no
-      # nearby_trails.geojson here, so it indexes the A.T. corridor only,
-      # which is all int_elevation__sample_points samples today), and the
-      # index is pinned beside them.
+      # because fetch_elevation.py computes the DEM tile index from them: the
+      # A.T. corridor from data/raw/centerline.geojson, and the network's
+      # cells from data/processed/nearby_trails.geojson, which
+      # export_nearby_trails.py writes from data/raw/external/ first, in
+      # publish-vector-data.yml's order. That file is read for the cell list
+      # and nothing else: the job hands on data/processed/dbt/ alone. The
+      # index is then pinned beside the tables. The DEM tiles themselves are
+      # read in place (decision 35), so the pin freezes which tiles, not
+      # their bytes.
       - name: Pin this run's raw inputs
         env:
           R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
@@ -285,6 +289,7 @@ jobs:
             echo "raw_run $RAW_RUN is already pinned; building from that pin."
           else
             "$RUNNER_TEMP/extract/bin/python" -m extract._warehouse as-landed "${store[@]}" "${pinned[@]}" --raw-dir data/raw
+            "$RUNNER_TEMP/pipeline/bin/python" export_nearby_trails.py
             "$RUNNER_TEMP/pipeline/bin/python" fetch_elevation.py
             "$RUNNER_TEMP/extract/bin/python" -m extract._warehouse pin "${store[@]}" "${pinned[@]}" \
               --extra elevation/tile_index.json=data/raw/elevation/tile_index.json

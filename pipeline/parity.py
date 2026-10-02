@@ -285,34 +285,53 @@ def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
 def _places_old() -> dict:
     """export_places.py's document for the input the dbt side reads, through its own build_output().
 
-    The input is the fixture warehouse's: OPRHP's park layer as fixture mode
-    landed it, and today's own nearby_trails.geojson, from export_nearby_trails.main()
-    on the same raw layers (the file pub_nearby_trails matches, parity's
-    nearby_trails family). Two of its inputs are files the dbt side does not
-    read yet: the published waypoints and the A.T.'s trails.geojson come
-    from int_places__waypoints and int_places__at_lines, interfaces with no
-    rows until the points_of_interest and trail_lines marts are merged, so
-    this side reads none of either. When they merge, this reads
-    export_poi.py's, export_nearby_poi.py's and export_trails.py's files on
-    the same raw layers, with trails.geojson cut to 6 decimals as tl-at's
-    trails family cuts it (decision 8): measured 2026-10-02 on 1,546 real
-    places, that cut moves one lot's trailMiles by a tenth, 17.8 to 17.9.
+    Every input is today's own file on the fixture warehouse's raw layers,
+    each the one the dbt side's mart matches in its own parity line:
+    - OPRHP's park layer and ATC's Communities, as fixture mode landed them;
+    - nearby_trails.geojson, from export_nearby_trails.main()
+      (_published_network(), which the POI exporters below read too);
+    - trails.geojson, from export_trails.main() (_export_trails_run()), cut
+      to six decimals as _trails_old() cuts it, because the dbt side measures
+      the trail_lines mart's geometry, which is the cut file's (decision 8):
+      measured 2026-10-02 on 1,546 real places, the cut moves one lot's
+      trailMiles by a tenth, 17.8 to 17.9, and nothing else;
+    - the trailhead, parking and resupply poi_<type>.geojson files, from
+      export_poi.main(), as _poi_by_type_old() runs it;
+    - nearby_poi.geojson, as _nearby_poi_old() builds it.
+
+    Those helpers are the other families' parity code, called as they are;
+    this only writes their documents where build_output() reads them.
     """
+    import contextlib
+    import io
     import tempfile
 
+    from shapely.geometry import shape
+
     import export_places
+    import export_poi
+    from export_nearby_trails import _rounded_geometry
     from lib.source_registry import load_registry
 
+    network = _published_network()
+    export_poi.NETWORK_LINES_PATH = network
+    with contextlib.redirect_stdout(io.StringIO()):
+        export_poi.main()
+    trails = json.loads((_export_trails_run() / "trails.geojson").read_text(encoding="utf-8"))
+    for feature in trails["features"]:
+        feature["geometry"] = _rounded_geometry(shape(feature["geometry"]))
     with tempfile.TemporaryDirectory() as out:
-        nearby_trails = Path(out) / "nearby_trails.geojson"
-        nearby_trails.write_text(json.dumps(_network_old("nearby_trails.geojson")), encoding="utf-8")
+        trails_path = Path(out) / "trails.geojson"
+        trails_path.write_text(json.dumps(trails), encoding="utf-8")
+        nearby_poi = Path(out) / "nearby_poi.geojson"
+        nearby_poi.write_text(json.dumps(_nearby_poi_old()), encoding="utf-8")
         output, _ = export_places.build_output(
             load_registry(export_places.SOURCES_PATH),
             RAW_DIR / "external" / f"{export_places.PARKS_KEY}.geojson",
-            Path(out) / "poi",
-            Path(out) / "nearby_poi.geojson",
+            export_poi.OUT_DIR,
+            nearby_poi,
             RAW_DIR / export_places.COMMUNITIES_RAW,
-            [nearby_trails, Path(out) / "trails.geojson"],
+            [network, trails_path],
             datetime.now(timezone.utc),
         )
     return output

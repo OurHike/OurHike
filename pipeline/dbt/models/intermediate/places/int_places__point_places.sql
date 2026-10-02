@@ -27,12 +27,11 @@
 -- US_STATE_CODES has them; tests/test_dbt_places_parity.py holds the two
 -- lists equal.
 --
--- The Communities row is read as JSON (`state`, and `globalid` where the
--- staging model carries it, `source_id` where it carries the id under that
--- name), so this reads stg_atc__communities in the shape it has on this
--- branch, which stages no state, and in the shape the points_of_interest
--- port gives it, every column the layer has. Where no state column is
--- staged every town reads its organization's, and ATC's declares none.
+-- The Communities row is read as JSON (`globalid` and `state`), because
+-- stg_atc__communities stages every column the layer has (`* exclude
+-- (geometry)`), so `state` is a column only where the layer carries STATE.
+-- The live layer does (59 of 59 rows on 2026-10-02); a layer without it
+-- leaves every town its organization's state, and ATC's declares none.
 with waypoints as (
     select * from {{ ref('int_places__waypoints') }}
 ),
@@ -80,10 +79,7 @@ state_codes (state_name, state_code) as (
 -- state_code(): the code itself, in any case, or a state's name.
 community_text as (
     select
-        coalesce(
-            json_extract_string(community, '$.globalid'),
-            json_extract_string(community, '$.source_id')
-        ) as global_id_text,
+        json_extract_string(community, '$.globalid') as global_id_text,
         json_extract_string(community, '$.state') as state_text
     from communities
 ),

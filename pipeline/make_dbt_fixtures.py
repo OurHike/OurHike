@@ -2442,6 +2442,15 @@ def _places_fixtures(files: dict[str, str]) -> dict[str, str]:
       ST_MakeValid turns into two triangles before anything is measured
       (PL03), and which carries no Category;
     - a blank name and a null geometry, neither of which is a place.
+
+    ATC's two fixture Communities also get the STATE column the live layer
+    carries (read 2026-10-02: all 59 rows have the field, 14 of them null),
+    so the towns places.json lists reach both answers of state_code()
+    (PL04): "Virginia" reads as VA, and "Virgnia", a misspelling one live row
+    still carries on 2026-10-02, is no state, so that town has none, ATC's
+    organization declaring none either. Nothing else
+    reads the column: export_poi.py publishes a town's name, never its
+    state.
     """
     parks = [
         _park("{00000000-0000-4000-8000-000000000501}", "Fixture Harriman", 127, "State Park", _box(-74.003, 40.998, -73.987, 41.009)),
@@ -2465,7 +2474,14 @@ def _places_fixtures(files: dict[str, str]) -> dict[str, str]:
         _park("{00000000-0000-4000-8000-000000000511}", "  ", 400, "State Park", _box(-73.2, 40.6, -73.19, 40.61)),
         _park("{00000000-0000-4000-8000-000000000512}", "Fixture Ghost", 401, "State Park", None),
     ]  # fmt: skip
-    return {**files, "external/oprhp_park_polygons.geojson": _feature_collection(parks)}
+    communities = json.loads(files["communities.geojson"])
+    for feature, state in zip(communities["features"], ("Virginia", "Virgnia"), strict=True):
+        feature["properties"]["STATE"] = state
+    return {
+        **files,
+        "external/oprhp_park_polygons.geojson": _feature_collection(parks),
+        "communities.geojson": json.dumps(communities),
+    }
 
 
 def write_fixtures(raw_dir: Path) -> list[str]:

@@ -13,6 +13,10 @@ one dbt unit test per case of tests/test_export_places.py:
   written out as the files export_places.py reads, and load_parks(),
   load_lines(), load_point_places() or build_output() answers what the unit
   test expects;
+- each unit test on int_places__waypoints has its points_of_interest rows
+  written by export_poi.py's own write_poi_type() and as nearby_poi.geojson,
+  and read back as load_point_places() reads them: the order, and lon and
+  lat exactly as GDAL prints them, which dbt checks only to one decimal;
 - each unit test on pub_places builds its document from the same rows with
   export_places.py's own _record();
 - the state codes, the radius and the long-trail threshold are
@@ -218,10 +222,15 @@ def python_park_units(test: dict, tmp_path: Path) -> list[dict]:
 
 
 def python_lines(test: dict, tmp_path: Path) -> list[dict]:
-    """load_lines() over the unit test's lines, with the name load_named_trails() sums each under."""
+    """load_lines() over the unit test's trail_lines rows, with the name load_named_trails() sums each under.
+
+    Each row goes in the file its `line_kind` says draws it: a `network` line in
+    nearby_trails.geojson, the A.T.'s centerline, side trails and spurs in
+    trails.geojson."""
     registry = registry_of(test)
-    network = [row for row in given(test, "int_trail_lines__network_published")]
-    at_lines = [row for row in given(test, "int_places__at_lines")]
+    rows = given(test, "trail_lines")
+    network = [row for row in rows if row["line_kind"] == "network"]
+    at_lines = [row for row in rows if row["line_kind"] != "network"]
     paths = write_inputs(tmp_path, lines=line_files(network, at_lines))
     con = spatial()
     exporter.load_lines(con, paths["lines"], shipped_line_source_keys(registry))
@@ -230,6 +239,80 @@ def python_lines(test: dict, tmp_path: Path) -> list[dict]:
     return [
         {"source_key": source, "name": name, "trail_name": owned if source == exporter.AT_SOURCE and owned else name}
         for source, name in kept
+    ]
+
+
+def python_waypoints(test: dict, tmp_path: Path) -> list[dict]:
+    """The waypoints load_point_places() reads, in its order, from the unit test's points_of_interest rows.
+
+    The rows are written as today's writers write the four files: each
+    poi_<type>.geojson by export_poi.py's own write_poi_type(), through GDAL,
+    whose printing of lon and lat is what a phone reads back, and
+    nearby_poi.geojson with json.dumps, as export_nearby_poi.py writes it,
+    each file in record order. They are read back by
+    export_spurs.load_destination_pois() in POINT_PLACE_KINDS order, as
+    load_point_places() reads them, then nearby_poi.geojson's waypoint types.
+    retired_poi rows are written nowhere, because nothing here reads that
+    file."""
+    import export_poi
+    from export_spurs import load_destination_pois, load_features
+
+    rows = given(test, "points_of_interest")
+
+    def in_file(phone_files: str) -> list[dict]:
+        return sorted((row for row in rows if row["phone_files"] == phone_files), key=lambda row: row["record_order"])
+
+    poi_dir = tmp_path / "poi"
+    con = spatial()
+    original = export_poi.OUT_DIR
+    export_poi.OUT_DIR = poi_dir
+    try:
+        for poi_type in KIND_OF_TYPE:
+            records = [
+                {
+                    "id": row["poi_id"],
+                    "poi_type": poi_type,
+                    "trail_id": None,
+                    "source": row["source"],
+                    "source_feature_id": row["source_feature_id"],
+                    "name": row["name"],
+                    "lat": row["lat"],
+                    "lon": row["lon"],
+                    "confidence": None,
+                }
+                for row in in_file("poi_by_type")
+                if row["poi_type"] == poi_type
+            ]
+            export_poi.write_poi_type(con, poi_type, records)
+    finally:
+        export_poi.OUT_DIR = original
+    nearby = collection(
+        [
+            feature(
+                {"type": "Point", "coordinates": [row["lon"], row["lat"]]},
+                {name: row[name] for name in ("poi_type", "source", "source_feature_id", "name", "lat", "lon")}
+                | {"id": row["poi_id"]},
+            )
+            for row in in_file("nearby_poi")
+        ]
+    )
+    paths = write_inputs(tmp_path, nearby_poi=nearby)
+    nearby_rows = [feature.get("properties") or {} for feature in load_features(paths["nearby"])]
+    read = [*load_destination_pois(poi_dir, KIND_OF_TYPE), *nearby_rows]
+    by_id = {row["poi_id"]: row for row in rows}
+    return [
+        {
+            "poi_id": properties["id"],
+            "poi_type": properties["poi_type"],
+            "source": properties["source"],
+            "source_key": by_id[properties["id"]]["source_key"],
+            "source_feature_id": properties["source_feature_id"],
+            "name": properties["name"],
+            "lon": properties["lon"],
+            "lat": properties["lat"],
+            "waypoint_order": order,
+        }
+        for order, properties in enumerate(row for row in read if row.get("poi_type") in KIND_OF_TYPE)
     ]
 
 
@@ -461,6 +544,12 @@ def test_lines_answer_what_load_lines_answers(test, tmp_path):
         ({name: row.get(name) for name in ("source_key", "name", "trail_name")} for row in test["expect"]["rows"]), key=key
     )
     assert python == expected, test["name"]
+
+
+@pytest.mark.parametrize("test", unit_tests("int_places__waypoints"), ids=_ids(unit_tests("int_places__waypoints")))
+def test_waypoints_are_what_load_point_places_reads_off_the_files(test, tmp_path):
+    """Every column exactly, lon and lat included, where dbt's own comparison of a DOUBLE stops at one decimal."""
+    assert python_waypoints(test, tmp_path) == test["expect"]["rows"], test["name"]
 
 
 @pytest.mark.parametrize("test", unit_tests("int_places__point_places"), ids=_ids(unit_tests("int_places__point_places")))

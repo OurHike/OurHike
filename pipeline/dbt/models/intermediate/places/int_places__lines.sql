@@ -7,14 +7,16 @@
 -- nearby_trails.geojson or trails.geojson only where its `source` is one of
 -- shipped_line_source_keys() (a network line source whose reaches_hikers is
 -- true) or `centerline`, so a park never prints miles of a line no phone
--- receives. Here:
--- - the network's lines are int_trail_lines__network_published's, the
---   network half of the trail_lines mart until the mart is built, kept where
---   their source may publish (int_sources__publication). may_publish equals
---   reaches_hikers on all 64 registered sources, measured 2026-10-02, and
---   every line in that model already comes from a network line source;
--- - the A.T.'s are int_places__at_lines' (an interface with no rows until the
---   A.T. half of the mart is merged), and only the centerline's.
+-- receives. Here the lines are the trail_lines mart's, the rows both files
+-- are written from, and of those:
+-- - every `network` line (nearby_trails.geojson's), kept where its source may
+--   publish (int_sources__publication). The mart already holds a source that
+--   may not publish out, so the join changes nothing today; it keeps PL06's
+--   rule in this family, where its unit test is, should the mart ever carry
+--   a held-back line for review. may_publish equals reaches_hikers on all 64
+--   registered sources, measured 2026-10-02, and every network line comes
+--   from a network line source;
+-- - the A.T.'s own line, source `centerline`, from trails.geojson.
 --
 -- THE A.T.'S SIDE TRAILS MEASURE NOTHING, AS TODAY, and that is a finding
 -- rather than a rule anyone wrote down. trails.geojson carries the side
@@ -27,6 +29,13 @@
 -- the parity reference; whether side trails should count is the
 -- maintainer's question (the places ledger rows in pipeline/ELT.md).
 --
+-- THE A.T. IS MEASURED AT SIX DECIMALS, the mart's geom_geojson, which is
+-- the line trails.geojson draws once decision 8 cuts it, where
+-- export_places.py measures today's full-precision file. parity.py feeds the
+-- Python the cut file, as the trails family's parity does. Measured
+-- 2026-10-02 on 1,546 real places: the cut moves one lot's trailMiles by a
+-- tenth, 17.8 to 17.9, and nothing else.
+--
 -- PL07's NAME. load_named_trails() sums the centerline under the one route
 -- name its source owns (`owns_route_names`, read through owned_route_names():
 -- the later registry entry wins a name two claim, and the first such name in
@@ -36,12 +45,8 @@
 -- than one over it. Every other line is summed under its own name. With no
 -- owned name, the centerline keeps its own, as the Python's `if owned`
 -- leaves it.
-with network as (
-    select * from {{ ref('int_trail_lines__network_published') }}
-),
-
-at_lines as (
-    select * from {{ ref('int_places__at_lines') }}
+with trail_lines as (
+    select * from {{ ref('trail_lines') }}
 ),
 
 publication as (
@@ -84,27 +89,22 @@ centerline_route as (
 
 measured as (
     select
-        network.trail_line_id,
-        network.club,
-        network.source_key,
-        network._loaded_at,
-        network.line_kind,
-        network.name,
-        network.geom_geojson
-    from network
-    inner join publication on network.source_key = publication.source_key
-    where publication.may_publish
-    union all
-    select
-        trail_line_id,
-        club,
-        source_key,
-        _loaded_at,
-        line_kind,
-        name,
-        geom_geojson
-    from at_lines
-    where source_key = 'centerline'
+        trail_lines.trail_line_id,
+        trail_lines.club,
+        trail_lines.source_key,
+        trail_lines._loaded_at,
+        trail_lines.line_kind,
+        trail_lines.name,
+        trail_lines.geom_geojson
+    from trail_lines
+    inner join publication
+        on trail_lines.source_key = publication.source_key
+    where
+        publication.may_publish
+        and (
+            trail_lines.line_kind = 'network'
+            or trail_lines.source_key = 'centerline'
+        )
 )
 
 select

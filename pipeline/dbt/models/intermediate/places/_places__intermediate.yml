@@ -42,27 +42,41 @@ models:
       - name: _loaded_at
         description: The latest load stamp among the unit's polygons.
 
-  - name: int_places__at_lines
-    description: >
-      INTERFACE, no rows: the A.T.'s published lines, the half of the
-      trail_lines mart tl-at builds on wk/tl-at. Its header names the columns
-      the replacement has to carry.
-    columns:
-      - name: trail_line_id
-        description: The published line id.
-        data_tests: [not_null, unique]
-
   - name: int_places__waypoints
     description: >
-      INTERFACE, no rows: the published trailheads, parking and resupply
-      points places.json takes its point places from, which the
-      points_of_interest mart poi builds on wk/poi carries. Its header names
-      the columns the replacement has to carry, and the lon/lat it has to
-      give (the file's printing, as a phone parses it).
+      The published trailheads, parking and resupply points places.json takes
+      its point places from (PL05): the points_of_interest mart's rows in
+      poi_trailhead.geojson, poi_parking.geojson, poi_resupply.geojson and
+      nearby_poi.geojson, with the lon and lat each file prints, as a phone
+      parses them, and their place in load_point_places()'s reading order.
     columns:
       - name: poi_id
         description: The published POI id.
         data_tests: [not_null, unique]
+      - name: poi_type
+        description: "`trailhead`, `parking` or `resupply`."
+      - name: source
+        description: The POI's published `source`.
+      - name: source_key
+        description: The registry key that source is.
+      - name: source_feature_id
+        description: The POI's published `source_feature_id`, which a town's state is looked up by.
+      - name: name
+        description: The POI's published name, null where it has none.
+      - name: lon
+        description: The longitude the POI's file publishes, as a phone parses it.
+      - name: lat
+        description: The latitude the POI's file publishes, as a phone parses it.
+      - name: waypoint_order
+        description: >
+          The row's place in load_point_places()'s list: the three
+          poi_<type>.geojson files in trailhead, parking, resupply order,
+          then nearby_poi.geojson, each in its record order.
+        data_tests: [not_null, unique]
+      - name: club
+        description: The extract folder that landed the POI.
+      - name: _loaded_at
+        description: When the extract loaded the POI's source.
 
   - name: int_places__lines
     description: >

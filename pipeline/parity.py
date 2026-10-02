@@ -9,6 +9,12 @@
     python parity.py suggested_hikes_detail --new data/processed/dbt/suggested_hikes_detail.json --raw-dir data/raw
     python parity.py highlights --new data/processed/dbt/highlights.json --raw-dir data/raw
     python parity.py places --new data/processed/dbt/places.json
+    python parity.py elevation_v2 --new data/processed/dbt/elevation_profile_v2.json
+    python parity.py poi_water_v2 --new data/processed/dbt/poi_water_v2.geojson
+
+A v2 family (decision 44, stage 6) compares a v2 file with the v1 file its
+own build wrote beside it, decoded as a phone would decode it: the last
+section below.
 
 pipeline/ELT.md, "How a rule moves: shadow-run parity", is the design: both
 paths read the same input, records are paired by their key, and each
@@ -85,6 +91,11 @@ class Family:
     # what turns the writer's file, read from `--new`, into that shape. The
     # family's `old` returns its document already in it.
     new_shape: Callable[[dict, Path], dict] | None = None
+    # A v2 file (decision 44; stage 6 of #1793) is compared with the v1 file
+    # its own build wrote, not with an exporter: the v1 writer's own parity
+    # line holds v1 to today's exporter, and this holds v2 to v1. The v1 file
+    # is the one of this name beside --new, and `old` takes its path.
+    v1_beside: str | None = None
 
 
 def _podcasts_old() -> dict:
@@ -869,6 +880,148 @@ FAMILIES.update(
 )
 
 
+# --- stage 6: the v2 phone files decode to v1's values (#1793) --------------
+#
+# Decision 44 writes each packed or one-coordinate file as a v2 beside its v1,
+# and a v2 must decode to exactly the values its v1 carries, at decision 8's
+# 6 decimals: elevation, miles and coordinates are safety fields, so any
+# difference fails the line, and none is ever explained away. Each family
+# reads the v1 file its own build wrote beside the v2 (`v1_beside`) and the
+# v2 file through the decoder a phone would use, written here a second time
+# in Python so the dbt writer and the client's reader are each checked
+# against something neither of them is.
+
+
+def decode_elevation_profile_v2(document: dict) -> list[dict]:
+    """v2/elevation_profile.json as v1's records: {distance_mi, elevation_ft, part_start only where true}.
+
+    pub_elevation_profile_v2.sql has the format. A sample's mile is the sum of
+    `d_milli_mi` up to it over 1,000; its elevation is null where `e_deci_ft`
+    is, and otherwise the sum of the non-null `e_deci_ft` up to it over 10.
+    Python's int / int is correctly rounded, so each is the double nearest the
+    decimal, which is what json.loads makes of v1's text. Refuses (ValueError)
+    anything that is not a v2 profile, rather than decoding it into numbers."""
+    if not isinstance(document, dict) or document.get("format") != 2:
+        raise ValueError("not a v2 elevation profile: no `format` 2")
+    steps, heights, starts = document.get("d_milli_mi"), document.get("e_deci_ft"), document.get("part_start")
+    if not all(isinstance(column, list) for column in (steps, heights, starts)) or len(steps) != len(heights):
+        raise ValueError("a v2 elevation profile carries d_milli_mi and e_deci_ft of one length, and part_start")
+    if not all(isinstance(index, int) and 0 <= index < len(steps) for index in starts):
+        raise ValueError("part_start names a sample the profile does not have")
+    starting = set(starts)
+    milli = deci = 0
+    records: list[dict] = []
+    for index, (step, height) in enumerate(zip(steps, heights, strict=True)):
+        if not isinstance(step, int) or (height is not None and not isinstance(height, int)):
+            raise ValueError(f"sample {index} is not whole numbers")
+        milli += step
+        record: dict = {"distance_mi": milli / 1000}
+        if height is None:
+            record["elevation_ft"] = None
+        else:
+            deci += height
+            record["elevation_ft"] = deci / 10
+        if index in starting:
+            record["part_start"] = True
+        records.append(record)
+    return records
+
+
+def decode_trail_miles_v2(document: dict) -> dict:
+    """v2/trail_miles.json as v1's document: format 1, the same header, and `miles` from `milli_mile_deltas`.
+
+    pub_trail_miles_v2.sql has the format: each chain's list is its first
+    vertex's mile in thousandths, then each later vertex's step from the one
+    before. Refuses (ValueError) anything that is not a v2 trail_miles."""
+    if not isinstance(document, dict) or document.get("format") != 2:
+        raise ValueError("not a v2 trail_miles.json: no `format` 2")
+    deltas = document.get("milli_mile_deltas")
+    if not isinstance(deltas, dict):
+        raise ValueError("a v2 trail_miles.json carries milli_mile_deltas")
+    miles: dict[str, list[float]] = {}
+    for chain, steps in deltas.items():
+        if not isinstance(steps, list) or not all(isinstance(step, int) for step in steps):
+            raise ValueError(f"{chain}'s steps are not whole numbers")
+        total = 0
+        decoded = []
+        for step in steps:
+            total += step
+            decoded.append(total / 1000)
+        miles[chain] = decoded
+    header = {name: value for name, value in document.items() if name not in ("format", "milli_mile_deltas")}
+    return {"format": 1, **header, "miles": miles}
+
+
+def poi_v1_at_six_decimals(document: dict) -> dict:
+    """A v1 POI file as its v2 must decode: each feature's `lat` and `lon` properties, the two a v1 phone reads
+    (client/src/lib/trailData.ts's readPois), cut by Python's round(x, 6) and held once, as the point's
+    coordinates; every other property and member as v1 has it."""
+
+    def cut(feature: dict) -> dict:
+        properties = dict(feature["properties"])
+        lat, lon = properties.pop("lat"), properties.pop("lon")
+        return {
+            **feature,
+            "properties": properties,
+            "geometry": {"type": "Point", "coordinates": [round(lon, 6), round(lat, 6)]},
+        }
+
+    return {**document, "features": [cut(feature) for feature in document.get("features") or []]}
+
+
+def _v1_beside_elevation(path: Path) -> dict:
+    return {"samples": json.loads(path.read_text(encoding="utf-8"))}
+
+
+def _v1_beside_trail_miles(path: Path) -> dict:
+    return _trail_miles_records(json.loads(path.read_text(encoding="utf-8")), path)
+
+
+def _v1_beside_pois(path: Path) -> dict:
+    return poi_v1_at_six_decimals(json.loads(path.read_text(encoding="utf-8")))
+
+
+FAMILIES.update(
+    {
+        "elevation_v2": Family(
+            old=_v1_beside_elevation,
+            records="samples",
+            key="distance_mi",
+            ordered=True,
+            new_shape=lambda document, path: {"samples": decode_elevation_profile_v2(document)},
+            v1_beside="elevation_profile.json",
+        ),
+        "trail_miles_v2": Family(
+            old=_v1_beside_trail_miles,
+            records="miles",
+            key="id",
+            ordered=True,
+            new_shape=lambda document, path: _trail_miles_records(decode_trail_miles_v2(document), path),
+            v1_beside="trail_miles.json",
+        ),
+        **{
+            f"poi_{poi_type}_v2": Family(
+                old=_v1_beside_pois,
+                records="features",
+                key="properties.id",
+                ordered=True,
+                key_of=_poi_id,
+                v1_beside=f"poi_{poi_type}.geojson",
+            )
+            for poi_type in ("shelter", "campsite", "water", "resupply", "viewpoint", "parking", "privy", "trailhead")
+        },
+        "nearby_poi_v2": Family(
+            old=_v1_beside_pois,
+            records="features",
+            key="properties.id",
+            ordered=True,
+            key_of=_poi_id,
+            v1_beside="nearby_poi.geojson",
+        ),
+    }
+)
+
+
 def canonical(value) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
@@ -918,7 +1071,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     family = FAMILIES[args.family]
-    old = family.old(args.raw_dir) if family.reads_raw_dir else family.old()
+    if family.v1_beside is not None:
+        old = family.old(args.new.parent / family.v1_beside)
+    else:
+        old = family.old(args.raw_dir) if family.reads_raw_dir else family.old()
     if old is None or not args.new.exists():
         # An exporter that writes no file on some runs answers None then, as
         # export_suggested_hikes.py's does when no hike ships, and its writer

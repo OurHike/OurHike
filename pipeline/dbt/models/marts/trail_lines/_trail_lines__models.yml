@@ -15,6 +15,48 @@ models:
       access: public
       contract:
         enforced: true
+    # Decision 44: a phone file's shape is a version of the mart it is
+    # written from. v1 is today's shape at today's keys, and every pub_ writer
+    # reading this mart pins it, ref('trail_lines', v=1). v2
+    # (trail_lines_v2.sql) carries each centerline chain's vertex miles as
+    # whole thousandths of a mile, for the packed v2/trail_miles.json that
+    # pub_trail_miles_v2 writes beside v1 (stage 6 of #1793; pipeline/ELT.md,
+    # "Making the download smaller"). v1 stays the latest version, so an
+    # unpinned ref reads v1; v2 is a version ahead of it until a v2 release
+    # ships. dbt 2.0.6 builds trail_lines_v1 and trail_lines_v2 and keeps
+    # `trail_lines` as a view of the latest version.
+    latest_version: 1
+    versions:
+      - v: 1
+        defined_in: trail_lines
+      - v: 2
+        defined_in: trail_lines_v2
+        columns:
+          - include: all
+            exclude: [vertex_miles]
+          - name: vertex_milli_miles
+            description: >
+              Centerline chains only: v1's vertex_miles in whole thousandths
+              of a mile, one per vertex of geom_geojson, in order. Null off
+              the centerline, as vertex_miles is.
+            data_type: bigint[]
+        data_tests:
+          - dbt_utils.expression_is_true:
+              name: trail_lines_v2_vertex_milli_miles_are_the_centerlines
+              arguments:
+                expression: >
+                  (vertex_milli_miles is null) = (monotonic_breaks is null)
+                  and (vertex_milli_miles is null or line_kind = 'centerline')
+          - dbt_utils.expression_is_true:
+              name: trail_lines_v2_vertex_milli_miles_match_the_vertices
+              arguments:
+                expression: "len(vertex_milli_miles) = st_npoints(st_geomfromgeojson(geom_geojson))"
+              config:
+                where: "vertex_milli_miles is not null"
+          # The same rows as v1: the coding drops none and adds none.
+          - dbt_utils.equal_rowcount:
+              arguments:
+                compare_model: ref('trail_lines', v=1)
     data_tests:
       # ELT.md, "Geometry rules every mart obeys": GeoJSON text cannot carry
       # metres any more than a geometry contract could refuse them, so the

@@ -23,7 +23,7 @@
 -- pieces (its models' headers have the run), and nothing on the phone reads
 -- the field.
 with chains as (
-    select * from {{ ref('trail_lines') }}
+    select * from {{ ref('trail_lines', v=1) }}
     where line_kind = 'centerline' and vertex_miles is not null
 ),
 

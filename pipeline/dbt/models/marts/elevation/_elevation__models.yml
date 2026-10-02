@@ -17,6 +17,61 @@ models:
       access: public
       contract:
         enforced: true
+    # Decision 44: a phone file's shape is a version of the mart it is
+    # written from. v1 is today's shape at today's key, elevation_profile.json,
+    # and pub_elevation_profile pins it, ref('elevation', v=1). v2
+    # (elevation_v2.sql) carries each number as a whole count of its
+    # published unit, for the packed v2/elevation_profile.json that
+    # pub_elevation_profile_v2 writes beside v1 (stage 6 of #1793; pipeline/
+    # ELT.md, "Making the download smaller"). v1 stays the latest version, so
+    # an unpinned ref reads v1; v2 is a version ahead of it until a v2 release
+    # ships. dbt 2.0.6 builds the two as elevation_v1 and elevation_v2 and
+    # keeps `elevation` as a view of the latest version (measured 2026-10-02
+    # on the podcasts mart by stage 4).
+    latest_version: 1
+    versions:
+      - v: 1
+        defined_in: elevation
+      - v: 2
+        defined_in: elevation_v2
+        columns:
+          - include: all
+            exclude: [distance_mi, elevation_ft]
+          - name: distance_milli_mi
+            description: >
+              v1's distance_mi in thousandths of a mile, a whole number: v1's
+              decimal(8,3) times 1,000, exact. Strictly increasing within a
+              line, as distance_mi is.
+            data_type: bigint
+            constraints:
+              - type: not_null
+            data_tests: [not_null]
+          - name: elevation_deci_ft
+            description: >
+              v1's elevation_ft in tenths of a foot, a whole number: v1's
+              decimal(6,1) times 10, exact. Null exactly where v1's
+              elevation_ft is, where the DEM has no answer at the sample,
+              never 0.
+            data_type: integer
+        data_tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns: [line_id, seq]
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "part_start or seq > 0"
+          # v1's mile range, in thousandths: Springer to 2,300 miles.
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "distance_milli_mi >= 0 and (line_id != 'AT' or distance_milli_mi <= 2300000)"
+          # v1's elevation range, in tenths of a foot (v1's accepted_range has the reasoning).
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "elevation_deci_ft is null or elevation_deci_ft between -3000 and 205000"
+          # The same rows as v1: the coding drops none and adds none.
+          - dbt_utils.equal_rowcount:
+              arguments:
+                compare_model: ref('elevation', v=1)
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:

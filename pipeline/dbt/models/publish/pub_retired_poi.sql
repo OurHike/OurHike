@@ -6,7 +6,7 @@
 -- source and retirement, its name and successor only where it has one (a
 -- name or successor that is absent is left out, never null), sorted by id.
 with tombstones as (
-    select * from {{ ref('points_of_interest') }}
+    select * from {{ ref('points_of_interest', v=1) }}
     where phone_files = 'retired_poi'
 )
 

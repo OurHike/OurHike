@@ -552,6 +552,22 @@ jobs:
           # export_poi.py, so it runs on the pipeline's pins, and nothing it
           # imports needs dlt.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py places --new data/processed/dbt/places.json
+          # Stage 6's v2 files (decision 44), each against the v1 file this
+          # same run wrote beside it, which the lines above hold to today's
+          # exporters: every elevation, mile and coordinate a v2 decodes to
+          # must be v1's, at decision 8's 6 decimals for a coordinate.
+          # parity.py decodes each file itself, so these read only JSON.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py elevation_v2 --new data/processed/dbt/elevation_profile_v2.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py trail_miles_v2 --new data/processed/dbt/trail_miles_v2.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py poi_shelter_v2 --new data/processed/dbt/poi_shelter_v2.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py poi_campsite_v2 --new data/processed/dbt/poi_campsite_v2.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py poi_water_v2 --new data/processed/dbt/poi_water_v2.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py poi_resupply_v2 --new data/processed/dbt/poi_resupply_v2.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py poi_viewpoint_v2 --new data/processed/dbt/poi_viewpoint_v2.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py poi_parking_v2 --new data/processed/dbt/poi_parking_v2.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py poi_privy_v2 --new data/processed/dbt/poi_privy_v2.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py poi_trailhead_v2 --new data/processed/dbt/poi_trailhead_v2.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py nearby_poi_v2 --new data/processed/dbt/nearby_poi_v2.geojson
 
       - name: dbt source freshness
         if: steps.scope.outputs.run == 'true'

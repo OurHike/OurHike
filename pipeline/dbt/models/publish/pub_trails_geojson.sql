@@ -15,7 +15,7 @@
 -- trail_miles.json's trails_sha256 names this file's bytes, never the
 -- Python's.
 with lines as (
-    select * from {{ ref('trail_lines') }}
+    select * from {{ ref('trail_lines', v=1) }}
     where line_kind != 'network'
 )
 

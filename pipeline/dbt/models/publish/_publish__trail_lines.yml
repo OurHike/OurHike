@@ -69,6 +69,57 @@ models:
       - name: miles
         description: Each chain's id to its vertex miles, in the chains' order.
         data_type: json
+  - name: pub_trail_miles_v2
+    description: >
+      Writes v2/trail_miles.json (stage 6 of #1793): v1's trail_miles.json
+      with each chain's vertex miles delta-coded in whole thousandths of a
+      mile, from v2 of the trail_lines mart, to
+      processed_dir/trail_miles_v2.json. trails_sha256 names the same
+      trails.geojson v1's does. parity.py's trail_miles_v2 family decodes it
+      and compares every vertex's mile with v1's file.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: format
+        description: >
+          2. client/src/lib/trailMiles.ts reads format 1 as v1's `miles` and
+          format 2 as these deltas, and anything else as no miles.
+        data_type: integer
+        data_tests:
+          - not_null
+          - unique
+          - accepted_values:
+              arguments:
+                values: [2]
+      - name: trails_sha256
+        description: >
+          The sha256 of the trails.geojson bytes pub_trails_geojson wrote,
+          the line file both versions of trail_miles.json describe; the
+          phone stores the miles only when it equals the published hash of
+          the trails.geojson it verified (client/src/lib/trailData.ts).
+        data_type: varchar
+        data_tests: [not_null]
+      - name: axis
+        description: The axis the miles come off, export_trails.py's own literal, as v1 writes it.
+        data_type: varchar
+      - name: decimals
+        description: The decimals v1's miles are rounded at, trail_lines_mile_decimals (3), which thousandths hold exactly.
+        data_type: integer
+      - name: feature_count
+        description: How many chains carry miles.
+        data_type: bigint
+      - name: vertex_count
+        description: How many vertices carry a mile, across every chain.
+        data_type: bigint
+      - name: milli_mile_deltas
+        description: >
+          Each chain's id to its vertex miles in whole thousandths of a mile,
+          in the chains' order: the first vertex's as itself, every later
+          one as its step from the vertex before, negative where the chain
+          steps backwards.
+        data_type: json
   - name: pub_trails_overview
     description: >
       Writes trails_overview.geojson, the corridor-view sketch of the
@@ -151,7 +202,7 @@ exposures:
       a monthly refresh, published docs, and lighter phone downloads moves
       it to this writer's.
     depends_on:
-      - ref('trail_lines')
+      - ref('trail_lines', v=1)
       - ref('pub_trails_geojson')
     config:
       meta:
@@ -180,13 +231,42 @@ exposures:
       itself. Published beside trails.geojson by publish-vector-data.yml
       until stage 4 of #1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads moves it to this writer's.
     depends_on:
-      - ref('trail_lines')
+      - ref('trail_lines', v=1)
       - ref('pub_trail_miles')
     config:
       meta:
         r2_keys: [trail_miles.json]
         format: json
         offline_tier: safety_core
+        cadence: monthly
+  - name: trail_miles_json_v2
+    label: v2/trail_miles.json
+    type: application
+    maturity: low
+    owner:
+      name: OurHike
+    description: >
+      v2 of trail_miles.json (decision 44): the same mile for every
+      centerline vertex of trails.geojson, delta-coded in whole thousandths
+      of a mile, published beside v1 at v2/trail_miles.json under the release
+      folder (stage 6 of #1793; pipeline/ELT.md, "Making the download
+      smaller"). A phone reads it only once its build reads schema version
+      v2 and channels.json names a v2 release; every other phone keeps
+      reading v1's trail_miles.json, which is still written. Optional on the
+      phone, as v1 is: a mismatched or missing file means the phone measures
+      the line itself.
+    depends_on:
+      - ref('trail_lines', v=2)
+      - ref('pub_trail_miles_v2')
+    config:
+      meta:
+        r2_keys: [v2/trail_miles.json]
+        format: json
+        offline_tier: safety_core
+        # @unvalidated as a budget: report 5's measured packing of release
+        # 2026-09-24-2's miles on the wire (pipeline/ELT.md, "Before and
+        # after, first run"), not a ceiling anyone chose.
+        size_budget_bytes: 179522
         cadence: monthly
   - name: trails_overview_geojson
     label: trails_overview.geojson
@@ -223,7 +303,7 @@ exposures:
       publish-vector-data.yml from export_spurs.py's file until stage 4 of
       #1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads moves it to this writer's.
     depends_on:
-      - ref('trail_lines')
+      - ref('trail_lines', v=1)
       - ref('pub_spurs')
     config:
       meta:

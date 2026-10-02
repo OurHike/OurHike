@@ -9,7 +9,7 @@
 -- itself, as json.dumps prints it. Features in the order the Python reads
 -- its layers and rows.
 with pois as (
-    select * from {{ ref('points_of_interest') }}
+    select * from {{ ref('points_of_interest', v=1) }}
     where phone_files = 'nearby_poi'
 )
 

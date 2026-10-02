@@ -26,6 +26,57 @@ models:
           only, with json.dumps's separators.
         data_type: varchar
         data_tests: [not_null, unique]
+  - name: pub_elevation_profile_v2
+    description: >
+      Writes v2/elevation_profile.json, the A.T.'s elevation profile packed
+      as delta-coded columns of whole numbers (stage 6 of #1793), from v2 of
+      the elevation mart: one row, which phone_file writes to
+      processed_dir/elevation_profile_v2.json as one JSON object of its
+      columns. parity.py's elevation_v2 family decodes it and compares every
+      sample with v1's elevation_profile.json.
+    config:
+      access: public
+      contract:
+        enforced: true
+    data_tests:
+      # One mile and one elevation per sample, so a reader that walks the
+      # two lists together never pairs a mile with another sample's height.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "len(d_milli_mi) = len(e_deci_ft)"
+      # Every step after the first runs forward: v1's miles strictly
+      # increase within the line.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "len(list_filter(d_milli_mi[2:], lambda step: step <= 0)) = 0"
+    columns:
+      - name: format
+        description: >
+          2. A v1 file is a bare array, so client/src/lib/elevationProfile.ts
+          tells the two apart by this member.
+        data_type: integer
+        data_tests:
+          - not_null
+          - unique
+          - accepted_values:
+              arguments:
+                values: [2]
+      - name: d_milli_mi
+        description: >
+          Each sample's mile in thousandths of a mile: the first as itself,
+          every later one as its step from the sample before.
+        data_type: bigint[]
+      - name: e_deci_ft
+        description: >
+          Each sample's elevation in tenths of a foot, null where the DEM has
+          no answer (never 0); every other one as its step from the last
+          sample before it that has an elevation, the first such as itself.
+        data_type: integer[]
+      - name: part_start
+        description: >
+          The index, from 0, of each sample that begins a piece of the
+          centerline (#559), ascending.
+        data_type: bigint[]
 
 exposures:
   - name: elevation_profile_json
@@ -45,7 +96,7 @@ exposures:
       export_elevation.py's file until stage 4 of #1793 moves it to this
       writer's.
     depends_on:
-      - ref('elevation')
+      - ref('elevation', v=1)
       - ref('pub_elevation_profile')
     config:
       meta:
@@ -56,4 +107,32 @@ exposures:
         # transfer_bytes for this file (pipeline/ELT.md, "What a phone
         # downloads today"), not a ceiling anyone chose.
         size_budget_bytes: 921533
+        cadence: monthly
+  - name: elevation_profile_json_v2
+    label: v2/elevation_profile.json
+    type: application
+    maturity: low
+    owner:
+      name: OurHike
+    description: >
+      v2 of elevation_profile.json (decision 44): the same A.T. samples, as
+      delta-coded columns of whole thousandths of a mile and tenths of a foot,
+      published beside v1 at v2/elevation_profile.json under the release
+      folder (stage 6 of #1793; pipeline/ELT.md, "Making the download
+      smaller"). A phone reads it only once its build reads schema version v2
+      and channels.json names a v2 release; every other phone keeps reading
+      v1's elevation_profile.json, which is still written. Part of the safety
+      core every phone holds whole, tier (a).
+    depends_on:
+      - ref('elevation', v=2)
+      - ref('pub_elevation_profile_v2')
+    config:
+      meta:
+        r2_keys: [v2/elevation_profile.json]
+        format: json
+        offline_tier: safety_core
+        # @unvalidated as a budget: report 5's measured packing of release
+        # 2026-09-24-2's profile on the wire (pipeline/ELT.md, "Before and
+        # after, first run"), not a ceiling anyone chose.
+        size_budget_bytes: 219158
         cadence: monthly

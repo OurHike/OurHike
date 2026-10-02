@@ -1,6 +1,6 @@
 -- Mohonk Preserve's trails and carriage roads, keyed on GlobalID (decision
 -- 40), with their geometry. `globalid` and `geom` are carried for
--- int_trail_lines__network_rows, which publishes these lines from stage 3 of
+-- int_trail_lines__network_unioned, which publishes these lines from stage 3 of
 -- #1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a
 -- monthly refresh, published docs, and lighter phone downloads; until then
 -- this model was attributes only, as stg_nynjtc__long_path was. `globalid`

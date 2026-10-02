@@ -223,8 +223,14 @@ jobs:
             pipeline/parity.py
             pipeline/export_podcasts.py
             pipeline/export_sources.py
+            pipeline/export_atc_updates.py
+            pipeline/export_nynjtc_alerts.py
+            pipeline/fetch_nynjtc_alerts.py
+            pipeline/export_nearby_trails.py
+            pipeline/export_trails.py
             pipeline/export_elevation.py
             pipeline/step_dem_sampling.py
+            pipeline/requirements.txt
             pipeline/check_freshness.py
             pipeline/export_conditions.py
             pipeline/fetch_club_pdfs.py
@@ -365,6 +371,23 @@ jobs:
           python -m venv "$RUNNER_TEMP/extract"
           "$RUNNER_TEMP/extract/bin/pip" install -r requirements-extract.txt
 
+      # THE PIPELINE'S OWN PINS, for today's exporters on the old side of
+      # parity and for the Python steps (pipeline/ELT.md, "Python steps,
+      # outside dbt"). Those import shapely, numpy, pyproj, requests and
+      # rasterio, which neither requirements-dbt.txt nor
+      # requirements-extract.txt carries, so they get requirements.txt in a
+      # venv of their own, one for every family's lines. export_trails.py and
+      # export_elevation.py run `INSTALL spatial`, so the venv's DuckDB gets
+      # spatial from PyPI, as the pytest job's does, rather than from
+      # extensions.duckdb.org on every run.
+      - name: Install the pipeline's own pins (today's exporters, the Python steps)
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          python -m venv "$RUNNER_TEMP/pipeline"
+          "$RUNNER_TEMP/pipeline/bin/pip" install --quiet -r requirements.txt
+          "$RUNNER_TEMP/pipeline/bin/pip" install --quiet "duckdb-extension-spatial==$("$RUNNER_TEMP/pipeline/bin/python" -c 'import duckdb; print(duckdb.__version__)')"
+          "$RUNNER_TEMP/pipeline/bin/python" seed_spatial_extension.py
+
       - name: Generate synthetic raw fixtures
         if: steps.scope.outputs.run == 'true'
         run: python make_dbt_fixtures.py
@@ -411,11 +434,26 @@ jobs:
           python parity.py podcasts --new data/processed/dbt/podcasts_episodes.json
           python parity.py stewards --new data/processed/dbt/stewards.json
           python parity.py registry --new data/processed/dbt/registry.json
+          # The hourly conditions files. atc_updates reads
+          # reference/atc_updates.json from git; the other three read the
+          # answers under data/raw/conditions/ that fixture mode built the
+          # warehouse from, since their upstreams are a website and a database.
+          python parity.py atc_updates --new data/processed/dbt/conditions_atc_updates.json
+          python parity.py nynjtc_alerts --new data/processed/dbt/conditions_nynjtc_alerts.json
+          python parity.py closures --new data/processed/dbt/conditions_closures.json
+          python parity.py reports --new data/processed/dbt/conditions_reports.json
+          # The trail lines network, whose input is the fixture warehouse, not
+          # a file in git. export_nearby_trails.py imports shapely, numpy,
+          # pyproj, pmtiles and, through export_trails.py, rasterio, none of
+          # which requirements-dbt.txt pins, so today's exporter runs under the
+          # pipeline's own pins, the venv the step above built.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py nearby_trails --new data/processed/dbt/nearby_trails.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py network_overview --new data/processed/dbt/network_overview.geojson
           # The elevation profile's input is a fixture, not a file in git: the
           # fixture centerline, markers and DEM tile make_dbt_fixtures.py wrote.
           # export_elevation.py reads the DEM through rasterio, so this runs on
-          # the pipeline's own pins, in the venv step_dem_sampling.py ran in.
-          "$RUNNER_TEMP/steps/bin/python" parity.py elevation --new data/processed/dbt/elevation_profile.json --raw-dir data/raw
+          # the pipeline's own pins, the venv step_dem_sampling.py runs in.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py elevation --new data/processed/dbt/elevation_profile.json --raw-dir data/raw
 
       - name: dbt source freshness
         if: steps.scope.outputs.run == 'true'

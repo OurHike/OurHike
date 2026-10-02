@@ -13,9 +13,10 @@ import duckdb
 import pytest
 import requests
 
+import export_conditions
 import make_dbt_fixtures
-from extract._fixtures import FixtureAdapter, build, esri_type, fixture_file, fixture_resources
-from extract._kinds import ReviewedFile
+from extract._fixtures import FixtureAdapter, FixtureConnection, build, esri_type, fixture_file, fixture_resources
+from extract._kinds import ConditionsQuery, NwsAlerts, ReviewedFile, WordpressPosts, WordpressTerms
 
 
 @pytest.fixture(scope="module")
@@ -29,11 +30,73 @@ def fixtures(tmp_path_factory):
 def test_every_fixture_file_with_a_resource_lands_whole(fixtures):
     root, counts = fixtures
     resources, _ = fixture_resources(root / "raw")
-    fetched = [r for r in resources if not isinstance(r, ReviewedFile)]
+    fetched = [
+        r for r in resources if not isinstance(r, ReviewedFile | NwsAlerts | WordpressPosts | WordpressTerms | ConditionsQuery)
+    ]
     assert len(fetched) == 56, "55 monthly layers and OPRHP's temporary closures on the hourly lane"
     for resource in fetched:
         expected = len(json.loads(fixture_file(root / "raw", resource.key).read_text())["features"])
         assert counts[resource.table] == expected, resource.table
+
+
+def test_the_hourly_lanes_other_upstreams_land_from_their_conditions_answers(fixtures):
+    """NWS, NYNJTC's WordPress and OurHike's Postgres, each served from make_dbt_fixtures.py's conditions/ files."""
+    root, counts = fixtures
+    nws = json.loads((root / "raw" / "conditions" / "nws_alerts.json").read_text())
+    nynjtc = json.loads((root / "raw" / "conditions" / "nynjtc_trail_alerts.json").read_text())
+    postgres = json.loads((root / "raw" / "conditions" / "ourhike_postgres.json").read_text())
+    assert counts["raw_nws__alerts"] == len(nws["features"]), "every alert lands, Cancel and Test too: staging's relay drops them"
+    assert counts["raw_nynjtc__nynjtc_trail_alerts"] == len(nynjtc["posts"])
+    assert counts["raw_nynjtc__nynjtc_trail_alerts_terms"] == sum(len(terms) for terms in nynjtc["terms"].values())
+    for artifact in ("closures", "reports", "notes", "disputes"):
+        assert counts[f"raw_ourhike__{artifact}"] == len(postgres[artifact]["rows"]), artifact
+
+
+def test_conditions_rows_land_in_the_shapes_their_real_kinds_give_them(fixtures):
+    """The column hints are the real kinds': NWS's text stays text, a Postgres timestamp is a timestamp, a person never lands."""
+    root, _ = fixtures
+    with duckdb.connect(str(root / "warehouse.duckdb"), read_only=True) as con:
+
+        def columns(table: str) -> dict[str, str]:
+            return dict(
+                con.execute(f"select column_name, data_type from duckdb_columns() where table_name = '{table}'").fetchall()
+            )
+
+        nws = columns("raw_nws__alerts")
+        assert nws["sent"] == "VARCHAR", "NWS's own offset stays in the text the phone is relayed"
+        assert nws["instruction"] == "VARCHAR", "hinted, so the column exists though one alert's is null"
+        posts = columns("raw_nynjtc__nynjtc_trail_alerts")
+        assert {"author", "yoast_head", "yoast_head_json"}.isdisjoint(posts), "WP_DROPPED: the fields that name a person"
+        assert posts["title"] == "VARCHAR" and posts["park"] == "VARCHAR", "nested values stay one JSON column each"
+        closures = columns("raw_ourhike__closures")
+        assert closures["verified_at"] == "TIMESTAMP WITH TIME ZONE"
+        assert {"reported_by", "verified_by"}.isdisjoint(closures), "the query withholds who reported and who verified"
+        assert columns("raw_ourhike__disputes")["accounts"] == "BIGINT"
+
+
+@pytest.mark.parametrize(
+    "artifact, order",
+    [
+        ("closures", ("start_mile_marker", "id")),
+        ("reports", ("timestamp", "id")),
+        ("notes", ("observed_at", "id")),
+        ("disputes", ("poi_id",)),
+    ],
+)
+def test_the_stand_in_postgres_rows_are_in_each_querys_own_order(artifact, order):
+    """FixtureConnection hands rows back as make_dbt_fixtures.py wrote them and sorts nothing, so the rows are written
+    in each PUBLIC_*_SQL's ORDER BY: parity.py reads export_conditions.py's documents through the same connection."""
+    rows = make_dbt_fixtures.closures_and_warnings_fixtures()["conditions/ourhike_postgres.json"]
+    written = json.loads(rows)[artifact]["rows"]
+    assert written == sorted(written, key=lambda row: tuple(row[name] for name in order))
+
+
+def test_the_stand_in_postgres_answers_only_the_extracts_own_sql():
+    """A query the extract does not send gets no canned answer: it fails, so a changed query cannot pass on a stale one."""
+    connection = FixtureConnection({"closures": {"columns": [["id", "varchar"]], "rows": [{"id": "x"}]}})
+    with pytest.raises(RuntimeError, match="no answer"):
+        connection.execute("SELECT * FROM public.closures")
+    assert connection.execute(export_conditions.TABLE_EXISTS_SQL, ("public.closures",)).fetchone() == (True,)
 
 
 def test_the_reviewed_files_land_from_git_whole(fixtures):

@@ -40,6 +40,15 @@ models:
       - name: loaded_at
         description: The extract's `_loaded_at` for the read this row came from, naive UTC.
         data_tests: [not_null]
+      - name: source_row
+        description: >
+          The row's place in the raw table, which is the order the layer's
+          pages served the features (the model's comment says why, and what
+          is unmeasured). With no id field, lib/feature_id.py's
+          `generated-<n>` is this layer's published id, and
+          int_trail_lines__network_judged numbers it in this order, as the
+          Python numbers the fetched file.
+        data_tests: [not_null, unique]
   - name: stg_nynjtc__highlands_trail
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
@@ -64,3 +73,12 @@ models:
       - name: loaded_at
         description: The extract's `_loaded_at` for the read this row came from, naive UTC.
         data_tests: [not_null]
+      - name: source_row
+        description: >
+          The row's place in the raw table, which is the order the layer's
+          pages served the features (the model's comment says why, and what
+          is unmeasured). With no id field, lib/feature_id.py's
+          `generated-<n>` is this layer's published id, and
+          int_trail_lines__network_judged numbers it in this order, as the
+          Python numbers the fetched file.
+        data_tests: [not_null, unique]

@@ -277,7 +277,12 @@ select
     (
         declared.name_constant is not null and declared.name_field is not null
     ) as declares_name_twice,
-    coalesce(missing.missing_declared_fields, []) as missing_declared_fields,
+    -- As JSON text, in declared order, so a unit test can hold it (a 2.0.6
+    -- unit test refuses a list column it compares).
+    cast(
+        to_json(coalesce(missing.missing_declared_fields, []))
+        as varchar
+    ) as missing_declared_fields,
     -- A source both junior in one declared pair and senior in another, which
     -- deduplicate()'s pair-by-pair order would answer and
     -- int_trail_lines__network_deduplicated does not: its test stops the

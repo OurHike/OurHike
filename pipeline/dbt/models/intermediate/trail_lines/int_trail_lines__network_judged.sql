@@ -28,11 +28,25 @@
 --
 -- WHAT A KEPT ROW CARRIES:
 -- - `trail_line_id`, `{source_key}:{id}` (TL05, lib/feature_id.py): the
---   layer's own id (int_trail_lines__network_unioned's `upstream_id`), else
---   `generated-<n>`, n the row's place among its layer's rows, every row
---   counted as the Python counts them. SQL has no file order, so a row's
---   place is its staging key's (decision 40); the Python's is the fetched
---   file's. Both renumber when the rows change.
+--   layer's GlobalID, whatever its case, else its OBJECTID, else Socrata's
+--   row id, each read only where it is not null; else `generated-<n>`. The
+--   Python reads the property `GlobalID` spelled exactly that way, then the
+--   GeoJSON feature's own `id`, which the extract does not land: on ArcGIS
+--   that `id` is the OBJECTID and on Socrata the row id that lands as
+--   `_socrata_id` (lib/socrata.py's _with_row_ids). dlt's naming lowercases
+--   every column, so the SQL cannot tell `GlobalID` from `GLOBALID`, and
+--   matching the Python's exact case would need the field's spelling from
+--   the layer's metadata, which is not landed. That the ArcGIS `id` always
+--   equals the OBJECTID property is Reasoned from the REST API's GeoJSON
+--   output and @unvalidated here: one live fetch comparing the two on each
+--   registered ArcGIS layer settles it. n in `generated-<n>` is the row's
+--   place among its layer's rows, every row counted as the Python counts
+--   them. The place is the raw table's order (`source_row`) for the two
+--   NYNJTC layers, the only ones with no id field, which is the fetched
+--   file's order the Python counts in; any other layer that reached this
+--   fallback would be numbered in staging-key order, because its base model
+--   carries no such column. Positional ids renumber when a layer's rows
+--   change, in both.
 -- - `name`, declared_name(): the entry's `name_constant`, else the name
 --   column's value, null where it is one of the entry's `name_placeholders`
 --   (case and surrounding space ignored; DuckDB's lower() where Python
@@ -117,7 +131,11 @@ read_fields as (
         unioned.trail_segment_key,
         unioned.source_key,
         unioned.club,
-        unioned.upstream_id,
+        coalesce(
+            json_extract_string(unioned.properties, '$.globalid'),
+            json_extract_string(unioned.properties, '$.objectid'),
+            json_extract_string(unioned.properties, '$._socrata_id')
+        ) as upstream_id,
         unioned.geom,
         unioned._loaded_at,
         unioned.properties,
@@ -143,9 +161,17 @@ read_fields as (
         json_extract(
             unioned.properties, '$.' || sources.name_column
         ) as name_value,
-        row_number() over (
-            partition by unioned.source_key order by unioned.trail_segment_key
-        ) - 1 as layer_position
+        -- The feature's place in its layer, for `generated-<n>`: the raw
+        -- table's order where the staging model carries it, which is the
+        -- fetched file's (Reasoned, stg_nynjtc__long_path), else the
+        -- staging key's, every row counted.
+        coalesce(
+            unioned.source_row,
+            row_number() over (
+                partition by unioned.source_key
+                order by unioned.trail_segment_key
+            ) - 1
+        ) as layer_position
     from unioned
     inner join sources on unioned.source_key = sources.source_key
     left join boundaries on unioned.source_key = boundaries.source_key
@@ -297,7 +323,10 @@ reasoned as (
                     or st_length(
                         st_intersection(printed.geom, printed.boundary)
                     )
-                    / st_length(printed.geom) < 0.8
+                    / st_length(printed.geom)
+                    < {{
+                        var('trail_lines_network_inside_boundary_min_fraction')
+                    }}
                 )
                 then 'outside the boundary its registry entry names'
             when
@@ -391,6 +420,11 @@ select
     -- every row of the source would be dropped, so the test on this column
     -- stops the build instead.
     (boundary_source is not null and boundary is null) as boundary_missing,
-    geom,
+    -- WKT text rather than GEOMETRY, so a unit test can hold this model's
+    -- output (a 2.0.6 unit test panics on a GEOMETRY column,
+    -- .claude/skills/dbt/SKILL.md). DuckDB writes the shortest digits that
+    -- read back to the same double, so st_geomfromtext() downstream gets
+    -- every vertex back exactly.
+    st_astext(geom) as geom_wkt,
     _loaded_at
 from named

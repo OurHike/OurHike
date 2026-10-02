@@ -238,3 +238,24 @@ def test_output_is_deterministic_across_input_order():
 def test_the_two_measured_numbers_are_the_ones_the_docstring_argues_for():
     assert concurrency.SHARED_GROUND_TOLERANCE_M == 10.0
     assert concurrency.SHARED_GROUND_MIN_LENGTH_M == 50.0
+
+
+def test_the_batches_change_nothing_but_how_much_is_held_at_once(monkeypatch):
+    """#1796: the pairs are buffered PAIR_BATCH at a time to bound memory, never to change the answer.
+
+    Three overlapping pairs, run with every pair in one batch and then with a
+    batch of one: the features, their ids, their order and every count must be
+    the same, or batching would be a behaviour change smuggled in as a fix.
+    """
+    a = _record("oprhp:1", [(0, 0), (1000, 0)], "Ramapo-Dunderberg Trail")
+    b = _record("oprhp:2", [(0, 5), (600, 5)], "Suffern-Bear Mountain Trail", blaze="Yellow")
+    c = _record("oprhp:3", [(300, -4), (1000, -4)], "Long Path", blaze="Blue")
+    d = _record("oprhp:4", [(0, 8), (900, 8)], "Timp-Torne Trail", blaze="Orange")
+
+    whole, whole_stats = concurrency.find_shared_ground([a, b, c, d])
+    monkeypatch.setattr(concurrency, "PAIR_BATCH", 1)
+    single, single_stats = concurrency.find_shared_ground([a, b, c, d])
+
+    assert len(whole) >= 6, "the fixture must exercise more than one batch at a batch size of one"
+    assert single == whole
+    assert single_stats == whole_stats

@@ -28,14 +28,25 @@
 --
 -- WHAT A KEPT ROW CARRIES:
 -- - `trail_line_id`, `{source_key}:{id}` (TL05, lib/feature_id.py): the
---   layer's own id (int_trail_lines__network_unioned's `upstream_id`), else
---   `generated-<n>`, n the row's place among its layer's rows, every row
---   counted as the Python counts them. The place is the raw table's order
---   (`source_row`) for the two NYNJTC layers, the only ones with no id
---   field, which is the fetched file's order the Python counts in; any
---   other layer that reached this fallback would be numbered in staging-key
---   order, because its base model carries no such column. Positional ids
---   renumber when a layer's rows change, in both.
+--   layer's GlobalID, whatever its case, else its OBJECTID, else Socrata's
+--   row id, each read only where it is not null; else `generated-<n>`. The
+--   Python reads the property `GlobalID` spelled exactly that way, then the
+--   GeoJSON feature's own `id`, which the extract does not land: on ArcGIS
+--   that `id` is the OBJECTID and on Socrata the row id that lands as
+--   `_socrata_id` (lib/socrata.py's _with_row_ids). dlt's naming lowercases
+--   every column, so the SQL cannot tell `GlobalID` from `GLOBALID`, and
+--   matching the Python's exact case would need the field's spelling from
+--   the layer's metadata, which is not landed. That the ArcGIS `id` always
+--   equals the OBJECTID property is Reasoned from the REST API's GeoJSON
+--   output and @unvalidated here: one live fetch comparing the two on each
+--   registered ArcGIS layer settles it. n in `generated-<n>` is the row's
+--   place among its layer's rows, every row counted as the Python counts
+--   them. The place is the raw table's order (`source_row`) for the two
+--   NYNJTC layers, the only ones with no id field, which is the fetched
+--   file's order the Python counts in; any other layer that reached this
+--   fallback would be numbered in staging-key order, because its base model
+--   carries no such column. Positional ids renumber when a layer's rows
+--   change, in both.
 -- - `name`, declared_name(): the entry's `name_constant`, else the name
 --   column's value, null where it is one of the entry's `name_placeholders`
 --   (case and surrounding space ignored; DuckDB's lower() where Python
@@ -120,7 +131,11 @@ read_fields as (
         unioned.trail_segment_key,
         unioned.source_key,
         unioned.club,
-        unioned.upstream_id,
+        coalesce(
+            json_extract_string(unioned.properties, '$.globalid'),
+            json_extract_string(unioned.properties, '$.objectid'),
+            json_extract_string(unioned.properties, '$._socrata_id')
+        ) as upstream_id,
         unioned.geom,
         unioned._loaded_at,
         unioned.properties,

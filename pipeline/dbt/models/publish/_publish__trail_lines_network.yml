@@ -32,7 +32,7 @@ models:
 
   - name: pub_network_overview
     description: >
-      Writes network_overview.geojson from int_trail_lines__network_overview_seam:
+      Writes network_overview.geojson from int_trail_lines__network_overview_features:
       one row, `type` and `features`, which the phone_file materialisation
       copies to processed_dir/network_overview.geojson. parity.py compares it
       with export_nearby_trails.py's file feature by feature, keyed on each

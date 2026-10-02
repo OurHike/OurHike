@@ -28,16 +28,8 @@
 -- are restored to their raw names below, because the published id reads
 -- them.
 --
--- `upstream_id` is the feature's own identity before lib/feature_id.py's
--- fallbacks, and int_trail_lines__network_judged finishes the chain: the
--- layer's GlobalID, whatever its case, else its OBJECTID, else Socrata's
--- row id. The Python reads the property `GlobalID` spelled exactly that way
--- and then the GeoJSON feature's own `id`, which the extract does not land;
--- on ArcGIS that `id` is the OBJECTID and on Socrata it is the row id that
--- lands as `_socrata_id` (lib/socrata.py's _with_row_ids). That the ArcGIS
--- `id` always equals the OBJECTID property is Reasoned from the REST API's
--- GeoJSON output and @unvalidated here: one live fetch comparing the two on
--- each registered ArcGIS layer settles it.
+-- A row's published id is int_trail_lines__network_judged's to build, from
+-- `properties` and `source_row` (TL05).
 {%- set base_branches = [
     ('usfs_trails', 'usfs', 'base_usfs__trails'),
     ('njdep_park_trails', 'njgin', 'base_njgin__njdep_park_trails'),
@@ -189,11 +181,6 @@ select
     source_key,
     club,
     properties,
-    coalesce(
-        json_extract_string(properties, '$.globalid'),
-        json_extract_string(properties, '$.objectid'),
-        json_extract_string(properties, '$._socrata_id')
-    ) as upstream_id,
     -- The row's place in its raw table, where the layer's stg model carries
     -- it: the order the Python numbers a feature with no id by.
     source_row,

@@ -1,0 +1,59 @@
+version: 2
+
+models:
+  - name: pub_elevation_profile
+    description: >
+      Writes elevation_profile.json, the A.T.'s elevation profile, from the
+      elevation mart's 'AT' line: one row holding the whole document, which
+      the phone_file materialisation writes to
+      processed_dir/elevation_profile.json as it is. parity.py compares it
+      with export_elevation.py's profile, record by record.
+    config:
+      access: public
+      contract:
+        enforced: true
+    data_tests:
+      # The text is JSON, and its top level is the array the phone's
+      # parseProfile() requires (anything else reads as no profile).
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "json_valid(profile_json) and json_type(cast(profile_json as json)) = 'ARRAY'"
+    columns:
+      - name: profile_json
+        description: >
+          The file: a JSON array of {"distance_mi", "elevation_ft"} records
+          in mile order, "part_start": true on the first sample of each piece
+          only, with json.dumps's separators.
+        data_type: varchar
+        data_tests: [not_null, unique]
+
+exposures:
+  - name: elevation_profile_json
+    label: elevation_profile.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The A.T. elevation profile, about 139,000 samples 25 m apart, which the
+      phone's elevation ribbon draws and counts climb over
+      (client/src/lib/elevationProfile.ts, lib/elevationGain.ts), so it
+      reaches a hiker's sense of how much climbing is ahead and the pace
+      estimate built on it. Part of the safety core every phone holds whole
+      (pipeline/ELT.md, "Making the download smaller", tier (a)). Published
+      in the release folder by publish-vector-data.yml from
+      export_elevation.py's file until stage 4 of #1793 moves it to this
+      writer's.
+    depends_on:
+      - ref('elevation')
+      - ref('pub_elevation_profile')
+    config:
+      meta:
+        r2_keys: [elevation_profile.json]
+        format: json
+        offline_tier: safety_core
+        # @unvalidated as a budget: release 2026-09-24-2's measured
+        # transfer_bytes for this file (pipeline/ELT.md, "What a phone
+        # downloads today"), not a ceiling anyone chose.
+        size_budget_bytes: 921533
+        cadence: monthly

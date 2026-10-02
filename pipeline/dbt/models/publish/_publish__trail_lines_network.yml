@@ -8,8 +8,8 @@ version: 2
 models:
   - name: pub_nearby_trails
     description: >
-      Writes nearby_trails.geojson from int_trail_lines__network_published
-      and its 1 m line, int_trail_lines__network_navigation: one row,
+      Writes nearby_trails.geojson from the trail_lines mart's network rows
+      (int_trail_lines__network_published) and their 1 m line: one row,
       `type` and `features`, which the phone_file materialisation copies to
       processed_dir/nearby_trails.geojson as one GeoJSON FeatureCollection.
       parity.py compares it with export_nearby_trails.py's file, feature by
@@ -70,7 +70,7 @@ exposures:
       export_nearby_trails.py's file until stage 4 of #1793 moves it to this
       writer's.
     depends_on:
-      - ref('int_trail_lines__network_published')
+      - ref('trail_lines')
       - ref('pub_nearby_trails')
     config:
       meta:
@@ -96,7 +96,7 @@ exposures:
     # exposure's (tests/test_dbt_publish_writers.py), and this file's writer
     # is Python.
     depends_on:
-      - ref('int_trail_lines__network_published')
+      - ref('trail_lines')
     config:
       meta:
         r2_keys: [nearby_trails.pmtiles]
@@ -116,7 +116,7 @@ exposures:
       nearby_trails.pmtiles, unchanged, because dbt has no per-cell model
       fan-out.
     depends_on:
-      - ref('int_trail_lines__network_published')
+      - ref('trail_lines')
     config:
       meta:
         r2_keys:

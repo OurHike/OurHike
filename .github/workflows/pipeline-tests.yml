@@ -210,8 +210,14 @@ jobs:
           # reference/trail_orgs.json are what a resource reads its URL and
           # its club from, and the rest of reference/ holds the reviewed
           # files fixture mode loads as they are. parity.py and the exporters
-          # it runs (export_podcasts.py, export_sources.py) are the parity
-          # step's; the same test holds the list to their imports too.
+          # it runs (export_podcasts.py, export_sources.py, export_elevation.py)
+          # are the parity step's; the same test holds the list to their
+          # imports too. build_marts.py runs the build, and
+          # step_dem_sampling.py is the Python step it runs between dbt
+          # invocations (tests/test_build_marts.py holds this list to both).
+          # The points_of_interest family's parity runs export_poi.py (and the
+          # export_elevation.py mile axis it imports), export_nearby_poi.py and
+          # export_retired_poi.py.
           paths: >-
             pipeline/dbt/
             pipeline/extract/
@@ -226,10 +232,17 @@ jobs:
             pipeline/fetch_nynjtc_alerts.py
             pipeline/export_nearby_trails.py
             pipeline/export_trails.py
-            pipeline/export_elevation.py
-            pipeline/export_places.py
             pipeline/export_spurs.py
+            pipeline/export_club_sections.py
+            pipeline/export_elevation.py
+            pipeline/step_dem_sampling.py
+            pipeline/build_marts.py
+            pipeline/export_poi.py
+            pipeline/export_nearby_poi.py
+            pipeline/export_retired_poi.py
+            pipeline/export_places.py
             pipeline/requirements.txt
+            pipeline/seed_spatial_extension.py
             pipeline/check_freshness.py
             pipeline/export_conditions.py
             pipeline/fetch_club_pdfs.py
@@ -399,28 +412,21 @@ jobs:
           "$RUNNER_TEMP/extract/bin/python" -m extract._fixtures
           --raw-dir data/raw --warehouse data/warehouse.duckdb
 
-      - name: dbt seed
+      # THE BUILD, in the order pipeline/build_marts.py owns (pipeline/ELT.md,
+      # "Python steps, outside dbt"): the seeds; stage A, everything no Python
+      # step reads back; each entry of build_marts.STEPS, then what its
+      # derived table unblocks; and the pub_ writers LAST, once every test
+      # above them has passed (ELT.md, "Publish (reverse ETL)"), because
+      # `dbt build` tests a model after building it, so a writer built beside
+      # its parents would write its file before a failing test upstream
+      # stopped it. The writers write under data/processed/dbt/
+      # (dbt_project.yml's processed_dir says why there), and nothing here
+      # uploads anything. dbt is this job's own; the Python steps run on the
+      # pipeline's pins, the venv the step above built. A new Python step is
+      # an entry in build_marts.STEPS, never a step here.
+      - name: dbt build, the Python steps and the pub_ writers (build_marts.py)
         if: steps.scope.outputs.run == 'true'
-        working-directory: pipeline/dbt
-        run: dbt seed --profiles-dir .
-
-      - name: dbt build
-        if: steps.scope.outputs.run == 'true'
-        working-directory: pipeline/dbt
-        run: dbt build --profiles-dir . --exclude package:dbt_project_evaluator path:models/publish
-
-      # THE WRITERS RUN LAST, once every test above has passed (pipeline/ELT.md,
-      # "Publish (reverse ETL)"): `dbt build` tests a model after building it,
-      # so a writer in the build above would write its file before a failing
-      # test upstream stopped it. They write under data/processed/dbt/
-      # (dbt_project.yml's processed_dir says why there), which COPY does not
-      # create, and nothing here uploads anything.
-      - name: dbt publish (the pub_ writers)
-        if: steps.scope.outputs.run == 'true'
-        working-directory: pipeline/dbt
-        run: |
-          mkdir -p ../data/processed/dbt
-          dbt build --profiles-dir . -s path:models/publish
+        run: python build_marts.py --fixtures --python "$RUNNER_TEMP/pipeline/bin/python"
 
       # Shadow-run parity (ELT.md, "How a rule moves"): each family the dbt
       # path writes, against today's exporter on the same input, record by
@@ -429,25 +435,52 @@ jobs:
       # fixture. Fails on any difference.
       - name: Parity with today's exporters
         if: steps.scope.outputs.run == 'true'
+        # EVERY LINE RUNS ON THE PIPELINE'S OWN PINS ($RUNNER_TEMP/pipeline,
+        # built above), because the old side imports today's exporters:
+        # export_atc_updates.py needs requests (through lib/atc_scrape.py),
+        # export_conditions.py psycopg, and export_nearby_trails.py shapely,
+        # pyproj and rasterio, none of which requirements-dbt.txt pins. The
+        # job's own python failed the first conditions line on requests.
+        # Except closures and reports, which run on the extract's venv: their
+        # old side reads OurHike's Postgres answers through fixture mode's own
+        # FixtureConnection (extract/_fixtures.py), which imports dlt, and
+        # requirements.txt has no dlt (measured: "No module named 'dlt'" on a
+        # venv of requirements.txt alone, and no differences on the extract's).
         run: |
-          python parity.py podcasts --new data/processed/dbt/podcasts_episodes.json
-          python parity.py stewards --new data/processed/dbt/stewards.json
-          python parity.py registry --new data/processed/dbt/registry.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py podcasts --new data/processed/dbt/podcasts_episodes.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py stewards --new data/processed/dbt/stewards.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py registry --new data/processed/dbt/registry.json
           # The hourly conditions files. atc_updates reads
           # reference/atc_updates.json from git; the other three read the
           # answers under data/raw/conditions/ that fixture mode built the
           # warehouse from, since their upstreams are a website and a database.
-          python parity.py atc_updates --new data/processed/dbt/conditions_atc_updates.json
-          python parity.py nynjtc_alerts --new data/processed/dbt/conditions_nynjtc_alerts.json
-          python parity.py closures --new data/processed/dbt/conditions_closures.json
-          python parity.py reports --new data/processed/dbt/conditions_reports.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py atc_updates --new data/processed/dbt/conditions_atc_updates.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py nynjtc_alerts --new data/processed/dbt/conditions_nynjtc_alerts.json
+          "$RUNNER_TEMP/extract/bin/python" parity.py closures --new data/processed/dbt/conditions_closures.json
+          "$RUNNER_TEMP/extract/bin/python" parity.py reports --new data/processed/dbt/conditions_reports.json
           # The trail lines network, whose input is the fixture warehouse, not
-          # a file in git. export_nearby_trails.py imports shapely, numpy,
-          # pyproj, pmtiles and, through export_trails.py, rasterio, none of
-          # which requirements-dbt.txt pins, so today's exporter runs under the
-          # pipeline's own pins, the venv the step above built.
+          # a file in git.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py nearby_trails --new data/processed/dbt/nearby_trails.geojson
           "$RUNNER_TEMP/pipeline/bin/python" parity.py network_overview --new data/processed/dbt/network_overview.geojson
+          # The A.T.'s files, on the fixture's layers (ATC's are not in git); parity.py applies decision 8's 6 dp to the old side.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py trails --new data/processed/dbt/trails.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py trail_miles --new data/processed/dbt/trail_miles.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py trails_overview --new data/processed/dbt/trails_overview.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py spurs --new data/processed/dbt/spurs.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py club_sections --new data/processed/dbt/club_sections.json
+          # The elevation profile's input is a fixture, not a file in git: the
+          # fixture centerline, markers and DEM tile make_dbt_fixtures.py wrote.
+          # export_elevation.py reads the DEM through rasterio, so this runs on
+          # the pipeline's own pins, the venv step_dem_sampling.py runs in.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py elevation --new data/processed/dbt/elevation_profile.json --raw-dir data/raw
+          # The points_of_interest family's ten files, on the fixture warehouse
+          # and the reviewed files in git (water distances, capacities, the
+          # identity ledger).
+          for poi_type in shelter campsite water resupply viewpoint parking privy trailhead; do
+            "$RUNNER_TEMP/pipeline/bin/python" parity.py "poi_$poi_type" --new "data/processed/dbt/poi_$poi_type.geojson"
+          done
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py nearby_poi --new data/processed/dbt/nearby_poi.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py retired_poi --new data/processed/dbt/retired_poi.geojson
           # places.json, from the same fixture warehouse: OPRHP's park layer,
           # and the lines today's export_nearby_trails.py writes from it.
           # export_places.py imports export_nearby_trails.py, so it runs

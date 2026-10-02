@@ -23,11 +23,11 @@ models:
           config:
             severity: warn
     description: >
-      DEC lean-tos as `shelter` - the first non-A.T. rows in points_of_interest.
-      poi_type, id, name and public flag are all sources.json's declared
-      fields for this entry rather than calls made in SQL. The model's own
-      comment carries the reasoning the other five DEC POI models refer to,
-      including why PUBLICUSE is carried rather than applied.
+      DEC lean-tos, one row per lean-to, keyed and deduplicated, every column
+      kept. Their poi_type, id, name and public flag are sources.json's
+      declared fields for the entry, read and applied in
+      int_points_of_interest__classified; the model's own comment carries
+      the reasoning the other DEC POI models refer to.
     columns:
       - name: poi_key
         description: >
@@ -36,10 +36,9 @@ models:
           the registry key first and then the columns measured unique for
           this layer.
         data_tests: [not_null, unique]
-      - name: source_id
+      - name: objectid
+        description: DEC's OBJECTID, the entry's id_field and the id export_nearby_poi.py publishes.
         data_tests: [not_null, unique]
-      - name: poi_type
-        data_tests: [not_null]
   - name: stg_dec__primitive_campsites
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
@@ -50,9 +49,9 @@ models:
           config:
             severity: warn
     description: >
-      DEC primitive campsites as `campsite`. 2,078 rows on the live layer
-      (counted 2026-08-27) - the largest single block of POIs Phase D adds.
-      One row is one backcountry tent site.
+      DEC primitive campsites, in stg_dec__lean_tos' shape. 2,078 rows on
+      the live layer (counted 2026-08-27); one row is one backcountry tent
+      site.
     columns:
       - name: poi_key
         description: >
@@ -61,10 +60,9 @@ models:
           the registry key first and then the columns measured unique for
           this layer.
         data_tests: [not_null, unique]
-      - name: source_id
+      - name: objectid
+        description: DEC's OBJECTID, the entry's id_field.
         data_tests: [not_null, unique]
-      - name: poi_type
-        data_tests: [not_null]
   - name: stg_dec__scenic_vistas
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
@@ -75,9 +73,8 @@ models:
           config:
             severity: warn
     description: >
-      DEC scenic vistas as `viewpoint`. One of three DEC services landing on
-      that type; they stay three models with three `source` values, and
-      cross-source dedup remains deferred as it was in Phase A.
+      DEC scenic vistas, in stg_dec__lean_tos' shape. One of three DEC
+      services that publish as `viewpoint`; they stay three sources.
     columns:
       - name: poi_key
         description: >
@@ -86,10 +83,9 @@ models:
           the registry key first and then the columns measured unique for
           this layer.
         data_tests: [not_null, unique]
-      - name: source_id
+      - name: objectid
+        description: DEC's OBJECTID, the entry's id_field.
         data_tests: [not_null, unique]
-      - name: poi_type
-        data_tests: [not_null]
   - name: stg_dec__firetowers
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
@@ -100,10 +96,10 @@ models:
           config:
             severity: warn
     description: >
-      DEC firetowers as `viewpoint`, and the one Phase D poi_type carrying an
-      @unvalidated caveat into the model: the layer publishes no open/closed
-      state, so a hiker who reaches a closed tower finds a locked cab. See
-      the model comment.
+      DEC firetowers, in stg_dec__lean_tos' shape. sources.json types them
+      `viewpoint` with an @unvalidated caveat this model's comment repeats:
+      the layer publishes no open/closed state, so a hiker who reaches a
+      closed tower finds a locked cab.
     columns:
       - name: poi_key
         description: >
@@ -112,10 +108,9 @@ models:
           the registry key first and then the columns measured unique for
           this layer.
         data_tests: [not_null, unique]
-      - name: source_id
+      - name: objectid
+        description: DEC's OBJECTID, the entry's id_field.
         data_tests: [not_null, unique]
-      - name: poi_type
-        data_tests: [not_null]
   - name: stg_dec__viewing_areas
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
@@ -126,7 +121,7 @@ models:
           config:
             severity: warn
     description: >
-      DEC viewing areas as `viewpoint`. Same shape as stg_dec__lean_tos.
+      DEC viewing areas, in stg_dec__lean_tos' shape.
     columns:
       - name: poi_key
         description: >
@@ -135,10 +130,9 @@ models:
           the registry key first and then the columns measured unique for
           this layer.
         data_tests: [not_null, unique]
-      - name: source_id
+      - name: objectid
+        description: DEC's OBJECTID, the entry's id_field.
         data_tests: [not_null, unique]
-      - name: poi_type
-        data_tests: [not_null]
   - name: stg_dec__parking_areas
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
@@ -149,9 +143,9 @@ models:
           config:
             severity: warn
     description: >
-      DEC parking areas as `parking`. The layer states no seasonal access -
-      seasonality lives in DEC's free-text NOTES, so no column here claims
-      it.
+      DEC parking areas, in stg_dec__lean_tos' shape. The layer states no
+      seasonal access: seasonality lives in DEC's free-text NOTES, so no
+      column here claims it.
     columns:
       - name: poi_key
         description: >
@@ -160,10 +154,9 @@ models:
           the registry key first and then the columns measured unique for
           this layer.
         data_tests: [not_null, unique]
-      - name: source_id
+      - name: objectid
+        description: DEC's OBJECTID, the entry's id_field.
         data_tests: [not_null, unique]
-      - name: poi_type
-        data_tests: [not_null]
   - name: stg_dec__hiking_trails
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
@@ -201,11 +194,12 @@ models:
           config:
             severity: warn
     description: >
-      DEC's asset inventory, staged and NOT unioned - the same posture
-      stg_atc__bridges holds. The entry declares no poi_type because 68% of
-      the layer is things no hiker wants a pin for; what publishes from it
-      goes through export_nearby_poi.py's allowlist, which is not
-      reproduced here.
+      DEC's back-country asset inventory, keyed and deduplicated, every
+      column kept. The entry declares no poi_type, because 68% of the layer
+      is things no hiker wants a pin for; what publishes from it does so row
+      by row through export_nearby_poi.py's DEC_ASSET_TYPES allowlist and the
+      PUBLICUSE flag, applied in int_points_of_interest__classified from the
+      poi_value_types seed.
     columns:
       - name: poi_key
         description: >
@@ -214,5 +208,6 @@ models:
           the registry key first and then the columns measured unique for
           this layer.
         data_tests: [not_null, unique]
-      - name: source_id
+      - name: objectid
+        description: DEC's OBJECTID, the entry's id_field.
         data_tests: [not_null, unique]

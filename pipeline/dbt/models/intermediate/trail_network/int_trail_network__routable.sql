@@ -26,7 +26,10 @@
 -- - each part of a line that is empty or has fewer than two coordinates
 --   ('empty', one row per part).
 -- Every other part of every other line is routable, a MultiLineString's
--- parts each on their own, in order.
+-- parts each on their own, in order. One count differs and no edge does: an
+-- A.T. line with no geometry is counted 'empty' here, where at_lines_of()
+-- drops it before routable_lines() counts anything. The counts are not
+-- published yet (trail_graph_manifest.json's stats are stage 4's).
 --
 -- `part_order` is the part's place in routable_lines()' list, which is the
 -- order every later model and step_node_lines reads the parts in. Geometry

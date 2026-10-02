@@ -20,7 +20,9 @@
 --   distance to the bit on all 4,000, where DuckDB's own ST_Distance did on
 --   1,158, which is why this model names the GEOS one;
 -- - the pairs whose envelopes meet were STRtree.query's on 6,000 lines,
---   vertical, horizontal and zero-length ones among them.
+--   vertical, horizontal and zero-length ones among them;
+-- - ST_AsText wrote a 5070 point that reads back as the same two doubles
+--   on 20,000 of 20,000, so `end_point_wkt` is the end shapely welds.
 --
 -- THE TWO WAYS TWO TRAILS MEET, the module's design decision:
 -- 1. lines that cross or touch are cut exactly where they meet, with no

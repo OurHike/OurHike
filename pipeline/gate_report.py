@@ -175,8 +175,18 @@ def field_name(path: str) -> str:
     return path.replace("[]", "").rsplit(".", 1)[-1]
 
 
-def safety_groups(fields: list[str]) -> list[str]:
-    return sorted({SAFETY_FIELDS[name] for name in map(field_name, fields) if name in SAFETY_FIELDS})
+#: SAFETY_FIELDS names too common to mean a closure outside the conditions
+#: files: a challenge's `status` is draft or published, a highlight's review
+#: state is editorial. Under `conditions/` they are a closure's and a report's.
+CONDITIONS_ONLY = frozenset({"status", "severity", "review_state"})
+
+
+def safety_groups(fields: list[str], key: str | None = None) -> list[str]:
+    """The SAFETY_FIELDS groups `fields` touch, in the file at `key` (None: every name counts)."""
+    names = {field_name(path) for path in fields}
+    if key is not None and not key.startswith("conditions/"):
+        names -= CONDITIONS_ONLY
+    return sorted({SAFETY_FIELDS[name] for name in names if name in SAFETY_FIELDS})
 
 
 def touches_location(fields: list[str]) -> bool:
@@ -622,6 +632,8 @@ def key_rows(today: list[TodayKey], dbt: list[DbtKey], results: dict[str, dict])
                         "what was compared; the cut into one object each is not"
                     )
                 row.verdict, row.detail, row.differences, row.listed = judge(result, note)
+                for item in [*row.differences, *row.listed]:
+                    item.safety = safety_groups(item.fields, entry.key)
                 row.family, row.new_file = result["family"], result["new_file"]
                 row.old_records, row.new_records = result.get("old_records"), result.get("new_records")
         rows.append(row)

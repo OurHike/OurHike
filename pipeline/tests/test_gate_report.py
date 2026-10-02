@@ -172,6 +172,22 @@ def test_an_explained_safety_difference_is_listed_for_approval_on_its_own_row():
     assert (water.verdict, water.safety) == ("equal_apart_from_listed", ["confidence"])
 
 
+def test_status_is_a_safety_field_in_a_conditions_file_and_not_in_challenges_json():
+    """A closure's `status` decides whether a hiker reads the trail as shut; a challenge's is draft or published."""
+    today = [TodayKey("conditions/closures.json", "artifact", "x"), TodayKey("challenges.json", "artifact", "x")]
+    dbt = [
+        DbtKey("conditions/closures.json", "e", "model.ourhike.pub_conditions_closures", "conditions_closures.json"),
+        DbtKey("challenges.json", "c", "model.ourhike.pub_challenges", "challenges.json"),
+    ]
+    results = {
+        family: _result(family, file_name, "differences", differences=[_difference("status")])
+        for family, file_name in (("closures", "conditions_closures.json"), ("challenges", "challenges.json"))
+    }
+    rows, _, _ = key_rows(today, dbt, results)
+    assert {row.key: row.safety for row in rows} == {"conditions/closures.json": ["closure fields"], "challenges.json": []}
+    assert rows[0].key == "conditions/closures.json"
+
+
 def test_stamps_volatile_and_an_unordered_family_are_listed_never_called_equal():
     result = _result("poi_water", "poi_water.geojson", compared_by_form_only=["generated_at"], ordered=False)
     rows, _, _ = key_rows(TODAY, DBT, {"poi_water": result})

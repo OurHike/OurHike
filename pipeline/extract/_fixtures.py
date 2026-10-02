@@ -24,7 +24,8 @@ seen a value in (Reasoned).
 
 THE REVIEWED FILES RUN AS THEY ARE. Their upstream is a file in git under
 pipeline/reference/, so CI reads the real thing: the podcast episodes, the
-POI identity ledger, ATC's reviewed Trail Updates and the rest.
+POI identity ledger, ATC's reviewed Trail Updates and the rest, and each
+club's folder of challenge files (ReviewedDir), one row per file.
 
 THE HOURLY LANE'S OTHER UPSTREAMS ARE ANSWERED TOO, so the closures and
 warnings marts build in CI (#1793, stage 3). make_dbt_fixtures.py writes one
@@ -81,6 +82,7 @@ from extract._kinds import (
     ConditionsQuery,
     NwsAlerts,
     OpentrailFeed,
+    ReviewedDir,
     ReviewedFile,
     SocrataDataset,
     WordpressPosts,
@@ -354,8 +356,8 @@ def fixture_resources(raw_dir: Path) -> tuple[list, FixtureAdapter]:
     arcgis, socrata, feeds, wordpress, chosen = {}, {}, {}, {}, []
     nws, postgres = conditions_fixture(raw_dir, NWS_FIXTURE), conditions_fixture(raw_dir, POSTGRES_FIXTURE)
     for resource in all_resources(discover() + discover_shared()):
-        if isinstance(resource, ReviewedFile):
-            chosen.append(resource)  # a committed file is its own fixture
+        if isinstance(resource, ReviewedFile | ReviewedDir):
+            chosen.append(resource)  # a committed file, or a folder of them, is its own fixture
             continue
         if isinstance(resource, NwsAlerts):
             if nws is not None:

@@ -287,9 +287,11 @@ sources:
         config:
           # Read on the hourly conditions lane, as every closures type is, and
           # warned on at the source's 7 days, as NYNJTC's alerts are. How
-          # recently the extract loaded the pages, which moves only when the
-          # sitemap's (slug, lastmod) set does (AtcTrailUpdatePages' change
-          # check), so a quiet week reads as stale. @unvalidated: 7 days is the
+          # recently the extract loaded the pages, which is every run that
+          # lands them: AtcTrailUpdatePages' change check is never FRESH, since
+          # each run re-reads a share of its pages, so `_loaded_at` stands
+          # still only while the read is refused, or incomplete with too many
+          # pages moved to fit one run's budget. @unvalidated: 7 days is the
           # atc source's inherited threshold, and what settles it is stage 5
           # of #1793 — Rebuild the data platform as dlt → dbt: seven
           # contracted marts, a monthly refresh, published docs, and lighter
@@ -328,9 +330,17 @@ sources:
           - name: source_url
             description: The update's own page, lib/atc_scrape.py's update_url().
           - name: sitemap_lastmod
-            description: The sitemap's lastmod for the page, as written.
+            description: >
+              The sitemap's lastmod for the page when the page was read, as
+              written. A row is carried from run to run while the sitemap
+              still says this.
           - name: page_sha256
-            description: The page's sha256, for provenance; the page itself is the as-sent copy's.
+            description: The page's sha256 as read, for provenance; the page itself is the as-sent copy's.
+          - name: page_fetched_at
+            description: >
+              When the extract read the page, UTC; a carried row keeps the
+              time it was read, not the time it was carried. Null on a row
+              landed before rows were carried.
           - name: _row
             description: The update's place in the sitemap, from 0.
       - name: raw_atc__water_distance

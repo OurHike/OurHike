@@ -977,13 +977,18 @@ jobs:
       # separately, within --read-seconds, and one that fails, runs out of
       # time or is refused by the run check is left out, its last committed
       # table standing, while the rest load (extract/_run.py's read_each).
-      # Nothing shortens a host's Crawl-delay to fit: ATC's is 10 s, and a
-      # full re-read of its trail-updates pages is about 15 minutes (cw2's
-      # Reasoned figure, 87 requests 10 s apart), so on an hour ATC changed
-      # that read is left out and says so. OurHike's own rows are the
-      # exception and stop the leg, as export_conditions.py stops today's
-      # bake. A leg that left something out exits 3; this step records it,
-      # and the last step turns the run red after what did load is published.
+      # Nothing shortens a host's Crawl-delay to fit: ATC's is 10 s, so its
+      # trail-updates pages are read only where the sitemap's lastmod moved,
+      # plus a few re-reads, and the rest carried from the last committed
+      # load (extract/_kinds.py's AtcTrailUpdatePages; about 12 pages fit
+      # the budget, Reasoned). A read that runs out lands nothing, keeps
+      # what it read for the next hour, and is annotated "not yet loaded" or
+      # "incomplete" without turning the run red; a first run on an empty
+      # raw store completes over about 8 hours that way. OurHike's own rows
+      # are the exception and stop the leg, as export_conditions.py stops
+      # today's bake. A leg that left something out as refused exits 3; this
+      # step records it, and the last step turns the run red after what did
+      # load is published.
       #
       # 150 s of reading inside a 4-minute step, the cap today's ATC fetch
       # had (#1318 sized it), leaving about 90 s for dlt's normalize, the load

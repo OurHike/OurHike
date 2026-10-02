@@ -125,6 +125,9 @@ select
                     / cast('{{ var("elevation_metres_per_foot") }}' as double)
                 )
     end as elevation_ft_text,
+    -- The DEM's own metres, unrounded, which the elevation mart keeps beside
+    -- the published feet.
+    kept.elevation_m,
     kept.part_start,
     kept.dem_read,
     -- The folder that extracts the centerline, and its registry key.

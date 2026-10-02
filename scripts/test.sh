@@ -471,6 +471,9 @@ if selected_has dbt; then
       step "dbt parity ${family%%:*}" env -C pipeline "$PY" parity.py "${family%%:*}" --new "$dbt_tmp/processed/${family#*:}.json"
     done
     step "dbt parity elevation"  env -C pipeline "$PY" parity.py elevation --new "$dbt_tmp/processed/elevation_profile.json" --raw-dir "$dbt_tmp/raw"
+    for family in trail_graph_elevation trail_graph_profile; do
+      step "dbt parity $family" env -C pipeline "$PY" parity.py "$family" --new "$dbt_tmp/processed/$family.json" --raw-dir "$dbt_tmp/raw" --warehouse "$dbt_tmp/warehouse.duckdb"
+    done
     step "dbt source freshness"  "${dbt_cmd[@]}" source freshness --profiles-dir .
     step "dbt docs generate"     "${dbt_cmd[@]}" docs generate --profiles-dir . --output-dir target/docs
     step "dbt docs site"         dbt_docs_site_complete pipeline/dbt/target/docs

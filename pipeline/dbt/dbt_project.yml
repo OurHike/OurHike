@@ -345,6 +345,78 @@ vars:
   highlights_source: reference/highlights.json
   highlights_basis: named
   highlights_cited_by: OurHike
+  # lib/elevation_gain.py's DEFAULT_THRESHOLD_M, the dead band a climb must
+  # reverse by before it is banked (macros/dead_band_gain.sql): six times
+  # NOISE_FLOOR_M, the DEM's 0.5 m sample-to-sample error that the A.T.'s
+  # 17% raw over-count implies, and checked against three published A.T.
+  # sections by check_elevation_gain.py. Unchecked on the network's ground,
+  # which is why both network manifests say `estimate: true`.
+  elevation_gain_threshold_m: 3.0
+
+  # The challenges family (ch): lib/challenges.py's and export_challenges.py's
+  # constants, read by the int_challenges__ models and held to the Python's
+  # own by tests/test_dbt_challenges_parity.py until stage 5 of #1793 deletes
+  # the Python. Lists keep the Python's order, because a refusal message
+  # prints them in it.
+  challenges_match_kinds:
+    - place
+    - places_all
+    - poi_type
+    - elevation_min_ft
+    - section_walked
+    - workday
+    - self_report
+  challenges_reward_kinds:
+    - patch
+    - postcard
+    - sticker
+    - drawing
+  challenges_statuses:
+    - draft
+    - published
+  # DEFAULT_RADIUS_M, the tag radius in metres from the POI when a match
+  # gives none. @unvalidated: the handoff's examples (150 m for a named
+  # place, 60 m for "any shelter"), not a measurement. For scale, measured
+  # 2026-09-30 against release 2026-09-24-2: the median ATC shelter sits 63 m
+  # from the centerline and the 75th percentile 140 m. What would settle
+  # them is a phone that tags by distance, and tag prompts from real tracks
+  # counting misses (too small) against side-trail junctions asked (too
+  # large). Today only the radius check reads them; the phone tags by walked
+  # miles (lib/challenges.py's DEFAULT_RADIUS_M says so).
+  challenges_default_radius_m_place: 150
+  challenges_default_radius_m_places_all: 150
+  challenges_default_radius_m_poi_type: 60
+  # MIN_RADIUS_M and MAX_RADIUS_M. Reasoned in the Python: below 10 m a
+  # phone's fix error would decide the answer, above 2 km a place is a region.
+  challenges_min_radius_m: 10
+  challenges_max_radius_m: 2000
+  # DEFAULT_MIN_FRACTION, the share of a walked section that counts as walking
+  # it. @unvalidated: the handoff's example value; the walked share recorded
+  # on real tracks of hikers who did walk a section would settle it.
+  challenges_default_min_fraction: 0.9
+  # ID_MAX_CHARS (the backend's, backend/app/core/trail_challenge.py) and
+  # _ID's pattern, as the Python spells it.
+  challenges_id_max_chars: 120
+  challenges_id_pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+  # export_challenges.py's _DOMAIN, for a publishers.json row's `domain`.
+  challenges_domain_pattern: "^[a-z0-9-]+(?:\\.[a-z0-9-]+)+$"
+  # lib/poi_schema.py's POI_TYPES: a `poi_type` match must name one that at
+  # least one published POI carries.
+  challenges_poi_types:
+    - shelter
+    - campsite
+    - water
+    - resupply
+    - viewpoint
+    - parking
+    - privy
+    - trailhead
+  # The day mystery titles are sealed against (CH07): a title ships as
+  # sealed_title through its reveal_on, and in the clear from the next day.
+  # Unset, it is the build's UTC date, as export_challenges.main() defaults
+  # `today`; a run that must reproduce a file sets it, `--vars
+  # '{challenges_build_date: 2027-07-20}'`, and the unit tests set it.
+  challenges_build_date: null
 
   dbt_project_evaluator:
     # The mart names the maintainer chose carry no dim_/fct_ prefix

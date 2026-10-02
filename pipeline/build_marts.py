@@ -208,6 +208,7 @@ def plan(
     paths: Paths,
     fixtures: bool,
     threads: int | None = None,
+    profiles_dir: str = ".",
     lane: str | None = None,
     state: Path | None = None,
     without: tuple[str, ...] = (),
@@ -219,7 +220,7 @@ def plan(
         raise ValueError("--state is the hourly lane's: only it defers to another build's nodes")
     if unknown := sorted(set(without) - {step.name for step in steps}):
         raise ValueError(f"--without-step names no entry of STEPS: {', '.join(unknown)}")
-    common = ("--profiles-dir", ".", *(("--threads", str(threads)) if threads else ()))
+    common = ("--profiles-dir", profiles_dir, *(("--threads", str(threads)) if threads else ()))
     fields = {"warehouse": str(paths.warehouse), "raw_dir": str(paths.raw_dir)}
     running = [step for step in steps if step.name not in without and (lane is None or step.lane == lane)]
     # What a step that does not run here would have unblocked: built by no
@@ -375,6 +376,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--processed-dir", type=Path, help="default: OURHIKE_PROCESSED_DIR, else data/processed/dbt")
     parser.add_argument("--raw-dir", type=Path, default=PIPELINE_DIR / "data" / "raw", help="the fixtures' directory")
     parser.add_argument("--threads", type=int, help="passed to every dbt seed and build")
+    parser.add_argument(
+        "--profiles-dir",
+        type=Path,
+        help="default: pipeline/dbt, whose profiles.yml CI uses; another one can cap DuckDB's memory on a shared machine",
+    )
     parser.add_argument("--lane", choices=LANES, help="build only that lane's nodes (default: every node, as CI's fixtures need)")
     parser.add_argument("--state", type=Path, help="the hourly lane only: defer to the build whose target/ this is")
     parser.add_argument(
@@ -402,6 +408,7 @@ def main(argv: list[str] | None = None) -> int:
             paths=paths,
             fixtures=args.fixtures,
             threads=args.threads,
+            profiles_dir=str(args.profiles_dir.resolve()) if args.profiles_dir else ".",
             lane=args.lane,
             state=args.state.resolve() if args.state else None,
             without=tuple(args.without_step),

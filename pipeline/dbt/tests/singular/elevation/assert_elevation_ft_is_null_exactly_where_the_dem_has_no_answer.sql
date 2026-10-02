@@ -3,9 +3,11 @@
 -- ELT.md's safety table: "Null means no DEM coverage, never 0"). A 0 for a
 -- gap would draw a cliff into the ribbon and count its climb into the
 -- hiker's total; the phone reads a null as a break in the run instead
--- (client/src/lib/elevationProfile.ts). Read through int_elevation__profile,
--- which carries each published sample's place in the walk. Returns no rows.
-with published as (
+-- (client/src/lib/elevationProfile.ts, and walkProfile.ts for an edge).
+-- Each published row is matched to the step's own row: an A.T. row through
+-- int_elevation__profile, which carries its place in the walk, and an edge's
+-- row directly, its seq being its sample_index. Returns no rows.
+with at_published as (
     select
         elevation.line_id,
         elevation.seq,
@@ -16,6 +18,22 @@ with published as (
         on
             elevation.line_id = profile.line_id
             and elevation.seq = profile.seq
+),
+
+edge_published as (
+    select
+        line_id,
+        seq,
+        elevation_ft,
+        seq as sample_index
+    from {{ ref('elevation') }}
+    where line_id != 'AT'
+),
+
+published as (
+    select * from at_published
+    union all
+    select * from edge_published
 ),
 
 dem as (

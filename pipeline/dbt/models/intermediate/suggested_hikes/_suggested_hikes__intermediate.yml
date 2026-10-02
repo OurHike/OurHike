@@ -59,9 +59,10 @@ models:
         data_tests: [not_null, unique]
   - name: int_suggested_hikes__graph_climb
     description: >
-      INTERFACE, zero rows until the elevation family publishes the network's
-      per-edge climb: trail_graph_elevation.json, one row per edge, which
-      step_form_route prices a walk's climb from.
+      The network's per-edge climb as trail_graph_elevation.json publishes it,
+      one row per edge from int_elevation__edge_climbs, null where unmeasured
+      or held back by may_publish, which step_form_route prices a walk's climb
+      from.
     columns:
       - name: edge_index
         description: The edge's place in trail_graph.json's `edges`.

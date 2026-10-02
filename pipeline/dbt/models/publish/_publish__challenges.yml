@@ -1,0 +1,55 @@
+version: 2
+
+models:
+  - name: pub_challenges
+    description: >
+      Writes challenges.json, the clubs' challenges a phone lists, from the
+      challenges mart: one row, `source` and `challenges`, which the
+      phone_file materialisation copies to processed_dir/challenges.json as
+      one JSON document. parity.py compares it with export_challenges.py's
+      build_output(), record by record, in the dbt job.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: source
+        description: export_challenges.py's literal, reference/challenges, where the judgement lives.
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: challenges
+        description: >
+          The challenges in the files' path order, each as build_output()
+          writes one: the resolved record with org_name, org_short and
+          org_domain beside it.
+        data_type: json[]
+
+exposures:
+  - name: challenges_json
+    label: challenges.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The challenges clubs put on their own trails (#1780 — Let a club
+      publish a challenge — places on its own trails that hikers opt into
+      and tag at camp — starting with the ATC's A.T. Summer Bucket List),
+      read by client/src/lib/challengeFeed.ts under config.ts's
+      CHALLENGES_KEY. In the release folder, `@release optional`: a release
+      with none reads as "no challenges yet". Published by
+      publish-vector-data.yml from export_challenges.py's file (publish.py
+      collects challenges_manifest.json) until stage 4 of #1793 — Rebuild
+      the data platform as dlt → dbt: seven contracted marts, a monthly
+      refresh, published docs, and lighter phone downloads moves the upload
+      to this writer's.
+    depends_on:
+      - ref('challenges', v=1)
+      - ref('pub_challenges')
+    config:
+      meta:
+        r2_keys: [challenges.json]
+        format: json
+        # The reviewed files and the POI miles under them both move on the
+        # monthly lane; publish-vector-data.yml ships them today on dispatch.
+        cadence: monthly

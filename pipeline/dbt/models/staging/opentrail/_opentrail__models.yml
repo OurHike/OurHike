@@ -11,18 +11,19 @@ models:
           config:
             severity: warn
     description: >
-      opentrail waypoints with `icon` resolved to a unified poi_type via
-      the poi_type_mapping seed. poi_type is null on
-      documented-but-deliberately-unmapped icons ('c', 'o', 'j', 't', 'a' -
-      export_poi.py's module docstring says why); the row stays so layers
-      remain 1:1 and reconciliation tests stay meaningful.
+      opentrail waypoints, one row per waypoint, keyed and deduplicated, with
+      every column the extract lands. What a waypoint is (its poi_type and
+      confidence, from its `icon` through the poi_type_mapping seed) is
+      int_points_of_interest__classified's to say: decision 40 moved the seed
+      join out of staging.
     columns:
       - name: poi_key
         description: >
           The row's key (decision 40): dbt_utils.generate_surrogate_key over
-          opentrail_at, source.dbid,
+          opentrail_at, dbid,
           the registry key first and then the columns measured unique for
           this layer.
         data_tests: [not_null, unique]
-      - name: source_id
+      - name: dbid
+        description: opentrail's own integer waypoint id, the id export_poi.py publishes.
         data_tests: [not_null, unique]

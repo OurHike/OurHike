@@ -44,6 +44,8 @@ this exists to fill an empty CI workspace, not to overwrite a real fetch.
 
 import argparse
 import json
+import math
+import struct
 from pathlib import Path
 
 from load_raw import RAW_DIR
@@ -138,6 +140,132 @@ def _half_mile_layer():
             for i in range(4)
         ]
     )
+
+
+# --- elevation, the A.T. half (#1793, stage 3) -------------------------------
+#
+# step_dem_sampling.py and today's export_elevation.py both read the DEM
+# through a tile index (fetch_elevation.py's data/raw/elevation/
+# tile_index.json), and CI fetches no tile. So the fixtures carry one: the
+# smallest tile export_elevation.ElevationSampler reads the way it reads a
+# real 3DEP cell - a single-band float32 GeoTIFF in EPSG:4269 with a declared
+# nodata - over the two fixture centerline segments (`_line(0)`, `_line(1)`),
+# plus the index naming it. Written byte by byte here rather than through
+# rasterio, because CI's dbt job runs this file on requirements-dbt.txt,
+# which has no rasterio.
+#
+# THE TILE HAS BOTH KINDS OF HOLE a profile meets, so parity reaches the null
+# path (EL09): rows ELEVATION_FIXTURE_NODATA_ROWS are nodata across the
+# tile, which the first segment crosses, and the tile stops short of the
+# second segment's northern end, so the samples past it have no tile at all.
+# Its edges sit half a pixel off both segments' longitudes, so no sample
+# lands on a pixel boundary, where a last-bit difference between two ways of
+# placing a point could read a neighbouring pixel.
+
+#: Where the tile and its index land under the raw directory.
+ELEVATION_FIXTURE_TILE = "elevation/fixture_n42w074.tif"
+ELEVATION_FIXTURE_INDEX = "elevation/tile_index.json"
+#: The tile's grid: its north-west corner, pixel size in degrees, and shape.
+ELEVATION_FIXTURE_WEST = -74.0021
+ELEVATION_FIXTURE_NORTH = 41.01365
+ELEVATION_FIXTURE_PIXEL_DEG = 0.0002
+ELEVATION_FIXTURE_WIDTH = 72
+ELEVATION_FIXTURE_HEIGHT = 78
+ELEVATION_FIXTURE_NODATA = -9999.0
+ELEVATION_FIXTURE_NODATA_ROWS = (53, 54)
+#: A Last-Modified, so the index pins the tile's edition and the sampler's
+#: cache treats it as it treats a stamped 3DEP cell.
+ELEVATION_FIXTURE_LAST_MODIFIED = "Thu, 01 Oct 2026 00:00:00 GMT"
+
+
+def _elevation_fixture_metres(row: int, col: int) -> float:
+    """The fixture ground: rising to the north, with a ripple, so feet carry real decimals."""
+    if row in ELEVATION_FIXTURE_NODATA_ROWS:
+        return ELEVATION_FIXTURE_NODATA
+    return 200.0 + 1.3 * (ELEVATION_FIXTURE_HEIGHT - row) + 0.4 * col + 1.7 * math.sin(0.9 * col + 0.4 * row)
+
+
+def _geotiff(width: int, height: int, pixels: list[float], west: float, north: float, pixel_deg: float, nodata: float) -> bytes:
+    """A little-endian, uncompressed, one-strip, single-band float32 GeoTIFF in EPSG:4269 (NAD83, 3DEP's datum)."""
+    data = struct.pack(f"<{width * height}f", *pixels)
+    nodata_text = f"{nodata:g}".encode() + b"\0"
+    geokeys = (1, 1, 0, 3, 1024, 0, 1, 2, 1025, 0, 1, 1, 2048, 0, 1, 4269)  # geographic, pixel-is-area, EPSG:4269
+    # (tag, TIFF type, values): type 2 ASCII, 3 SHORT, 4 LONG, 12 DOUBLE.
+    entries = [
+        (256, 4, (width,)),
+        (257, 4, (height,)),
+        (258, 3, (32,)),
+        (259, 3, (1,)),
+        (262, 3, (1,)),
+        (273, 4, (0,)),  # StripOffsets, filled in below
+        (277, 3, (1,)),
+        (278, 4, (height,)),
+        (279, 4, (len(data),)),
+        (284, 3, (1,)),
+        (339, 3, (3,)),  # SampleFormat: IEEE float
+        (33550, 12, (pixel_deg, pixel_deg, 0.0)),  # ModelPixelScale
+        (33922, 12, (0.0, 0.0, 0.0, west, north, 0.0)),  # ModelTiepoint: pixel (0, 0) is (west, north)
+        (34735, 3, geokeys),
+        (42113, 2, nodata_text),  # GDAL_NODATA
+    ]
+    formats = {2: "s", 3: "H", 4: "I", 12: "d"}
+    ifd_size = 2 + 12 * len(entries) + 4
+    extra_offset = 8 + ifd_size
+    extra = b""
+    encoded = []
+    for tag, kind, values in entries:
+        count = len(values)
+        payload = struct.pack(f"<{count}s", values) if kind == 2 else struct.pack(f"<{count}{formats[kind]}", *values)
+        encoded.append((tag, kind, count, payload))
+        if len(payload) > 4:
+            extra += payload + b"\0" * (len(payload) % 2)
+    data_offset = extra_offset + len(extra)
+    ifd = struct.pack("<H", len(entries))
+    cursor = extra_offset
+    for tag, kind, count, payload in encoded:
+        if tag == 273:
+            payload = struct.pack("<I", data_offset)
+        if len(payload) > 4:
+            ifd += struct.pack("<HHII", tag, kind, count, cursor)
+            cursor += len(payload) + len(payload) % 2
+        else:
+            ifd += struct.pack("<HHI", tag, kind, count) + payload.ljust(4, b"\0")
+    ifd += struct.pack("<I", 0)
+    return b"II" + struct.pack("<HI", 42, 8) + ifd + extra + data
+
+
+def _elevation_fixtures(raw_dir: Path) -> dict[str, str | bytes]:
+    """The DEM fixture's tile and the tile index naming it, by path under raw_dir.
+
+    The index names the tile by its absolute path, as export_elevation's
+    _gdal_source hands a local entry to GDAL, so the step and the exporter
+    find it from any working directory."""
+    pixels = [
+        _elevation_fixture_metres(row, col) for row in range(ELEVATION_FIXTURE_HEIGHT) for col in range(ELEVATION_FIXTURE_WIDTH)
+    ]
+    tile = _geotiff(
+        ELEVATION_FIXTURE_WIDTH,
+        ELEVATION_FIXTURE_HEIGHT,
+        pixels,
+        ELEVATION_FIXTURE_WEST,
+        ELEVATION_FIXTURE_NORTH,
+        ELEVATION_FIXTURE_PIXEL_DEG,
+        ELEVATION_FIXTURE_NODATA,
+    )
+    bounds = [
+        ELEVATION_FIXTURE_WEST,
+        ELEVATION_FIXTURE_NORTH - ELEVATION_FIXTURE_HEIGHT * ELEVATION_FIXTURE_PIXEL_DEG,
+        ELEVATION_FIXTURE_WEST + ELEVATION_FIXTURE_WIDTH * ELEVATION_FIXTURE_PIXEL_DEG,
+        ELEVATION_FIXTURE_NORTH,
+    ]
+    index = [
+        {
+            "url": (raw_dir / ELEVATION_FIXTURE_TILE).resolve().as_posix(),
+            "bounds": bounds,
+            "last_modified": ELEVATION_FIXTURE_LAST_MODIFIED,
+        }
+    ]
+    return {ELEVATION_FIXTURE_TILE: tile, ELEVATION_FIXTURE_INDEX: json.dumps(index)}
 
 
 def _opentrail_layer():
@@ -1317,6 +1445,193 @@ def _with_key_fields(content: str, fields: dict) -> str:
     return json.dumps(collection)
 
 
+# --- The points_of_interest family (#1793, stage 3) ------------------------
+#
+# What the POI family's shadow-run parity needs from these fixtures, added to
+# the layers above rather than written into their builders, so no other
+# family's rows change:
+#
+# - THE ID FIELDS export_nearby_poi.py reads. sources.json declares OBJECTID
+#   for oprhp_facilities and objectid for usfs_rec_sites, and NYC's Socrata
+#   rows are identified by `:id`, which lib/socrata.py moves onto each
+#   feature's `id` (extract/_fixtures.py answers a fixture feature's own `id`
+#   as that). Without them export_nearby_poi.py cannot run on these files.
+# - ATC'S REAL SHELTERS AND CAMPSITES, by GlobalID and name. Their water
+#   distances (reference/water_distance.json) and capacities
+#   (reference/shelter_capacity.json) are reviewed files in git that fixture
+#   mode loads whole, and both join on ATC's GlobalID, so a fixture with real
+#   ids is what lets parity hold the real figures, the 42 steward estimates
+#   among them, through both pipelines. Their PLACES are invented: a grid
+#   (_poi_site_point) inside the fixture centerline's 30-mile corridor, every
+#   site at least 300 m from the next, so no two group into a site. 21 sites
+#   are left out: the ledger has retired the water point export_poi.py would
+#   synthesize at each (`atc_csi:<GlobalID>`), because a real water point
+#   folds into each of them on the live corridor, and these fixtures have
+#   none to fold.
+# - ATC'S INVENTORY COLUMNS, the ones lib/poi_description.py composes a
+#   sentence from and lib/atc_notes.py cleans, varied by row (_POI_INVENTORY),
+#   on those real shelters and campsites and on vistas, parking areas and
+#   privies of their own (_POI_FACILITIES), so the describers' branches run
+#   through both pipelines rather than only through unit tests. Each is a
+#   value ATC writes on the live layers per the Python's own docstrings; the
+#   facilities sit on a grid of their own north of the sites, 400 m apart,
+#   inside the corridor and too far from any shelter or campsite to join a
+#   site.
+# - ONE DEC BACKCOUNTRY PRIVY THAT PUBLISHES. The layer's three rows above
+#   are typed PRIVY, which DEC_ASSET_TYPES does not name, so the layer kept
+#   nothing and export_nearby_poi.py's completeness gate refused the run; a
+#   `PIT PRIVY` row is the layer's commonest real value (356, per the map's
+#   own comment).
+POI_REFERENCE_DIR = Path(__file__).parent / "reference"
+
+# Shelter, campsite, vista, parking and privy inventory, one tuple of values
+# per row, cycled: every value one of the shapes the Python's tests and
+# docstrings name (a code, a free-text near-miss, a blank, an implausible year).
+_POI_INVENTORY = {
+    "shelters": [
+        {"Stories": 2, "Exterior_M": "2", "Chimneys": 1, "Metal_Fir": 1, "Deck_Lengt": 24, "Year_Built": 1915},
+        {"Stories": 1, "Exterior_M": "5", "Chimneys": 0, "Metal_Fir": 0, "Deck_Lengt": 0, "Year_Built": 1954},
+        {"Stories": 1, "Exterior_M": "10", "Food_Boxe": 1, "Year_Built": 0, "Comments": "Has a loft"},
+        {"Stories": 3, "Exterior_M": "12", "Food_Cabl": 2, "Mortared": 1, "Comments": "Not sure about spatial info"},
+        {
+            "Exterior_M": "6",
+            "Food_Pole": 1,
+            "Year_Built": 2101,
+            "Comments": "Log and mortar exterior. Majority of structure is log. Please see photos.",
+        },
+        {"Stories": 1, "Year_Built": 1799, "Comments": "GIS CS629-CS635; Shiplap siding"},
+        {"Stories": 2, "Exterior_M": "4", "Deck_Lengt": 12, "Comments": "816/15"},
+        {"Stories": 1, "Exterior_M": "8", "Year_Built": 2003, "Comments": "Exterior - shiplap ;skylight"},
+        {},
+    ],
+    "campsites": [
+        {"Type": "0", "Site_Num": 3, "Food_Boxe": 1},
+        {"Type": "1", "Site_Num": 6, "Tent_Pads": 8, "Metal_Fir": 1},
+        {"Type": "0", "Site_Num": 3, "Tent_Pads": 1, "Tent_Plat": 6},
+        {"Type": "0"},
+        {"Type": "1", "Comments": "One group campsite."},
+        {"Type": "0", "Site_Num": 1, "Comments": "Not sure about spatial info"},
+    ],
+}
+
+# The vistas, parking areas and privies, each a full row of its own.
+_POI_FACILITIES = {
+    "viewpoints.geojson": [
+        {"Name": "Fixture Vista East", "Left_Beari": 40, "Right_Bear": 220, "Location": "Mtn/Ridge/Outcrop"},
+        {"Name": "Fixture Vista Wolf", "Left_Beari": 280, "Right_Bear": 10},
+        {"Name": "Fixture Vista Summit", "Left_Beari": 10, "Right_Bear": 350, "Location": "Summit"},
+        {"Name": "Fixture Vista Horizon", "Left_Beari": 90, "Right_Bear": 90},
+        {"Name": "Fixture Vista Unsurveyed", "Left_Beari": 0, "Right_Bear": 0, "Location": "Summit; Lookout Tower"},
+        {"Name": "Fixture Vista Narrow", "Left_Beari": 90, "Right_Bear": 92, "Location": "TBD"},
+        {"Name": "Fixture Vista Eighty", "Left_Beari": 40, "Right_Bear": 120, "Location": "Open Area - Natural"},
+        {"Name": "Fixture Vista Sixty", "Left_Beari": 90, "Right_Bear": 152, "Comments": "No view beyond foreground; bald rock"},
+        {"Name": "Fixture Vista Note", "Location": "TBD", "Comments": "No view beyond foreground"},
+        {"Name": "Fixture Vista Silent", "Location": "Side Trail"},
+    ],
+    "parking.geojson": [
+        {"Name": "Fixture Lot Gravel", "Type": "0", "Surface": "3", "Parking_S": 7, "ADA_Space": 0},
+        {"Name": "Fixture Lot One", "Type": "0", "Surface": "3", "Parking_S": 1},
+        {"Name": "Fixture Lot Accessible", "Type": "0", "Surface": "0", "Parking_S": 7, "ADA_Space": 2},
+        {"Name": "Fixture Shoulder", "Type": "Roadside/Shoulder", "Surface": "3", "Parking_S": 7},
+        {"Name": "Fixture Lot Unknown", "Type": "Unknown", "Surface": "Unknown"},
+        {"Name": "Fixture Lot Pavers", "Type": "0", "Surface": "2", "Parking_S": 12, "Comments": "Gate locked at dusk."},
+    ],
+    "privies.geojson": [
+        {"Name": "Fixture Privy Moldering", "Type": "1", "Enclosure": "1", "Year_Built": 2003},
+        {"Name": "Fixture Privy Multi", "Type": "1", "Enclosure": "2", "Year_Built": 2003},
+        {"Name": "Fixture Privy Open", "Type": "3", "Enclosure": "0"},
+        {"Name": "Fixture Privy Cool", "Type": "Cool Composting", "Year_Built": 2003},
+        {"Name": "Fixture Privy Plain", "Type": "5", "Enclosure": "3"},
+        {"Name": "Fixture Privy Vault", "Type": "4", "Enclosure": "1", "Comments": "Please see photos"},
+    ],
+}
+
+
+def _poi_site_point(index: int) -> dict:
+    return {"type": "Point", "coordinates": [-74.30 + (index % 25) * 0.004, 41.20 + (index // 25) * 0.004]}
+
+
+def _points_of_interest_fixtures(files: dict) -> dict:
+    """The POI family's additions to `files`: id fields, ATC's real shelters and campsites with inventory, facilities, a DEC privy."""
+    files = dict(files)
+    id_fields = {
+        "external/oprhp_facilities.geojson": ("OBJECTID", lambda i: 5501 + i),
+        "external/usfs_rec_sites.geojson": ("objectid", lambda i: 3388401 + i),
+    }
+    for name, (field, value) in id_fields.items():
+        collection = json.loads(files[name])
+        for index, feature in enumerate(collection["features"]):
+            feature["properties"][field] = value(index)
+        files[name] = json.dumps(collection)
+    for name, prefix in (
+        ("external/nyc_public_restrooms.geojson", "row-fixture-restroom"),
+        ("external/nyc_drinking_fountains.geojson", "row-fixture-fountain"),
+    ):
+        collection = json.loads(files[name])
+        for index, feature in enumerate(collection["features"]):
+            feature["id"] = f"{prefix}-{index}"
+        files[name] = json.dumps(collection)
+
+    sites = json.loads((POI_REFERENCE_DIR / "water_distance.json").read_text(encoding="utf-8"))["sites"]
+    pois = json.loads((POI_REFERENCE_DIR / "poi_identity.json").read_text(encoding="utf-8"))["pois"]
+    retired_water = {row["source_feature_id"] for row in pois.values() if row["source"] == "atc_csi" and "retired" in row}
+    kept = sorted(
+        (site for site in sites if site["atc_global_id"] not in retired_water),
+        key=lambda site: (site["layer"], site["atc_global_id"]),
+    )
+    for name, layer in (("shelters.geojson", "shelters"), ("campsites.geojson", "campsites")):
+        collection = json.loads(files[name])
+        inventory = _POI_INVENTORY[layer]
+        appended = 0
+        for index, site in enumerate(kept):
+            if site["layer"] == layer:
+                collection["features"].append(
+                    {
+                        "type": "Feature",
+                        "properties": {
+                            "GlobalID": site["atc_global_id"],
+                            "Name": site["atc_name"],
+                            **inventory[appended % len(inventory)],
+                        },
+                        "geometry": _poi_site_point(index),
+                    }
+                )
+                appended += 1
+        files[name] = json.dumps(collection)
+
+    for row, (name, facilities) in enumerate(_POI_FACILITIES.items()):
+        collection = json.loads(files[name])
+        stem = name.removesuffix(".geojson")
+        for index, properties in enumerate(facilities):
+            collection["features"].append(
+                {
+                    "type": "Feature",
+                    "properties": {"GlobalID": f"fixture-{stem}-{index}", **properties},
+                    "geometry": {"type": "Point", "coordinates": [-74.30 + index * 0.005, 41.30 + row * 0.004]},
+                }
+            )
+        files[name] = json.dumps(collection)
+
+    backcountry = json.loads(files["external/dec_backcountry_features.geojson"])
+    backcountry["features"].append(
+        {
+            "type": "Feature",
+            "properties": {
+                "OBJECTID": 103,
+                "ASSET_UID": 228017,
+                "NAME": "Fixture Pit Privy",
+                "ASSET": "PIT PRIVY",
+                "FACILITY": "Fixture Wild Forest",
+                "PUBLICUSE": "Y",
+                "UPDATED": "2026-08-18",
+            },
+            "geometry": _point(3),
+        }
+    )
+    files["external/dec_backcountry_features.geojson"] = json.dumps(backcountry)
+    return files
+
+
 # --------------------------------------------------------------------------
 # The closures and warnings family (#1793, stage 3): the hourly lane's three
 # upstreams that are not layer files. extract/_fixtures.py serves each the way
@@ -2066,6 +2381,7 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         ),
         "trail_club_sections.geojson": _club_sections_layer(),
         "half_mile_points_from_springer.geojson": _half_mile_layer(),
+        **_elevation_fixtures(raw_dir),
         "at_treadway.geojson": _atc_layer(
             "Treadway",
             2,
@@ -2171,6 +2487,7 @@ def write_fixtures(raw_dir: Path) -> list[str]:
     }
     files = _trail_lines_network_fixtures(files)
     files = _trail_lines_at_fixtures(files)
+    files = _points_of_interest_fixtures(files)
     existing = [name for name in files if (raw_dir / name).exists()]
     if existing:
         raise SystemExit(
@@ -2182,7 +2499,10 @@ def write_fixtures(raw_dir: Path) -> list[str]:
             content = _with_key_fields(content, KEY_FIELDS[name])
         path = raw_dir / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
+        if isinstance(content, bytes):
+            path.write_bytes(content)  # the elevation fixture's GeoTIFF (_elevation_fixtures)
+        else:
+            path.write_text(content)
     return sorted(files)
 
 

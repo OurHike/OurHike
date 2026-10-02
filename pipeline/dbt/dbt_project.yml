@@ -154,6 +154,62 @@ vars:
   mile_axis_holdout_max_p95_mi: 0.25
   mile_axis_holdout_max_mi: 1.0
 
+  # points_of_interest (#1793, stage 3): the constants the POI rules read,
+  # each the Python's own, held to it by
+  # tests/test_dbt_points_of_interest_parity.py until stage 5 deletes the
+  # Python and these become the one home. The measurement behind each is on
+  # the Python constant it names.
+  poi_corridor_buffer_miles: 30            # lib/corridor.py BUFFER_MILES
+  poi_metres_per_degree: 111320.0          # lib/spurs.py METERS_PER_DEGREE, distance_m()'s scale
+  poi_metres_per_foot: 0.3048              # export_poi.py M_PER_FT
+  poi_site_name_radius_m: 150.0            # lib/poi_sites.py NAME_MATCH_RADIUS_M
+  poi_site_proximity_radius_m: 60.0        # lib/poi_sites.py PROXIMITY_RADIUS_M
+  poi_site_max_radius_m: 1609.344          # lib/poi_sites.py MAX_SITE_RADIUS_M
+  poi_place_site_radius_m: 80.0            # lib/poi_sites.py PLACE_PROXIMITY_RADIUS_M
+  poi_nearby_min_part_ft: 3.28084          # lib/poi_description.py MIN_PART_FT
+  # export_nearby_poi.py's DIRT, less its "" (the classifier treats an empty
+  # string so without a row): what an organization writes where a real name,
+  # asset or facility is missing, '-99' being DEC's own null sentinel.
+  poi_null_sentinels: ['-99', 'N/A', 'NA', 'NONE', 'UNKNOWN', 'TBD']
+  poi_network_ring_feet: 500               # lib/corridor.py NETWORK_BUFFER_FEET
+  # export_nearby_poi.py's NETWORK_RING_EXEMPT_TYPES: the types the ring
+  # never drops, because a hiker drives to them.
+  poi_network_ring_exempt_types: ['parking', 'trailhead']
+  poi_trailhead_trail_radius_m: 100        # export_nearby_poi.py TRAILHEAD_TRAIL_RADIUS_M
+  poi_description_earliest_year: 1800      # lib/poi_description.py EARLIEST_PLAUSIBLE_YEAR
+  poi_description_latest_year: 2100        # lib/poi_description.py LATEST_PLAUSIBLE_YEAR
+  poi_vista_panorama_degrees: 300          # lib/poi_description.py PANORAMA_DEGREES
+  poi_vista_arc_rounding_degrees: 5        # lib/poi_description.py ARC_ROUNDING_DEGREES
+  # lib/poi_description.py COMPASS_POINTS, in bearing order from north.
+  poi_compass_points: ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west']
+  # lib/atc_notes.py EMPTY_VALUES and INTERNAL_PATTERNS, which say why each
+  # pattern is there; matched case-insensitively, as INTERNAL is compiled.
+  poi_note_empty_values: ['none', 'no name', 'na', 'n/a', 'unknown', '-']
+  poi_note_internal_patterns:
+    - '\b(?:gis|fmss|arcgis|fbms)\b'
+    - '\b(?:added|adjusted|adusted|updated)\s+based\s+on'
+    - '\baerial\s+imagery\b'
+    - '\binventory\s+form\b'
+    - '\bnot\s+sure\b'
+    - '\bneed\s+to\s+confirm\b'
+    - '\bnot\s+(?:on|in)\s+(?:the\s+)?(?:collection\s+)?list\b'
+    - '\b(?:please\s+)?see\s+photos?\b'
+    - '\bphotos?\s+taken\b'
+    - '\bi\s+(?:took|failed\s+to)\b'
+    - '\bimprovements\s*='
+    - '\bvri\b'
+    - '\b(?:extent|location|scope)\s+(?:adjus|based\s+on)'
+    - '\badjused\s+based\s+on'
+    - '\btrimble\b'
+    - '\bcompass\b'
+    - '\bbearings?\s+(?:measured|were)\b'
+    - '\bmeasured\s+(?:the\s+)?bearings?\b'
+    - '\bvaro\b'
+    - '\bpreliminary\s+review\b'
+    - '\bvp\s?\d+'
+    - '\bnot\s+(?:on|in)\b[^.;]{0,30}\blist\b'
+    - '\bneed\s+to\s+determine\b'
+    - '\bsocked\b'
   # The ArcGIS coded-value domains export_trails.py and export_spurs.py read
   # live (lib/arcgis.get_field_coded_domain) mid-transform, as rows of
   # [source_key, field_name, code, label]: int_trail_lines__coded_domains.
@@ -230,6 +286,19 @@ vars:
   trail_lines_club_stretch_gap_mi: 0.75
   trail_lines_club_milepost_half_width_mi: 0.25
   trail_lines_club_springer_mile: 0.0
+
+  # The elevation family, the A.T. half (stage 3 of #1793):
+  # export_elevation.py's two constants, read by int_elevation__sample_points
+  # and int_elevation__profile and held to the Python by
+  # tests/test_dbt_elevation_parity.py until stage 5 deletes the Python.
+  #
+  # SAMPLE_INTERVAL_METERS: one DEM read every 25 m of trail. Kept, not
+  # thinned: thinning to 50 m cut the measured 520,757 ft of total gain by
+  # 4.80%, and to 200 m by 16.59% (research report 5, pipeline/ELT.md, "The
+  # eleven marts"), and gain feeds Naismith's time estimate.
+  elevation_sample_interval_m: 25.0
+  # METERS_PER_FOOT, the international foot: a DEM metre over this is a foot.
+  elevation_metres_per_foot: 0.3048
 
   dbt_project_evaluator:
     # The mart names the maintainer chose carry no dim_/fct_ prefix

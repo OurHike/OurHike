@@ -117,8 +117,8 @@ models:
         description: The detail, everything else, flat, with the hike's own id.
   - name: int_suggested_hikes__published_pois
     description: >
-      INTERFACE, zero rows until the points_of_interest mart publishes its
-      ids and miles: every POI export_poi.py publishes, with its `id` and
+      Every POI the eight poi_<type>.geojson files publish (the
+      points_of_interest mart's `poi_by_type` rows), with its `id` and
       `mile`, which a highlight's legs resolve against (SH12).
     columns:
       - name: poi_id
@@ -126,9 +126,9 @@ models:
         data_tests: [not_null, unique]
   - name: int_suggested_hikes__club_stretches
     description: >
-      INTERFACE, zero rows until the trail_lines family writes
-      club_sections.json: every maintaining club's stretches of the A.T., in
-      the file's order, which a highlight's club is read from.
+      Every maintaining club's stretches of the A.T. as club_sections.json's
+      `clubs` carries them (int_trail_lines__club_sections), in the file's
+      order, which a highlight's club is read from.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:

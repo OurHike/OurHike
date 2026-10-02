@@ -7,7 +7,7 @@
     python parity.py network_overview --new data/processed/dbt/network_overview.geojson
     python parity.py suggested_hikes --new data/processed/dbt/suggested_hikes.json --raw-dir data/raw
     python parity.py suggested_hikes_detail --new data/processed/dbt/suggested_hikes_detail.json --raw-dir data/raw
-    python parity.py highlights --new data/processed/dbt/highlights.json
+    python parity.py highlights --new data/processed/dbt/highlights.json --raw-dir data/raw
 
 pipeline/ELT.md, "How a rule moves: shadow-run parity", is the design: both
 paths read the same input, records are paired by their key, and each
@@ -521,17 +521,29 @@ def _suggested_hikes_old(part: str, raw_dir: Path) -> dict | None:
     return {"details": [detail for _, detail in halves]}
 
 
-def _highlights_old() -> dict:
-    """export_highlights.py's file: the curated list resolved against the POIs export_poi.py published under
-    data/processed/poi/ and the clubs in export_club_sections.py's club_sections.json, each read as it reads them.
+def _highlights_old(raw_dir: Path) -> dict:
+    """export_highlights.py's file: the curated list in git resolved against the published POIs and club sections,
+    each read by its own loader.
 
-    Neither is written in CI, so every highlight is dropped there for a missing mile, as the dbt side drops each
-    against int_suggested_hikes__published_pois' zero rows; the rules are held row by row by the unit test and
-    tests/test_dbt_suggested_hikes_parity.py."""
+    export_poi.py and export_club_sections.py do not run in CI, so the POIs and clubs are the ones this run's dbt
+    writers wrote beside <raw-dir> (data/processed/dbt/), which their own parity lines hold to those exporters: the
+    eight poi_<type>.geojson files, copied under the names load_published_pois() reads (poi_output_name()), and
+    club_sections.json. The rules are held row by row by the unit tests and tests/test_dbt_suggested_hikes_parity.py;
+    this holds the real reference/highlights.json against the fixture POIs."""
+    import shutil
+    import tempfile
+
     import export_highlights
+    from lib.poi_schema import POI_TYPES, poi_output_name
 
+    written = raw_dir.parent / "processed" / "dbt"
+    with tempfile.TemporaryDirectory() as scratch:
+        for poi_type in POI_TYPES:
+            if (written / f"poi_{poi_type}.geojson").exists():
+                shutil.copyfile(written / f"poi_{poi_type}.geojson", Path(scratch) / poi_output_name(poi_type))
+        pois = export_highlights.load_published_pois(Path(scratch))
     output, _, _ = export_highlights.build_output(
-        export_highlights.load_curated(), export_highlights.load_published_pois(), export_highlights.load_club_runs()
+        export_highlights.load_curated(), pois, export_highlights.load_club_runs(written / "club_sections.json")
     )
     return output
 
@@ -602,7 +614,7 @@ FAMILIES: dict[str, Family] = {
         ordered=True,
         reads_raw_dir=True,
     ),
-    "highlights": Family(old=_highlights_old, records="highlights", key="id", ordered=True),
+    "highlights": Family(old=_highlights_old, records="highlights", key="id", ordered=True, reads_raw_dir=True),
 }
 
 

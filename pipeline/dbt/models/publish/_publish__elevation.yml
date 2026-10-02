@@ -130,8 +130,9 @@ exposures:
       Published by publish-vector-data.yml from export_network_elevation.py's
       file, held back whole when any of the graph's sources may not reach
       hikers (publish.py), until stage 4 of #1793 moves it to this writer's.
+    # The writer alone: the climbs are a protected intermediate, which no
+    # exposure may depend on, until the trail_network mart carries them.
     depends_on:
-      - ref('int_elevation__edge_climbs')
       - ref('pub_trail_graph_elevation')
     config:
       meta:

@@ -31,6 +31,11 @@
 -- the DEM answered has gain_ft and loss_ft null. "This edge is flat" and
 -- "nobody has measured this edge" are different claims, and a route with
 -- one null edge has no climb figure on the phone.
+--
+-- may_publish is the edge's source's (int_sources__publication), carried
+-- for pub_trail_graph_elevation, which publishes no climb for an edge whose
+-- source may not publish. Every graph edge comes from a line that may, so it
+-- is a second lock; a source the registry does not list may not.
 with edges as (
     select
         edge_id,
@@ -51,6 +56,13 @@ samples as (
         ) as elevations_ft
     from {{ ref('int_elevation__edge_samples') }}
     group by edge_id
+),
+
+publication as (
+    select
+        source_key,
+        may_publish
+    from {{ ref('int_sources__publication') }}
 ),
 
 climbed as (
@@ -86,6 +98,8 @@ select
         climbed.measured_sample_count > 0
         and climbed.measured_sample_count < climbed.sample_count,
         false
-    ) as partially_covered
+    ) as partially_covered,
+    coalesce(publication.may_publish, false) as may_publish
 from edges
 left join climbed on edges.edge_id = climbed.edge_id
+left join publication on edges.source_key = publication.source_key

@@ -315,8 +315,10 @@ def test_each_sql_only_unit_test_is_one_a_trusting_reader_would_answer_different
 def test_each_edge_climbs_unit_test_is_edge_climb(test):
     """export_network_elevation.edge_climb over each edge's samples in order, and build()'s measured and partial."""
     samples = _given(test, "int_elevation__edge_samples")
+    may = {row["source_key"]: row["may_publish"] for row in _given(test, "int_sources__publication")}
+    sources = {edge["edge_id"]: edge["source_key"] for edge in _given(test, "int_trail_network__edges")}
     expected = {row["edge_id"]: row for row in test["expect"]["rows"]}
-    assert set(expected) == {edge["edge_id"] for edge in _given(test, "int_trail_network__edges")}
+    assert set(expected) == set(sources)
     for edge_id, row in expected.items():
         window = [
             s["elevation_m"] for s in sorted((s for s in samples if s["edge_id"] == edge_id), key=lambda s: s["sample_index"])
@@ -329,6 +331,7 @@ def test_each_edge_climbs_unit_test_is_edge_climb(test):
             "loss_ft": None if climb is None else climb[1],
             "measured": climb is not None,
             "partially_covered": climb is not None and any(value is None for value in window),
+            "may_publish": may.get(sources[edge_id]) is True,
         }
         assert {name: row[name] for name in row if name in python} == {name: python[name] for name in row if name in python}, (
             edge_id
@@ -392,14 +395,11 @@ def _dumps(entries: list) -> str:
 
 @pytest.mark.parametrize("test", _on("pub_trail_graph_elevation"), ids=lambda test: test["name"])
 def test_each_trail_graph_elevation_unit_test_is_write_artifacts_array(test):
-    """The climbs in edge order, a missing or unmeasured one None; and None where the edge's source may not publish,
-    the marts' rule (pipeline/ELT.md, "The eleven marts"), which no graph edge is expected to meet."""
-    climbs = {row["edge_id"]: row for row in _given(test, "int_elevation__edge_climbs")}
-    may = {row["source_key"]: row["may_publish"] for row in _given(test, "int_sources__publication")}
+    """The climbs in edge order, an unmeasured one None; and None where the edge's source may not publish, the marts'
+    rule (pipeline/ELT.md, "The eleven marts"), which no graph edge is expected to meet."""
     entries = []
-    for edge in sorted(_given(test, "int_trail_network__edges"), key=lambda edge: edge["edge_index"]):
-        climb = climbs.get(edge["edge_id"])
-        published = climb is not None and climb["gain_ft"] is not None and may.get(edge["source_key"]) is True
+    for climb in sorted(_given(test, "int_elevation__edge_climbs"), key=lambda climb: climb["edge_index"]):
+        published = climb["gain_ft"] is not None and climb["may_publish"] is True
         entries.append([climb["gain_ft"], climb["loss_ft"]] if published else None)
     assert test["expect"]["rows"] == [{"climbs_json": _dumps(entries)}]
 

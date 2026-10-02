@@ -264,6 +264,12 @@ models:
           over the runs it has and under-counts by whatever happened inside
           the gaps (the manifest's `partial` and `partially_covered`).
         data_tests: [not_null]
+      - name: may_publish
+        description: >
+          Whether the edge's source may publish (int_sources__publication),
+          false for a source the registry does not list. pub_trail_graph_elevation
+          publishes no climb where it is false.
+        data_tests: [not_null]
 
   - name: int_elevation__seam_nodes
     description: >
@@ -295,9 +301,18 @@ models:
       export_network_profile.measure_seams): shared nodes, coincident ones,
       steps, steps over the dead band, and the median, 95th percentile and
       largest step, nearest-rank. Writing the manifest is stage 4's.
+    data_tests:
+      # Each count is a subset of the one before it.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >-
+              coincident_ends <= shared_nodes and measured_nodes <= shared_nodes
+              and nodes_with_a_step <= measured_nodes and steps_over_dead_band <= nodes_with_a_step
+              and step_ft_p50 <= step_ft_p95 and step_ft_p95 <= step_ft_max
     columns:
       - name: shared_nodes
-        description: Nodes two or more edge-ends meet at.
+        description: Nodes two or more edge-ends meet at. The model has one row, so this is its key.
+        data_tests: [not_null, unique]
       - name: coincident_ends
         description: Of those, the ones whose ends are all one published coordinate.
       - name: measured_nodes

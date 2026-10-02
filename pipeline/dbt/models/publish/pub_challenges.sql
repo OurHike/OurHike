@@ -14,7 +14,7 @@
 -- only where the item has them. An empty mart writes `challenges: []`, which
 -- is the exporter's own file when nothing publishes.
 with challenges as (
-    select * from {{ ref('challenges') }}
+    select * from {{ ref('challenges', v=1) }}
 ),
 
 records as (

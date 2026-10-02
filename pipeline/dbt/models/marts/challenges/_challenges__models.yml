@@ -15,6 +15,16 @@ models:
       access: public
       contract:
         enforced: true
+    # Decision 44: a phone file's shape is a version of the mart it is
+    # written from. v1 is challenges.json's shape today, at today's key, and
+    # pub_challenges pins it, ref('challenges', v=1), so a later latest
+    # version cannot move the published file. A removed, renamed or retyped
+    # column ships as a v2 beside v1 until v1's deprecation_date;
+    # check_contract_versions.py holds that against the base's manifest.
+    latest_version: 1
+    versions:
+      - v: 1
+        defined_in: challenges
     data_tests:
       # CH11: both ends inclusive days, so a one-day window is a window.
       - dbt_utils.expression_is_true:

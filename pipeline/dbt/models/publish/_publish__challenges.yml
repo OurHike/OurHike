@@ -44,7 +44,7 @@ exposures:
       refresh, published docs, and lighter phone downloads moves the upload
       to this writer's.
     depends_on:
-      - ref('challenges')
+      - ref('challenges', v=1)
       - ref('pub_challenges')
     config:
       meta:

@@ -5,8 +5,9 @@
 -- Hike Finder export, whose route ships (int_suggested_hikes__routed: graded,
 -- not rejected, and a published track re-walked within its tolerance), in
 -- hike-number order, with every field export_suggested_hikes.py's record_for()
--- gives it. pub_suggested_hikes writes the shelf from these and
--- pub_suggested_hikes_detail each hike's detail.
+-- gives it and the shelf record and detail it splits into
+-- (int_suggested_hikes__records). pub_suggested_hikes writes the shelf from
+-- these and pub_suggested_hikes_detail each hike's detail.
 --
 -- `phone_file` 'highlights': a stretch of the A.T. somebody says is worth
 -- going to, from OurHike's curated reference/highlights.json, every row that
@@ -32,16 +33,8 @@
 -- - the route's provenance and grade on every hike, so a generated line is
 --   never drawn with its provenance still in flight.
 -- Highlights store nothing derived (SH14): no length, ascent or time.
-with hikes as (
-    select * from {{ ref('int_suggested_hikes__hike_finder') }}
-),
-
-routed as (
-    select * from {{ ref('int_suggested_hikes__routed') }}
-),
-
-photos as (
-    select * from {{ ref('int_suggested_hikes__photos') }}
+with records as (
+    select * from {{ ref('int_suggested_hikes__records') }}
 ),
 
 highlights as (
@@ -49,97 +42,69 @@ highlights as (
     where problem is null
 ),
 
-registry as (
-    select
-        source_key,
-        -- source.get("steward") or source.get("attribution")
-        coalesce(nullif(steward, ''), nullif(attribution, '')) as steward
-    from {{ ref('stg_registry__sources') }}
-),
-
 publication as (
     select source_key from {{ ref('int_sources__publication') }}
     where may_publish
 ),
 
-hike_rows as (
-    select
-        hikes.*,
-        '{{ var("suggested_hikes_source_key") }}' as source_key
-    from hikes
-),
-
 written_up as (
     select
-        hike_rows.hike_id,
+        records.hike_id,
         'suggested_hikes' as phone_file,
-        hike_rows.hike_number as list_position,
+        records.hike_number as list_position,
         'nynjtc' as club,
-        hike_rows.source_key,
-        hike_rows._loaded_at,
-        hike_rows.name,
-        hike_rows.hike_number,
-        cast(routed.miles_json as double) as miles,
-        routed.climb_gain_ft,
-        routed.climb_loss_ft,
-        hike_rows.difficulty_slug as difficulty,
-        hike_rows.difficulty as published_difficulty,
-        '{{ var("suggested_hikes_author_kind") }}' as author_kind,
-        registry.steward as author_name,
-        photos.photo_url,
-        photos.photo_credit,
-        photos.photo_licence,
-        cast(routed.segments_json as json) as segments,
-        routed.provenance as route_provenance,
-        routed.grade as route_grade,
-        cast(routed.route_notes_json as json) as route_notes,
-        hike_rows.features_json as features,
-        hike_rows.region,
-        hike_rows.park,
-        hike_rows.estimated_hours,
-        hike_rows.dogs,
-        hike_rows.route_type,
-        routed.route_closed as closed,
-        hike_rows.source_url,
-        hike_rows.stated_miles as published_miles,
-        -- [summary] if summary else []
-        case
-            when coalesce(hike_rows.summary, '') != ''
-                then json_array(hike_rows.summary)
-            else json('[]')
-        end as overview,
-        hike_rows.description_json as description,
-        cast(routed.trails_json as json) as trails,
-        hike_rows.has_start,
-        hike_rows.start_lat,
-        hike_rows.start_lon,
-        hike_rows.start_label as start_basis,
-        hike_rows.published_on,
-        hike_rows.updated_on,
-        hike_rows.directions_json as directions,
-        hike_rows.public_transport_json as public_transport,
-        '{{ var("suggested_hikes_content_licence") }}' as content_licence,
-        cast(routed.miles_json as double) as measured_miles,
-        -- The note holds apostrophes, doubled for the SQL literal.
-        '{{ var("suggested_hikes_same_tread_note") | replace("'", "''") }}'
-            as measured_note,
-        -- A page that names nobody ships no publication block, never an
-        -- empty one.
-        case
-            when coalesce(hike_rows.author, '') != '' then hike_rows.author
-        end as publication_submitted_by,
-        routed.track_reproduction,
+        records.source_key,
+        records._loaded_at,
+        records.name,
+        records.hike_number,
+        records.miles,
+        records.climb_gain_ft,
+        records.climb_loss_ft,
+        records.difficulty,
+        records.published_difficulty,
+        records.author_kind,
+        records.author_name,
+        records.photo_url,
+        records.photo_credit,
+        records.photo_licence,
+        records.segments,
+        records.route_provenance,
+        records.route_grade,
+        records.route_notes,
+        records.features,
+        records.region,
+        records.park,
+        records.estimated_hours,
+        records.dogs,
+        records.route_type,
+        records.closed,
+        records.source_url,
+        records.published_miles,
+        records.overview,
+        records.description,
+        records.trails,
+        records.has_start,
+        records.start_lat,
+        records.start_lon,
+        records.start_basis,
+        records.published_on,
+        records.updated_on,
+        records.directions,
+        records.public_transport,
+        records.content_licence,
+        records.measured_miles,
+        records.measured_note,
+        records.publication_submitted_by,
+        records.track_reproduction,
         cast(null as varchar) as highlight_note,
         cast(null as varchar) as highlight_reviewed,
         cast(null as json) as highlight_legs,
-        cast(null as varchar) as section_club
-    from hike_rows
-    inner join routed on hike_rows.hike_number = routed.hike_number
-    inner join registry on hike_rows.source_key = registry.source_key
-    inner join publication on hike_rows.source_key = publication.source_key
-    -- photo_for(): the number after the record id's last colon.
-    left join photos
-        on cast(hike_rows.hike_number as varchar) = photos.hike_key
+        cast(null as varchar) as section_club,
+        cast(records.shelf_json as json) as shelf_record,
+        cast(records.detail_json as json) as detail_record,
+        cast(null as json) as highlight_record
+    from records
+    inner join publication on records.source_key = publication.source_key
 ),
 
 highlight_rows as (
@@ -201,7 +166,10 @@ curated as (
         highlight_rows.note as highlight_note,
         highlight_rows.reviewed as highlight_reviewed,
         cast(highlight_rows.legs_json as json) as highlight_legs,
-        highlight_rows.club as section_club
+        highlight_rows.club as section_club,
+        cast(null as json) as shelf_record,
+        cast(null as json) as detail_record,
+        cast(highlight_rows.record_json as json) as highlight_record
     from highlight_rows
     inner join publication on highlight_rows.source_key = publication.source_key
 )

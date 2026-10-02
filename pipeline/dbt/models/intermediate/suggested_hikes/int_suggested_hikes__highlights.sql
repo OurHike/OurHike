@@ -230,23 +230,58 @@ first_stretch as (
             and decided.first_start_mile < stretches.end_mile
     where decided.problem is null
     group by decided.file_row
+),
+
+resolved as (
+    select
+        decided.file_row,
+        -- The id a dropped row is reported under: resolve()'s "<no id>" for
+        -- a row with none.
+        case
+            when decided.problem in ('not an object', 'entry has no id')
+                then '<no id>'
+            else decided.highlight_id
+        end as highlight_id,
+        decided.highlight_name,
+        decided.note,
+        decided.reviewed,
+        case
+            when decided.problem is null then decided.legs_json
+        end as legs_json,
+        case
+            when decided.problem is null then first_stretch.acronym
+        end as club,
+        decided.problem,
+        decided._loaded_at
+    from decided
+    left join first_stretch on decided.file_row = first_stretch.file_row
 )
 
 select
-    decided.file_row,
-    -- The id a dropped row is reported under: resolve()'s "<no id>" for a
-    -- row with none.
+    *,
+    -- as_published(): the record highlights.json carries, as JSON text. It
+    -- names its basis and never says "popular": `bases` is `named`, cited to
+    -- OurHike with the reviewer's note and date.
     case
-        when decided.problem in ('not an object', 'entry has no id')
-            then '<no id>'
-        else decided.highlight_id
-    end as highlight_id,
-    decided.highlight_name,
-    decided.note,
-    decided.reviewed,
-    case when decided.problem is null then decided.legs_json end as legs_json,
-    case when decided.problem is null then first_stretch.acronym end as club,
-    decided.problem,
-    decided._loaded_at
-from decided
-left join first_stretch on decided.file_row = first_stretch.file_row
+        when problem is null
+            then
+                cast(
+                    json_object(
+                        'id', highlight_id,
+                        'name', highlight_name,
+                        'bases', ['{{ var("highlights_basis") }}'],
+                        'citations',
+                        json_object(
+                            '{{ var("highlights_basis") }}',
+                            json_object(
+                                'by', '{{ var("highlights_cited_by") }}',
+                                'note', note,
+                                'reviewed', reviewed
+                            )
+                        ),
+                        'legs', cast(legs_json as json),
+                        'club', club
+                    ) as varchar
+                )
+    end as record_json
+from resolved

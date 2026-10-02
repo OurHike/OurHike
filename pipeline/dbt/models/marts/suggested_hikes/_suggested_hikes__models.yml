@@ -269,3 +269,18 @@ models:
           The maintaining club whose stretch a highlight's first leg starts in,
           published as `club`; null where no club section covers it.
         data_type: varchar
+      - name: shelf_record
+        description: >
+          A written-up hike's shelf record as suggested_hikes.json carries it
+          (int_suggested_hikes__records): the fields above, in the client's
+          spelling, a photo and a climb only where there is one.
+        data_type: json
+      - name: detail_record
+        description: >
+          A written-up hike's detail as its own object carries it: the page's
+          prose and figures, flat, with the hike's own id, a publication block
+          only with a named author.
+        data_type: json
+      - name: highlight_record
+        description: A highlight's record as highlights.json carries it, lib/highlights.py's as_published().
+        data_type: json

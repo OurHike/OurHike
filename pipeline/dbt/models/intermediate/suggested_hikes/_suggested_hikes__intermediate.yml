@@ -97,6 +97,24 @@ models:
         description: One segment of {coord, poiId} points, each [lon, lat] at 6 decimals, a closed walk's first end repeated.
       - name: miles_json
         description: round(round(miles, 3), 2), as JSON text.
+  - name: int_suggested_hikes__records
+    description: >
+      Each shipped Hike Finder hike as the phone reads it: every field
+      record_for() gives it, as the typed columns the mart carries, and the
+      record split by split_record() into the shelf record and the detail
+      (SH10, SH11), as JSON text in split_record()'s key order. The writers
+      only gather the records.
+    columns:
+      - name: hike_number
+        description: The export's hike id.
+        data_tests: [not_null, unique]
+      - name: hike_id
+        description: The record id, `nynjtc_hike_finder:<number>`.
+        data_tests: [not_null, unique]
+      - name: shelf_json
+        description: The shelf record, SHELF_FIELDS in the client's spelling.
+      - name: detail_json
+        description: The detail, everything else, flat, with the hike's own id.
   - name: int_suggested_hikes__published_pois
     description: >
       INTERFACE, zero rows until the points_of_interest mart publishes its
@@ -156,6 +174,8 @@ models:
         description: The maintaining club whose stretch the first leg starts in, or null.
       - name: problem
         description: The first rule the row breaks, in resolve()'s words, or null where it publishes.
+      - name: record_json
+        description: The record highlights.json carries, as_published()'s, on a row that publishes.
 
 exposures:
   - name: step_form_route

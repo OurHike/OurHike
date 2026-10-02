@@ -88,6 +88,14 @@ last_piece as (
 -- (measured 2026-10-02: it parses the arrow and a one-parameter lambda).
 -- DuckDB 1.5.4 and 1.5.5 run it with lambda_syntax at its DEFAULT; a
 -- DuckDB that removes the arrow fails this model loudly at the bump.
+--
+-- The lambda reads pieces.length_m and pieces.interval_m, which is right
+-- here only because each step of this recursion holds one row, one piece.
+-- DuckDB 1.5.5's list_reduce reads a captured column from the wrong row
+-- once lists of different lengths share a vector (wrong on 3,861 of 5,000
+-- rows, and right on every row taken one at a time, measured 2026-10-02;
+-- macros/dead_band_gain.sql has the run). Batching pieces into one step
+-- would need the lengths passed in the list instead.
 walked (piece_id, first_along_m, offset_m) as (
     select
         0,

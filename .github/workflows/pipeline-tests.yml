@@ -247,6 +247,8 @@ jobs:
             pipeline/export_suggested_hikes.py
             pipeline/route_hikefinder.py
             pipeline/export_highlights.py
+            pipeline/export_network_elevation.py
+            pipeline/export_network_profile.py
             pipeline/build_marts.py
             pipeline/export_poi.py
             pipeline/export_nearby_poi.py
@@ -522,6 +524,12 @@ jobs:
           # export_elevation.py reads the DEM through rasterio, so this runs on
           # the pipeline's own pins, the venv step_dem_sampling.py runs in.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py elevation --new data/processed/dbt/elevation_profile.json --raw-dir data/raw
+          # The junction graph's two elevation files, on the build's own edges
+          # (int_trail_network__edges, which today's exporters read as
+          # trail_graph.json and trail_graph_geometry.json), after the A.T.'s
+          # profile on one cold DEM cache, as publish-vector-data.yml runs them.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py trail_graph_elevation --new data/processed/dbt/trail_graph_elevation.json --raw-dir data/raw --warehouse data/warehouse.duckdb
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py trail_graph_profile --new data/processed/dbt/trail_graph_profile.json --raw-dir data/raw --warehouse data/warehouse.duckdb
           # The points_of_interest family's ten files, on the fixture warehouse
           # and the reviewed files in git (water distances, capacities, the
           # identity ledger).

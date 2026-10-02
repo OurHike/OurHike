@@ -298,6 +298,64 @@ def test_a_writer_reading_two_versions_fails():
     assert "reads versions 1, 2 at once" in failure
 
 
+# --- which writer writes which key ----------------------------------------------
+
+
+def _poi_writers(*locations):
+    return {
+        f"model.ourhike.pub_{location.split('.')[0]}": {"config": {"materialized": "phone_file", "location": location}}
+        for location in locations
+    }
+
+
+def _shared(nodes, keys):
+    return {"config": {"meta": {"r2_keys": keys}}, "depends_on": {"nodes": ["model.ourhike.points_of_interest", *nodes]}}
+
+
+def test_one_writer_writes_every_key_its_exposure_names():
+    writer_id, writer = _writer()
+    exposure = _exposure(writer_id, ["podcasts/episodes.json"])[1]
+    assert ccv.keys_by_writer(exposure, {writer_id: writer}) == {writer_id: ["podcasts/episodes.json"]}
+
+
+def test_writers_sharing_an_exposure_each_write_the_key_named_for_their_file():
+    """poi_by_type_geojson: eight writers, eight keys, one exposure."""
+    nodes = _poi_writers("poi_shelter.geojson", "poi_water.geojson")
+    paired = ccv.keys_by_writer(_shared(nodes, ["poi_water.geojson", "v2/poi_shelter.geojson"]), nodes)
+    assert paired == {
+        "model.ourhike.pub_poi_shelter": ["v2/poi_shelter.geojson"],
+        "model.ourhike.pub_poi_water": ["poi_water.geojson"],
+    }
+
+
+@pytest.mark.parametrize(
+    ("keys", "message"),
+    [
+        (["poi_shelter.geojson", "poi_water.geojson", "poi_privy.geojson"], "poi_privy.geojson is not the file of any"),
+        (["poi_shelter.geojson"], "write no key their exposure names"),
+    ],
+)
+def test_a_shared_exposure_that_does_not_pair_up_is_refused(keys, message):
+    nodes = _poi_writers("poi_shelter.geojson", "poi_water.geojson")
+    with pytest.raises(ValueError, match=message):
+        ccv.keys_by_writer(_shared(nodes, keys), nodes)
+
+
+def test_an_exposure_with_no_writer_names_no_writer_keys():
+    exposure = {
+        "config": {"meta": {"r2_keys": ["conditions/weather_alerts.json"]}},
+        "depends_on": {"nodes": ["model.ourhike.warnings"]},
+    }
+    assert ccv.keys_by_writer(exposure, {}) == {}
+
+
+def test_an_exposure_that_does_not_pair_up_fails_the_check():
+    nodes = _poi_writers("poi_shelter.geojson", "poi_water.geojson")
+    head = {"nodes": nodes, "exposures": {"exposure.ourhike.poi_by_type_geojson": _shared(nodes, ["poi_shelter.geojson"])}}
+    (failure,) = _check(None, head).failures
+    assert failure.startswith("exposure.ourhike.poi_by_type_geojson: ")
+
+
 # --- where a version lives in a key -------------------------------------------
 
 

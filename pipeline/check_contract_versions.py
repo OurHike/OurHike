@@ -41,8 +41,8 @@ IN THE HEAD ALONE, every time, for the pub_ writers (materialised
   5. a writer that reads a versioned model pins it, `ref('podcasts', v=1)`,
      so a new latest version can never move a published file underneath it;
   6. a writer reads one version, not two;
-  7. each key its exposure names carries that version's segment, and v1's
-     keys carry none: `v2/<file>` for a release-scoped file (publish.py puts
+  7. each key it writes (keys_by_writer pairs an exposure's keys with its
+     writers) carries that version's segment, and v1's keys carry none: `v2/<file>` for a release-scoped file (publish.py puts
      it under `releases/<id>/`), `conditions/v2/<file>` and
      `podcasts/v2/<file>` for the root-scoped ones.
 
@@ -128,6 +128,46 @@ def version_in_key(key: str) -> int | None:
         return None
     match = _VERSION_SEGMENT.match(segments[index])
     return int(match.group(1)) if match else None
+
+
+def keys_by_writer(exposure: dict, nodes: dict) -> dict[str, list[str]]:
+    """Which of an exposure's R2 keys each of its phone_file writers writes.
+
+    One writer writes every key its exposure names. Several writers each write
+    the key whose last segment is their `location`, the bare file name
+    phone_file writes: the eight poi_<type>.geojson files share one exposure,
+    poi_by_type_geojson, and pub_poi_shelter's location is
+    poi_shelter.geojson. An exposure where that pairing does not give every
+    key one writer and every writer a key is refused (ValueError), because a
+    key nobody can be shown to write would publish nothing or the wrong file.
+    An exposure with no writer, documenting a file Python writes, gives {}."""
+    meta = (exposure.get("config") or {}).get("meta") or exposure.get("meta") or {}
+    keys = list(meta.get("r2_keys") or [])
+    writers = [
+        node_id
+        for node_id in (exposure.get("depends_on") or {}).get("nodes") or []
+        if ((nodes.get(node_id) or {}).get("config") or {}).get("materialized") == PHONE_FILE_MATERIALIZATION
+    ]
+    if not keys or not writers:
+        return {}
+    if len(writers) == 1:
+        return {writers[0]: keys}
+    by_location: dict[str, str] = {}
+    for writer in writers:
+        location = (nodes[writer].get("config") or {}).get("location")
+        if location in by_location:
+            raise ValueError(f"{by_location[location]} and {writer} both write {location}")
+        by_location[location] = writer
+    paired: dict[str, list[str]] = {writer: [] for writer in writers}
+    for key in keys:
+        writer = by_location.get(key.rsplit("/", 1)[-1])
+        if writer is None:
+            raise ValueError(f"{key} is not the file of any of its exposure's {len(writers)} writers")
+        paired[writer].append(key)
+    unpaired = sorted(writer for writer, named in paired.items() if not named)
+    if unpaired:
+        raise ValueError(f"{', '.join(unpaired)} write no key their exposure names")
+    return paired
 
 
 def key_for_version(v1_key: str, version: int) -> str:
@@ -275,13 +315,17 @@ def check_writers(head: dict, report: Report) -> None:
             continue
         writer_version[node_id] = int(read[0]) if read else 1
     for exposure_id, exposure in sorted((head.get("exposures") or {}).items()):
-        meta = (exposure.get("config") or {}).get("meta") or exposure.get("meta") or {}
-        for writer in (exposure.get("depends_on") or {}).get("nodes") or []:
+        try:
+            paired = keys_by_writer(exposure, nodes)
+        except ValueError as exc:
+            report.fail(f"{exposure_id}: {exc}")
+            continue
+        for writer, keys in paired.items():
             if writer not in writer_version:
                 continue
             version = writer_version[writer]
             expected = None if version <= 1 else version
-            for key in meta.get("r2_keys") or []:
+            for key in keys:
                 named = version_in_key(key)
                 if named != expected:
                     where = f"v{named}" if named else "no version"

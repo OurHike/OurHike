@@ -71,6 +71,7 @@ import boto3
 from boto3.s3.transfer import TransferConfig
 from botocore.config import Config as BotocoreConfig
 
+import check_contract_versions
 from lib import data_change, data_env, releases
 from lib.content_types import BINARY_TYPES, COMPRESSIBLE_TYPES
 from lib.hashing import sha256_file
@@ -1561,7 +1562,6 @@ DBT_RUN_RESULTS_PATH = DBT_PROJECT_DIR / "target" / "run_results.json"
 #: never runs dbt to ask it.
 DBT_PROCESSED_DIR_ENV_VAR = "OURHIKE_PROCESSED_DIR"
 DBT_PROCESSED_DIR_DEFAULT = "../data/processed/dbt"
-PHONE_FILE_MATERIALIZATION = "phone_file"
 
 #: Keys a phone reads at the bucket root and that no manifest names: the
 #: podcast list, which export_podcasts.py puts in place on a person's dispatch
@@ -1699,60 +1699,56 @@ def collect_dbt_phone_files(
     owner: dict[str, str] = {}
     writers_seen = 0
     for exposure_id, exposure in sorted((manifest.get("exposures") or {}).items()):
-        meta = (exposure.get("config") or {}).get("meta") or exposure.get("meta") or {}
-        keys = meta.get("r2_keys") or []
-        writers = [
-            node_id
-            for node_id in (exposure.get("depends_on") or {}).get("nodes") or []
-            if ((nodes.get(node_id) or {}).get("config") or {}).get("materialized") == PHONE_FILE_MATERIALIZATION
-        ]
-        if not keys or not writers:
-            # An exposure documenting a file Python still writes, such as
-            # conditions/weather_alerts.json: not dbt's to publish.
-            continue
-        if len(writers) > 1:
-            raise RuntimeError(
-                f"{exposure_id} depends on {len(writers)} phone_file writers ({', '.join(writers)}); one file has one writer."
-            )
-        writer_id = writers[0]
-        config = nodes[writer_id].get("config") or {}
-        when_empty = (config.get("meta") or {}).get("when_empty", "fail")
-        path = processed_dir / config["location"]
-        for key in keys:
-            if key in owner:
-                raise RuntimeError(f"{key} is named by {owner[key]} and by {exposure_id}; one key has one writer.")
-            owner[key] = exposure_id
-        found.owned.update(keys)
+        # Which writer writes which key: one writer every key, several writers
+        # each the key named for its own file (the eight poi_<type>.geojson
+        # share one exposure). An exposure with no writer documents a file
+        # Python still writes, such as conditions/weather_alerts.json, and is
+        # not dbt's to publish.
+        try:
+            paired = check_contract_versions.keys_by_writer(exposure, nodes)
+        except ValueError as exc:
+            raise RuntimeError(f"{exposure_id}: {exc}") from exc
+        for writer_id, keys in paired.items():
+            config = nodes[writer_id].get("config") or {}
+            when_empty = (config.get("meta") or {}).get("when_empty", "fail")
+            path = processed_dir / config["location"]
+            for key in keys:
+                if key in owner:
+                    raise RuntimeError(f"{key} is named by {owner[key]} and by {exposure_id}; one key has one writer.")
+                owner[key] = exposure_id
+            found.owned.update(keys)
 
-        result = results.get(writer_id)
-        if result is None:
-            for key in keys:
-                found.kept[key] = f"{writer_id} did not run in the dbt invocation being published"
-            continue
-        writers_seen += 1
-        if result.get("status") != "success":
-            raise RuntimeError(
-                f"{writer_id} finished {result.get('status')!r}, so {', '.join(keys)} cannot be published from it."
-            )
-        started = _run_started_at(result)
-        written = path.exists() and (started is None or path.stat().st_mtime >= started - WRITER_CLOCK_SLACK_S)
-        if not written:
-            if when_empty != "keep_last_file":
-                state = "is older than its run" if path.exists() else "is not there"
+            result = results.get(writer_id)
+            if result is None:
+                for key in keys:
+                    found.kept[key] = f"{writer_id} did not run in the dbt invocation being published"
+                continue
+            writers_seen += 1
+            if result.get("status") != "success":
                 raise RuntimeError(
-                    f"{writer_id} succeeded, but its file {path} {state}, and it is not a keep_last_file "
-                    f"writer: either processed_dir is not where it wrote, or something else wrote there."
+                    f"{writer_id} finished {result.get('status')!r}, so {', '.join(keys)} cannot be published from it."
                 )
-            reason = "predates this run, and" if path.exists() else "is absent:"
+            started = _run_started_at(result)
+            written = path.exists() and (started is None or path.stat().st_mtime >= started - WRITER_CLOCK_SLACK_S)
+            if not written:
+                if when_empty != "keep_last_file":
+                    state = "is older than its run" if path.exists() else "is not there"
+                    raise RuntimeError(
+                        f"{writer_id} succeeded, but its file {path} {state}, and it is not a keep_last_file "
+                        f"writer: either processed_dir is not where it wrote, or something else wrote there."
+                    )
+                reason = "predates this run, and" if path.exists() else "is absent:"
+                for key in keys:
+                    found.kept[key] = (
+                        f"{config['location']} {reason} {writer_id} wrote nothing this run (when_empty: keep_last_file)"
+                    )
+                continue
+            size = path.stat().st_size
+            if size == 0:
+                raise RuntimeError(f"{path} is empty; a phone file is never published empty ({writer_id}).")
+            entry = {"path": to_manifest_path(path), "sha256": sha256_file(path), "size_bytes": size}
             for key in keys:
-                found.kept[key] = f"{config['location']} {reason} {writer_id} wrote nothing this run (when_empty: keep_last_file)"
-            continue
-        size = path.stat().st_size
-        if size == 0:
-            raise RuntimeError(f"{path} is empty; a phone file is never published empty ({writer_id}).")
-        entry = {"path": to_manifest_path(path), "sha256": sha256_file(path), "size_bytes": size}
-        for key in keys:
-            (found.live if key.startswith(LIVE_ROOT_PREFIXES) else found.artifacts)[key] = dict(entry)
+                (found.live if key.startswith(LIVE_ROOT_PREFIXES) else found.artifacts)[key] = dict(entry)
 
     if found.owned and writers_seen == 0:
         raise RuntimeError(

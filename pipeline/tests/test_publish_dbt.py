@@ -107,12 +107,15 @@ class Project:
                 for node_id, spec in writers.items()
             },
         }
+        # A writer with no keys of its own is one that shares an exposure,
+        # given in `extra_exposures`, as the eight POI writers share one.
         exposures = {
             f"exposure.ourhike.{node_id.split('.')[-1]}_json": {
                 "config": {"meta": {"r2_keys": spec["keys"], "format": "json"}},
                 "depends_on": {"nodes": ["model.ourhike.sources", node_id]},
             }
             for node_id, spec in writers.items()
+            if spec["keys"]
         }
         exposures.update(extra_exposures or {})
         (self.target / "manifest.json").write_text(json.dumps({"nodes": nodes, "exposures": exposures}))
@@ -325,6 +328,46 @@ def test_one_key_named_by_two_writers_refuses(project):
     project.build(writers=writers)
 
     with pytest.raises(RuntimeError, match="one key has one writer"):
+        project.collect()
+
+
+POI_WRITERS = {
+    "model.ourhike.pub_poi_shelter": {"location": "poi_shelter.geojson", "when_empty": "fail", "keys": []},
+    "model.ourhike.pub_poi_water": {"location": "poi_water.geojson", "when_empty": "fail", "keys": []},
+}
+
+
+def _poi_exposure(keys):
+    return {
+        "exposure.ourhike.poi_by_type_geojson": {
+            "config": {"meta": {"r2_keys": keys, "format": "geojson"}},
+            "depends_on": {"nodes": ["model.ourhike.sources", *POI_WRITERS]},
+        }
+    }
+
+
+def test_writers_sharing_one_exposure_each_publish_the_key_named_for_their_file(project):
+    """The eight poi_<type>.geojson share the exposure poi_by_type_geojson,
+    and each writer's location is its key's file name."""
+    project.write("poi_shelter.geojson", '{"type": "FeatureCollection", "features": [1]}')
+    project.write("poi_water.geojson", '{"type": "FeatureCollection", "features": [2, 3]}')
+    project.build(writers=POI_WRITERS, extra_exposures=_poi_exposure(["poi_shelter.geojson", "poi_water.geojson"]))
+
+    found = project.collect()
+
+    assert found.artifacts["poi_shelter.geojson"]["sha256"] == publish.sha256_file(project.out / "poi_shelter.geojson")
+    assert found.artifacts["poi_water.geojson"]["sha256"] == publish.sha256_file(project.out / "poi_water.geojson")
+
+
+def test_a_shared_exposure_key_no_writer_writes_refuses(project):
+    project.write("poi_shelter.geojson", "{}")
+    project.write("poi_water.geojson", "{}")
+    project.build(
+        writers=POI_WRITERS,
+        extra_exposures=_poi_exposure(["poi_shelter.geojson", "poi_water.geojson", "poi_privy.geojson"]),
+    )
+
+    with pytest.raises(RuntimeError, match="poi_privy.geojson is not the file of any"):
         project.collect()
 
 

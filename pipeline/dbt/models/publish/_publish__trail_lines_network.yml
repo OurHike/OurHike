@@ -86,10 +86,12 @@ exposures:
     description: >
       The same lines as vector tiles, z5 to z14, layer `trails`, which a
       phone reads by byte range above the pin seam (client/src/lib/config.ts's
-      NEARBY_TRAILS_TILES_KEY). Written outside dbt (TL30): export_nearby_trails.py's
-      write_tiles() cuts it with GDAL's PMTiles driver from the GeoJSON this
-      writer produces, with lib/concurrency.py's shared-ground pairs (TL19)
-      unioned in, because the phone_file materialisation writes JSON only.
+      NEARBY_TRAILS_TILES_KEY). Written outside dbt (TL30), because the
+      phone_file materialisation writes JSON only: export_nearby_trails.py's
+      write_tiles() cuts it with GDAL's PMTiles driver from a written
+      nearby_trails.geojson, with lib/concurrency.py's shared-ground pairs
+      (TL19) unioned in. Today that file is the Python's; stage 4 of #1793
+      points it at pub_nearby_trails'.
     # The lines it is cut from, not the writer: each writer is one
     # exposure's (tests/test_dbt_publish_writers.py), and this file's writer
     # is Python.
@@ -100,7 +102,7 @@ exposures:
         r2_keys: [nearby_trails.pmtiles]
         format: pmtiles
         cadence: monthly
-        written_by: export_nearby_trails.py write_tiles, from pub_nearby_trails' file
+        written_by: export_nearby_trails.py write_tiles, from pub_nearby_trails' file from stage 4
   - name: nearby_trails_cells
     label: nearby_trails_cells.json and its cells
     type: application
@@ -111,7 +113,8 @@ exposures:
       Those tiles cut into 1-degree coverage cells, so a stretch download
       carries the network (client/src/lib/config.ts's NEARBY_TRAILS_CELLS_KEY).
       Written outside dbt (TL31): cut_cells.py cuts each cell from
-      nearby_trails.pmtiles, and dbt has no per-cell model fan-out.
+      nearby_trails.pmtiles, unchanged, because dbt has no per-cell model
+      fan-out.
     depends_on:
       - ref('int_trail_lines__network_published')
     config:

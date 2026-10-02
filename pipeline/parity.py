@@ -43,6 +43,17 @@ lines network's two GeoJSON files are the first):
   spurs.json's objects keyed by id).
 
 Exit 1 on any difference, so a CI step fails on one.
+
+`--json-dir DIR` also writes the comparison as `DIR/<family>.json`
+(RESULT_FORMAT, written by result_document()), for gate_report.py, which
+turns every family's result into decision 30's per-key report. The console
+lines and the exit code are the same with or without it. The file holds what
+the console prints, plus what a reader of many families needs: which file
+was compared, each difference's changed field paths (changed_fields()), the
+fields compared by form only (`stamps`) or dropped (`volatile`), and the
+records' source keys on each side (record_sources()). An old side that
+refuses (the SystemExit some builders raise) is written as `old_side_refused`
+before the exit, so a refusal reads as one and not as a missing run.
 """
 
 from __future__ import annotations
@@ -908,6 +919,183 @@ def differences(old: dict, new: dict, family: Family) -> list[tuple[str, str | N
     return found
 
 
+# --- the machine-readable result (--json-dir), for gate_report.py ------------
+
+#: What a result file says it is, so gate_report.py refuses a JSON file in the
+#: same directory that is not one, and a later change to the shape can say so.
+RESULT_FORMAT = "ourhike-parity-result/1"
+
+#: The fields that name where a record came from, at the record's top level or
+#: under a GeoJSON feature's `properties`: a POI's `source` (atc_shelters), a
+#: notice's `source_key` (atc_trail_updates), a closed line's `closure_source`
+#: (the closure layer's registry key, export_nearby_trails.py). new_data_report.py
+#: reads these counts to say which closure, warning, water and shelter sources
+#: today's files already carry.
+SOURCE_FIELDS = ("source_key", "source", "closure_source")
+
+_ABSENT = object()
+
+
+def _leaf_paths(value, path: str, found: set[str]) -> None:
+    """Every field path inside `value`, lists of objects walked with `[]`."""
+    if isinstance(value, dict) and value:
+        for name, inner in value.items():
+            _leaf_paths(inner, f"{path}.{name}" if path else name, found)
+    elif isinstance(value, list) and value and all(isinstance(inner, dict) for inner in value):
+        for inner in value:
+            _leaf_paths(inner, f"{path}[]", found)
+    else:
+        found.add(path or "(the whole value)")
+
+
+def _changed_paths(a, b, path: str, found: set[str]) -> None:
+    if a is not _ABSENT and b is not _ABSENT and canonical(a) == canonical(b):
+        return
+    if a is _ABSENT or b is _ABSENT:
+        _leaf_paths(b if a is _ABSENT else a, path, found)
+    elif isinstance(a, dict) and isinstance(b, dict):
+        for name in sorted(a.keys() | b.keys()):
+            _changed_paths(a.get(name, _ABSENT), b.get(name, _ABSENT), f"{path}.{name}" if path else name, found)
+    elif isinstance(a, list) and isinstance(b, list) and len(a) == len(b):
+        for inner_a, inner_b in zip(a, b, strict=True):
+            _changed_paths(inner_a, inner_b, f"{path}[]", found)
+    else:
+        found.add(path or "(the whole value)")
+
+
+def changed_fields(what: str, old: str | None, new: str | None) -> list[str]:
+    """The field paths one difference changes, from its two canonical sides (None for a side that lacks it).
+
+    A record present on one side only changes every field it holds, so a POI
+    the new path loses reads as losing its `properties.water_distance_ft`.
+    Paths are dotted, with `[]` for a list's items (`geometry.coordinates[]`);
+    a top-level field's paths start with its name; `order` is the record order.
+    Compared as canonical JSON, as differences() compares, so 1 and 1.0 differ.
+    """
+    if what == "order":
+        return ["order"]
+    prefix = what.removeprefix("field ") if what.startswith("field ") else ""
+    found: set[str] = set()
+    _changed_paths(_ABSENT if old is None else json.loads(old), _ABSENT if new is None else json.loads(new), prefix, found)
+    return sorted(found)
+
+
+def _without(value, path: str):
+    """`value` with the field at dotted `path` removed, where it is there."""
+    head, _, rest = path.partition(".")
+    if not isinstance(value, dict) or head not in value:
+        return value
+    if not rest:
+        return {name: inner for name, inner in value.items() if name != head}
+    return {**value, head: _without(value[head], rest)}
+
+
+def rekeyed(found: list[tuple[str, str | None, str | None]], key: str) -> dict[str, str]:
+    """{difference: its partner} for each record one side holds under one key and the other side under another.
+
+    A record on one side only, whose every field but `key` equals a record on
+    the other side only, is the same record under a new key (the network's
+    TL05 ids are the first). Pairing them lets changed_fields() answer `key`
+    for both, rather than every field each holds, so an id that moved does
+    not read as a lost trail_status."""
+    records = [(what, a, b) for what, a, b in found if what not in ("order", "file") and not what.startswith("field ")]
+    waiting: dict[str, list[str]] = {}
+    for what, a, b in records:
+        if a is None and b is not None:
+            waiting.setdefault(canonical(_without(json.loads(b), key)), []).append(what)
+    pairs: dict[str, str] = {}
+    for what, a, b in records:
+        if b is None and a is not None:
+            partners = waiting.get(canonical(_without(json.loads(a), key)))
+            if partners:
+                partner = partners.pop(0)
+                pairs[what], pairs[partner] = partner, what
+    return pairs
+
+
+def record_sources(document: dict | None, records: str) -> tuple[dict[str, int], int]:
+    """({source value: records naming it}, records naming none), over `document[records]`, by SOURCE_FIELDS."""
+    counts: dict[str, int] = {}
+    unnamed = 0
+    for record in (document or {}).get(records) or []:
+        holders = [record] if isinstance(record, dict) else []
+        if holders and isinstance(record.get("properties"), dict):
+            holders.append(record["properties"])
+        named = {
+            holder[name] for holder in holders for name in SOURCE_FIELDS if isinstance(holder.get(name), str) and holder[name]
+        }
+        for value in named:
+            counts[value] = counts.get(value, 0) + 1
+        unnamed += not named
+    return dict(sorted(counts.items())), unnamed
+
+
+def result_document(
+    name: str,
+    family: Family,
+    new_file: Path,
+    outcome: str,
+    exit_code: int,
+    *,
+    old: dict | None = None,
+    new: dict | None = None,
+    found: list[tuple[str, str | None, str | None]] = (),
+    reasons: dict[str, str] | None = None,
+    message: str | None = None,
+) -> dict:
+    """One family's comparison as RESULT_FORMAT: everything the console said, in fields.
+
+    `outcome` is one of `no_differences`, `differences` (exit 1), `neither_writes`
+    (two absent files, which agree), `one_side_writes` (exit 1) and
+    `old_side_refused` (today's builder raised, so nothing was compared).
+    `explained` holds the differences `family.explained` accounts for, each
+    with its reason, and `differences` every other one; both carry the
+    changed field paths, which gate_report.py ranks safety fields first by.
+    A record that only changed its key (rekeyed()) changes `family.key`
+    alone, and names its partner in `same_record_as`.
+    """
+    reasons = reasons or {}
+    partners = rekeyed(list(found), family.key)
+
+    def entry(what: str, a: str | None, b: str | None) -> dict:
+        if what in partners:
+            return {"what": what, "old": a, "new": b, "fields": [family.key], "same_record_as": partners[what]}
+        return {"what": what, "old": a, "new": b, "fields": changed_fields(what, a, b)}
+
+    old_sources, old_unnamed = record_sources(old, family.records)
+    new_sources, new_unnamed = record_sources(new, family.records)
+    return {
+        "format": RESULT_FORMAT,
+        "family": name,
+        "new_file": str(new_file),
+        "new_file_name": new_file.name,
+        "records": family.records,
+        "key": family.key,
+        "ordered": family.ordered,
+        "compared_by_form_only": list(family.stamps),
+        "dropped_before_comparing": list(family.volatile),
+        "outcome": outcome,
+        "exit_code": exit_code,
+        "message": message,
+        "old_records": None if old is None else len(old.get(family.records) or []),
+        "new_records": None if new is None else len(new.get(family.records) or []),
+        "explained": [{**entry(what, a, b), "reason": reasons[what]} for what, a, b in found if what in reasons],
+        "differences": [entry(what, a, b) for what, a, b in found if what not in reasons],
+        "old_sources": old_sources,
+        "old_records_naming_no_source": old_unnamed,
+        "new_sources": new_sources,
+        "new_records_naming_no_source": new_unnamed,
+    }
+
+
+def write_result(json_dir: Path, document: dict) -> Path:
+    """`document` as `<json_dir>/<family>.json`, the directory made if need be."""
+    json_dir.mkdir(parents=True, exist_ok=True)
+    path = json_dir / f"{document['family']}.json"
+    path.write_text(json.dumps(document, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+    return path
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("family", choices=sorted(FAMILIES))
@@ -915,10 +1103,28 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--raw-dir", type=Path, default=Path("data/raw"), help="make_dbt_fixtures.py's files, for a family built from them"
     )
+    parser.add_argument(
+        "--json-dir",
+        type=Path,
+        default=None,
+        help="also write the result as <dir>/<family>.json, for gate_report.py; the console and exit code are unchanged",
+    )
     args = parser.parse_args(argv)
 
     family = FAMILIES[args.family]
-    old = family.old(args.raw_dir) if family.reads_raw_dir else family.old()
+
+    def finish(exit_code: int, outcome: str, **fields) -> int:
+        if args.json_dir is not None:
+            write_result(args.json_dir, result_document(args.family, family, args.new, outcome, exit_code, **fields))
+        return exit_code
+
+    try:
+        old = family.old(args.raw_dir) if family.reads_raw_dir else family.old()
+    except SystemExit as refusal:
+        # Some builders refuse rather than publish less (a reviewed file with
+        # a row problem publishes nothing); the exit is theirs, unchanged.
+        finish(refusal.code if isinstance(refusal.code, int) else 1, "old_side_refused", message=str(refusal.code))
+        raise
     if old is None or not args.new.exists():
         # An exporter that writes no file on some runs answers None then, as
         # export_suggested_hikes.py's does when no hike ships, and its writer
@@ -926,11 +1132,21 @@ def main(argv: list[str] | None = None) -> int:
         # absent files agree; one beside none is the difference.
         if old is None and not args.new.exists():
             print(f"{args.family}: neither today's exporter nor the writer writes a file this run")
-            return 0
+            return finish(0, "neither_writes", message="neither today's exporter nor the writer writes a file this run")
         exporter = "writes no file" if old is None else "writes one"
         writer = f"wrote {args.new}" if args.new.exists() else "wrote none"
         print(f"{args.family}: 1 difference(s):\n  today's exporter {exporter}, and the writer {writer}")
-        return 1
+        # One difference, the whole file. Where today's exporter is the side
+        # that wrote, its records are what the new path loses, so every field
+        # they hold reads as changed (changed_fields()).
+        lost = canonical((old or {}).get(family.records) or []) if old is not None else None
+        return finish(
+            1,
+            "one_side_writes",
+            old=old,
+            found=[("file", lost, None if old is not None else canonical(str(args.new)))],
+            message=f"today's exporter {exporter}, and the writer {writer}",
+        )
     new = json.loads(args.new.read_text(encoding="utf-8"))
     if family.new_shape is not None:
         new = family.new_shape(new, args.new)
@@ -945,15 +1161,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  explained, {len(named)}: {reason}")
         for what in named:
             print(f"    {what}")
-    found = [difference for difference in found if difference[0] not in reasons]
-    if not found:
+    unexplained = [difference for difference in found if difference[0] not in reasons]
+    if not unexplained:
         beyond = f" beyond the {len(explained)} explained above" if explained else ""
         print(f"{args.family}: no differences{beyond} across {count} {family.records}, keyed by {family.key}")
-        return 0
-    print(f"{args.family}: {len(found)} difference(s):")
-    for what, a, b in found:
+        return finish(0, "no_differences", old=old, new=new, found=found, reasons=reasons)
+    print(f"{args.family}: {len(unexplained)} difference(s):")
+    for what, a, b in unexplained:
         print(f"  {what}\n    old: {a}\n    new: {b}")
-    return 1
+    return finish(1, "differences", old=old, new=new, found=found, reasons=reasons)
 
 
 if __name__ == "__main__":

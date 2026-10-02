@@ -1985,7 +1985,7 @@ def _places_fixtures(files: dict[str, str]) -> dict[str, str]:
         ),
         _park("{00000000-0000-4000-8000-000000000511}", "  ", 400, "State Park", _box(-73.2, 40.6, -73.19, 40.61)),
         _park("{00000000-0000-4000-8000-000000000512}", "Fixture Ghost", 401, "State Park", None),
-    ]
+    ]  # fmt: skip
     return {**files, "external/oprhp_park_polygons.geojson": _feature_collection(parks)}
 
 

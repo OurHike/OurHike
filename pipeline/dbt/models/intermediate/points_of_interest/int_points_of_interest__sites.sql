@@ -26,13 +26,11 @@
 -- always a real fountain, never a centroid on a lawn. A waypoint with no
 -- name keeps its own pin.
 --
--- What the Python does in a different order: export_nearby_poi.py groups
--- AFTER its network ring and closed-trailhead pass, so that a site is
--- composed of waypoints that ship. Neither pass exists here yet (both need
--- the trail_lines family's network lines, see
--- int_points_of_interest__in_corridor), so every waypoint that reaches this
--- model ships, as it does in export_nearby_poi.py when nearby_trails.geojson
--- holds no lines.
+-- export_nearby_poi.py groups AFTER its network ring and closed-trailhead
+-- pass, so that a site is composed of waypoints that ship, and so does this:
+-- the ring is int_points_of_interest__in_corridor, upstream of this model,
+-- and the closed-trailhead mark (int_points_of_interest__trailheads) removes
+-- no waypoint, so the same waypoints are grouped.
 {#- min(NAME_MATCH_RADIUS_M, MAX_SITE_RADIUS_M), and the proximity one, as
     _candidate_anchors() caps each gate; in SQL, so it is the same double. -#}
 {%- set max_radius = var('poi_site_max_radius_m') -%}

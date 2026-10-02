@@ -14,10 +14,10 @@
 -- `superseded_by` is the pointer a hiker's photos follow to the place that
 -- took this one's place, and resolves_to says whether it reaches a live row
 -- (lib/poi_identity.py's resolve(), followed transitively and stopping at a
--- cycle). One that resolves to nothing is a broken promise, and the
--- points_of_interest mart's test refuses the build over it, as
--- export_retired_poi.py's main() refuses to write the file. On no row on
--- 2026-10-02: no retired row carries a successor.
+-- cycle). One that resolves to nothing is a broken promise, and this
+-- model's test refuses the build over it, as export_retired_poi.py's main()
+-- refuses to write the file. On no row on 2026-10-02: no retired row
+-- carries a successor.
 --
 -- The source is the ledger's own (poi_identity, in the
 -- unregistered_publishing_sources seed): a tombstone tells a phone that a

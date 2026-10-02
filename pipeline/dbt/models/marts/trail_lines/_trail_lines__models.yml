@@ -1,0 +1,304 @@
+version: 2
+
+models:
+  - name: trail_lines
+    description: >
+      Every line a phone draws from a trail file, one row per published line
+      (pipeline/ELT.md, "The eleven marts"): the A.T.'s centerline chains,
+      side trails and spurs, which trails.geojson carries, and every other
+      organization's lines, which nearby_trails.geojson carries. Keyed by the
+      `id` both files publish, which spurs.json and trail_miles.json key
+      their records by too. Only rows whose source may publish
+      (int_sources__publication). trails.geojson, trail_miles.json and
+      spurs.json are written from it.
+    config:
+      access: public
+      contract:
+        enforced: true
+    data_tests:
+      # ELT.md, "Geometry rules every mart obeys": GeoJSON text cannot carry
+      # metres any more than a geometry contract could refuse them, so the
+      # range is tested, on what the phone parses.
+      - dbt_utils.expression_is_true:
+          name: trail_lines_geometries_are_in_lon_lat
+          arguments:
+            expression: >
+              st_xmin(st_geomfromgeojson(geom_geojson)) >= -180
+              and st_xmax(st_geomfromgeojson(geom_geojson)) <= 180
+              and st_ymin(st_geomfromgeojson(geom_geojson)) >= -90
+              and st_ymax(st_geomfromgeojson(geom_geojson)) <= 90
+      # A line, and only a line: build_trail_records() and the network's
+      # filters skip any other geometry, so a phone is never handed one.
+      - dbt_utils.expression_is_true:
+          name: trail_lines_geometries_are_lines
+          arguments:
+            expression: >
+              st_geometrytype(st_geomfromgeojson(geom_geojson))
+              in ('LINESTRING', 'MULTILINESTRING')
+      # WARN, not error: neither exporter assumes a line is valid. A part
+      # with fewer than two distinct vertices is invalid, and both keep a
+      # source line that arrives that way rather than drop it
+      # (export_trails.simplify_records' never-drop rule), so one such line
+      # is reported rather than allowed to hold every line back.
+      - dbt_utils.expression_is_true:
+          name: trail_lines_geometries_are_valid
+          arguments:
+            expression: "st_isvalid(st_geomfromgeojson(geom_geojson))"
+          config:
+            severity: warn
+      # A status and the basis it rests on come together: a stated one, or
+      # the default a layer with no status column ships (TL10), which is a
+      # default and not a finding.
+      - dbt_utils.expression_is_true:
+          name: trail_lines_statuses_carry_their_basis
+          arguments:
+            expression: "(trail_status is null) = (trail_status_basis is null)"
+      # A closed line never loses the flag, and only a closed line has a
+      # closure kind (export_nearby_trails.py sets long_term exactly where
+      # the steward's status reads Closed).
+      - dbt_utils.expression_is_true:
+          name: trail_lines_closure_kinds_are_on_closed_lines
+          arguments:
+            expression: "coalesce(trail_status = 'closed', false) = (closure_kind is not null)"
+      # The A.T.'s files publish no status: absent means unknown, never an
+      # invented open. Closures on the A.T. are the closures mart's.
+      - dbt_utils.expression_is_true:
+          name: trail_lines_at_lines_carry_no_status
+          arguments:
+            expression: "trail_status is null"
+          config:
+            where: "line_kind <> 'network'"
+      # Miles come with their count of backward steps, and only on the
+      # centerline (ELT.md's safety-field table). Not tested for increasing:
+      # monotonic_breaks is that count.
+      - dbt_utils.expression_is_true:
+          name: trail_lines_vertex_miles_are_the_centerlines
+          arguments:
+            expression: >
+              (vertex_miles is null) = (monotonic_breaks is null)
+              and (vertex_miles is null or line_kind = 'centerline')
+      # One mile per vertex of the published line, so a phone pairing the two
+      # files never gives one vertex another's mile.
+      - dbt_utils.expression_is_true:
+          name: trail_lines_vertex_miles_match_the_vertices
+          arguments:
+            expression: "len(vertex_miles) = st_npoints(st_geomfromgeojson(geom_geojson))"
+          config:
+            where: "vertex_miles is not null"
+      # What spurs.json says about a spur, and nothing about any other line.
+      - dbt_utils.expression_is_true:
+          name: trail_lines_spur_fields_are_the_spurs
+          arguments:
+            expression: >
+              line_kind = 'spur'
+              or (
+                spur_length_ft is null
+                and spur_destination_poi_id is null
+                and spur_destination_distance_m is null
+                and spur_junction_mile is null
+              )
+      - dbt_utils.expression_is_true:
+          name: trail_lines_spur_destinations_carry_their_distance
+          arguments:
+            expression: "(spur_destination_poi_id is null) = (spur_destination_distance_m is null)"
+      - dbt_utils.unique_combination_of_columns:
+          name: trail_lines_at_feature_order_is_unique
+          arguments:
+            combination_of_columns: [feature_order]
+          config:
+            where: "line_kind <> 'network'"
+      - dbt_utils.unique_combination_of_columns:
+          name: trail_lines_network_feature_order_is_unique
+          arguments:
+            combination_of_columns: [feature_order]
+          config:
+            where: "line_kind = 'network'"
+    columns:
+      - name: trail_line_id
+        description: >
+          The published feature id, the `id` property both files carry:
+          `centerline:chain:<n>` for a chain of the A.T.'s centerline,
+          numbered in bounds order and stable only for identical input
+          (export_trails.merge_chain_records); `side_trails:<feature id>` for
+          a side trail or spur, the id from lib/feature_id.py's GlobalID,
+          then the feature's own id, then `generated-<index>`;
+          `<source key>:<feature id>` for a network line.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests: [not_null, unique]
+      - name: club
+        description: The extract folder that landed the row (pipeline/extract/<club>/); atc for the A.T.'s lines.
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: source_key
+        description: >
+          The registry key: centerline or side_trails for the A.T., the
+          layer's own key for a network line. Published as `source`.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('sources')
+                field: source_key
+      - name: _loaded_at
+        description: When the extract loaded the row's source; for a centerline chain, the latest of its segments'.
+        data_type: timestamptz
+        constraints:
+          - type: not_null
+      - name: line_kind
+        description: >
+          Which line, and so which file draws it: `centerline`, a chain of
+          the A.T.'s own line, and `side_trail` or `spur`, in trails.geojson;
+          `network`, in nearby_trails.geojson. A spur is a side trail whose
+          `Type` decodes to 3 (lib/spurs.py's SPUR_TYPE_CODE), and spurs.json
+          says where it leads.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [centerline, side_trail, spur, network]
+      - name: feature_order
+        description: >
+          The row's place in the file it is drawn in, from 0: in
+          trails.geojson the chains come first, in bounds order, then the side
+          trails and spurs in the layer's order, as export_trails.py writes
+          them; nearby_trails.geojson has its own order. Paint order rides on
+          the client's line-sort-key, not on this.
+        data_type: bigint
+        constraints:
+          - type: not_null
+      - name: name
+        description: >
+          The line's name, as its layer gives it. A centerline chain carries
+          one only where every centerline segment that has a name agrees on
+          it, as merge_chain_records() decides; null says no single name is
+          honest.
+        data_type: varchar
+      - name: blaze_color
+        description: >
+          The colour the map paints the line, from int_trail_lines__blazes
+          (lib/blaze.py's rules for the line's own exporter); 'Unknown' where
+          nothing decodes, which draws neutral.
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: trail_status
+        description: >
+          'open' or 'closed' on a network line, where the steward's own status
+          column gives it or, for a layer with no such column, as the default
+          trail_status_basis names. Null on every A.T. line: trails.geojson
+          publishes no status, and absent means unknown, never open.
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [open, closed]
+      - name: trail_status_basis
+        description: >
+          What trail_status rests on: 'stated', the layer's own status column,
+          or 'default_without_status_column', a layer that has none and ships
+          open because nothing says otherwise (export_nearby_trails.py's
+          DEFAULT_STATUS), which is a default and not a finding. Null where
+          trail_status is.
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [stated, default_without_status_column]
+      - name: closure_kind
+        description: >
+          'long_term' on a line its steward marks closed; null on every open
+          line and on every A.T. line. Temporary area closures are the
+          closures mart's (#1152 — Move OPRHP's temporary closures onto the
+          conditions clock, where a safety layer belongs).
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [long_term]
+      - name: duplicate_of
+        description: >
+          On a network line that swallowed another organization's copy of the
+          same path (TL18, #1459 — Two New York City agencies draw the same
+          tread and the map draws both lines, because nothing dedupes
+          geometry across sources), the source whose copy it was; null
+          elsewhere.
+        data_type: varchar
+      - name: geom_geojson
+        description: >
+          The line as the phone draws it: an RFC 7946 LineString or
+          MultiLineString in OGC:CRS84 lon/lat, after the 1 m Douglas-Peucker
+          pass in EPSG:5070 (TL15) and the cut to 6 decimals (decision 8). A
+          line the cut would leave with a part of fewer than two distinct
+          vertices keeps full precision instead (ELT.md's never-degenerate
+          rule), as export_nearby_trails.py's _rounded_geometry does.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests: [not_null]
+      - name: length_m
+        description: >
+          The line's length in EPSG:5070 metres at full resolution, before
+          the 1 m pass, which can only shorten a line (ELT.md's safety-field
+          table); for a centerline chain, the sum of its segments'. No phone
+          file carries it today.
+        data_type: double
+        constraints:
+          - type: not_null
+      - name: published_length_m
+        description: >
+          The length of the line as published, after the 1 m pass and before
+          the 6-decimal cut, in EPSG:5070 metres: what nearby_trails.geojson's
+          `length_miles` is rounded from (#1516 — A tapped trail prints a
+          silently-low climb as `measured`, because lineClimb's `partial`
+          guard reads a field no exporter writes), measured from the drawn
+          geometry and never a steward's stated mileage.
+        data_type: double
+        constraints:
+          - type: not_null
+      - name: vertex_miles
+        description: >
+          Centerline chains only: the A.T. mile of each vertex of
+          geom_geojson, in order, on int_trail_lines__mile_axis, rounded at 3
+          decimals half to even as numpy rounds them
+          (export_trails.vertex_miles); trail_miles.json publishes these.
+          Null off the centerline. Not tested for increasing, because
+          monotonic_breaks counts the steps that run backwards.
+        data_type: double[]
+      - name: monotonic_breaks
+        description: >
+          Centerline chains only: how many steps of vertex_miles run against
+          the chain's own direction (export_trails._monotonic_breaks),
+          counted rather than smoothed, because the client splits a piece at
+          each one (client/src/lib/trailPosition.ts). Null off the
+          centerline.
+        data_type: integer
+      - name: spur_length_ft
+        description: >
+          Spurs only: ATC's own surveyed length, the layer's Length_Ft, never
+          recomputed from the geometry (export_spurs.py). Null where ATC gives
+          none.
+        data_type: double
+      - name: spur_destination_poi_id
+        description: >
+          Spurs only: the published POI the spur's far end leads to, within
+          150 m (lib/spurs.py's DESTINATION_MAX_M), among shelters, water,
+          campsites, resupply and viewpoints. Null where nothing is in range or
+          the ends cannot be told apart: absent means unknown.
+        data_type: varchar
+      - name: spur_destination_distance_m
+        description: Spurs only, beside spur_destination_poi_id, how far that POI is from the far end, rounded to the metre.
+        data_type: integer
+      - name: spur_junction_mile
+        description: >
+          Spurs only: where the spur joins the A.T., in miles from Springer on
+          int_trail_lines__mile_axis, rounded at 3 decimals
+          (export_spurs.attach_junction_miles). Null when the spur's ends
+          cannot be told apart, never a guess at whichever end won by a metre.
+        data_type: double

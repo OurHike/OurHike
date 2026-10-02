@@ -226,6 +226,8 @@ jobs:
             pipeline/fetch_nynjtc_alerts.py
             pipeline/export_nearby_trails.py
             pipeline/export_trails.py
+            pipeline/export_spurs.py
+            pipeline/export_club_sections.py
             pipeline/export_elevation.py
             pipeline/requirements.txt
             pipeline/check_freshness.py
@@ -449,6 +451,12 @@ jobs:
           # a file in git.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py nearby_trails --new data/processed/dbt/nearby_trails.geojson
           "$RUNNER_TEMP/pipeline/bin/python" parity.py network_overview --new data/processed/dbt/network_overview.geojson
+          # The A.T.'s files, on the fixture's layers (ATC's are not in git); parity.py applies decision 8's 6 dp to the old side.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py trails --new data/processed/dbt/trails.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py trail_miles --new data/processed/dbt/trail_miles.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py trails_overview --new data/processed/dbt/trails_overview.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py spurs --new data/processed/dbt/spurs.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py club_sections --new data/processed/dbt/club_sections.json
 
       - name: dbt source freshness
         if: steps.scope.outputs.run == 'true'

@@ -46,6 +46,19 @@ models:
         data_type: boolean
         constraints:
           - type: not_null
+      - name: may_publish
+        description: >
+          Whether the source may reach a hiker's phone, decided once in
+          int_sources__publication (pipeline/ELT.md, "Who may publish").
+          Every other mart keeps only rows whose source has it.
+        data_type: boolean
+        constraints:
+          - type: not_null
+      - name: publication_rule
+        description: The rule that decided `may_publish`, from int_sources__publication.
+        data_type: varchar
+        constraints:
+          - type: not_null
       - name: licence_basis
         description: What the licence rests on, as a field (sources.json's licence_basis_comment).
         data_type: varchar

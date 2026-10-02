@@ -152,3 +152,26 @@ def test_build_output_names_and_refuses_what_the_unit_test_expects(unit_registry
         elif provider not in DIFFERENT_WORDS:
             python = python.replace(f"{reference_dir}/", "")
             assert _same_words(python) == _same_words(row["problem"]), provider
+
+
+# The bases that publish nothing because nobody has settled them (pipeline/ELT.md,
+# "The eleven marts", `may_publish`): sources.json's `unresolved`, and
+# trail_orgs.json's `unstated` once that file lands.
+UNSETTLED_BASES = {"unresolved", "unstated"}
+
+
+def test_every_licence_basis_the_registry_uses_is_classified_for_may_publish():
+    """A basis int_sources__publication has never been told about must not publish by accident.
+
+    The model refuses any basis the publishable_licence_bases seed does not list,
+    which is the cautious direction, but a new basis would then hold its sources
+    back with nobody having decided that. So each basis sources.json uses is
+    either a seed row or one of the unsettled values, and adding a fifth means
+    deciding which.
+    """
+    with (DBT / "seeds" / "publishable_licence_bases.csv").open(newline="") as handle:
+        publishable = {row["licence_basis"] for row in csv.DictReader(handle)}
+    registry = json.loads((DBT.parent / "sources.json").read_text())
+    used = {source.get("licence_basis") for source in registry["sources"]}
+    assert used - publishable - UNSETTLED_BASES == set()
+    assert not publishable & UNSETTLED_BASES

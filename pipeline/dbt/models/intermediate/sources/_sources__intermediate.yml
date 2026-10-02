@@ -70,6 +70,37 @@ models:
       - name: supports_donation
         description: Whether a support block names the steward this row reports.
 
+  - name: int_sources__publication
+    description: >
+      Whether each registered source may reach a hiker's phone, and the
+      rule that decided it (pipeline/ELT.md, "Who may publish"). Every mart
+      but `sources` keeps only the rows whose source has `may_publish`.
+    columns:
+      - name: source_key
+        description: The registry key.
+        data_tests: [not_null, unique]
+      - name: may_publish
+        description: >
+          True only where a rule makes it true: today, rule 1 (the registry
+          ships it, on a basis publishable_licence_bases lists) with none of
+          the guards refusing it. Never null.
+        data_tests: [not_null]
+      - name: publication_rule
+        description: The first rule that decided the row, or `registered_and_publishable`.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - registered_and_publishable
+                  - held_back_by_the_registry
+                  - basis_not_publishable
+                  - public_domain_needs_a_federal_organization
+                  - clearinghouse_basis_outside_new_york
+                  - public_gis_needs_a_gis_endpoint
+      - name: licence_basis
+        description: The registry's `licence_basis`, copied.
+
 unit_tests:
   - name: int_sources__paper_maps_refuses_what_paper_maps_refuses
     description: >
@@ -224,3 +255,54 @@ unit_tests:
         - {provider: N, steward_name: 'Org N', problem: 'support block for City N is missing: donate_url'}
         - {provider: P, steward_name: 'Org P', problem: 'support block for Org P is missing: donate_url'}
         - {provider: Q, steward_name: 'Org Q', problem: 'support block for (no author) is missing: author'}
+  - name: int_sources__publication_publishes_only_what_a_rule_makes_true
+    description: >
+      One row per branch of "Who may publish" this model decides: rule 1
+      both ways, a basis nobody settled, and each guard refusing a row that
+      rule 1 alone would publish.
+    model: int_sources__publication
+    given:
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: ships_stated, provider: 'A', kind: external_arcgis_layer, reaches_hikers: true, licence_basis: stated_by_org}
+          - {source_key: ships_authorised, provider: 'B', kind: null, reaches_hikers: true, licence_basis: maintainer_authorisation}
+          - {source_key: held_back, provider: 'C', kind: club_pdf, reaches_hikers: false, licence_basis: stated_by_org}
+          - {source_key: unresolved_basis, provider: 'A', kind: podcast_feed, reaches_hikers: true, licence_basis: unresolved}
+          - {source_key: no_basis, provider: 'A', kind: external_arcgis_layer, reaches_hikers: true, licence_basis: null}
+          - {source_key: state_public_domain, provider: 'D', kind: external_arcgis_layer, reaches_hikers: true, licence_basis: public_domain}
+          - {source_key: dec_clearinghouse, provider: 'D', kind: external_arcgis_layer, reaches_hikers: true, licence_basis: maintainer_clearinghouse}
+          - {source_key: oprhp_clearinghouse, provider: 'E', kind: null, reaches_hikers: true, licence_basis: maintainer_clearinghouse}
+          - {source_key: other_clearinghouse, provider: 'A', kind: external_arcgis_layer, reaches_hikers: true, licence_basis: maintainer_clearinghouse}
+          - {source_key: gis_socrata, provider: 'F', kind: socrata_geojson_layer, reaches_hikers: true, licence_basis: public_gis}
+          - {source_key: gis_no_kind, provider: 'G', kind: null, reaches_hikers: true, licence_basis: public_gis}
+          - {source_key: gis_on_a_podcast, provider: 'A', kind: podcast_feed, reaches_hikers: true, licence_basis: public_gis}
+      - input: ref('stg_registry__organizations')
+        rows:
+          - {provider: 'A', steward_id: 'org:atc'}
+          - {provider: 'B', steward_id: 'org:nynjtc'}
+          - {provider: 'C', steward_id: 'org:gatc'}
+          - {provider: 'D', steward_id: 'org:nysdec'}
+          - {provider: 'E', steward_id: 'org:nysoprhp'}
+          - {provider: 'F', steward_id: 'org:nycparks'}
+          - {provider: 'G', steward_id: 'org:usfs'}
+      - input: ref('publishable_licence_bases')
+        rows:
+          - {licence_basis: stated_by_org, applies_to: any}
+          - {licence_basis: maintainer_authorisation, applies_to: any}
+          - {licence_basis: maintainer_clearinghouse, applies_to: nys_clearinghouse}
+          - {licence_basis: public_gis, applies_to: gis}
+          - {licence_basis: public_domain, applies_to: federal}
+    expect:
+      rows:
+        - {source_key: ships_stated, may_publish: true, publication_rule: registered_and_publishable}
+        - {source_key: ships_authorised, may_publish: true, publication_rule: registered_and_publishable}
+        - {source_key: held_back, may_publish: false, publication_rule: held_back_by_the_registry}
+        - {source_key: unresolved_basis, may_publish: false, publication_rule: basis_not_publishable}
+        - {source_key: no_basis, may_publish: false, publication_rule: basis_not_publishable}
+        - {source_key: state_public_domain, may_publish: false, publication_rule: public_domain_needs_a_federal_organization}
+        - {source_key: dec_clearinghouse, may_publish: true, publication_rule: registered_and_publishable}
+        - {source_key: oprhp_clearinghouse, may_publish: true, publication_rule: registered_and_publishable}
+        - {source_key: other_clearinghouse, may_publish: false, publication_rule: clearinghouse_basis_outside_new_york}
+        - {source_key: gis_socrata, may_publish: true, publication_rule: registered_and_publishable}
+        - {source_key: gis_no_kind, may_publish: true, publication_rule: registered_and_publishable}
+        - {source_key: gis_on_a_podcast, may_publish: false, publication_rule: public_gis_needs_a_gis_endpoint}

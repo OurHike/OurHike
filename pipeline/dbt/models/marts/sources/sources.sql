@@ -4,16 +4,19 @@
 -- which today is GATC's and OPRHP's. stewards.json and registry.json are
 -- both written from this (pub_stewards, pub_registry).
 --
--- `may_publish` (pipeline/ELT.md, "Who may publish") is not here yet: it
--- needs every club's org row, which int_sources__publication reads, and
--- arrives with it. Until then `reaches_hikers` is the registry's answer, as
--- it is export_sources.py's.
+-- `may_publish` is int_sources__publication's (pipeline/ELT.md, "Who may
+-- publish"). This is the one mart that keeps the rows it is false for,
+-- because this is where the flag is read; every other mart drops them.
 with registered as (
     select * from {{ ref('int_sources__registered') }}
 ),
 
 stewards as (
     select * from {{ ref('int_sources__stewards') }}
+),
+
+publication as (
+    select * from {{ ref('int_sources__publication') }}
 )
 
 select
@@ -25,6 +28,8 @@ select
     registered.kind,
     registered.trust,
     registered.reaches_hikers,
+    publication.may_publish,
+    publication.publication_rule,
     registered.licence_basis,
     registered.freshness_kind,
     registered.supports_donation,
@@ -42,3 +47,4 @@ select
     registered.file_row as list_position
 from registered
 left join stewards on registered.provider = stewards.provider
+inner join publication on registered.source_key = publication.source_key

@@ -127,3 +127,30 @@ seeds:
           - accepted_values:
               arguments:
                 values: ["high", "low"]
+  - name: publishable_licence_bases
+    description: >
+      The licence bases a source may publish on, each with the scope it is
+      admitted for and the rule or decision that admits it (pipeline/ELT.md,
+      "Who may publish"). A basis not listed here never publishes:
+      `unresolved` and `unstated` say nobody has settled it, and an absent
+      licence is not permission. int_sources__publication reads it.
+    config:
+      column_types:
+        licence_basis: varchar
+        applies_to: varchar
+        admitted_by: varchar
+    columns:
+      - name: licence_basis
+        description: The value sources.json or trail_orgs.json records.
+        data_tests: [not_null, unique]
+      - name: applies_to
+        description: >
+          `any`, or the one scope it is admitted for: `federal` organizations,
+          the `nys_clearinghouse` (NYS DEC and OPRHP), or `gis` endpoints.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [any, federal, nys_clearinghouse, gis]
+      - name: admitted_by
+        description: The rule of "Who may publish", or the decision, that admits it.
+

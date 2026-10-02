@@ -597,10 +597,13 @@ def test_a_dead_photo_link_skips_that_slot_instead_of_killing_the_run(tmp_path, 
     assert [photo["url"] for photo in record["photos"]] == [second]
 
 
-@pytest.mark.parametrize("status", [403, 404, 410])
+@pytest.mark.parametrize("status", [404, 410])
 def test_every_way_drive_says_no_such_file_is_treated_the_same(status, tmp_path, monkeypatch, requests_mock):
-    """Deleted, sharing changed, or an id that was never right - one slot with
-    no photo behind it, whichever way Drive words it."""
+    """Deleted, or an id that was never right - one slot with no photo behind
+    it, whichever way Drive words it. A 403 skips the slot the same way, but
+    Drive also answers 403 for rate limiting, so a POI it leaves photo-less
+    is not recorded as "none" (#1812):
+    test_a_poi_a_403_left_photo_less_is_not_recorded_so_the_next_run_asks_it_again."""
     _no_sleep(monkeypatch)
     _write_registry(tmp_path, monkeypatch, DEFAULT_CREDIT)
     _write_layers(tmp_path, monkeypatch, privies=[_feature(global_id="pv-1", Photo1=DRIVE_URL)])
@@ -657,23 +660,43 @@ def test_the_skipped_references_are_reported_rather_than_swallowed(tmp_path, mon
 # --- #659: the guards this fetch was citing without having ---
 
 
-def test_a_stale_none_is_rechecked_and_a_fresh_none_is_not(tmp_path, monkeypatch, requests_mock):
-    """ATC keeps filling Photo1..Photo10, and a carried-forward "none" used
-    to be permanent - a POI checked once on a throttled afternoon stayed
-    photo-less forever. A "none" older than RECHECK_NONE_AFTER_DAYS is
-    re-fetched; a fresh one still spares its API calls."""
+def test_a_none_from_any_year_is_carried_forward_without_asking_drive_again(tmp_path, monkeypatch, requests_mock):
+    """ATC's inventory photos are a closed archive (#1812): a POI that had no
+    usable photo when it was asked has none to find later, however long ago
+    that was, so its "none" stands and no request is made for it."""
     _no_sleep(monkeypatch)
     _write_registry(tmp_path, monkeypatch, DEFAULT_CREDIT)
     _write_layers(tmp_path, monkeypatch, shelters=[_feature(global_id="sh-1", Photo1=DRIVE_URL)])
-    stale = (date.today() - timedelta(days=atc.RECHECK_NONE_AFTER_DAYS + 1)).isoformat()
+    years_ago = (date.today() - timedelta(days=3 * 365)).isoformat()
     (tmp_path / "poi_images_atc.json").write_text(
-        json.dumps({"pois": {"atc_shelters:sh-1": {"status": "none", "checked": stale}}})
+        json.dumps({"pois": {"atc_shelters:sh-1": {"status": "none", "checked": years_ago}}})
     )
-    _serve(requests_mock)
+
+    atc.main()  # no mocked routes: any request would fail the test
+
+    assert _saved(tmp_path)["atc_shelters:sh-1"] == {"status": "none", "checked": years_ago}
+
+
+def test_a_poi_a_403_left_photo_less_is_not_recorded_so_the_next_run_asks_it_again(tmp_path, monkeypatch, requests_mock):
+    """Drive answers 403 for rate limiting as well as for a revoked file, so a
+    POI whose only photo answered 403 is not known to be photo-less. With a
+    "none" final (#1812), recording one here would make a throttled
+    afternoon permanent; the POI is left out of the outcomes instead, and the
+    next run, served properly, finds its photo."""
+    _no_sleep(monkeypatch)
+    _write_registry(tmp_path, monkeypatch, DEFAULT_CREDIT)
+    _write_layers(tmp_path, monkeypatch, shelters=[_feature(global_id="sh-1", Photo1=DRIVE_URL)])
+    requests_mock.get(atc.DOWNLOAD_URL, status_code=403)
 
     atc.main()
 
-    assert _saved(tmp_path)["atc_shelters:sh-1"]["status"] == "found", "the stale none must be re-checked"
+    assert "atc_shelters:sh-1" not in _saved(tmp_path), "a 403 settles nothing, so nothing is recorded"
+
+    requests_mock.reset_mock()
+    _serve(requests_mock)
+    atc.main()
+
+    assert _saved(tmp_path)["atc_shelters:sh-1"]["status"] == "found", "the next run asks again"
 
 
 def test_a_fresh_none_is_carried_forward_without_a_request(tmp_path, monkeypatch, requests_mock):

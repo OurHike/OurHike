@@ -131,12 +131,17 @@ MISSING_PHOTO_STATUSES = (403, 404, 410)
 # 10 is the right number.
 MAX_FORBIDDEN_SKIPS = 10
 
-# A "none" outcome is re-checked once it is this old (#659): ATC keeps
-# filling Photo1..Photo10, and a carried-forward "none" used to be
-# permanent - a POI checked once on a bad day stayed photo-less forever.
-# @unvalidated - thirty days trades ~a few hundred extra requests a month
-# against how often ATC actually adds photos, which nobody has measured.
-RECHECK_NONE_AFTER_DAYS = 30
+# A "none" outcome is final (#1812). These photographs are a closed archive,
+# the 2015-2017 trail inventory, and the maintainer's word on 2026-10-02 was
+# that the photo fetch is "a 1 take run thats an archive": a POI that had no
+# usable photo when it was asked has none to find later. #659 had a "none"
+# re-checked after 30 days, on the reasoning that ATC keeps filling
+# Photo1..Photo10, which nobody measured. What that recheck also caught - a
+# POI recorded as photo-less on a throttled afternoon - is handled where it
+# happens instead: a POI left with no photo after a 403 is not recorded at
+# all (main(), below), so the next run asks it again. A POI no run has asked
+# about is still fetched; `--recheck`, or a publish dispatched with
+# refetch_photos, asks every POI again.
 
 # Refuse to overwrite the outcomes file when a re-fetch loses this share of
 # the prior "found" records it re-processed - the same guard, ratio and
@@ -448,19 +453,11 @@ def eligible_photos(
 def keep_prior(record: dict | None, today: date) -> bool:
     """Whether an earlier run's outcome for a POI still stands, sparing its
     API calls. A "found" that lost its cached bytes does not stand (see
-    cached_photo_missing), and neither - since #659 - does a "none" older
-    than RECHECK_NONE_AFTER_DAYS: ATC keeps adding photos, and a POI
-    checked once on a bad day used to stay photo-less forever."""
+    cached_photo_missing). A "none" always does: the archive is closed
+    (#1812), and a "none" is only recorded when no 403 was involved (main())."""
     if record is None:
         return False
-    if cached_photo_missing(record):
-        return False
-    if record.get("status") == "none":
-        checked = record.get("checked")
-        if not checked:
-            return False
-        return (today - date.fromisoformat(checked)).days <= RECHECK_NONE_AFTER_DAYS
-    return True
+    return not cached_photo_missing(record)
 
 
 def drop_problems(lost_fresh: int, fresh_prior: int) -> list[str]:
@@ -544,17 +541,27 @@ def main(recheck: bool = False) -> None:
             # --recheck costs one Range request per photo, not two requests
             # and a re-download (#465).
             prior_photos = {p["url"]: p for p in record_photos(prior_record or {}) if p.get("url")}
+            asked_before = len(unresolved)
             photos = eligible_photos(session, candidate, cutoff, credit, unresolved, prior_photos)
-            records[candidate["id"]] = (
-                {"status": "none", "checked": today} if not photos else {"status": "found", "checked": today, "photos": photos}
-            )
+            # A 403 is Drive's answer to rate limiting as often as to a revoked
+            # file (MAX_FORBIDDEN_SKIPS), so a POI it left photo-less is not
+            # known to be photo-less. A "none" is final (keep_prior), so it is
+            # not written: the prior outcome stands if there was one, and a POI
+            # with none is left out, which the next run asks again.
+            throttled = any(status == 403 for _url, status in unresolved[asked_before:])
+            if photos:
+                records[candidate["id"]] = {"status": "found", "checked": today, "photos": photos}
+            elif not throttled:
+                records[candidate["id"]] = {"status": "none", "checked": today}
+            elif prior_record is not None:
+                records[candidate["id"]] = prior_record
             fetched += 1
             forbidden = sum(1 for _url, status in unresolved if status == 403)
             if forbidden > MAX_FORBIDDEN_SKIPS:
                 # Mass 403 is Drive throttling, not a mass deletion - see
-                # MAX_FORBIDDEN_SKIPS. Die before recording another POI as
-                # photo-less; the outcomes already persisted this run heal
-                # on the next one (a "none" is re-checked, see keep_prior).
+                # MAX_FORBIDDEN_SKIPS. Die before asking another POI; none of
+                # the POIs a 403 left photo-less were recorded as "none", so
+                # the next run asks them again.
                 raise SystemExit(
                     f"{forbidden} photo requests answered 403 this run (ceiling {MAX_FORBIDDEN_SKIPS}) - "
                     "this is the shape of Drive rate limiting, not of dead links. "

@@ -229,8 +229,9 @@ on:
       # UA ALONE, FOR A DISPATCH THAT MUST NOT TOUCH WHAT HIKERS READ. #1793 —
       # Rebuild the data platform as dlt → dbt: seven contracted marts, a
       # monthly refresh, published docs, and lighter phone downloads soaks its
-      # new path on UA for seven days of hourly runs before the merge
-      # (pipeline/ELT.md, "The go/no-go gate", decision 30), dispatched from
+      # new path on UA for three days of hourly runs before the merge
+      # (pipeline/ELT.md, "The go/no-go gate", decision 30 as decision 46
+      # amends it), dispatched from
       # the pull request's branch. `both` is today's behaviour and the
       # schedule's; it means both legs only from main (the matrix below).
       data_environment:

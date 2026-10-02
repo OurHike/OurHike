@@ -440,6 +440,11 @@ jobs:
         # export_conditions.py psycopg, and export_nearby_trails.py shapely,
         # pyproj and rasterio, none of which requirements-dbt.txt pins. The
         # job's own python failed the first conditions line on requests.
+        # Except closures and reports, which run on the extract's venv: their
+        # old side reads OurHike's Postgres answers through fixture mode's own
+        # FixtureConnection (extract/_fixtures.py), which imports dlt, and
+        # requirements.txt has no dlt (measured: "No module named 'dlt'" on a
+        # venv of requirements.txt alone, and no differences on the extract's).
         run: |
           "$RUNNER_TEMP/pipeline/bin/python" parity.py podcasts --new data/processed/dbt/podcasts_episodes.json
           "$RUNNER_TEMP/pipeline/bin/python" parity.py stewards --new data/processed/dbt/stewards.json
@@ -450,8 +455,8 @@ jobs:
           # warehouse from, since their upstreams are a website and a database.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py atc_updates --new data/processed/dbt/conditions_atc_updates.json
           "$RUNNER_TEMP/pipeline/bin/python" parity.py nynjtc_alerts --new data/processed/dbt/conditions_nynjtc_alerts.json
-          "$RUNNER_TEMP/pipeline/bin/python" parity.py closures --new data/processed/dbt/conditions_closures.json
-          "$RUNNER_TEMP/pipeline/bin/python" parity.py reports --new data/processed/dbt/conditions_reports.json
+          "$RUNNER_TEMP/extract/bin/python" parity.py closures --new data/processed/dbt/conditions_closures.json
+          "$RUNNER_TEMP/extract/bin/python" parity.py reports --new data/processed/dbt/conditions_reports.json
           # The trail lines network, whose input is the fixture warehouse, not
           # a file in git.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py nearby_trails --new data/processed/dbt/nearby_trails.geojson

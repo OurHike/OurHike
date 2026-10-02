@@ -1,6 +1,7 @@
--- reference/trail_name_aliases.json (_shared/ourhike/): the reviewed file, as its one row,
--- keyed (decision 40), with nothing filtered and nothing joined. The document
--- is still the JSON a person reviewed in; staging models read its parts.
+-- reference/trail_name_aliases.json, landed by _shared/ourhike/: the reviewed
+-- file as its one row, keyed (decision 40), with nothing filtered and
+-- nothing joined. The document is still the JSON a person reviewed in;
+-- staging models read its parts.
 --
 -- Key: the file and its landed path, which together are the row.
 with source as (

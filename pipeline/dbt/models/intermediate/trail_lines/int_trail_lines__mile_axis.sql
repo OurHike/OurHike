@@ -23,8 +23,11 @@
 -- 1. the point in EPSG:5070: st_transform(point, 'EPSG:4326', 'EPSG:5070',
 --    always_xy := true);
 -- 2. its nearest piece: the least st_distance(geom_5070, point), a tie to the
---    lower piece_id (shapely's STRtree breaks one by its own visiting order,
---    which its docstring calls possibly nondeterministic);
+--    piece the point does not end (st_linelocatepoint below 1), then to the
+--    lower piece_id. shapely's STRtree breaks a tie by its own visiting
+--    order, which its docstring calls possibly nondeterministic;
+--    int_trail_lines__at_chain_miles has the one junction where a tie
+--    changed a published mile, and why this rule;
 -- 3. the along-distance in miles: st_linelocatepoint(geom_5070, point) *
 --    length_m / 1609.344, as its own column;
 -- 4. the mile: mile_at_along('<that column>', 'anchor_along_mi',

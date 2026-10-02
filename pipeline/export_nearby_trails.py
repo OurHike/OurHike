@@ -207,6 +207,8 @@ attribution so that screen has one place to read them from when it does.
 
 import json
 import math
+import resource
+import time
 from pathlib import Path
 
 import duckdb
@@ -1855,6 +1857,33 @@ def write_artifact(records: list[dict], per_source: dict) -> dict:
     }
 
 
+def _rss_mb() -> float | None:
+    """This process's resident memory now, in MB, from /proc; None where there is no /proc."""
+    try:
+        for line in Path("/proc/self/status").read_text().splitlines():
+            if line.startswith("VmRSS:"):
+                return int(line.split()[1]) / 1024
+    except OSError:
+        return None
+    return None
+
+
+def _progress(started: float, step: str) -> None:
+    """One line before each pass after the closures step, which used to run silent (#1796).
+
+    Seven passes ran between "closed area(s)" and the first write message with
+    no output at all, and on runs 157, 158 and 160 the hosted runner was lost
+    inside that span, so the log could not say which pass it was. Each line
+    carries the elapsed time, this process's resident memory now and its peak
+    so far (ru_maxrss is KiB on Linux), which is what tells a pass that is
+    merely slow from one that is exhausting the machine.
+    """
+    now = _rss_mb()
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
+    rss = "unknown" if now is None else f"{now:,.0f} MB"
+    print(f"  [{time.monotonic() - started:7.1f}s] {step} (rss {rss}, peak {peak:,.0f} MB)", flush=True)
+
+
 def main() -> dict:
     registry = load_registry(SOURCES_PATH)
     sources = network_line_sources(registry)
@@ -1958,25 +1987,39 @@ def main() -> dict:
     # (Douglas-Peucker, endpoints preserved, and a degenerate result falls back
     # to the original geometry rather than being dropped) that a second copy
     # would be one edit away from losing.
+    passes_started = time.monotonic()
+    try:
+        total = next(line for line in Path("/proc/meminfo").read_text().splitlines() if line.startswith("MemTotal:"))
+        print(f"  machine memory: {int(total.split()[1]) / 1024:,.0f} MB", flush=True)
+    except (OSError, StopIteration):
+        pass
+    _progress(passes_started, f"simplifying {len(all_records):,} records")
     simplified = simplify_records(all_records)
+    _progress(passes_started, "writing the network lines")
     manifest = write_artifact(simplified, per_source)
     manifest["closures"] = closure_stats
     manifest["duplicates"] = duplicate_stats
     # The shared-ground pairs (#1384), from the records just written plus the
     # A.T.'s centerline, into their own file - never into the one above, for
     # the eleven readers the module docstring counts.
+    _progress(passes_started, "loading the A.T. centerline")
     at_records = load_at_centerline()
+    _progress(passes_started, f"finding shared ground among {len(simplified) + len(at_records):,} lines")
     pairs, shared = find_shared_ground(simplified + at_records)
+    _progress(passes_started, f"writing the shared ground ({len(pairs):,} pairs)")
     manifest["concurrent"] = write_concurrent(pairs, shared, at_paired=bool(at_records))
     # The corridor-view sketch, from the same simplified records the artifact
     # was just written from - export_trails.py's ordering, for its reason: the
     # overview simplifies the same geometry a second time at its own coarser
     # tolerance.
+    _progress(passes_started, "writing the overview")
     manifest["overview"] = write_overview(simplified)
     # The same lines as vector tiles (#1257), cut from the file just written
     # so the two cannot disagree - see write_tiles for what a phone gains.
     # The pairs ride in the tiles, and only when there are any to ride.
+    _progress(passes_started, "cutting the vector tiles")
     manifest["tiles"] = write_tiles(Path(manifest["path"]), Path(manifest["concurrent"]["path"]) if pairs else None)
+    _progress(passes_started, "every pass done")
 
     size = Path(manifest["path"]).stat().st_size
     print(f"\n  {manifest['feature_count']:,} features -> {manifest['path']} ({size:,} bytes)")

@@ -318,6 +318,18 @@ models:
       - name: trail_line_id
         description: "`<source>:<feature id>`, lib/feature_id.py's chain."
         data_tests: [not_null, unique]
+      - name: feature_id
+        description: >
+          The GlobalID, else the OBJECTID (side trails only), else
+          `generated-<source_row>`. resolve_feature_id() warns on the last;
+          so does this.
+        data_tests:
+          - dbt_utils.expression_is_true:
+              name: int_trail_lines__at_features_warns_of_a_feature_with_no_id
+              arguments:
+                expression: "not like 'generated-%'"
+              config:
+                severity: warn
       - name: blaze_color
         description: int_trail_lines__blazes' colour for the feature.
         data_tests: [not_null]
@@ -338,9 +350,34 @@ models:
       The A.T.'s 30-mile corridor, lib/corridor.build_corridor(), one row:
       the centerline's segments buffered in EPSG:5070, unioned, in lon/lat.
     data_tests:
+      # lib/corridor.py's three build tests, as properties of the built row
+      # (a dbt 2.0.6 unit test cannot hold a GEOMETRY output):
+      # test_build_corridor_populates_a_single_non_empty_polygon, with the
+      # unique source_key below,
       - dbt_utils.expression_is_true:
           arguments:
             expression: "geom is not null and not st_isempty(geom)"
+      - dbt_utils.expression_is_true:
+          name: int_trail_lines__corridor_is_a_polygon
+          arguments:
+            expression: "st_geometrytype(geom) in ('POLYGON', 'MULTIPOLYGON')"
+      # test_build_corridor_area_is_plausible_for_a_30_mile_buffer_around_the_fixture_line:
+      # a buffer of any line holds the disc around one of its points, and
+      # GEOS's 32-sided circle keeps 99.4% of it, so 3.1 r squared is a floor
+      # nothing degenerate passes,
+      - dbt_utils.expression_is_true:
+          name: int_trail_lines__corridor_holds_a_buffer_disc
+          arguments:
+            expression: >-
+              st_area(st_transform(geom, 'EPSG:4326', 'EPSG:5070', always_xy := true))
+              >= 3.1 * pow({{ var('trail_lines_corridor_buffer_miles') }} * 1609.344, 2)
+      # and test_build_corridor_keeps_the_result_in_the_source_hemisphere_not_axis_swapped:
+      # the A.T.'s corridor lies west of Greenwich and north of the equator,
+      # where a transform that lost always_xy would put it somewhere else.
+      - dbt_utils.expression_is_true:
+          name: int_trail_lines__corridor_lies_where_the_trail_does
+          arguments:
+            expression: "st_xmax(geom) < 0 and st_ymin(geom) > 0"
     columns:
       - name: source_key
         description: The layer the corridor is built from, centerline.
@@ -391,6 +428,16 @@ models:
           name: int_trail_lines__at_chains_hold_every_part_once
           arguments:
             expression: "part_count >= 1 and most_covering_chains = 1"
+      # Every chain is one LineString, the merge's parts dumped one to a row,
+      # so trail_miles.json's flat list per chain lines up with the
+      # coordinates the phone walks. vertex_miles() gives a MultiLineString
+      # record one list per part (test_export_trails.py's
+      # test_a_multilinestring_record_carries_one_list_per_part); here none
+      # reaches it.
+      - dbt_utils.expression_is_true:
+          name: int_trail_lines__at_chains_are_linestrings
+          arguments:
+            expression: "starts_with(geom_wkt, 'LINESTRING ')"
     columns:
       - name: trail_line_id
         description: "`centerline:chain:<n>`."
@@ -449,7 +496,18 @@ models:
     columns:
       - name: poi_id
         description: The POI's published id.
-        data_tests: [not_null, unique]
+        data_tests:
+          - not_null
+          - unique
+          # export_spurs.py's "no published POIs" warning
+          # (test_a_run_with_no_published_pois_warns_rather_than_resolving_nothing_quietly):
+          # every spur resolving to nothing reads as a trail network where
+          # nothing leads anywhere. It warns on every build until the
+          # points_of_interest mart fills this model.
+          - dbt_utils.at_least_one:
+              name: int_trail_lines__spur_destinations_warns_when_no_poi_is_published
+              config:
+                severity: warn
 
   - name: int_trail_lines__spurs
     description: >

@@ -6,7 +6,9 @@
 -- resolved against what the phone holds, so a destination id is one the
 -- client can find (PR #472 — Read the POI files by the name that writes
 -- them). Privies, parking and trailheads are
--- NOT_A_DESTINATION_POI_TYPES, for the reasons export_spurs.py gives.
+-- NOT_A_DESTINATION_POI_TYPES, for the reasons export_spurs.py gives;
+-- int_trail_lines__spurs keeps only the five types itself, so a row of
+-- another type here is never a destination.
 --
 -- THE INTERFACE, one row per published POI of those types:
 -- - poi_id: its published `id`;

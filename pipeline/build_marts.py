@@ -3,6 +3,8 @@
     python build_marts.py --fixtures [--dbt dbt] [--python <interpreter>]
         [--warehouse data/warehouse.duckdb] [--processed-dir data/processed/dbt]
         [--raw-dir data/raw] [--threads N] [--dry-run]
+    python build_marts.py --lane monthly ...                 # refresh-reference.yml
+    python build_marts.py --lane hourly [--state <dir>] ...  # the hourly conditions lane
 
 The one home of the build order (pipeline/ELT.md, "Python steps, outside dbt"
 and "Running it"). CI's dbt job and scripts/test.sh call it with --fixtures.
@@ -31,6 +33,40 @@ nothing here turns them off. `dbt deps` is not here: CI and scripts/test.sh
 run it before `dbt parse` and `dbt lint`, which need the packages first, and
 a sandbox whose proxy cannot fetch them skips it (scripts/test.sh
 --no-dbt-deps).
+
+A LANE BUILDS ONLY ITS OWN NODES (--lane; pipeline/ELT.md, "Every node
+carries its cadence": "each node is built only by the lane equal to its
+effective cadence"). A node's effective cadence is the fastest `meta.cadence`
+among the sources it reads, and dbt's own graph selection gives it:
+`config.meta.cadence:hourly+` is every node an hourly source reaches.
+- `monthly` (refresh-reference.yml) is the build above with every node an
+  hourly or daily source reaches excluded from each invocation, the writers'
+  included. Its warehouse holds only the monthly lane's raw tables, so those
+  nodes would fail on a missing source rather than build, and a monthly
+  build that did build them would store month-old closures (ELT.md's probe,
+  measured on dbt-oss 2.0.5). A source with no `meta.cadence` is built here:
+  excluding is what the lane does, so an untagged source lands where today's
+  build puts it rather than nowhere.
+- `hourly` is the seeds, then every node an hourly or daily source reaches,
+  then those nodes' writers, and no Python step: a step's table is the
+  monthly lane's. Whatever an hourly node reads from the monthly lane comes
+  from the warehouse it builds into (the restored monthly one) or, with
+  --state, through `--defer --state`.
+- Both refuse, after `dbt seed` writes the manifest, a STEPS entry that reads
+  a node an hourly or daily source reaches: the monthly lane would leave that
+  input unbuilt, and the hourly lane would rebuild it under a step that only
+  runs monthly. What a step reads is its `step_<name>` exposure's
+  `depends_on` (models/intermediate/*/_*__intermediate.yml).
+With no --lane, every node builds, as CI's fixture build needs: the fixture
+warehouse holds both lanes' tables.
+
+dbt's `selectors.yml` (ELT.md's shape) is not the home: each invocation here
+already carries its own `-s`/`--exclude`, and dbt documents `--selector` as
+not combinable with either, so a selector file would need one selector per
+invocation per lane. A lane is one more `--exclude` on each invocation
+instead, and LANE_EXCLUDES is the one home. That 2.0.6 keeps dbt's rule is
+@unvalidated: the one probe (2026-10-02) named an undefined selector beside
+`--exclude`, and dbt crashed rather than answering.
 
 A NEW STEP IS ONE ENTRY IN STEPS, plus its script: its name, the derived
 table it writes, its command, and the arguments --fixtures adds to point it
@@ -72,6 +108,19 @@ DERIVED_SOURCE = "derived"
 # The first run, after which the manifest it wrote is checked against STEPS.
 SEED = "dbt seed"
 MANIFEST_PATH = DBT_DIR / "target" / "manifest.json"
+
+#: The scheduled lanes (the module docstring, "A LANE BUILDS ONLY ITS OWN NODES").
+MONTHLY, HOURLY = "monthly", "hourly"
+LANES = (MONTHLY, HOURLY)
+#: The cadences faster than monthly. Daily rides the hourly lane when due
+#: (extract/_run.py's DUE_AFTER), so its nodes are the hourly lane's too.
+FASTER_THAN_MONTHLY = ("hourly", "daily")
+#: Every node a faster-than-monthly source reaches, as dbt selects it. Measured
+#: 2026-10-02 on dbt 2.0.6 against this project (`dbt ls --resource-type
+#: model`): of 247 models, 22 are reached by an hourly source and 9 by a daily
+#: one, which leaves 224 to the monthly lane; of the 29 writers, 4 are the
+#: hourly lane's.
+LANE_EXCLUDES = tuple(f"config.meta.cadence:{cadence}+" for cadence in FASTER_THAN_MONTHLY)
 
 
 @dataclass(frozen=True)
@@ -129,14 +178,41 @@ class Run:
     cwd: Path
 
 
-def plan(steps: list[Step], *, dbt: str, python: str, paths: Paths, fixtures: bool, threads: int | None = None) -> list[Run]:
-    """Every command of the build, in order, for these steps."""
+def plan(
+    steps: list[Step],
+    *,
+    dbt: str,
+    python: str,
+    paths: Paths,
+    fixtures: bool,
+    threads: int | None = None,
+    lane: str | None = None,
+    state: Path | None = None,
+) -> list[Run]:
+    """Every command of the build, in order, for these steps, in `lane` (None: every node)."""
+    if lane not in (None, *LANES):
+        raise ValueError(f"no lane {lane!r}; lanes are {', '.join(LANES)}")
+    if state is not None and lane != HOURLY:
+        raise ValueError("--state is the hourly lane's: only it defers to another build's nodes")
     common = ("--profiles-dir", ".", *(("--threads", str(threads)) if threads else ()))
-    fields = {"warehouse": str(paths.warehouse), "raw_dir": str(paths.raw_dir)}
     runs = [Run(SEED, (dbt, "seed", *common), DBT_DIR)]
+    if lane == HOURLY:
+        defer = ("--defer", "--state", str(state)) if state is not None else ()
+        hourly = ("-s", *LANE_EXCLUDES, "--exclude", "package:dbt_project_evaluator", "path:models/publish")
+        runs.append(
+            Run(
+                "the hourly lane: every node an hourly or daily source reaches", (dbt, "build", *common, *hourly, *defer), DBT_DIR
+            )
+        )
+        writers = tuple(f"path:models/publish,{selector}" for selector in LANE_EXCLUDES)
+        runs.append(Run("the hourly lane's pub_ writers", (dbt, "build", *common, "-s", *writers, *defer), DBT_DIR))
+        return runs
+    lane_exclude = LANE_EXCLUDES if lane == MONTHLY else ()
+    fields = {"warehouse": str(paths.warehouse), "raw_dir": str(paths.raw_dir)}
     stage_a_exclude = ["package:dbt_project_evaluator", "path:models/publish"]
     if steps:
         stage_a_exclude.append(f"source:{DERIVED_SOURCE}+")
+    stage_a_exclude += lane_exclude
     runs.append(
         Run("stage A: everything no Python step reads back", (dbt, "build", *common, "--exclude", *stage_a_exclude), DBT_DIR)
     )
@@ -156,12 +232,56 @@ def plan(steps: list[Step], *, dbt: str, python: str, paths: Paths, fixtures: bo
                     "--exclude",
                     "path:models/publish",
                     *later,
+                    *lane_exclude,
                 ),
                 DBT_DIR,
             )
         )
-    runs.append(Run("the pub_ writers", (dbt, "build", *common, "-s", "path:models/publish"), DBT_DIR))
+    writers = ("-s", "path:models/publish", *(("--exclude", *lane_exclude) if lane_exclude else ()))
+    runs.append(Run("the pub_ writers", (dbt, "build", *common, *writers), DBT_DIR))
     return runs
+
+
+def _cadence(source: dict) -> str | None:
+    return ((source.get("config") or {}).get("meta") or {}).get("cadence") or (source.get("meta") or {}).get("cadence")
+
+
+def faster_nodes(manifest: dict) -> set[str]:
+    """Every node a faster-than-monthly source reaches, followed down the manifest's child_map as dbt's `+` follows it."""
+    queue = [uid for uid, source in (manifest.get("sources") or {}).items() if _cadence(source) in FASTER_THAN_MONTHLY]
+    children = manifest.get("child_map") or {}
+    reached: set[str] = set()
+    while queue:
+        node = queue.pop()
+        if node in reached:
+            continue
+        reached.add(node)
+        queue.extend(children.get(node) or [])
+    return reached
+
+
+def lane_problems(manifest: dict, steps: list[Step], lane: str | None) -> list[str]:
+    """What stops a lane's build: a step with no exposure naming its inputs, or a step reading a faster-than-monthly node."""
+    if lane is None:
+        return []
+    exposures = {exposure.get("name"): exposure for exposure in (manifest.get("exposures") or {}).values()}
+    reached = faster_nodes(manifest)
+    problems = []
+    for step in steps:
+        exposure = exposures.get(step.name)
+        if exposure is None:
+            problems.append(
+                f"{step.name} has no exposure named {step.name} listing what it reads, so the {lane} lane cannot "
+                "check that it builds the step's inputs"
+            )
+            continue
+        for node in (exposure.get("depends_on") or {}).get("nodes") or []:
+            if node in reached:
+                problems.append(
+                    f"{step.name} reads {node}, which an hourly or daily source reaches: the monthly lane does not "
+                    "build it, and the hourly lane runs no step, so the step's answer would go stale under it"
+                )
+    return problems
 
 
 def derived_source_problems(manifest: dict, steps: list[Step]) -> list[str]:
@@ -205,6 +325,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--processed-dir", type=Path, help="default: OURHIKE_PROCESSED_DIR, else data/processed/dbt")
     parser.add_argument("--raw-dir", type=Path, default=PIPELINE_DIR / "data" / "raw", help="the fixtures' directory")
     parser.add_argument("--threads", type=int, help="passed to every dbt seed and build")
+    parser.add_argument("--lane", choices=LANES, help="build only that lane's nodes (default: every node, as CI's fixtures need)")
+    parser.add_argument("--state", type=Path, help="the hourly lane only: defer to the build whose target/ this is")
     parser.add_argument("--dry-run", action="store_true", help="print the commands and run none")
     args = parser.parse_args(argv)
 
@@ -213,7 +335,18 @@ def main(argv: list[str] | None = None) -> int:
         processed_dir=_resolved(args.processed_dir, "OURHIKE_PROCESSED_DIR", PIPELINE_DIR / "data" / "processed" / "dbt"),
         raw_dir=args.raw_dir.resolve(),
     )
-    runs = plan(STEPS, dbt=args.dbt, python=args.python, paths=paths, fixtures=args.fixtures, threads=args.threads)
+    if args.state is not None and args.lane != HOURLY:
+        parser.error("--state is the hourly lane's: only it defers to another build's nodes")
+    runs = plan(
+        STEPS,
+        dbt=args.dbt,
+        python=args.python,
+        paths=paths,
+        fixtures=args.fixtures,
+        threads=args.threads,
+        lane=args.lane,
+        state=args.state.resolve() if args.state else None,
+    )
     files = {"OURHIKE_WAREHOUSE": str(paths.warehouse), "OURHIKE_PROCESSED_DIR": str(paths.processed_dir)}
     env = {**os.environ, **files}
     print("-- build_marts: " + " ".join(f"{name}={value}" for name, value in files.items()), flush=True)
@@ -232,7 +365,7 @@ def main(argv: list[str] | None = None) -> int:
             return completed.returncode
         if run.label == SEED:
             manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
-            if problems := derived_source_problems(manifest, STEPS):
+            if problems := derived_source_problems(manifest, STEPS) + lane_problems(manifest, STEPS, args.lane):
                 for problem in problems:
                     print(f"-- build_marts: {problem}", flush=True)
                 return 1

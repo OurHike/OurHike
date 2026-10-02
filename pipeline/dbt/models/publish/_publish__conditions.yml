@@ -1,0 +1,258 @@
+version: 2
+
+# The closures and warnings family's phone files (pipeline/ELT.md, "Publish
+# (reverse ETL)"): four writers, and an exposure for each of the seven files
+# the hourly conditions lane publishes today. Every writer fails rather than
+# write a held-back source's file, so the last good copy stays on the phone.
+# None of them uploads anything: publish-conditions.yml still uploads the
+# Python exporters' files until stage 4 of #1793 — Rebuild the data
+# platform as dlt → dbt: seven contracted marts, a monthly refresh,
+# published docs, and lighter phone downloads.
+
+models:
+  - name: pub_conditions_atc_updates
+    description: >
+      Writes conditions/atc_updates.json, ATC's reviewed Trail Updates, from
+      the closures and warnings marts: one row, `generated_at`, the file's
+      `reviewed_at` and `atc_updates`, which phone_file copies to
+      processed_dir/conditions_atc_updates.json. Fails, writing nothing, when
+      int_closures__gate or int_sources__publication holds ATC back.
+      parity.py compares it with export_atc_updates.py's build_document().
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: generated_at
+        description: When the run started, stamped as export_atc_updates.py's _stamp_utc() stamps.
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: reviewed_at
+        description: The reviewed file's `reviewed_at`, as written.
+        data_type: varchar
+      - name: atc_updates
+        description: >
+          Every reviewed row in the file's order, each as lib/atc_updates.py's
+          published_rows() writes it. The automatic rows (CL07-CL10) are not
+          here: no extract lands fetch_atc_updates.py's scrape.
+        data_type: json[]
+
+  - name: pub_conditions_nynjtc_alerts
+    description: >
+      Writes conditions/nynjtc_alerts.json, NYNJTC's Trail Alerts, from the
+      warnings mart (and the closures mart, which holds none of them today):
+      one row, `generated_at` and `nynjtc_alerts`. Fails, writing nothing,
+      when int_closures__gate or int_sources__publication holds NYNJTC back.
+      parity.py compares it with export_nynjtc_alerts.py's build_document().
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: generated_at
+        description: When the run started, stamped as export_nynjtc_alerts.py's _stamp_utc() stamps.
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: nynjtc_alerts
+        description: Every alert by slug, each as lib/nynjtc_alerts.py's published_rows() writes it.
+        data_type: json[]
+
+  - name: pub_conditions_closures
+    description: >
+      Writes conditions/closures.json, OurHike's moderator-verified closures,
+      from the closures and warnings marts: one row, `generated_at` and
+      `closures`. Fails, writing nothing, when int_closures__gate or
+      int_sources__publication holds OurHike's closures back, or a row holds
+      a number that is not finite. parity.py compares it with
+      export_conditions.py's read_closures() and build_document().
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: generated_at
+        description: When the run started, stamped as export_conditions.py's _stamp_utc() stamps, and the same for conditions/reports.json.
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: closures
+        description: Every verified closure, by start_mile_marker then id, each as PUBLIC_CLOSURES_SQL selects it.
+        data_type: json[]
+
+  - name: pub_conditions_reports
+    description: >
+      Writes conditions/reports.json, every verified or resolved public
+      report whatever its severity, from base_ourhike__reports: one row,
+      `generated_at` and `reports`. Fails, writing nothing, when
+      int_sources__publication holds OurHike's reports back, or a row holds a
+      number that is not finite. parity.py compares it with
+      export_conditions.py's read_reports() and build_document().
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: generated_at
+        description: When the run started, stamped as export_conditions.py's _stamp_utc() stamps, and the same for conditions/closures.json.
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: reports
+        description: Every public report, by "timestamp" then id, each as PUBLIC_REPORTS_SQL selects it.
+        data_type: json[]
+
+exposures:
+  - name: conditions_atc_updates_json
+    label: conditions/atc_updates.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      ATC's own Trail Updates (#460 — Publish the ATC's own Trail Updates as
+      a static artifact), read by client/src/lib/atcUpdates.ts through
+      publishedConditions.ts's PUBLISHED_ATC_UPDATES_KEY. Rewritten in place
+      under conditions/, outside every release folder. Uploaded by
+      publish-conditions.yml from export_atc_updates.py's file until stage 4
+      of #1793 moves the upload to this writer's.
+    depends_on:
+      - ref('closures')
+      - ref('warnings')
+      - ref('pub_conditions_atc_updates')
+    config:
+      meta:
+        r2_keys: [conditions/atc_updates.json]
+        format: json
+        # publish-conditions.yml's cron, "40 * * * *", which fires about
+        # five times a day (#1346).
+        cadence: hourly
+
+  - name: conditions_nynjtc_alerts_json
+    label: conditions/nynjtc_alerts.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      NYNJTC's Trail Alerts, unplaced and unreviewed, read through
+      publishedConditions.ts's PUBLISHED_NYNJTC_ALERTS_KEY. Uploaded by
+      publish-conditions.yml from export_nynjtc_alerts.py's file until stage
+      4 of #1793.
+    depends_on:
+      - ref('closures')
+      - ref('warnings')
+      - ref('pub_conditions_nynjtc_alerts')
+    config:
+      meta:
+        r2_keys: [conditions/nynjtc_alerts.json]
+        format: json
+        cadence: hourly
+
+  - name: conditions_closures_json
+    label: conditions/closures.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      OurHike's moderator-verified closures, the offline baseline of the live
+      closures endpoint, read through publishedConditions.ts's
+      PUBLISHED_CLOSURES_KEY. Uploaded by publish-conditions.yml from
+      export_conditions.py's file until stage 4 of #1793.
+    depends_on:
+      - ref('closures')
+      - ref('warnings')
+      - ref('pub_conditions_closures')
+    config:
+      meta:
+        r2_keys: [conditions/closures.json]
+        format: json
+        cadence: hourly
+
+  - name: conditions_reports_json
+    label: conditions/reports.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      Every verified or resolved public report, the offline baseline of the
+      live reports endpoint, read through publishedConditions.ts's
+      PUBLISHED_REPORTS_KEY. The serious ones are also in the warnings mart.
+      Uploaded by publish-conditions.yml from export_conditions.py's file
+      until stage 4 of #1793.
+    depends_on:
+      - ref('pub_conditions_reports')
+    config:
+      meta:
+        r2_keys: [conditions/reports.json]
+        format: json
+        cadence: hourly
+
+  # The three files below have no writer here, so each exposure names what
+  # it reads and the Python that still writes it.
+  - name: conditions_weather_alerts_json
+    label: conditions/weather_alerts.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      Every active NWS alert over a trail weather square, read by
+      client/src/lib/weatherData.ts. Written by export_weather_alerts.py,
+      not by dbt: the alerts are in the warnings mart, but placing each on
+      the squares build_weather_squares.py chose (WN03) needs
+      data/raw/weather/squares.json, which no extract lands, so the mart
+      holds every US alert and this file only the ones over the trail.
+    depends_on:
+      - ref('warnings')
+    config:
+      meta:
+        r2_keys: [conditions/weather_alerts.json]
+        format: json
+        cadence: hourly
+
+  - name: conditions_notes_json
+    label: conditions/notes.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      Each POI's most recent visible field notes (WN11), read by
+      client/src/lib/fieldNotes.ts. Baked by export_conditions.py as today;
+      no mart owns field notes ("The eleven marts", what reaches a phone from
+      no mart), so this reads the staging model of the query's own rows.
+    depends_on:
+      - ref('base_ourhike__notes')
+    config:
+      meta:
+        r2_keys: [conditions/notes.json]
+        format: json
+        cadence: hourly
+
+  - name: conditions_disputes_json
+    label: conditions/disputes.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The corroborated disputes, two or more accounts saying a POI is not
+      there (WN11), read through publishedConditions.ts's
+      PUBLISHED_DISPUTES_KEY. Baked by export_conditions.py as today, from
+      no mart.
+    depends_on:
+      - ref('base_ourhike__disputes')
+    config:
+      meta:
+        r2_keys: [conditions/disputes.json]
+        format: json
+        cadence: hourly
+
+  # conditions/work_projects.json (CL17, CL18) has no exposure yet: the raw
+  # table's rows have no columns while reference/work_projects.json lists
+  # none (ReviewedFile is not `verbatim` there and has no hints), so no
+  # staging model can read it, and an exposure on the source is a private
+  # parent (fct_exposures_dependent_on_private_models). conditions/drought.json
+  # (WN12) has none either: its fetch is on hold under #1804 —
+  # fetch_drought.py fetches droughtmonitor.unl.edu/data/, a path the Drought
+  # Monitor's robots.txt disallows for every user agent.

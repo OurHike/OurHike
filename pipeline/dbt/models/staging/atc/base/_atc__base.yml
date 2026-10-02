@@ -1,0 +1,54 @@
+version: 2
+
+models:
+  - name: base_atc__atc_trail_updates
+    data_tests:
+      # Says how many rows the dedupe dropped, which for a key unique by
+      # construction is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('atc', 'raw_atc__atc_trail_updates')
+          config:
+            severity: warn
+    description: >
+      reference/atc_updates.json, ATC's Trail Updates as a person reviewed
+      them: every row, keyed, each still the JSON its reviewer wrote, with the
+      file's own fields beside it. Read by int_closures__atc_checked.
+    columns:
+      - name: atc_update_row_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the file's path and the row's place in it.
+        data_tests: [not_null, unique]
+      - name: file_row
+        description: The row's place in the file, from 0. The published order.
+        data_tests: [not_null]
+      - name: atc_update
+        description: The row as its reviewer wrote it, as JSON.
+        data_tests: [not_null]
+      - name: reviewed_file
+        description: >
+          The file's fields besides `updates`: `reviewed_at`, `reviewed_by`,
+          `source_marker` and `source`, as JSON. The same on every row.
+  - name: base_atc__atc_updates
+    data_tests:
+      # Says how many rows the dedupe dropped, which for the one row of a
+      # file is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('atc', 'raw_atc__atc_updates')
+          config:
+            severity: warn
+    description: >
+      reference/atc_updates.json whole, as its one row, keyed: where
+      int_closures__gate reads the review and pub_conditions_atc_updates
+      its `reviewed_at`, however many rows `updates` holds.
+    columns:
+      - name: atc_updates_document_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the file's path and its landed path.
+        data_tests: [not_null, unique]
+      - name: document_json
+        description: The file as its reviewer wrote it, `_README` aside, as JSON.
+        data_tests: [not_null]

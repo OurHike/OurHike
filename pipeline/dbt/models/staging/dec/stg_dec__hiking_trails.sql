@@ -1,9 +1,10 @@
--- DEC's statewide hiking-trail network, with its geometry. `geom` is carried
--- for int_trail_lines__network_rows, which publishes these lines from stage 3
--- of #1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a
--- monthly refresh, published docs, and lighter phone downloads. Until then
--- this model was attributes only, as stg_atc__centerline_segments still is
--- for the A.T., and the lines stayed in the Python spatial scripts.
+-- DEC's statewide hiking-trail network, with its geometry. `geom` is
+-- carried for int_trail_lines__network_unioned, which publishes these lines
+-- from stage 3 of #1793 — Rebuild the data platform as dlt → dbt: seven
+-- contracted marts, a monthly refresh, published docs, and lighter phone
+-- downloads. Until then this model was attributes only, as
+-- stg_atc__centerline_segments still is for the A.T., and the lines stayed
+-- in the Python spatial scripts.
 --
 -- 5,286 polyline segments, fetched whole and counted 2026-08-25 against the
 -- 5,277 the survey read on 2026-08-11, so this layer moves. Every column

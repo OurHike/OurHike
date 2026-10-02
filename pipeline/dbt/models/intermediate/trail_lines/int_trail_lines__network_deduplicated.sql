@@ -1,4 +1,5 @@
 {{ config(materialized='table') }}
+{%- set tolerance_m = var('trail_lines_network_duplicate_tolerance_m') %}
 -- The network's published lines: every row int_trail_lines__network_judged
 -- keeps whose source may publish, with each declared duplicate drawn once
 -- (TL18, lib/duplicates.py, #1459 — Two New York City agencies draw the same
@@ -60,9 +61,12 @@ lines as (
         judged.trail_status_basis,
         judged.closure_kind,
         blazes.blaze_color,
-        judged.geom,
+        st_geomfromtext(judged.geom_wkt) as geom,
         st_transform(
-            judged.geom, 'EPSG:4326', 'EPSG:5070', always_xy := true
+            st_geomfromtext(judged.geom_wkt),
+            'EPSG:4326',
+            'EPSG:5070',
+            always_xy := true
         ) as geom_m,
         judged._loaded_at
     from judged
@@ -97,7 +101,11 @@ candidates as (
     inner join lines as senior
         on
             pairs.senior_source = senior.source_key
-            and st_dwithin(junior.geom_m, senior.geom_m, 10.0)
+            and st_dwithin(
+                junior.geom_m,
+                senior.geom_m,
+                {{ tolerance_m }}
+            )
     where st_length(junior.geom_m) > 0
 ),
 
@@ -110,7 +118,11 @@ shares as (
         st_length(
             st_intersection(
                 any_value(junior_m),
-                st_buffer(st_union_agg(senior_m), 10.0, 16)
+                st_buffer(
+                    st_union_agg(senior_m),
+                    {{ tolerance_m }},
+                    16
+                )
             )
         ) / st_length(any_value(junior_m)) as junior_share
     from candidates
@@ -125,7 +137,9 @@ reported as (
         candidates.senior_key
     from candidates
     inner join shares on candidates.junior_key = shares.junior_key
-    where shares.junior_share >= 0.5
+    where
+        shares.junior_share
+        >= {{ var('trail_lines_network_duplicate_min_share') }}
     qualify
         row_number() over (
             partition by candidates.junior_key
@@ -133,7 +147,11 @@ reported as (
                 st_length(
                     st_intersection(
                         candidates.junior_m,
-                        st_buffer(candidates.senior_m, 10.0, 16)
+                        st_buffer(
+                            candidates.senior_m,
+                            {{ tolerance_m }},
+                            16
+                        )
                     )
                 ) desc,
                 candidates.senior_id asc
@@ -210,7 +228,8 @@ select
         else lines.blaze_color
     end as blaze_color,
     inherited.swallowed_source as duplicate_of,
-    lines.geom,
+    -- WKT, as int_trail_lines__network_judged carries it and for its reason.
+    st_astext(lines.geom) as geom_wkt,
     lines._loaded_at
 from lines
 left join inherited on lines.trail_segment_key = inherited.senior_key

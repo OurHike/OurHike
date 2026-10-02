@@ -1,6 +1,6 @@
 -- NYS Parks' statewide trail network, keyed on GlobalID (decision 40), with
 -- its geometry. `globalid` and `geom` are carried for
--- int_trail_lines__network_rows, which publishes these lines from stage 3 of
+-- int_trail_lines__network_unioned, which publishes these lines from stage 3 of
 -- #1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a
 -- monthly refresh, published docs, and lighter phone downloads. Until then
 -- this model was attributes only and the lines stayed in the Python spatial

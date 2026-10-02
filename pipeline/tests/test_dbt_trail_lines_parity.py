@@ -1011,6 +1011,42 @@ def test_the_spur_rows_are_build_spur_records_answers(monkeypatch):
         assert len(resolved) == 1, "a spur record without one of the keys every other carries"
 
 
+def test_the_spur_destinations_are_load_destination_pois_answers(tmp_path, monkeypatch):
+    """export_poi.write_poi_type() writes the unit test's poi_<type>.geojson rows, each file in its record order,
+    and load_destination_pois() reads them back: the same POIs, in the same order, at the same lat and lon to the
+    bit, GDAL's printing included."""
+    import export_poi
+
+    test = _at_test("int_trail_lines__spur_destinations_answer_what_load_destination_pois_answers")
+    rows = [row for row in _at_given(test, "points_of_interest") if row["phone_files"] == "poi_by_type"]
+    monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path)
+    con = spatial_connection()
+    for poi_type in sorted({row["poi_type"] for row in rows}):
+        records = [
+            {
+                "id": row["poi_id"],
+                "poi_type": poi_type,
+                "trail_id": "AT",
+                "source": "atc_test",
+                "source_feature_id": row["poi_id"],
+                "name": row["poi_id"],
+                "lat": row["lat"],
+                "lon": row["lon"],
+                "confidence": "high",
+            }
+            for row in sorted(rows, key=lambda row: row["record_order"])
+            if row["poi_type"] == poi_type
+        ]
+        export_poi.write_poi_type(con, poi_type, records)
+    con.close()
+    python = [(poi["id"], poi["lat"], poi["lon"]) for poi in export_spurs.load_destination_pois(tmp_path)]
+    sql = [
+        (row["poi_id"], row["latitude"], row["longitude"])
+        for row in sorted(test["expect"]["rows"], key=lambda row: row["destination_order"])
+    ]
+    assert python == sql
+
+
 def test_spurs_json_holds_only_the_spurs_trails_geojson_draws():
     """export_spurs.main() writes every record build_spur_records() returns, every is_spur row of
     int_trail_lines__spurs; spurs.json is written from the side trails trails.geojson draws."""

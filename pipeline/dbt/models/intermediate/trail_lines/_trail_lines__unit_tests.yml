@@ -2048,3 +2048,37 @@ unit_tests:
     expect:
       rows:
         - {acronym: "PATC", club_name: "First In The Layer", region: "MARO", polygon_count: 2}
+
+  - name: int_trail_lines__spur_destinations_answer_what_load_destination_pois_answers
+    description: >
+      export_spurs.load_destination_pois() over the points_of_interest mart:
+      only the poi_<type>.geojson rows (not nearby_poi.geojson's or
+      retired_poi.geojson's), only DESTINATION_POI_TYPES
+      (test_export_spurs.py::test_an_excluded_type_is_not_read_even_when_its_file_is_there),
+      in that list's order and then each file's, and each lat and lon as GDAL
+      prints it into the file the Python reads (-73.99000000000001 reads back
+      as -73.99, 34.626618000000006 as 34.626618, macros/gdal_geojson.sql).
+      tests/test_dbt_trail_lines_parity.py writes the same rows with
+      export_poi.write_poi_type and reads them back with
+      load_destination_pois().
+    model: int_trail_lines__spur_destinations
+    given:
+      - input: ref('points_of_interest')
+        rows:
+          - {poi_id: "viewpoint:lunch-rocks", poi_type: "viewpoint", lat: 41.0001, lon: -73.99000000000001, record_order: 0, phone_files: "poi_by_type"}
+          - {poi_id: "water:spring-b", poi_type: "water", lat: 41.0002, lon: -74.0, record_order: 7, phone_files: "poi_by_type"}
+          - {poi_id: "water:spring-a", poi_type: "water", lat: 41.0003, lon: -74.0, record_order: 3, phone_files: "poi_by_type"}
+          - {poi_id: "shelter:rocky-run", poi_type: "shelter", lat: 34.62661800000001, lon: -84.1942, record_order: 1, phone_files: "poi_by_type"}
+          - {poi_id: "privy:hurd-brook", poi_type: "privy", lat: 41.0004, lon: -74.0, record_order: 2, phone_files: "poi_by_type"}
+          - {poi_id: "parking:lot", poi_type: "parking", lat: 41.0005, lon: -74.0, record_order: 4, phone_files: "poi_by_type"}
+          - {poi_id: "trailhead:start", poi_type: "trailhead", lat: 41.0006, lon: -74.0, record_order: 5, phone_files: "poi_by_type"}
+          - {poi_id: "campsite:tent-pads", poi_type: "campsite", lat: 41.0007, lon: -74.0, record_order: 6, phone_files: "poi_by_type"}
+          - {poi_id: "nearby_shelter:lean-to", poi_type: "shelter", lat: 41.0008, lon: -74.0, record_order: 0, phone_files: "nearby_poi"}
+          - {poi_id: "retired:old-shelter", poi_type: "shelter", lat: 41.0009, lon: -74.0, record_order: 0, phone_files: "retired_poi"}
+    expect:
+      rows:
+        - {poi_id: "shelter:rocky-run", poi_type: "shelter", latitude: 34.626618, longitude: -84.1942, destination_order: 0}
+        - {poi_id: "water:spring-a", poi_type: "water", latitude: 41.0003, longitude: -74.0, destination_order: 1}
+        - {poi_id: "water:spring-b", poi_type: "water", latitude: 41.0002, longitude: -74.0, destination_order: 2}
+        - {poi_id: "campsite:tent-pads", poi_type: "campsite", latitude: 41.0007, longitude: -74.0, destination_order: 3}
+        - {poi_id: "viewpoint:lunch-rocks", poi_type: "viewpoint", latitude: 41.0001, longitude: -73.99, destination_order: 4}

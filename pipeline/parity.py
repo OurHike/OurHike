@@ -412,10 +412,39 @@ def _spurs_records(document: dict, path: Path | None) -> dict:
     return {"spurs": [{"id": key, **record} for key, record in document.items()]}
 
 
+@functools.cache
+def _published_pois() -> Path:
+    """The poi_<type>.geojson files export_poi.main() writes, in a folder kept for this process: what
+    export_spurs.py's load_destination_pois() reads in a publish run, from the same raw files and published network
+    (_published_network()) the points_of_interest mart is built from.
+
+    A folder of its own, never data/processed/poi: the poi_<type> parity lines and any earlier run write there, and
+    a POI file one of them left made export_spurs.py name a destination the dbt side never saw (side_trails:
+    spur-to-shelter, measured by the lead 2026-10-02). export_poi.py's module paths are put back afterwards, so the
+    other families in the process see what they would have.
+    """
+    import contextlib
+    import io
+    import tempfile
+
+    import export_poi
+
+    out = Path(tempfile.mkdtemp(prefix="parity-poi-")) / "poi"
+    saved = export_poi.OUT_DIR, export_poi.NETWORK_LINES_PATH
+    try:
+        export_poi.OUT_DIR = out
+        export_poi.NETWORK_LINES_PATH = _published_network()
+        with contextlib.redirect_stdout(io.StringIO()):
+            export_poi.main()
+    finally:
+        export_poi.OUT_DIR, export_poi.NETWORK_LINES_PATH = saved
+    return out
+
+
 def _spurs_old() -> dict:
-    """export_spurs.py's records over the same raw files, its Type domain the var's, and its destinations the POI
-    files export_poi.py wrote, where there are any. CI's dbt job writes none, and int_trail_lines__spur_destinations
-    has no rows until the points_of_interest mart publishes POIs, so today both sides name no destination."""
+    """export_spurs.py's records over the same raw files, its Type domain the var's, and its destinations the POIs
+    export_poi.py writes from them (_published_pois()), as int_trail_lines__spur_destinations reads the
+    points_of_interest mart's."""
     import export_spurs
 
     raw = export_spurs.RAW_DIR
@@ -423,7 +452,7 @@ def _spurs_old() -> dict:
     records = export_spurs.build_spur_records(
         export_spurs.load_features(raw / "side_trails.geojson"),
         export_spurs.load_features(raw / "centerline.geojson"),
-        export_spurs.load_destination_pois(),
+        export_spurs.load_destination_pois(_published_pois()),
         domain,
     )
     export_spurs.attach_junction_miles(records, raw / "centerline.geojson", raw / export_spurs.MARKERS_NAME)

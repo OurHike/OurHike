@@ -502,10 +502,10 @@ models:
 
   - name: int_trail_lines__spur_destinations
     description: >
-      PLACEHOLDER with no rows until the points_of_interest mart publishes
-      them: the published POIs a spur may lead to (TL28), with each one's
-      published id, type, lat and lon, and its place in
-      load_destination_pois()'s list.
+      The published POIs a spur may lead to (TL28): the points_of_interest
+      mart's poi_<type>.geojson rows of the five DESTINATION_POI_TYPES, with
+      each one's published id, type, lat and lon as the file prints them,
+      and its place in load_destination_pois()'s list.
     columns:
       - name: poi_id
         description: The POI's published id.
@@ -515,12 +515,24 @@ models:
           # export_spurs.py's "no published POIs" warning
           # (test_a_run_with_no_published_pois_warns_rather_than_resolving_nothing_quietly):
           # every spur resolving to nothing reads as a trail network where
-          # nothing leads anywhere. It warns on every build until the
-          # points_of_interest mart fills this model.
+          # nothing leads anywhere.
           - dbt_utils.at_least_one:
               name: int_trail_lines__spur_destinations_warns_when_no_poi_is_published
               config:
                 severity: warn
+      - name: poi_type
+        description: One of DESTINATION_POI_TYPES.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [shelter, water, campsite, resupply, viewpoint]
+      - name: latitude
+        description: The POI's `lat` property as poi_<type>.geojson prints it.
+      - name: longitude
+        description: The POI's `lon` property as poi_<type>.geojson prints it.
+      - name: destination_order
+        description: The POI's place in load_destination_pois()'s list, from 0.
+        data_tests: [not_null, unique]
 
   - name: int_trail_lines__spurs
     description: >

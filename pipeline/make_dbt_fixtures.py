@@ -2292,7 +2292,8 @@ def _side_trail(name: str, coordinates, properties: dict, geometry_type: str = "
 TRAIL_LINES_AT_SIDE_TRAILS = [
     # A spur by its code, blazed by code 1: its first end 14 m from the
     # centerline's vertex at (-73.99, 41.015) is the junction, its far end
-    # 44 m from the fixture's third shelter, (-73.98, 41.02).
+    # 43 m from the fixture's third shelter, (-73.98, 41.02), which spurs.json
+    # names as its destination.
     _side_trail(
         "Spur To Shelter",
         [[-73.9901, 41.0151], [-73.985, 41.018], [-73.9805, 41.0199]],

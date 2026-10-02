@@ -42,6 +42,8 @@ from pathlib import Path
 
 import requests
 
+from lib.user_agent import USER_AGENT
+
 # A pause ladder. One entry per retry, so `(5, 30)` means three attempts.
 DEFAULT_BACKOFF_SECONDS = (5, 30)
 
@@ -62,6 +64,35 @@ TRANSIENT_EXCEPTIONS = (
     requests.exceptions.ChunkedEncodingError,
     requests.exceptions.Timeout,
 )
+
+
+def named(headers: dict | None, session: requests.Session | None = None) -> dict | None:
+    """`headers`, plus lib/user_agent.py's `USER_AGENT` when nothing else names the caller.
+
+    THE GAP THIS CLOSES. With no session, both functions below fell through
+    to bare `requests`, which sends `python-requests/<version>`. Read
+    2026-10-02: `fetch_external_layers.py`, the fetch behind every network
+    trail source, reaches `request_with_retry` that way through
+    `lib/arcgis.py`, and so do `fetch_centerline.py`, `export_trails.py`
+    and `export_spurs.py`, while `lib/user_agent.py` says the string goes to
+    every host. That module's measurement is why this is not courtesy:
+    ATC's site answered the default agent 403 and this string 200.
+
+    A session on requests' default agent gets it too: `export_dem.py`
+    builds a bare `requests.Session()` for its tile fetches (read the same
+    day), while the other fetchers' sessions set `USER_AGENT` themselves.
+
+    The caller's own choice always wins. An agent in `headers`, matched
+    without regard to case as HTTP does, is left alone, and so is any agent
+    a session already carries, which keeps the photo fetchers'
+    `CONTACTABLE_USER_AGENT`.
+    """
+    if any(key.lower() == "user-agent" for key in headers or {}):
+        return headers
+    carried = getattr(session, "headers", {}).get("User-Agent") if session is not None else None
+    if carried and carried != requests.utils.default_user_agent():
+        return headers
+    return {**(headers or {}), "User-Agent": USER_AGENT}
 
 
 def retry_after_seconds(response: requests.Response) -> int | None:
@@ -124,7 +155,7 @@ def request_with_retry(
 
     for attempt, delay in enumerate((*backoff, None)):
         try:
-            response = requester.request(method, url, params=params, data=data, timeout=timeout, headers=headers)
+            response = requester.request(method, url, params=params, data=data, timeout=timeout, headers=named(headers, session))
         except TRANSIENT_EXCEPTIONS as error:
             if delay is None:
                 raise
@@ -211,7 +242,7 @@ def download_with_retry(
     try:
         for attempt, delay in enumerate((*backoff, None)):
             try:
-                with requests.get(url, stream=True, timeout=timeout, headers=headers) as response:
+                with requests.get(url, stream=True, timeout=timeout, headers=named(headers)) as response:
                     if response.status_code in retryable_statuses and delay is not None:
                         wait = retry_after_seconds(response) or delay
                         print(

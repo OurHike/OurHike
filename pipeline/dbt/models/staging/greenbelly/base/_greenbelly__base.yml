@@ -1,0 +1,39 @@
+version: 2
+
+models:
+  - name: base_greenbelly__shelter_capacity
+    data_tests:
+      # Says how many rows the dedupe dropped, which for a key unique by
+      # construction is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('greenbelly', 'raw_greenbelly__shelter_capacity')
+          config:
+            severity: warn
+    description: >
+      reference/shelter_capacity.json, one row per A.T. shelter, keyed by the
+      POI id it publishes under: how many it sleeps where Greenbelly's list
+      says, and why not where it does not. Read by
+      int_points_of_interest__enriched.
+    columns:
+      - name: shelter_capacity_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the file's path and poi_id.
+        data_tests: [not_null, unique]
+      - name: poi_id
+        description: The published POI id the capacity attaches to.
+        data_tests: [not_null, unique]
+      - name: capacity
+        description: >
+          How many the shelter sleeps. Null means nobody has said, never
+          zero, and a zero fails the build: the points_of_interest mart holds
+          capacity to null or at least 1.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+              config:
+                severity: error
+      - name: file_row
+        description: The row's place in the file, from 0.

@@ -1,0 +1,42 @@
+version: 2
+
+models:
+  - name: stg_derived__dem_samples
+    data_tests:
+      # Says how many rows the dedupe dropped, which for a step that writes
+      # one row per sample point is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('derived', 'dem_samples')
+          config:
+            severity: warn
+    description: >
+      The DEM's answer at each elevation sample point, from
+      step_dem_sampling's derived.dem_samples: the line and sample it
+      answers, the point it was read at in lon/lat, and the elevation in
+      metres, null where the DEM has none. Read by int_elevation__profile.
+    columns:
+      - name: dem_sample_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the table's name, line_id and sample_index.
+        data_tests: [not_null, unique]
+      - name: line_id
+        description: The profiled line, as int_elevation__sample_points names it.
+        data_tests: [not_null]
+      - name: sample_index
+        description: The sample's place in its line's walk, from 0.
+        data_tests: [not_null]
+      - name: lon
+        description: Longitude the DEM was read at, EPSG:4326.
+        data_tests: [not_null]
+      - name: lat
+        description: Latitude the DEM was read at, EPSG:4326.
+        data_tests: [not_null]
+      - name: elevation_m
+        description: >
+          The DEM's elevation there in metres, null where no tile covers the
+          point or none holds a real value there. Never 0 for a gap.
+      - name: loaded_at
+        description: When step_dem_sampling wrote the row, UTC.
+        data_tests: [not_null]

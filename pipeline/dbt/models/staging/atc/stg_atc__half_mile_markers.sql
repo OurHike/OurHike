@@ -4,7 +4,14 @@
 with source as (
     -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
     -- hint); cast here, as decision 40 has staging do.
+    --
+    -- `rowid` is the row's place in the raw table, the order the ArcGIS
+    -- pages served the markers (stg_atc__centerline_segments says why that
+    -- holds and where it is @unvalidated). int_trail_lines__mile_axis breaks
+    -- a tie between two equally near markers on it, as
+    -- export_elevation.py's marker list does by position.
     select
+        rowid as source_row,
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
     from {{ source('atc', 'raw_atc__half_mile_points_from_springer') }}
@@ -21,6 +28,7 @@ renamed as (
         measurem as measure_m,
         st_x(geom) as longitude,
         st_y(geom) as latitude,
+        source_row,
         _loaded_at as loaded_at
     from source
 )

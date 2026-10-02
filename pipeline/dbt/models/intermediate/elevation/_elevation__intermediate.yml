@@ -1,0 +1,139 @@
+version: 2
+
+models:
+  - name: int_elevation__sample_points
+    description: >
+      Where the A.T. elevation profile reads the DEM: one row per 25 m sample
+      along the mile axis (int_trail_lines__mile_axis), in walk order, with
+      the point in lon/lat and the published mile of each. EL05 of
+      pipeline/ELT.md's ledger, export_elevation.sample_points_along_parts
+      and the mile half of build_profile. step_dem_sampling reads every row;
+      int_elevation__profile drops the ones two pieces both cover.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [line_id, sample_index]
+      # A point in lon/lat order, and on the A.T.: x first is a longitude
+      # within the A.T.'s spread (-84.2 at Springer to -68.9 at Katahdin) and
+      # y a latitude within its own (34.6 to 45.9), each widened by about half
+      # a degree, which is picked. A swapped x and y would read the DEM 3,000
+      # km away and come back null, quietly; this fails instead.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "line_id != 'AT' or (lon between -84.7 and -68.4 and lat between 34.1 and 46.4)"
+    columns:
+      - name: line_id
+        description: The profiled line, 'AT' for the A.T. (export_poi.py's TRAIL_ID).
+        data_tests: [not_null]
+      - name: sample_index
+        description: >
+          The sample's place in its line's walk, from 0, every sample counted:
+          the order step_dem_sampling asks the DEM in, which is
+          build_profile's.
+        data_tests: [not_null]
+      - name: piece_id
+        description: The mile-axis piece the sample lies on (int_trail_lines__mile_axis).
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int_trail_lines__mile_axis')
+                field: piece_id
+      - name: along_m
+        description: >
+          How far along its piece the sample lies, in EPSG:5070 metres: the
+          carry from the piece before plus 25 m at a time, as the Python adds
+          it.
+        data_tests: [not_null]
+      - name: mile
+        description: The sample's mile on the axis, unrounded, as a double.
+        data_tests: [not_null]
+      - name: distance_mi_text
+        description: >
+          The mile as elevation_profile.json publishes it: three decimals,
+          rounded as Python's round() rounds (ties to even), as text so a
+          unit test holds it exactly. int_elevation__profile clips on it.
+        data_tests: [not_null]
+      - name: lon
+        description: The sample's longitude, EPSG:4326, where the DEM is read.
+        data_tests: [not_null]
+      - name: lat
+        description: The sample's latitude, EPSG:4326.
+        data_tests: [not_null]
+
+  - name: int_elevation__profile
+    description: >
+      The A.T. elevation profile as elevation_profile.json publishes it, one
+      row per published sample in order: EL07 (the first piece to reach a
+      mile keeps it), EL08 (part_start at each seam) and EL09 (a DEM gap is
+      null, never 0) of pipeline/ELT.md's ledger, export_elevation's
+      profile_records. The numbers are text so unit tests hold them exactly;
+      the elevation mart casts them.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [line_id, seq]
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [line_id, sample_index]
+    columns:
+      - name: line_id
+        description: The profiled line, 'AT' for the A.T.
+        data_tests: [not_null]
+      - name: seq
+        description: The published sample's place along its line, from 0.
+        data_tests: [not_null]
+      - name: sample_index
+        description: The sample's place in the walk (int_elevation__sample_points), clipped samples counted.
+        data_tests: [not_null]
+      - name: piece_id
+        description: The mile-axis piece the sample lies on.
+        data_tests: [not_null]
+      - name: distance_mi_text
+        description: The published mile, three decimals, as text.
+        data_tests: [not_null]
+      - name: elevation_ft_text
+        description: >
+          The published elevation in feet, one decimal, rounded as Python's
+          round() rounds, as text. Null where the DEM has no answer.
+      - name: part_start
+        description: True on the first published sample of each piece, the very first included.
+        data_tests: [not_null]
+      - name: dem_read
+        description: >
+          True where step_dem_sampling's table has this sample's row, read at
+          this sample's own point. assert_every_elevation_sample_was_read_at_its_own_point
+          fails the build on any sample where it is not.
+        data_tests: [not_null]
+      - name: club
+        description: The extract folder the profiled line comes from.
+        data_tests: [not_null]
+      - name: source_key
+        description: The registry key of the profiled line's layer.
+        data_tests: [not_null]
+      - name: _loaded_at
+        description: The newest load of the centerline and half-mile marker layers the profile is built from.
+        data_tests: [not_null]
+
+exposures:
+  - name: step_dem_sampling
+    label: step_dem_sampling.py
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The Python step that reads USGS 3DEP's DEM at every elevation sample
+      point (pipeline/step_dem_sampling.py), between the dbt invocation that
+      builds int_elevation__sample_points and the one that reads its answer
+      back as source('derived', 'dem_samples'). It is Python because DuckDB
+      has no raster type that is both fast and right (EL06, pipeline/ELT.md's
+      ledger), and it reads through export_elevation.ElevationSampler, the
+      sampler today's export_elevation.py uses. Shown here so the docs draw
+      both halves of the step.
+    depends_on:
+      - ref('int_elevation__sample_points')
+    config:
+      meta:
+        writes: derived.dem_samples
+        cadence: monthly

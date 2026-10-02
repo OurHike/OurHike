@@ -16,6 +16,8 @@ by running the Python over each dbt unit test's own rows, one test per model:
   parity.py's NETWORK_ID_REASONS has to name the same two cases;
 - int_trail_lines__network_counts: count_problems();
 - int_trail_lines__network_deduplicated: deduplicate(), publication first;
+- int_trail_lines__network_area_closures: apply_area_closures(), NYS Parks'
+  closed areas split onto the lines (#964);
 - int_trail_lines__network_navigation: simplify_records() at 1 m (TL15);
 - int_trail_lines__network_published: _rounded_geometry() (TL23);
 - the overview's three models: _through_routes(), _above_the_seam_floor(),
@@ -474,6 +476,69 @@ def test_without_publication_first_a_held_back_senior_would_swallow_a_line_that_
     assert junior in {row["trail_line_id"] for row in test["expect"]["rows"]}
 
 
+# --- int_trail_lines__network_area_closures (#964) ----------------------------------
+
+AREA_CLOSURES = "int_trail_lines__network_area_closures_answers_what_apply_area_closures_answers"
+NO_CLOSED_AREA = "int_trail_lines__network_area_closures_leaves_every_trail_as_it_was_with_no_closed_area"
+
+
+def _closed_areas_by_python(test: dict) -> list[dict]:
+    """apply_area_closures() over a unit test's own lines and areas, the areas in
+    the layer's order (`source_row`), each read as load_closure_areas() reads one."""
+    records = [
+        {
+            "id": row["trail_line_id"],
+            "wkt": row["geom_wkt"],
+            "trail_status": row["trail_status"],
+            "closure_kind": row["closure_kind"],
+        }
+        for row in _rows(test, "int_trail_lines__network_deduplicated")
+    ]
+    areas = [
+        {
+            "geometry": shapely.geometry.shape(json.loads(row["geom_geojson"])),
+            "reason": (row["closure_reason"] or "").strip() or None,
+            "source": "oprhp_trail_closures",
+        }
+        for row in sorted(_rows(test, "int_closures__oprhp_areas"), key=lambda row: row["source_row"])
+    ]
+    split, _ = export_nearby_trails.apply_area_closures(records, areas)
+    return split
+
+
+@pytest.mark.parametrize("name", [AREA_CLOSURES, NO_CLOSED_AREA])
+def test_the_closed_areas_split_the_lines_as_apply_area_closures_splits_them(name):
+    """Every section the Python ships, with its id, status, kind, reason and
+    the closure layer's key, and its vertices to the bit; and nothing else."""
+    test = _unit_test(name)
+    split = {record["id"]: record for record in _closed_areas_by_python(test)}
+    expected = {row["trail_line_id"]: row for row in test["expect"]["rows"]}
+    assert set(expected) == set(split)
+    for line_id, want in expected.items():
+        record = split[line_id]
+        assert (want["trail_status"], want["closure_kind"], want["closure_reason"], want["closure_source"]) == (
+            record["trail_status"],
+            record.get("closure_kind"),
+            record.get("closure_reason"),
+            record.get("closure_source"),
+        ), line_id
+        assert _coordinates(want["geom_wkt"]) == _coordinates(record["wkt"]), line_id
+        assert (want["trail_status_basis"] == "closed_area") is (record.get("closure_kind") == "area"), line_id
+
+
+def test_the_unit_tests_tie_would_answer_otherwise_if_broken_by_key():
+    """The two nested areas tie on the line inside both, and the one first in
+    the layer gives the reason. Its key sorts after the other's, so a model
+    breaking the tie by key instead of by `source_row` fails the unit test."""
+    test = _unit_test(AREA_CLOSURES)
+    areas = {row["closure_reason"]: row for row in _rows(test, "int_closures__oprhp_areas")}
+    outer, inner = areas["Closed: the outer area"], areas["Closed: the inner area"]
+    assert outer["source_row"] < inner["source_row"]
+    assert outer["closure_key"] > inner["closure_key"]
+    tied = next(row for row in test["expect"]["rows"] if "a tie goes to the area first" in row["trail_segment_key"])
+    assert tied["closure_reason"] == "Closed: the outer area"
+
+
 # --- int_trail_lines__network_navigation (TL15) ------------------------------------
 
 NAVIGATION = "int_trail_lines__network_navigation_answers_what_simplify_records_answers"
@@ -482,7 +547,7 @@ NAVIGATION = "int_trail_lines__network_navigation_answers_what_simplify_records_
 def test_the_1_m_pass_is_simplify_records_vertex_for_vertex():
     test = _unit_test(NAVIGATION)
     expected = _expected(test)
-    for row in _rows(test, "int_trail_lines__network_deduplicated"):
+    for row in _rows(test, "int_trail_lines__network_area_closures"):
         (record,) = export_trails.simplify_records([{"id": row["trail_line_id"], "wkt": row["geom_wkt"]}])
         geoms = np.array([shapely.from_wkt(row["geom_wkt"])], dtype=object)
         reduced = reproject(

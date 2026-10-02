@@ -302,6 +302,62 @@ models:
               config:
                 severity: warn
 
+  - name: int_trail_lines__network_area_closures
+    description: >
+      Every network line split against NYS Parks' temporary closed areas,
+      as export_nearby_trails.py's apply_area_closures() splits it (#964):
+      the part inside an area ships closed, closure_kind 'area', with that
+      area's reason and the closure layer's key; the part outside ships as
+      its line did. A line with nothing inside an area is one row,
+      unchanged; a split line is two, `<id>:closed` and `<id>:open`.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "coalesce(closure_kind = 'area', false) = (closure_source is not null)"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "coalesce(closure_kind = 'area', false) = (trail_status = 'closed' and trail_status_basis = 'closed_area')"
+    columns:
+      - name: trail_segment_key
+        description: The line's staging key, with `:closed` or `:open` on a section of a split line.
+        data_tests: [not_null, unique]
+      - name: trail_line_id
+        description: The published id, with `:closed` or `:open` where the line is split; a line wholly inside an area keeps its own.
+        data_tests: [not_null, unique]
+      - name: trail_status
+        description: "'closed' on a section inside an area; otherwise the line's own."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [open, closed]
+      - name: trail_status_basis
+        description: "'closed_area' on a section inside an area; otherwise the line's own."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [stated, default_without_status_column, closed_area]
+      - name: closure_kind
+        description: "'area' on a section inside an area; otherwise the line's own ('long_term' or null)."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [long_term, area]
+      - name: closure_reason
+        description: >
+          The reason of the area the whole line overlaps most, a tie to the
+          area first in the layer; null where it wrote none, and off every
+          area section.
+      - name: closure_source
+        description: The closure layer's registry key on an area section; null elsewhere.
+      - name: geom_wkt
+        description: >
+          The section as WKT at full resolution: a LineString, or a
+          MultiLineString where the closure cut the line into pieces that do
+          not join.
+        data_tests: [not_null]
+
   - name: int_trail_lines__network_navigation
     description: >
       Every network line that ships at 1 m (TL15): Douglas-Peucker in
@@ -329,10 +385,10 @@ models:
   - name: int_trail_lines__network_published
     description: >
       The network's half of the trail_lines mart: one row per network line
-      that ships, in the mart's 21 columns by name and type (tl-at's
+      that ships, in the mart's 23 columns by name and type (tl-at's
       contract, models/marts/trail_lines/_trail_lines__models.yml), the
       geometry the one a phone draws. The mart unions it with the A.T.'s
-      half; until it is built, pub_nearby_trails reads this model. Public,
+      half, and pub_nearby_trails reads the mart's network rows. Public,
       with an enforced contract, because it is that interface.
     config:
       access: public
@@ -360,11 +416,22 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "(trail_status is null) = (trail_status_basis is null)"
-      # A closed line never loses the flag; closed is long-term closed, the
-      # only closure a network line carries since #1152.
+      # A closed line never loses the flag: long-term closed by its steward,
+      # or inside a closed area (int_trail_lines__network_area_closures).
       - dbt_utils.expression_is_true:
           arguments:
             expression: "coalesce(trail_status = 'closed', false) = (closure_kind is not null)"
+      # An area's section names the layer that closed it, and only it does;
+      # a reason travels with that layer and nowhere else (#1142).
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "coalesce(closure_kind = 'area', false) = (closure_source is not null)"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "closure_reason is null or closure_source is not null"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "coalesce(closure_kind = 'area', false) = coalesce(trail_status_basis = 'closed_area', false)"
       - dbt_utils.expression_is_true:
           arguments:
             expression: >
@@ -438,20 +505,36 @@ models:
       - name: trail_status_basis
         description: >
           'stated' where the layer's own status column gave `trail_status`;
-          'default_without_status_column' where it has none.
+          'default_without_status_column' where it has none; 'closed_area'
+          on a section a closed area closed.
         data_type: varchar
         data_tests:
           - not_null
           - accepted_values:
               arguments:
-                values: [stated, default_without_status_column]
+                values: [stated, default_without_status_column, closed_area]
       - name: closure_kind
-        description: "'long_term' on a line its steward marks closed; null otherwise."
+        description: >
+          'long_term' on a line its steward marks closed; 'area' on a
+          section inside one of NYS Parks' closed areas; null otherwise.
         data_type: varchar
         data_tests:
           - accepted_values:
               arguments:
-                values: [long_term]
+                values: [long_term, area]
+      - name: closure_reason
+        description: >
+          On a section inside a closed area, that area's reason as NYS Parks
+          wrote it (its `Name`, stripped), from the area the line overlaps
+          most, a tie to the first in the layer; null where the steward wrote
+          none, and on every other line.
+        data_type: varchar
+      - name: closure_source
+        description: >
+          On a section inside a closed area, the registry key of the closure
+          layer (`oprhp_trail_closures`), not the line's own source (#1142);
+          null on every other line.
+        data_type: varchar
       - name: duplicate_of
         description: The source whose copy of this path the line swallowed (TL18); null where it swallowed none.
         data_type: varchar
@@ -1032,6 +1115,68 @@ unit_tests:
         - {"trail_segment_key": "test_lib_duplicates::test_no_senior_records_removes_nothing", "trail_line_id": "lonely_junior:test_lib_duplicates::test_no_senior_records_removes_nothing", "name": null, "trail_status": "open", "blaze_color": "Unknown", "duplicate_of": null, "geom_wkt": "LINESTRING (-73.719952663 40.66, -73.719952663 40.663617618)"}
         - {"trail_segment_key": "test_export_nearby_trails::test_a_junior_whose_senior_is_not_shipping_is_skipped[junior]", "trail_line_id": "junior_of_held:test_export_nearby_trails::test_a_junior_whose_senior_is_not_shipping_is_skipped[junior]", "name": null, "trail_status": "open", "blaze_color": "Unknown", "duplicate_of": null, "geom_wkt": "LINESTRING (-73.469952663 40.66, -73.469952663 40.663617618)"}
         - {"trail_segment_key": "test_export_nearby_trails::test_no_declared_pairs_leaves_every_record_alone", "trail_line_id": "oprhp_trails:test_export_nearby_trails::test_no_declared_pairs_leaves_every_record_alone", "name": "Timp-Torne", "trail_status": "open", "blaze_color": "Red", "duplicate_of": null, "geom_wkt": "LINESTRING (-73.37 40.66, -73.37 40.663617618)"}
+  - name: int_trail_lines__network_area_closures_answers_what_apply_area_closures_answers
+    description: >
+      One line per case of tests/test_export_nearby_trails.py's closed areas
+      (#964) that the split answers, against the pytest's own square, and
+      three branches the pytest reaches only through main(): the reason
+      of the area a line overlaps most, a tie going to the area first in
+      the layer (whose key sorts second, so a tie broken by key would
+      answer the other), and an area with no reason. The expected rows
+      are apply_area_closures()' own, which
+      tests/test_dbt_trail_lines_network_parity.py recomputes from these
+      rows.
+    model: int_trail_lines__network_area_closures
+    given:
+      - input: ref('int_trail_lines__network_deduplicated')
+        rows:
+          - {"trail_segment_key": "test_export_nearby_trails::test_a_trail_wholly_inside_a_closed_area_ships_closed", "source_key": "oprhp_trails", "club": "nysparks", "file_row": 3, "trail_line_id": "oprhp_trails:1", "name": "Fixture Trail", "trail_status": "open", "trail_status_basis": "stated", "closure_kind": null, "blaze_color": "Red", "duplicate_of": null, "geom_wkt": "LINESTRING (-74.06 41.25, -74.04 41.26)"}
+          - {"trail_segment_key": "test_export_nearby_trails::test_a_trail_only_partly_inside_is_split_rather_than_closed_whole", "source_key": "oprhp_trails", "club": "nysparks", "file_row": 3, "trail_line_id": "oprhp_trails:2", "name": "Fixture Trail", "trail_status": "open", "trail_status_basis": "stated", "closure_kind": null, "blaze_color": "Red", "duplicate_of": null, "geom_wkt": "LINESTRING (-74.2 41.25, -74.05 41.25)"}
+          - {"trail_segment_key": "test_export_nearby_trails::test_a_trail_that_only_touches_at_a_point_stays_open", "source_key": "oprhp_trails", "club": "nysparks", "file_row": 3, "trail_line_id": "oprhp_trails:3", "name": "Fixture Trail", "trail_status": "open", "trail_status_basis": "stated", "closure_kind": null, "blaze_color": "Red", "duplicate_of": null, "geom_wkt": "LINESTRING (-74.15 41.15, -74.1 41.2)"}
+          - {"trail_segment_key": "test_export_nearby_trails::test_the_stewards_own_long_term_status_is_a_different_kind_of_closed", "source_key": "oprhp_trails", "club": "nysparks", "file_row": 3, "trail_line_id": "oprhp_trails:4", "name": "Fixture Trail", "trail_status": "closed", "trail_status_basis": "stated", "closure_kind": "long_term", "blaze_color": "Red", "duplicate_of": null, "geom_wkt": "LINESTRING (-74.6 41, -74.5 41.1)"}
+          - {"trail_segment_key": "apply_area_closures[a long-term closed trail partly inside]", "source_key": "oprhp_trails", "club": "nysparks", "file_row": 3, "trail_line_id": "oprhp_trails:5", "name": "Fixture Trail", "trail_status": "closed", "trail_status_basis": "stated", "closure_kind": "long_term", "blaze_color": "Red", "duplicate_of": null, "geom_wkt": "LINESTRING (-74.2 41.27, -74.05 41.27)"}
+          - {"trail_segment_key": "apply_area_closures[the reason of the area overlapped most]", "source_key": "oprhp_trails", "club": "nysparks", "file_row": 3, "trail_line_id": "oprhp_trails:6", "name": "Fixture Trail", "trail_status": "open", "trail_status_basis": "stated", "closure_kind": null, "blaze_color": "Red", "duplicate_of": null, "geom_wkt": "LINESTRING (-73.495 41.19, -73.495 41.26)"}
+          - {"trail_segment_key": "apply_area_closures[a tie goes to the area first in the layer]", "source_key": "oprhp_trails", "club": "nysparks", "file_row": 3, "trail_line_id": "oprhp_trails:7", "name": "Fixture Trail", "trail_status": "open", "trail_status_basis": "stated", "closure_kind": null, "blaze_color": "Red", "duplicate_of": null, "geom_wkt": "LINESTRING (-73.25 41.23, -73.25 41.27)"}
+          - {"trail_segment_key": "apply_area_closures[an area with no reason closes without one]", "source_key": "oprhp_trails", "club": "nysparks", "file_row": 3, "trail_line_id": "oprhp_trails:8", "name": "Fixture Trail", "trail_status": "open", "trail_status_basis": "default_without_status_column", "closure_kind": null, "blaze_color": "Red", "duplicate_of": null, "geom_wkt": "LINESTRING (-73.05 41.25, -73.04 41.26)"}
+      - input: ref('int_closures__oprhp_areas')
+        rows:
+          - {"closure_key": "area-square", "source_row": 1, "closure_reason": "Area Closed - No Entry due to extreme rainfall event in 2023", "closure_place": "Bear Mtn./Harriman", "geom_geojson": "{\"type\": \"Polygon\", \"coordinates\": [[[-74.1, 41.2], [-74.0, 41.2], [-74.0, 41.3], [-74.1, 41.3], [-74.1, 41.2]]]}"}
+          - {"closure_key": "area-short", "source_row": 2, "closure_reason": "Closed: the short stretch", "closure_place": "Bear Mtn./Harriman", "geom_geojson": "{\"type\": \"Polygon\", \"coordinates\": [[[-73.5, 41.2], [-73.49, 41.2], [-73.49, 41.21], [-73.5, 41.21], [-73.5, 41.2]]]}"}
+          - {"closure_key": "area-long", "source_row": 3, "closure_reason": "Closed: the long stretch", "closure_place": "Bear Mtn./Harriman", "geom_geojson": "{\"type\": \"Polygon\", \"coordinates\": [[[-73.5, 41.22], [-73.49, 41.22], [-73.49, 41.25], [-73.5, 41.25], [-73.5, 41.22]]]}"}
+          - {"closure_key": "b-outer", "source_row": 4, "closure_reason": "Closed: the outer area", "closure_place": "Bear Mtn./Harriman", "geom_geojson": "{\"type\": \"Polygon\", \"coordinates\": [[[-73.3, 41.2], [-73.2, 41.2], [-73.2, 41.3], [-73.3, 41.3], [-73.3, 41.2]]]}"}
+          - {"closure_key": "a-inner", "source_row": 5, "closure_reason": "Closed: the inner area", "closure_place": "Bear Mtn./Harriman", "geom_geojson": "{\"type\": \"Polygon\", \"coordinates\": [[[-73.28, 41.22], [-73.22, 41.22], [-73.22, 41.28], [-73.28, 41.28], [-73.28, 41.22]]]}"}
+          - {"closure_key": "area-blank", "source_row": 6, "closure_reason": null, "closure_place": "Bear Mtn./Harriman", "geom_geojson": "{\"type\": \"Polygon\", \"coordinates\": [[[-73.1, 41.2], [-73.0, 41.2], [-73.0, 41.3], [-73.1, 41.3], [-73.1, 41.2]]]}"}
+    expect:
+      rows:
+        - {"trail_segment_key": "test_export_nearby_trails::test_a_trail_wholly_inside_a_closed_area_ships_closed:closed", "trail_line_id": "oprhp_trails:1", "trail_status": "closed", "trail_status_basis": "closed_area", "closure_kind": "area", "closure_reason": "Area Closed - No Entry due to extreme rainfall event in 2023", "closure_source": "oprhp_trail_closures", "geom_wkt": "LINESTRING (-74.06 41.25, -74.04 41.26)"}
+        - {"trail_segment_key": "test_export_nearby_trails::test_a_trail_only_partly_inside_is_split_rather_than_closed_whole:closed", "trail_line_id": "oprhp_trails:2:closed", "trail_status": "closed", "trail_status_basis": "closed_area", "closure_kind": "area", "closure_reason": "Area Closed - No Entry due to extreme rainfall event in 2023", "closure_source": "oprhp_trail_closures", "geom_wkt": "LINESTRING (-74.1 41.25, -74.05 41.25)"}
+        - {"trail_segment_key": "test_export_nearby_trails::test_a_trail_only_partly_inside_is_split_rather_than_closed_whole:open", "trail_line_id": "oprhp_trails:2:open", "trail_status": "open", "trail_status_basis": "stated", "closure_kind": null, "closure_reason": null, "closure_source": null, "geom_wkt": "LINESTRING (-74.2 41.25, -74.1 41.25)"}
+        - {"trail_segment_key": "test_export_nearby_trails::test_a_trail_that_only_touches_at_a_point_stays_open", "trail_line_id": "oprhp_trails:3", "trail_status": "open", "trail_status_basis": "stated", "closure_kind": null, "closure_reason": null, "closure_source": null, "geom_wkt": "LINESTRING (-74.15 41.15, -74.1 41.2)"}
+        - {"trail_segment_key": "test_export_nearby_trails::test_the_stewards_own_long_term_status_is_a_different_kind_of_closed", "trail_line_id": "oprhp_trails:4", "trail_status": "closed", "trail_status_basis": "stated", "closure_kind": "long_term", "closure_reason": null, "closure_source": null, "geom_wkt": "LINESTRING (-74.6 41, -74.5 41.1)"}
+        - {"trail_segment_key": "apply_area_closures[a long-term closed trail partly inside]:closed", "trail_line_id": "oprhp_trails:5:closed", "trail_status": "closed", "trail_status_basis": "closed_area", "closure_kind": "area", "closure_reason": "Area Closed - No Entry due to extreme rainfall event in 2023", "closure_source": "oprhp_trail_closures", "geom_wkt": "LINESTRING (-74.1 41.27, -74.05 41.27)"}
+        - {"trail_segment_key": "apply_area_closures[a long-term closed trail partly inside]:open", "trail_line_id": "oprhp_trails:5:open", "trail_status": "closed", "trail_status_basis": "stated", "closure_kind": "long_term", "closure_reason": null, "closure_source": null, "geom_wkt": "LINESTRING (-74.2 41.27, -74.1 41.27)"}
+        - {"trail_segment_key": "apply_area_closures[the reason of the area overlapped most]:closed", "trail_line_id": "oprhp_trails:6:closed", "trail_status": "closed", "trail_status_basis": "closed_area", "closure_kind": "area", "closure_reason": "Closed: the long stretch", "closure_source": "oprhp_trail_closures", "geom_wkt": "MULTILINESTRING ((-73.495 41.2, -73.495 41.21), (-73.495 41.22, -73.495 41.25))"}
+        - {"trail_segment_key": "apply_area_closures[the reason of the area overlapped most]:open", "trail_line_id": "oprhp_trails:6:open", "trail_status": "open", "trail_status_basis": "stated", "closure_kind": null, "closure_reason": null, "closure_source": null, "geom_wkt": "MULTILINESTRING ((-73.495 41.19, -73.495 41.2), (-73.495 41.21, -73.495 41.22), (-73.495 41.25, -73.495 41.26))"}
+        - {"trail_segment_key": "apply_area_closures[a tie goes to the area first in the layer]:closed", "trail_line_id": "oprhp_trails:7", "trail_status": "closed", "trail_status_basis": "closed_area", "closure_kind": "area", "closure_reason": "Closed: the outer area", "closure_source": "oprhp_trail_closures", "geom_wkt": "LINESTRING (-73.25 41.23, -73.25 41.27)"}
+        - {"trail_segment_key": "apply_area_closures[an area with no reason closes without one]:closed", "trail_line_id": "oprhp_trails:8", "trail_status": "closed", "trail_status_basis": "closed_area", "closure_kind": "area", "closure_reason": null, "closure_source": "oprhp_trail_closures", "geom_wkt": "LINESTRING (-73.05 41.25, -73.04 41.26)"}
+  - name: int_trail_lines__network_area_closures_leaves_every_trail_as_it_was_with_no_closed_area
+    description: >
+      A week with nothing closed (an empty layer, or one never fetched):
+      every line ships as it was, a steward's own long-term closure
+      included, and none carries a closure reason or source.
+    model: int_trail_lines__network_area_closures
+    given:
+      - input: ref('int_trail_lines__network_deduplicated')
+        rows:
+          - {"trail_segment_key": "test_export_nearby_trails::test_an_empty_closures_layer_is_a_good_week_not_a_failure", "source_key": "oprhp_trails", "club": "nysparks", "file_row": 3, "trail_line_id": "oprhp_trails:1", "name": "Fixture Trail", "trail_status": "open", "trail_status_basis": "stated", "closure_kind": null, "blaze_color": "Red", "duplicate_of": null, "geom_wkt": "LINESTRING (-74.06 41.25, -74.04 41.26)"}
+          - {"trail_segment_key": "test_export_nearby_trails::test_a_closure_layer_that_was_never_fetched_leaves_every_trail_open", "source_key": "oprhp_trails", "club": "nysparks", "file_row": 3, "trail_line_id": "oprhp_trails:2", "name": "Fixture Trail", "trail_status": "closed", "trail_status_basis": "stated", "closure_kind": "long_term", "blaze_color": "Red", "duplicate_of": null, "geom_wkt": "LINESTRING (-74.2 41.25, -74.05 41.25)"}
+      # No closed area: the empty layer a good week lands.
+      - input: ref('int_closures__oprhp_areas')
+        rows: []
+    expect:
+      rows:
+        - {"trail_segment_key": "test_export_nearby_trails::test_an_empty_closures_layer_is_a_good_week_not_a_failure", "trail_line_id": "oprhp_trails:1", "trail_status": "open", "trail_status_basis": "stated", "closure_kind": null, "closure_reason": null, "closure_source": null, "geom_wkt": "LINESTRING (-74.06 41.25, -74.04 41.26)"}
+        - {"trail_segment_key": "test_export_nearby_trails::test_a_closure_layer_that_was_never_fetched_leaves_every_trail_open", "trail_line_id": "oprhp_trails:2", "trail_status": "closed", "trail_status_basis": "stated", "closure_kind": "long_term", "closure_reason": null, "closure_source": null, "geom_wkt": "LINESTRING (-74.2 41.25, -74.05 41.25)"}
   - name: int_trail_lines__network_navigation_answers_what_simplify_records_answers
     description: >
       One row per case of tests/test_simplify_trails.py that a fixed 1 m
@@ -1045,7 +1190,7 @@ unit_tests:
       rows.
     model: int_trail_lines__network_navigation
     given:
-      - input: ref('int_trail_lines__network_deduplicated')
+      - input: ref('int_trail_lines__network_area_closures')
         rows:
           - {"trail_segment_key": "test_simplify_trails::test_simplify_removes_vertices_finer_than_the_tolerance", "source_key": "case_source", "file_row": 1, "trail_line_id": "case_source:0", "name": "Case 0", "trail_status": "open", "trail_status_basis": "default_without_status_column", "blaze_color": "Unknown", "geom_wkt": "LINESTRING (-78 40, -77.99998239886116 40.00000898311175, -77.99996507238222 40.0000179662235, -77.99994829093707 40.00002694933525, -77.99993231639455 40.000035932447, -77.99991739803205 40.000044915558746, -77.99990376864564 40.0000538986705, -77.99989164091733 40.00006288178225, -77.99988120409627 40.000071864894, -77.99987262104554 40.00008084800575, -77.9998660257008 40.0000898311175, -77.99986152098019 40.00009881422925, -77.99985917717837 40.000107797341, -77.99985903086957 40.00011678045275, -77.99986108433691 40.0001257635645, -77.99986530553672 40.000134746676245, -77.99987162859857 40.000143729788, -77.9998799548532 40.00015271289975, -77.99989015437221 40.000161696011496, -77.99990206799549 40.00017067912325, -77.99991550981495 40.000179662235, -77.9999302700755 40.000188645346746, -77.99994611844818 40.0001976284585, -77.99996280762447 40.00020661157025, -77.99998007717534 40.000215594682, -77.99999765761521 40.000224577793745, -78.00001527460722 40.0002335609055, -78.0000326532441 40.00024254401725, -78.00004952233803 40.000251527128995, -78.00006561865243 40.00026051024075, -78.0000806910097 40.0002694933525, -78.00009450421076 40.000278476464246, -78.00010684270522 40.000287459576, -78.00011751395499 40.00029644268775, -78.00012635143881 40.000305425799496, -78.00013321725068 40.000314408911244, -78.00013800425191 40.000323392023, -78.00014063774294 40.00033237513475, -78.00014107662903 40.000341358246494, -78.00013931406151 40.00035034135825, -78.00013537754465 40.00035932447, -78.0001293285065 40.000368307581745, -78.00012126134025 40.00037729069349, -78.00011130193134 40.00038627380525, -78.00009960569302 40.000395256916995, -78.00008635514118 40.00040424002874, -78.00007175704623 40.0004132231405, -78.00005603920658 40.000422206252246, -78.00003944689387 40.000431189363994, -78.00002223902555 40.00044017247575, -78.00000468412469 40.000449155587496, -77.99998705612963 40.000458138699244, -77.99996963011932 40.00046712181099, -77.99995267802086 40.00047610492275, -77.99993646436606 40.000485088034495, -77.99992124216357 40.00049407114624, -77.99990724895076 40.000503054258, -77.99989470308708 40.000512037369745, -77.9998838003465 40.00052102048149, -77.99987471086264 40.00053000359325, -77.99986757647386 40.000538986704996, -77.99986250850993 40.00054796981674, -77.99985958605471 40.00055695292849, -77.99985885471214 40.000565936040246, -77.99986032589459 40.000574919151994, -77.99986397664473 40.00058390226374, -77.99986974999385 40.0005928853755, -77.99987755585074 40.000601868487244, -77.99988727240763 40.00061085159899, -77.99989874804089 40.00061983471075, -77.99991180367712 40.000628817822495, -77.99992623558747 40.00063780093424, -77.9999418185668 40.00064678404599, -77.99995830944792 40.000655767157745, -77.99997545089619 40.00066475026949, -77.99999297542499 40.00067373338124, -78.00001060956994 40.000682716492996, -78.0000280781561 40.000691699604744, -78.00004510859205 40.00070068271649, -78.00006143512348 40.000709665828246, -78.00007680298036 40.000718648939994, -78.00009097235242 40.00072763205174, -78.00010372213136 40.00073661516349, -78.00011485336111 40.000745598275245, -78.00012419234258 40.00075458138699, -78.0001315933441 40.00076356449874, -78.00013694087546 40.000772547610495, -78.0001401514903 40.00078153072224, -78.00014117508799 40.00079051383399, -78.00013999569565 40.00079949694574, -78.0001366317173 40.00080848005749, -78.0001311356467 40.00081746316924, -78.00012359324819 40.00082644628099, -78.00011412221838 40.000835429392744, -78.00010287034952 40.00084441250449, -78.00009001322327 40.00085339561624, -78.00007575147077 40.000862378727994, -78.00006030764192 40.00087136183974, -78.00004392273247 40.00088034495149, -78.00002685242347 40.00088932806324, -78.0000093630914 40.00089831117499, -77.9999917276514 40.00090729428674, -77.99997422129864 40.00091627739849, -77.9999571172139 40.00092526051024, -77.99994068230069 40.00093424362199, -77.99992517302033 40.00094322673374, -77.99991083138997 40.000952209845494, -77.99989788120594 40.00096119295724, -77.99988652455154 40.00097017606899, -77.99987693864357 40.00097915918074, -77.99986927306689 40.00098814229249, -77.99986364744029 40.00099712540424, -77.99986014954979 40.00100610851599, -77.99985883397878 40.00101509162774, -77.99985972125631 40.00102407473949, -77.99986279753672 40.00103305785124, -77.99986801481569 40.00104204096299, -77.99987529167932 40.00105102407474, -77.99988451457457 40.00106000718649, -77.99989553958127 40.001068990298236)"}
           - {"trail_segment_key": "test_simplify_trails::test_simplify_never_drops_a_feature[0]", "source_key": "case_source", "file_row": 1, "trail_line_id": "case_source:1", "name": "Case 1", "trail_status": "open", "trail_status_basis": "default_without_status_column", "blaze_color": "Unknown", "geom_wkt": "LINESTRING (-77.9 40, -77.89998239886117 40.00000898311175, -77.89996507238223 40.0000179662235, -77.89994829093708 40.00002694933525, -77.89993231639455 40.000035932447, -77.89991739803206 40.000044915558746, -77.89990376864564 40.0000538986705, -77.89989164091733 40.00006288178225, -77.89988120409627 40.000071864894, -77.89987262104555 40.00008084800575, -77.8998660257008 40.0000898311175, -77.8998615209802 40.00009881422925, -77.89985917717837 40.000107797341, -77.89985903086958 40.00011678045275, -77.89986108433692 40.0001257635645, -77.89986530553672 40.000134746676245, -77.89987162859858 40.000143729788, -77.8998799548532 40.00015271289975, -77.89989015437222 40.000161696011496, -77.8999020679955 40.00017067912325, -77.89991550981496 40.000179662235, -77.8999302700755 40.000188645346746, -77.89994611844818 40.0001976284585, -77.89996280762448 40.00020661157025, -77.89998007717534 40.000215594682, -77.89999765761522 40.000224577793745, -77.90001527460723 40.0002335609055, -77.90003265324411 40.00024254401725, -77.90004952233804 40.000251527128995, -77.90006561865243 40.00026051024075)"}

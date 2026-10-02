@@ -1,15 +1,11 @@
-"""ATC's Trail Updates, as reviewed into reference/atc_updates.json.
+"""ATC's Trail Updates: the reviewed file reference/atc_updates.json, and what ATC's website shows now.
 
-What ships today is the reviewed file, not a scrape: the registry row is the
-upstream, and a person reviews ATC's posts into the file (features/ATC_TRAIL_UPDATES.md,
-"the parse proposes; a human publishes"), so that is what loads. The split
-into closures and warnings is dbt's, on `obstructs_trail` (decision 7), so one
-resource feeds both types and warnings.py shares it.
-
-Its change check is the file's sha256. Moving the check to ATC's
-trail-updates sitemap, so a changed post is noticed without a person, is
-ELT.md's design ("The skip-unchanged check, by platform") and not built yet;
-propose_atc_updates.py proposes from ATC's site today.
+What a person stands behind is the reviewed file: the registry row is the
+upstream, and a person reviews ATC's posts into the file
+(features/ATC_TRAIL_UPDATES.md, "the parse proposes; a human publishes"), so
+that loads. The split into closures and warnings is dbt's, on
+`obstructs_trail` (decision 7), so one resource feeds both types and
+warnings.py shares it.
 
 Each row lands whole, as the JSON its reviewer wrote (ReviewedFile's
 `verbatim`), because lib/atc_updates.py's row checks are about JSON types:
@@ -26,12 +22,22 @@ the review is a fact about the file and not about a row: with no rows in
 reviewed file is a real answer export_atc_updates.py publishes as
 `atc_updates: []` ("we looked, and ATC has nothing placeable"). dbt's
 int_closures__gate reads the review from this row.
+
+The third resource is ATC's website itself, one row per update in its
+trail-updates sitemap, as lib/atc_scrape.py parses the page
+(`raw_atc__atc_trail_updates_pages`, extract/_kinds.py's AtcTrailUpdatePages).
+It replaces fetch_atc_updates.py's scrape: the rows ATC posted since the
+review, which export_atc_updates.py publishes without a person when they
+have one reading, and which dbt's int_closures__atc_automatic now decides
+(CL07-CL10). It reads the same registry row as the reviewed file, so it
+claims nothing more; its `part` keeps the two reads apart.
 """
 
-from extract._kinds import reviewed_file, reviewed_input
+from extract._kinds import atc_trail_update_pages, reviewed_file, reviewed_input
 
 CLAIMS = ("atc_trail_updates", "reference/atc_updates.json")
 RESOURCES = [
     reviewed_input("atc_trail_updates", rows_key="updates", verbatim=True),
     reviewed_file("reference/atc_updates.json", rows_key=None, verbatim=True),
+    atc_trail_update_pages("atc_trail_updates"),
 ]

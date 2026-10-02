@@ -52,3 +52,46 @@ models:
       - name: document_json
         description: The file as its reviewer wrote it, `_README` aside, as JSON.
         data_tests: [not_null]
+  - name: base_atc__atc_trail_updates_pages
+    data_tests:
+      # Says how many rows the dedupe dropped, which for a slug unique by
+      # construction is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('atc', 'raw_atc__atc_trail_updates_pages')
+          config:
+            severity: warn
+    description: >
+      ATC's Trail Updates as their website shows them: one row per update
+      the trail-updates sitemap lists, as lib/atc_scrape.py parses its page,
+      keyed. Read by int_closures__atc_automatic, which decides which rows
+      may publish without a person (CL07-CL10).
+    columns:
+      - name: atc_trail_update_page_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the registry key and ATC's slug.
+        data_tests: [not_null, unique]
+      - name: slug
+        description: ATC's slug for the update.
+        data_tests: [not_null]
+      - name: sitemap_row
+        description: The update's place in the sitemap, from 0.
+      - name: sitemap_lastmod
+        description: The sitemap's lastmod for the page, as written.
+      - name: title
+        description: The update's headline, as parse_update() read it, never stripped.
+      - name: category
+        description: ATC's category from the chip; null where the page has none.
+      - name: states
+        description: The chip's state codes, as JSON.
+      - name: date_modified
+        description: The page's JSON-LD dateModified, as written.
+      - name: date_published
+        description: The page's JSON-LD datePublished, as written.
+      - name: miles
+        description: Every mile reference the parse read, in order, as JSON.
+      - name: source_url
+        description: The update's own page.
+      - name: page_sha256
+        description: The page's sha256, for provenance.

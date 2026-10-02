@@ -18,6 +18,10 @@ is a refusal:
   unit-test alerts, relays the same ones;
 - export_atc_updates.py's main(), over the files int_closures__gate's unit
   tests stand for, publishes where the gate passes;
+- lib/atc_updates.py's auto_publish_refusal() and auto_row(), over
+  int_closures__atc_automatic's unit-test pages, refuse the same updates in
+  the same words and write the same rows (CL07-CL10), and
+  propose_atc_updates.py's _actionable() keeps the same refusals (CL12);
 
 except where a DELIBERATE set below names a row the SQL treats otherwise on
 purpose. Each such row must still differ, so emptying a set turns its test red.
@@ -37,7 +41,9 @@ import export_atc_updates
 import export_weather_alerts
 import fetch_nynjtc_alerts
 import parity
+import propose_atc_updates
 from lib import atc_updates, nynjtc_alerts
+from lib.atc_scrape import MileReference, ParsedUpdate
 
 DBT = Path(__file__).parent.parent / "dbt"
 CLOSURES = DBT / "models" / "intermediate" / "closures" / "_closures__intermediate.yml"
@@ -59,6 +65,29 @@ DELIBERATE_ATC_ROWS = {36}
 #   n16  a title that is not a string: _text_of() publishes str(5), and the
 #        SQL refuses it as a payload whose shape has changed.
 DELIBERATE_NYNJTC_POSTS = {"n09", "n14", "n15", "n16"}
+
+# ATC pages the SQL refuses and auto_publish_refusal() publishes: u19, a
+# dateModified in ISO 8601's basic form (20260819T162250Z), which Python
+# 3.11's fromisoformat() reads and python_fromisoformat_utc() does not, so the
+# SQL refuses it as "not since the review". Every live page read on
+# 2026-10-02, 86 of 86, wrote YYYY-MM-DDTHH:MM:SS-04:00, which both read.
+DELIBERATE_ATC_AUTOMATIC_ROWS = {"u19"}
+
+# The tests of the auto-publish gate in tests/test_lib_atc_updates.py, each
+# with the int_closures__atc_automatic unit-test row that stands for it
+# (pipeline/ELT.md, "Tests move with their rule").
+AUTO_GATE_CASES = {
+    "test_an_update_atc_posted_since_the_review_publishes_itself": "u00",
+    "test_an_update_older_than_the_review_is_refused": "u01",
+    "test_a_reviewed_slug_is_never_overwritten_by_a_parse": "u02-reviewed",
+    "test_mile_references_that_disagree_are_refused_rather_than_guessed_between": "u03",
+    "test_the_gate_refuses_a_mile_off_the_end_of_the_trail": "u04",
+    "test_an_all_clear_publishes_rather_than_being_refused": "u05",
+    "test_the_same_mile_stated_twice_is_not_a_disagreement": "u06",
+    "test_a_category_this_build_does_not_know_is_refused": "u07",
+    "test_an_automatic_row_can_never_draw_a_band": "u00",
+    "test_an_automatic_rows_timestamp_is_utc_like_every_reviewed_one": "u00",
+}
 
 
 def _unit_tests(path: Path) -> dict[str, dict]:
@@ -171,6 +200,78 @@ def test_the_gate_holds_back_what_export_atc_updates_does_not_publish(name, tmp_
     (atc,) = [row for row in test["expect"]["rows"] if row["source_key"] == "atc_trail_updates"]
     python_publishes = isinstance(_bake(tmp_path, monkeypatch, GATE_FILES[name]), dict)
     assert python_publishes == atc["passed"], name
+
+
+# --- ATC's automatic rows (CL07-CL10, CL12) ---------------------------------------
+
+AUTOMATIC = "int_closures__atc_automatic_refuses_what_auto_publish_refusal_refuses"
+AUTOMATIC_ROWS = "int_closures__atc_automatic_writes_the_row_auto_row_writes"
+
+
+def _pages(test: dict) -> tuple[list[ParsedUpdate], set[str], str]:
+    """The unit test's base rows as the ParsedUpdates fetch_atc_updates.py would have cached, the reviewed slugs, and reviewed_at."""
+    pages = []
+    for row in _given(test, "base_atc__atc_trail_updates_pages")["rows"]:
+        pages.append(
+            ParsedUpdate(
+                slug=row["slug"],
+                title=row["title"] or "",
+                category=row["category"],
+                states=json.loads(row["states"]),
+                date_modified=row["date_modified"],
+                date_published=None,
+                miles=[MileReference(m["direction"], m["start"], m["end"], m["raw"]) for m in json.loads(row["miles"])],
+                text="",
+            )
+        )
+    reviewed = {row["atc_id"] for row in _given(test, "int_closures__atc_checked")["rows"]}
+    (document,) = _given(test, "base_atc__atc_updates")["rows"]
+    return pages, reviewed, json.loads(document["document_json"])["reviewed_at"]
+
+
+def test_every_auto_gate_case_in_test_lib_atc_updates_has_its_unit_test_row():
+    source = (Path(__file__).parent / "test_lib_atc_updates.py").read_text()
+    slugs = {page.slug for page in _pages(_unit_tests(CLOSURES)[AUTOMATIC])[0]}
+    for case, slug in AUTO_GATE_CASES.items():
+        assert f"def {case}(" in source, f"{case} is no longer in tests/test_lib_atc_updates.py"
+        assert slug in slugs, f"{case}'s row {slug} is no longer in {AUTOMATIC}"
+
+
+def test_auto_publish_refusal_refuses_what_the_atc_automatic_unit_test_expects():
+    test = _unit_tests(CLOSURES)[AUTOMATIC]
+    pages, reviewed, reviewed_at = _pages(test)
+    expected = {row["slug"]: row for row in test["expect"]["rows"]}
+    assert set(expected) == {page.slug for page in pages}
+    for page in pages:
+        python = atc_updates.auto_publish_refusal(page, reviewed, reviewed_at)
+        sql = expected[page.slug]
+        if page.slug in DELIBERATE_ATC_AUTOMATIC_ROWS:
+            assert python is None and sql["refusal"] is not None, f"{page.slug} is no longer a deliberate difference"
+            continue
+        assert _same_words(python) == _same_words(sql["refusal"]), f"{page.slug}: Python {python!r}, SQL {sql['refusal']!r}"
+        # CL12: the refusals propose_atc_updates.py proposes to a person.
+        assert (python is not None and propose_atc_updates._actionable(python)) == sql["actionable"], page.slug
+
+
+def test_auto_row_writes_what_the_atc_automatic_unit_test_expects():
+    """Field by field and type by type: a whole mile stays a float (1138.0), and obstructs_trail is False on every row (CL09)."""
+    test = _unit_tests(CLOSURES)[AUTOMATIC_ROWS]
+    pages, reviewed, reviewed_at = _pages(test)
+    expected = {row["slug"]: row["published_row"] for row in test["expect"]["rows"]}
+    published = 0
+    for page in pages:
+        if page.slug in DELIBERATE_ATC_AUTOMATIC_ROWS:
+            assert expected[page.slug] is None
+            continue
+        if atc_updates.auto_publish_refusal(page, reviewed, reviewed_at) is not None:
+            assert expected[page.slug] is None, page.slug
+            continue
+        python, sql = atc_updates.auto_row(page), json.loads(expected[page.slug])
+        assert list(sql) == list(python), "the same fields in auto_row()'s order"
+        assert [(type(v), v) for v in sql.values()] == [(type(v), v) for v in python.values()], page.slug
+        assert sql["obstructs_trail"] is False
+        published += 1
+    assert published >= 10, "the unit test should hold every way a row publishes"
 
 
 # --- NYNJTC's Trail Alerts ------------------------------------------------------

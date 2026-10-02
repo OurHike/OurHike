@@ -39,7 +39,13 @@ answer for each under conditions/, and only the transport is swapped:
   the SQL ConditionsQuery sends: reader_problem()'s four catalog questions,
   the LIMIT 0 description its column hints come from, the count(*) that is
   its proof, and the rows. reader_problem()'s decision, POSTGRES_TYPES, the
-  count-as-proof and the WITHHELD_COLUMNS refusal all run.
+  count-as-proof and the WITHHELD_COLUMNS refusal all run;
+- ATC's website answers by URL from one file of its pages (TEXT_FIXTURES):
+  the trail-updates sitemap and each update's page for AtcTrailUpdatePages,
+  so its sitemap parse, lib/atc_scrape.py's parse_update() and the slug
+  count as proof all run, with ATC_CRAWL_DELAY_SECONDS at 0 because no host
+  is asked anything. The same file carries the listing pages
+  fetch_atc_updates.py walks, which parity.py serves to today's fetcher.
 WHAT FIXTURE MODE DOES NOT EXERCISE for Postgres, so nobody reads a green
 dbt job as evidence of it: the query text itself. The rows are the queries'
 answers as the fixture states them, so the moderation predicates, the
@@ -78,6 +84,7 @@ from extract._contract import all_resources, discover, discover_shared
 from extract._kinds import (
     CONDITIONS_QUERIES,
     ArcgisLayer,
+    AtcTrailUpdatePages,
     ConditionsQuery,
     NwsAlerts,
     OpentrailFeed,
@@ -87,8 +94,6 @@ from extract._kinds import (
     WordpressTerms,
     registry_entry,
 )
-from extract._run import LANES, lane_resources, make_pipeline, run_pipeline
-from extract._warehouse import load_warehouse
 from lib.nws_alerts import ALERTS_URL as NWS_ALERTS_URL
 from lib.socrata import dataset_url
 
@@ -103,6 +108,14 @@ FILE_NAMES = {"at": "opentrail_at.geojson"}
 CONDITIONS_DIR = "conditions"
 NWS_FIXTURE = "nws_alerts.json"
 POSTGRES_FIXTURE = "ourhike_postgres.json"
+# A website's pages, by the registry key they are read for: `{"answers": {url:
+# {"content_type": ..., "body": ...}}}`, served as the site would serve them.
+TEXT_FIXTURES = {"atc_trail_updates": "atc_trail_updates.json"}
+
+
+def text_answers(document: dict) -> dict[str, tuple[str, str]]:
+    """A text fixture's pages as {url: (content type, body)}, the shape FixtureAdapter serves."""
+    return {url: (answer["content_type"], answer["body"]) for url, answer in document["answers"].items()}
 
 
 def fixture_file(raw_dir: Path, key: str) -> Path | None:
@@ -262,6 +275,13 @@ def _response(request, body, status: int = 200, headers: dict | None = None) -> 
     return response
 
 
+def _text_response(request, content_type: str, body: str) -> requests.Response:
+    """A page as a site serves it: its own bytes and content type, not JSON."""
+    response = _response(request, None, headers={"Content-Type": content_type})
+    response._content = body.encode("utf-8")
+    return response
+
+
 class FixtureAdapter(requests.adapters.BaseAdapter):
     """Answers a session's requests from fixture features, as the upstream's own server would."""
 
@@ -272,6 +292,7 @@ class FixtureAdapter(requests.adapters.BaseAdapter):
         feeds: dict[str, list],
         wordpress: dict[str, dict] | None = None,
         nws: dict | None = None,
+        pages: dict[str, tuple[str, str]] | None = None,
     ):
         super().__init__()
         self.arcgis, self.socrata, self.feeds = arcgis, socrata, feeds
@@ -279,8 +300,12 @@ class FixtureAdapter(requests.adapters.BaseAdapter):
         self.wordpress = wordpress or {}
         # NWS's /alerts/active body.
         self.nws = nws
+        # A website's pages, by their exact URL (text_answers()).
+        self.pages = pages or {}
 
     def send(self, request, **kwargs):
+        if request.url in self.pages:
+            return _text_response(request, *self.pages[request.url])
         parts = urlsplit(request.url)
         base = f"{parts.scheme}://{parts.netloc}{parts.path}"
         query = {name: values[0] for name, values in parse_qs(parts.query, keep_blank_values=True).items()}
@@ -351,11 +376,17 @@ class FixtureAdapter(requests.adapters.BaseAdapter):
 
 def fixture_resources(raw_dir: Path) -> tuple[list, FixtureAdapter]:
     """The extract's own resources that have a fixture file, and the adapter that answers them."""
-    arcgis, socrata, feeds, wordpress, chosen = {}, {}, {}, {}, []
+    arcgis, socrata, feeds, wordpress, pages, chosen = {}, {}, {}, {}, {}, []
     nws, postgres = conditions_fixture(raw_dir, NWS_FIXTURE), conditions_fixture(raw_dir, POSTGRES_FIXTURE)
     for resource in all_resources(discover() + discover_shared()):
         if isinstance(resource, ReviewedFile):
             chosen.append(resource)  # a committed file is its own fixture
+            continue
+        if isinstance(resource, AtcTrailUpdatePages):
+            document = conditions_fixture(raw_dir, TEXT_FIXTURES[resource.key])
+            if document is not None:
+                pages.update(text_answers(document))
+                chosen.append(resource)
             continue
         if isinstance(resource, NwsAlerts):
             if nws is not None:
@@ -389,11 +420,20 @@ def fixture_resources(raw_dir: Path) -> tuple[list, FixtureAdapter]:
         else:
             continue
         chosen.append(resource)
-    return chosen, FixtureAdapter(arcgis, socrata, feeds, wordpress=wordpress, nws=nws)
+    return chosen, FixtureAdapter(arcgis, socrata, feeds, wordpress=wordpress, nws=nws, pages=pages)
 
 
 def build(raw_dir: Path, warehouse: Path, store: Path) -> dict[str, int]:
     """Run every lane over the fixtures into a `file://` store under `store`, then load the warehouse. Returns {table: rows}."""
+    # The run machinery is imported here, where a lane runs, and not at the
+    # top: parity.py's old sides import FixtureConnection and FixtureAdapter
+    # under the pipeline's own pins (requirements.txt), which hold no dlt
+    # and no pyarrow (measured 2026-10-02: with every package
+    # requirements.txt does not pin blocked, `import dlt` stopped parity.py's
+    # closures, reports and atc_updates old sides).
+    from extract._run import LANES, lane_resources, make_pipeline, run_pipeline
+    from extract._warehouse import load_warehouse
+
     # Resolved, because CI passes paths relative to pipeline/, and a file:// URI must be absolute.
     raw_dir, warehouse, store = raw_dir.resolve(), warehouse.resolve(), store.resolve()
     resources, adapter = fixture_resources(raw_dir)
@@ -413,7 +453,10 @@ def build(raw_dir: Path, warehouse: Path, store: Path) -> dict[str, int]:
     # URL, so fixture mode names one that no real driver could reach.
     real_psycopg, url_was = _kinds.psycopg, os.environ.get(export_conditions.URL_ENV_VAR)
     postgres = conditions_fixture(raw_dir, POSTGRES_FIXTURE)
+    # No host is asked anything here, so ATC's Crawl-delay has nobody to be polite to.
+    crawl_delay = _kinds.ATC_CRAWL_DELAY_SECONDS
     _kinds.session = fixture_session
+    _kinds.ATC_CRAWL_DELAY_SECONDS = 0
     if postgres is not None:
         _kinds.psycopg = FixturePsycopg(postgres)
         os.environ[export_conditions.URL_ENV_VAR] = "postgresql://fixture-mode.invalid/none"
@@ -423,6 +466,7 @@ def build(raw_dir: Path, warehouse: Path, store: Path) -> dict[str, int]:
                 run_pipeline(lane, bucket_url, resources=resources, pipelines_dir=pipelines_dir)
     finally:
         _kinds.session = real_session
+        _kinds.ATC_CRAWL_DELAY_SECONDS = crawl_delay
         _kinds.psycopg = real_psycopg
         if postgres is not None:
             if url_was is None:

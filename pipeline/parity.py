@@ -95,9 +95,52 @@ RAW_DIR = Path(__file__).resolve().parent / "data" / "raw"
 STAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{6})?Z")
 
 
+def _atc_scrape_cache(answers: dict, folder: Path) -> Path:
+    """The cache fetch_atc_updates.py's own main() writes from ATC's pages as fixture mode served them.
+
+    Only the transport is swapped: its session gets extract/_fixtures.py's
+    adapter, serving the same file's listing pages and update pages by URL,
+    and its CACHE_PATH points into `folder`. The listing walk, plan_fetches(),
+    the parse, the zero-failure rule and `listed` all run as an hourly run
+    runs them.
+    """
+    import contextlib
+    import io
+
+    import fetch_atc_updates
+    from extract._fixtures import FixtureAdapter, text_answers
+
+    adapter = FixtureAdapter({}, {}, {}, pages=text_answers(answers))
+    real_session, real_cache = fetch_atc_updates.atc_session, fetch_atc_updates.CACHE_PATH
+
+    def served_session(session=None):
+        named = real_session(session)
+        named.mount("https://", adapter)
+        return named
+
+    fetch_atc_updates.atc_session, fetch_atc_updates.CACHE_PATH = served_session, folder / "atc_updates.json"
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            failed = fetch_atc_updates.main()
+    finally:
+        fetch_atc_updates.atc_session, fetch_atc_updates.CACHE_PATH = real_session, real_cache
+    if failed:
+        raise SystemExit("fetch_atc_updates.py refuses the pages fixture mode served, so it would cache nothing new")
+    return folder / "atc_updates.json"
+
+
 def _atc_updates_old() -> dict:
-    """export_atc_updates.py's document for reference/atc_updates.json, with whatever automatic rows its scrape cache gives."""
+    """export_atc_updates.py's document for reference/atc_updates.json, with the automatic rows its scrape gives.
+
+    The scrape is fetch_atc_updates.py's own run over the pages fixture mode
+    served (RAW_DIR's conditions/atc_trail_updates.json), where that file
+    exists, so both sides read the same pages; otherwise whatever cache a real
+    fetch left in data/raw/.
+    """
+    import tempfile
+
     import export_atc_updates
+    from extract._fixtures import CONDITIONS_DIR, TEXT_FIXTURES
     from lib.atc_updates import file_problems, is_reviewed
 
     document = json.loads(export_atc_updates.REVIEWED_PATH.read_text(encoding="utf-8"))
@@ -105,7 +148,10 @@ def _atc_updates_old() -> dict:
         raise SystemExit("reference/atc_updates.json is not reviewed, so export_atc_updates.py publishes nothing")
     if problems := file_problems(document):
         raise SystemExit(f"export_atc_updates.py refuses reference/atc_updates.json, so it publishes nothing: {problems}")
-    automatic, _ = export_atc_updates.automatic_rows(document, export_atc_updates.cached_updates())
+    served = RAW_DIR / CONDITIONS_DIR / TEXT_FIXTURES["atc_trail_updates"]
+    with tempfile.TemporaryDirectory() as folder:
+        cache = _atc_scrape_cache(json.loads(served.read_text(encoding="utf-8")), Path(folder)) if served.exists() else None
+        automatic, _ = export_atc_updates.automatic_rows(document, export_atc_updates.cached_updates(cache))
     return export_atc_updates.build_document(document, datetime.now(timezone.utc), automatic)
 
 

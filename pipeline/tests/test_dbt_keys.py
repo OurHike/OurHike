@@ -84,13 +84,15 @@ def _reviewed_tables() -> set[str]:
 
 
 def _row_tables() -> set[str]:
-    """The raw tables of the two kinds whose rows have no geometry column: WordPress posts and their place
-    terms, and OurHike's own conditions queries, whose closures, reports and notes give a place as lat/lon."""
+    """The raw tables of the kinds whose rows have no geometry column: WordPress posts and their place
+    terms, OurHike's own conditions queries, whose closures, reports and notes give a place as lat/lon,
+    and ATC's Trail Updates pages, which give one as an A.T. mile."""
     from extract._contract import all_resources, discover, discover_shared
-    from extract._kinds import ConditionsQuery, WordpressPosts, WordpressTerms
+    from extract._kinds import AtcTrailUpdatePages, ConditionsQuery, WordpressPosts, WordpressTerms
 
     resources = all_resources(discover() + discover_shared())
-    return {resource.table for resource in resources if isinstance(resource, WordpressPosts | WordpressTerms | ConditionsQuery)}
+    kinds = WordpressPosts | WordpressTerms | ConditionsQuery | AtcTrailUpdatePages
+    return {resource.table for resource in resources if isinstance(resource, kinds)}
 
 
 SPATIAL_MODELS = [path for path in MODELS if SOURCE.search(path.read_text()).group(2) not in _reviewed_tables() | _row_tables()]
@@ -104,6 +106,7 @@ def test_the_row_kinds_models_read_no_geometry():
         "base_ourhike__reports",
         "base_ourhike__notes",
         "base_ourhike__disputes",
+        "base_atc__atc_trail_updates_pages",
     }
 
 

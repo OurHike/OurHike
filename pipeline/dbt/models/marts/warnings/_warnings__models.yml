@@ -25,6 +25,14 @@ models:
           name: warnings_unclassified_notices_read_not_reviewed
           arguments:
             expression: "obstructs_trail is not null or review_state = 'not_reviewed'"
+      # CL09: an ATC update nobody here has read is never a block, and is only
+      # ever ATC's (int_closures__atc_automatic forces obstructs_trail false).
+      - dbt_utils.expression_is_true:
+          name: warnings_automatic_atc_rows_are_atcs_and_never_obstruct
+          arguments:
+            expression: >
+              review_state != 'auto'
+              or (obstructs_trail = false and source_key = 'atc_trail_updates')
       # An NWS alert is relayed, in NWS's words, and a serious report is a moderator's.
       - dbt_utils.expression_is_true:
           name: warnings_say_who_stands_behind_each_kind
@@ -100,8 +108,9 @@ models:
           `not_reviewed` wherever `obstructs_trail` is null, and otherwise who
           stands behind it: `reviewed` (ATC's reviewed file),
           `moderator_verified` (OurHike), `relayed` (NWS, in its own words),
-          `auto` (reserved for ATC rows its mechanical gate publishes, which
-          wait on the trail-updates scrape landing).
+          `auto` (an ATC update posted since the review that its mechanical
+          gate publishes, int_closures__atc_automatic, which nobody here has
+          read; the phone file calls it `unreviewed`).
         data_type: varchar
         constraints:
           - type: not_null
@@ -145,7 +154,10 @@ models:
         description: The organization's own page for the notice.
         data_type: varchar
       - name: list_position
-        description: An ATC update's place in the reviewed file, the published order.
+        description: >
+          An ATC update's place in the reviewed file, the published order; for
+          an automatic one (review_state `auto`), its place in slug order,
+          published after every reviewed row.
         data_type: bigint
       - name: closure_uuid
         description: A reopened OurHike closure's UUID, published as `id`.

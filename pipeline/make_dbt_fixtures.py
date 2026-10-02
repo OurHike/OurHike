@@ -1696,12 +1696,200 @@ def _ourhike_postgres() -> dict:
     }
 
 
+# --- ATC's Trail Updates, as their website serves them (#1793, stage 3) -------
+#
+# extract/_kinds.py's AtcTrailUpdatePages reads ATC's trail-updates sitemap and
+# each update's page from this file, and parity.py serves the same file's
+# listing pages to today's fetch_atc_updates.py, so both paths parse the same
+# pages. The pages are shaped like ATC's real ones (read 2026-10-02) around
+# exactly what lib/atc_scrape.py reads: the <title> ending " - Appalachian
+# Trail Conservancy", JSON-LD's dateModified with the -04:00 offset all 86 live
+# pages carried, the navigation ending at "Privacy Policy", the chip under the
+# headline ("VA | Closure") followed by its "N DAYS AGO", and the newsletter
+# block from "Stay Connected". The sitemap's lastmod is the same instant in
+# UTC, as the live one's is. Every slug and title is a fixture's, apart from
+# one reviewed slug, and each body is one sentence carrying the mile, never
+# ATC's prose. The URLs are written out because this script imports nothing
+# the CI step that runs it lacks; tests/test_extract_atc_trail_update_pages.py
+# holds them to lib/atc_scrape.py's and the resource's own.
+#
+# reference/atc_updates.json was reviewed on 2026-08-24, so each page is placed
+# against that day: three publish without a person (a point, a range written
+# with thousands separators, ending on a whole mile that json.dumps() prints
+# 1510.0, and edited late on 2026-09-12 Eastern, which is 2026-09-13 in UTC,
+# and one mile stated twice), and each other page is refused
+# by one branch of lib/atc_updates.py's auto_publish_refusal(), in its order.
+# Two branches no page can reach, so int_closures__atc_automatic's unit test
+# holds them instead: "no title" (parse_update() refuses a page with an empty
+# headline, which refuses the whole read) and "no states on the page" (a page
+# with no chip has no category either, and the category is checked first).
+ATC_TRAIL_UPDATES_URL = "https://appalachiantrail.org/trail-updates/"
+ATC_TRAIL_UPDATES_SITEMAP_URL = "https://appalachiantrail.org/trail-updates-sitemap.xml"
+
+#: (slug, title, chip or None, dateModified, body).
+ATC_FIXTURE_UPDATES = (
+    (
+        "fixture-shelter-closed-for-repairs",
+        "Fixture VA: Shelter Closed for Repairs",
+        "VA | Closure",
+        "2026-09-03T15:54:14-04:00",
+        "The fixture shelter is closed for repairs (NOBO mile 670.2).",
+    ),
+    (
+        "fixture-spring-dry-water-carry",
+        "Fixture CT: Spring Dry, Carry Water",
+        "CT | Water",
+        "2026-09-12T23:30:00-04:00",
+        "Carry water from NOBO mile 1,503.6 to 1,510, where the fixture spring is dry.",
+    ),
+    (
+        "fixture-footbridge-detour",
+        "Fixture MD/WV: Footbridge Detour",
+        "MD, WV | Detour",
+        "2026-09-20T10:00:00-04:00",
+        "The fixture footbridge (NOBO mile 1,026.7) is closed. Last year: the footbridge at NOBO mile 1,026.7 closed too.",
+    ),
+    # Refused: a person's row always wins (a real slug in the reviewed file).
+    (
+        "harpers-ferry-footbridge-closure",
+        "Fixture: Footbridge Closure, Edited After Its Review",
+        "MD, WV | Detour",
+        "2026-09-25T09:00:00-04:00",
+        "An edit to a reviewed update, at NOBO mile 1,026.7.",
+    ),
+    # Refused: last edited before the review.
+    (
+        "fixture-bear-activity-before-the-review",
+        "Fixture NC/TN: Bear Activity",
+        "NC, TN | Animal",
+        "2026-08-01T12:00:00-04:00",
+        "Fixture bear activity near NOBO mile 195.8.",
+    ),
+    # Refused: edited on the review's own day (strictly after, never on).
+    (
+        "fixture-parking-closed-on-the-review-day",
+        "Fixture PA: Parking Closed",
+        "PA | Parking",
+        "2026-08-24T10:00:00-04:00",
+        "The fixture lot at NOBO mile 1,138.0 is closed.",
+    ),
+    # Refused: a category this build does not know.
+    (
+        "fixture-flash-flood-emergency",
+        "Fixture VA: Flash Flood",
+        "VA | Emergency",
+        "2026-09-15T08:00:00-04:00",
+        "Fixture flooding at NOBO mile 700.1.",
+    ),
+    # Refused: no chip, so no category (checked before states).
+    (
+        "fixture-update-with-no-chip",
+        "Fixture: An Update With No Chip",
+        None,
+        "2026-09-16T08:00:00-04:00",
+        "Fixture notice at NOBO mile 800.4.",
+    ),
+    # Refused: no mile at all, a region-wide advisory.
+    (
+        "fixture-trail-wide-advisory",
+        "Fixture NH: Trail-Wide Advisory",
+        "NH | Hiking Safety",
+        "2026-09-17T08:00:00-04:00",
+        "A fixture advisory for the whole state, with no mile.",
+    ),
+    # Refused: two mile references that do not agree.
+    (
+        "fixture-gap-reroute-history",
+        "Fixture NC/TN: Gap Reroute",
+        "NC, TN | Relocation",
+        "2026-09-18T08:00:00-04:00",
+        "Rerouted from NOBO mile 360.6 to 364.8; earlier, a closure at NOBO mile 361.2.",
+    ),
+    # Refused: a mile off the end of the trail.
+    (
+        "fixture-mile-past-katahdin",
+        "Fixture ME: Mile Typo",
+        "ME | Alert",
+        "2026-09-19T08:00:00-04:00",
+        "Fixture notice at NOBO mile 2,207.5.",
+    ),
+    # Refused: a range that runs backwards.
+    (
+        "fixture-range-written-backwards",
+        "Fixture VA: Burn Ban",
+        "VA | Fire",
+        "2026-09-21T08:00:00-04:00",
+        "A fixture burn ban from NOBO mile 485.8 to 476.6.",
+    ),
+)
+
+
+def _atc_page(title: str, chip: str | None, modified: str, body: str) -> str:
+    """One update page, in the shape of ATC's live ones and of tests/test_lib_atc_scrape.py's page()."""
+    chip_html = f"<span>{chip}</span>" if chip else ""
+    return (
+        '<!DOCTYPE html><html lang="en-US"><head>'
+        f"<title>{title} - Appalachian Trail Conservancy</title>"
+        '<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebPage",'
+        f'"datePublished":"2026-08-01T09:00:00-04:00","dateModified":"{modified}"}}]}}</script>'
+        "</head><body><main>"
+        "<nav><a>Hike the Trail</a><a>Maine</a><a>Virginia</a></nav>"
+        "<a>Terms, Conditions, &amp; Policies</a><a>Privacy Policy</a>"
+        f"<h1>{title}</h1>{chip_html}<span>4 DAYS AGO</span>"
+        f"<p>{body}</p>"
+        '<h2>Stay Connected</h2><form><input name="email"></form>'
+        "</main></body></html>"
+    )
+
+
+def _atc_listing_page(updates: tuple) -> str:
+    """One listing page, each update linked as the live listing links it: `aria-label="View <title> update"`."""
+    anchors = "".join(
+        f'<a href="{ATC_TRAIL_UPDATES_URL}{slug}/" aria-label="View {title} update">{title}</a>' for slug, title, *_ in updates
+    )
+    return f"<!DOCTYPE html><html><head><title>Trail Updates - Appalachian Trail Conservancy</title></head><body><main>{anchors}</main></body></html>"
+
+
+def _atc_sitemap(updates: tuple) -> str:
+    """The trail-updates sitemap: each update's page and its lastmod in UTC, newest first, as All in One SEO writes it."""
+    from datetime import datetime, timezone
+
+    entries = sorted(
+        ((slug, datetime.fromisoformat(modified).astimezone(timezone.utc).isoformat()) for slug, _, _, modified, _ in updates),
+        key=lambda entry: entry[1],
+        reverse=True,
+    )
+    urls = "".join(
+        f"\n\t<url>\n\t\t<loc><![CDATA[{ATC_TRAIL_UPDATES_URL}{slug}/]]></loc>\n\t\t<lastmod><![CDATA[{lastmod}]]></lastmod>"
+        "\n\t\t<changefreq><![CDATA[weekly]]></changefreq>\n\t\t<priority><![CDATA[0.7]]></priority>\n\t</url>"
+        for slug, lastmod in entries
+    )
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n<!-- A fixture of the sitemap All in One SEO generates. -->\n'
+        f'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urls}\n</urlset>\n'
+    )
+
+
+def _atc_trail_updates() -> dict:
+    """ATC's answers by URL: the sitemap, two listing pages (the second links nothing, which ends the walk) and each page."""
+    html = "text/html; charset=UTF-8"
+    answers = {
+        ATC_TRAIL_UPDATES_SITEMAP_URL: {"content_type": "text/xml; charset=UTF-8", "body": _atc_sitemap(ATC_FIXTURE_UPDATES)},
+        ATC_TRAIL_UPDATES_URL: {"content_type": html, "body": _atc_listing_page(ATC_FIXTURE_UPDATES)},
+        f"{ATC_TRAIL_UPDATES_URL}page/2/": {"content_type": html, "body": _atc_listing_page(())},
+    }
+    for slug, title, chip, modified, body in ATC_FIXTURE_UPDATES:
+        answers[f"{ATC_TRAIL_UPDATES_URL}{slug}/"] = {"content_type": html, "body": _atc_page(title, chip, modified, body)}
+    return {"answers": answers}
+
+
 def closures_and_warnings_fixtures() -> dict[str, str]:
-    """The closures and warnings family's fixture files, under conditions/: NWS, NYNJTC's WordPress, OurHike's Postgres."""
+    """The closures and warnings family's fixture files, under conditions/: NWS, NYNJTC's WordPress, OurHike's Postgres, ATC's site."""
     return {
         "conditions/nws_alerts.json": json.dumps(_nws_alerts()),
         "conditions/nynjtc_trail_alerts.json": json.dumps(_nynjtc_trail_alerts()),
         "conditions/ourhike_postgres.json": json.dumps(_ourhike_postgres()),
+        "conditions/atc_trail_updates.json": json.dumps(_atc_trail_updates()),
     }
 
 

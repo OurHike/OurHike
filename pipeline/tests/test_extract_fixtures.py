@@ -16,7 +16,7 @@ import requests
 import export_conditions
 import make_dbt_fixtures
 from extract._fixtures import FixtureAdapter, FixtureConnection, build, esri_type, fixture_file, fixture_resources
-from extract._kinds import ConditionsQuery, NwsAlerts, ReviewedFile, WordpressPosts, WordpressTerms
+from extract._kinds import AtcTrailUpdatePages, ConditionsQuery, NwsAlerts, ReviewedFile, WordpressPosts, WordpressTerms
 
 
 @pytest.fixture(scope="module")
@@ -30,9 +30,8 @@ def fixtures(tmp_path_factory):
 def test_every_fixture_file_with_a_resource_lands_whole(fixtures):
     root, counts = fixtures
     resources, _ = fixture_resources(root / "raw")
-    fetched = [
-        r for r in resources if not isinstance(r, ReviewedFile | NwsAlerts | WordpressPosts | WordpressTerms | ConditionsQuery)
-    ]
+    answered = ReviewedFile | NwsAlerts | WordpressPosts | WordpressTerms | ConditionsQuery | AtcTrailUpdatePages
+    fetched = [r for r in resources if not isinstance(r, answered)]
     assert len(fetched) == 56, "55 monthly layers and OPRHP's temporary closures on the hourly lane"
     for resource in fetched:
         expected = len(json.loads(fixture_file(root / "raw", resource.key).read_text())["features"])
@@ -50,6 +49,15 @@ def test_the_hourly_lanes_other_upstreams_land_from_their_conditions_answers(fix
     assert counts["raw_nynjtc__nynjtc_trail_alerts_terms"] == sum(len(terms) for terms in nynjtc["terms"].values())
     for artifact in ("closures", "reports", "notes", "disputes"):
         assert counts[f"raw_ourhike__{artifact}"] == len(postgres[artifact]["rows"]), artifact
+
+
+def test_atcs_pages_land_one_row_per_update_the_fixture_sitemap_lists(fixtures):
+    """ATC's site served from conditions/atc_trail_updates.json: the sitemap's every update, each parsed from its page."""
+    root, counts = fixtures
+    assert counts["raw_atc__atc_trail_updates_pages"] == len(make_dbt_fixtures.ATC_FIXTURE_UPDATES)
+    with duckdb.connect(str(root / "warehouse.duckdb"), read_only=True) as con:
+        slugs = {slug for (slug,) in con.execute("select slug from raw.raw_atc__atc_trail_updates_pages").fetchall()}
+    assert slugs == {slug for slug, *_ in make_dbt_fixtures.ATC_FIXTURE_UPDATES}
 
 
 def test_conditions_rows_land_in_the_shapes_their_real_kinds_give_them(fixtures):

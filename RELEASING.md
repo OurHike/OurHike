@@ -610,6 +610,19 @@ weakening every rule above. **Urgent safety information was never on the release
 path.** What the gate delays is software, and software that is a week late is not the
 hazard that software that is wrong is.
 
+**Their offline copy is outside every release too, and only `main` writes production's.**
+`publish-conditions.yml` bakes `conditions/` hourly, straight to production's prefix, with
+no tag and no promotion (pipeline/DATA_RELEASES.md: "a closure that has reopened must stop
+being served, which an immutable folder cannot express"). So the code that bakes it reaches
+hikers when it merges, not when it is released, and the workflow runs its production leg
+only for a run from `refs/heads/main`: a dispatch from any other ref, or one from `main`
+asking for `data_environment: ua`, publishes UA alone
+(`.github/tests/test_conditions_production_leg_needs_main.py`). Which pipeline writes those
+files, today's bake or **#1793 — Rebuild the data platform as dlt → dbt: seven contracted
+marts, a monthly refresh, published docs, and lighter phone downloads**'s dbt lane, is the
+workflow's one `PHONE_FILES` line, and moving it on `main` is the maintainer's decision for
+the reason §12 gives (features/CONDITIONS_DELIVERY.md, "Two paths, one switch").
+
 ### 11a. Hotfixes
 
 A patch release off the current production tag, not off `main` — `main` contains

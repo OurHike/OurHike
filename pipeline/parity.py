@@ -251,7 +251,9 @@ def _places_old() -> dict:
     rows until the points_of_interest and trail_lines marts are merged, so
     this side reads none of either. When they merge, this reads
     export_poi.py's, export_nearby_poi.py's and export_trails.py's files on
-    the same raw layers.
+    the same raw layers, with trails.geojson cut to 6 decimals as tl-at's
+    trails family cuts it (decision 8): measured 2026-10-02 on 1,546 real
+    places, that cut moves one lot's trailMiles by a tenth, 17.8 to 17.9.
     """
     import tempfile
 

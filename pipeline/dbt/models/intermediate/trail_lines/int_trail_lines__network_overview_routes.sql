@@ -198,7 +198,9 @@ walk (trail_line_id, chain_label) as (
         trail_line_id,
         trail_line_id as chain_label
     from named
-    union
+    -- DISTINCT, not ALL: a (line, label) pair the walk has already reached
+    -- ends that branch, which is what makes the walk stop.
+    union distinct
     select
         edges.to_id,
         walk.chain_label

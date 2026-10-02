@@ -9,8 +9,10 @@
 -- sources.json gives it (`foot_field`, `status_field`, `excluded_when`'s
 -- keys), and those names are data, not SQL: a column reference written here
 -- per layer would be a second copy of the registry. So each branch selects
--- its row's columns (`<layer>_columns`), turns that row into JSON with
--- to_json() over the row alias, and int_trail_lines__network_judged reads a
+-- its row's columns, turns that row into JSON with to_json() over the row
+-- alias in a select of its own (the alias is then its only reference, which
+-- `dbt lint`'s RF03 asks of a single-table select), reads the staging key
+-- back out of the JSON, and int_trail_lines__network_judged reads a
 -- field by its warehouse column name (int_trail_lines__network_sources'
 -- `*_column`). A column the layer does not have reads as absent, which is
 -- how missing_declared_fields() can be asked in SQL at all (TL08). Values
@@ -70,12 +72,17 @@ with
 {%- for source_key, club, model in base_branches %}
 {{ source_key }}_json as (
     select
-        row_columns.trail_segment_key,
-        to_json(row_columns) as row_json
+        json_extract_string(
+            rows_as_json.row_json, '$.trail_segment_key'
+        ) as trail_segment_key,
+        rows_as_json.row_json
     from (
-        select * exclude (geom, _loaded_at, _dlt_load_id, _dlt_id)
-        from {{ ref(model) }}
-    ) as row_columns
+        select to_json(row_columns) as row_json
+        from (
+            select * exclude (geom, _loaded_at, _dlt_load_id, _dlt_id)
+            from {{ ref(model) }}
+        ) as row_columns
+    ) as rows_as_json
 ),
 
 {{ source_key }} as (
@@ -95,12 +102,17 @@ with
 {%- for source_key, club, model, ordered in staged_branches %}
 {{ source_key }}_json as (
     select
-        row_columns.trail_segment_key,
-        to_json(row_columns) as row_json
+        json_extract_string(
+            rows_as_json.row_json, '$.trail_segment_key'
+        ) as trail_segment_key,
+        rows_as_json.row_json
     from (
-        select * exclude (geom, loaded_at{{ ', source_row' if ordered }})
-        from {{ ref(model) }}
-    ) as row_columns
+        select to_json(row_columns) as row_json
+        from (
+            select * exclude (geom, loaded_at{{ ', source_row' if ordered }})
+            from {{ ref(model) }}
+        ) as row_columns
+    ) as rows_as_json
 ),
 
 {{ source_key }} as (
@@ -119,24 +131,36 @@ with
 ),
 {%- endfor %}
 
+dec_hiking_trails_row as (
+    select
+        json_extract_string(
+            rows_as_json.row_json, '$.trail_segment_key'
+        ) as trail_segment_key,
+        rows_as_json.row_json
+    from (
+        select to_json(row_columns) as row_json
+        from (
+            select * exclude (geom, loaded_at)
+            from {{ ref('stg_dec__hiking_trails') }}
+        ) as row_columns
+    ) as rows_as_json
+),
+
 -- DEC's stg model renames its two id columns (OBJECTID as `source_id`,
 -- GLOBALID as `stable_id`); they go back to their raw names here.
 dec_hiking_trails_json as (
     select
-        row_columns.trail_segment_key,
+        trail_segment_key,
         json_merge_patch(
-            to_json(row_columns),
+            row_json,
             json_object(
-                'objectid', row_columns.source_id,
-                'globalid', row_columns.stable_id,
+                'objectid', json_extract(row_json, '$.source_id'),
+                'globalid', json_extract(row_json, '$.stable_id'),
                 'source_id', null,
                 'stable_id', null
             )
         ) as row_json
-    from (
-        select * exclude (geom, loaded_at)
-        from {{ ref('stg_dec__hiking_trails') }}
-    ) as row_columns
+    from dec_hiking_trails_row
 ),
 
 dec_hiking_trails as (

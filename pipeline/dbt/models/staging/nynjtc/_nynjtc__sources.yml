@@ -65,3 +65,24 @@ sources:
         columns:
           - name: Trail_Name
             description: "'Highlands' on all 12 rows."
+      - name: raw_nynjtc__nynjtc_long_path_guide
+        data_tests:
+          # Rows sharing stg_nynjtc__long_path_guide's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nynjtc_long_path_guide'", "number"]
+        description: >
+          NYNJTC's Long Path End-to-End Section Guide (sources.json's
+          nynjtc_long_path_guide), landed by the guide_pages kind
+          (pipeline/extract/nynjtc/points_of_interest.py): one row per
+          section page as lib/nynjtc_long_path_guide.py's parse_section()
+          reads it, its three blocks' mile-marked entries as JSON lists, and
+          the page's sha256. 40 sections and 1,256 entries, read live
+          2026-10-01. The entries keep the guide's prose in the raw store;
+          what publishes is the facts build_records() makes of them.
+        columns:
+          - name: number
+            description: The section's number, the Long Path layer's LP_Section.
+            data_tests: [not_null]
+          - name: description
+            description: The Detailed Trail Description block's entries, as JSON.

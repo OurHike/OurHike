@@ -146,6 +146,11 @@ def _given(test: dict, model: str) -> list[dict] | str:
     return next(given["rows"] for given in test["given"] if given["input"] == f"ref('{model}')")
 
 
+def _given_or_none(test: dict, model: str) -> list[dict] | str | None:
+    """One given input's rows, or None where the unit test gives no such input."""
+    return next((given["rows"] for given in test["given"] if given["input"] == f"ref('{model}')"), None)
+
+
 def _expected(test: dict, key: str) -> dict[str, dict]:
     return {row[key]: row for row in test["expect"]["rows"]}
 
@@ -237,6 +242,7 @@ AT_STEMS = (*(stem for stem, _, _, _ in export_poi.DIRECT_SOURCES), export_poi.O
 def described_answers(test: dict) -> dict[str, dict]:
     """export_poi.attach_descriptions() and compose_description() on the given rows (PO19, PO20)."""
     rows = _given(test, "int_points_of_interest__enriched")
+    guide = {row["id"]: row["description"] for row in _given_or_none(test, "stg_derived__long_path_guide") or []}
     answers = {}
     for row in rows:
         landed = json.loads(row["properties"]) if row.get("properties") else {}
@@ -248,6 +254,9 @@ def described_answers(test: dict) -> dict[str, dict]:
             }
             export_poi.attach_descriptions([record])
             answers[row["poi_id"]] = {"description": record.get("description")}
+        elif row["poi_id"] in guide:
+            # export_nearby_poi.py's guide_records(): the record's own sentence, as build_records() composed it.
+            answers[row["poi_id"]] = {"description": guide[row["poi_id"]]}
         else:
             source = {"asset_field": "ASSET", "facility_field": "FACILITY"}
             description = export_nearby_poi.compose_description(
@@ -844,11 +853,21 @@ def test_the_poi_sources_seed_is_the_exporters_layer_list(tmp_path):
     registry = export_nearby_poi.load_registry(PIPELINE / "sources.json")
     nearby = export_nearby_poi.poi_sources(registry)
     others = [r for r in rows if r["phone_files"] == "nearby_poi"]
-    assert [r["source_key"] for r in others] == [source["key"] for source in nearby]
-    for row, source in zip(others, nearby):
+    # main() appends the Long Path guide's records after every layer (guide_records()).
+    *layers, guide_row = others
+    assert [r["source_key"] for r in layers] == [source["key"] for source in nearby]
+    for row, source in zip(layers, nearby):
         assert row["source"] == source["key"]
         assert row["trail_id"] == export_nearby_poi.TRAIL_IDS[source["provider"]], source["key"]
         assert row["type_field"] == export_nearby_poi.TYPED_LAYERS.get(source["key"], (None, None))[0], source["key"]
+    from lib import nynjtc_long_path_guide
+
+    assert (guide_row["source_key"], guide_row["source"], guide_row["trail_id"]) == (
+        export_nearby_poi.GUIDE_KEY,
+        nynjtc_long_path_guide.SOURCE_KEY,
+        nynjtc_long_path_guide.TRAIL_ID,
+    )
+    assert {r["source_key"] for r in rows if r["unified"] == "true"} == {export_nearby_poi.GUIDE_KEY}
     assert [int(r["file_order"]) for r in rows] == list(range(1, len(rows) + 1))
 
 

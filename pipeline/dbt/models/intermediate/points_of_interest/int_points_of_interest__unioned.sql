@@ -94,6 +94,19 @@ select
     osm._loaded_at
 from {{ ref('stg_derived__osm_water') }} as osm
 union all by name
+-- NYNJTC's Long Path guide (PO36): export_nearby_poi.py's guide_records(),
+-- the records step_long_path_guide's build_records() made of the guide's
+-- pages, whole, which the classifier reads as already unified (the
+-- poi_sources seed's `unified`): their own type, confidence, id and name.
+select
+    'nynjtc_long_path_guide' as source_key,
+    guide.long_path_guide_key as poi_key,
+    cast(guide.record_row as bigint) as source_row,
+    st_point(guide.lon, guide.lat) as geom,
+    guide.record as properties,
+    guide._loaded_at
+from {{ ref('stg_derived__long_path_guide') }} as guide
+union all by name
 -- fetch_trail_water.py's site water (PO07, PO17), the step's verdicts, of
 -- which only a site that has water publishes a point: export_poi.py's
 -- load_trail_water(), reading data/raw/trail_water.json's `sites`. Its

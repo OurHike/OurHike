@@ -232,3 +232,45 @@ sources:
           - name: _loaded_at
             description: When the step wrote the table, UTC.
             data_tests: [not_null]
+      - name: long_path_guide
+        data_tests:
+          # Rows sharing stg_derived__long_path_guide's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'long_path_guide'", "id"]
+        description: >
+          NYNJTC's Long Path guide as waypoints, written by step_long_path_guide
+          (pipeline/step_long_path_guide.py) through
+          lib/nynjtc_long_path_guide.py's build_records(): one row per record,
+          each placed at NYNJTC's own coordinates or by the guide's mile
+          along its section's line, and de-duplicated (pipeline/ELT.md's PO36).
+        columns:
+          - name: record_row
+            description: The record's place in build_records()' output, from 0.
+            data_tests: [not_null]
+          - name: id
+            description: The record's published id, `nynjtc_long_path_guide:s<section>-<block>-<mile>-<type>-<n>`.
+            data_tests: [not_null]
+          - name: poi_type
+            description: The published POI type the entry was classified as.
+            data_tests: [not_null]
+          - name: confidence
+            description: high where NYNJTC gave coordinates, low where the mile placed it.
+            data_tests: [not_null]
+          - name: placement
+            description: stated or interpolated.
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: [stated, interpolated]
+          - name: position_error_m
+            description: >
+              INTERPOLATION_ERROR_M (500) on an interpolated record, the
+              measured p90 of the estimate's along-trail error; null on a
+              stated one.
+          - name: record
+            description: The record build_records() returned, whole.
+          - name: _loaded_at
+            description: When the step wrote the table, UTC.
+            data_tests: [not_null]

@@ -101,6 +101,16 @@ STEPS: list[Step] = [
         command=("step_dem_sampling.py", "--warehouse", "{warehouse}"),
         fixture_args=("--index", "{raw_dir}/elevation/tile_index.json"),
     ),
+    # PO36: NYNJTC's Long Path guide placed as waypoints, over the sections the
+    # guide_pages kind landed and the Long Path layer's lines, both staged; the
+    # same inputs under --fixtures, where extract/_fixtures.py serves the pages.
+    # Before the water steps: its records join int_points_of_interest__unioned,
+    # which OSM water's distance pass is downstream of.
+    Step(
+        name="step_long_path_guide",
+        table="long_path_guide",
+        command=("step_long_path_guide.py", "--warehouse", "{warehouse}"),
+    ),
     # PO07 and PO17: which A.T. shelters and campsites have water a hiker can
     # walk to, fetch_trail_water.py's rule over int_points_of_interest__water_sites.
     # Under --fixtures it reads each site's candidate reaches and the EPQS

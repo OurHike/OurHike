@@ -7,7 +7,10 @@
 -- `{source key}:{the layer's id}`, and `source_feature_id` keeps the type
 -- the layer wrote (OBJECTID is a number). Every coordinate is the double
 -- itself, as json.dumps prints it. Features in the order the Python reads
--- its layers and rows.
+-- its layers and rows. NYNJTC's Long Path guide's waypoints come last, as
+-- guide_records() appends them, with the guide's own fields: lp_section,
+-- section_mile, placement, source_url, and position_error_m,
+-- off_trail_miles and water_reliability where the record has them.
 with pois as (
     select * from {{ ref('points_of_interest') }}
     where phone_files = 'nearby_poi'
@@ -34,6 +37,13 @@ select
                         'lon', lon,
                         'confidence', confidence,
                         'description', description,
+                        'lp_section', lp_section,
+                        'section_mile', section_mile,
+                        'placement', placement,
+                        'source_url', source_url,
+                        'position_error_m', position_error_m,
+                        'off_trail_miles', off_trail_miles,
+                        'water_reliability', water_reliability,
                         'site_id', site_id,
                         'site_role', site_role,
                         'site_name', site_name,

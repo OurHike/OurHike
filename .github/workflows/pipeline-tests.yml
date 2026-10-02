@@ -222,7 +222,8 @@ jobs:
           # and export_basemap.py; step_osm_water.py and
           # step_osm_water_grade.py are its OSM water steps, the second
           # calling build_osm_water_reach.py's grade loop; step_poi_photos.py
-          # lands the photo manifests.
+          # lands the photo manifests; step_long_path_guide.py places the
+          # Long Path guide through lib/nynjtc_long_path_guide.py.
           paths: >-
             pipeline/dbt/
             pipeline/extract/
@@ -253,6 +254,7 @@ jobs:
             pipeline/step_osm_water_grade.py
             pipeline/build_osm_water_reach.py
             pipeline/step_poi_photos.py
+            pipeline/step_long_path_guide.py
             pipeline/requirements.txt
             pipeline/seed_spatial_extension.py
             pipeline/check_freshness.py

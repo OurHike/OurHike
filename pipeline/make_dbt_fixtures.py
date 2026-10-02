@@ -1496,6 +1496,9 @@ def _with_key_fields(content: str, fields: dict) -> str:
 #   decisions ledger for grid sites (_poi_photo_fixtures), which
 #   step_poi_photos.py lands, reaching every branch of the face gate and the
 #   attachment. Labels hashed into digests, never bytes.
+# - THE LONG PATH GUIDE'S PAGES (PO36): five section pages and the index in
+#   the real skeleton (_long_path_guide_fixtures), which extract/_fixtures.py
+#   serves to the guide_pages kind, so the extract's own parser lands them.
 POI_REFERENCE_DIR = Path(__file__).parent / "reference"
 
 # Shelter, campsite, vista, parking and privy inventory, one tuple of values
@@ -1851,8 +1854,141 @@ def _poi_photo_fixtures(kept: list[dict]) -> dict[str, str]:
     }
 
 
+# The Long Path guide (PO36): NYNJTC's section pages in their real skeleton
+# (tests/test_nynjtc_long_path_guide.py's page builder, measured 2026-09-08:
+# WordPress <details><summary> blocks, entries as <strong>MILE</strong> on
+# <br> boundaries), which extract/_fixtures.py serves to the guide_pages
+# kind at the URLs it asks for, from guide_pages/<key>/pages.json. The
+# sections sit on the fixture Long Path layer's own LP_Section lines (1: the
+# 0.35 mile line beside the centerline, 3 and 4: the 20 mile lines at -74.3),
+# and their entries reach build_records()' branches: NYNJTC's coordinates and
+# a typo outside the trail's extent, interpolated springs, a lookout, a privy
+# and a lean-to with water, an off-trail spring, the season that is not
+# water, a camping area that is no pin, an unlocated campsite, a mile past
+# the section's end, a section with no distance and one with no line, and
+# the same lean-to, lot and campsite said twice.
+_GUIDE_URL = "https://www.nynjtc.org/long-path-end-to-end-section-guide/"
+
+
+def _long_path_guide_fixtures() -> dict[str, str]:
+    """guide_pages/nynjtc_long_path_guide/: the index, five section pages, and pages.json mapping each URL to its file."""
+
+    def entries(items):
+        return (
+            '<p class="wp-block-paragraph">'
+            + "<br>".join(f"<strong>{mile}</strong>&nbsp; {text}" for mile, text in items)
+            + "</p>"
+        )
+
+    def block(name, inner):
+        return f'<details class="wp-block-details"><summary>{name}</summary>{inner}</details>'
+
+    def page(number, title, distance, parking, camping, description):
+        header = (
+            f"<strong>Distance:</strong> {distance} miles<br>" if distance else ""
+        ) + "<strong>Parks:</strong> Fixture State Park"
+        return (
+            "<html><body><header>site chrome</header>"
+            '<main id="wp--skip-link--target">'
+            f'<h1 class="wp-block-heading"><a href="/ldt-long-path">The Long Path</a> &#8211; Section {number}</h1>'
+            f"<h2><strong>{title}</strong></h2>"
+            f'<p class="wp-block-paragraph">{header}</p>'
+            f"{block('Access', '<p>Take the fixture road to the fixture lot.</p>')}"
+            f"{block('Parking', parking)}"
+            f"{block('Camping', camping)}"
+            f"{block('Detailed Trail Description', description)}"
+            "</main><footer>Privacy Policy</footer></body></html>"
+        )
+
+    none = "<p>None.<br></p>"
+    pages = {
+        1: page(
+            1,
+            "Fixture Park to Fixture Ridge",
+            "0.4",
+            entries(
+                [
+                    ("0.00", "Fixture Park lot, at the trailhead (41.00010°, -74.00020°)."),
+                    ("0.20", "Roadside pull-off (14.00000°, -74.00000°)."),
+                    ("0.40", "Ridge Road lot (41.00495°, -74.00002°)."),
+                ]
+            ),
+            none,
+            entries(
+                [
+                    ("0.00", "Start at the park gate and follow the aqua blazes north."),
+                    ("0.10", "Pass a spring, a dependable source of water, on the left."),
+                    ("0.25", "Reach Fixture Lookout, with a tremendous view to the east."),
+                    ("0.30", "A seasonal spring is 0.2 mile from the Long Path on a side path."),
+                    ("0.38", "The trail passes a privy beside the road."),
+                    ("0.90", "Reach a lean-to well past the end of the section."),
+                ]
+            ),
+        ),
+        3: page(
+            3,
+            "Fixture Hollow",
+            "20.7",
+            entries(
+                [("0.00", "Section 3 trailhead lot (41.50000°, -74.30010°)."), ("20.70", "Boundary lot (41.80000°, -74.30010°).")]
+            ),
+            entries(
+                [
+                    ("5.13", "Fixture Hollow Lean-to, with a spring nearby."),
+                    ("8.00", "Camping is allowed in the state forest between mile 8.0 and 9.0."),
+                    ("10.00", "A campsite by the brook (unlocated)."),
+                ]
+            ),
+            entries(
+                [
+                    ("0.00", "Leave the lot and climb north."),
+                    ("5.10", "Arrive at Fixture Hollow Lean-to."),
+                    ("12.00", "In the spring, the hobblebush puts on a spectacular show."),
+                    ("15.00", "A sign marks the way to Fixture Spring, the only reliable water in this section."),
+                ]
+            ),
+        ),
+        4: page(
+            4,
+            "Fixture Hollow to Fixture Notch",
+            "20.7",
+            entries([("0.00", "Boundary lot (41.80003°, -74.30012°).")]),
+            none,
+            entries(
+                [
+                    ("0.00", "Continue north from the lot."),
+                    ("3.00", "Reach a campsite on the left."),
+                    ("3.02", "The campsite is near the trail."),
+                ]
+            ),
+        ),
+        5: page(5, "Fixture Notch", None, none, none, entries([("2.00", "Pass a spring at the notch.")])),
+        6: page(
+            6,
+            "Beyond the Fixture Layer",
+            "4.0",
+            entries([("0.00", "Far lot (42.50000°, -74.50000°).")]),
+            none,
+            entries([("1.00", "Pass a spring beside the trail.")]),
+        ),
+    }
+    index = (
+        "<html><body><main><h1>Long Path End-to-End Section Guide</h1>"
+        + "".join(f'<p><a href="/lp-section-{number}/">Section {number}</a></p>' for number in pages)
+        + "</main></body></html>"
+    )
+    folder = "guide_pages/nynjtc_long_path_guide"
+    files = {f"{folder}/index.html": index}
+    urls = {_GUIDE_URL: "index.html"}
+    for number, markup in pages.items():
+        files[f"{folder}/lp-section-{number}.html"] = markup
+        urls[f"https://www.nynjtc.org/lp-section-{number}/"] = f"lp-section-{number}.html"
+    files[f"{folder}/pages.json"] = json.dumps(urls, indent=1)
+    return files
+
+
 def _points_of_interest_fixtures(files: dict) -> dict:
-    """The POI family's additions to `files`: id fields, ATC's real shelters and campsites with inventory, facilities, a DEC privy, site and OSM water's inputs, photo manifests."""
+    """The POI family's additions to `files`: id fields, ATC's real shelters and campsites with inventory, facilities, a DEC privy, site and OSM water's inputs, photo manifests, the Long Path guide's pages."""
     files = dict(files)
     id_fields = {
         "external/oprhp_facilities.geojson": ("OBJECTID", lambda i: 5501 + i),
@@ -1902,6 +2038,7 @@ def _points_of_interest_fixtures(files: dict) -> dict:
     osm_water, waypoint = _osm_water_fixtures(kept)
     files.update(osm_water)
     files.update(_poi_photo_fixtures(kept))
+    files.update(_long_path_guide_fixtures())
     opentrail = json.loads(files["opentrail_at.geojson"])
     opentrail["features"].append(waypoint)
     files["opentrail_at.geojson"] = json.dumps(opentrail)

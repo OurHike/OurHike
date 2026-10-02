@@ -169,6 +169,8 @@ unit_tests:
           - {vocabulary: 'water_kind', code: 'drinking_water', phrase: 'Drinking water point'}
           - {vocabulary: 'water_kind', code: 'water_tap', phrase: 'Water tap'}
           - {vocabulary: 'water_kind', code: 'water_well', phrase: 'Well'}
+      - input: ref('stg_derived__long_path_guide')
+        rows: []
     expect:
       rows:
         - {poi_id: 'atc:the_sentence_reads_as_a_sentence', description: 'Two-storey clapboard shelter, sleeps 14, with a fireplace, a fire ring and a porch. Built 1915.'}
@@ -283,6 +285,8 @@ unit_tests:
           - {poi_id: 'nearby:mixed_case_is_not_title_cased', poi_type: 'shelter', phone_files: 'nearby_poi', asset: 'PIT privy', facility: 'Fixture Wild Forest'}
           - {poi_id: 'nearby:digits_in_capitals', poi_type: 'shelter', phone_files: 'nearby_poi', asset: 'CAMP 2', facility: null}
           - {poi_id: 'nearby:an_apostrophe_starts_a_word', poi_type: 'shelter', phone_files: 'nearby_poi', asset: 'O''NEIL LEAN-TO', facility: 'Fixture Wild Forest'}
+          - {poi_id: 'nynjtc_long_path_guide:s1-description-0.10-water-0', poi_type: 'water', phone_files: 'nearby_poi', asset: null, facility: null}
+          - {poi_id: 'nynjtc_long_path_guide:s3-camping-5.13-shelter-0', poi_type: 'water', phone_files: 'nearby_poi', asset: 'LEAN-TO', facility: null}
       - input: ref('poi_description_terms')
         rows:
           - {vocabulary: 'storeys', code: '2', phrase: 'Two-storey'}
@@ -336,6 +340,10 @@ unit_tests:
           - {vocabulary: 'water_kind', code: 'drinking_water', phrase: 'Drinking water point'}
           - {vocabulary: 'water_kind', code: 'water_tap', phrase: 'Water tap'}
           - {vocabulary: 'water_kind', code: 'water_well', phrase: 'Well'}
+      - input: ref('stg_derived__long_path_guide')
+        rows:
+          - {id: 'nynjtc_long_path_guide:s1-description-0.10-water-0', description: 'Water source at mile 0.10 of Long Path section 1; position estimated from the guide''s mile marker, not surveyed. The guide calls it reliable.'}
+          - {id: 'nynjtc_long_path_guide:s3-camping-5.13-shelter-0', description: 'Shelter at mile 5.13 of Long Path section 3; position estimated from the guide''s mile marker, not surveyed.'}
     expect:
       rows:
         - {poi_id: 'nearby:lean_to_in_capitals', description: 'Lean-To in Fixture Wild Forest.'}
@@ -345,6 +353,8 @@ unit_tests:
         - {poi_id: 'nearby:mixed_case_is_not_title_cased', description: 'PIT privy in Fixture Wild Forest.'}
         - {poi_id: 'nearby:digits_in_capitals', description: 'Camp 2.'}
         - {poi_id: 'nearby:an_apostrophe_starts_a_word', description: 'O''Neil Lean-To in Fixture Wild Forest.'}
+        - {poi_id: 'nynjtc_long_path_guide:s1-description-0.10-water-0', description: 'Water source at mile 0.10 of Long Path section 1; position estimated from the guide''s mile marker, not surveyed. The guide calls it reliable.'}
+        - {poi_id: 'nynjtc_long_path_guide:s3-camping-5.13-shelter-0', description: 'Shelter at mile 5.13 of Long Path section 3; position estimated from the guide''s mile marker, not surveyed.'}
 
   - name: int_points_of_interest__described_says_what_describe_stream_point_says
     description: >
@@ -425,6 +435,8 @@ unit_tests:
           - {vocabulary: 'water_kind', code: 'drinking_water', phrase: 'Drinking water point'}
           - {vocabulary: 'water_kind', code: 'water_tap', phrase: 'Water tap'}
           - {vocabulary: 'water_kind', code: 'water_well', phrase: 'Well'}
+      - input: ref('stg_derived__long_path_guide')
+        rows: []
     expect:
       rows:
         - {poi_id: 'nhd_stream:named_and_classified_by_usgs', description: 'Fixture Brook, where it runs closest to the site. USGS maps it as year-round.'}
@@ -528,6 +540,8 @@ unit_tests:
           - {vocabulary: 'water_kind', code: 'drinking_water', phrase: 'Drinking water point'}
           - {vocabulary: 'water_kind', code: 'water_tap', phrase: 'Water tap'}
           - {vocabulary: 'water_kind', code: 'water_well', phrase: 'Well'}
+      - input: ref('stg_derived__long_path_guide')
+        rows: []
     expect:
       rows:
         - {poi_id: 'osm_water:a_spring', description: 'Spring. Mapped by OpenStreetMap contributors.'}
@@ -757,26 +771,27 @@ unit_tests:
           - {source_key: 'nyc_drinking_fountains', poi_key: 'c-n-22', source_row: 0, geom: 'POINT (-73.97 40.77)', properties: '{"_socrata_id": "row-abc", "propertyna": "Fixture Park"}'}
       - input: ref('poi_sources')
         rows:
-          - {source_key: 'shelters', file_order: '1', club: 'atc', source: 'atc_shelters', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null, poi_type: null, confidence: null}
-          - {source_key: 'campsites', file_order: '2', club: 'atc', source: 'atc_campsites', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null, poi_type: null, confidence: null}
-          - {source_key: 'viewpoints', file_order: '3', club: 'atc', source: 'atc_viewpoints', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null, poi_type: null, confidence: null}
-          - {source_key: 'parking', file_order: '4', club: 'atc', source: 'atc_parking', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null, poi_type: null, confidence: null}
-          - {source_key: 'privies', file_order: '5', club: 'atc', source: 'atc_privies', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null, poi_type: null, confidence: null}
-          - {source_key: 'communities', file_order: '6', club: 'atc', source: 'atc_communities', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'NAME', type_field: null, poi_type: null, confidence: null}
-          - {source_key: 'opentrail_at', file_order: '7', club: 'opentrail', source: 'opentrail_at', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'dbid', name_field: 'title', type_field: null, poi_type: null, confidence: null}
-          - {source_key: 'osm_water', file_order: '8', club: 'osm', source: 'osm_water', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'osm_id', name_field: 'name', type_field: null, poi_type: 'water', confidence: 'low'}
-          - {source_key: 'nhd_stream', file_order: '9', club: 'usgs', source: 'nhd_stream', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'site_global_id', name_field: 'name', type_field: null, poi_type: 'water', confidence: 'low'}
-          - {source_key: 'oprhp_facilities', file_order: '10', club: 'nysparks', source: 'oprhp_facilities', phone_files: 'nearby_poi', trail_id: 'NYSOPRHP', id_field: null, name_field: null, type_field: 'Sub_Asset', poi_type: null, confidence: null}
-          - {source_key: 'dec_lean_tos', file_order: '11', club: 'nysdec', source: 'dec_lean_tos', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null}
-          - {source_key: 'dec_primitive_campsites', file_order: '12', club: 'nysdec', source: 'dec_primitive_campsites', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null}
-          - {source_key: 'dec_scenic_vistas', file_order: '13', club: 'nysdec', source: 'dec_scenic_vistas', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null}
-          - {source_key: 'dec_firetowers', file_order: '14', club: 'nysdec', source: 'dec_firetowers', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null}
-          - {source_key: 'dec_viewing_areas', file_order: '15', club: 'nysdec', source: 'dec_viewing_areas', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null}
-          - {source_key: 'dec_parking_areas', file_order: '16', club: 'nysdec', source: 'dec_parking_areas', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null}
-          - {source_key: 'dec_backcountry_features', file_order: '17', club: 'nysdec', source: 'dec_backcountry_features', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: 'ASSET', poi_type: null, confidence: null}
-          - {source_key: 'usfs_rec_sites', file_order: '18', club: 'usfs', source: 'usfs_rec_sites', phone_files: 'nearby_poi', trail_id: 'USFS', id_field: null, name_field: null, type_field: 'site_type', poi_type: null, confidence: null}
-          - {source_key: 'nyc_public_restrooms', file_order: '19', club: 'nycparks', source: 'nyc_public_restrooms', phone_files: 'nearby_poi', trail_id: 'NYCPARKS', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null}
-          - {source_key: 'nyc_drinking_fountains', file_order: '20', club: 'nycparks', source: 'nyc_drinking_fountains', phone_files: 'nearby_poi', trail_id: 'NYCPARKS', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null}
+          - {source_key: 'shelters', file_order: '1', club: 'atc', source: 'atc_shelters', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'campsites', file_order: '2', club: 'atc', source: 'atc_campsites', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'viewpoints', file_order: '3', club: 'atc', source: 'atc_viewpoints', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'parking', file_order: '4', club: 'atc', source: 'atc_parking', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'privies', file_order: '5', club: 'atc', source: 'atc_privies', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'communities', file_order: '6', club: 'atc', source: 'atc_communities', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'NAME', type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'opentrail_at', file_order: '7', club: 'opentrail', source: 'opentrail_at', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'dbid', name_field: 'title', type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'osm_water', file_order: '8', club: 'osm', source: 'osm_water', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'osm_id', name_field: 'name', type_field: null, poi_type: 'water', confidence: 'low', unified: null}
+          - {source_key: 'nhd_stream', file_order: '9', club: 'usgs', source: 'nhd_stream', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'site_global_id', name_field: 'name', type_field: null, poi_type: 'water', confidence: 'low', unified: null}
+          - {source_key: 'oprhp_facilities', file_order: '10', club: 'nysparks', source: 'oprhp_facilities', phone_files: 'nearby_poi', trail_id: 'NYSOPRHP', id_field: null, name_field: null, type_field: 'Sub_Asset', poi_type: null, confidence: null, unified: null}
+          - {source_key: 'dec_lean_tos', file_order: '11', club: 'nysdec', source: 'dec_lean_tos', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'dec_primitive_campsites', file_order: '12', club: 'nysdec', source: 'dec_primitive_campsites', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'dec_scenic_vistas', file_order: '13', club: 'nysdec', source: 'dec_scenic_vistas', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'dec_firetowers', file_order: '14', club: 'nysdec', source: 'dec_firetowers', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'dec_viewing_areas', file_order: '15', club: 'nysdec', source: 'dec_viewing_areas', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'dec_parking_areas', file_order: '16', club: 'nysdec', source: 'dec_parking_areas', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'dec_backcountry_features', file_order: '17', club: 'nysdec', source: 'dec_backcountry_features', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: 'ASSET', poi_type: null, confidence: null, unified: null}
+          - {source_key: 'usfs_rec_sites', file_order: '18', club: 'usfs', source: 'usfs_rec_sites', phone_files: 'nearby_poi', trail_id: 'USFS', id_field: null, name_field: null, type_field: 'site_type', poi_type: null, confidence: null, unified: null}
+          - {source_key: 'nyc_public_restrooms', file_order: '19', club: 'nycparks', source: 'nyc_public_restrooms', phone_files: 'nearby_poi', trail_id: 'NYCPARKS', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'nyc_drinking_fountains', file_order: '20', club: 'nycparks', source: 'nyc_drinking_fountains', phone_files: 'nearby_poi', trail_id: 'NYCPARKS', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'nynjtc_long_path_guide', file_order: '21', club: 'nynjtc', source: 'nynjtc_long_path_guide', phone_files: 'nearby_poi', trail_id: 'LP', id_field: 'source_feature_id', name_field: 'name', type_field: null, poi_type: null, confidence: null, unified: 'true'}
       - input: ref('stg_registry__sources')
         rows:
           - {source_key: 'dec_backcountry_features', entry: '{"key": "dec_backcountry_features", "provider": "NYS DEC", "id_field": "OBJECTID", "name_field": "NAME", "asset_field": "ASSET", "facility_field": "FACILITY", "public_field": "PUBLICUSE", "public_value": "Y"}'}

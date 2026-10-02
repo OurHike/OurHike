@@ -717,15 +717,45 @@ def _osm_water_old() -> tuple[str, str] | None:
     return "osm_water/points.geojson", str(folder / "osm_water_reach.json")
 
 
-def _nearby_poi_old() -> dict:
-    """export_nearby_poi.py's nearby_poi.geojson, by its own functions in main()'s order, less the guide.
+def _guide_sections_old() -> Path:
+    """A folder holding sections.json as fetch_nynjtc_long_path_guide.py writes it, parsed from the fixture's guide pages.
 
-    main() itself cannot run on the fixtures: nynjtc_long_path_guide carries
-    reaches_hikers true, so main() raises without the guide's page cache, and
-    the guide is not ported (ELT.md ledger row PO36). Everything else is
-    main()'s: each registered layer's build_records() in poi_sources()'s
-    order, the network ring and the closed-trailhead mark against the
-    published network (_published_network()), the place sites.
+    The fetcher reads NYNJTC's forty pages, which CI may not; the fixture's
+    pages (make_dbt_fixtures.py's guide_pages/nynjtc_long_path_guide/) are
+    parsed here by lib/nynjtc_long_path_guide.py's own parse_index() and
+    parse_section(), the functions the guide_pages kind calls, in the index's
+    order. With no fixture pages the folder holds nothing, as a run that
+    never fetched the guide.
+    """
+    import tempfile
+
+    from lib import nynjtc_long_path_guide as guide
+
+    folder = Path(tempfile.mkdtemp(prefix="parity-guide-"))
+    pages_dir = RAW_DIR / "guide_pages" / guide.SOURCE_KEY
+    if not (pages_dir / "pages.json").exists():
+        return folder
+    files = json.loads((pages_dir / "pages.json").read_text(encoding="utf-8"))
+    index = (pages_dir / files[guide.INDEX_URL]).read_text(encoding="utf-8")
+    sections = [
+        guide.parse_section((pages_dir / files[url]).read_text(encoding="utf-8"), url, expected_number=number).to_dict()
+        for number, url in guide.parse_index(index)
+    ]
+    (folder / "sections.json").write_text(json.dumps(sections), encoding="utf-8")
+    return folder
+
+
+def _nearby_poi_old() -> dict:
+    """export_nearby_poi.py's nearby_poi.geojson, by its own functions in main()'s order.
+
+    main() itself cannot run on the fixtures: it reads the guide's cache from
+    data/raw/nynjtc_long_path_guide/, which no fixture writes. So this is
+    main()'s sequence, function by function: each registered layer's
+    build_records() in poi_sources()'s order, then guide_records() over the
+    fixture guide's parsed sections (_guide_sections_old()) and the layer's
+    own Long Path lines, appended because the guide reaches hikers, then the
+    network ring and the closed-trailhead mark against the published network
+    (_published_network()), and the place sites.
     """
     import export_nearby_poi as nearby
 
@@ -735,6 +765,11 @@ def _nearby_poi_old() -> dict:
     for source in sources:
         features = json.loads((nearby.RAW_DIR / f"{source['key']}.geojson").read_text(encoding="utf-8")).get("features", [])
         records.extend(nearby.build_records(source, features)[0])
+    sections = _guide_sections_old()
+    if (sections / "sections.json").exists():
+        guide, stats = nearby.guide_records(registry, raw_dir=sections, lines_dir=nearby.RAW_DIR)
+        if stats is not None and stats.get("reaches_hikers"):
+            records.extend(guide)
     network = _published_network()
     records, _ = nearby.clip_to_network(records, network, nearby.boundary_paths_for(sources))
     nearby.mark_closed_trailheads(records, network)

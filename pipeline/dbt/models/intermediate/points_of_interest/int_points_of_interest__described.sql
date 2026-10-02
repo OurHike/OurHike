@@ -44,7 +44,9 @@
 -- THE OTHER ORGANIZATIONS: export_nearby_poi.py's compose_description(): the
 -- asset value, title-cased where the organization writes capitals, "in" the
 -- facility, both already cleaned of sentinels; nothing where there is no
--- asset.
+-- asset. NYNJTC's Long Path guide's records carry their own sentence
+-- (lib/nynjtc_long_path_guide.py's compose_description()), which ships as
+-- it stands.
 {%- set p = 'noted.properties' -%}
 {%- set rounding = var('poi_vista_arc_rounding_degrees') %}
 with enriched as (
@@ -587,14 +589,34 @@ osm_sentences as (
     from osm_clauses
 ),
 
+guide as (
+    -- The Long Path guide's records carry the sentence
+    -- lib/nynjtc_long_path_guide.py's compose_description() made from the
+    -- facts the guide states, never its prose; export_nearby_poi.py
+    -- publishes it as it stands.
+    select
+        id,
+        description,
+        lp_section,
+        section_mile,
+        placement,
+        source_url,
+        position_error_m,
+        off_trail_miles,
+        water_reliability
+    from {{ ref('stg_derived__long_path_guide') }}
+),
+
 with_streams as (
     select
         sentences.*,
         stream_sentences.stream_sentence,
-        osm_sentences.osm_sentence
+        osm_sentences.osm_sentence,
+        guide.description as guide_sentence
     from sentences
     left join stream_sentences on sentences.poi_id = stream_sentences.poi_id
     left join osm_sentences on sentences.poi_id = osm_sentences.poi_id
+    left join guide on sentences.poi_id = guide.id
 ),
 
 described as (
@@ -604,6 +626,7 @@ described as (
             when phone_files = 'nearby_poi'
                 then
                     case
+                        when guide_sentence is not null then guide_sentence
                         when asset is not null
                             then
                                 case
@@ -635,6 +658,16 @@ described as (
 
 select
     enriched.*,
-    described.description
+    described.description,
+    -- The guide's own fields, which nearby_poi.geojson carries on its
+    -- waypoints and on nothing else.
+    guide.lp_section,
+    guide.section_mile,
+    guide.placement,
+    guide.source_url,
+    guide.position_error_m,
+    guide.off_trail_miles,
+    guide.water_reliability
 from enriched
 inner join described on enriched.poi_id = described.poi_id
+left join guide on enriched.poi_id = guide.id

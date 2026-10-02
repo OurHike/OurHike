@@ -30,11 +30,14 @@ seeds:
         type_field: varchar
         poi_type: varchar
         confidence: varchar
+        unified: boolean
     columns:
       - name: source_key
         description: >
           The sources.json key, or one of the two layers with no registry row,
           `opentrail_at` and `nhd_stream` (each a row of unregistered_publishing_sources).
+          `nynjtc_long_path_guide` is a registry key whose rows are a Python
+          step's records rather than a layer's features (`unified`).
         data_tests: [not_null, unique]
       - name: file_order
         description: >
@@ -70,6 +73,14 @@ seeds:
         description: >
           The field export_nearby_poi.py's TYPED_LAYERS types a row by, for
           the three layers typed row by row; blank for a layer typed whole.
+      - name: unified
+        description: >
+          True for a layer whose rows a Python step already unified into
+          records, which carry their own poi_type, confidence, id and name and
+          are read as they are: NYNJTC's Long Path guide, whose records
+          lib/nynjtc_long_path_guide.py's build_records() makes
+          (step_long_path_guide.py), as export_nearby_poi.py's guide_records()
+          appends them after every layer. Blank on every other layer.
       - name: poi_type
         description: >
           The type every row of a derived layer publishes as: `water` for OSM

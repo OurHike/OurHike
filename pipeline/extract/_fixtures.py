@@ -53,6 +53,9 @@ What is left out of the run, and why:
 - every fetched resource whose key has no fixture file, because CI fetches
   nothing.
 
+A guide published as web pages (the guide_pages kind) is answered page by
+page from guide_pages/<key>/, so its own parser reads NYNJTC's skeleton.
+
 An unknown URL raises, so a resource that reaches past its fixture fails
 loudly rather than reaching the network, and so does any SQL the stand-in
 connection does not recognise.
@@ -79,6 +82,7 @@ from extract._kinds import (
     CONDITIONS_QUERIES,
     ArcgisLayer,
     ConditionsQuery,
+    GuidePages,
     NwsAlerts,
     OpentrailFeed,
     ReviewedFile,
@@ -101,6 +105,10 @@ FILE_NAMES = {"at": "opentrail_at.geojson"}
 # closures_and_warnings_fixtures()): one file per upstream, under conditions/.
 # A WordPress source's file is named for its registry key.
 CONDITIONS_DIR = "conditions"
+# A guide's pages (make_dbt_fixtures.py's _long_path_guide_fixtures()): one
+# folder per registry key, its pages.json mapping each URL the guide_pages kind
+# asks for to the HTML file that answers it.
+GUIDE_PAGES_DIR = "guide_pages"
 NWS_FIXTURE = "nws_alerts.json"
 POSTGRES_FIXTURE = "ourhike_postgres.json"
 
@@ -272,6 +280,7 @@ class FixtureAdapter(requests.adapters.BaseAdapter):
         feeds: dict[str, list],
         wordpress: dict[str, dict] | None = None,
         nws: dict | None = None,
+        pages: dict[str, str] | None = None,
     ):
         super().__init__()
         self.arcgis, self.socrata, self.feeds = arcgis, socrata, feeds
@@ -279,6 +288,8 @@ class FixtureAdapter(requests.adapters.BaseAdapter):
         self.wordpress = wordpress or {}
         # NWS's /alerts/active body.
         self.nws = nws
+        # A guide page's URL -> its HTML.
+        self.pages = pages or {}
 
     def send(self, request, **kwargs):
         parts = urlsplit(request.url)
@@ -286,6 +297,10 @@ class FixtureAdapter(requests.adapters.BaseAdapter):
         query = {name: values[0] for name, values in parse_qs(parts.query, keep_blank_values=True).items()}
         if self.nws is not None and base == NWS_ALERTS_URL:
             return _response(request, self.nws, headers={"Content-Type": "application/geo+json"})
+        if request.url in self.pages:
+            response = _response(request, None, headers={"Content-Type": "text/html; charset=UTF-8"})
+            response._content = self.pages[request.url].encode("utf-8")
+            return response
         for api, document in self.wordpress.items():
             if base.startswith(api + "/"):
                 return self._wordpress(request, document, base[len(api) + 1 :], query)
@@ -351,7 +366,7 @@ class FixtureAdapter(requests.adapters.BaseAdapter):
 
 def fixture_resources(raw_dir: Path) -> tuple[list, FixtureAdapter]:
     """The extract's own resources that have a fixture file, and the adapter that answers them."""
-    arcgis, socrata, feeds, wordpress, chosen = {}, {}, {}, {}, []
+    arcgis, socrata, feeds, wordpress, pages, chosen = {}, {}, {}, {}, {}, []
     nws, postgres = conditions_fixture(raw_dir, NWS_FIXTURE), conditions_fixture(raw_dir, POSTGRES_FIXTURE)
     for resource in all_resources(discover() + discover_shared()):
         if isinstance(resource, ReviewedFile):
@@ -364,6 +379,14 @@ def fixture_resources(raw_dir: Path) -> tuple[list, FixtureAdapter]:
         if isinstance(resource, ConditionsQuery):
             # Served by FixtureConnection in build(); an artifact the file does not answer stays out.
             if postgres is not None and resource.key in postgres:
+                chosen.append(resource)
+            continue
+        if isinstance(resource, GuidePages):
+            # Served page by page from the folder's pages.json; a guide with no folder stays out.
+            folder = raw_dir / GUIDE_PAGES_DIR / resource.key
+            if (folder / "pages.json").exists():
+                for url, name in json.loads((folder / "pages.json").read_text()).items():
+                    pages[url] = (folder / name).read_text(encoding="utf-8")
                 chosen.append(resource)
             continue
         if isinstance(resource, WordpressPosts | WordpressTerms):
@@ -389,7 +412,7 @@ def fixture_resources(raw_dir: Path) -> tuple[list, FixtureAdapter]:
         else:
             continue
         chosen.append(resource)
-    return chosen, FixtureAdapter(arcgis, socrata, feeds, wordpress=wordpress, nws=nws)
+    return chosen, FixtureAdapter(arcgis, socrata, feeds, wordpress=wordpress, nws=nws, pages=pages)
 
 
 def build(raw_dir: Path, warehouse: Path, store: Path) -> dict[str, int]:

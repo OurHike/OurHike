@@ -18,6 +18,14 @@
 # between builds; a red X every run for a legitimately-edited ATC layer trains
 # people to ignore the one signal that matters. The run fails only if the
 # check itself broke.
+#
+# IT ALSO WATCHES THE MONTHLY LANE. refresh-reference.yml refreshes UA on the
+# 3rd of each month, and a monthly cron nobody has watched fire may not
+# (pipeline/ELT.md, "The schedule: 05:15 UTC on the 3rd"). So when its last
+# successful run is more than 35 days old, the tracking issue carries a row
+# saying so, and the remedy is a dispatch of refresh-reference.yml. Reading
+# the run list needs `actions: read` and nothing else; this job still cannot
+# write to R2 or start a run.
 
 name: Check upstream freshness
 
@@ -41,6 +49,9 @@ on:
 permissions:
   contents: read
   issues: write
+  # The run list of refresh-reference.yml, for the 35-day alarm. Read-only:
+  # a workflow cannot be dispatched, cancelled or re-run with it.
+  actions: read
 
 # One at a time, and never cancel a run in flight: a half-finished check that
 # got cancelled mid-way would leave the tracking issue describing a comparison
@@ -134,11 +145,77 @@ jobs:
               ;;
           esac
 
+      # THE 35-DAY ALARM. 35 days is a 31-day month plus the worst lateness
+      # measured on a weekly cron here (8.1 h, smoke-published.yml), rounded
+      # up to a margin: @unvalidated until a year of monthly firings shows the
+      # real spread (pipeline/ELT.md, "The schedule: 05:15 UTC on the 3rd").
+      # The age runs from the last successful run, or, before there is one,
+      # from the workflow's own `created_at`, so the alarm does not ring in
+      # the month after the merge (that GitHub sets it when the file reaches
+      # the default branch is @unvalidated; the first run after the merge
+      # shows the value). A workflow that
+      # is not on the default branch at all says so and rings nothing; an
+      # answer the API would not give is `could not be checked`, which this
+      # job never rounds down to fine.
+      - name: Is the monthly refresh overdue
+        id: monthly
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          API_URL: ${{ github.api_url }}
+          MONTHLY_WORKFLOW: refresh-reference.yml
+          MAX_AGE_DAYS: "35"
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+          from datetime import datetime, timezone
+
+          base = f"{os.environ['API_URL']}/repos/{os.environ['REPOSITORY']}/actions/workflows/{os.environ['MONTHLY_WORKFLOW']}"
+          headers = {"Authorization": f"Bearer {os.environ['GH_TOKEN']}", "Accept": "application/vnd.github+json"}
+
+          def get(url):
+              with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=30) as response:
+                  return json.load(response)
+
+          def stamp(text):
+              return datetime.fromisoformat(text.replace("Z", "+00:00"))
+
+          now, limit = datetime.now(timezone.utc), int(os.environ["MAX_AGE_DAYS"])
+          answer = {"workflow": os.environ["MONTHLY_WORKFLOW"], "max_age_days": limit, "checked_at": now.strftime("%Y-%m-%dT%H:%M:%SZ")}
+          try:
+              workflow = get(base)
+              runs = get(f"{base}/runs?status=success&per_page=1").get("workflow_runs") or []
+          except urllib.error.HTTPError as error:
+              answer.update(state="absent" if error.code == 404 else "unknown", detail=f"the API answered {error.code}")
+          except (urllib.error.URLError, TimeoutError, ValueError) as error:
+              answer.update(state="unknown", detail=f"the API did not answer: {error}")
+          else:
+              since = stamp(runs[0]["run_started_at"]) if runs else stamp(workflow["created_at"])
+              age = (now - since).total_seconds() / 86400
+              answer.update(
+                  since=since.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                  age_days=round(age, 1),
+                  last_success=runs[0]["html_url"] if runs else None,
+                  state="overdue" if age > limit else "ok",
+              )
+          print(json.dumps(answer, indent=2))
+          with open("monthly_refresh.json", "w") as handle:
+              json.dump(answer, handle, indent=2)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"state={answer['state']}\n")
+              output.write(f"alarm={'true' if answer['state'] in ('overdue', 'unknown') else 'false'}\n")
+          PY
+
       - name: Write the job summary
         if: always()
         env:
           STATE_URL: ${{ steps.state.outputs.url }}
           NO_STATE: ${{ steps.check.outputs.no_state }}
+          MONTHLY_STATE: ${{ steps.monthly.outputs.state }}
         run: |
           {
             echo "## Upstream data freshness"
@@ -157,6 +234,18 @@ jobs:
               echo '```'
             else
               echo "The check did not produce a report. See the step log above."
+            fi
+            echo
+            echo "### The monthly refresh (refresh-reference.yml)"
+            echo
+            if [ -f monthly_refresh.json ]; then
+              echo "State: \`${MONTHLY_STATE:-none}\`"
+              echo
+              echo '```'
+              cat monthly_refresh.json
+              echo '```'
+            else
+              echo "The 35-day check did not run. See the step log above."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -178,16 +267,28 @@ jobs:
       #
       # Closed automatically when everything returns to FRESH, so the issue
       # being open is itself the signal.
+      # Also when only the monthly refresh is overdue, so a missing
+      # build_state.json cannot hide it; with no verdict to read, the issue is
+      # never closed from here, since nothing upstream was checked.
       - name: Open, update, or close the tracking issue
-        if: steps.check.outputs.status != '' && steps.check.outputs.no_state != 'true'
+        if: >-
+          !cancelled() && ((steps.check.outcome == 'success' && steps.check.outputs.status != '' && steps.check.outputs.no_state != 'true')
+          || steps.monthly.outputs.alarm == 'true')
         uses: actions/github-script@v9
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          VERDICT_OK: ${{ steps.check.outcome == 'success' && steps.check.outputs.status != '' && steps.check.outputs.no_state != 'true' }}
         with:
           script: |
             const fs = require('fs')
             const trackingIssue = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/tracking-issue.js`)
-            const verdict = JSON.parse(fs.readFileSync('pipeline/freshness.json', 'utf8'))
+            // A verdict counts only from a check that finished: a crash may leave half a file.
+            const checked = process.env.VERDICT_OK === 'true' && fs.existsSync('pipeline/freshness.json')
+            const verdict = checked ? JSON.parse(fs.readFileSync('pipeline/freshness.json', 'utf8')) : {}
+            const monthly = fs.existsSync('pipeline/monthly_refresh.json')
+              ? JSON.parse(fs.readFileSync('pipeline/monthly_refresh.json', 'utf8'))
+              : {state: 'unknown', detail: 'the 35-day check wrote nothing'}
+            const refreshAlarm = monthly.state === 'overdue' || monthly.state === 'unknown'
 
             const stale = verdict.needs_refetch ?? []
             const unknown = verdict.unknown ?? []
@@ -201,9 +302,10 @@ jobs:
             await trackingIssue({github, context, core}, {
               label: process.env.ISSUE_LABEL,
               title: process.env.ISSUE_TITLE,
-              checkedAt: verdict.checked_at,
-              keys: [...stale, ...unknown],
-              healthy: stale.length === 0 && unknown.length === 0,
+              checkedAt: verdict.checked_at ?? monthly.checked_at,
+              keys: [...stale, ...unknown, ...(refreshAlarm ? [monthly.workflow] : [])],
+              // Never all-clear from a run that compared nothing upstream.
+              healthy: checked && stale.length === 0 && unknown.length === 0 && !refreshAlarm,
               allClear: `Everything upstream is unchanged again as of ${verdict.checked_at}. Closing.`,
 
               render: (firstSeen, cell) => {
@@ -220,6 +322,9 @@ jobs:
                   '|---|---|---|---|',
                   ...stale.map(s => row(s, 'changed upstream')),
                   ...unknown.map(s => row(s, 'could not be checked')),
+                  ...(refreshAlarm
+                    ? [`| \`${monthly.workflow}\` | ${monthly.state === 'overdue' ? `monthly refresh overdue: ${monthly.age_days} days since ${monthly.since}, past ${monthly.max_age_days}` : 'monthly refresh could not be checked'} | ${firstSeen[monthly.workflow]} | ${cell(monthly.detail ?? (monthly.last_success ? `last success ${monthly.last_success}` : 'no successful run yet'))} |`]
+                    : []),
                   '',
                   unknown.length
                     ? '`could not be checked` is not `fine`. A source nobody could verify is exactly how stale data survives, so it is listed rather than rounded down.'
@@ -233,8 +338,9 @@ jobs:
                     : '',
                   '',
                   'Changed data is not published data — this job holds no R2 credentials. Run **Publish vector data** to rebuild.',
+                  refreshAlarm ? 'The monthly row clears when **Refresh reference data** (refresh-reference.yml) next succeeds: dispatch it.' : '',
                   '',
-                  `Last checked ${verdict.checked_at} · [run](${process.env.RUN_URL})`,
+                  `Last checked ${verdict.checked_at ?? monthly.checked_at} · [run](${process.env.RUN_URL})`,
                   '',
                   '---',
                   '_Generated by [Claude Code](https://claude.ai/code)_',

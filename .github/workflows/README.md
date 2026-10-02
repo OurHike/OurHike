@@ -97,9 +97,10 @@ staleness boundary test in #32, green on the pull request and red on the merge.
 
 ### Builds or publishes data
 
-All six publishing paths share `concurrency: publish-data`, so two of them can
-never interleave. All are dispatch-only except `publish-conditions.yml` and
-`publish-weather.yml`.
+All seven publishing paths share `concurrency: publish-data`, so two of them
+can never interleave. All are dispatch-only except `publish-conditions.yml`,
+`publish-weather.yml` and `refresh-reference.yml`, and of those only
+`publish-conditions.yml` writes production on its schedule.
 
 | | |
 |---|---|
@@ -109,6 +110,7 @@ never interleave. All are dispatch-only except `publish-conditions.yml` and
 | `publish-vector-data.yml` | trails, POIs and the manifest hikers download → `build`, `publish` |
 | `publish-conditions.yml` | closures and warnings, on an hourly schedule as well as dispatch |
 | `publish-weather.yml` | the NBM forecast for every trail square, one file per cell, and the active NWS alerts over trail squares, to UA only → `build`, `publish` — hourly as well as dispatch, only `publish` holds the group, and either half publishes without the other (#1056) |
+| `refresh-reference.yml` | the monthly lane of `pipeline/ELT.md`: every monthly dlt resource into the private raw store, the raw inputs pinned under `steps/raw_inputs/<raw_run>/`, every mart through `build_marts.py --lane monthly`, and a release staged on UA from the dbt writers' files → `extract`, `build`, `publish`, `confirm`, `parity`. UA only, by a literal, with no input that could name another environment; monthly as well as dispatch. Only `publish` holds the group |
 
 `publish-vector-data.yml`'s `publish` job and `migrate.yml`'s production job
 both run under the `production` environment whenever they will actually
@@ -133,8 +135,8 @@ emails before the eighth was filtered. Alert on transitions, not on runs.
 |---|---|---|
 | `check-deployment.yml` | tracking issue | sends a real `Origin` for every declared origin — the one check that would have caught #427 — and ages the newest `conditions/*` stamp, which is what notices the hourly bake having stopped (#1129) |
 | `check-deployed-app.yml` | tracking issue | whether the deployed app draws a trail at all |
-| `check-upstream-freshness.yml` | tracking issue | whether ATC and the other upstreams have moved |
-| `build-data-release.yml` | job summary | whether the week's upstream movement is worth dispatching a build for (#1314) - `check-upstream-freshness.yml`'s sibling, weekly rather than daily, and reporting to a summary because its answer is a recommendation rather than an alarm |
+| `check-upstream-freshness.yml` | tracking issue | whether ATC and the other upstreams have moved, and whether `refresh-reference.yml` last succeeded more than 35 days ago |
+| `build-data-release.yml` | job summary | whether the week's upstream movement is worth dispatching a build for (#1314) - `check-upstream-freshness.yml`'s sibling, weekly rather than daily, and reporting to a summary because its answer is a recommendation rather than an alarm. Its scheduled run gives way, planning nothing, once `refresh-reference.yml` has succeeded once; a dispatch still plans |
 | `smoke-published.yml` | tracking issue | the published artifacts, weekly |
 | `check-pending-approvals.yml` | tracking issue | whether a run is sitting in `waiting` for an approval nobody was told about |
 | `check-auth-redirects.yml` | tracking issue | whether a sign-in can still come back to a declared origin (#488) |
@@ -228,7 +230,8 @@ gathered rather than restated.
 | When | | |
 |---|---|---|
 | `7,37 * * * *` | twice an hour | `check-pending-approvals.yml` — the tightest cadence here, because its worst case is a production publish expiring unapproved at 30 days |
-| `25 6 * * 1` | Mondays | `build-data-release.yml` — early, because the answer is most useful before the week's work is planned |
+| `15 5 3 * *` | the 3rd of each month | `refresh-reference.yml` — the 05:00 hour holds no other daily or weekly job, `:15` misses the four hourly slots, and the 3rd is off the 1st by analogy with the `:00` rule only (pipeline/ELT.md, "The schedule: 05:15 UTC on the 3rd") |
+| `25 6 * * 1` | Mondays | `build-data-release.yml` — early, because the answer is most useful before the week's work is planned; gives way to `refresh-reference.yml` once that has run |
 | `20 7 * * *` | daily | `check-upstream-freshness.yml` |
 | `35 7 * * 1` | Mondays | `settings-configured.yml` |
 | `45 7 * * 1` | Mondays | `protections-check.yml` |

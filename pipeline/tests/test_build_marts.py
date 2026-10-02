@@ -202,7 +202,9 @@ class _Recorder:
         return subprocess.CompletedProcess(argv, self.codes.get(len(self.calls), 0))
 
 
-def _main(monkeypatch, tmp_path, manifest: dict, codes: dict[int, int] | None = None) -> tuple[int, _Recorder]:
+def _main(
+    monkeypatch, tmp_path, manifest: dict, codes: dict[int, int] | None = None, extra: tuple[str, ...] = ()
+) -> tuple[int, _Recorder]:
     recorder = _Recorder(codes)
     (tmp_path / "manifest.json").write_text(json.dumps(manifest))
     monkeypatch.setattr(build_marts, "MANIFEST_PATH", tmp_path / "manifest.json")
@@ -220,6 +222,7 @@ def _main(monkeypatch, tmp_path, manifest: dict, codes: dict[int, int] | None = 
             str(tmp_path / "processed"),
             "--raw-dir",
             str(tmp_path / "raw"),
+            *extra,
         ]
     )
     return code, recorder
@@ -304,3 +307,345 @@ def test_ci_and_test_sh_build_only_through_build_marts_apart_from_the_evaluator(
     assert "build_marts.py --fixtures" in test_sh
     dbt_lines = [line for line in test_sh.splitlines() if '"${dbt_cmd[@]}" seed' in line or '"${dbt_cmd[@]}" build' in line]
     assert all("package:dbt_project_evaluator" in line for line in dbt_lines), dbt_lines
+
+
+# --- The lanes (build_marts.py's docstring, "A LANE BUILDS ONLY ITS OWN NODES") ---
+
+
+def test_the_monthly_lane_is_the_whole_plan_with_every_hourly_or_daily_node_excluded_from_each_dbt_build():
+    runs = plan(STEPS, dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="monthly")
+    everything = plan(STEPS, dbt="dbt", python="python", paths=PATHS, fixtures=False)
+
+    assert [run.label for run in runs] == [run.label for run in everything]
+    for lane_run, full_run in zip(runs, everything, strict=True):
+        if full_run.argv[:2] != ("dbt", "build"):
+            assert lane_run.argv == full_run.argv, "the seeds and the Python steps are the same in every lane"
+        elif "--exclude" in full_run.argv:
+            assert lane_run.argv == full_run.argv + build_marts.LANE_EXCLUDES
+        else:
+            assert lane_run.argv == full_run.argv + ("--exclude", *build_marts.LANE_EXCLUDES)
+
+
+def test_the_monthly_lanes_writers_leave_the_hourly_writers_unrun():
+    writers = plan([], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="monthly")[-1]
+
+    assert writers.argv == (
+        "dbt",
+        "build",
+        "--profiles-dir",
+        ".",
+        "-s",
+        "path:models/publish",
+        "--exclude",
+        "config.meta.cadence:hourly+",
+        "config.meta.cadence:daily+",
+    )
+
+
+# An hourly step, standing in for cw2's step_weather_squares (WN03): the NWS
+# alerts' placement reads its table, and every node it unblocks is hourly.
+SQUARES = Step(
+    name="step_weather_squares",
+    table="weather_squares",
+    command=("step_weather_squares.py", "--warehouse", "{warehouse}"),
+    lane="hourly",
+)
+
+
+def test_the_hourly_lane_with_nothing_to_defer_to_builds_its_nodes_and_their_parents_then_its_writers():
+    runs = plan(STEPS, dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="hourly")
+
+    assert argvs(runs) == [
+        (("dbt", "seed", "--profiles-dir", "."), DBT_DIR),
+        (
+            (
+                "dbt",
+                "build",
+                "--profiles-dir",
+                ".",
+                "-s",
+                "config.meta.cadence:hourly+",
+                "config.meta.cadence:daily+",
+                "+config.meta.cadence:hourly",
+                "+config.meta.cadence:daily",
+                "--exclude",
+                "package:dbt_project_evaluator",
+                "path:models/publish",
+                "source:derived.dem_samples+",
+                "source:derived.formed_routes+",
+                "--indirect-selection",
+                "cautious",
+            ),
+            DBT_DIR,
+        ),
+        (
+            (
+                "dbt",
+                "build",
+                "--profiles-dir",
+                ".",
+                "-s",
+                "path:models/publish,config.meta.cadence:hourly+",
+                "path:models/publish,config.meta.cadence:daily+",
+                "--exclude",
+                "source:derived.dem_samples+",
+                "source:derived.formed_routes+",
+                "--indirect-selection",
+                "cautious",
+            ),
+            DBT_DIR,
+        ),
+    ]
+
+
+def test_the_hourly_lane_defers_every_build_to_the_state_it_is_given_and_takes_no_parents():
+    runs = plan(STEPS, dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="hourly", state=Path("/m/target"))
+
+    for run in runs[1:]:
+        assert run.argv[-3:] == ("--defer", "--state", "/m/target"), run.argv
+        assert not set(build_marts.LANE_PARENTS) & set(run.argv), run.argv
+        assert "--indirect-selection" not in run.argv
+    assert "--defer" not in runs[0].argv, "dbt seed loads files; it has nothing to defer"
+
+
+def test_an_hourly_step_runs_in_the_hourly_lane_and_no_monthly_step_does():
+    runs = plan([*STEPS, SQUARES], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="hourly")
+
+    assert [run.label for run in runs if run.argv[0] == "python"] == ["step_weather_squares"]
+    stage_a, unblocked = runs[1].argv, runs[3].argv
+    assert "source:derived+" in stage_a, "stage A leaves every derived table's descendants for after its step"
+    assert unblocked[unblocked.index("-s") :] == (
+        "-s",
+        "source:derived.weather_squares+",
+        "--exclude",
+        "path:models/publish",
+        "source:derived.dem_samples+",
+        "source:derived.formed_routes+",
+        "--indirect-selection",
+        "cautious",
+    )
+
+
+def test_the_monthly_lane_leaves_an_hourly_step_out_with_everything_its_table_unblocks():
+    runs = plan([*STEPS, SQUARES], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="monthly")
+
+    assert [run.label for run in runs if run.argv[0] == "python"] == [step.name for step in STEPS]
+    for run in runs:
+        if run.argv[:2] == ("dbt", "build"):
+            assert "source:derived.weather_squares+" in run.argv, run.argv
+
+
+def test_without_step_leaves_the_step_out_and_its_writers_unrun_so_publish_keeps_their_last_files():
+    runs = plan(
+        [*STEPS, SQUARES],
+        dbt="dbt",
+        python="python",
+        paths=PATHS,
+        fixtures=False,
+        lane="hourly",
+        without=("step_weather_squares",),
+    )
+
+    assert not [run for run in runs if run.argv[0] == "python"]
+    writers = runs[-1].argv
+    assert writers[writers.index("--exclude") :][:4] == (
+        "--exclude",
+        "source:derived.dem_samples+",
+        "source:derived.formed_routes+",
+        "source:derived.weather_squares+",
+    )
+
+
+def test_without_step_leaves_the_steps_table_unbuilt_in_a_build_with_no_lane_too():
+    runs = plan(STEPS, dbt="dbt", python="python", paths=PATHS, fixtures=True, without=("step_form_route",))
+
+    assert [run.label for run in runs if run.argv[0] == "python"] == ["step_dem_sampling"]
+    for run in runs:
+        if run.argv[:2] == ("dbt", "build"):
+            assert "source:derived.formed_routes+" in run.argv, run.argv
+
+
+def test_without_step_naming_no_step_is_refused_rather_than_building_everything():
+    with pytest.raises(ValueError, match="names no entry of STEPS: step_typo"):
+        plan(STEPS, dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="hourly", without=("step_typo",))
+
+
+@pytest.mark.parametrize("lane", [None, "monthly"])
+def test_state_outside_the_hourly_lane_is_refused_because_nothing_else_defers(lane):
+    with pytest.raises(ValueError, match="hourly lane's"):
+        plan([], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane=lane, state=Path("/m/target"))
+
+
+def test_a_lane_this_file_does_not_know_is_refused():
+    with pytest.raises(ValueError, match="no lane 'weekly'"):
+        plan([], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="weekly")
+
+
+def _lane_manifest(step_reads: dict[str, list[str]], unblocks: dict[str, list[str]] | None = None) -> dict:
+    """An hourly, a monthly and a daily source, each feeding a model, a step exposure per entry of step_reads, and
+    under `unblocks` the models each derived table feeds."""
+    manifest = _manifest(*STEP_TABLES, *(table for table in (unblocks or {}) if table not in STEP_TABLES))
+    manifest["sources"] |= {
+        "source.ourhike.ourhike.raw_ourhike__closures": {
+            "name": "raw_ourhike__closures",
+            "config": {"meta": {"cadence": "hourly"}},
+        },
+        "source.ourhike.atc.raw_atc__centerline": {"name": "raw_atc__centerline", "config": {"meta": {"cadence": "monthly"}}},
+        "source.ourhike.nynjtc.raw_terms": {"name": "raw_terms", "config": {"meta": {"cadence": "daily"}}},
+    }
+    manifest["child_map"] = {
+        "source.ourhike.ourhike.raw_ourhike__closures": ["model.ourhike.int_closures__unioned"],
+        "model.ourhike.int_closures__unioned": ["model.ourhike.closures"],
+        "source.ourhike.atc.raw_atc__centerline": ["model.ourhike.int_elevation__sample_points"],
+        "source.ourhike.nynjtc.raw_terms": ["model.ourhike.int_warnings__terms"],
+        **{f"source.ourhike.derived.{table}": nodes for table, nodes in (unblocks or {}).items()},
+    }
+    manifest["exposures"] = {
+        f"exposure.ourhike.{name}": {"name": name, "depends_on": {"nodes": nodes}} for name, nodes in step_reads.items()
+    }
+    return manifest
+
+
+def test_faster_nodes_follow_every_hourly_and_daily_source_down_to_what_it_reaches():
+    reached = build_marts.faster_nodes(_lane_manifest({}))
+
+    assert reached == {
+        "source.ourhike.ourhike.raw_ourhike__closures",
+        "model.ourhike.int_closures__unioned",
+        "model.ourhike.closures",
+        "source.ourhike.nynjtc.raw_terms",
+        "model.ourhike.int_warnings__terms",
+    }
+
+
+def test_a_lane_passes_a_step_whose_exposure_reads_only_monthly_nodes():
+    manifest = _lane_manifest({step.name: ["model.ourhike.int_elevation__sample_points"] for step in STEPS})
+
+    for lane in build_marts.LANES:
+        assert build_marts.lane_problems(manifest, STEPS, lane) == []
+
+
+@pytest.mark.parametrize("lane", ["monthly", "hourly"])
+@pytest.mark.parametrize("node", ["model.ourhike.closures", "model.ourhike.int_warnings__terms"])
+def test_a_lane_refuses_a_monthly_step_that_reads_a_node_an_hourly_or_daily_source_reaches(lane, node):
+    manifest = _lane_manifest({DEM_SAMPLING.name: [node], **{step.name: [] for step in STEPS[1:]}})
+
+    problems = build_marts.lane_problems(manifest, STEPS, lane)
+
+    assert problems == [
+        f"{DEM_SAMPLING.name} reads {node}, which an hourly or daily source reaches: the monthly lane, where the step "
+        "runs, does not build it, so the step would read a stale or missing input"
+    ]
+
+
+# Each derived table below feeds its own staging model first, as stg_derived__weather_squares does: a model no
+# source with a cadence reaches, whose lane is the lane of the writer it ends in.
+HOURLY_WRITER = "model.ourhike.pub_conditions_closures"
+MONTHLY_WRITER = "model.ourhike.pub_trails_geojson"
+
+
+def _writers_manifest(steps: list[Step], feeds: str) -> dict:
+    manifest = _lane_manifest(
+        {step.name: [] for step in steps}, unblocks={"weather_squares": ["model.ourhike.stg_derived__weather_squares"]}
+    )
+    manifest["child_map"] |= {
+        "model.ourhike.stg_derived__weather_squares": [feeds],
+        "model.ourhike.closures": [HOURLY_WRITER],
+        "model.ourhike.int_elevation__sample_points": [MONTHLY_WRITER],
+    }
+    return manifest
+
+
+def test_a_lane_passes_an_hourly_step_whose_table_feeds_only_hourly_writers():
+    manifest = _writers_manifest([*STEPS, SQUARES], feeds="model.ourhike.closures")
+
+    for lane in build_marts.LANES:
+        assert build_marts.lane_problems(manifest, [*STEPS, SQUARES], lane) == []
+
+
+def test_a_lane_refuses_a_monthly_step_whose_table_feeds_only_the_hourly_lanes_writers():
+    monthly_squares = Step(name="step_weather_squares", table="weather_squares", command=("step_weather_squares.py",))
+    manifest = _writers_manifest([*STEPS, monthly_squares], feeds="model.ourhike.closures")
+
+    assert build_marts.lane_problems(manifest, [*STEPS, monthly_squares], "monthly") == [
+        "step_weather_squares runs in the monthly lane, and every writer derived.weather_squares feeds is the hourly "
+        f"lane's ({HOURLY_WRITER}): give its STEPS entry lane=HOURLY"
+    ]
+
+
+def test_a_lane_refuses_an_hourly_step_whose_table_feeds_a_monthly_writer():
+    manifest = _writers_manifest([*STEPS, SQUARES], feeds="model.ourhike.int_elevation__sample_points")
+
+    assert build_marts.lane_problems(manifest, [*STEPS, SQUARES], "hourly") == [
+        "step_weather_squares runs in the hourly lane, and derived.weather_squares feeds monthly-lane writers "
+        f"({MONTHLY_WRITER}), which no hourly or daily source reaches: the monthly lane leaves out what an hourly "
+        "step unblocks, so nothing would write them"
+    ]
+
+
+def test_a_lane_refuses_a_step_with_no_exposure_naming_its_inputs_and_no_lane_does_not_ask():
+    manifest = _lane_manifest({})
+
+    assert build_marts.lane_problems(manifest, [DEM_SAMPLING], "monthly") == [
+        f"{DEM_SAMPLING.name} has no exposure named {DEM_SAMPLING.name} listing what it reads, so the monthly lane "
+        "cannot check that it builds the step's inputs"
+    ]
+    assert build_marts.lane_problems(manifest, [DEM_SAMPLING], None) == []
+
+
+def test_main_refuses_after_the_seeds_when_the_monthly_lane_would_leave_a_steps_input_unbuilt(monkeypatch, tmp_path, capsys):
+    manifest = _lane_manifest({DEM_SAMPLING.name: ["model.ourhike.closures"], **{step.name: [] for step in STEPS[1:]}})
+
+    code, recorder = _main(monkeypatch, tmp_path, manifest, extra=("--lane", "monthly"))
+
+    assert code == 1
+    assert [argv[:2] for argv, _, _ in recorder.calls] == [("dbt", "seed")]
+    assert f"{DEM_SAMPLING.name} reads model.ourhike.closures" in capsys.readouterr().out
+
+
+def test_main_runs_the_monthly_lanes_plan_when_every_step_reads_monthly_nodes(monkeypatch, tmp_path):
+    manifest = _lane_manifest({step.name: ["model.ourhike.int_elevation__sample_points"] for step in STEPS})
+
+    code, recorder = _main(monkeypatch, tmp_path, manifest, extra=("--lane", "monthly"))
+
+    tmp_path = tmp_path.resolve()
+    paths = Paths(tmp_path / "warehouse.duckdb", tmp_path / "processed", tmp_path / "raw")
+    assert code == 0
+    assert [(argv, cwd) for argv, cwd, _ in recorder.calls] == argvs(
+        plan(STEPS, dbt="dbt", python="python", paths=paths, fixtures=True, lane="monthly")
+    )
+
+
+def test_every_step_names_what_it_reads_in_an_exposure_of_its_own_name():
+    """The lanes' check reads each step's inputs off its step_<name> exposure, so a step without one refuses every lane build."""
+    exposures = {}
+    for path in sorted((DBT_DIR / "models").rglob("*.yml")):
+        for exposure in yaml.safe_load(path.read_text()).get("exposures") or []:
+            exposures[exposure["name"]] = exposure
+
+    for step in STEPS:
+        if step.reads_no_model:
+            continue
+        assert step.name in exposures, f"no exposure named {step.name} lists what {step.command[0]} reads"
+        assert exposures[step.name].get("depends_on"), f"exposure {step.name} names no input"
+
+
+def test_a_step_that_reads_no_model_needs_no_exposure_in_either_lane():
+    file_only = Step(name="step_weather_squares", table="weather_squares", command=("x.py",), lane="hourly", reads_no_model=True)
+    manifest = _writers_manifest(STEPS, feeds="model.ourhike.closures")
+
+    for lane in build_marts.LANES:
+        assert build_marts.lane_problems(manifest, [*STEPS, file_only], lane) == []
+
+
+def test_a_step_that_says_it_reads_no_model_and_whose_exposure_lists_one_is_refused():
+    file_only = Step(name="step_weather_squares", table="weather_squares", command=("x.py",), lane="hourly", reads_no_model=True)
+    manifest = _writers_manifest(STEPS, feeds="model.ourhike.closures")
+    manifest["exposures"]["exposure.ourhike.step_weather_squares"] = {
+        "name": "step_weather_squares",
+        "depends_on": {"nodes": ["model.ourhike.closures"]},
+    }
+
+    assert build_marts.lane_problems(manifest, [*STEPS, file_only], "hourly") == [
+        "step_weather_squares says it reads no dbt node (reads_no_model), and its exposure step_weather_squares lists some"
+    ]

@@ -1,4 +1,4 @@
-// "On your challenges" on a place card (#1780, frames #2 and #2c).
+// "On your challenges" on a place card (#1780, frames 2 and 2c).
 //
 // One row per challenge item at this place - the item, whose list it is on
 // and whose club set it, and Tag it - so where two clubs' lists meet at one
@@ -15,9 +15,11 @@
 import { API_CONFIGURED } from '../lib/api'
 import { CHALLENGE_WORDS } from '../lib/challengeWords'
 import {
+  isOpen,
   isSealed,
   itemTitle,
   itemsAtPoi,
+  windowNow,
   type Challenge,
   type ChallengeItem,
 } from '../lib/challenges'
@@ -108,6 +110,15 @@ export function PoiChallenges(props: PoiChallengesProps) {
                   </span>
                   {done && fromWalk ? (
                     <span className="challenge-row__done">done</span>
+                  ) : !done && !isOpen(challenge, today) ? (
+                    // Tags only count inside the window, so outside it the
+                    // card says when it is rather than offering one -
+                    // ChallengeDetail.tsx's rule, which this card had missed
+                    // (second Challenges review, 2026-10-01). A tag already
+                    // made keeps its pill, so it can still be taken back.
+                    <span className="challenge-row__done">
+                      {windowNow(challenge, today)}
+                    </span>
                   ) : (
                     <TagPill
                       tagged={done}

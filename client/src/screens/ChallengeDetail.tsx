@@ -1,4 +1,4 @@
-// One challenge (#1780, frames #5, #7, #4b, #8b and #8c).
+// One challenge (#1780, frames 5, 7, 4b, 8b and 8c).
 //
 // The pine header names it, its window and - only when the club set one - the
 // finish line; a strip lays its places along the trail in mile order. Filter
@@ -96,8 +96,17 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
   const [view, setView] = useState<'list' | 'finish'>('list')
   const [sheetItem, setSheetItem] = useState<string | null>(null)
   const [confirmingLeave, setConfirmingLeave] = useState(false)
-  // Where focus goes back to when the sheet closes - the row that opened it.
+  // Where focus goes back to when the sheet closes - the row that opened it,
+  // or the page's title when that row is gone.
   const opener = useRef<HTMLElement | null>(null)
+  const title = useRef<HTMLHeadingElement | null>(null)
+  const [refocus, setRefocus] = useState(false)
+  useEffect(() => {
+    if (!refocus) return
+    setRefocus(false)
+    if (opener.current?.isConnected) opener.current.focus()
+    else title.current?.focus()
+  }, [refocus])
   // Tags only count inside the window, so nothing offers one outside it
   // (review, 2026-09-30: the ATC's 2027 draft is on phones in 2026).
   const open = isOpen(challenge, today)
@@ -138,8 +147,13 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
 
   const closeSheet = () => {
     setSheetItem(null)
-    opener.current?.focus()
+    setRefocus(true)
   }
+  // After the render that closed the sheet, not in the handler: "Remove this
+  // tag" leaves an item that is no longer done, and that same render turns
+  // its row from a button into text. Focus sent to the button before it was
+  // replaced fell to <body> (second Challenges review, 2026-10-01); the title
+  // is always there.
 
   const sheet =
     sheetItem === null
@@ -152,7 +166,7 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
         <p className="challenges__eyebrow">
           {challenge.orgShort} · {trailLabel(challenge.trail)} · {windowLine(challenge)}
         </p>
-        <h1 className="challenges__title" id="challenge-title">
+        <h1 className="challenges__title" id="challenge-title" ref={title} tabIndex={-1}>
           {challenge.name}
         </h1>
         <DraftLabel challenge={challenge} />
@@ -183,11 +197,16 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
         <PlaceStrip challenge={challenge} tags={tags} today={today} />
       </header>
 
-      {joined && !open && (
+      {/* To everyone, not only a hiker who joined: somebody deciding whether
+          to join a list that does not open until May is the one this is for
+          (second Challenges review, 2026-10-01). */}
+      {!open && (
         <p className="challenges__note">
           {challenge.window.opens !== null && today < challenge.window.opens
             ? `Opens ${shortDate(challenge.window.opens)}. ${capitalised(CHALLENGE_WORDS.nounPlural)} count from then.`
-            : `Closed ${shortDate(challenge.window.closes ?? today)}. What you ${CHALLENGE_WORDS.past} stays here as a record.`}
+            : joined
+              ? `Closed ${shortDate(challenge.window.closes ?? today)}. What you ${CHALLENGE_WORDS.past} stays here as a record.`
+              : `Closed ${shortDate(challenge.window.closes ?? today)}.`}
         </p>
       )}
 
@@ -748,6 +767,9 @@ function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
     sent !== null && props.entryState?.kind === 'refused' ? props.entryState : null
   const draft = challenge.status === 'draft'
   const closed = challenge.window.closes !== null && today > challenge.window.closes
+  // Reachable only if the published window moved after the tags were made;
+  // the server would take the entry, and the club would count it early.
+  const early = challenge.window.opens !== null && today < challenge.window.opens
   const reward = challenge.reward
   const words = reward === null ? null : REWARD_WORDS[reward.kind]
   const [name, setName] = useState(props.defaultName ?? '')
@@ -777,9 +799,11 @@ function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
     ? `The ${challenge.orgShort} has not confirmed this list yet, so there is nobody to send anything to through OurHike.`
     : closed && challenge.window.closes !== null
       ? `Entries closed on ${formatDay(challenge.window.closes)}.`
-      : orgDomain === null
-        ? `This phone's copy of the list is too old to send anything to the ${challenge.orgShort}. It updates with the next data refresh.`
-        : null
+      : early && challenge.window.opens !== null
+        ? `Entries open on ${formatDay(challenge.window.opens)}.`
+        : orgDomain === null
+          ? `This phone's copy of the list is too old to send anything to the ${challenge.orgShort}. It updates with the next data refresh.`
+          : null
 
   // Where a sent entry stands: refused (with the server's own sentence and a
   // way back to the form), waiting in the outbox, or gone.
@@ -1025,12 +1049,19 @@ function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
                   value={contact}
                   autoComplete="email"
                   aria-invalid={contact.trim() !== '' && !contactOk}
+                  // The reason, read with the field: aria-invalid alone says
+                  // only that something is wrong.
+                  aria-describedby={
+                    contact.trim() !== '' && !contactOk
+                      ? 'challenge-email-error'
+                      : undefined
+                  }
                   onChange={(event) => setContact(event.target.value)}
                 />
               )}
             </label>
             {!words.physical && contact.trim() !== '' && !contactOk && (
-              <p className="challenges__note">
+              <p className="challenges__note" id="challenge-email-error">
                 That does not look like an email address.
               </p>
             )}
@@ -1040,9 +1071,17 @@ function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
                 checked={consented}
                 onChange={(event) => setConsented(event.target.checked)}
               />
+              {/* What happens to them, said as the server does it rather than
+                  as a promise: the entry is stored for the club to download,
+                  and only deleting the account or the club's organization
+                  removes it (app/core/account_deletion.py, routers/clubs.py's
+                  delete_org). It used to read "OurHike keeps nothing it did
+                  not need to send", which the stored copy outlived (second
+                  Challenges review, 2026-10-01). */}
               <span>
-                Send these to the {challenge.orgName} for {words.thing}. OurHike keeps
-                nothing it did not need to send.
+                Send these to the {challenge.orgName} for {words.thing}. OurHike holds
+                them for the club, and deleting your account removes them here; a copy the
+                club has downloaded is the club&rsquo;s to keep.
               </span>
             </label>
             <div className="challenge-actions">

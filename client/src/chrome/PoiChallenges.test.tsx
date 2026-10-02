@@ -3,6 +3,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { PoiChallenges } from './PoiChallenges'
 import { ATC_CHALLENGE, RECORD_CHALLENGE } from '../lib/challenges.fixtures'
+import { shortDate } from '../lib/challenges'
 import { EMPTY_CHALLENGE_STATE, join, tag } from '../lib/challengeProgress'
 
 afterEach(cleanup)
@@ -65,6 +66,24 @@ describe('a place card’s challenges', () => {
     ).state
     card(walked)
     expect(screen.getByText('done')).toBeInTheDocument()
+  })
+
+  it('offers no tag before the window opens, and says when it does', () => {
+    render(
+      <PoiChallenges
+        poiIds={[MCAFEE]}
+        challenges={[ATC_CHALLENGE]}
+        state={joined}
+        today="2027-04-01"
+        onTag={vi.fn()}
+        onUntag={vi.fn()}
+        onJoin={vi.fn()}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: /^Tag it/ })).not.toBeInTheDocument()
+    expect(
+      screen.getAllByText(`opens ${shortDate(ATC_CHALLENGE.window.opens!)}`),
+    ).toHaveLength(2)
   })
 
   it('offers to join a list the hiker is not on, and nothing else about it', async () => {

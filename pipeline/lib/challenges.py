@@ -38,8 +38,9 @@ only ever be 24 has been handed a promise nobody can keep.
 
 SEALED MYSTERY ITEMS
 
-A mystery item may carry a `reveal_on` date. Exported before that date, its
-title does not appear in the artifact in the clear: it ships as
+A mystery item may carry a `reveal_on` date. Exported on or before that
+date (the build's UTC day - see `resolve_item` for why the day itself is included),
+its title does not appear in the artifact in the clear: it ships as
 `sealed_title`, base64 of the UTF-8 text, and `title` is null. The phone
 decodes it on or after `reveal_on` with no network, which is what lets a
 reveal "open on the phone on the day, with no signal" (the handoff's flow
@@ -89,18 +90,27 @@ REWARD_KINDS = ("patch", "postcard", "sticker", "drawing")
 STATUSES = ("draft", "published")
 
 #: Tag radius, in metres from the POI, when a match does not give its own.
-#: @unvalidated - these are the handoff's examples (150 m for a named place,
-#: 60 m for "any shelter"), not a measurement. What would settle them: tag
-#: prompts from real tracks, counting how often a hiker who stood at the place
-#: was missed (radius too small) against how often one who walked past a
-#: side trail's junction was asked (too large). Measured 2026-09-30 against
-#: release 2026-09-24-2, for scale: the median ATC shelter sits 63 m from the
-#: centerline and the 75th percentile 140 m, so 60 m around the shelter means
-#: "went to it", not "walked past its side trail" - which is the intent.
+#:
+#: WHAT IT DOES TODAY: only this exporter reads it. A named place farther from
+#: the centerline than its radius is refused unless it says `off_trail`
+#: (`_place`), so the radius is the line between "on this trail" and "a
+#: detour". The phone tags by walked miles - a place whose mile the day's walk
+#: covered (the maintainer's choice by poll, 2026-09-30) - and never by
+#: distance from the POI, so the published `radius_m` is unread there, and
+#: `poi_type`'s 60 m gates nothing at all (a type match names no place).
+#:
+#: @unvalidated - the figures are the handoff's examples (150 m for a named
+#: place, 60 m for "any shelter"), not a measurement. For scale, measured
+#: 2026-09-30 against release 2026-09-24-2: the median ATC shelter sits 63 m
+#: from the centerline and the 75th percentile 140 m. What would settle them
+#: is a phone that does tag by distance, and tag prompts from real tracks
+#: counting misses (too small) against side-trail junctions asked (too
+#: large).
 DEFAULT_RADIUS_M = {"place": 150, "places_all": 150, "poi_type": 60}
 
-#: Bounds a club's own radius is held to. Below 10 m a phone's own fix error
-#: decides the answer; above 2 km a "place" is a region.
+#: Bounds a club's own radius is held to. Reasoned: below 10 m a phone's own
+#: fix error would decide the answer, if a phone ever tagged by distance
+#: (see DEFAULT_RADIUS_M - none does yet); above 2 km a "place" is a region.
 MIN_RADIUS_M = 10
 MAX_RADIUS_M = 2000
 

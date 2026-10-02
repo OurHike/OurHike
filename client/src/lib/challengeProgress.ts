@@ -22,6 +22,7 @@ import { localDay } from './passedToday'
 import type { MileRange } from './walkedMiles'
 import { mergeRange, walkedWithin } from './walkedMiles'
 import {
+  isOpen,
   isPlaceItem,
   isSealed,
   itemPlaces,
@@ -270,6 +271,26 @@ export function itemDoneAt(
 }
 
 /**
+ * How a completed item says it was done when it leaves the phone: `hand` if
+ * any tag it rests on was made by hand. A Triple Crown with two peaks pressed
+ * on their cards and the third walked was sent as `gps` - the completing
+ * tag's own - and the club's CSV read all three as walked (second Challenges
+ * review, 2026-10-01). Rounded toward the claim a club checks harder.
+ */
+export function completionHow(
+  item: ChallengeItem,
+  challengeId: string,
+  tags: readonly ChallengeTag[],
+): ChallengeTag['how'] {
+  return tags.some(
+    (tag) =>
+      tag.challengeId === challengeId && tag.itemId === item.id && tag.how === 'hand',
+  )
+    ? 'hand'
+    : 'gps'
+}
+
+/**
  * Adds a tag and says whether that completed its item - which is the moment
  * a tag leaves the phone (lib/useChallenges.ts enqueues it). A `places_all`
  * item completes on its last place, so Dragon's Tooth on Monday and McAfee
@@ -306,7 +327,8 @@ export function tag(
  *
  *  `poi` narrows it to one place, which is what a place card means: the pill
  *  on McAfee Knob's card un-tags McAfee Knob, not the Triple Crown's other
- *  two peaks. Without it, every hand tag of the item goes. */
+ *  two peaks. Without it, every hand tag of the item goes. See `atPlace` for
+ *  the tags that carry no place. */
 export function untag(
   state: ChallengeState,
   challengeId: string,
@@ -319,7 +341,7 @@ export function untag(
         tag.challengeId === challengeId &&
         tag.itemId === itemId &&
         tag.how === 'hand' &&
-        (poi === undefined || tag.poi === poi)
+        atPlace(tag, poi)
       ),
   )
   return tags.length === state.tags.length ? state : { ...state, tags }
@@ -331,11 +353,11 @@ export function untag(
  * going up and pressed Tag all anyway. `poi` narrows it to one place, as for
  * `untag`.
  *
- * WHAT IT CANNOT UNDO: a tag that already reached the server stays there, as
- * one more count in the club's numbers. It leaves the finish, so it is never
- * in an entry. The kinds that tag themselves are not offered it (the sheet
- * does not open for them): autoTags would put the same tag back the moment
- * it next read the same day.
+ * A tag that already reached the server is taken back there too:
+ * lib/useChallenges.ts queues the removal when the item stops being done. The
+ * kinds that tag themselves are not offered this (the sheet does not open for
+ * them), because autoTags would put the same tag back the next time it read
+ * the same day.
  */
 export function removeTag(
   state: ChallengeState,
@@ -345,13 +367,21 @@ export function removeTag(
 ): ChallengeState {
   const tags = state.tags.filter(
     (tag) =>
-      !(
-        tag.challengeId === challengeId &&
-        tag.itemId === itemId &&
-        (poi === undefined || tag.poi === poi)
-      ),
+      !(tag.challengeId === challengeId && tag.itemId === itemId && atPlace(tag, poi)),
   )
   return tags.length === state.tags.length ? state : { ...state, tags }
+}
+
+/**
+ * Whether `tag` is the one a place card's `poi` means. Only a `places_all`
+ * tag carries a place (`tag` drops it for every other kind), so a tag
+ * without one is the item's only tag, whichever of its places' cards asks.
+ * Before this, the "Tagged" pill on a single-place item's card compared
+ * `undefined` with the card's POI id and removed nothing (second Challenges
+ * review, 2026-10-01).
+ */
+function atPlace(tag: ChallengeTag, poi: string | undefined): boolean {
+  return poi === undefined || tag.poi === undefined || tag.poi === poi
 }
 
 /** The private register line. Never enqueued, never in an entry. */
@@ -467,7 +497,7 @@ export function matchDay(input: DayInput): DayCandidate[] {
   if (todayRanges.length === 0) return []
   const out: DayCandidate[] = []
   for (const challenge of input.joined) {
-    if (challenge.trail !== trail || !isOpenOn(challenge, today)) continue
+    if (challenge.trail !== trail || !isOpen(challenge, today)) continue
     const tags = tagsFor(state, challenge.id)
     for (const item of challenge.items) {
       if (isSealed(item, today) || isItemDone(item, challenge.id, tags)) continue
@@ -556,7 +586,7 @@ export function autoTags(
     if (challenge.trail !== trail) continue
     const joinedAt =
       state.joined.find((entry) => entry.challengeId === challenge.id)?.at ?? ''
-    const open = isOpenOn(challenge, today)
+    const open = isOpen(challenge, today)
     for (const item of challenge.items) {
       if (
         isSealed(item, today) ||
@@ -641,7 +671,13 @@ export function autoTags(
         place = { poi: '', name: item.title ?? '', mile: 0 }
       }
       if (done && place !== null) {
-        const at = workedOn === null ? now : localNoon(workedOn, now)
+        // Never later than now: today's hours logged at 9 am would otherwise
+        // carry a noon that has not happened yet, and an `authored_at` in the
+        // future is what a wrong clock looks like to the server.
+        const at =
+          workedOn === null
+            ? now
+            : new Date(Math.min(localNoon(workedOn, now).getTime(), now.getTime()))
         const result = tag(state, challenge, item, { at, how: 'gps' })
         state = result.state
         if (result.completed) completed.push({ challenge, item, place })
@@ -797,7 +833,7 @@ export function browse(input: {
   const byClubAndOpen = input.challenges.filter(
     (challenge) =>
       (filters.org === null || challenge.org === filters.org) &&
-      (!filters.openNow || isOpenOn(challenge, today)),
+      (!filters.openNow || isOpen(challenge, today)),
   )
   const shown = byClubAndOpen.filter(
     (challenge) => filters.trail === null || challenge.trail === filters.trail,
@@ -853,11 +889,6 @@ function localNoon(day: string, fallback: Date): Date {
   const [year, month, date] = day.split('-').map(Number)
   if (!year || !month || !date) return fallback
   return new Date(year, month - 1, date, 12)
-}
-
-function isOpenOn(challenge: Challenge, today: string): boolean {
-  const { opens, closes } = challenge.window
-  return (opens === null || today >= opens) && (closes === null || today <= closes)
 }
 
 // ---------------------------------------------------------------------------

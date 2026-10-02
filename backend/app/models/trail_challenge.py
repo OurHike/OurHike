@@ -98,11 +98,29 @@ class ChallengeEntry(Base):
     email = Column(String(320), nullable=True)
     mailing_address = Column(Text, nullable=True)
 
+    # The club the entry was given to - the one that owned the challenge id
+    # and had proved the publisher's domain when it arrived. The CSV reads by
+    # this, not by the id, so an id that later changes hands (an org deleted,
+    # the id saved again by another) never hands these entries over.
+    #
+    # Nullable in the database for the rollout only (d922b35687d9's
+    # docstring): every insert this code makes writes it, and NULL means a
+    # row nobody can download.
+    club_id = Column(String, ForeignKey("clubs.id"), nullable=True, index=True)
+
     # The item ids the hiker says they tagged, as sent. Not checked against
     # `challenge_tags`: a tag can still be queued on the phone when the entry
-    # arrives, and the club, not this server, decides what counts. The CSV
-    # says which of them were tagged by hand.
+    # arrives, and the club, not this server, decides what counts.
     item_ids = Column(JSON, nullable=False)
+
+    # Of those, the ones this server held as tagged by hand, and the ones it
+    # held no tag for at all, AS THE ENTRY ARRIVED. Snapshotted rather than
+    # read live at download: a hiker who pressed Leave after entering took
+    # their tags back, and a CSV computed then read every item as untagged -
+    # an honest entry looking fabricated (second security review, 2026-10-01).
+    # Nullable for club_id's reason; NULL prints as an empty cell.
+    hand_item_ids = Column(JSON, nullable=True)
+    untagged_item_ids = Column(JSON, nullable=True)
 
     # The no-reward finish screen's "Let the club know you finished": a name
     # and the day, and never contact details or a list. Accepted whenever the

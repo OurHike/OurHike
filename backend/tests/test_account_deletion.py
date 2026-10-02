@@ -189,6 +189,7 @@ def _furnish(db, profile_id: str, *, hours_state=HoursState.claimed) -> None:
             id=f"entry-{profile_id}",
             user_id=profile_id,
             challenge_id="atc-summer-bucket-list-2027",
+            club_id=club.id,
             name="Jane Doe",
             email="jane@example.com",
             item_ids=["mcafee-knob"],

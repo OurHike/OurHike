@@ -56,8 +56,8 @@ per download):
 | `ourhike:hike` — the hike a person says they are on ([#335](https://github.com/OurHike/OurHike/issues/335) — *There is nowhere to say which way you are walking*) | `ourhike:trail-data-partial`, `ourhike:trails-merged-chains`, `ourhike:released-bytes` — build state of the above |
 | `ourhike:plan` — the single plan that predates trips, read once and migrated | `ourhike:camera` — where the map was last left |
 | `ourhike:my-photos:<poiId>` — the hiker's own 640 px photos | `ourhike:outbox` — a queue, and see below |
-| `ourhike:walked-miles`, `ourhike:passed-today` — where they have actually been | `ourhike:conditions:challenges.json` — clubs' challenges ([#1780](https://github.com/OurHike/OurHike/issues/1780)), published data, re-downloadable |
-| `ourhike:challenge-state` — the challenges they joined and what they tagged ([#1780](https://github.com/OurHike/OurHike/issues/1780)); device-only until its sync is built, and its tags also reach the server | |
+| `ourhike:walked-miles`, `ourhike:passed-today` — where they have actually been | `ourhike:conditions:challenges.json` — clubs' challenges ([#1780 — Let a club publish a challenge — places on its own trails that hikers opt into and tag at camp — starting with the ATC's A.T. Summer Bucket List](https://github.com/OurHike/OurHike/issues/1780)), published data, re-downloadable |
+| `ourhike:challenge-state` — the challenges they joined and what they tagged; device-only until its sync is built, and its tags also reach the server | |
 | `ourhike:pace` — see the pace issue below, which is deciding this exact question | |
 | `ourhike:atc-alerts-silenced-through` — a dismissal | |
 

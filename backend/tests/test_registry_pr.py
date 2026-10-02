@@ -187,6 +187,37 @@ class TestAChallenge:
         assert recorder.paths_written() == ["pipeline/reference/challenges/ramapo-trail-conference/harriman-shelters.json"]
         assert opened.number == 42
 
+    def test_it_records_the_proved_domain_in_the_file_and_the_body(self, client, db_session, enabled):
+        """The pipeline refuses a file saved by a domain publishers.json does
+        not name for its org, so the domain has to travel in the file."""
+        club = make_org(db_session, state=OrgState.claimed)
+        recorder = Recorder()
+
+        open_challenge_pr(club, "harriman-shelters", self.DEFINITION, client=httpx.Client(transport=recorder.transport()))
+
+        blob = next(body for method, path, body in recorder.calls if method == "POST" and path.endswith("/git/blobs"))
+        import base64
+
+        assert '"published_by_domain": "ramapotrails.org"' in base64.b64decode(blob["content"]).decode("utf-8")
+        pull = next(body for method, path, body in recorder.calls if method == "POST" and path.endswith("/pulls"))
+        assert "`ramapotrails.org`" in pull["body"]
+        assert "#1780" not in pull["body"]
+
+    def test_a_club_that_proved_a_publishers_domain_writes_under_that_publisher(self, client, db_session, enabled):
+        """The real ATC registered under any slug still publishes `atc-…`
+        into `atc/`, the directory the pipeline reads as the ATC's."""
+        club = make_org(db_session, slug="appalachian-trail-conservancy", domain="appalachiantrail.org", state=OrgState.claimed)
+        recorder = Recorder()
+
+        open_challenge_pr(
+            club,
+            "atc-summer-bucket-list-2027",
+            {"id": "atc-summer-bucket-list-2027", "org": "atc", "name": "A.T. Summer Bucket List"},
+            client=httpx.Client(transport=recorder.transport()),
+        )
+
+        assert recorder.paths_written() == ["pipeline/reference/challenges/atc/atc-summer-bucket-list-2027.json"]
+
     def test_it_never_merges(self, client, db_session, enabled):
         club = make_org(db_session, state=OrgState.claimed)
         recorder = Recorder()
@@ -223,4 +254,8 @@ def test_a_club_name_reaches_a_commit_and_a_pull_request_as_inert_text():
 
     assert _plain("Closes #1 @maintainer [x](y)") == "Closes 1 maintainer xy"
     assert _plain("@#") == "An organization"
+    # A URL loses what makes it one; a GH- reference is broken apart.
+    assert _plain("Fixes https://github.com/o/r/issues/1") == "Fixes httpsgithub.comorissues1"
+    assert _plain("Fixes GH-2") == "Fixes GH 2"
+    assert len(_plain("x" * 100_000)) == 120
     assert _plain("Ramapo Trail Conference") == "Ramapo Trail Conference"

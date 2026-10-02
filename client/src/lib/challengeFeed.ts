@@ -1,5 +1,5 @@
 // Reading `challenges.json` into the shapes lib/challenges.ts declares: the
-// validation, the kept copy and the fetch (#1780, features/CHALLENGES.md).
+// validation, the kept copy and the fetch (features/CHALLENGES.md).
 //
 // A MODULE OF ITS OWN SO IT IS NOT EAGER. lib/useChallenges.ts loads it with
 // import() from the effects that read the list, which run only once the

@@ -28,6 +28,7 @@ import type { Challenge, ChallengeItem } from './challenges'
 import { NO_CHALLENGES } from './challenges'
 import {
   autoTags,
+  completionHow,
   hideSuggestion,
   isItemDone,
   itemDoneAt,
@@ -57,6 +58,11 @@ import {
 export interface ChallengesApi {
   /** Every challenge this phone holds, joined or not. */
   all: readonly Challenge[]
+  /** Whether a list has been read at all - the kept copy or the release.
+   *  Before then `all` is empty because nothing has been read, which is not
+   *  the same as a release that publishes no challenges, and only the
+   *  second means a joined one was withdrawn. */
+  loaded: boolean
   /** The ones this hiker joined, in the published order. */
   joined: readonly Challenge[]
   state: ChallengeState
@@ -95,6 +101,7 @@ export function useChallenges(
   auto: Omit<AutoInput, 'joined' | 'state'> | null,
 ): ChallengesApi {
   const [all, setAll] = useState<readonly Challenge[]>(NO_CHALLENGES)
+  const [loaded, setLoaded] = useState(false)
   const [state, setState] = useState<ChallengeState>(readChallengeState)
   const fetched = useRef(false)
   const queued = useRef(onQueued)
@@ -108,8 +115,12 @@ export function useChallenges(
     void import('./challengeFeed')
       .then((feed) => feed.recallChallenges())
       .then((kept) => {
-        if (wanted && !fetched.current && kept !== null) setAll(kept)
+        if (wanted && !fetched.current && kept !== null) {
+          setAll(kept)
+          setLoaded(true)
+        }
       })
+      // No kept copy readable: the release fetch below is the other read.
       .catch(() => {})
     return () => {
       wanted = false
@@ -126,7 +137,10 @@ export function useChallenges(
         if (!wanted || fresh === null) return
         fetched.current = true
         setAll(fresh)
+        setLoaded(true)
       })
+      // fetchChallenges catches its own network failures; this is the
+      // chunk itself failing to load. The list keeps what it had.
       .catch(() => {})
     return () => {
       wanted = false
@@ -154,6 +168,11 @@ export function useChallenges(
     (challengeId: string, itemId: string, how: TagHow, at: Date) => {
       void enqueueChallengeTag({ challenge_id: challengeId, item_id: itemId, how }, at)
         .then(() => queued.current())
+        // IndexedDB refused the write (private mode, a full disk). The tag
+        // stays in the phone's record and counts here; it never reaches the
+        // club's numbers, and nothing retries it - rejoining is the only
+        // path that queues done items again. Not surfaced: every other
+        // outbox door fails the same quiet way.
         .catch(() => {})
     },
     [],
@@ -162,6 +181,8 @@ export function useChallenges(
   const enqueueUntag = useCallback((challengeId: string, itemId: string | null) => {
     void enqueueChallengeUntag({ challenge_id: challengeId, item_id: itemId })
       .then(() => queued.current())
+      // As for a tag: the server keeps the tag it had, one more count in the
+      // club's numbers and never in an entry, which reads the phone's record.
       .catch(() => {})
   }, [])
 
@@ -188,7 +209,13 @@ export function useChallenges(
       const result = tag(stateRef.current, challenge, item, { poi, at, how })
       commit(result.state)
       // A double tap that changes nothing completes nothing, so cannot queue.
-      if (result.completed) enqueueTag(challenge.id, item.id, how, at)
+      if (result.completed)
+        enqueueTag(
+          challenge.id,
+          item.id,
+          completionHow(item, challenge.id, result.state.tags),
+          at,
+        )
     },
     [commit, enqueueTag],
   )
@@ -209,7 +236,13 @@ export function useChallenges(
         next = result.state
       }
       commit({ ...next, answeredDay: today })
-      for (const done of completed) enqueueTag(done.challenge.id, done.item.id, 'gps', at)
+      for (const done of completed)
+        enqueueTag(
+          done.challenge.id,
+          done.item.id,
+          completionHow(done.item, done.challenge.id, next.tags),
+          at,
+        )
     },
     [commit, enqueueTag],
   )
@@ -238,7 +271,7 @@ export function useChallenges(
       enqueueTag(
         done.challenge.id,
         done.item.id,
-        'gps',
+        completionHow(done.item, done.challenge.id, result.state.tags),
         made ? new Date(made.at) : new Date(),
       )
     }
@@ -246,6 +279,7 @@ export function useChallenges(
 
   return {
     all,
+    loaded,
     joined,
     state,
     join: useCallback(
@@ -261,7 +295,13 @@ export function useChallenges(
         const tags = tagsFor(next, challengeId)
         for (const item of challenge.items) {
           const made = itemDoneAt(item, challengeId, tags)
-          if (made !== null) enqueueTag(challengeId, item.id, made.how, new Date(made.at))
+          if (made !== null)
+            enqueueTag(
+              challengeId,
+              item.id,
+              completionHow(item, challengeId, tags),
+              new Date(made.at),
+            )
         }
       },
       [commit, enqueueTag, all],
@@ -328,7 +368,22 @@ export function useChallenges(
             })
             queued.current()
           })
-          .catch(() => {})
+          .catch(() => {
+            // Never queued, so never going: take the "sent" record back, and
+            // the finish screen shows the form again rather than "waiting"
+            // for an entry the outbox does not hold.
+            const current = stateRef.current
+            commit({
+              ...current,
+              sent: current.sent.filter(
+                (sent) =>
+                  !(
+                    sent.challengeId === entry.challenge_id &&
+                    sent.at === at.toISOString()
+                  ),
+              ),
+            })
+          })
         const current = stateRef.current
         commit({
           ...current,

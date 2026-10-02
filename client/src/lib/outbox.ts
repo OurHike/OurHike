@@ -363,9 +363,10 @@ export interface OutboxItem {
   challengeEntry?: ChallengeEntryDraft
   /**
    * A challenge tag taken back (#1780) - the ninth cargo. Queued behind the
-   * tag it undoes, and the flush is in order, so a tag made and removed with
-   * no signal goes out as a tag and then its removal, and the server ends
-   * where the phone did.
+   * tag it undoes, and `flushOutbox` keeps one challenge's tags, removals and
+   * entry in queue order (`challengeOf`), so a tag made and removed with no
+   * signal goes out as a tag and then its removal, and the server ends where
+   * the phone did.
    */
   challengeUntag?: ChallengeUntagDraft
   /**
@@ -879,7 +880,23 @@ export async function flushOutbox(
   // become sendable partway down a list because the loop got to it late.
   const now = Date.now()
 
+  // Challenges whose earlier item did not go this pass. The loop otherwise
+  // skips past an item that failed for want of signal and carries on, which
+  // is right for reports and wrong here: a removal that overtook the tag it
+  // undoes would land first, and the tag after it would leave the server
+  // holding a tag the phone took back. An entry likewise waits behind its
+  // challenge's tags, because the server reads them as the entry arrives
+  // (`untagged_item_ids`). Per challenge, so one stuck list holds back
+  // nothing else.
+  const waiting = new Set<string>()
+
   for (const item of queue) {
+    const challenge = challengeOf(item)
+    if (challenge !== null && waiting.has(challenge)) {
+      failed += 1
+      continue
+    }
+
     // Inside a live undo window (#1133). Skipped without touching it: the
     // hiker has not retracted it and nothing is wrong with it, it is simply
     // not eligible yet. The next flush - and there is always a next flush,
@@ -936,6 +953,7 @@ export async function flushOutbox(
       const reason = classify(error)
       if (reason === null) {
         // The usual cause is simply no signal. Left exactly as it was.
+        if (challenge !== null) waiting.add(challenge)
         continue
       }
       await markFailed(item.id, reason)
@@ -946,6 +964,19 @@ export async function flushOutbox(
   }
 
   return { sent, failed, stuck, held }
+}
+
+/** The challenge a tag, a removal or an entry belongs to, or null for every
+ *  other cargo - the key `flushOutbox` keeps in order. A refused item (a
+ *  4xx, `stuck`) does not hold the rest back: the server never took it, so
+ *  nothing behind it can land out of order against it. */
+function challengeOf(item: OutboxItem): string | null {
+  return (
+    item.challengeTag?.challenge_id ??
+    item.challengeUntag?.challenge_id ??
+    item.challengeEntry?.challenge_id ??
+    null
+  )
 }
 
 async function markFailed(id: string, reason: string): Promise<void> {

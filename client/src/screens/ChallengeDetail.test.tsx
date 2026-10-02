@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { useState } from 'react'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ChallengeDetail, type ChallengeDetailProps } from './ChallengeDetail'
@@ -8,6 +9,7 @@ import { ATC_CHALLENGE, RECORD_CHALLENGE } from '../lib/challenges.fixtures'
 import {
   EMPTY_CHALLENGE_STATE,
   join,
+  removeTag,
   tag,
   type ChallengeState,
 } from '../lib/challengeProgress'
@@ -271,12 +273,18 @@ describe('Browse', () => {
   })
 })
 
-// The adversarial review of 2026-09-30 (features/CHALLENGES.md): the holes a
-// hiker could fall into on these screens, each held closed.
-describe('holes the review found, closed', () => {
+// From the reviews of 2026-09-30 and 2026-10-01 (features/CHALLENGES.md, "The
+// reviews"): the places a hiker could fall through on these screens.
+describe('the window, Triple Crown peaks, the tagged-place sheet and a closed list', () => {
   it('offers no new tag outside the window, and says when it opens', () => {
     detail({ today: '2027-05-01' })
     expect(screen.queryByRole('button', { name: /^Tag it/ })).toBeNull()
+    expect(screen.getByText(/Opens May 15\. Tags count from then\./)).toBeInTheDocument()
+  })
+
+  it('tells a hiker who has not joined when the list opens, too', () => {
+    detail({ today: '2027-05-01', state: EMPTY_CHALLENGE_STATE })
+    expect(screen.getByRole('button', { name: 'Join' })).toBeInTheDocument()
     expect(screen.getByText(/Opens May 15\. Tags count from then\./)).toBeInTheDocument()
   })
 
@@ -333,6 +341,46 @@ describe('holes the review found, closed', () => {
       item(ATC_CHALLENGE, 'mcafee-knob'),
       undefined,
     )
+  })
+
+  it('puts focus on the title when Remove takes the row it came from away', async () => {
+    // The removal re-renders the row as text, so the button that opened the
+    // sheet is gone; focus must not fall to <body>.
+    const start = tag(
+      join(EMPTY_CHALLENGE_STATE, ATC_CHALLENGE.id, new Date('2027-06-01T12:00:00Z')),
+      ATC_CHALLENGE,
+      item(ATC_CHALLENGE, 'mcafee-knob'),
+      { at: new Date('2027-07-02T15:00:00Z'), how: 'gps' },
+    ).state
+    function Harness() {
+      const [state, setState] = useState(start)
+      return (
+        <ChallengeDetail
+          challenge={ATC_CHALLENGE}
+          state={state}
+          today={TODAY}
+          walked={[]}
+          signedIn={false}
+          onJoin={vi.fn()}
+          onLeave={vi.fn()}
+          onTag={vi.fn()}
+          onUntag={vi.fn()}
+          onSetNote={vi.fn()}
+          onSendEntry={vi.fn()}
+          onRemoveTag={(removed, poi) =>
+            setState((current) => removeTag(current, ATC_CHALLENGE.id, removed.id, poi))
+          }
+        />
+      )
+    }
+    render(<Harness />)
+    await userEvent.click(
+      screen.getByRole('button', { name: /Take the McAfee Knob shuttle/ }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Remove this tag' }))
+    expect(
+      screen.getByRole('heading', { level: 1, name: ATC_CHALLENGE.name }),
+    ).toHaveFocus()
   })
 
   it('says why a record cannot tell its club after the window closed, rather than going quiet', async () => {
@@ -445,6 +493,10 @@ describe('holes the review found, closed', () => {
     expect(
       screen.getByText('That does not look like an email address.'),
     ).toBeInTheDocument()
+    // Read with the field, not only beside it.
+    expect(screen.getByRole('textbox', { name: /email/i })).toHaveAccessibleDescription(
+      'That does not look like an email address.',
+    )
   })
 })
 

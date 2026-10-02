@@ -701,9 +701,17 @@ export interface MapScreenProps {
    * region and no plate change near a challenge place.
    * chrome/MapScreen.test.tsx renders with and without them and compares.
    */
+  /** The challenge places this hiker joined (features/CHALLENGES.md, frame 1), drawn by
+   *  map/challengeLayers.ts. These four come from chrome/challengePanel.ts as
+   *  one spread; that file says when each is set. */
   challengePins?: ChallengePinFeatureCollection
+  /** Whether the layer is drawn: the hiker's switch is on AND the row is
+   *  offered (a joined challenge on the chosen trail with a place to pin). */
   showChallengePins?: boolean
+  /** The switch's own position, for the Legend row - true even while the
+   *  layer is not offered, so the row comes back as the hiker left it. */
   challengePlacesShown?: boolean
+  /** Flips the switch; absent whenever the row is not offered. */
   onToggleChallengePlaces?: () => void
   /**
    * What the place card's "On your challenges" section needs (#1780, frames

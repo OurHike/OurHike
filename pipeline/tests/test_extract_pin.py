@@ -122,6 +122,47 @@ def test_a_refused_run_uploads_no_as_landed_copy(registry, store, requests_mock)
     assert not landed_root(store).exists(), "a copy of a load that never committed is not an input anybody may read"
 
 
+def test_a_conditions_leg_uploads_no_as_landed_copy_of_a_table_it_refused_on_its_own(registry, store, requests_mock):
+    """A leg refuses a club's table on its own and extracts the rest again (_run.py's _extract_and_load), and the
+    copy starts again with that second extract: the refused closures layer's first-pass file, an empty
+    FeatureCollection, must never be uploaded as if that layer had loaded empty, and no row is copied twice."""
+    FakeLayer(requests_mock, LINES_URL, [feature(1), feature(2)])
+    FakeLayer(requests_mock, CLOSURES_URL, [], count_fails=True)
+
+    report = run_pipeline(
+        "conditions_ua",
+        store["bucket_url"],
+        resources=[lines(), closures()],
+        pipelines_dir=store["pipelines_dir"],
+        as_landed=True,
+    )
+
+    assert set(report.isolated) == {closures().name}
+    assert report.as_landed == {"raw_testclub__trails": "trails.geojson"}
+    root = landed_root(store) / report.load_id
+    assert json.loads((root / _run.AS_LANDED_INDEX).read_text()) == report.as_landed
+    assert not (root / "closures_layer.geojson").exists()
+    trails = json.loads((root / "trails.geojson").read_text())
+    assert [item["properties"]["OBJECTID"] for item in trails["features"]] == [1, 2]
+
+
+def test_only_and_cross_lane_inputs_together_are_a_usage_error(store):
+    with pytest.raises(SystemExit) as exit_:
+        _run.main(
+            [
+                "--lane",
+                "monthly",
+                "--bucket-url",
+                store["bucket_url"],
+                "--only",
+                "raw_registry__sources",
+                "--cross-lane-inputs",
+            ]
+        )
+
+    assert exit_.value.code == 2
+
+
 def test_socrata_and_opentrail_ids_go_back_where_their_fetchers_files_hold_them():
     socrata = SocrataDataset(key="greenways", club="testclub", type="trail_lines")
     row = {"name": "Greenway", "_socrata_id": "row-7", "geometry": '{"type":"Point","coordinates":[1,2]}'}

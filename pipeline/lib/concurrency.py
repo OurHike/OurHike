@@ -135,6 +135,20 @@ SHARED_GROUND_MIN_LENGTH_M = 50.0
 # a peak-memory reading per batch on the full network would settle it.
 PAIR_BATCH = 2_000
 
+# The tree query reads each record cut into runs of at most this many
+# coordinates, consecutive runs sharing their end vertex (#1796). Some
+# sources publish a whole national scenic trail as a few features: on the
+# 2026-10-02 capture of the network, cdtc_centerline:3 alone is 704,095
+# vertices, where the 99th percentile is 613. One such line's box covers
+# states, so every trail in it was a candidate, and each candidate's distance
+# was measured against all 704,095 vertices: about 17 minutes of a single
+# core (run 162 reached its pair count 1,057 s into the pass). Chunked, the
+# same query took 17.7 s on the same 221,607 records. Any value of 2 or more
+# answers the same pairs, because a record's distance to another is the least
+# of its chunks' (Reasoned; measured identical on that capture), so this
+# trades tree size against work per candidate and nothing else.
+QUERY_CHUNK_VERTICES = 256
+
 # The source key export_trails.py gives ATC's centerline. Its records are the
 # geometry donor of every pair they are in, for the reason in the docstring.
 AT_CENTERLINE_SOURCE = "centerline"
@@ -196,6 +210,38 @@ def _carried(record: dict) -> dict:
     return {field: record[field] for field in _CARRIED if record.get(field) is not None}
 
 
+def _query_chunks(geoms: np.ndarray, most: int) -> tuple[np.ndarray, np.ndarray]:
+    """Every part of every geometry, a part of more than `most` coordinates
+    cut into runs of at most `most` that share their end vertices, and the
+    index of the geometry each run came from (QUERY_CHUNK_VERTICES)."""
+    parts, owners = shapely.get_parts(geoms, return_index=True)
+    counts = shapely.get_num_coordinates(parts)
+    short = counts <= most
+    runs, run_owners = [parts[short]], [owners[short]]
+    for part, owner, count in zip(parts[~short], owners[~short], counts[~short]):
+        coords = shapely.get_coordinates(part)
+        starts = range(0, int(count) - 1, most - 1)
+        runs.append(np.array([shapely.linestrings(coords[start : start + most]) for start in starts], dtype=object))
+        run_owners.append(np.full(len(starts), owner))
+    return np.concatenate(runs), np.concatenate(run_owners)
+
+
+def _dropped_whole(donors: list[dict], partners: list[dict]) -> str | None:
+    """Why the blaze rule below would drop every piece of a pair, before any
+    is built, or None. Each piece is judged on the donor and partner records
+    nearest its midpoint, always two of these, so a side with no painted
+    record, or one blaze across both sides, drops them all. On the
+    2026-10-02 capture that is 96,564 of 98,949 pairs, 95,762 of them with no
+    paint on one side: the national scenic trails' centerlines are `Unknown`,
+    and each of their pairs had buffered a line of up to 704,095 vertices to
+    publish nothing (#1796)."""
+    if not any(_painted(record) for record in donors) or not any(_painted(record) for record in partners):
+        return "unpainted"
+    if len({record.get("blaze_color") for record in (*donors, *partners)}) == 1:
+        return "same_blaze"
+    return None
+
+
 def find_shared_ground(
     records: list[dict],
     *,
@@ -219,8 +265,19 @@ def find_shared_ground(
     Works trail against trail, never record against record: a trail one
     organization publishes in 40 m segments shares its ground in one piece,
     and the minimum length is judged on the piece. Only the records of each
-    trail near the other trail are merged for that, so a 500 km route is
-    never buffered whole.
+    trail near the other trail are merged for that, so a 500 km route in
+    segments is never buffered whole. A route published as one record is: a
+    pair the blaze rule drops whole is skipped before anything is built
+    (`_dropped_whole`), which takes every national scenic trail centerline on
+    the 2026-10-02 capture out of the buffers, but a painted record that long
+    would still be buffered whole. The largest pair left to build on that
+    capture has 15,845 vertices.
+
+    `dropped_short`, `dropped_unpainted` and `dropped_same_blaze` count the
+    pieces of the pairs that were built. `skipped_unpainted_pairs` and
+    `skipped_same_blaze_pairs` count the pairs that were not, whose pieces
+    would all have been dropped (#1796). Skipping changes no feature, no id,
+    no order and neither `stretches` nor `shared_m`.
     """
     if tolerance_m <= 0:
         raise ValueError(f"tolerance_m must be > 0, got {tolerance_m}")
@@ -245,14 +302,19 @@ def find_shared_ground(
     # query answers the same (record, neighbour) pairs either way, and what
     # is built from them below is sets, so their order changes nothing.
     geoms = reproject(from_wkt_all([record["wkt"] for record, _ in keyed]), _TO_METRIC)
-    tree = STRtree(geoms)
     ranks = [_rank(record, key) for record, key in keyed]
 
     # (donor trail, partner trail) -> the records of each that come within
     # the tolerance of the other. The donor is the lower-ranked trail: the
     # A.T.'s centerline, else the name that sorts first.
     near: dict[tuple[str, str], tuple[set[int], set[int]]] = defaultdict(lambda: (set(), set()))
-    record_indices, neighbour_indices = tree.query(geoms, predicate="dwithin", distance=tolerance_m).tolist()
+    # The tree holds chunks (QUERY_CHUNK_VERTICES), and the pairs are
+    # their records', each once.
+    chunks, owners = _query_chunks(geoms, QUERY_CHUNK_VERTICES)
+    chunk_hits, neighbour_hits = STRtree(chunks).query(chunks, predicate="dwithin", distance=tolerance_m)
+    width = max(len(geoms), 1)
+    found = np.unique(owners[chunk_hits].astype(np.int64) * width + owners[neighbour_hits])
+    record_indices, neighbour_indices = (found // width).tolist(), (found % width).tolist()
     for i, j in zip(record_indices, neighbour_indices):
         key = keyed[i][1]
         other_key = keyed[j][1]
@@ -283,11 +345,21 @@ def find_shared_ground(
     # geometry method's default - and `shapely.buffer`'s own default is 8,
     # which would round every buffer's ends more coarsely and move the shared
     # stretches' end vertices.
-    ordered = sorted(near)
+    ordered = []
+    skipped = {"unpainted": 0, "same_blaze": 0}
+    for pair in sorted(near):
+        donor_indices, partner_indices = near[pair]
+        why = _dropped_whole([keyed[i][0] for i in donor_indices], [keyed[j][0] for j in partner_indices])
+        if why:
+            skipped[why] += 1
+        else:
+            ordered.append(pair)
     batches = -(-len(ordered) // PAIR_BATCH)
     if progress:
         progress(
-            f"{len(record_indices):,} neighbours within {tolerance_m:g} m make {len(ordered):,} trail pairs, in {batches:,} batches"
+            f"{len(record_indices):,} neighbours within {tolerance_m:g} m make {len(near):,} trail pairs; "
+            f"{skipped['unpainted']:,} with no paint on one side and {skipped['same_blaze']:,} with one blaze "
+            f"on both are dropped whole, so {len(ordered):,} are built, in {batches:,} batches"
         )
     # In batches of PAIR_BATCH pairs, so the unions, buffers and pieces of one
     # batch are freed before the next is built (#1796). All of them at once
@@ -360,6 +432,8 @@ def find_shared_ground(
         "dropped_short": dropped_short,
         "dropped_unpainted": dropped_unpainted,
         "dropped_same_blaze": dropped_same_blaze,
+        "skipped_unpainted_pairs": skipped["unpainted"],
+        "skipped_same_blaze_pairs": skipped["same_blaze"],
         "tolerance_m": tolerance_m,
         "min_length_m": min_length_m,
     }

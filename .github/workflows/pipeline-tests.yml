@@ -219,8 +219,10 @@ jobs:
           # it runs (export_podcasts.py, export_sources.py, export_elevation.py)
           # are the parity step's; the same test holds the list to their
           # imports too. build_marts.py runs the build, and
-          # step_dem_sampling.py is the Python step it runs between dbt
-          # invocations (tests/test_build_marts.py holds this list to both).
+          # step_dem_sampling.py, step_weather_squares.py and
+          # step_form_route.py are the Python steps it runs between dbt
+          # invocations (tests/test_build_marts.py holds this list to it and
+          # every step).
           # The points_of_interest family's parity runs export_poi.py (and the
           # export_elevation.py mile axis it imports), export_nearby_poi.py and
           # export_retired_poi.py. The challenges family's runs
@@ -238,12 +240,14 @@ jobs:
             pipeline/export_atc_updates.py
             pipeline/export_nynjtc_alerts.py
             pipeline/fetch_nynjtc_alerts.py
+            pipeline/fetch_atc_updates.py
             pipeline/export_nearby_trails.py
             pipeline/export_trails.py
             pipeline/export_spurs.py
             pipeline/export_club_sections.py
             pipeline/export_elevation.py
             pipeline/step_dem_sampling.py
+            pipeline/step_weather_squares.py
             pipeline/step_form_route.py
             pipeline/export_suggested_hikes.py
             pipeline/route_hikefinder.py
@@ -260,6 +264,8 @@ jobs:
             pipeline/seed_spatial_extension.py
             pipeline/check_freshness.py
             pipeline/export_conditions.py
+            pipeline/export_weather_alerts.py
+            pipeline/export_work_projects.py
             pipeline/fetch_club_pdfs.py
             pipeline/fetch_elevation.py
             pipeline/fetch_hikefinder.py
@@ -504,13 +510,23 @@ jobs:
           "$RUNNER_TEMP/pipeline/bin/python" parity.py stewards --new data/processed/dbt/stewards.json
           "$RUNNER_TEMP/pipeline/bin/python" parity.py registry --new data/processed/dbt/registry.json
           # The hourly conditions files. atc_updates reads
-          # reference/atc_updates.json from git; the other three read the
-          # answers under data/raw/conditions/ that fixture mode built the
-          # warehouse from, since their upstreams are a website and a database.
+          # reference/atc_updates.json from git, and its automatic rows from
+          # fetch_atc_updates.py's own run over the ATC pages fixture mode
+          # served (data/raw/conditions/atc_trail_updates.json); the other
+          # three read the answers under data/raw/conditions/ that fixture
+          # mode built the warehouse from, since their upstreams are a website
+          # and a database.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py atc_updates --new data/processed/dbt/conditions_atc_updates.json
           "$RUNNER_TEMP/pipeline/bin/python" parity.py nynjtc_alerts --new data/processed/dbt/conditions_nynjtc_alerts.json
           "$RUNNER_TEMP/extract/bin/python" parity.py closures --new data/processed/dbt/conditions_closures.json
           "$RUNNER_TEMP/extract/bin/python" parity.py reports --new data/processed/dbt/conditions_reports.json
+          # NWS's alerts, placed on the weather squares: bake() over the body
+          # fixture mode served and the squares.json step_weather_squares.py
+          # landed, both under data/raw/. bake() imports shapely and pyproj.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py weather_alerts --new data/processed/dbt/conditions_weather_alerts.json --raw-dir data/raw
+          # The club workdays: export_work_projects.py's main() over
+          # reference/work_projects.json from git, written into a temporary folder.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py work_projects --new data/processed/dbt/conditions_work_projects.json
           # The trail lines network, whose input is the fixture warehouse, not
           # a file in git.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py nearby_trails --new data/processed/dbt/nearby_trails.geojson

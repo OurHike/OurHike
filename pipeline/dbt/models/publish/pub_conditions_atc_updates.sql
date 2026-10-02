@@ -5,13 +5,19 @@
 ) }}
 -- conditions/atc_updates.json, ATC's own Trail Updates (#460), in the shape
 -- export_atc_updates.py's build_document() writes: `generated_at`, the
--- reviewed file's `reviewed_at`, and every reviewed row in the file's order,
--- each as lib/atc_updates.py's published_rows() writes it.
+-- reviewed file's `reviewed_at`, every reviewed row in the file's order, each
+-- as lib/atc_updates.py's published_rows() writes it, and then every update
+-- ATC posted since the review that publishes without a person (#963,
+-- CL07-CL10), in slug order, each as auto_row() writes it.
 --
 -- WHICH ROWS: ATC's rows in the closures mart and in the warnings mart.
 -- Decision 7 splits them by obstructs_trail, and this file has always held
--- both halves. Each row's JSON is int_closures__atc_checked's
--- published_row, the reviewer's own values, read by the mart row's key.
+-- both halves; an automatic row's obstructs_trail is forced false, so every
+-- one is in the warnings mart (review_state `auto`). Each row's JSON is the
+-- published_row of int_closures__atc_checked (the reviewer's own values) or
+-- of int_closures__atc_automatic, read by the mart row's key. Both kinds
+-- share one payload, told apart by each row's `review_state`, so a phone
+-- cannot read half of it (export_atc_updates.py's build_document()).
 --
 -- NOTHING IS WRITTEN for a file int_closures__gate holds back, so the last
 -- good file stays on the phone, as export_atc_updates.py writes nothing for
@@ -24,28 +30,35 @@
 --   ATC back, fails with the gate's reason before the copy, as the Python
 --   exits 1 for a bad row.
 --
--- NOT HERE YET: the automatic rows export_atc_updates.py appends from
--- fetch_atc_updates.py's scrape (CL07-CL10). No extract lands the scrape, so
--- this writes the reviewed rows only.
---
 -- `generated_at` is dbt's run_started_at, stamped as _stamp_utc() stamps:
 -- one clock for every writer in a run.
 with atc_rows as (
     select
         source_row_key,
+        review_state = 'auto' as automatic,
         list_position
     from {{ ref('closures', v=1) }}
     where source_key = 'atc_trail_updates'
     union all
     select
         source_row_key,
+        review_state = 'auto' as automatic,
         list_position
     from {{ ref('warnings', v=1) }}
     where source_key = 'atc_trail_updates' and warning_kind = 'org_notice'
 ),
 
 checked as (
-    select * from {{ ref('int_closures__atc_checked') }}
+    select
+        atc_update_row_key as row_key,
+        published_row
+    from {{ ref('int_closures__atc_checked') }}
+    union all
+    select
+        atc_trail_update_page_key as row_key,
+        published_row
+    from {{ ref('int_closures__atc_automatic') }}
+    where publishes
 ),
 
 gate as (
@@ -53,14 +66,20 @@ gate as (
     where source_key = 'atc_trail_updates'
 ),
 
+-- The reviewed rows first, in the file's order, then the automatic ones in
+-- slug order: [*published_rows(document), *automatic].
 published as (
     select
         coalesce(
-            list(checked.published_row order by atc_rows.list_position), []
+            list(
+                checked.published_row
+                order by atc_rows.automatic, atc_rows.list_position
+            ),
+            []
         ) as atc_updates
     from atc_rows
     inner join checked
-        on atc_rows.source_row_key = checked.atc_update_row_key
+        on atc_rows.source_row_key = checked.row_key
 ),
 
 -- One row whatever the gate holds, so a missing gate or registry row fails

@@ -1,17 +1,21 @@
 -- Every notice, area and closure the closures and warnings marts are split
 -- from (pipeline/ELT.md, "The eleven marts"), one row each, by name: ATC's
--- reviewed Trail Updates, NYNJTC's Trail Alerts, NYS Parks' temporary closed
--- areas and OurHike's own verified closures. Nothing is filtered here. Each
--- branch keeps its source's own words and adds what the split needs:
+-- reviewed Trail Updates and the ones ATC posted since that review which
+-- publish without a person, NYNJTC's Trail Alerts, NYS Parks' temporary
+-- closed areas and OurHike's own verified closures. Nothing is filtered here
+-- but ATC's refused automatic rows (their branch says why). Each branch keeps
+-- its source's own words and adds what the split needs:
 --
 --   obstructs_trail  whether a hiker is stopped from walking through, as the
---                    source says: ATC's reviewed boolean; true for a closed
---                    area; OurHike's status read as closureBanner.ts reads it;
+--                    source says: ATC's reviewed boolean; false, forced, for
+--                    an automatic ATC row (CL09); true for a closed area;
+--                    OurHike's status read as closureBanner.ts reads it;
 --                    NULL for every NYNJTC alert, which nobody has classified
 --                    (decision 7: unknown lands in warnings, never dropped).
 --   review_state     who stands behind it: `reviewed` (a person read ATC's
---                    page), `org_published` (NYS Parks' own layer),
---                    `moderator_verified` (OurHike's moderators),
+--                    page), `auto` (ATC's mechanical gate published it, and
+--                    nobody here has read it), `org_published` (NYS Parks'
+--                    own layer), `moderator_verified` (OurHike's moderators),
 --                    `not_reviewed` (NYNJTC, unread by anyone here).
 --   problems         why a row cannot publish, from its source's checks;
 --                    int_closures__gate holds back a source with any.
@@ -26,6 +30,10 @@
 -- gives none: NYS Parks publishes none, and none is invented (CL13).
 with atc as (
     select * from {{ ref('int_closures__atc_checked') }}
+),
+
+atc_automatic as (
+    select * from {{ ref('int_closures__atc_automatic') }}
 ),
 
 nynjtc as (
@@ -72,6 +80,40 @@ select  -- noqa: AM07
     problems,
     _loaded_at
 from atc
+
+union all by name
+
+-- The updates ATC posted since the review that int_closures__atc_automatic
+-- publishes without a person (CL07-CL10), and only those: a refused update is
+-- the steady state, every hour, for every reviewed or older notice, and is
+-- no problem of the file's, so it stays in that model for the job log and the
+-- proposer (CL12). Each has a slug the reviewed file does not, so its id
+-- never meets a reviewed row's. `list_position` is its place in slug order,
+-- which pub_conditions_atc_updates writes after every reviewed row, as
+-- export_atc_updates.py's automatic_rows() sorts them.
+select
+    'atc_trail_updates:' || atc_id as notice_id,
+    atc_trail_update_page_key as source_row_key,
+    'atc_trail_update' as notice_kind,
+    'atc' as club,
+    'atc_trail_updates' as source_key,
+    obstructs_trail,
+    'auto' as review_state,
+    atc_id,
+    title,
+    category,
+    states,
+    'AT' as trail_id,
+    cast(start_mile_text as double) as mile_start,
+    cast(end_mile_text as double) as mile_end,
+    try_cast(updated_at as timestamptz) as source_edited_at,
+    updated_at,
+    source_url,
+    row_number() over (order by atc_id) - 1 as list_position,
+    cast([] as varchar[]) as problems,
+    _loaded_at
+from atc_automatic
+where publishes
 
 union all by name
 

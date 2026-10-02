@@ -40,3 +40,35 @@ models:
       - name: loaded_at
         description: When step_dem_sampling wrote the row, UTC.
         data_tests: [not_null]
+  - name: stg_derived__weather_squares
+    data_tests:
+      # Says how many rows the dedupe dropped, which for one document per
+      # release is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('derived', 'weather_squares')
+          config:
+            severity: warn
+    description: >
+      The NBM weather squares build_weather_squares.py chose for a release,
+      from step_weather_squares's derived.weather_squares: squares.json's
+      document as JSON, read by int_warnings__weather_squares and
+      int_warnings__nws_placed to place NWS alerts (WN03).
+    columns:
+      - name: weather_squares_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the table's name and the release.
+        data_tests: [not_null, unique]
+      - name: release
+        description: The data release the squares were chosen for.
+        data_tests: [not_null]
+      - name: squares_document
+        description: >
+          squares.json as JSON: `cells` (trail cell -> [row, col] squares),
+          `zones` ("<kind>/<id>" -> squares), `known_zones` (kind -> every
+          id in its pinned file), `zone_files` and `release`.
+        data_tests: [not_null]
+      - name: loaded_at
+        description: When step_weather_squares wrote the row, UTC.
+        data_tests: [not_null]

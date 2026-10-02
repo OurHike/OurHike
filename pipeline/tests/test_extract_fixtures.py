@@ -17,6 +17,7 @@ import export_conditions
 import make_dbt_fixtures
 from extract._fixtures import FixtureAdapter, FixtureConnection, build, esri_type, fixture_file, fixture_resources
 from extract._kinds import (
+    AtcTrailUpdatePages,
     ConditionsQuery,
     NwsAlerts,
     PublishedHikes,
@@ -38,13 +39,17 @@ def fixtures(tmp_path_factory):
 def test_every_fixture_file_with_a_resource_lands_whole(fixtures):
     root, counts = fixtures
     resources, _ = fixture_resources(root / "raw")
-    fetched = [
-        r
-        for r in resources
-        if not isinstance(
-            r, ReviewedFile | ReviewedDir | NwsAlerts | WordpressPosts | WordpressTerms | ConditionsQuery | PublishedHikes
-        )
-    ]
+    answered = (
+        ReviewedFile
+        | ReviewedDir
+        | NwsAlerts
+        | WordpressPosts
+        | WordpressTerms
+        | ConditionsQuery
+        | PublishedHikes
+        | AtcTrailUpdatePages
+    )
+    fetched = [r for r in resources if not isinstance(r, answered)]
     assert len(fetched) == 56, "55 monthly layers and OPRHP's temporary closures on the hourly lane"
     for resource in fetched:
         expected = len(json.loads(fixture_file(root / "raw", resource.key).read_text())["features"])
@@ -62,6 +67,15 @@ def test_the_hourly_lanes_other_upstreams_land_from_their_conditions_answers(fix
     assert counts["raw_nynjtc__nynjtc_trail_alerts_terms"] == sum(len(terms) for terms in nynjtc["terms"].values())
     for artifact in ("closures", "reports", "notes", "disputes"):
         assert counts[f"raw_ourhike__{artifact}"] == len(postgres[artifact]["rows"]), artifact
+
+
+def test_atcs_pages_land_one_row_per_update_the_fixture_sitemap_lists(fixtures):
+    """ATC's site served from conditions/atc_trail_updates.json: the sitemap's every update, each parsed from its page."""
+    root, counts = fixtures
+    assert counts["raw_atc__atc_trail_updates_pages"] == len(make_dbt_fixtures.ATC_FIXTURE_UPDATES)
+    with duckdb.connect(str(root / "warehouse.duckdb"), read_only=True) as con:
+        slugs = {slug for (slug,) in con.execute("select slug from raw.raw_atc__atc_trail_updates_pages").fetchall()}
+    assert slugs == {slug for slug, *_ in make_dbt_fixtures.ATC_FIXTURE_UPDATES}
 
 
 def test_the_hike_finder_lands_every_page_its_listing_links_through_the_real_parse(fixtures):
@@ -189,7 +203,7 @@ def test_the_tables_are_the_extracts_own_names_and_columns(fixtures):
 
 
 def test_every_raw_table_stamps_loaded_at_with_one_type(fixtures):
-    """A proven-empty table (reference/work_projects.json has no rows today) is made by _warehouse.py, not by dlt,
+    """A proven-empty table (an empty layer, or a reviewed file with no rows) is made by _warehouse.py, not by dlt,
     and must not differ from a loaded one: a mart contract on `_loaded_at` would otherwise fail on an empty table."""
     root, _ = fixtures
     with duckdb.connect(str(root / "warehouse.duckdb"), read_only=True) as con:

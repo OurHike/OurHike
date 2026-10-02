@@ -16,8 +16,20 @@ is a refusal:
   the same posts;
 - export_weather_alerts.py's relayed(), over int_warnings__nws_relayed's
   unit-test alerts, relays the same ones;
+- lib/nbm_grid.py's _to_grid_units() puts every vertex of
+  int_warnings__nws_alert_shapes' unit-test polygons where the SQL does, to
+  the last bit, and export_weather_alerts.py's bake(), over the squares and
+  alerts int_warnings__nws_placed's unit tests stand for, places each alert
+  on the same squares and reports the same unknown zones (WN03);
+- lib/work_projects.py's file_problems() and published_rows(), over
+  int_closures__work_projects_checked's unit-test rows, refuse the same rows
+  in the same words and write the same rows (CL17);
 - export_atc_updates.py's main(), over the files int_closures__gate's unit
   tests stand for, publishes where the gate passes;
+- lib/atc_updates.py's auto_publish_refusal() and auto_row(), over
+  int_closures__atc_automatic's unit-test pages, refuse the same updates in
+  the same words and write the same rows (CL07-CL10), and
+  propose_atc_updates.py's _actionable() keeps the same refusals (CL12);
 
 except where a DELIBERATE set below names a row the SQL treats otherwise on
 purpose. Each such row must still differ, so emptying a set turns its test red.
@@ -25,11 +37,13 @@ purpose. Each such row must still differ, so emptying a set turns its test red.
 
 import html
 import html.entities
+import importlib.util
 import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
 import pytest
 import yaml
 
@@ -37,7 +51,9 @@ import export_atc_updates
 import export_weather_alerts
 import fetch_nynjtc_alerts
 import parity
-from lib import atc_updates, nynjtc_alerts
+import propose_atc_updates
+from lib import atc_updates, nbm_grid, nynjtc_alerts, work_projects
+from lib.atc_scrape import MileReference, ParsedUpdate
 
 DBT = Path(__file__).parent.parent / "dbt"
 CLOSURES = DBT / "models" / "intermediate" / "closures" / "_closures__intermediate.yml"
@@ -59,6 +75,29 @@ DELIBERATE_ATC_ROWS = {36}
 #   n16  a title that is not a string: _text_of() publishes str(5), and the
 #        SQL refuses it as a payload whose shape has changed.
 DELIBERATE_NYNJTC_POSTS = {"n09", "n14", "n15", "n16"}
+
+# ATC pages the SQL refuses and auto_publish_refusal() publishes: u19, a
+# dateModified in ISO 8601's basic form (20260819T162250Z), which Python
+# 3.11's fromisoformat() reads and python_fromisoformat_utc() does not, so the
+# SQL refuses it as "not since the review". Every live page read on
+# 2026-10-02, 86 of 86, wrote YYYY-MM-DDTHH:MM:SS-04:00, which both read.
+DELIBERATE_ATC_AUTOMATIC_ROWS = {"u19"}
+
+# The tests of the auto-publish gate in tests/test_lib_atc_updates.py, each
+# with the int_closures__atc_automatic unit-test row that stands for it
+# (pipeline/ELT.md, "Tests move with their rule").
+AUTO_GATE_CASES = {
+    "test_an_update_atc_posted_since_the_review_publishes_itself": "u00",
+    "test_an_update_older_than_the_review_is_refused": "u01",
+    "test_a_reviewed_slug_is_never_overwritten_by_a_parse": "u02-reviewed",
+    "test_mile_references_that_disagree_are_refused_rather_than_guessed_between": "u03",
+    "test_the_gate_refuses_a_mile_off_the_end_of_the_trail": "u04",
+    "test_an_all_clear_publishes_rather_than_being_refused": "u05",
+    "test_the_same_mile_stated_twice_is_not_a_disagreement": "u06",
+    "test_a_category_this_build_does_not_know_is_refused": "u07",
+    "test_an_automatic_row_can_never_draw_a_band": "u00",
+    "test_an_automatic_rows_timestamp_is_utc_like_every_reviewed_one": "u00",
+}
 
 
 def _unit_tests(path: Path) -> dict[str, dict]:
@@ -173,6 +212,78 @@ def test_the_gate_holds_back_what_export_atc_updates_does_not_publish(name, tmp_
     assert python_publishes == atc["passed"], name
 
 
+# --- ATC's automatic rows (CL07-CL10, CL12) ---------------------------------------
+
+AUTOMATIC = "int_closures__atc_automatic_refuses_what_auto_publish_refusal_refuses"
+AUTOMATIC_ROWS = "int_closures__atc_automatic_writes_the_row_auto_row_writes"
+
+
+def _pages(test: dict) -> tuple[list[ParsedUpdate], set[str], str]:
+    """The unit test's base rows as the ParsedUpdates fetch_atc_updates.py would have cached, the reviewed slugs, and reviewed_at."""
+    pages = []
+    for row in _given(test, "base_atc__atc_trail_updates_pages")["rows"]:
+        pages.append(
+            ParsedUpdate(
+                slug=row["slug"],
+                title=row["title"] or "",
+                category=row["category"],
+                states=json.loads(row["states"]),
+                date_modified=row["date_modified"],
+                date_published=None,
+                miles=[MileReference(m["direction"], m["start"], m["end"], m["raw"]) for m in json.loads(row["miles"])],
+                text="",
+            )
+        )
+    reviewed = {row["atc_id"] for row in _given(test, "int_closures__atc_checked")["rows"]}
+    (document,) = _given(test, "base_atc__atc_updates")["rows"]
+    return pages, reviewed, json.loads(document["document_json"])["reviewed_at"]
+
+
+def test_every_auto_gate_case_in_test_lib_atc_updates_has_its_unit_test_row():
+    source = (Path(__file__).parent / "test_lib_atc_updates.py").read_text()
+    slugs = {page.slug for page in _pages(_unit_tests(CLOSURES)[AUTOMATIC])[0]}
+    for case, slug in AUTO_GATE_CASES.items():
+        assert f"def {case}(" in source, f"{case} is no longer in tests/test_lib_atc_updates.py"
+        assert slug in slugs, f"{case}'s row {slug} is no longer in {AUTOMATIC}"
+
+
+def test_auto_publish_refusal_refuses_what_the_atc_automatic_unit_test_expects():
+    test = _unit_tests(CLOSURES)[AUTOMATIC]
+    pages, reviewed, reviewed_at = _pages(test)
+    expected = {row["slug"]: row for row in test["expect"]["rows"]}
+    assert set(expected) == {page.slug for page in pages}
+    for page in pages:
+        python = atc_updates.auto_publish_refusal(page, reviewed, reviewed_at)
+        sql = expected[page.slug]
+        if page.slug in DELIBERATE_ATC_AUTOMATIC_ROWS:
+            assert python is None and sql["refusal"] is not None, f"{page.slug} is no longer a deliberate difference"
+            continue
+        assert _same_words(python) == _same_words(sql["refusal"]), f"{page.slug}: Python {python!r}, SQL {sql['refusal']!r}"
+        # CL12: the refusals propose_atc_updates.py proposes to a person.
+        assert (python is not None and propose_atc_updates._actionable(python)) == sql["actionable"], page.slug
+
+
+def test_auto_row_writes_what_the_atc_automatic_unit_test_expects():
+    """Field by field and type by type: a whole mile stays a float (1138.0), and obstructs_trail is False on every row (CL09)."""
+    test = _unit_tests(CLOSURES)[AUTOMATIC_ROWS]
+    pages, reviewed, reviewed_at = _pages(test)
+    expected = {row["slug"]: row["published_row"] for row in test["expect"]["rows"]}
+    published = 0
+    for page in pages:
+        if page.slug in DELIBERATE_ATC_AUTOMATIC_ROWS:
+            assert expected[page.slug] is None
+            continue
+        if atc_updates.auto_publish_refusal(page, reviewed, reviewed_at) is not None:
+            assert expected[page.slug] is None, page.slug
+            continue
+        python, sql = atc_updates.auto_row(page), json.loads(expected[page.slug])
+        assert list(sql) == list(python), "the same fields in auto_row()'s order"
+        assert [(type(v), v) for v in sql.values()] == [(type(v), v) for v in python.values()], page.slug
+        assert sql["obstructs_trail"] is False
+        published += 1
+    assert published >= 10, "the unit test should hold every way a row publishes"
+
+
 # --- NYNJTC's Trail Alerts ------------------------------------------------------
 
 
@@ -241,6 +352,133 @@ def test_relayed_relays_what_the_nws_unit_test_expects():
     assert relayed == {row["notice_id"] for row in test["expect"]["rows"]}
 
 
+# --- NWS's placement on the weather squares (WN03) ---------------------------------
+
+PLACED_TESTS = [
+    "int_warnings__nws_placed_places_each_alert_as_export_weather_alerts_bake_does",
+    "int_warnings__nws_placed_a_shape_reaching_any_part_of_a_square_reaches_it",
+    "int_warnings__nws_placed_a_shape_that_only_touches_an_edge_or_corner_does_not_reach",
+    "int_warnings__nws_placed_each_shape_gets_its_own_answer",
+]
+SHAPES_TEST = "int_warnings__nws_alert_shapes_puts_a_drawn_alert_in_nbm_grid_units"
+NUMBER = re.compile(r"-?\d+(?:\.\d+)?(?:e-?\d+)?")
+
+
+def test_the_nbm_grid_vars_are_lib_nbm_grids_constants():
+    variables = yaml.safe_load((DBT / "dbt_project.yml").read_text())["vars"]
+    assert variables["nbm_grid_proj4"] == nbm_grid.PROJ4
+    assert variables["nbm_grid_origin_x"] == nbm_grid.ORIGIN_X
+    assert variables["nbm_grid_origin_y"] == nbm_grid.ORIGIN_Y
+    assert variables["nbm_grid_square_m"] == nbm_grid.SQUARE_M
+
+
+def test_nbm_grid_units_puts_every_vertex_where_to_grid_units_does_to_the_last_bit():
+    """The shapes unit test's WKT, read back as doubles, is _to_grid_units() of each lon/lat vertex, exactly:
+    whether a polygon only touches a square's edge turns on the last bit (macro nbm_grid_units's header)."""
+    test = _unit_tests(WARNINGS)[SHAPES_TEST]
+    expected = {row["notice_id"]: row["grid_shape_wkt"] for row in test["expect"]["rows"]}
+    drawn = 0
+    for row in _given(test, "int_warnings__nws_relayed")["rows"]:
+        if row["geom_geojson"] is None:
+            assert expected[row["notice_id"]] is None
+            continue
+        (ring,) = json.loads(row["geom_geojson"])["coordinates"]
+        python = nbm_grid._to_grid_units(np.array(ring, dtype=float)).ravel().tolist()
+        assert [float(number) for number in NUMBER.findall(expected[row["notice_id"]])] == python, row["notice_id"]
+        drawn += 1
+    assert drawn == 3
+
+
+def test_the_placed_unit_tests_draw_the_shapes_unit_tests_polygons():
+    shapes = {row["grid_shape_wkt"] for row in _unit_tests(WARNINGS)[SHAPES_TEST]["expect"]["rows"]}
+    main = _given(_unit_tests(WARNINGS)[PLACED_TESTS[0]], "int_warnings__nws_alert_shapes")["rows"]
+    assert {row["grid_shape_wkt"] for row in main if row["is_drawn"]} <= shapes
+
+
+def test_the_placed_unit_tests_squares_and_zones_are_test_export_weather_alerts_squares():
+    spec = importlib.util.spec_from_file_location("weather_alerts_tests", Path(__file__).parent / "test_export_weather_alerts.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    squares = module.SQUARES
+    document = _placed_squares(_unit_tests(WARNINGS)[PLACED_TESTS[0]])
+    assert sorted(map(tuple, document["cells"]["unit_test"])) == sorted(
+        {tuple(square) for cell in squares["cells"].values() for square in cell}
+    )
+    assert document["zones"] == squares["zones"]
+    assert {kind: sorted(ids) for kind, ids in document["known_zones"].items()} == {
+        kind: sorted(ids) for kind, ids in squares["known_zones"].items()
+    }
+
+
+def _placed_squares(test: dict) -> dict:
+    """The squares.json a placed unit test's weather squares and zones stand for."""
+    zones = _given(test, "int_warnings__weather_zones")["rows"]
+    known: dict[str, list[str]] = {}
+    for row in zones:
+        if row["is_known"]:
+            known.setdefault(row["zone_key"].split("/", 1)[0], []).append(row["zone_id"])
+    return {
+        "release": "unit_test",
+        "zone_files": {},
+        "cells": {
+            "unit_test": [[row["square_row"], row["square_col"]] for row in _given(test, "int_warnings__weather_squares")["rows"]]
+        },
+        "zones": {row["zone_key"]: json.loads(row["squares"]) for row in zones if json.loads(row["squares"])},
+        "known_zones": known,
+    }
+
+
+@pytest.mark.parametrize("name", PLACED_TESTS)
+def test_bake_places_what_the_placed_unit_test_expects(name, monkeypatch):
+    """bake() over the squares and alerts a placed unit test stands for. Its polygons are already in grid units,
+    so _to_grid_units is the identity here, as tests/test_lib_nbm_grid.py's grid_units fixture makes it."""
+    import shapely
+
+    monkeypatch.setattr(nbm_grid, "_to_grid_units", lambda xy: xy)
+    test = _unit_tests(WARNINGS)[name]
+    features = [
+        {
+            "geometry": json.loads(shapely.to_geojson(shapely.from_wkt(row["grid_shape_wkt"]))) if row["is_drawn"] else None,
+            "properties": {
+                "id": row["alert_id"],
+                "status": "Actual",
+                "messageType": "Alert",
+                "affectedZones": json.loads(row["affected_zones"]),
+            },
+        }
+        for row in _given(test, "int_warnings__nws_alert_shapes")["rows"]
+    ]
+    now = datetime.now(timezone.utc)
+    document = export_weather_alerts.bake(_placed_squares(test), {"type": "FeatureCollection", "features": features}, now, now)
+    published = {f"nws_alerts:{alert['id']}": alert for alert in document["alerts"]}
+    unknown: set[str] = set()
+    for row in test["expect"]["rows"]:
+        alert = published.get(row["notice_id"])
+        if "reaches_trail" in row:
+            assert (alert is not None) == row["reaches_trail"], row["notice_id"]
+        if "squares" in row:
+            assert (alert["squares"] if alert else []) == json.loads(row["squares"]), row["notice_id"]
+        if "placed_by" in row and alert is not None:
+            assert alert["placed_by"] == row["placed_by"], row["notice_id"]
+        unknown |= set(json.loads(row.get("unknown_zones", "[]")))
+    assert set(published) <= {row["notice_id"] for row in test["expect"]["rows"]}
+    assert document["unknown_zones"] == sorted(unknown)
+
+
+def test_the_fixtures_weather_squares_are_where_nbm_grid_puts_their_points():
+    """make_dbt_fixtures.py's squares.json lists the squares lib/nbm_grid.py puts its points in, by the cells
+    build_weather_squares.py's squares_by_cell() groups them into."""
+    import build_weather_squares
+    import make_dbt_fixtures
+
+    points = make_dbt_fixtures.WEATHER_SQUARE_POINTS
+    lons, lats = (np.array([point[0][axis] for point in points.values()]) for axis in (0, 1))
+    rows, cols = nbm_grid.squares(lons, lats)
+    assert list(zip(rows.tolist(), cols.tolist(), strict=True)) == [square for _, square in points.values()]
+    cells, outside = build_weather_squares.squares_by_cell(lons, lats)
+    assert (cells, outside) == (make_dbt_fixtures._weather_squares()["cells"], [])
+
+
 # --- parity.py's run stamps -------------------------------------------------------
 
 
@@ -250,3 +488,114 @@ def test_a_run_stamp_is_held_to_its_form_and_not_its_value():
     assert parity.differences(old, {**old, "generated_at": "2026-10-02T04:00:00Z"}, family) == []
     assert parity.differences(old, {**old, "generated_at": "2026-10-02T04:00:00+00:00"}, family) != []
     assert parity.differences(old, {"closures": []}, family) != []
+
+
+# --- Work projects (CL17) ----------------------------------------------------------
+
+WORK_PROJECTS = "int_closures__work_projects_checked_finds_what_file_problems_finds"
+WORK_PROJECTS_FILE = "int_closures__work_projects_checked_refuses_the_files_own_problems"
+WORK_PROJECTS_REVIEW = "int_closures__work_projects_checked_reads_the_review_as_is_reviewed_does"
+
+# Reviews the SQL reads as unreviewed and is_reviewed() reads as reviewed: r09,
+# an ISO week date (macro python_date_fromisoformat()), so the file is held
+# back, written nowhere, rather than published.
+DELIBERATE_WORK_PROJECT_REVIEWS = {"r09"}
+
+# Rows of the work projects unit test the SQL refuses and file_problems() passes,
+# each the direction a gate on what sends a hiker to a trailhead may err in
+# (int_closures__work_projects_checked's header):
+#   18, 19  a JSON true as lat and lon, and as capacity: isinstance(True, int);
+#   20      ISO week dates, which date.fromisoformat() reads;
+#   21      a space before signup_contact's scheme, which urlsplit() strips.
+DELIBERATE_WORK_PROJECT_ROWS = {18, 19, 20, 21}
+
+# Rows file_problems() has no answer for, because it stops with a traceback,
+# and so publishes nothing, as the SQL's problem does: a date that is a number
+# (TypeError), a contact with an unmatched bracket in its host (ValueError),
+# a row that is not an object (AttributeError).
+TRACEBACK_WORK_PROJECT_ROWS = {22: TypeError, 23: ValueError, 24: AttributeError}
+
+
+def _work_project_rows() -> tuple[list, dict[int, dict]]:
+    test = _unit_tests(CLOSURES)[WORK_PROJECTS]
+    (given,) = _given(test, "base_ourhike__work_projects")["rows"]
+    rows = json.loads(given["document_json"])["rows"]
+    expected = {row["row_position"]: row for row in test["expect"]["rows"] if row["row_position"] is not None}
+    assert set(expected) == set(range(len(rows)))
+    (file_row,) = [row for row in test["expect"]["rows"] if row["row_position"] is None]
+    assert file_row["problem"] is None and file_row["is_reviewed"] is True
+    return rows, expected
+
+
+def _work_project_share(rows: list, n: int) -> str | None:
+    """Row n's share of file_problems(): its repeated id, when an earlier row has it, then row_problems()."""
+    row_id = rows[n].get("id")
+    earlier = {row.get("id") for row in rows[:n] if isinstance(row.get("id"), str)}
+    repeated = (
+        [f"{row_id}: duplicate id - the client keys and dedupes on it"] if isinstance(row_id, str) and row_id in earlier else []
+    )
+    return " | ".join(repeated + work_projects.row_problems(rows[n])) or None
+
+
+def test_the_work_project_vars_are_lib_work_projects_constants():
+    variables = yaml.safe_load((DBT / "dbt_project.yml").read_text())["vars"]
+    assert variables["work_project_mile_min"] == work_projects.TRAIL_MILE_MIN
+    assert variables["work_project_mile_max"] == work_projects.TRAIL_MILE_MAX
+
+
+def test_file_problems_refuses_what_the_work_projects_unit_test_expects():
+    rows, expected = _work_project_rows()
+    for n in range(len(rows)):
+        if n in TRACEBACK_WORK_PROJECT_ROWS:
+            with pytest.raises(TRACEBACK_WORK_PROJECT_ROWS[n]):
+                work_projects.file_problems({"rows": [rows[n]]})
+            assert expected[n]["problem"] is not None, f"row {n} publishes in SQL where the Python stops"
+            continue
+        python = _work_project_share(rows, n)
+        if n in DELIBERATE_WORK_PROJECT_ROWS:
+            assert python is None and expected[n]["problem"] is not None, f"row {n} is no longer a deliberate difference"
+            continue
+        assert python == expected[n]["problem"], f"row {n}: Python {python!r}, SQL {expected[n]['problem']!r}"
+
+
+def test_the_shares_add_up_to_file_problems_in_its_order():
+    """Repeated ids first, then each row's own, as file_problems() lists them, over every row it can read."""
+    rows, _ = _work_project_rows()
+    readable = rows[: min(TRACEBACK_WORK_PROJECT_ROWS)]
+    shares = [_work_project_share(readable, n) for n in range(len(readable))]
+    repeated = [share for share in shares if share and "duplicate id" in share]
+    own = [problem for row in readable for problem in work_projects.row_problems(row)]
+    assert work_projects.file_problems({"rows": readable}) == repeated + own
+
+
+def test_published_rows_writes_what_the_work_projects_unit_test_expects():
+    rows, expected = _work_project_rows()
+    published = [n for n in range(len(rows)) if expected[n]["published_row"] is not None]
+    assert published == [0, 1, 15, 16]
+    for n in published:
+        (python,) = work_projects.published_rows({"rows": [rows[n]]})
+        sql = json.loads(expected[n]["published_row"])
+        assert list(sql.items()) == list(python.items()), n
+
+
+def test_file_problems_refuses_the_file_as_the_files_own_unit_test_expects():
+    test = _unit_tests(CLOSURES)[WORK_PROJECTS_FILE]
+    (given,) = _given(test, "base_ourhike__work_projects")["rows"]
+    (row,) = test["expect"]["rows"]
+    assert " | ".join(work_projects.file_problems(json.loads(given["document_json"]))) == row["problem"]
+
+
+def test_is_reviewed_reads_the_review_as_the_work_projects_unit_test_expects():
+    test = _unit_tests(CLOSURES)[WORK_PROJECTS_REVIEW]
+    documents = {
+        row["work_projects_document_key"]: json.loads(row["document_json"])
+        for row in _given(test, "base_ourhike__work_projects")["rows"]
+    }
+    expected = {row["work_projects_document_key"]: row["is_reviewed"] for row in test["expect"]["rows"]}
+    assert set(documents) == set(expected)
+    for key, document in documents.items():
+        python = work_projects.is_reviewed(document)
+        if key in DELIBERATE_WORK_PROJECT_REVIEWS:
+            assert python and not expected[key], f"{key} is no longer a deliberate difference"
+            continue
+        assert python == expected[key], f"{key}: Python {python}, SQL {expected[key]}"

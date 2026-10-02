@@ -1,18 +1,20 @@
 version: 2
 
 # The closures and warnings family's phone files (pipeline/ELT.md, "Publish
-# (reverse ETL)"): four writers, and an exposure for each of the seven files
-# the hourly conditions lane publishes today. Every writer fails rather than
-# write a held-back source's file, so the last good copy stays on the phone.
-# None of them uploads anything: publish-conditions.yml still uploads the
-# Python exporters' files until stage 4 of #1793 — Rebuild the data
-# platform as dlt → dbt: seven contracted marts, a monthly refresh,
-# published docs, and lighter phone downloads.
+# (reverse ETL)"): six writers, and an exposure for each of the eight files
+# they and export_conditions.py's notes and disputes write. Every writer
+# fails rather than write a held-back source's file, so the last good copy
+# stays on the phone. None of them uploads anything: publish-conditions.yml
+# and publish-weather.yml still upload the Python exporters' files until
+# stage 4 of #1793 — Rebuild the data platform as dlt → dbt: seven
+# contracted marts, a monthly refresh, published docs, and lighter phone
+# downloads.
 
 models:
   - name: pub_conditions_atc_updates
     description: >
-      Writes conditions/atc_updates.json, ATC's reviewed Trail Updates, from
+      Writes conditions/atc_updates.json, ATC's reviewed Trail Updates and the
+      ones ATC posted since the review that publish without a person, from
       the closures and warnings marts: one row, `generated_at`, the file's
       `reviewed_at` and `atc_updates`, which phone_file copies to
       processed_dir/conditions_atc_updates.json. Fails, writing nothing, when
@@ -33,9 +35,34 @@ models:
       - name: atc_updates
         description: >
           Every reviewed row in the file's order, each as lib/atc_updates.py's
-          published_rows() writes it. The automatic rows (CL07-CL10) are not
-          here: no extract lands fetch_atc_updates.py's scrape.
+          published_rows() writes it, then every automatic row in slug order,
+          each as auto_row() writes it, with obstructs_trail false and
+          review_state `unreviewed` (CL07-CL10, int_closures__atc_automatic).
         data_type: json[]
+
+  - name: pub_conditions_weather_alerts
+    description: >
+      Writes conditions/weather_alerts.json, every relayed NWS alert that
+      reaches a trail square, from the warnings mart's NWS rows placed by
+      int_warnings__nws_placed (WN03): one document, written verbatim by
+      phone_file's json_document format to
+      processed_dir/conditions_weather_alerts.json. Fails, writing nothing,
+      when int_sources__publication holds NWS back, without exactly one
+      weather squares document, or when no NWS alert landed to say when NWS
+      was asked. parity.py compares it with export_weather_alerts.py's bake().
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: document
+        description: >
+          The file: payload, schema, source and credit, fetched_at,
+          nws_updated, generated_at, the squares' release and zone_files,
+          `alerts` in id order (NWS's words under bake()'s names, placed_by,
+          squares) and unknown_zones.
+        data_type: json
+        data_tests: [not_null, unique]
 
   - name: pub_conditions_nynjtc_alerts
     description: >
@@ -99,6 +126,32 @@ models:
         description: Every public report, by "timestamp" then id, each as PUBLIC_REPORTS_SQL selects it.
         data_type: json[]
 
+  - name: pub_conditions_work_projects
+    description: >
+      Writes conditions/work_projects.json, the club workdays a hiker can see
+      and join (#760), from int_closures__work_projects_checked: one row,
+      `generated_at`, the file's `reviewed_at` and `work_projects`, which
+      phone_file copies to processed_dir/conditions_work_projects.json.
+      Writes nothing and succeeds for a file nobody reviewed; fails, writing
+      nothing, on any problem lib/work_projects.py's file_problems() would
+      find. No mart owns work projects. parity.py compares it with
+      export_work_projects.py's main().
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: generated_at
+        description: When the run started, stamped as export_work_projects.py's _stamp_utc() stamps.
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: reviewed_at
+        description: The reviewed file's `reviewed_at`, as written.
+        data_type: varchar
+      - name: work_projects
+        description: Every row of the file in its order, each as published_rows() writes it (CL17).
+        data_type: json[]
+
 exposures:
   - name: conditions_atc_updates_json
     label: conditions/atc_updates.json
@@ -109,10 +162,13 @@ exposures:
     description: >
       ATC's own Trail Updates (#460 — Publish the ATC's own Trail Updates as
       a static artifact), read by client/src/lib/atcUpdates.ts through
-      publishedConditions.ts's PUBLISHED_ATC_UPDATES_KEY. Rewritten in place
-      under conditions/, outside every release folder. Uploaded by
-      publish-conditions.yml from export_atc_updates.py's file until stage 4
-      of #1793 moves the upload to this writer's.
+      publishedConditions.ts's PUBLISHED_ATC_UPDATES_KEY: the reviewed rows,
+      and the rows ATC posted since the review that its gate publishes
+      unreviewed (#963 — Publish the mechanically unambiguous ATC updates
+      hourly, without waiting for a person), which never obstruct the trail.
+      Rewritten in place under conditions/, outside every release folder.
+      Uploaded by publish-conditions.yml from export_atc_updates.py's file
+      until stage 4 of #1793 moves the upload to this writer's.
     depends_on:
       - ref('closures', v=1)
       - ref('warnings', v=1)
@@ -123,6 +179,33 @@ exposures:
         format: json
         # publish-conditions.yml's cron, "40 * * * *", which fires about
         # five times a day (#1346).
+        cadence: hourly
+
+  - name: conditions_weather_alerts_json
+    label: conditions/weather_alerts.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      Every active NWS alert that reaches a trail square (#1056), the offline
+      fallback for a phone that cannot ask NWS itself for its square's zones,
+      read by client/src/lib/weatherForecast.ts as WEATHER_ALERTS_KEY, which
+      refuses a document whose `payload` is not weather_alerts or whose
+      `schema` is not 1. Rewritten in place under
+      conditions/, outside every release folder. Uploaded by
+      publish-weather.yml from export_weather_alerts.py's file until stage 4
+      of #1793 moves it to the conditions job (decision 28a) and the upload to
+      this writer's.
+    depends_on:
+      - ref('warnings', v=1)
+      - ref('pub_conditions_weather_alerts')
+    config:
+      meta:
+        r2_keys: [conditions/weather_alerts.json]
+        format: json
+        # publish-weather.yml's cron, "55 * * * *", until decision 28a moves
+        # the alerts to the conditions job's hourly lane.
         cadence: hourly
 
   - name: conditions_nynjtc_alerts_json
@@ -187,29 +270,8 @@ exposures:
         format: json
         cadence: hourly
 
-  # The three files below have no writer here, so each exposure names what
+  # The two files below have no writer here, so each exposure names what
   # it reads and the Python that still writes it.
-  - name: conditions_weather_alerts_json
-    label: conditions/weather_alerts.json
-    type: application
-    maturity: medium
-    owner:
-      name: OurHike
-    description: >
-      Every active NWS alert over a trail weather square, read by
-      client/src/lib/weatherData.ts. Written by export_weather_alerts.py,
-      not by dbt: the alerts are in the warnings mart, but placing each on
-      the squares build_weather_squares.py chose (WN03) needs
-      data/raw/weather/squares.json, which no extract lands, so the mart
-      holds every US alert and this file only the ones over the trail.
-    depends_on:
-      - ref('warnings', v=1)
-    config:
-      meta:
-        r2_keys: [conditions/weather_alerts.json]
-        format: json
-        cadence: hourly
-
   - name: conditions_notes_json
     label: conditions/notes.json
     type: application
@@ -248,11 +310,29 @@ exposures:
         format: json
         cadence: hourly
 
-  # conditions/work_projects.json (CL17, CL18) has no exposure yet: the raw
-  # table's rows have no columns while reference/work_projects.json lists
-  # none (ReviewedFile is not `verbatim` there and has no hints), so no
-  # staging model can read it, and an exposure on the source is a private
-  # parent (fct_exposures_dependent_on_private_models). conditions/drought.json
-  # (WN12) has none either: its fetch is on hold under #1804 —
-  # fetch_drought.py fetches droughtmonitor.unl.edu/data/, a path the Drought
-  # Monitor's robots.txt disallows for every user agent.
+  - name: conditions_work_projects_json
+    label: conditions/work_projects.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The club workdays a hiker can see and join (#760), read through
+      publishedConditions.ts's PUBLISHED_WORK_PROJECTS_KEY; workProjects.ts
+      gives way to an out-of-date notice after 48 h. The first data in the
+      app that expires, so rewritten in place under conditions/, outside
+      every release folder, and never in an offline package: a cancelled
+      workday clears with the next build (CL18). Uploaded by
+      publish-conditions.yml from export_work_projects.py's file until stage
+      4 of #1793 moves the upload to this writer's.
+    depends_on:
+      - ref('pub_conditions_work_projects')
+    config:
+      meta:
+        r2_keys: [conditions/work_projects.json]
+        format: json
+        cadence: hourly
+
+  # conditions/drought.json (WN12) has no exposure: its fetch is on hold
+  # under #1804 — fetch_drought.py fetches droughtmonitor.unl.edu/data/, a
+  # path the Drought Monitor's robots.txt disallows for every user agent.

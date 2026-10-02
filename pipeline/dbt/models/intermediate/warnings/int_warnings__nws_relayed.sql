@@ -5,15 +5,15 @@
 -- not the same as ending now"). The maintainer's "relay all" (2026-09-26,
 -- HIKER_SAFETY.md §3): none is left out for being the wrong kind.
 --
--- WHERE AN ALERT LANDS IS NOT HERE YET (WN03). export_weather_alerts.py puts
+-- WHERE AN ALERT LANDS IS NOT HERE (WN03). int_warnings__nws_placed puts
 -- each alert on the NBM weather squares build_weather_squares.py chose, by
--- the alert's polygon when it has one and its zones otherwise
--- (lib/nbm_grid.py's overlapping()), and drops an alert that reaches no
--- trail square. Those squares are data/raw/weather/squares.json, which no
--- extract lands, so this relays every alert in the US and keeps each one's
--- polygon and zones for the placement to read once the squares are a table.
--- Until then conditions/weather_alerts.json stays export_weather_alerts.py's
--- to write, and the warnings mart holds more alerts than that file does.
+-- the alert's polygon when it has one and its zones otherwise, as
+-- export_weather_alerts.py does, and pub_conditions_weather_alerts writes
+-- the ones that reach a trail square. This relays every alert in the US and
+-- keeps each one's polygon and zones for that placement, so the warnings
+-- mart holds more alerts than conditions/weather_alerts.json does: every
+-- relayed one, and none of the squares, which keeps the hourly lane's
+-- other files from waiting on the weather squares.
 with alerts as (
     select * from {{ ref('base_nws__alerts') }}
 )

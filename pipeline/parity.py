@@ -207,9 +207,52 @@ RAW_DIR = Path(__file__).resolve().parent / "data" / "raw"
 STAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{6})?Z")
 
 
+def _atc_scrape_cache(answers: dict, folder: Path) -> Path:
+    """The cache fetch_atc_updates.py's own main() writes from ATC's pages as fixture mode served them.
+
+    Only the transport is swapped: its session gets extract/_fixtures.py's
+    adapter, serving the same file's listing pages and update pages by URL,
+    and its CACHE_PATH points into `folder`. The listing walk, plan_fetches(),
+    the parse, the zero-failure rule and `listed` all run as an hourly run
+    runs them.
+    """
+    import contextlib
+    import io
+
+    import fetch_atc_updates
+    from extract._fixtures import FixtureAdapter, text_answers
+
+    adapter = FixtureAdapter({}, {}, {}, pages=text_answers(answers))
+    real_session, real_cache = fetch_atc_updates.atc_session, fetch_atc_updates.CACHE_PATH
+
+    def served_session(session=None):
+        named = real_session(session)
+        named.mount("https://", adapter)
+        return named
+
+    fetch_atc_updates.atc_session, fetch_atc_updates.CACHE_PATH = served_session, folder / "atc_updates.json"
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            failed = fetch_atc_updates.main()
+    finally:
+        fetch_atc_updates.atc_session, fetch_atc_updates.CACHE_PATH = real_session, real_cache
+    if failed:
+        raise SystemExit("fetch_atc_updates.py refuses the pages fixture mode served, so it would cache nothing new")
+    return folder / "atc_updates.json"
+
+
 def _atc_updates_old() -> dict:
-    """export_atc_updates.py's document for reference/atc_updates.json, with whatever automatic rows its scrape cache gives."""
+    """export_atc_updates.py's document for reference/atc_updates.json, with the automatic rows its scrape gives.
+
+    The scrape is fetch_atc_updates.py's own run over the pages fixture mode
+    served (RAW_DIR's conditions/atc_trail_updates.json), where that file
+    exists, so both sides read the same pages; otherwise whatever cache a real
+    fetch left in data/raw/.
+    """
+    import tempfile
+
     import export_atc_updates
+    from extract._fixtures import CONDITIONS_DIR, TEXT_FIXTURES
     from lib.atc_updates import file_problems, is_reviewed
 
     document = json.loads(export_atc_updates.REVIEWED_PATH.read_text(encoding="utf-8"))
@@ -217,7 +260,10 @@ def _atc_updates_old() -> dict:
         raise SystemExit("reference/atc_updates.json is not reviewed, so export_atc_updates.py publishes nothing")
     if problems := file_problems(document):
         raise SystemExit(f"export_atc_updates.py refuses reference/atc_updates.json, so it publishes nothing: {problems}")
-    automatic, _ = export_atc_updates.automatic_rows(document, export_atc_updates.cached_updates())
+    served = RAW_DIR / CONDITIONS_DIR / TEXT_FIXTURES["atc_trail_updates"]
+    with tempfile.TemporaryDirectory() as folder:
+        cache = _atc_scrape_cache(json.loads(served.read_text(encoding="utf-8")), Path(folder)) if served.exists() else None
+        automatic, _ = export_atc_updates.automatic_rows(document, export_atc_updates.cached_updates(cache))
     return export_atc_updates.build_document(document, datetime.now(timezone.utc), automatic)
 
 
@@ -236,6 +282,57 @@ def _nynjtc_alerts_old() -> dict:
     now = datetime.now(timezone.utc)
     alerts = {alert.slug: fetch_nynjtc_alerts.as_cache_entry(alert, now) for alert in parsed}
     return export_nynjtc_alerts.build_document(alerts, now)
+
+
+def _weather_alerts_old(raw_dir: Path) -> dict:
+    """export_weather_alerts.py's bake() over the NWS body fixture mode served and the weather squares, as its main() reads them.
+
+    Both are under --raw-dir: conditions/nws_alerts.json, the body fixture
+    mode served the extract, and weather/squares.json, the file
+    step_weather_squares.py landed for the dbt side, refused as main() refuses
+    one from before each square's zones were listed.
+    """
+    import export_weather_alerts
+
+    squares = json.loads((raw_dir / "weather" / "squares.json").read_text(encoding="utf-8"))
+    if "zones" not in squares:
+        raise SystemExit(f"{raw_dir}/weather/squares.json predates each square's zones, so export_weather_alerts.py refuses it")
+    body = json.loads((raw_dir / "conditions" / "nws_alerts.json").read_text(encoding="utf-8"))
+    now = datetime.now(timezone.utc)
+    return export_weather_alerts.bake(squares, body, now, now)
+
+
+def _work_projects_old() -> dict:
+    """export_work_projects.py's file for reference/work_projects.json, from its own main(), written into a temporary folder.
+
+    It has no builder that returns the document, so main() runs as a bake runs
+    it, with only OUT_DIR, OUT_PATH and MANIFEST_PATH moved, and the file it
+    wrote is read back.
+    """
+    import contextlib
+    import io
+    import tempfile
+
+    import export_work_projects
+
+    names = ("OUT_DIR", "OUT_PATH", "MANIFEST_PATH")
+    real = {name: getattr(export_work_projects, name) for name in names}
+    with tempfile.TemporaryDirectory() as folder:
+        out = Path(folder)
+        moved = {"OUT_DIR": out, "OUT_PATH": out / "work_projects.json", "MANIFEST_PATH": out / "manifest.json"}
+        for name, path in moved.items():
+            setattr(export_work_projects, name, path)
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                code = export_work_projects.main()
+        finally:
+            for name, path in real.items():
+                setattr(export_work_projects, name, path)
+        if code != 0:
+            raise SystemExit("export_work_projects.py refuses reference/work_projects.json, so it publishes nothing")
+        if not moved["OUT_PATH"].exists():
+            raise SystemExit("reference/work_projects.json is not reviewed, so export_work_projects.py publishes nothing")
+        return json.loads(moved["OUT_PATH"].read_text(encoding="utf-8"))
 
 
 class _ConditionsDatabase:
@@ -732,6 +829,18 @@ FAMILIES: dict[str, Family] = {
     "nynjtc_alerts": Family(
         old=_nynjtc_alerts_old, records="nynjtc_alerts", key="notice_id", ordered=True, stamps=("generated_at",)
     ),
+    # `release`, `zone_files`, `nws_updated` and `unknown_zones`, beside the
+    # alerts, are compared whole; `fetched_at` is when each side asked NWS.
+    "weather_alerts": Family(
+        old=_weather_alerts_old,
+        records="alerts",
+        key="id",
+        ordered=True,
+        reads_raw_dir=True,
+        stamps=("generated_at", "fetched_at"),
+    ),
+    # `reviewed_at`, beside the rows, is compared whole as a top-level field.
+    "work_projects": Family(old=_work_projects_old, records="work_projects", key="id", ordered=True, stamps=("generated_at",)),
     "closures": Family(
         old=lambda: _conditions_old("closures"), records="closures", key="id", ordered=True, stamps=("generated_at",)
     ),

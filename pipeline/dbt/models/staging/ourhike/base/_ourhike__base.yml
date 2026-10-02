@@ -73,3 +73,24 @@ models:
       - name: document_json
         description: The file as written, as JSON.
         data_tests: [not_null]
+  - name: base_ourhike__work_projects
+    data_tests:
+      # Says how many rows the dedupe dropped, which for one file is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('ourhike', 'raw_ourhike__work_projects')
+          config:
+            severity: warn
+    description: >
+      pipeline/reference/work_projects.json as its one row, keyed: the
+      reviewed club workdays (#760), read by int_closures__work_projects_checked
+      for CL17 whatever `rows` holds, since the review is the file's.
+    columns:
+      - name: work_projects_document_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the file's name and its landed path.
+        data_tests: [not_null, unique]
+      - name: document_json
+        description: The file as its reviewer wrote it, `_README` aside, as JSON.
+        data_tests: [not_null]

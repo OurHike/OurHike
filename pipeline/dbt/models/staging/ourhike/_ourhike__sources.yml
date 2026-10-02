@@ -44,3 +44,29 @@ sources:
                 key_columns: ["'reference/trail_name_aliases.json'", "_path"]
         description: >
           reference/trail_name_aliases.json, the reviewed trail-name aliases: each through route's names by publisher, with the rejected and removed candidates. One row, the whole document, verbatim.
+      - name: raw_ourhike__work_projects
+        data_tests:
+          # Rows sharing base_ourhike__work_projects's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'reference/work_projects.json'", "_path"]
+        config:
+          # Read on the hourly conditions lane (its folder file's TYPE is
+          # closures), because a cancelled workday must clear with the next
+          # bake (CL18). No freshness, as for every reviewed file.
+          meta:
+            cadence: hourly
+        description: >
+          reference/work_projects.json whole, as one row
+          (extract/_shared/ourhike/work_projects.py, ReviewedFile's
+          `verbatim` with no `rows_key`): the reviewed club workdays (#760),
+          `rows` empty since the maintainer's decision of 2026-08-20 on #760,
+          reviewed that day. Whole rather than a row per workday, so the
+          table has its columns while `rows` is empty and the review and the
+          retired `ua_sample_rows` key are read from the file itself.
+        columns:
+          - name: row_json
+            description: The file as written, `_README` aside, as JSON text.
+            data_tests: [not_null]
+          - name: _path
+            description: The file's path in the repository.

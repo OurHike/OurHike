@@ -278,6 +278,61 @@ sources:
             data_tests: [not_null]
           - name: _path
             description: The file's path in the repository.
+      - name: raw_atc__atc_trail_updates_pages
+        data_tests:
+          # Rows sharing base_atc__atc_trail_updates_pages's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'atc_trail_updates'", "slug"]
+        config:
+          # Read on the hourly conditions lane, as every closures type is, and
+          # warned on at the source's 7 days, as NYNJTC's alerts are. How
+          # recently the extract loaded the pages, which moves only when the
+          # sitemap's (slug, lastmod) set does (AtcTrailUpdatePages' change
+          # check), so a quiet week reads as stale. @unvalidated: 7 days is the
+          # atc source's inherited threshold, and what settles it is stage 5
+          # of #1793 — Rebuild the data platform as dlt → dbt: seven
+          # contracted marts, a monthly refresh, published docs, and lighter
+          # phone downloads reading _extract_runs.checked_at instead.
+          meta:
+            cadence: hourly
+        description: >
+          ATC's Trail Updates as their website shows them
+          (sources.json's `atc_trail_updates`, read by extract/_kinds.py's
+          AtcTrailUpdatePages): one row per update ATC's trail-updates sitemap
+          lists, as lib/atc_scrape.py's parse_update() reads the update's
+          page. ATC's prose is not landed (sources.json's licence, "facts and
+          a link only"). int_closures__atc_automatic decides which rows may
+          publish without a person (CL07-CL10).
+        columns:
+          - name: slug
+            description: ATC's slug for the update, from its URL in the sitemap. Unique by construction.
+            data_tests: [not_null, unique]
+          - name: title
+            description: The update's headline, from the page's <title>, entities decoded.
+            data_tests: [not_null]
+          - name: category
+            description: ATC's category, from the chip under the headline; null where the page has no chip.
+          - name: states
+            description: The chip's state codes, a JSON list; empty where the page has no chip.
+          - name: date_modified
+            description: The page's JSON-LD dateModified, as written, offset and all.
+            data_tests: [not_null]
+          - name: date_published
+            description: The page's JSON-LD datePublished, as written.
+          - name: miles
+            description: >
+              Every "NOBO mile X to Y" in the update's text, in order, a JSON
+              list of {direction, start, end, raw}: start and end as numbers,
+              thousands separators read (CL11), end null for a point.
+          - name: source_url
+            description: The update's own page, lib/atc_scrape.py's update_url().
+          - name: sitemap_lastmod
+            description: The sitemap's lastmod for the page, as written.
+          - name: page_sha256
+            description: The page's sha256, for provenance; the page itself is the as-sent copy's.
+          - name: _row
+            description: The update's place in the sitemap, from 0.
       - name: raw_atc__water_distance
         config:
           # No freshness, as for every reviewed file: its `_loaded_at` moves

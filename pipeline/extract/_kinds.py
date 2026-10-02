@@ -33,6 +33,10 @@ The kinds built so far for stage 2 (#1793 â€” Rebuild the data platform as dlt â
                             club's challenges)
     podcast_feed(key)       a podcast's RSS feed, one row per episode
     catalogue_row()         the club's own trail_orgs.json row, for org.py
+    atc_trail_update_pages(key)
+                            ATC's Trail Updates read off their website, one row
+                            per update their trail-updates sitemap lists, as
+                            lib/atc_scrape.py parses its page
 """
 
 from __future__ import annotations
@@ -55,12 +59,15 @@ from psycopg.rows import dict_row
 import export_conditions
 from check_freshness import CORRIDOR_PROBES
 from extract._contract import EXTRACT_DIR, PIPELINE_DIR, Resource, Unavailable, read_club_file, slug_for_folder
+from fetch_atc_updates import TOLERATED_PARSE_FAILURES as ATC_TOLERATED_PARSE_FAILURES
 from fetch_club_pdfs import extract_page_texts
 from fetch_elevation import TILE_URL_TEMPLATE as DEM_TILE_URL_TEMPLATE
 from fetch_hikefinder import sign_in as hikefinder_sign_in
 from fetch_opentrail import API_URL as OPENTRAIL_API_URL
 from fetch_opentrail import strip_comments as strip_opentrail_comments
 from lib.arcgis import iter_layer_pages, layer_count
+from lib.atc_scrape import parse_update as parse_atc_update
+from lib.atc_scrape import update_url as atc_update_url
 from lib.club_pdfs import PARSERS as CLUB_PDF_PARSERS
 from lib.freshness_state import Freshness, compare_marker
 from lib.hikefinder import DETAIL_PATH as HIKEFINDER_DETAIL_PATH
@@ -1536,3 +1543,181 @@ def podcast_feed(key: str, **overrides) -> PodcastFeed:
     if source_kind(entry) != PODCAST_FEED:
         raise ValueError(f"{key} is a {source_kind(entry)}, not a {PODCAST_FEED}")
     return PodcastFeed(key=key, **overrides)
+
+
+# ATC's robots.txt asks every agent to wait between requests: `User-agent: *`,
+# `Disallow: /wp-admin/`, `Crawl-delay: 10` (read 2026-10-02, 190 bytes).
+# lib/atc_scrape.py's fetcher sends its listing pages without waiting (the dlt
+# skill, "Honour Crawl-delay"); this resource waits after every request it sends
+# ATC, the change check's included. Fixture mode sets it to 0, as it serves no
+# host (extract/_fixtures.py).
+ATC_CRAWL_DELAY_SECONDS = 10
+
+# The sitemap protocol's namespace, which ATC's All in One SEO sitemap declares (read 2026-10-02).
+SITEMAP_NAMESPACE = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+
+
+def _atc_sitemap_url(entry: dict) -> str:
+    """The post type's sitemap beside the registry row's listing: `/trail-updates/` is read from `/trail-updates-sitemap.xml`.
+
+    All in One SEO names each post type's sitemap `<type>-sitemap.xml` at the
+    site's root (the sitemap's own stylesheet line reads `?sitemap=trail-updates`,
+    read 2026-10-02), so the URL is derived from the row's `url`, as `_wp_api`
+    derives a WordPress site's REST root, and the registry stays its one home.
+    """
+    parsed = urlparse(entry["url"])
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) != 1:
+        raise KeyError(f"{entry['key']}: url is not a one-segment listing page, so it has no sitemap beside it: {entry['url']}")
+    return f"{parsed.scheme}://{parsed.netloc}/{parts[0]}-sitemap.xml"
+
+
+@dataclass(frozen=True)
+class AtcTrailUpdatePages(Resource):
+    """ATC's Trail Updates read off their website: one row per update their trail-updates sitemap lists.
+
+    ELT.md puts an HTML scrape in extraction ("What stays outside dbt", CL11),
+    so the parse is lib/atc_scrape.py's own parse_update(), unchanged: the
+    thousands separator in `NOBO mile 1,503.6`, the chip's states and category,
+    JSON-LD's dateModified. Whether a row may publish without a person is
+    dbt's (int_closures__atc_automatic, CL07-CL10), never this resource's.
+
+    THE SITEMAP, NOT THE LISTING (ELT.md, "The skip-unchanged check, by
+    platform"). fetch_atc_updates.py walks the ten listing pages every hour and
+    re-reads each update's page once a day (lib/atc_scrape.py's CACHE_TTL),
+    because the listing cannot say that an edit happened. The sitemap can: each
+    URL carries its `lastmod`. Its slug set equalled the listing's on both days
+    it was compared (86 = 86 on 2026-10-01, ELT.md; 86 = 86 on 2026-10-02, no
+    difference either way), so an update ATC stops listing leaves the sitemap
+    and this table, and is not republished (CL10).
+
+    THE CHECK is a hash of the sitemap's (slug, lastmod) set: one request an
+    hour, 27,252 bytes on 2026-10-02 (ELT.md measured 3,411 on 2026-10-01). A
+    new, removed or edited update moves it. Not the feed's validator, which is
+    site-wide and false-fresh on an unpublish (ELT.md).
+
+    THE READ, WHEN THE SET MOVES, IS EVERY PAGE IT LISTS, not only the pages
+    whose lastmod moved. Every table here is `replace`, so a page left unread
+    would have no row unless the previous parse were carried across runs, and
+    nothing in the extract carries rows beyond a marker; carrying them in the
+    marker would also write about 30 KB into every `_extract_runs` row twice.
+    So ELT.md's "an update page is fetched only when its lastmod moves" is
+    not built. At ATC's Crawl-delay, one read of 86 pages and the sitemap
+    takes about 15 minutes (Reasoned: 87 requests, 10 s apart); requests per
+    day are about 24 on a quiet day and about 111 on a day something changed,
+    against about 350 today, all 10 s apart where today's are not.
+
+    WHAT DOES NOT LAND: ATC's prose. The parse's `text` is the update's body,
+    which no rule reads and sources.json's licence keeps on ATC's page ("Facts
+    and a link only, and NOT a grant to mirror ATC's prose"); the page itself
+    belongs in the as-sent copy, which is not built. `page_sha256` is the page's
+    hash, for provenance.
+
+    A READ THAT FAILS LOUDLY. An empty sitemap is a broken read, never "ATC has
+    nothing posted" (fetch_atc_updates.py's rule), and one page that does not
+    parse refuses the whole read (TOLERATED_PARSE_FAILURES, zero), so the run
+    refuses and the last committed table stands, as today's cache does. The
+    proof is the sitemap's own slug count (ELT.md, "A full reload that cannot
+    empty a safety table").
+    """
+
+    @property
+    def table(self) -> str:
+        return super().table + "_pages"
+
+    @property
+    def part(self) -> str:
+        return "pages"
+
+    @property
+    def entry(self) -> dict:
+        return registry_entry(self.key)
+
+    @property
+    def sitemap_url(self) -> str:
+        return _atc_sitemap_url(self.entry)
+
+    def _get(self, http: requests.Session, url: str, label: str) -> requests.Response:
+        return request_with_retry(url, session=http, timeout=60, throttle_seconds=ATC_CRAWL_DELAY_SECONDS, label=label)
+
+    def sitemap(self, http: requests.Session) -> list[tuple[str, str | None]]:
+        """(slug, lastmod) for each update the sitemap lists, in its order, each slug once.
+
+        Raises on a URL that is not a trail update's own page, because a
+        sitemap listing something else has changed shape.
+        """
+        root = ElementTree.fromstring(self._get(http, self.sitemap_url, "ATC trail-updates sitemap").content)
+        listing = self.entry["url"]
+        found: dict[str, str | None] = {}
+        for url in root.findall("s:url", SITEMAP_NAMESPACE):
+            loc = (url.findtext("s:loc", default="", namespaces=SITEMAP_NAMESPACE) or "").strip()
+            slug = loc[len(listing) :].rstrip("/") if loc.startswith(listing) else ""
+            if not re.fullmatch(r"[a-z0-9-]+", slug) or atc_update_url(slug) != loc:
+                raise ValueError(f"{self.key}: the sitemap lists {loc!r}, which is not a trail update's page")
+            lastmod = (url.findtext("s:lastmod", default="", namespaces=SITEMAP_NAMESPACE) or "").strip()
+            found.setdefault(slug, lastmod or None)
+        return list(found.items())
+
+    def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
+        try:
+            listed = self.sitemap(session())
+        except (requests.RequestException, ValueError, ElementTree.ParseError) as error:
+            print(f"  {self.key}: change check failed ({error}); fetching")
+            return Freshness.UNKNOWN, None
+        if not listed:
+            # Never FRESH: the read runs, and refuses on the empty sitemap.
+            return Freshness.UNKNOWN, None
+        marker = {"slugs": str(len(listed)), "set_sha256": hashlib.sha256(json.dumps(sorted(listed)).encode()).hexdigest()}
+        if recorded is None:
+            return Freshness.STALE, marker
+        return compare_marker(_canonical(recorded), _canonical(marker)), marker
+
+    def column_hints(self) -> dict:
+        # Every stamp stays text: dlt reads an ISO stamp as a timestamp and
+        # normalises it to UTC (NWS_TEXT_PROPERTIES above), which would lose
+        # the offset dateModified carries.
+        texts = ("slug", "title", "category", "date_modified", "date_published", "source_url", "sitemap_lastmod", "page_sha256")
+        hints = {name: {"data_type": "text"} for name in texts}
+        hints.update({"states": {"data_type": "json"}, "miles": {"data_type": "json"}, "_row": {"data_type": "bigint"}})
+        return hints
+
+    def rows(self, proofs: dict[str, int]):
+        http = session()
+        listed = self.sitemap(http)
+        if not listed:
+            raise RuntimeError(f"{self.key}: ATC's trail-updates sitemap lists no update, which means the read broke")
+        landed, failures = [], []
+        for position, (slug, lastmod) in enumerate(listed):
+            response = self._get(http, atc_update_url(slug), f"ATC trail update {slug}")
+            parsed = parse_atc_update(response.text, slug)
+            if parsed is None:
+                failures.append(slug)
+                continue
+            landed.append(
+                {
+                    "slug": parsed.slug,
+                    "title": parsed.title,
+                    "category": parsed.category,
+                    "states": list(parsed.states),
+                    "date_modified": parsed.date_modified,
+                    "date_published": parsed.date_published,
+                    "miles": [{"direction": m.direction, "start": m.start, "end": m.end, "raw": m.raw} for m in parsed.miles],
+                    "source_url": parsed.source_url,
+                    "sitemap_lastmod": lastmod,
+                    "page_sha256": hashlib.sha256(response.content).hexdigest(),
+                    "_row": position,
+                }
+            )
+        if len(failures) > ATC_TOLERATED_PARSE_FAILURES:
+            raise RuntimeError(
+                f"{self.key}: {len(failures)} of {len(listed)} update pages did not parse ({', '.join(failures[:5])}), "
+                "which is ATC's page changing shape; nothing lands rather than the updates that still parsed"
+            )
+        proofs[self.table] = len(listed)
+        yield from landed
+
+
+def atc_trail_update_pages(key: str, **overrides) -> AtcTrailUpdatePages:
+    resource = AtcTrailUpdatePages(key=key, **overrides)
+    resource.sitemap_url  # a registry url with no sitemap beside it fails at import, in the layout test
+    return resource

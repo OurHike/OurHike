@@ -64,3 +64,28 @@ sources:
           - name: _loaded_at
             description: When the step wrote the table, UTC.
             data_tests: [not_null]
+      - name: weather_squares
+        data_tests:
+          # Rows sharing stg_derived__weather_squares's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'weather_squares'", "release"]
+        description: >
+          The NBM weather squares build_weather_squares.py chose for a release,
+          written by step_weather_squares (pipeline/step_weather_squares.py),
+          which lands that script's squares.json whole, as one row: the trail
+          squares by trail cell, the NWS zones overlapping each square, every
+          zone id in the zone files it pinned, and those files' names. The
+          squares come from NOAA's rasters and NWS's shapefiles, which never
+          enter the warehouse; only this answer does. Read by the NWS alerts'
+          placement (WN03).
+        columns:
+          - name: release
+            description: The data release the squares were chosen for, as squares.json names it.
+            data_tests: [not_null, unique]
+          - name: document_json
+            description: squares.json as build_weather_squares.py wrote it, JSON text.
+            data_tests: [not_null]
+          - name: _loaded_at
+            description: When the step wrote the table, UTC.
+            data_tests: [not_null]

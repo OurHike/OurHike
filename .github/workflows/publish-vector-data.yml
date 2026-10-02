@@ -75,6 +75,10 @@ on:
         description: "Bring the recovered NYNJTC archive to the runner and park it. One-time; leave unticked."
         type: boolean
         default: false
+      refetch_photos:
+        description: "Fetch every photo again, ignoring the cached and published photo outcomes. One-time, for a bucket that does not hold the photos those outcomes vouch for; leave unticked."
+        type: boolean
+        default: false
       include_osm_water:
         description: "Fetch OSM water points (Geofabrik extracts, ~3.5 GB / ~15 min; a cached scan whose receipt verifies is reused without re-fetching). Untick to publish with opentrail's water alone."
         type: boolean
@@ -384,8 +388,30 @@ jobs:
       # (or a fresh environment prefix), and an absent outcome file just means
       # a cold crawl - the state this step exists to make rare, not an error.
       # An empty DATA_BASE_URL variable skips the step entirely.
+      # A photo outcome record vouches that a photo was uploaded ONCE, to the
+      # bucket it was published to. When the bucket changes, the records
+      # still vouch and the bytes are not there: run 164 (37000311109,
+      # 2026-10-02), the first vector publish after the public bucket moved to
+      # `our-hike` with no copy (#1793, decision 43), restored the cached
+      # outcomes, and publish.py's verify_photo_promises refused the release:
+      # 3,033 photo keys the POI files referenced were neither local nor in
+      # the bucket. It was right to refuse; nothing was uploaded. The fix is the
+      # one that message names: start the outcomes cold, so the fetchers
+      # download every photo and publish.py uploads it into the bucket that
+      # now serves it. One-time, so it is an input that defaults to false.
+      # The face gate is unchanged: its decisions are keyed by each photo's
+      # digest, and a re-fetched photo is the same bytes, so a held photo stays
+      # held (Reasoned: a source that re-encoded an image would give a new
+      # digest, which the gate then screens as a new photo).
+      - name: Start the photo outcomes cold
+        if: inputs.include_photos && inputs.refetch_photos
+        run: |
+          rm -f data/raw/poi_images.json data/raw/poi_images_atc.json
+          rm -rf data/raw/poi_photos
+          echo "Photo outcomes cleared: every photo is fetched again and uploaded to this run's bucket."
+
       - name: Restore photo outcomes from the published data
-        if: inputs.include_photos
+        if: inputs.include_photos && !inputs.refetch_photos
         env:
           DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
         run: |

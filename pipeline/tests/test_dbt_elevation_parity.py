@@ -133,23 +133,32 @@ def _dem_rows(con, test: dict) -> dict[tuple, dict]:
     return {(row["line_id"], row["sample_index"]): row for row in rows}
 
 
-def _python_profile(con, test: dict, *, trust_every_row: bool = False) -> list[dict]:
-    """profile_records over the test's sample points, each with the DEM's answer at its own point.
+def _points(test: dict) -> list[dict]:
+    return sorted(_given(test, "int_elevation__sample_points")["rows"], key=lambda row: row["sample_index"])
 
-    `trust_every_row` takes a DEM row as the sample's answer wherever it was
-    read, which is what a reader of that table would do without the SQL's
-    point check."""
-    points = sorted(_given(test, "int_elevation__sample_points")["rows"], key=lambda row: row["sample_index"])
+
+def _every_sample_read_at_its_own_point(con, test: dict) -> bool:
+    """What export_elevation.py always has: the DEM's answer at each sample's own point, and no other."""
+    dem = _dem_rows(con, test)
+    points = _points(test)
+    return len(dem) == len(points) and all(
+        (point["line_id"], point["sample_index"]) in dem
+        and (dem[(point["line_id"], point["sample_index"])]["lon"], dem[(point["line_id"], point["sample_index"])]["lat"])
+        == (point["lon"], point["lat"])
+        for point in points
+    )
+
+
+def _python_profile(con, test: dict) -> list[dict]:
+    """profile_records over the test's sample points, each taking its DEM row's elevation as its own (None without one)."""
     dem = _dem_rows(con, test)
 
     def elevation(point):
         row = dem.get((point["line_id"], point["sample_index"]))
-        if row is None or not (trust_every_row or (row["lon"], row["lat"]) == (point["lon"], point["lat"])):
-            return None
-        return row["elevation_m"]
+        return None if row is None else row["elevation_m"]
 
     records, _clipped = export_elevation.profile_records(
-        (float(point["distance_mi_text"]), elevation(point), point["piece_id"]) for point in points
+        (float(point["distance_mi_text"]), elevation(point), point["piece_id"]) for point in _points(test)
     )
     return [
         {
@@ -172,20 +181,22 @@ def _restricted(rows: list[dict], like: list[dict]) -> list[dict]:
 )
 def test_each_profile_unit_test_is_export_elevations_profile_records(con, test):
     """The clip, the seams and the rounding, by the Python's own loop: the same records in the same order."""
+    assert _every_sample_read_at_its_own_point(con, test), "the Python only ever has these; name the test in SQL_ONLY"
     expected = test["expect"]["rows"]
     python = _python_profile(con, test)
     assert len(python) == len(expected)
     assert _restricted(python, expected) == _restricted(expected, expected)
-    assert all(row.get("dem_read", True) for row in expected), "every sample here was read at its own point"
+    assert all(row.get("dem_read", True) for row in expected)
 
 
 @pytest.mark.parametrize("name", sorted(SQL_ONLY))
 def test_each_sql_only_unit_test_is_one_a_trusting_reader_would_answer_differently(con, name):
     """The SQL lends no sample a DEM answer read elsewhere; a reader that trusted the table would publish one."""
     (test,) = [test for test in _unit_tests() if test["name"] == name]
+    assert not _every_sample_read_at_its_own_point(con, test), f"{name} is within the Python's world: hold it to the Python"
     expected = test["expect"]["rows"]
     assert any(row["dem_read"] is False for row in expected)
-    assert _restricted(_python_profile(con, test, trust_every_row=True), expected) != _restricted(expected, expected)
+    assert _restricted(_python_profile(con, test), expected) != _restricted(expected, expected)
 
 
 # --- The fixture DEM ------------------------------------------------------------

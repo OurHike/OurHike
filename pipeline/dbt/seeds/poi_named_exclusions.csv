@@ -1,0 +1,15 @@
+value,reason
+FORD,"unbridged crossing - a hazard, not an amenity (HIKER_SAFETY.md, POI_COVERAGE_SURVEY.md 8e)"
+CULVERT,"a pipe under the tread, not a thing anyone crosses"
+Stairs,a staircase is not a stream crossing
+Vehicle Bridge,a road bridge is not a hiker's crossing
+BRIDGE,"the crossing type was withdrawn (#1674, lib/poi_schema.WITHDRAWN_POI_TYPES)"
+FOOT BRIDGE,"the crossing type was withdrawn (#1674, lib/poi_schema.WITHDRAWN_POI_TYPES)"
+BOARDWALK,"the crossing type was withdrawn (#1674, lib/poi_schema.WITHDRAWN_POI_TYPES)"
+HARDENED CROSSING,"the crossing type was withdrawn (#1674, lib/poi_schema.WITHDRAWN_POI_TYPES)"
+Trail Bridge,"the crossing type was withdrawn (#1674, lib/poi_schema.WITHDRAWN_POI_TYPES)"
+Water Spigot,water holdback - no seasonal shutoff recorded (sources.json oprhp_water_holdback)
+Drinking Fountain,water holdback - see oprhp_water_holdback
+WATER SUPPLY SYSTEM,DEC water refused - see sources.json dec_water_holdback
+Concession,unjudged as resupply (#806's precedent)
+Store,unjudged as resupply (#806's precedent)

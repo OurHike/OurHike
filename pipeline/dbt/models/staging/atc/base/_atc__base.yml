@@ -1,0 +1,49 @@
+version: 2
+
+models:
+  - name: base_atc__water_distance
+    data_tests:
+      # Says how many rows the dedupe dropped, which for a key unique by
+      # construction is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('atc', 'raw_atc__water_distance')
+          config:
+            severity: warn
+    description: >
+      reference/water_distance.json, one row per A.T. shelter and campsite,
+      keyed: CSI's distance to the nearest water in feet, how ATC arrived at
+      it, and where there is none, why. Read by
+      int_points_of_interest__water, which publishes the distance and its
+      provenance together or not at all.
+    columns:
+      - name: water_distance_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the file's path and atc_global_id.
+        data_tests: [not_null, unique]
+      - name: layer
+        description: The sources.json layer the site is on, `shelters` or `campsites`.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [shelters, campsites]
+      - name: atc_global_id
+        description: ATC's GlobalID for the site.
+        data_tests: [not_null, unique]
+      - name: distance_ft
+        description: >
+          CSI's distance to the nearest water, in feet, as
+          build_water_distance.py accepted it (0 and negative values are
+          refused there and arrive as null). Null means nobody has said,
+          never a dry site.
+      - name: provenance
+        description: >
+          CSI's Nearest_Water_Source, verbatim: FarOut, NHDP_HR_Stream and
+          NHDP_HR_Pond are measured against a mapped point; OSA_Field_Estimate
+          is a steward's round number, which the phone prints with a tilde.
+      - name: unresolved
+        description: Why the row carries no distance, where it carries none.
+      - name: file_row
+        description: The row's place in the file, from 0.

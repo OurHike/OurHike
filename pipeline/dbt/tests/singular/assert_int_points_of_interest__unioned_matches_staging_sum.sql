@@ -4,11 +4,14 @@
 -- regression class TESTING.md treats as first-class, and a count mismatch
 -- is its cheapest possible detector. Fails by returning a row.
 --
--- Every branch of int_pois_unioned is listed here by hand, which is the
--- duplication that makes the test worth having: a branch dropped from the
--- union without being dropped here fails immediately, and a branch added to
--- the union without being added here does too. Thirteen branches as of
--- Phase D (#100).
+-- Every branch of int_points_of_interest__unioned is listed here by hand,
+-- which is the duplication that makes the test worth having: a branch
+-- dropped from the union without being dropped here fails immediately, and
+-- a branch added to the union without being added here does too. Eighteen
+-- branches since stage 3 of #1793 — Rebuild the data platform as dlt → dbt:
+-- seven contracted marts, a monthly refresh, published docs, and lighter
+-- phone downloads (thirteen before it, as assert_int_pois_unioned_matches_
+-- staging_sum).
 with expected as (
     select
         (select count(*) from {{ ref('stg_atc__shelters') }})
@@ -18,18 +21,26 @@ with expected as (
         + (select count(*) from {{ ref('stg_atc__privies') }})
         + (select count(*) from {{ ref('stg_atc__communities') }})
         + (select count(*) from {{ ref('stg_opentrail__waypoints') }})
+        + (select count(*) from {{ ref('stg_oprhp__facilities') }})
         + (select count(*) from {{ ref('stg_dec__lean_tos') }})
         + (select count(*) from {{ ref('stg_dec__primitive_campsites') }})
         + (select count(*) from {{ ref('stg_dec__scenic_vistas') }})
         + (select count(*) from {{ ref('stg_dec__firetowers') }})
         + (select count(*) from {{ ref('stg_dec__viewing_areas') }})
+        + (select count(*) from {{ ref('stg_dec__parking_areas') }})
+        + (select count(*) from {{ ref('stg_dec__backcountry_features') }})
+        + (select count(*) from {{ ref('base_usfs__rec_sites') }})
+        + (select count(*) from {{ ref('base_nycparks__nyc_public_restrooms') }}
+        )
         + (
-            select count(*) from {{ ref('stg_dec__parking_areas') }}
+            select count(*)
+            from {{ ref('base_nycparks__nyc_drinking_fountains') }}
         ) as row_count
 ),
 
 actual as (
-    select count(*) as row_count from {{ ref('int_pois_unioned') }}
+    select count(*) as row_count
+    from {{ ref('int_points_of_interest__unioned') }}
 )
 
 select

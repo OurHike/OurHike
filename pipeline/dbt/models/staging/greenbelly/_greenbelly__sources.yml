@@ -1,0 +1,38 @@
+version: 2
+
+sources:
+  - name: greenbelly
+    description: >
+      Shelter capacities from Greenbelly's hiker-maintained list, joined to
+      ATC's shelters by name and reviewed into git as
+      reference/shelter_capacity.json, landed by the extract's
+      _shared/greenbelly/ folder (pipeline/extract/_shared/greenbelly/
+      shelter_capacity.py). build_shelter_capacity.py builds the file; the
+      scrape is not rebuilt here (PO12, an edge rule).
+    schema: raw
+    config:
+      meta:
+        cadence: monthly
+      # No freshness: a reviewed file's `_loaded_at` moves only when its
+      # bytes do (its change marker is the file's sha256), so a week-old
+      # stamp means nobody edited the list, not that the extract stopped.
+    tables:
+      - name: raw_greenbelly__shelter_capacity
+        data_tests:
+          # Rows sharing base_greenbelly__shelter_capacity's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'reference/shelter_capacity.json'", "poi_id"]
+        description: >
+          reference/shelter_capacity.json's `shelters`, one row per ATC
+          shelter (280 on 2026-10-01), keyed by the POI id the shelter
+          publishes under. 262 carry a capacity; a shelter the list names only
+          as half of a pair, or not at all, carries none and a reason
+          (`unresolved`), and publishes no capacity rather than a guessed one.
+          Key: poi_id, 280 of 280.
+        columns:
+          - name: poi_id
+            description: The published POI id, `atc_shelters:<GlobalID>`, as the identity ledger holds it.
+            data_tests: [not_null, unique]
+          - name: capacity
+            description: How many the shelter sleeps, where the list says. Null means nobody has said, never zero.

@@ -1317,6 +1317,193 @@ def _with_key_fields(content: str, fields: dict) -> str:
     return json.dumps(collection)
 
 
+# --- The points_of_interest family (#1793, stage 3) ------------------------
+#
+# What the POI family's shadow-run parity needs from these fixtures, added to
+# the layers above rather than written into their builders, so no other
+# family's rows change:
+#
+# - THE ID FIELDS export_nearby_poi.py reads. sources.json declares OBJECTID
+#   for oprhp_facilities and objectid for usfs_rec_sites, and NYC's Socrata
+#   rows are identified by `:id`, which lib/socrata.py moves onto each
+#   feature's `id` (extract/_fixtures.py answers a fixture feature's own `id`
+#   as that). Without them export_nearby_poi.py cannot run on these files.
+# - ATC'S REAL SHELTERS AND CAMPSITES, by GlobalID and name. Their water
+#   distances (reference/water_distance.json) and capacities
+#   (reference/shelter_capacity.json) are reviewed files in git that fixture
+#   mode loads whole, and both join on ATC's GlobalID, so a fixture with real
+#   ids is what lets parity hold the real figures, the 42 steward estimates
+#   among them, through both pipelines. Their PLACES are invented: a grid
+#   (_poi_site_point) inside the fixture centerline's 30-mile corridor, every
+#   site at least 300 m from the next, so no two group into a site. 21 sites
+#   are left out: the ledger has retired the water point export_poi.py would
+#   synthesize at each (`atc_csi:<GlobalID>`), because a real water point
+#   folds into each of them on the live corridor, and these fixtures have
+#   none to fold.
+# - ATC'S INVENTORY COLUMNS, the ones lib/poi_description.py composes a
+#   sentence from and lib/atc_notes.py cleans, varied by row (_POI_INVENTORY),
+#   on those real shelters and campsites and on vistas, parking areas and
+#   privies of their own (_POI_FACILITIES), so the describers' branches run
+#   through both pipelines rather than only through unit tests. Each is a
+#   value ATC writes on the live layers per the Python's own docstrings; the
+#   facilities sit on a grid of their own north of the sites, 400 m apart,
+#   inside the corridor and too far from any shelter or campsite to join a
+#   site.
+# - ONE DEC BACKCOUNTRY PRIVY THAT PUBLISHES. The layer's three rows above
+#   are typed PRIVY, which DEC_ASSET_TYPES does not name, so the layer kept
+#   nothing and export_nearby_poi.py's completeness gate refused the run; a
+#   `PIT PRIVY` row is the layer's commonest real value (356, per the map's
+#   own comment).
+POI_REFERENCE_DIR = Path(__file__).parent / "reference"
+
+# Shelter, campsite, vista, parking and privy inventory, one tuple of values
+# per row, cycled: every value one of the shapes the Python's tests and
+# docstrings name (a code, a free-text near-miss, a blank, an implausible year).
+_POI_INVENTORY = {
+    "shelters": [
+        {"Stories": 2, "Exterior_M": "2", "Chimneys": 1, "Metal_Fir": 1, "Deck_Lengt": 24, "Year_Built": 1915},
+        {"Stories": 1, "Exterior_M": "5", "Chimneys": 0, "Metal_Fir": 0, "Deck_Lengt": 0, "Year_Built": 1954},
+        {"Stories": 1, "Exterior_M": "10", "Food_Boxe": 1, "Year_Built": 0, "Comments": "Has a loft"},
+        {"Stories": 3, "Exterior_M": "12", "Food_Cabl": 2, "Mortared": 1, "Comments": "Not sure about spatial info"},
+        {
+            "Exterior_M": "6",
+            "Food_Pole": 1,
+            "Year_Built": 2101,
+            "Comments": "Log and mortar exterior. Majority of structure is log. Please see photos.",
+        },
+        {"Stories": 1, "Year_Built": 1799, "Comments": "GIS CS629-CS635; Shiplap siding"},
+        {"Stories": 2, "Exterior_M": "4", "Deck_Lengt": 12, "Comments": "816/15"},
+        {"Stories": 1, "Exterior_M": "8", "Year_Built": 2003, "Comments": "Exterior - shiplap ;skylight"},
+        {},
+    ],
+    "campsites": [
+        {"Type": "0", "Site_Num": 3, "Food_Boxe": 1},
+        {"Type": "1", "Site_Num": 6, "Tent_Pads": 8, "Metal_Fir": 1},
+        {"Type": "0", "Site_Num": 3, "Tent_Pads": 1, "Tent_Plat": 6},
+        {"Type": "0"},
+        {"Type": "1", "Comments": "One group campsite."},
+        {"Type": "0", "Site_Num": 1, "Comments": "Not sure about spatial info"},
+    ],
+}
+
+# The vistas, parking areas and privies, each a full row of its own.
+_POI_FACILITIES = {
+    "viewpoints.geojson": [
+        {"Name": "Fixture Vista East", "Left_Beari": 40, "Right_Bear": 220, "Location": "Mtn/Ridge/Outcrop"},
+        {"Name": "Fixture Vista Wolf", "Left_Beari": 280, "Right_Bear": 10},
+        {"Name": "Fixture Vista Summit", "Left_Beari": 10, "Right_Bear": 350, "Location": "Summit"},
+        {"Name": "Fixture Vista Horizon", "Left_Beari": 90, "Right_Bear": 90},
+        {"Name": "Fixture Vista Unsurveyed", "Left_Beari": 0, "Right_Bear": 0, "Location": "Summit; Lookout Tower"},
+        {"Name": "Fixture Vista Narrow", "Left_Beari": 90, "Right_Bear": 92, "Location": "TBD"},
+        {"Name": "Fixture Vista Eighty", "Left_Beari": 40, "Right_Bear": 120, "Location": "Open Area - Natural"},
+        {"Name": "Fixture Vista Sixty", "Left_Beari": 90, "Right_Bear": 152, "Comments": "No view beyond foreground; bald rock"},
+        {"Name": "Fixture Vista Note", "Location": "TBD", "Comments": "No view beyond foreground"},
+        {"Name": "Fixture Vista Silent", "Location": "Side Trail"},
+    ],
+    "parking.geojson": [
+        {"Name": "Fixture Lot Gravel", "Type": "0", "Surface": "3", "Parking_S": 7, "ADA_Space": 0},
+        {"Name": "Fixture Lot One", "Type": "0", "Surface": "3", "Parking_S": 1},
+        {"Name": "Fixture Lot Accessible", "Type": "0", "Surface": "0", "Parking_S": 7, "ADA_Space": 2},
+        {"Name": "Fixture Shoulder", "Type": "Roadside/Shoulder", "Surface": "3", "Parking_S": 7},
+        {"Name": "Fixture Lot Unknown", "Type": "Unknown", "Surface": "Unknown"},
+        {"Name": "Fixture Lot Pavers", "Type": "0", "Surface": "2", "Parking_S": 12, "Comments": "Gate locked at dusk."},
+    ],
+    "privies.geojson": [
+        {"Name": "Fixture Privy Moldering", "Type": "1", "Enclosure": "1", "Year_Built": 2003},
+        {"Name": "Fixture Privy Multi", "Type": "1", "Enclosure": "2", "Year_Built": 2003},
+        {"Name": "Fixture Privy Open", "Type": "3", "Enclosure": "0"},
+        {"Name": "Fixture Privy Cool", "Type": "Cool Composting", "Year_Built": 2003},
+        {"Name": "Fixture Privy Plain", "Type": "5", "Enclosure": "3"},
+        {"Name": "Fixture Privy Vault", "Type": "4", "Enclosure": "1", "Comments": "Please see photos"},
+    ],
+}
+
+
+def _poi_site_point(index: int) -> dict:
+    return {"type": "Point", "coordinates": [-74.30 + (index % 25) * 0.004, 41.20 + (index // 25) * 0.004]}
+
+
+def _points_of_interest_fixtures(files: dict) -> dict:
+    """The POI family's additions to `files`: id fields, ATC's real shelters and campsites with inventory, facilities, a DEC privy."""
+    files = dict(files)
+    id_fields = {
+        "external/oprhp_facilities.geojson": ("OBJECTID", lambda i: 5501 + i),
+        "external/usfs_rec_sites.geojson": ("objectid", lambda i: 3388401 + i),
+    }
+    for name, (field, value) in id_fields.items():
+        collection = json.loads(files[name])
+        for index, feature in enumerate(collection["features"]):
+            feature["properties"][field] = value(index)
+        files[name] = json.dumps(collection)
+    for name, prefix in (
+        ("external/nyc_public_restrooms.geojson", "row-fixture-restroom"),
+        ("external/nyc_drinking_fountains.geojson", "row-fixture-fountain"),
+    ):
+        collection = json.loads(files[name])
+        for index, feature in enumerate(collection["features"]):
+            feature["id"] = f"{prefix}-{index}"
+        files[name] = json.dumps(collection)
+
+    sites = json.loads((POI_REFERENCE_DIR / "water_distance.json").read_text(encoding="utf-8"))["sites"]
+    pois = json.loads((POI_REFERENCE_DIR / "poi_identity.json").read_text(encoding="utf-8"))["pois"]
+    retired_water = {row["source_feature_id"] for row in pois.values() if row["source"] == "atc_csi" and "retired" in row}
+    kept = sorted(
+        (site for site in sites if site["atc_global_id"] not in retired_water),
+        key=lambda site: (site["layer"], site["atc_global_id"]),
+    )
+    for name, layer in (("shelters.geojson", "shelters"), ("campsites.geojson", "campsites")):
+        collection = json.loads(files[name])
+        inventory = _POI_INVENTORY[layer]
+        appended = 0
+        for index, site in enumerate(kept):
+            if site["layer"] == layer:
+                collection["features"].append(
+                    {
+                        "type": "Feature",
+                        "properties": {
+                            "GlobalID": site["atc_global_id"],
+                            "Name": site["atc_name"],
+                            **inventory[appended % len(inventory)],
+                        },
+                        "geometry": _poi_site_point(index),
+                    }
+                )
+                appended += 1
+        files[name] = json.dumps(collection)
+
+    for row, (name, facilities) in enumerate(_POI_FACILITIES.items()):
+        collection = json.loads(files[name])
+        stem = name.removesuffix(".geojson")
+        for index, properties in enumerate(facilities):
+            collection["features"].append(
+                {
+                    "type": "Feature",
+                    "properties": {"GlobalID": f"fixture-{stem}-{index}", **properties},
+                    "geometry": {"type": "Point", "coordinates": [-74.30 + index * 0.005, 41.30 + row * 0.004]},
+                }
+            )
+        files[name] = json.dumps(collection)
+
+    backcountry = json.loads(files["external/dec_backcountry_features.geojson"])
+    backcountry["features"].append(
+        {
+            "type": "Feature",
+            "properties": {
+                "OBJECTID": 103,
+                "ASSET_UID": 228017,
+                "NAME": "Fixture Pit Privy",
+                "ASSET": "PIT PRIVY",
+                "FACILITY": "Fixture Wild Forest",
+                "PUBLICUSE": "Y",
+                "UPDATED": "2026-08-18",
+            },
+            "geometry": _point(3),
+        }
+    )
+    files["external/dec_backcountry_features.geojson"] = json.dumps(backcountry)
+    return files
+
+
 def write_fixtures(raw_dir: Path) -> list[str]:
     files = {
         "shelters.geojson": _atc_layer("Shelter", 3),
@@ -1453,6 +1640,7 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         "external/cdtc_centerline.geojson": _registered_trail_lines_layer("cdtc_centerline", None),
         "external/wi_ice_age_trail.geojson": _registered_trail_lines_layer("wi_ice_age_trail", None),
     }
+    files = _points_of_interest_fixtures(files)
     existing = [name for name in files if (raw_dir / name).exists()]
     if existing:
         raise SystemExit(

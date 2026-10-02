@@ -195,6 +195,14 @@ models:
         data_tests: [not_null]
       - name: held_because
         description: Why not, in words for the job log; null where it passed.
+      - name: awaiting_review
+        description: >
+          True only for ATC's file when nobody has reviewed it yet, the one
+          hold export_atc_updates.py treats as no failure (it writes nothing
+          and exits 0). pub_conditions_atc_updates then selects no row, and
+          phone_file's `when_empty: keep_last_file` leaves the last good file
+          and succeeds. Every other hold still fails the writer.
+        data_tests: [not_null]
 
 unit_tests:
   - name: int_closures__atc_checked_finds_what_file_problems_finds
@@ -456,10 +464,10 @@ unit_tests:
           - {source_key: ourhike_closures, may_publish: true}
     expect:
       rows:
-        - {source_key: atc_trail_updates, reviewed_at: '  ', passed: false, held_because: 'reference/atc_updates.json has no reviewed_at, so nobody has checked it against ATC''s page'}
-        - {source_key: nynjtc_trail_alerts, reviewed_at: null, passed: false, held_because: 'NYNJTC''s Trail Alerts category has no posts at all, which means the parse broke'}
-        - {source_key: oprhp_trail_closures, reviewed_at: null, passed: true, held_because: null}
-        - {source_key: ourhike_closures, reviewed_at: null, passed: true, held_because: null}
+        - {source_key: atc_trail_updates, reviewed_at: '  ', passed: false, held_because: 'reference/atc_updates.json has no reviewed_at, so nobody has checked it against ATC''s page', awaiting_review: true}
+        - {source_key: nynjtc_trail_alerts, reviewed_at: null, passed: false, held_because: 'NYNJTC''s Trail Alerts category has no posts at all, which means the parse broke', awaiting_review: false}
+        - {source_key: oprhp_trail_closures, reviewed_at: null, passed: true, held_because: null, awaiting_review: false}
+        - {source_key: ourhike_closures, reviewed_at: null, passed: true, held_because: null, awaiting_review: false}
 
   - name: int_closures__gate_passes_an_empty_reviewed_atc_file_and_holds_back_an_unverified_closure
     description: >

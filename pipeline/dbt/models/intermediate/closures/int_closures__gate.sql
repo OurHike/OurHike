@@ -116,6 +116,17 @@ judged as (
             when gated_sources.source_key = 'atc_trail_updates'
                 then atc_document.reviewed_at
         end as reviewed_at,
+        -- The one hold that is not a failure: held_because's unreviewed
+        -- branch, reached only past the publication and landing checks
+        -- above it. export_atc_updates.py writes nothing and exits 0 for it,
+        -- so pub_conditions_atc_updates writes nothing and succeeds.
+        coalesce(
+            gated_sources.source_key = 'atc_trail_updates'
+            and publication.may_publish
+            and atc_document.documents = 1
+            and not atc_document.is_reviewed,
+            false
+        ) as awaiting_review,
         case
             when publication.source_key is null
                 then
@@ -179,5 +190,6 @@ select
     may_publish,
     reviewed_at,
     held_because is null as passed,
-    held_because
+    held_because,
+    awaiting_review
 from judged

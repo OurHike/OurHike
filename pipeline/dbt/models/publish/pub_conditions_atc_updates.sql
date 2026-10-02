@@ -1,4 +1,8 @@
-{{ config(format='json', location='conditions_atc_updates.json') }}
+{{ config(
+    format='json',
+    location='conditions_atc_updates.json',
+    meta={'when_empty': 'keep_last_file'},
+) }}
 -- conditions/atc_updates.json, ATC's own Trail Updates (#460), in the shape
 -- export_atc_updates.py's build_document() writes: `generated_at`, the
 -- reviewed file's `reviewed_at`, and every reviewed row in the file's order,
@@ -9,14 +13,16 @@
 -- both halves. Each row's JSON is int_closures__atc_checked's
 -- published_row, the reviewer's own values, read by the mart row's key.
 --
--- NOTHING IS WRITTEN for a file int_closures__gate holds back, whether for
--- its rows or because int_sources__publication holds ATC back: the model
--- fails with the gate's reason before the copy, so the last good file stays
--- on the phone, as export_atc_updates.py writes nothing for an unreviewed
--- file or a bad row (CL05). One difference: export_atc_updates.py exits 0
--- for an unreviewed file, on purpose ("a red X on a job that is behaving
--- correctly is how a real failure gets missed later"), and this model fails
--- for one, because phone_file has no way to write nothing and succeed.
+-- NOTHING IS WRITTEN for a file int_closures__gate holds back, so the last
+-- good file stays on the phone, as export_atc_updates.py writes nothing for
+-- an unreviewed file or a bad row (CL05), and the run ends as today's does:
+-- - a file nobody has reviewed yet selects no row, and phone_file's
+--   `when_empty: keep_last_file` writes nothing and succeeds, as the Python
+--   exits 0 on purpose ("a red X on a job that is behaving correctly is how
+--   a real failure gets missed later");
+-- - every other hold, for its rows or because int_sources__publication holds
+--   ATC back, fails with the gate's reason before the copy, as the Python
+--   exits 1 for a bad row.
 --
 -- NOT HERE YET: the automatic rows export_atc_updates.py appends from
 -- fetch_atc_updates.py's scrape (CL07-CL10). No extract lands the scrape, so
@@ -67,7 +73,8 @@ judged as (
         coalesce(
             gate.held_because,
             'int_closures__gate has no row for atc_trail_updates'
-        ) as held_because
+        ) as held_because,
+        coalesce(gate.awaiting_review, false) as awaiting_review
     from published
     left join gate on true
 )
@@ -83,3 +90,4 @@ select
     reviewed_at,
     atc_updates
 from judged
+where not awaiting_review

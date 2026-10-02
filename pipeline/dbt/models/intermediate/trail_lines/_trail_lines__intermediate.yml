@@ -254,6 +254,18 @@ models:
         description: What the code decodes to, the domain's own name for it.
         data_tests: [not_null]
 
+  - name: int_trail_lines__at_published
+    description: >
+      The A.T. half of the trail_lines mart: one row per line trails.geojson
+      publishes (the centerline's chains, side trails and spurs), in exactly
+      the mart's columns, which marts/trail_lines/_trail_lines__models.yml
+      describes. The mart unions it with int_trail_lines__network_published
+      and keeps the rows whose source may publish.
+    columns:
+      - name: trail_line_id
+        description: The published feature id, as the trail_lines mart describes it.
+        data_tests: [not_null, unique]
+
 unit_tests:
   # One fixture runs through all four mile-axis steps, each test's given
   # rows the previous test's expected rows, so the chain is the axis. Its

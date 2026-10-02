@@ -1,0 +1,19 @@
+version: 2
+
+# DELETE AT MERGE, with the model it describes. int_trail_lines__network_published
+# is tl-net's (stage 3 of #1793 — Rebuild the data platform as dlt → dbt: seven
+# contracted marts, a monthly refresh, published docs, and lighter phone
+# downloads), and its own YAML replaces this file. It is here so that the
+# trail_lines mart and its contract build on the A.T. branch before tl-net's
+# model exists.
+models:
+  - name: int_trail_lines__network_published
+    description: >
+      PLACEHOLDER with no rows: one row per line nearby_trails.geojson
+      publishes, in exactly the trail_lines mart's columns, which the mart
+      unions with int_trail_lines__at_published. tl-net's model of the same
+      name and columns replaces it at merge.
+    columns:
+      - name: trail_line_id
+        description: The published feature id, as the trail_lines mart describes it.
+        data_tests: [not_null, unique]

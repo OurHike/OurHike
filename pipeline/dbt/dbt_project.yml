@@ -270,6 +270,10 @@ vars:
   trail_lines_spur_junction_max_m: 100.0
   trail_lines_spur_on_trail_m: 25.0
   trail_lines_spur_destination_max_m: 150.0
+  # export_spurs.DESTINATION_POI_TYPES: the POI types a spur may lead to,
+  # argued there and in features/SPUR_TRAILS.md (a privy is not where a
+  # trail goes).
+  trail_lines_spur_destination_poi_types: [shelter, water, campsite, resupply, viewpoint]
   # METERS_PER_DEGREE, for lib/spurs.py's equirectangular distance.
   trail_lines_metres_per_degree: 111320.0
   # lib/club_sections.py's club sections (int_trail_lines__club_stretches),

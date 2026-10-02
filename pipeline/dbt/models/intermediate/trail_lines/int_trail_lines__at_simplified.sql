@@ -1,10 +1,12 @@
 {{ config(materialized='table') }}
 -- The A.T.'s published lines at the 1 m pass (TL15),
--- export_trails.simplify_records(): each line taken to EPSG:5070, where a
--- metre is a metre on both axes, Douglas-Peucker'd at
--- trail_lines_simplify_tolerance_m (1 m; that function's docstring has the
--- measurement behind it), and taken back, always_xy on both legs. It runs
--- after the clip, so the corridor test saw the full line.
+-- export_trails.simplify_records(), by the simplified_in_metres macro: each
+-- line taken to EPSG:5070, where a metre is a metre on both axes,
+-- Douglas-Peucker'd at trail_lines_simplify_tolerance_m (1 m; that
+-- function's docstring has the measurement behind it), and taken back,
+-- always_xy on both legs; a tolerance of 0 leaves every line as it is, and a
+-- negative one stops the build. It runs after the clip, so the corridor test
+-- saw the full line.
 --
 -- NEVER DROPS A FEATURE: where the pass leaves any part with fewer than two
 -- distinct vertices, the line keeps its full-resolution geometry, never the
@@ -27,20 +29,10 @@ reduced as (
     select
         * exclude (geom_wkt),
         st_geomfromtext(geom_wkt) as full_geom,
-        st_transform(
-            st_simplify(
-                st_transform(
-                    st_geomfromtext(geom_wkt),
-                    'EPSG:4326',
-                    'EPSG:5070',
-                    always_xy := true
-                ),
-                {{ var('trail_lines_simplify_tolerance_m') }}
-            ),
-            'EPSG:5070',
-            'EPSG:4326',
-            always_xy := true
-        ) as reduced_geom
+        {{ simplified_in_metres(
+            'st_geomfromtext(geom_wkt)',
+            var('trail_lines_simplify_tolerance_m')
+        ) }} as reduced_geom
     from clipped
 ),
 

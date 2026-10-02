@@ -21,8 +21,10 @@
 -- the trail is not a junction, and each of the three gives no junction and no
 -- destination; otherwise the nearer end is the junction, the other the far
 -- end. The far end's destination is the nearest of
--- int_trail_lines__spur_destinations within DESTINATION_MAX_M (150 m),
--- rounded to the metre as Python's round() rounds it.
+-- int_trail_lines__spur_destinations within DESTINATION_MAX_M (150 m) whose
+-- type is one of DESTINATION_POI_TYPES (trail_lines_spur_destination_poi_types:
+-- a privy, a parking lot or a trailhead is never where a spur goes), rounded
+-- to the metre as Python's round() rounds it.
 --
 -- TL29, THE JUNCTION MILE: the junction on int_trail_lines__mile_axis by the
 -- axis_mile macro, the same mile a POI gets (#136 — Publish the mile at
@@ -279,6 +281,11 @@ destination_offsets as (
         on
             abs(destinations.latitude - junctions.far_lat) <= 0.002
             and abs(destinations.longitude - junctions.far_lon) <= 0.003
+    where destinations.poi_type in (
+        {%- for poi_type in var('trail_lines_spur_destination_poi_types') %}
+        '{{ poi_type }}'{{ ',' if not loop.last }}
+        {%- endfor %}
+    )
 ),
 
 -- PointIndex.nearest() on the destinations: the least distance within

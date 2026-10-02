@@ -1,33 +1,51 @@
--- placeholder: the points_of_interest mart fills this
---
+{{ config(materialized='table') }}
+{%- set destination_types = var('trail_lines_spur_destination_poi_types') %}
 -- The published POIs a spur may lead to (TL28), as export_spurs.py's
--- load_destination_pois() reads them: export_poi.py's records of the five
--- DESTINATION_POI_TYPES (shelter, water, campsite, resupply, viewpoint),
--- resolved against what the phone holds, so a destination id is one the
--- client can find (PR #472 — Read the POI files by the name that writes
--- them). Privies, parking and trailheads are
--- NOT_A_DESTINATION_POI_TYPES, for the reasons export_spurs.py gives.
+-- load_destination_pois() reads them: the points_of_interest mart's rows in
+-- the eight poi_<type>.geojson files (`phone_files` 'poi_by_type'), of the
+-- five DESTINATION_POI_TYPES (trail_lines_spur_destination_poi_types:
+-- shelter, water, campsite, resupply, viewpoint), so a destination id is one
+-- the client can find (PR #472 — Read the POI files by the name that writes
+-- them). Privies, parking and trailheads are NOT_A_DESTINATION_POI_TYPES,
+-- for the reasons export_spurs.py gives; int_trail_lines__spurs filters on
+-- the same var.
 --
--- THE INTERFACE, one row per published POI of those types:
--- - poi_id: its published `id`;
--- - poi_type: its type;
--- - latitude, longitude: its published `lat` and `lon`;
--- - destination_order: its place in load_destination_pois()'s list, the
---   types in DESTINATION_POI_TYPES order and each type's file in its own
---   order. A tie between two POIs at one distance goes to the first, as
---   lib/spurs.PointIndex.nearest's strict `<` keeps it.
+-- `latitude` and `longitude` are the `lat` and `lon` properties as the file
+-- prints them (macros/gdal_geojson.sql's gdal_geojson_double), which is
+-- what load_destination_pois() parses and lib/spurs.py measures from. GDAL's
+-- text read back as a different double for 60,301 of the 182,408 values that
+-- macro was measured on, so the source's own lat can be an ulp or three off
+-- the one the Python measures with.
 --
--- No rows until the points_of_interest mart publishes those columns (the
--- poi family, stage 3 of #1793 — Rebuild the data platform as dlt → dbt:
--- seven contracted marts, a monthly refresh, published docs, and lighter
--- phone downloads), so every spur's destination is null here,
--- which is export_spurs.py's own answer when it finds no POI file. It reads
--- the mart only so that it is not a root model.
+-- `destination_order` is the POI's place in load_destination_pois()'s list:
+-- the types in DESTINATION_POI_TYPES order, then each file's own order (the
+-- mart's record_order). A tie between two POIs at one distance goes to the
+-- first, as lib/spurs.PointIndex.nearest's strict `<` keeps it.
+with pois as (
+    select * from {{ ref('points_of_interest') }}
+    where phone_files = 'poi_by_type'
+)
+
 select
-    cast(null as varchar) as poi_id,
-    cast(null as varchar) as poi_type,
-    cast(null as double) as latitude,
-    cast(null as double) as longitude,
-    cast(null as bigint) as destination_order
-from {{ ref('points_of_interest') }}
-where false
+    poi_id,
+    poi_type,
+    {{ gdal_geojson_double('lat') }} as latitude,
+    {{ gdal_geojson_double('lon') }} as longitude,
+    row_number() over (
+        order by
+            list_position(
+                [
+                    {%- for poi_type in destination_types %}
+                    '{{ poi_type }}'{{ ',' if not loop.last }}
+                    {%- endfor %}
+                ],
+                poi_type
+            ),
+            record_order
+    ) - 1 as destination_order
+from pois
+where poi_type in (
+    {%- for poi_type in destination_types %}
+    '{{ poi_type }}'{{ ',' if not loop.last }}
+    {%- endfor %}
+)

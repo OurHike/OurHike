@@ -1348,6 +1348,58 @@ def measure_cross_part_gaps(parts_meters: list[LineString]) -> tuple[float, floa
     return total_gap_m, max_gap_m
 
 
+def profile_records(samples) -> tuple[list[dict], int]:
+    """The published records from (mile, elevation_m, part) per sample, in
+    walk order, with the mile already rounded to the three decimals the
+    artifact publishes. Returns (records, clipped_count).
+
+    build_profile's own loop, moved here unchanged so that the dbt port of
+    it (pipeline/dbt/models/intermediate/elevation/int_elevation__profile)
+    can be held to it on the same rows by tests/test_dbt_elevation_parity.py
+    (#1793, stage 3); build_profile calls it and publishes what it returns."""
+    records = []
+    previous_part = None
+    high_water = float("-inf")
+    clipped_count = 0
+    for mile, elevation_m, part in samples:
+        # Clipped on the ROUNDED mile - the value the artifact actually
+        # publishes - not the raw one. Two samples from different pieces can
+        # sit closer than the 3-decimal precision at a seam (the real run
+        # that found this had exactly two such pairs in 138,710 samples),
+        # and clipping the raw value would let them through as equal
+        # published neighbours, breaking the strictly-increasing contract by
+        # a rounding artifact.
+        #
+        # Where two pieces cover the same stretch of trail - duplicate
+        # geometry surviving the merge, see ORDERING.md's degree-6 nodes -
+        # their calibrated mile ranges overlap, and publishing both would
+        # put the same miles on the axis twice (and their phantom gain in
+        # the total, twice). The first piece to reach a mile keeps it.
+        if mile <= high_water:
+            clipped_count += 1
+            continue
+        high_water = mile
+        record = {
+            "distance_mi": mile,
+            "elevation_ft": round(elevation_m / METERS_PER_FOOT, 1) if elevation_m is not None else None,
+        }
+        # Only on the first emitted sample of a piece, and absent everywhere
+        # else (#559). A `part` index on all ~139,000 records would say the
+        # same thing and cost about a megabyte on an artifact hikers download
+        # over a trailhead's signal; the seams are 558 of them. A reader that
+        # does not know the key ignores it, which is what makes this additive.
+        #
+        # Including the very first sample, where breaking a run is a no-op.
+        # Uniform is worth more than clever here: a consumer should be able to
+        # write "start a new run at every part_start" without special-casing
+        # index 0.
+        if part != previous_part:
+            record["part_start"] = True
+            previous_part = part
+        records.append(record)
+    return records, clipped_count
+
+
 def build_profile(
     centerline_path: Path, markers_path: Path, elevation_index_path: Path, interval_m: float
 ) -> tuple[list[dict], dict]:
@@ -1393,46 +1445,12 @@ def build_profile(
     finally:
         sampler.close()
 
-    records = []
-    previous_part = None
-    high_water = float("-inf")
-    clipped_count = 0
-    for (distance_m, _pt, part), elevation_m in zip(samples_meters, elevations_m):
-        # Clipped on the ROUNDED mile - the value the artifact actually
-        # publishes - not the raw one. Two samples from different pieces can
-        # sit closer than the 3-decimal precision at a seam (the real run
-        # that found this had exactly two such pairs in 138,710 samples),
-        # and clipping the raw value would let them through as equal
-        # published neighbours, breaking the strictly-increasing contract by
-        # a rounding artifact.
-        mile = round(calibrated[part].mile_at(distance_m - offsets[part]), 3)
-        # Where two pieces cover the same stretch of trail - duplicate
-        # geometry surviving the merge, see ORDERING.md's degree-6 nodes -
-        # their calibrated mile ranges overlap, and publishing both would
-        # put the same miles on the axis twice (and their phantom gain in
-        # the total, twice). The first piece to reach a mile keeps it.
-        if mile <= high_water:
-            clipped_count += 1
-            continue
-        high_water = mile
-        record = {
-            "distance_mi": mile,
-            "elevation_ft": round(elevation_m / METERS_PER_FOOT, 1) if elevation_m is not None else None,
-        }
-        # Only on the first emitted sample of a piece, and absent everywhere
-        # else (#559). A `part` index on all ~139,000 records would say the
-        # same thing and cost about a megabyte on an artifact hikers download
-        # over a trailhead's signal; the seams are 558 of them. A reader that
-        # does not know the key ignores it, which is what makes this additive.
-        #
-        # Including the very first sample, where breaking a run is a no-op.
-        # Uniform is worth more than clever here: a consumer should be able to
-        # write "start a new run at every part_start" without special-casing
-        # index 0.
-        if part != previous_part:
-            record["part_start"] = True
-            previous_part = part
-        records.append(record)
+    # The mile each sample publishes, rounded to three decimals before the
+    # clip in profile_records reads it.
+    records, clipped_count = profile_records(
+        (round(calibrated[part].mile_at(distance_m - offsets[part]), 3), elevation_m, part)
+        for (distance_m, _pt, part), elevation_m in zip(samples_meters, elevations_m)
+    )
 
     diagnostics = {
         "cross_part_gaps": cross_part_gaps,

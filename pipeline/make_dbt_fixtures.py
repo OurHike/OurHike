@@ -44,6 +44,8 @@ this exists to fill an empty CI workspace, not to overwrite a real fetch.
 
 import argparse
 import json
+import math
+import struct
 from pathlib import Path
 
 from load_raw import RAW_DIR
@@ -138,6 +140,132 @@ def _half_mile_layer():
             for i in range(4)
         ]
     )
+
+
+# --- elevation, the A.T. half (#1793, stage 3) -------------------------------
+#
+# step_dem_sampling.py and today's export_elevation.py both read the DEM
+# through a tile index (fetch_elevation.py's data/raw/elevation/
+# tile_index.json), and CI fetches no tile. So the fixtures carry one: the
+# smallest tile export_elevation.ElevationSampler reads the way it reads a
+# real 3DEP cell - a single-band float32 GeoTIFF in EPSG:4269 with a declared
+# nodata - over the two fixture centerline segments (`_line(0)`, `_line(1)`),
+# plus the index naming it. Written byte by byte here rather than through
+# rasterio, because CI's dbt job runs this file on requirements-dbt.txt,
+# which has no rasterio.
+#
+# THE TILE HAS BOTH KINDS OF HOLE a profile meets, so parity reaches the null
+# path (EL09): rows ELEVATION_FIXTURE_NODATA_ROWS are nodata across the
+# tile, which the first segment crosses, and the tile stops short of the
+# second segment's northern end, so the samples past it have no tile at all.
+# Its edges sit half a pixel off both segments' longitudes, so no sample
+# lands on a pixel boundary, where a last-bit difference between two ways of
+# placing a point could read a neighbouring pixel.
+
+#: Where the tile and its index land under the raw directory.
+ELEVATION_FIXTURE_TILE = "elevation/fixture_n42w074.tif"
+ELEVATION_FIXTURE_INDEX = "elevation/tile_index.json"
+#: The tile's grid: its north-west corner, pixel size in degrees, and shape.
+ELEVATION_FIXTURE_WEST = -74.0021
+ELEVATION_FIXTURE_NORTH = 41.01365
+ELEVATION_FIXTURE_PIXEL_DEG = 0.0002
+ELEVATION_FIXTURE_WIDTH = 72
+ELEVATION_FIXTURE_HEIGHT = 78
+ELEVATION_FIXTURE_NODATA = -9999.0
+ELEVATION_FIXTURE_NODATA_ROWS = (53, 54)
+#: A Last-Modified, so the index pins the tile's edition and the sampler's
+#: cache treats it as it treats a stamped 3DEP cell.
+ELEVATION_FIXTURE_LAST_MODIFIED = "Thu, 01 Oct 2026 00:00:00 GMT"
+
+
+def _elevation_fixture_metres(row: int, col: int) -> float:
+    """The fixture ground: rising to the north, with a ripple, so feet carry real decimals."""
+    if row in ELEVATION_FIXTURE_NODATA_ROWS:
+        return ELEVATION_FIXTURE_NODATA
+    return 200.0 + 1.3 * (ELEVATION_FIXTURE_HEIGHT - row) + 0.4 * col + 1.7 * math.sin(0.9 * col + 0.4 * row)
+
+
+def _geotiff(width: int, height: int, pixels: list[float], west: float, north: float, pixel_deg: float, nodata: float) -> bytes:
+    """A little-endian, uncompressed, one-strip, single-band float32 GeoTIFF in EPSG:4269 (NAD83, 3DEP's datum)."""
+    data = struct.pack(f"<{width * height}f", *pixels)
+    nodata_text = f"{nodata:g}".encode() + b"\0"
+    geokeys = (1, 1, 0, 3, 1024, 0, 1, 2, 1025, 0, 1, 1, 2048, 0, 1, 4269)  # geographic, pixel-is-area, EPSG:4269
+    # (tag, TIFF type, values): type 2 ASCII, 3 SHORT, 4 LONG, 12 DOUBLE.
+    entries = [
+        (256, 4, (width,)),
+        (257, 4, (height,)),
+        (258, 3, (32,)),
+        (259, 3, (1,)),
+        (262, 3, (1,)),
+        (273, 4, (0,)),  # StripOffsets, filled in below
+        (277, 3, (1,)),
+        (278, 4, (height,)),
+        (279, 4, (len(data),)),
+        (284, 3, (1,)),
+        (339, 3, (3,)),  # SampleFormat: IEEE float
+        (33550, 12, (pixel_deg, pixel_deg, 0.0)),  # ModelPixelScale
+        (33922, 12, (0.0, 0.0, 0.0, west, north, 0.0)),  # ModelTiepoint: pixel (0, 0) is (west, north)
+        (34735, 3, geokeys),
+        (42113, 2, nodata_text),  # GDAL_NODATA
+    ]
+    formats = {2: "s", 3: "H", 4: "I", 12: "d"}
+    ifd_size = 2 + 12 * len(entries) + 4
+    extra_offset = 8 + ifd_size
+    extra = b""
+    encoded = []
+    for tag, kind, values in entries:
+        count = len(values)
+        payload = struct.pack(f"<{count}s", values) if kind == 2 else struct.pack(f"<{count}{formats[kind]}", *values)
+        encoded.append((tag, kind, count, payload))
+        if len(payload) > 4:
+            extra += payload + b"\0" * (len(payload) % 2)
+    data_offset = extra_offset + len(extra)
+    ifd = struct.pack("<H", len(entries))
+    cursor = extra_offset
+    for tag, kind, count, payload in encoded:
+        if tag == 273:
+            payload = struct.pack("<I", data_offset)
+        if len(payload) > 4:
+            ifd += struct.pack("<HHII", tag, kind, count, cursor)
+            cursor += len(payload) + len(payload) % 2
+        else:
+            ifd += struct.pack("<HHI", tag, kind, count) + payload.ljust(4, b"\0")
+    ifd += struct.pack("<I", 0)
+    return b"II" + struct.pack("<HI", 42, 8) + ifd + extra + data
+
+
+def _elevation_fixtures(raw_dir: Path) -> dict[str, str | bytes]:
+    """The DEM fixture's tile and the tile index naming it, by path under raw_dir.
+
+    The index names the tile by its absolute path, as export_elevation's
+    _gdal_source hands a local entry to GDAL, so the step and the exporter
+    find it from any working directory."""
+    pixels = [
+        _elevation_fixture_metres(row, col) for row in range(ELEVATION_FIXTURE_HEIGHT) for col in range(ELEVATION_FIXTURE_WIDTH)
+    ]
+    tile = _geotiff(
+        ELEVATION_FIXTURE_WIDTH,
+        ELEVATION_FIXTURE_HEIGHT,
+        pixels,
+        ELEVATION_FIXTURE_WEST,
+        ELEVATION_FIXTURE_NORTH,
+        ELEVATION_FIXTURE_PIXEL_DEG,
+        ELEVATION_FIXTURE_NODATA,
+    )
+    bounds = [
+        ELEVATION_FIXTURE_WEST,
+        ELEVATION_FIXTURE_NORTH - ELEVATION_FIXTURE_HEIGHT * ELEVATION_FIXTURE_PIXEL_DEG,
+        ELEVATION_FIXTURE_WEST + ELEVATION_FIXTURE_WIDTH * ELEVATION_FIXTURE_PIXEL_DEG,
+        ELEVATION_FIXTURE_NORTH,
+    ]
+    index = [
+        {
+            "url": (raw_dir / ELEVATION_FIXTURE_TILE).resolve().as_posix(),
+            "bounds": bounds,
+            "last_modified": ELEVATION_FIXTURE_LAST_MODIFIED,
+        }
+    ]
+    return {ELEVATION_FIXTURE_TILE: tile, ELEVATION_FIXTURE_INDEX: json.dumps(index)}
 
 
 def _opentrail_layer():
@@ -2102,6 +2230,124 @@ def _trail_lines_network_fixtures(files: dict[str, str]) -> dict[str, str]:
     return out
 
 
+def _side_trail(name: str, coordinates, properties: dict, geometry_type: str = "LineString") -> dict:
+    """One side_trails feature, its GlobalID spelled as `_atc_layer` spells the others'."""
+    return {
+        "type": "Feature",
+        "properties": {"GlobalID": name.lower().replace(" ", "-"), "Name": name, "Status": "Existing", **properties},
+        "geometry": None if coordinates is None else {"type": geometry_type, "coordinates": coordinates},
+    }
+
+
+# Side trails beside the fixture centerline, which runs north at lon -74.0
+# (lat 41.0 to 41.005) and -73.99 (41.01 to 41.015), each reaching a branch of
+# the trail_lines family's A.T. rules that the two `_atc_layer` side trails,
+# both coded "Side Trail" and "Blue" (neither a domain code), never reach.
+# Distances are lib/spurs.py's equirectangular metres at 41 degrees north.
+TRAIL_LINES_AT_SIDE_TRAILS = [
+    # A spur by its code, blazed by code 1: its first end 14 m from the
+    # centerline's vertex at (-73.99, 41.015) is the junction, its far end
+    # 44 m from the fixture's third shelter, (-73.98, 41.02).
+    _side_trail(
+        "Spur To Shelter",
+        [[-73.9901, 41.0151], [-73.985, 41.018], [-73.9805, 41.0199]],
+        {"Type": "3", "Blaze": "1", "Length_Ft": 3456.5},
+    ),
+    # A spur by its domain name, blazed by a word the domain does not hold:
+    # decoded to "Unknown", with nothing within 150 m of its far end.
+    _side_trail(
+        "Viewpoint Spur",
+        [[-74.0001, 41.0049], [-74.002, 41.0055], [-74.004, 41.006]],
+        {"Type": "Spur (eg View, Camp)", "Blaze": "Blue", "Length_Ft": 1200.25},
+    ),
+    # An access trail in two parts and no blaze at all.
+    _side_trail(
+        "Access Trail",
+        [[[-73.9995, 41.001], [-73.997, 41.001]], [[-73.997, 41.001], [-73.995, 41.0012]]],
+        {"Type": "0", "Blaze": None, "Length_Ft": 800.0},
+        geometry_type="MultiLineString",
+    ),
+    # The misspelt literal 60 live side trails carry for code 2, blazed white.
+    _side_trail(
+        "Significant Non-Blaze Trail",
+        [[-73.9905, 41.0105], [-73.9895, 41.012]],
+        {"Type": "Signficant Non-Blaze", "Blaze": "2", "Length_Ft": 600.0},
+    ),
+    # Coded a spur, with both ends within lib/spurs.py's ON_TRAIL_M 25 m of the
+    # centerline: an alternate route, so no junction and no destination.
+    _side_trail(
+        "Gold Loop",
+        [[-73.99, 41.0101], [-73.9895, 41.0125], [-73.99, 41.0149]],
+        {"Type": "3", "Blaze": "Gold", "Length_Ft": 1700.0},
+    ),
+    # More than the corridor's 30 miles from the centerline: clipped out.
+    _side_trail(
+        "Far Side Trail",
+        [[-80.0, 35.0], [-80.0, 35.01]],
+        {"Type": "0", "Blaze": "1", "Length_Ft": 3600.0},
+    ),
+    # No geometry: skipped with a warning, never published.
+    _side_trail("Trail With No Line", None, {"Type": "1", "Blaze": "3", "Length_Ft": None}),
+    # Two vertices 1.4 cm apart, which six decimals would put on one point:
+    # the never-degenerate rule keeps full precision.
+    _side_trail(
+        "Short Stub",
+        [[-73.9950001, 41.0040001], [-73.9950002, 41.0040002]],
+        {"Type": "4", "Blaze": "5", "Length_Ft": 0.1},
+    ),
+]
+
+# Club polygons for lib/club_sections.py's rules (TL24-TL26), which the base
+# fixture's TTC0 and TTC1 polygons reach only in part: one naming the first
+# centerline segment's club, TTC, padded with whitespace and with no
+# TRAIL_CLUB, so the name falls back to the acronym; and one whose acronym is
+# a digit code, never a club.
+TRAIL_LINES_AT_CLUB_POLYGONS = [
+    {
+        "type": "Feature",
+        "properties": {"GlobalID": f"club-section-{key}", "TRAIL_CLUB": club, "ACROYNM": acronym, "REGION": "Mid-Atlantic"},
+        "geometry": {"type": "Polygon", "coordinates": [[[-74.0, 41.0], [-73.995, 41.0], [-73.995, 41.005], [-74.0, 41.0]]]},
+    }
+    for key, club, acronym in (("ttc", "", " TTC "), ("coded", "11", "11"))
+]
+
+
+def _trail_lines_at_fixtures(files: dict[str, str]) -> dict[str, str]:
+    """`files` with the A.T. line layers carrying what the live ones carry.
+
+    - Every centerline and side trail feature gets an OBJECTID, served as the
+      feature's own GeoJSON `id` too, as ArcGIS serves them: on the live layers
+      the `id` equals the OBJECTID on 3,025 of 3,025 centerline features and
+      1,197 of 1,197 side trails (measured 2026-10-02). The staging key falls
+      back to the OBJECTID where a row has no GlobalID, so the column has to
+      land.
+    - TRAIL_LINES_AT_SIDE_TRAILS joins the side trails, so CI's parity run of
+      export_trails.py and export_spurs.py against the dbt writers reaches
+      spurs, coded blazes and the clip. Only side trails are added: the
+      centerline and the half-mile markers, which every family's mile axis
+      reads, are left as they are.
+    - For CI's parity run of export_club_sections.py, the second centerline
+      segment's Acronym becomes " TTC1 ", a club change the strip has to
+      take, which the TTC1 polygon spells; and TRAIL_LINES_AT_CLUB_POLYGONS
+      joins the polygons. Only the Acronym changes, which nothing but the
+      club sections reads, so the mile axis is untouched.
+    """
+    out = dict(files)
+    for name, added in (("centerline.geojson", []), ("side_trails.geojson", TRAIL_LINES_AT_SIDE_TRAILS)):
+        collection = json.loads(out[name])
+        collection["features"] += [json.loads(json.dumps(feature)) for feature in added]
+        for index, feature in enumerate(collection["features"]):
+            feature["properties"]["OBJECTID"] = index + 1
+            feature["id"] = index + 1
+        if name == "centerline.geojson":
+            collection["features"][1]["properties"]["Acronym"] = " TTC1 "
+        out[name] = json.dumps(collection)
+    polygons = json.loads(out["trail_club_sections.geojson"])
+    polygons["features"] += [json.loads(json.dumps(feature)) for feature in TRAIL_LINES_AT_CLUB_POLYGONS]
+    out["trail_club_sections.geojson"] = json.dumps(polygons)
+    return out
+
+
 def write_fixtures(raw_dir: Path) -> list[str]:
     files = {
         "shelters.geojson": _atc_layer("Shelter", 3),
@@ -2136,6 +2382,7 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         ),
         "trail_club_sections.geojson": _club_sections_layer(),
         "half_mile_points_from_springer.geojson": _half_mile_layer(),
+        **_elevation_fixtures(raw_dir),
         "at_treadway.geojson": _atc_layer(
             "Treadway",
             2,
@@ -2240,6 +2487,7 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         **closures_and_warnings_fixtures(),
     }
     files = _trail_lines_network_fixtures(files)
+    files = _trail_lines_at_fixtures(files)
     existing = [name for name in files if (raw_dir / name).exists()]
     if existing:
         raise SystemExit(
@@ -2251,7 +2499,10 @@ def write_fixtures(raw_dir: Path) -> list[str]:
             content = _with_key_fields(content, KEY_FIELDS[name])
         path = raw_dir / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
+        if isinstance(content, bytes):
+            path.write_bytes(content)  # the elevation fixture's GeoTIFF (_elevation_fixtures)
+        else:
+            path.write_text(content)
     return sorted(files)
 
 

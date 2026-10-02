@@ -466,11 +466,12 @@ dbt lint --profiles-dir .                              # the fast first pass, no
 cd ..
 pip install "duckdb-extension-spatial==$(python -c 'import duckdb; print(duckdb.__version__)')"
 python seed_spatial_extension.py                       # Python's 1.5.5 only; dbt's 1.5.4 is cached, or dbt fetches it
+python -m venv "$RUNNER_TEMP/pipeline" && "$RUNNER_TEMP/pipeline/bin/pip" install -r requirements.txt   # the pipeline's own pins, for the steps and parity's old side
 python make_dbt_fixtures.py
-python load_raw.py
+"$RUNNER_TEMP/extract/bin/python" -m extract._fixtures --raw-dir data/raw --warehouse data/warehouse.duckdb
+python build_marts.py --fixtures --python "$RUNNER_TEMP/pipeline/bin/python"   # seed, stage A, each step and what it unblocks, the pub_ writers last
+"$RUNNER_TEMP/pipeline/bin/python" parity.py <family> --new data/processed/dbt/<file>   # one line per family
 cd dbt
-dbt seed --profiles-dir .
-dbt build --profiles-dir . --exclude package:dbt_project_evaluator
 dbt source freshness --profiles-dir .
 dbt docs generate --profiles-dir . --output-dir target/docs   # then checks index.html, assets/ and Parquet exist
 DBT_PROJECT_EVALUATOR_SEVERITY=error dbt build -s package:dbt_project_evaluator --profiles-dir .

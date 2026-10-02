@@ -100,7 +100,7 @@ even_anchors as (
                 as anchor_seq
         from oriented
         where pair_seq % 2 = 1
-    )
+    ) as even_pairs
     group by pre_calibration_order
 ),
 

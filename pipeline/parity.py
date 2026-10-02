@@ -2,6 +2,7 @@
 
     python parity.py podcasts --new data/processed/podcasts_episodes.json
     python parity.py stewards --new data/processed/stewards.json
+    python parity.py elevation --new data/processed/dbt/elevation_profile.json --raw-dir data/raw
     python parity.py nearby_trails --new data/processed/dbt/nearby_trails.geojson
     python parity.py network_overview --new data/processed/dbt/network_overview.geojson
 
@@ -22,7 +23,7 @@ records are, and what keys them. The old document comes from the exporter's
 own builder, not a file it wrote, when the exporter has one that needs no
 network, as export_podcasts.build_document does.
 
-Three optional parts, for a family whose records do not fit that (the trail
+Four optional parts, for a family whose records do not fit that (the trail
 lines network's two GeoJSON files are the first):
 - `key_of` reads a record's key where it is not a top-level field, as a
   GeoJSON feature's `properties.id` is not; `key` then only names it;
@@ -31,7 +32,11 @@ lines network's two GeoJSON files are the first):
 - `explained` names the differences a decision or a classified improvement
   accounts for, each with its reason: printed, and not counted. Every other
   difference still exits 1, and the family's parity test holds each reason
-  to a case where the two writers answer differently.
+  to a case where the two writers answer differently;
+- `new_shape` turns the writer's whole file into the shape the family's
+  `old` returns, where the records are not a list of flat objects: the
+  A.T.'s files (trails.geojson's features, trail_miles.json's and
+  spurs.json's objects keyed by id).
 
 Exit 1 on any difference, so a CI step fails on one.
 """
@@ -57,6 +62,13 @@ class Family:
     key: str
     ordered: bool = False
     volatile: tuple[str, ...] = ()
+    # The file is a bare JSON array of records, as elevation_profile.json is,
+    # rather than an object holding them: the new file is read as
+    # {records: <the array>}, the shape `old` returns it in.
+    bare_list: bool = False
+    # The old document is built from make_dbt_fixtures.py's raw files rather
+    # than from a file in git, so `old` takes the --raw-dir they are in.
+    reads_raw_dir: bool = False
     # Top-level fields that hold the moment a run happened, such as the
     # conditions files' `generated_at`: two runs never agree on the value, so
     # each is held to its form (a UTC stamp, STAMP) on both sides instead.
@@ -91,6 +103,30 @@ def _registry_old() -> dict:
     import export_sources
 
     return export_sources.build_registry()
+
+
+def _elevation_old(raw_dir: Path) -> dict:
+    """export_elevation.build_profile over the raw files the warehouse was loaded from.
+
+    The DEM is read through a copy of the tile index in a directory of its
+    own, so the sampler's cache, which lives beside the index, starts cold:
+    no elevation comes from what step_dem_sampling read on the dbt side, and
+    two paths that read the DEM at different points cannot agree through it."""
+    import shutil
+    import tempfile
+
+    import export_elevation
+
+    with tempfile.TemporaryDirectory() as scratch:
+        index = Path(scratch) / "tile_index.json"
+        shutil.copy(raw_dir / "elevation" / "tile_index.json", index)
+        records, _ = export_elevation.build_profile(
+            raw_dir / "centerline.geojson",
+            raw_dir / "half_mile_points_from_springer.geojson",
+            index,
+            export_elevation.SAMPLE_INTERVAL_METERS,
+        )
+    return {"samples": records}
 
 
 # The hourly conditions files. Their inputs, other than reference/atc_updates.json,
@@ -288,7 +324,12 @@ def _trail_lines_coded_domain() -> Callable[[str | None, str], dict | None]:
 
 @functools.cache
 def _export_trails_run() -> Path:
-    """export_trails.main() into a temporary directory, which it returns: one run feeds all three of its files."""
+    """export_trails.main() into a temporary directory, which it returns: one run feeds all three of its files.
+
+    Its own lines go to a buffer, as _network_old's do, so the step prints the comparison and nothing else.
+    """
+    import contextlib
+    import io
     import tempfile
 
     import export_trails
@@ -296,7 +337,8 @@ def _export_trails_run() -> Path:
     out = Path(tempfile.mkdtemp(prefix="parity_trails_"))
     export_trails.get_field_coded_domain = _trail_lines_coded_domain()
     export_trails.OUT_DIR = out
-    export_trails.main()
+    with contextlib.redirect_stdout(io.StringIO()):
+        export_trails.main()
     return out
 
 
@@ -402,6 +444,11 @@ FAMILIES: dict[str, Family] = {
     "stewards": Family(old=_stewards_old, records="stewards", key="provider", ordered=True),
     # `organizations`, beside the records, is compared whole as a top-level field.
     "registry": Family(old=_registry_old, records="sources", key="key", ordered=True),
+    # elevation_profile.json's records carry no id: each is keyed by its own
+    # mile, which the profile publishes strictly increasing, so it is unique.
+    "elevation": Family(
+        old=_elevation_old, records="samples", key="distance_mi", ordered=True, bare_list=True, reads_raw_dir=True
+    ),
     # `reviewed_at`, beside the records, is compared whole as a top-level field.
     "atc_updates": Family(old=_atc_updates_old, records="atc_updates", key="atc_id", ordered=True, stamps=("generated_at",)),
     "nynjtc_alerts": Family(
@@ -485,12 +532,18 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("family", choices=sorted(FAMILIES))
     parser.add_argument("--new", type=Path, required=True, help="the file the family's pub_ writer wrote")
+    parser.add_argument(
+        "--raw-dir", type=Path, default=Path("data/raw"), help="make_dbt_fixtures.py's files, for a family built from them"
+    )
     args = parser.parse_args(argv)
 
     family = FAMILIES[args.family]
-    old, new = family.old(), json.loads(args.new.read_text(encoding="utf-8"))
+    old = family.old(args.raw_dir) if family.reads_raw_dir else family.old()
+    new = json.loads(args.new.read_text(encoding="utf-8"))
     if family.new_shape is not None:
         new = family.new_shape(new, args.new)
+    if family.bare_list:
+        new = {family.records: new}
     found = differences(old, new, family)
     count = len(old.get(family.records) or [])
     reasons = family.explained(old, new) if family.explained else {}

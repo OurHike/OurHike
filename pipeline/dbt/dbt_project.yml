@@ -128,6 +128,7 @@ vars:
   trail_lines_network_overview_min_feature_m: 1873.7331444281513
   trail_lines_network_overview_seam_tolerance_m: 936.8665722140756
   trail_lines_network_overview_seam_decimals: 3
+
   # The trail_lines family (stage 3 of #1793). First, export_elevation.py's
   # marker calibration of the A.T. mile axis, read by the
   # int_trail_lines__mile_axis_* models and held to the Python constants by
@@ -225,6 +226,19 @@ vars:
   trail_lines_club_stretch_gap_mi: 0.75
   trail_lines_club_milepost_half_width_mi: 0.25
   trail_lines_club_springer_mile: 0.0
+
+  # The elevation family, the A.T. half (stage 3 of #1793):
+  # export_elevation.py's two constants, read by int_elevation__sample_points
+  # and int_elevation__profile and held to the Python by
+  # tests/test_dbt_elevation_parity.py until stage 5 deletes the Python.
+  #
+  # SAMPLE_INTERVAL_METERS: one DEM read every 25 m of trail. Kept, not
+  # thinned: thinning to 50 m cut the measured 520,757 ft of total gain by
+  # 4.80%, and to 200 m by 16.59% (research report 5, pipeline/ELT.md, "The
+  # eleven marts"), and gain feeds Naismith's time estimate.
+  elevation_sample_interval_m: 25.0
+  # METERS_PER_FOOT, the international foot: a DEM metre over this is a foot.
+  elevation_metres_per_foot: 0.3048
 
   dbt_project_evaluator:
     # The mart names the maintainer chose carry no dim_/fct_ prefix

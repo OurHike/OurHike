@@ -8,9 +8,8 @@
 -- fetch_trail_water.py and the other readers export_nearby_trails.py's
 -- docstring counts read it as the network's topology.
 --
--- Reads int_trail_lines__network_published, the network's half of the
--- trail_lines mart, because the mart is not built yet; the read moves to the
--- mart's `line_kind = 'network'` rows once it is.
+-- Reads the trail_lines mart's network rows (`line_kind = 'network'`),
+-- which int_trail_lines__network_published gives it.
 --
 -- THE PROPERTIES, records_to_geojson()'s:
 -- - `id`, `source`, `name` (null where nothing names the line, never left
@@ -18,19 +17,20 @@
 -- - `length_miles`, the 1 m line's own length in EPSG:5070 miles
 --   (`published_length_m`), rounded to 2 decimals as Python's round() does
 --   (the printf cast, which the published model's header measures);
--- - `closure_kind` only on a closed line, and `duplicate_of` only on a line
---   that swallowed another source's copy, each left out rather than null.
--- `closure_reason` and `closure_source` are never written: only
--- apply_area_closures() set them, and OPRHP's closed areas moved to the
--- closures family under #1152 — Move OPRHP's temporary closures onto the
--- conditions clock, where a safety layer belongs. The shared-ground pairs'
--- `concurrent_*` were never in this file.
+-- - `closure_kind` only on a closed line; `closure_reason` and
+--   `closure_source` only on a section inside one of NYS Parks' closed areas
+--   (int_trail_lines__network_area_closures: the area's reason verbatim, and
+--   the closure layer's registry key, #1142), the reason only where the
+--   steward wrote one; and `duplicate_of` only on a line that swallowed
+--   another source's copy. Each is left out rather than null.
+-- The shared-ground pairs' `concurrent_*` were never in this file.
 --
 -- THE ORDER is `feature_order`. map/style.ts draws by `line-sort-key`, not
 -- by feature order, so a different order draws the same map (Reasoned from
 -- its TRAIL_SORT_KEY_EXPRESSION comment).
 with published as (
-    select * from {{ ref('int_trail_lines__network_published') }}
+    select * from {{ ref('trail_lines') }}
+    where line_kind = 'network'
 ),
 
 features as (
@@ -54,6 +54,8 @@ features as (
                 -- which is how an absent key stays absent.
                 json_object(
                     'closure_kind', nullif(closure_kind, ''),
+                    'closure_reason', nullif(closure_reason, ''),
+                    'closure_source', nullif(closure_source, ''),
                     'duplicate_of', nullif(duplicate_of, '')
                 )
             ),

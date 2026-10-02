@@ -187,4 +187,8 @@ def test_relative_paths_work_as_ci_passes_them(tmp_path, monkeypatch):
     make_dbt_fixtures.write_fixtures(tmp_path / "data" / "raw")
     monkeypatch.chdir(tmp_path)
     counts = build(Path("data/raw"), Path("data/warehouse.duckdb"), Path("data/fixture-store"))
-    assert counts["raw_atc__shelters"] == 3
+    # Every shelter the fixture writes lands, however many it writes: the
+    # points_of_interest family's fixtures add ATC's real shelters from
+    # reference/water_distance.json to the first three.
+    written = json.loads((tmp_path / "data" / "raw" / "shelters.geojson").read_text())["features"]
+    assert counts["raw_atc__shelters"] == len(written) > 3

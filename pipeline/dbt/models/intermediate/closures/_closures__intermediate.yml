@@ -163,6 +163,12 @@ models:
       - name: closure_key
         description: stg_oprhp__trail_closures's key.
         data_tests: [not_null, unique]
+      - name: source_row
+        description: >
+          The area's place in the layer (stg_oprhp__trail_closures), which
+          breaks apply_area_closures()' tie between two areas a trail
+          overlaps equally: the first wins.
+        data_tests: [not_null, unique]
       - name: closure_reason
         description: The layer's `Name`, its whole reason as prose, stripped.
       - name: closure_place

@@ -1,10 +1,11 @@
 {{ config(materialized='table') }}
 {%- set decimals = var('trail_lines_network_coordinate_decimals') %}
 -- The network's half of the trail_lines mart: one row per network line that
--- ships, in the mart's 21 columns, by name and type (tl-at's contract,
+-- ships, in the mart's 23 columns, by name and type (tl-at's contract,
 -- models/marts/trail_lines/_trail_lines__models.yml). The mart unions it
--- with the A.T.'s half; until the mart is built, pub_nearby_trails reads
--- this model.
+-- with the A.T.'s half. closure_reason and closure_source are set only on a
+-- section inside one of NYS Parks' closed areas
+-- (int_trail_lines__network_area_closures).
 --
 -- THE GEOMETRY IS THE ONE A PHONE DRAWS, as the mart's contract has it: the
 -- 1 m line from int_trail_lines__network_navigation, every vertex cut to six
@@ -111,6 +112,8 @@ select
     trail_status,
     trail_status_basis,
     closure_kind,
+    closure_reason,
+    closure_source,
     duplicate_of,
     cast(
         json_object(

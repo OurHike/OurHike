@@ -25,16 +25,19 @@
 with chains as (
     select * from {{ ref('trail_lines') }}
     where line_kind = 'centerline' and vertex_miles is not null
+),
+
+trails_file as (
+    select content from read_blob('{{ var("processed_dir") }}/trails.geojson')
 )
 
-select packed.*
+select packed.*  -- noqa: AM04
 from (
     select
         {
             'format': 1,
             'trails_sha256': (
-                select sha256(content)
-                from read_blob('{{ var("processed_dir") }}/trails.geojson')
+                select sha256(trails_file.content) from trails_file
             ),
             'axis': 'export_elevation.calibrated_trail_axis',
             'decimals': {{ var('trail_lines_mile_decimals') }},

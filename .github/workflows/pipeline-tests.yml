@@ -216,6 +216,9 @@ jobs:
           # step_dem_sampling.py and step_weather_squares.py are the Python
           # steps it runs between dbt invocations (tests/test_build_marts.py
           # holds this list to all three).
+          # The points_of_interest family's parity runs export_poi.py (and the
+          # export_elevation.py mile axis it imports), export_nearby_poi.py and
+          # export_retired_poi.py.
           paths: >-
             pipeline/dbt/
             pipeline/extract/
@@ -231,13 +234,17 @@ jobs:
             pipeline/fetch_atc_updates.py
             pipeline/export_nearby_trails.py
             pipeline/export_trails.py
+            pipeline/export_spurs.py
+            pipeline/export_club_sections.py
             pipeline/export_elevation.py
             pipeline/step_dem_sampling.py
             pipeline/step_weather_squares.py
             pipeline/build_marts.py
+            pipeline/export_poi.py
+            pipeline/export_nearby_poi.py
+            pipeline/export_retired_poi.py
             pipeline/requirements.txt
-            pipeline/export_spurs.py
-            pipeline/export_club_sections.py
+            pipeline/seed_spatial_extension.py
             pipeline/check_freshness.py
             pipeline/export_conditions.py
             pipeline/export_weather_alerts.py
@@ -437,6 +444,11 @@ jobs:
         # export_conditions.py psycopg, and export_nearby_trails.py shapely,
         # pyproj and rasterio, none of which requirements-dbt.txt pins. The
         # job's own python failed the first conditions line on requests.
+        # Except closures and reports, which run on the extract's venv: their
+        # old side reads OurHike's Postgres answers through fixture mode's own
+        # FixtureConnection (extract/_fixtures.py), which imports dlt, and
+        # requirements.txt has no dlt (measured: "No module named 'dlt'" on a
+        # venv of requirements.txt alone, and no differences on the extract's).
         run: |
           "$RUNNER_TEMP/pipeline/bin/python" parity.py podcasts --new data/processed/dbt/podcasts_episodes.json
           "$RUNNER_TEMP/pipeline/bin/python" parity.py stewards --new data/processed/dbt/stewards.json
@@ -450,8 +462,8 @@ jobs:
           # and a database.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py atc_updates --new data/processed/dbt/conditions_atc_updates.json
           "$RUNNER_TEMP/pipeline/bin/python" parity.py nynjtc_alerts --new data/processed/dbt/conditions_nynjtc_alerts.json
-          "$RUNNER_TEMP/pipeline/bin/python" parity.py closures --new data/processed/dbt/conditions_closures.json
-          "$RUNNER_TEMP/pipeline/bin/python" parity.py reports --new data/processed/dbt/conditions_reports.json
+          "$RUNNER_TEMP/extract/bin/python" parity.py closures --new data/processed/dbt/conditions_closures.json
+          "$RUNNER_TEMP/extract/bin/python" parity.py reports --new data/processed/dbt/conditions_reports.json
           # NWS's alerts, placed on the weather squares: bake() over the body
           # fixture mode served and the squares.json step_weather_squares.py
           # landed, both under data/raw/. bake() imports shapely and pyproj.
@@ -471,6 +483,14 @@ jobs:
           # export_elevation.py reads the DEM through rasterio, so this runs on
           # the pipeline's own pins, the venv step_dem_sampling.py runs in.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py elevation --new data/processed/dbt/elevation_profile.json --raw-dir data/raw
+          # The points_of_interest family's ten files, on the fixture warehouse
+          # and the reviewed files in git (water distances, capacities, the
+          # identity ledger).
+          for poi_type in shelter campsite water resupply viewpoint parking privy trailhead; do
+            "$RUNNER_TEMP/pipeline/bin/python" parity.py "poi_$poi_type" --new "data/processed/dbt/poi_$poi_type.geojson"
+          done
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py nearby_poi --new data/processed/dbt/nearby_poi.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py retired_poi --new data/processed/dbt/retired_poi.geojson
 
       - name: dbt source freshness
         if: steps.scope.outputs.run == 'true'

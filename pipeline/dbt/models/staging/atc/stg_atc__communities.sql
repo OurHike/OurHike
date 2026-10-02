@@ -1,15 +1,21 @@
--- The resupply PROXY: a town being an official A.T. Community says supply
--- is probably there, not that anyone verified a store - which is why the
--- confidence is 'low' where the facility layers carry 'high'
--- (export_poi.py's DIRECT_SOURCES row, held by the seed sync test).
--- Upstream spells the column NAME, not the facilities family's Name -
--- DuckDB resolves identifiers case-insensitively so the reference below
--- reads the same either way, but export_poi.py's field_map (which is
--- case-sensitive JSON) has to spell it upstream's way.
+-- ATC's official A.T. Community towns, in stg_atc__shelters' shape and for
+-- its reasons. A town is a resupply PROXY, which is why export_poi.py
+-- publishes it at confidence 'low' where the facility layers carry 'high';
+-- that call is the poi_type_mapping seed's `communities` row, joined in
+-- int_points_of_interest__classified, not a literal here.
+--
+-- Upstream spells the name column NAME, not the facilities family's Name.
+-- dlt lowercases both to `name`, so the poi_sources seed still names the
+-- field export_poi.py's field map reads, NAME.
 with source as (
     -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
     -- hint); cast here, as decision 40 has staging do.
     select
+        -- The row's place in the raw table, which extract/_warehouse.py fills
+        -- in the order the upstream served it: the order a Python exporter
+        -- reads the same file in, and so its tie-break (see the poi_sources
+        -- seed's file_order).
+        rowid as source_row,
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
     from {{ source('atc', 'raw_atc__communities') }}
@@ -21,24 +27,10 @@ renamed as (
             "'communities'",
             'globalid',
         ]) }} as poi_key,
-        'atc_communities' as source,
-        cast(globalid as varchar) as source_id,
-        name,
-        'resupply' as poi_type,
-        'low' as confidence,
-        -- ATC publishes no public/internal split on this layer, so public_use
-        -- is null: "this organization declares no such flag", never "not
-        -- public". The column exists because DEC's and OPRHP's layers do
-        -- publish one, and the union is positional (DBT.md's ST06 prune) - see
-        -- stg_dec__lean_tos for what the flag means and why it is carried
-        -- rather than applied.
-        cast(null as varchar) as public_use,
-        st_x(geom) as longitude,
-        st_y(geom) as latitude,
-        _loaded_at as loaded_at
+        source.*
     from source
 )
 
 {{ dbt_utils.deduplicate(
-    relation='renamed', partition_by='poi_key', order_by='source_id'
+    relation='renamed', partition_by='poi_key', order_by='_dlt_id'
 ) }}

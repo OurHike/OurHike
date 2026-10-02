@@ -56,6 +56,14 @@ models:
           the registry key first and then the columns measured unique for
           this layer.
         data_tests: [not_null, unique]
+      - name: source_row
+        description: >
+          The row's place in the raw table, the order the layer's pages
+          served the areas (the model's comment says why, and what is
+          Reasoned): the order load_closure_areas() lists them in, which
+          breaks apply_area_closures()' tie between two areas a trail
+          overlaps equally.
+        data_tests: [not_null, unique]
       - name: loaded_at
         description: The extract's `_loaded_at` for the read this row came from, naive UTC.
         data_tests: [not_null]

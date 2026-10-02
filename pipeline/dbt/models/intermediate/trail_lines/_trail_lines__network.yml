@@ -1,0 +1,368 @@
+version: 2
+
+# The network half of the trail_lines port (stage 3 of #1793 — Rebuild the
+# data platform as dlt → dbt: seven contracted marts, a monthly refresh,
+# published docs, and lighter phone downloads): every other organization's
+# trail lines, which export_nearby_trails.py exports today. The rules are
+# pipeline/ELT.md's TL rows for that file, applied in its order.
+models:
+  - name: int_trail_lines__network_sources
+    description: >
+      One row per sources.json entry export_nearby_trails.py exports: an
+      external organization's layer carrying blaze metadata (TL01). Every
+      field the network's filters read, in the registry's spelling and as
+      the warehouse column dlt landed it under, with the source's
+      `may_publish` from int_sources__publication.
+    data_tests:
+      # TL09: an entry naming a name column and a name constant has decided
+      # neither, and name_constant_conflicts() stops the export on it.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "not declares_name_twice"
+          config:
+            severity: error
+      # TL08: a field the entry declares that the layer did not land. The
+      # layer's schema has changed: re-read its fields at the entry's `url`
+      # and update the registry entry before building. To see which, from
+      # pipeline/dbt:
+      #   dbt show --profiles-dir . --inline "select source_key,
+      #     missing_declared_fields from intermediate.int_trail_lines__network_sources
+      #     where len(missing_declared_fields) > 0"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "len(missing_declared_fields) = 0"
+          config:
+            severity: error
+    columns:
+      - name: source_key
+        description: The registry key, e.g. `oprhp_trails`.
+        data_tests: [not_null, unique]
+      - name: file_row
+        description: The entry's place in sources.json's `sources`, from 1; the order the export runs its sources in.
+        data_tests: [not_null]
+      - name: may_publish
+        description: int_sources__publication's answer, the one home of the rule.
+        data_tests: [not_null]
+      - name: foot_allowed
+        description: >
+          What `foot_field` has to read for a row to be a hiking trail: the
+          entry's `foot_allowed`, else export_nearby_trails.py's
+          FOOT_ALLOWED_DEFAULT, ['Y'].
+      - name: declared_fields
+        description: >
+          Each field a filter reads, in missing_declared_fields()'s order and
+          the registry's spelling: name, foot, blaze and status fields, then
+          the `excluded_when` keys, each once.
+      - name: declared_columns
+        description: The warehouse column of each of `declared_fields`, in the same order (dlt's sql_ci_v1 naming).
+      - name: name_column
+        description: The column a name is read from, `name_field` or its "Name" default.
+      - name: declares_name_twice
+        description: Whether the entry states both `name_field` and `name_constant` (TL09).
+      - name: missing_declared_fields
+        description: >
+          TL08: each of `declared_fields` whose column the layer did not land,
+          in the registry's spelling; empty for a layer with no rows. Stricter
+          than missing_declared_fields() on a Socrata layer, where a column
+          null on every row is not landed at all.
+      - name: chains_duplicates
+        description: >
+          Whether the source is junior in one declared duplicate pair and
+          senior in another. int_trail_lines__network_deduplicated compares
+          every pair at once, which answers such a chain differently from
+          deduplicate()'s pair-by-pair order, so the test on this column
+          stops the build if one is declared.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [false]
+
+  - name: int_trail_lines__network_judged
+    description: >
+      Every network row judged as build_records() judges a fetched feature:
+      `dropped_because` is keep_reason()'s first failing test in its words,
+      or 'unsupported geometry', and null on a row that ships. A kept row
+      carries its published id, name, status and the source's `may_publish`.
+    data_tests:
+      # load_boundary()'s refusals: a boundary layer that is not landed, or
+      # `boundary_names` no polygon of it carries.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "not boundary_missing"
+          config:
+            severity: error
+      # The safety coupling on a kept row: closed is long-term closed, the
+      # only closure this model knows (area closures moved to the closures
+      # family under #1152 — Move OPRHP's temporary closures onto the
+      # conditions clock, where a safety layer belongs).
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(trail_status = 'closed') = (coalesce(closure_kind, '') = 'long_term')"
+          config:
+            severity: error
+    columns:
+      - name: trail_segment_key
+        description: The row's staging key.
+        data_tests: [not_null, unique]
+      - name: source_key
+        description: The registry key of the layer.
+        data_tests: [not_null]
+      - name: dropped_because
+        description: >
+          Why the row does not ship, in keep_reason()'s words ("not a foot
+          trail: Foot='N'"), or 'unsupported geometry'; null where it ships.
+      - name: trail_line_id
+        description: >
+          The published id, `{source_key}:{id}` (TL05): the layer's GlobalID
+          in any case, else its OBJECTID, else Socrata's row id, else
+          `generated-<n>` by staging-key order. Unique among the rows that ship.
+        data_tests:
+          - not_null
+          - unique:
+              config:
+                where: "dropped_because is null"
+      - name: name
+        description: >
+          declared_name(): the entry's name constant, else the name column's
+          value, null where it is one of the entry's placeholders.
+      - name: trail_status
+        description: >
+          'open' or 'closed' (TL10). Open on every row of a layer with no
+          status column, which is a default and not a finding
+          (`trail_status_basis`).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [open, closed]
+      - name: trail_status_basis
+        description: >
+          'stated' where the layer's own status column gave `trail_status`;
+          'default_without_status_column' where the layer has none and the row
+          ships open because nothing says otherwise.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [stated, default_without_status_column]
+      - name: closure_kind
+        description: "'long_term' on a row its steward marks closed; null otherwise."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [long_term]
+      - name: boundary_missing
+        description: Whether the entry names a boundary and none was found for it.
+
+  - name: int_trail_lines__network_deduplicated
+    description: >
+      The network's published lines at full resolution: every kept row whose
+      source may publish, each declared duplicate drawn once (TL18) and
+      named on its senior's `duplicate_of`, with its blaze.
+    columns:
+      - name: trail_segment_key
+        description: The row's staging key.
+        data_tests: [not_null, unique]
+      - name: trail_line_id
+        description: The published id, unique across the network.
+        data_tests: [not_null, unique]
+      - name: name
+        description: The line's name, a swallowed duplicate's where the senior had none.
+      - name: trail_status
+        description: "'open' or 'closed'."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [open, closed]
+      - name: blaze_color
+        description: int_trail_lines__blazes's colour, a swallowed duplicate's where the senior had none.
+        data_tests: [not_null]
+      - name: duplicate_of
+        description: >
+          The source whose copy of this path the line swallowed (the last,
+          where it swallowed several), as lib/duplicates.py's merge() names
+          it; null on a line that swallowed nothing.
+
+  - name: int_trail_lines__network_counts
+    description: >
+      One row per network line source: rows landed, kept and dropped, and
+      the drops by reason, as nearby_trails_manifest.json's per-source
+      `kept` and `dropped`. Its test is the completeness gate.
+    data_tests:
+      # fail_if_incomplete(): a source that keeps nothing fails the build
+      # rather than shrinking the map, whatever dropped its rows.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "rows_kept >= 1"
+          config:
+            severity: error
+    columns:
+      - name: source_key
+        description: The registry key.
+        data_tests: [not_null, unique]
+      - name: rows_kept
+        description: Rows that pass every test of int_trail_lines__network_judged.
+      - name: dropped
+        description: "{reason: rows} for the rows that do not."
+
+  - name: int_trail_lines__network_unioned
+    description: >
+      Every row of every network line layer, before any filter, one branch
+      per layer. `properties` is the row's columns as one JSON object, so a
+      filter reads a field by the name the registry gives it.
+    columns:
+      - name: trail_segment_key
+        description: The row's staging key (decision 40), the registry key first, so it is unique across the union.
+        data_tests: [not_null, unique]
+      - name: source_key
+        description: The registry key of the layer.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int_trail_lines__network_sources')
+                field: source_key
+      - name: club
+        description: The extract folder that landed the row (pipeline/extract/<club>/).
+        data_tests: [not_null]
+      - name: properties
+        description: The row's columns as one JSON object, keyed by warehouse column name; no geometry, key or load columns.
+        data_tests: [not_null]
+      - name: upstream_id
+        description: >
+          The feature's own identity before lib/feature_id.py's last
+          fallback: its GlobalID in any case, else its OBJECTID, else
+          Socrata's row id. Null where the layer has none of the three.
+      - name: geom
+        description: The feature's geometry as landed; null where the steward published none.
+
+  - name: int_trail_lines__blazes
+    description: >
+      Every staged line feature's blaze, the A.T.'s two sources (centerline,
+      side_trails) and the network's, as lib/blaze.py answers it for that
+      source's exporter (TL03): export_trails.py's decode-then-map for the
+      A.T., export_nearby_trails.py's resolve_blaze() for the network. One
+      row per feature, keyed on its staging key; tl-at's A.T. models read the
+      A.T. rows.
+    columns:
+      - name: trail_segment_key
+        description: The feature's staging key, the A.T. staging models' or int_trail_lines__network_unioned's.
+        data_tests: [not_null, unique]
+      - name: source_key
+        description: The registry key.
+        data_tests: [not_null]
+      - name: blaze_color
+        description: >
+          The colour the map paints. Where a reviewed table mapped it, a
+          member lib/blaze.py would refuse as UnknownPaint fails the build,
+          the list being its PALETTE and NEUTRAL_MEMBERS
+          (tests/test_dbt_trail_lines_network_parity.py holds the two equal).
+          A decoded label is not held to the palette, as the Python does not
+          hold it: side_trails' own domain decodes code 8 to 'Black'.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [White, Blue, Yellow, Orange, Red, Green, Purple, Aqua, None, Other, Unknown]
+              config:
+                where: "blaze_disposition = 'mapped'"
+      - name: blaze_decoded
+        description: >
+          normalize_blaze_color()'s second answer on A.T. rows: false where
+          export_trails.py warns of an undecodable blaze value. True on every
+          network row, because resolve_blaze() has no decode step.
+        data_tests: [not_null]
+      - name: blaze_disposition
+        description: >
+          What the reviewed table (reference/blaze_mapping.json) said:
+          mapped, deferred or unmapped, the last being the loud one. On a
+          network row, 'absent' where the field is null or blank and the
+          table does not map the blank, which the Python counts rather than
+          warns about. Null on an A.T. row whose source has no table or did
+          not decode, and on a network row whose source has no blaze field.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [mapped, deferred, unmapped, absent]
+
+unit_tests:
+  - name: int_trail_lines__blazes_answers_what_lib_blaze_answers
+    description: >
+      One row per branch of the three functions this model ports, each
+      keyed `<pytest file>::<case>` after the case it mirrors:
+      lib/blaze.py's normalize_blaze_color() and map_source_blaze()
+      (tests/test_lib_blaze.py), as export_trails.py's
+      normalize_source_features() composes them for the A.T., and
+      export_nearby_trails.py's resolve_blaze() for the network
+      (tests/test_export_nearby_trails.py). The mocked domain is part of
+      side_trails' own, as test_lib_blaze.py mirrors it, and the centerline
+      is given a table so the A.T.'s map-after-decode path runs. Rows keyed
+      `sql::` pin a behaviour no pytest names. tests/test_dbt_trail_lines_network_parity.py
+      runs the Python over these same rows and fails where the two disagree.
+    model: int_trail_lines__blazes
+    given:
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: centerline, entry: '{"key": "centerline", "blaze_default": "White"}'}
+          - {source_key: side_trails, entry: '{"key": "side_trails", "blaze_field": "Blaze"}'}
+      - input: ref('base_ourhike__blaze_mapping')
+        rows:
+          - document_json: '{"sources": {"centerline": {"mapped": {"White": "White"}}, "reviewed_source": {"mapped": {"Aqua": "Aqua", "Teal": "Aqua", "Blue": "Blue", "5": "Red"}, "deferred": {"Pink": {"count": 171, "why": "no member yet"}}}, "blank_means_unblazed": {"mapped": {"": "None"}}}}'
+      - input: ref('int_trail_lines__coded_domains')
+        rows:
+          - {source_key: side_trails, field_name: Blaze, code: '0', label: None}
+          - {source_key: side_trails, field_name: Blaze, code: '1', label: Blue}
+          - {source_key: side_trails, field_name: Blaze, code: '9', label: Other}
+      - input: ref('stg_atc__centerline_segments')
+        rows:
+          - {trail_segment_key: "test_lib_blaze::test_normalize_blaze_color_uses_flat_source_default_when_value_is_missing"}
+      - input: ref('stg_atc__side_trails')
+        rows:
+          - {trail_segment_key: "test_lib_blaze::test_normalize_blaze_color_decodes_a_real_coded_value", blaze: '1'}
+          - {trail_segment_key: "test_lib_blaze::test_normalize_blaze_color_decodes_code_zero_to_none_not_a_fallback", blaze: '0'}
+          - {trail_segment_key: "test_lib_blaze::test_normalize_blaze_color_decodes_code_nine_to_other_cleanly", blaze: '9'}
+          - {trail_segment_key: "test_lib_blaze::test_normalize_blaze_color_falls_back_on_literal_unknown_string", blaze: Unknown}
+          - {trail_segment_key: "test_lib_blaze::test_normalize_blaze_color_falls_back_on_literal_gold_string", blaze: Gold}
+          - {trail_segment_key: "test_lib_blaze::test_normalize_blaze_color_falls_back_on_out_of_range_code", blaze: '42'}
+          - {trail_segment_key: "test_lib_blaze::test_normalize_blaze_color_falls_back_on_missing_value_with_no_default", blaze: null}
+      - input: ref('int_trail_lines__network_sources')
+        rows:
+          - {source_key: reviewed_source, blaze_field: Blaze, blaze_column: blaze}
+          - {source_key: unreviewed_source, blaze_field: Blaze, blaze_column: blaze}
+          - {source_key: blank_means_unblazed, blaze_field: BLAZE, blaze_column: blaze}
+          - {source_key: flat_default_source, blaze_default: White}
+      - input: ref('int_trail_lines__network_unioned')
+        rows:
+          - {trail_segment_key: "test_lib_blaze::test_a_reviewed_row_names_its_palette_member", source_key: reviewed_source, properties: '{"blaze": "Aqua"}'}
+          - {trail_segment_key: "test_lib_blaze::test_two_spellings_of_one_paint_land_on_one_member", source_key: reviewed_source, properties: '{"blaze": "Teal"}'}
+          - {trail_segment_key: "test_lib_blaze::test_a_deferred_value_is_a_decision_and_says_so", source_key: reviewed_source, properties: '{"blaze": "Pink"}'}
+          - {trail_segment_key: "test_lib_blaze::test_a_value_nobody_has_looked_at_is_the_loud_one", source_key: reviewed_source, properties: '{"blaze": "Chartreuse"}'}
+          - {trail_segment_key: "test_lib_blaze::test_a_source_with_no_reviewed_table_maps_nothing", source_key: unreviewed_source, properties: '{"blaze": "Aqua"}'}
+          - {trail_segment_key: "test_lib_blaze::test_a_row_may_name_a_neutral_on_purpose", source_key: blank_means_unblazed, properties: '{"blaze": ""}'}
+          - {trail_segment_key: "test_export_nearby_trails::test_a_source_that_states_no_blaze_for_a_row_is_counted_not_warned_per_feature[null]", source_key: reviewed_source, properties: '{"blaze": null}'}
+          - {trail_segment_key: "test_export_nearby_trails::test_a_source_that_states_no_blaze_for_a_row_is_counted_not_warned_per_feature[blank]", source_key: reviewed_source, properties: '{"blaze": "   "}'}
+          - {trail_segment_key: "test_export_nearby_trails::test_a_source_with_no_blaze_field_takes_its_declared_default", source_key: flat_default_source, properties: '{"blaze": "Red"}'}
+          - {trail_segment_key: "sql::a_row_without_the_field_states_no_blaze", source_key: reviewed_source, properties: '{"other": "Blue"}'}
+          - {trail_segment_key: "sql::a_number_never_matches_a_table_keyed_by_text", source_key: reviewed_source, properties: '{"blaze": 5}'}
+    expect:
+      rows:
+        - {trail_segment_key: "test_lib_blaze::test_normalize_blaze_color_uses_flat_source_default_when_value_is_missing", source_key: centerline, blaze_color: White, blaze_decoded: true, blaze_disposition: mapped}
+        - {trail_segment_key: "test_lib_blaze::test_normalize_blaze_color_decodes_a_real_coded_value", source_key: side_trails, blaze_color: Blue, blaze_decoded: true, blaze_disposition: null}
+        - {trail_segment_key: "test_lib_blaze::test_normalize_blaze_color_decodes_code_zero_to_none_not_a_fallback", source_key: side_trails, blaze_color: None, blaze_decoded: true, blaze_disposition: null}
+        - {trail_segment_key: "test_lib_blaze::test_normalize_blaze_color_decodes_code_nine_to_other_cleanly", source_key: side_trails, blaze_color: Other, blaze_decoded: true, blaze_disposition: null}
+        - {trail_segment_key: "test_lib_blaze::test_normalize_blaze_color_falls_back_on_literal_unknown_string", source_key: side_trails, blaze_color: Unknown, blaze_decoded: false, blaze_disposition: null}
+        - {trail_segment_key: "test_lib_blaze::test_normalize_blaze_color_falls_back_on_literal_gold_string", source_key: side_trails, blaze_color: Unknown, blaze_decoded: false, blaze_disposition: null}
+        - {trail_segment_key: "test_lib_blaze::test_normalize_blaze_color_falls_back_on_out_of_range_code", source_key: side_trails, blaze_color: Unknown, blaze_decoded: false, blaze_disposition: null}
+        - {trail_segment_key: "test_lib_blaze::test_normalize_blaze_color_falls_back_on_missing_value_with_no_default", source_key: side_trails, blaze_color: Unknown, blaze_decoded: false, blaze_disposition: null}
+        - {trail_segment_key: "test_lib_blaze::test_a_reviewed_row_names_its_palette_member", source_key: reviewed_source, blaze_color: Aqua, blaze_decoded: true, blaze_disposition: mapped}
+        - {trail_segment_key: "test_lib_blaze::test_two_spellings_of_one_paint_land_on_one_member", source_key: reviewed_source, blaze_color: Aqua, blaze_decoded: true, blaze_disposition: mapped}
+        - {trail_segment_key: "test_lib_blaze::test_a_deferred_value_is_a_decision_and_says_so", source_key: reviewed_source, blaze_color: Unknown, blaze_decoded: true, blaze_disposition: deferred}
+        - {trail_segment_key: "test_lib_blaze::test_a_value_nobody_has_looked_at_is_the_loud_one", source_key: reviewed_source, blaze_color: Unknown, blaze_decoded: true, blaze_disposition: unmapped}
+        - {trail_segment_key: "test_lib_blaze::test_a_source_with_no_reviewed_table_maps_nothing", source_key: unreviewed_source, blaze_color: Unknown, blaze_decoded: true, blaze_disposition: unmapped}
+        - {trail_segment_key: "test_lib_blaze::test_a_row_may_name_a_neutral_on_purpose", source_key: blank_means_unblazed, blaze_color: None, blaze_decoded: true, blaze_disposition: mapped}
+        - {trail_segment_key: "test_export_nearby_trails::test_a_source_that_states_no_blaze_for_a_row_is_counted_not_warned_per_feature[null]", source_key: reviewed_source, blaze_color: Unknown, blaze_decoded: true, blaze_disposition: absent}
+        - {trail_segment_key: "test_export_nearby_trails::test_a_source_that_states_no_blaze_for_a_row_is_counted_not_warned_per_feature[blank]", source_key: reviewed_source, blaze_color: Unknown, blaze_decoded: true, blaze_disposition: absent}
+        - {trail_segment_key: "test_export_nearby_trails::test_a_source_with_no_blaze_field_takes_its_declared_default", source_key: flat_default_source, blaze_color: White, blaze_decoded: true, blaze_disposition: null}
+        - {trail_segment_key: "sql::a_row_without_the_field_states_no_blaze", source_key: reviewed_source, blaze_color: Unknown, blaze_decoded: true, blaze_disposition: absent}
+        - {trail_segment_key: "sql::a_number_never_matches_a_table_keyed_by_text", source_key: reviewed_source, blaze_color: Unknown, blaze_decoded: true, blaze_disposition: unmapped}

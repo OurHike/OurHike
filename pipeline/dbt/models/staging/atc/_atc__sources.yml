@@ -141,7 +141,7 @@ sources:
           # Rows sharing stg_atc__centerline_segments's key must be exact copies (decision 40).
           - duplicates_are_exact:
               arguments:
-                key_columns: ["'centerline'", "globalid"]
+                key_columns: ["'centerline'", "coalesce(globalid, cast(objectid as varchar))"]
         description: >
           A.T. Centerline (sources.json: discovered 2026-07-24) - the 3,025
           maintaining-club-edited segments every geometry export merges.
@@ -150,13 +150,19 @@ sources:
           per DBT.md's scope.
         columns:
           - name: GlobalID
-            data_tests: [not_null, unique]
+            data_tests:
+              # WARN: the staging key falls back to OBJECTID where a row has
+              # no GlobalID, so a missing one is reported, not fatal.
+              - not_null:
+                  config:
+                    severity: warn
+              - unique
       - name: raw_atc__side_trails
         data_tests:
           # Rows sharing stg_atc__side_trails's key must be exact copies (decision 40).
           - duplicates_are_exact:
               arguments:
-                key_columns: ["'side_trails'", "globalid"]
+                key_columns: ["'side_trails'", "coalesce(globalid, cast(objectid as varchar))"]
         description: >
           A.T. Side Trails (sources.json: discovered 2026-07-24) - the blue
           blazes. export_spurs.py owns the published artifact; the staged
@@ -164,7 +170,13 @@ sources:
           features/TRAIL_BLAZE_COLORS.md's normalisation to build on.
         columns:
           - name: GlobalID
-            data_tests: [not_null, unique]
+            data_tests:
+              # WARN: the staging key falls back to OBJECTID where a row has
+              # no GlobalID, so a missing one is reported, not fatal.
+              - not_null:
+                  config:
+                    severity: warn
+              - unique
       - name: raw_atc__trail_club_sections
         data_tests:
           # Rows sharing stg_atc__club_sections's key must be exact copies (decision 40).

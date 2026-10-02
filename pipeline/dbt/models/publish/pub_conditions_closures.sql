@@ -118,7 +118,7 @@ judged as (
             'int_closures__gate has no row for ourhike_closures'
         ) as held_because
     from published
-    left join gate on true
+    left join gate on gate.source_key = 'ourhike_closures'
 )
 
 select

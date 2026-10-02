@@ -9,7 +9,14 @@
 -- rows, five at high confidence and the Communities at low (a town is a
 -- proxy for resupply). opentrail's `icon` is typed by the seed's `opentrail`
 -- rows: `w` is water at high, `s` water at low, and every other icon
--- publishes nothing. A row with no geometry is skipped, as has_geometry()
+-- publishes nothing. The two derived layers, OSM water and
+-- fetch_trail_water.py's site water (`nhd_stream`), are water at low
+-- confidence whole, as the poi_sources seed's own columns say
+-- (export_poi.py's OSM_WATER_FIELD_MAP and load_trail_water()). The Long
+-- Path guide's rows are records lib/nynjtc_long_path_guide.py's
+-- build_records() already made (the seed's `unified`), so their type,
+-- confidence, id and name are read as they stand, as export_nearby_poi.py
+-- appends them. A row with no geometry is skipped, as has_geometry()
 -- skips it; one whose geometry is not a point fails the build at this
 -- model's test, as unify_poi() raises, because that is a wiring mistake
 -- rather than a gap upstream.
@@ -78,6 +85,9 @@ fields as (
             'NAME'
         ) as name_field,
         sources.type_field,
+        sources.poi_type as layer_poi_type,
+        sources.confidence as layer_confidence,
+        coalesce(sources.unified, false) as is_unified,
         json_extract_string(registry.entry, '$.poi_type') as declared_poi_type,
         json_extract_string(registry.entry, '$.asset_field') as asset_field,
         json_extract_string(registry.entry, '$.facility_field')
@@ -134,6 +144,9 @@ typed as (
         read.*,
         {{ python_strip('read.type_value') }} as type_value_stripped,
         case
+            when read.is_unified
+                then json_extract_string(read.properties, '$.poi_type')
+            when read.layer_poi_type is not null then read.layer_poi_type
             when
                 read.phone_files = 'poi_by_type'
                 and read.source_key = 'opentrail_at'
@@ -143,6 +156,9 @@ typed as (
             else valued.poi_type
         end as poi_type,
         case
+            when read.is_unified
+                then json_extract_string(read.properties, '$.confidence')
+            when read.layer_confidence is not null then read.layer_confidence
             when
                 read.phone_files = 'poi_by_type'
                 and read.source_key = 'opentrail_at'
@@ -172,7 +188,8 @@ cleaned as (
     select
         typed.*,
         case
-            when typed.phone_files = 'poi_by_type' then typed.raw_name
+            when typed.phone_files = 'poi_by_type' or typed.is_unified
+                then typed.raw_name
             when
                 {{ python_strip('coalesce(typed.raw_name, \'\')') }} = ''
                 then null
@@ -223,9 +240,16 @@ select
     json_extract_string(cleaned.source_feature_id_json, '$')
         as source_feature_id,
     cleaned.source_feature_id_json,
-    cleaned.source
-    || ':'
-    || json_extract_string(cleaned.source_feature_id_json, '$') as derived_id,
+    case
+        -- A unified record carries the id its own step minted (the guide's
+        -- includes the type, as one entry can be two places).
+        when cleaned.is_unified
+            then json_extract_string(cleaned.properties, '$.id')
+        else
+            cleaned.source
+            || ':'
+            || json_extract_string(cleaned.source_feature_id_json, '$')
+    end as derived_id,
     cleaned.poi_name as name,
     cleaned.poi_type,
     cleaned.family_confidence,

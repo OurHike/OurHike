@@ -53,6 +53,10 @@ trailheads as (
     select * from {{ ref('int_points_of_interest__trailheads') }}
 ),
 
+photos as (
+    select * from {{ ref('int_points_of_interest__photos') }}
+),
+
 live as (
     select
         described.poi_id,
@@ -74,6 +78,13 @@ live as (
         described.water_distance_source,
         described.description,
         described.nearby,
+        described.lp_section,
+        described.section_mile,
+        described.placement,
+        described.source_url,
+        described.position_error_m,
+        described.off_trail_miles,
+        described.water_reliability,
         described.site_id,
         described.site_role,
         described.site_name,
@@ -108,6 +119,13 @@ tombstones as (
         cast(null as varchar) as water_distance_source,
         cast(null as varchar) as description,
         cast(null as json) as nearby,
+        cast(null as integer) as lp_section,
+        cast(null as double) as section_mile,
+        cast(null as varchar) as placement,
+        cast(null as varchar) as source_url,
+        cast(null as integer) as position_error_m,
+        cast(null as double) as off_trail_miles,
+        cast(null as varchar) as water_reliability,
         cast(null as varchar) as site_id,
         cast(null as varchar) as site_role,
         cast(null as varchar) as site_name,
@@ -162,16 +180,24 @@ select
     unioned.water_distance_source,
     unioned.description,
     unioned.nearby,
-    -- PO24 and PO38, NOT PORTED: the photo manifests (poi_images.json,
-    -- poi_images_atc.json) and the face screen's decisions are not landed,
-    -- so no POI carries a photo here. Null is "no photo", which is what a
-    -- phone shows for every POI export_poi.py finds none for.
-    cast(null as varchar) as photo_key,
-    cast(null as varchar) as photo_page_url,
-    cast(null as varchar) as photo_author,
-    cast(null as varchar) as photo_license,
-    cast(null as varchar) as photo_taken,
-    cast(null as json) as photos,
+    -- PO36: the Long Path guide's own fields, on its waypoints only.
+    unioned.lp_section,
+    unioned.section_mile,
+    unioned.placement,
+    unioned.source_url,
+    unioned.position_error_m,
+    unioned.off_trail_miles,
+    unioned.water_reliability,
+    -- PO24 and PO38: the card photo and gallery through the face gate
+    -- (int_points_of_interest__photos), on the A.T. family's POIs, which are
+    -- the only ones export_poi.py attaches photos to. Null is "no photo",
+    -- which is what a phone shows for every POI that has none to show.
+    photos.photo_key,
+    photos.photo_page_url,
+    photos.photo_author,
+    photos.photo_license,
+    photos.photo_taken,
+    cast(photos.photos as json) as photos,
     unioned.site_id,
     unioned.site_role,
     unioned.site_name,
@@ -187,4 +213,8 @@ select
 from unioned
 inner join publication on unioned.source_key = publication.source_key
 left join trailheads on unioned.poi_id = trailheads.poi_id
+left join photos
+    on
+        unioned.phone_files = 'poi_by_type'
+        and unioned.poi_id = photos.poi_id
 where publication.may_publish

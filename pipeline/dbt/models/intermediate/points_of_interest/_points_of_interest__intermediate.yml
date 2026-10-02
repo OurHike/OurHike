@@ -157,16 +157,132 @@ models:
       - name: poi_key
         description: The staging model's key.
         data_tests: [not_null, unique]
+
+  - name: int_points_of_interest__osm_water_reach
+    description: >
+      The distance half of OSM water's reach (PO06), one row per OSM water
+      point in the corridor: the nearest of the centerline, a side trail, a
+      published network line whose organization reaches hikers, a shelter
+      and a campsite, within the 5-mile ceiling, and whether it is within
+      fetch_trail_water.py's MATCH_RADIUS_FT (100 ft).
+      build_osm_water_reach.py's measure_distances(). step_osm_water_grade
+      reads it for the grade.
+    columns:
+      - name: poi_key
+        description: The staging model's key.
+        data_tests: [not_null, unique]
+      - name: osm_id
+        description: The OSM node id, which the verdicts are keyed by.
+        data_tests: [not_null, unique]
+      - name: nearest
+        description: >
+          centerline, side_trail, network_trail, shelter or campsite: which
+          one the point is nearest; null where nothing is within the ceiling.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [centerline, side_trail, network_trail, shelter, campsite]
+      - name: nearest_source
+        description: The network line's organization (its registry key), where the nearest is a network trail.
+      - name: nearest_m
+        description: The distance to the nearest, EPSG:5070 metres at 2 dp, as text.
+      - name: walk_key
+        description: >
+          The other end of the walk, the nearest point on the feature, as
+          the EPQS cache keys it: "lat,lon" at 6 dp.
+      - name: passes_distance
+        description: Within MATCH_RADIUS_FT of the nearest; false where nothing is near.
+        data_tests: [not_null]
+      - name: reason
+        description: Why the point fails the distance gate, in build_osm_water_reach.py's words; null where it passes.
+
+  - name: int_points_of_interest__osm_water_verdicts
+    description: >
+      Every corridor OSM water point's verdict, both halves as
+      build_osm_water_reach.py's verdict file holds them: the distance pass
+      beside the grade step_osm_water_grade took. `reachable` is null only
+      where the step wrote no verdict, which
+      assert_every_corridor_osm_water_point_has_a_verdict fails the build on.
+    columns:
+      - name: poi_key
+        description: The staging model's key.
+        data_tests: [not_null, unique]
+      - name: osm_id
+        description: The OSM node id.
+        data_tests: [not_null, unique]
+      - name: has_verdict
+        description: Whether the step wrote a verdict for the point.
+        data_tests: [not_null]
+      - name: reachable
+        description: Both gates passed, an ungraded point not reachable; null where there is no verdict.
+      - name: reason
+        description: Why the point is not reachable, the grade's reason where it has one, else the distance pass's.
+
+  - name: int_points_of_interest__photos
+    description: >
+      Each POI's card photo and gallery (PO24, PO38): the Commons photos
+      through the face gate (refused never ships; flagged ships only once a
+      person has cleared it), ATC's list where a POI has one, and only a
+      photo with a digest to name its bucket object. export_poi.py's
+      gate_photos() and attach_photos(). One row per POI with a photo.
+    data_tests:
+      # photo_key() raises on a digest that is not sha256 hex, so a publish
+      # never names an object that cannot exist; so does this, for every
+      # photo in the gallery as well as the card's.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >-
+              len(list_filter(
+                json_extract_string(photos, '$[*].key'),
+                lambda photo: not regexp_full_match(photo, '^photos/[0-9a-f]{64}\.jpg$')
+              )) = 0
+          config:
+            severity: error
+    columns:
+      - name: poi_id
+        description: The published POI id.
+        data_tests: [not_null, unique]
+      - name: photo_key
+        description: The card photo's bucket key, photos/<digest>.jpg.
+        data_tests: [not_null]
+      - name: photos
+        description: Every photo shown, card photo first, as JSON objects of key, page_url, author, license and taken.
+        data_tests: [not_null]
+
+  - name: int_points_of_interest__reached
+    description: >
+      The corridor's POIs a hiker could reach (PO08, PO10): every row that
+      is not OSM water, and every OSM water point whose verdict says
+      reachable. A point with no verdict is dropped (export_poi.py's
+      gate_osm_water_reach()). A reachable point whose nearest walk is
+      another organization's trail carries that organization as not_on_at.
+    columns:
+      - name: poi_key
+        description: The staging model's key.
+        data_tests: [not_null, unique]
       - name: not_on_at
         description: >
-          The other organization's trail an A.T.-family point sits on, which
-          withholds its A.T. mile (PO10). Null on every row until OSM water
-          lands (#1652), the only source the Python ever marks.
+          The other organization's trail an OSM water point is reached from,
+          which withholds its A.T. mile (PO10, mark_off_trail_records());
+          null on every other row, as the Python marks no other source.
+
+  - name: int_points_of_interest__deduplicated
+    description: >
+      The reached POIs less each OSM water point within
+      WATER_DEDUP_RADIUS_M (25 m) of an opentrail water point (PO09,
+      export_poi.py's dedupe_water()): opentrail imports OSM, so the pair is
+      largely one node arriving through two doors, and the opentrail one
+      keeps its published id.
+    columns:
+      - name: poi_key
+        description: The staging model's key.
+        data_tests: [not_null, unique]
 
   - name: int_points_of_interest__dropped
     description: >
       Every unioned row that does not ship, with the first reason why, from
-      the three stages that drop: classified, publishable and in_corridor.
+      the five stages that drop: classified, publishable, in_corridor,
+      reached and deduplicated.
     columns:
       - name: poi_key
         description: The staging model's key.
@@ -374,3 +490,109 @@ models:
         description: The live POI that took its place, where reconciliation knows one.
       - name: resolves_to
         description: The live id superseded_by leads to, followed transitively; null where it leads nowhere.
+
+  - name: int_points_of_interest__water_sites
+    description: >
+      The A.T. shelters and campsites step_site_water.py asks about (PO07,
+      PO17): one row per staged row of ATC's two layers that has a point, as
+      fetch_trail_water.py reads them through build_water_distance.py's
+      fetch_atc_features(), which keeps a feature only where it carries a
+      geometry. The step orders them as fetch_atc_features() does, by name
+      and then GlobalID, and reads nothing else.
+    data_tests:
+      # One row per site: each staging model keys and dedupes its layer on
+      # GlobalID (decision 40), so a site is its layer and its GlobalID.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [layer, global_id]
+    columns:
+      - name: layer
+        description: shelters or campsites, fetch_trail_water.py's two layers.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [shelters, campsites]
+      - name: global_id
+        description: ATC's GlobalID, which load_trail_water() publishes the site water under.
+        data_tests: [not_null]
+      - name: name
+        description: ATC's Name; a null sorts as the empty string, as fetch_atc_features() sorts it.
+      - name: lat
+        description: The site's latitude, EPSG:4326.
+        data_tests: [not_null]
+      - name: lon
+        description: The site's longitude, EPSG:4326.
+        data_tests: [not_null]
+
+exposures:
+  - name: step_site_water
+    label: step_site_water.py
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The Python step that decides which shelters and campsites have water a
+      hiker can walk to (pipeline/step_site_water.py, PO07 and PO17), between
+      the dbt invocation that builds int_points_of_interest__water_sites and
+      the one that reads its answer back as source('derived', 'site_water').
+      It calls fetch_trail_water.py's build() unchanged, because the gates sit
+      between the hydrography's files and USGS EPQS, two reads SQL cannot
+      make in this build (pipeline/ELT.md's ledger). By default it lands the
+      last trail_water.json; --derive re-derives. Shown here so the docs draw
+      both halves of the step.
+    depends_on:
+      - ref('int_points_of_interest__water_sites')
+    config:
+      meta:
+        writes: derived.site_water
+        cadence: monthly
+  - name: step_osm_water_grade
+    label: step_osm_water_grade.py
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The Python step that takes the grade half of OSM water's reach
+      (pipeline/step_osm_water_grade.py, PO06 and PO07), between the dbt
+      invocation that builds int_points_of_interest__osm_water_reach and the
+      one that reads its verdicts back as source('derived',
+      'osm_water_grade'). It calls build_osm_water_reach.py's
+      apply_grade_gate() and write() guards unchanged, because the grade needs
+      USGS EPQS's elevations at both ends of each walk, a read SQL cannot make
+      in this build. Shown here so the docs draw both halves of the step.
+      step_osm_water.py, which lands the points, reads no intermediate and
+      has no exposure.
+    depends_on:
+      - ref('int_points_of_interest__osm_water_reach')
+    config:
+      meta:
+        writes: derived.osm_water_grade
+        cadence: monthly
+  - name: step_long_path_guide
+    label: step_long_path_guide.py
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The Python step that places NYNJTC's Long Path guide as waypoints
+      (pipeline/step_long_path_guide.py, PO36), between the dbt invocation
+      that builds the guide's staged sections and the Long Path's staged
+      lines and the one that reads its records back as source('derived',
+      'long_path_guide'). It calls lib/nynjtc_long_path_guide.py's
+      build_records() unchanged, because the guide's classification uses
+      look-ahead and look-behind, which DuckDB's RE2 does not have. It reads
+      the two staging models themselves, so this exposure's parents are
+      views; build_marts.py's lane check reads each step's inputs off its
+      exposure, which is why it is here, and the project evaluator's
+      exceptions seed says why its view parents are allowed.
+    depends_on:
+      - ref('stg_nynjtc__long_path_guide')
+      - ref('stg_nynjtc__long_path')
+    config:
+      meta:
+        writes: derived.long_path_guide
+        cadence: monthly

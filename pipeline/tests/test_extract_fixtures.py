@@ -19,6 +19,7 @@ from extract._fixtures import FixtureAdapter, FixtureConnection, build, esri_typ
 from extract._kinds import (
     AtcTrailUpdatePages,
     ConditionsQuery,
+    GuidePages,
     NwsAlerts,
     PublishedHikes,
     ReviewedDir,
@@ -48,12 +49,23 @@ def test_every_fixture_file_with_a_resource_lands_whole(fixtures):
         | ConditionsQuery
         | PublishedHikes
         | AtcTrailUpdatePages
+        | GuidePages
     )
     fetched = [r for r in resources if not isinstance(r, answered)]
     assert len(fetched) == 56, "55 monthly layers and OPRHP's temporary closures on the hourly lane"
     for resource in fetched:
         expected = len(json.loads(fixture_file(root / "raw", resource.key).read_text())["features"])
         assert counts[resource.table] == expected, resource.table
+
+
+def test_the_long_path_guide_lands_one_row_per_page_its_index_links(fixtures):
+    """The guide_pages kind's own parser over make_dbt_fixtures.py's pages, served at the URLs it asks for (PO36)."""
+    root, counts = fixtures
+    folder = root / "raw" / "guide_pages" / "nynjtc_long_path_guide"
+    pages = json.loads((folder / "pages.json").read_text())
+    assert counts["raw_nynjtc__nynjtc_long_path_guide"] == len(pages) - 1, (
+        "every section page the index links, the index not a row"
+    )
 
 
 def test_the_hourly_lanes_other_upstreams_land_from_their_conditions_answers(fixtures):

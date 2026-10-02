@@ -219,14 +219,21 @@ jobs:
           # it runs (export_podcasts.py, export_sources.py, export_elevation.py)
           # are the parity step's; the same test holds the list to their
           # imports too. build_marts.py runs the build, and
-          # step_dem_sampling.py, step_weather_squares.py and
-          # step_form_route.py are the Python steps it runs between dbt
-          # invocations (tests/test_build_marts.py holds this list to it and
-          # every step).
+          # step_node_lines.py (with build_trail_graph.py, whose _split_all it
+          # calls), step_dem_sampling.py, step_weather_squares.py and
+          # step_form_route.py are Python steps it runs between dbt
+          # invocations, beside the POI family's below
+          # (tests/test_build_marts.py holds this list to it and every step).
           # The points_of_interest family's parity runs export_poi.py (and the
           # export_elevation.py mile axis it imports), export_nearby_poi.py and
-          # export_retired_poi.py. The challenges family's runs
-          # export_challenges.py.
+          # export_retired_poi.py; step_site_water.py is that family's step,
+          # fetch_trail_water.py's rule, which imports build_water_distance.py
+          # and export_basemap.py; step_osm_water.py and
+          # step_osm_water_grade.py are its OSM water steps, the second
+          # calling build_osm_water_reach.py's grade loop; step_poi_photos.py
+          # lands the photo manifests; step_long_path_guide.py places the
+          # Long Path guide through lib/nynjtc_long_path_guide.py. The
+          # challenges family's runs export_challenges.py.
           paths: >-
             pipeline/dbt/
             pipeline/extract/
@@ -262,6 +269,15 @@ jobs:
             pipeline/export_retired_poi.py
             pipeline/export_places.py
             pipeline/export_challenges.py
+            pipeline/step_site_water.py
+            pipeline/fetch_trail_water.py
+            pipeline/build_water_distance.py
+            pipeline/export_basemap.py
+            pipeline/step_osm_water.py
+            pipeline/step_osm_water_grade.py
+            pipeline/build_osm_water_reach.py
+            pipeline/step_poi_photos.py
+            pipeline/step_long_path_guide.py
             pipeline/requirements.txt
             pipeline/seed_spatial_extension.py
             pipeline/check_freshness.py

@@ -38,12 +38,14 @@ import shapely
 import yaml
 from shapely.geometry import LineString
 
+import build_osm_water_reach
 import export_elevation
 import export_nearby_poi
 import export_poi
+import fetch_trail_water
 import make_dbt_fixtures
 import parity
-from lib import atc_notes, corridor, poi_description, poi_identity, poi_sites, spurs
+from lib import atc_notes, corridor, photo_screen, poi_description, poi_identity, poi_sites, spurs
 
 PIPELINE = Path(__file__).parent.parent
 DBT = PIPELINE / "dbt"
@@ -51,6 +53,7 @@ UNIT_TESTS = DBT / "models" / "intermediate" / "points_of_interest" / "_points_o
 
 DESCRIBED = "int_points_of_interest__described_says_what_lib_poi_description_says"
 COMPOSED = "int_points_of_interest__described_composes_what_compose_description_composes"
+STREAMS = "int_points_of_interest__described_says_what_describe_stream_point_says"
 SITES = "int_points_of_interest__sites_groups_like_lib_poi_sites"
 CLASSIFIED = "int_points_of_interest__classified_types_and_refuses_like_the_exporters"
 PUBLISHABLE = "int_points_of_interest__publishable_keeps_and_rates_like_public_verdict"
@@ -63,6 +66,11 @@ IDENTIFIED = "int_points_of_interest__identified_applies_the_ledger_like_apply_l
 RETIRED = "int_points_of_interest__retired_resolves_like_lib_poi_identity"
 WATER = "int_points_of_interest__water_attaches_and_synthesizes_like_export_poi"
 ENRICHED = "int_points_of_interest__enriched_attaches_capacity_and_nearby_like_export_poi"
+OSM_DESCRIBED = "int_points_of_interest__described_says_what_describe_water_says"
+OSM_REACH = "int_points_of_interest__osm_water_reach_measures_like_measure_distances"
+REACHED = "int_points_of_interest__reached_gates_and_marks_like_export_poi"
+DEDUPLICATED = "int_points_of_interest__deduplicated_drops_twins_like_dedupe_water"
+PHOTOS = "int_points_of_interest__photos_gates_and_attaches_like_export_poi"
 
 # The differences between the SQL and today's Python that a decision or an
 # improvement explains, by where they are. Emptying a list turns a test red,
@@ -136,6 +144,11 @@ def _unit_test(name: str) -> dict:
 def _given(test: dict, model: str) -> list[dict] | str:
     """One given input's rows: a list of dicts, or the SQL text of a `format: sql` input."""
     return next(given["rows"] for given in test["given"] if given["input"] == f"ref('{model}')")
+
+
+def _given_or_none(test: dict, model: str) -> list[dict] | str | None:
+    """One given input's rows, or None where the unit test gives no such input."""
+    return next((given["rows"] for given in test["given"] if given["input"] == f"ref('{model}')"), None)
 
 
 def _expected(test: dict, key: str) -> dict[str, dict]:
@@ -229,6 +242,7 @@ AT_STEMS = (*(stem for stem, _, _, _ in export_poi.DIRECT_SOURCES), export_poi.O
 def described_answers(test: dict) -> dict[str, dict]:
     """export_poi.attach_descriptions() and compose_description() on the given rows (PO19, PO20)."""
     rows = _given(test, "int_points_of_interest__enriched")
+    guide = {row["id"]: row["description"] for row in _given_or_none(test, "stg_derived__long_path_guide") or []}
     answers = {}
     for row in rows:
         landed = json.loads(row["properties"]) if row.get("properties") else {}
@@ -240,6 +254,9 @@ def described_answers(test: dict) -> dict[str, dict]:
             }
             export_poi.attach_descriptions([record])
             answers[row["poi_id"]] = {"description": record.get("description")}
+        elif row["poi_id"] in guide:
+            # export_nearby_poi.py's guide_records(): the record's own sentence, as build_records() composed it.
+            answers[row["poi_id"]] = {"description": guide[row["poi_id"]]}
         else:
             source = {"asset_field": "ASSET", "facility_field": "FACILITY"}
             description = export_nearby_poi.compose_description(
@@ -392,7 +409,7 @@ def in_corridor_answers(test: dict, workdir: Path) -> dict[str, dict | None]:
     }
     clipped, _ = export_nearby_poi.clip_to_network(others, network, boundary_paths)
     kept |= {record["id"] for record in clipped}
-    return {row["poi_key"]: ({"not_on_at": None} if row["poi_key"] in kept else None) for row in rows}
+    return {row["poi_key"]: ({"source_key": row["source_key"]} if row["poi_key"] in kept else None) for row in rows}
 
 
 def trailheads_answers(test: dict, workdir: Path) -> dict[str, dict]:
@@ -470,13 +487,153 @@ def identified_answers(test: dict, workdir: Path) -> dict[str, dict]:
     workdir.mkdir(parents=True, exist_ok=True)
     ledger = workdir / "poi_identity.json"
     ledger.write_text(json.dumps({"pois": _ledger(_given(test, "base_ourhike__poi_identity"))}))
-    rows = _given(test, "int_points_of_interest__in_corridor")
+    rows = _given(test, "int_points_of_interest__deduplicated")
     records = {
         row["poi_key"]: {"id": row["derived_id"], "source": row["source"], "source_feature_id": row["source_feature_id"]}
         for row in rows
     }
     export_poi.apply_ledger_ids([records[row["poi_key"]] for row in rows if row["phone_files"] == "poi_by_type"], ledger)
     return {key: {"poi_id": record["id"]} for key, record in records.items()}
+
+
+def _point_collection(path: Path, rows: list[dict], properties) -> Path:
+    path.write_text(
+        _collection(
+            [
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [row["lon"], row["lat"]]},
+                    "properties": properties(row),
+                }
+                for row in rows
+            ]
+        )
+    )
+    return path
+
+
+def osm_water_reach_answers(test: dict, workdir: Path) -> dict[str, dict | None]:
+    """build_osm_water_reach.measure_distances() over the unit test's lines, sites and OSM points (PO06).
+
+    The script reads data/raw/ and the published network file, so the unit
+    test's rows are written as those files in `workdir`. Its network keys are
+    the registry's shipped ones (shipped_network_keys()), here the mocked
+    registry rows' `reaches_hikers`.
+    """
+    import build_osm_water_reach as reach
+
+    workdir.mkdir(parents=True, exist_ok=True)
+    _lines_file(workdir / "centerline.geojson", _given(test, "stg_atc__centerline_segments"))
+    _lines_file(workdir / "side_trails.geojson", _given(test, "stg_atc__side_trails"))
+    network = workdir / "nearby_trails.geojson"
+    network.write_text(
+        _collection(
+            [
+                {"type": "Feature", "geometry": json.loads(row["geom_geojson"]), "properties": {"source": row["source_key"]}}
+                for row in _given(test, "int_trail_lines__network_published")
+            ]
+        )
+    )
+    sites = _given(test, "int_points_of_interest__water_sites")
+    for layer in ("shelters", "campsites"):
+        _point_collection(
+            workdir / f"{layer}.geojson",
+            [row for row in sites if row["layer"] == layer],
+            lambda row: {"GlobalID": row["global_id"], "Name": row["name"]},
+        )
+    points = [row for row in _given(test, "int_points_of_interest__in_corridor") if row["source_key"] == "osm_water"]
+    _point_collection(workdir / "osm_water.geojson", points, lambda row: {"osm_id": row["source_feature_id"], "kind": "spring"})
+    shipped = {row["source_key"] for row in _given(test, "stg_registry__sources") if row["reaches_hikers"]}
+
+    live = (reach.RAW_DIR, reach.NETWORK_LINES_PATH, reach.shipped_network_keys)
+    reach.RAW_DIR, reach.NETWORK_LINES_PATH, reach.shipped_network_keys = workdir, network, lambda: shipped
+    try:
+        records = {record["osm_id"]: record for record in reach.measure_distances(_spatial(), quiet=True)}
+    finally:
+        reach.RAW_DIR, reach.NETWORK_LINES_PATH, reach.shipped_network_keys = live
+    answers: dict[str, dict | None] = {}
+    for row in points:
+        record = records.get(row["source_feature_id"])
+        if record is None:
+            answers[row["poi_key"]] = None
+            continue
+        walk = record.get("walk_to")
+        answers[row["poi_key"]] = {
+            "osm_id": record["osm_id"],
+            "nearest": record["nearest"],
+            "nearest_source": record.get("nearest_source"),
+            "nearest_m": None if record["nearest_m"] is None else f"{record['nearest_m']:.2f}",
+            "walk_key": None if walk is None else f"{walk['lat']:.6f},{walk['lon']:.6f}",
+            "passes_distance": record["passes_distance"],
+            "reason": record.get("reason"),
+        }
+    return answers
+
+
+def reached_answers(test: dict) -> dict[str, dict | None]:
+    """export_poi.py's gate_osm_water_reach() and mark_off_trail_records() on the corridor's rows (PO08, PO10)."""
+    rows = _given(test, "int_points_of_interest__in_corridor")
+    judged = _given(test, "int_points_of_interest__osm_water_verdicts")
+    # A row the step wrote no verdict for is absent from the Python's verdict file.
+    verdicts = {row["osm_id"]: row["reachable"] for row in judged if row["has_verdict"]}
+    anchors = {
+        row["osm_id"]: row["nearest_source"] for row in judged if row.get("nearest_source") and verdicts.get(row["osm_id"])
+    }
+    records = [
+        {
+            "id": row["poi_key"],
+            "poi_type": row["poi_type"],
+            "source": row["source"],
+            "source_feature_id": row["source_feature_id"],
+        }
+        for row in rows
+    ]
+    kept = export_poi.gate_osm_water_reach(records, verdicts)
+    export_poi.mark_off_trail_records(kept, anchors)
+    answers: dict[str, dict | None] = {row["poi_key"]: None for row in rows}
+    for record in kept:
+        answers[record["id"]] = {"not_on_at": record.get(export_poi.NOT_ON_AT_KEY)}
+    return answers
+
+
+def photos_answers(test: dict) -> dict[str, dict | None]:
+    """photo_screen.gate_photos() on the Commons rows, `{**commons, **atc}`, then export_poi.attach_photos() (PO24, PO38).
+
+    Each row becomes the photo record its outcome file holds: the credit
+    fields, the digest where the row has one, and a screen where the row was
+    screened, with one face where it was flagged.
+    """
+    rows = sorted(_given(test, "stg_derived__poi_photos"), key=lambda row: row["photo_index"])
+    lists: dict[str, dict[str, list[dict]]] = {"commons": {}, "atc": {}}
+    decisions = {}
+    for row in rows:
+        photo = {field: row.get(field) for field in export_poi.PHOTO_FIELDS}
+        if row.get("digest") is not None:
+            photo["digest"] = row["digest"]
+        if row["screened"]:
+            photo["screen"] = {"faces": 1 if row["flagged"] else 0}
+        lists[row["source"]].setdefault(row["poi_id"], []).append(photo)
+        if row.get("decision") and row.get("digest"):
+            decisions[row["digest"]] = {"decision": row["decision"]}
+    commons, _ = photo_screen.gate_photos(lists["commons"], decisions)
+    records = [{"id": poi_id} for poi_id in dict.fromkeys(row["poi_id"] for row in rows)]
+    export_poi.attach_photos(records, {**commons, **lists["atc"]})
+    columns = ("photo_key", *(f"photo_{field}" for field in export_poi.PHOTO_FIELDS), "photos")
+    return {
+        record["id"]: ({column: record.get(column) for column in columns} if "photo_key" in record else None)
+        for record in records
+    }
+
+
+def deduplicated_answers(test: dict) -> dict[str, dict | None]:
+    """export_poi.py's dedupe_water() on the reached rows (PO09)."""
+    rows = _given(test, "int_points_of_interest__reached")
+    records = [
+        {"id": row["poi_key"], "poi_type": row["poi_type"], "source": row["source"], "lat": row["lat"], "lon": row["lon"]}
+        for row in rows
+    ]
+    kept = {record["id"] for record in export_poi.dedupe_water(records)}
+    return {row["poi_key"]: ({"source": row["source"]} if row["poi_key"] in kept else None) for row in rows}
 
 
 def retired_answers(test: dict) -> dict[str, dict]:
@@ -621,6 +778,16 @@ def test_the_unit_tests_registry_entries_are_sources_json_own():
         for given in test["given"]:
             if given["input"] == "ref('stg_registry__sources')":
                 for row in given["rows"]:
+                    if "entry" not in row:
+                        # The reach's unit test mocks `reaches_hikers` alone. Every network
+                        # line source reaches hikers today, so the one that does not is a
+                        # key sources.json does not have, named `unit_` to say so.
+                        if row["source_key"].startswith("unit_"):
+                            assert row["reaches_hikers"] is False, row["source_key"]
+                        else:
+                            assert row["reaches_hikers"] == real[row["source_key"]]["reaches_hikers"], row["source_key"]
+                        checked += 1
+                        continue
                     entry = json.loads(row["entry"])
                     assert entry == {key: real[row["source_key"]][key] for key in entry}, row["source_key"]
                     checked += 1
@@ -633,11 +800,23 @@ def test_the_unit_tests_registry_entries_are_sources_json_own():
     assert checked, "no unit test mocks a registry entry"
 
 
-def test_the_poi_sources_seed_is_the_exporters_layer_list():
-    """poi_sources: export_poi.py's DIRECT_SOURCES and opentrail, then export_nearby_poi.py's poi_sources(), in reading order."""
+def _site_water_layer(tmp_path: Path) -> tuple[str, str, str, str, str]:
+    """load_trail_water()'s inline field map, read back off one record it unifies: (source, id field, name field, type, confidence)."""
+    path = tmp_path / "trail_water.json"
+    water = {"lat": 41.0, "lon": -74.0, "sources": ["nhd"], "name": "Fixture Brook", "flow": None, "flow_source": None}
+    path.write_text(json.dumps({"sites": [{"atc_global_id": "g-1", "water": {**water, "stream_id": "s-1"}}]}))
+    (record,) = export_poi.load_trail_water(path)
+    assert record["id"] == f"{export_poi.NHD_STREAM_SOURCE}:g-1"
+    assert record["name"] == "Fixture Brook"
+    return record["source"], "site_global_id", "name", record["poi_type"], record["confidence"]
+
+
+def test_the_poi_sources_seed_is_the_exporters_layer_list(tmp_path):
+    """poi_sources: export_poi.py's DIRECT_SOURCES, opentrail, OSM water and site water, then export_nearby_poi.py's poi_sources(), in reading order."""
     rows = _seed_file("poi_sources")
     at = [
-        (stem, source, field_map["id_field"], field_map["name_field"]) for stem, _, source, field_map in export_poi.DIRECT_SOURCES
+        (stem, source, field_map["id_field"], field_map["name_field"], None, None)
+        for stem, _, source, field_map in export_poi.DIRECT_SOURCES
     ]
     at.append(
         (
@@ -645,21 +824,50 @@ def test_the_poi_sources_seed_is_the_exporters_layer_list():
             export_poi.OPENTRAIL_SOURCE,
             export_poi.OPENTRAIL_FIELD_MAP_BASE["id_field"],
             export_poi.OPENTRAIL_FIELD_MAP_BASE["name_field"],
+            None,
+            None,
         )
     )
+    # load_osm_water() and load_trail_water() type every point `water`, so the
+    # seed carries the type and the confidence on the layer.
+    at.append(
+        (
+            export_poi.OSM_WATER_SOURCE,
+            export_poi.OSM_WATER_SOURCE,
+            export_poi.OSM_WATER_FIELD_MAP["id_field"],
+            export_poi.OSM_WATER_FIELD_MAP["name_field"],
+            "water",
+            export_poi.OSM_WATER_FIELD_MAP["confidence"],
+        )
+    )
+    source, id_field, name_field, poi_type, confidence = _site_water_layer(tmp_path)
+    at.append((source, source, id_field, name_field, poi_type, confidence))
     assert [
-        (r["source_key"], r["source"], r["id_field"], r["name_field"]) for r in rows if r["phone_files"] == "poi_by_type"
+        (r["source_key"], r["source"], r["id_field"], r["name_field"], r["poi_type"], r["confidence"])
+        for r in rows
+        if r["phone_files"] == "poi_by_type"
     ] == at
+    assert {(r["poi_type"], r["confidence"]) for r in rows if r["phone_files"] == "nearby_poi"} == {(None, None)}
     assert {r["trail_id"] for r in rows if r["phone_files"] == "poi_by_type"} == {export_poi.TRAIL_ID}
 
     registry = export_nearby_poi.load_registry(PIPELINE / "sources.json")
     nearby = export_nearby_poi.poi_sources(registry)
     others = [r for r in rows if r["phone_files"] == "nearby_poi"]
-    assert [r["source_key"] for r in others] == [source["key"] for source in nearby]
-    for row, source in zip(others, nearby):
+    # main() appends the Long Path guide's records after every layer (guide_records()).
+    *layers, guide_row = others
+    assert [r["source_key"] for r in layers] == [source["key"] for source in nearby]
+    for row, source in zip(layers, nearby):
         assert row["source"] == source["key"]
         assert row["trail_id"] == export_nearby_poi.TRAIL_IDS[source["provider"]], source["key"]
         assert row["type_field"] == export_nearby_poi.TYPED_LAYERS.get(source["key"], (None, None))[0], source["key"]
+    from lib import nynjtc_long_path_guide
+
+    assert (guide_row["source_key"], guide_row["source"], guide_row["trail_id"]) == (
+        export_nearby_poi.GUIDE_KEY,
+        nynjtc_long_path_guide.SOURCE_KEY,
+        nynjtc_long_path_guide.TRAIL_ID,
+    )
+    assert {r["source_key"] for r in rows if r["unified"] == "true"} == {export_nearby_poi.GUIDE_KEY}
     assert [int(r["file_order"]) for r in rows] == list(range(1, len(rows) + 1))
 
 
@@ -703,6 +911,10 @@ def test_the_description_terms_seed_is_lib_poi_description_vocabularies():
         "parking_surface": poi_description.PARKING_SURFACES,
         "privy_type": poi_description.PRIVY_TYPES,
         "vista_location": poi_description.VISTA_LOCATIONS,
+        "stream_source": poi_description.STREAM_SOURCES,
+        "stream_claim": poi_description.STREAM_CLAIMS,
+        "stream_flow": poi_description.FLOW_WORDS,
+        "water_kind": poi_description.WATER_KINDS,
     }
     for vocabulary, phrases in expected.items():
         assert rows.pop(vocabulary) == {str(code): phrase for code, phrase in phrases.items()}, vocabulary
@@ -731,6 +943,10 @@ def test_the_vars_are_the_python_constants():
     assert tuple(variables["poi_compass_points"]) == poi_description.COMPASS_POINTS
     assert set(variables["poi_note_empty_values"]) == atc_notes.EMPTY_VALUES
     assert tuple(variables["poi_note_internal_patterns"]) == atc_notes.INTERNAL_PATTERNS
+    assert variables["poi_water_match_radius_ft"] == fetch_trail_water.MATCH_RADIUS_FT
+    assert variables["poi_metres_per_foot"] == fetch_trail_water.M_PER_FT
+    assert variables["poi_osm_water_measure_ceiling_m"] == build_osm_water_reach.MEASURE_CEILING_M
+    assert variables["poi_water_dedup_radius_m"] == export_poi.WATER_DEDUP_RADIUS_M
 
 
 def test_the_base_name_macro_strips_type_words():
@@ -743,8 +959,10 @@ def test_the_describers_read_no_field_this_list_lacks():
     """Every ATC field a describer reads is one the unit tests hand back in ATC's case.
 
     ATC's fields are capitalised; the lower-case ones are describe_water()'s OSM
-    and fetch_trail_water.py tags, which no landed layer carries (#1652), so no
-    unit test reaches them.
+    tags, which OSM_DESCRIBED's unit test hands the describer as
+    fetch_osm_water.py names them (only fixture mode lands OSM water until
+    #1652), and the site water step_site_water.py lands, which STREAMS' unit
+    test hands it under the names load_trail_water() writes.
     """
     source = (PIPELINE / "lib" / "poi_description.py").read_text()
     read = set(re.findall(r'(?:_count|_coded)\(\w+, "(\w+)"\)', source)) | set(re.findall(r'properties\.get\("(\w+)"\)', source))
@@ -768,7 +986,7 @@ def _held(expected: dict[str, dict], answers: dict[str, dict | None], deliberate
 
 
 def test_descriptions_are_what_the_describers_compose():
-    for name in (DESCRIBED, COMPOSED):
+    for name in (DESCRIBED, COMPOSED, STREAMS, OSM_DESCRIBED):
         test = _unit_test(name)
         _held(_expected(test, "poi_id"), described_answers(test))
 
@@ -837,6 +1055,44 @@ def test_miles_are_what_attach_miles_reads():
 def test_the_ledger_is_applied_as_apply_ledger_ids_applies_it(tmp_path):
     test = _unit_test(IDENTIFIED)
     _held(_expected(test, "poi_key"), identified_answers(test, tmp_path))
+
+
+def test_osm_water_is_measured_as_measure_distances_measures(tmp_path):
+    test = _unit_test(OSM_REACH)
+    expected = _expected(test, "poi_key")
+    answers = osm_water_reach_answers(test, tmp_path)
+    assert None not in answers.values(), "a unit test point outside the Python's own corridor"
+    _held(expected, answers)
+
+
+def test_the_reach_unit_test_reaches_every_branch():
+    rows = _unit_test(OSM_REACH)["expect"]["rows"]
+    assert {row["nearest"] for row in rows} == {"centerline", "side_trail", "network_trail", "shelter", "campsite", None}
+    assert {row["passes_distance"] for row in rows} == {True, False}
+    assert any(row["reason"] and row["reason"].startswith("no trail") for row in rows)
+    assert any(row["reason"] and row["reason"].startswith("the nearest") for row in rows)
+
+
+def test_osm_water_is_gated_and_marked_as_export_poi_does():
+    test = _unit_test(REACHED)
+    answers = reached_answers(test)
+    _held(_expected(test, "poi_key"), answers)
+    assert any(answer and answer["not_on_at"] for answer in answers.values()), "no point is marked"
+    assert sum(answer is None for answer in answers.values()) >= 2, "no verdict and an unreachable one both drop"
+
+
+def test_osm_twins_of_opentrail_water_are_dropped_as_dedupe_water_drops_them():
+    test = _unit_test(DEDUPLICATED)
+    answers = deduplicated_answers(test)
+    _held(_expected(test, "poi_key"), answers)
+    assert None in answers.values(), "no twin"
+
+
+def test_photos_are_gated_and_attached_as_export_poi_does():
+    test = _unit_test(PHOTOS)
+    answers = photos_answers(test)
+    _held(_expected(test, "poi_id"), answers)
+    assert sum(answer is None for answer in answers.values()) >= 4, "held, refused, digestless and overruled all show none"
 
 
 def test_tombstones_resolve_as_lib_poi_identity_resolves():

@@ -158,6 +158,19 @@ unit_tests:
           - {vocabulary: 'vista_location', code: 'open area - natural', phrase: 'a natural clearing'}
           - {vocabulary: 'vista_location', code: 'shelter', phrase: 'a shelter'}
           - {vocabulary: 'vista_location', code: 'campsite', phrase: 'a campsite'}
+          - {vocabulary: 'stream_source', code: 'nhd', phrase: 'USGS'}
+          - {vocabulary: 'stream_source', code: 'osm', phrase: 'OpenStreetMap contributors'}
+          - {vocabulary: 'stream_claim', code: 'nhd', phrase: 'maps it as'}
+          - {vocabulary: 'stream_claim', code: 'osm', phrase: 'tag it as'}
+          - {vocabulary: 'stream_flow', code: 'perennial', phrase: 'year-round'}
+          - {vocabulary: 'stream_flow', code: 'intermittent', phrase: 'seasonal'}
+          - {vocabulary: 'stream_flow', code: 'ephemeral', phrase: 'seasonal'}
+          - {vocabulary: 'water_kind', code: 'spring', phrase: 'Spring'}
+          - {vocabulary: 'water_kind', code: 'drinking_water', phrase: 'Drinking water point'}
+          - {vocabulary: 'water_kind', code: 'water_tap', phrase: 'Water tap'}
+          - {vocabulary: 'water_kind', code: 'water_well', phrase: 'Well'}
+      - input: ref('stg_derived__long_path_guide')
+        rows: []
     expect:
       rows:
         - {poi_id: 'atc:the_sentence_reads_as_a_sentence', description: 'Two-storey clapboard shelter, sleeps 14, with a fireplace, a fire ring and a porch. Built 1915.'}
@@ -272,6 +285,8 @@ unit_tests:
           - {poi_id: 'nearby:mixed_case_is_not_title_cased', poi_type: 'shelter', phone_files: 'nearby_poi', asset: 'PIT privy', facility: 'Fixture Wild Forest'}
           - {poi_id: 'nearby:digits_in_capitals', poi_type: 'shelter', phone_files: 'nearby_poi', asset: 'CAMP 2', facility: null}
           - {poi_id: 'nearby:an_apostrophe_starts_a_word', poi_type: 'shelter', phone_files: 'nearby_poi', asset: 'O''NEIL LEAN-TO', facility: 'Fixture Wild Forest'}
+          - {poi_id: 'nynjtc_long_path_guide:s1-description-0.10-water-0', poi_type: 'water', phone_files: 'nearby_poi', asset: null, facility: null}
+          - {poi_id: 'nynjtc_long_path_guide:s3-camping-5.13-shelter-0', poi_type: 'water', phone_files: 'nearby_poi', asset: 'LEAN-TO', facility: null}
       - input: ref('poi_description_terms')
         rows:
           - {vocabulary: 'storeys', code: '2', phrase: 'Two-storey'}
@@ -314,6 +329,21 @@ unit_tests:
           - {vocabulary: 'vista_location', code: 'open area - natural', phrase: 'a natural clearing'}
           - {vocabulary: 'vista_location', code: 'shelter', phrase: 'a shelter'}
           - {vocabulary: 'vista_location', code: 'campsite', phrase: 'a campsite'}
+          - {vocabulary: 'stream_source', code: 'nhd', phrase: 'USGS'}
+          - {vocabulary: 'stream_source', code: 'osm', phrase: 'OpenStreetMap contributors'}
+          - {vocabulary: 'stream_claim', code: 'nhd', phrase: 'maps it as'}
+          - {vocabulary: 'stream_claim', code: 'osm', phrase: 'tag it as'}
+          - {vocabulary: 'stream_flow', code: 'perennial', phrase: 'year-round'}
+          - {vocabulary: 'stream_flow', code: 'intermittent', phrase: 'seasonal'}
+          - {vocabulary: 'stream_flow', code: 'ephemeral', phrase: 'seasonal'}
+          - {vocabulary: 'water_kind', code: 'spring', phrase: 'Spring'}
+          - {vocabulary: 'water_kind', code: 'drinking_water', phrase: 'Drinking water point'}
+          - {vocabulary: 'water_kind', code: 'water_tap', phrase: 'Water tap'}
+          - {vocabulary: 'water_kind', code: 'water_well', phrase: 'Well'}
+      - input: ref('stg_derived__long_path_guide')
+        rows:
+          - {id: 'nynjtc_long_path_guide:s1-description-0.10-water-0', description: 'Water source at mile 0.10 of Long Path section 1; position estimated from the guide''s mile marker, not surveyed. The guide calls it reliable.'}
+          - {id: 'nynjtc_long_path_guide:s3-camping-5.13-shelter-0', description: 'Shelter at mile 5.13 of Long Path section 3; position estimated from the guide''s mile marker, not surveyed.'}
     expect:
       rows:
         - {poi_id: 'nearby:lean_to_in_capitals', description: 'Lean-To in Fixture Wild Forest.'}
@@ -323,6 +353,216 @@ unit_tests:
         - {poi_id: 'nearby:mixed_case_is_not_title_cased', description: 'PIT privy in Fixture Wild Forest.'}
         - {poi_id: 'nearby:digits_in_capitals', description: 'Camp 2.'}
         - {poi_id: 'nearby:an_apostrophe_starts_a_word', description: 'O''Neil Lean-To in Fixture Wild Forest.'}
+        - {poi_id: 'nynjtc_long_path_guide:s1-description-0.10-water-0', description: 'Water source at mile 0.10 of Long Path section 1; position estimated from the guide''s mile marker, not surveyed. The guide calls it reliable.'}
+        - {poi_id: 'nynjtc_long_path_guide:s3-camping-5.13-shelter-0', description: 'Shelter at mile 5.13 of Long Path section 3; position estimated from the guide''s mile marker, not surveyed.'}
+
+  - name: int_points_of_interest__described_says_what_describe_stream_point_says
+    description: >
+      PO07 and PO17's sentence: describe_stream_point(), which describe_water()
+      hands a point carrying `sources`, one row per case: the stream's name
+      or "A stream", the flow claim in the words of whoever made it, the
+      others who mapped it, and no claim where nobody classified the reach
+      or the claimant or flow word is one the vocabularies do not hold.
+      tests/test_dbt_points_of_interest_parity.py runs export_poi.py's
+      attach_descriptions() over these rows.
+    model: int_points_of_interest__described
+    given:
+      - input: ref('int_points_of_interest__enriched')
+        rows:
+          - {poi_id: 'nhd_stream:named_and_classified_by_usgs', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"site_global_id": "named_and_classified_by_usgs", "stream_id": null, "sources": ["nhd"], "name": "Fixture Brook", "flow": "perennial", "flow_source": "nhd"}'}
+          - {poi_id: 'nhd_stream:no_name_is_a_stream', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"site_global_id": "no_name_is_a_stream", "stream_id": null, "sources": ["nhd"], "name": null, "flow": "perennial", "flow_source": "nhd"}'}
+          - {poi_id: 'nhd_stream:an_empty_name_is_a_stream', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"site_global_id": "an_empty_name_is_a_stream", "stream_id": null, "sources": ["nhd"], "name": "", "flow": "intermittent", "flow_source": "nhd"}'}
+          - {poi_id: 'nhd_stream:merged_and_classified_by_usgs', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"site_global_id": "merged_and_classified_by_usgs", "stream_id": null, "sources": ["nhd", "osm"], "name": "Fixture Run", "flow": "intermittent", "flow_source": "nhd"}'}
+          - {poi_id: 'nhd_stream:merged_and_tagged_by_osm', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"site_global_id": "merged_and_tagged_by_osm", "stream_id": null, "sources": ["nhd", "osm"], "name": "Fixture Run", "flow": "intermittent", "flow_source": "osm"}'}
+          - {poi_id: 'nhd_stream:ephemeral_reads_seasonal', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"site_global_id": "ephemeral_reads_seasonal", "stream_id": null, "sources": ["nhd"], "name": null, "flow": "ephemeral", "flow_source": "nhd"}'}
+          - {poi_id: 'nhd_stream:osm_alone', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"site_global_id": "osm_alone", "stream_id": null, "sources": ["osm"], "name": "Fixture Rill", "flow": "intermittent", "flow_source": "osm"}'}
+          - {poi_id: 'nhd_stream:unclassified_makes_no_flow_claim', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"site_global_id": "unclassified_makes_no_flow_claim", "stream_id": null, "sources": ["nhd", "osm"], "name": "Fixture Creek", "flow": null, "flow_source": null}'}
+          - {poi_id: 'nhd_stream:a_flow_nobody_claimed', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"site_global_id": "a_flow_nobody_claimed", "stream_id": null, "sources": ["nhd"], "name": "Fixture Creek", "flow": "perennial", "flow_source": null}'}
+          - {poi_id: 'nhd_stream:a_flow_word_nobody_knows', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"site_global_id": "a_flow_word_nobody_knows", "stream_id": null, "sources": ["nhd"], "name": "Fixture Creek", "flow": "seasonal-ish", "flow_source": "nhd"}'}
+          - {poi_id: 'nhd_stream:a_claimant_nobody_knows', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"site_global_id": "a_claimant_nobody_knows", "stream_id": null, "sources": ["nhd"], "name": "Fixture Creek", "flow": "perennial", "flow_source": "usgs"}'}
+          - {poi_id: 'nhd_stream:a_source_nobody_knows', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"site_global_id": "a_source_nobody_knows", "stream_id": null, "sources": ["3dhp"], "name": "Fixture Creek", "flow": null, "flow_source": null}'}
+          - {poi_id: 'nhd_stream:no_sources_is_no_stream_point', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"site_global_id": "no_sources_is_no_stream_point", "stream_id": null, "sources": [], "name": "Fixture Creek", "flow": "perennial", "flow_source": "nhd"}'}
+      - input: ref('poi_description_terms')
+        rows:
+          - {vocabulary: 'storeys', code: '2', phrase: 'Two-storey'}
+          - {vocabulary: 'storeys', code: '3', phrase: 'Three-storey'}
+          - {vocabulary: 'exterior_material', code: '0', phrase: 'block'}
+          - {vocabulary: 'exterior_material', code: '1', phrase: 'board-and-batten'}
+          - {vocabulary: 'exterior_material', code: '2', phrase: 'clapboard'}
+          - {vocabulary: 'exterior_material', code: '3', phrase: 'corrugated-metal'}
+          - {vocabulary: 'exterior_material', code: '4', phrase: 'timber'}
+          - {vocabulary: 'exterior_material', code: '5', phrase: 'log'}
+          - {vocabulary: 'exterior_material', code: '6', phrase: 'log-and-stone'}
+          - {vocabulary: 'exterior_material', code: '7', phrase: 'plywood'}
+          - {vocabulary: 'exterior_material', code: '8', phrase: 'post-and-beam'}
+          - {vocabulary: 'exterior_material', code: '11', phrase: 'steel'}
+          - {vocabulary: 'exterior_material', code: '12', phrase: 'stone'}
+          - {vocabulary: 'parking_surface', code: '0', phrase: 'asphalt'}
+          - {vocabulary: 'parking_surface', code: '1', phrase: 'concrete'}
+          - {vocabulary: 'parking_surface', code: '3', phrase: 'gravel'}
+          - {vocabulary: 'parking_surface', code: '4', phrase: 'dirt'}
+          - {vocabulary: 'parking_surface', code: '5', phrase: 'grass'}
+          - {vocabulary: 'privy_type', code: '0', phrase: 'composting'}
+          - {vocabulary: 'privy_type', code: '1', phrase: 'moldering'}
+          - {vocabulary: 'privy_type', code: '2', phrase: 'composting'}
+          - {vocabulary: 'privy_type', code: '3', phrase: 'pit'}
+          - {vocabulary: 'privy_type', code: '4', phrase: 'vault'}
+          - {vocabulary: 'vista_location', code: 'mtn/ridge/outcrop', phrase: 'a ridge or rock outcrop'}
+          - {vocabulary: 'vista_location', code: 'summit', phrase: 'a summit'}
+          - {vocabulary: 'vista_location', code: 'lookout tower', phrase: 'a lookout tower'}
+          - {vocabulary: 'vista_location', code: 'tower/platform', phrase: 'a tower platform'}
+          - {vocabulary: 'vista_location', code: 'viewing platform', phrase: 'a viewing platform'}
+          - {vocabulary: 'vista_location', code: 'overlook', phrase: 'an overlook'}
+          - {vocabulary: 'vista_location', code: 'bridge', phrase: 'a bridge'}
+          - {vocabulary: 'vista_location', code: 'water feature', phrase: 'the water'}
+          - {vocabulary: 'vista_location', code: 'utility corridor - powerline', phrase: 'a powerline corridor'}
+          - {vocabulary: 'vista_location', code: 'utility - powerline', phrase: 'a powerline corridor'}
+          - {vocabulary: 'vista_location', code: 'utility corridor - pipeline', phrase: 'a pipeline corridor'}
+          - {vocabulary: 'vista_location', code: 'open area', phrase: 'an open area'}
+          - {vocabulary: 'vista_location', code: 'open area - maintained', phrase: 'a maintained clearing'}
+          - {vocabulary: 'vista_location', code: 'open area - managed', phrase: 'a managed clearing'}
+          - {vocabulary: 'vista_location', code: 'open area - natural', phrase: 'a natural clearing'}
+          - {vocabulary: 'vista_location', code: 'shelter', phrase: 'a shelter'}
+          - {vocabulary: 'vista_location', code: 'campsite', phrase: 'a campsite'}
+          - {vocabulary: 'stream_source', code: 'nhd', phrase: 'USGS'}
+          - {vocabulary: 'stream_source', code: 'osm', phrase: 'OpenStreetMap contributors'}
+          - {vocabulary: 'stream_claim', code: 'nhd', phrase: 'maps it as'}
+          - {vocabulary: 'stream_claim', code: 'osm', phrase: 'tag it as'}
+          - {vocabulary: 'stream_flow', code: 'perennial', phrase: 'year-round'}
+          - {vocabulary: 'stream_flow', code: 'intermittent', phrase: 'seasonal'}
+          - {vocabulary: 'stream_flow', code: 'ephemeral', phrase: 'seasonal'}
+          - {vocabulary: 'water_kind', code: 'spring', phrase: 'Spring'}
+          - {vocabulary: 'water_kind', code: 'drinking_water', phrase: 'Drinking water point'}
+          - {vocabulary: 'water_kind', code: 'water_tap', phrase: 'Water tap'}
+          - {vocabulary: 'water_kind', code: 'water_well', phrase: 'Well'}
+      - input: ref('stg_derived__long_path_guide')
+        rows: []
+    expect:
+      rows:
+        - {poi_id: 'nhd_stream:named_and_classified_by_usgs', description: 'Fixture Brook, where it runs closest to the site. USGS maps it as year-round.'}
+        - {poi_id: 'nhd_stream:no_name_is_a_stream', description: 'A stream, where it runs closest to the site. USGS maps it as year-round.'}
+        - {poi_id: 'nhd_stream:an_empty_name_is_a_stream', description: 'A stream, where it runs closest to the site. USGS maps it as seasonal.'}
+        - {poi_id: 'nhd_stream:merged_and_classified_by_usgs', description: 'Fixture Run, where it runs closest to the site. USGS maps it as seasonal. Also mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'nhd_stream:merged_and_tagged_by_osm', description: 'Fixture Run, where it runs closest to the site. OpenStreetMap contributors tag it as seasonal. Also mapped by USGS.'}
+        - {poi_id: 'nhd_stream:ephemeral_reads_seasonal', description: 'A stream, where it runs closest to the site. USGS maps it as seasonal.'}
+        - {poi_id: 'nhd_stream:osm_alone', description: 'Fixture Rill, where it runs closest to the site. OpenStreetMap contributors tag it as seasonal.'}
+        - {poi_id: 'nhd_stream:unclassified_makes_no_flow_claim', description: 'Fixture Creek, where it runs closest to the site. Mapped by USGS and OpenStreetMap contributors.'}
+        - {poi_id: 'nhd_stream:a_flow_nobody_claimed', description: 'Fixture Creek, where it runs closest to the site. Mapped by USGS.'}
+        - {poi_id: 'nhd_stream:a_flow_word_nobody_knows', description: 'Fixture Creek, where it runs closest to the site. Mapped by USGS.'}
+        - {poi_id: 'nhd_stream:a_claimant_nobody_knows', description: 'Fixture Creek, where it runs closest to the site. Mapped by USGS.'}
+        - {poi_id: 'nhd_stream:a_source_nobody_knows', description: 'Fixture Creek, where it runs closest to the site.'}
+        - {poi_id: 'nhd_stream:no_sources_is_no_stream_point', description: null}
+
+  - name: int_points_of_interest__described_says_what_describe_water_says
+    description: >
+      PO03's sentence: describe_water()'s OSM half, one row per case: what
+      was mapped (WATER_KINDS), "mapped as intermittent" for
+      intermittent=yes in any case, "mapped as seasonal" for any seasonal
+      value but no and the empty string, both joined by "and", "Marked not
+      drinking water." for drinking_water=no in any case, then the
+      attribution; no sentence for a kind the vocabulary does not hold or
+      no kind at all. An empty `sources` list is not a stream point.
+      tests/test_dbt_points_of_interest_parity.py runs export_poi.py's
+      attach_descriptions() over these rows.
+    model: int_points_of_interest__described
+    given:
+      - input: ref('int_points_of_interest__enriched')
+        rows:
+          - {poi_id: 'osm_water:a_spring', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "a_spring", "kind": "spring"}'}
+          - {poi_id: 'osm_water:a_drinking_water_point', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "a_drinking_water_point", "kind": "drinking_water", "name": "Fixture Fountain"}'}
+          - {poi_id: 'osm_water:a_tap', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "a_tap", "kind": "water_tap"}'}
+          - {poi_id: 'osm_water:a_well', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "a_well", "kind": "water_well"}'}
+          - {poi_id: 'osm_water:intermittent', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "intermittent", "kind": "spring", "intermittent": "yes"}'}
+          - {poi_id: 'osm_water:intermittent_in_capitals', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "intermittent_in_capitals", "kind": "spring", "intermittent": "YES"}'}
+          - {poi_id: 'osm_water:not_intermittent', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "not_intermittent", "kind": "spring", "intermittent": "no"}'}
+          - {poi_id: 'osm_water:seasonal', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "seasonal", "kind": "spring", "seasonal": "yes"}'}
+          - {poi_id: 'osm_water:seasonal_by_month', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "seasonal_by_month", "kind": "spring", "seasonal": "summer"}'}
+          - {poi_id: 'osm_water:not_seasonal', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "not_seasonal", "kind": "spring", "seasonal": "no"}'}
+          - {poi_id: 'osm_water:seasonal_empty', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "seasonal_empty", "kind": "spring", "seasonal": ""}'}
+          - {poi_id: 'osm_water:both_clauses', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "both_clauses", "kind": "spring", "intermittent": "yes", "seasonal": "yes"}'}
+          - {poi_id: 'osm_water:not_drinking_water', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "not_drinking_water", "kind": "water_tap", "drinking_water": "no"}'}
+          - {poi_id: 'osm_water:not_drinking_water_in_capitals', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "not_drinking_water_in_capitals", "kind": "water_tap", "drinking_water": "No"}'}
+          - {poi_id: 'osm_water:drinking_water_yes', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "drinking_water_yes", "kind": "water_tap", "drinking_water": "yes"}'}
+          - {poi_id: 'osm_water:everything', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "everything", "kind": "water_well", "intermittent": "yes", "seasonal": "yes", "drinking_water": "no"}'}
+          - {poi_id: 'osm_water:a_kind_nobody_knows', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "a_kind_nobody_knows", "kind": "fountain"}'}
+          - {poi_id: 'osm_water:no_kind', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "no_kind", "name": "Fixture Water"}'}
+          - {poi_id: 'osm_water:empty_sources_is_osm', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"osm_id": "empty_sources_is_osm", "kind": "spring", "sources": []}'}
+      - input: ref('poi_description_terms')
+        rows:
+          - {vocabulary: 'storeys', code: '2', phrase: 'Two-storey'}
+          - {vocabulary: 'storeys', code: '3', phrase: 'Three-storey'}
+          - {vocabulary: 'exterior_material', code: '0', phrase: 'block'}
+          - {vocabulary: 'exterior_material', code: '1', phrase: 'board-and-batten'}
+          - {vocabulary: 'exterior_material', code: '2', phrase: 'clapboard'}
+          - {vocabulary: 'exterior_material', code: '3', phrase: 'corrugated-metal'}
+          - {vocabulary: 'exterior_material', code: '4', phrase: 'timber'}
+          - {vocabulary: 'exterior_material', code: '5', phrase: 'log'}
+          - {vocabulary: 'exterior_material', code: '6', phrase: 'log-and-stone'}
+          - {vocabulary: 'exterior_material', code: '7', phrase: 'plywood'}
+          - {vocabulary: 'exterior_material', code: '8', phrase: 'post-and-beam'}
+          - {vocabulary: 'exterior_material', code: '11', phrase: 'steel'}
+          - {vocabulary: 'exterior_material', code: '12', phrase: 'stone'}
+          - {vocabulary: 'parking_surface', code: '0', phrase: 'asphalt'}
+          - {vocabulary: 'parking_surface', code: '1', phrase: 'concrete'}
+          - {vocabulary: 'parking_surface', code: '3', phrase: 'gravel'}
+          - {vocabulary: 'parking_surface', code: '4', phrase: 'dirt'}
+          - {vocabulary: 'parking_surface', code: '5', phrase: 'grass'}
+          - {vocabulary: 'privy_type', code: '0', phrase: 'composting'}
+          - {vocabulary: 'privy_type', code: '1', phrase: 'moldering'}
+          - {vocabulary: 'privy_type', code: '2', phrase: 'composting'}
+          - {vocabulary: 'privy_type', code: '3', phrase: 'pit'}
+          - {vocabulary: 'privy_type', code: '4', phrase: 'vault'}
+          - {vocabulary: 'vista_location', code: 'mtn/ridge/outcrop', phrase: 'a ridge or rock outcrop'}
+          - {vocabulary: 'vista_location', code: 'summit', phrase: 'a summit'}
+          - {vocabulary: 'vista_location', code: 'lookout tower', phrase: 'a lookout tower'}
+          - {vocabulary: 'vista_location', code: 'tower/platform', phrase: 'a tower platform'}
+          - {vocabulary: 'vista_location', code: 'viewing platform', phrase: 'a viewing platform'}
+          - {vocabulary: 'vista_location', code: 'overlook', phrase: 'an overlook'}
+          - {vocabulary: 'vista_location', code: 'bridge', phrase: 'a bridge'}
+          - {vocabulary: 'vista_location', code: 'water feature', phrase: 'the water'}
+          - {vocabulary: 'vista_location', code: 'utility corridor - powerline', phrase: 'a powerline corridor'}
+          - {vocabulary: 'vista_location', code: 'utility - powerline', phrase: 'a powerline corridor'}
+          - {vocabulary: 'vista_location', code: 'utility corridor - pipeline', phrase: 'a pipeline corridor'}
+          - {vocabulary: 'vista_location', code: 'open area', phrase: 'an open area'}
+          - {vocabulary: 'vista_location', code: 'open area - maintained', phrase: 'a maintained clearing'}
+          - {vocabulary: 'vista_location', code: 'open area - managed', phrase: 'a managed clearing'}
+          - {vocabulary: 'vista_location', code: 'open area - natural', phrase: 'a natural clearing'}
+          - {vocabulary: 'vista_location', code: 'shelter', phrase: 'a shelter'}
+          - {vocabulary: 'vista_location', code: 'campsite', phrase: 'a campsite'}
+          - {vocabulary: 'stream_source', code: 'nhd', phrase: 'USGS'}
+          - {vocabulary: 'stream_source', code: 'osm', phrase: 'OpenStreetMap contributors'}
+          - {vocabulary: 'stream_claim', code: 'nhd', phrase: 'maps it as'}
+          - {vocabulary: 'stream_claim', code: 'osm', phrase: 'tag it as'}
+          - {vocabulary: 'stream_flow', code: 'perennial', phrase: 'year-round'}
+          - {vocabulary: 'stream_flow', code: 'intermittent', phrase: 'seasonal'}
+          - {vocabulary: 'stream_flow', code: 'ephemeral', phrase: 'seasonal'}
+          - {vocabulary: 'water_kind', code: 'spring', phrase: 'Spring'}
+          - {vocabulary: 'water_kind', code: 'drinking_water', phrase: 'Drinking water point'}
+          - {vocabulary: 'water_kind', code: 'water_tap', phrase: 'Water tap'}
+          - {vocabulary: 'water_kind', code: 'water_well', phrase: 'Well'}
+      - input: ref('stg_derived__long_path_guide')
+        rows: []
+    expect:
+      rows:
+        - {poi_id: 'osm_water:a_spring', description: 'Spring. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:a_drinking_water_point', description: 'Drinking water point. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:a_tap', description: 'Water tap. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:a_well', description: 'Well. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:intermittent', description: 'Spring, mapped as intermittent. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:intermittent_in_capitals', description: 'Spring, mapped as intermittent. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:not_intermittent', description: 'Spring. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:seasonal', description: 'Spring, mapped as seasonal. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:seasonal_by_month', description: 'Spring, mapped as seasonal. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:not_seasonal', description: 'Spring. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:seasonal_empty', description: 'Spring. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:both_clauses', description: 'Spring, mapped as intermittent and mapped as seasonal. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:not_drinking_water', description: 'Water tap. Marked not drinking water. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:not_drinking_water_in_capitals', description: 'Water tap. Marked not drinking water. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:drinking_water_yes', description: 'Water tap. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:everything', description: 'Well, mapped as intermittent and mapped as seasonal. Marked not drinking water. Mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'osm_water:a_kind_nobody_knows', description: null}
+        - {poi_id: 'osm_water:no_kind', description: null}
+        - {poi_id: 'osm_water:empty_sources_is_osm', description: 'Spring. Mapped by OpenStreetMap contributors.'}
 
   - name: int_points_of_interest__sites_groups_like_lib_poi_sites
     description: >
@@ -531,24 +771,27 @@ unit_tests:
           - {source_key: 'nyc_drinking_fountains', poi_key: 'c-n-22', source_row: 0, geom: 'POINT (-73.97 40.77)', properties: '{"_socrata_id": "row-abc", "propertyna": "Fixture Park"}'}
       - input: ref('poi_sources')
         rows:
-          - {source_key: 'shelters', file_order: '1', club: 'atc', source: 'atc_shelters', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null}
-          - {source_key: 'campsites', file_order: '2', club: 'atc', source: 'atc_campsites', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null}
-          - {source_key: 'viewpoints', file_order: '3', club: 'atc', source: 'atc_viewpoints', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null}
-          - {source_key: 'parking', file_order: '4', club: 'atc', source: 'atc_parking', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null}
-          - {source_key: 'privies', file_order: '5', club: 'atc', source: 'atc_privies', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null}
-          - {source_key: 'communities', file_order: '6', club: 'atc', source: 'atc_communities', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'NAME', type_field: null}
-          - {source_key: 'opentrail_at', file_order: '7', club: 'opentrail', source: 'opentrail_at', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'dbid', name_field: 'title', type_field: null}
-          - {source_key: 'oprhp_facilities', file_order: '8', club: 'nysparks', source: 'oprhp_facilities', phone_files: 'nearby_poi', trail_id: 'NYSOPRHP', id_field: null, name_field: null, type_field: 'Sub_Asset'}
-          - {source_key: 'dec_lean_tos', file_order: '9', club: 'nysdec', source: 'dec_lean_tos', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null}
-          - {source_key: 'dec_primitive_campsites', file_order: '10', club: 'nysdec', source: 'dec_primitive_campsites', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null}
-          - {source_key: 'dec_scenic_vistas', file_order: '11', club: 'nysdec', source: 'dec_scenic_vistas', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null}
-          - {source_key: 'dec_firetowers', file_order: '12', club: 'nysdec', source: 'dec_firetowers', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null}
-          - {source_key: 'dec_viewing_areas', file_order: '13', club: 'nysdec', source: 'dec_viewing_areas', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null}
-          - {source_key: 'dec_parking_areas', file_order: '14', club: 'nysdec', source: 'dec_parking_areas', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null}
-          - {source_key: 'dec_backcountry_features', file_order: '15', club: 'nysdec', source: 'dec_backcountry_features', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: 'ASSET'}
-          - {source_key: 'usfs_rec_sites', file_order: '16', club: 'usfs', source: 'usfs_rec_sites', phone_files: 'nearby_poi', trail_id: 'USFS', id_field: null, name_field: null, type_field: 'site_type'}
-          - {source_key: 'nyc_public_restrooms', file_order: '17', club: 'nycparks', source: 'nyc_public_restrooms', phone_files: 'nearby_poi', trail_id: 'NYCPARKS', id_field: null, name_field: null, type_field: null}
-          - {source_key: 'nyc_drinking_fountains', file_order: '18', club: 'nycparks', source: 'nyc_drinking_fountains', phone_files: 'nearby_poi', trail_id: 'NYCPARKS', id_field: null, name_field: null, type_field: null}
+          - {source_key: 'shelters', file_order: '1', club: 'atc', source: 'atc_shelters', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'campsites', file_order: '2', club: 'atc', source: 'atc_campsites', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'viewpoints', file_order: '3', club: 'atc', source: 'atc_viewpoints', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'parking', file_order: '4', club: 'atc', source: 'atc_parking', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'privies', file_order: '5', club: 'atc', source: 'atc_privies', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'communities', file_order: '6', club: 'atc', source: 'atc_communities', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'NAME', type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'opentrail_at', file_order: '7', club: 'opentrail', source: 'opentrail_at', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'dbid', name_field: 'title', type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'osm_water', file_order: '8', club: 'osm', source: 'osm_water', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'osm_id', name_field: 'name', type_field: null, poi_type: 'water', confidence: 'low', unified: null}
+          - {source_key: 'nhd_stream', file_order: '9', club: 'usgs', source: 'nhd_stream', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'site_global_id', name_field: 'name', type_field: null, poi_type: 'water', confidence: 'low', unified: null}
+          - {source_key: 'oprhp_facilities', file_order: '10', club: 'nysparks', source: 'oprhp_facilities', phone_files: 'nearby_poi', trail_id: 'NYSOPRHP', id_field: null, name_field: null, type_field: 'Sub_Asset', poi_type: null, confidence: null, unified: null}
+          - {source_key: 'dec_lean_tos', file_order: '11', club: 'nysdec', source: 'dec_lean_tos', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'dec_primitive_campsites', file_order: '12', club: 'nysdec', source: 'dec_primitive_campsites', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'dec_scenic_vistas', file_order: '13', club: 'nysdec', source: 'dec_scenic_vistas', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'dec_firetowers', file_order: '14', club: 'nysdec', source: 'dec_firetowers', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'dec_viewing_areas', file_order: '15', club: 'nysdec', source: 'dec_viewing_areas', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'dec_parking_areas', file_order: '16', club: 'nysdec', source: 'dec_parking_areas', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'dec_backcountry_features', file_order: '17', club: 'nysdec', source: 'dec_backcountry_features', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: 'ASSET', poi_type: null, confidence: null, unified: null}
+          - {source_key: 'usfs_rec_sites', file_order: '18', club: 'usfs', source: 'usfs_rec_sites', phone_files: 'nearby_poi', trail_id: 'USFS', id_field: null, name_field: null, type_field: 'site_type', poi_type: null, confidence: null, unified: null}
+          - {source_key: 'nyc_public_restrooms', file_order: '19', club: 'nycparks', source: 'nyc_public_restrooms', phone_files: 'nearby_poi', trail_id: 'NYCPARKS', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'nyc_drinking_fountains', file_order: '20', club: 'nycparks', source: 'nyc_drinking_fountains', phone_files: 'nearby_poi', trail_id: 'NYCPARKS', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null, unified: null}
+          - {source_key: 'nynjtc_long_path_guide', file_order: '21', club: 'nynjtc', source: 'nynjtc_long_path_guide', phone_files: 'nearby_poi', trail_id: 'LP', id_field: 'source_feature_id', name_field: 'name', type_field: null, poi_type: null, confidence: null, unified: 'true'}
       - input: ref('stg_registry__sources')
         rows:
           - {source_key: 'dec_backcountry_features', entry: '{"key": "dec_backcountry_features", "provider": "NYS DEC", "id_field": "OBJECTID", "name_field": "NAME", "asset_field": "ASSET", "facility_field": "FACILITY", "public_field": "PUBLICUSE", "public_value": "Y"}'}
@@ -751,15 +994,15 @@ unit_tests:
           - {geom: 'POLYGON ((-73.96 40.77, -73.95 40.77, -73.95 40.78, -73.96 40.78, -73.96 40.77))'}
     expect:
       rows:
-        - {poi_key: 'k-01', not_on_at: null}
-        - {poi_key: 'k-03', not_on_at: null}
-        - {poi_key: 'k-05', not_on_at: null}
-        - {poi_key: 'k-07', not_on_at: null}
-        - {poi_key: 'k-08', not_on_at: null}
-        - {poi_key: 'k-09', not_on_at: null}
-        - {poi_key: 'k-11', not_on_at: null}
-        - {poi_key: 'k-13', not_on_at: null}
-        - {poi_key: 'k-14', not_on_at: null}
+        - {poi_key: 'k-01', source_key: 'shelters'}
+        - {poi_key: 'k-03', source_key: 'shelters'}
+        - {poi_key: 'k-05', source_key: 'dec_lean_tos'}
+        - {poi_key: 'k-07', source_key: 'dec_parking_areas'}
+        - {poi_key: 'k-08', source_key: 'usfs_rec_sites'}
+        - {poi_key: 'k-09', source_key: 'nyc_drinking_fountains'}
+        - {poi_key: 'k-11', source_key: 'nyc_drinking_fountains'}
+        - {poi_key: 'k-13', source_key: 'opentrail_at'}
+        - {poi_key: 'k-14', source_key: 'dec_lean_tos'}
 
   - name: int_points_of_interest__in_corridor_applies_no_ring_without_a_network
     description: >
@@ -796,16 +1039,184 @@ unit_tests:
           - {geom: 'POLYGON ((-73.96 40.77, -73.95 40.77, -73.95 40.78, -73.96 40.78, -73.96 40.77))'}
     expect:
       rows:
-        - {poi_key: 'k-01', not_on_at: null}
-        - {poi_key: 'k-05', not_on_at: null}
-        - {poi_key: 'k-06', not_on_at: null}
-        - {poi_key: 'k-07', not_on_at: null}
-        - {poi_key: 'k-08', not_on_at: null}
-        - {poi_key: 'k-09', not_on_at: null}
-        - {poi_key: 'k-10', not_on_at: null}
-        - {poi_key: 'k-11', not_on_at: null}
-        - {poi_key: 'k-12', not_on_at: null}
-        - {poi_key: 'k-14', not_on_at: null}
+        - {poi_key: 'k-01', source_key: 'shelters'}
+        - {poi_key: 'k-05', source_key: 'dec_lean_tos'}
+        - {poi_key: 'k-06', source_key: 'dec_lean_tos'}
+        - {poi_key: 'k-07', source_key: 'dec_parking_areas'}
+        - {poi_key: 'k-08', source_key: 'usfs_rec_sites'}
+        - {poi_key: 'k-09', source_key: 'nyc_drinking_fountains'}
+        - {poi_key: 'k-10', source_key: 'nyc_drinking_fountains'}
+        - {poi_key: 'k-11', source_key: 'nyc_drinking_fountains'}
+        - {poi_key: 'k-12', source_key: 'dec_lean_tos'}
+        - {poi_key: 'k-14', source_key: 'dec_lean_tos'}
+
+  - name: int_points_of_interest__osm_water_reach_measures_like_measure_distances
+    description: >
+      PO06's distance half: build_osm_water_reach.py's measure_distances()
+      on OSM water points beside the centerline, a side trail another
+      organization also draws (the side trail wins the tie), the Long Path,
+      a line whose organization does not reach hikers (not measured), a
+      shelter, a campsite on the centerline's first vertex (the centerline
+      wins the tie), past the 100 ft gate, and further than 5 miles from
+      everything; a shelter POI beside them is not measured.
+      tests/test_dbt_points_of_interest_parity.py runs measure_distances()
+      over these rows written as the files it reads.
+    model: int_points_of_interest__osm_water_reach
+    given:
+      - input: ref('int_points_of_interest__in_corridor')
+        rows:
+          - {poi_key: 'r-01', source_key: 'osm_water', poi_type: 'water', source_feature_id: 'r-01', lon: -73.99982, lat: 41.002}
+          - {poi_key: 'r-02', source_key: 'osm_water', poi_type: 'water', source_feature_id: 'r-02', lon: -74.0198, lat: 41.002}
+          - {poi_key: 'r-03', source_key: 'osm_water', poi_type: 'water', source_feature_id: 'r-03', lon: -74.0998, lat: 41.005}
+          - {poi_key: 'r-04', source_key: 'osm_water', poi_type: 'water', source_feature_id: 'r-04', lon: -74.0499, lat: 41.006}
+          - {poi_key: 'r-05', source_key: 'osm_water', poi_type: 'water', source_feature_id: 'r-05', lon: -74.03, lat: 41.0022}
+          - {poi_key: 'r-06', source_key: 'osm_water', poi_type: 'water', source_feature_id: 'r-06', lon: -74.0, lat: 40.9998}
+          - {poi_key: 'r-07', source_key: 'osm_water', poi_type: 'water', source_feature_id: 'r-07', lon: -73.9994, lat: 41.003}
+          - {poi_key: 'r-08', source_key: 'osm_water', poi_type: 'water', source_feature_id: 'r-08', lon: -74.0, lat: 41.2}
+          - {poi_key: 'r-09', source_key: 'shelters', poi_type: 'shelter', source_feature_id: 'r-09', lon: -74.0001, lat: 41.002}
+      - input: ref('stg_atc__centerline_segments')
+        rows:
+          - {source_row: 0, source_id: 'fixture-centerline-0', geom: 'LINESTRING (-74 41, -74 41.005)'}
+          - {source_row: 1, source_id: 'fixture-centerline-1', geom: 'LINESTRING (-73.99 41.01, -73.99 41.015)'}
+      - input: ref('stg_atc__side_trails')
+        rows:
+          - {source_row: 0, source_id: 'unit-side-trail-0', name: 'Unit Side Trail', geom: 'LINESTRING (-74.02 41.0, -74.02 41.004)'}
+      - input: ref('int_trail_lines__network_published')
+        rows:
+          - {source_key: 'nynjtc_long_path', geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.0], [-74.1, 41.01]]}'}
+          - {source_key: 'nynjtc_highlands_trail', geom_geojson: '{"type": "LineString", "coordinates": [[-74.02, 41.0], [-74.02, 41.004]]}'}
+          - {source_key: 'unit_review_only_trails', geom_geojson: '{"type": "LineString", "coordinates": [[-74.05, 41.0], [-74.05, 41.01]]}'}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: 'nynjtc_long_path', reaches_hikers: true}
+          - {source_key: 'nynjtc_highlands_trail', reaches_hikers: true}
+          - {source_key: 'unit_review_only_trails', reaches_hikers: false}
+      - input: ref('int_points_of_interest__water_sites')
+        rows:
+          - {layer: 'shelters', global_id: 'unit-shelter', name: 'Unit Shelter', lat: 41.002, lon: -74.03}
+          - {layer: 'campsites', global_id: 'unit-campsite', name: 'Unit Campsite', lat: 41.006, lon: -74.04}
+          - {layer: 'campsites', global_id: 'unit-vertex-campsite', name: 'Unit Vertex Campsite', lat: 41.0, lon: -74.0}
+    expect:
+      rows:
+        - {poi_key: 'r-01', osm_id: 'r-01', nearest: 'centerline', nearest_source: null, nearest_m: '15.02', walk_key: '41.002000,-74.000000', passes_distance: true, reason: null}
+        - {poi_key: 'r-02', osm_id: 'r-02', nearest: 'side_trail', nearest_source: null, nearest_m: '16.69', walk_key: '41.002000,-74.020000', passes_distance: true, reason: null}
+        - {poi_key: 'r-03', osm_id: 'r-03', nearest: 'network_trail', nearest_source: 'nynjtc_long_path', nearest_m: '16.69', walk_key: '41.005000,-74.100000', passes_distance: true, reason: null}
+        - {poi_key: 'r-04', osm_id: 'r-04', nearest: 'campsite', nearest_source: null, nearest_m: '826.03', walk_key: '41.006000,-74.040000', passes_distance: false, reason: 'the nearest campsite is 2710 ft away, past the 100 ft a hiker walks for water'}
+        - {poi_key: 'r-05', osm_id: 'r-05', nearest: 'shelter', nearest_source: null, nearest_m: '22.39', walk_key: '41.002000,-74.030000', passes_distance: true, reason: null}
+        - {poi_key: 'r-06', osm_id: 'r-06', nearest: 'centerline', nearest_source: null, nearest_m: '22.39', walk_key: '41.000000,-74.000000', passes_distance: true, reason: null}
+        - {poi_key: 'r-07', osm_id: 'r-07', nearest: 'centerline', nearest_source: null, nearest_m: '50.06', walk_key: '41.003000,-74.000000', passes_distance: false, reason: 'the nearest centerline is 164 ft away, past the 100 ft a hiker walks for water'}
+        - {poi_key: 'r-08', osm_id: 'r-08', nearest: null, nearest_source: null, nearest_m: null, walk_key: null, passes_distance: false, reason: 'no trail, side trail, network trail, shelter or campsite within 5 miles'}
+
+  - name: int_points_of_interest__reached_gates_and_marks_like_export_poi
+    description: >
+      PO08 and PO10: an OSM water point reachable from the centerline
+      ships; one reachable from the Long Path ships carrying it as
+      not_on_at; one whose verdict says unreachable and one with no verdict
+      at all are dropped; opentrail's water, a shelter, another
+      organization's lean-to and the site water pass unjudged and unmarked.
+      tests/test_dbt_points_of_interest_parity.py runs
+      gate_osm_water_reach() and mark_off_trail_records() over these rows.
+    model: int_points_of_interest__reached
+    given:
+      - input: ref('int_points_of_interest__in_corridor')
+        rows:
+          - {poi_key: 'g-01', source_key: 'osm_water', source: 'osm_water', poi_type: 'water', phone_files: 'poi_by_type', source_feature_id: 'g-01'}
+          - {poi_key: 'g-02', source_key: 'osm_water', source: 'osm_water', poi_type: 'water', phone_files: 'poi_by_type', source_feature_id: 'g-02'}
+          - {poi_key: 'g-03', source_key: 'osm_water', source: 'osm_water', poi_type: 'water', phone_files: 'poi_by_type', source_feature_id: 'g-03'}
+          - {poi_key: 'g-04', source_key: 'osm_water', source: 'osm_water', poi_type: 'water', phone_files: 'poi_by_type', source_feature_id: 'g-04'}
+          - {poi_key: 'g-05', source_key: 'opentrail_at', source: 'opentrail_at', poi_type: 'water', phone_files: 'poi_by_type', source_feature_id: 'g-05'}
+          - {poi_key: 'g-06', source_key: 'shelters', source: 'atc_shelters', poi_type: 'shelter', phone_files: 'poi_by_type', source_feature_id: 'g-06'}
+          - {poi_key: 'g-07', source_key: 'dec_lean_tos', source: 'dec_lean_tos', poi_type: 'shelter', phone_files: 'nearby_poi', source_feature_id: 'g-07'}
+          - {poi_key: 'g-08', source_key: 'nhd_stream', source: 'nhd_stream', poi_type: 'water', phone_files: 'poi_by_type', source_feature_id: 'g-08'}
+      - input: ref('int_points_of_interest__osm_water_verdicts')
+        rows:
+          - {poi_key: 'g-01', osm_id: 'g-01', nearest: 'centerline', nearest_source: null, has_verdict: true, reachable: true}
+          - {poi_key: 'g-02', osm_id: 'g-02', nearest: 'network_trail', nearest_source: 'nynjtc_long_path', has_verdict: true, reachable: true}
+          - {poi_key: 'g-03', osm_id: 'g-03', nearest: 'network_trail', nearest_source: 'nynjtc_long_path', has_verdict: true, reachable: false}
+          - {poi_key: 'g-04', osm_id: 'g-04', nearest: 'shelter', nearest_source: null, has_verdict: false, reachable: null}
+    expect:
+      rows:
+        - {poi_key: 'g-01', not_on_at: null}
+        - {poi_key: 'g-02', not_on_at: 'nynjtc_long_path'}
+        - {poi_key: 'g-05', not_on_at: null}
+        - {poi_key: 'g-06', not_on_at: null}
+        - {poi_key: 'g-07', not_on_at: null}
+        - {poi_key: 'g-08', not_on_at: null}
+
+  - name: int_points_of_interest__deduplicated_drops_twins_like_dedupe_water
+    description: >
+      PO09: an OSM water point 11 m and one 22 m from an opentrail water
+      point are its twins and are dropped; one 28 m away is a neighbour and
+      ships; nothing that is not OSM water is ever dropped, and OSM points
+      near site water or near each other are not twins.
+      tests/test_dbt_points_of_interest_parity.py runs dedupe_water() over
+      these rows.
+    model: int_points_of_interest__deduplicated
+    given:
+      - input: ref('int_points_of_interest__reached')
+        rows:
+          - {poi_key: 'd-01', source_key: 'opentrail_at', source: 'opentrail_at', poi_type: 'water', lon: -74.0, lat: 41.0}
+          - {poi_key: 'd-02', source_key: 'osm_water', source: 'osm_water', poi_type: 'water', lon: -74.0, lat: 41.0001}
+          - {poi_key: 'd-03', source_key: 'osm_water', source: 'osm_water', poi_type: 'water', lon: -74.0, lat: 41.0002}
+          - {poi_key: 'd-04', source_key: 'osm_water', source: 'osm_water', poi_type: 'water', lon: -74.0, lat: 41.00025}
+          - {poi_key: 'd-05', source_key: 'shelters', source: 'atc_shelters', poi_type: 'shelter', lon: -74.0, lat: 41.0}
+          - {poi_key: 'd-06', source_key: 'nhd_stream', source: 'nhd_stream', poi_type: 'water', lon: -74.1, lat: 41.0}
+          - {poi_key: 'd-07', source_key: 'osm_water', source: 'osm_water', poi_type: 'water', lon: -74.1, lat: 41.00005}
+          - {poi_key: 'd-08', source_key: 'osm_water', source: 'osm_water', poi_type: 'water', lon: -74.2, lat: 41.0}
+          - {poi_key: 'd-09', source_key: 'osm_water', source: 'osm_water', poi_type: 'water', lon: -74.2, lat: 41.00005}
+    expect:
+      rows:
+        - {poi_key: 'd-01', source: 'opentrail_at'}
+        - {poi_key: 'd-04', source: 'osm_water'}
+        - {poi_key: 'd-05', source: 'atc_shelters'}
+        - {poi_key: 'd-06', source: 'nhd_stream'}
+        - {poi_key: 'd-07', source: 'osm_water'}
+        - {poi_key: 'd-08', source: 'osm_water'}
+        - {poi_key: 'd-09', source: 'osm_water'}
+
+  - name: int_points_of_interest__photos_gates_and_attaches_like_export_poi
+    description: >
+      PO24 and PO38: a Commons photo the screen cleared ships; one it
+      flagged is held until a person clears it, and then ships; a refused
+      one never ships, flagged or not; an unscreened one ships; one with no
+      digest names nothing in the bucket and shows nothing. ATC's list wins
+      a POI whole, its first photo with a digest the card's, even where
+      none has a digest and a Commons photo would have shown, and ATC's own
+      shoot is not gated. A Commons list whose first photo is held shows
+      its second. tests/test_dbt_points_of_interest_parity.py runs
+      gate_photos() and attach_photos() over these rows.
+    model: int_points_of_interest__photos
+    given:
+      - input: ref('stg_derived__poi_photos')
+        rows:
+          - {source: 'commons', poi_id: 'atc_shelters:p-01', photo_index: 0, digest: '77c9c8aa8ab1d1c10226412eb117963fa1410ac4f1259471e938885d24ed87eb', page_url: 'https://fixture.example/clear', author: 'Fixture Author clear', license: 'CC BY-SA 4.0', taken: '2024-06-01', screened: true, flagged: false, decision: null}
+          - {source: 'commons', poi_id: 'atc_shelters:p-02', photo_index: 0, digest: 'fe5f3e4d32d840b1730545b6bb6bd7397905a725c2e59f7ed2e55c471371510d', page_url: 'https://fixture.example/flagged-undecided', author: 'Fixture Author flagged-undecided', license: 'CC BY-SA 4.0', taken: '2024-06-01', screened: true, flagged: true, decision: null}
+          - {source: 'commons', poi_id: 'atc_shelters:p-03', photo_index: 0, digest: '00c9c4a72faa1f9974d7ab4159ce51c6d357265db74e7d9fb4c0429c74c900a4', page_url: 'https://fixture.example/flagged-cleared', author: 'Fixture Author flagged-cleared', license: 'CC BY-SA 4.0', taken: '2024-06-01', screened: true, flagged: true, decision: 'cleared'}
+          - {source: 'commons', poi_id: 'atc_shelters:p-04', photo_index: 0, digest: '5a1eb9caba8c878057238ab87b1d350000510300b9c78af28f5aaf926faffb58', page_url: 'https://fixture.example/refused', author: 'Fixture Author refused', license: 'CC BY-SA 4.0', taken: '2024-06-01', screened: true, flagged: false, decision: 'refused'}
+          - {source: 'commons', poi_id: 'atc_shelters:p-05', photo_index: 0, digest: 'ebbfabd535ebba1916d6d7ebe5e4107afcd72f7b69b8ed0cf95fc8bbaf2f9128', page_url: 'https://fixture.example/flagged-refused', author: 'Fixture Author flagged-refused', license: 'CC BY-SA 4.0', taken: '2024-06-01', screened: true, flagged: true, decision: 'refused'}
+          - {source: 'commons', poi_id: 'atc_shelters:p-06', photo_index: 0, digest: '1f9fa0866c6c77659907e28961740da1d4fee91e311c831c9d42535fecaf92a9', page_url: 'https://fixture.example/unscreened', author: 'Fixture Author unscreened', license: 'CC BY-SA 4.0', taken: '2024-06-01', screened: false, flagged: false, decision: null}
+          - {source: 'commons', poi_id: 'atc_shelters:p-07', photo_index: 0, digest: null, page_url: 'https://fixture.example/no-digest', author: 'Fixture Author no-digest', license: 'CC BY-SA 4.0', taken: '2024-06-01', screened: true, flagged: false, decision: null}
+          - {source: 'commons', poi_id: 'atc_shelters:p-08', photo_index: 0, digest: '6272972c5beac0c4cc41fa8c82295602b0599edde33054b2ed72e2fba75a8da3', page_url: 'https://fixture.example/overruled', author: 'Fixture Author overruled', license: 'CC BY-SA 4.0', taken: '2024-06-01', screened: true, flagged: false, decision: null}
+          - {source: 'atc', poi_id: 'atc_shelters:p-08', photo_index: 0, digest: '957f88e8eac7082ba12057923f8fbba00a45d92f136a18f6396dc3783d4b878b', page_url: 'https://fixture.example/gallery-1', author: 'Fixture Author gallery-1', license: 'ATC facility inventory', taken: '2024-06-01', screened: true, flagged: false, decision: null}
+          - {source: 'atc', poi_id: 'atc_shelters:p-08', photo_index: 1, digest: 'bc1ccafd084529178020845ec1ea8c2d2e5e08adc61f9354494fa3ede8a4913f', page_url: 'https://fixture.example/gallery-2', author: null, license: 'ATC facility inventory', taken: '2024-06-01', screened: true, flagged: false, decision: null}
+          - {source: 'atc', poi_id: 'atc_shelters:p-09', photo_index: 0, digest: null, page_url: 'https://fixture.example/atc-no-digest', author: 'Fixture Author atc-no-digest', license: 'ATC facility inventory', taken: '2024-06-01', screened: true, flagged: false, decision: null}
+          - {source: 'atc', poi_id: 'atc_shelters:p-09', photo_index: 1, digest: '6ef16d0c0c41a6f02a29a4578b6757631363c686d550f2bd1274a4ab98d09002', page_url: 'https://fixture.example/atc-second', author: 'Fixture Author atc-second', license: 'ATC facility inventory', taken: '2024-06-01', screened: true, flagged: false, decision: null}
+          - {source: 'commons', poi_id: 'atc_shelters:p-10', photo_index: 0, digest: '9d2348617cb22575a7fe1d2492a2626e685cb1291f7fbf74da300639bffd9c1a', page_url: 'https://fixture.example/beside-digestless', author: 'Fixture Author beside-digestless', license: 'CC BY-SA 4.0', taken: '2024-06-01', screened: true, flagged: false, decision: null}
+          - {source: 'atc', poi_id: 'atc_shelters:p-10', photo_index: 0, digest: null, page_url: 'https://fixture.example/digestless', author: 'Fixture Author digestless', license: 'ATC facility inventory', taken: '2024-06-01', screened: true, flagged: false, decision: null}
+          - {source: 'atc', poi_id: 'atc_campsites:p-11', photo_index: 0, digest: '9686ce71f9c62d6678fee792eceffe2172f4961270b6399ecee07a4861c597ea', page_url: 'https://fixture.example/atc-face', author: 'Fixture Author atc-face', license: 'ATC facility inventory', taken: '2024-06-01', screened: true, flagged: true, decision: 'refused'}
+          - {source: 'commons', poi_id: 'atc_shelters:p-12', photo_index: 0, digest: '21ece06eab5ba038b85e5988b2b01d97286ae99e65a018724641e38daf0bc8be', page_url: 'https://fixture.example/held-first', author: 'Fixture Author held-first', license: 'CC BY-SA 4.0', taken: '2024-06-01', screened: true, flagged: true, decision: null}
+          - {source: 'commons', poi_id: 'atc_shelters:p-12', photo_index: 1, digest: '478b3672af9059c3b7d588f81c6af4db4cbc2f38c0841bc77930e9b0b05d0798', page_url: 'https://fixture.example/clear-second', author: 'Fixture Author clear-second', license: 'CC BY-SA 4.0', taken: '2024-06-01', screened: true, flagged: false, decision: null}
+          - {source: 'commons', poi_id: 'osm_water:p-13', photo_index: 0, digest: 'b8bc835fcc020b4274c3e515121be9e3fa01aa52a690f73dbf2c507280785a77', page_url: 'https://fixture.example/no-author', author: null, license: 'CC BY-SA 4.0', taken: '2024-06-01', screened: true, flagged: false, decision: null}
+    expect:
+      rows:
+        - {poi_id: 'atc_shelters:p-01', photo_key: 'photos/77c9c8aa8ab1d1c10226412eb117963fa1410ac4f1259471e938885d24ed87eb.jpg', photo_page_url: 'https://fixture.example/clear', photo_author: 'Fixture Author clear', photo_license: 'CC BY-SA 4.0', photo_taken: '2024-06-01', photos: '[{"key":"photos/77c9c8aa8ab1d1c10226412eb117963fa1410ac4f1259471e938885d24ed87eb.jpg","page_url":"https://fixture.example/clear","author":"Fixture Author clear","license":"CC BY-SA 4.0","taken":"2024-06-01"}]'}
+        - {poi_id: 'atc_shelters:p-03', photo_key: 'photos/00c9c4a72faa1f9974d7ab4159ce51c6d357265db74e7d9fb4c0429c74c900a4.jpg', photo_page_url: 'https://fixture.example/flagged-cleared', photo_author: 'Fixture Author flagged-cleared', photo_license: 'CC BY-SA 4.0', photo_taken: '2024-06-01', photos: '[{"key":"photos/00c9c4a72faa1f9974d7ab4159ce51c6d357265db74e7d9fb4c0429c74c900a4.jpg","page_url":"https://fixture.example/flagged-cleared","author":"Fixture Author flagged-cleared","license":"CC BY-SA 4.0","taken":"2024-06-01"}]'}
+        - {poi_id: 'atc_shelters:p-06', photo_key: 'photos/1f9fa0866c6c77659907e28961740da1d4fee91e311c831c9d42535fecaf92a9.jpg', photo_page_url: 'https://fixture.example/unscreened', photo_author: 'Fixture Author unscreened', photo_license: 'CC BY-SA 4.0', photo_taken: '2024-06-01', photos: '[{"key":"photos/1f9fa0866c6c77659907e28961740da1d4fee91e311c831c9d42535fecaf92a9.jpg","page_url":"https://fixture.example/unscreened","author":"Fixture Author unscreened","license":"CC BY-SA 4.0","taken":"2024-06-01"}]'}
+        - {poi_id: 'atc_shelters:p-08', photo_key: 'photos/957f88e8eac7082ba12057923f8fbba00a45d92f136a18f6396dc3783d4b878b.jpg', photo_page_url: 'https://fixture.example/gallery-1', photo_author: 'Fixture Author gallery-1', photo_license: 'ATC facility inventory', photo_taken: '2024-06-01', photos: '[{"key":"photos/957f88e8eac7082ba12057923f8fbba00a45d92f136a18f6396dc3783d4b878b.jpg","page_url":"https://fixture.example/gallery-1","author":"Fixture Author gallery-1","license":"ATC facility inventory","taken":"2024-06-01"},{"key":"photos/bc1ccafd084529178020845ec1ea8c2d2e5e08adc61f9354494fa3ede8a4913f.jpg","page_url":"https://fixture.example/gallery-2","author":null,"license":"ATC facility inventory","taken":"2024-06-01"}]'}
+        - {poi_id: 'atc_shelters:p-09', photo_key: 'photos/6ef16d0c0c41a6f02a29a4578b6757631363c686d550f2bd1274a4ab98d09002.jpg', photo_page_url: 'https://fixture.example/atc-second', photo_author: 'Fixture Author atc-second', photo_license: 'ATC facility inventory', photo_taken: '2024-06-01', photos: '[{"key":"photos/6ef16d0c0c41a6f02a29a4578b6757631363c686d550f2bd1274a4ab98d09002.jpg","page_url":"https://fixture.example/atc-second","author":"Fixture Author atc-second","license":"ATC facility inventory","taken":"2024-06-01"}]'}
+        - {poi_id: 'atc_campsites:p-11', photo_key: 'photos/9686ce71f9c62d6678fee792eceffe2172f4961270b6399ecee07a4861c597ea.jpg', photo_page_url: 'https://fixture.example/atc-face', photo_author: 'Fixture Author atc-face', photo_license: 'ATC facility inventory', photo_taken: '2024-06-01', photos: '[{"key":"photos/9686ce71f9c62d6678fee792eceffe2172f4961270b6399ecee07a4861c597ea.jpg","page_url":"https://fixture.example/atc-face","author":"Fixture Author atc-face","license":"ATC facility inventory","taken":"2024-06-01"}]'}
+        - {poi_id: 'atc_shelters:p-12', photo_key: 'photos/478b3672af9059c3b7d588f81c6af4db4cbc2f38c0841bc77930e9b0b05d0798.jpg', photo_page_url: 'https://fixture.example/clear-second', photo_author: 'Fixture Author clear-second', photo_license: 'CC BY-SA 4.0', photo_taken: '2024-06-01', photos: '[{"key":"photos/478b3672af9059c3b7d588f81c6af4db4cbc2f38c0841bc77930e9b0b05d0798.jpg","page_url":"https://fixture.example/clear-second","author":"Fixture Author clear-second","license":"CC BY-SA 4.0","taken":"2024-06-01"}]'}
+        - {poi_id: 'osm_water:p-13', photo_key: 'photos/b8bc835fcc020b4274c3e515121be9e3fa01aa52a690f73dbf2c507280785a77.jpg', photo_page_url: 'https://fixture.example/no-author', photo_author: null, photo_license: 'CC BY-SA 4.0', photo_taken: '2024-06-01', photos: '[{"key":"photos/b8bc835fcc020b4274c3e515121be9e3fa01aa52a690f73dbf2c507280785a77.jpg","page_url":"https://fixture.example/no-author","author":null,"license":"CC BY-SA 4.0","taken":"2024-06-01"}]'}
 
   - name: int_points_of_interest__trailheads_marks_like_mark_closed_trailheads
     description: >
@@ -977,7 +1388,7 @@ unit_tests:
       runs apply_ledger_ids() over these rows with this ledger.
     model: int_points_of_interest__identified
     given:
-      - input: ref('int_points_of_interest__in_corridor')
+      - input: ref('int_points_of_interest__deduplicated')
         rows:
           - {poi_key: 'i-01', phone_files: 'poi_by_type', source: 'atc_shelters', source_feature_id: 'G1', derived_id: 'atc_shelters:G1'}
           - {poi_key: 'i-02', phone_files: 'poi_by_type', source: 'atc_shelters', source_feature_id: 'G2', derived_id: 'atc_shelters:G2'}
@@ -1198,6 +1609,17 @@ unit_tests:
           - {vocabulary: 'vista_location', code: 'open area - natural', phrase: 'a natural clearing'}
           - {vocabulary: 'vista_location', code: 'shelter', phrase: 'a shelter'}
           - {vocabulary: 'vista_location', code: 'campsite', phrase: 'a campsite'}
+          - {vocabulary: 'stream_source', code: 'nhd', phrase: 'USGS'}
+          - {vocabulary: 'stream_source', code: 'osm', phrase: 'OpenStreetMap contributors'}
+          - {vocabulary: 'stream_claim', code: 'nhd', phrase: 'maps it as'}
+          - {vocabulary: 'stream_claim', code: 'osm', phrase: 'tag it as'}
+          - {vocabulary: 'stream_flow', code: 'perennial', phrase: 'year-round'}
+          - {vocabulary: 'stream_flow', code: 'intermittent', phrase: 'seasonal'}
+          - {vocabulary: 'stream_flow', code: 'ephemeral', phrase: 'seasonal'}
+          - {vocabulary: 'water_kind', code: 'spring', phrase: 'Spring'}
+          - {vocabulary: 'water_kind', code: 'drinking_water', phrase: 'Drinking water point'}
+          - {vocabulary: 'water_kind', code: 'water_tap', phrase: 'Water tap'}
+          - {vocabulary: 'water_kind', code: 'water_well', phrase: 'Well'}
     expect:
       rows:
         - {poi_id: 'atc_shelters:E1', capacity: 8, nearby: '[{"phrase":"a multi-seat pit privy","distance_ft":98.4},{"phrase":"a privy with no enclosure","distance_ft":98.4},{"phrase":"water","distance_ft":120.0,"source":"FarOut"},{"phrase":"a group campsite","distance_ft":196.9}]'}

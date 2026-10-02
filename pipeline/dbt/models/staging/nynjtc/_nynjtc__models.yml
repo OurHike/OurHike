@@ -82,3 +82,26 @@ models:
           int_trail_lines__network_judged numbers it in this order, as the
           Python numbers the fetched file.
         data_tests: [not_null, unique]
+
+  - name: stg_nynjtc__long_path_guide
+    description: >
+      NYNJTC's Long Path guide, one row per section page, as the guide_pages
+      kind parsed it: the section's number, title and stated distance, and
+      its Parking, Camping and Detailed Trail Description entries as JSON.
+      Read by step_long_path_guide, which places them (PO36).
+    columns:
+      - name: guide_section_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nynjtc_long_path_guide and the section's number.
+        data_tests: [not_null, unique]
+      - name: section_number
+        description: The section's number, the Long Path layer's LP_Section.
+        data_tests: [not_null, unique]
+      - name: distance_miles
+        description: The section's stated distance; null where the page states none, and nothing on it is placed by mile.
+      - name: entries
+        description: The Detailed Trail Description block's mile-marked entries, as JSON.
+      - name: _loaded_at
+        description: When the extract read the page.
+        data_tests: [not_null]

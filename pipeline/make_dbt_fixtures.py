@@ -1482,6 +1482,23 @@ def _with_key_fields(content: str, fields: dict) -> str:
 #   nothing and export_nearby_poi.py's completeness gate refused the run; a
 #   `PIT PRIVY` row is the layer's commonest real value (356, per the map's
 #   own comment).
+# - SITE WATER'S TWO INPUTS (PO07, PO17): each site's candidate stream
+#   reaches and the EPQS answers, as site_water/candidates.json and
+#   site_water/epqs_elevations.json (_site_water_fixtures), which
+#   step_site_water.py reads in place of the hydrography and the network, so
+#   fetch_trail_water.py's gates run on the grid's own sites in CI.
+# - OSM WATER'S POINTS AND ANSWERS (PO03, PO06, PO08, PO09): a dozen points in
+#   fetch_osm_water.py's shape and the EPQS answers for their walks
+#   (_osm_water_fixtures), which step_osm_water.py and step_osm_water_grade.py
+#   read, and one opentrail water waypoint beside a grid site for the dedupe
+#   to find a twin of.
+# - THE PHOTO MANIFESTS (PO24, PO38): Commons and ATC outcome records and a
+#   decisions ledger for grid sites (_poi_photo_fixtures), which
+#   step_poi_photos.py lands, reaching every branch of the face gate and the
+#   attachment. Labels hashed into digests, never bytes.
+# - THE LONG PATH GUIDE'S PAGES (PO36): five section pages and the index in
+#   the real skeleton (_long_path_guide_fixtures), which extract/_fixtures.py
+#   serves to the guide_pages kind, so the extract's own parser lands them.
 POI_REFERENCE_DIR = Path(__file__).parent / "reference"
 
 # Shelter, campsite, vista, parking and privy inventory, one tuple of values
@@ -1551,8 +1568,427 @@ def _poi_site_point(index: int) -> dict:
     return {"type": "Point", "coordinates": [-74.30 + (index % 25) * 0.004, 41.20 + (index // 25) * 0.004]}
 
 
+# Site water (PO07, PO17): step_site_water.py's two fixture inputs, in place
+# of the hydrography and EPQS, which CI may not fetch. Each scenario is a
+# shelter or campsite of the grid above, by its place in `kept`, and the
+# stream reaches near it: (hydrography, stream id, name, flow, OSM's NHD
+# lineage, metres east of the site; a negative number is west), each a reach
+# running north and south past the site, so its nearest point is level with
+# it. Then the EPQS answers at the site and at each reach's nearest point, in
+# feet; a point with no answer is one EPQS would not give. Together they
+# reach every branch fetch_trail_water.py's resolve_site() and
+# nearest_stream() have: water inside both gates, two hydrographies merged
+# within SITE_WATER_MERGE_M and two too far apart to merge, a reach past
+# MATCH_RADIUS_FT, a walk steeper than MAX_GRADE, a walk shorter than
+# MIN_GRADE_RUN_FT that the grade does not judge, an elevation EPQS would not
+# give, every flow class and none. Every other site has no stream near it.
+_SITE_WATER_SCENARIOS = [
+    # (site index, reaches, site elevation, {reach index: water elevation})
+    (0, [("nhd", "fixture-nhd-0", "Fixture Brook", "perennial", None, 20.0)], 1000.0, {0: 995.0}),
+    (
+        1,
+        [
+            ("nhd", "fixture-nhd-1", None, "intermittent", None, 20.0),
+            ("osm", "fixture-osm-1", "Fixture Run", None, False, 25.0),
+        ],
+        1200.0,
+        {0: 1197.0, 1: 1196.5},
+    ),
+    (2, [("osm", "fixture-osm-2", "Fixture Spring Run", "intermittent", True, 15.0)], 900.0, {0: 899.0}),
+    (3, [("nhd", "fixture-nhd-3", "Fixture Far Brook", "perennial", None, 50.0)], 1000.0, {}),
+    (4, [("nhd", "fixture-nhd-4", "Fixture Gorge Brook", "perennial", None, 20.0)], 1000.0, {0: 970.0}),
+    (5, [("nhd", "fixture-nhd-5", "Fixture Trickle", "perennial", None, 2.0)], 1000.0, {0: 997.0}),
+    (6, [("nhd", "fixture-nhd-6", "Fixture Brook Six", "perennial", None, 20.0)], 1000.0, {}),
+    (7, [("nhd", "fixture-nhd-7", "Fixture Creek", None, None, 25.0)], 800.0, {0: 798.0}),
+    (
+        8,
+        [
+            ("nhd", "fixture-nhd-8", "Fixture East Brook", "perennial", None, 30.0),
+            ("osm", "fixture-osm-8", "Fixture West Brook", None, False, -60.0),
+        ],
+        700.0,
+        {0: 696.0, 1: 690.0},
+    ),
+    (
+        9,
+        [
+            ("osm", "fixture-osm-9", "Fixture Rill", None, False, 10.0),
+            ("nhd", "fixture-nhd-9", None, "ephemeral", None, 12.0),
+        ],
+        650.0,
+        {0: 649.0, 1: 648.8},
+    ),
+]
+#: fetch_trail_water.py's metres in a degree of latitude, which its distances are measured in.
+_SITE_WATER_M_PER_DEG_LAT = 111_132.0
+
+
+def _site_water_fixtures(sites: list[dict]) -> dict[str, str]:
+    """site_water/candidates.json and site_water/epqs_elevations.json for these scenarios over `sites`, the grid's sites in order."""
+    candidates: dict[str, list[dict]] = {}
+    elevations: dict[str, float] = {}
+    for index, reaches, site_feet, water_feet in _SITE_WATER_SCENARIOS:
+        site = sites[index]
+        lon, lat = _poi_site_point(index)["coordinates"]
+        metres_per_degree_east = _SITE_WATER_M_PER_DEG_LAT * math.cos(math.radians(lat))
+        elevations[f"{lat:.6f},{lon:.6f}"] = site_feet
+        for position, (source, stream_id, name, flow, osm_from_nhd, east_m) in enumerate(reaches):
+            x = round(lon + east_m / metres_per_degree_east, 6)
+            candidates.setdefault(site["atc_global_id"], []).append(
+                {
+                    "source": source,
+                    "stream_id": stream_id,
+                    "name": name,
+                    "flow": flow,
+                    "osm_from_nhd": osm_from_nhd,
+                    "paths": [[[x, round(lat - 0.001, 6)], [x, round(lat + 0.001, 6)]]],
+                }
+            )
+            if position in water_feet:
+                elevations[f"{lat:.6f},{x:.6f}"] = water_feet[position]
+    return {
+        "site_water/candidates.json": json.dumps(candidates, indent=1),
+        "site_water/epqs_elevations.json": json.dumps(elevations, indent=1),
+    }
+
+
+# OSM water (PO03, PO06, PO08, PO09): step_osm_water.py's points, in
+# fetch_osm_water.py's feature() shape, and the EPQS answers
+# step_osm_water_grade.py reads in place of the network, keyed "lat,lon" at
+# 6 dp as fetch_trail_water.py's cache keys them. They live under osm_water/
+# rather than at data/raw/osm_water.geojson, where export_poi.py would read
+# them and then refuse to run without build_osm_water_reach.py's verdicts.
+#
+# Each point is placed so the far end of its walk is a vertex or a site,
+# which ST_ClosestPoint returns exactly, so its answer has a key: past the
+# south end of the centerline's first segment, (-74.0, 41.0); past the far end
+# of the "Viewpoint Spur" side trail, (-74.004, 41.006); past the south end of
+# the Long Path's first piece in the fixture network, (-74.3, 41.5); or north
+# of a shelter or campsite of the grid above. Together they reach every
+# branch of build_osm_water_reach.py's gate and export_poi.py's handling:
+# reachable from the centerline, a site and another organization's trail
+# (which withholds the mile); past MATCH_RADIUS_FT; nothing within the 5-mile
+# ceiling; outside the corridor; steeper than MAX_GRADE; a walk shorter than
+# MIN_GRADE_RUN_FT the grade does not judge; an elevation EPQS would not
+# give; no geometry; and a twin of an opentrail water point within
+# WATER_DEDUP_RADIUS_M beside a neighbour that is not one. The tags vary so
+# describe_water()'s clauses all compose.
+_OSM_WATER_TWIN_DBID = 9001
+
+
+def _osm_water_fixtures(kept: list[dict]) -> tuple[dict[str, str], dict]:
+    """osm_water/points.geojson and osm_water/epqs_elevations.json over the grid's sites, and the opentrail waypoint the twin pairs with."""
+
+    def site(layer: str, nth: int) -> tuple[float, float]:
+        """The nth site of a layer past the ten the site water scenarios use."""
+        indices = [index for index, row in enumerate(kept) if row["layer"] == layer and index >= len(_SITE_WATER_SCENARIOS)]
+        lon, lat = _poi_site_point(indices[nth])["coordinates"]
+        return lon, lat
+
+    def key(lon: float, lat: float) -> str:
+        return f"{lat:.6f},{lon:.6f}"
+
+    shelter = site("shelters", 20)
+    campsite = site("campsites", 20)
+    twin_site = site("campsites", 30)
+    no_answer_site = site("shelters", 30)
+    features, elevations = [], {}
+
+    def point(osm_id, kind, coordinates, water_feet=None, walk=None, walk_feet=None, **tags):
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": None if coordinates is None else {"type": "Point", "coordinates": list(coordinates)},
+                "properties": {"osm_id": osm_id, "kind": kind, **tags},
+            }
+        )
+        if water_feet is not None:
+            elevations[key(*coordinates)] = water_feet
+        if walk_feet is not None:
+            elevations[key(*walk)] = walk_feet
+
+    # Reachable from the centerline: 22 m south of its first vertex, 2 ft of rise.
+    point("9100000001", "spring", (-74.0, 40.9998), 1000.0, (-74.0, 41.0), 1002.0, name="Fixture Spring", intermittent="yes")
+    # Reachable from a shelter, tagged not drinking water.
+    lon, lat = shelter
+    point("9100000002", "water_tap", (lon, round(lat + 0.0002, 6)), 1500.0, shelter, 1503.0, drinking_water="no")
+    # Past the side trail's far end, 20 ft below it over about 91 ft: too steep.
+    point("9100000003", "water_tap", (-74.0042, 41.0062), 980.0, (-74.004, 41.006), 1000.0)
+    # Reachable only from the Long Path, so it carries no A.T. mile.
+    point(
+        "9100000004",
+        "spring",
+        (-74.3, 41.4998),
+        1200.0,
+        (-74.3, 41.5),
+        1201.0,
+        name="Fixture Long Path Spring",
+        intermittent="yes",
+        seasonal="yes",
+    )
+    # About 59 m east of the centerline: past the 100 ft gate.
+    point("9100000005", "drinking_water", (-73.9993, 41.0025))
+    # In the corridor, and more than 5 miles from anything a hiker walks.
+    point("9100000006", "water_well", (-74.0, 41.3))
+    # Outside the corridor and every network line's ring: clipped before it is judged.
+    point("9100000007", "spring", (-80.0, 35.5))
+    # A walk of about 7 ft, too short for the grade to judge.
+    lon, lat = campsite
+    point("9100000008", "spring", (lon, round(lat + 0.00002, 6)), 997.0, campsite, 1000.0, seasonal="yes")
+    # EPQS gives the shelter's elevation and not the water's.
+    lon, lat = no_answer_site
+    point("9100000009", "spring", (lon, round(lat + 0.0002, 6)), None, no_answer_site, 1100.0)
+    # No geometry: skipped, as export_poi.py's has_geometry() skips it.
+    point("9100000010", "spring", None, name="Fixture Spring With No Point")
+    # Beside an opentrail water point: 11 m from it, a twin; 37 m from it, not.
+    lon, lat = twin_site
+    point("9100000011", "spring", (lon, round(lat + 0.00015, 6)), 1300.0, twin_site, 1301.0)
+    point("9100000012", "drinking_water", (round(lon + 0.0003, 6), lat), 1300.5, twin_site, 1301.0, name="Fixture Fountain")
+    waypoint = {
+        "type": "Feature",
+        "properties": {"dbid": _OSM_WATER_TWIN_DBID, "title": "Fixture Spring Waypoint", "icon": "w"},
+        "geometry": {"type": "Point", "coordinates": [lon, round(lat + 0.00025, 6)]},
+    }
+    files = {
+        "osm_water/points.geojson": _feature_collection(features),
+        "osm_water/epqs_elevations.json": json.dumps(elevations, indent=1),
+    }
+    return files, waypoint
+
+
+# Photos (PO24, PO38): the two outcome files export_poi.py attaches photos
+# from, in the shapes their fetchers write them (fetch_poi_images.py's one
+# `photo` per POI, fetch_atc_photos.py's `photos` list), and a decisions
+# ledger in reference/photo_screen_decisions.json's shape. They live under
+# poi_photos/ rather than at data/raw/poi_images.json, where export_poi.py
+# reads them, so a run picks them up only when told to (step_poi_photos.py
+# under build_marts.py --fixtures, parity.py's old side); and not under
+# photos/, which is the fetchers' cache of the bytes. The digests name no
+# bytes anywhere: they are sha256 of a label, so nothing here is a picture of
+# anybody. Each POI is a grid site the scenario names; together they reach
+# every branch of gate_photos() and attach_photos().
+def _poi_photo_fixtures(kept: list[dict]) -> dict[str, str]:
+    """poi_photos/poi_images.json, poi_photos/poi_images_atc.json and poi_photos/photo_screen_decisions.json over the grid's sites."""
+    import hashlib
+
+    def poi_id(layer: str, nth: int) -> str:
+        sites = [site for site in kept if site["layer"] == layer]
+        return f"atc_{layer}:{sites[nth]['atc_global_id']}"
+
+    def digest(label: str) -> str:
+        return hashlib.sha256(f"fixture-photo-{label}".encode()).hexdigest()
+
+    # A field overridden with `...` is left out of the record, as a fetcher leaves out what it never wrote.
+    def commons(label: str, faces: object = 0, **override) -> dict:
+        photo = {
+            "title": f"File:Fixture {label}.jpg",
+            "dist": 42.0,
+            "url": f"https://upload.wikimedia.org/fixture/{label}.jpg",
+            "page_url": f"https://commons.wikimedia.org/wiki/File:Fixture_{label}.jpg",
+            "author": f"Fixture Photographer {label}",
+            "license": "CC BY-SA 4.0",
+            "taken": "2024-06-01",
+            "digest": digest(label),
+            "screen": {"faces": faces, "screener": "haar_frontalface_default", "on": "2026-08-20"},
+        }
+        photo.update(override)
+        return {k: v for k, v in photo.items() if v is not ...}
+
+    def atc(label: str, **override) -> dict:
+        photo = {
+            "page_url": f"https://atc.fixture/photos/{label}",
+            "author": "Appalachian Trail Conservancy",
+            "license": "ATC facility inventory",
+            "taken": "2023-09-15",
+            "digest": digest(label),
+        }
+        photo.update(override)
+        return {k: v for k, v in photo.items() if v is not ...}
+
+    def found(photo=None, photos=None) -> dict:
+        record = {"status": "found", "checked": "2026-09-01"}
+        if photo is not None:
+            record["photo"] = photo
+        if photos is not None:
+            record["photos"] = photos
+        return record
+
+    shelter = [poi_id("shelters", 40 + n) for n in range(10)]
+    campsite = [poi_id("campsites", 40 + n) for n in range(2)]
+    commons_pois = {
+        shelter[0]: found(commons("screened-clear")),
+        shelter[1]: found(commons("flagged-undecided", faces=2)),
+        shelter[2]: found(commons("flagged-cleared", faces=1)),
+        shelter[3]: found(commons("refused")),
+        shelter[4]: found(commons("unscreened", screen=...)),
+        shelter[5]: found(commons("undecodable", faces=None)),
+        shelter[6]: found(commons("no-digest", digest=...)),
+        shelter[7]: found(commons("overruled-by-atc")),
+        shelter[9]: found(commons("beside-digestless-atc")),
+        campsite[0]: {"status": "none", "checked": "2026-09-01"},
+        "atc_shelters:fixture-not-published": found(commons("orphan")),
+        "osm_water:9100000001": found(commons("spring")),
+    }
+    atc_pois = {
+        shelter[7]: found(photos=[atc("gallery-1"), atc("gallery-2", author=None)]),
+        shelter[8]: found(photos=[atc("no-digest-first", digest=...), atc("second-is-the-card")]),
+        shelter[9]: found(photos=[atc("digestless", digest=...)]),
+        # ATC's own shoot is not gated: a screen or a refusal on its digest changes nothing.
+        campsite[1]: found(photos=[{**atc("atc-with-a-face"), "screen": {"faces": 3}}]),
+    }
+    decisions = {
+        digest("flagged-cleared"): {"decision": "cleared", "on": "2026-08-21"},
+        digest("refused"): {"decision": "refused", "on": "2026-08-21"},
+        digest("atc-with-a-face"): {"decision": "refused", "on": "2026-08-21"},
+    }
+    return {
+        "poi_photos/poi_images.json": json.dumps({"pois": commons_pois}, indent=1),
+        "poi_photos/poi_images_atc.json": json.dumps({"pois": atc_pois}, indent=1),
+        "poi_photos/photo_screen_decisions.json": json.dumps(
+            {
+                "_README": "make_dbt_fixtures.py's decisions, in reference/photo_screen_decisions.json's shape.",
+                "decisions": decisions,
+            },
+            indent=1,
+        ),
+    }
+
+
+# The Long Path guide (PO36): NYNJTC's section pages in their real skeleton
+# (tests/test_nynjtc_long_path_guide.py's page builder, measured 2026-09-08:
+# WordPress <details><summary> blocks, entries as <strong>MILE</strong> on
+# <br> boundaries), which extract/_fixtures.py serves to the guide_pages
+# kind at the URLs it asks for, from guide_pages/<key>/pages.json. The
+# sections sit on the fixture Long Path layer's own LP_Section lines (1: the
+# 0.35 mile line beside the centerline, 3 and 4: the 20 mile lines at -74.3),
+# and their entries reach build_records()' branches: NYNJTC's coordinates and
+# a typo outside the trail's extent, interpolated springs, a lookout, a privy
+# and a lean-to with water, an off-trail spring, the season that is not
+# water, a camping area that is no pin, an unlocated campsite, a mile past
+# the section's end, a section with no distance and one with no line, and
+# the same lean-to, lot and campsite said twice.
+_GUIDE_URL = "https://www.nynjtc.org/long-path-end-to-end-section-guide/"
+
+
+def _long_path_guide_fixtures() -> dict[str, str]:
+    """guide_pages/nynjtc_long_path_guide/: the index, five section pages, and pages.json mapping each URL to its file."""
+
+    def entries(items):
+        return (
+            '<p class="wp-block-paragraph">'
+            + "<br>".join(f"<strong>{mile}</strong>&nbsp; {text}" for mile, text in items)
+            + "</p>"
+        )
+
+    def block(name, inner):
+        return f'<details class="wp-block-details"><summary>{name}</summary>{inner}</details>'
+
+    def page(number, title, distance, parking, camping, description):
+        header = (
+            f"<strong>Distance:</strong> {distance} miles<br>" if distance else ""
+        ) + "<strong>Parks:</strong> Fixture State Park"
+        return (
+            "<html><body><header>site chrome</header>"
+            '<main id="wp--skip-link--target">'
+            f'<h1 class="wp-block-heading"><a href="/ldt-long-path">The Long Path</a> &#8211; Section {number}</h1>'
+            f"<h2><strong>{title}</strong></h2>"
+            f'<p class="wp-block-paragraph">{header}</p>'
+            f"{block('Access', '<p>Take the fixture road to the fixture lot.</p>')}"
+            f"{block('Parking', parking)}"
+            f"{block('Camping', camping)}"
+            f"{block('Detailed Trail Description', description)}"
+            "</main><footer>Privacy Policy</footer></body></html>"
+        )
+
+    none = "<p>None.<br></p>"
+    pages = {
+        1: page(
+            1,
+            "Fixture Park to Fixture Ridge",
+            "0.4",
+            entries(
+                [
+                    ("0.00", "Fixture Park lot, at the trailhead (41.00010°, -74.00020°)."),
+                    ("0.20", "Roadside pull-off (14.00000°, -74.00000°)."),
+                    ("0.40", "Ridge Road lot (41.00495°, -74.00002°)."),
+                ]
+            ),
+            none,
+            entries(
+                [
+                    ("0.00", "Start at the park gate and follow the aqua blazes north."),
+                    ("0.10", "Pass a spring, a dependable source of water, on the left."),
+                    ("0.25", "Reach Fixture Lookout, with a tremendous view to the east."),
+                    ("0.30", "A seasonal spring is 0.2 mile from the Long Path on a side path."),
+                    ("0.38", "The trail passes a privy beside the road."),
+                    ("0.90", "Reach a lean-to well past the end of the section."),
+                ]
+            ),
+        ),
+        3: page(
+            3,
+            "Fixture Hollow",
+            "20.7",
+            entries(
+                [("0.00", "Section 3 trailhead lot (41.50000°, -74.30010°)."), ("20.70", "Boundary lot (41.80000°, -74.30010°).")]
+            ),
+            entries(
+                [
+                    ("5.13", "Fixture Hollow Lean-to, with a spring nearby."),
+                    ("8.00", "Camping is allowed in the state forest between mile 8.0 and 9.0."),
+                    ("10.00", "A campsite by the brook (unlocated)."),
+                ]
+            ),
+            entries(
+                [
+                    ("0.00", "Leave the lot and climb north."),
+                    ("5.10", "Arrive at Fixture Hollow Lean-to."),
+                    ("12.00", "In the spring, the hobblebush puts on a spectacular show."),
+                    ("15.00", "A sign marks the way to Fixture Spring, the only reliable water in this section."),
+                ]
+            ),
+        ),
+        4: page(
+            4,
+            "Fixture Hollow to Fixture Notch",
+            "20.7",
+            entries([("0.00", "Boundary lot (41.80003°, -74.30012°).")]),
+            none,
+            entries(
+                [
+                    ("0.00", "Continue north from the lot."),
+                    ("3.00", "Reach a campsite on the left."),
+                    ("3.02", "The campsite is near the trail."),
+                ]
+            ),
+        ),
+        5: page(5, "Fixture Notch", None, none, none, entries([("2.00", "Pass a spring at the notch.")])),
+        6: page(
+            6,
+            "Beyond the Fixture Layer",
+            "4.0",
+            entries([("0.00", "Far lot (42.50000°, -74.50000°).")]),
+            none,
+            entries([("1.00", "Pass a spring beside the trail.")]),
+        ),
+    }
+    index = (
+        "<html><body><main><h1>Long Path End-to-End Section Guide</h1>"
+        + "".join(f'<p><a href="/lp-section-{number}/">Section {number}</a></p>' for number in pages)
+        + "</main></body></html>"
+    )
+    folder = "guide_pages/nynjtc_long_path_guide"
+    files = {f"{folder}/index.html": index}
+    urls = {_GUIDE_URL: "index.html"}
+    for number, markup in pages.items():
+        files[f"{folder}/lp-section-{number}.html"] = markup
+        urls[f"https://www.nynjtc.org/lp-section-{number}/"] = f"lp-section-{number}.html"
+    files[f"{folder}/pages.json"] = json.dumps(urls, indent=1)
+    return files
+
+
 def _points_of_interest_fixtures(files: dict) -> dict:
-    """The POI family's additions to `files`: id fields, ATC's real shelters and campsites with inventory, facilities, a DEC privy."""
+    """The POI family's additions to `files`: id fields, ATC's real shelters and campsites with inventory, facilities, a DEC privy, site and OSM water's inputs, photo manifests, the Long Path guide's pages."""
     files = dict(files)
     id_fields = {
         "external/oprhp_facilities.geojson": ("OBJECTID", lambda i: 5501 + i),
@@ -1598,6 +2034,14 @@ def _points_of_interest_fixtures(files: dict) -> dict:
                 )
                 appended += 1
         files[name] = json.dumps(collection)
+    files.update(_site_water_fixtures(kept))
+    osm_water, waypoint = _osm_water_fixtures(kept)
+    files.update(osm_water)
+    files.update(_poi_photo_fixtures(kept))
+    files.update(_long_path_guide_fixtures())
+    opentrail = json.loads(files["opentrail_at.geojson"])
+    opentrail["features"].append(waypoint)
+    files["opentrail_at.geojson"] = json.dumps(opentrail)
 
     for row, (name, facilities) in enumerate(_POI_FACILITIES.items()):
         collection = json.loads(files[name])

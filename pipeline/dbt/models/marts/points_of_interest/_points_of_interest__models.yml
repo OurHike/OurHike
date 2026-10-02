@@ -184,23 +184,47 @@ models:
       - name: nearby
         description: The parts around a site's anchor, as JSON the phone writes the sentence from.
         data_type: json
+      - name: lp_section
+        description: The Long Path section a guide waypoint is on.
+        data_type: integer
+      - name: section_mile
+        description: The guide's own mile from the section's start; never an A.T. mile.
+        data_type: double
+      - name: placement
+        description: stated, at NYNJTC's coordinates, or interpolated, by the guide's mile along the line.
+        data_type: varchar
+      - name: source_url
+        description: The guide page the waypoint came from.
+        data_type: varchar
+      - name: position_error_m
+        description: On an interpolated guide waypoint, INTERPOLATION_ERROR_M (500 m), the measured p90 of how far the estimate sits from the place.
+        data_type: integer
+      - name: off_trail_miles
+        description: How far off the Long Path the guide says the place is; the pin marks where the walker leaves the trail.
+        data_type: double
+      - name: water_reliability
+        description: reliable or unreliable, where the guide says which of a water source; null where it does not.
+        data_type: varchar
       - name: photo_key
-        description: The card photo's content key. Null on every row until the photo manifests land (PO24, not ported).
+        description: >
+          The card photo's bucket key, photos/<digest>.jpg (PO24); null where the
+          POI has no photo to show, including a Commons photo the face screen
+          flagged and nobody has cleared (PO38).
         data_type: varchar
       - name: photo_page_url
-        description: The card photo's page. Null until PO24 lands.
+        description: The card photo's page, the credit link.
         data_type: varchar
       - name: photo_author
-        description: The card photo's author. Null until PO24 lands.
+        description: Who the card photo credits.
         data_type: varchar
       - name: photo_license
-        description: The card photo's licence. Null until PO24 lands.
+        description: The licence the card photo ships under.
         data_type: varchar
       - name: photo_taken
-        description: When the card photo was taken. Null until PO24 lands.
+        description: When the card photo was taken, an ISO date.
         data_type: varchar
       - name: photos
-        description: Every photo for the POI, card photo first. Null until PO24 lands.
+        description: Every photo shown for the POI, card photo first, as JSON.
         data_type: json
       - name: site_id
         description: The site's anchor's id, null on a POI in no site.

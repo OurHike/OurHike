@@ -22,10 +22,21 @@
 -- - privy: type, multi-seat, and "open to the air" for one with no
 --   enclosure;
 -- - water: the synthesized CSI point's own sentence
---   (int_points_of_interest__water). describe_water() composes only for OSM
---   water (its `kind`) and fetch_trail_water.py's stream points (their
---   `sources`), and neither is landed (#1652); opentrail's water carries a
---   title and an icon and composes nothing in the Python either.
+--   (int_points_of_interest__water), and describe_stream_point()'s for
+--   fetch_trail_water.py's site water, a point that carries `sources`: the
+--   stream's name or "A stream", "where it runs closest to the site", then
+--   the flow claim in the words of whichever hydrography made it
+--   (FLOW_WORDS; no claim where nobody classified the reach, because
+--   silence is not a promise of year-round water) and who else mapped it;
+--   and describe_water()'s own for an OSM water point: what was mapped
+--   (WATER_KINDS), "mapped as intermittent" or "mapped as seasonal" only
+--   where somebody tagged it, "Marked not drinking water." for
+--   drinking_water=no, and the attribution. A tag present as JSON null
+--   reads here as absent, where the Python's str() would read "none" and
+--   claim "mapped as seasonal"; fetch_osm_water.py's feature() never writes
+--   a null tag (it copies a tag only where it is not None), so no point
+--   reaches either branch. opentrail's water carries a title and an icon
+--   and composes nothing in the Python either.
 -- Each ends with ATC's own `Comments`, attributed ("ATC notes: ..."), after
 -- lib/atc_notes.py's clean_note() has dropped the sentences that are the
 -- survey talking to itself (PO20).
@@ -33,7 +44,9 @@
 -- THE OTHER ORGANIZATIONS: export_nearby_poi.py's compose_description(): the
 -- asset value, title-cased where the organization writes capitals, "in" the
 -- facility, both already cleaned of sentinels; nothing where there is no
--- asset.
+-- asset. NYNJTC's Long Path guide's records carry their own sentence
+-- (lib/nynjtc_long_path_guide.py's compose_description()), which ships as
+-- it stands.
 {%- set p = 'noted.properties' -%}
 {%- set rounding = var('poi_vista_arc_rounding_degrees') %}
 with enriched as (
@@ -376,6 +389,236 @@ sentences as (
     from phrased
 ),
 
+stream_terms as (
+    -- STREAM_SOURCES, STREAM_CLAIMS and FLOW_WORDS as three maps.
+    select
+        map(
+            list(code order by code) filter (
+                where vocabulary = 'stream_source'
+            ),
+            list(phrase order by code) filter (
+                where vocabulary = 'stream_source'
+            )
+        ) as source_names,
+        map(
+            list(code order by code) filter (
+                where vocabulary = 'stream_claim'
+            ),
+            list(phrase order by code) filter (
+                where vocabulary = 'stream_claim'
+            )
+        ) as claims,
+        map(
+            list(code order by code) filter (
+                where vocabulary = 'stream_flow'
+            ),
+            list(phrase order by code) filter (
+                where vocabulary = 'stream_flow'
+            )
+        ) as flow_words
+    from terms
+),
+
+streams as (
+    -- describe_water() hands a point with `sources` to
+    -- describe_stream_point().
+    select
+        noted.poi_id,
+        json_extract_string(noted.properties, '$.sources[*]') as sources,
+        coalesce(
+            nullif(json_extract_string(noted.properties, '$.name'), ''),
+            'A stream'
+        ) as subject,
+        map_extract_value(
+            stream_terms.flow_words,
+            coalesce(json_extract_string(noted.properties, '$.flow'), '')
+        ) as flow_word,
+        json_extract_string(noted.properties, '$.flow_source') as flow_source,
+        stream_terms.source_names,
+        stream_terms.claims
+    from noted
+    cross join stream_terms
+    where
+        noted.phone_files = 'poi_by_type'
+        and noted.poi_type = 'water'
+        and coalesce(json_array_length(noted.properties, '$.sources'), 0) > 0
+),
+
+claimed as (
+    -- The flow claim is attributed to whoever made it, and only where a
+    -- flow word exists.
+    select
+        streams.*,
+        case
+            when
+                streams.flow_word is not null
+                and coalesce(
+                    map_contains(streams.source_names, streams.flow_source),
+                    false
+                )
+                then streams.flow_source
+        end as claimant
+    from streams
+),
+
+stream_sentences as (
+    select
+        poi_id,
+        subject
+        || ', where it runs closest to the site.'
+        || case
+            when claimant is not null
+                then
+                    ' '
+                    || map_extract_value(source_names, claimant)
+                    || ' '
+                    || map_extract_value(claims, claimant)
+                    || ' '
+                    || flow_word
+                    || '.'
+                    || case
+                        when
+                            len(list_filter(
+                                sources,
+                                lambda source: source != claimant
+                                and map_contains(source_names, source)
+                            )) > 0
+                            then
+                                ' Also mapped by '
+                                || {{ poi_join_phrases(
+                                    "list_transform(list_filter(sources, "
+                                    ~ "lambda source: source != claimant "
+                                    ~ "and map_contains(source_names, source)), "
+                                    ~ "lambda source: "
+                                    ~ "map_extract_value(source_names, source))"
+                                ) }}
+                                || '.'
+                        else ''
+                    end
+            when
+                len(list_filter(
+                    sources, lambda source: map_contains(source_names, source)
+                )) > 0
+                then
+                    ' Mapped by '
+                    || {{ poi_join_phrases(
+                        "list_transform(list_filter(sources, "
+                        ~ "lambda source: map_contains(source_names, source)), "
+                        ~ "lambda source: "
+                        ~ "map_extract_value(source_names, source))"
+                    ) }}
+                    || '.'
+            else ''
+        end as stream_sentence
+    from claimed
+),
+
+osm_tags as (
+    -- describe_water()'s OSM half reads a water point with no `sources`:
+    -- its `kind` and the reliability tags, each lower-cased and compared as
+    -- str() of the value, an absent tag reading as "".
+    select
+        noted.poi_id,
+        water_kinds.phrase as head,
+        lower(
+            coalesce(
+                json_extract_string(noted.properties, '$.intermittent'), ''
+            )
+        ) as intermittent,
+        lower(
+            coalesce(json_extract_string(noted.properties, '$.seasonal'), '')
+        ) as seasonal,
+        lower(
+            coalesce(
+                json_extract_string(noted.properties, '$.drinking_water'), ''
+            )
+        ) as drinking_water
+    from noted
+    inner join terms as water_kinds
+        on
+            water_kinds.vocabulary = 'water_kind'
+            and json_extract_string(noted.properties, '$.kind')
+            = water_kinds.code
+    where
+        noted.phone_files = 'poi_by_type'
+        and noted.poi_type = 'water'
+        and coalesce(json_array_length(noted.properties, '$.sources'), 0) = 0
+),
+
+osm_clauses as (
+    -- Only the reliability tags somebody wrote down: absence composes
+    -- nothing, because "flows year-round" would be this pipeline
+    -- strengthening silence into a promise.
+    select
+        poi_id,
+        head,
+        drinking_water,
+        list_filter(
+            [
+                case
+                    when intermittent = 'yes' then 'mapped as intermittent'
+                end,
+                case
+                    when seasonal not in ('', 'no') then 'mapped as seasonal'
+                end
+            ],
+            lambda clause: clause is not null
+        ) as clauses
+    from osm_tags
+),
+
+osm_sentences as (
+    -- What was mapped, then the clauses. `drinking_water=no` gets its own
+    -- sentence, so a hiker skimming to the comma cannot carry "drinking
+    -- water" away from a point tagged the opposite; the last sentence is
+    -- ODbL's attribution where the datum is read.
+    select
+        poi_id,
+        head
+        || case
+            when len(clauses) > 0
+                then ', ' || array_to_string(clauses, ' and ')
+            else ''
+        end
+        || '.'
+        || case
+            when drinking_water = 'no' then ' Marked not drinking water.'
+            else ''
+        end
+        || ' Mapped by OpenStreetMap contributors.' as osm_sentence
+    from osm_clauses
+),
+
+guide as (
+    -- The Long Path guide's records carry the sentence
+    -- lib/nynjtc_long_path_guide.py's compose_description() made from the
+    -- facts the guide states, never its prose; export_nearby_poi.py
+    -- publishes it as it stands.
+    select
+        id,
+        description,
+        lp_section,
+        section_mile,
+        placement,
+        source_url,
+        position_error_m,
+        off_trail_miles,
+        water_reliability
+    from {{ ref('stg_derived__long_path_guide') }}
+),
+
+with_streams as (
+    select
+        sentences.*,
+        stream_sentences.stream_sentence,
+        osm_sentences.osm_sentence,
+        guide.description as guide_sentence
+    from sentences
+    left join stream_sentences on sentences.poi_id = stream_sentences.poi_id
+    left join osm_sentences on sentences.poi_id = osm_sentences.poi_id
+    left join guide on sentences.poi_id = guide.id
+),
+
 described as (
     select
         poi_id,
@@ -383,6 +626,7 @@ described as (
             when phone_files = 'nearby_poi'
                 then
                     case
+                        when guide_sentence is not null then guide_sentence
                         when asset is not null
                             then
                                 case
@@ -395,6 +639,8 @@ described as (
                     end
             when synthesized_description is not null
                 then synthesized_description
+            when stream_sentence is not null then stream_sentence
+            when osm_sentence is not null then osm_sentence
             -- The sentences that would only repeat the card's type line.
             when
                 atc_sentence in (
@@ -407,11 +653,21 @@ described as (
                 then null
             else atc_sentence
         end as description
-    from sentences
+    from with_streams
 )
 
 select
     enriched.*,
-    described.description
+    described.description,
+    -- The guide's own fields, which nearby_poi.geojson carries on its
+    -- waypoints and on nothing else.
+    guide.lp_section,
+    guide.section_mile,
+    guide.placement,
+    guide.source_url,
+    guide.position_error_m,
+    guide.off_trail_miles,
+    guide.water_reliability
 from enriched
 inner join described on enriched.poi_id = described.poi_id
+left join guide on enriched.poi_id = guide.id

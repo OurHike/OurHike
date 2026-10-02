@@ -86,20 +86,39 @@ def _reviewed_tables() -> set[str]:
 def _row_tables() -> set[str]:
     """The raw tables of the kinds whose rows have no geometry column: WordPress posts and their place
     terms, OurHike's own conditions queries, whose closures, reports and notes give a place as lat/lon, the
-    Hike Finder's pages, whose one coordinate is a lat/lon pair in `start`, and ATC's Trail Updates pages,
-    which give one as an A.T. mile."""
+    Hike Finder's pages, whose one coordinate is a lat/lon pair in `start`, ATC's Trail Updates pages,
+    which give one as an A.T. mile, and a guide's section pages (the guide_pages kind), whose entries carry
+    NYNJTC's own coordinates and miles inside their JSON."""
     from extract._contract import all_resources, discover, discover_shared
-    from extract._kinds import AtcTrailUpdatePages, ConditionsQuery, PublishedHikes, WordpressPosts, WordpressTerms
+    from extract._kinds import (
+        AtcTrailUpdatePages,
+        ConditionsQuery,
+        GuidePages,
+        PublishedHikes,
+        WordpressPosts,
+        WordpressTerms,
+    )
 
     resources = all_resources(discover() + discover_shared())
-    kinds = WordpressPosts | WordpressTerms | ConditionsQuery | PublishedHikes | AtcTrailUpdatePages
+    kinds = WordpressPosts | WordpressTerms | ConditionsQuery | PublishedHikes | AtcTrailUpdatePages | GuidePages
     return {resource.table for resource in resources if isinstance(resource, kinds)}
 
 
 #: The derived tables a Python step writes with no geometry column (build_marts.py's STEPS): step_form_route's
 #: routes carry their ends as JSON lists of [lon, lat] at full precision, the exact doubles the graph search used,
-#: and step_weather_squares lands squares.json as one JSON document. dem_samples has a geometry.
-GEOMETRY_FREE_STEP_TABLES = {"formed_routes", "weather_squares"}
+#: and step_weather_squares lands squares.json as one JSON document. The POI family's: site_water names each
+#: A.T. site by its global id and its water as JSON, osm_water carries fetch_osm_water.py's lon/lat columns,
+#: osm_water_grade is a verdict per osm_id, poi_photos is manifest rows, and long_path_guide holds each record
+#: whole as JSON. dem_samples and graph_pieces have a geometry.
+GEOMETRY_FREE_STEP_TABLES = {
+    "formed_routes",
+    "weather_squares",
+    "site_water",
+    "osm_water",
+    "osm_water_grade",
+    "poi_photos",
+    "long_path_guide",
+}
 
 
 def test_the_geometry_free_step_tables_are_the_derived_tables_that_declare_no_geometry():
@@ -128,6 +147,7 @@ def test_the_row_kinds_models_read_no_geometry():
         "base_ourhike__disputes",
         "base_atc__atc_trail_updates_pages",
         "base_nynjtc__nynjtc_hike_finder",
+        "stg_nynjtc__long_path_guide",
     }
 
 

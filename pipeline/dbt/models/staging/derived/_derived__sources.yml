@@ -131,3 +131,213 @@ sources:
           - name: _loaded_at
             description: When the step wrote the table, UTC.
             data_tests: [not_null]
+      - name: site_water
+        data_tests:
+          # Rows sharing stg_derived__site_water's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'site_water'", "layer", "atc_global_id"]
+        description: >
+          Which A.T. shelters and campsites have water a hiker can walk to,
+          written by step_site_water (pipeline/step_site_water.py) through
+          fetch_trail_water.py's own build(): one row per site of
+          int_points_of_interest__water_sites, in the order fetch_trail_water.py
+          writes data/raw/trail_water.json, each with the water it can reach
+          or the reason it cannot. The hydrography's GeoPackages and extracts
+          and EPQS's answers never enter the warehouse; only these verdicts do
+          (pipeline/ELT.md's PO07 and PO17).
+        columns:
+          - name: site_row
+            description: The record's place in the file's `sites` array, from 0.
+            data_tests: [not_null]
+          - name: layer
+            description: "`shelters` or `campsites`, ATC's layer key."
+            data_tests: [not_null]
+          - name: atc_global_id
+            description: The site's ATC GlobalID.
+            data_tests: [not_null]
+          - name: atc_name
+            description: The site's ATC name.
+          - name: water
+            description: >
+              The water the site can reach, as the file's record holds it
+              (sources, stream_id, name, flow, flow_source, distance_ft,
+              drop_ft, grade, lat, lon), or null where a gate refused or no
+              stream is near. Null is "no reachable water found", never "dry".
+          - name: unresolved
+            description: Why there is no water, in fetch_trail_water.py's words; null where there is.
+          - name: candidate
+            description: The nearest stream point the gates judged, with its numbers, kept whether or not it passed.
+          - name: _loaded_at
+            description: When the step wrote the table, UTC.
+            data_tests: [not_null]
+      - name: osm_water
+        data_tests:
+          # Rows sharing stg_derived__osm_water's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'osm_water'", "osm_id"]
+        description: >
+          OSM's water point sources (natural=spring, amenity=drinking_water,
+          man_made=water_tap, man_made=water_well) in fetch_osm_water.py's
+          shape, written by step_osm_water (pipeline/step_osm_water.py): one
+          row per feature, its properties as the file holds them. A stand-in
+          for the extract, which waits on #1652 — Download OSM's Geofabrik
+          extracts at most once a month, into a private raw bucket that
+          outlives the 7-day Actions cache. Until then only fixture mode
+          lands points here and a live build lands none (pipeline/ELT.md's
+          PO03).
+        columns:
+          - name: feature_row
+            description: The feature's place in the file, from 0.
+            data_tests: [not_null]
+          - name: osm_id
+            description: The OSM node id, as text (fetch_osm_water.py's feature()).
+            data_tests: [not_null]
+          - name: kind
+            description: spring, drinking_water, water_tap or water_well (fetch_osm_water.py's POINT_SOURCE_TAGS).
+          - name: lon
+            description: The node's longitude, EPSG:4326; null where the feature has no geometry.
+          - name: lat
+            description: The node's latitude, EPSG:4326; null where the feature has no geometry.
+          - name: properties
+            description: >
+              The feature's properties as JSON, verbatim: osm_id, kind, and
+              name, seasonal, intermittent and drinking_water only where OSM
+              carries the tag. An absent tag is "nobody tagged it", never a
+              claim (lib/poi_description.py's describe_water()).
+          - name: _loaded_at
+            description: When the step wrote the table, UTC.
+            data_tests: [not_null]
+      - name: osm_water_grade
+        data_tests:
+          # Rows sharing stg_derived__osm_water_grade's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'osm_water_grade'", "osm_id"]
+        description: >
+          The verdict on every corridor OSM water point, written by
+          step_osm_water_grade (pipeline/step_osm_water_grade.py): the
+          distance pass int_points_of_interest__osm_water_reach measured,
+          and the grade build_osm_water_reach.apply_grade_gate() takes from
+          USGS EPQS for a point that passed it. One row per row of that
+          model (pipeline/ELT.md's PO06 and PO07).
+        columns:
+          - name: osm_id
+            description: The OSM node id.
+            data_tests: [not_null]
+          - name: passes_grade
+            description: Whether the walk is no steeper than MAX_GRADE, or too short to grade; null where the point was not graded.
+          - name: drop_ft
+            description: The elevation difference between the water and the feature it passed on, feet, 1 dp; null where ungraded.
+          - name: grade
+            description: Drop over run, 3 dp; null where ungraded.
+          - name: grade_floored
+            description: True where MIN_GRADE_RUN_FT, not the grade, let the point pass.
+            data_tests: [not_null]
+          - name: reachable
+            description: Both gates passed. An ungraded point is not reachable (build_osm_water_reach.is_reachable()).
+            data_tests: [not_null]
+          - name: reason
+            description: Why the point is not reachable, in build_osm_water_reach.py's words; null where it is.
+          - name: _loaded_at
+            description: When the step wrote the table, UTC.
+            data_tests: [not_null]
+      - name: poi_photos
+        data_tests:
+          # Rows sharing stg_derived__poi_photos's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'poi_photos'", "source", "poi_id", "photo_index"]
+        description: >
+          The photo manifests export_poi.py attaches, written by
+          step_poi_photos (pipeline/step_poi_photos.py): one row per found
+          photo in fetch_poi_images.py's poi_images.json (Commons) and
+          fetch_atc_photos.py's poi_images_atc.json (ATC), each with its bucket
+          key's digest, its credit, the face screen's flag and the human
+          decision on that digest from reference/photo_screen_decisions.json.
+          Manifest rows only: the bytes never enter the warehouse
+          (pipeline/ELT.md's PO24 and PO38).
+        columns:
+          - name: source
+            description: commons or atc, the outcome file the photo came from.
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: [commons, atc]
+          - name: poi_id
+            description: The published POI id the fetcher keyed the photo by.
+            data_tests: [not_null]
+          - name: photo_index
+            description: The photo's place in its POI's list, from 0; the first is the card photo.
+            data_tests: [not_null]
+          - name: digest
+            description: The sha256 of the stored bytes, which names the bucket object; null on a record from before the download step.
+          - name: page_url
+            description: The photo's own page, the credit link.
+          - name: author
+            description: Who to credit.
+          - name: license
+            description: The licence the photo ships under.
+          - name: taken
+            description: When the photo was taken, an ISO date.
+          - name: screened
+            description: Whether the record carries a face screen at all.
+            data_tests: [not_null]
+          - name: flagged
+            description: Whether the face screen affirmatively found a face (lib/photo_screen.py's flagged()).
+            data_tests: [not_null]
+          - name: decision
+            description: cleared or refused, a person's decision on this digest; null where nobody has decided.
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: [cleared, refused]
+          - name: photo
+            description: The photo record as the outcome file holds it.
+          - name: _loaded_at
+            description: When the step wrote the table, UTC.
+            data_tests: [not_null]
+      - name: long_path_guide
+        data_tests:
+          # Rows sharing stg_derived__long_path_guide's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'long_path_guide'", "id"]
+        description: >
+          NYNJTC's Long Path guide as waypoints, written by step_long_path_guide
+          (pipeline/step_long_path_guide.py) through
+          lib/nynjtc_long_path_guide.py's build_records(): one row per record,
+          each placed at NYNJTC's own coordinates or by the guide's mile
+          along its section's line, and de-duplicated (pipeline/ELT.md's PO36).
+        columns:
+          - name: record_row
+            description: The record's place in build_records()' output, from 0.
+            data_tests: [not_null]
+          - name: id
+            description: The record's published id, `nynjtc_long_path_guide:s<section>-<block>-<mile>-<type>-<n>`.
+            data_tests: [not_null]
+          - name: poi_type
+            description: The published POI type the entry was classified as.
+            data_tests: [not_null]
+          - name: confidence
+            description: high where NYNJTC gave coordinates, low where the mile placed it.
+            data_tests: [not_null]
+          - name: placement
+            description: stated or interpolated.
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: [stated, interpolated]
+          - name: position_error_m
+            description: >
+              INTERPOLATION_ERROR_M (500) on an interpolated record, the
+              measured p90 of the estimate's along-trail error; null on a
+              stated one.
+          - name: record
+            description: The record build_records() returned, whole.
+          - name: _loaded_at
+            description: When the step wrote the table, UTC.
+            data_tests: [not_null]

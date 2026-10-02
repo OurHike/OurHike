@@ -1015,21 +1015,174 @@ def _poi_by_type_old(poi_type: str) -> Callable[[], dict]:
         import export_poi
 
         export_poi.NETWORK_LINES_PATH = _published_network()
+        export_poi.TRAIL_WATER_PATH = _site_water_old()
+        osm_water = _osm_water_old()
+        if osm_water is not None:
+            export_poi.OSM_WATER_FILENAME, export_poi.OSM_WATER_REACH_FILENAME = osm_water
+        _photos_old(export_poi)
         export_poi.main()
         return json.loads((export_poi.OUT_DIR / f"{poi_type}.geojson").read_text(encoding="utf-8"))
 
     return old
 
 
-def _nearby_poi_old() -> dict:
-    """export_nearby_poi.py's nearby_poi.geojson, by its own functions in main()'s order, less the guide.
+@functools.cache
+def _site_water_old() -> Path:
+    """data/raw/trail_water.json as fetch_trail_water.py derives it, from the inputs step_site_water reads, in a folder kept for this process.
 
-    main() itself cannot run on the fixtures: nynjtc_long_path_guide carries
-    reaches_hikers true, so main() raises without the guide's page cache, and
-    the guide is not ported (ELT.md ledger row PO36). Everything else is
-    main()'s: each registered layer's build_records() in poi_sources()'s
-    order, the network ring and the closed-trailhead mark against the
-    published network (_published_network()), the place sites.
+    fetch_trail_water.py's main() fetches ATC's two layers and reads the
+    hydrography and EPQS, none of which CI may do. So the old side is its
+    build() and render() over the fixture's own shelters and campsites, in
+    build_water_distance.fetch_atc_features()' shape and order, and the
+    candidate reaches and EPQS answers make_dbt_fixtures.py wrote, which
+    build_marts.py --fixtures hands step_site_water. A point the answers do
+    not hold has no elevation, as EPQS's silence reads. With no candidates
+    file there is no trail_water.json, as on a run that never derived one.
+    """
+    import tempfile
+
+    import export_poi
+    import fetch_trail_water
+
+    raw = export_poi.RAW_DIR
+    out = Path(tempfile.mkdtemp(prefix="parity-site-water-")) / "trail_water.json"
+    candidates = raw / "site_water" / "candidates.json"
+    if not candidates.exists():
+        return out
+    answers = json.loads((raw / "site_water" / "epqs_elevations.json").read_text(encoding="utf-8"))
+    sites = {}
+    for layer in ("shelters", "campsites"):
+        features = json.loads((raw / f"{layer}.geojson").read_text(encoding="utf-8"))["features"]
+        rows = [
+            {
+                "global_id": feature["properties"]["GlobalID"],
+                "name": feature["properties"].get("Name"),
+                "lat": feature["geometry"]["coordinates"][1],
+                "lon": feature["geometry"]["coordinates"][0],
+            }
+            for feature in features
+            if feature.get("geometry")
+        ]
+        sites[layer] = sorted(rows, key=lambda row: (row["name"] or "", row["global_id"]))
+    live = fetch_trail_water.elevation_ft
+    fetch_trail_water.elevation_ft = lambda lat, lon: answers.get(f"{lat:.6f},{lon:.6f}")
+    try:
+        document = fetch_trail_water.build(sites, json.loads(candidates.read_text(encoding="utf-8")))
+    finally:
+        fetch_trail_water.elevation_ft = live
+    out.write_text(fetch_trail_water.render(document), encoding="utf-8")
+    return out
+
+
+def _photos_old(export_poi) -> None:
+    """Point export_poi.py at make_dbt_fixtures.py's photo manifests and decisions, where step_poi_photos reads them.
+
+    The outcome files are the photo fetchers' (fetch_poi_images.py,
+    fetch_atc_photos.py), which reach the network for every POI; the fixture
+    holds them under poi_photos/, so export_poi.py is told their names, and
+    its face gate reads the fixture's decisions ledger in place of
+    reference/photo_screen_decisions.json, as step_poi_photos is told to.
+    Without the fixture's files nothing changes.
+    """
+    from lib import photo_screen
+
+    folder = export_poi.RAW_DIR / "poi_photos"
+    if not (folder / "poi_images.json").exists():
+        return
+    export_poi.IMAGES_FILENAME = "poi_photos/poi_images.json"
+    export_poi.ATC_IMAGES_FILENAME = "poi_photos/poi_images_atc.json"
+    decisions = folder / "photo_screen_decisions.json"
+    export_poi.load_screen_decisions = lambda: photo_screen.load_decisions(decisions)
+
+
+@functools.cache
+def _osm_water_old() -> tuple[str, str] | None:
+    """OSM water's points and verdicts as a publish run leaves them for export_poi.py: (the points' name under RAW_DIR, the verdict file).
+
+    fetch_osm_water.py reads fourteen Geofabrik extracts and
+    build_osm_water_reach.py asks EPQS, neither of which CI may do. So the
+    points are make_dbt_fixtures.py's osm_water/points.geojson, which
+    step_osm_water lands, and the verdicts are build_osm_water_reach.py's own
+    measure_distances(), apply_grade_gate() and write() over them, with the
+    fixture's layers and the published network (_published_network()) where
+    that script reads data/raw/ and nearby_trails.geojson, and the EPQS
+    answers step_osm_water_grade reads. write() runs unguarded: its floor of
+    40 reachable points watches a real scan, and the fixture has a dozen. With
+    no points file there is no OSM water, as on a run that never fetched it.
+    """
+    import contextlib
+    import io
+    import tempfile
+
+    import duckdb
+
+    import build_osm_water_reach as reach
+    import export_poi
+
+    raw = export_poi.RAW_DIR
+    points = raw / "osm_water" / "points.geojson"
+    if not points.exists():
+        return None
+    folder = Path(tempfile.mkdtemp(prefix="parity-osm-water-"))
+    for name in ("centerline.geojson", "side_trails.geojson", "shelters.geojson", "campsites.geojson"):
+        (folder / name).symlink_to(raw / name)
+    (folder / "osm_water.geojson").symlink_to(points)
+    answers = json.loads((raw / "osm_water" / "epqs_elevations.json").read_text(encoding="utf-8"))
+    network = _published_network()
+    live = (reach.RAW_DIR, reach.NETWORK_LINES_PATH, reach.OUT_PATH, reach.elevation_ft)
+    reach.RAW_DIR, reach.NETWORK_LINES_PATH, reach.OUT_PATH = folder, network, folder / "osm_water_reach.json"
+    reach.elevation_ft = lambda lat, lon: answers.get(f"{lat:.6f},{lon:.6f}")
+    try:
+        con = duckdb.connect()
+        con.execute("INSTALL spatial; LOAD spatial;")
+        with contextlib.redirect_stdout(io.StringIO()):
+            records = reach.measure_distances(con, quiet=True)
+            reach.apply_grade_gate(records, quiet=True)
+            reach.write(records, guard=False)
+    finally:
+        reach.RAW_DIR, reach.NETWORK_LINES_PATH, reach.OUT_PATH, reach.elevation_ft = live
+    return "osm_water/points.geojson", str(folder / "osm_water_reach.json")
+
+
+def _guide_sections_old() -> Path:
+    """A folder holding sections.json as fetch_nynjtc_long_path_guide.py writes it, parsed from the fixture's guide pages.
+
+    The fetcher reads NYNJTC's forty pages, which CI may not; the fixture's
+    pages (make_dbt_fixtures.py's guide_pages/nynjtc_long_path_guide/) are
+    parsed here by lib/nynjtc_long_path_guide.py's own parse_index() and
+    parse_section(), the functions the guide_pages kind calls, in the index's
+    order. With no fixture pages the folder holds nothing, as a run that
+    never fetched the guide.
+    """
+    import tempfile
+
+    from lib import nynjtc_long_path_guide as guide
+
+    folder = Path(tempfile.mkdtemp(prefix="parity-guide-"))
+    pages_dir = RAW_DIR / "guide_pages" / guide.SOURCE_KEY
+    if not (pages_dir / "pages.json").exists():
+        return folder
+    files = json.loads((pages_dir / "pages.json").read_text(encoding="utf-8"))
+    index = (pages_dir / files[guide.INDEX_URL]).read_text(encoding="utf-8")
+    sections = [
+        guide.parse_section((pages_dir / files[url]).read_text(encoding="utf-8"), url, expected_number=number).to_dict()
+        for number, url in guide.parse_index(index)
+    ]
+    (folder / "sections.json").write_text(json.dumps(sections), encoding="utf-8")
+    return folder
+
+
+def _nearby_poi_old() -> dict:
+    """export_nearby_poi.py's nearby_poi.geojson, by its own functions in main()'s order.
+
+    main() itself cannot run on the fixtures: it reads the guide's cache from
+    data/raw/nynjtc_long_path_guide/, which no fixture writes. So this is
+    main()'s sequence, function by function: each registered layer's
+    build_records() in poi_sources()'s order, then guide_records() over the
+    fixture guide's parsed sections (_guide_sections_old()) and the layer's
+    own Long Path lines, appended because the guide reaches hikers, then the
+    network ring and the closed-trailhead mark against the published network
+    (_published_network()), and the place sites.
     """
     import export_nearby_poi as nearby
 
@@ -1039,6 +1192,11 @@ def _nearby_poi_old() -> dict:
     for source in sources:
         features = json.loads((nearby.RAW_DIR / f"{source['key']}.geojson").read_text(encoding="utf-8")).get("features", [])
         records.extend(nearby.build_records(source, features)[0])
+    sections = _guide_sections_old()
+    if (sections / "sections.json").exists():
+        guide, stats = nearby.guide_records(registry, raw_dir=sections, lines_dir=nearby.RAW_DIR)
+        if stats is not None and stats.get("reaches_hikers"):
+            records.extend(guide)
     network = _published_network()
     records, _ = nearby.clip_to_network(records, network, nearby.boundary_paths_for(sources))
     nearby.mark_closed_trailheads(records, network)

@@ -227,6 +227,13 @@ vars:
     - '\bnot\s+(?:on|in)\b[^.;]{0,30}\blist\b'
     - '\bneed\s+to\s+determine\b'
     - '\bsocked\b'
+  # OSM water's reach (PO06) and dedupe (PO09), each the Python's constant:
+  # the radius is fetch_trail_water.py's, which build_osm_water_reach.py
+  # imports so both water gates move together; the ceiling is a reporting
+  # limit and the range join's radius, not a gate.
+  poi_water_match_radius_ft: 100.0         # fetch_trail_water.py MATCH_RADIUS_FT
+  poi_osm_water_measure_ceiling_m: 8046.72 # build_osm_water_reach.py MEASURE_CEILING_M (5 mi)
+  poi_water_dedup_radius_m: 25.0           # export_poi.py WATER_DEDUP_RADIUS_M
   # The ArcGIS coded-value domains export_trails.py and export_spurs.py read
   # live (lib/arcgis.get_field_coded_domain) mid-transform, as rows of
   # [source_key, field_name, code, label]: int_trail_lines__coded_domains.

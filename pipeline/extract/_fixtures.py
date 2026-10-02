@@ -70,6 +70,9 @@ What is left out of the run, and why:
 - every fetched resource whose key has no fixture file, because CI fetches
   nothing.
 
+A guide published as web pages (the guide_pages kind) is answered page by
+page from guide_pages/<key>/, so its own parser reads NYNJTC's skeleton.
+
 An unknown URL raises, so a resource that reaches past its fixture fails
 loudly rather than reaching the network, and so does any SQL the stand-in
 connection does not recognise.
@@ -97,6 +100,7 @@ from extract._kinds import (
     ArcgisLayer,
     AtcTrailUpdatePages,
     ConditionsQuery,
+    GuidePages,
     NwsAlerts,
     OpentrailFeed,
     PublishedHikes,
@@ -119,6 +123,10 @@ FILE_NAMES = {"at": "opentrail_at.geojson"}
 # closures_and_warnings_fixtures()): one file per upstream, under conditions/.
 # A WordPress source's file is named for its registry key.
 CONDITIONS_DIR = "conditions"
+# A guide's pages (make_dbt_fixtures.py's _long_path_guide_fixtures()): one
+# folder per registry key, its pages.json mapping each URL the guide_pages kind
+# asks for to the HTML file that answers it.
+GUIDE_PAGES_DIR = "guide_pages"
 NWS_FIXTURE = "nws_alerts.json"
 POSTGRES_FIXTURE = "ourhike_postgres.json"
 # A website's pages, by the registry key they are read for: `{"answers": {url:
@@ -338,8 +346,9 @@ class FixtureAdapter(requests.adapters.BaseAdapter):
         # NWS's /alerts/active body.
         self.nws = nws
         # Text served as a site serves it, by its exact URL: (content type, body).
-        # ATC's Trail Updates pages (text_answers()) and the Hike Finder export's
-        # listing, pages and GPX tracks (hikefinder_answers()).
+        # ATC's Trail Updates pages (text_answers()), the Hike Finder export's
+        # listing, pages and GPX tracks (hikefinder_answers()), and a guide's
+        # pages, by the URL the guide_pages kind asks for.
         self.pages = pages or {}
 
     def send(self, request, **kwargs):
@@ -440,6 +449,14 @@ def fixture_resources(raw_dir: Path) -> tuple[list, FixtureAdapter]:
             answers = hikefinder_answers(raw_dir, registry_entry(resource.key)["url"].rstrip("/") + "/")
             if answers is not None:
                 pages.update(answers)
+                chosen.append(resource)
+            continue
+        if isinstance(resource, GuidePages):
+            # Served page by page from the folder's pages.json; a guide with no folder stays out.
+            folder = raw_dir / GUIDE_PAGES_DIR / resource.key
+            if (folder / "pages.json").exists():
+                for url, name in json.loads((folder / "pages.json").read_text()).items():
+                    pages[url] = ("text/html; charset=UTF-8", (folder / name).read_text(encoding="utf-8"))
                 chosen.append(resource)
             continue
         if isinstance(resource, WordpressPosts | WordpressTerms):

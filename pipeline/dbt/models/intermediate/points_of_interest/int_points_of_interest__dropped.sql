@@ -14,7 +14,14 @@
 --    (int_sources__publication);
 -- 3. int_points_of_interest__in_corridor: an A.T.-family row outside the
 --    corridor and its network ring, or another organization's amenity
---    outside the ring and every park boundary its layer names.
+--    outside the ring and every park boundary its layer names;
+-- 4. int_points_of_interest__reached: an OSM water point a hiker could not
+--    reach, with its verdict's reason, or with no verdict at all;
+-- 5. int_points_of_interest__deduplicated: an OSM water point within 25 m
+--    of an opentrail water point.
+-- Stages 4 and 5 are read together, as the corridor's rows the dedupe does
+-- not hold, told apart by the verdict: one parent fewer, under the project
+-- evaluator's join threshold.
 with classified as (
     select * from {{ ref('int_points_of_interest__classified') }}
 ),
@@ -28,6 +35,18 @@ publishable as (
 
 in_corridor as (
     select poi_key from {{ ref('int_points_of_interest__in_corridor') }}
+),
+
+verdicts as (
+    select
+        poi_key,
+        reachable,
+        reason
+    from {{ ref('int_points_of_interest__osm_water_verdicts') }}
+),
+
+deduplicated as (
+    select poi_key from {{ ref('int_points_of_interest__deduplicated') }}
 ),
 
 publication as (
@@ -87,6 +106,28 @@ outside_corridor as (
         )
 ),
 
+unreached as (
+    -- Only OSM water drops past the corridor: a point the reach gate let
+    -- through is a twin the dedupe dropped, and any other was not reachable.
+    select
+        in_corridor.poi_key,
+        case
+            when verdicts.reachable
+                then
+                    'an OSM twin of an opentrail water point, within '
+                    || '{{ var("poi_water_dedup_radius_m") }} m'
+            else
+                'unreachable (#749): '
+                || coalesce(verdicts.reason, 'no reachability verdict')
+        end as drop_reason
+    from in_corridor
+    left join verdicts on in_corridor.poi_key = verdicts.poi_key
+    where
+        in_corridor.poi_key not in (
+            select deduplicated.poi_key from deduplicated
+        )
+),
+
 reasons as (
     select
         poi_key,
@@ -97,6 +138,8 @@ reasons as (
     select * from refused_publication
     union all
     select * from outside_corridor
+    union all
+    select * from unreached
 )
 
 select

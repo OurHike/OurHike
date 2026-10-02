@@ -72,6 +72,10 @@ verdict as (
             when
                 judged.phone_files = 'poi_by_type'
                 then judged.family_confidence
+            -- A unified record's own confidence (the Long Path guide's: high
+            -- at NYNJTC's coordinates, low where a mile placed it).
+            when judged.family_confidence is not null
+                then judged.family_confidence
             when judged.confidence_floor = 'low' then 'low'
             when judged.public_field is null then 'high'
             when

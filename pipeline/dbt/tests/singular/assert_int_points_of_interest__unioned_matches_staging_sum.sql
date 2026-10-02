@@ -7,7 +7,7 @@
 -- Every branch of int_points_of_interest__unioned is listed here by hand,
 -- which is the duplication that makes the test worth having: a branch
 -- dropped from the union without being dropped here fails immediately, and
--- a branch added to the union without being added here does too. Eighteen
+-- a branch added to the union without being added here does too. Twenty-one
 -- branches since stage 3 of #1793 — Rebuild the data platform as dlt → dbt:
 -- seven contracted marts, a monthly refresh, published docs, and lighter
 -- phone downloads (thirteen before it, as assert_int_pois_unioned_matches_
@@ -35,6 +35,13 @@ with expected as (
         + (
             select count(*)
             from {{ ref('base_nycparks__nyc_drinking_fountains') }}
+        )
+        + (select count(*) from {{ ref('stg_derived__osm_water') }})
+        + (select count(*) from {{ ref('stg_derived__long_path_guide') }})
+        -- The site water publishes only the sites that have some.
+        + (
+            select count(*) from {{ ref('stg_derived__site_water') }}
+            where has_water
         ) as row_count
 ),
 

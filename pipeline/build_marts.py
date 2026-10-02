@@ -167,12 +167,79 @@ class Step:
 #: The Python steps, in the order they run (pipeline/ELT.md, "Python steps,
 #: outside dbt", has the four planned and why each stays Python).
 STEPS: list[Step] = [
+    # THE POI STEPS COME FIRST. Every table they write reaches the trail_lines
+    # mart (points_of_interest -> int_trail_lines__spur_destinations -> the
+    # spurs -> int_trail_lines__at_published -> trail_lines), which
+    # step_node_lines' int_trail_network__routable and step_dem_sampling's
+    # sample points both read, so those inputs are built only after them.
+    # PO36: NYNJTC's Long Path guide placed as waypoints, over the sections the
+    # guide_pages kind landed and the Long Path layer's lines, both staged; the
+    # same inputs under --fixtures, where extract/_fixtures.py serves the pages.
+    # Before the water steps: its records join int_points_of_interest__unioned,
+    # which OSM water's distance pass is downstream of.
+    Step(
+        name="step_long_path_guide",
+        table="long_path_guide",
+        command=("step_long_path_guide.py", "--warehouse", "{warehouse}"),
+    ),
+    # PO07 and PO17: which A.T. shelters and campsites have water a hiker can
+    # walk to, fetch_trail_water.py's rule over int_points_of_interest__water_sites.
+    # Under --fixtures it reads each site's candidate reaches and the EPQS
+    # answers make_dbt_fixtures.py wrote, never the network.
+    Step(
+        name="step_site_water",
+        table="site_water",
+        command=("step_site_water.py", "--warehouse", "{warehouse}"),
+        fixture_args=(
+            "--candidates",
+            "{raw_dir}/site_water/candidates.json",
+            "--elevations",
+            "{raw_dir}/site_water/epqs_elevations.json",
+        ),
+    ),
+    # PO03: OSM's water points, a stand-in for the extract that waits on
+    # #1652. Under --fixtures it lands make_dbt_fixtures.py's points; otherwise
+    # it lands none (step_osm_water.py's docstring says why).
+    Step(
+        name="step_osm_water",
+        table="osm_water",
+        command=("step_osm_water.py", "--warehouse", "{warehouse}"),
+        fixture_args=("--points", "{raw_dir}/osm_water/points.geojson"),
+        reads_no_model=True,
+    ),
+    # PO06 and PO07: the grade half of OSM water's reach, over
+    # int_points_of_interest__osm_water_reach's distance pass. Under --fixtures
+    # it reads the EPQS answers make_dbt_fixtures.py wrote, never the network.
+    Step(
+        name="step_osm_water_grade",
+        table="osm_water_grade",
+        command=("step_osm_water_grade.py", "--warehouse", "{warehouse}"),
+        fixture_args=("--elevations", "{raw_dir}/osm_water/epqs_elevations.json"),
+    ),
+    # PO24 and PO38: the photo manifests export_poi.py attaches, a stand-in for
+    # the Commons extract kind. Under --fixtures it lands make_dbt_fixtures.py's
+    # outcome files and decisions; otherwise the files export_poi.py reads.
+    Step(
+        name="step_poi_photos",
+        table="poi_photos",
+        command=("step_poi_photos.py", "--warehouse", "{warehouse}"),
+        fixture_args=(
+            "--commons",
+            "{raw_dir}/poi_photos/poi_images.json",
+            "--atc",
+            "{raw_dir}/poi_photos/poi_images_atc.json",
+            "--decisions",
+            "{raw_dir}/poi_photos/photo_screen_decisions.json",
+        ),
+        reads_no_model=True,
+    ),
     # TN04: every routable trail part cut where int_trail_network__cuts says,
     # with build_trail_graph.py's own _split_all. Its inputs are the
-    # warehouse's alone, so --fixtures adds nothing. First of the steps:
-    # int_elevation__edge_sample_points reads int_trail_network__edges, which
-    # reads this step's graph_pieces, so step_dem_sampling's input
-    # (int_elevation__dem_points) is built only after it.
+    # warehouse's alone, so --fixtures adds nothing. After the POI steps, and
+    # before step_dem_sampling: int_elevation__edge_sample_points reads
+    # int_trail_network__edges, which reads this step's graph_pieces, so
+    # step_dem_sampling's input (int_elevation__dem_points) is built only
+    # after it.
     Step(
         name="step_node_lines",
         table="graph_pieces",

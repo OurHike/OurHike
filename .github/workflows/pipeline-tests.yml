@@ -231,6 +231,10 @@ jobs:
             pipeline/export_trails.py
             pipeline/export_elevation.py
             pipeline/step_dem_sampling.py
+            pipeline/step_form_route.py
+            pipeline/export_suggested_hikes.py
+            pipeline/route_hikefinder.py
+            pipeline/export_highlights.py
             pipeline/build_marts.py
             pipeline/requirements.txt
             pipeline/check_freshness.py
@@ -449,6 +453,17 @@ jobs:
           # export_elevation.py reads the DEM through rasterio, so this runs on
           # the pipeline's own pins, the venv step_dem_sampling.py runs in.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py elevation --new data/processed/dbt/elevation_profile.json --raw-dir data/raw
+          # The suggested hikes: the Hike Finder pages fixture mode served,
+          # under data/raw/hikefinder/, read through fetch_hikefinder.py's
+          # parse and routed by route_hikefinder.py over the warehouse's graph,
+          # the one step_form_route.py read. Either side writes no file when no
+          # hike ships, and two absent files agree. The highlights read
+          # reference/highlights.json from git. All three run on the
+          # pipeline's own pins, the venv step_form_route.py runs in, so the
+          # old side routes with the same duckdb and lib/ the step does.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py suggested_hikes --new data/processed/dbt/suggested_hikes.json --raw-dir data/raw
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py suggested_hikes_detail --new data/processed/dbt/suggested_hikes_detail.json --raw-dir data/raw
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py highlights --new data/processed/dbt/highlights.json
 
       - name: dbt source freshness
         if: steps.scope.outputs.run == 'true'

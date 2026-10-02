@@ -5,6 +5,9 @@
     python parity.py elevation --new data/processed/dbt/elevation_profile.json --raw-dir data/raw
     python parity.py nearby_trails --new data/processed/dbt/nearby_trails.geojson
     python parity.py network_overview --new data/processed/dbt/network_overview.geojson
+    python parity.py suggested_hikes --new data/processed/dbt/suggested_hikes.json --raw-dir data/raw
+    python parity.py suggested_hikes_detail --new data/processed/dbt/suggested_hikes_detail.json --raw-dir data/raw
+    python parity.py highlights --new data/processed/dbt/highlights.json
 
 pipeline/ELT.md, "How a rule moves: shadow-run parity", is the design: both
 paths read the same input, records are paired by their key, and each
@@ -287,6 +290,100 @@ def _overview_parts_as_a_set(feature: dict) -> dict:
     return {**feature, "geometry": {**geometry, "coordinates": sorted(geometry.get("coordinates") or [])}}
 
 
+# The suggested_hikes family: export_suggested_hikes.py's shelf and details,
+# and export_highlights.py's file. The Hike Finder's pages are not in git, so
+# fixture mode built the warehouse from make_dbt_fixtures.py's under
+# <raw-dir>/hikefinder/, and the old side reads those same pages through
+# fetch_hikefinder.py's own parse into its cache, routes them with
+# route_hikefinder.py's own build_results(), and builds the records with
+# export_suggested_hikes.py's build_document(), as a publish runs the three.
+# Both sides route over one graph: the warehouse's (beside <raw-dir>, as CI
+# lays it out), written out in route_hikefinder.py's three files by
+# step_form_route.graph_files() and loaded by route_hikefinder.load_graph(),
+# which is how trail_graph.json reaches route_hikefinder.py today.
+
+
+def _hikefinder_cache(folder: Path, gpx_dir: Path) -> dict:
+    """fetch_hikefinder.py's cache for the pages fixture mode served: parse_hike(), as_cache_entry(), and a GPX
+    stored as store_gpx() stores one, only where it parses to a track point."""
+    from urllib.parse import urljoin
+
+    import export_suggested_hikes
+    from lib.hikefinder import DETAIL_PATH, SOURCE_KEY, as_cache_entry, listing_ids, parse_gpx, parse_hike
+    from lib.source_registry import find_source, load_registry
+
+    base = find_source(load_registry(export_suggested_hikes.SOURCES_PATH), SOURCE_KEY)["url"].rstrip("/") + "/"
+    stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    hikes: dict[str, dict] = {}
+    for hike_id in listing_ids((folder / "hikes.html").read_text(encoding="utf-8")):
+        page = (folder / f"hike-{hike_id}.html").read_text(encoding="utf-8")
+        hike = parse_hike(page, hike_id, urljoin(base, DETAIL_PATH.format(id=hike_id)))
+        if hike is None:
+            continue
+        entry = as_cache_entry(hike, stamp)
+        entry["gpx_file"] = None
+        track = folder / f"track-{hike_id}.gpx"
+        if hike.has_published_route and track.exists() and parse_gpx(track.read_text(encoding="utf-8")) is not None:
+            (gpx_dir / f"{hike_id}.gpx").write_text(track.read_text(encoding="utf-8"), encoding="utf-8")
+            entry["gpx_file"] = f"{hike_id}.gpx"
+        hikes[str(hike_id)] = entry
+    return hikes
+
+
+def _suggested_hikes_old(part: str, raw_dir: Path) -> dict | None:
+    """export_suggested_hikes.py's shelf (`part` "shelf") or every detail ("details"), or None where its main()
+    writes no file: a source that does not reach hikers, an export with no hike, or no hike that ships."""
+    import tempfile
+
+    import duckdb
+
+    import export_suggested_hikes
+    import route_hikefinder
+    import step_form_route
+    from lib.hikefinder import SOURCE_KEY
+    from lib.source_registry import find_source, load_registry
+
+    source = find_source(load_registry(export_suggested_hikes.SOURCES_PATH), SOURCE_KEY)
+    if source is None or not source.get("reaches_hikers"):
+        return None
+    steward = source.get("steward") or source.get("attribution")
+    with tempfile.TemporaryDirectory() as scratch:
+        graph_dir, gpx_dir = Path(scratch) / "graph", Path(scratch) / "gpx"
+        graph_dir.mkdir()
+        gpx_dir.mkdir()
+        cache = _hikefinder_cache(raw_dir / "hikefinder", gpx_dir)
+        if not cache:
+            return None
+        with duckdb.connect(str(raw_dir.parent / "warehouse.duckdb"), read_only=True) as con:
+            step_form_route.graph_files(con, graph_dir)
+        starts = [(hike["start"]["lon"], hike["start"]["lat"]) for hike in cache.values() if hike.get("start")]
+        graph = route_hikefinder.load_graph(graph_dir, starts)
+        results = route_hikefinder.build_results(graph, cache, gpx_dir)
+        routes = {str(result["hike"]["id"]): result["formed"].to_dict() for result in results}
+        document, _ = export_suggested_hikes.build_document(graph, cache, routes, steward, datetime.now(timezone.utc))
+    if not document["hikes"]:
+        return None
+    halves = [export_suggested_hikes.split_record(record) for record in document["hikes"]]
+    if part == "shelf":
+        return {**document, "hikes": [shelf for shelf, _ in halves]}
+    return {"details": [detail for _, detail in halves]}
+
+
+def _highlights_old() -> dict:
+    """export_highlights.py's file: the curated list resolved against the POIs export_poi.py published under
+    data/processed/poi/ and the clubs in export_club_sections.py's club_sections.json, each read as it reads them.
+
+    Neither is written in CI, so every highlight is dropped there for a missing mile, as the dbt side drops each
+    against int_suggested_hikes__published_pois' zero rows; the rules are held row by row by the unit test and
+    tests/test_dbt_suggested_hikes_parity.py."""
+    import export_highlights
+
+    output, _, _ = export_highlights.build_output(
+        export_highlights.load_curated(), export_highlights.load_published_pois(), export_highlights.load_club_runs()
+    )
+    return output
+
+
 FAMILIES: dict[str, Family] = {
     "podcasts": Family(old=_podcasts_old, records="episodes", key="spotify_id", ordered=True),
     "stewards": Family(old=_stewards_old, records="stewards", key="provider", ordered=True),
@@ -326,6 +423,26 @@ FAMILIES: dict[str, Family] = {
         key_of=_overview_key,
         normalize=_overview_parts_as_a_set,
     ),
+    # The suggested_hikes family. The shelf and the details are one run of
+    # export_suggested_hikes.py, split as split_record() splits each record;
+    # each is keyed by the hike's own id, in hike-number order. Either answers
+    # None, a file not written, when no hike ships.
+    "suggested_hikes": Family(
+        old=lambda raw_dir: _suggested_hikes_old("shelf", raw_dir),
+        records="hikes",
+        key="id",
+        ordered=True,
+        stamps=("generated_at",),
+        reads_raw_dir=True,
+    ),
+    "suggested_hikes_detail": Family(
+        old=lambda raw_dir: _suggested_hikes_old("details", raw_dir),
+        records="details",
+        key="id",
+        ordered=True,
+        reads_raw_dir=True,
+    ),
+    "highlights": Family(old=_highlights_old, records="highlights", key="id", ordered=True),
 }
 
 
@@ -379,6 +496,18 @@ def main(argv: list[str] | None = None) -> int:
 
     family = FAMILIES[args.family]
     old = family.old(args.raw_dir) if family.reads_raw_dir else family.old()
+    if old is None or not args.new.exists():
+        # An exporter that writes no file on some runs answers None then, as
+        # export_suggested_hikes.py's does when no hike ships, and its writer
+        # writes none either (phone_file's when_empty: keep_last_file). Two
+        # absent files agree; one beside none is the difference.
+        if old is None and not args.new.exists():
+            print(f"{args.family}: neither today's exporter nor the writer writes a file this run")
+            return 0
+        exporter = "writes no file" if old is None else "writes one"
+        writer = f"wrote {args.new}" if args.new.exists() else "wrote none"
+        print(f"{args.family}: 1 difference(s):\n  today's exporter {exporter}, and the writer {writer}")
+        return 1
     new = json.loads(args.new.read_text(encoding="utf-8"))
     if family.bare_list:
         new = {family.records: new}

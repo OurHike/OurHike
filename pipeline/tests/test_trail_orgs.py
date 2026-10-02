@@ -25,7 +25,14 @@ LOAD_VERDICTS = {"ship", "hold", "via", "refuse", "none", "retired"}
 #: `retired` joined on 2026-09-30 for `nh-granit`. Pinned here as well as in the
 #: catalogue deliberately: the assertion below compares the two, so a verdict
 #: cannot be introduced by editing the data alone.
-LICENCE_BASES = {"public_domain", "stated_by_org", "maintainer_authorisation", "unstated"}
+LICENCE_BASES = {
+    "public_domain",
+    "stated_by_org",
+    "maintainer_authorisation",
+    "maintainer_clearinghouse",
+    "public_gis",
+    "unstated",
+}
 
 
 @pytest.fixture(scope="module")
@@ -103,13 +110,16 @@ def test_a_row_with_no_geometry_to_fetch_claims_no_endpoint(orgs):
     assert contradictory == [], f"rows with nothing to load but an endpoint anyway: {contradictory}"
 
 
-def test_every_licence_basis_is_one_of_the_four_sources_json_already_uses(orgs):
-    """The catalogue must not invent a fifth way of saying where a licence came from.
+def test_every_licence_basis_is_one_this_repository_defines(orgs):
+    """The catalogue must not invent a way of saying where a licence came from.
 
     sources.json uses maintainer_authorisation, stated_by_org and unresolved
     today; public_domain is the fourth this catalogue adds, and 'unstated'
     replaces 'unresolved' because it says which of the two it is - nobody asked,
-    rather than somebody asked and got no answer.
+    rather than somebody asked and got no answer. pipeline/ELT.md's "Who may
+    publish" adds two more, each a maintainer's decision of 2026-10-01:
+    maintainer_clearinghouse (decisions 20 and 22, NYS DEC and OPRHP) and
+    public_gis (decision 21a).
     """
     used = {o["licence_basis"] for o in orgs if o["licence_basis"] is not None}
     unknown = sorted(used - LICENCE_BASES)
@@ -190,3 +200,14 @@ def test_every_accepted_arcgis_owner_says_why_it_is_an_institution(catalogue):
     """An allowlist entry with no reason is an allowlist nobody can review."""
     thin = sorted(k for k, v in catalogue["_agol_accepted_owners"].items() if not k.startswith("_") and len(str(v).strip()) < 25)
     assert thin == [], f"accepted owners with no stated reason: {thin}"
+
+
+def test_maintainer_clearinghouse_is_new_yorks_alone(orgs):
+    """Decisions 20 and 22 ruled on NYS DEC's and OPRHP's clearinghouse datasets, nobody else's.
+
+    No state work is public domain by default, so pipeline/ELT.md's "Who may
+    publish" moved both rows off `public_domain` on 2026-10-01. A third row with
+    this basis would be a ruling nobody made.
+    """
+    ruled = sorted(o["slug"] for o in orgs if o["licence_basis"] == "maintainer_clearinghouse")
+    assert ruled == ["nysdec", "nysparks"]

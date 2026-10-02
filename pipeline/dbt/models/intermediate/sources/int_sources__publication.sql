@@ -23,6 +23,14 @@
 --   layer, or a source with no `kind`, which the fetcher reads as an ArcGIS
 --   layer. A photo, audio or page source is refused (rule 6).
 --
+-- ONE ROW IS NOT IN THE REGISTRY. The unregistered_publishing_sources seed
+-- lists the sources an exporter publishes today with no sources.json row,
+-- each with the issue that keeps it open: opentrail_at, under #98's interim
+-- position. They publish as they do today rather than drop off phones with
+-- nobody having decided that, because what drops is water points (CLAUDE.md,
+-- "Four ways this app can hurt somebody"). Removing a seed row is that
+-- decision, made in review.
+--
 -- NOT HERE YET, and why. Rule 2 (trail_orgs.json's `load` for a layer with
 -- no sources.json row) and rule 7 (the four `refuse` organizations) read
 -- trail_orgs.json, which the extract does not land yet, and no layer either
@@ -50,6 +58,10 @@ registered as (
 
 bases as (
     select * from {{ ref('publishable_licence_bases') }}
+),
+
+unregistered as (
+    select * from {{ ref('unregistered_publishing_sources') }}
 ),
 
 decided as (
@@ -85,3 +97,12 @@ select
     publication_rule,
     licence_basis
 from decided
+
+union all
+
+select
+    source_key,
+    true as may_publish,
+    'publishing_before_registration' as publication_rule,
+    cast(null as varchar) as licence_basis
+from unregistered

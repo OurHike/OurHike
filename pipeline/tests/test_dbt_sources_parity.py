@@ -175,3 +175,16 @@ def test_every_licence_basis_the_registry_uses_is_classified_for_may_publish():
     used = {source.get("licence_basis") for source in registry["sources"]}
     assert used - publishable - UNSETTLED_BASES == set()
     assert not publishable & UNSETTLED_BASES
+
+
+def test_an_unregistered_publishing_source_is_not_also_registered():
+    """unregistered_publishing_sources is for sources with no sources.json row, and only those.
+
+    A key in both would have two answers to "may it publish", and the registry's
+    is the one that should win, so the seed row would be a stale exception.
+    """
+    with (DBT / "seeds" / "unregistered_publishing_sources.csv").open(newline="") as handle:
+        unregistered = {row["source_key"] for row in csv.DictReader(handle)}
+    registry = json.loads((DBT.parent / "sources.json").read_text())
+    assert unregistered.isdisjoint({source["key"] for source in registry["sources"]})
+    assert unregistered, "the seed is empty: drop it and this test rather than keep an empty exception list"

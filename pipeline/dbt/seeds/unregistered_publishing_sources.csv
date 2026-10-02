@@ -1,0 +1,2 @@
+source_key,why,decided_by
+opentrail_at,"export_poi.py publishes opentrail.org's water and resupply points today, and opentrail has no sources.json row until its reuse terms are confirmed","#98 — Confirm opentrail.org data-reuse terms with the maintainer: the maintainer's position there, deliberate but interim, is location and POI data only, never the user comments"

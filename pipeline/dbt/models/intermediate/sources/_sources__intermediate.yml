@@ -81,9 +81,10 @@ models:
         data_tests: [not_null, unique]
       - name: may_publish
         description: >
-          True only where a rule makes it true: today, rule 1 (the registry
-          ships it, on a basis publishable_licence_bases lists) with none of
-          the guards refusing it. Never null.
+          True only where a rule makes it true: rule 1 (the registry ships
+          it, on a basis publishable_licence_bases lists) with none of the
+          guards refusing it, or a row of unregistered_publishing_sources.
+          Never null.
         data_tests: [not_null]
       - name: publication_rule
         description: The first rule that decided the row, or `registered_and_publishable`.
@@ -98,6 +99,7 @@ models:
                   - public_domain_needs_a_federal_organization
                   - clearinghouse_basis_outside_new_york
                   - public_gis_needs_a_gis_endpoint
+                  - publishing_before_registration
       - name: licence_basis
         description: The registry's `licence_basis`, copied.
 
@@ -285,6 +287,9 @@ unit_tests:
           - {provider: 'E', steward_id: 'org:nysoprhp'}
           - {provider: 'F', steward_id: 'org:nycparks'}
           - {provider: 'G', steward_id: 'org:usfs'}
+      - input: ref('unregistered_publishing_sources')
+        rows:
+          - {source_key: opentrail_at}
       - input: ref('publishable_licence_bases')
         rows:
           - {licence_basis: stated_by_org, applies_to: any}
@@ -306,3 +311,4 @@ unit_tests:
         - {source_key: gis_socrata, may_publish: true, publication_rule: registered_and_publishable}
         - {source_key: gis_no_kind, may_publish: true, publication_rule: registered_and_publishable}
         - {source_key: gis_on_a_podcast, may_publish: false, publication_rule: public_gis_needs_a_gis_endpoint}
+        - {source_key: opentrail_at, may_publish: true, publication_rule: publishing_before_registration}

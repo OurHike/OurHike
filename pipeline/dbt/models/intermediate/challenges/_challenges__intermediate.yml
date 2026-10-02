@@ -165,8 +165,10 @@ models:
         data_tests:
           # Every challenge that resolved reaches the mart, unless may_publish
           # holds its source back. WARN, because that is a decision and not a
-          # defect: it names the challenge rule 6 of "Who may publish" holds
-          # back until its club's permission is recorded.
+          # defect: it names a challenge rule 6 of "Who may publish" holds
+          # back until its club's permission is recorded. The ATC's list has
+          # its row (unregistered_publishing_sources, ELT.md decision 47, on
+          # the maintainer's authorisation), so on today's files it names none.
           - relationships:
               name: challenges_every_resolved_challenge_may_publish
               arguments:

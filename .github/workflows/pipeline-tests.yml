@@ -600,8 +600,10 @@ jobs:
           # imports needs dlt.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity places --new data/processed/dbt/places.json
           # The challenges list, from the club folders and publishers.json in
-          # git, against the POIs and centerline compared above. A challenge
-          # may_publish holds back is explained only where the warehouse's
+          # git, against the POIs and centerline compared above. The ATC's list
+          # publishes (ELT.md decision 47, on the maintainer's authorisation),
+          # so nothing is held back today. A challenge may_publish would hold
+          # back is explained only where the warehouse's
           # int_challenges__resolved record for it equals today's.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity challenges --new data/processed/dbt/challenges.json
           # The junction graph: build_trail_graph.py over the dbt writers'

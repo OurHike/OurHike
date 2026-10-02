@@ -1,0 +1,29 @@
+# A placeholder, so the monthly lane can be dispatched before the pull request
+# that builds it merges.
+#
+# GitHub accepts a workflow_dispatch only for a workflow whose file exists on
+# the default branch, and the run then uses the file at the ref it was
+# dispatched on. PR #1805 - dlt -> dbt re-platform as one go/no-go change
+# builds the real monthly lane in this file on claude/intelligent-feynman-sw3ewm,
+# and its go/no-go gate (pipeline/ELT.md on that branch, decision 30) needs one
+# real monthly run on UA before it merges. This file is only what lets
+#
+#   gh workflow run refresh-reference.yml --ref claude/intelligent-feynman-sw3ewm
+#
+# be accepted. Dispatched on main it does nothing: no checkout, no secret, no
+# write, no schedule. That pull request replaces it with the lane.
+name: Refresh reference data (placeholder)
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  placeholder:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Say what this is
+        run: |
+          echo "Placeholder. The monthly lane is refresh-reference.yml on the branch of PR #1805; dispatch it with --ref that branch."

@@ -215,6 +215,9 @@ jobs:
           # imports too. build_marts.py runs the build, and
           # step_dem_sampling.py is the Python step it runs between dbt
           # invocations (tests/test_build_marts.py holds this list to both).
+          # The points_of_interest family's parity runs export_poi.py (and the
+          # export_elevation.py mile axis it imports), export_nearby_poi.py and
+          # export_retired_poi.py.
           paths: >-
             pipeline/dbt/
             pipeline/extract/
@@ -234,7 +237,11 @@ jobs:
             pipeline/export_elevation.py
             pipeline/step_dem_sampling.py
             pipeline/build_marts.py
+            pipeline/export_poi.py
+            pipeline/export_nearby_poi.py
+            pipeline/export_retired_poi.py
             pipeline/requirements.txt
+            pipeline/seed_spatial_extension.py
             pipeline/check_freshness.py
             pipeline/export_conditions.py
             pipeline/fetch_club_pdfs.py
@@ -460,6 +467,14 @@ jobs:
           # export_elevation.py reads the DEM through rasterio, so this runs on
           # the pipeline's own pins, the venv step_dem_sampling.py runs in.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py elevation --new data/processed/dbt/elevation_profile.json --raw-dir data/raw
+          # The points_of_interest family's ten files, on the fixture warehouse
+          # and the reviewed files in git (water distances, capacities, the
+          # identity ledger).
+          for poi_type in shelter campsite water resupply viewpoint parking privy trailhead; do
+            "$RUNNER_TEMP/pipeline/bin/python" parity.py "poi_$poi_type" --new "data/processed/dbt/poi_$poi_type.geojson"
+          done
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py nearby_poi --new data/processed/dbt/nearby_poi.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py retired_poi --new data/processed/dbt/retired_poi.geojson
 
       - name: dbt source freshness
         if: steps.scope.outputs.run == 'true'

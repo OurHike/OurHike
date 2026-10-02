@@ -11,9 +11,11 @@ models:
           config:
             severity: warn
     description: >
-      ATC shelters, renamed to the unified POI column shape. poi_type
-      'shelter' at confidence 'high' - the same call export_poi.py's
-      ATC_EXPORTS makes, sync-tested via the seed.
+      ATC shelters, one row per shelter, keyed and deduplicated, with every
+      upstream column the extract lands. Their poi_type ('shelter') and
+      confidence ('high') are the poi_type_mapping seed's, joined in
+      int_points_of_interest__classified: decision 40 keeps classification
+      out of staging.
     columns:
       - name: poi_key
         description: >
@@ -22,10 +24,9 @@ models:
           the registry key first and then the columns measured unique for
           this layer.
         data_tests: [not_null, unique]
-      - name: source_id
+      - name: globalid
+        description: ATC's GlobalID, the id export_poi.py publishes a shelter under.
         data_tests: [not_null, unique]
-      - name: poi_type
-        data_tests: [not_null]
   - name: stg_atc__campsites
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
@@ -36,7 +37,7 @@ models:
           config:
             severity: warn
     description: >
-      ATC campsites, same shape and reasoning as stg_atc__shelters.
+      ATC campsites, in stg_atc__shelters' shape and for its reasons.
     columns:
       - name: poi_key
         description: >
@@ -45,10 +46,9 @@ models:
           the registry key first and then the columns measured unique for
           this layer.
         data_tests: [not_null, unique]
-      - name: source_id
+      - name: globalid
+        description: ATC's GlobalID, the id export_poi.py publishes a campsite under.
         data_tests: [not_null, unique]
-      - name: poi_type
-        data_tests: [not_null]
   - name: stg_atc__viewpoints
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
@@ -59,7 +59,7 @@ models:
           config:
             severity: warn
     description: >
-      ATC viewpoints, same POI shape and reasoning as stg_atc__shelters.
+      ATC viewpoints, in stg_atc__shelters' shape and for its reasons.
     columns:
       - name: poi_key
         description: >
@@ -68,10 +68,9 @@ models:
           the registry key first and then the columns measured unique for
           this layer.
         data_tests: [not_null, unique]
-      - name: source_id
+      - name: globalid
+        description: ATC's GlobalID, the id export_poi.py publishes a viewpoint under.
         data_tests: [not_null, unique]
-      - name: poi_type
-        data_tests: [not_null]
   - name: stg_atc__parking
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
@@ -82,7 +81,7 @@ models:
           config:
             severity: warn
     description: >
-      ATC parking, same POI shape and reasoning as stg_atc__shelters.
+      ATC parking areas, in stg_atc__shelters' shape and for its reasons.
     columns:
       - name: poi_key
         description: >
@@ -91,10 +90,9 @@ models:
           the registry key first and then the columns measured unique for
           this layer.
         data_tests: [not_null, unique]
-      - name: source_id
+      - name: globalid
+        description: ATC's GlobalID, the id export_poi.py publishes a parking area under.
         data_tests: [not_null, unique]
-      - name: poi_type
-        data_tests: [not_null]
   - name: stg_atc__privies
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
@@ -105,7 +103,7 @@ models:
           config:
             severity: warn
     description: >
-      ATC privies, same POI shape and reasoning as stg_atc__shelters.
+      ATC privies, in stg_atc__shelters' shape and for its reasons.
     columns:
       - name: poi_key
         description: >
@@ -114,10 +112,9 @@ models:
           the registry key first and then the columns measured unique for
           this layer.
         data_tests: [not_null, unique]
-      - name: source_id
+      - name: globalid
+        description: ATC's GlobalID, the id export_poi.py publishes a privy under.
         data_tests: [not_null, unique]
-      - name: poi_type
-        data_tests: [not_null]
   - name: stg_atc__communities
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
@@ -128,9 +125,11 @@ models:
           config:
             severity: warn
     description: >
-      A.T. Community towns as resupply at confidence 'low' - a designation
-      proxy, not a verified store (export_poi.py's DIRECT_SOURCES row,
-      held by the seed sync test).
+      ATC's official A.T. Community towns, in stg_atc__shelters' shape. They
+      publish as resupply at confidence 'low', a designation proxy rather
+      than a verified store; that call is the poi_type_mapping seed's
+      `communities` row, held to export_poi.py's DIRECT_SOURCES by
+      tests/test_dbt_seed_sync.py.
     columns:
       - name: poi_key
         description: >
@@ -139,10 +138,9 @@ models:
           the registry key first and then the columns measured unique for
           this layer.
         data_tests: [not_null, unique]
-      - name: source_id
+      - name: globalid
+        description: ATC's GlobalID, the id export_poi.py publishes a town under.
         data_tests: [not_null, unique]
-      - name: poi_type
-        data_tests: [not_null]
   - name: stg_atc__bridges
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy

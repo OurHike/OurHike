@@ -1,51 +1,35 @@
--- The one sanctioned join in staging (DBT.md names it): resolving the raw
--- `icon` code to a unified poi_type through the poi_type_mapping seed. A
--- left join, deliberately - a waypoint whose icon is documented-but-unmapped
--- keeps its row with a null poi_type rather than disappearing, so every
--- layer stays 1:1 with its input and the row-count reconciliation tests
--- keep meaning something.
+-- opentrail.org's A.T. waypoints as the extract lands them (extract/_shared/
+-- opentrail/at.py), keyed and deduplicated (decision 40), every column kept.
+--
+-- The `icon` code is resolved to a poi_type downstream, not here: decision 40
+-- moved this model's join to the poi_type_mapping seed into
+-- int_points_of_interest__classified, so staging only renames, casts, keys
+-- and dedupes. Every waypoint stays, whatever its icon, and the classifier
+-- says which icons export_poi.py publishes (w and s, both as water).
 with source as (
     -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
     -- hint); cast here, as decision 40 has staging do.
     select
+        -- The row's place in the raw table, which extract/_warehouse.py fills
+        -- in the order the upstream served it: the order a Python exporter
+        -- reads the same file in, and so its tie-break (see the poi_sources
+        -- seed's file_order).
+        rowid as source_row,
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
     from {{ source('opentrail', 'raw_opentrail__at') }}
-),
-
-mapping as (
-    select
-        code,
-        poi_type,
-        confidence
-    from {{ ref('poi_type_mapping') }}
-    where source_system = 'opentrail'
 ),
 
 renamed as (
     select
         {{ dbt_utils.generate_surrogate_key([
             "'opentrail_at'",
-            'source.dbid',
+            'dbid',
         ]) }} as poi_key,
-        'opentrail_at' as source,
-        cast(source.dbid as varchar) as source_id,
-        source.title as name,
-        mapping.poi_type,
-        mapping.confidence,
-        -- opentrail publishes no public/internal split, so public_use is null:
-        -- "this source declares no such flag", never "not public". The column
-        -- exists because DEC's and OPRHP's layers do publish one, and the union
-        -- is positional (DBT.md's ST06 prune) - see stg_dec__lean_tos for what
-        -- the flag means and why it is carried rather than applied.
-        cast(null as varchar) as public_use,
-        st_x(source.geom) as longitude,
-        st_y(source.geom) as latitude,
-        source._loaded_at as loaded_at
+        source.*
     from source
-    left join mapping on source.icon = mapping.code
 )
 
 {{ dbt_utils.deduplicate(
-    relation='renamed', partition_by='poi_key', order_by='source_id'
+    relation='renamed', partition_by='poi_key', order_by='_dlt_id'
 ) }}

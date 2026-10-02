@@ -219,6 +219,41 @@ models:
       - name: max_within_gate
         description: holdout_max_mi is at most mile_axis_holdout_max_mi (1.0).
 
+  - name: int_trail_lines__coded_domains
+    description: >
+      Each ArcGIS coded-value domain a trail_lines source decodes against,
+      one row per code (TL02): side_trails' Blaze, which
+      int_trail_lines__blazes decodes trails.geojson's blaze_color with,
+      and its Type, which the spurs read. export_trails.py and
+      export_spurs.py fetch these live mid-transform; here they are a frozen
+      copy, the var trail_lines_coded_domains, @unvalidated until the
+      extract lands the layers' field metadata, which replaces the var in
+      this one model and leaves these columns alone.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [source_key, field_name, code]
+    columns:
+      - name: source_key
+        description: The registry key of the layer whose field this is.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_registry__sources')
+                field: source_key
+      - name: field_name
+        description: >
+          The field, spelled as the layer and sources.json spell it ('Blaze',
+          'Type'), not as dlt lowercases its column.
+        data_tests: [not_null]
+      - name: code
+        description: One code of the field's domain, as text.
+        data_tests: [not_null]
+      - name: label
+        description: What the code decodes to, the domain's own name for it.
+        data_tests: [not_null]
+
 unit_tests:
   # One fixture runs through all four mile-axis steps, each test's given
   # rows the previous test's expected rows, so the chain is the axis. Its

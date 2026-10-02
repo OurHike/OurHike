@@ -18,6 +18,11 @@ A dbt 2.0.6 unit test compares a DOUBLE column only to one decimal place
 the numbers that must agree exactly travel as WKT and JSON text there, and
 this file is what holds the doubles (markers' along_m, the holdout's figures)
 to the Python exactly.
+
+The coded-value domains export_trails.py and export_spurs.py fetch live are a
+var here (trail_lines_coded_domains, read by int_trail_lines__coded_domains),
+and this file holds that frozen copy to the domains those exporters' own tests
+decode with, so a typo in the var fails a test rather than a hiker's blaze.
 """
 
 import json
@@ -32,6 +37,10 @@ from shapely.strtree import STRtree
 
 import export_elevation
 from tests.conftest import spatial_connection
+from tests.test_export_spurs import TYPE_DOMAIN as EXPORT_SPURS_TYPE_DOMAIN
+from tests.test_export_trails import BLAZE_DOMAIN_RESPONSE
+from tests.test_lib_blaze import SIDE_TRAILS_BLAZE_DOMAIN
+from tests.test_lib_spurs import TYPE_DOMAIN as LIB_SPURS_TYPE_DOMAIN
 
 DBT = Path(__file__).parent.parent / "dbt"
 INTERMEDIATE = DBT / "models" / "intermediate" / "trail_lines" / "_trail_lines__intermediate.yml"
@@ -69,6 +78,43 @@ def test_the_mile_axis_vars_are_export_elevations_constants():
     assert variables["mile_axis_holdout_max_median_mi"] == export_elevation.MARKER_HOLDOUT_MAX_MEDIAN_MI
     assert variables["mile_axis_holdout_max_p95_mi"] == export_elevation.MARKER_HOLDOUT_MAX_P95_MI
     assert variables["mile_axis_holdout_max_mi"] == export_elevation.MARKER_HOLDOUT_MAX_MI
+
+
+def _coded_domain(source_key: str, field_name: str) -> dict[str, str]:
+    """One field's rows of the trail_lines_coded_domains var, as {code: label}."""
+    rows = yaml.safe_load((DBT / "dbt_project.yml").read_text())["vars"]["trail_lines_coded_domains"]
+    return {code: label for source, field, code, label in rows if (source, field) == (source_key, field_name)}
+
+
+def test_the_coded_domains_var_is_the_blaze_domain_export_trails_tests_decode_with():
+    """side_trails' Blaze is test_lib_blaze.py's whole domain, its codes as the text the layer serves."""
+    blaze = _coded_domain("side_trails", "Blaze")
+    assert blaze == {str(code): label for code, label in SIDE_TRAILS_BLAZE_DOMAIN.items()}
+    served = BLAZE_DOMAIN_RESPONSE["fields"][0]["domain"]["codedValues"]
+    assert {value["code"]: value["name"] for value in served}.items() <= blaze.items()
+
+
+def test_the_coded_domains_var_is_the_type_domain_export_spurs_tests_decode_with():
+    """side_trails' Type is test_lib_spurs.py's whole domain but one label, and holds test_export_spurs.py's codes.
+
+    test_lib_spurs.py labels code "2" "Signficant Non-Blaze", the misspelling
+    60 features carry in place of a code (lib/spurs.py's TYPE_LITERAL_ALIASES).
+    The live layer's domain, read 2026-10-02, spells it "Significant
+    Non-Blaze", and the var follows the layer. No spur can differ for it:
+    lib/spurs.decode_type reads a label only to turn a name back into its
+    code, both spellings already decode to "2" through the aliases, and "2"
+    is not SPUR_TYPE_CODE.
+    """
+    type_domain = _coded_domain("side_trails", "Type")
+    assert LIB_SPURS_TYPE_DOMAIN["2"] == "Signficant Non-Blaze"
+    assert type_domain == {**LIB_SPURS_TYPE_DOMAIN, "2": "Significant Non-Blaze"}
+    assert EXPORT_SPURS_TYPE_DOMAIN.items() <= type_domain.items()
+
+
+def test_the_coded_domains_var_holds_only_the_fields_the_exporters_decode():
+    """export_trails.py decodes side_trails' Blaze and export_spurs.py its Type, so every row is pinned by a test above."""
+    rows = yaml.safe_load((DBT / "dbt_project.yml").read_text())["vars"]["trail_lines_coded_domains"]
+    assert {(source, field) for source, field, _code, _label in rows} == {("side_trails", "Blaze"), ("side_trails", "Type")}
 
 
 def _columns(rows: list[dict], names: tuple[str, ...]) -> list[dict]:

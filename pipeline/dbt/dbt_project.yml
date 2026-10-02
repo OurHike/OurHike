@@ -114,6 +114,32 @@ vars:
   mile_axis_holdout_max_p95_mi: 0.25
   mile_axis_holdout_max_mi: 1.0
 
+  # The ArcGIS coded-value domains export_trails.py and export_spurs.py read
+  # live (lib/arcgis.get_field_coded_domain) mid-transform, as rows of
+  # [source_key, field_name, code, label]: int_trail_lines__coded_domains.
+  # @unvalidated as a copy: read from side_trails' live field metadata
+  # (`fields[].domain.codedValues`) on 2026-10-02, and nothing re-reads it.
+  # What settles it is the extract landing that metadata, which replaces
+  # this var in one model. tests/test_dbt_trail_lines_parity.py holds it to
+  # the codes export_trails.py's and export_spurs.py's own tests use.
+  trail_lines_coded_domains:
+    - [side_trails, Blaze, "0", "None"]
+    - [side_trails, Blaze, "1", "Blue"]
+    - [side_trails, Blaze, "2", "White"]
+    - [side_trails, Blaze, "3", "Red"]
+    - [side_trails, Blaze, "4", "Orange"]
+    - [side_trails, Blaze, "5", "Yellow"]
+    - [side_trails, Blaze, "6", "Green"]
+    - [side_trails, Blaze, "7", "Purple"]
+    - [side_trails, Blaze, "8", "Black"]
+    - [side_trails, Blaze, "9", "Other"]
+    - [side_trails, Type, "0", "Access (eg Parking)"]
+    - [side_trails, Type, "1", "Alternate Route"]
+    - [side_trails, Type, "2", "Significant Non-Blaze"]
+    - [side_trails, Type, "3", "Spur (eg View, Camp)"]
+    - [side_trails, Type, "4", "Other"]
+    - [side_trails, Type, "5", "Unknown"]
+
   dbt_project_evaluator:
     # The mart names the maintainer chose carry no dim_/fct_ prefix
     # ("do not keep the dim_ and fct_ prefixes in the marts folders. Just

@@ -1,5 +1,6 @@
 -- The Highlands Trail's sections. Same shape and scope as
--- stg_nynjtc__long_path; read that model for why there is no id column.
+-- stg_nynjtc__long_path, geometry included; read that model for why there is
+-- no id column, and for what reads `geom`.
 --
 -- 12 section features, measured live 2026-08-24. The measured field list is
 -- Trail_Name/Section_Name/Source/MapOrder and that is all four of them.
@@ -37,7 +38,8 @@ renamed as (
         section_name,
         source as published_by,
         maporder as map_order,
-        _loaded_at as loaded_at
+        _loaded_at as loaded_at,
+        geom
     from layer
 )
 

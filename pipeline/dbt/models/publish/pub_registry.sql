@@ -3,7 +3,7 @@
 -- in the shape export_sources.py's build_registry() writes: one row per
 -- source by provider and key, then the organizations by provider.
 with sources as (
-    select * from {{ ref('sources') }}
+    select * from {{ ref('sources', v=1) }}
 ),
 
 registered as (

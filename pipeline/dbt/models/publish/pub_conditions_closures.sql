@@ -38,7 +38,7 @@ with ourhike_rows as (
         start_lon,
         end_lat,
         end_lon
-    from {{ ref('closures') }}
+    from {{ ref('closures', v=1) }}
     where source_key = 'ourhike_closures'
     union all
     select
@@ -59,7 +59,7 @@ with ourhike_rows as (
         start_lon,
         end_lat,
         end_lon
-    from {{ ref('warnings') }}
+    from {{ ref('warnings', v=1) }}
     where source_key = 'ourhike_closures' and warning_kind = 'org_notice'
 ),
 

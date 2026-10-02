@@ -30,9 +30,12 @@
 -- - `trail_line_id`, `{source_key}:{id}` (TL05, lib/feature_id.py): the
 --   layer's own id (int_trail_lines__network_unioned's `upstream_id`), else
 --   `generated-<n>`, n the row's place among its layer's rows, every row
---   counted as the Python counts them. SQL has no file order, so a row's
---   place is its staging key's (decision 40); the Python's is the fetched
---   file's. Both renumber when the rows change.
+--   counted as the Python counts them. The place is the raw table's order
+--   (`source_row`) for the two NYNJTC layers, the only ones with no id
+--   field, which is the fetched file's order the Python counts in; any
+--   other layer that reached this fallback would be numbered in staging-key
+--   order, because its base model carries no such column. Positional ids
+--   renumber when a layer's rows change, in both.
 -- - `name`, declared_name(): the entry's `name_constant`, else the name
 --   column's value, null where it is one of the entry's `name_placeholders`
 --   (case and surrounding space ignored; DuckDB's lower() where Python
@@ -143,9 +146,17 @@ read_fields as (
         json_extract(
             unioned.properties, '$.' || sources.name_column
         ) as name_value,
-        row_number() over (
-            partition by unioned.source_key order by unioned.trail_segment_key
-        ) - 1 as layer_position
+        -- The feature's place in its layer, for `generated-<n>`: the raw
+        -- table's order where the staging model carries it, which is the
+        -- fetched file's (Reasoned, stg_nynjtc__long_path), else the
+        -- staging key's, every row counted.
+        coalesce(
+            unioned.source_row,
+            row_number() over (
+                partition by unioned.source_key
+                order by unioned.trail_segment_key
+            ) - 1
+        ) as layer_position
     from unioned
     inner join sources on unioned.source_key = sources.source_key
     left join boundaries on unioned.source_key = boundaries.source_key

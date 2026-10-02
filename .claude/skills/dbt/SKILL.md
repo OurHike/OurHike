@@ -284,6 +284,7 @@ and each feature appears once, its stewards attached from
 | no `foreign_key` constraint | Reasoned: DuckDB refuses to drop a table a foreign key references, and every rebuild drops it | a relationships test instead |
 | `primary_key` and `check` fail any build into DuckLake | measured 2026-10-01 on 2.0.5 | why the warehouse moves to DuckLake only at phase 4 |
 | v2 refuses `contract` on a snapshot; a contracted incremental model must set `on_schema_change` | measured 2026-10-01 on 2.0.5 | matters only once decision 27 is answered |
+| DuckDB's `round(x, n)` is not Python's `round()`: it scales by 10ⁿ and rounds half away from zero, where Python rounds the double's exact decimal value, half to even | measured 2026-10-02 on DuckDB 1.5.5 (the tl-net worker): of 266,800 doubles built to sit on, or an ulp either side of, a half at 6, 3 and 2 decimals, `round()` answered differently from Python on 14,125 and `cast(printf('%.6f', x) as double)` on none, at all three; DuckDB's JSON text of the printf result equalled `json.dumps` on all of them | a writer whose digits must match a Python exporter's cuts with `cast(printf('%.<n>f', x) as double)`, never `round()` |
 
 **Absent means unknown, never zero.** The safety fields in `pipeline/ELT.md`,
 "The eleven marts", are each a constraint or a test. Three examples: `capacity

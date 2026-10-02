@@ -110,12 +110,8 @@ NETWORK_ID_REASONS = {
         "server row id or to its place in the file"
     ),
     "feature_id_not_landed": (
-        "expected by TL05's ledger row: the extract lands a feature's properties and geometry and not its "
-        "GeoJSON id, so a layer whose only id is that one is numbered by place"
-    ),
-    "position_in_staging_key_order": (
-        "expected by TL05's ledger row: generated-<n> counts a layer's rows in staging-key order, because the "
-        "warehouse holds no row order, where the Python counts them in the fetched file's"
+        "expected by TL05's ledger row until the extract lands it: the extract lands a feature's properties and "
+        "geometry and not its GeoJSON id, so a layer whose only id is that one is numbered by its place in the file"
     ),
 }
 
@@ -126,8 +122,9 @@ def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
     A line is the same line in both files when its source, its other
     properties and its geometry are. Where such a line carries other ids in
     the two files, every id it carries is explained, by the case its ids
-    show; any other difference in a record keyed by one of them still counts,
-    because the record it pairs with differs by more than an id.
+    show. Two positional ids for one line are never explained: both writers
+    number a layer with no id in its file's order (int_trail_lines__network_judged),
+    so a line they number differently is a defect.
     """
 
     def line(feature: dict) -> str:
@@ -150,11 +147,8 @@ def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
         if was == now:
             continue
         if all(positional(feature_id) for feature_id in was + now):
-            case = "position_in_staging_key_order"
-        elif all(positional(feature_id) for feature_id in now):
-            case = "feature_id_not_landed"
-        else:
-            case = "globalid_in_any_case"
+            continue
+        case = "feature_id_not_landed" if all(positional(feature_id) for feature_id in now) else "globalid_in_any_case"
         for feature_id in set(was) | set(now):
             reasons[f"properties.id {feature_id}"] = NETWORK_ID_REASONS[case]
     return reasons

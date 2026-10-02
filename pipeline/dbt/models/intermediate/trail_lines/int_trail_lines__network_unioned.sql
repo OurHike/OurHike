@@ -64,11 +64,14 @@
     ('cdtc_centerline', 'cdtc', 'base_cdtc__centerline'),
     ('wi_ice_age_trail', 'wi_dnr', 'base_wi_dnr__wi_ice_age_trail'),
 ] %}
+{#- The fourth field: whether the stg model carries `source_row`, the
+    raw table's order, which the two NYNJTC layers do because they have no
+    id field (stg_nynjtc__long_path says why). -#}
 {%- set staged_branches = [
-    ('oprhp_trails', 'nysparks', 'stg_oprhp__trails'),
-    ('nynjtc_long_path', 'nynjtc', 'stg_nynjtc__long_path'),
-    ('nynjtc_highlands_trail', 'nynjtc', 'stg_nynjtc__highlands_trail'),
-    ('mohonk_trails', 'mohonk', 'stg_mohonk__trails'),
+    ('oprhp_trails', 'nysparks', 'stg_oprhp__trails', false),
+    ('nynjtc_long_path', 'nynjtc', 'stg_nynjtc__long_path', true),
+    ('nynjtc_highlands_trail', 'nynjtc', 'stg_nynjtc__highlands_trail', true),
+    ('mohonk_trails', 'mohonk', 'stg_mohonk__trails', false),
 ] %}
 
 with
@@ -90,19 +93,20 @@ with
         '{{ club }}' as club,
         row_json.row_json,
         layer.geom,
+        cast(null as bigint) as source_row,
         layer._loaded_at
     from {{ ref(model) }} as layer
     inner join {{ source_key }}_json as row_json
         on layer.trail_segment_key = row_json.trail_segment_key
 ),
 {%- endfor %}
-{%- for source_key, club, model in staged_branches %}
+{%- for source_key, club, model, ordered in staged_branches %}
 {{ source_key }}_json as (
     select
         row_columns.trail_segment_key,
         to_json(row_columns) as row_json
     from (
-        select * exclude (geom, loaded_at)
+        select * exclude (geom, loaded_at{{ ', source_row' if ordered }})
         from {{ ref(model) }}
     ) as row_columns
 ),
@@ -114,6 +118,8 @@ with
         '{{ club }}' as club,
         row_json.row_json,
         layer.geom,
+        {{ 'layer.source_row' if ordered else 'cast(null as bigint)' }}
+            as source_row,
         layer.loaded_at as _loaded_at
     from {{ ref(model) }} as layer
     inner join {{ source_key }}_json as row_json
@@ -148,6 +154,7 @@ dec_hiking_trails as (
         'nysdec' as club,
         row_json.row_json,
         layer.geom,
+        cast(null as bigint) as source_row,
         layer.loaded_at as _loaded_at
     from {{ ref('stg_dec__hiking_trails') }} as layer
     inner join dec_hiking_trails_json as row_json
@@ -155,7 +162,11 @@ dec_hiking_trails as (
 ),
 
 unioned as (
-    {%- for source_key, club, model in base_branches + staged_branches %}
+    {%- for source_key, club, model in base_branches %}
+    select * from {{ source_key }}
+    union all by name
+    {%- endfor %}
+    {%- for source_key, club, model, ordered in staged_branches %}
     select * from {{ source_key }}
     union all by name
     {%- endfor %}
@@ -183,6 +194,9 @@ select
         json_extract_string(properties, '$.objectid'),
         json_extract_string(properties, '$._socrata_id')
     ) as upstream_id,
+    -- The row's place in its raw table, where the layer's stg model carries
+    -- it: the order the Python numbers a feature with no id by.
+    source_row,
     geom,
     _loaded_at
 from keyless

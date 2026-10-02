@@ -1687,7 +1687,10 @@ def page_behind_sitemap(row: dict) -> bool:
     it on 85, helene-storm-damage carrying a datePublished of 2026-07-29 after
     a dateModified of 2025-09-23). So a page that reads older than its lastmod
     was served from a cache that had not caught up with the sitemap yet: the
-    sitemap and the pages sit behind separate caches (ATC_LISTING_REUSE_SECONDS).
+    sitemap and each page are cached apart, each answered with
+    `cache-control: max-age=600` from Cloudflare's edge (Measured 2026-10-02,
+    the sitemap at 18:13 UTC, harpers-ferry-footbridge-closure at 18:59 UTC,
+    `cf-cache-status: HIT`).
     False where either stamp cannot be read, since that proves nothing.
     """
     stamps = [stamp for stamp in (_instant(row.get("date_modified")), _instant(row.get("date_published"))) if stamp]

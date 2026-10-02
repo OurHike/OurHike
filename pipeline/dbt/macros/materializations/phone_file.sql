@@ -11,6 +11,17 @@
     probe's gdal_file.sql, measured on dbt 2.0.6 against the Python writers,
     came out byte-identical apart from one trailing newline (ELT.md).
 
+    `format: json_document` is for a file whose top-level keys are data, not
+    columns: spurs.json is one object keyed by side-trail id, which no column
+    list can produce. The model selects ONE row with ONE column, `document`,
+    the whole file as JSON text, and it is written verbatim: COPY's CSV
+    format with no header, no quoting and no escaping, which writes the text
+    as it is plus one newline (measured 2026-10-02 on DuckDB 1.5.5 by the
+    tl-at worker: `{"side_trails:a":{"name":"x"},"side_trails:b":1}` came out
+    byte for byte). The delimiter is \x01, which no DuckDB JSON text holds
+    raw, because JSON escapes every control character. A model with any row
+    count but one fails before anything is written.
+
     `location` is a file name and never a path: DuckDB's COPY creates no
     directory (measured 2026-10-01 on DuckDB 1.5.5, "Cannot open file ...:
     No such file or directory"), so a nested location fails on any machine
@@ -24,8 +35,8 @@
   {%- set target_relation = this.incorporate(type='table') -%}
   {%- set name = config.require('location') -%}
   {%- set format = config.require('format') -%}
-  {%- if format != 'json' -%}
-    {{ exceptions.raise_compiler_error("phone_file writes format 'json' so far, not '" ~ format ~ "'") }}
+  {%- if format not in ('json', 'json_document') -%}
+    {{ exceptions.raise_compiler_error("phone_file writes format 'json' or 'json_document', not '" ~ format ~ "'") }}
   {%- endif -%}
   {%- if '/' in name or '\\' in name or name.startswith('.') -%}
     {{ exceptions.raise_compiler_error("phone_file's location is a file name in processed_dir, not '" ~ name ~ "'") }}
@@ -42,9 +53,21 @@
   {% call statement('main') -%}
     create or replace table {{ target_relation }} as ({{ compiled_code }})
   {%- endcall %}
-  {% call statement('write_file') -%}
-    copy (select * from {{ target_relation }}) to '{{ location }}' (format json)
-  {%- endcall %}
+  {% if format == 'json_document' %}
+    {% call statement('one_document') -%}
+      select error('phone_file json_document writes exactly one row, and this model has ' || count(*))
+      from {{ target_relation }}
+      having count(*) != 1
+    {%- endcall %}
+    {% call statement('write_file') -%}
+      copy (select document from {{ target_relation }}) to '{{ location }}'
+      (format csv, header false, quote '', escape '', delimiter e'\x01')
+    {%- endcall %}
+  {% else %}
+    {% call statement('write_file') -%}
+      copy (select * from {{ target_relation }}) to '{{ location }}' (format json)
+    {%- endcall %}
+  {% endif %}
   {{ run_hooks(post_hooks) }}
   {{ adapter.commit() }}
   {{ return({'relations': [target_relation]}) }}

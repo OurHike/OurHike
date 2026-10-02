@@ -17,6 +17,7 @@
 
 import { describe, it, expect } from 'vitest'
 import {
+  parsePackedProfile,
   parseProfile,
   profileSamples,
   ribbonSamples,
@@ -103,7 +104,7 @@ describe('parseProfile', () => {
 // as delta-coded columns of whole numbers. Elevation and miles are safety
 // fields, so the v2 file has to fill exactly the arrays v1's does - not
 // arrays close to them - and a DEM gap has to stay a gap.
-describe('parseProfile on a packed v2 profile', () => {
+describe('parsePackedProfile on a packed v2 profile', () => {
   // One sample at a mile no binary fraction holds (2,197.989), one at a
   // height none holds (5,300.1), a DEM gap, a step down, and a second piece.
   const V1 = published([
@@ -119,12 +120,17 @@ describe('parseProfile on a packed v2 profile', () => {
     part_start: [0, 3],
   })
 
-  it('parseProfile fills exactly the arrays v1 elevation_profile.json fills', () => {
-    expect(parseProfile(V2)).toEqual(parseProfile(V1))
+  it('parsePackedProfile fills exactly the arrays parseProfile fills from v1 elevation_profile.json', () => {
+    expect(parsePackedProfile(V2)).toEqual(parseProfile(V1))
+  })
+
+  it('parseProfile reads no packed profile, so a v1 build cannot mistake one for its own', () => {
+    expect(parseProfile(V2)).toBeNull()
+    expect(parsePackedProfile(V1)).toBeNull()
   })
 
   it('keeps the DEM gap as NaN and steps the next height from the last known one, not from 0', () => {
-    const profile = parseProfile(V2)
+    const profile = parsePackedProfile(V2)
 
     expect(Number.isNaN(profile?.elevationFt[2] ?? 0)).toBe(true)
     expect(profile?.elevationFt[3]).toBe(Math.fround(5299.9))
@@ -153,7 +159,7 @@ describe('parseProfile on a packed v2 profile', () => {
   ])('gives back nothing for %s rather than a profile off by it', (_case, columns) => {
     // Every value is a step from the one before, so one bad step would move
     // every later mile or height; the ribbon costs itself instead.
-    expect(parseProfile(JSON.stringify({ format: 2, ...columns }))).toBeNull()
+    expect(parsePackedProfile(JSON.stringify({ format: 2, ...columns }))).toBeNull()
   })
 })
 

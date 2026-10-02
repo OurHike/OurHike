@@ -32,6 +32,7 @@ import {
   HIGHLIGHTS_KEY,
   phoneFileKey,
   poiKey,
+  READS_V2,
   NEARBY_POI_KEY,
   REFRESHABLE_KEYS,
   RETIRED_POI_KEY,
@@ -54,7 +55,11 @@ import {
   storedTombstones,
   type Tombstones,
 } from './poiIdentity'
-import { parseProfile, type ElevationProfile } from './elevationProfile'
+import {
+  parsePackedProfile,
+  parseProfile,
+  type ElevationProfile,
+} from './elevationProfile'
 import type { NearbyPart } from './nearbyClause'
 import type { SpurRecord } from './spurDestination'
 import { publishedSnapshot, type PublishedHashLookup } from './dataManifest'
@@ -473,11 +478,12 @@ function waterDistanceProp(value: unknown): number | undefined {
  * reads the properties, exactly as every earlier build did, so a v1 file
  * reads the same numbers it always has. A v2 file (`v2/poi_<type>.geojson`,
  * `v2/nearby_poi.geojson`; config.ts's V2_PHONE_FILE_KEYS) carries it once,
- * as the Point's coordinates at 6 decimals, and no properties, so the
- * geometry is read only where the properties are absent. Each v2 coordinate
- * is Python's round(x, 6) of the property v1 carries (pipeline/parity.py's
- * v2 families hold the published files to that), so the two shapes place a
- * POI within 0.056 m of each other per axis.
+ * as the Point's coordinates at 6 decimals, and no properties, so a build
+ * that reads v2 (config.ts's READS_V2) reads the geometry where the
+ * properties are absent. Each v2 coordinate is Python's round(x, 6) of the
+ * property v1 carries (pipeline/parity.py's v2 families hold the published
+ * files to that), so the two shapes place a POI within 0.056 m of each other
+ * per axis.
  *
  * Anything else, including a non-finite number, is no position: the caller
  * drops the POI rather than draw it somewhere nobody said it was.
@@ -489,6 +495,9 @@ function poiPosition(
   if (typeof props.lat === 'number' && typeof props.lon === 'number') {
     return [props.lat, props.lon]
   }
+  // Only a v2 build reads the Point: a v1 build never fetches a v2 file, and
+  // the constant leaves this reading out of its bundle (config.ts's READS_V2).
+  if (!READS_V2) return null
   if (typeof geometry !== 'object' || geometry === null) return null
   const { type, coordinates } = geometry as { type?: unknown; coordinates?: unknown }
   if (type !== 'Point' || !Array.isArray(coordinates) || coordinates.length < 2)
@@ -1051,7 +1060,10 @@ async function fetchElevation(
     signal,
   )
   if (fetched === null) return null
-  return parseProfile(decode(fetched.bytes))
+  // A v2 build fetched the packed file (phoneFileKey); a v1 build never does,
+  // and the constant leaves the packed reader out of its bundle.
+  const text = decode(fetched.bytes)
+  return READS_V2 ? parsePackedProfile(text) : parseProfile(text)
 }
 
 export async function downloadTrailData({

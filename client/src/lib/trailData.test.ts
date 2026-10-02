@@ -64,6 +64,18 @@ vi.mock('./dataManifest', () => ({
 
 const mockedPublishedSnapshot = vi.mocked(publishedSnapshot)
 
+// Whether the build under test reads v2 phone files (config.ts's READS_V2).
+// A constant in a real build, so a v1 bundle carries no v2 reader; here a
+// switch, so the v2 tests below can stand in for the build that flips it and
+// every other test stays a v1 build.
+const build = vi.hoisted(() => ({ readsV2: false }))
+vi.mock('./config', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./config')>()),
+  get READS_V2() {
+    return build.readsV2
+  },
+}))
+
 /**
  * What `latest.json` publishes, in the shape the download now reads it: ONE
  * snapshot per attempt, handed back as a synchronous lookup (#717). It used to
@@ -314,12 +326,37 @@ describe('trail data', () => {
   // every waypoint, every water source among them (pipeline/ELT.md, "One copy
   // of each POI coordinate").
   describe('a POI position, in v1 and v2 files', () => {
+    beforeEach(() => {
+      build.readsV2 = true
+    })
+    afterEach(() => {
+      build.readsV2 = false
+    })
+
     function collection(features: Array<Record<string, unknown>>) {
       return JSON.stringify({
         type: 'FeatureCollection',
         features: features.map((feature) => ({ type: 'Feature', ...feature })),
       })
     }
+
+    it('readPois in a v1 build drops a POI with no lat or lon properties, whatever its Point says', async () => {
+      // A v1 build never fetches a v2 file, so its bundle leaves the Point
+      // reading out (config.ts's READS_V2), and a feature without the two
+      // properties is the broken row it always was.
+      build.readsV2 = false
+      serve(
+        collection([
+          {
+            properties: { id: 'atc_water:1', poi_type: 'water' },
+            geometry: { type: 'Point', coordinates: [-69.260001, 45.450001] },
+          },
+        ]),
+      )
+      await downloadTrailData()
+
+      expect(store.get(POIS_KEY)).toEqual([])
+    })
 
     it('readPois takes a v2 POI with no lat or lon properties from geometry.coordinates, lon first', async () => {
       serve(

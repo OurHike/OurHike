@@ -779,8 +779,9 @@ export function poiKey(type: PoiType): string {
  * position held once, as the point at 6 decimals. Each decodes to the values
  * its v1 carries; pipeline/parity.py's v2 families hold the published files
  * to that, and this build's readers decode either shape
- * (elevationProfile.ts's parseProfile, trailMiles.ts's parseTrailMiles,
- * trailData.ts's readPois).
+ * (elevationProfile.ts's parsePackedProfile, trailMiles.ts's
+ * parseTrailMiles, trailData.ts's readPois), each in a build whose
+ * READS_V2 (below) is true.
  *
  * trails.geojson is not here: its 6 decimals are v1's already (decision 8),
  * so it has no v2.
@@ -808,6 +809,23 @@ export const V2_PHONE_FILE_KEYS: ReadonlySet<string> = new Set([
 export function phoneFileKey(key: string, schema: string = DATA_SCHEMA_VERSION): string {
   return schema === 'v2' && V2_PHONE_FILE_KEYS.has(key) ? `v2/${key}` : key
 }
+
+/**
+ * Whether this build reads v2 phone files: only once DATA_SCHEMA_VERSION says
+ * 'v2', the moment phoneFileKey starts fetching them.
+ *
+ * A CONSTANT, AND THAT IS THE POINT OF IT. The bundler folds it, so a v1
+ * build's bundle carries none of the v2 readers it gates
+ * (elevationProfile.ts's parsePackedProfile, trailData.ts's poiPosition
+ * reading a Point), which a build that never fetches a v2 file could never
+ * run. Ungated, those readers and trailMiles.ts's unpackTrailMiles took the
+ * eager closure 75 bytes over the launch budget
+ * (scripts/check-build-output.mjs §8): 245,835 bytes against 245,760 on PR
+ * #1805's preview run at 998575c7, measured by that check.
+ * unpackTrailMiles stays ungated because it also runs in the trail index's
+ * worker (lib/trailIndexWorker.ts), which this module does not reach.
+ */
+export const READS_V2 = (DATA_SCHEMA_VERSION as string) === 'v2'
 
 /**
  * Every artifact `downloadTrailData` fetches, and therefore every artifact a

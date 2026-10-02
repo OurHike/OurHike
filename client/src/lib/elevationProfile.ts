@@ -150,9 +150,26 @@ function unpackProfile(packed: PackedProfile): ElevationProfile | null {
 }
 
 /**
+ * The packed `v2/elevation_profile.json` (PackedProfile above) as the
+ * parallel arrays parseProfile reads v1's into, or null if it is not that
+ * format: parseProfile's posture, for parseProfile's reason below. Only a
+ * build that reads v2 calls it (lib/trailData.ts's fetchElevation, gated on
+ * config.ts's READS_V2), so a v1 build's bundle leaves it out.
+ */
+export function parsePackedProfile(text: string): ElevationProfile | null {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return null
+  }
+  return isPackedProfile(parsed) ? unpackProfile(parsed) : null
+}
+
+/**
  * The published `elevation_profile.json` as parallel arrays, or null if it is
- * not the array of samples this expects - or, from a v2 release, the packed
- * `v2/elevation_profile.json` (PackedProfile above), read to the same arrays.
+ * not the array of samples this expects. A v2 release's packed file has its
+ * own reader, parsePackedProfile above, which fills the same arrays.
  *
  * Returning null rather than throwing on a malformed body is the same call
  * refreshTrailData() makes about a truncated trails.geojson: the ribbon is a
@@ -166,7 +183,6 @@ export function parseProfile(text: string): ElevationProfile | null {
   } catch {
     return null
   }
-  if (isPackedProfile(parsed)) return unpackProfile(parsed)
   if (!Array.isArray(parsed)) return null
 
   const distanceMi = new Float32Array(parsed.length)

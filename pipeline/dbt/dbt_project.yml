@@ -165,6 +165,24 @@ vars:
     - '\bnot\s+(?:on|in)\b[^.;]{0,30}\blist\b'
     - '\bneed\s+to\s+determine\b'
     - '\bsocked\b'
+  # The trail_lines network's constants (tl-net), read by the
+  # int_trail_lines__network_* models and held to the Python's own by
+  # tests/test_dbt_trail_lines_network_parity.py until stage 5 of #1793
+  # deletes the Python: export_trails.py's DEFAULT_SIMPLIFY_TOLERANCE_M and
+  # OVERVIEW_SIMPLIFY_TOLERANCE_M, lib/duplicates.py's two, and
+  # export_nearby_trails.py's others under their own names. Each one's
+  # evidence is beside it in the Python.
+  trail_lines_network_navigation_tolerance_m: 1.0
+  trail_lines_network_coordinate_decimals: 6
+  trail_lines_network_duplicate_tolerance_m: 10.0
+  trail_lines_network_duplicate_min_share: 0.5
+  trail_lines_network_inside_boundary_min_fraction: 0.8
+  trail_lines_network_overview_simplify_tolerance_m: 100.0
+  trail_lines_network_chain_tolerance_m: 200.0
+  trail_lines_network_named_trail_threshold_miles: 50.0
+  trail_lines_network_overview_min_feature_m: 1873.7331444281513
+  trail_lines_network_overview_seam_tolerance_m: 936.8665722140756
+  trail_lines_network_overview_seam_decimals: 3
 
   dbt_project_evaluator:
     # The mart names the maintainer chose carry no dim_/fct_ prefix

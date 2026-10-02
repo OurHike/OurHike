@@ -224,8 +224,10 @@ jobs:
             pipeline/parity.py
             pipeline/export_podcasts.py
             pipeline/export_sources.py
-            pipeline/export_poi.py
+            pipeline/export_nearby_trails.py
+            pipeline/export_trails.py
             pipeline/export_elevation.py
+            pipeline/export_poi.py
             pipeline/export_nearby_poi.py
             pipeline/export_retired_poi.py
             pipeline/requirements.txt
@@ -415,13 +417,19 @@ jobs:
           python parity.py podcasts --new data/processed/dbt/podcasts_episodes.json
           python parity.py stewards --new data/processed/dbt/stewards.json
           python parity.py registry --new data/processed/dbt/registry.json
+          # The trail lines network, whose input is the fixture warehouse, not
+          # a file in git. export_nearby_trails.py imports shapely, numpy,
+          # pyproj, pmtiles and, through export_trails.py, rasterio, none of
+          # which requirements-dbt.txt pins, so today's exporter runs under the
+          # pipeline's own pins, in a venv of its own.
+          python -m venv "$RUNNER_TEMP/exporters"
+          "$RUNNER_TEMP/exporters/bin/pip" install --quiet -r requirements.txt
+          "$RUNNER_TEMP/exporters/bin/python" parity.py nearby_trails --new data/processed/dbt/nearby_trails.geojson
+          "$RUNNER_TEMP/exporters/bin/python" parity.py network_overview --new data/processed/dbt/network_overview.geojson
           # The points_of_interest family's ten files, on the fixture warehouse
           # and the reviewed files in git (water distances, capacities, the
-          # identity ledger). export_poi.py imports shapely, numpy and
-          # rasterio, which requirements-dbt.txt does not carry, so the
-          # exporters run in a venv of the pipeline's own pins.
-          python -m venv "$RUNNER_TEMP/exporters"
-          "$RUNNER_TEMP/exporters/bin/pip" install -r requirements.txt
+          # identity ledger), in the same venv: export_poi.py imports shapely,
+          # numpy and, through export_elevation.py, rasterio.
           for poi_type in shelter campsite water resupply viewpoint parking privy trailhead; do
             "$RUNNER_TEMP/exporters/bin/python" parity.py "poi_$poi_type" --new "data/processed/dbt/poi_$poi_type.geojson"
           done

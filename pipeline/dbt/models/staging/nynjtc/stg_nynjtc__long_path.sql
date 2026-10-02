@@ -1,7 +1,10 @@
--- The Long Path's per-segment attributes - the first trail in this warehouse
--- that is not the A.T., and the model Phase D exists to make ordinary
--- (#100). Attributes only; geometry stays in the Python spatial scripts,
--- the same scope line stg_atc__centerline_segments follows.
+-- The Long Path's segments - the first trail in this warehouse that is not
+-- the A.T., and the model Phase D exists to make ordinary (#100). `geom` is
+-- carried for int_trail_lines__network_unioned, which publishes these lines
+-- from stage 3 of #1793 — Rebuild the data platform as dlt → dbt: seven
+-- contracted marts, a monthly refresh, published docs, and lighter phone
+-- downloads. Until then this model was attributes only, and the lines
+-- stayed in the Python spatial scripts.
 --
 -- 43 polyline segments, measured live 2026-08-24 - the same count and the
 -- same field list the survey read on 2026-08-18, so the shelf has not moved
@@ -29,7 +32,17 @@
 with layer as (
     -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
     -- hint); cast here, as decision 40 has staging do.
+    --
+    -- `rowid` is the row's place in the raw table, which extract/_warehouse.py
+    -- fills in the order the layer's pages served the features: the order
+    -- fetch_external_layers.py writes the GeoJSON export_nearby_trails.py
+    -- reads (Reasoned from both files, as stg_atc__centerline_segments has
+    -- it; @unvalidated across a load dlt splits into more than one file).
+    -- This layer has no id field, so lib/feature_id.py's last fallback,
+    -- `generated-<place in the file>`, is its published id, and
+    -- int_trail_lines__network_judged numbers it by `source_row`.
     select
+        rowid as source_row,
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
     from {{ source('nynjtc', 'raw_nynjtc__nynjtc_long_path') }}
@@ -50,7 +63,9 @@ renamed as (
         lp_section,
         guideurl as guide_url,
         comments,
-        _loaded_at as loaded_at
+        _loaded_at as loaded_at,
+        geom,
+        source_row
     from layer
 )
 

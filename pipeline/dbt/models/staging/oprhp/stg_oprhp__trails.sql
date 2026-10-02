@@ -1,6 +1,11 @@
--- NYS Parks' statewide trail network, attributes only - same scope line as
--- the other line layers, and no id column for the same reason
--- (stg_nynjtc__long_path has the argument).
+-- NYS Parks' statewide trail network, keyed on GlobalID (decision 40), with
+-- its geometry. `globalid` and `geom` are carried for
+-- int_trail_lines__network_unioned, which publishes these lines from stage 3 of
+-- #1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a
+-- monthly refresh, published docs, and lighter phone downloads. Until then
+-- this model was attributes only and the lines stayed in the Python spatial
+-- scripts. `globalid` is also what lib/feature_id.py builds the published
+-- `id` from, so it is staged as itself and not only inside the key.
 --
 -- 16,641 polyline segments, measured 2026-08-18, and the largest single
 -- layer the warehouse now holds.
@@ -36,6 +41,7 @@ renamed as (
             "'oprhp_trails'",
             'globalid',
         ]) }} as trail_segment_key,
+        globalid,
         name,
         alt_name,
         unit,
@@ -51,7 +57,8 @@ renamed as (
         ss,
         snowmb,
         miles,
-        _loaded_at as loaded_at
+        _loaded_at as loaded_at,
+        geom
     from source
 )
 

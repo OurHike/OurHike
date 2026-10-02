@@ -45,6 +45,9 @@ PUBLISHING_PATHS = {
     # exact (#1552). Under "at least these five" it had joined the roster on
     # main without anyone writing it down here.
     "publish-weather.yml",
+    # The seventh, from #1793's monthly lane (pipeline/ELT.md, "Workflows"):
+    # its `publish` job runs `python publish.py` with OURHIKE_PHONE_FILES=dbt.
+    "refresh-reference.yml",
 }
 
 

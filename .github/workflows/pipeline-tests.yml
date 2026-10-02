@@ -227,6 +227,8 @@ jobs:
             pipeline/export_nearby_trails.py
             pipeline/export_trails.py
             pipeline/export_elevation.py
+            pipeline/export_places.py
+            pipeline/export_spurs.py
             pipeline/requirements.txt
             pipeline/check_freshness.py
             pipeline/export_conditions.py

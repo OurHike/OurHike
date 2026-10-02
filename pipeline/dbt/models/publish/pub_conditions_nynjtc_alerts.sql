@@ -78,7 +78,7 @@ judged as (
             'int_closures__gate has no row for nynjtc_trail_alerts'
         ) as held_because
     from published
-    left join gate on true
+    left join gate on gate.source_key = 'nynjtc_trail_alerts'
 )
 
 select

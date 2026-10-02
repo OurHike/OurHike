@@ -76,7 +76,7 @@ judged as (
         ) as held_because,
         coalesce(gate.awaiting_review, false) as awaiting_review
     from published
-    left join gate on true
+    left join gate on gate.source_key = 'atc_trail_updates'
 )
 
 select

@@ -242,3 +242,27 @@ sources:
             description: The row's place in the file, from 0. The published order.
           - name: _file
             description: The file's fields besides `updates` and `_README`, as JSON text, on every row.
+      - name: raw_atc__atc_updates
+        data_tests:
+          # Rows sharing base_atc__atc_updates's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'reference/atc_updates.json'", "_path"]
+        config:
+          # The same file as raw_atc__atc_trail_updates, on the same lane, with
+          # no freshness for the same reason.
+          freshness: null
+          meta:
+            cadence: hourly
+        description: >
+          reference/atc_updates.json whole, as one row (extract/atc/closures.py's
+          second resource). The review is a fact about the file, so this is
+          where int_closures__gate reads `reviewed_at`, even when the file's
+          `updates` is empty and raw_atc__atc_trail_updates has no rows to
+          carry it.
+        columns:
+          - name: row_json
+            description: The file as written, `_README` aside, as JSON text.
+            data_tests: [not_null]
+          - name: _path
+            description: The file's path in the repository.

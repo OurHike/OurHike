@@ -60,14 +60,6 @@ DELIBERATE_ATC_ROWS = {36}
 #        SQL refuses it as a payload whose shape has changed.
 DELIBERATE_NYNJTC_POSTS = {"n09", "n14", "n15", "n16"}
 
-# int_closures__gate's unit tests where the gate and export_atc_updates.py's
-# main() disagree on whether conditions/atc_updates.json is written: an empty
-# reviewed file. Python publishes `atc_updates: []`; the review date rides each
-# row's `_file` in the warehouse, so with no rows there is none to read, and
-# the gate holds the file back. Landing the document whole beside its rows
-# would let the gate read the date, and end this difference.
-DELIBERATE_GATE_TESTS = {"int_closures__gate_holds_back_an_empty_atc_file_and_an_unverified_closure"}
-
 
 def _unit_tests(path: Path) -> dict[str, dict]:
     return {test["name"]: test for test in yaml.safe_load(path.read_text())["unit_tests"]}
@@ -153,14 +145,23 @@ GOOD_ROW = json.loads(
     ][0]["atc_update"]
 )
 
-# The file each of int_closures__gate's ATC unit tests stands for.
+# The file each of int_closures__gate's ATC unit tests stands for. The gate
+# reads the review from the file landed whole (base_atc__atc_updates), so an
+# empty reviewed file passes, as export_atc_updates.py publishes it.
 GATE_FILES = {
     "int_closures__gate_holds_back_one_bad_atc_row_and_nothing_else": {
         "reviewed_at": "2026-08-24",
         "updates": [GOOD_ROW, {key: value for key, value in GOOD_ROW.items() if key != "obstructs_trail"} | {"atc_id": "a01"}],
     },
-    "int_closures__gate_holds_back_an_unreviewed_atc_file": {"updates": [GOOD_ROW]},
-    "int_closures__gate_holds_back_an_empty_atc_file_and_an_unverified_closure": {"reviewed_at": "2026-08-24", "updates": []},
+    "int_closures__gate_holds_back_an_unreviewed_atc_file": {"reviewed_at": "  ", "updates": [GOOD_ROW]},
+    "int_closures__gate_passes_an_empty_reviewed_atc_file_and_holds_back_an_unverified_closure": {
+        "reviewed_at": "2026-08-24",
+        "updates": [],
+    },
+    "int_closures__gate_holds_back_an_atc_file_whose_updates_is_not_a_list": {
+        "reviewed_at": "2026-08-24",
+        "updates": {"a01": GOOD_ROW},
+    },
 }
 
 
@@ -169,9 +170,6 @@ def test_the_gate_holds_back_what_export_atc_updates_does_not_publish(name, tmp_
     test = _unit_tests(CLOSURES)[name]
     (atc,) = [row for row in test["expect"]["rows"] if row["source_key"] == "atc_trail_updates"]
     python_publishes = isinstance(_bake(tmp_path, monkeypatch, GATE_FILES[name]), dict)
-    if name in DELIBERATE_GATE_TESTS:
-        assert python_publishes and not atc["passed"], f"{name} is no longer a deliberate difference"
-        return
     assert python_publishes == atc["passed"], name
 
 

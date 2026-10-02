@@ -2,8 +2,9 @@
 -- against lib/atc_updates.py's file_problems() (CL01-CL06), with EVERY
 -- problem a row has, in the order row_problems() finds them, in `problems`.
 -- An empty list means the row is fine. int_closures__gate fails ATC's whole
--- file on any problem, or on a file nobody reviewed, as export_atc_updates.py
--- refuses it (CL05): "a partial set of safety notices is worse than none".
+-- file on any problem, as export_atc_updates.py refuses it (CL05): "a
+-- partial set of safety notices is worse than none". The review is the
+-- file's, and the gate reads it from base_atc__atc_updates.
 --
 -- THE CHECKS, IN row_problems()'S ORDER, each only for a field the row has
 -- (`field in row`; a null value is present):
@@ -38,7 +39,6 @@ fields as (
     select
         atc_update_row_key,
         file_row,
-        reviewed_file,
         _loaded_at,
         json_type(atc_update) as update_type,
         case
@@ -354,14 +354,6 @@ select
     obstructs_trail,
     updated_at,
     source_url,
-    json_extract_string(reviewed_file, '$.reviewed_at') as reviewed_at,
-    coalesce(
-        json_type(json_extract(reviewed_file, '$.reviewed_at')) = 'VARCHAR'
-        and {{ python_strip(
-            "json_extract_string(reviewed_file, '$.reviewed_at')"
-        ) }} != '',
-        false
-    ) as is_reviewed,
     problems,
     -- The same problems as one line each joined by " | ", for `dbt show` and
     -- the unit test. Null where the row is fine.

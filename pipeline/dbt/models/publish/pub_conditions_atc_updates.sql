@@ -57,23 +57,18 @@ published as (
         on atc_rows.source_row_key = checked.atc_update_row_key
 ),
 
-review as (
-    select max(reviewed_at) as reviewed_at from checked
-),
-
 -- One row whatever the gate holds, so a missing gate or registry row fails
 -- the write rather than writing no document at all.
 judged as (
     select
         published.atc_updates,
-        review.reviewed_at,
+        gate.reviewed_at,
         coalesce(gate.passed, false) as passed,
         coalesce(
             gate.held_because,
             'int_closures__gate has no row for atc_trail_updates'
         ) as held_because
     from published
-    cross join review
     left join gate on true
 )
 

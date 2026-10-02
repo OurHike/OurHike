@@ -9,12 +9,13 @@
 -- pub_conditions_closures).
 --
 -- WHAT HOLDS A SOURCE BACK, each as today's code holds it back:
---   atc_trail_updates     any row problem (CL01-CL06), or a file nobody
---                         reviewed (no `reviewed_at`), or a file with no rows,
---                         from which no review date can be read: an empty
---                         reviewed file publishes `atc_updates: []` today, and
---                         the warehouse cannot tell it from an unreviewed one
---                         (the review rides each row's `_file`)
+--   atc_trail_updates     a file nobody reviewed (no `reviewed_at`, read
+--                         from the file landed whole, base_atc__atc_updates),
+--                         a file whose `updates` is not a list, then any row
+--                         problem (CL01-CL06), in export_atc_updates.py's
+--                         order; and a file whose two landings disagree on
+--                         how many rows it has. An empty reviewed file
+--                         passes, and publishes `atc_updates: []` as today
 --   nynjtc_trail_alerts   any post that cannot be read, or no posts at all,
 --                         which fetch_nynjtc_alerts.py reads as a broken parse
 --   ourhike_closures      a row that is not moderator-verified (CL15)
@@ -40,11 +41,46 @@ publication as (
     select * from {{ ref('int_sources__publication') }}
 ),
 
-atc_review as (
-    select
-        count(*) as rows_total,
-        coalesce(bool_and(is_reviewed), false) as is_reviewed
+atc_rows as (
+    select count(*) as rows_total
     from {{ ref('int_closures__atc_checked') }}
+),
+
+atc_document_fields as (
+    select
+        json_extract(document_json, '$.reviewed_at') as reviewed_at_json,
+        json_extract(document_json, '$.updates') as updates_json
+    from {{ ref('base_atc__atc_updates') }}
+),
+
+-- lib/atc_updates.py's is_reviewed() and file_problems()'s first check, on
+-- the document. `reviewed_at` is published as written, so it is kept as
+-- written here.
+atc_document as (
+    select
+        count(*) as documents,
+        max(
+            case
+                when json_type(reviewed_at_json) = 'VARCHAR'
+                    then json_extract_string(reviewed_at_json, '$')
+            end
+        ) as reviewed_at,
+        coalesce(
+            bool_and(
+                json_type(reviewed_at_json) = 'VARCHAR'
+                and {{ python_strip(
+                    "json_extract_string(reviewed_at_json, '$')"
+                ) }} != ''
+            ),
+            false
+        ) as is_reviewed,
+        max(
+            case
+                when json_type(updates_json) = 'ARRAY'
+                    then json_array_length(updates_json)
+            end
+        ) as updates_listed
+    from atc_document_fields
 ),
 
 gated_sources as (
@@ -77,6 +113,10 @@ judged as (
         coalesce(counts.rows_invalid, 0) as rows_invalid,
         coalesce(publication.may_publish, false) as may_publish,
         case
+            when gated_sources.source_key = 'atc_trail_updates'
+                then atc_document.reviewed_at
+        end as reviewed_at,
+        case
             when publication.source_key is null
                 then
                     'int_sources__publication has no row for '
@@ -89,16 +129,28 @@ judged as (
                     || coalesce(publication.publication_rule, 'no rule') || ')'
             when
                 gated_sources.source_key = 'atc_trail_updates'
-                and atc_review.rows_total = 0
+                and atc_document.documents != 1
                 then
-                    'reference/atc_updates.json has no rows, so no review date '
-                    || 'to read: an unreviewed file publishes nothing'
+                    'reference/atc_updates.json did not land whole, so its '
+                    || 'review cannot be read'
             when
                 gated_sources.source_key = 'atc_trail_updates'
-                and not atc_review.is_reviewed
+                and not atc_document.is_reviewed
                 then
                     'reference/atc_updates.json has no reviewed_at, so nobody '
                     || 'has checked it against ATC''s page'
+            when
+                gated_sources.source_key = 'atc_trail_updates'
+                and atc_document.updates_listed is null
+                then '`updates` is missing or is not a list'
+            when
+                gated_sources.source_key = 'atc_trail_updates'
+                and atc_document.updates_listed != atc_rows.rows_total
+                then
+                    'reference/atc_updates.json lists '
+                    || atc_document.updates_listed || ' updates and '
+                    || atc_rows.rows_total || ' landed as rows, so the two '
+                    || 'landings are of different files'
             when
                 gated_sources.source_key = 'nynjtc_trail_alerts'
                 and coalesce(counts.rows_total, 0) = 0
@@ -112,7 +164,8 @@ judged as (
                     || 'notices is worse than none'
         end as held_because
     from gated_sources
-    cross join atc_review
+    cross join atc_rows
+    cross join atc_document
     left join counts on gated_sources.source_key = counts.source_key
     left join publication
         on gated_sources.source_key = publication.source_key
@@ -124,6 +177,7 @@ select
     rows_total,
     rows_invalid,
     may_publish,
+    reviewed_at,
     held_because is null as passed,
     held_because
 from judged

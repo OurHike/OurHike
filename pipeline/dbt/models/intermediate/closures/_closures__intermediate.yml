@@ -7,7 +7,8 @@ models:
       against lib/atc_updates.py's file_problems() in row_problems()'s order
       (CL01-CL06), with every problem the row has in `problems`. An empty
       list means the row publishes; int_closures__gate holds ATC's whole file
-      back on any problem, or on a file nobody reviewed (CL05).
+      back on any problem (CL05), and reads the review from the file landed
+      whole (base_atc__atc_updates).
     columns:
       - name: atc_update_row_key
         description: base_atc__atc_trail_updates's key, the file and the row's place in it.
@@ -35,10 +36,6 @@ models:
         description: Whether a hiker is stopped from walking through, where the reviewer wrote a real boolean.
       - name: updated_at
         description: ATC's own last edit of the notice, as the reviewer wrote it.
-      - name: reviewed_at
-        description: The file's `reviewed_at`, when a person last checked it against ATC's page.
-      - name: is_reviewed
-        description: Whether `reviewed_at` is a string with something in it (lib/atc_updates.py's is_reviewed()).
       - name: problems
         description: Every problem with the row, each prefixed by its label, in row_problems()'s order, then CL04's repeat.
       - name: problem
@@ -159,7 +156,9 @@ models:
       `passed`, so one bad ATC row holds back ATC's file and nothing else
       (pipeline/ELT.md, "A whole-file gate becomes a per-source gate"). The
       marts keep only passing sources, and each writer refuses to write a held
-      source's file, so the phone keeps the last good one.
+      source's file, so the phone keeps the last good one. ATC's review is
+      read from the file landed whole, so an empty reviewed file passes and
+      publishes `atc_updates: []`, as export_atc_updates.py does.
     data_tests:
       # Warns, never fails: failing the build would hold back every source
       # for one. dbt 2.0.6 reports only the count of held sources; to see
@@ -186,6 +185,11 @@ models:
           no row. The marts join that model themselves; it is here so a writer
           reads one answer per source.
         data_tests: [not_null]
+      - name: reviewed_at
+        description: >
+          ATC's `reviewed_at`, as written in the file landed whole, which
+          pub_conditions_atc_updates publishes; null for every other source,
+          which no person reviews as a file.
       - name: passed
         description: Whether its rows may reach the marts and its file may be written.
         data_tests: [not_null]
@@ -405,9 +409,12 @@ unit_tests:
       - input: ref('int_closures__atc_checked')
         format: sql
         rows: |
-          select true as is_reviewed
+          select 0 as file_row
           union all
-          select true as is_reviewed
+          select 1 as file_row
+      - input: ref('base_atc__atc_updates')
+        rows:
+          - {atc_updates_document_key: d1, document_json: '{"reviewed_at": "2026-08-24", "updates": [{}, {}]}'}
       - input: ref('int_sources__publication')
         rows:
           - {source_key: atc_trail_updates, may_publish: true}
@@ -426,7 +433,8 @@ unit_tests:
       An ATC file nobody has reviewed publishes nothing, however clean its
       rows (test_an_unreviewed_file_publishes_nothing_and_does_not_fail): an
       empty artifact would read as "ATC reports nothing", a different claim
-      from "we have not looked".
+      from "we have not looked". NYNJTC with no posts at all is a parse that
+      broke (fetch_nynjtc_alerts.py).
     model: int_closures__gate
     given:
       - input: ref('int_closures__unioned')
@@ -436,7 +444,10 @@ unit_tests:
       - input: ref('int_closures__atc_checked')
         format: sql
         rows: |
-          select false as is_reviewed
+          select 0 as file_row
+      - input: ref('base_atc__atc_updates')
+        rows:
+          - {atc_updates_document_key: d1, document_json: '{"reviewed_at": "  ", "updates": [{}]}'}
       - input: ref('int_sources__publication')
         rows:
           - {source_key: atc_trail_updates, may_publish: true}
@@ -445,21 +456,19 @@ unit_tests:
           - {source_key: ourhike_closures, may_publish: true}
     expect:
       rows:
-        - {source_key: atc_trail_updates, passed: false, held_because: 'reference/atc_updates.json has no reviewed_at, so nobody has checked it against ATC''s page'}
-        - {source_key: nynjtc_trail_alerts, passed: false, held_because: 'NYNJTC''s Trail Alerts category has no posts at all, which means the parse broke'}
-        - {source_key: oprhp_trail_closures, passed: true, held_because: null}
-        - {source_key: ourhike_closures, passed: true, held_because: null}
+        - {source_key: atc_trail_updates, reviewed_at: '  ', passed: false, held_because: 'reference/atc_updates.json has no reviewed_at, so nobody has checked it against ATC''s page'}
+        - {source_key: nynjtc_trail_alerts, reviewed_at: null, passed: false, held_because: 'NYNJTC''s Trail Alerts category has no posts at all, which means the parse broke'}
+        - {source_key: oprhp_trail_closures, reviewed_at: null, passed: true, held_because: null}
+        - {source_key: ourhike_closures, reviewed_at: null, passed: true, held_because: null}
 
-  - name: int_closures__gate_holds_back_an_empty_atc_file_and_an_unverified_closure
+  - name: int_closures__gate_passes_an_empty_reviewed_atc_file_and_holds_back_an_unverified_closure
     description: >
-      An ATC file with no rows is held back, because the review date rides
-      each row and the warehouse cannot tell an empty reviewed file from an
-      unreviewed one. export_atc_updates.py publishes `atc_updates: []` for an
-      empty reviewed file (test_an_empty_reviewed_file_still_publishes), so
-      this is a deliberate difference, listed in
-      tests/test_dbt_conditions_parity.py: nothing is written, and the phone
-      keeps its last good file. One OurHike closure that is not moderator-
-      verified holds back OurHike's closures and nothing else.
+      A reviewed ATC file with no rows passes, and its writer publishes
+      `atc_updates: []` with the review date, as export_atc_updates.py does
+      (test_an_empty_reviewed_file_still_publishes): "we looked, and ATC has
+      nothing placeable" is a real answer, and the date is read from the
+      file landed whole. One OurHike closure that is not moderator-verified
+      holds back OurHike's closures and nothing else.
     model: int_closures__gate
     given:
       - input: ref('int_closures__unioned')
@@ -470,6 +479,9 @@ unit_tests:
           select 'ourhike_closures' as source_key, ['u5: moderation_status is submitted, and only a verified closure leaves the database'] as problems
       - input: ref('int_closures__atc_checked')
         rows: []
+      - input: ref('base_atc__atc_updates')
+        rows:
+          - {atc_updates_document_key: d1, document_json: '{"reviewed_at": "2026-08-24", "updates": []}'}
       - input: ref('int_sources__publication')
         rows:
           - {source_key: atc_trail_updates, may_publish: true}
@@ -478,10 +490,76 @@ unit_tests:
           - {source_key: ourhike_closures, may_publish: true}
     expect:
       rows:
-        - {source_key: atc_trail_updates, rows_total: 0, passed: false, held_because: 'reference/atc_updates.json has no rows, so no review date to read: an unreviewed file publishes nothing'}
-        - {source_key: nynjtc_trail_alerts, rows_total: 1, passed: true, held_because: null}
-        - {source_key: oprhp_trail_closures, rows_total: 0, passed: true, held_because: null}
-        - {source_key: ourhike_closures, rows_total: 1, passed: false, held_because: '1 of 1 rows cannot publish, and a partial set of safety notices is worse than none'}
+        - {source_key: atc_trail_updates, rows_total: 0, reviewed_at: '2026-08-24', passed: true, held_because: null}
+        - {source_key: nynjtc_trail_alerts, rows_total: 1, reviewed_at: null, passed: true, held_because: null}
+        - {source_key: oprhp_trail_closures, rows_total: 0, reviewed_at: null, passed: true, held_because: null}
+        - {source_key: ourhike_closures, rows_total: 1, reviewed_at: null, passed: false, held_because: '1 of 1 rows cannot publish, and a partial set of safety notices is worse than none'}
+
+  - name: int_closures__gate_holds_back_an_atc_file_whose_updates_is_not_a_list
+    description: >
+      file_problems()'s first check: "`updates` is missing or is not a
+      list", read from the file landed whole, before any row's.
+    model: int_closures__gate
+    given:
+      - input: ref('int_closures__unioned')
+        format: sql
+        rows: |
+          select 'nynjtc_trail_alerts' as source_key, cast([] as varchar[]) as problems
+      - input: ref('int_closures__atc_checked')
+        rows: []
+      - input: ref('base_atc__atc_updates')
+        rows:
+          - {atc_updates_document_key: d1, document_json: '{"reviewed_at": "2026-08-24", "updates": {"a01": {}}}'}
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: atc_trail_updates, may_publish: true}
+          - {source_key: nynjtc_trail_alerts, may_publish: true}
+          - {source_key: oprhp_trail_closures, may_publish: true}
+          - {source_key: ourhike_closures, may_publish: true}
+    expect:
+      rows:
+        - {source_key: atc_trail_updates, passed: false, held_because: '`updates` is missing or is not a list'}
+        - {source_key: nynjtc_trail_alerts, passed: true, held_because: null}
+        - {source_key: oprhp_trail_closures, passed: true, held_because: null}
+        - {source_key: ourhike_closures, passed: true, held_because: null}
+
+  - name: int_closures__gate_holds_back_an_atc_file_whose_two_landings_disagree
+    description: >
+      reference/atc_updates.json lands twice, as its rows and whole, and a
+      file whose two landings count different rows is two files, read in
+      different runs: held back rather than published with a review date
+      that belongs to the other.
+    model: int_closures__gate
+    given:
+      - input: ref('int_closures__unioned')
+        format: sql
+        rows: |
+          select 'atc_trail_updates' as source_key, cast([] as varchar[]) as problems
+          union all
+          select 'atc_trail_updates' as source_key, cast([] as varchar[]) as problems
+          union all
+          select 'nynjtc_trail_alerts' as source_key, cast([] as varchar[]) as problems
+      - input: ref('int_closures__atc_checked')
+        format: sql
+        rows: |
+          select 0 as file_row
+          union all
+          select 1 as file_row
+      - input: ref('base_atc__atc_updates')
+        rows:
+          - {atc_updates_document_key: d1, document_json: '{"reviewed_at": "2026-08-24", "updates": [{}]}'}
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: atc_trail_updates, may_publish: true}
+          - {source_key: nynjtc_trail_alerts, may_publish: true}
+          - {source_key: oprhp_trail_closures, may_publish: true}
+          - {source_key: ourhike_closures, may_publish: true}
+    expect:
+      rows:
+        - {source_key: atc_trail_updates, passed: false, held_because: 'reference/atc_updates.json lists 1 updates and 2 landed as rows, so the two landings are of different files'}
+        - {source_key: nynjtc_trail_alerts, passed: true, held_because: null}
+        - {source_key: oprhp_trail_closures, passed: true, held_because: null}
+        - {source_key: ourhike_closures, passed: true, held_because: null}
 
   - name: int_closures__gate_holds_back_a_source_that_may_not_publish
     description: >
@@ -498,9 +576,10 @@ unit_tests:
           union all
           select 'ourhike_closures' as source_key, cast([] as varchar[]) as problems
       - input: ref('int_closures__atc_checked')
-        format: sql
-        rows: |
-          select true as is_reviewed
+        rows: []
+      - input: ref('base_atc__atc_updates')
+        rows:
+          - {atc_updates_document_key: d1, document_json: '{"reviewed_at": "2026-08-24", "updates": []}'}
       - input: ref('int_sources__publication')
         rows:
           - {source_key: atc_trail_updates, may_publish: true, publication_rule: registered_and_publishable}

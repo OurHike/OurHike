@@ -116,6 +116,7 @@ def test_only_the_reviewed_file_models_read_no_geometry():
         "base_registry__sources",
         "base_registry__nynjtc_paper_maps",
         "base_atc__atc_trail_updates",
+        "base_atc__atc_updates",
     }
 
 

@@ -60,6 +60,33 @@ settings:
       The other half, and the one shown exactly once at creation. If this is
       missing it cannot be looked up anywhere - the token has to be reminted.
 
+  R2_RAW_BUCKET:
+    where: secret
+    required: false
+    why: >-
+      The private raw store, `our-hike-raw` (pipeline/ELT.md, decision 43:
+      one private bucket for raw and the step cache, one key). dlt lands every
+      extract there and the builds read it back; no phone reads it. Optional
+      until the maintainer mints its key, because only the dbt path needs it:
+      publish-conditions.yml's `phone_files: dbt` fails by name without it,
+      and the schedule's default path, today's bake, does not read it.
+
+  R2_RAW_ACCESS_KEY_ID:
+    where: secret
+    required: false
+    why: >-
+      Half of the raw store's one read-and-write key (decision 43). The
+      cost the maintainer accepted with it: an R2 key covers a whole bucket,
+      so a job that only needs to read raw could overwrite it. Optional for
+      R2_RAW_BUCKET's reason.
+
+  R2_RAW_SECRET_ACCESS_KEY:
+    where: secret
+    required: false
+    why: >-
+      The other half, shown once at creation, so a lost one is a reminted
+      key. Optional for R2_RAW_BUCKET's reason.
+
   HIKEFINDER_PASSWORD:
     where: secret
     required: false

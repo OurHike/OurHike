@@ -308,6 +308,107 @@ describe('trail data', () => {
     })
   })
 
+  // v2/poi_<type>.geojson (decision 44, stage 6 of #1793) holds a POI's
+  // position once, as the Point's coordinates at 6 decimals, with no lat and
+  // lon properties. Dropping the properties without this reading would drop
+  // every waypoint, every water source among them (pipeline/ELT.md, "One copy
+  // of each POI coordinate").
+  describe('a POI position, in v1 and v2 files', () => {
+    function collection(features: Array<Record<string, unknown>>) {
+      return JSON.stringify({
+        type: 'FeatureCollection',
+        features: features.map((feature) => ({ type: 'Feature', ...feature })),
+      })
+    }
+
+    it('readPois takes a v2 POI with no lat or lon properties from geometry.coordinates, lon first', async () => {
+      serve(
+        collection([
+          {
+            properties: {
+              id: 'atc_water:1',
+              poi_type: 'water',
+              name: 'Spring',
+              confidence: 'high',
+            },
+            geometry: { type: 'Point', coordinates: [-69.260001, 45.450001] },
+          },
+        ]),
+      )
+      await downloadTrailData()
+
+      const pois = store.get(POIS_KEY) as StoredPoi[]
+      expect(pois[0]).toEqual({
+        id: 'atc_water:1',
+        type: 'water',
+        name: 'Spring',
+        lat: 45.450001,
+        lon: -69.260001,
+        confidence: 'high',
+      })
+    })
+
+    it('readPois keeps reading a v1 POI from its lat and lon properties, whatever its geometry says', async () => {
+      // GDAL prints a v1 poi_<type>.geojson geometry with digits of its own;
+      // every earlier build read the properties, and a v1 file must read the
+      // numbers it always has.
+      serve(
+        collection([
+          {
+            properties: { id: 'atc_water:1', poi_type: 'water', lat: 45.45, lon: -69.26 },
+            geometry: {
+              type: 'Point',
+              coordinates: [-69.26000000000001, 45.449999999999996],
+            },
+          },
+        ]),
+      )
+      await downloadTrailData()
+
+      const [poi] = store.get(POIS_KEY) as StoredPoi[]
+      expect([poi.lat, poi.lon]).toEqual([45.45, -69.26])
+    })
+
+    it.each([
+      ['no geometry', { properties: { id: 'a', poi_type: 'water' } }],
+      [
+        'a line, not a point',
+        {
+          properties: { id: 'a', poi_type: 'water' },
+          geometry: {
+            type: 'LineString',
+            coordinates: [
+              [-69.26, 45.45],
+              [-69.25, 45.46],
+            ],
+          },
+        },
+      ],
+      [
+        'a coordinate that is not a number',
+        {
+          properties: { id: 'a', poi_type: 'water' },
+          geometry: { type: 'Point', coordinates: ['-69.26', 45.45] },
+        },
+      ],
+      [
+        'one coordinate',
+        {
+          properties: { id: 'a', poi_type: 'water' },
+          geometry: { type: 'Point', coordinates: [-69.26] },
+        },
+      ],
+    ])(
+      'readPois drops a POI with %s and no lat or lon properties, rather than placing it',
+      async (_case, feature) => {
+        serve(collection([feature]))
+        await downloadTrailData()
+
+        expect(store.get(POIS_KEY)).toEqual([])
+      },
+    )
+  })
+
   // #1097 - NYS DEC's and NYS OPRHP's waypoints. Their own artifact upstream,
   // because their licence footing is their own, but ONE array on the phone:
   // map/poiLayers.ts draws every waypoint through a single symbol layer, since

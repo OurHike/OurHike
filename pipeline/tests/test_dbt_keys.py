@@ -139,6 +139,7 @@ def test_only_the_reviewed_file_models_read_no_geometry():
         "base_atc__atc_updates",
         "base_atc__water_distance",
         "base_greenbelly__shelter_capacity",
+        "base_ourhike__work_projects",
     }
 
 

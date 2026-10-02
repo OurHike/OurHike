@@ -21,6 +21,9 @@ is a refusal:
   the last bit, and export_weather_alerts.py's bake(), over the squares and
   alerts int_warnings__nws_placed's unit tests stand for, places each alert
   on the same squares and reports the same unknown zones (WN03);
+- lib/work_projects.py's file_problems() and published_rows(), over
+  int_closures__work_projects_checked's unit-test rows, refuse the same rows
+  in the same words and write the same rows (CL17);
 - export_atc_updates.py's main(), over the files int_closures__gate's unit
   tests stand for, publishes where the gate passes;
 - lib/atc_updates.py's auto_publish_refusal() and auto_row(), over
@@ -49,7 +52,7 @@ import export_weather_alerts
 import fetch_nynjtc_alerts
 import parity
 import propose_atc_updates
-from lib import atc_updates, nbm_grid, nynjtc_alerts
+from lib import atc_updates, nbm_grid, nynjtc_alerts, work_projects
 from lib.atc_scrape import MileReference, ParsedUpdate
 
 DBT = Path(__file__).parent.parent / "dbt"
@@ -485,3 +488,114 @@ def test_a_run_stamp_is_held_to_its_form_and_not_its_value():
     assert parity.differences(old, {**old, "generated_at": "2026-10-02T04:00:00Z"}, family) == []
     assert parity.differences(old, {**old, "generated_at": "2026-10-02T04:00:00+00:00"}, family) != []
     assert parity.differences(old, {"closures": []}, family) != []
+
+
+# --- Work projects (CL17) ----------------------------------------------------------
+
+WORK_PROJECTS = "int_closures__work_projects_checked_finds_what_file_problems_finds"
+WORK_PROJECTS_FILE = "int_closures__work_projects_checked_refuses_the_files_own_problems"
+WORK_PROJECTS_REVIEW = "int_closures__work_projects_checked_reads_the_review_as_is_reviewed_does"
+
+# Reviews the SQL reads as unreviewed and is_reviewed() reads as reviewed: r09,
+# an ISO week date (macro python_date_fromisoformat()), so the file is held
+# back, written nowhere, rather than published.
+DELIBERATE_WORK_PROJECT_REVIEWS = {"r09"}
+
+# Rows of the work projects unit test the SQL refuses and file_problems() passes,
+# each the direction a gate on what sends a hiker to a trailhead may err in
+# (int_closures__work_projects_checked's header):
+#   18, 19  a JSON true as lat and lon, and as capacity: isinstance(True, int);
+#   20      ISO week dates, which date.fromisoformat() reads;
+#   21      a space before signup_contact's scheme, which urlsplit() strips.
+DELIBERATE_WORK_PROJECT_ROWS = {18, 19, 20, 21}
+
+# Rows file_problems() has no answer for, because it stops with a traceback,
+# and so publishes nothing, as the SQL's problem does: a date that is a number
+# (TypeError), a contact with an unmatched bracket in its host (ValueError),
+# a row that is not an object (AttributeError).
+TRACEBACK_WORK_PROJECT_ROWS = {22: TypeError, 23: ValueError, 24: AttributeError}
+
+
+def _work_project_rows() -> tuple[list, dict[int, dict]]:
+    test = _unit_tests(CLOSURES)[WORK_PROJECTS]
+    (given,) = _given(test, "base_ourhike__work_projects")["rows"]
+    rows = json.loads(given["document_json"])["rows"]
+    expected = {row["row_position"]: row for row in test["expect"]["rows"] if row["row_position"] is not None}
+    assert set(expected) == set(range(len(rows)))
+    (file_row,) = [row for row in test["expect"]["rows"] if row["row_position"] is None]
+    assert file_row["problem"] is None and file_row["is_reviewed"] is True
+    return rows, expected
+
+
+def _work_project_share(rows: list, n: int) -> str | None:
+    """Row n's share of file_problems(): its repeated id, when an earlier row has it, then row_problems()."""
+    row_id = rows[n].get("id")
+    earlier = {row.get("id") for row in rows[:n] if isinstance(row.get("id"), str)}
+    repeated = (
+        [f"{row_id}: duplicate id - the client keys and dedupes on it"] if isinstance(row_id, str) and row_id in earlier else []
+    )
+    return " | ".join(repeated + work_projects.row_problems(rows[n])) or None
+
+
+def test_the_work_project_vars_are_lib_work_projects_constants():
+    variables = yaml.safe_load((DBT / "dbt_project.yml").read_text())["vars"]
+    assert variables["work_project_mile_min"] == work_projects.TRAIL_MILE_MIN
+    assert variables["work_project_mile_max"] == work_projects.TRAIL_MILE_MAX
+
+
+def test_file_problems_refuses_what_the_work_projects_unit_test_expects():
+    rows, expected = _work_project_rows()
+    for n in range(len(rows)):
+        if n in TRACEBACK_WORK_PROJECT_ROWS:
+            with pytest.raises(TRACEBACK_WORK_PROJECT_ROWS[n]):
+                work_projects.file_problems({"rows": [rows[n]]})
+            assert expected[n]["problem"] is not None, f"row {n} publishes in SQL where the Python stops"
+            continue
+        python = _work_project_share(rows, n)
+        if n in DELIBERATE_WORK_PROJECT_ROWS:
+            assert python is None and expected[n]["problem"] is not None, f"row {n} is no longer a deliberate difference"
+            continue
+        assert python == expected[n]["problem"], f"row {n}: Python {python!r}, SQL {expected[n]['problem']!r}"
+
+
+def test_the_shares_add_up_to_file_problems_in_its_order():
+    """Repeated ids first, then each row's own, as file_problems() lists them, over every row it can read."""
+    rows, _ = _work_project_rows()
+    readable = rows[: min(TRACEBACK_WORK_PROJECT_ROWS)]
+    shares = [_work_project_share(readable, n) for n in range(len(readable))]
+    repeated = [share for share in shares if share and "duplicate id" in share]
+    own = [problem for row in readable for problem in work_projects.row_problems(row)]
+    assert work_projects.file_problems({"rows": readable}) == repeated + own
+
+
+def test_published_rows_writes_what_the_work_projects_unit_test_expects():
+    rows, expected = _work_project_rows()
+    published = [n for n in range(len(rows)) if expected[n]["published_row"] is not None]
+    assert published == [0, 1, 15, 16]
+    for n in published:
+        (python,) = work_projects.published_rows({"rows": [rows[n]]})
+        sql = json.loads(expected[n]["published_row"])
+        assert list(sql.items()) == list(python.items()), n
+
+
+def test_file_problems_refuses_the_file_as_the_files_own_unit_test_expects():
+    test = _unit_tests(CLOSURES)[WORK_PROJECTS_FILE]
+    (given,) = _given(test, "base_ourhike__work_projects")["rows"]
+    (row,) = test["expect"]["rows"]
+    assert " | ".join(work_projects.file_problems(json.loads(given["document_json"]))) == row["problem"]
+
+
+def test_is_reviewed_reads_the_review_as_the_work_projects_unit_test_expects():
+    test = _unit_tests(CLOSURES)[WORK_PROJECTS_REVIEW]
+    documents = {
+        row["work_projects_document_key"]: json.loads(row["document_json"])
+        for row in _given(test, "base_ourhike__work_projects")["rows"]
+    }
+    expected = {row["work_projects_document_key"]: row["is_reviewed"] for row in test["expect"]["rows"]}
+    assert set(documents) == set(expected)
+    for key, document in documents.items():
+        python = work_projects.is_reviewed(document)
+        if key in DELIBERATE_WORK_PROJECT_REVIEWS:
+            assert python and not expected[key], f"{key} is no longer a deliberate difference"
+            continue
+        assert python == expected[key], f"{key}: Python {python}, SQL {expected[key]}"

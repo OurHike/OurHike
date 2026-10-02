@@ -287,6 +287,46 @@ models:
           and succeeds. Every other hold still fails the writer.
         data_tests: [not_null]
 
+  - name: int_closures__work_projects_checked
+    description: >
+      reference/work_projects.json's rows, each with its share of
+      lib/work_projects.py's file_problems() in its words (CL17): its
+      repeated id, then row_problems(), and the row as published_rows()
+      writes it when it has neither. One more row, with no position, is the
+      file's own: its review, as is_reviewed() reads it, and its own
+      problems (`rows` not a list, the retired `ua_sample_rows`).
+      pub_conditions_work_projects reads only this model, writes nothing for
+      an unreviewed file, and fails while any row here has a problem.
+    columns:
+      - name: work_project_row_key
+        description: The file and the row's place in it, or `file` for the file's own problems.
+        data_tests: [not_null, unique]
+      - name: row_position
+        description: The row's place in `rows`, from 0, which is the published order; null on the file's own row.
+      - name: work_project_id
+        description: The row's `id`, where it is a string.
+      - name: row_label
+        description: How a problem names the row, as f"{row_id}" names it, `<no id>` without one.
+      - name: duplicate_problems
+        description: The repeated-id problem, where an earlier row has this string id.
+      - name: row_problems
+        description: row_problems()'s list for the row, in its order; the file's own problems on the file's row.
+      - name: problem
+        description: The row's problems, repeated id first, joined by " | "; null for a row with none.
+      - name: published_row
+        description: >
+          The row as published_rows() writes it: as written, then each of
+          status (`upcoming`), capacity, description, lat, lon and mile (null)
+          it lacks; null for a row with a problem.
+      - name: reviewed_at
+        description: The file's `reviewed_at` where it is a string, as written; on the file's own row only.
+      - name: is_reviewed
+        description: >
+          lib/work_projects.py's is_reviewed(): a string, not blank once
+          stripped, whose first ten characters date.fromisoformat() reads,
+          YYYY-MM-DD or YYYYMMDD (macro python_date_fromisoformat(), which
+          reads no ISO week date); on the file's own row only.
+
 unit_tests:
   - name: int_closures__atc_checked_finds_what_file_problems_finds
     description: >
@@ -835,3 +875,95 @@ unit_tests:
         - {slug: u24, published_row: '{"atc_id":"u24","title":"Central VA: War Spur Bridge Closed","category":"Closure","states":["VA"],"start_mile_marker":670.2,"end_mile_marker":670.2,"obstructs_trail":false,"updated_at":"2026-08-19T16:22:50Z","source_url":"https://appalachiantrail.org/trail-updates/u24/","source_key":"atc_trail_updates","review_state":"unreviewed"}'}
         - {slug: u25, published_row: '{"atc_id":"u25","title":"Central VA: War Spur Bridge Closed","category":"Hiking Safety","states":["NC","TN"],"start_mile_marker":670.2,"end_mile_marker":670.2,"obstructs_trail":false,"updated_at":"2026-08-19T20:22:50Z","source_url":"https://appalachiantrail.org/trail-updates/u25/","source_key":"atc_trail_updates","review_state":"unreviewed"}'}
         - {slug: u26, published_row: '{"atc_id":"u26","title":"Central VA: War Spur Bridge Closed","category":"Closure","states":["VA"],"start_mile_marker":1138.0,"end_mile_marker":1138.0,"obstructs_trail":false,"updated_at":"2026-08-19T20:22:50Z","source_url":"https://appalachiantrail.org/trail-updates/u26/","source_key":"atc_trail_updates","review_state":"unreviewed"}'}
+
+  - name: int_closures__work_projects_checked_finds_what_file_problems_finds
+    description: >
+      One row per branch of lib/work_projects.py's row_problems() and the
+      file's repeated-id check, in one reviewed file, each expected problem
+      in the Python's words; tests/test_dbt_conditions_parity.py runs
+      file_problems() over the same rows and fails where the two disagree,
+      except rows 18-21, which this model refuses on purpose, and rows 22-24,
+      where the Python stops with a traceback. Rows 0, 1, 15 and 16 publish,
+      as published_rows() writes them.
+    model: int_closures__work_projects_checked
+    given:
+      - input: ref('base_ourhike__work_projects')
+        rows:
+          - {work_projects_document_key: d1, document_json: '{"reviewed_at": "2026-10-02", "rows": [{"id": "nynjtc:2026-10-10-bear-mtn", "club_name": "NY-NJ Trail Conference", "title": "Bear Mountain trail day", "description": "Bring gloves; meet at the Inn lot.", "lat": 41.312, "lon": -73.9884, "mile": 1403.2, "starts_on": "2026-10-10", "ends_on": "2026-10-10", "status": "upcoming", "capacity": 12, "signup_mode": "contact", "signup_contact": "mailto:volunteers@example.org"}, {"id": "w01", "club_name": "Fixture Club", "title": "Trail day", "mile": 100.5, "starts_on": "2026-10-10", "ends_on": "2026-10-11", "signup_mode": "in_app"}, {"id": "w02", "title": "", "mile": 100.5, "starts_on": "2026-10-10", "ends_on": "2026-10-11", "signup_mode": "in_app"}, {"club_name": "Fixture Club", "title": "Trail day", "mile": 100.5, "starts_on": "2026-10-10", "ends_on": "2026-10-11", "signup_mode": null}, {"id": "w04", "club_name": "Fixture Club", "title": "Trail day", "mile": 100.5, "starts_on": "2026-02-30", "ends_on": "2026-10-11", "signup_mode": "in_app"}, {"id": "w05", "club_name": "Fixture Club", "title": "Trail day", "mile": 100.5, "starts_on": "2026-10-12", "ends_on": "2026-10-11", "signup_mode": "in_app"}, {"id": "w06", "club_name": "Fixture Club", "title": "Trail day", "mile": 100.5, "starts_on": "2026-10-10", "ends_on": "2026-10-11", "signup_mode": "in_app", "status": "postponed"}, {"id": "w07", "club_name": "Fixture Club", "title": "Trail day", "mile": 100.5, "starts_on": "2026-10-10", "ends_on": "2026-10-11", "signup_mode": "phone"}, {"id": "w08", "club_name": "Fixture Club", "title": "Trail day", "mile": 100.5, "starts_on": "2026-10-10", "ends_on": "2026-10-11", "signup_mode": "contact", "signup_contact": "javascript:alert(1)"}, {"id": "w09", "club_name": "Fixture Club", "title": "Trail day", "mile": 100.5, "starts_on": "2026-10-10", "ends_on": "2026-10-11", "signup_mode": "contact"}, {"id": "w10", "club_name": "Fixture Club", "title": "Trail day", "starts_on": "2026-10-10", "ends_on": "2026-10-11", "signup_mode": "in_app"}, {"id": "w11", "club_name": "Fixture Club", "title": "Trail day", "mile": 2207.5, "starts_on": "2026-10-10", "ends_on": "2026-10-11", "signup_mode": "in_app"}, {"id": "w12", "club_name": "Fixture Club", "title": "Trail day", "mile": 100.5, "starts_on": "2026-10-10", "ends_on": "2026-10-11", "signup_mode": "in_app", "capacity": 0}, {"id": "w13", "club_name": "Fixture Club", "title": "Trail day", "mile": 100.5, "starts_on": "2026-10-10", "ends_on": "2026-10-11", "signup_mode": "in_app", "capacity": 5.0}, {"id": "nynjtc:2026-10-10-bear-mtn", "club_name": "NY-NJ Trail Conference", "title": "Same id twice", "description": "Bring gloves; meet at the Inn lot.", "lat": 41.312, "lon": -73.9884, "mile": 1403.2, "starts_on": "2026-10-10", "ends_on": "2026-10-10", "status": "upcoming", "capacity": 12, "signup_mode": "contact", "signup_contact": "mailto:volunteers@example.org"}, {"id": "w15", "club_name": "Fixture Club", "title": "Trail day", "starts_on": "2026-10-10", "ends_on": "2026-10-11", "signup_mode": "in_app", "lat": 41.2, "lon": -74.1}, {"id": "w16", "club_name": "Fixture Club", "title": "Trail day", "mile": 100.5, "starts_on": "2026-10-10", "ends_on": "2026-10-11", "signup_mode": "contact", "status": "cancelled", "signup_contact": "HTTPS://example.org/day"}, {"id": true, "club_name": "Fixture Club", "mile": 2208, "starts_on": "2026-10-10", "ends_on": "2026-10-11", "signup_mode": "in_app"}, {"id": "w18", "club_name": "Fixture Club", "title": "Trail day", "starts_on": "2026-10-10", "ends_on": "2026-10-11", "signup_mode": "in_app", "lat": true, "lon": true}, {"id": "w19", "club_name": "Fixture Club", "title": "Trail day", "mile": 100.5, "starts_on": "2026-10-10", "ends_on": "2026-10-11", "signup_mode": "in_app", "capacity": true}, {"id": "w20", "club_name": "Fixture Club", "title": "Trail day", "mile": 100.5, "starts_on": "2026-W41-6", "ends_on": "2026-W41-7", "signup_mode": "in_app"}, {"id": "w21", "club_name": "Fixture Club", "title": "Trail day", "mile": 100.5, "starts_on": "2026-10-10", "ends_on": "2026-10-11", "signup_mode": "contact", "signup_contact": " mailto:volunteers@example.org"}, {"id": "w22", "club_name": "Fixture Club", "title": "Trail day", "mile": 100.5, "starts_on": 20261010, "ends_on": "2026-10-11", "signup_mode": "in_app"}, {"id": "w23", "club_name": "Fixture Club", "title": "Trail day", "mile": 100.5, "starts_on": "2026-10-10", "ends_on": "2026-10-11", "signup_mode": "contact", "signup_contact": "https://[volunteers.example.org/"}, "w24"]}'}
+    expect:
+      rows:
+        - {row_position: 0, problem: null, published_row: '{"id":"nynjtc:2026-10-10-bear-mtn","club_name":"NY-NJ Trail Conference","title":"Bear Mountain trail day","description":"Bring gloves; meet at the Inn lot.","lat":41.312,"lon":-73.9884,"mile":1403.2,"starts_on":"2026-10-10","ends_on":"2026-10-10","status":"upcoming","capacity":12,"signup_mode":"contact","signup_contact":"mailto:volunteers@example.org"}'}
+        - {row_position: 1, problem: null, published_row: '{"id":"w01","club_name":"Fixture Club","title":"Trail day","mile":100.5,"starts_on":"2026-10-10","ends_on":"2026-10-11","signup_mode":"in_app","status":"upcoming","capacity":null,"description":null,"lat":null,"lon":null}'}
+        - {row_position: 2, problem: 'w02: club_name is required | w02: title is required', published_row: null}
+        - {row_position: 3, problem: '<no id>: id is required | <no id>: signup_mode is required | <no id>: signup_mode must be one of (''contact'', ''in_app'') - `in_app` arrives with the signup backend (#762)', published_row: null}
+        - {row_position: 4, problem: 'w04: starts_on is not a date: ''2026-02-30''', published_row: null}
+        - {row_position: 5, problem: 'w05: ends_on is before starts_on', published_row: null}
+        - {row_position: 6, problem: 'w06: status must be one of (''upcoming'', ''completed'', ''cancelled'')', published_row: null}
+        - {row_position: 7, problem: 'w07: signup_mode must be one of (''contact'', ''in_app'') - `in_app` arrives with the signup backend (#762)', published_row: null}
+        - {row_position: 8, problem: 'w08: a contact-mode row needs signup_contact (a mailto: or tel: or https: string)', published_row: null}
+        - {row_position: 9, problem: 'w09: a contact-mode row needs signup_contact (a mailto: or tel: or https: string)', published_row: null}
+        - {row_position: 10, problem: 'w10: a row needs lat+lon, or a mile, or both - a workday with no place sends nobody anywhere', published_row: null}
+        - {row_position: 11, problem: 'w11: mile 2207.5 is off the trail''s own extent (0.0-2197.5)', published_row: null}
+        - {row_position: 12, problem: 'w12: capacity is a positive whole number of people, or absent for ''no cap stated''', published_row: null}
+        - {row_position: 13, problem: 'w13: capacity is a positive whole number of people, or absent for ''no cap stated''', published_row: null}
+        - {row_position: 14, problem: 'nynjtc:2026-10-10-bear-mtn: duplicate id - the client keys and dedupes on it', published_row: null}
+        - {row_position: 15, problem: null, published_row: '{"id":"w15","club_name":"Fixture Club","title":"Trail day","starts_on":"2026-10-10","ends_on":"2026-10-11","signup_mode":"in_app","lat":41.2,"lon":-74.1,"status":"upcoming","capacity":null,"description":null,"mile":null}'}
+        - {row_position: 16, problem: null, published_row: '{"id":"w16","club_name":"Fixture Club","title":"Trail day","mile":100.5,"starts_on":"2026-10-10","ends_on":"2026-10-11","signup_mode":"contact","status":"cancelled","signup_contact":"HTTPS://example.org/day","capacity":null,"description":null,"lat":null,"lon":null}'}
+        - {row_position: 17, problem: 'True: title is required | True: mile 2208 is off the trail''s own extent (0.0-2197.5)', published_row: null}
+        - {row_position: 18, problem: 'w18: a row needs lat+lon, or a mile, or both - a workday with no place sends nobody anywhere', published_row: null}
+        - {row_position: 19, problem: 'w19: capacity is a positive whole number of people, or absent for ''no cap stated''', published_row: null}
+        - {row_position: 20, problem: 'w20: starts_on is not a date: ''2026-W41-6'' | w20: ends_on is not a date: ''2026-W41-7''', published_row: null}
+        - {row_position: 21, problem: 'w21: a contact-mode row needs signup_contact (a mailto: or tel: or https: string)', published_row: null}
+        - {row_position: 22, problem: 'w22: starts_on must be a YYYY-MM-DD string', published_row: null}
+        - {row_position: 23, problem: 'w23: signup_contact has a bracket in its host, which urlsplit() cannot read', published_row: null}
+        - {row_position: 24, problem: 'row 24 is not an object, so none of its fields can be read', published_row: null}
+        - {row_position: null, problem: null, published_row: null, is_reviewed: true}
+
+  - name: int_closures__work_projects_checked_refuses_the_files_own_problems
+    description: >
+      file_problems()'s two checks of the file itself, on one row with no
+      work project: a `rows` that is not a list, and the retired
+      `ua_sample_rows` (maintainer decision 2026-09-09), in that order.
+    model: int_closures__work_projects_checked
+    given:
+      - input: ref('base_ourhike__work_projects')
+        rows:
+          - {work_projects_document_key: d1, document_json: '{"reviewed_at": "2026-10-02", "rows": {"w00": {"id": "nynjtc:2026-10-10-bear-mtn", "club_name": "NY-NJ Trail Conference", "title": "Bear Mountain trail day", "description": "Bring gloves; meet at the Inn lot.", "lat": 41.312, "lon": -73.9884, "mile": 1403.2, "starts_on": "2026-10-10", "ends_on": "2026-10-10", "status": "upcoming", "capacity": 12, "signup_mode": "contact", "signup_contact": "mailto:volunteers@example.org"}}, "ua_sample_rows": []}'}
+    expect:
+      rows:
+        - {row_position: null, problem: 'rows must be a list (empty is fine - that is the file''s honest state today) | ua_sample_rows is retired (maintainer decision 2026-09-09): no invented workday may reach a hiker in ANY environment, so `rows` is the only list. Move a real club''s row into `rows`, or delete the key', published_row: null, is_reviewed: true}
+
+  - name: int_closures__work_projects_checked_reads_the_review_as_is_reviewed_does
+    description: >
+      lib/work_projects.py's is_reviewed() on each way a reviewed_at can be
+      written, one file each; tests/test_dbt_conditions_parity.py runs it
+      over the same files. r09, an ISO week date, is unreviewed here on
+      purpose, where Python 3.11 and later read it.
+    model: int_closures__work_projects_checked
+    given:
+      - input: ref('base_ourhike__work_projects')
+        rows:
+          - {work_projects_document_key: r01, document_json: '{"reviewed_at": "2026-08-20", "rows": []}'}
+          - {work_projects_document_key: r02, document_json: '{"reviewed_at": "", "rows": []}'}
+          - {work_projects_document_key: r03, document_json: '{"reviewed_at": "   ", "rows": []}'}
+          - {work_projects_document_key: r04, document_json: '{"rows": []}'}
+          - {work_projects_document_key: r05, document_json: '{"reviewed_at": "2026-08-20T09:00:00Z", "rows": []}'}
+          - {work_projects_document_key: r06, document_json: '{"reviewed_at": "yesterday", "rows": []}'}
+          - {work_projects_document_key: r07, document_json: '{"reviewed_at": 20260820, "rows": []}'}
+          - {work_projects_document_key: r08, document_json: '{"reviewed_at": "20260820", "rows": []}'}
+          - {work_projects_document_key: r09, document_json: '{"reviewed_at": "2026-W34-4", "rows": []}'}
+          - {work_projects_document_key: r10, document_json: '{"reviewed_at": null, "rows": []}'}
+          - {work_projects_document_key: r11, document_json: '{"reviewed_at": "2026-02-30", "rows": []}'}
+    expect:
+      rows:
+        - {work_projects_document_key: r01, row_position: null, is_reviewed: true}
+        - {work_projects_document_key: r02, row_position: null, is_reviewed: false}
+        - {work_projects_document_key: r03, row_position: null, is_reviewed: false}
+        - {work_projects_document_key: r04, row_position: null, is_reviewed: false}
+        - {work_projects_document_key: r05, row_position: null, is_reviewed: true}
+        - {work_projects_document_key: r06, row_position: null, is_reviewed: false}
+        - {work_projects_document_key: r07, row_position: null, is_reviewed: false}
+        - {work_projects_document_key: r08, row_position: null, is_reviewed: true}
+        - {work_projects_document_key: r09, row_position: null, is_reviewed: false}
+        - {work_projects_document_key: r10, row_position: null, is_reviewed: false}
+        - {work_projects_document_key: r11, row_position: null, is_reviewed: false}

@@ -248,6 +248,7 @@ jobs:
             pipeline/check_freshness.py
             pipeline/export_conditions.py
             pipeline/export_weather_alerts.py
+            pipeline/export_work_projects.py
             pipeline/fetch_club_pdfs.py
             pipeline/fetch_elevation.py
             pipeline/fetch_hikefinder.py
@@ -468,6 +469,9 @@ jobs:
           # fixture mode served and the squares.json step_weather_squares.py
           # landed, both under data/raw/. bake() imports shapely and pyproj.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py weather_alerts --new data/processed/dbt/conditions_weather_alerts.json --raw-dir data/raw
+          # The club workdays: export_work_projects.py's main() over
+          # reference/work_projects.json from git, written into a temporary folder.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py work_projects --new data/processed/dbt/conditions_work_projects.json
           # The trail lines network, whose input is the fixture warehouse, not
           # a file in git.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py nearby_trails --new data/processed/dbt/nearby_trails.geojson

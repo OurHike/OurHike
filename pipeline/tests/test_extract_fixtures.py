@@ -151,7 +151,7 @@ def test_the_tables_are_the_extracts_own_names_and_columns(fixtures):
 
 
 def test_every_raw_table_stamps_loaded_at_with_one_type(fixtures):
-    """A proven-empty table (reference/work_projects.json has no rows today) is made by _warehouse.py, not by dlt,
+    """A proven-empty table (an empty layer, or a reviewed file with no rows) is made by _warehouse.py, not by dlt,
     and must not differ from a loaded one: a mart contract on `_loaded_at` would otherwise fail on an empty table."""
     root, _ = fixtures
     with duckdb.connect(str(root / "warehouse.duckdb"), read_only=True) as con:

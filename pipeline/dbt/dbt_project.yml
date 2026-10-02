@@ -110,6 +110,14 @@ vars:
     - Permits
     - Relocation
     - Water
+  # lib/work_projects.py's TRAIL_MILE_MIN and TRAIL_MILE_MAX, which
+  # int_closures__work_projects_checked holds a workday's mile to (CL17),
+  # held to the Python by tests/test_dbt_conditions_parity.py. That module
+  # calls them lib/atc_updates.py's extent, whose minimum is 0.5 (ATC's
+  # half-mile markers); 0.0 is kept here as the Python has it, and the
+  # refusal message prints both as written.
+  work_project_mile_min: 0.0
+  work_project_mile_max: 2197.5
   # NOAA's NBM CONUS grid, lib/nbm_grid.py's pinned constants, which
   # int_warnings__nws_alert_shapes places NWS alerts on (WN03), held to that
   # module by tests/test_dbt_conditions_parity.py. Read off a live NBM v5.0

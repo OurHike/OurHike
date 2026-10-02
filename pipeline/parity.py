@@ -233,6 +233,39 @@ def _weather_alerts_old(raw_dir: Path) -> dict:
     return export_weather_alerts.bake(squares, body, now, now)
 
 
+def _work_projects_old() -> dict:
+    """export_work_projects.py's file for reference/work_projects.json, from its own main(), written into a temporary folder.
+
+    It has no builder that returns the document, so main() runs as a bake runs
+    it, with only OUT_DIR, OUT_PATH and MANIFEST_PATH moved, and the file it
+    wrote is read back.
+    """
+    import contextlib
+    import io
+    import tempfile
+
+    import export_work_projects
+
+    names = ("OUT_DIR", "OUT_PATH", "MANIFEST_PATH")
+    real = {name: getattr(export_work_projects, name) for name in names}
+    with tempfile.TemporaryDirectory() as folder:
+        out = Path(folder)
+        moved = {"OUT_DIR": out, "OUT_PATH": out / "work_projects.json", "MANIFEST_PATH": out / "manifest.json"}
+        for name, path in moved.items():
+            setattr(export_work_projects, name, path)
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                code = export_work_projects.main()
+        finally:
+            for name, path in real.items():
+                setattr(export_work_projects, name, path)
+        if code != 0:
+            raise SystemExit("export_work_projects.py refuses reference/work_projects.json, so it publishes nothing")
+        if not moved["OUT_PATH"].exists():
+            raise SystemExit("reference/work_projects.json is not reviewed, so export_work_projects.py publishes nothing")
+        return json.loads(moved["OUT_PATH"].read_text(encoding="utf-8"))
+
+
 class _ConditionsDatabase:
     """OurHike's Postgres as export_conditions.py reads it: extract/_fixtures.py's FixtureConnection, which fixture
     mode's extract read the warehouse's rows from, answering the same query text, with each row a tuple as
@@ -528,6 +561,8 @@ FAMILIES: dict[str, Family] = {
         reads_raw_dir=True,
         stamps=("generated_at", "fetched_at"),
     ),
+    # `reviewed_at`, beside the rows, is compared whole as a top-level field.
+    "work_projects": Family(old=_work_projects_old, records="work_projects", key="id", ordered=True, stamps=("generated_at",)),
     "closures": Family(
         old=lambda: _conditions_old("closures"), records="closures", key="id", ordered=True, stamps=("generated_at",)
     ),

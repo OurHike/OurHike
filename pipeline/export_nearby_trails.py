@@ -2005,7 +2005,7 @@ def main() -> dict:
     _progress(passes_started, "loading the A.T. centerline")
     at_records = load_at_centerline()
     _progress(passes_started, f"finding shared ground among {len(simplified) + len(at_records):,} lines")
-    pairs, shared = find_shared_ground(simplified + at_records)
+    pairs, shared = find_shared_ground(simplified + at_records, progress=lambda step: _progress(passes_started, step))
     _progress(passes_started, f"writing the shared ground ({len(pairs):,} pairs)")
     manifest["concurrent"] = write_concurrent(pairs, shared, at_paired=bool(at_records))
     # The corridor-view sketch, from the same simplified records the artifact

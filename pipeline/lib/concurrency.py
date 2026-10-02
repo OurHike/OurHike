@@ -109,6 +109,7 @@ KNOWN LIMITS, stated rather than hidden:
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Callable
 
 import numpy as np
 import shapely
@@ -200,6 +201,7 @@ def find_shared_ground(
     *,
     tolerance_m: float = SHARED_GROUND_TOLERANCE_M,
     min_length_m: float = SHARED_GROUND_MIN_LENGTH_M,
+    progress: Callable[[str], None] | None = None,
 ) -> tuple[list[dict], dict]:
     """The pair features for every shared stretch among `records`, plus a
     stats dict.
@@ -282,6 +284,11 @@ def find_shared_ground(
     # which would round every buffer's ends more coarsely and move the shared
     # stretches' end vertices.
     ordered = sorted(near)
+    batches = -(-len(ordered) // PAIR_BATCH)
+    if progress:
+        progress(
+            f"{len(record_indices):,} neighbours within {tolerance_m:g} m make {len(ordered):,} trail pairs, in {batches:,} batches"
+        )
     # In batches of PAIR_BATCH pairs, so the unions, buffers and pieces of one
     # batch are freed before the next is built (#1796). All of them at once
     # held every pair's buffer polygon in memory together, and with the
@@ -299,6 +306,9 @@ def find_shared_ground(
             partner_geoms[index] = unary_union([geoms[j] for j in sorted(partner_indices)])
         buffers = across_cores(lambda partners: shapely.buffer(partners, tolerance_m, quad_segs=16), partner_geoms)
         pieces = across_cores(shapely.intersection, donor_geoms, buffers)
+        batch_number = start // PAIR_BATCH + 1
+        if progress and (batch_number == batches or batch_number % max(1, batches // 10) == 0):
+            progress(f"shared ground: batch {batch_number:,} of {batches:,}")
 
         for (donor_key, partner_key), piece in zip(batch, pieces):
             donor_indices, partner_indices = near[(donor_key, partner_key)]

@@ -83,9 +83,10 @@ publishers as (
 -- the ATC publishes none, so "tag any trailhead" would be an item nobody
 -- could ever tag.
 published_types as (
-    select coalesce(
-        list(distinct poi_type), cast([] as varchar[])
-    ) as poi_types
+    select
+        coalesce(
+            list(distinct poi_type), cast([] as varchar[])
+        ) as poi_types
     from pois
     where list_contains({{ var('challenges_poi_types') }}, poi_type)
 ),

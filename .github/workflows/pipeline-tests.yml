@@ -231,6 +231,8 @@ jobs:
             pipeline/export_trails.py
             pipeline/export_elevation.py
             pipeline/step_dem_sampling.py
+            pipeline/export_network_elevation.py
+            pipeline/export_network_profile.py
             pipeline/build_marts.py
             pipeline/requirements.txt
             pipeline/export_spurs.py
@@ -460,6 +462,12 @@ jobs:
           # export_elevation.py reads the DEM through rasterio, so this runs on
           # the pipeline's own pins, the venv step_dem_sampling.py runs in.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py elevation --new data/processed/dbt/elevation_profile.json --raw-dir data/raw
+          # The junction graph's two elevation files, on the build's own edges
+          # (int_trail_network__edges, which today's exporters read as
+          # trail_graph.json and trail_graph_geometry.json), after the A.T.'s
+          # profile on one cold DEM cache, as publish-vector-data.yml runs them.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py trail_graph_elevation --new data/processed/dbt/trail_graph_elevation.json --raw-dir data/raw --warehouse data/warehouse.duckdb
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py trail_graph_profile --new data/processed/dbt/trail_graph_profile.json --raw-dir data/raw --warehouse data/warehouse.duckdb
 
       - name: dbt source freshness
         if: steps.scope.outputs.run == 'true'

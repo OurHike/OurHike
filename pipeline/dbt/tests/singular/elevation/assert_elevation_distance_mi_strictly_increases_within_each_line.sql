@@ -5,7 +5,8 @@
 -- the wrong place, and a mile published twice counts its climb twice.
 -- int_elevation__profile keeps a sample only past every earlier mile, so
 -- this returns no rows; each row it returns is a sample at or behind the one
--- before it.
+-- before it. A junction-graph edge has no mile axis and no distance_mi, so
+-- its rows compare null and return nothing.
 with ordered as (
     select
         line_id,

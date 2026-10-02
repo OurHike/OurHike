@@ -199,6 +199,13 @@ vars:
   elevation_sample_interval_m: 25.0
   # METERS_PER_FOOT, the international foot: a DEM metre over this is a foot.
   elevation_metres_per_foot: 0.3048
+  # lib/elevation_gain.py's DEFAULT_THRESHOLD_M, the dead band a climb must
+  # reverse by before it is banked (macros/dead_band_gain.sql): six times
+  # NOISE_FLOOR_M, the DEM's 0.5 m sample-to-sample error that the A.T.'s
+  # 17% raw over-count implies, and checked against three published A.T.
+  # sections by check_elevation_gain.py. Unchecked on the network's ground,
+  # which is why both network manifests say `estimate: true`.
+  elevation_gain_threshold_m: 3.0
 
   # The closures and warnings family: lib/atc_updates.py's constants, read by
   # int_closures__atc_checked and held to the Python by

@@ -1,0 +1,547 @@
+version: 2
+
+unit_tests:
+  # The network half of the elevation family: each test is named for the
+  # export_network_elevation.py or export_network_profile.py rule it holds,
+  # most for the tests/test_export_network_elevation.py or
+  # tests/test_export_network_profile.py case it ports (pipeline/ELT.md,
+  # "Tests move with their rule"). tests/test_dbt_elevation_network_parity.py
+  # runs today's own functions over each test's given rows (edge_sample_points,
+  # edge_climb, edge_profile, measure_seams and its _percentile, and the two
+  # json.dumps the writers stand in for) and holds every expected row to the
+  # Python's answer; the tests the Python has no counterpart for are listed
+  # there by name.
+  #
+  # A dbt 2.0.6 unit test compares a VARCHAR, integer or boolean exactly and
+  # a DOUBLE only to one decimal (the A.T. half's file says where that was
+  # measured), so lon and lat are left out of most expectations; the
+  # real-geometry run in int_elevation__edge_sample_points' header holds
+  # them to the bit.
+
+  - name: int_elevation__edge_sample_points_includes_both_ends
+    description: >
+      Ports TestSamplePositions.test_includes_both_ends: an edge of 99.7
+      projected metres gets round(99.7 / 25) = 4 intervals, so five samples,
+      the first at its start and the last at its end.
+    model: int_elevation__edge_sample_points
+    given:
+      - input: ref('int_trail_network__edges')
+        rows:
+          - {edge_id: 'trail:a#1.1', edge_index: 0, geom_geojson: '{"type": "LineString", "coordinates": [[-74.15, 41.3], [-74.1488, 41.3]]}'}
+    expect:
+      rows:
+        - {edge_id: 'trail:a#1.1', sample_index: 0}
+        - {edge_id: 'trail:a#1.1', sample_index: 1}
+        - {edge_id: 'trail:a#1.1', sample_index: 2}
+        - {edge_id: 'trail:a#1.1', sample_index: 3}
+        - {edge_id: 'trail:a#1.1', sample_index: 4}
+
+  - name: int_elevation__edge_sample_points_a_short_edge_still_gets_its_two_ends
+    description: >
+      Ports TestSamplePositions.test_a_short_edge_still_gets_its_two_ends: a
+      4.2 m edge is shorter than half an interval and is still read at both
+      ends, so it is never measured from one point and read as flat.
+    model: int_elevation__edge_sample_points
+    given:
+      - input: ref('int_trail_network__edges')
+        rows:
+          - {edge_id: 'trail:a#1.1', edge_index: 0, geom_geojson: '{"type": "LineString", "coordinates": [[-74.15, 41.3], [-74.14995, 41.3]]}'}
+    expect:
+      rows:
+        - {edge_id: 'trail:a#1.1', sample_index: 0, lon: -74.15}
+        - {edge_id: 'trail:a#1.1', sample_index: 1, lon: -74.14995}
+
+  - name: int_elevation__edge_sample_points_spacing_lands_near_the_interval_not_under_it
+    description: >
+      Ports TestSamplePositions.test_spacing_lands_near_the_interval_not_under_it:
+      round() rather than ceil(), so a 29.9 m edge is one interval of 29.9 m,
+      not two of 15 m.
+    model: int_elevation__edge_sample_points
+    given:
+      - input: ref('int_trail_network__edges')
+        rows:
+          - {edge_id: 'trail:a#1.1', edge_index: 0, geom_geojson: '{"type": "LineString", "coordinates": [[-74.15, 41.3], [-74.14964, 41.3]]}'}
+    expect:
+      rows:
+        - {edge_id: 'trail:a#1.1', sample_index: 0}
+        - {edge_id: 'trail:a#1.1', sample_index: 1}
+
+  - name: int_elevation__edge_sample_points_a_degenerate_length_yields_one_point_rather_than_raising
+    description: >
+      Ports TestSamplePositions.test_a_degenerate_length_yields_one_point_rather_than_raising,
+      and edge_sample_points' two shapes with no length: two identical
+      vertices and one vertex each read the first vertex once, as published,
+      and an edge with no vertex reads nothing.
+    model: int_elevation__edge_sample_points
+    given:
+      - input: ref('int_trail_network__edges')
+        rows:
+          - {edge_id: 'trail:a#1.1', edge_index: 0, geom_geojson: '{"type": "LineString", "coordinates": [[-74.15, 41.3], [-74.15, 41.3]]}'}
+          - {edge_id: 'trail:b#1.1', edge_index: 1, geom_geojson: '{"type": "LineString", "coordinates": [[-74.15, 41.3]]}'}
+          - {edge_id: 'trail:c#1.1', edge_index: 2, geom_geojson: '{"type": "LineString", "coordinates": []}'}
+    expect:
+      rows:
+        - {edge_id: 'trail:a#1.1', sample_index: 0, lon: -74.15, lat: 41.3}
+        - {edge_id: 'trail:b#1.1', sample_index: 0, lon: -74.15, lat: 41.3}
+
+  - name: int_elevation__dem_points_the_at_asks_first_and_edges_ask_in_graph_order
+    description: >
+      publish-vector-data.yml runs export_elevation.py before
+      export_network_elevation.py, which asks for every edge's points in one
+      call in trail_graph.json's order, so the A.T.'s walk asks first and the
+      edges follow by edge_index, whatever their ids sort as ('trail:b' is
+      edge 0 here).
+    model: int_elevation__dem_points
+    given:
+      - input: ref('int_elevation__sample_points')
+        rows:
+          - {line_id: 'AT', sample_index: 0, lon: -74.0, lat: 41.0}
+          - {line_id: 'AT', sample_index: 1, lon: -74.0, lat: 41.000223}
+      - input: ref('int_elevation__edge_sample_points')
+        rows:
+          - {edge_id: 'trail:a#1.1', edge_index: 1, sample_index: 0, lon: -74.2, lat: 41.2}
+          - {edge_id: 'trail:b#1.1', edge_index: 0, sample_index: 1, lon: -74.11, lat: 41.1}
+          - {edge_id: 'trail:b#1.1', edge_index: 0, sample_index: 0, lon: -74.1, lat: 41.1}
+    expect:
+      rows:
+        - {line_id: 'AT', sample_index: 0, ask_order: 0}
+        - {line_id: 'AT', sample_index: 1, ask_order: 1}
+        - {line_id: 'trail:b#1.1', sample_index: 0, ask_order: 2}
+        - {line_id: 'trail:b#1.1', sample_index: 1, ask_order: 3}
+        - {line_id: 'trail:a#1.1', sample_index: 0, ask_order: 4}
+
+  - name: int_elevation__edge_samples_are_whole_feet
+    description: >
+      Ports TestEdgeProfile.test_samples_are_whole_feet: 100.0, 100.1 and
+      100.2 m are 328, 328 and 329 ft, each rounded once from the metres.
+      And as Python's round() rounds, ties to even: 0.1524 m is exactly 0.5
+      ft and 0.4572 m exactly 1.5 ft, which round to 0 and 2, where DuckDB's
+      round() gives 1 and 2.
+    model: int_elevation__edge_samples
+    given:
+      - input: ref('int_elevation__edge_sample_points')
+        rows:
+          - {edge_id: 'trail:a#1.1', edge_index: 0, sample_index: 0, lon: -74.0, lat: 41.0}
+          - {edge_id: 'trail:a#1.1', edge_index: 0, sample_index: 1, lon: -74.0, lat: 41.0001}
+          - {edge_id: 'trail:a#1.1', edge_index: 0, sample_index: 2, lon: -74.0, lat: 41.0002}
+          - {edge_id: 'trail:a#1.1', edge_index: 0, sample_index: 3, lon: -74.0, lat: 41.0003}
+          - {edge_id: 'trail:a#1.1', edge_index: 0, sample_index: 4, lon: -74.0, lat: 41.0004}
+      - input: ref('stg_derived__dem_samples')
+        rows:
+          - {line_id: 'trail:a#1.1', sample_index: 0, lon: -74.0, lat: 41.0, elevation_m: 100.0}
+          - {line_id: 'trail:a#1.1', sample_index: 1, lon: -74.0, lat: 41.0001, elevation_m: 100.1}
+          - {line_id: 'trail:a#1.1', sample_index: 2, lon: -74.0, lat: 41.0002, elevation_m: 100.2}
+          - {line_id: 'trail:a#1.1', sample_index: 3, lon: -74.0, lat: 41.0003, elevation_m: 0.1524}
+          - {line_id: 'trail:a#1.1', sample_index: 4, lon: -74.0, lat: 41.0004, elevation_m: 0.4572}
+    expect:
+      rows:
+        - {edge_id: 'trail:a#1.1', sample_index: 0, elevation_ft: 328}
+        - {edge_id: 'trail:a#1.1', sample_index: 1, elevation_ft: 328}
+        - {edge_id: 'trail:a#1.1', sample_index: 2, elevation_ft: 329}
+        - {edge_id: 'trail:a#1.1', sample_index: 3, elevation_ft: 0}
+        - {edge_id: 'trail:a#1.1', sample_index: 4, elevation_ft: 2}
+
+  - name: int_elevation__edge_samples_one_hole_keeps_its_place_on_the_axis
+    description: >
+      Ports TestEdgeProfile.test_one_hole_keeps_its_place_on_the_axis: a
+      sample the DEM has no answer for stays in its place with no elevation,
+      never 0 and never dropped, so the distance a chart derives from the
+      array's length stays true.
+    model: int_elevation__edge_samples
+    given:
+      - input: ref('int_elevation__edge_sample_points')
+        rows:
+          - {edge_id: 'trail:a#1.1', edge_index: 0, sample_index: 0, lon: -74.0, lat: 41.0}
+          - {edge_id: 'trail:a#1.1', edge_index: 0, sample_index: 1, lon: -74.0, lat: 41.0001}
+          - {edge_id: 'trail:a#1.1', edge_index: 0, sample_index: 2, lon: -74.0, lat: 41.0002}
+      - input: ref('stg_derived__dem_samples')
+        rows:
+          - {line_id: 'trail:a#1.1', sample_index: 0, lon: -74.0, lat: 41.0, elevation_m: 298.704}
+          - {line_id: 'trail:a#1.1', sample_index: 1, lon: -74.0, lat: 41.0001, elevation_m: null}
+          - {line_id: 'trail:a#1.1', sample_index: 2, lon: -74.0, lat: 41.0002, elevation_m: 305.4096}
+    expect:
+      rows:
+        - {edge_id: 'trail:a#1.1', sample_index: 0, elevation_ft: 980}
+        - {edge_id: 'trail:a#1.1', sample_index: 1, elevation_ft: null}
+        - {edge_id: 'trail:a#1.1', sample_index: 2, elevation_ft: 1002}
+
+  - name: int_elevation__edge_samples_refuses_an_elevation_read_at_another_point
+    description: >
+      A DEM row for an edge's sample that was read at another point (a
+      table an earlier build left behind) lends the sample nothing: it reads
+      as no answer, and assert_every_elevation_sample_was_read_at_its_own_point
+      fails the build on it.
+    model: int_elevation__edge_samples
+    given:
+      - input: ref('int_elevation__edge_sample_points')
+        rows:
+          - {edge_id: 'trail:a#1.1', edge_index: 0, sample_index: 0, lon: -74.0, lat: 41.0}
+          - {edge_id: 'trail:a#1.1', edge_index: 0, sample_index: 1, lon: -74.0, lat: 41.0001}
+      - input: ref('stg_derived__dem_samples')
+        rows:
+          - {line_id: 'trail:a#1.1', sample_index: 0, lon: -74.0, lat: 41.0, elevation_m: 100.0}
+          - {line_id: 'trail:a#1.1', sample_index: 1, lon: -74.5, lat: 41.5, elevation_m: 900.0}
+    expect:
+      rows:
+        - {edge_id: 'trail:a#1.1', sample_index: 0, elevation_ft: 328}
+        - {edge_id: 'trail:a#1.1', sample_index: 1, elevation_ft: null}
+
+  - name: int_elevation__edge_climbs_an_unmeasured_edge_is_null_and_never_zero
+    description: >
+      Ports TestEdgeClimb.test_an_unmeasured_edge_is_none_and_never_zero:
+      "nobody measured this" is not "this is flat", so an edge whose every
+      sample is a DEM gap has no climb at all.
+    model: int_elevation__edge_climbs
+    given:
+      - input: ref('int_trail_network__edges')
+        rows:
+          - {edge_id: 'trail:a#1.1', edge_index: 0, source_key: 'oprhp_trails'}
+      - input: ref('int_elevation__edge_samples')
+        rows:
+          - {edge_id: 'trail:a#1.1', sample_index: 0, elevation_m: null}
+          - {edge_id: 'trail:a#1.1', sample_index: 1, elevation_m: null}
+          - {edge_id: 'trail:a#1.1', sample_index: 2, elevation_m: null}
+    expect:
+      rows:
+        - {edge_id: 'trail:a#1.1', sample_count: 3, measured_sample_count: 0, gain_ft: null, loss_ft: null, measured: false, partially_covered: false}
+
+  - name: int_elevation__edge_climbs_a_flat_edge_is_zero_and_not_null
+    description: Ports TestEdgeClimb.test_a_flat_edge_is_zero_and_not_none.
+    model: int_elevation__edge_climbs
+    given:
+      - input: ref('int_trail_network__edges')
+        rows:
+          - {edge_id: 'trail:a#1.1', edge_index: 0, source_key: 'oprhp_trails'}
+      - input: ref('int_elevation__edge_samples')
+        rows:
+          - {edge_id: 'trail:a#1.1', sample_index: 0, elevation_m: 100.0}
+          - {edge_id: 'trail:a#1.1', sample_index: 1, elevation_m: 100.0}
+          - {edge_id: 'trail:a#1.1', sample_index: 2, elevation_m: 100.0}
+    expect:
+      rows:
+        - {edge_id: 'trail:a#1.1', gain_ft: 0, loss_ft: 0, measured: true, partially_covered: false}
+
+  - name: int_elevation__edge_climbs_gain_and_loss_are_both_positive_numbers
+    description: >
+      Ports TestEdgeClimb.test_gain_and_loss_are_both_positive_numbers: a
+      hill 100 m up and back down is 328 ft of gain and 328 ft of loss, each
+      a magnitude, since the phone prints its own signs.
+    model: int_elevation__edge_climbs
+    given:
+      - input: ref('int_trail_network__edges')
+        rows:
+          - {edge_id: 'trail:a#1.1', edge_index: 0, source_key: 'oprhp_trails'}
+      - input: ref('int_elevation__edge_samples')
+        rows:
+          - {edge_id: 'trail:a#1.1', sample_index: 0, elevation_m: 100.0}
+          - {edge_id: 'trail:a#1.1', sample_index: 1, elevation_m: 200.0}
+          - {edge_id: 'trail:a#1.1', sample_index: 2, elevation_m: 100.0}
+    expect:
+      rows:
+        - {edge_id: 'trail:a#1.1', gain_ft: 328, loss_ft: 328}
+
+  - name: int_elevation__edge_climbs_noise_below_the_dead_band_is_not_climbing
+    description: >
+      Ports TestEdgeClimb.test_noise_below_the_dead_band_is_not_climbing:
+      half a metre of jitter is what the 3 m dead band drops.
+    model: int_elevation__edge_climbs
+    given:
+      - input: ref('int_trail_network__edges')
+        rows:
+          - {edge_id: 'trail:a#1.1', edge_index: 0, source_key: 'oprhp_trails'}
+      - input: ref('int_elevation__edge_samples')
+        rows:
+          - {edge_id: 'trail:a#1.1', sample_index: 0, elevation_m: 100.0}
+          - {edge_id: 'trail:a#1.1', sample_index: 1, elevation_m: 100.5}
+          - {edge_id: 'trail:a#1.1', sample_index: 2, elevation_m: 100.0}
+          - {edge_id: 'trail:a#1.1', sample_index: 3, elevation_m: 100.5}
+          - {edge_id: 'trail:a#1.1', sample_index: 4, elevation_m: 100.0}
+          - {edge_id: 'trail:a#1.1', sample_index: 5, elevation_m: 100.5}
+    expect:
+      rows:
+        - {edge_id: 'trail:a#1.1', gain_ft: 0, loss_ft: 0}
+
+  - name: int_elevation__edge_climbs_a_partially_covered_edge_is_measured_over_the_runs_it_has
+    description: >
+      Ports TestEdgeClimb.test_a_partially_covered_edge_is_measured_over_the_runs_it_has:
+      30 m before the gap and 30 m after it are 60 m, 197 ft; the 70 m step
+      across the gap is not counted, the honest direction to be wrong in,
+      and partially_covered says so.
+    model: int_elevation__edge_climbs
+    given:
+      - input: ref('int_trail_network__edges')
+        rows:
+          - {edge_id: 'trail:a#1.1', edge_index: 0, source_key: 'oprhp_trails'}
+      - input: ref('int_elevation__edge_samples')
+        rows:
+          - {edge_id: 'trail:a#1.1', sample_index: 0, elevation_m: 100.0}
+          - {edge_id: 'trail:a#1.1', sample_index: 1, elevation_m: 130.0}
+          - {edge_id: 'trail:a#1.1', sample_index: 2, elevation_m: null}
+          - {edge_id: 'trail:a#1.1', sample_index: 3, elevation_m: 200.0}
+          - {edge_id: 'trail:a#1.1', sample_index: 4, elevation_m: 230.0}
+    expect:
+      rows:
+        - {edge_id: 'trail:a#1.1', sample_count: 5, measured_sample_count: 4, gain_ft: 197, loss_ft: 0, measured: true, partially_covered: true}
+
+  - name: int_elevation__edge_climbs_the_same_edge_reversed_is_all_loss_and_no_gain
+    description: >
+      Ports TestBuild.test_the_same_edge_reversed_is_all_loss_and_no_gain:
+      a 40 m ramp is 131 ft of gain walked up it and 131 ft of loss walked
+      down it.
+    model: int_elevation__edge_climbs
+    given:
+      - input: ref('int_trail_network__edges')
+        rows:
+          - {edge_id: 'trail:up#1.1', edge_index: 0, source_key: 'oprhp_trails'}
+          - {edge_id: 'trail:down#1.1', edge_index: 1, source_key: 'oprhp_trails'}
+      - input: ref('int_elevation__edge_samples')
+        rows:
+          - {edge_id: 'trail:up#1.1', sample_index: 0, elevation_m: 100.0}
+          - {edge_id: 'trail:up#1.1', sample_index: 1, elevation_m: 110.0}
+          - {edge_id: 'trail:up#1.1', sample_index: 2, elevation_m: 120.0}
+          - {edge_id: 'trail:up#1.1', sample_index: 3, elevation_m: 130.0}
+          - {edge_id: 'trail:up#1.1', sample_index: 4, elevation_m: 140.0}
+          - {edge_id: 'trail:down#1.1', sample_index: 0, elevation_m: 140.0}
+          - {edge_id: 'trail:down#1.1', sample_index: 1, elevation_m: 130.0}
+          - {edge_id: 'trail:down#1.1', sample_index: 2, elevation_m: 120.0}
+          - {edge_id: 'trail:down#1.1', sample_index: 3, elevation_m: 110.0}
+          - {edge_id: 'trail:down#1.1', sample_index: 4, elevation_m: 100.0}
+    expect:
+      rows:
+        - {edge_id: 'trail:up#1.1', gain_ft: 131, loss_ft: 0}
+        - {edge_id: 'trail:down#1.1', gain_ft: 0, loss_ft: 131}
+
+  - name: int_elevation__edge_climbs_climb_is_never_summed_across_a_node_join
+    description: >
+      Ports TestBuild.test_climb_is_never_summed_across_a_node_join (#559's
+      failure in a junction graph's shape): two edges sharing a node, one at
+      100 m and one at 400 m, each climbing 2 m, under the dead band. Read as
+      one profile they would bank the 300 m step between them, 984 ft that
+      nobody climbs; each edge is measured from its own samples only.
+    model: int_elevation__edge_climbs
+    given:
+      - input: ref('int_trail_network__edges')
+        rows:
+          - {edge_id: 'trail:low#1.1', edge_index: 0, source_key: 'oprhp_trails'}
+          - {edge_id: 'trail:high#1.1', edge_index: 1, source_key: 'nynjtc_long_path'}
+      - input: ref('int_elevation__edge_samples')
+        rows:
+          - {edge_id: 'trail:low#1.1', sample_index: 0, elevation_m: 100.0}
+          - {edge_id: 'trail:low#1.1', sample_index: 1, elevation_m: 101.0}
+          - {edge_id: 'trail:low#1.1', sample_index: 2, elevation_m: 102.0}
+          - {edge_id: 'trail:high#1.1', sample_index: 0, elevation_m: 400.0}
+          - {edge_id: 'trail:high#1.1', sample_index: 1, elevation_m: 401.0}
+          - {edge_id: 'trail:high#1.1', sample_index: 2, elevation_m: 402.0}
+    expect:
+      rows:
+        - {edge_id: 'trail:low#1.1', gain_ft: 0, loss_ft: 0}
+        - {edge_id: 'trail:high#1.1', gain_ft: 0, loss_ft: 0}
+
+  - name: int_elevation__edge_climbs_an_edge_with_no_sample_has_no_climb
+    description: >
+      An edge with no vertex has no sample (edge_sample_points returns none
+      for it), and its climb is null, as edge_climb([]) is None: it still has
+      its row, so trail_graph_elevation.json keeps its place.
+    model: int_elevation__edge_climbs
+    given:
+      - input: ref('int_trail_network__edges')
+        rows:
+          - {edge_id: 'trail:a#1.1', edge_index: 0, source_key: 'oprhp_trails'}
+          - {edge_id: 'trail:b#1.1', edge_index: 1, source_key: 'oprhp_trails'}
+      - input: ref('int_elevation__edge_samples')
+        rows:
+          - {edge_id: 'trail:a#1.1', sample_index: 0, elevation_m: 100.0}
+          - {edge_id: 'trail:a#1.1', sample_index: 1, elevation_m: 100.0}
+    expect:
+      rows:
+        - {edge_id: 'trail:a#1.1', sample_count: 2, gain_ft: 0, loss_ft: 0, measured: true}
+        - {edge_id: 'trail:b#1.1', sample_count: 0, gain_ft: null, loss_ft: null, measured: false}
+
+  - name: int_elevation__seam_nodes_two_edges_that_genuinely_meet_report_no_step
+    description: >
+      Ports TestTheSeamRule.test_two_edges_that_genuinely_meet_report_no_step:
+      two edges whose ends are the same published coordinate read one point,
+      so the node is coincident and its step is 0.
+    model: int_elevation__seam_nodes
+    given:
+      - input: ref('int_trail_network__edges')
+        rows:
+          - {edge_id: 'trail:a#1.1', from_node: 0, to_node: 1, geom_geojson: '{"type": "LineString", "coordinates": [[-74.15, 41.3], [-74.149, 41.3]]}'}
+          - {edge_id: 'trail:b#1.1', from_node: 1, to_node: 2, geom_geojson: '{"type": "LineString", "coordinates": [[-74.149, 41.3], [-74.148, 41.3]]}'}
+      - input: ref('int_elevation__edge_samples')
+        rows:
+          - {edge_id: 'trail:a#1.1', sample_index: 0, elevation_ft: 328}
+          - {edge_id: 'trail:a#1.1', sample_index: 1, elevation_ft: 330}
+          - {edge_id: 'trail:b#1.1', sample_index: 0, elevation_ft: 330}
+          - {edge_id: 'trail:b#1.1', sample_index: 1, elevation_ft: 335}
+    expect:
+      rows:
+        - {node_id: 1, incident_ends: 2, coincident: true, measured_ends: 2, step_ft: 0.0}
+
+  - name: int_elevation__seam_nodes_an_unmeasured_edge_end_contributes_no_step
+    description: >
+      Ports TestTheSeamRule.test_an_unmeasured_edge_end_contributes_no_step:
+      an edge the DEM never answered has no published profile, so its end
+      has no elevation, and one measured end cannot disagree with anything.
+    model: int_elevation__seam_nodes
+    given:
+      - input: ref('int_trail_network__edges')
+        rows:
+          - {edge_id: 'trail:a#1.1', from_node: 0, to_node: 1, geom_geojson: '{"type": "LineString", "coordinates": [[-74.15, 41.3], [-74.149, 41.3]]}'}
+          - {edge_id: 'trail:b#1.1', from_node: 1, to_node: 2, geom_geojson: '{"type": "LineString", "coordinates": [[-74.149, 41.3], [-74.148, 41.3]]}'}
+      - input: ref('int_elevation__edge_samples')
+        rows:
+          - {edge_id: 'trail:a#1.1', sample_index: 0, elevation_ft: 328}
+          - {edge_id: 'trail:a#1.1', sample_index: 1, elevation_ft: 330}
+          - {edge_id: 'trail:b#1.1', sample_index: 0, elevation_ft: null}
+          - {edge_id: 'trail:b#1.1', sample_index: 1, elevation_ft: null}
+    expect:
+      rows:
+        - {node_id: 1, incident_ends: 2, coincident: true, measured_ends: 1, step_ft: null}
+
+  - name: int_elevation__seam_nodes_a_snapped_join_reports_its_step
+    description: >
+      Ports TestTheSeamRule.test_the_run_measures_its_own_seam_rather_than_asserting_it:
+      a third edge snapped onto a node from about 2 m away arrives 14 ft
+      higher, over the 9.8 ft dead band, which a profile concatenated
+      across the join would read as climbing. Where an edge's profile has a
+      hole at its far end, that end has no elevation.
+    model: int_elevation__seam_nodes
+    given:
+      - input: ref('int_trail_network__edges')
+        rows:
+          - {edge_id: 'trail:a#1.1', from_node: 0, to_node: 1, geom_geojson: '{"type": "LineString", "coordinates": [[-74.15, 41.3], [-74.149, 41.3]]}'}
+          - {edge_id: 'trail:b#1.1', from_node: 1, to_node: 2, geom_geojson: '{"type": "LineString", "coordinates": [[-74.149, 41.3], [-74.148, 41.3]]}'}
+          - {edge_id: 'trail:c#1.1', from_node: 3, to_node: 1, geom_geojson: '{"type": "LineString", "coordinates": [[-74.149, 41.301], [-74.14902, 41.30002]]}'}
+          - {edge_id: 'trail:d#1.1', from_node: 2, to_node: 4, geom_geojson: '{"type": "LineString", "coordinates": [[-74.148, 41.3], [-74.147, 41.3]]}'}
+      - input: ref('int_elevation__edge_samples')
+        rows:
+          - {edge_id: 'trail:a#1.1', sample_index: 0, elevation_ft: 328}
+          - {edge_id: 'trail:a#1.1', sample_index: 1, elevation_ft: 330}
+          - {edge_id: 'trail:b#1.1', sample_index: 0, elevation_ft: 330}
+          - {edge_id: 'trail:b#1.1', sample_index: 1, elevation_ft: null}
+          - {edge_id: 'trail:c#1.1', sample_index: 0, elevation_ft: 340}
+          - {edge_id: 'trail:c#1.1', sample_index: 1, elevation_ft: 344}
+          - {edge_id: 'trail:d#1.1', sample_index: 0, elevation_ft: 335}
+          - {edge_id: 'trail:d#1.1', sample_index: 1, elevation_ft: 336}
+    expect:
+      rows:
+        - {node_id: 1, incident_ends: 3, coincident: false, measured_ends: 3, step_ft: 14.0}
+        - {node_id: 2, incident_ends: 2, coincident: true, measured_ends: 1, step_ft: null}
+
+  - name: int_elevation__seam_measurement_percentiles_are_nearest_rank
+    description: >
+      measure_seams' summary of four steps, 0, 3, 14 and 20 ft, and two
+      nodes with none: the median is the step at round(0.5 * 3) = 2 (ties to
+      even), 14 ft; the 95th percentile the step at round(2.85) = 3, 20 ft;
+      two steps are over the 9.8 ft dead band.
+    model: int_elevation__seam_measurement
+    given:
+      - input: ref('int_elevation__seam_nodes')
+        rows:
+          - {node_id: 1, coincident: true, step_ft: 0.0}
+          - {node_id: 2, coincident: false, step_ft: 3.0}
+          - {node_id: 3, coincident: false, step_ft: 14.0}
+          - {node_id: 4, coincident: false, step_ft: 20.0}
+          - {node_id: 5, coincident: true, step_ft: null}
+          - {node_id: 6, coincident: false, step_ft: null}
+    expect:
+      rows:
+        - {shared_nodes: 6, coincident_ends: 2, measured_nodes: 4, nodes_with_a_step: 3, steps_over_dead_band: 2, step_ft_p50: 14.0, step_ft_p95: 20.0, step_ft_max: 20.0}
+
+  - name: int_elevation__seam_measurement_with_no_step_every_step_figure_is_zero
+    description: >
+      With no node measured at two ends, measure_seams reports its
+      percentiles and maximum as 0.0, never null.
+    model: int_elevation__seam_measurement
+    given:
+      - input: ref('int_elevation__seam_nodes')
+        rows:
+          - {node_id: 1, coincident: true, step_ft: null}
+    expect:
+      rows:
+        - {shared_nodes: 1, coincident_ends: 1, measured_nodes: 0, nodes_with_a_step: 0, steps_over_dead_band: 0, step_ft_p50: 0.0, step_ft_p95: 0.0, step_ft_max: 0.0}
+
+  - name: pub_trail_graph_elevation_one_entry_per_edge_in_edge_order
+    description: >
+      One entry per edge by edge_index, whatever the ids sort as or the
+      climbs hold: edge 0 climbs, edge 1 was never measured, edge 2 has no
+      climb row, and edge 3's source may not publish, so the last three are
+      null in their own places and nothing shifts onto a neighbour's name.
+      json.dumps(..., separators=(",", ":")) writes no spaces.
+    model: pub_trail_graph_elevation
+    given:
+      - input: ref('int_trail_network__edges')
+        rows:
+          - {edge_id: 'trail:z#1.1', edge_index: 0, source_key: 'oprhp_trails'}
+          - {edge_id: 'trail:y#1.1', edge_index: 1, source_key: 'oprhp_trails'}
+          - {edge_id: 'trail:x#1.1', edge_index: 2, source_key: 'oprhp_trails'}
+          - {edge_id: 'trail:w#1.1', edge_index: 3, source_key: 'withdrawn_layer'}
+      - input: ref('int_elevation__edge_climbs')
+        rows:
+          - {edge_id: 'trail:z#1.1', gain_ft: 12, loss_ft: 3}
+          - {edge_id: 'trail:y#1.1', gain_ft: null, loss_ft: null}
+          - {edge_id: 'trail:w#1.1', gain_ft: 40, loss_ft: 2}
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: 'oprhp_trails', may_publish: true}
+          - {source_key: 'withdrawn_layer', may_publish: false}
+    expect:
+      rows:
+        - {climbs_json: '[[12,3],null,null,null]'}
+
+  - name: pub_trail_graph_elevation_an_empty_graph_is_an_empty_array
+    description: Ports TestBuild.test_an_empty_graph_is_an_empty_artifact_not_a_crash.
+    model: pub_trail_graph_elevation
+    given:
+      - input: ref('int_trail_network__edges')
+        rows: []
+      - input: ref('int_elevation__edge_climbs')
+        rows: []
+      - input: ref('int_sources__publication')
+        rows: []
+    expect:
+      rows:
+        - {climbs_json: '[]'}
+
+  - name: pub_trail_graph_profile_an_edge_the_dem_never_covers_is_null_and_not_a_list_of_nulls
+    description: >
+      Ports TestEdgeProfile.test_an_edge_the_dem_never_covers_is_none_and_not_a_list_of_nulls
+      and test_one_hole_keeps_its_place_on_the_axis: edge 0 has a hole in
+      its own place, edge 1's every sample is a gap so the whole entry is
+      null, and edge 2 has no sample at all (or a source that may not
+      publish) and is null too. The flat edge 3 is a flat profile, never
+      null.
+    model: pub_trail_graph_profile
+    given:
+      - input: ref('int_trail_network__edges')
+        rows:
+          - {edge_id: 'trail:a#1.1', edge_index: 0}
+          - {edge_id: 'trail:b#1.1', edge_index: 1}
+          - {edge_id: 'trail:c#1.1', edge_index: 2}
+          - {edge_id: 'trail:d#1.1', edge_index: 3}
+      - input: ref('elevation')
+        rows:
+          - {line_id: 'trail:a#1.1', seq: 0, elevation_ft: 980.0}
+          - {line_id: 'trail:a#1.1', seq: 1, elevation_ft: null}
+          - {line_id: 'trail:a#1.1', seq: 2, elevation_ft: 1002.0}
+          - {line_id: 'trail:b#1.1', seq: 0, elevation_ft: null}
+          - {line_id: 'trail:b#1.1', seq: 1, elevation_ft: null}
+          - {line_id: 'trail:d#1.1', seq: 1, elevation_ft: 328.0}
+          - {line_id: 'trail:d#1.1', seq: 0, elevation_ft: 328.0}
+          - {line_id: 'AT', seq: 0, elevation_ft: 1234.5}
+    expect:
+      rows:
+        - {profiles_json: '[[980,null,1002],null,null,[328,328]]'}
+
+  - name: pub_trail_graph_profile_an_empty_graph_is_an_empty_array
+    description: Ports TestBuild.test_an_empty_graph_is_an_empty_artifact_not_a_crash.
+    model: pub_trail_graph_profile
+    given:
+      - input: ref('int_trail_network__edges')
+        rows: []
+      - input: ref('elevation')
+        rows: []
+    expect:
+      rows:
+        - {profiles_json: '[]'}

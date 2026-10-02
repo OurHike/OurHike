@@ -3,6 +3,7 @@
     python parity.py podcasts --new data/processed/podcasts_episodes.json
     python parity.py stewards --new data/processed/stewards.json
     python parity.py elevation --new data/processed/dbt/elevation_profile.json --raw-dir data/raw
+    python parity.py trail_graph_elevation --new data/processed/dbt/trail_graph_elevation.json --raw-dir data/raw --warehouse data/warehouse.duckdb
     python parity.py nearby_trails --new data/processed/dbt/nearby_trails.geojson
     python parity.py network_overview --new data/processed/dbt/network_overview.geojson
 
@@ -65,6 +66,10 @@ class Family:
     # The old document is built from make_dbt_fixtures.py's raw files rather
     # than from a file in git, so `old` takes the --raw-dir they are in.
     reads_raw_dir: bool = False
+    # The old side's input is rows the build itself made, the junction graph's
+    # edges, which today's exporters read from files the fixtures have none
+    # of, so `old` takes --raw-dir and --warehouse.
+    reads_warehouse: bool = False
     # Top-level fields that hold the moment a run happened, such as the
     # conditions files' `generated_at`: two runs never agree on the value, so
     # each is held to its form (a UTC stamp, STAMP) on both sides instead.
@@ -123,6 +128,65 @@ def _elevation_old(raw_dir: Path) -> dict:
             export_elevation.SAMPLE_INTERVAL_METERS,
         )
     return {"samples": records}
+
+
+def _graph_edges(warehouse: Path) -> tuple[dict, list]:
+    """trail_graph.json's `edges` and trail_graph_geometry.json's entries, as int_trail_network__edges holds them.
+
+    Both network elevation exporters read only these: each edge's `source`,
+    `from` and `to`, and its published vertices, in edge order."""
+    import duckdb
+
+    with duckdb.connect(str(warehouse), read_only=True) as con:
+        rows = con.execute(
+            "select source_key, from_node, to_node, geom_geojson from intermediate.int_trail_network__edges order by edge_index"
+        ).fetchall()
+    graph = {"edges": [{"source": source, "from": start, "to": end} for source, start, end, _ in rows]}
+    return graph, [json.loads(geom)["coordinates"] for *_, geom in rows]
+
+
+@functools.cache
+def _graph_companions_old(raw_dir: Path, warehouse: Path) -> tuple[list, list]:
+    """export_network_elevation.build and export_network_profile.build over the build's own graph.
+
+    In publish-vector-data.yml's order on one cold copy of the tile index:
+    export_elevation.py's A.T. profile first, then the climbs, then the
+    profiles, so the sampler's cache answers an edge point keyed like an
+    A.T. point with the A.T.'s pixel on this side exactly as
+    step_dem_sampling's one question does on the dbt side."""
+    import shutil
+    import tempfile
+
+    import export_elevation
+    import export_network_elevation
+    import export_network_profile
+
+    graph, geometry = _graph_edges(warehouse)
+    with tempfile.TemporaryDirectory() as scratch:
+        index = Path(scratch) / "tile_index.json"
+        shutil.copy(raw_dir / "elevation" / "tile_index.json", index)
+        export_elevation.build_profile(
+            raw_dir / "centerline.geojson",
+            raw_dir / "half_mile_points_from_springer.geojson",
+            index,
+            export_elevation.SAMPLE_INTERVAL_METERS,
+        )
+        sampler = export_elevation.ElevationSampler.for_index(index)
+        try:
+            climbs, _stats = export_network_elevation.build(graph, geometry, sampler)
+        finally:
+            sampler.close()
+        sampler = export_elevation.ElevationSampler.for_index(index)
+        try:
+            profiles, _stats, _seam = export_network_profile.build(graph, geometry, sampler)
+        finally:
+            sampler.close()
+    return climbs, profiles
+
+
+def _by_edge(entries: list) -> dict:
+    """An index-aligned companion array as records keyed by their place, the only key its entries have."""
+    return {"edges": [{"edge_index": index, "entry": entry} for index, entry in enumerate(entries)]}
 
 
 # The hourly conditions files. Their inputs, other than reference/atc_updates.json,
@@ -439,6 +503,25 @@ FAMILIES: dict[str, Family] = {
     "elevation": Family(
         old=_elevation_old, records="samples", key="distance_mi", ordered=True, bare_list=True, reads_raw_dir=True
     ),
+    # The junction graph's two elevation companions: index-aligned arrays
+    # whose entries carry no id, so each is keyed by its place, which is the
+    # edge it describes.
+    "trail_graph_elevation": Family(
+        old=lambda raw_dir, warehouse: _by_edge(_graph_companions_old(raw_dir, warehouse)[0]),
+        records="edges",
+        key="edge_index",
+        ordered=True,
+        reads_warehouse=True,
+        new_shape=lambda new, _path: _by_edge(new),
+    ),
+    "trail_graph_profile": Family(
+        old=lambda raw_dir, warehouse: _by_edge(_graph_companions_old(raw_dir, warehouse)[1]),
+        records="edges",
+        key="edge_index",
+        ordered=True,
+        reads_warehouse=True,
+        new_shape=lambda new, _path: _by_edge(new),
+    ),
     # `reviewed_at`, beside the records, is compared whole as a top-level field.
     "atc_updates": Family(old=_atc_updates_old, records="atc_updates", key="atc_id", ordered=True, stamps=("generated_at",)),
     "nynjtc_alerts": Family(
@@ -525,10 +608,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--raw-dir", type=Path, default=Path("data/raw"), help="make_dbt_fixtures.py's files, for a family built from them"
     )
+    parser.add_argument(
+        "--warehouse", type=Path, default=Path("data/warehouse.duckdb"), help="the built warehouse, for a family read from it"
+    )
     args = parser.parse_args(argv)
 
     family = FAMILIES[args.family]
-    old = family.old(args.raw_dir) if family.reads_raw_dir else family.old()
+    if family.reads_warehouse:
+        old = family.old(args.raw_dir, args.warehouse)
+    elif family.reads_raw_dir:
+        old = family.old(args.raw_dir)
+    else:
+        old = family.old()
     new = json.loads(args.new.read_text(encoding="utf-8"))
     if family.bare_list:
         new = {family.records: new}

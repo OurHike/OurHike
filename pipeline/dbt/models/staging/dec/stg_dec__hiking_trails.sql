@@ -1,6 +1,9 @@
--- DEC's statewide hiking-trail network, attributes only - geometry stays in
--- the Python spatial scripts, per DBT.md's scope line, exactly as
--- stg_atc__centerline_segments does for the A.T.
+-- DEC's statewide hiking-trail network, with its geometry. `geom` is carried
+-- for int_trail_lines__network_rows, which publishes these lines from stage 3
+-- of #1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a
+-- monthly refresh, published docs, and lighter phone downloads. Until then
+-- this model was attributes only, as stg_atc__centerline_segments still is
+-- for the A.T., and the lines stayed in the Python spatial scripts.
 --
 -- 5,286 polyline segments, fetched whole and counted 2026-08-25 against the
 -- 5,277 the survey read on 2026-08-11, so this layer moves. Every column
@@ -21,7 +24,8 @@
 --     the live domain read (Y=YES, N=NO, U=UNDECIDED, M=MAINTAINED,
 --     -99=NO JURISDICTION, read off the field metadata 2026-08-25). This
 --     model does not apply that reading; it passes the raw code through so
---     the one place that interprets it stays export_nearby_trails.py.
+--     the one place that interprets it is the foot filter: export_nearby_
+--     trails.py today, int_trail_lines__network_judged once its parity holds.
 --
 -- (3) THERE IS NO STATUS COLUMN. DEC publishes no closure state on this
 --     layer, and `publicuse` reads 'Y' on all 5,286 rows, so it is a
@@ -67,7 +71,8 @@ renamed as (
         foot,
         publicuse as public_use,
         updated,
-        _loaded_at as loaded_at
+        _loaded_at as loaded_at,
+        geom
     from source
 )
 

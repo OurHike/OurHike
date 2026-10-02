@@ -140,6 +140,43 @@ vars:
     - [side_trails, Type, "4", "Other"]
     - [side_trails, Type, "5", "Unknown"]
 
+  # export_trails.py's and lib/corridor.py's numbers for the A.T.'s lines,
+  # held to the Python constants by tests/test_dbt_trail_lines_parity.py as
+  # the mile axis's are. Each says where its reasoning lives.
+  #
+  # lib/corridor.BUFFER_MILES: the corridor's half-width, argued there from
+  # the resupply POIs a thru-hiker leaves the trail for.
+  trail_lines_corridor_buffer_miles: 30
+  # DEFAULT_SIMPLIFY_TOLERANCE_M: under one screen pixel at every zoom, and
+  # under the survey's own accuracy (measured in export_trails.py).
+  trail_lines_simplify_tolerance_m: 1.0
+  # OVERVIEW_SIMPLIFY_TOLERANCE_M and OVERVIEW_COORDINATE_DECIMALS: the
+  # corridor-view sketch, trails_overview.geojson (#869).
+  trail_lines_overview_tolerance_m: 100.0
+  trail_lines_overview_decimals: 4
+  # TRAIL_MILE_DECIMALS: matches every POI's `mile` and the elevation
+  # profile's distance_mi, digit for digit.
+  trail_lines_mile_decimals: 3
+  # Decision 8's six decimals for trails.geojson, which
+  # export_nearby_trails.py's NEARBY_COORDINATE_DECIMALS already cuts the
+  # network's lines to.
+  trail_lines_published_decimals: 6
+  # lib/spurs.py's spur rules (int_trail_lines__spurs). SPUR_TYPE_CODE: Type
+  # 3 is "Spur (eg View, Camp)". TYPE_LITERAL_ALIASES: the literal 60 live
+  # side trails carry in place of code 2, misspelling included, lowercased.
+  trail_lines_spur_type_code: "3"
+  trail_lines_type_literal_aliases:
+    - ["signficant non-blaze", "2"]
+    - ["significant non-blaze", "2"]
+  # JUNCTION_MAX_M, ON_TRAIL_M and DESTINATION_MAX_M: lib/spurs.py argues
+  # each (generous for telling the ends apart, tight for "on the trail", the
+  # loose bound the client narrows), in metres.
+  trail_lines_spur_junction_max_m: 100.0
+  trail_lines_spur_on_trail_m: 25.0
+  trail_lines_spur_destination_max_m: 150.0
+  # METERS_PER_DEGREE, for lib/spurs.py's equirectangular distance.
+  trail_lines_metres_per_degree: 111320.0
+
   dbt_project_evaluator:
     # The mart names the maintainer chose carry no dim_/fct_ prefix
     # ("do not keep the dim_ and fct_ prefixes in the marts folders. Just

@@ -36,6 +36,11 @@ from shapely.geometry import LineString, MultiLineString, Point
 from shapely.strtree import STRtree
 
 import export_elevation
+import export_nearby_trails
+import export_spurs
+import export_trails
+from lib import corridor
+from lib import spurs as lib_spurs
 from tests.conftest import spatial_connection
 from tests.test_export_spurs import TYPE_DOMAIN as EXPORT_SPURS_TYPE_DOMAIN
 from tests.test_export_trails import BLAZE_DOMAIN_RESPONSE
@@ -78,6 +83,36 @@ def test_the_mile_axis_vars_are_export_elevations_constants():
     assert variables["mile_axis_holdout_max_median_mi"] == export_elevation.MARKER_HOLDOUT_MAX_MEDIAN_MI
     assert variables["mile_axis_holdout_max_p95_mi"] == export_elevation.MARKER_HOLDOUT_MAX_P95_MI
     assert variables["mile_axis_holdout_max_mi"] == export_elevation.MARKER_HOLDOUT_MAX_MI
+
+
+def test_the_at_line_vars_are_export_trails_constants():
+    variables = yaml.safe_load((DBT / "dbt_project.yml").read_text())["vars"]
+    assert variables["trail_lines_corridor_buffer_miles"] == corridor.BUFFER_MILES
+    assert variables["trail_lines_simplify_tolerance_m"] == export_trails.DEFAULT_SIMPLIFY_TOLERANCE_M
+    assert variables["trail_lines_overview_tolerance_m"] == export_trails.OVERVIEW_SIMPLIFY_TOLERANCE_M
+    assert variables["trail_lines_overview_decimals"] == export_trails.OVERVIEW_COORDINATE_DECIMALS
+    assert variables["trail_lines_mile_decimals"] == export_trails.TRAIL_MILE_DECIMALS
+    # Decision 8's six decimals for trails.geojson, the network file's own cut.
+    assert variables["trail_lines_published_decimals"] == export_nearby_trails.NEARBY_COORDINATE_DECIMALS
+
+
+def test_the_models_merge_only_the_sources_export_trails_merges():
+    """int_trail_lines__at_chains, __at_overview and __at_side_trails name the centerline as the merged source."""
+    assert export_trails.CHAIN_MERGED_SOURCES == ("centerline",)
+    for model in ("int_trail_lines__at_chains", "int_trail_lines__at_overview", "int_trail_lines__at_side_trails"):
+        text = (DBT / "models" / "intermediate" / "trail_lines" / f"{model}.sql").read_text()
+        assert "source_key in ('centerline')" in text or "source_key not in ('centerline')" in text, model
+
+
+def test_the_spur_vars_are_lib_spurs_constants():
+    variables = yaml.safe_load((DBT / "dbt_project.yml").read_text())["vars"]
+    assert variables["trail_lines_spur_type_code"] == lib_spurs.SPUR_TYPE_CODE
+    assert dict(map(tuple, variables["trail_lines_type_literal_aliases"])) == lib_spurs.TYPE_LITERAL_ALIASES
+    assert variables["trail_lines_spur_junction_max_m"] == lib_spurs.JUNCTION_MAX_M
+    assert variables["trail_lines_spur_on_trail_m"] == lib_spurs.ON_TRAIL_M
+    assert variables["trail_lines_spur_destination_max_m"] == lib_spurs.DESTINATION_MAX_M
+    assert variables["trail_lines_metres_per_degree"] == lib_spurs.METERS_PER_DEGREE
+    assert (export_spurs.SIDE_TRAILS_KEY, export_spurs.TYPE_FIELD) == ("side_trails", "Type")
 
 
 def _coded_domain(source_key: str, field_name: str) -> dict[str, str]:

@@ -5,7 +5,9 @@
 -- "Unknown", "Gold"), which is exactly why the column carries no
 -- accepted_values test yet: the domain is the finding, not a constraint.
 --
--- Since stage 3 of #1793 it carries the geometry and the row's place in the
+-- Since stage 3 of #1793 — Rebuild the data platform as dlt → dbt: seven
+-- contracted marts, a monthly refresh, published docs, and lighter phone
+-- downloads, it carries the geometry and the row's place in the
 -- layer too, for the trail_lines family's side trails and spurs, as
 -- stg_atc__centerline_segments does for the centerline.
 with source as (

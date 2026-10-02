@@ -116,7 +116,10 @@ models:
 
   - name: int_trail_lines__mile_axis
     description: >
-      The A.T.'s one mile axis (#652, #753): each centerline piece oriented
+      The A.T.'s one mile axis (#652 — The elevation profile's mile axis is
+      out of order in 18 places, by up to 46 miles; #753 — Publish a mile on
+      every POI, because this codebase measures a mile two different ways
+      and a plan cannot survive that): each centerline piece oriented
       and scaled by ATC's half-mile markers, in mile order, in EPSG:5070
       metres. The SQL form of export_elevation.calibrated_trail_axis, which
       every published A.T. mile comes off: POI `mile`, spur `junction_mile`,
@@ -131,6 +134,14 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: st_length(geom_5070) = length_m
+      # Every published A.T. mile comes off this axis. With no pieces (no
+      # markers landed, or none near the line) a mile would be nobody's, so
+      # the build stops, as export_poi.py and export_spurs.py stop without the
+      # markers; export_trails.py holds back trail_miles.json alone.
+      - dbt_utils.at_least_one:
+          name: int_trail_lines__mile_axis_has_a_piece
+          arguments:
+            column_name: piece_id
     columns:
       - name: piece_id
         description: >
@@ -233,6 +244,12 @@ models:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: [source_key, field_name, code]
+      # lib/spurs.decode_type reads a label back to its code, ignoring case,
+      # and takes the first match: with one label per code that is the match.
+      - dbt_utils.unique_combination_of_columns:
+          name: int_trail_lines__coded_domains_labels_name_one_code
+          arguments:
+            combination_of_columns: [source_key, field_name, lower(label)]
     columns:
       - name: source_key
         description: The registry key of the layer whose field this is.
@@ -254,13 +271,248 @@ models:
         description: What the code decodes to, the domain's own name for it.
         data_tests: [not_null]
 
+  - name: int_trail_lines__at_sources
+    description: >
+      The A.T. build's line sources (TL01), export_trails.load_line_sources():
+      every registry entry with a blaze_field or blaze_default key that is not
+      another organization's layer, today centerline and side_trails.
+    columns:
+      - name: source_key
+        description: The registry key.
+        data_tests:
+          - not_null
+          - unique
+          # fail_if_incomplete(): a source with no line feature stops the
+          # build rather than shrinking the map.
+          - dbt_utils.relationships_where:
+              name: int_trail_lines__at_sources_each_has_a_line
+              arguments:
+                to: ref('int_trail_lines__at_features')
+                field: source_key
+                to_condition: has_line_geometry
+      - name: file_row
+        description: The entry's place in sources.json, the order export_trails.py reads the sources in.
+      - name: blaze_field
+        description: The field a feature's blaze is read from, where the source has one.
+      - name: blaze_default
+        description: The blaze of a feature that has none, where the source states one.
+      - name: staged
+        description: >
+          Whether a staging model lands the source's features. Only
+          centerline and side_trails are staged, so a new A.T. line source
+          stops the build here rather than vanishing from the map.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true]
+
+  - name: int_trail_lines__at_features
+    description: >
+      Every staged feature of the A.T.'s line sources before the clip, as
+      export_trails.build_trail_records() makes them: its published id (TL05),
+      name and blaze, and whether it has a line geometry (TL04).
+    columns:
+      - name: trail_segment_key
+        description: The staging key.
+        data_tests: [not_null, unique]
+      - name: trail_line_id
+        description: "`<source>:<feature id>`, lib/feature_id.py's chain."
+        data_tests: [not_null, unique]
+      - name: blaze_color
+        description: int_trail_lines__blazes' colour for the feature.
+        data_tests: [not_null]
+      - name: has_line_geometry
+        description: >
+          Whether the geometry is a LineString or MultiLineString. Anything
+          else is skipped, with a warning, as export_trails.py warns and skips.
+        data_tests:
+          - accepted_values:
+              name: int_trail_lines__at_features_skips_a_feature_with_no_line
+              arguments:
+                values: [true]
+              config:
+                severity: warn
+
+  - name: int_trail_lines__corridor
+    description: >
+      The A.T.'s 30-mile corridor, lib/corridor.build_corridor(), one row:
+      the centerline's segments buffered in EPSG:5070, unioned, in lon/lat.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "geom is not null and not st_isempty(geom)"
+    columns:
+      - name: source_key
+        description: The layer the corridor is built from, centerline.
+        data_tests: [not_null, unique]
+
+  - name: int_trail_lines__at_clipped
+    description: >
+      The A.T.'s line features that touch the corridor, kept whole (TL14).
+    columns:
+      - name: trail_line_id
+        description: The published feature id.
+        data_tests: [not_null, unique]
+
+  - name: int_trail_lines__at_simplified
+    description: >
+      The A.T.'s published lines at the 1 m pass in EPSG:5070 (TL15), a line
+      the pass would leave undrawable kept at full resolution, with both
+      lengths. Measured 2026-10-02: on ATC's 4,221 live lines, ST_Simplify
+      gave shapely.simplify's vertices, every one to the bit.
+    data_tests:
+      # Douglas-Peucker can only shorten a line (pipeline/ELT.md's safety
+      # fields); the millimetre is the projection round trip's room.
+      - dbt_utils.expression_is_true:
+          name: int_trail_lines__at_simplified_never_lengthens_a_line
+          arguments:
+            expression: "published_length_m <= length_m + 0.001"
+    columns:
+      - name: trail_line_id
+        description: The published feature id.
+        data_tests: [not_null, unique]
+      - name: simplified
+        description: False where the pass would have left a part with fewer than two distinct vertices and the full line was kept.
+      - name: length_m
+        description: The full-resolution line's length, EPSG:5070 metres.
+      - name: published_length_m
+        description: The published line's length, EPSG:5070 metres.
+
+  - name: int_trail_lines__at_chains
+    description: >
+      The centerline's 1 m lines merged into maximal chains (TL16), numbered
+      by bounds, `centerline:chain:<n>`. Measured 2026-10-02: on ATC's live
+      centerline, the 463 chains equal merge_chain_records()'s, ids, names and
+      vertices to the bit.
+    data_tests:
+      # The merge joins whole lines end to end, so each part lies in exactly
+      # one chain, and length_m counts it once.
+      - dbt_utils.expression_is_true:
+          name: int_trail_lines__at_chains_hold_every_part_once
+          arguments:
+            expression: "part_count >= 1 and most_covering_chains = 1"
+    columns:
+      - name: trail_line_id
+        description: "`centerline:chain:<n>`."
+        data_tests: [not_null, unique]
+      - name: chain_index
+        description: The chain's number, by (xmin, ymin, xmax, ymax), from 0.
+      - name: length_m
+        description: The chain's parts' full-resolution lengths, summed.
+      - name: part_count
+        description: How many segment parts the chain covers.
+      - name: most_covering_chains
+        description: The most chains any one of its parts lies in; 1 when the merge partitioned the parts.
+
+  - name: int_trail_lines__at_chain_miles
+    description: >
+      The chains with every vertex's A.T. mile (TL22), on the axis by the
+      axis_mile macro, rounded at 3 decimals as numpy rounds them, and the
+      count of steps against the chain's direction. Measured 2026-10-02: all
+      216,767 live vertex miles equal trail_miles.json's, with the same 112
+      backward steps.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          name: int_trail_lines__at_chain_miles_give_every_vertex_a_mile
+          arguments:
+            expression: "json_array_length(vertex_miles_json) = st_npoints(st_geomfromtext(geom_wkt))"
+    columns:
+      - name: trail_line_id
+        description: "`centerline:chain:<n>`."
+        data_tests: [not_null, unique]
+      - name: vertex_miles_json
+        description: Each vertex's mile, in order, as a JSON array.
+        data_tests: [not_null]
+      - name: monotonic_breaks
+        description: How many steps run against the chain's own direction.
+        data_tests: [not_null]
+
+  - name: int_trail_lines__at_overview
+    description: >
+      The corridor-view sketch (TL17): each centerline segment's 1 m line
+      simplified again at 100 m, one row per part, its coordinates at 4
+      decimals.
+    columns:
+      - name: line_order
+        description: The line's place in the sketch's MultiLineString, from 0.
+        data_tests: [not_null, unique]
+      - name: coordinates_json
+        description: The line's coordinates, rounded, as a JSON array.
+        data_tests: [not_null]
+
+  - name: int_trail_lines__spur_destinations
+    description: >
+      PLACEHOLDER with no rows until the points_of_interest mart publishes
+      them: the published POIs a spur may lead to (TL28), with each one's
+      published id, type, lat and lon, and its place in
+      load_destination_pois()'s list.
+    columns:
+      - name: poi_id
+        description: The POI's published id.
+        data_tests: [not_null, unique]
+
+  - name: int_trail_lines__spurs
+    description: >
+      Every side trail's decoded Type and, for a spur (Type 3), what
+      spurs.json says of it (TL27-TL29): where it leads, within 150 m of its
+      far end, and the A.T. mile it joins at. Measured 2026-10-02: on ATC's
+      live side trails, the same 784 spurs as export_spurs.py, every name,
+      length and junction mile to the bit (no destination either side: no
+      POI was loaded).
+    data_tests:
+      - dbt_utils.expression_is_true:
+          name: int_trail_lines__spurs_fields_are_the_spurs
+          arguments:
+            expression: >
+              is_spur or (destination_poi_id is null and junction_mile is null
+              and spur_record_json is null)
+      - dbt_utils.expression_is_true:
+          name: int_trail_lines__spurs_destinations_carry_their_distance
+          arguments:
+            expression: "(destination_poi_id is null) = (destination_distance_m is null)"
+    columns:
+      - name: trail_segment_key
+        description: The staging key.
+        data_tests: [not_null, unique]
+      - name: trail_line_id
+        description: The side trail's published id, spurs.json's key.
+        data_tests: [not_null, unique]
+      - name: type_code
+        description: The decoded Type, or null where it does not decode.
+      - name: type_undecodable
+        description: >
+          A Type that is there and does not decode, which export_spurs.py
+          counts in one warning and does not treat as a spur.
+        data_tests:
+          - accepted_values:
+              name: int_trail_lines__spurs_warns_of_an_undecodable_type
+              arguments:
+                values: [false]
+              config:
+                severity: warn
+      - name: spur_record_json
+        description: The spurs.json record, keys sorted, as JSON text.
+
+  - name: int_trail_lines__at_side_trails
+    description: >
+      The side trails trails.geojson publishes, each with its spur fields,
+      for the mart.
+    columns:
+      - name: trail_line_id
+        description: The published feature id.
+        data_tests: [not_null, unique]
+
   - name: int_trail_lines__at_published
     description: >
       The A.T. half of the trail_lines mart: one row per line trails.geojson
       publishes (the centerline's chains, side trails and spurs), in exactly
       the mart's columns, which marts/trail_lines/_trail_lines__models.yml
-      describes. The mart unions it with int_trail_lines__network_published
-      and keeps the rows whose source may publish.
+      describes, the geometry cut to 6 decimals unless that would collapse a
+      part. The mart unions it with int_trail_lines__network_published
+      and keeps the rows whose source may publish. Measured 2026-10-02: its
+      1,659 live lines equal export_trails.py's trails.geojson, ids, order,
+      properties and every coordinate cut to 6 decimals as
+      export_nearby_trails._rounded_geometry cuts it.
     columns:
       - name: trail_line_id
         description: The published feature id, as the trail_lines mart describes it.

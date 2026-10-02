@@ -1,4 +1,4 @@
-{{ config(format='json_text', location='elevation_profile.json') }}
+{{ config(format='json_document', location='elevation_profile.json') }}
 -- elevation_profile.json, the A.T. elevation profile the phone's ribbon draws
 -- and counts climb over (client/src/lib/elevationProfile.ts), in the shape
 -- export_elevation.py writes with json.dumps(records): a bare JSON array of
@@ -13,17 +13,19 @@
 -- bytes against export_elevation.py's 6,982,129 from the same files, the
 -- same bytes apart from the newline, 138,697 samples.
 --
--- THE DOCUMENT IS ONE TEXT VALUE, written as it is (phone_file's `json_text`
--- format), because the file is a top-level array, and COPY's JSON format
--- writes every row as an object of its columns, every column in every row:
--- it can write neither a bare array nor a record that leaves part_start out.
+-- THE DOCUMENT IS ONE TEXT VALUE, written verbatim (phone_file's
+-- `json_document` format: one row, one column under any name), because the
+-- file is a top-level array, and COPY's JSON format writes every row as an
+-- object of its columns, every column in every row: it can write neither a
+-- bare array nor a record that leaves part_start out.
 --
 -- Each number is its decimal's text with the trailing zeros taken off and
 -- one digit kept after the point: 12.340 -> 12.34, 2.000 -> 2.0. That is
 -- what Python's repr() prints for the nearest double to a decimal of at most
 -- 15 significant digits, which every value here is (at most 99999.999), and
 -- none is small enough for repr's exponent form, which starts below 1e-4.
--- Empty, it writes [], as json.dumps([]) does.
+-- Empty, it writes [], as json.dumps([]) does: the aggregate below is one
+-- row whatever the mart holds, so phone_file's when_empty never applies.
 with profile as (
     select * from {{ ref('elevation') }}
     where line_id = 'AT'

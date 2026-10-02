@@ -2223,8 +2223,37 @@ The rest is already in pieces: network lines and graph under **#1257 — Deliver
 | the five small files | 64,245 | 64,245 | 0 | — |
 | **First run** | **7,101,793** | **2,698,203** | **−62%** | **Reasoned**: sum of per-file results |
 | decision 8's three lossless changes alone | 7,101,793 | 3,695,594 | −48% | Reasoned, same way |
+| stage 6 as built: those three, plus every POI file at one copy and 6 dp, every POI still whole (`nearby_poi.geojson` 713,851) | 7,101,793 | 3,285,392 | −54% | Reasoned, same way |
 
 "After" is Python gzip -6; "today" is the manifest's stored size. On unchanged bytes the two differ by 0.02% (550,361 against 550,491).
+
+The −48% row is 6 dp `trails.geojson`, the packed profile and the packed miles, with both POI rows at today's bytes (550,491 and 1,062,309): its sum, 3,695,594, holds only that way (Reasoned: the arithmetic of the table). Stage 6's own list names one POI coordinate too, which is the row below it: 1,619,869 + 179,522 + 219,158 + 488,747 + 713,851 + 64,245.
+
+#### Stage 6 as built: v2 beside v1
+
+Built 2026-10-02 (worker pk, on **#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads**), as decision 44 ships a new shape: a v2 of each mart, its `pub_*_v2` writers at `v2/<file>` keys, and every v1 file written exactly as before. The 1° cells of tier (b) are **not** built: which POIs a phone holds with no signal is the maintainer's open question in (b) above.
+
+| v2 key | Mart version | Writer | What changed | Decoded against v1 |
+|---|---|---|---|---|
+| `trails.geojson` | — | `pub_trails_geojson`, v1 | nothing: its 6 dp are v1's already (decision 8, a parity difference the trail_lines port records), so it has no v2 | — |
+| `v2/elevation_profile.json` | `elevation` v2: `distance_milli_mi bigint`, `elevation_deci_ft integer` | `pub_elevation_profile_v2` | `{"format": 2, "d_milli_mi", "e_deci_ft", "part_start"}`, delta-coded; a DEM gap null, the next step from the last known height | `parity.py elevation_v2`; `assert_elevation_v2_decodes_to_v1s_miles_and_feet` |
+| `v2/trail_miles.json` | `trail_lines` v2: `vertex_milli_miles bigint[]` | `pub_trail_miles_v2` | v1's header with `format` 2, `trails_sha256` still second, `milli_mile_deltas`; backward steps kept | `parity.py trail_miles_v2`; `assert_trail_lines_v2_vertex_milli_miles_decode_to_v1s_vertex_miles` |
+| `v2/poi_<type>.geojson` ×8, `v2/nearby_poi.geojson` | `points_of_interest` v2: no `lat`/`lon`; `geom_geojson` at 6 dp | `pub_poi_<type>_v2`, `pub_nearby_poi_v2` | v1's properties less `lat` and `lon`; the point is Python's `round(x, 6)` of the number a v1 phone reads (GDAL's printing in `poi_<type>`, the double in `nearby_poi`) | `parity.py poi_<type>_v2`, `nearby_poi_v2` |
+
+Each mart keeps `latest_version: 1`, so every unpinned ref reads v1, and the 15 v1 writers of these marts pin `v=1`. A v2 file must decode to exactly v1's values, at 6 dp for a coordinate, and CI's parity step fails on any difference; none is explained away.
+
+**Measured 2026-10-02**, gzip -6, v1 against v2 from the same build, every v2 decoding to its v1 with no difference:
+
+| Input | `elevation_profile.json` | `trail_miles.json` | 8 × `poi_<type>.geojson` | `nearby_poi.geojson` |
+|---|---:|---:|---:|---:|
+| fixture warehouse (45 samples, 2 chains, 754 POIs, 18 other-org POIs) | 377 → 172 | 209 → 212 | 49,763 → 46,651 | 963 → 890 |
+| real files (below) | 576,431 → 74,770, **heights synthetic** | **518,874 → 179,538 (−65.4%)** | **271,231 → 222,333 (−18.0%)** | 942 → 872, fixture rows |
+
+The real rows rebuild each v1 mart in a scratch warehouse from real files other workers built from ATC's live layers on 2026-10-02 (nothing fetched again), and each v1 writer reproduced its source first: `elevation_profile.json` byte for byte (138,697 samples on ATC's live centerline and markers, over the el worker's **synthetic** 3DEP-shaped DEM, so the profile's heights, and so its bytes, are not real terrain's); `trail_miles.json` equal to `export_trails.py`'s own file (463 chains, 216,767 vertices; within 16 bytes of report 5's 179,522); the eight POI files byte for byte against the poi worker's real build (2,932 A.T. POIs). Real other-organization POIs were not built, so `nearby_poi` is the fixture's 18. The profile's real-terrain figure stays report 5's 219,158 (Measured there, on the release).
+
+**What the client has.** Readers for both shapes: `parseProfile` (`client/src/lib/elevationProfile.ts`), `parseTrailMiles` (`trailMiles.ts`), and `readPois` (`trailData.ts`), which reads `lat`/`lon` where they are and the point only where they are not. `phoneFileKey` (`config.ts`) fetches `v2/<file>` for the files in `V2_PHONE_FILE_KEYS` only when `DATA_SCHEMA_VERSION` is `v2`. **It is `v1`, so no phone fetches a v2 file yet**: `DATA_SCHEMA_VERSION` is also the `channels.json` entry a build reads, `pages.yml` and `ua.yml` refuse a build whose entry does not resolve, and no v2 release exists. What turns it on, in order: a dispatched publish that writes the `v2/` keys into a release (`OURHIKE_PHONE_FILES=dbt`; `collect_dbt_phone_files()` collects all 11, and each key passes `lib/r2_keys.py`); a `v2` entry for that release in `channels.json`; then `DATA_SCHEMA_VERSION = 'v2'` in a client release. Older apps keep reading v1, which keeps being written until v1 gets a `deprecation_date`.
+
+**Not yet covered.** `verify_release.py`'s check 21 reads keys that start with `poi_`, so a `v2/poi_<type>.geojson` gets no identity-ledger check at release time (its ids are v1's, which parity holds at build time; the check moving to v2 keys is owed before a v2 release). `nearby_poi.geojson` keeps `source_feature_id`, which this section lets go only once no pipeline reader needs it; nobody has checked that.
 
 ### "Simplify geometries"
 
@@ -2284,9 +2313,9 @@ The step that writes these files is **publish (reverse ETL)** (decision 24): it 
 | New sibling of | Mart | Writer, and the exporter it replaces | Tier |
 |---|---|---|---|
 | `trails.geojson` (6 dp) | `trail_lines`: A.T. centerline, side trails | `pub_trails_geojson`; `export_trails.py` | (a) |
-| `trail_miles.json` (packed) | `trail_lines.vertex_miles`, kept for the vertices the 1 m pass keeps (Douglas-Peucker keeps a subset of the input vertices, so each kept vertex has its full-resolution mile; Reasoned) | a `pub_` model; `export_trails.py` | (a) |
-| `elevation_profile.json` (packed) | `elevation` | a `pub_` model; `export_elevation.py` | (a) |
-| `poi_*.geojson` (one copy, 6 dp), plus a key outside that glob for other orgs' water and shelters | `points_of_interest` | `pub_` models; `export_poi.py`, `export_nearby_poi.py` | (a) |
+| `trail_miles.json` (packed) | `trail_lines.vertex_miles`, kept for the vertices the 1 m pass keeps (Douglas-Peucker keeps a subset of the input vertices, so each kept vertex has its full-resolution mile; Reasoned) | a `pub_` model; `export_trails.py`. **Built**: `pub_trail_miles_v2` from `trail_lines` v2, at `v2/trail_miles.json` ([Stage 6 as built](#stage-6-as-built-v2-beside-v1)) | (a) |
+| `elevation_profile.json` (packed) | `elevation` | a `pub_` model; `export_elevation.py`. **Built**: `pub_elevation_profile_v2` from `elevation` v2, at `v2/elevation_profile.json` | (a) |
+| `poi_*.geojson` (one copy, 6 dp), plus a key outside that glob for other orgs' water and shelters | `points_of_interest` | `pub_` models; `export_poi.py`, `export_nearby_poi.py`. **Built**: `pub_poi_<type>_v2` and `pub_nearby_poi_v2` from `points_of_interest` v2, at `v2/poi_<type>.geojson` and `v2/nearby_poi.geojson`, every other organization's POI still in the one file; the water-and-shelter key waits on the cells question | (a) |
 | other-org POI cells (new) | `points_of_interest` | `cut_cells.py`, which stays Python | (b) |
 | `trails.pmtiles` (new) | `trail_lines` | `pub_trails_pmtiles`; `write_tiles` | (c) |
 

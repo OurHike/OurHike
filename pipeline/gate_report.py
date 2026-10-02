@@ -45,9 +45,9 @@ reaches a key through the file it compared (`--new`), which is that writer's
 THE ANSWERS, worst first:
 - `differs`: parity found differences nothing explains, or one side wrote no
   file. A difference touching a SAFETY_FIELDS field ranks first: ELT.md's
-  "Safety fields are approved one row at a time, never in bulk", and the
-  brief's rule that a safety field that differs is a defect unless a decision
-  names it.
+  "How a rule moves" approves safety fields "one row at a time, never in
+  bulk", and a safety field that differs is a defect unless a decision names
+  it.
 - `not_compared`: a parity result exists and compared no record, because
   neither side wrote a file on this input, or today's builder refused it.
 - `not_ported`: no parity result covers the key. Either a dbt writer owns it

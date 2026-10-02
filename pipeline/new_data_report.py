@@ -397,8 +397,9 @@ def build_report(warehouse: Path, parity_dir: Path | None) -> dict:
         raise FileNotFoundError(f"{warehouse} is missing; build it first (build_marts.py)")
     con = duckdb.connect(str(warehouse), read_only=True)
     try:
-        # The shared machine's limits (the brief's wave 2 addendum); a real
-        # warehouse is counted, never read whole, so these are generous.
+        # Every query is a grouped count over named columns, so this needs
+        # little memory and leaves a shared runner room. Reasoned: nobody
+        # has run it on a real warehouse yet, which would measure it.
         con.execute("set memory_limit = '1500MB'")
         con.execute("set threads = 2")
         tables = _tables(con)

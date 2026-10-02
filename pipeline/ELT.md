@@ -1307,6 +1307,21 @@ The SQL alternative builds tiles with `ST_TileEnvelope` + `ST_AsMVTGeom` + `ST_A
 
 Neither is anything a phone reads.
 
+
+#### Versions and channels (decision 44), as stage 4 builds them
+
+Decision 44 split a release id's two jobs: which shape a file has, and which build a phone reads. This is how each half is built. It is the design, not yet the code.
+
+- **A version is a dbt model version of a contracted mart**, and its `pub_` writers write that version's phone files. **v1 is today's shape, at today's keys.** A published key is permanent (`pipeline/R2_LAYOUT.md`, point 1), and today's keys are what every installed app reads, so v1 adds no key. A v2 writes beside v1 under its own segment: `releases/<id>/v2/<file>` for a release-scoped file, and `conditions/v2/<file>` or `podcasts/v2/<file>` for a root-scoped one. Today's deepest release-scoped key would be at `MAX_SEGMENTS` 4 with that segment added. A key that does not fit is decided at the first v2, between a flatter name and raising the limit, and neither choice is made here (Reasoned: no v2 exists to measure).
+- **What needs a new version.** A column removed, renamed or retyped, or a meaning changed, is a breaking change. An added column is not: a phone ignores fields it does not know, and an absent field means unknown, so an older app reading a newer v1 file loses nothing it had (Reasoned, from the client's readers, which pick fields by name). dbt 2.0.6 enforces each version's contract but does not refuse a breaking change between states (decision 44's measurement). So `pipeline/check_contract_versions.py` will compare the pull request's `manifest.json` with `main`'s. It fails on a removed column, a changed type, or a version dropped before its `deprecation_date`, unless the change arrives as a new version.
+- **`channels.json` is the pointer.** It is committed, and uploaded to the bucket root (root-scoped, like `latest.json`) only by a dispatch, never by a push, as every publish is. Its shape: `{"production": {"v1": "<release id>"}, "ua": {"v1": "<release id>"}}`, one entry per environment and live version. A release id is still `lib/releases.next_release_id`'s dated folder name, but it is now internal: no app constant names one, and nobody has to pick the last folder of the day by hand. **Promotion** is the commit that moves an entry plus the dispatch that uploads it; **rollback** is reverting that commit and dispatching again. Both stay the release train's (`.claude/skills/release-train/SKILL.md`).
+- **The app.**
+  - On launch, when online, it reads `channels.json` and takes its own environment's entry for its compiled schema version, `v1` until a v2 ships. It then reads that release's manifest exactly as it reads `DATA_RELEASE`'s today.
+  - Offline, or with `channels.json` unreachable, it uses the release it last read (kept in IndexedDB). On a first run with no record, it uses the compiled fallback: today's `DATA_RELEASE` constant, kept for exactly that.
+  - An entry naming a release that does not resolve keeps the last good one, never an empty map.
+  - The update row (#919, `chrome/TrailDataUpdate.tsx`) reads the channel's release, unchanged otherwise (decision 44's poll).
+- **The deploy guards move with the pin.** `pages.yml` and `ua.yml` assert today that `DATA_RELEASE` resolves in their own environment. They will assert instead that `channels.json`'s entry for this build's schema version resolves there.
+
 ### Enforcing dbt_project_evaluator
 
 | Setting | Value and reason |
@@ -1552,7 +1567,7 @@ Column key:
 | # | Rule | Today | K | Src | Goes | Extension tried | Target | Tests |
 |---|---|---|---|---|---|---|---|---|
 | TL01 | Trail-line layers carry blaze keys; A.T. layers to the A.T. export, the rest to the network | `export_trails.py:80-118`, `export_nearby_trails.py:700-720` | S | 2 | SQL | — | `stg_<club>__trail_lines` via `sources` | export_trails (30), export_nearby_trails (92) |
-| TL02 | Blaze decoded against the ArcGIS coded domain by a live call mid-transform | `export_trails.py:127-149` → `lib/arcgis.py:106`; `export_spurs.py:189-200` | P | 2 | SQL | — | domains extracted as rows; decode is a join | lib_arcgis (15) |
+| TL02 | Blaze decoded against the ArcGIS coded domain by a live call mid-transform | `export_trails.py:127-149` → `lib/arcgis.py:106`; `export_spurs.py:189-200` | P | 2 | SQL | — | `int_trail_lines__coded_domains` (built), one row per code; the decode is a join (`int_trail_lines__blazes`, and the spurs' `Type`), **against a frozen copy until the extract lands each layer's `fields[].domain.codedValues`**: the var `trail_lines_coded_domains`, read live 2026-10-02, `@unvalidated` as a copy, pinned to the exporters' test domains by `test_dbt_trail_lines_parity` | lib_arcgis (15) |
 | TL03 | Reviewed colour mapping, five dispositions; unmapped draws neutral and warns | `lib/blaze.py:10-131`, `export_nearby_trails.py:803-858` | S | 2 | SQL | — | `int_trail_lines__blazes`; `warn` test | lib_blaze (18), blaze_palette_contract (3) |
 | TL04 | Line geometries kept; no geometry skipped with a warning | `export_trails.py:190-240` | S | 2 | SQL | — | `base_<club>__<layer>` | — |
 | TL05 | Id: GlobalID → feature `id` → `generated-<index>` | `lib/feature_id.py:15-42` | S | 2 | SQL | — | base; the index orders by a declared column, since SQL row order is not stable (Reasoned) | lib_feature_id (5) |

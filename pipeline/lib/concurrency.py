@@ -109,6 +109,7 @@ KNOWN LIMITS, stated rather than hidden:
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Callable
 
 import numpy as np
 import shapely
@@ -126,6 +127,13 @@ from lib.corridor import GEOGRAPHIC_CRS, PROJECTED_CRS
 # Both measured - see the module docstring before changing either.
 SHARED_GROUND_TOLERANCE_M = 10.0
 SHARED_GROUND_MIN_LENGTH_M = 50.0
+
+# How many trail pairs are unioned, buffered and intersected at a time. A
+# memory bound, not a tuning of the result, which is the same at any size
+# (#1796). @unvalidated: 2,000 was picked as a few seconds of work per
+# batch on four cores at 2026-09-24's measured rate (57,143 pairs in 60.7 s);
+# a peak-memory reading per batch on the full network would settle it.
+PAIR_BATCH = 2_000
 
 # The source key export_trails.py gives ATC's centerline. Its records are the
 # geometry donor of every pair they are in, for the reason in the docstring.
@@ -193,6 +201,7 @@ def find_shared_ground(
     *,
     tolerance_m: float = SHARED_GROUND_TOLERANCE_M,
     min_length_m: float = SHARED_GROUND_MIN_LENGTH_M,
+    progress: Callable[[str], None] | None = None,
 ) -> tuple[list[dict], dict]:
     """The pair features for every shared stretch among `records`, plus a
     stats dict.
@@ -275,55 +284,72 @@ def find_shared_ground(
     # which would round every buffer's ends more coarsely and move the shared
     # stretches' end vertices.
     ordered = sorted(near)
-    donor_geoms = np.empty(len(ordered), dtype=object)
-    partner_geoms = np.empty(len(ordered), dtype=object)
-    for index, pair in enumerate(ordered):
-        donor_indices, partner_indices = near[pair]
-        donor_geoms[index] = _merged(unary_union([geoms[i] for i in sorted(donor_indices)]))
-        partner_geoms[index] = unary_union([geoms[j] for j in sorted(partner_indices)])
-    buffers = across_cores(lambda partners: shapely.buffer(partners, tolerance_m, quad_segs=16), partner_geoms)
-    pieces = across_cores(shapely.intersection, donor_geoms, buffers)
+    batches = -(-len(ordered) // PAIR_BATCH)
+    if progress:
+        progress(
+            f"{len(record_indices):,} neighbours within {tolerance_m:g} m make {len(ordered):,} trail pairs, in {batches:,} batches"
+        )
+    # In batches of PAIR_BATCH pairs, so the unions, buffers and pieces of one
+    # batch are freed before the next is built (#1796). All of them at once
+    # held every pair's buffer polygon in memory together, and with the
+    # seventeen organizations' 330,778 records that span ran 19 to 25 minutes
+    # and lost the hosted runner on runs 157, 158 and 160. The batches walk
+    # `ordered` in order, so the features, their ids and `shared_m`'s running
+    # sum are the ones the single pass produced (the module's tests pin it).
+    for start in range(0, len(ordered), PAIR_BATCH):
+        batch = ordered[start : start + PAIR_BATCH]
+        donor_geoms = np.empty(len(batch), dtype=object)
+        partner_geoms = np.empty(len(batch), dtype=object)
+        for index, pair in enumerate(batch):
+            donor_indices, partner_indices = near[pair]
+            donor_geoms[index] = _merged(unary_union([geoms[i] for i in sorted(donor_indices)]))
+            partner_geoms[index] = unary_union([geoms[j] for j in sorted(partner_indices)])
+        buffers = across_cores(lambda partners: shapely.buffer(partners, tolerance_m, quad_segs=16), partner_geoms)
+        pieces = across_cores(shapely.intersection, donor_geoms, buffers)
+        batch_number = start // PAIR_BATCH + 1
+        if progress and (batch_number == batches or batch_number % max(1, batches // 10) == 0):
+            progress(f"shared ground: batch {batch_number:,} of {batches:,}")
 
-    for (donor_key, partner_key), piece in zip(ordered, pieces):
-        donor_indices, partner_indices = near[(donor_key, partner_key)]
-        for n, part in enumerate(_line_parts(piece)):
-            if part.length < min_length_m:
-                dropped_short += 1
-                continue
-            midpoint = part.interpolate(0.5, normalized=True)
-            donor = keyed[min(sorted(donor_indices), key=lambda i: (geoms[i].distance(midpoint), i))][0]
-            partner = keyed[min(sorted(partner_indices), key=lambda j: (geoms[j].distance(midpoint), j))][0]
-            # The blaze rule - see the docstring: no paint on one half, or
-            # the same paint on both, is one line spelled twice.
-            if not (_painted(donor) and _painted(partner)):
-                dropped_unpainted += 1
-                continue
-            if donor["blaze_color"] == partner["blaze_color"]:
-                dropped_same_blaze += 1
-                continue
-            stretch_wkt = shapely_transform(_TO_GEOGRAPHIC, part).wkt
-            pairs.append(
-                {
-                    "id": f"{donor['id']}~shared~{partner['id']}~{n}",
-                    **_carried(donor),
-                    "concurrent_with": partner.get("name"),
-                    "concurrent_source": partner.get("source"),
-                    "concurrent_side": 1,
-                    "wkt": stretch_wkt,
-                }
-            )
-            pairs.append(
-                {
-                    "id": f"{partner['id']}~shared~{donor['id']}~{n}",
-                    **_carried(partner),
-                    "concurrent_with": donor.get("name"),
-                    "concurrent_source": donor.get("source"),
-                    "concurrent_side": -1,
-                    "wkt": stretch_wkt,
-                }
-            )
-            stretches += 1
-            shared_m += part.length
+        for (donor_key, partner_key), piece in zip(batch, pieces):
+            donor_indices, partner_indices = near[(donor_key, partner_key)]
+            for n, part in enumerate(_line_parts(piece)):
+                if part.length < min_length_m:
+                    dropped_short += 1
+                    continue
+                midpoint = part.interpolate(0.5, normalized=True)
+                donor = keyed[min(sorted(donor_indices), key=lambda i: (geoms[i].distance(midpoint), i))][0]
+                partner = keyed[min(sorted(partner_indices), key=lambda j: (geoms[j].distance(midpoint), j))][0]
+                # The blaze rule - see the docstring: no paint on one half, or
+                # the same paint on both, is one line spelled twice.
+                if not (_painted(donor) and _painted(partner)):
+                    dropped_unpainted += 1
+                    continue
+                if donor["blaze_color"] == partner["blaze_color"]:
+                    dropped_same_blaze += 1
+                    continue
+                stretch_wkt = shapely_transform(_TO_GEOGRAPHIC, part).wkt
+                pairs.append(
+                    {
+                        "id": f"{donor['id']}~shared~{partner['id']}~{n}",
+                        **_carried(donor),
+                        "concurrent_with": partner.get("name"),
+                        "concurrent_source": partner.get("source"),
+                        "concurrent_side": 1,
+                        "wkt": stretch_wkt,
+                    }
+                )
+                pairs.append(
+                    {
+                        "id": f"{partner['id']}~shared~{donor['id']}~{n}",
+                        **_carried(partner),
+                        "concurrent_with": donor.get("name"),
+                        "concurrent_source": donor.get("source"),
+                        "concurrent_side": -1,
+                        "wkt": stretch_wkt,
+                    }
+                )
+                stretches += 1
+                shared_m += part.length
 
     stats = {
         "trails": len({key for _, key in keyed}),

@@ -1,25 +1,34 @@
--- STAND-IN, deleted at merge. The real int_trail_lines__coded_domains is
--- tl-at's (the A.T. half of the trail_lines port, stage 3 of #1793 — Rebuild
--- the data platform as dlt → dbt: seven contracted marts, a monthly refresh,
--- published docs, and lighter phone downloads): each ArcGIS coded domain a
--- line source's blaze field decodes against, which export_trails.py fetches
--- live today (lib/arcgis.py's get_field_coded_domain, TL02). This file holds
--- its columns and no rows, so int_trail_lines__blazes builds on this branch
--- before tl-at's model exists. With no rows, every side_trails blaze reads
--- as undecodable here, which is the Python's own answer when the live
--- domain call returns nothing.
+-- The ArcGIS coded-value domains the trail_lines family decodes against:
+-- one row per (source, field, code). export_trails.py and export_spurs.py
+-- fetch these live, mid-transform, with lib/arcgis.get_field_coded_domain;
+-- here the decode is a join (pipeline/ELT.md's TL02), against a frozen copy.
 --
--- It reads int_sources__publication only so that it is not a root model,
--- which the project evaluator refuses. Not stg_registry__sources, which
--- int_trail_lines__blazes also reads: the evaluator reads a single-use model
--- between a parent and its child as an upstream concept rejoined.
+-- @unvalidated AS A COPY: the trail_lines_coded_domains var in
+-- dbt_project.yml was read from side_trails' live field metadata
+-- (`fields[].domain.codedValues`, ANST_Facilities/FeatureServer/6) on
+-- 2026-10-02, and nothing re-reads it, so a code ATC adds would decode as
+-- unknown here while the Python decoded it. What settles it is the extract
+-- landing each layer's field metadata, which replaces the var in this one
+-- model; the columns stay (source_key, field_name, code, label).
+--
+-- `field_name` is spelled as the layer and sources.json spell it ('Blaze',
+-- 'Type'), not as dlt's lowercased column. `code` is text, as side_trails'
+-- esriFieldTypeString fields and their values are; export_trails.py's `in`
+-- compares types, and on these two fields both sides are text, so a text
+-- join answers the same (an integer-coded field landed as text would not).
 select
-    cast(source_key as varchar) as source_key,
-    cast(null as varchar) as field_name,
-    cast(null as varchar) as code,
-    -- Quoted because `label` is a keyword to SQLFluff's RF04, and the column
-    -- is named so in the lead's spec for tl-at's model; quoting it is what
-    -- RF06 calls unnecessary, so RF06 is waived on this one line.
-    cast(null as varchar) as "label"  -- noqa: RF06
-from {{ ref('int_sources__publication') }}
-where false
+    domains.source_key,
+    domains.field_name,
+    domains.code,
+    domains.label
+from (
+    values
+    {%- for row in var('trail_lines_coded_domains') %}
+    (
+        '{{ row[0] }}',
+        '{{ row[1] }}',
+        '{{ row[2] }}',
+        '{{ row[3] | replace("'", "''") }}'
+    ){{ "," if not loop.last }}
+    {%- endfor %}
+) as domains (source_key, field_name, code, label)

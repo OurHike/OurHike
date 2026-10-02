@@ -22,11 +22,15 @@ with source as (
     from {{ source('atc', 'raw_atc__centerline') }}
 ),
 
+-- The key is the GlobalID, or the OBJECTID where a row has none, so rows
+-- without one cannot share a key and be deduplicated into one segment
+-- (stg_atc__side_trails says the rest). None has arrived without one
+-- (3,025 of 3,025 live segments carry a GlobalID, 2026-10-02).
 renamed as (
     select
         {{ dbt_utils.generate_surrogate_key([
             "'centerline'",
-            'globalid',
+            "coalesce(globalid, cast(objectid as varchar))",
         ]) }} as trail_segment_key,
         cast(globalid as varchar) as source_id,
         name,

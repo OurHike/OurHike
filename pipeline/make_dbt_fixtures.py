@@ -1713,6 +1713,100 @@ def _trail_lines_network_fixtures(files: dict[str, str]) -> dict[str, str]:
     return out
 
 
+def _side_trail(name: str, coordinates, properties: dict, geometry_type: str = "LineString") -> dict:
+    """One side_trails feature, its GlobalID spelled as `_atc_layer` spells the others'."""
+    return {
+        "type": "Feature",
+        "properties": {"GlobalID": name.lower().replace(" ", "-"), "Name": name, "Status": "Existing", **properties},
+        "geometry": None if coordinates is None else {"type": geometry_type, "coordinates": coordinates},
+    }
+
+
+# Side trails beside the fixture centerline, which runs north at lon -74.0
+# (lat 41.0 to 41.005) and -73.99 (41.01 to 41.015), each reaching a branch of
+# the trail_lines family's A.T. rules that the two `_atc_layer` side trails,
+# both coded "Side Trail" and "Blue" (neither a domain code), never reach.
+# Distances are lib/spurs.py's equirectangular metres at 41 degrees north.
+TRAIL_LINES_AT_SIDE_TRAILS = [
+    # A spur by its code, blazed by code 1: its first end 14 m from the
+    # centerline's vertex at (-73.99, 41.015) is the junction, its far end
+    # 44 m from the fixture's third shelter, (-73.98, 41.02).
+    _side_trail(
+        "Spur To Shelter",
+        [[-73.9901, 41.0151], [-73.985, 41.018], [-73.9805, 41.0199]],
+        {"Type": "3", "Blaze": "1", "Length_Ft": 3456.5},
+    ),
+    # A spur by its domain name, blazed by a word the domain does not hold:
+    # decoded to "Unknown", with nothing within 150 m of its far end.
+    _side_trail(
+        "Viewpoint Spur",
+        [[-74.0001, 41.0049], [-74.002, 41.0055], [-74.004, 41.006]],
+        {"Type": "Spur (eg View, Camp)", "Blaze": "Blue", "Length_Ft": 1200.25},
+    ),
+    # An access trail in two parts and no blaze at all.
+    _side_trail(
+        "Access Trail",
+        [[[-73.9995, 41.001], [-73.997, 41.001]], [[-73.997, 41.001], [-73.995, 41.0012]]],
+        {"Type": "0", "Blaze": None, "Length_Ft": 800.0},
+        geometry_type="MultiLineString",
+    ),
+    # The misspelt literal 60 live side trails carry for code 2, blazed white.
+    _side_trail(
+        "Significant Non-Blaze Trail",
+        [[-73.9905, 41.0105], [-73.9895, 41.012]],
+        {"Type": "Signficant Non-Blaze", "Blaze": "2", "Length_Ft": 600.0},
+    ),
+    # Coded a spur, with both ends within lib/spurs.py's ON_TRAIL_M 25 m of the
+    # centerline: an alternate route, so no junction and no destination.
+    _side_trail(
+        "Gold Loop",
+        [[-73.99, 41.0101], [-73.9895, 41.0125], [-73.99, 41.0149]],
+        {"Type": "3", "Blaze": "Gold", "Length_Ft": 1700.0},
+    ),
+    # More than the corridor's 30 miles from the centerline: clipped out.
+    _side_trail(
+        "Far Side Trail",
+        [[-80.0, 35.0], [-80.0, 35.01]],
+        {"Type": "0", "Blaze": "1", "Length_Ft": 3600.0},
+    ),
+    # No geometry: skipped with a warning, never published.
+    _side_trail("Trail With No Line", None, {"Type": "1", "Blaze": "3", "Length_Ft": None}),
+    # Two vertices a hundred-thousandth of a metre apart, which six decimals
+    # would put on one point: the never-degenerate rule keeps full precision.
+    _side_trail(
+        "Short Stub",
+        [[-73.9950001, 41.0040001], [-73.9950002, 41.0040002]],
+        {"Type": "4", "Blaze": "5", "Length_Ft": 0.1},
+    ),
+]
+
+
+def _trail_lines_at_fixtures(files: dict[str, str]) -> dict[str, str]:
+    """`files` with the A.T. line layers carrying what the live ones carry.
+
+    - Every centerline and side trail feature gets an OBJECTID, served as the
+      feature's own GeoJSON `id` too, as ArcGIS serves them: on the live layers
+      the `id` equals the OBJECTID on 3,025 of 3,025 centerline features and
+      1,197 of 1,197 side trails (measured 2026-10-02). The staging key falls
+      back to the OBJECTID where a row has no GlobalID, so the column has to
+      land.
+    - TRAIL_LINES_AT_SIDE_TRAILS joins the side trails, so CI's parity run of
+      export_trails.py and export_spurs.py against the dbt writers reaches
+      spurs, coded blazes and the clip. Only side trails are added: the
+      centerline and the half-mile markers, which every family's mile axis
+      reads, are left as they are.
+    """
+    out = dict(files)
+    for name, added in (("centerline.geojson", []), ("side_trails.geojson", TRAIL_LINES_AT_SIDE_TRAILS)):
+        collection = json.loads(out[name])
+        collection["features"] += [json.loads(json.dumps(feature)) for feature in added]
+        for index, feature in enumerate(collection["features"]):
+            feature["properties"]["OBJECTID"] = index + 1
+            feature["id"] = index + 1
+        out[name] = json.dumps(collection)
+    return out
+
+
 def write_fixtures(raw_dir: Path) -> list[str]:
     files = {
         "shelters.geojson": _atc_layer("Shelter", 3),
@@ -1851,6 +1945,7 @@ def write_fixtures(raw_dir: Path) -> list[str]:
     }
     files = _points_of_interest_fixtures(files)
     files = _trail_lines_network_fixtures(files)
+    files = _trail_lines_at_fixtures(files)
     existing = [name for name in files if (raw_dir / name).exists()]
     if existing:
         raise SystemExit(

@@ -22,10 +22,14 @@
 -- - privy: type, multi-seat, and "open to the air" for one with no
 --   enclosure;
 -- - water: the synthesized CSI point's own sentence
---   (int_points_of_interest__water). describe_water() composes only for OSM
---   water (its `kind`) and fetch_trail_water.py's stream points (their
---   `sources`), and neither is landed (#1652); opentrail's water carries a
---   title and an icon and composes nothing in the Python either.
+--   (int_points_of_interest__water), and describe_stream_point()'s for
+--   fetch_trail_water.py's site water, a point that carries `sources`: the
+--   stream's name or "A stream", "where it runs closest to the site", then
+--   the flow claim in the words of whichever hydrography made it
+--   (FLOW_WORDS; no claim where nobody classified the reach, because
+--   silence is not a promise of year-round water) and who else mapped it.
+--   opentrail's water carries a title and an icon and composes nothing in
+--   the Python either.
 -- Each ends with ATC's own `Comments`, attributed ("ATC notes: ..."), after
 -- lib/atc_notes.py's clean_note() has dropped the sentences that are the
 -- survey talking to itself (PO20).
@@ -376,6 +380,138 @@ sentences as (
     from phrased
 ),
 
+stream_terms as (
+    -- STREAM_SOURCES, STREAM_CLAIMS and FLOW_WORDS as three maps.
+    select
+        map(
+            list(code order by code) filter (
+                where vocabulary = 'stream_source'
+            ),
+            list(phrase order by code) filter (
+                where vocabulary = 'stream_source'
+            )
+        ) as source_names,
+        map(
+            list(code order by code) filter (
+                where vocabulary = 'stream_claim'
+            ),
+            list(phrase order by code) filter (
+                where vocabulary = 'stream_claim'
+            )
+        ) as claims,
+        map(
+            list(code order by code) filter (
+                where vocabulary = 'stream_flow'
+            ),
+            list(phrase order by code) filter (
+                where vocabulary = 'stream_flow'
+            )
+        ) as flow_words
+    from terms
+),
+
+streams as (
+    -- describe_water() hands a point with `sources` to
+    -- describe_stream_point().
+    select
+        noted.poi_id,
+        json_extract_string(noted.properties, '$.sources[*]') as sources,
+        coalesce(
+            nullif(json_extract_string(noted.properties, '$.name'), ''),
+            'A stream'
+        ) as subject,
+        map_extract_value(
+            stream_terms.flow_words,
+            coalesce(json_extract_string(noted.properties, '$.flow'), '')
+        ) as flow_word,
+        json_extract_string(noted.properties, '$.flow_source') as flow_source,
+        stream_terms.source_names,
+        stream_terms.claims
+    from noted
+    cross join stream_terms
+    where
+        noted.phone_files = 'poi_by_type'
+        and noted.poi_type = 'water'
+        and coalesce(json_array_length(noted.properties, '$.sources'), 0) > 0
+),
+
+claimed as (
+    -- The flow claim is attributed to whoever made it, and only where a
+    -- flow word exists.
+    select
+        streams.*,
+        case
+            when
+                streams.flow_word is not null
+                and coalesce(
+                    map_contains(streams.source_names, streams.flow_source),
+                    false
+                )
+                then streams.flow_source
+        end as claimant
+    from streams
+),
+
+stream_sentences as (
+    select
+        poi_id,
+        subject
+        || ', where it runs closest to the site.'
+        || case
+            when claimant is not null
+                then
+                    ' '
+                    || map_extract_value(source_names, claimant)
+                    || ' '
+                    || map_extract_value(claims, claimant)
+                    || ' '
+                    || flow_word
+                    || '.'
+                    || case
+                        when
+                            len(list_filter(
+                                sources,
+                                lambda source: source != claimant
+                                and map_contains(source_names, source)
+                            )) > 0
+                            then
+                                ' Also mapped by '
+                                || {{ poi_join_phrases(
+                                    "list_transform(list_filter(sources, "
+                                    ~ "lambda source: source != claimant "
+                                    ~ "and map_contains(source_names, source)), "
+                                    ~ "lambda source: "
+                                    ~ "map_extract_value(source_names, source))"
+                                ) }}
+                                || '.'
+                        else ''
+                    end
+            when
+                len(list_filter(
+                    sources, lambda source: map_contains(source_names, source)
+                )) > 0
+                then
+                    ' Mapped by '
+                    || {{ poi_join_phrases(
+                        "list_transform(list_filter(sources, "
+                        ~ "lambda source: map_contains(source_names, source)), "
+                        ~ "lambda source: "
+                        ~ "map_extract_value(source_names, source))"
+                    ) }}
+                    || '.'
+            else ''
+        end as stream_sentence
+    from claimed
+),
+
+with_streams as (
+    select
+        sentences.*,
+        stream_sentences.stream_sentence
+    from sentences
+    left join stream_sentences on sentences.poi_id = stream_sentences.poi_id
+),
+
 described as (
     select
         poi_id,
@@ -395,6 +531,7 @@ described as (
                     end
             when synthesized_description is not null
                 then synthesized_description
+            when stream_sentence is not null then stream_sentence
             -- The sentences that would only repeat the card's type line.
             when
                 atc_sentence in (
@@ -407,7 +544,7 @@ described as (
                 then null
             else atc_sentence
         end as description
-    from sentences
+    from with_streams
 )
 
 select

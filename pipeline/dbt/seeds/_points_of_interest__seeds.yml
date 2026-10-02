@@ -9,8 +9,9 @@ seeds:
   - name: poi_sources
     description: >
       Every layer a POI file publishes from, one row each: export_poi.py's
-      DIRECT_SOURCES and opentrail (the eight poi_<type>.geojson files,
-      `poi_by_type`) and export_nearby_poi.py's poi_sources() (nearby_poi.geojson,
+      DIRECT_SOURCES, opentrail, OSM water and fetch_trail_water.py's site
+      water (the eight poi_<type>.geojson files, `poi_by_type`), in
+      unify_all_sources()' order, and export_nearby_poi.py's poi_sources() (nearby_poi.geojson,
       `nearby_poi`), with the name its ids start with, the extract folder
       that lands it, and its trail_id (`AT`, or export_nearby_poi.py's
       TRAIL_IDS for its provider). The A.T. family's id and name fields are
@@ -27,9 +28,13 @@ seeds:
         id_field: varchar
         name_field: varchar
         type_field: varchar
+        poi_type: varchar
+        confidence: varchar
     columns:
       - name: source_key
-        description: The sources.json key, or `opentrail_at`, which has no registry row.
+        description: >
+          The sources.json key, or one of the two layers with no registry row,
+          `opentrail_at` and `nhd_stream` (each a row of unregistered_publishing_sources).
         data_tests: [not_null, unique]
       - name: file_order
         description: >
@@ -65,6 +70,27 @@ seeds:
         description: >
           The field export_nearby_poi.py's TYPED_LAYERS types a row by, for
           the three layers typed row by row; blank for a layer typed whole.
+      - name: poi_type
+        description: >
+          The type every row of a derived layer publishes as: `water` for OSM
+          water (export_poi.py's OSM_WATER_FIELD_MAP) and the site water
+          (load_trail_water()). Blank where the poi_type_mapping seed or a
+          value map types the layer.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('poi_types')
+                field: poi_type
+      - name: confidence
+        description: >
+          The confidence every row of a derived layer ships at, `low` for both:
+          a mapped spring is one contributor's observation, and a stream point
+          is geometry nobody stood at. Blank where the poi_type_mapping seed
+          or the public flags set it.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [high, low]
   - name: poi_value_types
     description: >
       export_nearby_poi.py's value maps, one row per value: DEC_ASSET_TYPES,
@@ -175,7 +201,9 @@ seeds:
       sentence from, one row per code: STOREYS (`storeys`), EXTERIOR_MATERIALS
       (`exterior_material`), PARKING_SURFACES (`parking_surface`),
       PRIVY_TYPES (`privy_type`) and VISTA_LOCATIONS (`vista_location`, keyed
-      on the lower-cased first value of ATC's `Location`). The Python
+      on the lower-cased first value of ATC's `Location`), and the three a
+      stream point's sentence reads, STREAM_SOURCES (`stream_source`),
+      STREAM_CLAIMS (`stream_claim`) and FLOW_WORDS (`stream_flow`). The Python
       transcribed ATC's coded domains on 2026-08-09, "dated so the next
       reader knows what to re-check", rather than fetching them. A code with
       no row drops its clause, so the sentence gets shorter rather than
@@ -198,7 +226,7 @@ seeds:
           - not_null
           - accepted_values:
               arguments:
-                values: [storeys, exterior_material, parking_surface, privy_type, vista_location]
+                values: [storeys, exterior_material, parking_surface, privy_type, vista_location, stream_source, stream_claim, stream_flow]
       - name: code
         description: ATC's value as the composer looks it up, a coded-domain code or a lower-cased landform.
         data_tests: [not_null]

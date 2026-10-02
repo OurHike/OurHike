@@ -40,3 +40,51 @@ models:
       - name: loaded_at
         description: When step_dem_sampling wrote the row, UTC.
         data_tests: [not_null]
+
+  - name: stg_derived__site_water
+    data_tests:
+      # Says how many rows the dedupe dropped, which for a step that writes
+      # one row per site is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('derived', 'site_water')
+          config:
+            severity: warn
+    description: >
+      Which A.T. shelters and campsites have water a hiker can walk to, from
+      step_site_water's derived.site_water: the site, and the water it can
+      reach with its stream's facts, or why it cannot. Read by
+      int_points_of_interest__unioned, which publishes the water as
+      export_poi.py's load_trail_water() does.
+    columns:
+      - name: site_water_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the table's name, the layer and the site's GlobalID.
+        data_tests: [not_null, unique]
+      - name: site_row
+        description: The record's place in the file's `sites` array, from 0.
+        data_tests: [not_null]
+      - name: atc_global_id
+        description: The site's ATC GlobalID, which names its water point (`nhd_stream:<GlobalID>`).
+        data_tests: [not_null]
+      - name: has_water
+        description: Whether the site has water a hiker can walk to.
+        data_tests: [not_null]
+      - name: water_lon
+        description: The water point's longitude, the nearest point on the stream; null where there is no water.
+      - name: water_lat
+        description: The water point's latitude; null where there is no water.
+      - name: sources
+        description: >
+          Which hydrographies drew the stream, `nhd` and `osm`, as a JSON
+          list in the file's order: a point both drew carries both.
+      - name: flow
+        description: >
+          perennial, intermittent or ephemeral, whoever classified the reach;
+          null where nobody did, which is never "year-round".
+      - name: flow_source
+        description: Which hydrography made the flow claim, null where none did.
+      - name: _loaded_at
+        description: When step_site_water wrote the table, UTC.
+        data_tests: [not_null]

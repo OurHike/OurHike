@@ -51,6 +51,7 @@ UNIT_TESTS = DBT / "models" / "intermediate" / "points_of_interest" / "_points_o
 
 DESCRIBED = "int_points_of_interest__described_says_what_lib_poi_description_says"
 COMPOSED = "int_points_of_interest__described_composes_what_compose_description_composes"
+STREAMS = "int_points_of_interest__described_says_what_describe_stream_point_says"
 SITES = "int_points_of_interest__sites_groups_like_lib_poi_sites"
 CLASSIFIED = "int_points_of_interest__classified_types_and_refuses_like_the_exporters"
 PUBLISHABLE = "int_points_of_interest__publishable_keeps_and_rates_like_public_verdict"
@@ -633,11 +634,23 @@ def test_the_unit_tests_registry_entries_are_sources_json_own():
     assert checked, "no unit test mocks a registry entry"
 
 
-def test_the_poi_sources_seed_is_the_exporters_layer_list():
-    """poi_sources: export_poi.py's DIRECT_SOURCES and opentrail, then export_nearby_poi.py's poi_sources(), in reading order."""
+def _site_water_layer(tmp_path: Path) -> tuple[str, str, str, str, str]:
+    """load_trail_water()'s inline field map, read back off one record it unifies: (source, id field, name field, type, confidence)."""
+    path = tmp_path / "trail_water.json"
+    water = {"lat": 41.0, "lon": -74.0, "sources": ["nhd"], "name": "Fixture Brook", "flow": None, "flow_source": None}
+    path.write_text(json.dumps({"sites": [{"atc_global_id": "g-1", "water": {**water, "stream_id": "s-1"}}]}))
+    (record,) = export_poi.load_trail_water(path)
+    assert record["id"] == f"{export_poi.NHD_STREAM_SOURCE}:g-1"
+    assert record["name"] == "Fixture Brook"
+    return record["source"], "site_global_id", "name", record["poi_type"], record["confidence"]
+
+
+def test_the_poi_sources_seed_is_the_exporters_layer_list(tmp_path):
+    """poi_sources: export_poi.py's DIRECT_SOURCES, opentrail, OSM water and site water, then export_nearby_poi.py's poi_sources(), in reading order."""
     rows = _seed_file("poi_sources")
     at = [
-        (stem, source, field_map["id_field"], field_map["name_field"]) for stem, _, source, field_map in export_poi.DIRECT_SOURCES
+        (stem, source, field_map["id_field"], field_map["name_field"], None, None)
+        for stem, _, source, field_map in export_poi.DIRECT_SOURCES
     ]
     at.append(
         (
@@ -645,11 +658,30 @@ def test_the_poi_sources_seed_is_the_exporters_layer_list():
             export_poi.OPENTRAIL_SOURCE,
             export_poi.OPENTRAIL_FIELD_MAP_BASE["id_field"],
             export_poi.OPENTRAIL_FIELD_MAP_BASE["name_field"],
+            None,
+            None,
         )
     )
+    # load_osm_water() and load_trail_water() type every point `water`, so the
+    # seed carries the type and the confidence on the layer.
+    at.append(
+        (
+            export_poi.OSM_WATER_SOURCE,
+            export_poi.OSM_WATER_SOURCE,
+            export_poi.OSM_WATER_FIELD_MAP["id_field"],
+            export_poi.OSM_WATER_FIELD_MAP["name_field"],
+            "water",
+            export_poi.OSM_WATER_FIELD_MAP["confidence"],
+        )
+    )
+    source, id_field, name_field, poi_type, confidence = _site_water_layer(tmp_path)
+    at.append((source, source, id_field, name_field, poi_type, confidence))
     assert [
-        (r["source_key"], r["source"], r["id_field"], r["name_field"]) for r in rows if r["phone_files"] == "poi_by_type"
+        (r["source_key"], r["source"], r["id_field"], r["name_field"], r["poi_type"], r["confidence"])
+        for r in rows
+        if r["phone_files"] == "poi_by_type"
     ] == at
+    assert {(r["poi_type"], r["confidence"]) for r in rows if r["phone_files"] == "nearby_poi"} == {(None, None)}
     assert {r["trail_id"] for r in rows if r["phone_files"] == "poi_by_type"} == {export_poi.TRAIL_ID}
 
     registry = export_nearby_poi.load_registry(PIPELINE / "sources.json")
@@ -703,6 +735,9 @@ def test_the_description_terms_seed_is_lib_poi_description_vocabularies():
         "parking_surface": poi_description.PARKING_SURFACES,
         "privy_type": poi_description.PRIVY_TYPES,
         "vista_location": poi_description.VISTA_LOCATIONS,
+        "stream_source": poi_description.STREAM_SOURCES,
+        "stream_claim": poi_description.STREAM_CLAIMS,
+        "stream_flow": poi_description.FLOW_WORDS,
     }
     for vocabulary, phrases in expected.items():
         assert rows.pop(vocabulary) == {str(code): phrase for code, phrase in phrases.items()}, vocabulary
@@ -743,8 +778,9 @@ def test_the_describers_read_no_field_this_list_lacks():
     """Every ATC field a describer reads is one the unit tests hand back in ATC's case.
 
     ATC's fields are capitalised; the lower-case ones are describe_water()'s OSM
-    and fetch_trail_water.py tags, which no landed layer carries (#1652), so no
-    unit test reaches them.
+    tags, which no landed layer carries yet (#1652), and the site water
+    step_site_water.py lands, which STREAMS' unit test hands the describer
+    under the names load_trail_water() writes.
     """
     source = (PIPELINE / "lib" / "poi_description.py").read_text()
     read = set(re.findall(r'(?:_count|_coded)\(\w+, "(\w+)"\)', source)) | set(re.findall(r'properties\.get\("(\w+)"\)', source))
@@ -768,7 +804,7 @@ def _held(expected: dict[str, dict], answers: dict[str, dict | None], deliberate
 
 
 def test_descriptions_are_what_the_describers_compose():
-    for name in (DESCRIBED, COMPOSED):
+    for name in (DESCRIBED, COMPOSED, STREAMS):
         test = _unit_test(name)
         _held(_expected(test, "poi_id"), described_answers(test))
 

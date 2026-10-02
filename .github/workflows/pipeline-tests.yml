@@ -217,7 +217,9 @@ jobs:
           # invocations (tests/test_build_marts.py holds this list to both).
           # The points_of_interest family's parity runs export_poi.py (and the
           # export_elevation.py mile axis it imports), export_nearby_poi.py and
-          # export_retired_poi.py.
+          # export_retired_poi.py; step_site_water.py is that family's step,
+          # fetch_trail_water.py's rule, which imports build_water_distance.py
+          # and export_basemap.py.
           paths: >-
             pipeline/dbt/
             pipeline/extract/
@@ -240,6 +242,10 @@ jobs:
             pipeline/export_poi.py
             pipeline/export_nearby_poi.py
             pipeline/export_retired_poi.py
+            pipeline/step_site_water.py
+            pipeline/fetch_trail_water.py
+            pipeline/build_water_distance.py
+            pipeline/export_basemap.py
             pipeline/requirements.txt
             pipeline/seed_spatial_extension.py
             pipeline/check_freshness.py

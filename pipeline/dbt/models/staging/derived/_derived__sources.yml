@@ -64,3 +64,43 @@ sources:
           - name: _loaded_at
             description: When the step wrote the table, UTC.
             data_tests: [not_null]
+      - name: site_water
+        data_tests:
+          # Rows sharing stg_derived__site_water's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'site_water'", "layer", "atc_global_id"]
+        description: >
+          Which A.T. shelters and campsites have water a hiker can walk to,
+          written by step_site_water (pipeline/step_site_water.py) through
+          fetch_trail_water.py's own build(): one row per site of
+          int_points_of_interest__water_sites, in the order fetch_trail_water.py
+          writes data/raw/trail_water.json, each with the water it can reach
+          or the reason it cannot. The hydrography's GeoPackages and extracts
+          and EPQS's answers never enter the warehouse; only these verdicts do
+          (pipeline/ELT.md's PO07 and PO17).
+        columns:
+          - name: site_row
+            description: The record's place in the file's `sites` array, from 0.
+            data_tests: [not_null]
+          - name: layer
+            description: "`shelters` or `campsites`, ATC's layer key."
+            data_tests: [not_null]
+          - name: atc_global_id
+            description: The site's ATC GlobalID.
+            data_tests: [not_null]
+          - name: atc_name
+            description: The site's ATC name.
+          - name: water
+            description: >
+              The water the site can reach, as the file's record holds it
+              (sources, stream_id, name, flow, flow_source, distance_ft,
+              drop_ft, grade, lat, lon), or null where a gate refused or no
+              stream is near. Null is "no reachable water found", never "dry".
+          - name: unresolved
+            description: Why there is no water, in fetch_trail_water.py's words; null where there is.
+          - name: candidate
+            description: The nearest stream point the gates judged, with its numbers, kept whether or not it passed.
+          - name: _loaded_at
+            description: When the step wrote the table, UTC.
+            data_tests: [not_null]

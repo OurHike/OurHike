@@ -158,6 +158,13 @@ unit_tests:
           - {vocabulary: 'vista_location', code: 'open area - natural', phrase: 'a natural clearing'}
           - {vocabulary: 'vista_location', code: 'shelter', phrase: 'a shelter'}
           - {vocabulary: 'vista_location', code: 'campsite', phrase: 'a campsite'}
+          - {vocabulary: 'stream_source', code: 'nhd', phrase: 'USGS'}
+          - {vocabulary: 'stream_source', code: 'osm', phrase: 'OpenStreetMap contributors'}
+          - {vocabulary: 'stream_claim', code: 'nhd', phrase: 'maps it as'}
+          - {vocabulary: 'stream_claim', code: 'osm', phrase: 'tag it as'}
+          - {vocabulary: 'stream_flow', code: 'perennial', phrase: 'year-round'}
+          - {vocabulary: 'stream_flow', code: 'intermittent', phrase: 'seasonal'}
+          - {vocabulary: 'stream_flow', code: 'ephemeral', phrase: 'seasonal'}
     expect:
       rows:
         - {poi_id: 'atc:the_sentence_reads_as_a_sentence', description: 'Two-storey clapboard shelter, sleeps 14, with a fireplace, a fire ring and a porch. Built 1915.'}
@@ -314,6 +321,13 @@ unit_tests:
           - {vocabulary: 'vista_location', code: 'open area - natural', phrase: 'a natural clearing'}
           - {vocabulary: 'vista_location', code: 'shelter', phrase: 'a shelter'}
           - {vocabulary: 'vista_location', code: 'campsite', phrase: 'a campsite'}
+          - {vocabulary: 'stream_source', code: 'nhd', phrase: 'USGS'}
+          - {vocabulary: 'stream_source', code: 'osm', phrase: 'OpenStreetMap contributors'}
+          - {vocabulary: 'stream_claim', code: 'nhd', phrase: 'maps it as'}
+          - {vocabulary: 'stream_claim', code: 'osm', phrase: 'tag it as'}
+          - {vocabulary: 'stream_flow', code: 'perennial', phrase: 'year-round'}
+          - {vocabulary: 'stream_flow', code: 'intermittent', phrase: 'seasonal'}
+          - {vocabulary: 'stream_flow', code: 'ephemeral', phrase: 'seasonal'}
     expect:
       rows:
         - {poi_id: 'nearby:lean_to_in_capitals', description: 'Lean-To in Fixture Wild Forest.'}
@@ -323,6 +337,97 @@ unit_tests:
         - {poi_id: 'nearby:mixed_case_is_not_title_cased', description: 'PIT privy in Fixture Wild Forest.'}
         - {poi_id: 'nearby:digits_in_capitals', description: 'Camp 2.'}
         - {poi_id: 'nearby:an_apostrophe_starts_a_word', description: 'O''Neil Lean-To in Fixture Wild Forest.'}
+
+  - name: int_points_of_interest__described_says_what_describe_stream_point_says
+    description: >
+      PO07 and PO17's sentence: describe_stream_point(), which describe_water()
+      hands a point carrying `sources`, one row per case: the stream's name
+      or "A stream", the flow claim in the words of whoever made it, the
+      others who mapped it, and no claim where nobody classified the reach
+      or the claimant or flow word is one the vocabularies do not hold.
+      tests/test_dbt_points_of_interest_parity.py runs export_poi.py's
+      attach_descriptions() over these rows.
+    model: int_points_of_interest__described
+    given:
+      - input: ref('int_points_of_interest__enriched')
+        rows:
+          - {poi_id: 'nhd_stream:named_and_classified_by_usgs', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"site_global_id": "named_and_classified_by_usgs", "stream_id": null, "sources": ["nhd"], "name": "Fixture Brook", "flow": "perennial", "flow_source": "nhd"}'}
+          - {poi_id: 'nhd_stream:no_name_is_a_stream', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"site_global_id": "no_name_is_a_stream", "stream_id": null, "sources": ["nhd"], "name": null, "flow": "perennial", "flow_source": "nhd"}'}
+          - {poi_id: 'nhd_stream:an_empty_name_is_a_stream', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"site_global_id": "an_empty_name_is_a_stream", "stream_id": null, "sources": ["nhd"], "name": "", "flow": "intermittent", "flow_source": "nhd"}'}
+          - {poi_id: 'nhd_stream:merged_and_classified_by_usgs', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"site_global_id": "merged_and_classified_by_usgs", "stream_id": null, "sources": ["nhd", "osm"], "name": "Fixture Run", "flow": "intermittent", "flow_source": "nhd"}'}
+          - {poi_id: 'nhd_stream:merged_and_tagged_by_osm', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"site_global_id": "merged_and_tagged_by_osm", "stream_id": null, "sources": ["nhd", "osm"], "name": "Fixture Run", "flow": "intermittent", "flow_source": "osm"}'}
+          - {poi_id: 'nhd_stream:ephemeral_reads_seasonal', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"site_global_id": "ephemeral_reads_seasonal", "stream_id": null, "sources": ["nhd"], "name": null, "flow": "ephemeral", "flow_source": "nhd"}'}
+          - {poi_id: 'nhd_stream:osm_alone', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"site_global_id": "osm_alone", "stream_id": null, "sources": ["osm"], "name": "Fixture Rill", "flow": "intermittent", "flow_source": "osm"}'}
+          - {poi_id: 'nhd_stream:unclassified_makes_no_flow_claim', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"site_global_id": "unclassified_makes_no_flow_claim", "stream_id": null, "sources": ["nhd", "osm"], "name": "Fixture Creek", "flow": null, "flow_source": null}'}
+          - {poi_id: 'nhd_stream:a_flow_nobody_claimed', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"site_global_id": "a_flow_nobody_claimed", "stream_id": null, "sources": ["nhd"], "name": "Fixture Creek", "flow": "perennial", "flow_source": null}'}
+          - {poi_id: 'nhd_stream:a_flow_word_nobody_knows', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"site_global_id": "a_flow_word_nobody_knows", "stream_id": null, "sources": ["nhd"], "name": "Fixture Creek", "flow": "seasonal-ish", "flow_source": "nhd"}'}
+          - {poi_id: 'nhd_stream:a_claimant_nobody_knows', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"site_global_id": "a_claimant_nobody_knows", "stream_id": null, "sources": ["nhd"], "name": "Fixture Creek", "flow": "perennial", "flow_source": "usgs"}'}
+          - {poi_id: 'nhd_stream:a_source_nobody_knows', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"site_global_id": "a_source_nobody_knows", "stream_id": null, "sources": ["3dhp"], "name": "Fixture Creek", "flow": null, "flow_source": null}'}
+          - {poi_id: 'nhd_stream:no_sources_is_no_stream_point', poi_type: 'water', phone_files: 'poi_by_type', properties: '{"site_global_id": "no_sources_is_no_stream_point", "stream_id": null, "sources": [], "name": "Fixture Creek", "flow": "perennial", "flow_source": "nhd"}'}
+      - input: ref('poi_description_terms')
+        rows:
+          - {vocabulary: 'storeys', code: '2', phrase: 'Two-storey'}
+          - {vocabulary: 'storeys', code: '3', phrase: 'Three-storey'}
+          - {vocabulary: 'exterior_material', code: '0', phrase: 'block'}
+          - {vocabulary: 'exterior_material', code: '1', phrase: 'board-and-batten'}
+          - {vocabulary: 'exterior_material', code: '2', phrase: 'clapboard'}
+          - {vocabulary: 'exterior_material', code: '3', phrase: 'corrugated-metal'}
+          - {vocabulary: 'exterior_material', code: '4', phrase: 'timber'}
+          - {vocabulary: 'exterior_material', code: '5', phrase: 'log'}
+          - {vocabulary: 'exterior_material', code: '6', phrase: 'log-and-stone'}
+          - {vocabulary: 'exterior_material', code: '7', phrase: 'plywood'}
+          - {vocabulary: 'exterior_material', code: '8', phrase: 'post-and-beam'}
+          - {vocabulary: 'exterior_material', code: '11', phrase: 'steel'}
+          - {vocabulary: 'exterior_material', code: '12', phrase: 'stone'}
+          - {vocabulary: 'parking_surface', code: '0', phrase: 'asphalt'}
+          - {vocabulary: 'parking_surface', code: '1', phrase: 'concrete'}
+          - {vocabulary: 'parking_surface', code: '3', phrase: 'gravel'}
+          - {vocabulary: 'parking_surface', code: '4', phrase: 'dirt'}
+          - {vocabulary: 'parking_surface', code: '5', phrase: 'grass'}
+          - {vocabulary: 'privy_type', code: '0', phrase: 'composting'}
+          - {vocabulary: 'privy_type', code: '1', phrase: 'moldering'}
+          - {vocabulary: 'privy_type', code: '2', phrase: 'composting'}
+          - {vocabulary: 'privy_type', code: '3', phrase: 'pit'}
+          - {vocabulary: 'privy_type', code: '4', phrase: 'vault'}
+          - {vocabulary: 'vista_location', code: 'mtn/ridge/outcrop', phrase: 'a ridge or rock outcrop'}
+          - {vocabulary: 'vista_location', code: 'summit', phrase: 'a summit'}
+          - {vocabulary: 'vista_location', code: 'lookout tower', phrase: 'a lookout tower'}
+          - {vocabulary: 'vista_location', code: 'tower/platform', phrase: 'a tower platform'}
+          - {vocabulary: 'vista_location', code: 'viewing platform', phrase: 'a viewing platform'}
+          - {vocabulary: 'vista_location', code: 'overlook', phrase: 'an overlook'}
+          - {vocabulary: 'vista_location', code: 'bridge', phrase: 'a bridge'}
+          - {vocabulary: 'vista_location', code: 'water feature', phrase: 'the water'}
+          - {vocabulary: 'vista_location', code: 'utility corridor - powerline', phrase: 'a powerline corridor'}
+          - {vocabulary: 'vista_location', code: 'utility - powerline', phrase: 'a powerline corridor'}
+          - {vocabulary: 'vista_location', code: 'utility corridor - pipeline', phrase: 'a pipeline corridor'}
+          - {vocabulary: 'vista_location', code: 'open area', phrase: 'an open area'}
+          - {vocabulary: 'vista_location', code: 'open area - maintained', phrase: 'a maintained clearing'}
+          - {vocabulary: 'vista_location', code: 'open area - managed', phrase: 'a managed clearing'}
+          - {vocabulary: 'vista_location', code: 'open area - natural', phrase: 'a natural clearing'}
+          - {vocabulary: 'vista_location', code: 'shelter', phrase: 'a shelter'}
+          - {vocabulary: 'vista_location', code: 'campsite', phrase: 'a campsite'}
+          - {vocabulary: 'stream_source', code: 'nhd', phrase: 'USGS'}
+          - {vocabulary: 'stream_source', code: 'osm', phrase: 'OpenStreetMap contributors'}
+          - {vocabulary: 'stream_claim', code: 'nhd', phrase: 'maps it as'}
+          - {vocabulary: 'stream_claim', code: 'osm', phrase: 'tag it as'}
+          - {vocabulary: 'stream_flow', code: 'perennial', phrase: 'year-round'}
+          - {vocabulary: 'stream_flow', code: 'intermittent', phrase: 'seasonal'}
+          - {vocabulary: 'stream_flow', code: 'ephemeral', phrase: 'seasonal'}
+    expect:
+      rows:
+        - {poi_id: 'nhd_stream:named_and_classified_by_usgs', description: 'Fixture Brook, where it runs closest to the site. USGS maps it as year-round.'}
+        - {poi_id: 'nhd_stream:no_name_is_a_stream', description: 'A stream, where it runs closest to the site. USGS maps it as year-round.'}
+        - {poi_id: 'nhd_stream:an_empty_name_is_a_stream', description: 'A stream, where it runs closest to the site. USGS maps it as seasonal.'}
+        - {poi_id: 'nhd_stream:merged_and_classified_by_usgs', description: 'Fixture Run, where it runs closest to the site. USGS maps it as seasonal. Also mapped by OpenStreetMap contributors.'}
+        - {poi_id: 'nhd_stream:merged_and_tagged_by_osm', description: 'Fixture Run, where it runs closest to the site. OpenStreetMap contributors tag it as seasonal. Also mapped by USGS.'}
+        - {poi_id: 'nhd_stream:ephemeral_reads_seasonal', description: 'A stream, where it runs closest to the site. USGS maps it as seasonal.'}
+        - {poi_id: 'nhd_stream:osm_alone', description: 'Fixture Rill, where it runs closest to the site. OpenStreetMap contributors tag it as seasonal.'}
+        - {poi_id: 'nhd_stream:unclassified_makes_no_flow_claim', description: 'Fixture Creek, where it runs closest to the site. Mapped by USGS and OpenStreetMap contributors.'}
+        - {poi_id: 'nhd_stream:a_flow_nobody_claimed', description: 'Fixture Creek, where it runs closest to the site. Mapped by USGS.'}
+        - {poi_id: 'nhd_stream:a_flow_word_nobody_knows', description: 'Fixture Creek, where it runs closest to the site. Mapped by USGS.'}
+        - {poi_id: 'nhd_stream:a_claimant_nobody_knows', description: 'Fixture Creek, where it runs closest to the site. Mapped by USGS.'}
+        - {poi_id: 'nhd_stream:a_source_nobody_knows', description: 'Fixture Creek, where it runs closest to the site.'}
+        - {poi_id: 'nhd_stream:no_sources_is_no_stream_point', description: null}
 
   - name: int_points_of_interest__sites_groups_like_lib_poi_sites
     description: >
@@ -531,24 +636,26 @@ unit_tests:
           - {source_key: 'nyc_drinking_fountains', poi_key: 'c-n-22', source_row: 0, geom: 'POINT (-73.97 40.77)', properties: '{"_socrata_id": "row-abc", "propertyna": "Fixture Park"}'}
       - input: ref('poi_sources')
         rows:
-          - {source_key: 'shelters', file_order: '1', club: 'atc', source: 'atc_shelters', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null}
-          - {source_key: 'campsites', file_order: '2', club: 'atc', source: 'atc_campsites', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null}
-          - {source_key: 'viewpoints', file_order: '3', club: 'atc', source: 'atc_viewpoints', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null}
-          - {source_key: 'parking', file_order: '4', club: 'atc', source: 'atc_parking', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null}
-          - {source_key: 'privies', file_order: '5', club: 'atc', source: 'atc_privies', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null}
-          - {source_key: 'communities', file_order: '6', club: 'atc', source: 'atc_communities', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'NAME', type_field: null}
-          - {source_key: 'opentrail_at', file_order: '7', club: 'opentrail', source: 'opentrail_at', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'dbid', name_field: 'title', type_field: null}
-          - {source_key: 'oprhp_facilities', file_order: '8', club: 'nysparks', source: 'oprhp_facilities', phone_files: 'nearby_poi', trail_id: 'NYSOPRHP', id_field: null, name_field: null, type_field: 'Sub_Asset'}
-          - {source_key: 'dec_lean_tos', file_order: '9', club: 'nysdec', source: 'dec_lean_tos', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null}
-          - {source_key: 'dec_primitive_campsites', file_order: '10', club: 'nysdec', source: 'dec_primitive_campsites', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null}
-          - {source_key: 'dec_scenic_vistas', file_order: '11', club: 'nysdec', source: 'dec_scenic_vistas', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null}
-          - {source_key: 'dec_firetowers', file_order: '12', club: 'nysdec', source: 'dec_firetowers', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null}
-          - {source_key: 'dec_viewing_areas', file_order: '13', club: 'nysdec', source: 'dec_viewing_areas', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null}
-          - {source_key: 'dec_parking_areas', file_order: '14', club: 'nysdec', source: 'dec_parking_areas', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null}
-          - {source_key: 'dec_backcountry_features', file_order: '15', club: 'nysdec', source: 'dec_backcountry_features', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: 'ASSET'}
-          - {source_key: 'usfs_rec_sites', file_order: '16', club: 'usfs', source: 'usfs_rec_sites', phone_files: 'nearby_poi', trail_id: 'USFS', id_field: null, name_field: null, type_field: 'site_type'}
-          - {source_key: 'nyc_public_restrooms', file_order: '17', club: 'nycparks', source: 'nyc_public_restrooms', phone_files: 'nearby_poi', trail_id: 'NYCPARKS', id_field: null, name_field: null, type_field: null}
-          - {source_key: 'nyc_drinking_fountains', file_order: '18', club: 'nycparks', source: 'nyc_drinking_fountains', phone_files: 'nearby_poi', trail_id: 'NYCPARKS', id_field: null, name_field: null, type_field: null}
+          - {source_key: 'shelters', file_order: '1', club: 'atc', source: 'atc_shelters', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null, poi_type: null, confidence: null}
+          - {source_key: 'campsites', file_order: '2', club: 'atc', source: 'atc_campsites', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null, poi_type: null, confidence: null}
+          - {source_key: 'viewpoints', file_order: '3', club: 'atc', source: 'atc_viewpoints', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null, poi_type: null, confidence: null}
+          - {source_key: 'parking', file_order: '4', club: 'atc', source: 'atc_parking', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null, poi_type: null, confidence: null}
+          - {source_key: 'privies', file_order: '5', club: 'atc', source: 'atc_privies', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null, poi_type: null, confidence: null}
+          - {source_key: 'communities', file_order: '6', club: 'atc', source: 'atc_communities', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'NAME', type_field: null, poi_type: null, confidence: null}
+          - {source_key: 'opentrail_at', file_order: '7', club: 'opentrail', source: 'opentrail_at', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'dbid', name_field: 'title', type_field: null, poi_type: null, confidence: null}
+          - {source_key: 'osm_water', file_order: '8', club: 'osm', source: 'osm_water', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'osm_id', name_field: 'name', type_field: null, poi_type: 'water', confidence: 'low'}
+          - {source_key: 'nhd_stream', file_order: '9', club: 'usgs', source: 'nhd_stream', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'site_global_id', name_field: 'name', type_field: null, poi_type: 'water', confidence: 'low'}
+          - {source_key: 'oprhp_facilities', file_order: '10', club: 'nysparks', source: 'oprhp_facilities', phone_files: 'nearby_poi', trail_id: 'NYSOPRHP', id_field: null, name_field: null, type_field: 'Sub_Asset', poi_type: null, confidence: null}
+          - {source_key: 'dec_lean_tos', file_order: '11', club: 'nysdec', source: 'dec_lean_tos', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null}
+          - {source_key: 'dec_primitive_campsites', file_order: '12', club: 'nysdec', source: 'dec_primitive_campsites', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null}
+          - {source_key: 'dec_scenic_vistas', file_order: '13', club: 'nysdec', source: 'dec_scenic_vistas', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null}
+          - {source_key: 'dec_firetowers', file_order: '14', club: 'nysdec', source: 'dec_firetowers', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null}
+          - {source_key: 'dec_viewing_areas', file_order: '15', club: 'nysdec', source: 'dec_viewing_areas', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null}
+          - {source_key: 'dec_parking_areas', file_order: '16', club: 'nysdec', source: 'dec_parking_areas', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null}
+          - {source_key: 'dec_backcountry_features', file_order: '17', club: 'nysdec', source: 'dec_backcountry_features', phone_files: 'nearby_poi', trail_id: 'NYSDEC', id_field: null, name_field: null, type_field: 'ASSET', poi_type: null, confidence: null}
+          - {source_key: 'usfs_rec_sites', file_order: '18', club: 'usfs', source: 'usfs_rec_sites', phone_files: 'nearby_poi', trail_id: 'USFS', id_field: null, name_field: null, type_field: 'site_type', poi_type: null, confidence: null}
+          - {source_key: 'nyc_public_restrooms', file_order: '19', club: 'nycparks', source: 'nyc_public_restrooms', phone_files: 'nearby_poi', trail_id: 'NYCPARKS', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null}
+          - {source_key: 'nyc_drinking_fountains', file_order: '20', club: 'nycparks', source: 'nyc_drinking_fountains', phone_files: 'nearby_poi', trail_id: 'NYCPARKS', id_field: null, name_field: null, type_field: null, poi_type: null, confidence: null}
       - input: ref('stg_registry__sources')
         rows:
           - {source_key: 'dec_backcountry_features', entry: '{"key": "dec_backcountry_features", "provider": "NYS DEC", "id_field": "OBJECTID", "name_field": "NAME", "asset_field": "ASSET", "facility_field": "FACILITY", "public_field": "PUBLICUSE", "public_value": "Y"}'}
@@ -1198,6 +1305,13 @@ unit_tests:
           - {vocabulary: 'vista_location', code: 'open area - natural', phrase: 'a natural clearing'}
           - {vocabulary: 'vista_location', code: 'shelter', phrase: 'a shelter'}
           - {vocabulary: 'vista_location', code: 'campsite', phrase: 'a campsite'}
+          - {vocabulary: 'stream_source', code: 'nhd', phrase: 'USGS'}
+          - {vocabulary: 'stream_source', code: 'osm', phrase: 'OpenStreetMap contributors'}
+          - {vocabulary: 'stream_claim', code: 'nhd', phrase: 'maps it as'}
+          - {vocabulary: 'stream_claim', code: 'osm', phrase: 'tag it as'}
+          - {vocabulary: 'stream_flow', code: 'perennial', phrase: 'year-round'}
+          - {vocabulary: 'stream_flow', code: 'intermittent', phrase: 'seasonal'}
+          - {vocabulary: 'stream_flow', code: 'ephemeral', phrase: 'seasonal'}
     expect:
       rows:
         - {poi_id: 'atc_shelters:E1', capacity: 8, nearby: '[{"phrase":"a multi-seat pit privy","distance_ft":98.4},{"phrase":"a privy with no enclosure","distance_ft":98.4},{"phrase":"water","distance_ft":120.0,"source":"FarOut"},{"phrase":"a group campsite","distance_ft":196.9}]'}

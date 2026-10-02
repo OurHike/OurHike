@@ -374,3 +374,61 @@ models:
         description: The live POI that took its place, where reconciliation knows one.
       - name: resolves_to
         description: The live id superseded_by leads to, followed transitively; null where it leads nowhere.
+
+  - name: int_points_of_interest__water_sites
+    description: >
+      The A.T. shelters and campsites step_site_water.py asks about (PO07,
+      PO17): one row per staged row of ATC's two layers that has a point, as
+      fetch_trail_water.py reads them through build_water_distance.py's
+      fetch_atc_features(), which keeps a feature only where it carries a
+      geometry. The step orders them as fetch_atc_features() does, by name
+      and then GlobalID, and reads nothing else.
+    data_tests:
+      # One row per site: each staging model keys and dedupes its layer on
+      # GlobalID (decision 40), so a site is its layer and its GlobalID.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [layer, global_id]
+    columns:
+      - name: layer
+        description: shelters or campsites, fetch_trail_water.py's two layers.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [shelters, campsites]
+      - name: global_id
+        description: ATC's GlobalID, which load_trail_water() publishes the site water under.
+        data_tests: [not_null]
+      - name: name
+        description: ATC's Name; a null sorts as the empty string, as fetch_atc_features() sorts it.
+      - name: lat
+        description: The site's latitude, EPSG:4326.
+        data_tests: [not_null]
+      - name: lon
+        description: The site's longitude, EPSG:4326.
+        data_tests: [not_null]
+
+exposures:
+  - name: step_site_water
+    label: step_site_water.py
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The Python step that decides which shelters and campsites have water a
+      hiker can walk to (pipeline/step_site_water.py, PO07 and PO17), between
+      the dbt invocation that builds int_points_of_interest__water_sites and
+      the one that reads its answer back as source('derived', 'site_water').
+      It calls fetch_trail_water.py's build() unchanged, because the gates sit
+      between the hydrography's files and USGS EPQS, two reads SQL cannot
+      make in this build (pipeline/ELT.md's ledger). By default it lands the
+      last trail_water.json; --derive re-derives. Shown here so the docs draw
+      both halves of the step.
+    depends_on:
+      - ref('int_points_of_interest__water_sites')
+    config:
+      meta:
+        writes: derived.site_water
+        cadence: monthly

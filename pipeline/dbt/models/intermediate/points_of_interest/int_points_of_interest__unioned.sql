@@ -23,6 +23,15 @@
 -- assert_int_points_of_interest__unioned_matches_staging_sum holds the
 -- branch list to the staging models it reads, row for row.
 --
+-- The last branch is not a staged layer: it is fetch_trail_water.py's site
+-- water, which step_site_water.py derives into derived.site_water (PO07,
+-- PO17), one point per shelter or campsite whose water the gates passed.
+-- Its properties are the six load_trail_water() writes, under the same
+-- names, and the poi_sources seed reads its id from `site_global_id`, so the
+-- stream point publishes as `nhd_stream:<site GlobalID>` exactly as
+-- export_poi.py names it; `source_row` is the site's place in the file. A site
+-- the gates refused has no point and no row here: it publishes nothing.
+--
 -- ATC's bridges are staged and not here: their registry row reads
 -- `reaches_hikers: false` since #1674 withdrew the crossing type, and
 -- export_poi.py's DIRECT_SOURCES does not read them.
@@ -64,5 +73,26 @@ select
         as properties,
     staged._loaded_at
 from {{ ref(model) }} as staged
-{% if not loop.last %}union all by name{% endif %}
+union all by name
 {% endfor %}
+-- fetch_trail_water.py's site water (PO07, PO17), the step's verdicts, of
+-- which only a site that has water publishes a point: export_poi.py's
+-- load_trail_water(), reading data/raw/trail_water.json's `sites`. Its
+-- properties are the ones that function hands unify_poi(), so the id is the
+-- site's GlobalID and the description reads the stream's sources and flow.
+select
+    'nhd_stream' as source_key,
+    site.site_water_key as poi_key,
+    cast(site.site_row as bigint) as source_row,
+    st_point(site.water_lon, site.water_lat) as geom,
+    json_object(
+        'site_global_id', site.atc_global_id,
+        'stream_id', site.stream_id,
+        'sources', site.sources,
+        'name', site.water_name,
+        'flow', site.flow,
+        'flow_source', site.flow_source
+    ) as properties,
+    site._loaded_at
+from {{ ref('stg_derived__site_water') }} as site
+where site.has_water

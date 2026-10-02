@@ -64,6 +64,10 @@ corridor as (
             'EPSG:5070', 'EPSG:4326', always_xy := true
         ) as geom
     from centerline
+    -- No centerline is no corridor row, never an empty one: on dbt 2.0.6's
+    -- DuckDB 1.5.4, ST_Intersects against the GEOMETRYCOLLECTION EMPTY a
+    -- union over zero rows gives kills the process (the dbt skill's traps).
+    having count(*) > 0
 ),
 
 network_lines as (

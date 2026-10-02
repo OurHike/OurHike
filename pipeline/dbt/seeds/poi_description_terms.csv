@@ -39,3 +39,10 @@ vista_location,open area - managed,a managed clearing
 vista_location,open area - natural,a natural clearing
 vista_location,shelter,a shelter
 vista_location,campsite,a campsite
+stream_source,nhd,USGS
+stream_source,osm,OpenStreetMap contributors
+stream_claim,nhd,maps it as
+stream_claim,osm,tag it as
+stream_flow,perennial,year-round
+stream_flow,intermittent,seasonal
+stream_flow,ephemeral,seasonal

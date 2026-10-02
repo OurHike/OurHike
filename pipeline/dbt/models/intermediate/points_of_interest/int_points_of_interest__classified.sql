@@ -9,7 +9,11 @@
 -- rows, five at high confidence and the Communities at low (a town is a
 -- proxy for resupply). opentrail's `icon` is typed by the seed's `opentrail`
 -- rows: `w` is water at high, `s` water at low, and every other icon
--- publishes nothing. A row with no geometry is skipped, as has_geometry()
+-- publishes nothing. The two derived layers, OSM water and
+-- fetch_trail_water.py's site water (`nhd_stream`), are water at low
+-- confidence whole, as the poi_sources seed's own columns say
+-- (export_poi.py's OSM_WATER_FIELD_MAP and load_trail_water()). A row with
+-- no geometry is skipped, as has_geometry()
 -- skips it; one whose geometry is not a point fails the build at this
 -- model's test, as unify_poi() raises, because that is a wiring mistake
 -- rather than a gap upstream.
@@ -78,6 +82,8 @@ fields as (
             'NAME'
         ) as name_field,
         sources.type_field,
+        sources.poi_type as layer_poi_type,
+        sources.confidence as layer_confidence,
         json_extract_string(registry.entry, '$.poi_type') as declared_poi_type,
         json_extract_string(registry.entry, '$.asset_field') as asset_field,
         json_extract_string(registry.entry, '$.facility_field')
@@ -134,6 +140,7 @@ typed as (
         read.*,
         {{ python_strip('read.type_value') }} as type_value_stripped,
         case
+            when read.layer_poi_type is not null then read.layer_poi_type
             when
                 read.phone_files = 'poi_by_type'
                 and read.source_key = 'opentrail_at'
@@ -143,6 +150,7 @@ typed as (
             else valued.poi_type
         end as poi_type,
         case
+            when read.layer_confidence is not null then read.layer_confidence
             when
                 read.phone_files = 'poi_by_type'
                 and read.source_key = 'opentrail_at'

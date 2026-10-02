@@ -588,10 +588,59 @@ def _poi_by_type_old(poi_type: str) -> Callable[[], dict]:
         import export_poi
 
         export_poi.NETWORK_LINES_PATH = _published_network()
+        export_poi.TRAIL_WATER_PATH = _site_water_old()
         export_poi.main()
         return json.loads((export_poi.OUT_DIR / f"{poi_type}.geojson").read_text(encoding="utf-8"))
 
     return old
+
+
+@functools.cache
+def _site_water_old() -> Path:
+    """data/raw/trail_water.json as fetch_trail_water.py derives it, from the inputs step_site_water reads, in a folder kept for this process.
+
+    fetch_trail_water.py's main() fetches ATC's two layers and reads the
+    hydrography and EPQS, none of which CI may do. So the old side is its
+    build() and render() over the fixture's own shelters and campsites, in
+    build_water_distance.fetch_atc_features()' shape and order, and the
+    candidate reaches and EPQS answers make_dbt_fixtures.py wrote, which
+    build_marts.py --fixtures hands step_site_water. A point the answers do
+    not hold has no elevation, as EPQS's silence reads. With no candidates
+    file there is no trail_water.json, as on a run that never derived one.
+    """
+    import tempfile
+
+    import export_poi
+    import fetch_trail_water
+
+    raw = export_poi.RAW_DIR
+    out = Path(tempfile.mkdtemp(prefix="parity-site-water-")) / "trail_water.json"
+    candidates = raw / "site_water" / "candidates.json"
+    if not candidates.exists():
+        return out
+    answers = json.loads((raw / "site_water" / "epqs_elevations.json").read_text(encoding="utf-8"))
+    sites = {}
+    for layer in ("shelters", "campsites"):
+        features = json.loads((raw / f"{layer}.geojson").read_text(encoding="utf-8"))["features"]
+        rows = [
+            {
+                "global_id": feature["properties"]["GlobalID"],
+                "name": feature["properties"].get("Name"),
+                "lat": feature["geometry"]["coordinates"][1],
+                "lon": feature["geometry"]["coordinates"][0],
+            }
+            for feature in features
+            if feature.get("geometry")
+        ]
+        sites[layer] = sorted(rows, key=lambda row: (row["name"] or "", row["global_id"]))
+    live = fetch_trail_water.elevation_ft
+    fetch_trail_water.elevation_ft = lambda lat, lon: answers.get(f"{lat:.6f},{lon:.6f}")
+    try:
+        document = fetch_trail_water.build(sites, json.loads(candidates.read_text(encoding="utf-8")))
+    finally:
+        fetch_trail_water.elevation_ft = live
+    out.write_text(fetch_trail_water.render(document), encoding="utf-8")
+    return out
 
 
 def _nearby_poi_old() -> dict:

@@ -1482,6 +1482,11 @@ def _with_key_fields(content: str, fields: dict) -> str:
 #   nothing and export_nearby_poi.py's completeness gate refused the run; a
 #   `PIT PRIVY` row is the layer's commonest real value (356, per the map's
 #   own comment).
+# - SITE WATER'S TWO INPUTS (PO07, PO17): each site's candidate stream
+#   reaches and the EPQS answers, as site_water/candidates.json and
+#   site_water/epqs_elevations.json (_site_water_fixtures), which
+#   step_site_water.py reads in place of the hydrography and the network, so
+#   fetch_trail_water.py's gates run on the grid's own sites in CI.
 POI_REFERENCE_DIR = Path(__file__).parent / "reference"
 
 # Shelter, campsite, vista, parking and privy inventory, one tuple of values
@@ -1551,8 +1556,92 @@ def _poi_site_point(index: int) -> dict:
     return {"type": "Point", "coordinates": [-74.30 + (index % 25) * 0.004, 41.20 + (index // 25) * 0.004]}
 
 
+# Site water (PO07, PO17): step_site_water.py's two fixture inputs, in place
+# of the hydrography and EPQS, which CI may not fetch. Each scenario is a
+# shelter or campsite of the grid above, by its place in `kept`, and the
+# stream reaches near it: (hydrography, stream id, name, flow, OSM's NHD
+# lineage, metres east of the site; a negative number is west), each a reach
+# running north and south past the site, so its nearest point is level with
+# it. Then the EPQS answers at the site and at each reach's nearest point, in
+# feet; a point with no answer is one EPQS would not give. Together they
+# reach every branch fetch_trail_water.py's resolve_site() and
+# nearest_stream() have: water inside both gates, two hydrographies merged
+# within SITE_WATER_MERGE_M and two too far apart to merge, a reach past
+# MATCH_RADIUS_FT, a walk steeper than MAX_GRADE, a walk shorter than
+# MIN_GRADE_RUN_FT that the grade does not judge, an elevation EPQS would not
+# give, every flow class and none. Every other site has no stream near it.
+_SITE_WATER_SCENARIOS = [
+    # (site index, reaches, site elevation, {reach index: water elevation})
+    (0, [("nhd", "fixture-nhd-0", "Fixture Brook", "perennial", None, 20.0)], 1000.0, {0: 995.0}),
+    (
+        1,
+        [
+            ("nhd", "fixture-nhd-1", None, "intermittent", None, 20.0),
+            ("osm", "fixture-osm-1", "Fixture Run", None, False, 25.0),
+        ],
+        1200.0,
+        {0: 1197.0, 1: 1196.5},
+    ),
+    (2, [("osm", "fixture-osm-2", "Fixture Spring Run", "intermittent", True, 15.0)], 900.0, {0: 899.0}),
+    (3, [("nhd", "fixture-nhd-3", "Fixture Far Brook", "perennial", None, 50.0)], 1000.0, {}),
+    (4, [("nhd", "fixture-nhd-4", "Fixture Gorge Brook", "perennial", None, 20.0)], 1000.0, {0: 970.0}),
+    (5, [("nhd", "fixture-nhd-5", "Fixture Trickle", "perennial", None, 2.0)], 1000.0, {0: 997.0}),
+    (6, [("nhd", "fixture-nhd-6", "Fixture Brook Six", "perennial", None, 20.0)], 1000.0, {}),
+    (7, [("nhd", "fixture-nhd-7", "Fixture Creek", None, None, 25.0)], 800.0, {0: 798.0}),
+    (
+        8,
+        [
+            ("nhd", "fixture-nhd-8", "Fixture East Brook", "perennial", None, 30.0),
+            ("osm", "fixture-osm-8", "Fixture West Brook", None, False, -60.0),
+        ],
+        700.0,
+        {0: 696.0, 1: 690.0},
+    ),
+    (
+        9,
+        [
+            ("osm", "fixture-osm-9", "Fixture Rill", None, False, 10.0),
+            ("nhd", "fixture-nhd-9", None, "ephemeral", None, 12.0),
+        ],
+        650.0,
+        {0: 649.0, 1: 648.8},
+    ),
+]
+#: fetch_trail_water.py's metres in a degree of latitude, which its distances are measured in.
+_SITE_WATER_M_PER_DEG_LAT = 111_132.0
+
+
+def _site_water_fixtures(sites: list[dict]) -> dict[str, str]:
+    """site_water/candidates.json and site_water/epqs_elevations.json for these scenarios over `sites`, the grid's sites in order."""
+    candidates: dict[str, list[dict]] = {}
+    elevations: dict[str, float] = {}
+    for index, reaches, site_feet, water_feet in _SITE_WATER_SCENARIOS:
+        site = sites[index]
+        lon, lat = _poi_site_point(index)["coordinates"]
+        metres_per_degree_east = _SITE_WATER_M_PER_DEG_LAT * math.cos(math.radians(lat))
+        elevations[f"{lat:.6f},{lon:.6f}"] = site_feet
+        for position, (source, stream_id, name, flow, osm_from_nhd, east_m) in enumerate(reaches):
+            x = round(lon + east_m / metres_per_degree_east, 6)
+            candidates.setdefault(site["atc_global_id"], []).append(
+                {
+                    "source": source,
+                    "stream_id": stream_id,
+                    "name": name,
+                    "flow": flow,
+                    "osm_from_nhd": osm_from_nhd,
+                    "paths": [[[x, round(lat - 0.001, 6)], [x, round(lat + 0.001, 6)]]],
+                }
+            )
+            if position in water_feet:
+                elevations[f"{lat:.6f},{x:.6f}"] = water_feet[position]
+    return {
+        "site_water/candidates.json": json.dumps(candidates, indent=1),
+        "site_water/epqs_elevations.json": json.dumps(elevations, indent=1),
+    }
+
+
 def _points_of_interest_fixtures(files: dict) -> dict:
-    """The POI family's additions to `files`: id fields, ATC's real shelters and campsites with inventory, facilities, a DEC privy."""
+    """The POI family's additions to `files`: id fields, ATC's real shelters and campsites with inventory, facilities, a DEC privy, site water's inputs."""
     files = dict(files)
     id_fields = {
         "external/oprhp_facilities.geojson": ("OBJECTID", lambda i: 5501 + i),
@@ -1598,6 +1687,7 @@ def _points_of_interest_fixtures(files: dict) -> dict:
                 )
                 appended += 1
         files[name] = json.dumps(collection)
+    files.update(_site_water_fixtures(kept))
 
     for row, (name, facilities) in enumerate(_POI_FACILITIES.items()):
         collection = json.loads(files[name])

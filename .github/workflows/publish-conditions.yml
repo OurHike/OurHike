@@ -968,7 +968,7 @@ jobs:
       # closures and warnings files, OurHike's own rows from this leg's
       # database, NWS, NYNJTC's terms when a day old (extract/_run.py's
       # conditions_production or conditions_ua, each its own dlt pipeline at
-      # its own prefix, s3://<R2_RAW_BUCKET>/raw/dlt/ourhike_<leg>/). Then
+      # its own prefix, s3://<R2_RAW_BUCKET>/raw/dlt/<leg>/). Then
       # every table the leg has committed goes into the warehouse, by the
       # committed-file read that refuses a table whose recorded load left no
       # file rather than reading it as "no closures".

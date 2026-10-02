@@ -197,16 +197,20 @@ RAW_STORE_PREFIX = "raw/dlt"
 
 
 def raw_store_url(bucket: str, lane: str) -> str:
-    """`s3://<bucket>/raw/dlt/ourhike_<lane>`: one lane's, or one leg's, own prefix in the raw store.
+    """`s3://<bucket>/raw/dlt/<lane>`: one lane's, or one leg's, own prefix in the raw store.
 
-    The prefix is the dlt pipeline's name, so two legs never share a table
-    file, a marker or a run log. dlt reads the endpoint and the keys from
-    `DESTINATION__FILESYSTEM__CREDENTIALS__*`, never from here.
+    The prefix is the lane's name as ELT.md's "Storage tiers" writes it
+    (`dlt/monthly/`, and `conditions_production` and `conditions_ua` for the
+    legs), which is also the prefix refresh-reference.yml's monthly lane
+    writes, so two lanes or legs never share a table file, a marker or a run
+    log. dlt's own pipeline is `ourhike_<lane>` (make_pipeline). dlt reads the
+    endpoint and the keys from `DESTINATION__FILESYSTEM__CREDENTIALS__*`,
+    never from here.
     """
     cadences_of(lane)  # refuses an unknown lane before any URL is made
     if not bucket or "/" in bucket or ":" in bucket:
         raise ValueError(f"{bucket!r} is not a bucket name; pass the bucket alone, as R2_RAW_BUCKET holds it")
-    return f"s3://{bucket}/{RAW_STORE_PREFIX}/ourhike_{lane}"
+    return f"s3://{bucket}/{RAW_STORE_PREFIX}/{lane}"
 
 
 #: The exit status of a conditions leg that loaded, and left at least one

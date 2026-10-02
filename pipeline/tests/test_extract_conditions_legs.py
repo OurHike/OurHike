@@ -215,10 +215,10 @@ def test_the_hourly_lane_still_refuses_the_whole_run_on_one_refusal(store):
         )
 
 
-def test_raw_store_url_puts_each_leg_under_raw_at_its_own_pipeline_prefix():
-    assert raw_store_url("our-hike-raw", "conditions_ua") == "s3://our-hike-raw/raw/dlt/ourhike_conditions_ua"
-    assert raw_store_url("our-hike-raw", "conditions_production") == "s3://our-hike-raw/raw/dlt/ourhike_conditions_production"
-    assert raw_store_url("our-hike-raw", "monthly") == "s3://our-hike-raw/raw/dlt/ourhike_monthly"
+def test_raw_store_url_puts_each_lane_and_leg_under_raw_at_the_prefix_elt_md_names():
+    assert raw_store_url("our-hike-raw", "conditions_ua") == "s3://our-hike-raw/raw/dlt/conditions_ua"
+    assert raw_store_url("our-hike-raw", "conditions_production") == "s3://our-hike-raw/raw/dlt/conditions_production"
+    assert raw_store_url("our-hike-raw", "monthly") == "s3://our-hike-raw/raw/dlt/monthly"
 
 
 @pytest.mark.parametrize("bucket", ["", "s3://our-hike-raw", "our-hike-raw/raw"])

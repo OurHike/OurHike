@@ -62,21 +62,29 @@
     end
 {%- endmacro -%}
 
-{#- repr() of a JSON value: None for SQL NULL (absent) and JSON null alike, as dict.get() gives None for both. -#}
+{#-
+    repr() of a JSON value: None for SQL NULL (absent) and JSON null alike, as
+    dict.get() gives None for both. A value that is not a list is read as a
+    list of itself, so each element's repr is written once and the brackets
+    are the only difference: half the SQL of a separate branch for a list,
+    which is what SQLFluff spends its time parsing.
+-#}
 {%- macro python_repr(value) -%}
-    case coalesce(json_type({{ value }}), 'NULL')
-        when 'VARCHAR' then {{ python_str_repr("json_extract_string(" ~ value ~ ", '$')") }}
-        when 'ARRAY'
-            then '[' || array_to_string(list_transform(
-                cast({{ value }} as json[]),
-                lambda element: case
-                    when json_type(element) = 'VARCHAR'
-                        then {{ python_str_repr("json_extract_string(element, '$')") }}
-                    else {{ python_plain_repr('element') }}
-                end
-            ), ', ') || ']'
-        else {{ python_plain_repr(value) }}
-    end
+    (
+        case when json_type({{ value }}) = 'ARRAY' then '[' else '' end
+        || array_to_string(list_transform(
+            case
+                when json_type({{ value }}) = 'ARRAY' then cast({{ value }} as json[])
+                else [cast({{ value }} as json)]
+            end,
+            lambda element: case
+                when json_type(element) = 'VARCHAR'
+                    then {{ python_str_repr("json_extract_string(element, '$')") }}
+                else {{ python_plain_repr('element') }}
+            end
+        ), ', ')
+        || case when json_type({{ value }}) = 'ARRAY' then ']' else '' end
+    )
 {%- endmacro -%}
 
 {#- str() of a JSON value, given its repr: a string as itself, anything else as its repr. -#}

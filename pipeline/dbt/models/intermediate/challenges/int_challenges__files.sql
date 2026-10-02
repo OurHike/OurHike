@@ -53,7 +53,8 @@ fields as (
         file_json,
         parse_error,
         _loaded_at,
-        -- load_challenge_files(): sorted(glob('*/*.json')), compared part by part.
+        -- load_challenge_files(): sorted(glob('*/*.json')), compared part
+        -- by part.
         row_number() over (order by file_folder, file_name) as list_position,
         coalesce(json_type(file_json), 'NULL') as document_type,
         json_extract(file_json, '$.id') as id_json,
@@ -75,20 +76,32 @@ typed as (
     select
         *,
         case
-            when json_type(org_json) = 'VARCHAR' then json_extract_string(org_json, '$')
+            when json_type(org_json) = 'VARCHAR'
+                then json_extract_string(org_json, '$')
         end as org,
         case
-            when json_type(trail_json) = 'VARCHAR' then json_extract_string(trail_json, '$')
+            when json_type(trail_json) = 'VARCHAR'
+                then json_extract_string(trail_json, '$')
         end as trail,
         case
-            when json_type(status_json) = 'VARCHAR' then json_extract_string(status_json, '$')
+            when json_type(status_json) = 'VARCHAR'
+                then json_extract_string(status_json, '$')
         end as status_text,
         -- An end is given when it is present and not null: window.get() reads
         -- both as None.
         coalesce(json_type(opens_json), 'NULL') != 'NULL' as opens_given,
         coalesce(json_type(closes_json), 'NULL') != 'NULL' as closes_given,
+        coalesce(json_type(saved_by_json), 'NULL') != 'NULL' as saved_by_given,
+        coalesce(json_type(window_json), 'NULL') = 'OBJECT' as window_is_object,
+        coalesce(json_type(sections_json), 'NULL') = 'ARRAY'
+        and json_array_length(sections_json) > 0 as has_sections,
+        coalesce(json_type(items_json), 'NULL') = 'ARRAY'
+        and json_array_length(items_json) > 0 as has_items,
         {{ challenges_date_ok('opens_json') }} as opens_ok,
         {{ challenges_date_ok('closes_json') }} as closes_ok,
+        {{ challenges_id_ok('id_json') }} as id_ok,
+        {{ challenges_text('name_json') }} as name_text,
+        {{ challenges_text('summary_json') }} as summary_text,
         -- Each value a message quotes, as Python's repr() prints it, once.
         {{ python_repr('id_json') }} as id_repr,
         {{ python_repr('org_json') }} as org_repr,
@@ -97,73 +110,95 @@ typed as (
     from fields
 ),
 
+-- str(org) and str(saved_by).strip().lower(), as build_output() compares
+-- them: a string as itself, anything else as its repr.
+spelled as (
+    select
+        *,
+        {{ python_str('org_json', 'org_repr') }} as org_str,
+        lower(
+            {{ python_strip(python_str('saved_by_json', 'saved_by_repr')) }}
+        ) as saved_by_domain
+    from typed
+),
+
 -- build_output()'s two checks, before the resolver sees the file.
 placed as (
     select
-        typed.*,
+        spelled.*,
         case
             when
-                typed.document_type = 'OBJECT'
-                and typed.org is not null
-                and typed.org != typed.file_folder
+                spelled.document_type = 'OBJECT'
+                and spelled.org is not null
+                and spelled.org != spelled.file_folder
                 then
-                    'file is under ' || typed.file_folder || '/ but its org is '
-                    || typed.org_repr
+                    'file is under ' || spelled.file_folder
+                    || '/ but its org is ' || spelled.org_repr
             when
-                typed.document_type = 'OBJECT'
-                and coalesce(json_type(typed.saved_by_json), 'NULL') != 'NULL'
+                spelled.document_type = 'OBJECT'
+                and spelled.saved_by_given
                 and not coalesce(
-                    saving.org_domain
-                    = lower({{ python_strip(python_str('typed.saved_by_json', 'typed.saved_by_repr')) }}),
-                    false
+                    saving.org_domain = spelled.saved_by_domain, false
                 )
                 then
-                    'saved by ' || typed.saved_by_repr
+                    'saved by ' || spelled.saved_by_repr
                     || ', which is not the domain publishers.json names for '
-                    || typed.org_repr
+                    || spelled.org_repr
         end as misplaced_problem
-    from typed
-    -- org_domains.get(str(org)): the accepted publisher named by the org's str().
+    from spelled
+    -- org_domains.get(str(org)): the accepted publisher named by the org's
+    -- str().
     left join publishers as saving
         on
-            typed.document_type = 'OBJECT'
-            and saving.org = {{ python_str('typed.org_json', 'typed.org_repr') }}
+            spelled.document_type = 'OBJECT'
+            and spelled.org_str = saving.org
 ),
 
 sections as (
     select
         challenge_file_key,
         unnest(cast(sections_json as json[])) as section_json,
-        generate_subscripts(cast(sections_json as json[]), 1) as section_position
+        generate_subscripts(cast(sections_json as json[]), 1)
+            as section_position
     from typed
     where json_type(sections_json) = 'ARRAY'
+),
+
+section_fields as (
+    select
+        challenge_file_key,
+        section_position,
+        coalesce(json_type(section_json), 'NULL') = 'OBJECT' as is_object,
+        json_extract(section_json, '$.id') as id_json,
+        json_extract_string(section_json, '$.id') as section_id,
+        {{ challenges_text("json_extract(section_json, '$.title')") }}
+            as title_text,
+        {{ challenges_text("json_extract(section_json, '$.short')") }}
+            as short_text
+    from sections
 ),
 
 section_checks as (
     select
         challenge_file_key,
         section_position,
-        json_extract_string(section_json, '$.id') as section_id,
+        section_id,
         case
-            when
-                coalesce(json_type(section_json), 'NULL') != 'OBJECT'
-                or not {{ challenges_id_ok("json_extract(section_json, '$.id')") }}
+            when not is_object or not {{ challenges_id_ok('id_json') }}
                 then 'a section has no usable id'
-            when {{ challenges_text("json_extract(section_json, '$.title')") }} = ''
-                -- The id passed _id_ok() here, so it is a string, printed as itself.
-                then 'section ' || json_extract_string(section_json, '$.id') || ' has no title'
+            -- The id passed _id_ok() here, so it is a string, printed as
+            -- itself.
+            when title_text = ''
+                then 'section ' || section_id || ' has no title'
         end as section_problem,
         -- What a section publishes as: its id, its title stripped, and its
         -- short name stripped or else its title.
         json_object(
-            'id', json_extract_string(section_json, '$.id'),
-            'title', {{ challenges_text("json_extract(section_json, '$.title')") }},
-            'short', coalesce(
-                nullif({{ challenges_text("json_extract(section_json, '$.short')") }}, ''),
-                {{ challenges_text("json_extract(section_json, '$.title')") }}
-            )
+            'id', section_id,
+            'title', title_text,
+            'short', coalesce(nullif(short_text, ''), title_text)
         ) as published_section
-    from sections
+    from section_fields
 ),
 
 section_summary as (
@@ -173,9 +208,12 @@ section_summary as (
         filter (where section_problem is not null) as section_problem,
         count(*) as section_count,
         count(distinct section_id) as distinct_section_ids,
-        cast(to_json(list(published_section order by section_position)) as varchar)
-            as sections_published,
-        cast(to_json(list(section_id order by section_position)) as varchar) as section_ids
+        cast(
+            to_json(list(published_section order by section_position))
+            as varchar
+        ) as sections_published,
+        cast(to_json(list(section_id order by section_position)) as varchar)
+            as section_ids
     from section_checks
     group by challenge_file_key
 ),
@@ -187,21 +225,28 @@ checked as (
         section_summary.section_ids,
         case
             when placed.document_type != 'OBJECT' then 'file is not an object'
-            when not {{ challenges_id_ok('placed.id_json') }}
+            when not placed.id_ok
                 then
                     'id must be lowercase words joined by hyphens, at most '
                     || '{{ var("challenges_id_max_chars") }} characters'
             when known.org is null
                 then 'org ' || placed.org_repr || ' is not a known organization'
             when scope_trails.trail is null
-                then 'trail ' || placed.trail_repr || ' is not one ' || placed.org_repr || ' publishes'
-            when {{ challenges_text('placed.name_json') }} = '' then 'challenge has no name'
-            when not coalesce(list_contains({{ var('challenges_statuses') }}, placed.status_text), false)
+                then
+                    'trail ' || placed.trail_repr || ' is not one '
+                    || placed.org_repr || ' publishes'
+            when placed.name_text = '' then 'challenge has no name'
+            when
+                not coalesce(
+                    list_contains(
+                        {{ var('challenges_statuses') }}, placed.status_text
+                    ),
+                    false
+                )
                 then
                     'status must be one of '
                     || array_to_string({{ var('challenges_statuses') }}, ', ')
-            when coalesce(json_type(placed.window_json), 'NULL') != 'OBJECT'
-                then 'window is not an object'
+            when not placed.window_is_object then 'window is not an object'
             when
                 (placed.opens_given and not placed.opens_ok)
                 or (placed.closes_given and not placed.closes_ok)
@@ -212,18 +257,14 @@ checked as (
                 and json_extract_string(placed.closes_json, '$')
                 < json_extract_string(placed.opens_json, '$')
                 then 'window closes before it opens'
-            when
-                coalesce(json_type(placed.sections_json), 'NULL') != 'ARRAY'
-                or json_array_length(placed.sections_json) = 0
-                then 'challenge declares no sections'
+            when not placed.has_sections then 'challenge declares no sections'
             when section_summary.section_problem is not null
                 then section_summary.section_problem
-            when section_summary.distinct_section_ids != section_summary.section_count
-                then 'two sections share an id'
             when
-                coalesce(json_type(placed.items_json), 'NULL') != 'ARRAY'
-                or json_array_length(placed.items_json) = 0
-                then 'challenge has no items'
+                section_summary.distinct_section_ids
+                != section_summary.section_count
+                then 'two sections share an id'
+            when not placed.has_items then 'challenge has no items'
         end as challenge_problem
     from placed
     left join publishers as known on placed.org = known.org
@@ -231,6 +272,15 @@ checked as (
         on placed.org = scope_trails.org and placed.trail = scope_trails.trail
     left join section_summary
         on placed.challenge_file_key = section_summary.challenge_file_key
+),
+
+-- Whether the file reached its items: placed where it says, and passed
+-- every check above.
+reached as (
+    select
+        *,
+        misplaced_problem is null and challenge_problem is null as passed
+    from checked
 )
 
 select
@@ -243,31 +293,32 @@ select
     list_position,
     parse_error,
     misplaced_problem,
-    case when misplaced_problem is null then challenge_problem end as challenge_problem,
+    case
+        when misplaced_problem is null then challenge_problem
+    end as challenge_problem,
     case
         when misplaced_problem is not null then file_stem
-        when {{ python_truthy('id_json') }} then {{ python_str('id_json', 'id_repr') }}
+        when {{ python_truthy('id_json') }}
+            then {{ python_str('id_json', 'id_repr') }}
         else file_stem
     end as report_label,
-    case when {{ challenges_id_ok('id_json') }} then json_extract_string(id_json, '$') end as challenge_id,
+    case when id_ok then json_extract_string(id_json, '$') end as challenge_id,
     org,
     trail,
-    {{ challenges_text('name_json') }} as name,
+    name_text as name,
     status_text as status,
-    nullif({{ challenges_text('summary_json') }}, '') as challenge_summary,
+    nullif(summary_text, '') as challenge_summary,
     -- What the later models read, for a file that reached its items.
     case
-        when misplaced_problem is null and challenge_problem is null and opens_given
-            then json_extract_string(opens_json, '$')
+        when passed and opens_given then json_extract_string(opens_json, '$')
     end as window_opens,
     case
-        when misplaced_problem is null and challenge_problem is null and closes_given
+        when passed and closes_given
             then json_extract_string(closes_json, '$')
     end as window_closes,
-    case when misplaced_problem is null and challenge_problem is null then sections_published end
-        as sections_published,
-    case when misplaced_problem is null and challenge_problem is null then section_ids end as section_ids,
+    case when passed then sections_published end as sections_published,
+    case when passed then section_ids end as section_ids,
     cast(items_json as varchar) as items_json,
     cast(file_json as varchar) as file_json_text,
     _loaded_at
-from checked
+from reached

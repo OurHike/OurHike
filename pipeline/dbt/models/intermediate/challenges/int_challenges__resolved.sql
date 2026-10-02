@@ -46,10 +46,15 @@ item_summary as (
         count(*) filter (where problem is null) as resolved_items,
         count(*) filter (where problem is not null) as dropped_items,
         count(*) filter (where problem is null and sealed) as sealed_items,
-        cast(to_json(coalesce(
-            list(published_item order by item_position) filter (where problem is null),
-            cast([] as json[])
-        )) as varchar) as items_published
+        cast(
+            to_json(
+                coalesce(
+                    list(published_item order by item_position)
+                    filter (where problem is null),
+                    cast([] as json[])
+                )
+            ) as varchar
+        ) as items_published
     from items
     group by challenge_file_key
 ),
@@ -63,22 +68,50 @@ fields as (
         coalesce(item_summary.sealed_items, 0) as sealed_items,
         coalesce(item_summary.items_published, '[]') as items_published
     from files
-    left join item_summary on files.challenge_file_key = item_summary.challenge_file_key
+    left join item_summary
+        on files.challenge_file_key = item_summary.challenge_file_key
 ),
 
 parts as (
     select
         *,
         json_extract(file_json, '$.finish') as finish_json,
-        coalesce(json_type(json_extract(file_json, '$.finish')), 'NULL') as finish_type,
         json_extract(file_json, '$.finish.count') as finish_count_json,
         json_extract(file_json, '$.reward') as reward_json,
-        coalesce(json_type(json_extract(file_json, '$.reward')), 'NULL') as reward_type,
         json_extract(file_json, '$.reward.kind') as reward_kind_json,
         json_extract(file_json, '$.takes_entries') as takes_entries_json,
         json_extract(file_json, '$.photo') as photo_json,
         json_extract(file_json, '$.reviewed') as reviewed_json
     from fields
+),
+
+-- Each part's type and text, once, for the checks and the published fields.
+read_parts as (
+    select
+        *,
+        coalesce(json_type(finish_json), 'NULL') as finish_type,
+        coalesce(json_type(finish_count_json), 'NULL')
+        in ('BIGINT', 'UBIGINT') as finish_count_is_whole,
+        try_cast(finish_count_json as hugeint) as finish_count_number,
+        {{ challenges_text("json_extract(finish_json, '$.label')") }}
+            as finish_label_text,
+        coalesce(json_type(reward_json), 'NULL') as reward_type,
+        case
+            when json_type(reward_kind_json) = 'VARCHAR'
+                then json_extract_string(reward_kind_json, '$')
+        end as reward_kind_text,
+        {{ challenges_text("json_extract(reward_json, '$.rules_url')") }}
+            as rules_url_text,
+        {{ challenges_https_ok("json_extract(reward_json, '$.art')") }}
+            as art_ok,
+        {{ challenges_https("json_extract(reward_json, '$.art')") }}
+            as art_url,
+        coalesce(json_type(takes_entries_json), 'NULL')
+            as takes_entries_type,
+        {{ challenges_https_ok('photo_json') }} as photo_ok,
+        {{ challenges_https('photo_json') }} as photo_url,
+        {{ challenges_date_ok('reviewed_json') }} as reviewed_ok
+    from parts
 ),
 
 checked as (
@@ -87,54 +120,64 @@ checked as (
         case
             when misplaced_problem is not null then misplaced_problem
             when challenge_problem is not null then challenge_problem
-            when finish_type != 'NULL' and finish_type != 'OBJECT' then 'finish is not an object'
+            when finish_type != 'NULL' and finish_type != 'OBJECT'
+                then 'finish is not an object'
             when
                 finish_type = 'OBJECT'
-                and (
-                    coalesce(json_type(finish_count_json), 'NULL') not in ('BIGINT', 'UBIGINT')
-                    or try_cast(finish_count_json as hugeint) < 1
-                )
+                and (not finish_count_is_whole or finish_count_number < 1)
                 then 'finish count must be a whole number from 1'
-            when finish_type = 'OBJECT' and try_cast(finish_count_json as hugeint) > resolved_items
+            when
+                finish_type = 'OBJECT'
+                and finish_count_number > resolved_items
                 then
-                    'finish needs ' || cast(try_cast(finish_count_json as hugeint) as varchar)
-                    || ' items and only ' || cast(resolved_items as varchar) || ' resolved'
+                    'finish needs ' || cast(finish_count_number as varchar)
+                    || ' items and only ' || cast(resolved_items as varchar)
+                    || ' resolved'
             when
                 reward_type != 'NULL'
                 and not coalesce(
                     reward_type = 'OBJECT'
-                    and json_type(reward_kind_json) = 'VARCHAR'
-                    and list_contains({{ var('challenges_reward_kinds') }}, json_extract_string(reward_kind_json, '$')),
+                    and list_contains(
+                        {{ var('challenges_reward_kinds') }}, reward_kind_text
+                    ),
                     false
                 )
                 then
                     'reward kind must be one of '
-                    || array_to_string({{ var('challenges_reward_kinds') }}, ', ')
+                    || array_to_string(
+                        {{ var('challenges_reward_kinds') }}, ', '
+                    )
             when reward_type != 'NULL' and finish_type = 'NULL'
                 then 'a reward needs a finish line to be claimed at'
             when
                 reward_type != 'NULL'
-                and {{ challenges_text("json_extract(reward_json, '$.rules_url')") }} != ''
-                and not starts_with({{ challenges_text("json_extract(reward_json, '$.rules_url')") }}, 'https://')
+                and rules_url_text != ''
+                and not starts_with(rules_url_text, 'https://')
                 then 'reward rules_url must be https'
-            when reward_type != 'NULL' and not {{ challenges_https_ok("json_extract(reward_json, '$.art')") }}
+            when reward_type != 'NULL' and not art_ok
                 then 'reward art must be an https URL'
-            when takes_entries_json is not null and coalesce(json_type(takes_entries_json), 'NULL') != 'BOOLEAN'
+            when
+                takes_entries_json is not null
+                and takes_entries_type != 'BOOLEAN'
                 then 'takes_entries must be true or false'
-            when not {{ challenges_https_ok('photo_json') }} then 'photo must be an https URL'
-            when not {{ challenges_date_ok('reviewed_json') }} then 'reviewed must be a YYYY-MM-DD date'
-        end as challenge_problem_through_reviewed
-    from parts
+            when not photo_ok then 'photo must be an https URL'
+            when not reviewed_ok then 'reviewed must be a YYYY-MM-DD date'
+        end as problem_through_reviewed
+    from read_parts
 ),
 
--- resolve()'s two: the file named for its id, then the first of an id keeps it.
+-- resolve()'s two: the file named for its id, then the first of an id keeps
+-- it.
 named as (
     select
         *,
         case
-            when challenge_problem_through_reviewed is not null then challenge_problem_through_reviewed
+            when problem_through_reviewed is not null
+                then problem_through_reviewed
             when challenge_id != file_stem
-                then 'file is named ' || file_stem || '.json but its id is ' || challenge_id
+                then
+                    'file is named ' || file_stem || '.json but its id is '
+                    || challenge_id
         end as problem_before_repeat
     from checked
 ),
@@ -142,7 +185,9 @@ named as (
 repeats as (
     select
         challenge_file_key,
-        row_number() over (partition by challenge_id order by list_position) > 1 as is_repeat
+        row_number() over (
+            partition by challenge_id order by list_position
+        ) > 1 as is_repeat
     from named
     where problem_before_repeat is null
 ),
@@ -154,16 +199,35 @@ decided as (
         publishers.org_short,
         publishers.org_domain,
         case
-            when named.problem_before_repeat is not null then named.problem_before_repeat
+            when named.problem_before_repeat is not null
+                then named.problem_before_repeat
             when repeats.is_repeat then 'duplicate challenge id'
-            when coalesce(publishers.org_name, '') = '' or coalesce(publishers.org_short, '') = ''
-                then 'sources.json ''org:' || named.org || ''' has no name or no provider'
+            when
+                coalesce(publishers.org_name, '') = ''
+                or coalesce(publishers.org_short, '') = ''
+                then
+                    'sources.json ''org:' || named.org
+                    || ''' has no name or no provider'
             when publishers.org_domain is null
-                then 'publishers.json gives ''org:' || named.org || ''' no domain'
+                then
+                    'publishers.json gives ''org:' || named.org
+                    || ''' no domain'
         end as problem
     from named
-    left join repeats on named.challenge_file_key = repeats.challenge_file_key
+    left join repeats
+        on named.challenge_file_key = repeats.challenge_file_key
     left join publishers on named.org = publishers.org
+),
+
+-- Whether the file published, and whether its finish and reward are objects
+-- it publishes.
+kept as (
+    select
+        *,
+        problem is null as published,
+        problem is null and finish_type = 'OBJECT' as published_finish,
+        problem is null and reward_type = 'OBJECT' as published_reward
+    from decided
 )
 
 select
@@ -174,14 +238,20 @@ select
     -- How the exporter names a dropped file: by its id once it resolved to a
     -- record (the stem, repeat and organization checks drop a record), else
     -- by int_challenges__files' label.
-    case when challenge_problem_through_reviewed is null then challenge_id else report_label end as report_label,
+    case
+        when problem_through_reviewed is null then challenge_id
+        else report_label
+    end as report_label,
     problem,
     -- Which of the exporter's three steps dropped the file, which is the
     -- order its report lists them in: build_output()'s placing checks, the
     -- resolver, then build_output()'s organization checks.
     case
         when misplaced_problem is not null then 1
-        when problem_before_repeat is not null or problem = 'duplicate challenge id' then 2
+        when
+            problem_before_repeat is not null
+            or problem = 'duplicate challenge id'
+            then 2
         when problem is not null then 3
     end as drop_step,
     -- Item drops are reported for a file that reached its items.
@@ -190,52 +260,45 @@ select
     challenge_id,
     -- The challenge as it publishes, for a file that resolved; a dropped one
     -- publishes nothing, so its fields are null rather than half-read.
-    case when problem is null then org end as org,
-    case when problem is null then org_name end as org_name,
-    case when problem is null then org_short end as org_short,
-    case when problem is null then org_domain end as org_domain,
-    case when problem is null then trail end as trail,
-    case when problem is null then name end as name,
-    case when problem is null then status end as status,
-    case when problem is null then challenge_summary end as challenge_summary,
-    case when problem is null then window_opens end as window_opens,
-    case when problem is null then window_closes end as window_closes,
+    case when published then org end as org,
+    case when published then org_name end as org_name,
+    case when published then org_short end as org_short,
+    case when published then org_domain end as org_domain,
+    case when published then trail end as trail,
+    case when published then name end as name,
+    case when published then status end as status,
+    case when published then challenge_summary end as challenge_summary,
+    case when published then window_opens end as window_opens,
+    case when published then window_closes end as window_closes,
     case
-        when problem is null and finish_type = 'OBJECT'
-            then try_cast(finish_count_json as integer)
+        when published_finish then try_cast(finish_count_json as integer)
     end as finish_count,
     case
-        when problem is null and finish_type = 'OBJECT'
-            then nullif({{ challenges_text("json_extract(finish_json, '$.label')") }}, '')
+        when published_finish then nullif(finish_label_text, '')
     end as finish_label,
+    case when published_reward then reward_kind_text end as reward_kind,
     case
-        when problem is null and reward_type = 'OBJECT'
-            then json_extract_string(reward_kind_json, '$')
-    end as reward_kind,
-    case
-        when problem is null and reward_type = 'OBJECT'
-            then nullif({{ challenges_text("json_extract(reward_json, '$.rules_url')") }}, '')
+        when published_reward then nullif(rules_url_text, '')
     end as reward_rules_url,
-    case
-        when problem is null and reward_type = 'OBJECT'
-            then {{ challenges_https("json_extract(reward_json, '$.art')") }}
-    end as reward_art,
+    case when published_reward then art_url end as reward_art,
     -- True only for a published challenge with a reward (CH09).
     case
-        when problem is null
+        when published
             then coalesce(
-                json_type(takes_entries_json) = 'BOOLEAN'
+                takes_entries_type = 'BOOLEAN'
                 and json_extract_string(takes_entries_json, '$') = 'true'
                 and status = 'published'
                 and reward_type != 'NULL',
                 false
             )
     end as takes_entries,
-    case when problem is null then {{ challenges_https('photo_json') }} end as photo,
-    case when problem is null then json_extract_string(reviewed_json, '$') end as reviewed,
-    case when problem is null then sections_published end as sections_published,
-    case when problem is null then items_published end as items_published,
-    case when problem is null then resolved_items end as item_count,
-    case when problem is null then sealed_items end as sealed_item_count,
+    case when published then photo_url end as photo,
+    case
+        when published then json_extract_string(reviewed_json, '$')
+    end as reviewed,
+    case when published then sections_published end as sections_published,
+    case when published then items_published end as items_published,
+    case when published then resolved_items end as item_count,
+    case when published then sealed_items end as sealed_item_count,
     _loaded_at
-from decided
+from kept

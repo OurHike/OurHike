@@ -1,49 +1,37 @@
--- INTERFACE: replace with the poi family's points_of_interest mart (wk/poi)
---
 -- The published POIs a challenge place may name (CH01, CH02, CH03), as
 -- export_challenges.load_published_pois() reads them: the properties of
--- every feature in export_poi.py's eight per-type files, data/processed/poi/
--- <type>.geojson, and of no other file. Not nearby_poi.geojson and not
--- retired_poi.geojson: an item names an id already on the device, and a
--- place's mile is the A.T. mile every other screen shows.
+-- every feature in export_poi.py's eight poi_<type>.geojson files, which are
+-- the points_of_interest mart's `poi_by_type` rows, and of no other file.
+-- Not nearby_poi.geojson and not retired_poi.geojson: an item names an id
+-- already on the device, and a place's mile is the A.T. mile every other
+-- screen shows. A feature with no truthy `id` is skipped there; the mart's
+-- poi_id is never null, and an empty one is skipped here too.
 --
--- THE INTERFACE, one row per POI in those files:
--- - poi_id: its published `id`;
--- - trail_id, poi_type: its `trail_id` and `poi_type` properties;
--- - name: its `name` property;
--- - mile, lat, lon: its `mile`, `lat` and `lon` properties AS THE FILE PRINTS
---   THEM, which is what json.loads reads. GDAL's GeoJSON writer prints a
---   DOUBLE property with gdal_geojson_double() (wk/poi's macro, measured on
---   182,408 doubles: 60,301 read back as another double, -73.99000000000001
---   as -73.99), so the mart's own `lat` and `lon` go through it; `mile` is
---   already cut to 3 places, which that printing returns unchanged.
+-- `mile`, `lat` and `lon` are the values json.loads reads out of those
+-- files, which is not always the double the mart holds: GDAL's GeoJSON
+-- writer prints a DOUBLE property its own way, and gdal_geojson_double() is
+-- that printing (macros/gdal_geojson.sql, measured on 182,408 doubles: 60,301
+-- read back as another double, -73.99000000000001 as -73.99). The pub_poi_
+-- writers print them through the same macro, so a place publishes the
+-- coordinate its pin is drawn at.
 --
--- At integration, with wk/poi's mart and macros in the build, this body is
--- (Jinja braces left out here, because a comment is rendered too):
---
---     select
---         poi_id,
---         trail_id,
---         poi_type,
---         name,
---         <gdal_geojson_double('mile')> as mile,
---         <gdal_geojson_double('lat')> as lat,
---         <gdal_geojson_double('lon')> as lon
---     from <ref('points_of_interest')>
---     where phone_files = 'poi_by_type'
---
--- with each <...> written as a Jinja expression, cast to double if the macro
--- returns text. Until then it has no rows, so every place drops as "not in the
--- published POIs" and every trail as "carried by no published POI", which is
--- export_challenges.py's own answer when it finds no POI file. It reads the
--- stage-1 mart only so that it is not a root model.
+-- A string property that starts with [ and ends with ], or { and }, and
+-- parses as JSON, GDAL writes as that JSON (gdal_geojson_string()); here
+-- `trail_id`, `poi_type` and `name` stay text. Reasoned to matter nowhere:
+-- no POI type or trail id has that shape, and a name of that shape would
+-- publish here as the name's text where today's file publishes the JSON.
+with pois as (
+    select * from {{ ref('points_of_interest') }}
+    where phone_files = 'poi_by_type'
+)
+
 select
-    cast(null as varchar) as poi_id,
-    cast(null as varchar) as trail_id,
-    cast(null as varchar) as poi_type,
-    cast(null as varchar) as name,
-    cast(null as double) as mile,
-    cast(null as double) as lat,
-    cast(null as double) as lon
-from {{ ref('points_of_interest') }}
-where false
+    poi_id,
+    trail_id,
+    poi_type,
+    name,
+    {{ gdal_geojson_double('mile') }} as mile,
+    {{ gdal_geojson_double('lat') }} as lat,
+    {{ gdal_geojson_double('lon') }} as lon
+from pois
+where poi_id != ''

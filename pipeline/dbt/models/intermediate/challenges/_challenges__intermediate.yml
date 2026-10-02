@@ -3,10 +3,10 @@ version: 2
 models:
   - name: int_challenges__published_pois
     description: >
-      INTERFACE with no rows until the poi family's points_of_interest mart
-      publishes them: the POIs export_poi.py's eight per-type files carry,
-      with each one's published id, trail, type, name, and its mile, lat and
-      lon as the file prints them. What a challenge place may name (CH01).
+      The POIs export_poi.py's eight poi_<type>.geojson files carry (the
+      points_of_interest mart's poi_by_type rows), with each one's published
+      id, trail, type, name, and its mile, lat and lon as GDAL prints them in
+      those files. What a challenge place may name (CH01).
     data_tests:
       # export_challenges.main()'s "no published POIs" WARNING: every place
       # would drop, which looks like a club that published nothing.
@@ -27,9 +27,9 @@ models:
 
   - name: int_challenges__centerline
     description: >
-      INTERFACE with no rows until the trail_lines family's mart publishes
-      them: the A.T. centerline's published chains, trails.geojson's
-      `centerline` features, as GeoJSON in lon/lat. What a challenge place's
+      The A.T. centerline's published chains, trails.geojson's `centerline`
+      features (the trail_lines mart's rows with source_key centerline), as
+      GeoJSON in lon/lat at decision 8's 6 decimals. What a challenge place's
       tag radius is measured against (CH04).
     data_tests:
       # CH13: with no centerline the radius check is skipped, never silently.

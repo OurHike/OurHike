@@ -136,6 +136,8 @@ def test_only_the_reviewed_file_models_read_no_geometry():
         "base_greenbelly__shelter_capacity",
         "base_ourhike__highlights",
         "base_nynjtc__nynjtc_hike_photos",
+        "base_atc__challenges_atc",
+        "base_ourhike__challenges_publishers",
     }
 
 

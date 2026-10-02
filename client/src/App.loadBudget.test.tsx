@@ -473,6 +473,16 @@ describe('what the shell paints before the phone has answered (#1301)', () => {
     vi.mocked(get).mockImplementation(original)
     for (const release of pending.splice(0)) release()
     await screen.findByRole('tab', { name: 'Today' })
+
+    // And the launch finishes what it started before the next test counts.
+    // The tab bar lands before useTrailData's readTheRest reads the
+    // waypoints, and the harness clears calls only after each test, so a
+    // read this unmounted launch made late was counted against the next
+    // test's "reads the waypoints once": its read at call order 774 against
+    // this test's afterEach at 771. Measured 2026-10-02 running this file six
+    // copies at a time: six loops each failed once, after 18 to 78 runs, and
+    // PR #1805's client run at 69dcfbc3 failed the same way.
+    await indexLanded()
   })
 })
 

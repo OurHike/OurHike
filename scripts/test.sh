@@ -462,13 +462,15 @@ if selected_has dbt; then
     # dbt venv does not. CI gives it a venv of requirements-extract.txt.
     step "dbt fixtures"          env -C pipeline "$PY" make_dbt_fixtures.py --raw-dir "$dbt_tmp/raw"
     step "dbt load warehouse"    env -C pipeline RUNTIME__DLTHUB_TELEMETRY=false "$PY" -m extract._fixtures --raw-dir "$dbt_tmp/raw" --warehouse "$dbt_tmp/warehouse.duckdb" --store "$dbt_tmp/store"
-    step "dbt seed"              "${dbt_cmd[@]}" seed --profiles-dir .
-    step "dbt build"             "${dbt_cmd[@]}" build --profiles-dir . --exclude package:dbt_project_evaluator path:models/publish
-    mkdir -p "$dbt_tmp/processed"
-    step "dbt publish"           "${dbt_cmd[@]}" build --profiles-dir . -s path:models/publish
+    # The seeds, the build in stages around the Python steps, and the pub_
+    # writers last, in the order pipeline/build_marts.py owns, as CI runs it.
+    # dbt is $DBT_DIR's; the steps run on $PY, the suites' own Python, which
+    # carries requirements.txt's rasterio as CI's pipeline venv does.
+    step "dbt build_marts"       env -C pipeline DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS=false "$PY" build_marts.py --fixtures --dbt "$DBT_DIR/dbt" --warehouse "$dbt_tmp/warehouse.duckdb" --processed-dir "$dbt_tmp/processed" --raw-dir "$dbt_tmp/raw"
     for family in podcasts:podcasts_episodes stewards:stewards registry:registry; do
       step "dbt parity ${family%%:*}" env -C pipeline "$PY" parity.py "${family%%:*}" --new "$dbt_tmp/processed/${family#*:}.json"
     done
+    step "dbt parity elevation"  env -C pipeline "$PY" parity.py elevation --new "$dbt_tmp/processed/elevation_profile.json" --raw-dir "$dbt_tmp/raw"
     step "dbt source freshness"  "${dbt_cmd[@]}" source freshness --profiles-dir .
     step "dbt docs generate"     "${dbt_cmd[@]}" docs generate --profiles-dir . --output-dir target/docs
     step "dbt docs site"         dbt_docs_site_complete pipeline/dbt/target/docs

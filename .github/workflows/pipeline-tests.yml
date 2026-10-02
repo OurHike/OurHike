@@ -210,8 +210,11 @@ jobs:
           # reference/trail_orgs.json are what a resource reads its URL and
           # its club from, and the rest of reference/ holds the reviewed
           # files fixture mode loads as they are. parity.py and the exporters
-          # it runs (export_podcasts.py, export_sources.py) are the parity
-          # step's; the same test holds the list to their imports too.
+          # it runs (export_podcasts.py, export_sources.py, export_elevation.py)
+          # are the parity step's; the same test holds the list to their
+          # imports too. build_marts.py runs the build, and
+          # step_dem_sampling.py is the Python step it runs between dbt
+          # invocations (tests/test_build_marts.py holds this list to both).
           paths: >-
             pipeline/dbt/
             pipeline/extract/
@@ -229,6 +232,8 @@ jobs:
             pipeline/export_spurs.py
             pipeline/export_club_sections.py
             pipeline/export_elevation.py
+            pipeline/step_dem_sampling.py
+            pipeline/build_marts.py
             pipeline/requirements.txt
             pipeline/check_freshness.py
             pipeline/export_conditions.py
@@ -399,28 +404,21 @@ jobs:
           "$RUNNER_TEMP/extract/bin/python" -m extract._fixtures
           --raw-dir data/raw --warehouse data/warehouse.duckdb
 
-      - name: dbt seed
+      # THE BUILD, in the order pipeline/build_marts.py owns (pipeline/ELT.md,
+      # "Python steps, outside dbt"): the seeds; stage A, everything no Python
+      # step reads back; each entry of build_marts.STEPS, then what its
+      # derived table unblocks; and the pub_ writers LAST, once every test
+      # above them has passed (ELT.md, "Publish (reverse ETL)"), because
+      # `dbt build` tests a model after building it, so a writer built beside
+      # its parents would write its file before a failing test upstream
+      # stopped it. The writers write under data/processed/dbt/
+      # (dbt_project.yml's processed_dir says why there), and nothing here
+      # uploads anything. dbt is this job's own; the Python steps run on the
+      # pipeline's pins, the venv the step above built. A new Python step is
+      # an entry in build_marts.STEPS, never a step here.
+      - name: dbt build, the Python steps and the pub_ writers (build_marts.py)
         if: steps.scope.outputs.run == 'true'
-        working-directory: pipeline/dbt
-        run: dbt seed --profiles-dir .
-
-      - name: dbt build
-        if: steps.scope.outputs.run == 'true'
-        working-directory: pipeline/dbt
-        run: dbt build --profiles-dir . --exclude package:dbt_project_evaluator path:models/publish
-
-      # THE WRITERS RUN LAST, once every test above has passed (pipeline/ELT.md,
-      # "Publish (reverse ETL)"): `dbt build` tests a model after building it,
-      # so a writer in the build above would write its file before a failing
-      # test upstream stopped it. They write under data/processed/dbt/
-      # (dbt_project.yml's processed_dir says why there), which COPY does not
-      # create, and nothing here uploads anything.
-      - name: dbt publish (the pub_ writers)
-        if: steps.scope.outputs.run == 'true'
-        working-directory: pipeline/dbt
-        run: |
-          mkdir -p ../data/processed/dbt
-          dbt build --profiles-dir . -s path:models/publish
+        run: python build_marts.py --fixtures --python "$RUNNER_TEMP/pipeline/bin/python"
 
       # Shadow-run parity (ELT.md, "How a rule moves"): each family the dbt
       # path writes, against today's exporter on the same input, record by
@@ -457,6 +455,11 @@ jobs:
           "$RUNNER_TEMP/pipeline/bin/python" parity.py trails_overview --new data/processed/dbt/trails_overview.geojson
           "$RUNNER_TEMP/pipeline/bin/python" parity.py spurs --new data/processed/dbt/spurs.json
           "$RUNNER_TEMP/pipeline/bin/python" parity.py club_sections --new data/processed/dbt/club_sections.json
+          # The elevation profile's input is a fixture, not a file in git: the
+          # fixture centerline, markers and DEM tile make_dbt_fixtures.py wrote.
+          # export_elevation.py reads the DEM through rasterio, so this runs on
+          # the pipeline's own pins, the venv step_dem_sampling.py runs in.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py elevation --new data/processed/dbt/elevation_profile.json --raw-dir data/raw
 
       - name: dbt source freshness
         if: steps.scope.outputs.run == 'true'

@@ -44,6 +44,8 @@ this exists to fill an empty CI workspace, not to overwrite a real fetch.
 
 import argparse
 import json
+import math
+import struct
 from pathlib import Path
 
 from load_raw import RAW_DIR
@@ -138,6 +140,132 @@ def _half_mile_layer():
             for i in range(4)
         ]
     )
+
+
+# --- elevation, the A.T. half (#1793, stage 3) -------------------------------
+#
+# step_dem_sampling.py and today's export_elevation.py both read the DEM
+# through a tile index (fetch_elevation.py's data/raw/elevation/
+# tile_index.json), and CI fetches no tile. So the fixtures carry one: the
+# smallest tile export_elevation.ElevationSampler reads the way it reads a
+# real 3DEP cell - a single-band float32 GeoTIFF in EPSG:4269 with a declared
+# nodata - over the two fixture centerline segments (`_line(0)`, `_line(1)`),
+# plus the index naming it. Written byte by byte here rather than through
+# rasterio, because CI's dbt job runs this file on requirements-dbt.txt,
+# which has no rasterio.
+#
+# THE TILE HAS BOTH KINDS OF HOLE a profile meets, so parity reaches the null
+# path (EL09): rows ELEVATION_FIXTURE_NODATA_ROWS are nodata across the
+# tile, which the first segment crosses, and the tile stops short of the
+# second segment's northern end, so the samples past it have no tile at all.
+# Its edges sit half a pixel off both segments' longitudes, so no sample
+# lands on a pixel boundary, where a last-bit difference between two ways of
+# placing a point could read a neighbouring pixel.
+
+#: Where the tile and its index land under the raw directory.
+ELEVATION_FIXTURE_TILE = "elevation/fixture_n42w074.tif"
+ELEVATION_FIXTURE_INDEX = "elevation/tile_index.json"
+#: The tile's grid: its north-west corner, pixel size in degrees, and shape.
+ELEVATION_FIXTURE_WEST = -74.0021
+ELEVATION_FIXTURE_NORTH = 41.01365
+ELEVATION_FIXTURE_PIXEL_DEG = 0.0002
+ELEVATION_FIXTURE_WIDTH = 72
+ELEVATION_FIXTURE_HEIGHT = 78
+ELEVATION_FIXTURE_NODATA = -9999.0
+ELEVATION_FIXTURE_NODATA_ROWS = (53, 54)
+#: A Last-Modified, so the index pins the tile's edition and the sampler's
+#: cache treats it as it treats a stamped 3DEP cell.
+ELEVATION_FIXTURE_LAST_MODIFIED = "Thu, 01 Oct 2026 00:00:00 GMT"
+
+
+def _elevation_fixture_metres(row: int, col: int) -> float:
+    """The fixture ground: rising to the north, with a ripple, so feet carry real decimals."""
+    if row in ELEVATION_FIXTURE_NODATA_ROWS:
+        return ELEVATION_FIXTURE_NODATA
+    return 200.0 + 1.3 * (ELEVATION_FIXTURE_HEIGHT - row) + 0.4 * col + 1.7 * math.sin(0.9 * col + 0.4 * row)
+
+
+def _geotiff(width: int, height: int, pixels: list[float], west: float, north: float, pixel_deg: float, nodata: float) -> bytes:
+    """A little-endian, uncompressed, one-strip, single-band float32 GeoTIFF in EPSG:4269 (NAD83, 3DEP's datum)."""
+    data = struct.pack(f"<{width * height}f", *pixels)
+    nodata_text = f"{nodata:g}".encode() + b"\0"
+    geokeys = (1, 1, 0, 3, 1024, 0, 1, 2, 1025, 0, 1, 1, 2048, 0, 1, 4269)  # geographic, pixel-is-area, EPSG:4269
+    # (tag, TIFF type, values): type 2 ASCII, 3 SHORT, 4 LONG, 12 DOUBLE.
+    entries = [
+        (256, 4, (width,)),
+        (257, 4, (height,)),
+        (258, 3, (32,)),
+        (259, 3, (1,)),
+        (262, 3, (1,)),
+        (273, 4, (0,)),  # StripOffsets, filled in below
+        (277, 3, (1,)),
+        (278, 4, (height,)),
+        (279, 4, (len(data),)),
+        (284, 3, (1,)),
+        (339, 3, (3,)),  # SampleFormat: IEEE float
+        (33550, 12, (pixel_deg, pixel_deg, 0.0)),  # ModelPixelScale
+        (33922, 12, (0.0, 0.0, 0.0, west, north, 0.0)),  # ModelTiepoint: pixel (0, 0) is (west, north)
+        (34735, 3, geokeys),
+        (42113, 2, nodata_text),  # GDAL_NODATA
+    ]
+    formats = {2: "s", 3: "H", 4: "I", 12: "d"}
+    ifd_size = 2 + 12 * len(entries) + 4
+    extra_offset = 8 + ifd_size
+    extra = b""
+    encoded = []
+    for tag, kind, values in entries:
+        count = len(values)
+        payload = struct.pack(f"<{count}s", values) if kind == 2 else struct.pack(f"<{count}{formats[kind]}", *values)
+        encoded.append((tag, kind, count, payload))
+        if len(payload) > 4:
+            extra += payload + b"\0" * (len(payload) % 2)
+    data_offset = extra_offset + len(extra)
+    ifd = struct.pack("<H", len(entries))
+    cursor = extra_offset
+    for tag, kind, count, payload in encoded:
+        if tag == 273:
+            payload = struct.pack("<I", data_offset)
+        if len(payload) > 4:
+            ifd += struct.pack("<HHII", tag, kind, count, cursor)
+            cursor += len(payload) + len(payload) % 2
+        else:
+            ifd += struct.pack("<HHI", tag, kind, count) + payload.ljust(4, b"\0")
+    ifd += struct.pack("<I", 0)
+    return b"II" + struct.pack("<HI", 42, 8) + ifd + extra + data
+
+
+def _elevation_fixtures(raw_dir: Path) -> dict[str, str | bytes]:
+    """The DEM fixture's tile and the tile index naming it, by path under raw_dir.
+
+    The index names the tile by its absolute path, as export_elevation's
+    _gdal_source hands a local entry to GDAL, so the step and the exporter
+    find it from any working directory."""
+    pixels = [
+        _elevation_fixture_metres(row, col) for row in range(ELEVATION_FIXTURE_HEIGHT) for col in range(ELEVATION_FIXTURE_WIDTH)
+    ]
+    tile = _geotiff(
+        ELEVATION_FIXTURE_WIDTH,
+        ELEVATION_FIXTURE_HEIGHT,
+        pixels,
+        ELEVATION_FIXTURE_WEST,
+        ELEVATION_FIXTURE_NORTH,
+        ELEVATION_FIXTURE_PIXEL_DEG,
+        ELEVATION_FIXTURE_NODATA,
+    )
+    bounds = [
+        ELEVATION_FIXTURE_WEST,
+        ELEVATION_FIXTURE_NORTH - ELEVATION_FIXTURE_HEIGHT * ELEVATION_FIXTURE_PIXEL_DEG,
+        ELEVATION_FIXTURE_WEST + ELEVATION_FIXTURE_WIDTH * ELEVATION_FIXTURE_PIXEL_DEG,
+        ELEVATION_FIXTURE_NORTH,
+    ]
+    index = [
+        {
+            "url": (raw_dir / ELEVATION_FIXTURE_TILE).resolve().as_posix(),
+            "bounds": bounds,
+            "last_modified": ELEVATION_FIXTURE_LAST_MODIFIED,
+        }
+    ]
+    return {ELEVATION_FIXTURE_TILE: tile, ELEVATION_FIXTURE_INDEX: json.dumps(index)}
 
 
 def _opentrail_layer():
@@ -2066,6 +2194,7 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         ),
         "trail_club_sections.geojson": _club_sections_layer(),
         "half_mile_points_from_springer.geojson": _half_mile_layer(),
+        **_elevation_fixtures(raw_dir),
         "at_treadway.geojson": _atc_layer(
             "Treadway",
             2,
@@ -2182,7 +2311,10 @@ def write_fixtures(raw_dir: Path) -> list[str]:
             content = _with_key_fields(content, KEY_FIELDS[name])
         path = raw_dir / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
+        if isinstance(content, bytes):
+            path.write_bytes(content)  # the elevation fixture's GeoTIFF (_elevation_fixtures)
+        else:
+            path.write_text(content)
     return sorted(files)
 
 

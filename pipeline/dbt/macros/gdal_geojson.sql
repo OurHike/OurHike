@@ -33,12 +33,15 @@
                     or contains(substr({{ g17 }}, strpos({{ g17 }}, '.')), '999999')
                 )
                 then coalesce(
-                    list_filter(
-                        [printf('%.16g', {{ value }}), printf('%.15g', {{ value }}), printf('%.14g', {{ value }})],
-                        lambda candidate: strpos(candidate, '.') > 0
-                        and not contains(substr(candidate, strpos(candidate, '.')), '000000')
-                        and not contains(substr(candidate, strpos(candidate, '.')), '999999')
-                    )[1],
+                    list_extract(
+                        list_filter(
+                            [printf('%.16g', {{ value }}), printf('%.15g', {{ value }}), printf('%.14g', {{ value }})],
+                            lambda candidate: strpos(candidate, '.') > 0
+                            and not contains(substr(candidate, strpos(candidate, '.')), '000000')
+                            and not contains(substr(candidate, strpos(candidate, '.')), '999999')
+                        ),
+                        1
+                    ),
                     {{ g17 }}
                 )
             else {{ g17 }}

@@ -212,6 +212,9 @@ jobs:
           # files fixture mode loads as they are. parity.py and the exporters
           # it runs (export_podcasts.py, export_sources.py) are the parity
           # step's; the same test holds the list to their imports too.
+          # The points_of_interest family's parity runs export_poi.py (and the
+          # export_elevation.py mile axis it imports), export_nearby_poi.py and
+          # export_retired_poi.py, in a venv of requirements.txt.
           paths: >-
             pipeline/dbt/
             pipeline/extract/
@@ -221,6 +224,11 @@ jobs:
             pipeline/parity.py
             pipeline/export_podcasts.py
             pipeline/export_sources.py
+            pipeline/export_poi.py
+            pipeline/export_elevation.py
+            pipeline/export_nearby_poi.py
+            pipeline/export_retired_poi.py
+            pipeline/requirements.txt
             pipeline/check_freshness.py
             pipeline/export_conditions.py
             pipeline/fetch_club_pdfs.py
@@ -407,6 +415,18 @@ jobs:
           python parity.py podcasts --new data/processed/dbt/podcasts_episodes.json
           python parity.py stewards --new data/processed/dbt/stewards.json
           python parity.py registry --new data/processed/dbt/registry.json
+          # The points_of_interest family's ten files, on the fixture warehouse
+          # and the reviewed files in git (water distances, capacities, the
+          # identity ledger). export_poi.py imports shapely, numpy and
+          # rasterio, which requirements-dbt.txt does not carry, so the
+          # exporters run in a venv of the pipeline's own pins.
+          python -m venv "$RUNNER_TEMP/exporters"
+          "$RUNNER_TEMP/exporters/bin/pip" install -r requirements.txt
+          for poi_type in shelter campsite water resupply viewpoint parking privy trailhead; do
+            "$RUNNER_TEMP/exporters/bin/python" parity.py "poi_$poi_type" --new "data/processed/dbt/poi_$poi_type.geojson"
+          done
+          "$RUNNER_TEMP/exporters/bin/python" parity.py nearby_poi --new data/processed/dbt/nearby_poi.geojson
+          "$RUNNER_TEMP/exporters/bin/python" parity.py retired_poi --new data/processed/dbt/retired_poi.geojson
 
       - name: dbt source freshness
         if: steps.scope.outputs.run == 'true'

@@ -214,8 +214,10 @@ breaks as (
 runs as (
     select
         *,
-        sum(starts_a_run) over (
-            order by mile, marker_row rows unbounded preceding
+        cast(
+            sum(starts_a_run) over (
+                order by mile, marker_row rows unbounded preceding
+            ) as bigint
         ) as run_order
     from breaks
 ),

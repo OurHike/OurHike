@@ -24,7 +24,7 @@ records are, and what keys them. The old document comes from the exporter's
 own builder, not a file it wrote, when the exporter has one that needs no
 network, as export_podcasts.build_document does.
 
-Three optional parts, for a family whose records do not fit that (the trail
+Four optional parts, for a family whose records do not fit that (the trail
 lines network's two GeoJSON files are the first):
 - `key_of` reads a record's key where it is not a top-level field, as a
   GeoJSON feature's `properties.id` is not; `key` then only names it;
@@ -33,7 +33,11 @@ lines network's two GeoJSON files are the first):
 - `explained` names the differences a decision or a classified improvement
   accounts for, each with its reason: printed, and not counted. Every other
   difference still exits 1, and the family's parity test holds each reason
-  to a case where the two writers answer differently.
+  to a case where the two writers answer differently;
+- `new_shape` turns the writer's whole file into the shape the family's
+  `old` returns, where the records are not a list of flat objects: the
+  A.T.'s files (trails.geojson's features, trail_miles.json's and
+  spurs.json's objects keyed by id).
 
 Exit 1 on any difference, so a CI step fails on one.
 """
@@ -384,7 +388,12 @@ def _trail_lines_coded_domain() -> Callable[[str | None, str], dict | None]:
 
 @functools.cache
 def _export_trails_run() -> Path:
-    """export_trails.main() into a temporary directory, which it returns: one run feeds all three of its files."""
+    """export_trails.main() into a temporary directory, which it returns: one run feeds all three of its files.
+
+    Its own lines go to a buffer, as _network_old's do, so the step prints the comparison and nothing else.
+    """
+    import contextlib
+    import io
     import tempfile
 
     import export_trails
@@ -392,7 +401,8 @@ def _export_trails_run() -> Path:
     out = Path(tempfile.mkdtemp(prefix="parity_trails_"))
     export_trails.get_field_coded_domain = _trail_lines_coded_domain()
     export_trails.OUT_DIR = out
-    export_trails.main()
+    with contextlib.redirect_stdout(io.StringIO()):
+        export_trails.main()
     return out
 
 
@@ -562,6 +572,168 @@ FAMILIES: dict[str, Family] = {
 }
 
 
+# --- the points_of_interest family (#1793, stage 3) -------------------------
+#
+# Ten files, three exporters. The records are GeoJSON features, keyed by
+# properties.id (`key_of`), and nearby_poi's one kind of deliberate difference
+# is named by `explained`.
+
+
+def _poi_id(feature: dict) -> str:
+    return str(feature["properties"]["id"])
+
+
+#: Why a POI can be in today's file and not in the dbt writer's, by case.
+#: tests/test_dbt_points_of_interest_parity.py holds each to the fixture row
+#: where the two writers answer that way, so none outlives its reason.
+POI_REASONS = {
+    "exact_copy": (
+        "expected by decision 40, and accepted as an improvement on 2026-10-02: staging removes a row that is an "
+        "exact copy of another in every column but the server's own row id (ELT.md, 'A dedupe may only remove "
+        "exact copies, and the build proves it'), keeping the lowest OBJECTID, where export_nearby_poi.py "
+        "publishes every copy as a pin of its own at the same spot"
+    ),
+}
+
+
+def _row_id_order(value) -> tuple:
+    """A source_feature_id's sort key: numbers numerically, then strings."""
+    return (0, value, "") if isinstance(value, int | float) and not isinstance(value, bool) else (1, 0, str(value))
+
+
+def _exact_copy_reasons(old: dict, new: dict) -> dict[str, str]:
+    """The POIs today's file publishes and the dbt writer's does not, each an exact copy of one it does.
+
+    A copy is a feature of the same layer that agrees with another on its
+    geometry and on every property but `id` and `source_feature_id`, the
+    server's own row id, and the one kept is the copy with the lowest id, as
+    the staging dedupe keeps the lowest OBJECTID. A missing feature is
+    explained only when the copy that is kept is in the new file; anything
+    else the new file lacks, or has extra, is still a difference.
+    """
+
+    def body(feature: dict) -> tuple[str, str]:
+        properties = {name: value for name, value in feature["properties"].items() if name not in ("id", "source_feature_id")}
+        return feature["properties"]["source"], canonical({"geometry": feature["geometry"], "properties": properties})
+
+    new_ids = {_poi_id(feature) for feature in new.get("features") or []}
+    copies: dict[tuple[str, str], list[dict]] = {}
+    for feature in old.get("features") or []:
+        copies.setdefault(body(feature), []).append(feature)
+    reasons: dict[str, str] = {}
+    for group in copies.values():
+        if len(group) < 2:
+            continue
+        kept, *dropped = sorted(group, key=lambda feature: _row_id_order(feature["properties"]["source_feature_id"]))
+        if _poi_id(kept) not in new_ids:
+            continue
+        for feature in dropped:
+            if _poi_id(feature) not in new_ids:
+                reasons[f"properties.id {_poi_id(feature)}"] = POI_REASONS["exact_copy"]
+    return reasons
+
+
+@functools.cache
+def _published_network() -> Path:
+    """nearby_trails.geojson as export_nearby_trails.main() writes it, in a folder kept for this process.
+
+    Both POI exporters read the published network: export_poi.py widens its
+    corridor by the 500 ft ring around it (NETWORK_LINES_PATH), and
+    export_nearby_poi.py clips its amenities to that ring and marks the
+    trailheads whose every line is closed. A publish run writes the file
+    first, so the old documents are built with it there, as the dbt models
+    are built with int_trail_lines__network_published.
+    """
+    import contextlib
+    import io
+    import tempfile
+
+    import export_nearby_trails
+
+    out = Path(tempfile.mkdtemp(prefix="parity-network-"))
+    with contextlib.redirect_stdout(io.StringIO()):
+        export_nearby_trails.OUT_DIR = out
+        export_nearby_trails.main()
+    return out / "nearby_trails.geojson"
+
+
+def _poi_by_type_old(poi_type: str) -> Callable[[], dict]:
+    """export_poi.py's poi_<type>.geojson, as its own main() writes it.
+
+    export_poi.py has no builder that returns the documents: main() writes
+    all eight through GDAL, whose printing of a double is part of the shape
+    being compared, so the old document is the file main() just wrote, read
+    back. Every input is a raw file, a reviewed file in git or the published
+    network (_published_network()), and nothing in main() fetches.
+    """
+
+    def old() -> dict:
+        import export_poi
+
+        export_poi.NETWORK_LINES_PATH = _published_network()
+        export_poi.main()
+        return json.loads((export_poi.OUT_DIR / f"{poi_type}.geojson").read_text(encoding="utf-8"))
+
+    return old
+
+
+def _nearby_poi_old() -> dict:
+    """export_nearby_poi.py's nearby_poi.geojson, by its own functions in main()'s order, less the guide.
+
+    main() itself cannot run on the fixtures: nynjtc_long_path_guide carries
+    reaches_hikers true, so main() raises without the guide's page cache, and
+    the guide is not ported (ELT.md ledger row PO36). Everything else is
+    main()'s: each registered layer's build_records() in poi_sources()'s
+    order, the network ring and the closed-trailhead mark against the
+    published network (_published_network()), the place sites.
+    """
+    import export_nearby_poi as nearby
+
+    registry = nearby.load_registry(nearby.ROOT / "sources.json")
+    sources = nearby.poi_sources(registry)
+    records: list[dict] = []
+    for source in sources:
+        features = json.loads((nearby.RAW_DIR / f"{source['key']}.geojson").read_text(encoding="utf-8")).get("features", [])
+        records.extend(nearby.build_records(source, features)[0])
+    network = _published_network()
+    records, _ = nearby.clip_to_network(records, network, nearby.boundary_paths_for(sources))
+    nearby.mark_closed_trailheads(records, network)
+    site_props = nearby.site_properties(nearby.group_place_sites(records))
+    for record in records:
+        record.update(site_props.get(record["id"], {}))
+    return nearby.records_to_geojson(records)
+
+
+def _retired_poi_old() -> dict:
+    import export_retired_poi
+
+    pois = json.loads(export_retired_poi.LEDGER_PATH.read_text(encoding="utf-8"))["pois"]
+    collection, dangling = export_retired_poi.build(pois)
+    if dangling:
+        raise SystemExit(
+            f"export_retired_poi.py refuses {len(dangling)} dangling successor(s), so it would publish nothing: {dangling}"
+        )
+    return collection
+
+
+FAMILIES.update(
+    {
+        **{
+            f"poi_{poi_type}": Family(
+                old=_poi_by_type_old(poi_type), records="features", key="properties.id", ordered=True, key_of=_poi_id
+            )
+            for poi_type in ("shelter", "campsite", "water", "resupply", "viewpoint", "parking", "privy", "trailhead")
+        },
+        # Unordered: the layers' rows are read in file order, and three of the
+        # layers come from base models that keep no row number.
+        "nearby_poi": Family(
+            old=_nearby_poi_old, records="features", key="properties.id", key_of=_poi_id, explained=_exact_copy_reasons
+        ),
+        "retired_poi": Family(old=_retired_poi_old, records="features", key="properties.id", ordered=True, key_of=_poi_id),
+    }
+)
+
+
 def canonical(value) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
@@ -621,10 +793,10 @@ def main(argv: list[str] | None = None) -> int:
     else:
         old = family.old()
     new = json.loads(args.new.read_text(encoding="utf-8"))
-    if family.bare_list:
-        new = {family.records: new}
     if family.new_shape is not None:
         new = family.new_shape(new, args.new)
+    if family.bare_list:
+        new = {family.records: new}
     found = differences(old, new, family)
     count = len(old.get(family.records) or [])
     reasons = family.explained(old, new) if family.explained else {}

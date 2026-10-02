@@ -89,6 +89,46 @@ vars:
   registry_product_handle_pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
   registry_sheet_number_pattern: "^[0-9]{3}[A-Z]?$"
 
+  # The closures and warnings family: lib/atc_updates.py's constants, read by
+  # int_closures__atc_checked and held to the Python by
+  # tests/test_dbt_conditions_parity.py until the Python is deleted. The
+  # trail's own extent is ATC's half-mile marker layer, `Measure` 0.5 to
+  # 2197.5 (measured 2026-08-09, lib/atc_updates.py). The categories are the
+  # closed set ATC publishes, sorted, as the refusal message prints them.
+  atc_trail_mile_min: 0.5
+  atc_trail_mile_max: 2197.5
+  atc_update_categories:
+    - Alert
+    - Animal
+    - Closure
+    - Conservation
+    - Construction
+    - Detour
+    - Fire
+    - Hiking Safety
+    - Parking
+    - Permits
+    - Relocation
+    - Water
+  # The trail_lines network's constants (tl-net), read by the
+  # int_trail_lines__network_* models and held to the Python's own by
+  # tests/test_dbt_trail_lines_network_parity.py until stage 5 of #1793
+  # deletes the Python: export_trails.py's DEFAULT_SIMPLIFY_TOLERANCE_M and
+  # OVERVIEW_SIMPLIFY_TOLERANCE_M, lib/duplicates.py's two, and
+  # export_nearby_trails.py's others under their own names. Each one's
+  # evidence is beside it in the Python.
+  trail_lines_network_navigation_tolerance_m: 1.0
+  trail_lines_network_coordinate_decimals: 6
+  trail_lines_network_duplicate_tolerance_m: 10.0
+  trail_lines_network_duplicate_min_share: 0.5
+  trail_lines_network_inside_boundary_min_fraction: 0.8
+  trail_lines_network_overview_simplify_tolerance_m: 100.0
+  trail_lines_network_chain_tolerance_m: 200.0
+  trail_lines_network_named_trail_threshold_miles: 50.0
+  trail_lines_network_overview_min_feature_m: 1873.7331444281513
+  trail_lines_network_overview_seam_tolerance_m: 936.8665722140756
+  trail_lines_network_overview_seam_decimals: 3
+
   # The trail_lines family (stage 3 of #1793). First, export_elevation.py's
   # marker calibration of the A.T. mile axis, read by the
   # int_trail_lines__mile_axis_* models and held to the Python constants by
@@ -114,6 +154,62 @@ vars:
   mile_axis_holdout_max_p95_mi: 0.25
   mile_axis_holdout_max_mi: 1.0
 
+  # points_of_interest (#1793, stage 3): the constants the POI rules read,
+  # each the Python's own, held to it by
+  # tests/test_dbt_points_of_interest_parity.py until stage 5 deletes the
+  # Python and these become the one home. The measurement behind each is on
+  # the Python constant it names.
+  poi_corridor_buffer_miles: 30            # lib/corridor.py BUFFER_MILES
+  poi_metres_per_degree: 111320.0          # lib/spurs.py METERS_PER_DEGREE, distance_m()'s scale
+  poi_metres_per_foot: 0.3048              # export_poi.py M_PER_FT
+  poi_site_name_radius_m: 150.0            # lib/poi_sites.py NAME_MATCH_RADIUS_M
+  poi_site_proximity_radius_m: 60.0        # lib/poi_sites.py PROXIMITY_RADIUS_M
+  poi_site_max_radius_m: 1609.344          # lib/poi_sites.py MAX_SITE_RADIUS_M
+  poi_place_site_radius_m: 80.0            # lib/poi_sites.py PLACE_PROXIMITY_RADIUS_M
+  poi_nearby_min_part_ft: 3.28084          # lib/poi_description.py MIN_PART_FT
+  # export_nearby_poi.py's DIRT, less its "" (the classifier treats an empty
+  # string so without a row): what an organization writes where a real name,
+  # asset or facility is missing, '-99' being DEC's own null sentinel.
+  poi_null_sentinels: ['-99', 'N/A', 'NA', 'NONE', 'UNKNOWN', 'TBD']
+  poi_network_ring_feet: 500               # lib/corridor.py NETWORK_BUFFER_FEET
+  # export_nearby_poi.py's NETWORK_RING_EXEMPT_TYPES: the types the ring
+  # never drops, because a hiker drives to them.
+  poi_network_ring_exempt_types: ['parking', 'trailhead']
+  poi_trailhead_trail_radius_m: 100        # export_nearby_poi.py TRAILHEAD_TRAIL_RADIUS_M
+  poi_description_earliest_year: 1800      # lib/poi_description.py EARLIEST_PLAUSIBLE_YEAR
+  poi_description_latest_year: 2100        # lib/poi_description.py LATEST_PLAUSIBLE_YEAR
+  poi_vista_panorama_degrees: 300          # lib/poi_description.py PANORAMA_DEGREES
+  poi_vista_arc_rounding_degrees: 5        # lib/poi_description.py ARC_ROUNDING_DEGREES
+  # lib/poi_description.py COMPASS_POINTS, in bearing order from north.
+  poi_compass_points: ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west']
+  # lib/atc_notes.py EMPTY_VALUES and INTERNAL_PATTERNS, which say why each
+  # pattern is there; matched case-insensitively, as INTERNAL is compiled.
+  poi_note_empty_values: ['none', 'no name', 'na', 'n/a', 'unknown', '-']
+  poi_note_internal_patterns:
+    - '\b(?:gis|fmss|arcgis|fbms)\b'
+    - '\b(?:added|adjusted|adusted|updated)\s+based\s+on'
+    - '\baerial\s+imagery\b'
+    - '\binventory\s+form\b'
+    - '\bnot\s+sure\b'
+    - '\bneed\s+to\s+confirm\b'
+    - '\bnot\s+(?:on|in)\s+(?:the\s+)?(?:collection\s+)?list\b'
+    - '\b(?:please\s+)?see\s+photos?\b'
+    - '\bphotos?\s+taken\b'
+    - '\bi\s+(?:took|failed\s+to)\b'
+    - '\bimprovements\s*='
+    - '\bvri\b'
+    - '\b(?:extent|location|scope)\s+(?:adjus|based\s+on)'
+    - '\badjused\s+based\s+on'
+    - '\btrimble\b'
+    - '\bcompass\b'
+    - '\bbearings?\s+(?:measured|were)\b'
+    - '\bmeasured\s+(?:the\s+)?bearings?\b'
+    - '\bvaro\b'
+    - '\bpreliminary\s+review\b'
+    - '\bvp\s?\d+'
+    - '\bnot\s+(?:on|in)\b[^.;]{0,30}\blist\b'
+    - '\bneed\s+to\s+determine\b'
+    - '\bsocked\b'
   # The ArcGIS coded-value domains export_trails.py and export_spurs.py read
   # live (lib/arcgis.get_field_coded_domain) mid-transform, as rows of
   # [source_key, field_name, code, label]: int_trail_lines__coded_domains.
@@ -206,46 +302,6 @@ vars:
   # sections by check_elevation_gain.py. Unchecked on the network's ground,
   # which is why both network manifests say `estimate: true`.
   elevation_gain_threshold_m: 3.0
-
-  # The closures and warnings family: lib/atc_updates.py's constants, read by
-  # int_closures__atc_checked and held to the Python by
-  # tests/test_dbt_conditions_parity.py until the Python is deleted. The
-  # trail's own extent is ATC's half-mile marker layer, `Measure` 0.5 to
-  # 2197.5 (measured 2026-08-09, lib/atc_updates.py). The categories are the
-  # closed set ATC publishes, sorted, as the refusal message prints them.
-  atc_trail_mile_min: 0.5
-  atc_trail_mile_max: 2197.5
-  atc_update_categories:
-    - Alert
-    - Animal
-    - Closure
-    - Conservation
-    - Construction
-    - Detour
-    - Fire
-    - Hiking Safety
-    - Parking
-    - Permits
-    - Relocation
-    - Water
-  # The trail_lines network's constants (tl-net), read by the
-  # int_trail_lines__network_* models and held to the Python's own by
-  # tests/test_dbt_trail_lines_network_parity.py until stage 5 of #1793
-  # deletes the Python: export_trails.py's DEFAULT_SIMPLIFY_TOLERANCE_M and
-  # OVERVIEW_SIMPLIFY_TOLERANCE_M, lib/duplicates.py's two, and
-  # export_nearby_trails.py's others under their own names. Each one's
-  # evidence is beside it in the Python.
-  trail_lines_network_navigation_tolerance_m: 1.0
-  trail_lines_network_coordinate_decimals: 6
-  trail_lines_network_duplicate_tolerance_m: 10.0
-  trail_lines_network_duplicate_min_share: 0.5
-  trail_lines_network_inside_boundary_min_fraction: 0.8
-  trail_lines_network_overview_simplify_tolerance_m: 100.0
-  trail_lines_network_chain_tolerance_m: 200.0
-  trail_lines_network_named_trail_threshold_miles: 50.0
-  trail_lines_network_overview_min_feature_m: 1873.7331444281513
-  trail_lines_network_overview_seam_tolerance_m: 936.8665722140756
-  trail_lines_network_overview_seam_decimals: 3
 
   dbt_project_evaluator:
     # The mart names the maintainer chose carry no dim_/fct_ prefix

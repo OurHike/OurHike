@@ -74,6 +74,23 @@ def test_conditions_rows_land_in_the_shapes_their_real_kinds_give_them(fixtures)
         assert columns("raw_ourhike__disputes")["accounts"] == "BIGINT"
 
 
+@pytest.mark.parametrize(
+    "artifact, order",
+    [
+        ("closures", ("start_mile_marker", "id")),
+        ("reports", ("timestamp", "id")),
+        ("notes", ("observed_at", "id")),
+        ("disputes", ("poi_id",)),
+    ],
+)
+def test_the_stand_in_postgres_rows_are_in_each_querys_own_order(artifact, order):
+    """FixtureConnection hands rows back as make_dbt_fixtures.py wrote them and sorts nothing, so the rows are written
+    in each PUBLIC_*_SQL's ORDER BY: parity.py reads export_conditions.py's documents through the same connection."""
+    rows = make_dbt_fixtures.closures_and_warnings_fixtures()["conditions/ourhike_postgres.json"]
+    written = json.loads(rows)[artifact]["rows"]
+    assert written == sorted(written, key=lambda row: tuple(row[name] for name in order))
+
+
 def test_the_stand_in_postgres_answers_only_the_extracts_own_sql():
     """A query the extract does not send gets no canned answer: it fails, so a changed query cannot pass on a stale one."""
     connection = FixtureConnection({"closures": {"columns": [["id", "varchar"]], "rows": [{"id": "x"}]}})

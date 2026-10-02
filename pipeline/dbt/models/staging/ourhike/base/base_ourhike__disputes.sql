@@ -1,3 +1,8 @@
+{{ config(materialized='table') }}
+-- A table, not the staging layer's view: it is the one parent of a phone
+-- file's exposure (models/publish/_publish__conditions.yml), and
+-- dbt_project_evaluator's fct_exposure_parents_materializations asks that an
+-- exposure read a table.
 -- The places OurHike's field notes say are gone (extract/_shared/ourhike/
 -- field_notes.py, export_conditions.py's PUBLIC_DISPUTES_SQL run whole),
 -- keyed (decision 40): a count of accounts per place, never an account. No

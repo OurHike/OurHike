@@ -1,4 +1,3 @@
-{{ config(materialized='table') }}
 -- OurHike's moderator-verified closures (base_ourhike__closures), one row
 -- each, with whether each blocks the trail and why one cannot publish.
 --

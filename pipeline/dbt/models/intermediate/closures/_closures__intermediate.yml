@@ -43,6 +43,11 @@ models:
         description: Every problem with the row, each prefixed by its label, in row_problems()'s order, then CL04's repeat.
       - name: problem
         description: The same problems joined by " | ", or null where the row is fine.
+      - name: published_row
+        description: >
+          The row as lib/atc_updates.py's published_rows() publishes it, each
+          field's JSON as written plus source_key and review_state, for
+          pub_conditions_atc_updates.
 
   - name: int_closures__nynjtc_checked
     description: >
@@ -175,8 +180,14 @@ models:
       - name: rows_invalid
         description: Its rows with a problem.
         data_tests: [not_null]
+      - name: may_publish
+        description: >
+          int_sources__publication's answer for the source, false where it has
+          no row. The marts join that model themselves; it is here so a writer
+          reads one answer per source.
+        data_tests: [not_null]
       - name: passed
-        description: Whether its rows may reach the marts.
+        description: Whether its rows may reach the marts and its file may be written.
         data_tests: [not_null]
       - name: held_because
         description: Why not, in words for the job log; null where it passed.
@@ -397,6 +408,12 @@ unit_tests:
           select true as is_reviewed
           union all
           select true as is_reviewed
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: atc_trail_updates, may_publish: true}
+          - {source_key: nynjtc_trail_alerts, may_publish: true}
+          - {source_key: oprhp_trail_closures, may_publish: true}
+          - {source_key: ourhike_closures, may_publish: true}
     expect:
       rows:
         - {source_key: atc_trail_updates, rows_total: 2, rows_invalid: 1, passed: false, held_because: '1 of 2 rows cannot publish, and a partial set of safety notices is worse than none'}
@@ -420,6 +437,12 @@ unit_tests:
         format: sql
         rows: |
           select false as is_reviewed
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: atc_trail_updates, may_publish: true}
+          - {source_key: nynjtc_trail_alerts, may_publish: true}
+          - {source_key: oprhp_trail_closures, may_publish: true}
+          - {source_key: ourhike_closures, may_publish: true}
     expect:
       rows:
         - {source_key: atc_trail_updates, passed: false, held_because: 'reference/atc_updates.json has no reviewed_at, so nobody has checked it against ATC''s page'}
@@ -447,9 +470,45 @@ unit_tests:
           select 'ourhike_closures' as source_key, ['u5: moderation_status is submitted, and only a verified closure leaves the database'] as problems
       - input: ref('int_closures__atc_checked')
         rows: []
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: atc_trail_updates, may_publish: true}
+          - {source_key: nynjtc_trail_alerts, may_publish: true}
+          - {source_key: oprhp_trail_closures, may_publish: true}
+          - {source_key: ourhike_closures, may_publish: true}
     expect:
       rows:
         - {source_key: atc_trail_updates, rows_total: 0, passed: false, held_because: 'reference/atc_updates.json has no rows, so no review date to read: an unreviewed file publishes nothing'}
         - {source_key: nynjtc_trail_alerts, rows_total: 1, passed: true, held_because: null}
         - {source_key: oprhp_trail_closures, rows_total: 0, passed: true, held_because: null}
         - {source_key: ourhike_closures, rows_total: 1, passed: false, held_because: '1 of 1 rows cannot publish, and a partial set of safety notices is worse than none'}
+
+  - name: int_closures__gate_holds_back_a_source_that_may_not_publish
+    description: >
+      A source int_sources__publication holds back, or has no row for, is held
+      back here too, however clean its rows: the marts drop its rows, and a
+      writer that saw no verdict would write `[]`, which reads as "nothing to
+      report" rather than "not ours to publish".
+    model: int_closures__gate
+    given:
+      - input: ref('int_closures__unioned')
+        format: sql
+        rows: |
+          select 'nynjtc_trail_alerts' as source_key, cast([] as varchar[]) as problems
+          union all
+          select 'ourhike_closures' as source_key, cast([] as varchar[]) as problems
+      - input: ref('int_closures__atc_checked')
+        format: sql
+        rows: |
+          select true as is_reviewed
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: atc_trail_updates, may_publish: true, publication_rule: registered_and_publishable}
+          - {source_key: nynjtc_trail_alerts, may_publish: false, publication_rule: held_back_by_the_registry}
+          - {source_key: ourhike_closures, may_publish: true, publication_rule: publishing_before_registration}
+    expect:
+      rows:
+        - {source_key: atc_trail_updates, may_publish: true, passed: true, held_because: null}
+        - {source_key: nynjtc_trail_alerts, may_publish: false, passed: false, held_because: 'int_sources__publication holds nynjtc_trail_alerts back (held_back_by_the_registry)'}
+        - {source_key: oprhp_trail_closures, may_publish: false, passed: false, held_because: 'int_sources__publication has no row for oprhp_trail_closures, so nothing says it may publish'}
+        - {source_key: ourhike_closures, may_publish: true, passed: true, held_because: null}

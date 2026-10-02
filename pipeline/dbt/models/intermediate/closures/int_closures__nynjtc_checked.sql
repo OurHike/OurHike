@@ -1,4 +1,3 @@
-{{ config(materialized='table') }}
 -- NYNJTC's Trail Alerts posts, read as lib/nynjtc_alerts.py's parse_alert()
 -- reads them and shaped as its published_rows() publishes them (WN05-WN08),
 -- one row per post, with why it cannot be read in `problems`. An empty list

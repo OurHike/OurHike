@@ -1,4 +1,3 @@
-{{ config(materialized='table') }}
 -- The NWS alerts OurHike relays (export_weather_alerts.py's relayed()):
 -- every alert NWS marks `Actual` that is not a cancellation (WN01), with
 -- NWS's own words and times exactly as it wrote them and null where it

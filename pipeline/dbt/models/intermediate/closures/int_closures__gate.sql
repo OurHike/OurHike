@@ -1,4 +1,3 @@
-{{ config(materialized='table') }}
 -- The per-source gate (pipeline/ELT.md, "A whole-file gate becomes a
 -- per-source gate"): one row per notice source, `rows_invalid` and
 -- `passed`. Today one bad ATC row publishes no ATC updates
@@ -20,6 +19,11 @@
 --                         which fetch_nynjtc_alerts.py reads as a broken parse
 --   ourhike_closures      a row that is not moderator-verified (CL15)
 --   oprhp_trail_closures  nothing: an empty layer is a good week
+-- and, before any of those, a source int_sources__publication does not let
+-- publish, or has no row for. The marts join int_sources__publication
+-- themselves; it is here as well so that a writer, which cannot tell a
+-- source with nothing to report from one whose rows the marts left out,
+-- reads one answer per source and refuses rather than write `[]`.
 -- `held_because` says which, for the job log, and is null for a source that
 -- passes. Its test warns rather than fails, because failing the build would
 -- hold back every source for one.
@@ -30,6 +34,10 @@
 -- and the marts' inner join drops it: held back, never published unchecked.
 with notices as (
     select * from {{ ref('int_closures__unioned') }}
+),
+
+publication as (
+    select * from {{ ref('int_sources__publication') }}
 ),
 
 atc_review as (
@@ -67,7 +75,18 @@ judged as (
         gated_sources.club,
         coalesce(counts.rows_total, 0) as rows_total,
         coalesce(counts.rows_invalid, 0) as rows_invalid,
+        coalesce(publication.may_publish, false) as may_publish,
         case
+            when publication.source_key is null
+                then
+                    'int_sources__publication has no row for '
+                    || gated_sources.source_key
+                    || ', so nothing says it may publish'
+            when not publication.may_publish
+                then
+                    'int_sources__publication holds '
+                    || gated_sources.source_key || ' back ('
+                    || coalesce(publication.publication_rule, 'no rule') || ')'
             when
                 gated_sources.source_key = 'atc_trail_updates'
                 and atc_review.rows_total = 0
@@ -95,6 +114,8 @@ judged as (
     from gated_sources
     cross join atc_review
     left join counts on gated_sources.source_key = counts.source_key
+    left join publication
+        on gated_sources.source_key = publication.source_key
 )
 
 select
@@ -102,6 +123,7 @@ select
     club,
     rows_total,
     rows_invalid,
+    may_publish,
     held_because is null as passed,
     held_because
 from judged

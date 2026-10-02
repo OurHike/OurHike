@@ -1,3 +1,8 @@
+{{ config(materialized='table') }}
+-- A table, not the staging layer's view: it is the one parent of a phone
+-- file's exposure (models/publish/_publish__conditions.yml), and
+-- dbt_project_evaluator's fct_exposure_parents_materializations asks that an
+-- exposure read a table.
 -- OurHike's visible field notes (extract/_shared/ourhike/field_notes.py,
 -- export_conditions.py's PUBLIC_NOTES_SQL run whole), keyed (decision 40).
 -- No mart reads them: conditions/notes.json stays export_conditions.py's to

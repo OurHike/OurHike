@@ -1,4 +1,3 @@
-{{ config(materialized='table') }}
 -- Every row of reference/atc_updates.json, read field by field and checked
 -- against lib/atc_updates.py's file_problems() (CL01-CL06), with EVERY
 -- problem a row has, in the order row_problems() finds them, in `problems`.
@@ -367,5 +366,23 @@ select
     -- The same problems as one line each joined by " | ", for `dbt show` and
     -- the unit test. Null where the row is fine.
     nullif(array_to_string(problems, ' | '), '') as problem,
+    -- The row as lib/atc_updates.py's published_rows() publishes it, for
+    -- pub_conditions_atc_updates: each field's JSON exactly as the reviewer
+    -- wrote it, so a mile written 167 stays 167 rather than becoming 167.0,
+    -- and then the two constants. Only a file int_closures__gate passes is
+    -- written, so every field here has passed its check.
+    json_object(
+        'atc_id', atc_id_json,
+        'title', title_json,
+        'category', category_json,
+        'states', states_json,
+        'start_mile_marker', start_json,
+        'end_mile_marker', end_json,
+        'obstructs_trail', obstructs_json,
+        'updated_at', updated_json,
+        'source_url', source_url_json,
+        'source_key', 'atc_trail_updates',
+        'review_state', 'reviewed'
+    ) as published_row,
     _loaded_at
 from listed

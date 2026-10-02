@@ -1,4 +1,3 @@
-{{ config(materialized='table') }}
 -- NYS Parks' temporary closed areas (stg_oprhp__trail_closures), as
 -- export_nearby_trails.py's load_closure_areas() reads them for #964: one row
 -- per area with a geometry that is not empty, its reason the layer's `Name`

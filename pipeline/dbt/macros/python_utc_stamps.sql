@@ -28,3 +28,17 @@
 {% macro python_utc_seconds(ts) -%}
     strftime(timezone('UTC', {{ ts }}), '%Y-%m-%dT%H:%M:%SZ')
 {%- endmacro %}
+
+{#- The conditions files' generated_at, the moment the run started, stamped
+    as _stamp_utc() stamps it: dbt's run_started_at, one value for every
+    model in an invocation, so conditions/closures.json and
+    conditions/reports.json carry one clock, as export_conditions.py's main()
+    gives them one. SQLFluff's jinja templater knows no run_started_at, so it
+    lints the stand-in, which dbt never renders. -#}
+{% macro python_run_stamp() -%}
+    {%- if run_started_at is defined -%}
+        '{{ run_started_at.isoformat() | replace("+00:00", "Z") }}'
+    {%- else -%}
+        {{ python_utc_isoformat('now()') }}
+    {%- endif -%}
+{%- endmacro %}

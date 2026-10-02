@@ -1,4 +1,3 @@
-{{ config(materialized='table') }}
 -- OurHike's serious reports, for the warnings mart (WN10): the public
 -- verified or resolved reports a moderator escalated to `serious`
 -- (HIKER_SAFETY.md's severity tier; app/models/report.py's Severity). A

@@ -1,4 +1,3 @@
-{{ config(materialized='table') }}
 -- The warnings that are not organization notices (pipeline/ELT.md's warnings
 -- mart, decision 2): NWS's relayed alerts and OurHike's serious reports, one
 -- row each, by name, nothing filtered. The warnings mart adds the notices

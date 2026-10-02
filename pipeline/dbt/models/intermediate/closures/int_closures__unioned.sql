@@ -1,4 +1,3 @@
-{{ config(materialized='table') }}
 -- Every notice, area and closure the closures and warnings marts are split
 -- from (pipeline/ELT.md, "The eleven marts"), one row each, by name: ATC's
 -- reviewed Trail Updates, NYNJTC's Trail Alerts, NYS Parks' temporary closed

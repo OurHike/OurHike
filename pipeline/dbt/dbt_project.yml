@@ -89,70 +89,6 @@ vars:
   registry_product_handle_pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
   registry_sheet_number_pattern: "^[0-9]{3}[A-Z]?$"
 
-  # The trail_lines family (stage 3 of #1793). First, export_elevation.py's
-  # marker calibration of the A.T. mile axis, read by the
-  # int_trail_lines__mile_axis_* models and held to the Python constants by
-  # tests/test_dbt_trail_lines_parity.py until stage 5 deletes the Python,
-  # when these become the one home.
-  #
-  # SPRINGER_LONLAT and KATAHDIN_LONLAT: the straight axis the merged pieces
-  # are first put in order along, "approximate trailhead coordinates ... not
-  # for anything requiring geodetic precision" (export_elevation.py).
-  mile_axis_springer_lon: -84.1942
-  mile_axis_springer_lat: 34.6272
-  mile_axis_katahdin_lon: -68.9214
-  mile_axis_katahdin_lat: 45.9044
-  # MARKER_SNAP_MAX_M: how near a piece a half-mile marker must sit to
-  # calibrate it, "~30x the worst real offset" measured 2026-08-18.
-  mile_axis_marker_snap_max_m: 100.0
-  # METERS_PER_MILE, the international mile.
-  mile_axis_metres_per_mile: 1609.344
-  # MARKER_HOLDOUT_MAX_MEDIAN_MI, _P95_MI and _MI: the held-out gate, in
-  # miles. Reasoned in export_elevation.py from the 2026-08-18 measurement,
-  # "4-15x headroom over what was observed".
-  mile_axis_holdout_max_median_mi: 0.05
-  mile_axis_holdout_max_p95_mi: 0.25
-  mile_axis_holdout_max_mi: 1.0
-
-  # The ArcGIS coded-value domains export_trails.py and export_spurs.py read
-  # live (lib/arcgis.get_field_coded_domain) mid-transform, as rows of
-  # [source_key, field_name, code, label]: int_trail_lines__coded_domains.
-  # @unvalidated as a copy: read from side_trails' live field metadata
-  # (`fields[].domain.codedValues`) on 2026-10-02, and nothing re-reads it.
-  # What settles it is the extract landing that metadata, which replaces
-  # this var in one model. tests/test_dbt_trail_lines_parity.py holds it to
-  # the codes export_trails.py's and export_spurs.py's own tests use.
-  trail_lines_coded_domains:
-    - [side_trails, Blaze, "0", "None"]
-    - [side_trails, Blaze, "1", "Blue"]
-    - [side_trails, Blaze, "2", "White"]
-    - [side_trails, Blaze, "3", "Red"]
-    - [side_trails, Blaze, "4", "Orange"]
-    - [side_trails, Blaze, "5", "Yellow"]
-    - [side_trails, Blaze, "6", "Green"]
-    - [side_trails, Blaze, "7", "Purple"]
-    - [side_trails, Blaze, "8", "Black"]
-    - [side_trails, Blaze, "9", "Other"]
-    - [side_trails, Type, "0", "Access (eg Parking)"]
-    - [side_trails, Type, "1", "Alternate Route"]
-    - [side_trails, Type, "2", "Significant Non-Blaze"]
-    - [side_trails, Type, "3", "Spur (eg View, Camp)"]
-    - [side_trails, Type, "4", "Other"]
-    - [side_trails, Type, "5", "Unknown"]
-
-  # The elevation family, the A.T. half (stage 3 of #1793):
-  # export_elevation.py's two constants, read by int_elevation__sample_points
-  # and int_elevation__profile and held to the Python by
-  # tests/test_dbt_elevation_parity.py until stage 5 deletes the Python.
-  #
-  # SAMPLE_INTERVAL_METERS: one DEM read every 25 m of trail. Kept, not
-  # thinned: thinning to 50 m cut the measured 520,757 ft of total gain by
-  # 4.80%, and to 200 m by 16.59% (research report 5, pipeline/ELT.md, "The
-  # eleven marts"), and gain feeds Naismith's time estimate.
-  elevation_sample_interval_m: 25.0
-  # METERS_PER_FOOT, the international foot: a DEM metre over this is a foot.
-  elevation_metres_per_foot: 0.3048
-
   # The closures and warnings family: lib/atc_updates.py's constants, read by
   # int_closures__atc_checked and held to the Python by
   # tests/test_dbt_conditions_parity.py until the Python is deleted. The
@@ -192,6 +128,173 @@ vars:
   trail_lines_network_overview_min_feature_m: 1873.7331444281513
   trail_lines_network_overview_seam_tolerance_m: 936.8665722140756
   trail_lines_network_overview_seam_decimals: 3
+
+  # The trail_lines family (stage 3 of #1793). First, export_elevation.py's
+  # marker calibration of the A.T. mile axis, read by the
+  # int_trail_lines__mile_axis_* models and held to the Python constants by
+  # tests/test_dbt_trail_lines_parity.py until stage 5 deletes the Python,
+  # when these become the one home.
+  #
+  # SPRINGER_LONLAT and KATAHDIN_LONLAT: the straight axis the merged pieces
+  # are first put in order along, "approximate trailhead coordinates ... not
+  # for anything requiring geodetic precision" (export_elevation.py).
+  mile_axis_springer_lon: -84.1942
+  mile_axis_springer_lat: 34.6272
+  mile_axis_katahdin_lon: -68.9214
+  mile_axis_katahdin_lat: 45.9044
+  # MARKER_SNAP_MAX_M: how near a piece a half-mile marker must sit to
+  # calibrate it, "~30x the worst real offset" measured 2026-08-18.
+  mile_axis_marker_snap_max_m: 100.0
+  # METERS_PER_MILE, the international mile.
+  mile_axis_metres_per_mile: 1609.344
+  # MARKER_HOLDOUT_MAX_MEDIAN_MI, _P95_MI and _MI: the held-out gate, in
+  # miles. Reasoned in export_elevation.py from the 2026-08-18 measurement,
+  # "4-15x headroom over what was observed".
+  mile_axis_holdout_max_median_mi: 0.05
+  mile_axis_holdout_max_p95_mi: 0.25
+  mile_axis_holdout_max_mi: 1.0
+
+  # points_of_interest (#1793, stage 3): the constants the POI rules read,
+  # each the Python's own, held to it by
+  # tests/test_dbt_points_of_interest_parity.py until stage 5 deletes the
+  # Python and these become the one home. The measurement behind each is on
+  # the Python constant it names.
+  poi_corridor_buffer_miles: 30            # lib/corridor.py BUFFER_MILES
+  poi_metres_per_degree: 111320.0          # lib/spurs.py METERS_PER_DEGREE, distance_m()'s scale
+  poi_metres_per_foot: 0.3048              # export_poi.py M_PER_FT
+  poi_site_name_radius_m: 150.0            # lib/poi_sites.py NAME_MATCH_RADIUS_M
+  poi_site_proximity_radius_m: 60.0        # lib/poi_sites.py PROXIMITY_RADIUS_M
+  poi_site_max_radius_m: 1609.344          # lib/poi_sites.py MAX_SITE_RADIUS_M
+  poi_place_site_radius_m: 80.0            # lib/poi_sites.py PLACE_PROXIMITY_RADIUS_M
+  poi_nearby_min_part_ft: 3.28084          # lib/poi_description.py MIN_PART_FT
+  # export_nearby_poi.py's DIRT, less its "" (the classifier treats an empty
+  # string so without a row): what an organization writes where a real name,
+  # asset or facility is missing, '-99' being DEC's own null sentinel.
+  poi_null_sentinels: ['-99', 'N/A', 'NA', 'NONE', 'UNKNOWN', 'TBD']
+  poi_network_ring_feet: 500               # lib/corridor.py NETWORK_BUFFER_FEET
+  # export_nearby_poi.py's NETWORK_RING_EXEMPT_TYPES: the types the ring
+  # never drops, because a hiker drives to them.
+  poi_network_ring_exempt_types: ['parking', 'trailhead']
+  poi_trailhead_trail_radius_m: 100        # export_nearby_poi.py TRAILHEAD_TRAIL_RADIUS_M
+  poi_description_earliest_year: 1800      # lib/poi_description.py EARLIEST_PLAUSIBLE_YEAR
+  poi_description_latest_year: 2100        # lib/poi_description.py LATEST_PLAUSIBLE_YEAR
+  poi_vista_panorama_degrees: 300          # lib/poi_description.py PANORAMA_DEGREES
+  poi_vista_arc_rounding_degrees: 5        # lib/poi_description.py ARC_ROUNDING_DEGREES
+  # lib/poi_description.py COMPASS_POINTS, in bearing order from north.
+  poi_compass_points: ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west']
+  # lib/atc_notes.py EMPTY_VALUES and INTERNAL_PATTERNS, which say why each
+  # pattern is there; matched case-insensitively, as INTERNAL is compiled.
+  poi_note_empty_values: ['none', 'no name', 'na', 'n/a', 'unknown', '-']
+  poi_note_internal_patterns:
+    - '\b(?:gis|fmss|arcgis|fbms)\b'
+    - '\b(?:added|adjusted|adusted|updated)\s+based\s+on'
+    - '\baerial\s+imagery\b'
+    - '\binventory\s+form\b'
+    - '\bnot\s+sure\b'
+    - '\bneed\s+to\s+confirm\b'
+    - '\bnot\s+(?:on|in)\s+(?:the\s+)?(?:collection\s+)?list\b'
+    - '\b(?:please\s+)?see\s+photos?\b'
+    - '\bphotos?\s+taken\b'
+    - '\bi\s+(?:took|failed\s+to)\b'
+    - '\bimprovements\s*='
+    - '\bvri\b'
+    - '\b(?:extent|location|scope)\s+(?:adjus|based\s+on)'
+    - '\badjused\s+based\s+on'
+    - '\btrimble\b'
+    - '\bcompass\b'
+    - '\bbearings?\s+(?:measured|were)\b'
+    - '\bmeasured\s+(?:the\s+)?bearings?\b'
+    - '\bvaro\b'
+    - '\bpreliminary\s+review\b'
+    - '\bvp\s?\d+'
+    - '\bnot\s+(?:on|in)\b[^.;]{0,30}\blist\b'
+    - '\bneed\s+to\s+determine\b'
+    - '\bsocked\b'
+  # The ArcGIS coded-value domains export_trails.py and export_spurs.py read
+  # live (lib/arcgis.get_field_coded_domain) mid-transform, as rows of
+  # [source_key, field_name, code, label]: int_trail_lines__coded_domains.
+  # @unvalidated as a copy: read from side_trails' live field metadata
+  # (`fields[].domain.codedValues`) on 2026-10-02, and nothing re-reads it.
+  # What settles it is the extract landing that metadata, which replaces
+  # this var in one model. tests/test_dbt_trail_lines_parity.py holds it to
+  # the codes export_trails.py's and export_spurs.py's own tests use.
+  trail_lines_coded_domains:
+    - [side_trails, Blaze, "0", "None"]
+    - [side_trails, Blaze, "1", "Blue"]
+    - [side_trails, Blaze, "2", "White"]
+    - [side_trails, Blaze, "3", "Red"]
+    - [side_trails, Blaze, "4", "Orange"]
+    - [side_trails, Blaze, "5", "Yellow"]
+    - [side_trails, Blaze, "6", "Green"]
+    - [side_trails, Blaze, "7", "Purple"]
+    - [side_trails, Blaze, "8", "Black"]
+    - [side_trails, Blaze, "9", "Other"]
+    - [side_trails, Type, "0", "Access (eg Parking)"]
+    - [side_trails, Type, "1", "Alternate Route"]
+    - [side_trails, Type, "2", "Significant Non-Blaze"]
+    - [side_trails, Type, "3", "Spur (eg View, Camp)"]
+    - [side_trails, Type, "4", "Other"]
+    - [side_trails, Type, "5", "Unknown"]
+
+  # export_trails.py's and lib/corridor.py's numbers for the A.T.'s lines,
+  # held to the Python constants by tests/test_dbt_trail_lines_parity.py as
+  # the mile axis's are. Each says where its reasoning lives.
+  #
+  # lib/corridor.BUFFER_MILES: the corridor's half-width, argued there from
+  # the resupply POIs a thru-hiker leaves the trail for.
+  trail_lines_corridor_buffer_miles: 30
+  # DEFAULT_SIMPLIFY_TOLERANCE_M: under one screen pixel at every zoom, and
+  # under the survey's own accuracy (measured in export_trails.py).
+  trail_lines_simplify_tolerance_m: 1.0
+  # OVERVIEW_SIMPLIFY_TOLERANCE_M and OVERVIEW_COORDINATE_DECIMALS: the
+  # corridor-view sketch, trails_overview.geojson (#869).
+  trail_lines_overview_tolerance_m: 100.0
+  trail_lines_overview_decimals: 4
+  # TRAIL_MILE_DECIMALS: matches every POI's `mile` and the elevation
+  # profile's distance_mi, digit for digit.
+  trail_lines_mile_decimals: 3
+  # Decision 8's six decimals for trails.geojson, which
+  # export_nearby_trails.py's NEARBY_COORDINATE_DECIMALS already cuts the
+  # network's lines to.
+  trail_lines_published_decimals: 6
+  # lib/spurs.py's spur rules (int_trail_lines__spurs). SPUR_TYPE_CODE: Type
+  # 3 is "Spur (eg View, Camp)". TYPE_LITERAL_ALIASES: the literal 60 live
+  # side trails carry in place of code 2, misspelling included, lowercased.
+  trail_lines_spur_type_code: "3"
+  trail_lines_type_literal_aliases:
+    - ["signficant non-blaze", "2"]
+    - ["significant non-blaze", "2"]
+  # JUNCTION_MAX_M, ON_TRAIL_M and DESTINATION_MAX_M: lib/spurs.py argues
+  # each (generous for telling the ends apart, tight for "on the trail", the
+  # loose bound the client narrows), in metres.
+  trail_lines_spur_junction_max_m: 100.0
+  trail_lines_spur_on_trail_m: 25.0
+  trail_lines_spur_destination_max_m: 150.0
+  # METERS_PER_DEGREE, for lib/spurs.py's equirectangular distance.
+  trail_lines_metres_per_degree: 111320.0
+  # lib/club_sections.py's club sections (int_trail_lines__club_stretches),
+  # each argued there. MILEPOST_SNAP_M: a sanity bound, not a tuning
+  # parameter. STRETCH_GAP_MILES: markers sit 0.5 mi apart, so one missing
+  # marker (a 1.0 mi gap) already ends a stretch. MILEPOST_HALF_WIDTH: each
+  # marker owns a quarter mile either side, so runs tile the trail.
+  # SPRINGER_MILE: mile 0.
+  trail_lines_club_milepost_snap_m: 100.0
+  trail_lines_club_stretch_gap_mi: 0.75
+  trail_lines_club_milepost_half_width_mi: 0.25
+  trail_lines_club_springer_mile: 0.0
+
+  # The elevation family, the A.T. half (stage 3 of #1793):
+  # export_elevation.py's two constants, read by int_elevation__sample_points
+  # and int_elevation__profile and held to the Python by
+  # tests/test_dbt_elevation_parity.py until stage 5 deletes the Python.
+  #
+  # SAMPLE_INTERVAL_METERS: one DEM read every 25 m of trail. Kept, not
+  # thinned: thinning to 50 m cut the measured 520,757 ft of total gain by
+  # 4.80%, and to 200 m by 16.59% (research report 5, pipeline/ELT.md, "The
+  # eleven marts"), and gain feeds Naismith's time estimate.
+  elevation_sample_interval_m: 25.0
+  # METERS_PER_FOOT, the international foot: a DEM metre over this is a foot.
+  elevation_metres_per_foot: 0.3048
 
   # The suggested_hikes family (sh), read by the int_suggested_hikes__ models
   # and the pub_suggested_hikes and pub_highlights writers, and held to the

@@ -2,7 +2,9 @@
 -- Every network line that ships, simplified to 1 m (TL15, the network's
 -- half): export_trails.py's simplify_records() at
 -- DEFAULT_SIMPLIFY_TOLERANCE_M, which export_nearby_trails.py's main() calls
--- on the deduplicated records. int_trail_lines__network_published cuts this
+-- on the deduplicated records once the closed areas have split them
+-- (int_trail_lines__network_area_closures).
+-- int_trail_lines__network_published cuts this
 -- line to six decimals for the trail_lines mart and nearby_trails.geojson;
 -- the overview sketch is simplified again from this line at full precision,
 -- as write_overview() is handed it.
@@ -23,7 +25,7 @@
 -- answers. A part has two distinct vertices exactly when its bounding box
 -- has width or height, which is the test below.
 with deduplicated as (
-    select * from {{ ref('int_trail_lines__network_deduplicated') }}
+    select * from {{ ref('int_trail_lines__network_area_closures') }}
 ),
 
 reduced as (
@@ -80,6 +82,8 @@ select
     trail_status,
     trail_status_basis,
     closure_kind,
+    closure_reason,
+    closure_source,
     blaze_color,
     duplicate_of,
     -- The line before the pass, which `length_m` is measured on.

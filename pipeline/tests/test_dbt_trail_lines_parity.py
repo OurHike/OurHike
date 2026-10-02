@@ -35,7 +35,14 @@ from shapely import wkt as shapely_wkt
 from shapely.geometry import LineString, MultiLineString, Point
 from shapely.strtree import STRtree
 
+import export_club_sections
 import export_elevation
+import export_nearby_trails
+import export_spurs
+import export_trails
+from lib import club_sections as lib_club_sections
+from lib import corridor
+from lib import spurs as lib_spurs
 from tests.conftest import spatial_connection
 from tests.test_export_spurs import TYPE_DOMAIN as EXPORT_SPURS_TYPE_DOMAIN
 from tests.test_export_trails import BLAZE_DOMAIN_RESPONSE
@@ -78,6 +85,65 @@ def test_the_mile_axis_vars_are_export_elevations_constants():
     assert variables["mile_axis_holdout_max_median_mi"] == export_elevation.MARKER_HOLDOUT_MAX_MEDIAN_MI
     assert variables["mile_axis_holdout_max_p95_mi"] == export_elevation.MARKER_HOLDOUT_MAX_P95_MI
     assert variables["mile_axis_holdout_max_mi"] == export_elevation.MARKER_HOLDOUT_MAX_MI
+
+
+def test_the_at_line_vars_are_export_trails_constants():
+    variables = yaml.safe_load((DBT / "dbt_project.yml").read_text())["vars"]
+    assert variables["trail_lines_corridor_buffer_miles"] == corridor.BUFFER_MILES
+    assert variables["trail_lines_simplify_tolerance_m"] == export_trails.DEFAULT_SIMPLIFY_TOLERANCE_M
+    assert variables["trail_lines_overview_tolerance_m"] == export_trails.OVERVIEW_SIMPLIFY_TOLERANCE_M
+    assert variables["trail_lines_overview_decimals"] == export_trails.OVERVIEW_COORDINATE_DECIMALS
+    assert variables["trail_lines_mile_decimals"] == export_trails.TRAIL_MILE_DECIMALS
+    # Decision 8's six decimals for trails.geojson, the network file's own cut.
+    assert variables["trail_lines_published_decimals"] == export_nearby_trails.NEARBY_COORDINATE_DECIMALS
+
+
+def test_the_models_merge_only_the_sources_export_trails_merges():
+    """int_trail_lines__at_chains, __at_overview and __at_side_trails name the centerline as the merged source."""
+    assert export_trails.CHAIN_MERGED_SOURCES == ("centerline",)
+    for model in ("int_trail_lines__at_chains", "int_trail_lines__at_overview", "int_trail_lines__at_side_trails"):
+        text = (DBT / "models" / "intermediate" / "trail_lines" / f"{model}.sql").read_text()
+        assert "source_key in ('centerline')" in text or "source_key not in ('centerline')" in text, model
+
+
+def test_the_spur_vars_are_lib_spurs_constants():
+    variables = yaml.safe_load((DBT / "dbt_project.yml").read_text())["vars"]
+    assert variables["trail_lines_spur_type_code"] == lib_spurs.SPUR_TYPE_CODE
+    assert dict(map(tuple, variables["trail_lines_type_literal_aliases"])) == lib_spurs.TYPE_LITERAL_ALIASES
+    assert variables["trail_lines_spur_junction_max_m"] == lib_spurs.JUNCTION_MAX_M
+    assert variables["trail_lines_spur_on_trail_m"] == lib_spurs.ON_TRAIL_M
+    assert variables["trail_lines_spur_destination_max_m"] == lib_spurs.DESTINATION_MAX_M
+    assert variables["trail_lines_metres_per_degree"] == lib_spurs.METERS_PER_DEGREE
+    assert (export_spurs.SIDE_TRAILS_KEY, export_spurs.TYPE_FIELD) == ("side_trails", "Type")
+
+
+def test_the_club_vars_are_lib_club_sections_constants():
+    variables = yaml.safe_load((DBT / "dbt_project.yml").read_text())["vars"]
+    assert variables["trail_lines_club_milepost_snap_m"] == lib_club_sections.MILEPOST_SNAP_M
+    assert variables["trail_lines_club_stretch_gap_mi"] == lib_club_sections.STRETCH_GAP_MILES
+    assert variables["trail_lines_club_milepost_half_width_mi"] == lib_club_sections.MILEPOST_HALF_WIDTH
+    assert variables["trail_lines_club_springer_mile"] == lib_club_sections.SPRINGER_MILE
+
+
+def test_the_club_models_read_the_layers_and_fields_export_club_sections_reads():
+    """The source keys the club models gate on, and the upstream fields their staged columns come from."""
+    models = DBT / "models" / "intermediate" / "trail_lines"
+    stretches = (models / "int_trail_lines__club_stretches.sql").read_text()
+    names = (models / "int_trail_lines__club_names.sql").read_text()
+    assert f"'{export_club_sections.CENTERLINE_KEY}'" in stretches
+    assert f"'{export_club_sections.MILEPOSTS_KEY}'" in stretches
+    assert f"'{export_club_sections.POLYGONS_KEY}'" in names
+    staging = DBT / "models" / "staging" / "atc"
+    assert (
+        f"{lib_club_sections.POLYGON_ACRONYM_FIELD.lower()} as club_acronym"
+        in (staging / "stg_atc__club_sections.sql").read_text()
+    )
+    assert (
+        f"{export_club_sections.MEASURE_FIELD.lower()} as measure_mi" in (staging / "stg_atc__half_mile_markers.sql").read_text()
+    )
+    assert lib_club_sections.CENTERLINE_ACRONYM_FIELD == "Acronym"
+    assert "acronym as club_acronym" in (staging / "stg_atc__centerline_segments.sql").read_text()
+    assert (lib_club_sections.POLYGON_NAME_FIELD, lib_club_sections.POLYGON_REGION_FIELD) == ("TRAIL_CLUB", "REGION")
 
 
 def _coded_domain(source_key: str, field_name: str) -> dict[str, str]:

@@ -60,6 +60,19 @@ models:
           name: trail_lines_closure_kinds_are_on_closed_lines
           arguments:
             expression: "coalesce(trail_status = 'closed', false) = (closure_kind is not null)"
+      # A closed area's reason and the layer that closed it travel only on
+      # the section inside it (export_nearby_trails.py's
+      # apply_area_closures(), #1142), never on a line its steward closed or
+      # one that is open: a reason on any other line is a display outrunning
+      # its source.
+      - dbt_utils.expression_is_true:
+          name: trail_lines_closure_reasons_are_on_area_sections
+          arguments:
+            expression: "closure_reason is null or coalesce(closure_kind = 'area', false)"
+      - dbt_utils.expression_is_true:
+          name: trail_lines_closure_sources_are_on_area_sections
+          arguments:
+            expression: "(closure_source is not null) = coalesce(closure_kind = 'area', false)"
       # The A.T.'s files publish no status: absent means unknown, never an
       # invented open. Closures on the A.T. are the closures mart's.
       - dbt_utils.expression_is_true:
@@ -204,28 +217,49 @@ models:
           What trail_status rests on: 'stated', the layer's own status column,
           or 'default_without_status_column', a layer that has none and ships
           open because nothing says otherwise (export_nearby_trails.py's
-          DEFAULT_STATUS), which is a default and not a finding. Null where
+          DEFAULT_STATUS), which is a default and not a finding; or
+          'closed_area', a network section inside one of NYS Parks' closed
+          areas (int_trail_lines__network_area_closures). Null where
           trail_status is.
         data_type: varchar
         data_tests:
           - accepted_values:
               arguments:
-                values: [stated, default_without_status_column]
+                values: [stated, default_without_status_column, closed_area]
       - name: closure_kind
         description: >
-          'long_term' on a line its steward marks closed; null on every open
-          line and on every A.T. line. Temporary area closures are the
-          closures mart's (#1152 — Move OPRHP's temporary closures onto the
-          conditions clock, where a safety layer belongs).
+          'long_term' on a line its steward marks closed; 'area' on a network
+          section inside one of NYS Parks' temporary closed areas, which
+          nearby_trails.geojson's v1 still splits (decision 44) while #1152 —
+          Move OPRHP's temporary closures onto the conditions clock, where a
+          safety layer belongs — moves the areas to the closures mart; null
+          on every open line and on every A.T. line.
         data_type: varchar
         data_tests:
           - accepted_values:
               arguments:
-                values: [long_term]
+                values: [long_term, area]
+      - name: closure_reason
+        description: >
+          On a network section inside one of NYS Parks' closed areas, that
+          area's reason as the steward wrote it (the layer's `Name`,
+          stripped), from the area the line overlaps most, a tie to the
+          first in the layer; null where it wrote none, and on every other
+          line. nearby_trails.geojson publishes it as `closure_reason`.
+        data_type: varchar
+      - name: closure_source
+        description: >
+          On a network section inside one of NYS Parks' closed areas, the
+          closure layer's registry key (`oprhp_trail_closures`), which is not
+          the line's own `source` (#1142): the sheet names the organization
+          that closed the ground. Null on every other line.
+        data_type: varchar
       - name: duplicate_of
         description: >
           On a network line that swallowed another organization's copy of the
-          same path (TL18, #1459), the source whose copy it was; null
+          same path (TL18, #1459 — Two New York City agencies draw the same
+          tread and the map draws both lines, because nothing dedupes
+          geometry across sources), the source whose copy it was; null
           elsewhere.
         data_type: varchar
       - name: geom_geojson
@@ -253,7 +287,9 @@ models:
         description: >
           The length of the line as published, after the 1 m pass and before
           the 6-decimal cut, in EPSG:5070 metres: what nearby_trails.geojson's
-          `length_miles` is rounded from (#1516), measured from the drawn
+          `length_miles` is rounded from (#1516 — A tapped trail prints a
+          silently-low climb as `measured`, because lineClimb's `partial`
+          guard reads a field no exporter writes), measured from the drawn
           geometry and never a steward's stated mileage.
         data_type: double
         constraints:

@@ -18,6 +18,9 @@ with areas as (
 
 select
     closure_key,
+    -- The area's place in the layer, which breaks apply_area_closures()' tie
+    -- (int_trail_lines__network_area_closures).
+    source_row,
     nullif({{ python_strip('closure_reason') }}, '') as closure_reason,
     nullif({{ python_strip('closure_place') }}, '') as closure_place,
     cast(st_asgeojson(geom) as varchar) as geom_geojson,

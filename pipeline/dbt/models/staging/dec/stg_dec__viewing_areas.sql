@@ -1,5 +1,5 @@
--- DEC's viewing areas as `viewpoint`, same shape and reasoning as
--- stg_dec__lean_tos. 34 rows, counted live 2026-08-27.
+-- DEC's viewing areas, in stg_dec__lean_tos' shape and for its reasons. 34
+-- rows, counted live 2026-08-27.
 --
 -- The layer's own name carries a leading space in DEC's service metadata
 -- (' Viewing Area'), which sources.json records as hygiene rather than
@@ -8,6 +8,11 @@ with source as (
     -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
     -- hint); cast here, as decision 40 has staging do.
     select
+        -- The row's place in the raw table, which extract/_warehouse.py fills
+        -- in the order the upstream served it: the order a Python exporter
+        -- reads the same file in, and so its tie-break (see the poi_sources
+        -- seed's file_order).
+        rowid as source_row,
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
     from {{ source('dec', 'raw_nysdec__dec_viewing_areas') }}
@@ -19,18 +24,10 @@ renamed as (
             "'dec_viewing_areas'",
             'asset_uid',
         ]) }} as poi_key,
-        'dec_viewing_areas' as source,
-        cast(objectid as varchar) as source_id,
-        name,
-        'viewpoint' as poi_type,
-        'high' as confidence,
-        publicuse as public_use,
-        st_x(geom) as longitude,
-        st_y(geom) as latitude,
-        _loaded_at as loaded_at
+        source.*
     from source
 )
 
 {{ dbt_utils.deduplicate(
-    relation='renamed', partition_by='poi_key', order_by='source_id'
+    relation='renamed', partition_by='poi_key', order_by='objectid'
 ) }}

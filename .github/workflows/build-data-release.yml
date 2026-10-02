@@ -34,6 +34,14 @@
 #     a planner that says whether a build is worth dispatching at all - which
 #     is the question a maintainer currently answers by guessing.
 #
+# ITS MONDAY RUN GIVES WAY TO THE MONTHLY LANE (pipeline/ELT.md, "Workflows",
+# decision 28a). refresh-reference.yml builds and stages a release on UA every
+# month, which is the build this planner could only recommend. So once that
+# workflow has one successful run, a scheduled run of this one says so and
+# plans nothing; until then, and on every dispatch, it plans as before. The
+# schedule line itself goes in the change after that first run, which is
+# then a deletion with evidence behind it rather than a guess.
+#
 # SO WHAT IS IT FOR, today. It turns "should I dispatch the expensive build
 # this week" from a guess into a weekly report, and it is the thing that
 # collects the evidence the rebuild rule itself is missing:
@@ -73,6 +81,9 @@ on:
 # is built on the same property and says so for the same reason.
 permissions:
   contents: read
+  # refresh-reference.yml's run list, for the give-way job below. Read-only:
+  # a workflow cannot be dispatched, cancelled or re-run with it.
+  actions: read
 
 # Deliberately NOT the publish-data group. That group exists to keep one
 # writer on the shared latest.json (#645), and this workflow writes nothing -
@@ -89,8 +100,56 @@ env:
   DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
 
 jobs:
+  give-way:
+    name: Give way to the monthly refresh
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      plan: ${{ steps.decide.outputs.plan }}
+    steps:
+      # A dispatch always plans. A scheduled run plans unless
+      # refresh-reference.yml has succeeded at least once. An API answer this
+      # cannot read plans too: this workflow writes nothing, so planning when
+      # unsure costs a report and never a publish.
+      - name: Has refresh-reference.yml run
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          API_URL: ${{ github.api_url }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+
+          plan, why = True, "a dispatch always plans"
+          if os.environ["EVENT"] == "schedule":
+              url = f"{os.environ['API_URL']}/repos/{os.environ['REPOSITORY']}/actions/workflows/refresh-reference.yml/runs?status=success&per_page=1"
+              request = urllib.request.Request(url, headers={"Authorization": f"Bearer {os.environ['GH_TOKEN']}", "Accept": "application/vnd.github+json"})
+              try:
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      runs = json.load(response).get("workflow_runs") or []
+              except (urllib.error.URLError, TimeoutError, ValueError) as error:
+                  plan, why = True, f"refresh-reference.yml's runs could not be read ({error}), so this plans as before"
+              else:
+                  if runs:
+                      plan, why = False, f"refresh-reference.yml last succeeded at {runs[0]['run_started_at']} ({runs[0]['html_url']}), and it builds monthly what this would plan"
+                  else:
+                      why = "refresh-reference.yml has not succeeded yet, so this plans as before"
+          print(why)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"plan={'true' if plan else 'false'}\n")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as page:
+              page.write(f"## Weekly data release plan\n\n{'Planning' if plan else 'Not planning'}: {why}.\n")
+          PY
+
   plan:
     name: Plan
+    needs: give-way
+    if: needs.give-way.outputs.plan == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:

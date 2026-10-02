@@ -28,3 +28,19 @@ sources:
           - name: poi_id
             description: The published OurHike id. The ledger's map key, so unique by construction.
             data_tests: [not_null, unique]
+      - name: raw_ourhike__blaze_mapping
+        data_tests:
+          # Rows sharing base_ourhike__blaze_mapping's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'reference/blaze_mapping.json'", "_path"]
+        description: >
+          reference/blaze_mapping.json, the reviewed blaze mapping (#782, features/NEARBY_TRAILS.md section 4): per-source tables of what a raw value is as paint, each row somebody's decision. One row, the whole document, verbatim.
+      - name: raw_ourhike__trail_name_aliases
+        data_tests:
+          # Rows sharing base_ourhike__trail_name_aliases's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'reference/trail_name_aliases.json'", "_path"]
+        description: >
+          reference/trail_name_aliases.json, the reviewed trail-name aliases: each through route's names by publisher, with the rejected and removed candidates. One row, the whole document, verbatim.

@@ -90,6 +90,8 @@ def test_only_the_reviewed_file_models_read_no_geometry():
     assert {path.stem for path in MODELS} - {path.stem for path in SPATIAL_MODELS} == {
         "base_podcasts__podcast_episodes",
         "base_ourhike__poi_identity",
+        "base_ourhike__blaze_mapping",
+        "base_ourhike__trail_name_aliases",
         "base_registry__sources",
         "base_registry__nynjtc_paper_maps",
     }

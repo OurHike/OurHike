@@ -35,3 +35,41 @@ models:
         description: >
           The live POI a retired one was folded into, where reconciliation
           knows one. On no row on 2026-10-01.
+  - name: base_ourhike__blaze_mapping
+    data_tests:
+      # Says how many rows the dedupe dropped, which for one file is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('ourhike', 'raw_ourhike__blaze_mapping')
+          config:
+            severity: warn
+    description: >
+      pipeline/reference/blaze_mapping.json as its one row, keyed: the per-source blaze tables (#782), read by the trail-line models for TL03.
+    columns:
+      - name: blaze_mapping_document_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the file's name and its landed path.
+        data_tests: [not_null, unique]
+      - name: document_json
+        description: The file as written, as JSON.
+        data_tests: [not_null]
+  - name: base_ourhike__trail_name_aliases
+    data_tests:
+      # Says how many rows the dedupe dropped, which for one file is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('ourhike', 'raw_ourhike__trail_name_aliases')
+          config:
+            severity: warn
+    description: >
+      pipeline/reference/trail_name_aliases.json as its one row, keyed: each through route's names by publisher, read by the network overview for TL21.
+    columns:
+      - name: trail_name_aliases_document_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the file's name and its landed path.
+        data_tests: [not_null, unique]
+      - name: document_json
+        description: The file as written, as JSON.
+        data_tests: [not_null]

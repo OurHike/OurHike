@@ -1,10 +1,10 @@
 -- The Long Path's segments - the first trail in this warehouse that is not
 -- the A.T., and the model Phase D exists to make ordinary (#100). `geom` is
--- carried for int_trail_lines__network_rows, which publishes these lines from
--- stage 3 of #1793 — Rebuild the data platform as dlt → dbt: seven contracted
--- marts, a monthly refresh, published docs, and lighter phone downloads.
--- Until then this model was attributes only, and the lines stayed in the
--- Python spatial scripts.
+-- carried for int_trail_lines__network_unioned, which publishes these lines
+-- from stage 3 of #1793 — Rebuild the data platform as dlt → dbt: seven
+-- contracted marts, a monthly refresh, published docs, and lighter phone
+-- downloads. Until then this model was attributes only, and the lines
+-- stayed in the Python spatial scripts.
 --
 -- 43 polyline segments, measured live 2026-08-24 - the same count and the
 -- same field list the survey read on 2026-08-18, so the shelf has not moved

@@ -221,6 +221,10 @@ jobs:
             pipeline/parity.py
             pipeline/export_podcasts.py
             pipeline/export_sources.py
+            pipeline/export_nearby_trails.py
+            pipeline/export_trails.py
+            pipeline/export_elevation.py
+            pipeline/requirements.txt
             pipeline/check_freshness.py
             pipeline/export_conditions.py
             pipeline/fetch_club_pdfs.py
@@ -407,6 +411,15 @@ jobs:
           python parity.py podcasts --new data/processed/dbt/podcasts_episodes.json
           python parity.py stewards --new data/processed/dbt/stewards.json
           python parity.py registry --new data/processed/dbt/registry.json
+          # The trail lines network, whose input is the fixture warehouse, not
+          # a file in git. export_nearby_trails.py imports shapely, numpy,
+          # pyproj, pmtiles and, through export_trails.py, rasterio, none of
+          # which requirements-dbt.txt pins, so today's exporter runs under the
+          # pipeline's own pins, in a venv of its own.
+          python -m venv "$RUNNER_TEMP/exporters"
+          "$RUNNER_TEMP/exporters/bin/pip" install --quiet -r requirements.txt
+          "$RUNNER_TEMP/exporters/bin/python" parity.py nearby_trails --new data/processed/dbt/nearby_trails.geojson
+          "$RUNNER_TEMP/exporters/bin/python" parity.py network_overview --new data/processed/dbt/network_overview.geojson
 
       - name: dbt source freshness
         if: steps.scope.outputs.run == 'true'

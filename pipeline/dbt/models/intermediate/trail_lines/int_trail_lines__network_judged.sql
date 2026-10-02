@@ -297,7 +297,10 @@ reasoned as (
                     or st_length(
                         st_intersection(printed.geom, printed.boundary)
                     )
-                    / st_length(printed.geom) < 0.8
+                    / st_length(printed.geom)
+                    < {{
+                        var('trail_lines_network_inside_boundary_min_fraction')
+                    }}
                 )
                 then 'outside the boundary its registry entry names'
             when
@@ -391,6 +394,11 @@ select
     -- every row of the source would be dropped, so the test on this column
     -- stops the build instead.
     (boundary_source is not null and boundary is null) as boundary_missing,
-    geom,
+    -- WKT text rather than GEOMETRY, so a unit test can hold this model's
+    -- output (a 2.0.6 unit test panics on a GEOMETRY column,
+    -- .claude/skills/dbt/SKILL.md). DuckDB writes the shortest digits that
+    -- read back to the same double, so st_geomfromtext() downstream gets
+    -- every vertex back exactly.
+    st_astext(geom) as geom_wkt,
     _loaded_at
 from named

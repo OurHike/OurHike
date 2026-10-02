@@ -153,6 +153,8 @@ models:
                 values: [long_term]
       - name: boundary_missing
         description: Whether the entry names a boundary and none was found for it.
+      - name: geom_wkt
+        description: The row's geometry as landed, as WKT; null where the steward published none.
 
   - name: int_trail_lines__network_deduplicated
     description: >
@@ -183,6 +185,9 @@ models:
           The source whose copy of this path the line swallowed (the last,
           where it swallowed several), as lib/duplicates.py's merge() names
           it; null on a line that swallowed nothing.
+      - name: geom_wkt
+        description: The line at full resolution, as WKT.
+        data_tests: [not_null]
 
   - name: int_trail_lines__network_counts
     description: >
@@ -285,6 +290,258 @@ models:
           - accepted_values:
               arguments:
                 values: [mapped, deferred, unmapped, absent]
+
+  - name: int_trail_lines__network_navigation
+    description: >
+      Every network line that ships at 1 m (TL15): Douglas-Peucker in
+      EPSG:5070, the Python's simplify_records() vertex for vertex, keeping
+      a line's full-resolution geometry where the pass would leave a part
+      undrawable. int_trail_lines__network_published cuts it to six
+      decimals; the overview sketch is simplified again from it.
+    columns:
+      - name: trail_segment_key
+        description: The row's staging key.
+        data_tests: [not_null, unique]
+      - name: trail_line_id
+        description: The published id.
+        data_tests: [not_null, unique]
+      - name: full_resolution_wkt
+        description: The line before the pass, as WKT.
+        data_tests: [not_null]
+      - name: geom_wkt
+        description: The 1 m line as WKT, every vertex exact.
+        data_tests: [not_null]
+      - name: kept_full_resolution
+        description: Whether the pass would have left a part with fewer than two distinct vertices, so the line kept every vertex.
+        data_tests: [not_null]
+
+  - name: int_trail_lines__network_published
+    description: >
+      The network's half of the trail_lines mart: one row per network line
+      that ships, in the mart's 21 columns by name and type (tl-at's
+      contract, models/marts/trail_lines/_trail_lines__models.yml), the
+      geometry the one a phone draws. The mart unions it with the A.T.'s
+      half; until it is built, pub_nearby_trails reads this model. Public,
+      with an enforced contract, because it is that interface.
+    config:
+      access: public
+      contract:
+        enforced: true
+    data_tests:
+      # The mart's own tests, on the rows this model gives it.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              st_xmin(st_geomfromgeojson(geom_geojson)) >= -180
+              and st_xmax(st_geomfromgeojson(geom_geojson)) <= 180
+              and st_ymin(st_geomfromgeojson(geom_geojson)) >= -90
+              and st_ymax(st_geomfromgeojson(geom_geojson)) <= 90
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "st_geometrytype(st_geomfromgeojson(geom_geojson)) in ('LINESTRING', 'MULTILINESTRING')"
+      # Warn: the Python does not require a valid line, and keeps a
+      # steward's line whose vertices all sit on one point.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "st_isvalid(st_geomfromgeojson(geom_geojson))"
+          config:
+            severity: warn
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(trail_status is null) = (trail_status_basis is null)"
+      # A closed line never loses the flag; closed is long-term closed, the
+      # only closure a network line carries since #1152.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "coalesce(trail_status = 'closed', false) = (closure_kind is not null)"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              vertex_miles is null and monotonic_breaks is null
+              and spur_length_ft is null and spur_destination_poi_id is null
+              and spur_destination_distance_m is null and spur_junction_mile is null
+    columns:
+      - name: trail_line_id
+        description: The published id, `{source_key}:{id}` (TL05), the `id` nearby_trails.geojson carries.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests: [unique]
+      - name: club
+        description: The extract folder that landed the line (pipeline/extract/<club>/).
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: source_key
+        description: The registry key of the line's layer, published as `source`.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('sources')
+                field: source_key
+      - name: _loaded_at
+        description: When dlt loaded the line's row.
+        data_type: timestamptz
+        constraints:
+          - type: not_null
+      - name: line_kind
+        description: "'network' on every row: another organization's line, drawn from nearby_trails.geojson."
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [network]
+      - name: feature_order
+        description: >
+          The line's place in nearby_trails.geojson, from 0: sources in the
+          registry's order, then by id. The Python's order within a layer is
+          the fetched file's, which the warehouse does not land.
+        data_type: bigint
+        constraints:
+          - type: not_null
+        data_tests: [unique]
+      - name: name
+        description: The line's name; null where nothing names it (a placeholder, or no name at all).
+        data_type: varchar
+      - name: blaze_color
+        description: The palette member, or neutral, the map paints (TL03).
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: trail_status
+        description: >
+          'open' or 'closed' (TL10). Open on every row of a layer with no
+          status column, which is a default and not a finding: read
+          `trail_status_basis` before reading open as a fact.
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [open, closed]
+      - name: trail_status_basis
+        description: >
+          'stated' where the layer's own status column gave `trail_status`;
+          'default_without_status_column' where it has none.
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [stated, default_without_status_column]
+      - name: closure_kind
+        description: "'long_term' on a line its steward marks closed; null otherwise."
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [long_term]
+      - name: duplicate_of
+        description: The source whose copy of this path the line swallowed (TL18); null where it swallowed none.
+        data_type: varchar
+      - name: geom_geojson
+        description: >
+          The geometry nearby_trails.geojson carries, as GeoJSON text in
+          OGC:CRS84: the 1 m line, every vertex cut to six decimals, or kept
+          whole where the cut would collapse a part.
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: length_m
+        description: The line's length in EPSG:5070 metres as its steward published it, before the 1 m pass (decision 8).
+        data_type: double
+        constraints:
+          - type: not_null
+      - name: published_length_m
+        description: The 1 m line's length in EPSG:5070 metres, before the six-decimal cut; `length_miles` is rounded from it.
+        data_type: double
+        constraints:
+          - type: not_null
+      - name: vertex_miles
+        description: Null on every network line; the calibrated mile axis is the A.T.'s (TL22).
+        data_type: double[]
+      - name: monotonic_breaks
+        description: Null on every network line, as vertex_miles is.
+        data_type: integer
+      - name: spur_length_ft
+        description: Null on every network line; spurs.json's.
+        data_type: double
+      - name: spur_destination_poi_id
+        description: Null on every network line; spurs.json's.
+        data_type: varchar
+      - name: spur_destination_distance_m
+        description: Null on every network line; spurs.json's.
+        data_type: integer
+      - name: spur_junction_mile
+        description: Null on every network line; spurs.json's.
+        data_type: double
+
+  - name: int_trail_lines__network_name_aliases
+    description: >
+      reference/trail_name_aliases.json's reviewed spellings (TL21): one row
+      per (source, published spelling) and the long trail it is, as
+      export_nearby_trails.py's _alias_index() reads the file.
+    data_tests:
+      # Two entries claiming one spelling would be decided silently by the
+      # later one in the Python; here it stops the build.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [source_key, published_spelling]
+    columns:
+      - name: alias_key
+        description: The entry's key in the file's `trails`, e.g. `at`.
+        data_tests: [not_null]
+      - name: source_key
+        description: The registry key whose spelling this is.
+        data_tests: [not_null]
+      - name: published_spelling
+        description: The name exactly as that source publishes it.
+        data_tests: [not_null]
+      - name: trail_name
+        description: The trail's own name, which the sketch writes.
+        data_tests: [not_null]
+
+  - name: int_trail_lines__network_overview_routes
+    description: >
+      Every network line that ships, at the overview's 100 m, with the trail
+      identity it belongs to and whether its run of shared tread is a
+      through route of 50 miles or more (TL12, TL21): write_overview()'s
+      steps before the floor.
+    columns:
+      - name: trail_line_id
+        description: The published id.
+        data_tests: [not_null, unique]
+      - name: trail_identity
+        description: The trail the line is part of, its aliased name where the alias table has its spelling; null for an unnamed line.
+      - name: chain_label
+        description: The smallest id on the line's run of shared tread; null for an unnamed line.
+      - name: chain_miles
+        description: The run's coarse length in EPSG:5070 miles, as text.
+      - name: through_route
+        description: The trail's name where its run is 50 miles or more; null otherwise.
+      - name: coarse_wkt
+        description: The line at 100 m, as WKT.
+        data_tests: [not_null]
+
+  - name: int_trail_lines__network_overview_seam
+    description: >
+      The lines the sketch draws (TL20): every coarse line above the
+      one-pixel floor at z5, or on a through route, simplified to half a z5
+      pixel. pub_network_overview groups and writes them.
+    columns:
+      - name: trail_line_id
+        description: The published id.
+        data_tests: [not_null, unique]
+      - name: through_route
+        description: The trail's name where the line is on a through route.
+      - name: seam_wkt
+        description: The line at the seam's tolerance, as WKT.
+        data_tests: [not_null]
 
 unit_tests:
   - name: int_trail_lines__blazes_answers_what_lib_blaze_answers

@@ -1,0 +1,53 @@
+version: 2
+
+# The places family's phone file (stage 3 of #1793 — Rebuild the data
+# platform as dlt → dbt: seven contracted marts, a monthly refresh, published
+# docs, and lighter phone downloads): places.json, which export_places.py
+# writes today. parity.py compares the dbt-written file with the Python's.
+models:
+  - name: pub_places
+    description: >
+      Writes places.json from the places mart: one row, the whole document
+      as JSON text, which the phone_file materialisation's json_document
+      format copies to processed_dir/places.json verbatim. A record leaves
+      out a field it has no value for, which COPY's JSON format cannot do.
+      parity.py compares it with export_places.py's file record by record,
+      keyed on `id`, in order.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: places_document
+        description: >
+          places.json: `generated_at`, `trailRadiusMiles`,
+          `trailMilesMeasured` and `places`, each record in _record()'s
+          field order with its empty fields left out.
+        data_type: varchar
+        data_tests: [not_null, unique]
+
+exposures:
+  - name: places_json
+    label: places.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The places a hiker can name before anything is downloaded: parks,
+      towns, trailheads, parking areas and the long trails, each with a
+      point, a box where it has one, and the miles of published trail it
+      holds. First run's "where do you hike?" step reads it
+      (client/src/lib/places.ts, PLACES_KEY in client/src/lib/config.ts), and
+      its answer becomes the map's fallback centre whenever GPS has no fix.
+      Published in the release folder by publish-vector-data.yml from
+      export_places.py's file until stage 4 of #1793 moves it to this
+      writer's.
+    depends_on:
+      - ref('places')
+      - ref('pub_places')
+    config:
+      meta:
+        r2_keys: [places.json]
+        format: json
+        cadence: monthly

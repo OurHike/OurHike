@@ -446,6 +446,11 @@ jobs:
           # pipeline's own pins, the venv the step above built.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py nearby_trails --new data/processed/dbt/nearby_trails.geojson
           "$RUNNER_TEMP/pipeline/bin/python" parity.py network_overview --new data/processed/dbt/network_overview.geojson
+          # places.json, from the same fixture warehouse: OPRHP's park layer,
+          # and the lines today's export_nearby_trails.py writes from it.
+          # export_places.py imports export_nearby_trails.py, so it runs
+          # under the same pins.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py places --new data/processed/dbt/places.json
 
       - name: dbt source freshness
         if: steps.scope.outputs.run == 'true'

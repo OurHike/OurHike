@@ -4,6 +4,7 @@
     python parity.py stewards --new data/processed/stewards.json
     python parity.py nearby_trails --new data/processed/dbt/nearby_trails.geojson
     python parity.py network_overview --new data/processed/dbt/network_overview.geojson
+    python parity.py places --new data/processed/dbt/places.json
 
 pipeline/ELT.md, "How a rule moves: shadow-run parity", is the design: both
 paths read the same input, records are paired by their key, and each
@@ -238,6 +239,40 @@ def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
     return reasons
 
 
+def _places_old() -> dict:
+    """export_places.py's document for the input the dbt side reads, through its own build_output().
+
+    The input is the fixture warehouse's: OPRHP's park layer as fixture mode
+    landed it, and today's own nearby_trails.geojson, from export_nearby_trails.main()
+    on the same raw layers (the file pub_nearby_trails matches, parity's
+    nearby_trails family). Two of its inputs are files the dbt side does not
+    read yet: the published waypoints and the A.T.'s trails.geojson come
+    from int_places__waypoints and int_places__at_lines, interfaces with no
+    rows until the points_of_interest and trail_lines marts are merged, so
+    this side reads none of either. When they merge, this reads
+    export_poi.py's, export_nearby_poi.py's and export_trails.py's files on
+    the same raw layers.
+    """
+    import tempfile
+
+    import export_places
+    from lib.source_registry import load_registry
+
+    with tempfile.TemporaryDirectory() as out:
+        nearby_trails = Path(out) / "nearby_trails.geojson"
+        nearby_trails.write_text(json.dumps(_network_old("nearby_trails.geojson")), encoding="utf-8")
+        output, _ = export_places.build_output(
+            load_registry(export_places.SOURCES_PATH),
+            RAW_DIR / "external" / f"{export_places.PARKS_KEY}.geojson",
+            Path(out) / "poi",
+            Path(out) / "nearby_poi.geojson",
+            RAW_DIR / export_places.COMMUNITIES_RAW,
+            [nearby_trails, Path(out) / "trails.geojson"],
+            datetime.now(timezone.utc),
+        )
+    return output
+
+
 def _overview_key(feature: dict) -> str:
     """A sketch feature's group, write_overview()'s key: source, through route, blaze_color and trail_status."""
     properties = feature["properties"]
@@ -289,6 +324,10 @@ FAMILIES: dict[str, Family] = {
         key_of=_overview_key,
         normalize=_overview_parts_as_a_set,
     ),
+    # places.json, keyed by each place's `id`, in the file's order (kind, name,
+    # id). `trailRadiusMiles` and `trailMilesMeasured`, beside the records, are
+    # compared whole as top-level fields.
+    "places": Family(old=_places_old, records="places", key="id", ordered=True, stamps=("generated_at",)),
 }
 
 

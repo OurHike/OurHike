@@ -163,7 +163,17 @@ jobs:
     # line landed with; this is the belt while the first run after the merge
     # measures whether they brought the build back under the old ceiling,
     # and it comes back down when that run says so.
-    timeout-minutes: 180
+    #
+    # A refetch_photos run gets 330 (2026-10-02). Run 165 (37051778628), the
+    # first cold photo fetch into our-hike, spent 1 h 39 m on ATC's photos and
+    # 36 m on Commons', and was cancelled at 180 inside "Form or read a route
+    # for every NYNJTC hike", before anything published, with elevation off.
+    # Every step after the photos took 44 m to reach that point, so a cold run
+    # needs about 3 h 15 m before the routes, graph cells and checks; 330
+    # leaves about an hour of that and stays under a hosted runner's 360.
+    # @unvalidated: one cold run measured; what would settle it is the next
+    # refetch_photos run's own step times.
+    timeout-minutes: ${{ inputs.refetch_photos && 330 || 180 }}
     defaults:
       run:
         working-directory: pipeline

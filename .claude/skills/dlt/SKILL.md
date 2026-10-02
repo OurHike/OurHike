@@ -54,7 +54,7 @@ disagreeing, this file has a bug. "Decision N" below is a row of the
 maintainer's decisions table in `pipeline/ELT.md`, "Overview".
 
 Three terms are used throughout. **The raw store** is where the extract lands
-raw: the private R2 bucket `your-hike-raw` (`R2_RAW_BUCKET`), under `raw/`,
+raw: the private R2 bucket `our-hike-raw` (`R2_RAW_BUCKET`), under `raw/`,
 every source alike, by ELT.md's decision 43, which voids decision 42's
 hold-out list. The step cache shares it under `steps/`. The app never reads it. **The raw lake** is the DuckLake form
 the monthly lane's raw tables move to at phase 3 (decision 26). **A lane** is

@@ -2040,6 +2040,39 @@ NETWORK_PARK_BOUNDARIES = {
 }
 
 
+def _box(west: float, south: float, east: float, north: float) -> list[list[float]]:
+    """A closed rectangular ring, counter-clockwise from its south-west corner."""
+    return [[west, south], [east, south], [east, north], [west, north], [west, south]]
+
+
+#: NYS Parks closed areas over the network's fixture lines, one per branch of
+#: export_nearby_trails.py's apply_area_closures() (#964), appended after the
+#: closures layer's own triangle, which touches the lon -74.0 lines at one
+#: corner and closes nothing. In file order, each (reason, ring):
+#: - across the two lon -73.97 lines (lat 41.03 to 41.035) from lat 41.032,
+#:   so each splits into a closed and an open section;
+#: - around the five lon -73.98 lines (41.02 to 41.025), wholly closing them
+#:   and stopping short of the A.T. spur ending at (-73.9805, 41.0199);
+#: - two over the long-term closed Fixture Closed Ridge Trail (lon -74.2,
+#:   41.2 to 41.25), 0.005 and 0.02 degrees of it: two closed pieces, three
+#:   open ones still long-term closed, and the reason of the second, the
+#:   larger overlap;
+#: - two nested around the whole 1777 East Trail (lon -74.25, 41.2 to
+#:   41.21), which ties them, so the first in the file gives the reason;
+#: - one whose west edge is the lon -71.3 USFS line (44.2 to 44.205), with a
+#:   blank reason: a trail on the boundary is inside (the function's own
+#:   docstring), and a section with no reason publishes none.
+NETWORK_CLOSED_AREAS = [
+    ("Fixture Closure: bridge washed out", _box(-73.975, 41.032, -73.965, 41.04)),
+    ("Fixture Closure: rockfall", _box(-73.982, 41.01995, -73.978, 41.0255)),
+    ("Fixture Closure: the short stretch", _box(-74.205, 41.205, -74.195, 41.21)),
+    ("Fixture Closure: the long stretch", _box(-74.205, 41.22, -74.195, 41.24)),
+    ("Fixture Closure: the outer area", _box(-74.258, 41.195, -74.242, 41.215)),
+    ("Fixture Closure: the inner area", _box(-74.254, 41.198, -74.246, 41.212)),
+    ("   ", _box(-71.3, 44.199, -71.296, 44.206)),
+]
+
+
 def _north(lon: float, lat: float, degrees: float) -> dict:
     """A due-north LineString `degrees` of latitude long (0.3 is about 20.7 mi)."""
     return {"type": "LineString", "coordinates": [[lon, lat], [lon, round(lat + degrees, 6)]]}
@@ -2148,6 +2181,8 @@ def _trail_lines_network_fixtures(files: dict[str, str]) -> dict[str, str]:
     - nyc_park_polygons' two boundaries, NETWORK_PARK_BOUNDARIES. Without a
       polygon of either name the exporter refuses nyc_park_drives, because
       every row would be dropped.
+    - oprhp_trail_closures' NETWORK_CLOSED_AREAS, after its own triangle, so
+      parity reaches every branch of apply_area_closures().
     - each network line feature's own `id`, which the live servers write and
       the builders above leave off: an ArcGIS layer's is its OBJECTID, where
       the fixture carries one, and a Socrata layer's is the row id
@@ -2193,6 +2228,17 @@ def _trail_lines_network_fixtures(files: dict[str, str]) -> dict[str, str]:
         for index, (name, ring) in enumerate(NETWORK_PARK_BOUNDARIES.items())
     ]
     out["external/nyc_park_polygons.geojson"] = json.dumps(parks)
+
+    closures = json.loads(out["external/oprhp_trail_closures.geojson"])
+    closures["features"] += [
+        {
+            "type": "Feature",
+            "properties": {"Name": reason, "Descript": "Fixture State Park"},
+            "geometry": {"type": "Polygon", "coordinates": [ring]},
+        }
+        for reason, ring in NETWORK_CLOSED_AREAS
+    ]
+    out["external/oprhp_trail_closures.geojson"] = json.dumps(closures)
 
     mapping = json.loads((Path(__file__).parent / "reference" / "blaze_mapping.json").read_text(encoding="utf-8"))["sources"]
     entries = {entry["key"]: entry for entry in registry["sources"]}

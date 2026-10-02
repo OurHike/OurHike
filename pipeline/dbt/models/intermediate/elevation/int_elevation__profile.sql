@@ -59,7 +59,7 @@ loads as (
         select loaded_at from {{ ref('stg_atc__centerline_segments') }}
         union all
         select loaded_at from {{ ref('stg_atc__half_mile_markers') }}
-    )
+    ) as both_layers
 ),
 
 read_at as (

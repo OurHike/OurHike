@@ -565,7 +565,10 @@ jobs:
       # none. Each family's output is kept verbatim as <family>.txt, and
       # summary.json says, per family, `match`, `differs` or `not_compared`
       # (the old side could not run: an input no pin holds, or a crash; the
-      # log has the traceback).
+      # log has the traceback). Where parity.py takes --json-dir (the gate
+      # worker's, for gate_report.py), each family's machine-readable result
+      # goes to results/<family>.json; gate_report.py refuses any other JSON
+      # there, which is why summary.json sits one level up.
       - name: Parity with today's exporters
         env:
           PARITY_DIR: ${{ runner.temp }}/parity
@@ -581,6 +584,8 @@ jobs:
 
           out = Path(os.environ["PARITY_DIR"])
           python = f"{os.environ['RUNNER_TEMP']}/pipeline/bin/python"
+          usage = subprocess.run([python, "parity.py", "--help"], capture_output=True, text=True).stdout
+          json_dir = ("--json-dir", str(out / "results")) if "--json-dir" in usage else ()
           raw = ("--raw-dir", "data/raw")
           families = {
               "podcasts": ("podcasts_episodes.json", ()),
@@ -608,7 +613,7 @@ jobs:
           answered = re.compile(r"^\S+: (no differences|neither today's exporter nor the writer|\d+ difference\(s\))", re.M)
           summary = {}
           for family, (name, extra) in families.items():
-              argv = [python, "parity.py", family, "--new", f"data/processed/dbt/{name}", *extra]
+              argv = [python, "parity.py", family, "--new", f"data/processed/dbt/{name}", *extra, *json_dir]
               done = subprocess.run(argv, capture_output=True, text=True)
               log = done.stdout + done.stderr
               (out / f"{family}.txt").write_text(log)
@@ -638,10 +643,12 @@ jobs:
         env:
           PARITY_DIR: ${{ runner.temp }}/parity
         run: |
-          if [ -f gate_report.py ]; then
-            "$RUNNER_TEMP/pipeline/bin/python" gate_report.py --parity-dir "$PARITY_DIR" --out "$PARITY_DIR/gate"
-          else
+          if [ ! -f gate_report.py ]; then
             echo "::notice title=No gate report yet::pipeline/gate_report.py is not on this branch; the parity answers are in the artifact as they are."
+          elif [ -z "$(find "$PARITY_DIR/results" -name '*.json' -print -quit 2>/dev/null)" ]; then
+            echo "::warning title=No parity results for the gate::parity.py wrote no --json-dir result, so gate_report.py has nothing to read."
+          else
+            "$RUNNER_TEMP/pipeline/bin/python" gate_report.py --parity-dir "$PARITY_DIR/results" --out "$PARITY_DIR/gate"
           fi
 
       - name: Keep the parity answers for the gate

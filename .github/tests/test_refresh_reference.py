@@ -155,7 +155,7 @@ def test_the_parity_job_writes_nothing_and_keeps_its_answers(workflow):
     runs = _runs(job)
 
     assert not re.search(r"extract\._warehouse (pin|store)\b", runs)
-    assert "parity.py" in runs and "gate_report.py --parity-dir" in runs
+    assert "parity.py" in runs and 'gate_report.py --parity-dir "$PARITY_DIR/results"' in runs
     uploads = [step for step in job["steps"] if str(step.get("uses", "")).startswith("actions/upload-artifact")]
     assert uploads and uploads[-1]["if"] == "always()"
 

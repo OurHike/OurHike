@@ -3,12 +3,14 @@
     python parity.py podcasts --new data/processed/podcasts_episodes.json
     python parity.py stewards --new data/processed/stewards.json
     python parity.py elevation --new data/processed/dbt/elevation_profile.json --raw-dir data/raw
+    python parity.py trail_graph_elevation --new data/processed/dbt/trail_graph_elevation.json --raw-dir data/raw --warehouse data/warehouse.duckdb
     python parity.py nearby_trails --new data/processed/dbt/nearby_trails.geojson
     python parity.py network_overview --new data/processed/dbt/network_overview.geojson
     python parity.py suggested_hikes --new data/processed/dbt/suggested_hikes.json --raw-dir data/raw
     python parity.py suggested_hikes_detail --new data/processed/dbt/suggested_hikes_detail.json --raw-dir data/raw
     python parity.py highlights --new data/processed/dbt/highlights.json --raw-dir data/raw
     python parity.py places --new data/processed/dbt/places.json
+    python parity.py challenges --new data/processed/dbt/challenges.json
 
 pipeline/ELT.md, "How a rule moves: shadow-run parity", is the design: both
 paths read the same input, records are paired by their key, and each
@@ -84,6 +86,10 @@ class Family:
     # The old document is built from make_dbt_fixtures.py's raw files rather
     # than from a file in git, so `old` takes the --raw-dir they are in.
     reads_raw_dir: bool = False
+    # The old side's input is rows the build itself made, the junction graph's
+    # edges, which today's exporters read from files the fixtures have none
+    # of, so `old` takes --raw-dir and --warehouse.
+    reads_warehouse: bool = False
     # Top-level fields that hold the moment a run happened, such as the
     # conditions files' `generated_at`: two runs never agree on the value, so
     # each is held to its form (a UTC stamp, STAMP) on both sides instead.
@@ -142,6 +148,65 @@ def _elevation_old(raw_dir: Path) -> dict:
             export_elevation.SAMPLE_INTERVAL_METERS,
         )
     return {"samples": records}
+
+
+def _graph_edges(warehouse: Path) -> tuple[dict, list]:
+    """trail_graph.json's `edges` and trail_graph_geometry.json's entries, as int_trail_network__edges holds them.
+
+    Both network elevation exporters read only these: each edge's `source`,
+    `from` and `to`, and its published vertices, in edge order."""
+    import duckdb
+
+    with duckdb.connect(str(warehouse), read_only=True) as con:
+        rows = con.execute(
+            "select source_key, from_node, to_node, geom_geojson from intermediate.int_trail_network__edges order by edge_index"
+        ).fetchall()
+    graph = {"edges": [{"source": source, "from": start, "to": end} for source, start, end, _ in rows]}
+    return graph, [json.loads(geom)["coordinates"] for *_, geom in rows]
+
+
+@functools.cache
+def _graph_companions_old(raw_dir: Path, warehouse: Path) -> tuple[list, list]:
+    """export_network_elevation.build and export_network_profile.build over the build's own graph.
+
+    In publish-vector-data.yml's order on one cold copy of the tile index:
+    export_elevation.py's A.T. profile first, then the climbs, then the
+    profiles, so the sampler's cache answers an edge point keyed like an
+    A.T. point with the A.T.'s pixel on this side exactly as
+    step_dem_sampling's one question does on the dbt side."""
+    import shutil
+    import tempfile
+
+    import export_elevation
+    import export_network_elevation
+    import export_network_profile
+
+    graph, geometry = _graph_edges(warehouse)
+    with tempfile.TemporaryDirectory() as scratch:
+        index = Path(scratch) / "tile_index.json"
+        shutil.copy(raw_dir / "elevation" / "tile_index.json", index)
+        export_elevation.build_profile(
+            raw_dir / "centerline.geojson",
+            raw_dir / "half_mile_points_from_springer.geojson",
+            index,
+            export_elevation.SAMPLE_INTERVAL_METERS,
+        )
+        sampler = export_elevation.ElevationSampler.for_index(index)
+        try:
+            climbs, _stats = export_network_elevation.build(graph, geometry, sampler)
+        finally:
+            sampler.close()
+        sampler = export_elevation.ElevationSampler.for_index(index)
+        try:
+            profiles, _stats, _seam = export_network_profile.build(graph, geometry, sampler)
+        finally:
+            sampler.close()
+    return climbs, profiles
+
+
+def _by_edge(entries: list) -> dict:
+    """An index-aligned companion array as records keyed by their place, the only key its entries have."""
+    return {"edges": [{"edge_index": index, "entry": entry} for index, entry in enumerate(entries)]}
 
 
 # The hourly conditions files. Their inputs, other than reference/atc_updates.json,
@@ -654,6 +719,25 @@ FAMILIES: dict[str, Family] = {
     "elevation": Family(
         old=_elevation_old, records="samples", key="distance_mi", ordered=True, bare_list=True, reads_raw_dir=True
     ),
+    # The junction graph's two elevation companions: index-aligned arrays
+    # whose entries carry no id, so each is keyed by its place, which is the
+    # edge it describes.
+    "trail_graph_elevation": Family(
+        old=lambda raw_dir, warehouse: _by_edge(_graph_companions_old(raw_dir, warehouse)[0]),
+        records="edges",
+        key="edge_index",
+        ordered=True,
+        reads_warehouse=True,
+        new_shape=lambda new, _path: _by_edge(new),
+    ),
+    "trail_graph_profile": Family(
+        old=lambda raw_dir, warehouse: _by_edge(_graph_companions_old(raw_dir, warehouse)[1]),
+        records="edges",
+        key="edge_index",
+        ordered=True,
+        reads_warehouse=True,
+        new_shape=lambda new, _path: _by_edge(new),
+    ),
     # `reviewed_at`, beside the records, is compared whole as a top-level field.
     "atc_updates": Family(old=_atc_updates_old, records="atc_updates", key="atc_id", ordered=True, stamps=("generated_at",)),
     "nynjtc_alerts": Family(
@@ -880,6 +964,165 @@ FAMILIES.update(
 )
 
 
+# --- the challenges family (#1793, stage 3) ---------------------------------
+#
+# challenges.json, keyed by each challenge's id, in the files' path order. The
+# old side reads what export_challenges.main() reads: the club folders and
+# publishers.json in git, sources.json, the poi_<type>.geojson files
+# export_poi.main() writes from the same raw layers, and trails.geojson's
+# centerline from export_trails.main(), cut to decision 8's six decimals as
+# the trails family cuts its old side, so both sides measure one line.
+
+#: Why a challenge can be in today's file and not in the dbt writer's.
+#: tests/test_dbt_challenges_parity.py holds the reason to a warehouse where
+#: the two writers answer that way, so it cannot outlive its case.
+CHALLENGE_REASONS = {
+    "held_back": (
+        "expected by rule 6 of pipeline/ELT.md's 'Who may publish': the club's folder (reference/challenges/<club>) "
+        "has no sources.json row and no unregistered_publishing_sources row, so int_sources__publication holds it "
+        "back, where export_challenges.py publishes the list as a labelled draft. The record the dbt models resolved "
+        "for it (int_challenges__resolved) equals today's, field for field"
+    ),
+}
+
+
+def _warehouse() -> Path:
+    """The warehouse dbt built, where build_marts.py put it: OURHIKE_WAREHOUSE, else data/warehouse.duckdb."""
+    import os
+
+    return Path(os.environ.get("OURHIKE_WAREHOUSE") or Path(__file__).resolve().parent / "data" / "warehouse.duckdb")
+
+
+def _challenges_old() -> dict:
+    """export_challenges.build_output() over main()'s own inputs, dated today in UTC as main() dates it, which is
+    the date the dbt build reads when the var challenges_build_date is unset. Each exporter's own lines go to a
+    buffer, so the step prints the comparison and nothing else."""
+    import contextlib
+    import io
+    import tempfile
+
+    from shapely.geometry import shape
+
+    import export_challenges
+    import export_poi
+    from export_nearby_trails import _rounded_geometry
+
+    with contextlib.redirect_stdout(io.StringIO()):
+        export_poi.NETWORK_LINES_PATH = _published_network()
+        export_poi.main()
+    trails = json.loads((_export_trails_run() / "trails.geojson").read_text(encoding="utf-8"))
+    for feature in trails["features"]:
+        feature["geometry"] = _rounded_geometry(shape(feature["geometry"]))
+    with tempfile.TemporaryDirectory() as scratch:
+        path = Path(scratch) / "trails.geojson"
+        path.write_text(json.dumps(trails), encoding="utf-8")
+        centerline = export_challenges.load_centerline(path)
+    pois = export_challenges.load_published_pois(export_poi.OUT_DIR)
+    publishers = export_challenges.load_publishers()
+    organizations = export_challenges.load_organizations()
+    org_trails, _ = export_challenges.publisher_scope(publishers, organizations, pois)
+    output, _ = export_challenges.build_output(
+        export_challenges.load_challenge_files(),
+        org_domains=export_challenges.publisher_domains(publishers, organizations, pois),
+        org_trails=org_trails,
+        organizations=organizations,
+        pois=pois,
+        centerline=centerline,
+        today=datetime.now(timezone.utc).date(),
+    )
+    return json.loads(json.dumps(output))
+
+
+def _resolved_challenge(row: dict) -> dict:
+    """A row of int_challenges__resolved as pub_challenges writes it: that writer's json_object, field for field.
+    A writer that changes its shape without this changing is a difference parity reports, never one it hides."""
+    return {
+        "id": row["challenge_id"],
+        "org": row["org"],
+        "trail": row["trail"],
+        "name": row["name"],
+        "status": row["status"],
+        "summary": row["challenge_summary"],
+        "window": {"opens": row["window_opens"], "closes": row["window_closes"]},
+        "finish": None if row["finish_count"] is None else {"count": row["finish_count"], "label": row["finish_label"]},
+        "reward": None
+        if row["reward_kind"] is None
+        else {"kind": row["reward_kind"], "rules_url": row["reward_rules_url"], "art": row["reward_art"]},
+        "takes_entries": row["takes_entries"],
+        "photo": row["photo"],
+        "sections": json.loads(row["sections_published"]),
+        "items": json.loads(row["items_published"]),
+        "reviewed": row["reviewed"],
+        "org_name": row["org_name"],
+        "org_short": row["org_short"],
+        "org_domain": row["org_domain"],
+    }
+
+
+RESOLVED_COLUMNS = (
+    "challenge_id",
+    "org",
+    "trail",
+    "name",
+    "status",
+    "challenge_summary",
+    "window_opens",
+    "window_closes",
+    "finish_count",
+    "finish_label",
+    "reward_kind",
+    "reward_rules_url",
+    "reward_art",
+    "takes_entries",
+    "photo",
+    "sections_published",
+    "items_published",
+    "reviewed",
+    "org_name",
+    "org_short",
+    "org_domain",
+)
+
+
+def _held_back_reasons(old: dict, new: dict, warehouse: Path | None = None) -> dict[str, str]:
+    """The challenges today's file publishes and the dbt writer's holds back, each explained only where the
+    warehouse shows both halves: int_sources__publication does not let its source publish (no row for it is the
+    case today, as the mart's inner join reads it), and int_challenges__resolved holds a record for it equal to
+    today's. The order is explained when it is today's with those challenges left out. Anything else the new
+    file lacks, adds or orders differently is still a difference."""
+    import duckdb
+
+    new_ids = [record["id"] for record in new.get("challenges") or []]
+    missing = [record for record in old.get("challenges") or [] if record["id"] not in new_ids]
+    if not missing:
+        return {}
+    # The columns _resolved_challenge() reads, by name: `select *` would fetch _loaded_at, and DuckDB converts a
+    # timestamptz through pytz, which requirements.txt does not carry (measured on a venv of it alone).
+    columns = ", ".join(f"resolved.{name}" for name in RESOLVED_COLUMNS)
+    with duckdb.connect(str(warehouse or _warehouse()), read_only=True) as con:
+        cursor = con.execute(
+            f"select {columns}, coalesce(publication.may_publish, false) as may_publish"
+            " from intermediate.int_challenges__resolved as resolved"
+            " left join intermediate.int_sources__publication as publication"
+            " on resolved.source_key = publication.source_key"
+            " where resolved.problem is null"
+        )
+        names = [column[0] for column in cursor.description]
+        resolved = {row["challenge_id"]: row for row in (dict(zip(names, values, strict=True)) for values in cursor.fetchall())}
+    reasons: dict[str, str] = {}
+    for record in missing:
+        row = resolved.get(record["id"])
+        if row is not None and not row["may_publish"] and canonical(_resolved_challenge(row)) == canonical(record):
+            reasons[f"id {record['id']}"] = CHALLENGE_REASONS["held_back"]
+    kept = [record["id"] for record in old.get("challenges") or [] if f"id {record['id']}" not in reasons]
+    if reasons and kept == new_ids:
+        reasons["order"] = CHALLENGE_REASONS["held_back"]
+    return reasons
+
+
+FAMILIES["challenges"] = Family(old=_challenges_old, records="challenges", key="id", ordered=True, explained=_held_back_reasons)
+
+
 def canonical(value) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
@@ -1104,6 +1347,9 @@ def main(argv: list[str] | None = None) -> int:
         "--raw-dir", type=Path, default=Path("data/raw"), help="make_dbt_fixtures.py's files, for a family built from them"
     )
     parser.add_argument(
+        "--warehouse", type=Path, default=Path("data/warehouse.duckdb"), help="the built warehouse, for a family read from it"
+    )
+    parser.add_argument(
         "--json-dir",
         type=Path,
         default=None,
@@ -1119,7 +1365,12 @@ def main(argv: list[str] | None = None) -> int:
         return exit_code
 
     try:
-        old = family.old(args.raw_dir) if family.reads_raw_dir else family.old()
+        if family.reads_warehouse:
+            old = family.old(args.raw_dir, args.warehouse)
+        elif family.reads_raw_dir:
+            old = family.old(args.raw_dir)
+        else:
+            old = family.old()
     except SystemExit as refusal:
         # Some builders refuse rather than publish less (a reviewed file with
         # a row problem publishes nothing); the exit is theirs, unchanged.

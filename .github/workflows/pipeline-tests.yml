@@ -233,6 +233,8 @@ jobs:
             pipeline/step_dem_sampling.py
             pipeline/build_marts.py
             pipeline/requirements.txt
+            pipeline/export_spurs.py
+            pipeline/export_club_sections.py
             pipeline/check_freshness.py
             pipeline/export_conditions.py
             pipeline/fetch_club_pdfs.py
@@ -425,25 +427,34 @@ jobs:
       # fixture. Fails on any difference.
       - name: Parity with today's exporters
         if: steps.scope.outputs.run == 'true'
+        # EVERY LINE RUNS ON THE PIPELINE'S OWN PINS ($RUNNER_TEMP/pipeline,
+        # built above), because the old side imports today's exporters:
+        # export_atc_updates.py needs requests (through lib/atc_scrape.py),
+        # export_conditions.py psycopg, and export_nearby_trails.py shapely,
+        # pyproj and rasterio, none of which requirements-dbt.txt pins. The
+        # job's own python failed the first conditions line on requests.
         run: |
-          python parity.py podcasts --new data/processed/dbt/podcasts_episodes.json
-          python parity.py stewards --new data/processed/dbt/stewards.json
-          python parity.py registry --new data/processed/dbt/registry.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py podcasts --new data/processed/dbt/podcasts_episodes.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py stewards --new data/processed/dbt/stewards.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py registry --new data/processed/dbt/registry.json
           # The hourly conditions files. atc_updates reads
           # reference/atc_updates.json from git; the other three read the
           # answers under data/raw/conditions/ that fixture mode built the
           # warehouse from, since their upstreams are a website and a database.
-          python parity.py atc_updates --new data/processed/dbt/conditions_atc_updates.json
-          python parity.py nynjtc_alerts --new data/processed/dbt/conditions_nynjtc_alerts.json
-          python parity.py closures --new data/processed/dbt/conditions_closures.json
-          python parity.py reports --new data/processed/dbt/conditions_reports.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py atc_updates --new data/processed/dbt/conditions_atc_updates.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py nynjtc_alerts --new data/processed/dbt/conditions_nynjtc_alerts.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py closures --new data/processed/dbt/conditions_closures.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py reports --new data/processed/dbt/conditions_reports.json
           # The trail lines network, whose input is the fixture warehouse, not
-          # a file in git. export_nearby_trails.py imports shapely, numpy,
-          # pyproj, pmtiles and, through export_trails.py, rasterio, none of
-          # which requirements-dbt.txt pins, so today's exporter runs under the
-          # pipeline's own pins, the venv the step above built.
+          # a file in git.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py nearby_trails --new data/processed/dbt/nearby_trails.geojson
           "$RUNNER_TEMP/pipeline/bin/python" parity.py network_overview --new data/processed/dbt/network_overview.geojson
+          # The A.T.'s files, on the fixture's layers (ATC's are not in git); parity.py applies decision 8's 6 dp to the old side.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py trails --new data/processed/dbt/trails.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py trail_miles --new data/processed/dbt/trail_miles.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py trails_overview --new data/processed/dbt/trails_overview.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py spurs --new data/processed/dbt/spurs.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py club_sections --new data/processed/dbt/club_sections.json
           # The elevation profile's input is a fixture, not a file in git: the
           # fixture centerline, markers and DEM tile make_dbt_fixtures.py wrote.
           # export_elevation.py reads the DEM through rasterio, so this runs on

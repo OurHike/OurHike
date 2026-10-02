@@ -225,7 +225,9 @@ models:
       - name: duplicate_of
         description: >
           On a network line that swallowed another organization's copy of the
-          same path (TL18, #1459), the source whose copy it was; null
+          same path (TL18, #1459 — Two New York City agencies draw the same
+          tread and the map draws both lines, because nothing dedupes
+          geometry across sources), the source whose copy it was; null
           elsewhere.
         data_type: varchar
       - name: geom_geojson
@@ -253,7 +255,9 @@ models:
         description: >
           The length of the line as published, after the 1 m pass and before
           the 6-decimal cut, in EPSG:5070 metres: what nearby_trails.geojson's
-          `length_miles` is rounded from (#1516), measured from the drawn
+          `length_miles` is rounded from (#1516 — A tapped trail prints a
+          silently-low climb as `measured`, because lineClimb's `partial`
+          guard reads a field no exporter writes), measured from the drawn
           geometry and never a steward's stated mileage.
         data_type: double
         constraints:

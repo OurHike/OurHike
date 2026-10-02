@@ -2035,7 +2035,9 @@ def main() -> dict:
         f"{'' if concurrent['at_paired'] else ' (network only)'} "
         f"(within {concurrent['tolerance_m']:g} m for {concurrent['min_length_m']:g} m or more; "
         f"{concurrent['dropped_short']} shorter pieces dropped, {concurrent['dropped_unpainted']} with no blaze to paint, "
-        f"{concurrent['dropped_same_blaze']} in one paint, {concurrent['nameless_skipped']} nameless lines skipped) "
+        f"{concurrent['dropped_same_blaze']} in one paint, {concurrent['nameless_skipped']} nameless lines skipped; "
+        f"{concurrent['skipped_unpainted_pairs']} pairs with no paint on one side and "
+        f"{concurrent['skipped_same_blaze_pairs']} in one paint never built) "
         f"-> {concurrent['path']}"
     )
 

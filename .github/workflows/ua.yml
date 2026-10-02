@@ -227,6 +227,8 @@ jobs:
       # holds different ids - measured 2026-09-09, 31 against production's 14,
       # with 10 in common. Checking each base separately turns "the pin must
       # exist in both" into a red deploy rather than something to remember.
+      # Since decision 44 the pin is the compiled fallback a first run reads
+      # before it has verified a channels.json entry (lib/dataRelease.ts).
       - name: Confirm the pinned data release exists
         if: steps.can.outputs.deploy == 'true'
         working-directory: client
@@ -247,6 +249,41 @@ jobs:
             echo "Pinned release ${release} resolves at ${DATA_URL%/}."
           else
             echo "::error::DATA_RELEASE is pinned to ${release}, but ${manifest} does not resolve. UA would deploy unable to fetch anything."
+            exit 1
+          fi
+
+      # Decision 44's pointer, against UA's own base: pages.yml's step of the
+      # same name, which says why both it and the step above must hold. The
+      # environment is read off the base as the client reads it, so a
+      # UA_DATA_BASE_URL override pointing at production's data checks
+      # production's entry, the one such a build's phones take.
+      - name: Confirm channels.json's release exists
+        if: steps.can.outputs.deploy == 'true'
+        working-directory: client
+        env:
+          DATA_URL: ${{ steps.data.outputs.url }}
+        run: |
+          if [ -z "$DATA_URL" ]; then
+            echo "No data source configured - skipping the check."
+            exit 0
+          fi
+          schema=$(sed -n "s/^export const DATA_SCHEMA_VERSION = '\\(.*\\)'$/\\1/p" src/lib/dataRelease.ts)
+          if [ -z "$schema" ]; then
+            echo "::error::Could not read DATA_SCHEMA_VERSION out of client/src/lib/dataRelease.ts. It has been restructured, and this guard must be updated rather than left checking nothing."
+            exit 1
+          fi
+          base="${DATA_URL%/}"
+          environment=production
+          case "$base" in */environments/*) environment="${base##*/environments/}" ;; esac
+          if ! release=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))[sys.argv[2]][sys.argv[3]])' ../channels.json "$environment" "$schema"); then
+            echo "::error::channels.json names no ${schema} release for ${environment}, so UA's phones would never move off the release they hold."
+            exit 1
+          fi
+          manifest="${base}/releases/${release}/manifest.json"
+          if curl -fsS --retry 3 --max-time 30 -o /dev/null "$manifest"; then
+            echo "channels.json's ${environment} ${schema} release ${release} resolves at ${base}."
+          else
+            echo "::error::channels.json points ${environment}'s ${schema} at ${release}, but ${manifest} does not resolve. UA's phones would refuse it and stay on the release they hold."
             exit 1
           fi
 

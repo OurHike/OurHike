@@ -2292,7 +2292,8 @@ def _side_trail(name: str, coordinates, properties: dict, geometry_type: str = "
 TRAIL_LINES_AT_SIDE_TRAILS = [
     # A spur by its code, blazed by code 1: its first end 14 m from the
     # centerline's vertex at (-73.99, 41.015) is the junction, its far end
-    # 44 m from the fixture's third shelter, (-73.98, 41.02).
+    # 43 m from the fixture's third shelter, (-73.98, 41.02), which spurs.json
+    # names as its destination.
     _side_trail(
         "Spur To Shelter",
         [[-73.9901, 41.0151], [-73.985, 41.018], [-73.9805, 41.0199]],
@@ -2391,6 +2392,224 @@ def _trail_lines_at_fixtures(files: dict[str, str]) -> dict[str, str]:
     polygons["features"] += [json.loads(json.dumps(feature)) for feature in TRAIL_LINES_AT_CLUB_POLYGONS]
     out["trail_club_sections.geojson"] = json.dumps(polygons)
     return out
+
+
+# --- suggested_hikes, NYNJTC's Hike Finder export -----------------------------
+#
+# The suggested_hikes family's models (pipeline/dbt/models/**/suggested_hikes/,
+# stage 3 of #1793 — Rebuild the data platform as dlt → dbt: seven contracted
+# marts, a monthly refresh, published docs, and lighter phone downloads)
+# read raw_nynjtc__nynjtc_hike_finder, which the extract's PublishedHikes
+# resource lands from a listing, one page per hike and a GPX per routed hike.
+# extract/_fixtures.py serves the files below at those three URLs, so every
+# row is the real parse's (lib/hikefinder.py's parse_hike, as_cache_entry and
+# parse_gpx). The pages are in the shape tests/test_lib_hikefinder.py builds,
+# the one measured against the live export on 2026-09-15: a `<h1>`, the twelve
+# `<strong>Label:</strong>` fields, and a `card` per free-text section.
+#
+# Each hike is here for a rule, named beside it. Ids 1, 4 and 11 have a
+# confirmed photograph in the real reference/nynjtc_hike_photos.json, which
+# fixture mode loads as it is, so the photo join (SH09) has rows to match and
+# rows to miss. The coordinates sit beside the fixture Long Path
+# (`_network_rows`, a due-north line at longitude -74.3), so a route can form
+# once the trail_network family's edges are built from the fixture lines.
+HIKEFINDER_DIR = "hikefinder"
+
+#: (id, title, labelled fields, cards, track): `track` is a list of
+#: (lat, lon, ele_m) points for a page with a published GPX, "" for a page
+#: that links a GPX holding no point, and None for a page with no GPX at all.
+_HIKEFINDER_HIKES = (
+    (
+        1,
+        "Fixture Long Path Ramble",
+        # A generated route (no GPX), a confirmed photograph, an author, two tags.
+        {
+            "Length": "4.8 miles",
+            "Difficulty": '<span class="badge bg-info">Moderate</span>',
+            "Estimated Time": "3.0 hours",
+            "Route Type": "Circuit",
+            "Dogs": "Allowed on leash",
+            "Park": "Harriman State Park",
+            "Region": "Lower Hudson",
+            "Author": "Daniel Chazin",
+            "GPS Coordinates": '41.600000,\n -74.300500 <br><small class="text-muted">(Parking location)</small>',
+            "Features": '<span class="badge bg-secondary me-1 mb-1">Views</span>'
+            '<span class="badge bg-secondary me-1 mb-1">Historic feature</span>',
+            "Publish Date": "July 11, 2013",
+            "Last Updated": "N/A",
+        },
+        {
+            "Summary": "<p>A ramble along the Long Path.</p>",
+            "Directions to Trailhead": '<div class="hike-description">Park in the gravel area.</div>',
+            "Description": "<p>Follow the aqua-blazed Long Path north.</p>"
+            "<p>Turn left onto the red-blazed Fixture Ridge Trail and return on the Long Path.</p>",
+            "Public Transportation": "<p>Short Line buses stop at the gate.</p>",
+        },
+        None,
+    ),
+    (
+        4,
+        "Fixture Long Path Out and Back",
+        # A published track that closes on itself, the one difficulty with no
+        # slug of its own (SH07), and no author, so no publication block (SH10).
+        {
+            "Length": "2.1 miles",
+            "Difficulty": '<span class="badge bg-info">Very Strenuous</span>',
+            "Estimated Time": "1.5 hours",
+            "Route Type": "Out and back",
+            "Dogs": "Not allowed",
+            "Park": "Harriman State Park",
+            "Region": "Lower Hudson",
+            "Author": "N/A",
+            "GPS Coordinates": '41.620000,\n -74.300100 <br><small class="text-muted">(Parking location)</small>',
+            "Features": '<span class="badge bg-secondary me-1 mb-1">Waterfall</span>',
+            "Publish Date": "May 2, 2015",
+            "Last Updated": "March 3, 2024",
+        },
+        {
+            "Summary": "<p>North to the falls and back.</p>",
+            "Directions to Trailhead": '<div class="hike-description">Park at the trailhead lot.</div>',
+            "Description": "<p>Follow the aqua-blazed Long Path north to the falls, then return the same way.</p>",
+        },
+        [(round(41.62 + 0.001 * step, 6), -74.3, 300.0 + 0.25 * step) for step in range(16)]
+        + [(round(41.635 - 0.001 * step, 6), -74.3, 303.75 - 0.25 * step) for step in range(1, 16)],
+    ),
+    (
+        7,
+        "Fixture Long Path Shuttle",
+        # An open walk (Shuttle), an author, no tags, and a page revised since.
+        {
+            "Length": "6.0 miles",
+            "Difficulty": '<span class="badge bg-info">Easy To Moderate</span>',
+            "Estimated Time": "3.5 hours",
+            "Route Type": "Shuttle",
+            "Dogs": "Allowed on leash",
+            "Park": "Sterling Forest State Park",
+            "Region": "Lower Hudson",
+            "Author": "Jane Daniels",
+            "GPS Coordinates": '41.700000,\n -74.300200 <br><small class="text-muted">(Parking location)</small>',
+            "Features": "",
+            "Publish Date": "June 1, 2019",
+            "Last Updated": "August 9, 2025",
+        },
+        {
+            "Summary": "<p>One way along the Long Path, with a car at each end.</p>",
+            "Directions to Trailhead": '<div class="hike-description">Leave a car at each end.</div>',
+            "Description": "<p>Follow the aqua-blazed Long Path north to the second road crossing.</p>",
+        },
+        None,
+    ),
+    (
+        9,
+        "Fixture Hike Off The Map",
+        # A coordinate outside the NYNJTC box, refused by the parse (SH01), so
+        # the page lands with no start; a difficulty with no slot (SH07); no
+        # stated length.
+        {
+            "Length": "N/A",
+            "Difficulty": '<span class="badge bg-info">Extreme</span>',
+            "Estimated Time": "N/A",
+            "Route Type": "Lollipop",
+            "Dogs": "N/A",
+            "Park": "N/A",
+            "Region": "N/A",
+            "Author": "Daniel Chazin",
+            "GPS Coordinates": '0.000000,\n 0.000000 <br><small class="text-muted">(Parking location)</small>',
+            "Features": '<span class="badge bg-secondary me-1 mb-1">Cliffs</span>',
+            "Publish Date": "N/A",
+            "Last Updated": "N/A",
+        },
+        {"Description": "<p>Follow the Long Path to the cliffs.</p>"},
+        None,
+    ),
+    (
+        11,
+        "Fixture Empty Track",
+        # A page that links a GPX holding no point: the extract lands its gpx
+        # as null, so its published route is refused as fewer than two points.
+        {
+            "Length": "3.0 miles",
+            "Difficulty": '<span class="badge bg-info">Easy</span>',
+            "Estimated Time": "2.0 hours",
+            "Route Type": "Circuit",
+            "Dogs": "Allowed on leash",
+            "Park": "Harriman State Park",
+            "Region": "Lower Hudson",
+            "Author": "Daniel Chazin",
+            "GPS Coordinates": '41.650000,\n -74.300300 <br><small class="text-muted">(Parking location)</small>',
+            "Features": '<span class="badge bg-secondary me-1 mb-1">Woods</span>',
+            "Publish Date": "April 4, 2016",
+            "Last Updated": "N/A",
+        },
+        {"Description": "<p>A circuit on the Long Path.</p>"},
+        "",
+    ),
+    (
+        12,
+        "Fixture No Route Type",
+        # No Route Type and no Description card: two of hike_problems()'s
+        # review notes (SH02), on a hike with a coordinate.
+        {
+            "Length": "3.5 miles",
+            "Difficulty": '<span class="badge bg-info">Strenuous</span>',
+            "Estimated Time": "2.5 hours",
+            "Route Type": "N/A",
+            "Dogs": "Allowed on leash",
+            "Park": "Bear Mountain State Park",
+            "Region": "Lower Hudson",
+            "Author": "Daniel Chazin",
+            "GPS Coordinates": '41.750000,\n -74.300100 <br><small class="text-muted">(Parking location)</small>',
+            "Features": '<span class="badge bg-secondary me-1 mb-1">Views</span>',
+            "Publish Date": "October 10, 2020",
+            "Last Updated": "N/A",
+        },
+        {"Summary": "<p>A climb to a view.</p>"},
+        None,
+    ),
+)
+
+
+def _hikefinder_page(hike_id: int, title: str, fields: dict, cards: dict, track) -> str:
+    """One Hike Finder page in the export's shape (tests/test_lib_hikefinder.py's `page`)."""
+    rows = "".join(f'<div class="col-md-6"><strong>{label}:</strong> {value}</div>' for label, value in fields.items())
+    blocks = "".join(
+        f'<div class="card"><div class="card-header"><h2 class="h6">{name}</h2></div><div class="card-body">{body}</div></div>'
+        for name, body in cards.items()
+    )
+    download = f'<a href="download_gpx.php?id={hike_id}">Download GPX</a>' if track is not None else ""
+    return (
+        f"<html><body><h1 class='display-5'>{title}</h1>"
+        f'<div class="card"><div class="card-header"><h2 class="h5">Hike Information</h2></div>'
+        f'<div class="card-body"><div class="row mb-3">{rows}</div></div></div>'
+        f"{blocks}{download}"
+        "<script>const routeCoordinates = [[1,2]];</script></body></html>"
+    )
+
+
+def _hikefinder_gpx(title: str, points) -> str:
+    """A GPX as gpx.studio writes one: a named track, each point with an `<ele>` in metres."""
+    trkpts = "".join(f'<trkpt lat="{lat}" lon="{lon}"><ele>{ele}</ele></trkpt>' for lat, lon, ele in points)
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<gpx xmlns="http://www.topografix.com/GPX/1/1" version="1.1" creator="https://gpx.studio">'
+        f"<metadata><name>{title}</name></metadata><trk><name>{title}</name><trkseg>{trkpts}</trkseg></trk></gpx>"
+    )
+
+
+def suggested_hikes_fixtures() -> dict[str, str]:
+    """The suggested_hikes family's fixture files, under hikefinder/: the listing, each page, each GPX.
+
+    extract/_fixtures.py serves `hikes.html` at the export's `hikes.php`,
+    `hike-<id>.html` at `hike.php?id=<id>` and `track-<id>.gpx` at
+    `download_gpx.php?id=<id>`.
+    """
+    links = "".join(f'<a href="hike.php?id={hike_id}">{title}</a>' for hike_id, title, _, _, _ in _HIKEFINDER_HIKES)
+    files = {f"{HIKEFINDER_DIR}/hikes.html": f"<html><body>Results ({len(_HIKEFINDER_HIKES)} hikes found) {links}</body></html>"}
+    for hike_id, title, fields, cards, track in _HIKEFINDER_HIKES:
+        files[f"{HIKEFINDER_DIR}/hike-{hike_id}.html"] = _hikefinder_page(hike_id, title, fields, cards, track)
+        if track is not None:
+            files[f"{HIKEFINDER_DIR}/track-{hike_id}.gpx"] = _hikefinder_gpx(title, track or [])
+    return files
 
 
 def write_fixtures(raw_dir: Path) -> list[str]:
@@ -2530,6 +2749,7 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         "external/cdtc_centerline.geojson": _registered_trail_lines_layer("cdtc_centerline", None),
         "external/wi_ice_age_trail.geojson": _registered_trail_lines_layer("wi_ice_age_trail", None),
         **closures_and_warnings_fixtures(),
+        **suggested_hikes_fixtures(),
     }
     files = _trail_lines_network_fixtures(files)
     files = _trail_lines_at_fixtures(files)

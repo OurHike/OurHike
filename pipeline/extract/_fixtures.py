@@ -27,6 +27,16 @@ pipeline/reference/, so CI reads the real thing: the podcast episodes, the
 POI identity ledger, ATC's reviewed Trail Updates and the rest, and each
 club's folder of challenge files (ReviewedDir), one row per file.
 
+NYNJTC'S HIKE FINDER EXPORT IS ANSWERED TOO, so the suggested_hikes family's
+models build in CI (stage 3 of #1793 — Rebuild the data platform as dlt → dbt:
+seven contracted marts, a monthly refresh, published docs, and lighter phone
+downloads): make_dbt_fixtures.py's
+suggested_hikes_fixtures() writes a listing, the pages and their GPX under
+hikefinder/, served at `hikes.php`, `hike.php?id=<id>` and
+`download_gpx.php?id=<id>`, so PublishedHikes' own listing guard, parse and
+GPX check run. The host's 10-second crawl delay is the live host's request,
+not the fixture's, so it is lifted while fixture mode runs.
+
 THE HOURLY LANE'S OTHER UPSTREAMS ARE ANSWERED TOO, so the closures and
 warnings marts build in CI (#1793, stage 3). make_dbt_fixtures.py writes one
 answer for each under conditions/, and only the transport is swapped:
@@ -82,6 +92,7 @@ from extract._kinds import (
     ConditionsQuery,
     NwsAlerts,
     OpentrailFeed,
+    PublishedHikes,
     ReviewedDir,
     ReviewedFile,
     SocrataDataset,
@@ -106,6 +117,10 @@ CONDITIONS_DIR = "conditions"
 NWS_FIXTURE = "nws_alerts.json"
 POSTGRES_FIXTURE = "ourhike_postgres.json"
 
+# The Hike Finder's answers (make_dbt_fixtures.py's suggested_hikes_fixtures()):
+# the listing, `hike-<id>.html` per page and `track-<id>.gpx` per GPX.
+HIKEFINDER_DIR = "hikefinder"
+
 
 def fixture_file(raw_dir: Path, key: str) -> Path | None:
     """The GeoJSON file make_dbt_fixtures.py wrote for a key, or None."""
@@ -113,6 +128,19 @@ def fixture_file(raw_dir: Path, key: str) -> Path | None:
         if candidate.exists():
             return candidate
     return None
+
+
+def hikefinder_answers(raw_dir: Path, base: str) -> dict[str, str] | None:
+    """{URL: body} for the Hike Finder export at `base`, from make_dbt_fixtures.py's files, or None when it wrote none."""
+    folder = raw_dir / HIKEFINDER_DIR
+    if not (folder / "hikes.html").exists():
+        return None
+    answers = {base + "hikes.php": (folder / "hikes.html").read_text()}
+    for page in sorted(folder.glob("hike-*.html")):
+        answers[f"{base}hike.php?id={page.stem.removeprefix('hike-')}"] = page.read_text()
+    for track in sorted(folder.glob("track-*.gpx")):
+        answers[f"{base}download_gpx.php?id={track.stem.removeprefix('track-')}"] = track.read_text()
+    return answers
 
 
 def conditions_fixture(raw_dir: Path, name: str) -> dict | None:
@@ -254,6 +282,16 @@ def layer_metadata(features: list[dict]) -> dict:
     return {"objectIdField": oid, "fields": fields, "maxRecordCount": MAX_RECORD_COUNT}
 
 
+def _text_response(request, body: str, content_type: str) -> requests.Response:
+    """A page or a file served as its own text, not as JSON: the Hike Finder's HTML and GPX."""
+    response = requests.Response()
+    response.status_code = 200
+    response._content = body.encode("utf-8")
+    response.headers = CaseInsensitiveDict({"Content-Type": content_type})
+    response.url, response.request, response.encoding = request.url, request, "utf-8"
+    return response
+
+
 def _response(request, body, status: int = 200, headers: dict | None = None) -> requests.Response:
     response = requests.Response()
     response.status_code = status
@@ -274,6 +312,7 @@ class FixtureAdapter(requests.adapters.BaseAdapter):
         feeds: dict[str, list],
         wordpress: dict[str, dict] | None = None,
         nws: dict | None = None,
+        hikefinder: dict[str, str] | None = None,
     ):
         super().__init__()
         self.arcgis, self.socrata, self.feeds = arcgis, socrata, feeds
@@ -281,6 +320,8 @@ class FixtureAdapter(requests.adapters.BaseAdapter):
         self.wordpress = wordpress or {}
         # NWS's /alerts/active body.
         self.nws = nws
+        # The Hike Finder export's pages and tracks, by their full URL.
+        self.hikefinder = hikefinder or {}
 
     def send(self, request, **kwargs):
         parts = urlsplit(request.url)
@@ -288,6 +329,9 @@ class FixtureAdapter(requests.adapters.BaseAdapter):
         query = {name: values[0] for name, values in parse_qs(parts.query, keep_blank_values=True).items()}
         if self.nws is not None and base == NWS_ALERTS_URL:
             return _response(request, self.nws, headers={"Content-Type": "application/geo+json"})
+        if request.url in self.hikefinder:
+            kind = "application/gpx+xml" if "download_gpx.php" in request.url else "text/html; charset=UTF-8"
+            return _text_response(request, self.hikefinder[request.url], kind)
         for api, document in self.wordpress.items():
             if base.startswith(api + "/"):
                 return self._wordpress(request, document, base[len(api) + 1 :], query)
@@ -353,7 +397,7 @@ class FixtureAdapter(requests.adapters.BaseAdapter):
 
 def fixture_resources(raw_dir: Path) -> tuple[list, FixtureAdapter]:
     """The extract's own resources that have a fixture file, and the adapter that answers them."""
-    arcgis, socrata, feeds, wordpress, chosen = {}, {}, {}, {}, []
+    arcgis, socrata, feeds, wordpress, hikefinder, chosen = {}, {}, {}, {}, {}, []
     nws, postgres = conditions_fixture(raw_dir, NWS_FIXTURE), conditions_fixture(raw_dir, POSTGRES_FIXTURE)
     for resource in all_resources(discover() + discover_shared()):
         if isinstance(resource, ReviewedFile | ReviewedDir):
@@ -366,6 +410,12 @@ def fixture_resources(raw_dir: Path) -> tuple[list, FixtureAdapter]:
         if isinstance(resource, ConditionsQuery):
             # Served by FixtureConnection in build(); an artifact the file does not answer stays out.
             if postgres is not None and resource.key in postgres:
+                chosen.append(resource)
+            continue
+        if isinstance(resource, PublishedHikes):
+            answers = hikefinder_answers(raw_dir, registry_entry(resource.key)["url"].rstrip("/") + "/")
+            if answers is not None:
+                hikefinder.update(answers)
                 chosen.append(resource)
             continue
         if isinstance(resource, WordpressPosts | WordpressTerms):
@@ -391,7 +441,7 @@ def fixture_resources(raw_dir: Path) -> tuple[list, FixtureAdapter]:
         else:
             continue
         chosen.append(resource)
-    return chosen, FixtureAdapter(arcgis, socrata, feeds, wordpress=wordpress, nws=nws)
+    return chosen, FixtureAdapter(arcgis, socrata, feeds, wordpress=wordpress, nws=nws, hikefinder=hikefinder)
 
 
 def build(raw_dir: Path, warehouse: Path, store: Path) -> dict[str, int]:
@@ -415,6 +465,9 @@ def build(raw_dir: Path, warehouse: Path, store: Path) -> dict[str, int]:
     # URL, so fixture mode names one that no real driver could reach.
     real_psycopg, url_was = _kinds.psycopg, os.environ.get(export_conditions.URL_ENV_VAR)
     postgres = conditions_fixture(raw_dir, POSTGRES_FIXTURE)
+    # The Hike Finder host's crawl delay, 10 s a request, is the live host's ask.
+    real_throttle = _kinds.HIKEFINDER_THROTTLE_SECONDS
+    _kinds.HIKEFINDER_THROTTLE_SECONDS = 0
     _kinds.session = fixture_session
     if postgres is not None:
         _kinds.psycopg = FixturePsycopg(postgres)
@@ -426,6 +479,7 @@ def build(raw_dir: Path, warehouse: Path, store: Path) -> dict[str, int]:
     finally:
         _kinds.session = real_session
         _kinds.psycopg = real_psycopg
+        _kinds.HIKEFINDER_THROTTLE_SECONDS = real_throttle
         if postgres is not None:
             if url_was is None:
                 os.environ.pop(export_conditions.URL_ENV_VAR, None)

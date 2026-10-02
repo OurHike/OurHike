@@ -101,6 +101,15 @@ STEPS: list[Step] = [
         command=("step_dem_sampling.py", "--warehouse", "{warehouse}"),
         fixture_args=("--index", "{raw_dir}/elevation/tile_index.json"),
     ),
+    # SH03, SH06: each Hike Finder hike's route formed from its description,
+    # or its published track re-walked, over the junction graph. Last of the
+    # steps, because it reads the graph's edges and their climb, which the
+    # graph's own step and the network elevation will write ahead of it.
+    Step(
+        name="step_form_route",
+        table="formed_routes",
+        command=("step_form_route.py", "--warehouse", "{warehouse}"),
+    ),
 ]
 
 

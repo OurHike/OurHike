@@ -4,7 +4,7 @@
 -- whose data reaches a hiker, by provider. `layers` and `keys` are each
 -- sorted on their own, so they are not index-aligned, as the Python warns.
 with sources as (
-    select * from {{ ref('sources') }}
+    select * from {{ ref('sources', v=1) }}
 ),
 
 stewards as (

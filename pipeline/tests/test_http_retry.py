@@ -26,6 +26,7 @@ from lib.http_retry import (
     request_with_retry,
     retry_after_seconds,
 )
+from lib.user_agent import CONTACTABLE_USER_AGENT, USER_AGENT
 
 URL = "https://tnmaccess.nationalmap.gov/api/v1/products"
 
@@ -293,3 +294,59 @@ class TestDownloadWithRetry:
 
         sent = [request.headers.get("User-Agent") for request in requests_mock.request_history]
         assert sent == ["OurHike-pipeline", "OurHike-pipeline"]
+
+
+class TestEveryRequestNamesThePipeline:
+    """`named()`: a request carries lib/user_agent.py's `USER_AGENT` unless its caller chose an agent.
+
+    Before it, a call with no session went out as `python-requests/<version>`,
+    which is how every ArcGIS fetch in `lib/arcgis.py` reached its host.
+    """
+
+    def test_a_request_with_no_session_sends_user_agent(self, requests_mock):
+        requests_mock.get(URL, json={})
+
+        request_with_retry(URL)
+
+        assert requests_mock.last_request.headers["User-Agent"] == USER_AGENT
+
+    def test_a_bare_session_on_requests_default_agent_sends_user_agent(self, requests_mock):
+        """export_dem.py's tile session is built with no agent of its own."""
+        requests_mock.get(URL, json={})
+
+        request_with_retry(URL, session=requests.Session())
+
+        assert requests_mock.last_request.headers["User-Agent"] == USER_AGENT
+
+    def test_a_session_that_names_itself_keeps_its_own_agent(self, requests_mock):
+        requests_mock.get(URL, json={})
+        session = requests.Session()
+        session.headers["User-Agent"] = CONTACTABLE_USER_AGENT
+
+        request_with_retry(URL, session=session)
+
+        assert requests_mock.last_request.headers["User-Agent"] == CONTACTABLE_USER_AGENT
+
+    def test_an_agent_in_the_callers_headers_wins_in_any_case(self, requests_mock):
+        requests_mock.get(URL, json={})
+
+        request_with_retry(URL, headers={"user-agent": CONTACTABLE_USER_AGENT})
+
+        assert requests_mock.last_request.headers["User-Agent"] == CONTACTABLE_USER_AGENT
+
+    def test_the_callers_other_headers_still_ride_beside_the_agent(self, requests_mock):
+        requests_mock.get(URL, json={})
+
+        request_with_retry(URL, headers={"If-None-Match": '"abc"'})
+
+        assert requests_mock.last_request.headers["If-None-Match"] == '"abc"'
+        assert requests_mock.last_request.headers["User-Agent"] == USER_AGENT
+
+    def test_a_download_with_no_headers_sends_user_agent_on_every_attempt(self, requests_mock, naps, tmp_path):
+        url = TestDownloadWithRetry.PBF
+        requests_mock.get(url, [{"status_code": 503}, {"content": b"osm-pbf-bytes"}])
+
+        download_with_retry(url, tmp_path / "new-york-latest.osm.pbf", sleep=naps.append)
+
+        sent = [request.headers.get("User-Agent") for request in requests_mock.request_history]
+        assert sent == [USER_AGENT, USER_AGENT]

@@ -11,12 +11,14 @@
 -- at its call says the chains "would give the same vertices"; the chain
 -- merge's own docstring says the same of the 1 m pass. Neither holds where a
 -- segment end could be dropped, and this model follows the code, not the
--- comment.) Each segment Douglas-Peucker'd again at
--- trail_lines_overview_tolerance_m (100 m) in EPSG:5070, keeping its 1 m line
--- where the pass leaves it undrawable, every part in the layer's order, each
--- coordinate rounded to trail_lines_overview_decimals (4) as Python's round()
--- rounds it. The tolerance and the decimals are argued in export_trails.py:
--- 100 m is the worst the sketch is ever wrong by, 0.43 px at the pin seam.
+-- comment.) Each segment Douglas-Peucker'd again, by the
+-- simplified_in_metres macro, at trail_lines_overview_tolerance_m (100 m)
+-- in EPSG:5070, as write_overview() calls simplify_records(), keeping its
+-- 1 m line where the pass leaves it undrawable, every part in the layer's
+-- order, each coordinate rounded to trail_lines_overview_decimals (4) as
+-- Python's round() rounds it. The tolerance and the decimals are argued in
+-- export_trails.py: 100 m is the worst the sketch is ever wrong by, 0.43 px
+-- at the pin seam.
 --
 -- Only the centerline (CHAIN_MERGED_SOURCES), and only where it may publish:
 -- the sketch is the centerline's geometry.
@@ -37,20 +39,10 @@ coarse as (
         simplified.source_order,
         simplified.source_row,
         st_geomfromtext(simplified.geom_wkt) as line_geom,
-        st_transform(
-            st_simplify(
-                st_transform(
-                    st_geomfromtext(simplified.geom_wkt),
-                    'EPSG:4326',
-                    'EPSG:5070',
-                    always_xy := true
-                ),
-                {{ var('trail_lines_overview_tolerance_m') }}
-            ),
-            'EPSG:5070',
-            'EPSG:4326',
-            always_xy := true
-        ) as reduced_geom
+        {{ simplified_in_metres(
+            'st_geomfromtext(simplified.geom_wkt)',
+            var('trail_lines_overview_tolerance_m')
+        ) }} as reduced_geom
     from simplified
     inner join publication
         on simplified.source_key = publication.source_key

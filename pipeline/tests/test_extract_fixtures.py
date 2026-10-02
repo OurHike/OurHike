@@ -16,7 +16,15 @@ import requests
 import export_conditions
 import make_dbt_fixtures
 from extract._fixtures import FixtureAdapter, FixtureConnection, build, esri_type, fixture_file, fixture_resources
-from extract._kinds import ConditionsQuery, NwsAlerts, ReviewedDir, ReviewedFile, WordpressPosts, WordpressTerms
+from extract._kinds import (
+    ConditionsQuery,
+    NwsAlerts,
+    PublishedHikes,
+    ReviewedDir,
+    ReviewedFile,
+    WordpressPosts,
+    WordpressTerms,
+)
 
 
 @pytest.fixture(scope="module")
@@ -33,7 +41,9 @@ def test_every_fixture_file_with_a_resource_lands_whole(fixtures):
     fetched = [
         r
         for r in resources
-        if not isinstance(r, ReviewedFile | ReviewedDir | NwsAlerts | WordpressPosts | WordpressTerms | ConditionsQuery)
+        if not isinstance(
+            r, ReviewedFile | ReviewedDir | NwsAlerts | WordpressPosts | WordpressTerms | ConditionsQuery | PublishedHikes
+        )
     ]
     assert len(fetched) == 56, "55 monthly layers and OPRHP's temporary closures on the hourly lane"
     for resource in fetched:
@@ -52,6 +62,23 @@ def test_the_hourly_lanes_other_upstreams_land_from_their_conditions_answers(fix
     assert counts["raw_nynjtc__nynjtc_trail_alerts_terms"] == sum(len(terms) for terms in nynjtc["terms"].values())
     for artifact in ("closures", "reports", "notes", "disputes"):
         assert counts[f"raw_ourhike__{artifact}"] == len(postgres[artifact]["rows"]), artifact
+
+
+def test_the_hike_finder_lands_every_page_its_listing_links_through_the_real_parse(fixtures):
+    """PublishedHikes reads make_dbt_fixtures.py's listing, pages and GPX through lib/hikefinder.py: every page lands,
+    a coordinate outside the NYNJTC box lands as no start, and a GPX holding no point lands as no track."""
+    root, counts = fixtures
+    hikes = make_dbt_fixtures._HIKEFINDER_HIKES
+    assert counts["raw_nynjtc__nynjtc_hike_finder"] == len(hikes)
+    with duckdb.connect(str(root / "warehouse.duckdb"), read_only=True) as con:
+        rows = {
+            hike_id: (start, gpx)
+            for hike_id, start, gpx in con.execute('select id, start, gpx from raw."raw_nynjtc__nynjtc_hike_finder"').fetchall()
+        }
+    assert set(rows) == {hike_id for hike_id, *_ in hikes}
+    assert rows[9][0] is None, "hike 9's coordinate is 0,0, which lib/hikefinder.py's _in_range() refuses"
+    assert rows[4][1] is not None and "<trkpt" in rows[4][1], "hike 4's GPX lands as served"
+    assert rows[11][1] is None, "hike 11's GPX holds no point, so PublishedHikes lands no track"
 
 
 def test_conditions_rows_land_in_the_shapes_their_real_kinds_give_them(fixtures):

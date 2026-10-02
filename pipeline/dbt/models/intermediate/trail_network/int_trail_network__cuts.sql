@@ -61,8 +61,14 @@ with parts as (
     where refused_because is null
 ),
 
--- The pairs whose envelopes meet, each once. The inequality is applied
--- outside the join so DuckDB plans the envelope test as a spatial join.
+-- The pairs whose envelopes meet, each once, the lower part first. WHY
+-- sign(): written `lower < higher`, DuckDB 1.5.4 planned the inequality as
+-- the join (PIECEWISE_MERGE_JOIN) and the envelope test as a filter on all
+-- 1,181,953 pairs of 1,538 real Harriman parts, 5.2 s that grows as the
+-- square of the parts, in every placement tried: in the WHERE, in the ON,
+-- outside a materialized CTE. As sign() of the difference it is no join
+-- condition, and the envelope test plans as a SPATIAL_JOIN, 0.3 s (EXPLAIN
+-- and timings measured 2026-10-02 on DuckDB 1.5.4 with spatial 28db190).
 touching_boxes as (
     select
         lower_box.part_order as low_order,
@@ -72,6 +78,7 @@ touching_boxes as (
         on st_intersects(
             st_envelope(lower_box.geom_m), st_envelope(higher_box.geom_m)
         )
+    where sign(higher_box.part_order - lower_box.part_order) = 1
 ),
 
 candidates as (
@@ -88,7 +95,6 @@ candidates as (
         on touching_boxes.low_order = low_part.part_order
     inner join parts as high_part
         on touching_boxes.high_order = high_part.part_order
-    where touching_boxes.low_order < touching_boxes.high_order
 ),
 
 crossings as (

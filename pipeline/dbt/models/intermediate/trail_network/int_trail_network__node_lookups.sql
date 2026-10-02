@@ -119,8 +119,8 @@ lookups as (
 cells as (
     select
         *,
-        floor(x / {{ quant_m }}) as cell_x,
-        floor(y / {{ quant_m }}) as cell_y
+        cast(floor(x / {{ quant_m }}) as bigint) as cell_x,
+        cast(floor(y / {{ quant_m }}) as bigint) as cell_y
     from lookups
 ),
 
@@ -128,21 +128,38 @@ offsets as (
     select unnest([-1, 0, 1]) as step
 ),
 
+-- Each point's nine cells, the scan's 3 x 3, as plain columns: with the
+-- offset added inside the join instead, DuckDB 1.5.4 planned `seq < seq`
+-- as the join and the cells as a filter on its 2,862,104,310 rows, 349 s on
+-- 25,220 points of real Harriman lines (measured 2026-10-02); keyed like
+-- this the cells are a hash join.
+probes as materialized (
+    select
+        cells.seq,
+        cells.x,
+        cells.y,
+        across.step as dx,
+        up.step as dy,
+        cells.cell_x + across.step as near_cell_x,
+        cells.cell_y + up.step as near_cell_y
+    from cells
+    cross join offsets as across
+    cross join offsets as up
+),
+
 -- Every earlier point within the grid's reach of each point, with the cell
 -- offset the scan meets it at.
-neighbours as (
+neighbours as materialized (
     select
         probes.seq,
         near.seq as near_seq,
-        across.step as dx,
-        up.step as dy
-    from cells as probes
-    cross join offsets as across
-    cross join offsets as up
+        probes.dx,
+        probes.dy
+    from probes
     inner join cells as near
         on
-            probes.cell_x + across.step = near.cell_x
-            and probes.cell_y + up.step = near.cell_y
+            probes.near_cell_x = near.cell_x
+            and probes.near_cell_y = near.cell_y
     where
         near.seq < probes.seq
         and pow(near.x - probes.x, 2) + pow(near.y - probes.y, 2)
@@ -215,11 +232,11 @@ select
     cells.y,
     settled.status,
     settled.status = 'makes' as makes_node,
-    coalesce(own_node.node_raw, found.node_raw) as node_raw
+    coalesce(
+        own_node.node_raw,
+        case when settled.status = 'finds' then found.node_raw end
+    ) as node_raw
 from cells
 inner join settled on cells.seq = settled.seq
 left join makers as own_node on cells.seq = own_node.seq
-left join found
-    on
-        cells.seq = found.seq
-        and settled.status = 'finds'
+left join found on cells.seq = found.seq

@@ -58,7 +58,16 @@ from psycopg.rows import dict_row
 
 import export_conditions
 from check_freshness import CORRIDOR_PROBES
-from extract._contract import EXTRACT_DIR, PIPELINE_DIR, Resource, Unavailable, read_club_file, slug_for_folder
+from extract._contract import (
+    EXTRACT_DIR,
+    PIPELINE_DIR,
+    Carried,
+    Incomplete,
+    Resource,
+    Unavailable,
+    read_club_file,
+    slug_for_folder,
+)
 from fetch_atc_updates import TOLERATED_PARSE_FAILURES as ATC_TOLERATED_PARSE_FAILURES
 from fetch_club_pdfs import extract_page_texts
 from fetch_elevation import TILE_URL_TEMPLATE as DEM_TILE_URL_TEMPLATE
@@ -1548,13 +1557,101 @@ def podcast_feed(key: str, **overrides) -> PodcastFeed:
 # ATC's robots.txt asks every agent to wait between requests: `User-agent: *`,
 # `Disallow: /wp-admin/`, `Crawl-delay: 10` (read 2026-10-02, 190 bytes).
 # lib/atc_scrape.py's fetcher sends its listing pages without waiting (the dlt
-# skill, "Honour Crawl-delay"); this resource waits after every request it sends
-# ATC, the change check's included. Fixture mode sets it to 0, as it serves no
-# host (extract/_fixtures.py).
+# skill, "Honour Crawl-delay"); every request this resource sends ATC waits it,
+# through ATC_CRAWL_GATE below. Fixture mode sets it to 0, as it serves no host
+# (extract/_fixtures.py).
 ATC_CRAWL_DELAY_SECONDS = 10
 
 # The sitemap protocol's namespace, which ATC's All in One SEO sitemap declares (read 2026-10-02).
 SITEMAP_NAMESPACE = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+
+# How long a sitemap the change check read is reused by the read that follows
+# it in the same run, rather than asked for again. ATC's own cache sends it
+# with `cache-control: max-age=600` (Cloudflare and WP Engine in front of it;
+# Measured 2026-10-02 18:13 UTC, the body "generated" 11 minutes before it was
+# served), so a re-read younger than that can come back the same copy.
+ATC_LISTING_REUSE_SECONDS = 600
+
+# The time one page read is allowed beyond the Crawl-delay's wait, when the
+# read has a budget: no page is started that this much time would not see
+# finish. Reasoned from cw2's crawl of 2026-10-02 (98 requests, every one 200,
+# 1,062 s at 10 s apart, so about 0.9 s each beyond the wait): 15 s is about
+# 16 times that. A page slower than this still finishes, and only a read that
+# overruns the leg's whole budget is abandoned (extract/_run.py's read_each).
+ATC_PAGE_ALLOWANCE_SECONDS = 15
+
+# Kept back from the budget a run hands the read, for what follows the last
+# page (building the rows) and for the read_each thread's own start.
+# @unvalidated: a round number; the soak's summaries, which time the read,
+# would show whether it is ever needed.
+ATC_READ_MARGIN_SECONDS = 5
+
+# How many runs it takes to re-read every carried page once when nothing
+# moves, so a page whose text changed while its lastmod stayed put is read
+# again within that many runs (AtcTrailUpdatePages, "LASTMOD IS NOT EVERY
+# CHANGE"). 24 is one day of the hourly lane, the 24 h a page stayed trusted
+# in lib/atc_scrape.py's CACHE_TTL, so the gap is no wider than today's
+# fetcher leaves it. @unvalidated: what would settle it is how often a
+# re-read finds a page changed while its lastmod stood still, which this
+# resource prints each time it does.
+ATC_REVALIDATION_RUNS = 24
+
+
+@dataclass
+class CrawlGate:
+    """One host's Crawl-delay, kept between one request's end and the next request's start, whoever sends them.
+
+    Every request this resource sends ATC passes wait() before and done()
+    after (gated() below), across sessions, the change check and the read,
+    and each attempt lib/http_retry.py makes, so no two are closer than the
+    delay, a failed one included. A gap is measured end to start, the
+    stricter reading of a Crawl-delay. `clock` and `sleep` are what a test
+    replaces to assert a delay and a budget without waiting them out; None
+    is time.monotonic and time.sleep, looked up when used.
+    """
+
+    clock: object = None
+    sleep: object = None
+    finished: float | None = None
+
+    def now(self) -> float:
+        return (self.clock or time.monotonic)()
+
+    def remaining(self) -> float:
+        """Seconds still to wait before the next request may start: 0 once the delay has passed."""
+        if self.finished is None:
+            return 0.0
+        return max(0.0, self.finished + ATC_CRAWL_DELAY_SECONDS - self.now())
+
+    def wait(self) -> None:
+        pause = self.remaining()
+        if pause > 0:
+            (self.sleep or time.sleep)(pause)
+
+    def done(self) -> None:
+        self.finished = self.now()
+
+
+ATC_CRAWL_GATE = CrawlGate()
+
+# The sitemap each change check read, by key, with the gate clock's time it
+# was read, for the read that follows in the same run (ATC_LISTING_REUSE_SECONDS).
+_ATC_LISTINGS: dict[str, tuple[float, list[tuple[str, str | None]]]] = {}
+
+
+def gated(http: requests.Session) -> requests.Session:
+    """`http`, with every request it sends held to ATC_CRAWL_GATE, the attempts lib/http_retry.py retries included."""
+    send = http.request
+
+    def request(*args, **kwargs):
+        ATC_CRAWL_GATE.wait()
+        try:
+            return send(*args, **kwargs)
+        finally:
+            ATC_CRAWL_GATE.done()
+
+    http.request = request
+    return http
 
 
 def _atc_sitemap_url(entry: dict) -> str:
@@ -1570,6 +1667,69 @@ def _atc_sitemap_url(entry: dict) -> str:
     if len(parts) != 1:
         raise KeyError(f"{entry['key']}: url is not a one-segment listing page, so it has no sitemap beside it: {entry['url']}")
     return f"{parsed.scheme}://{parsed.netloc}/{parts[0]}-sitemap.xml"
+
+
+def _instant(stamp: str | None) -> datetime | None:
+    """An ISO stamp with its offset as an aware instant, or None where it has none or Python cannot read it."""
+    try:
+        parsed = datetime.fromisoformat(stamp) if stamp else None
+    except ValueError:
+        return None
+    return parsed if parsed is None or parsed.tzinfo is not None else None
+
+
+def page_behind_sitemap(row: dict) -> bool:
+    """Whether the page a row was parsed from was older than the sitemap entry it was read for.
+
+    A page's own latest stamp, the later of its JSON-LD dateModified and
+    datePublished, equalled the sitemap's lastmod on all 86 pages of cw2's
+    crawl (Measured 2026-10-02, 04:42-05:00 UTC; dateModified alone equalled
+    it on 85, helene-storm-damage carrying a datePublished of 2026-07-29 after
+    a dateModified of 2025-09-23). So a page that reads older than its lastmod
+    was served from a cache that had not caught up with the sitemap yet: the
+    sitemap and each page are cached apart, each answered with
+    `cache-control: max-age=600` from Cloudflare's edge (Measured 2026-10-02,
+    the sitemap at 18:13 UTC, harpers-ferry-footbridge-closure at 18:59 UTC,
+    `cf-cache-status: HIT`).
+    False where either stamp cannot be read, since that proves nothing.
+    """
+    stamps = [stamp for stamp in (_instant(row.get("date_modified")), _instant(row.get("date_published"))) if stamp]
+    lastmod = _instant(row.get("sitemap_lastmod"))
+    return bool(stamps) and lastmod is not None and max(stamps) < lastmod
+
+
+# Each row's own columns, as rows_carried() yields them: what a carried row is
+# cut back to, so dlt's columns and `_loaded_at` from its last load never ride
+# along. `_row` is not one: it is the update's place in this run's sitemap.
+ATC_PAGE_COLUMNS = (
+    "slug",
+    "title",
+    "category",
+    "states",
+    "date_modified",
+    "date_published",
+    "miles",
+    "source_url",
+    "sitemap_lastmod",
+    "page_sha256",
+    "page_fetched_at",
+)
+# The columns that land as JSON text, which a row read back from the table's
+# Parquet holds as a string (the dlt skill, rule 1) and a parsed page as a list.
+ATC_PAGE_JSON_COLUMNS = ("states", "miles")
+# What a re-read compares, to tell a page whose facts changed while its lastmod
+# did not: everything but when it was read and the hash of the bytes, which
+# moves with ATC's markup alone.
+ATC_PAGE_FACTS = tuple(name for name in ATC_PAGE_COLUMNS if name not in ("page_fetched_at", "page_sha256"))
+
+
+def _page_row(row: dict) -> dict:
+    """A row as rows_carried() yields it, from a parsed page, a committed load's Parquet or a progress row."""
+    kept = {name: row.get(name) for name in ATC_PAGE_COLUMNS}
+    for name in ATC_PAGE_JSON_COLUMNS:
+        if isinstance(kept[name], str):
+            kept[name] = json.loads(kept[name])
+    return kept
 
 
 @dataclass(frozen=True)
@@ -1591,34 +1751,73 @@ class AtcTrailUpdatePages(Resource):
     difference either way), so an update ATC stops listing leaves the sitemap
     and this table, and is not republished (CL10).
 
-    THE CHECK is a hash of the sitemap's (slug, lastmod) set: one request an
-    hour, 27,252 bytes on 2026-10-02 (ELT.md measured 3,411 on 2026-10-01). A
-    new, removed or edited update moves it. Not the feed's validator, which is
-    site-wide and false-fresh on an unpublish (ELT.md).
+    ONLY WHAT MOVED IS READ, AND THE WHOLE TABLE STILL LANDS. Every run reads
+    the sitemap, then the page of each update that is new or whose lastmod
+    differs from the row the last committed load holds for it, at the full
+    Crawl-delay. Every other row is carried from that load (extract/_run.py
+    hands it over as Carried.committed, read from the load's own files by
+    name), and a slug the sitemap no longer lists is dropped. What lands is
+    the whole current set under `replace`, so a refused load, a skipped run
+    and the run check behave as for any table, and a removal is a removal. A
+    full re-read of 86 pages and the sitemap is 87 requests 10 s apart, about
+    15 minutes (cw2, Reasoned), and the conditions leg gives a read 150 s
+    (publish-conditions.yml's `--read-seconds`), so a read of every page each
+    time the set moved was abandoned on every such hour and the table froze.
+    A row carried or read is the same row: tests/test_extract_atc_trail_update_pages.py
+    holds an incremental read after a change equal to a full read of the same
+    pages.
 
-    THE READ, WHEN THE SET MOVES, IS EVERY PAGE IT LISTS, not only the pages
-    whose lastmod moved. Every table here is `replace`, so a page left unread
-    would have no row unless the previous parse were carried across runs, and
-    nothing in the extract carries rows beyond a marker; carrying them in the
-    marker would also write about 30 KB into every `_extract_runs` row twice.
-    So ELT.md's "an update page is fetched only when its lastmod moves" is
-    not built. At ATC's Crawl-delay, one read of 86 pages and the sitemap
-    takes about 15 minutes (Reasoned: 87 requests, 10 s apart); requests per
-    day are about 24 on a quiet day and about 111 on a day something changed,
-    against about 350 today, all 10 s apart where today's are not.
+    A READ THAT RUNS OUT OF BUDGET LANDS NOTHING (Incomplete). With no
+    committed load to carry from, a first run reads as many pages as fit and
+    lands none of them, because a partial set under `replace` reads as the
+    whole: an update not reached yet would read as one ATC took down. What it
+    read is kept as progress, never as the data (extract/_run.py's
+    `_extract_progress`), and the next run carries it, so a first run on an
+    empty raw store completes over several hours at the full delay: 86 pages
+    at about 12 a run is 8 runs (Reasoned from ATC_PAGE_ALLOWANCE_SECONDS'
+    figures). An hour in which more pages moved than fit is the same case, and
+    the last committed table stands until every moved page is read.
+
+    LASTMOD IS NOT EVERY CHANGE. All in One SEO's lastmod is the later of the
+    post's modified and published dates (page_behind_sitemap() has the
+    measurement), and WordPress moves neither when a term the chip shows is
+    renamed, when a field is written without a save, or when the theme
+    changes what the page renders. A carried row would then be a false fresh,
+    so every run also re-reads the pages read longest ago, enough that every
+    page is re-read within ATC_REVALIDATION_RUNS runs, after the moved pages
+    and only in the budget they leave; a page re-read that differs from its
+    carried row while its lastmod did not move is printed, as the evidence
+    that settles the rate. A row whose page was older than its lastmod when
+    it was read (page_behind_sitemap) was served from a cache the sitemap had
+    already passed, and is re-read first. And the sitemap itself is cached
+    for up to 600 s (ATC_LISTING_REUSE_SECONDS), so an edit can take that long
+    to reach the change check, as it would to reach a listing page.
+
+    THE CHECK reads the sitemap, one request, 27,252 bytes on 2026-10-02
+    (ELT.md measured 3,411 on 2026-10-01), and is never FRESH, because every
+    run has pages to re-read; the marker it records is a hash of the
+    (slug, lastmod) set, which moves on a new, removed or edited update. The
+    read that follows reuses its sitemap rather than asking twice. About 5
+    requests an hour, 10 s apart, against about 350 a day today with no delay
+    (Reasoned: the sitemap, ceil(86 / 24) = 4 re-reads, and about one moved
+    page a day, which is what two reads of the sitemap 38 hours apart found:
+    one lastmod moved and nothing added or removed, 2026-10-01 03:53 to
+    2026-10-02 18:13 UTC).
 
     WHAT DOES NOT LAND: ATC's prose. The parse's `text` is the update's body,
     which no rule reads and sources.json's licence keeps on ATC's page ("Facts
     and a link only, and NOT a grant to mirror ATC's prose"); the page itself
     belongs in the as-sent copy, which is not built. `page_sha256` is the page's
-    hash, for provenance.
+    hash, for provenance, and `page_fetched_at` when the page was read, which
+    a carried row keeps.
 
     A READ THAT FAILS LOUDLY. An empty sitemap is a broken read, never "ATC has
-    nothing posted" (fetch_atc_updates.py's rule), and one page that does not
-    parse refuses the whole read (TOLERATED_PARSE_FAILURES, zero), so the run
-    refuses and the last committed table stands, as today's cache does. The
-    proof is the sitemap's own slug count (ELT.md, "A full reload that cannot
-    empty a safety table").
+    nothing posted" (fetch_atc_updates.py's rule), one page that does not
+    parse refuses the whole read (TOLERATED_PARSE_FAILURES, zero), and so does
+    a page that does not answer; the run refuses that resource and the last
+    committed table stands, as today's cache does. The proof is the sitemap's
+    own slug count, read in the same run, which the landed rows must equal
+    (`exact_proof`; ELT.md, "A full reload that cannot empty a safety table").
     """
 
     @property
@@ -1630,6 +1829,14 @@ class AtcTrailUpdatePages(Resource):
         return "pages"
 
     @property
+    def carries(self) -> bool:
+        return True
+
+    @property
+    def exact_proof(self) -> bool:
+        return True
+
+    @property
     def entry(self) -> dict:
         return registry_entry(self.key)
 
@@ -1638,7 +1845,7 @@ class AtcTrailUpdatePages(Resource):
         return _atc_sitemap_url(self.entry)
 
     def _get(self, http: requests.Session, url: str, label: str) -> requests.Response:
-        return request_with_retry(url, session=http, timeout=60, throttle_seconds=ATC_CRAWL_DELAY_SECONDS, label=label)
+        return request_with_retry(url, session=http, timeout=60, label=label)
 
     def sitemap(self, http: requests.Session) -> list[tuple[str, str | None]]:
         """(slug, lastmod) for each update the sitemap lists, in its order, each slug once.
@@ -1659,62 +1866,159 @@ class AtcTrailUpdatePages(Resource):
         return list(found.items())
 
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
+        _ATC_LISTINGS.pop(self.key, None)
         try:
-            listed = self.sitemap(session())
+            listed = self.sitemap(gated(session()))
         except (requests.RequestException, ValueError, ElementTree.ParseError) as error:
             print(f"  {self.key}: change check failed ({error}); fetching")
             return Freshness.UNKNOWN, None
         if not listed:
-            # Never FRESH: the read runs, and refuses on the empty sitemap.
+            # The read runs, and refuses on the empty sitemap.
             return Freshness.UNKNOWN, None
+        _ATC_LISTINGS[self.key] = (ATC_CRAWL_GATE.now(), listed)
         marker = {"slugs": str(len(listed)), "set_sha256": hashlib.sha256(json.dumps(sorted(listed)).encode()).hexdigest()}
-        if recorded is None:
-            return Freshness.STALE, marker
-        return compare_marker(_canonical(recorded), _canonical(marker)), marker
+        # Never FRESH, even on an unchanged set: the read re-reads the pages read longest ago ("LASTMOD IS NOT
+        # EVERY CHANGE" above), which a run left out of the lane would never reach.
+        return Freshness.STALE, marker
 
     def column_hints(self) -> dict:
         # Every stamp stays text: dlt reads an ISO stamp as a timestamp and
         # normalises it to UTC (NWS_TEXT_PROPERTIES above), which would lose
         # the offset dateModified carries.
-        texts = ("slug", "title", "category", "date_modified", "date_published", "source_url", "sitemap_lastmod", "page_sha256")
+        texts = (
+            "slug",
+            "title",
+            "category",
+            "date_modified",
+            "date_published",
+            "source_url",
+            "sitemap_lastmod",
+            "page_sha256",
+            "page_fetched_at",
+        )
         hints = {name: {"data_type": "text"} for name in texts}
         hints.update({"states": {"data_type": "json"}, "miles": {"data_type": "json"}, "_row": {"data_type": "bigint"}})
         return hints
 
     def rows(self, proofs: dict[str, int]):
-        http = session()
-        listed = self.sitemap(http)
+        """A full read: every page the sitemap lists, nothing carried and no budget."""
+        yield from self.rows_carried(proofs, Carried())
+
+    def _listing(self, http: requests.Session) -> list[tuple[str, str | None]]:
+        """The sitemap the change check read in this run, while still that young, or a fresh read of it."""
+        reused = _ATC_LISTINGS.pop(self.key, None)
+        if reused is not None and ATC_CRAWL_GATE.now() - reused[0] <= ATC_LISTING_REUSE_SECONDS:
+            return reused[1]
+        return self.sitemap(http)
+
+    def _read_page(self, http: requests.Session, slug: str, lastmod: str | None) -> dict | None:
+        """One update's page as its row, or None when it does not parse."""
+        response = self._get(http, atc_update_url(slug), f"ATC trail update {slug}")
+        parsed = parse_atc_update(response.text, slug)
+        if parsed is None:
+            return None
+        return {
+            "slug": parsed.slug,
+            "title": parsed.title,
+            "category": parsed.category,
+            "states": list(parsed.states),
+            "date_modified": parsed.date_modified,
+            "date_published": parsed.date_published,
+            "miles": [{"direction": m.direction, "start": m.start, "end": m.end, "raw": m.raw} for m in parsed.miles],
+            "source_url": parsed.source_url,
+            "sitemap_lastmod": lastmod,
+            "page_sha256": hashlib.sha256(response.content).hexdigest(),
+            "page_fetched_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+        }
+
+    def rows_carried(self, proofs: dict[str, int], carried: Carried):
+        gate = ATC_CRAWL_GATE
+        deadline = None if carried.seconds is None else gate.now() + carried.seconds - ATC_READ_MARGIN_SECONDS
+
+        def time_for_one_more() -> bool:
+            return deadline is None or gate.now() + gate.remaining() + ATC_PAGE_ALLOWANCE_SECONDS <= deadline
+
+        http = gated(session())
+        listed = self._listing(http)
         if not listed:
             raise RuntimeError(f"{self.key}: ATC's trail-updates sitemap lists no update, which means the read broke")
-        landed, failures = [], []
-        for position, (slug, lastmod) in enumerate(listed):
-            response = self._get(http, atc_update_url(slug), f"ATC trail update {slug}")
-            parsed = parse_atc_update(response.text, slug)
-            if parsed is None:
+        lastmods = dict(listed)
+
+        # What may be carried: a row whose sitemap entry has not moved since its page was read. A slug listed
+        # with no lastmod is never carried, since nothing says it did not move. Where the committed load and
+        # the progress both hold one, the later read wins.
+        known: dict[str, dict] = {}
+        from_progress: set[str] = set()
+        for origin, rows in (("committed", carried.committed), ("progress", carried.progress)):
+            for raw in rows:
+                row = _page_row(raw)
+                slug = row["slug"]
+                if lastmods.get(slug) is None or row["sitemap_lastmod"] != lastmods[slug]:
+                    continue
+                if slug not in known or (row["page_fetched_at"] or "") > (known[slug]["page_fetched_at"] or ""):
+                    known[slug] = row
+                    if origin == "progress":
+                        from_progress.add(slug)
+                    else:
+                        from_progress.discard(slug)
+        due = [slug for slug, _ in listed if slug not in known]
+
+        fetched: dict[str, dict] = {}
+        failures: list[str] = []
+        for slug in due:
+            if not time_for_one_more():
+                break
+            row = self._read_page(http, slug, lastmods[slug])
+            if row is None:
                 failures.append(slug)
-                continue
-            landed.append(
-                {
-                    "slug": parsed.slug,
-                    "title": parsed.title,
-                    "category": parsed.category,
-                    "states": list(parsed.states),
-                    "date_modified": parsed.date_modified,
-                    "date_published": parsed.date_published,
-                    "miles": [{"direction": m.direction, "start": m.start, "end": m.end, "raw": m.raw} for m in parsed.miles],
-                    "source_url": parsed.source_url,
-                    "sitemap_lastmod": lastmod,
-                    "page_sha256": hashlib.sha256(response.content).hexdigest(),
-                    "_row": position,
-                }
+            else:
+                fetched[slug] = row
+        unread = [slug for slug in due if slug not in fetched and slug not in failures]
+
+        if not unread and not failures:
+            # Every moved page is read, so what budget is left re-reads the carried pages: first any that was
+            # older than its lastmod when read, then those read longest ago, a share each run sized to reach
+            # every page within ATC_REVALIDATION_RUNS runs.
+            share = -(-len(listed) // ATC_REVALIDATION_RUNS)
+            behind = [slug for slug, _ in listed if slug in known and page_behind_sitemap(known[slug])]
+            oldest = sorted(
+                (slug for slug in known if slug not in behind), key=lambda slug: (known[slug]["page_fetched_at"] or "", slug)
             )
+            for slug in behind[:share] + oldest[:share]:
+                if not time_for_one_more():
+                    break
+                row = self._read_page(http, slug, lastmods[slug])
+                if row is None:
+                    failures.append(slug)
+                    continue
+                # A page that was behind its lastmod was expected to change; any other is the hazard's evidence.
+                if slug not in behind and any(row[name] != known[slug][name] for name in ATC_PAGE_FACTS):
+                    stood = f"{slug}'s facts changed while its lastmod stood at {lastmods[slug]}"
+                    print(f"::warning title={self.key} page changed without its lastmod::{stood}; the re-read lands")
+                fetched[slug] = row
+
         if len(failures) > ATC_TOLERATED_PARSE_FAILURES:
             raise RuntimeError(
                 f"{self.key}: {len(failures)} of {len(listed)} update pages did not parse ({', '.join(failures[:5])}), "
                 "which is ATC's page changing shape; nothing lands rather than the updates that still parsed"
             )
+        if unread and not fetched:
+            raise RuntimeError(
+                f"{self.key}: the read's {carried.seconds:g} s budget fit none of the {len(due)} update pages it needs, "
+                "so it would never complete; that is a budget too small for one page at ATC's Crawl-delay"
+            )
+        if unread:
+            progress = [known[slug] for slug, _ in listed if slug in from_progress] + list(fetched.values())
+            raise Incomplete(
+                f"{self.key}: read {len(fetched)} of the {len(due)} update pages this sitemap needs read "
+                f"({len(unread)} left, {len(known)} carried) before the budget ran out; nothing lands until all are read",
+                progress=progress,
+                read=len(fetched),
+                needed=len(unread),
+            )
         proofs[self.table] = len(listed)
-        yield from landed
+        for position, (slug, _) in enumerate(listed):
+            yield {**(fetched.get(slug) or known[slug]), "_row": position}
 
 
 def atc_trail_update_pages(key: str, **overrides) -> AtcTrailUpdatePages:

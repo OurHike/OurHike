@@ -49,6 +49,10 @@ renamed as (
         ]) }} as closure_key,
         name as closure_reason,
         descript as closure_place,
+        -- The closed area itself, which int_closures__oprhp_areas carries into
+        -- the closures mart (#1152 — Move OPRHP's temporary closures onto the
+        -- conditions clock, where a safety layer belongs).
+        st_setcrs(geom, 'OGC:CRS84') as geom,
         _loaded_at as loaded_at
     from source
 )

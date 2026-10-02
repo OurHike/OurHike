@@ -89,6 +89,28 @@ vars:
   registry_product_handle_pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
   registry_sheet_number_pattern: "^[0-9]{3}[A-Z]?$"
 
+  # The closures and warnings family: lib/atc_updates.py's constants, read by
+  # int_closures__atc_checked and held to the Python by
+  # tests/test_dbt_conditions_parity.py until the Python is deleted. The
+  # trail's own extent is ATC's half-mile marker layer, `Measure` 0.5 to
+  # 2197.5 (measured 2026-08-09, lib/atc_updates.py). The categories are the
+  # closed set ATC publishes, sorted, as the refusal message prints them.
+  atc_trail_mile_min: 0.5
+  atc_trail_mile_max: 2197.5
+  atc_update_categories:
+    - Alert
+    - Animal
+    - Closure
+    - Conservation
+    - Construction
+    - Detour
+    - Fire
+    - Hiking Safety
+    - Parking
+    - Permits
+    - Relocation
+    - Water
+
   dbt_project_evaluator:
     # The mart names the maintainer chose carry no dim_/fct_ prefix
     # ("do not keep the dim_ and fct_ prefixes in the marts folders. Just

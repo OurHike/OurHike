@@ -83,11 +83,32 @@ def _reviewed_tables() -> set[str]:
     return {resource.table for resource in resources if isinstance(resource, ReviewedFile | ReviewedDir)}
 
 
-SPATIAL_MODELS = [path for path in MODELS if SOURCE.search(path.read_text()).group(2) not in _reviewed_tables()]
+def _row_tables() -> set[str]:
+    """The raw tables of the two kinds whose rows have no geometry column: WordPress posts and their place
+    terms, and OurHike's own conditions queries, whose closures, reports and notes give a place as lat/lon."""
+    from extract._contract import all_resources, discover, discover_shared
+    from extract._kinds import ConditionsQuery, WordpressPosts, WordpressTerms
+
+    resources = all_resources(discover() + discover_shared())
+    return {resource.table for resource in resources if isinstance(resource, WordpressPosts | WordpressTerms | ConditionsQuery)}
+
+
+SPATIAL_MODELS = [path for path in MODELS if SOURCE.search(path.read_text()).group(2) not in _reviewed_tables() | _row_tables()]
+
+
+def test_the_row_kinds_models_read_no_geometry():
+    assert {path.stem for path in MODELS if SOURCE.search(path.read_text()).group(2) in _row_tables()} == {
+        "base_nynjtc__nynjtc_trail_alerts",
+        "base_nynjtc__nynjtc_trail_alerts_terms",
+        "base_ourhike__closures",
+        "base_ourhike__reports",
+        "base_ourhike__notes",
+        "base_ourhike__disputes",
+    }
 
 
 def test_only_the_reviewed_file_models_read_no_geometry():
-    assert {path.stem for path in MODELS} - {path.stem for path in SPATIAL_MODELS} == {
+    assert {path.stem for path in MODELS if SOURCE.search(path.read_text()).group(2) in _reviewed_tables()} == {
         "base_podcasts__podcast_episodes",
         "base_ourhike__poi_identity",
         "base_ourhike__blaze_mapping",

@@ -1,0 +1,44 @@
+version: 2
+
+sources:
+  - name: nws
+    description: >
+      The National Weather Service's active alerts, landed by the extract's
+      _shared/nws/ folder (pipeline/extract/_shared/nws/alerts.py) from
+      lib/nws_alerts.py's ALERTS_URL, every alert in the US, read whole every
+      run. A federal work, public domain (17 U.S.C. 105), credited "National
+      Weather Service" (export_weather_alerts.py's CREDIT).
+    schema: raw
+    config:
+      loaded_at_field: _loaded_at
+      meta:
+        cadence: hourly
+      freshness:
+        # The extract reads /alerts/active on every run, with no change check
+        # (NwsAlerts' docstring: NWS ignores If-None-Match), so `_loaded_at`
+        # moves every run and this measures whether the lane ran.
+        # @unvalidated: 7 hours is pipeline/ELT.md's hourly row ("Every node
+        # carries its cadence"), the worst measured gap between two
+        # publish-conditions.yml runs (6.3 h) rounded up, not a threshold
+        # anyone has tested against this source. What settles it is the 99th
+        # percentile of _extract_runs.checked_at gaps over 30 days.
+        warn_after: {count: 7, period: hour}
+    tables:
+      - name: raw_nws__alerts
+        data_tests:
+          # Rows sharing base_nws__alerts's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nws_alerts'", "id"]
+        description: >
+          Every active NWS alert, one row per message as /alerts/active
+          serves it, Test messages and cancellations included: the relay in
+          int_warnings__nws_relayed drops those (WN01). Its 30 properties are
+          hinted (extract/_kinds.py's NWS_TEXT_PROPERTIES and
+          NWS_JSON_PROPERTIES), so each column exists when null, and the
+          times stay text with NWS's own offsets. Key: `id`, NWS's message id;
+          an update is a new message (pipeline/ELT.md, "Stable upstream keys").
+        columns:
+          - name: id
+            description: NWS's own message id, `urn:oid:...`.
+            data_tests: [not_null]

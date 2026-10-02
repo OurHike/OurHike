@@ -223,7 +223,7 @@ def _main(monkeypatch, tmp_path, manifest: dict, codes: dict[int, int] | None = 
 
 
 def test_main_runs_the_plan_in_order_with_one_warehouse_for_dbt_and_the_steps(monkeypatch, tmp_path):
-    code, recorder = _main(monkeypatch, tmp_path, _manifest("dem_samples"))
+    code, recorder = _main(monkeypatch, tmp_path, _manifest(*(step.table for step in STEPS)))
 
     tmp_path = tmp_path.resolve()
     paths = Paths(tmp_path / "warehouse.duckdb", tmp_path / "processed", tmp_path / "raw")
@@ -238,7 +238,7 @@ def test_main_runs_the_plan_in_order_with_one_warehouse_for_dbt_and_the_steps(mo
 
 
 def test_main_stops_at_the_first_command_that_fails_and_answers_with_its_exit_code(monkeypatch, tmp_path):
-    code, recorder = _main(monkeypatch, tmp_path, _manifest("dem_samples"), codes={2: 2})
+    code, recorder = _main(monkeypatch, tmp_path, _manifest(*(step.table for step in STEPS)), codes={2: 2})
 
     assert code == 2
     assert [argv[:2] for argv, _, _ in recorder.calls] == [("dbt", "seed"), ("dbt", "build")]

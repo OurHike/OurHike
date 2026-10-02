@@ -101,6 +101,15 @@ STEPS: list[Step] = [
         command=("step_dem_sampling.py", "--warehouse", "{warehouse}"),
         fixture_args=("--index", "{raw_dir}/elevation/tile_index.json"),
     ),
+    # WN03: the NBM weather squares build_weather_squares.py chose, which the
+    # NWS alerts' placement reads. Under --fixtures it reads the squares.json
+    # make_dbt_fixtures.py wrote; otherwise the weather job's own file.
+    Step(
+        name="step_weather_squares",
+        table="weather_squares",
+        command=("step_weather_squares.py", "--warehouse", "{warehouse}"),
+        fixture_args=("--squares", "{raw_dir}/weather/squares.json"),
+    ),
 ]
 
 

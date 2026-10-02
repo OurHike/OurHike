@@ -39,6 +39,30 @@ models:
           review_state `unreviewed` (CL07-CL10, int_closures__atc_automatic).
         data_type: json[]
 
+  - name: pub_conditions_weather_alerts
+    description: >
+      Writes conditions/weather_alerts.json, every relayed NWS alert that
+      reaches a trail square, from the warnings mart's NWS rows placed by
+      int_warnings__nws_placed (WN03): one document, written verbatim by
+      phone_file's json_document format to
+      processed_dir/conditions_weather_alerts.json. Fails, writing nothing,
+      when int_sources__publication holds NWS back, without exactly one
+      weather squares document, or when no NWS alert landed to say when NWS
+      was asked. parity.py compares it with export_weather_alerts.py's bake().
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: document
+        description: >
+          The file: payload, schema, source and credit, fetched_at,
+          nws_updated, generated_at, the squares' release and zone_files,
+          `alerts` in id order (NWS's words under bake()'s names, placed_by,
+          squares) and unknown_zones.
+        data_type: json
+        data_tests: [not_null, unique]
+
   - name: pub_conditions_nynjtc_alerts
     description: >
       Writes conditions/nynjtc_alerts.json, NYNJTC's Trail Alerts, from the
@@ -130,6 +154,33 @@ exposures:
         # five times a day (#1346).
         cadence: hourly
 
+  - name: conditions_weather_alerts_json
+    label: conditions/weather_alerts.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      Every active NWS alert that reaches a trail square (#1056), the offline
+      fallback for a phone that cannot ask NWS itself for its square's zones,
+      read by client/src/lib/weatherForecast.ts as WEATHER_ALERTS_KEY, which
+      refuses a document whose `payload` is not weather_alerts or whose
+      `schema` is not 1. Rewritten in place under
+      conditions/, outside every release folder. Uploaded by
+      publish-weather.yml from export_weather_alerts.py's file until stage 4
+      of #1793 moves it to the conditions job (decision 28a) and the upload to
+      this writer's.
+    depends_on:
+      - ref('warnings')
+      - ref('pub_conditions_weather_alerts')
+    config:
+      meta:
+        r2_keys: [conditions/weather_alerts.json]
+        format: json
+        # publish-weather.yml's cron, "55 * * * *", until decision 28a moves
+        # the alerts to the conditions job's hourly lane.
+        cadence: hourly
+
   - name: conditions_nynjtc_alerts_json
     label: conditions/nynjtc_alerts.json
     type: application
@@ -192,29 +243,8 @@ exposures:
         format: json
         cadence: hourly
 
-  # The three files below have no writer here, so each exposure names what
+  # The two files below have no writer here, so each exposure names what
   # it reads and the Python that still writes it.
-  - name: conditions_weather_alerts_json
-    label: conditions/weather_alerts.json
-    type: application
-    maturity: medium
-    owner:
-      name: OurHike
-    description: >
-      Every active NWS alert over a trail weather square, read by
-      client/src/lib/weatherData.ts. Written by export_weather_alerts.py,
-      not by dbt: the alerts are in the warnings mart, but placing each on
-      the squares build_weather_squares.py chose (WN03) needs
-      data/raw/weather/squares.json, which no extract lands, so the mart
-      holds every US alert and this file only the ones over the trail.
-    depends_on:
-      - ref('warnings')
-    config:
-      meta:
-        r2_keys: [conditions/weather_alerts.json]
-        format: json
-        cadence: hourly
-
   - name: conditions_notes_json
     label: conditions/notes.json
     type: application

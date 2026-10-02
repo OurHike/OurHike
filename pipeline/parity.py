@@ -211,6 +211,24 @@ def _nynjtc_alerts_old() -> dict:
     return export_nynjtc_alerts.build_document(alerts, now)
 
 
+def _weather_alerts_old(raw_dir: Path) -> dict:
+    """export_weather_alerts.py's bake() over the NWS body fixture mode served and the weather squares, as its main() reads them.
+
+    Both are under --raw-dir: conditions/nws_alerts.json, the body fixture
+    mode served the extract, and weather/squares.json, the file
+    step_weather_squares.py landed for the dbt side, refused as main() refuses
+    one from before each square's zones were listed.
+    """
+    import export_weather_alerts
+
+    squares = json.loads((raw_dir / "weather" / "squares.json").read_text(encoding="utf-8"))
+    if "zones" not in squares:
+        raise SystemExit(f"{raw_dir}/weather/squares.json predates each square's zones, so export_weather_alerts.py refuses it")
+    body = json.loads((raw_dir / "conditions" / "nws_alerts.json").read_text(encoding="utf-8"))
+    now = datetime.now(timezone.utc)
+    return export_weather_alerts.bake(squares, body, now, now)
+
+
 class _ConditionsDatabase:
     """OurHike's Postgres as export_conditions.py reads it: extract/_fixtures.py's FixtureConnection, which fixture
     mode's extract read the warehouse's rows from, answering the same query text, with each row a tuple as
@@ -489,6 +507,16 @@ FAMILIES: dict[str, Family] = {
     "atc_updates": Family(old=_atc_updates_old, records="atc_updates", key="atc_id", ordered=True, stamps=("generated_at",)),
     "nynjtc_alerts": Family(
         old=_nynjtc_alerts_old, records="nynjtc_alerts", key="notice_id", ordered=True, stamps=("generated_at",)
+    ),
+    # `release`, `zone_files`, `nws_updated` and `unknown_zones`, beside the
+    # alerts, are compared whole; `fetched_at` is when each side asked NWS.
+    "weather_alerts": Family(
+        old=_weather_alerts_old,
+        records="alerts",
+        key="id",
+        ordered=True,
+        reads_raw_dir=True,
+        stamps=("generated_at", "fetched_at"),
     ),
     "closures": Family(
         old=lambda: _conditions_old("closures"), records="closures", key="id", ordered=True, stamps=("generated_at",)

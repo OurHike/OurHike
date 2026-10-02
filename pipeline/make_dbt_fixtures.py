@@ -1509,7 +1509,12 @@ def _nws_alert(number: int, event: str, status: str, message_type: str, geometry
 
 
 def _nws_alerts() -> dict:
-    """/alerts/active's body: three alerts the relay keeps, one placed by its polygon and two by their zones, and the two kinds it drops."""
+    """/alerts/active's body: five alerts the relay keeps and the two kinds it drops.
+
+    Of the five, conditions/weather_alerts.json places three on a trail square,
+    one by its polygon and two by their zones, and leaves out two: one whose
+    zones reach no trail square, and one drawn where no trail square is.
+    """
     storm_cell = {
         "type": "Polygon",
         "coordinates": [[[-74.12, 41.20], [-74.02, 41.20], [-74.02, 41.30], [-74.12, 41.30], [-74.12, 41.20]]],
@@ -1526,7 +1531,80 @@ def _nws_alerts() -> dict:
             _nws_alert(4, "Tornado Warning", "Test", "Alert", storm_cell),
             # Null where NWS sends null: no headline, no onset.
             _nws_alert(5, "Special Weather Statement", "Actual", "Alert", None, headline=None, onset=None, ends=None),
+            # Placed by zone (WN03), on none: a zone the pinned files never heard of, which
+            # conditions/weather_alerts.json reports, and a marine zone, in no state, which it does not.
+            _nws_alert(
+                6,
+                "Flood Warning",
+                "Actual",
+                "Alert",
+                None,
+                affectedZones=["https://api.weather.gov/zones/forecast/NYZ999", "https://api.weather.gov/zones/forecast/ANZ335"],
+            ),
+            # Drawn far from any trail square, while the zones it lists (the default two) reach
+            # several: a polygon is an alert's whole placement, so it reaches none (WN03).
+            _nws_alert(
+                7,
+                "Flash Flood Warning",
+                "Actual",
+                "Alert",
+                {"type": "Polygon", "coordinates": [[[-77.5, 39.0], [-77.0, 39.0], [-77.0, 39.3], [-77.5, 39.3], [-77.5, 39.0]]]},
+            ),
         ],
+    }
+
+
+# The NBM weather squares build_weather_squares.py writes as squares.json, for
+# the A.T. through Harriman, where the alerts above sit (WN03). The SQUARES are
+# real: the squares lib/nbm_grid.py puts six points on the trail in, Bear
+# Mountain's published waypoint (712, 2007) among them, filled into cells by
+# build_weather_squares.py's own squares_by_cell() (computed 2026-10-02;
+# tests/test_dbt_conditions_parity.py holds them to it). The zone files are
+# the ones that script pins. Which zone overlaps which square is synthetic,
+# shaped like the real Rockland and Orange zones, because only NWS's
+# shapefiles can say, and they are not fixtures.
+WEATHER_SQUARE_POINTS = {
+    "Arden": ((-74.15, 41.19), (718, 2002)),
+    "Fingerboard Mountain": ((-74.10, 41.22), (717, 2003)),
+    "Island Pond": ((-74.06, 41.24), (716, 2005)),
+    "Black Mountain": ((-74.03, 41.27), (714, 2006)),
+    "West Mountain": ((-73.99, 41.29), (713, 2007)),
+    "Bear Mountain (published waypoint)": ((-73.9884, 41.3120), (712, 2007)),
+}
+
+
+def _weather_squares() -> dict:
+    """squares.json, in build_weather_squares.py's schema 4, for the squares above."""
+    rockland = [[712, 2007], [713, 2007], [714, 2006], [716, 2005]]
+    orange = [[717, 2003], [718, 2002]]
+    return {
+        "schema": 4,
+        "environment": "fixture",
+        "release": "2026-09-25",
+        "built_at": "2026-10-02T00:00:00Z",
+        "grid": {
+            "proj4": "+proj=lcc +lat_0=25 +lon_0=-95 +lat_1=25 +lat_2=25 +x_0=0 +y_0=0 +R=6371200 +units=m +no_defs",
+            "origin": [-3272421.4573371694, 3790842.106035436],
+            "square_m": 2539.703,
+        },
+        "cells": {"n41w074": [[712, 2007], [713, 2007]], "n41w075": [[714, 2006], [716, 2005], [717, 2003], [718, 2002]]},
+        "borrowed": [],
+        "water_kept": [],
+        "outside_grid": [],
+        "zone_files": {"forecast": "z_16ap26.zip", "fire": "fz16ap26.zip", "county": "c_16ap26.zip"},
+        "zones": {
+            "forecast/NYZ069": rockland,
+            "forecast/NYZ067": orange,
+            "county/NYC087": rockland,
+            "county/NYC071": orange,
+            # The same id as a forecast zone, a different outline (export_weather_alerts.py's zone_keys()).
+            "fire/NYZ069": [[716, 2005]],
+        },
+        "known_zones": {
+            "forecast": ["NYZ067", "NYZ068", "NYZ069", "NYZ070"],
+            "fire": ["NYZ067", "NYZ069"],
+            "county": ["NYC071", "NYC087"],
+        },
     }
 
 
@@ -2018,6 +2096,7 @@ def closures_and_warnings_fixtures() -> dict[str, str]:
         "conditions/nynjtc_trail_alerts.json": json.dumps(_nynjtc_trail_alerts()),
         "conditions/ourhike_postgres.json": json.dumps(_ourhike_postgres()),
         "conditions/atc_trail_updates.json": json.dumps(_atc_trail_updates()),
+        "weather/squares.json": json.dumps(_weather_squares(), separators=(",", ":")),
     }
 
 

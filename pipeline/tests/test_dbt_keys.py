@@ -95,7 +95,24 @@ def _row_tables() -> set[str]:
     return {resource.table for resource in resources if isinstance(resource, kinds)}
 
 
-SPATIAL_MODELS = [path for path in MODELS if SOURCE.search(path.read_text()).group(2) not in _reviewed_tables() | _row_tables()]
+def _geometryless_derived_tables() -> set[str]:
+    """The tables a Python step writes (build_marts.STEPS) whose source declares no `geometry` column: the
+    weather squares, landed as one JSON document (step_weather_squares.py). dem_samples declares one."""
+    (source,) = yaml.safe_load((STAGING / "derived" / "_derived__sources.yml").read_text())["sources"]
+    return {
+        table["name"] for table in source["tables"] if "geometry" not in {column["name"] for column in table.get("columns") or []}
+    }
+
+
+def test_the_geometryless_derived_tables_are_the_weather_squares():
+    assert _geometryless_derived_tables() == {"weather_squares"}
+
+
+SPATIAL_MODELS = [
+    path
+    for path in MODELS
+    if SOURCE.search(path.read_text()).group(2) not in _reviewed_tables() | _row_tables() | _geometryless_derived_tables()
+]
 
 
 def test_the_row_kinds_models_read_no_geometry():

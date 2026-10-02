@@ -18,6 +18,13 @@ the run's evidence, as Markdown, to a file: rows and the upstream's own
 count per table, every refusal and unavailable resource, and how long each
 part took. It is written on a refused run too, before the exit.
 
+A conditions leg isolates each upstream: it reads every resource on its own
+first, within `--read-seconds`, and one whose read fails, runs out of time or
+is refused by the run check is left out while the rest load, its last
+committed table standing. OurHike's own Postgres rows still stop the whole
+leg (stops_the_leg). A leg that left something out exits PARTIAL_EXIT (3),
+so its job still goes red after it has published what did load.
+
 pipeline/ELT.md, "Change checks, verdicts and `_loaded_at`" and "A full reload
 that cannot empty a safety table", is the design (#1793 — Rebuild the data
 platform as dlt → dbt: seven contracted marts, a monthly refresh, published
@@ -47,6 +54,7 @@ import argparse
 import json
 import os
 import sys
+import threading
 import time
 from collections import defaultdict
 from contextlib import contextmanager
@@ -66,7 +74,7 @@ import dlt  # noqa: E402
 import pyarrow.parquet as pq  # noqa: E402
 
 from extract._contract import CADENCES, Resource, Unavailable, all_resources, discover, discover_shared  # noqa: E402
-from extract._kinds import ORGS_TABLE  # noqa: E402
+from extract._kinds import ORGS_TABLE, ConditionsQuery  # noqa: E402
 from lib.freshness_state import Freshness  # noqa: E402
 
 # Which cadences each lane carries. Daily and weekly resources would ride the
@@ -146,6 +154,11 @@ class RunReport:
     # checks, extract, normalize, load, the run log. A part a run did not
     # reach is absent.
     timings: dict[str, float] = field(default_factory=dict)
+    # A conditions leg only: resources refused on their own while the rest
+    # loaded, by name, with why. Each keeps its last committed table and is
+    # logged `refused` (ISOLATED_OUTCOME); the command line then exits
+    # PARTIAL_EXIT, so the run still goes red.
+    isolated: dict[str, str] = field(default_factory=dict)
 
 
 @contextmanager
@@ -194,6 +207,90 @@ def raw_store_url(bucket: str, lane: str) -> str:
     if not bucket or "/" in bucket or ":" in bucket:
         raise ValueError(f"{bucket!r} is not a bucket name; pass the bucket alone, as R2_RAW_BUCKET holds it")
     return f"s3://{bucket}/{RAW_STORE_PREFIX}/ourhike_{lane}"
+
+
+#: The exit status of a conditions leg that loaded, and left at least one
+#: resource out as refused: not 0, so the job goes red, and not 1, so the
+#: workflow can tell "the rest loaded" from "nothing loaded" and still build
+#: and publish what did. 2 is argparse's own.
+PARTIAL_EXIT = 3
+ISOLATED_OUTCOME = "refused"
+
+
+def stops_the_leg(resource: Resource) -> bool:
+    """Whether a refused or failed read of this resource stops the whole leg, rather than only itself.
+
+    OurHike's own conditions rows do (ConditionsQuery): their reader's problem
+    "stops the lane, as it stops the bake" (extract/_shared/ourhike/closures.py),
+    because export_conditions.py today publishes nothing when it cannot read
+    the database, and a phone then keeps the last file with its true age.
+    Every other upstream is somebody else's site, and its failure is its own:
+    the leg leaves it out and its last committed table stands, as today's bake
+    carries ATC's and NYNJTC's previous cache forward when either is
+    unreachable (publish-conditions.yml's fetch steps).
+    """
+    return isinstance(resource, ConditionsQuery)
+
+
+def read_each(report: RunReport, to_run: list[Planned], seconds: float | None) -> tuple[list[Planned], dict]:
+    """Read every resource's rows before dlt runs, so one upstream's failure, or its slowness, is its own.
+
+    One thread per extract folder, so a club's own resources are asked one
+    after another, as they would be in one run, and no host is asked twice at
+    once; the folders run side by side. `seconds` is the whole read's budget:
+    a folder still reading when it runs out leaves its unread resources out
+    of this run. Nothing waits on them, and nothing shortens a host's
+    Crawl-delay to fit (lib/http_retry.py's throttle is the resource's own);
+    a daemon thread is abandoned, and dies with the process.
+
+    Returns the resources that answered, and {name: rows}. A resource whose
+    read failed, or ran out of time, is in `report.isolated`, or, where
+    stops_the_leg() says so, re-raised.
+    """
+    results: dict[str, object] = {}
+
+    def read(items: list[Planned]) -> None:
+        for item in items:
+            proofs: dict[str, int] = {}
+            try:
+                rows = list(item.resource.rows(proofs))
+            except Exception as failure:  # noqa: BLE001 - every failure is recorded, and re-raised where it stops the leg
+                results[item.resource.name] = failure
+            else:
+                results[item.resource.name] = (rows, proofs)
+
+    by_folder: dict[str | None, list[Planned]] = defaultdict(list)
+    for item in to_run:
+        by_folder[item.resource.club].append(item)
+    threads = [
+        threading.Thread(target=read, args=(items,), name=f"read {folder}", daemon=True) for folder, items in by_folder.items()
+    ]
+    deadline = None if seconds is None else time.monotonic() + seconds
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(None if deadline is None else max(0.0, deadline - time.monotonic()))
+    answered = dict(results)  # a thread that finishes after the deadline changes nothing below
+
+    kept, read_rows = [], {}
+    for item in to_run:
+        name = item.resource.name
+        outcome = answered.get(name)
+        if outcome is None:
+            failure: BaseException = TimeoutError(f"no answer within the leg's {seconds:g} s read budget")
+        elif isinstance(outcome, BaseException):
+            failure = outcome
+        else:
+            rows, proofs = outcome
+            report.proofs.update(proofs)
+            read_rows[name] = rows
+            kept.append(item)
+            continue
+        if stops_the_leg(item.resource):
+            raise failure
+        report.isolated[name] = f"read failed: {type(failure).__name__}: {failure}"
+        print(f"::error title={name} refused::{report.isolated[name]}; its last committed table stands")
+    return kept, read_rows
 
 
 def only_tables(resources: list[Resource], tables: list[str], lane: str) -> list[Resource]:
@@ -254,8 +351,11 @@ def recorded_markers(pipeline) -> dict[str, dict | None]:
     return {name: state.get("marker") for name, state in resources.items()}
 
 
-def to_dlt(resource: Resource, marker: dict | None, proofs: dict[str, int], loaded_at: datetime, hints=None):
-    """Wrap one Resource in the dlt settings every resource shares. `hints` collects each table's column hints."""
+def to_dlt(resource: Resource, marker: dict | None, proofs: dict[str, int], loaded_at: datetime, hints=None, read=None):
+    """Wrap one Resource in the dlt settings every resource shares. `hints` collects each table's column hints.
+
+    `read` is the resource's rows already read (a conditions leg reads each
+    upstream on its own first, read_each()); None reads them here."""
     columns = resource.column_hints()
     if hints is not None:
         hints[resource.table] = columns
@@ -274,7 +374,7 @@ def to_dlt(resource: Resource, marker: dict | None, proofs: dict[str, int], load
     )
     def rows():
         dlt.current.resource_state()["marker"] = marker
-        for row in resource.rows(proofs):
+        for row in resource.rows(proofs) if read is None else (dict(row) for row in read):
             row["_loaded_at"] = loaded_at
             yield row
 
@@ -446,7 +546,12 @@ def write_run_log(
     ]
     for item in planned:
         resource = item.resource
-        skipped = item.verdict is Freshness.FRESH
+        # An isolated resource (a conditions leg's, refused on its own) is
+        # logged like a FRESH one in what it leaves behind, no rows and no
+        # load, and as refused in its outcome: committed_tables() then keeps
+        # reading its last committed load, and due() does not count the check.
+        isolated = resource.name in report.isolated
+        skipped = item.verdict is Freshness.FRESH or isolated
         log.append(
             {
                 "run_id": report.run_id,
@@ -462,7 +567,7 @@ def write_run_log(
                 "rows": None if skipped else report.rows.get(resource.table, 0),
                 "count_proof": report.proofs.get(resource.table),
                 "load_id": None if skipped else report.load_id,
-                "outcome": "skipped" if skipped else report.outcome,
+                "outcome": ISOLATED_OUTCOME if isolated else "skipped" if skipped else report.outcome,
                 "checked_at": checked_at,
                 # A proven zero writes no file on a table's first load (dlt keeps no
                 # schema for a table that never held a row, measured 2026-10-01), so
@@ -492,18 +597,21 @@ def run_pipeline(
     *,
     resources: list[Resource] | None = None,
     pipelines_dir: str | None = None,
+    read_seconds: float | None = None,
 ) -> RunReport:
     """One lane, or one conditions leg, end to end. Raises ExtractRefused, after logging, when either check fails.
 
     Whatever it raises carries the run's RunReport as `.report` where the
-    exception will take one, so a caller can say what the run got to."""
+    exception will take one, so a caller can say what the run got to.
+    `read_seconds` is a conditions leg's budget for reading its upstreams
+    (read_each()); the lanes ignore it."""
     cadences_of(lane)
     if resources is None:
         resources = all_resources(discover() + discover_shared())
     checked_at = utc_now_naive()
     report = RunReport(run_id=checked_at.strftime("%Y%m%dT%H%M%S.%fZ"), lane=lane, outcome="loaded")
     try:
-        _run(report, lane, bucket_url, lane_resources(lane, resources), pipelines_dir, checked_at)
+        _run(report, lane, bucket_url, lane_resources(lane, resources), pipelines_dir, checked_at, read_seconds)
     except Exception as failure:
         if getattr(failure, "report", None) is None:
             try:
@@ -521,6 +629,7 @@ def _run(
     plan_resources: list[Resource],
     pipelines_dir: str | None,
     checked_at: datetime,
+    read_seconds: float | None = None,
 ) -> None:
     pipeline = make_pipeline(lane, bucket_url, pipelines_dir)
     # A run that died after its extract and before its load committed leaves
@@ -561,13 +670,37 @@ def _run(
         f"{len(planned) - len(to_run)} fresh, {len(unavailable)} unavailable"
     )
 
-    if to_run:
-        source = dlt.source(
-            lambda: [to_dlt(item.resource, item.marker, report.proofs, checked_at, report.hints) for item in to_run],
-            name=SOURCE_NAME,
-        )
+    # A CONDITIONS LEG ISOLATES EACH UPSTREAM. One club's failure must not hold
+    # back another club's closures, so a leg reads every resource on its own
+    # first (read_each), and a resource whose read fails, runs out of time or
+    # is refused by the run check is left out of this run, as a FRESH one is:
+    # its last committed table stands, it is logged `refused`, and the rest
+    # load. OurHike's own rows are the exception (stops_the_leg). ELT.md's "A
+    # full reload that cannot empty a safety table" reasoned that a refusal
+    # costs the whole leg an hour; this is the change that stops it doing so.
+    # The monthly and hourly lanes are unchanged: one refusal refuses the run.
+    read = None
+    if to_run and lane in LEGS:
+        with timed(report, "read"):
+            to_run, read = read_each(report, to_run, read_seconds)
+    previous = last_loaded_counts(run_log_rows(pipeline)) if to_run else {}
+    while to_run:
+
+        def resources(items=tuple(to_run)):
+            return [
+                to_dlt(
+                    item.resource,
+                    item.marker,
+                    report.proofs,
+                    checked_at,
+                    report.hints,
+                    None if read is None else read[item.resource.name],
+                )
+                for item in items
+            ]
+
         with timed(report, "extract"):
-            pipeline.extract(source(), loader_file_format="parquet")
+            pipeline.extract(dlt.source(resources, name=SOURCE_NAME)(), loader_file_format="parquet")
         with timed(report, "normalize"):
             pipeline.normalize()
         report.rows = {
@@ -575,13 +708,36 @@ def _run(
             for table, count in pipeline.last_trace.last_normalize_info.row_counts.items()
             if not table.startswith("_dlt")
         }
-        report.problems = run_check(planned, report.rows, report.proofs, last_loaded_counts(run_log_rows(pipeline)))
-        if report.problems:
-            pipeline.abort_packages()
+        if read is None:
+            report.problems = run_check(planned, report.rows, report.proofs, previous)
+            if report.problems:
+                pipeline.abort_packages()
+                report.outcome = "refused"
+                with timed(report, "run log"):
+                    write_run_log(pipeline, report, planned, checked_at, unavailable)
+                raise ExtractRefused("Extract run check:\n  " + "\n  ".join(report.problems), report)
+            break
+        refused = {}
+        for table in dict.fromkeys(item.resource.table for item in to_run):
+            items = [item for item in to_run if item.resource.table == table]
+            if problems := run_check(items, report.rows, report.proofs, previous):
+                refused[table] = (items, problems)
+        if not refused:
+            break
+        pipeline.abort_packages()
+        if any(stops_the_leg(item.resource) for items, _ in refused.values() for item in items):
+            report.problems = [problem for _, problems in refused.values() for problem in problems]
             report.outcome = "refused"
             with timed(report, "run log"):
                 write_run_log(pipeline, report, planned, checked_at, unavailable)
             raise ExtractRefused("Extract run check:\n  " + "\n  ".join(report.problems), report)
+        for table, (items, problems) in refused.items():
+            for item in items:
+                report.isolated[item.resource.name] = "; ".join(problems)
+                print(f"::error title={item.resource.name} refused::{'; '.join(problems)}; its last committed table stands")
+        to_run = [item for item in to_run if item.resource.table not in refused]
+        report.rows = {}
+    if to_run:
         with timed(report, "load"):
             loads = pipeline.load().loads_ids
         if len(loads) != 1:
@@ -620,6 +776,9 @@ def summary_markdown(report: RunReport | None, lane: str, *, failure: BaseExcept
         lines += [f"**Stopped by** `{type(failure).__name__}: {failure}`", ""]
     if report.problems:
         lines += ["**Refused:**", "", *[f"- {problem}" for problem in report.problems], ""]
+    if report.isolated:
+        lines += ["**Refused on its own** (left out of this run; its last committed table stands):", ""]
+        lines += [*[f"- `{name}`: {why}" for name, why in sorted(report.isolated.items())], ""]
     if report.unavailable:
         lines += ["**Unavailable** (left out of the run, and withdrawn from the warehouse):", ""]
         lines += [*[f"- `{name}`: {why}" for name, why in sorted(report.unavailable.items())], ""]
@@ -627,7 +786,9 @@ def summary_markdown(report: RunReport | None, lane: str, *, failure: BaseExcept
     if report.verdicts:
         lines += ["| table | verdict | rows | upstream count |", "|---|---|---:|---:|"]
         for name, verdict in sorted(report.verdicts.items()):
-            if verdict == Freshness.FRESH.value:
+            if name in report.isolated:
+                rows = "refused, last table stands"
+            elif verdict == Freshness.FRESH.value:
                 rows = "kept"
             elif verdict == UNAVAILABLE:
                 rows = "withdrawn"
@@ -666,6 +827,11 @@ def main(argv: list[str] | None = None) -> RunReport:
     parser.add_argument("--warehouse", type=Path, help="then load every committed table into this DuckDB file")
     parser.add_argument("--summary", type=Path, help="append the run's evidence, as Markdown, to this file")
     parser.add_argument("--pipelines-dir", help="dlt's working directory (default: dlt's own)")
+    parser.add_argument(
+        "--read-seconds",
+        type=float,
+        help="a conditions leg's budget for reading its upstreams; one not read in time is refused on its own",
+    )
     args = parser.parse_args(argv)
     bucket_url = args.bucket_url or raw_store_url(args.raw_bucket, args.lane)
     resources = all_resources(discover() + discover_shared())
@@ -673,7 +839,9 @@ def main(argv: list[str] | None = None) -> RunReport:
         resources = only_tables(resources, args.only, args.lane)
     report = None
     try:
-        report = run_pipeline(args.lane, bucket_url, resources=resources, pipelines_dir=args.pipelines_dir)
+        report = run_pipeline(
+            args.lane, bucket_url, resources=resources, pipelines_dir=args.pipelines_dir, read_seconds=args.read_seconds
+        )
         if args.warehouse is not None:
             with timed(report, "warehouse"):
                 loaded = load_committed(args.lane, bucket_url, args.warehouse, args.pipelines_dir)
@@ -696,7 +864,10 @@ assert set(cadence for cadences in LANES.values() for cadence in cadences) <= se
 
 if __name__ == "__main__":
     try:
-        main()
+        finished = main()
     except ExtractRefused as refused:
         print(refused, file=sys.stderr)
         sys.exit(1)
+    if finished.isolated:
+        print(f"{len(finished.isolated)} resource(s) refused on their own; the rest loaded", file=sys.stderr)
+        sys.exit(PARTIAL_EXIT)

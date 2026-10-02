@@ -213,6 +213,19 @@ on:
     # reader is not left inferring hourly delivery from the cron alone.
     - cron: "40 * * * *"
   workflow_dispatch:
+    inputs:
+      # UA ALONE, FOR A DISPATCH THAT MUST NOT TOUCH WHAT HIKERS READ. #1793 —
+      # Rebuild the data platform as dlt → dbt: seven contracted marts, a
+      # monthly refresh, published docs, and lighter phone downloads soaks its
+      # new path on UA for seven days of hourly runs before the merge
+      # (pipeline/ELT.md, "The go/no-go gate", decision 30), dispatched from
+      # the pull request's branch. `both` is today's behaviour and the
+      # schedule's; it means both legs only from main (the matrix below).
+      data_environment:
+        description: "Which legs to run: both (production and UA; from main only) or ua alone"
+        type: choice
+        options: [both, ua]
+        default: both
 
 permissions:
   contents: read
@@ -239,14 +252,46 @@ jobs:
     # fail-fast off, because the two are independent: UA's database being
     # unreachable is not a reason to leave production's safety data a day
     # older than it needs to be.
+    #
+    # THE PRODUCTION LEG EXISTS ONLY FOR A RUN FROM MAIN. A schedule fires
+    # from main alone, but a dispatch runs whichever ref it names, with that
+    # ref's copy of this file - and the production leg writes the keys every
+    # hiker's phone reads within the hour, with no release or review between
+    # (pipeline/ELT.md, "Why a scheduled run cannot reach production": this
+    # bake is the one exemption). So a dispatch from a pull request's branch
+    # gets the UA leg alone, whatever `data_environment` says, and so does a
+    # dispatch from main that asks for `ua`. Two locks, because GitHub's `==`
+    # ignores case and a branch called `Main` would pass it: the matrix
+    # below leaves the leg out, and the first step refuses it with bash's
+    # case-sensitive comparison if it is ever there anyway. Held by
+    # .github/tests/test_conditions_production_leg_needs_main.py.
     strategy:
       fail-fast: false
       matrix:
-        data_environment: [production, ua]
+        data_environment: ${{ fromJSON((github.ref == 'refs/heads/main' && inputs.data_environment != 'ua') && '["production", "ua"]' || '["ua"]') }}
     defaults:
       run:
         working-directory: pipeline
     steps:
+      # First, before the checkout and before any step that reads a secret.
+      # The UA leg passes and says so when a production leg was asked for
+      # and left out, so a dispatch that meant both is not read as having
+      # run both.
+      - name: Refuse a production leg from any ref but main
+        working-directory: .
+        env:
+          LEG: ${{ matrix.data_environment }}
+          REF: ${{ github.ref }}
+          ASKED: ${{ inputs.data_environment }}
+        run: |
+          if [ "$LEG" = "production" ] && [ "$REF" != "refs/heads/main" ]; then
+            echo "::error title=Production leg refused::$REF is not refs/heads/main, and only main publishes production's conditions/. Nothing was read or published for production."
+            exit 1
+          fi
+          if [ "$LEG" = "ua" ] && [ "$REF" != "refs/heads/main" ] && [ "$ASKED" != "ua" ]; then
+            echo "::notice title=UA leg only::$REF is not refs/heads/main, so the production leg was left out and this run publishes UA alone."
+          fi
+
       - name: Is there a database to read
         id: can
         # Before the checkout, so not in pipeline/ - migrate.yml's gate has

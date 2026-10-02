@@ -292,7 +292,12 @@ def _trail_lines_coded_domain() -> Callable[[str | None, str], dict | None]:
 
 @functools.cache
 def _export_trails_run() -> Path:
-    """export_trails.main() into a temporary directory, which it returns: one run feeds all three of its files."""
+    """export_trails.main() into a temporary directory, which it returns: one run feeds all three of its files.
+
+    Its own lines go to a buffer, as _network_old's do, so the step prints the comparison and nothing else.
+    """
+    import contextlib
+    import io
     import tempfile
 
     import export_trails
@@ -300,7 +305,8 @@ def _export_trails_run() -> Path:
     out = Path(tempfile.mkdtemp(prefix="parity_trails_"))
     export_trails.get_field_coded_domain = _trail_lines_coded_domain()
     export_trails.OUT_DIR = out
-    export_trails.main()
+    with contextlib.redirect_stdout(io.StringIO()):
+        export_trails.main()
     return out
 
 

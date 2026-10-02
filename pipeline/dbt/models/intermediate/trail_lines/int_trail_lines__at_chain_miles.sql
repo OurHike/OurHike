@@ -50,7 +50,7 @@ vertices as (
                 st_geomfromtext(geom_wkt) as geom
             from chains
         ) as parsed
-    )
+    ) as unnested
 ),
 
 located as {{

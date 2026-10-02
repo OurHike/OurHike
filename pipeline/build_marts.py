@@ -55,7 +55,8 @@ among the sources it reads, and dbt's own graph selection gives it:
   hold the monthly raw tables those parents read (the registry, today).
 - A STEPS entry runs in its own `lane`, the lane of what its derived table
   unblocks. After `dbt seed` writes the manifest, a lane build refuses a step
-  whose `step_<name>` exposure is missing, a monthly step that reads a node
+  whose `step_<name>` exposure is missing (unless its entry says
+  `reads_no_model`: it reads a file and no node), a monthly step that reads a node
   an hourly or daily source reaches (the monthly lane would leave that input
   unbuilt), and a step whose table unblocks only the other lane's nodes.
   What a step reads is that exposure's `depends_on`
@@ -157,6 +158,10 @@ class Step:
     # The lane that runs it under --lane: the lane of the nodes its table
     # unblocks, which lane_problems() holds it to. Without --lane every step runs.
     lane: str = MONTHLY
+    # True for a step that reads no dbt node, only a file (step_weather_squares
+    # lands squares.json whole): it then needs no step_<name> exposure, and
+    # lane_problems() has no input of its to check.
+    reads_no_model: bool = False
 
 
 #: The Python steps, in the order they run (pipeline/ELT.md, "Python steps,
@@ -305,7 +310,12 @@ def lane_problems(manifest: dict, steps: list[Step], lane: str | None) -> list[s
     problems = []
     for step in steps:
         exposure = exposures.get(step.name)
-        if exposure is None:
+        if step.reads_no_model:
+            if exposure is not None and (exposure.get("depends_on") or {}).get("nodes"):
+                problems.append(
+                    f"{step.name} says it reads no dbt node (reads_no_model), and its exposure {step.name} lists some"
+                )
+        elif exposure is None:
             problems.append(
                 f"{step.name} has no exposure named {step.name} listing what it reads, so the {lane} lane cannot "
                 "check that it builds the step's inputs"

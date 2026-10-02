@@ -612,5 +612,27 @@ def test_every_step_names_what_it_reads_in_an_exposure_of_its_own_name():
             exposures[exposure["name"]] = exposure
 
     for step in STEPS:
+        if step.reads_no_model:
+            continue
         assert step.name in exposures, f"no exposure named {step.name} lists what {step.command[0]} reads"
         assert exposures[step.name].get("depends_on"), f"exposure {step.name} names no input"
+
+
+def test_a_step_that_reads_no_model_needs_no_exposure_in_either_lane():
+    file_only = Step(name="step_weather_squares", table="weather_squares", command=("x.py",), lane="hourly", reads_no_model=True)
+    manifest = _lane_manifest({step.name: [] for step in STEPS}, unblocks={"weather_squares": ["model.ourhike.closures"]})
+
+    for lane in build_marts.LANES:
+        assert build_marts.lane_problems(manifest, [*STEPS, file_only], lane) == []
+
+
+def test_a_step_that_says_it_reads_no_model_and_whose_exposure_lists_one_is_refused():
+    file_only = Step(name="step_weather_squares", table="weather_squares", command=("x.py",), lane="hourly", reads_no_model=True)
+    manifest = _lane_manifest(
+        {**{step.name: [] for step in STEPS}, "step_weather_squares": ["model.ourhike.closures"]},
+        unblocks={"weather_squares": ["model.ourhike.closures"]},
+    )
+
+    assert build_marts.lane_problems(manifest, [*STEPS, file_only], "hourly") == [
+        "step_weather_squares says it reads no dbt node (reads_no_model), and its exposure step_weather_squares lists some"
+    ]

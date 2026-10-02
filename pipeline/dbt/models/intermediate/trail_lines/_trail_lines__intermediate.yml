@@ -493,6 +493,76 @@ models:
       - name: spur_record_json
         description: The spurs.json record, keys sorted, as JSON text.
 
+  - name: int_trail_lines__club_stretches
+    description: >
+      The runs of half-mile markers each maintaining club looks after, and
+      the runs the centerline names no club for (TL24-TL26), in mile order:
+      each marker takes the club of the centerline vertex nearest it within
+      100 m, a run breaks where the club changes or markers are more than
+      0.75 mi apart, each run owns a quarter mile either side, and the ends
+      are pinned to mile 0 and the last marker.
+    columns:
+      - name: run_order
+        description: The run's place in mile order, from 1.
+        data_tests: [not_null, unique]
+      - name: acronym
+        description: The club's acronym, stripped; null for a run no club is named for.
+      - name: start_mile
+        description: Where the run starts, in miles from Springer.
+      - name: end_mile
+        description: Where the run ends, in miles from Springer.
+      - name: stretch_json
+        description: The run as club_sections.json publishes a stretch, {start_mile, end_mile}, as JSON text.
+        data_tests: [not_null]
+
+  - name: int_trail_lines__club_names
+    description: >
+      Each club's name and region by acronym, from the trail_club_sections
+      polygons that may publish (lib/club_sections.canonical_clubs()), which
+      spell a club's name and never decide a stretch.
+    data_tests:
+      # Two polygons naming one acronym: the Python keeps the later, this the
+      # lower GlobalID's, so the two would name the club differently.
+      - dbt_utils.expression_is_true:
+          name: int_trail_lines__club_names_name_each_club_once
+          arguments:
+            expression: "polygon_count <= 1"
+          config:
+            severity: warn
+    columns:
+      - name: acronym
+        description: The polygon's ACROYNM, stripped; never empty or all digits.
+        data_tests: [not_null, unique]
+      - name: club_name
+        description: The polygon's TRAIL_CLUB, as the layer spells it.
+      - name: region
+        description: The polygon's REGION.
+      - name: polygon_count
+        description: How many polygons name the acronym.
+
+  - name: int_trail_lines__club_sections
+    description: >
+      club_sections.json's clubs, south to north, each with its name and
+      region from int_trail_lines__club_names and its stretches, and one row
+      for the unattributed stretches (lib/club_sections.assemble()).
+    columns:
+      - name: section_key
+        description: The club's acronym, or '(unattributed)' for the row of runs no club is named for.
+        data_tests: [not_null, unique]
+      - name: acronym
+        description: The club's acronym, stripped; null on the unattributed row.
+      - name: club_name
+        description: The polygon layer's TRAIL_CLUB for the acronym, or the acronym where it has none.
+      - name: region
+        description: The polygon layer's REGION for the acronym, or null where no polygon names it.
+      - name: miles
+        description: The club's stretches' miles, summed and rounded to one decimal.
+      - name: stretches_json
+        description: The stretches, in mile order, as JSON text.
+        data_tests: [not_null]
+      - name: club_order
+        description: The club's place in the file, by first stretch then acronym, from 0; null on the unattributed row.
+
   - name: int_trail_lines__at_side_trails
     description: >
       The side trails trails.geojson publishes, each with its spur fields,

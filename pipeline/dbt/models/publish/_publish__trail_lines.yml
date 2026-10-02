@@ -106,6 +106,33 @@ models:
         description: The whole file, as JSON.
         data_type: json
         data_tests: [not_null, unique]
+  - name: pub_club_sections
+    description: >
+      Writes club_sections.json, which club maintains which stretch of the
+      A.T., from int_trail_lines__club_sections, in
+      export_club_sections.build_output()'s shape. `source_edited` is empty:
+      the extract lands no layer edit date (the writer's header says what
+      fills it). parity.py compares it with export_club_sections.py's file.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: sources
+        description: Which layer gives the attribution, the names and the miles.
+        data_type: struct(attribution varchar, names varchar, miles varchar)
+        data_tests: [not_null, unique]
+      - name: source_edited
+        description: Each layer's last edit day, where one is known; empty today.
+        data_type: json
+      - name: clubs
+        description: The clubs, south to north.
+        data_type: json[]
+        data_tests: [not_null]
+      - name: unattributed
+        description: The stretches no club is named for, in mile order.
+        data_type: json
+        data_tests: [not_null]
 
 exposures:
   - name: trails_geojson
@@ -201,5 +228,26 @@ exposures:
     config:
       meta:
         r2_keys: [spurs.json]
+        format: json
+        cadence: monthly
+  - name: club_sections_json
+    label: club_sections.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      Which of the thirty clubs maintains which stretch of the A.T., and the
+      miles no club is named for, read by client/src/lib/clubSections.ts for
+      the corridor view and the waypoint card. Published by
+      publish-vector-data.yml from export_club_sections.py's file until stage
+      4 of #1793 — Rebuild the data platform as dlt → dbt: seven contracted
+      marts, a monthly refresh, published docs, and lighter phone downloads
+      moves it to this writer's.
+    depends_on:
+      - ref('pub_club_sections')
+    config:
+      meta:
+        r2_keys: [club_sections.json]
         format: json
         cadence: monthly

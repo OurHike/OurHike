@@ -412,6 +412,7 @@ jobs:
           "$RUNNER_TEMP/pipeline/bin/python" parity.py trail_miles --new data/processed/dbt/trail_miles.json
           "$RUNNER_TEMP/pipeline/bin/python" parity.py trails_overview --new data/processed/dbt/trails_overview.geojson
           "$RUNNER_TEMP/pipeline/bin/python" parity.py spurs --new data/processed/dbt/spurs.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py club_sections --new data/processed/dbt/club_sections.json
 
       - name: dbt source freshness
         if: steps.scope.outputs.run == 'true'

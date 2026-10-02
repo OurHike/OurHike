@@ -1584,13 +1584,27 @@ TRAIL_LINES_AT_SIDE_TRAILS = [
     ),
     # No geometry: skipped with a warning, never published.
     _side_trail("Trail With No Line", None, {"Type": "1", "Blaze": "3", "Length_Ft": None}),
-    # Two vertices a hundred-thousandth of a metre apart, which six decimals
-    # would put on one point: the never-degenerate rule keeps full precision.
+    # Two vertices 1.4 cm apart, which six decimals would put on one point:
+    # the never-degenerate rule keeps full precision.
     _side_trail(
         "Short Stub",
         [[-73.9950001, 41.0040001], [-73.9950002, 41.0040002]],
         {"Type": "4", "Blaze": "5", "Length_Ft": 0.1},
     ),
+]
+
+# Club polygons for lib/club_sections.py's rules (TL24-TL26), which the base
+# fixture's TTC0 and TTC1 polygons reach only in part: one naming the first
+# centerline segment's club, TTC, padded with whitespace and with no
+# TRAIL_CLUB, so the name falls back to the acronym; and one whose acronym is
+# a digit code, never a club.
+TRAIL_LINES_AT_CLUB_POLYGONS = [
+    {
+        "type": "Feature",
+        "properties": {"GlobalID": f"club-section-{key}", "TRAIL_CLUB": club, "ACROYNM": acronym, "REGION": "Mid-Atlantic"},
+        "geometry": {"type": "Polygon", "coordinates": [[[-74.0, 41.0], [-73.995, 41.0], [-73.995, 41.005], [-74.0, 41.0]]]},
+    }
+    for key, club, acronym in (("ttc", "", " TTC "), ("coded", "11", "11"))
 ]
 
 
@@ -1608,6 +1622,11 @@ def _trail_lines_at_fixtures(files: dict[str, str]) -> dict[str, str]:
       spurs, coded blazes and the clip. Only side trails are added: the
       centerline and the half-mile markers, which every family's mile axis
       reads, are left as they are.
+    - For CI's parity run of export_club_sections.py, the second centerline
+      segment's Acronym becomes " TTC1 ", a club change the strip has to
+      take, which the TTC1 polygon spells; and TRAIL_LINES_AT_CLUB_POLYGONS
+      joins the polygons. Only the Acronym changes, which nothing but the
+      club sections reads, so the mile axis is untouched.
     """
     out = dict(files)
     for name, added in (("centerline.geojson", []), ("side_trails.geojson", TRAIL_LINES_AT_SIDE_TRAILS)):
@@ -1616,7 +1635,12 @@ def _trail_lines_at_fixtures(files: dict[str, str]) -> dict[str, str]:
         for index, feature in enumerate(collection["features"]):
             feature["properties"]["OBJECTID"] = index + 1
             feature["id"] = index + 1
+        if name == "centerline.geojson":
+            collection["features"][1]["properties"]["Acronym"] = " TTC1 "
         out[name] = json.dumps(collection)
+    polygons = json.loads(out["trail_club_sections.geojson"])
+    polygons["features"] += [json.loads(json.dumps(feature)) for feature in TRAIL_LINES_AT_CLUB_POLYGONS]
+    out["trail_club_sections.geojson"] = json.dumps(polygons)
     return out
 
 

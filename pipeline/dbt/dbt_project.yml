@@ -176,6 +176,16 @@ vars:
   trail_lines_spur_destination_max_m: 150.0
   # METERS_PER_DEGREE, for lib/spurs.py's equirectangular distance.
   trail_lines_metres_per_degree: 111320.0
+  # lib/club_sections.py's club sections (int_trail_lines__club_stretches),
+  # each argued there. MILEPOST_SNAP_M: a sanity bound, not a tuning
+  # parameter. STRETCH_GAP_MILES: markers sit 0.5 mi apart, so one missing
+  # marker (a 1.0 mi gap) already ends a stretch. MILEPOST_HALF_WIDTH: each
+  # marker owns a quarter mile either side, so runs tile the trail.
+  # SPRINGER_MILE: mile 0.
+  trail_lines_club_milepost_snap_m: 100.0
+  trail_lines_club_stretch_gap_mi: 0.75
+  trail_lines_club_milepost_half_width_mi: 0.25
+  trail_lines_club_springer_mile: 0.0
 
   dbt_project_evaluator:
     # The mart names the maintainer chose carry no dim_/fct_ prefix

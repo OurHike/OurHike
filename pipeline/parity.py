@@ -197,6 +197,15 @@ def _spurs_old() -> dict:
     return _spurs_records(json.loads(json.dumps(records, sort_keys=True)), None)
 
 
+def _club_sections_old() -> dict:
+    """export_club_sections.build_output() over the same raw files. Its `source_edited` reads fetch_all.py's
+    data/raw/manifest.json, which the CI fixture has none of, so there it is {} on both sides; on a live fetch the
+    Python dates each layer and the dbt file cannot yet (pub_club_sections' header says why)."""
+    import export_club_sections
+
+    return json.loads(json.dumps(export_club_sections.build_output()))
+
+
 FAMILIES: dict[str, Family] = {
     "podcasts": Family(old=_podcasts_old, records="episodes", key="spotify_id", ordered=True),
     "stewards": Family(old=_stewards_old, records="stewards", key="provider", ordered=True),
@@ -208,6 +217,8 @@ FAMILIES: dict[str, Family] = {
         old=_trails_overview_old, records="lines", key="line", ordered=True, new_shape=_trails_overview_records
     ),
     "spurs": Family(old=_spurs_old, records="spurs", key="id", ordered=True, new_shape=_spurs_records),
+    # `sources`, `source_edited` and `unattributed`, beside the clubs, are compared whole.
+    "club_sections": Family(old=_club_sections_old, records="clubs", key="acronym", ordered=True),
 }
 
 

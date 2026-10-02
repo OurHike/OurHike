@@ -35,10 +35,12 @@ from shapely import wkt as shapely_wkt
 from shapely.geometry import LineString, MultiLineString, Point
 from shapely.strtree import STRtree
 
+import export_club_sections
 import export_elevation
 import export_nearby_trails
 import export_spurs
 import export_trails
+from lib import club_sections as lib_club_sections
 from lib import corridor
 from lib import spurs as lib_spurs
 from tests.conftest import spatial_connection
@@ -113,6 +115,35 @@ def test_the_spur_vars_are_lib_spurs_constants():
     assert variables["trail_lines_spur_destination_max_m"] == lib_spurs.DESTINATION_MAX_M
     assert variables["trail_lines_metres_per_degree"] == lib_spurs.METERS_PER_DEGREE
     assert (export_spurs.SIDE_TRAILS_KEY, export_spurs.TYPE_FIELD) == ("side_trails", "Type")
+
+
+def test_the_club_vars_are_lib_club_sections_constants():
+    variables = yaml.safe_load((DBT / "dbt_project.yml").read_text())["vars"]
+    assert variables["trail_lines_club_milepost_snap_m"] == lib_club_sections.MILEPOST_SNAP_M
+    assert variables["trail_lines_club_stretch_gap_mi"] == lib_club_sections.STRETCH_GAP_MILES
+    assert variables["trail_lines_club_milepost_half_width_mi"] == lib_club_sections.MILEPOST_HALF_WIDTH
+    assert variables["trail_lines_club_springer_mile"] == lib_club_sections.SPRINGER_MILE
+
+
+def test_the_club_models_read_the_layers_and_fields_export_club_sections_reads():
+    """The source keys the club models gate on, and the upstream fields their staged columns come from."""
+    models = DBT / "models" / "intermediate" / "trail_lines"
+    stretches = (models / "int_trail_lines__club_stretches.sql").read_text()
+    names = (models / "int_trail_lines__club_names.sql").read_text()
+    assert f"'{export_club_sections.CENTERLINE_KEY}'" in stretches
+    assert f"'{export_club_sections.MILEPOSTS_KEY}'" in stretches
+    assert f"'{export_club_sections.POLYGONS_KEY}'" in names
+    staging = DBT / "models" / "staging" / "atc"
+    assert (
+        f"{lib_club_sections.POLYGON_ACRONYM_FIELD.lower()} as club_acronym"
+        in (staging / "stg_atc__club_sections.sql").read_text()
+    )
+    assert (
+        f"{export_club_sections.MEASURE_FIELD.lower()} as measure_mi" in (staging / "stg_atc__half_mile_markers.sql").read_text()
+    )
+    assert lib_club_sections.CENTERLINE_ACRONYM_FIELD == "Acronym"
+    assert "acronym as club_acronym" in (staging / "stg_atc__centerline_segments.sql").read_text()
+    assert (lib_club_sections.POLYGON_NAME_FIELD, lib_club_sections.POLYGON_REGION_FIELD) == ("TRAIL_CLUB", "REGION")
 
 
 def _coded_domain(source_key: str, field_name: str) -> dict[str, str]:

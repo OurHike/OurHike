@@ -1,6 +1,22 @@
 """Run one lane: change checks, extract, normalize, the run check, load, the after-run check, the run log.
 
 Usage: python -m extract._run --lane monthly --bucket-url file:///path/to/raw-store
+       python -m extract._run --lane conditions_ua --raw-bucket our-hike-raw \\
+           --warehouse data/warehouse.duckdb --summary "$GITHUB_STEP_SUMMARY"
+       python -m extract._run --lane monthly --only raw_registry__sources \\
+           --bucket-url file:///tmp/registry-store --warehouse data/warehouse.duckdb
+
+`--lane` is a lane (`monthly`, `hourly`) or a conditions leg
+(`conditions_production`, `conditions_ua`: the hourly lane for one data
+environment, in a dlt pipeline of its own; LEGS below). `--raw-bucket` names
+the private raw bucket and puts the run at its pipeline's own prefix
+(raw_store_url); `--bucket-url` gives the whole URL instead. `--only` keeps
+the named tables of the lane and nothing else. `--warehouse` loads every
+table the run's pipeline has committed into that DuckDB file's `raw` schema
+afterwards (extract/_warehouse.py's committed-file read). `--summary` appends
+the run's evidence, as Markdown, to a file: rows and the upstream's own
+count per table, every refusal and unavailable resource, and how long each
+part took. It is written on a refused run too, before the exit.
 
 pipeline/ELT.md, "Change checks, verdicts and `_loaded_at`" and "A full reload
 that cannot empty a safety table", is the design (#1793 — Rebuild the data
@@ -31,9 +47,12 @@ import argparse
 import json
 import os
 import sys
+import time
 from collections import defaultdict
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 # Before dlt is imported, and here as well as in .dlt/config.toml, so a run
 # started from any directory has both: telemetry is on by default, to
@@ -54,6 +73,19 @@ from lib.freshness_state import Freshness  # noqa: E402
 # hourly pipeline when due (ELT.md); none of the folders extracted so far has
 # one, so no lane carries them yet and the layout test refuses one.
 LANES = {"monthly": ("monthly",), "hourly": ("hourly", "daily")}
+# The conditions legs: publish-conditions.yml runs the hourly lane once per
+# data environment, and each leg is a dlt pipeline of its own, so each has its
+# own prefix in the raw store, its own markers and its own `_extract_runs`.
+# OurHike's Postgres rows are why: each leg reads its own environment's
+# database (ConditionsQuery's CONDITIONS_DATABASE_URL), and one pipeline for
+# both would replace production's closures table with UA's and back again
+# every hour, which the workflow's matrix exists to prevent (ELT.md, "The
+# hourly lanes"). ELT.md names per-environment raw tables for that
+# (`raw_ourhike_production__*`); a pipeline per leg separates them by prefix
+# instead and leaves every table name, and so every dbt source, as it is
+# (Reasoned). Not in LANES, so fixture mode, which runs each lane of LANES,
+# does not run the hourly resources three times.
+LEGS = {"conditions_production": "hourly", "conditions_ua": "hourly"}
 # A daily resource has no job of its own: it rides the hourly lane and runs
 # when its last good check is a day old, so no second job writes the hourly
 # lane's raw store (ELT.md, "Every node carries its cadence"). NYNJTC's alert
@@ -77,7 +109,14 @@ COLLAPSE_FLOOR = 0.5
 
 
 class ExtractRefused(RuntimeError):
-    """The run check or the after-run check failed. Nothing this run loaded may be read."""
+    """The run check or the after-run check failed. Nothing this run loaded may be read.
+
+    `report` is the refused run's RunReport, so the command line can still
+    write its summary: which tables, which counts, and why."""
+
+    def __init__(self, message: str, report: RunReport | None = None):
+        super().__init__(message)
+        self.report = report
 
 
 @dataclass
@@ -103,6 +142,20 @@ class RunReport:
     hints: dict[str, dict] = field(default_factory=dict)
     # Resources whose change check raised Unavailable, by name: why each was left out.
     unavailable: dict[str, str] = field(default_factory=dict)
+    # Seconds each part of the run took, in the order they ran: the change
+    # checks, extract, normalize, load, the run log. A part a run did not
+    # reach is absent.
+    timings: dict[str, float] = field(default_factory=dict)
+
+
+@contextmanager
+def timed(report: RunReport, part: str):
+    """Add the seconds the block took to `report.timings[part]`, even when it raises."""
+    started = time.monotonic()
+    try:
+        yield
+    finally:
+        report.timings[part] = report.timings.get(part, 0.0) + time.monotonic() - started
 
 
 def utc_now_naive() -> datetime:
@@ -110,8 +163,46 @@ def utc_now_naive() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
+def cadences_of(lane: str) -> tuple[str, ...]:
+    """The cadences a lane, or a conditions leg's lane, carries."""
+    if lane in LEGS:
+        return LANES[LEGS[lane]]
+    if lane not in LANES:
+        raise ValueError(f"no lane {lane!r}; lanes are {sorted(LANES)} and legs {sorted(LEGS)}")
+    return LANES[lane]
+
+
 def lane_resources(lane: str, resources: list[Resource]) -> list[Resource]:
-    return [resource for resource in resources if resource.cadence in LANES[lane]]
+    return [resource for resource in resources if resource.cadence in cadences_of(lane)]
+
+
+#: The raw store's prefix for dlt's files, inside the private bucket: raw
+#: under `raw/` (decision 43) and one prefix per dlt pipeline (ELT.md,
+#: "Storage tiers": `dlt/<pipeline>/raw/<table>/…`), where dlt itself adds
+#: the dataset, `raw`, and the table.
+RAW_STORE_PREFIX = "raw/dlt"
+
+
+def raw_store_url(bucket: str, lane: str) -> str:
+    """`s3://<bucket>/raw/dlt/ourhike_<lane>`: one lane's, or one leg's, own prefix in the raw store.
+
+    The prefix is the dlt pipeline's name, so two legs never share a table
+    file, a marker or a run log. dlt reads the endpoint and the keys from
+    `DESTINATION__FILESYSTEM__CREDENTIALS__*`, never from here.
+    """
+    cadences_of(lane)  # refuses an unknown lane before any URL is made
+    if not bucket or "/" in bucket or ":" in bucket:
+        raise ValueError(f"{bucket!r} is not a bucket name; pass the bucket alone, as R2_RAW_BUCKET holds it")
+    return f"s3://{bucket}/{RAW_STORE_PREFIX}/ourhike_{lane}"
+
+
+def only_tables(resources: list[Resource], tables: list[str], lane: str) -> list[Resource]:
+    """The lane's resources whose table is one of `tables`. Refuses a table the lane does not carry."""
+    on_lane = {resource.table for resource in lane_resources(lane, resources)}
+    missing = sorted(set(tables) - on_lane)
+    if missing:
+        raise ValueError(f"{', '.join(missing)}: not a table the {lane} lane carries, so --only cannot keep it")
+    return [resource for resource in resources if resource.table in tables]
 
 
 def _naive_utc(stamp: datetime) -> datetime:
@@ -402,15 +493,35 @@ def run_pipeline(
     resources: list[Resource] | None = None,
     pipelines_dir: str | None = None,
 ) -> RunReport:
-    """One lane, end to end. Raises ExtractRefused, after logging, when either check fails."""
-    if lane not in LANES:
-        raise ValueError(f"no lane {lane!r}; lanes are {sorted(LANES)}")
+    """One lane, or one conditions leg, end to end. Raises ExtractRefused, after logging, when either check fails.
+
+    Whatever it raises carries the run's RunReport as `.report` where the
+    exception will take one, so a caller can say what the run got to."""
+    cadences_of(lane)
     if resources is None:
         resources = all_resources(discover() + discover_shared())
-    plan_resources = lane_resources(lane, resources)
     checked_at = utc_now_naive()
     report = RunReport(run_id=checked_at.strftime("%Y%m%dT%H%M%S.%fZ"), lane=lane, outcome="loaded")
+    try:
+        _run(report, lane, bucket_url, lane_resources(lane, resources), pipelines_dir, checked_at)
+    except Exception as failure:
+        if getattr(failure, "report", None) is None:
+            try:
+                failure.report = report
+            except AttributeError:
+                pass  # an exception type that keeps no attributes; the caller reports without it
+        raise
+    return report
 
+
+def _run(
+    report: RunReport,
+    lane: str,
+    bucket_url: str,
+    plan_resources: list[Resource],
+    pipelines_dir: str | None,
+    checked_at: datetime,
+) -> None:
     pipeline = make_pipeline(lane, bucket_url, pipelines_dir)
     # A run that died after its extract and before its load committed leaves
     # its package pending in the working directory, and its resource state
@@ -422,26 +533,28 @@ def run_pipeline(
     # the committed marker comes back (the dlt skill, "A marker advances only
     # when a load commits"). CI's runners start with no working directory, so
     # this bites a reused one: a laptop, a cached runner.
-    if pipeline.has_pending_data:
-        print(f"::warning title={lane} dropped an uncommitted load::a previous run died before its load committed")
-        pipeline.abort_packages()
-    pipeline.sync_destination()
-    recorded = recorded_markers(pipeline)
-    plan_resources = due(plan_resources, run_log_rows(pipeline), checked_at)
+    with timed(report, "sync"):
+        if pipeline.has_pending_data:
+            print(f"::warning title={lane} dropped an uncommitted load::a previous run died before its load committed")
+            pipeline.abort_packages()
+        pipeline.sync_destination()
+        recorded = recorded_markers(pipeline)
+        plan_resources = due(plan_resources, run_log_rows(pipeline), checked_at)
     planned, unavailable = [], []
-    for resource in plan_resources:
-        before = recorded.get(resource.name)
-        try:
-            verdict, marker = resource.change_check(before)
-        except Unavailable as reason:
-            # An annotation, so the gap reaches the run summary rather than only the step log.
-            print(f"::warning title={resource.name} is unavailable::{reason}")
-            unavailable.append(resource)
-            report.unavailable[resource.name] = str(reason)
-            report.verdicts[resource.name] = UNAVAILABLE
-            continue
-        planned.append(Planned(resource, verdict, before, marker))
-        report.verdicts[resource.name] = verdict.value
+    with timed(report, "change checks"):
+        for resource in plan_resources:
+            before = recorded.get(resource.name)
+            try:
+                verdict, marker = resource.change_check(before)
+            except Unavailable as reason:
+                # An annotation, so the gap reaches the run summary rather than only the step log.
+                print(f"::warning title={resource.name} is unavailable::{reason}")
+                unavailable.append(resource)
+                report.unavailable[resource.name] = str(reason)
+                report.verdicts[resource.name] = UNAVAILABLE
+                continue
+            planned.append(Planned(resource, verdict, before, marker))
+            report.verdicts[resource.name] = verdict.value
     to_run = [item for item in planned if item.verdict is not Freshness.FRESH]
     print(
         f"{lane}: {len(planned) + len(unavailable)} resources, {len(to_run)} to read, "
@@ -453,8 +566,10 @@ def run_pipeline(
             lambda: [to_dlt(item.resource, item.marker, report.proofs, checked_at, report.hints) for item in to_run],
             name=SOURCE_NAME,
         )
-        pipeline.extract(source(), loader_file_format="parquet")
-        pipeline.normalize()
+        with timed(report, "extract"):
+            pipeline.extract(source(), loader_file_format="parquet")
+        with timed(report, "normalize"):
+            pipeline.normalize()
         report.rows = {
             table: count
             for table, count in pipeline.last_trace.last_normalize_info.row_counts.items()
@@ -464,27 +579,114 @@ def run_pipeline(
         if report.problems:
             pipeline.abort_packages()
             report.outcome = "refused"
-            write_run_log(pipeline, report, planned, checked_at, unavailable)
-            raise ExtractRefused("Extract run check:\n  " + "\n  ".join(report.problems))
-        loads = pipeline.load().loads_ids
+            with timed(report, "run log"):
+                write_run_log(pipeline, report, planned, checked_at, unavailable)
+            raise ExtractRefused("Extract run check:\n  " + "\n  ".join(report.problems), report)
+        with timed(report, "load"):
+            loads = pipeline.load().loads_ids
         if len(loads) != 1:
-            raise ExtractRefused(f"one load expected from this run, and {len(loads)} committed: {loads}")
+            raise ExtractRefused(f"one load expected from this run, and {len(loads)} committed: {loads}", report)
         report.load_id = loads[0]
-        report.problems = committed(pipeline, report.load_id, report.rows, planned)
+        with timed(report, "after-run check"):
+            report.problems = committed(pipeline, report.load_id, report.rows, planned)
         if report.problems:
             report.outcome = "unverified"
-            write_run_log(pipeline, report, planned, checked_at, unavailable)
-            raise ExtractRefused("Extract after-run check:\n  " + "\n  ".join(report.problems))
-    write_run_log(pipeline, report, planned, checked_at, unavailable)
-    return report
+            with timed(report, "run log"):
+                write_run_log(pipeline, report, planned, checked_at, unavailable)
+            raise ExtractRefused("Extract after-run check:\n  " + "\n  ".join(report.problems), report)
+    with timed(report, "run log"):
+        write_run_log(pipeline, report, planned, checked_at, unavailable)
+
+
+def summary_markdown(report: RunReport | None, lane: str, *, failure: BaseException | None = None) -> str:
+    """The run's evidence as Markdown, for `$GITHUB_STEP_SUMMARY`: what each table loaded, and why a run stopped.
+
+    One row per resource the run planned: its verdict, the rows it landed,
+    and the upstream's own count read in the same run, blank where the
+    platform has none and never written as 0 for it. A FRESH resource lands
+    nothing and keeps its last committed table, so its rows read "kept"; an
+    unavailable one is withdrawn from the warehouse, and reads "withdrawn".
+    A run that stopped before normalize has no counts at all, and its rows
+    are left blank rather than written as zero.
+    """
+    lines = [f"### Extract: `{lane}`", ""]
+    if report is None:
+        return "\n".join([*lines, f"**Failed before a run began:** `{type(failure).__name__}: {failure}`", ""]) + "\n"
+    stopped = failure is not None and not isinstance(failure, ExtractRefused)
+    outcome = "failed" if stopped else report.outcome
+    head = f"Run `{report.run_id}`, outcome **{outcome}**"
+    lines += [head + (f", load `{report.load_id}`" if report.load_id else ""), ""]
+    if stopped:
+        lines += [f"**Stopped by** `{type(failure).__name__}: {failure}`", ""]
+    if report.problems:
+        lines += ["**Refused:**", "", *[f"- {problem}" for problem in report.problems], ""]
+    if report.unavailable:
+        lines += ["**Unavailable** (left out of the run, and withdrawn from the warehouse):", ""]
+        lines += [*[f"- `{name}`: {why}" for name, why in sorted(report.unavailable.items())], ""]
+    normalized = "normalize" in report.timings and not (stopped and not report.rows)
+    if report.verdicts:
+        lines += ["| table | verdict | rows | upstream count |", "|---|---|---:|---:|"]
+        for name, verdict in sorted(report.verdicts.items()):
+            if verdict == Freshness.FRESH.value:
+                rows = "kept"
+            elif verdict == UNAVAILABLE:
+                rows = "withdrawn"
+            else:
+                rows = str(report.rows.get(name, 0)) if normalized else ""
+            proof = report.proofs.get(name)
+            lines.append(f"| `{name}` | {verdict} | {rows} | {'' if proof is None else proof} |")
+        lines.append("")
+    if report.timings:
+        lines += ["Seconds: " + ", ".join(f"{part} {seconds:.1f}" for part, seconds in report.timings.items()), ""]
+    return "\n".join(lines) + "\n"
+
+
+def load_committed(lane: str, bucket_url: str, warehouse: Path, pipelines_dir: str | None = None) -> dict[str, int]:
+    """Every table the lane's pipeline has committed, into `warehouse`'s raw schema. Returns {table: rows}.
+
+    extract/_warehouse.py's committed-file read, which refuses a table whose
+    recorded load left no file rather than loading it empty. Imported here
+    rather than at the top, because that module imports this one."""
+    import duckdb
+
+    from extract._warehouse import load_warehouse
+
+    warehouse.parent.mkdir(parents=True, exist_ok=True)
+    with duckdb.connect(str(warehouse)) as con:
+        return load_warehouse(con, make_pipeline(lane, bucket_url, pipelines_dir))
 
 
 def main(argv: list[str] | None = None) -> RunReport:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
-    parser.add_argument("--lane", required=True, choices=sorted(LANES))
-    parser.add_argument("--bucket-url", required=True, help="the raw store: file:///… locally, s3://… for R2")
+    parser.add_argument("--lane", required=True, choices=sorted(LANES) + sorted(LEGS))
+    where = parser.add_mutually_exclusive_group(required=True)
+    where.add_argument("--bucket-url", help="the raw store: file:///… locally, s3://… for R2")
+    where.add_argument("--raw-bucket", help="the private raw bucket's name, as R2_RAW_BUCKET holds it")
+    parser.add_argument("--only", action="append", default=[], metavar="TABLE", help="keep only this table of the lane")
+    parser.add_argument("--warehouse", type=Path, help="then load every committed table into this DuckDB file")
+    parser.add_argument("--summary", type=Path, help="append the run's evidence, as Markdown, to this file")
+    parser.add_argument("--pipelines-dir", help="dlt's working directory (default: dlt's own)")
     args = parser.parse_args(argv)
-    report = run_pipeline(args.lane, args.bucket_url)
+    bucket_url = args.bucket_url or raw_store_url(args.raw_bucket, args.lane)
+    resources = all_resources(discover() + discover_shared())
+    if args.only:
+        resources = only_tables(resources, args.only, args.lane)
+    report = None
+    try:
+        report = run_pipeline(args.lane, bucket_url, resources=resources, pipelines_dir=args.pipelines_dir)
+        if args.warehouse is not None:
+            with timed(report, "warehouse"):
+                loaded = load_committed(args.lane, bucket_url, args.warehouse, args.pipelines_dir)
+            print(f"{len(loaded)} tables, {sum(loaded.values())} rows, into {args.warehouse}")
+    except Exception as failure:
+        if args.summary is not None:
+            known = getattr(failure, "report", None) or report  # the warehouse step's refusal carries none
+            with open(args.summary, "a", encoding="utf-8") as handle:
+                handle.write(summary_markdown(known, args.lane, failure=failure))
+        raise
+    if args.summary is not None:
+        with open(args.summary, "a", encoding="utf-8") as handle:
+            handle.write(summary_markdown(report, args.lane))
     for name, verdict in sorted(report.verdicts.items()):
         print(f"  {name}: {verdict}")
     return report

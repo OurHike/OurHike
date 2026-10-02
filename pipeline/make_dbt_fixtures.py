@@ -2612,6 +2612,93 @@ def suggested_hikes_fixtures() -> dict[str, str]:
     return files
 
 
+# --- places (#1793, stage 3) -------------------------------------------------
+#
+# The places family's dbt models (pipeline/dbt/models/intermediate/places/) and
+# today's export_places.py both read NYS OPRHP's park polygons, and parity.py
+# compares the two places.json files they write.
+
+
+def _park(global_id: str, name, unit, category, ring) -> dict:
+    """One OPRHP park polygon, in the four fields export_places.py reads."""
+    properties = {"GlobalID": global_id, "Name": name, "MasterAreaID": unit, "Category": category}
+    geometry = {"type": "Polygon", "coordinates": [ring]} if ring else None
+    return {"type": "Feature", "properties": properties, "geometry": geometry}
+
+
+def _places_fixtures(files: dict[str, str]) -> dict[str, str]:
+    """`files` with OPRHP's park layer given the four fields export_places.py reads, one polygon per rule.
+
+    The fields are the ones the layer's sources.json entry declares
+    (`name_field` Name, `id_field` GlobalID, `unit_field` MasterAreaID) plus
+    `Category`, which export_places.py reads as PARK_CATEGORY_FIELD. All four
+    were read off the live layer on 2026-10-02 (858 polygons, last edited
+    2026-08-21): GlobalID unique and never null, MasterAreaID a small integer
+    null on one row, Category one of ten words. That makes
+    `_oprhp_park_polygons_layer()` above, written before the entry declared
+    any field, the layer's shape no longer, and this replaces its output.
+
+    Each polygon is there for one rule of load_parks() (PL02, PL03), and the
+    boxes sit on the network fixture's lines so the measured miles are not all
+    zero:
+    - unit 127, "Fixture Harriman", two parcels: one over the stacked network
+      lines at -74.0, one over the Closed Ridge Trail at -74.2 (one row per
+      unit, the miles summed);
+    - a parcel with no MasterAreaID named "Fixture Harriman" over the Long
+      Path at -74.3, which joins unit 127, the one unit wearing its name;
+    - unit 270, two of its three parcels "Fixture Robert Moses" and one
+      "Captree/Fixture Robert Moses" (the majority name), away from any line
+      (a measured 0.0);
+    - unit 271, also "Fixture Robert Moses" (two parks sharing a name stay
+      two rows), and a parcel with no unit by that name, which stands alone
+      under its GlobalID because two units wear the name;
+    - "Fixture Lone Preserve", no unit, over the 1777 East Trail at -74.25;
+    - unit 300, "Fixture Bowtie Park", a ring that crosses itself, which
+      ST_MakeValid turns into two triangles before anything is measured
+      (PL03), and which carries no Category;
+    - a blank name and a null geometry, neither of which is a place.
+
+    ATC's two fixture Communities also get the STATE column the live layer
+    carries (read 2026-10-02: all 59 rows have the field, 14 of them null),
+    so the towns places.json lists reach both answers of state_code()
+    (PL04): "Virginia" reads as VA, and "Virgnia", a misspelling one live row
+    still carries on 2026-10-02, is no state, so that town has none, ATC's
+    organization declaring none either. Nothing else
+    reads the column: export_poi.py publishes a town's name, never its
+    state.
+    """
+    parks = [
+        _park("{00000000-0000-4000-8000-000000000501}", "Fixture Harriman", 127, "State Park", _box(-74.003, 40.998, -73.987, 41.009)),
+        _park("{00000000-0000-4000-8000-000000000502}", "Fixture Harriman", 127, "State Park", _box(-74.205, 41.21, -74.195, 41.24)),
+        _park("{00000000-0000-4000-8000-000000000503}", "Fixture Harriman", None, "State Park Preserve", _box(-74.305, 41.6, -74.295, 41.65)),
+        _park("{00000000-0000-4000-8000-000000000504}", "Captree/Fixture Robert Moses", 270, "State Park", _box(-73.52, 40.6, -73.51, 40.61)),
+        _park("{00000000-0000-4000-8000-000000000505}", "Fixture Robert Moses", 270, "State Park", _box(-73.5, 40.6, -73.49, 40.61)),
+        _park("{00000000-0000-4000-8000-000000000506}", "Fixture Robert Moses", 270, "State Park", _box(-73.48, 40.6, -73.47, 40.61)),
+        _park("{00000000-0000-4000-8000-000000000507}", "Fixture Robert Moses", 271, "State Park", _box(-73.4, 40.6, -73.39, 40.61)),
+        _park("{00000000-0000-4000-8000-000000000508}", "Fixture Robert Moses", None, "Other", _box(-73.3, 40.6, -73.29, 40.61)),
+        _park("{00000000-0000-4000-8000-000000000509}", "Fixture Lone Preserve", None, "Conservation Easement", _box(-74.255, 41.195, -74.245, 41.205)),
+        _park(
+            "{00000000-0000-4000-8000-000000000510}",
+            "Fixture Bowtie Park",
+            300,
+            None,
+            # Bottom and top triangles meeting at (-73.98, 41.0225): the network
+            # lines at x -73.98 run 41.02 to 41.025, through both.
+            [[-73.985, 41.018], [-73.975, 41.027], [-73.985, 41.027], [-73.975, 41.018], [-73.985, 41.018]],
+        ),
+        _park("{00000000-0000-4000-8000-000000000511}", "  ", 400, "State Park", _box(-73.2, 40.6, -73.19, 40.61)),
+        _park("{00000000-0000-4000-8000-000000000512}", "Fixture Ghost", 401, "State Park", None),
+    ]  # fmt: skip
+    communities = json.loads(files["communities.geojson"])
+    for feature, state in zip(communities["features"], ("Virginia", "Virgnia"), strict=True):
+        feature["properties"]["STATE"] = state
+    return {
+        **files,
+        "external/oprhp_park_polygons.geojson": _feature_collection(parks),
+        "communities.geojson": json.dumps(communities),
+    }
+
+
 def write_fixtures(raw_dir: Path) -> list[str]:
     files = {
         "shelters.geojson": _atc_layer("Shelter", 3),
@@ -2754,6 +2841,7 @@ def write_fixtures(raw_dir: Path) -> list[str]:
     files = _trail_lines_network_fixtures(files)
     files = _trail_lines_at_fixtures(files)
     files = _points_of_interest_fixtures(files)
+    files = _places_fixtures(files)
     existing = [name for name in files if (raw_dir / name).exists()]
     if existing:
         raise SystemExit(

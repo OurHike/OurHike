@@ -1,0 +1,199 @@
+version: 2
+
+models:
+  - name: places
+    description: >
+      Every place a hiker can name before anything is downloaded, one row
+      each: the parks, towns, trailheads, parking areas and long trails
+      first run's "where do you hike?" searches (places.json, written by
+      pub_places). Every figure is the publisher's own word or a measurement
+      over lines this build published, and `trail_miles` is null on every
+      row when there were none to measure. Only rows whose source may
+      publish (int_sources__publication).
+    config:
+      access: public
+      contract:
+        enforced: true
+    data_tests:
+      # PL11: miles exactly where something was measured. An unmeasured
+      # place must never read as one holding no trail, so a measured run
+      # gives every row a figure (0.0 included) and an unmeasured one none.
+      - dbt_utils.expression_is_true:
+          name: places_trail_miles_are_there_exactly_when_measured
+          arguments:
+            expression: "(trail_miles is null) = (not trail_miles_measured)"
+          config:
+            severity: error
+      - dbt_utils.expression_is_true:
+          name: places_trail_miles_are_never_negative
+          arguments:
+            expression: "trail_miles is null or trail_miles >= 0"
+          config:
+            severity: error
+      # A park and a long trail carry the box a map fits; a waypoint does
+      # not, and its point lies inside the box where there is one.
+      - dbt_utils.expression_is_true:
+          name: places_a_box_is_a_parks_or_a_trails_and_holds_its_point
+          arguments:
+            expression: >-
+              (bbox is not null) = (kind in ('park', 'trail'))
+              and (
+                bbox is null
+                or (
+                  len(bbox) = 4
+                  and bbox[1] <= lon and lon <= bbox[3]
+                  and bbox[2] <= lat and lat <= bbox[4]
+                )
+              )
+          config:
+            severity: error
+      # The published waypoint id rides on the waypoint kinds only (PL05),
+      # the park a point sits in on a point only (PL09), and the publisher's
+      # category on a park only.
+      - dbt_utils.expression_is_true:
+          name: places_a_waypoint_id_is_on_a_waypoint
+          arguments:
+            expression: "(poi_id is not null) = (kind in ('trailhead', 'parking', 'town'))"
+          config:
+            severity: error
+      - dbt_utils.expression_is_true:
+          name: places_within_is_on_a_point_and_category_on_a_park
+          arguments:
+            expression: >-
+              (within_park is null or kind in ('trailhead', 'parking', 'town'))
+              and (category is null or kind = 'park')
+          config:
+            severity: error
+      - dbt_utils.unique_combination_of_columns:
+          name: places_place_order_is_unique
+          arguments:
+            combination_of_columns: [place_order]
+    columns:
+      - name: place_id
+        description: >
+          The id places.json publishes: `oprhp_park_polygons:<unit>` for a
+          park, or `oprhp_park_polygons:<GlobalID>` for one whose polygons
+          carry no unit; the waypoint's own published id for a trailhead,
+          parking area or town; `trail:<source>:<name>` for a long trail. A
+          hiker keeps a place as their home, so none is ever generated from a
+          row's position.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests: [not_null, unique]
+      - name: place_order
+        description: >
+          The row's place in places.json, from 1: by kind, then name, then
+          id, in code-point order, for a stable diff.
+        data_type: bigint
+        constraints:
+          - type: not_null
+      - name: kind
+        description: "`park`, `town`, `trailhead`, `parking` or `trail`."
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [park, town, trailhead, parking, trail]
+      - name: name
+        description: >
+          The publisher's name, unaltered: a park's is the one most of its
+          polygons wear, the shortest on a tie.
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: poi_id
+        description: >
+          For a trailhead, parking area or town, the published waypoint's own
+          id, so a pick here is a waypoint the app already holds.
+        data_type: varchar
+      - name: category
+        description: A park's category in the publisher's own word ("State Park"), its polygons' commonest.
+        data_type: varchar
+      - name: state
+        description: >
+          A two-letter postal code, ONLY where the source says it or its
+          organization declares one in sources.json, never guessed: ATC's
+          Communities writes a word, which is read into a code, and a word
+          that is not a state's name is absent (PL04).
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [AL, AK, AZ, AR, CA, CO, CT, DE, DC, FL, GA, HI, ID, IL, IN, IA, KS, KY, LA, ME, MD, MA, MI, MN, MS, MO, MT, NE, NV, NH, NJ, NM, NY, NC, ND, OH, OK, OR, PA, RI, SC, SD, TN, TX, UT, VT, VA, WA, WV, WI, WY]
+      - name: within_park
+        description: The park a trailhead, parking area or town sits inside, by name (PL09), published as `within`.
+        data_type: varchar
+      - name: lon
+        description: >
+          The place's longitude: a park's centroid and a trail's box centre,
+          each to 5 decimals; a waypoint's published point, uncut.
+        data_type: double
+        constraints:
+          - type: not_null
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: -180
+                max_value: 180
+      - name: lat
+        description: The place's latitude, by the same rule as `lon`.
+        data_type: double
+        constraints:
+          - type: not_null
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: -90
+                max_value: 90
+      - name: bbox
+        description: >
+          [west, south, east, north] to 5 decimals, for a park and a long
+          trail, so a map can fit the place rather than centre on a point
+          inside it.
+        data_type: double[]
+      - name: trail_miles
+        description: >
+          MEASURED miles of published trail line, to a tenth: inside a park's
+          boundary, within places_trail_radius_miles of a waypoint
+          (@unvalidated, dbt_project.yml says what would settle it), or a long
+          trail's own length. Null on every row when no line was published
+          to measure against; absent means unknown, never zero.
+        data_type: double
+      - name: trail_miles_measured
+        description: >
+          Whether this build had any published line to measure against, the
+          same on every row: places.json's `trailMilesMeasured`.
+        data_type: boolean
+        constraints:
+          - type: not_null
+      - name: source
+        description: >
+          The published `source`: oprhp_park_polygons for a park, the
+          waypoint's id namespace (`atc_parking`, `oprhp_facilities`) for a
+          waypoint, the line's registry key for a long trail.
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: club
+        description: The pipeline/extract/ folder that extracted the row.
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: source_key
+        description: The row's source, as int_sources__publication keys it.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('sources')
+                field: source_key
+      - name: _loaded_at
+        description: When the extract loaded the row's source; for a park or a trail, the latest of its parts'.
+        data_type: timestamptz
+        constraints:
+          - type: not_null

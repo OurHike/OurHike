@@ -299,6 +299,18 @@ vars:
   elevation_sample_interval_m: 25.0
   # METERS_PER_FOOT, the international foot: a DEM metre over this is a foot.
   elevation_metres_per_foot: 0.3048
+  # The places family (pl), read by int_places__resolved and the pub_places
+  # writer, and held to export_places.py's PLACE_TRAIL_RADIUS_MILES by
+  # tests/test_dbt_places_parity.py until stage 5 of #1793 deletes the
+  # Python. @unvalidated, as the Python says: five miles is a round number
+  # chosen so a Community at the foot of a ridge counts the trail on the
+  # ridge, and what would settle it is the median distance from a published
+  # trailhead or Community to its nearest published line, measurable from
+  # the same two tables int_places__resolved joins. places.json prints it as
+  # `trailRadiusMiles`, so a screen says what was measured rather than
+  # "nearby". The long-trail threshold is TL12's,
+  # trail_lines_network_named_trail_threshold_miles above.
+  places_trail_radius_miles: 5.0
 
   # The suggested_hikes family (sh), read by the int_suggested_hikes__ models
   # and the pub_suggested_hikes and pub_highlights writers, and held to the

@@ -251,6 +251,7 @@ jobs:
             pipeline/export_poi.py
             pipeline/export_nearby_poi.py
             pipeline/export_retired_poi.py
+            pipeline/export_places.py
             pipeline/requirements.txt
             pipeline/seed_spatial_extension.py
             pipeline/check_freshness.py
@@ -543,6 +544,14 @@ jobs:
           "$RUNNER_TEMP/pipeline/bin/python" parity.py suggested_hikes --new data/processed/dbt/suggested_hikes.json --raw-dir data/raw
           "$RUNNER_TEMP/pipeline/bin/python" parity.py suggested_hikes_detail --new data/processed/dbt/suggested_hikes_detail.json --raw-dir data/raw
           "$RUNNER_TEMP/pipeline/bin/python" parity.py highlights --new data/processed/dbt/highlights.json --raw-dir data/raw
+          # places.json, on the same fixture warehouse: OPRHP's park layer and
+          # ATC's Communities, measured over today's nearby_trails.geojson and
+          # trails.geojson (cut to 6 dp, decision 8), listing today's
+          # trailhead, parking and resupply POIs, each built as its own line
+          # above builds it. Its old side imports export_nearby_trails.py and
+          # export_poi.py, so it runs on the pipeline's pins, and nothing it
+          # imports needs dlt.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py places --new data/processed/dbt/places.json
 
       - name: dbt source freshness
         if: steps.scope.outputs.run == 'true'

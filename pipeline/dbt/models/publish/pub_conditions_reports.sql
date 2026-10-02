@@ -71,7 +71,7 @@ judged as (
         coalesce(publication.may_publish, false) as may_publish,
         coalesce(publication.publication_rule, 'no row') as publication_rule
     from published
-    left join publication on true
+    left join publication on publication.source_key = 'ourhike_reports'
 )
 
 select

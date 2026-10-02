@@ -592,6 +592,7 @@ def _poi_by_type_old(poi_type: str) -> Callable[[], dict]:
         osm_water = _osm_water_old()
         if osm_water is not None:
             export_poi.OSM_WATER_FILENAME, export_poi.OSM_WATER_REACH_FILENAME = osm_water
+        _photos_old(export_poi)
         export_poi.main()
         return json.loads((export_poi.OUT_DIR / f"{poi_type}.geojson").read_text(encoding="utf-8"))
 
@@ -644,6 +645,27 @@ def _site_water_old() -> Path:
         fetch_trail_water.elevation_ft = live
     out.write_text(fetch_trail_water.render(document), encoding="utf-8")
     return out
+
+
+def _photos_old(export_poi) -> None:
+    """Point export_poi.py at make_dbt_fixtures.py's photo manifests and decisions, where step_poi_photos reads them.
+
+    The outcome files are the photo fetchers' (fetch_poi_images.py,
+    fetch_atc_photos.py), which reach the network for every POI; the fixture
+    holds them under poi_photos/, so export_poi.py is told their names, and
+    its face gate reads the fixture's decisions ledger in place of
+    reference/photo_screen_decisions.json, as step_poi_photos is told to.
+    Without the fixture's files nothing changes.
+    """
+    from lib import photo_screen
+
+    folder = export_poi.RAW_DIR / "poi_photos"
+    if not (folder / "poi_images.json").exists():
+        return
+    export_poi.IMAGES_FILENAME = "poi_photos/poi_images.json"
+    export_poi.ATC_IMAGES_FILENAME = "poi_photos/poi_images_atc.json"
+    decisions = folder / "photo_screen_decisions.json"
+    export_poi.load_screen_decisions = lambda: photo_screen.load_decisions(decisions)
 
 
 @functools.cache

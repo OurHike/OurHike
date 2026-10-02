@@ -134,6 +134,22 @@ STEPS: list[Step] = [
         command=("step_osm_water_grade.py", "--warehouse", "{warehouse}"),
         fixture_args=("--elevations", "{raw_dir}/osm_water/epqs_elevations.json"),
     ),
+    # PO24 and PO38: the photo manifests export_poi.py attaches, a stand-in for
+    # the Commons extract kind. Under --fixtures it lands make_dbt_fixtures.py's
+    # outcome files and decisions; otherwise the files export_poi.py reads.
+    Step(
+        name="step_poi_photos",
+        table="poi_photos",
+        command=("step_poi_photos.py", "--warehouse", "{warehouse}"),
+        fixture_args=(
+            "--commons",
+            "{raw_dir}/poi_photos/poi_images.json",
+            "--atc",
+            "{raw_dir}/poi_photos/poi_images_atc.json",
+            "--decisions",
+            "{raw_dir}/poi_photos/photo_screen_decisions.json",
+        ),
+    ),
 ]
 
 

@@ -45,7 +45,7 @@ import export_poi
 import fetch_trail_water
 import make_dbt_fixtures
 import parity
-from lib import atc_notes, corridor, poi_description, poi_identity, poi_sites, spurs
+from lib import atc_notes, corridor, photo_screen, poi_description, poi_identity, poi_sites, spurs
 
 PIPELINE = Path(__file__).parent.parent
 DBT = PIPELINE / "dbt"
@@ -70,6 +70,7 @@ OSM_DESCRIBED = "int_points_of_interest__described_says_what_describe_water_says
 OSM_REACH = "int_points_of_interest__osm_water_reach_measures_like_measure_distances"
 REACHED = "int_points_of_interest__reached_gates_and_marks_like_export_poi"
 DEDUPLICATED = "int_points_of_interest__deduplicated_drops_twins_like_dedupe_water"
+PHOTOS = "int_points_of_interest__photos_gates_and_attaches_like_export_poi"
 
 # The differences between the SQL and today's Python that a decision or an
 # improvement explains, by where they are. Emptying a list turns a test red,
@@ -586,6 +587,35 @@ def reached_answers(test: dict) -> dict[str, dict | None]:
     return answers
 
 
+def photos_answers(test: dict) -> dict[str, dict | None]:
+    """photo_screen.gate_photos() on the Commons rows, `{**commons, **atc}`, then export_poi.attach_photos() (PO24, PO38).
+
+    Each row becomes the photo record its outcome file holds: the credit
+    fields, the digest where the row has one, and a screen where the row was
+    screened, with one face where it was flagged.
+    """
+    rows = sorted(_given(test, "stg_derived__poi_photos"), key=lambda row: row["photo_index"])
+    lists: dict[str, dict[str, list[dict]]] = {"commons": {}, "atc": {}}
+    decisions = {}
+    for row in rows:
+        photo = {field: row.get(field) for field in export_poi.PHOTO_FIELDS}
+        if row.get("digest") is not None:
+            photo["digest"] = row["digest"]
+        if row["screened"]:
+            photo["screen"] = {"faces": 1 if row["flagged"] else 0}
+        lists[row["source"]].setdefault(row["poi_id"], []).append(photo)
+        if row.get("decision") and row.get("digest"):
+            decisions[row["digest"]] = {"decision": row["decision"]}
+    commons, _ = photo_screen.gate_photos(lists["commons"], decisions)
+    records = [{"id": poi_id} for poi_id in dict.fromkeys(row["poi_id"] for row in rows)]
+    export_poi.attach_photos(records, {**commons, **lists["atc"]})
+    columns = ("photo_key", *(f"photo_{field}" for field in export_poi.PHOTO_FIELDS), "photos")
+    return {
+        record["id"]: ({column: record.get(column) for column in columns} if "photo_key" in record else None)
+        for record in records
+    }
+
+
 def deduplicated_answers(test: dict) -> dict[str, dict | None]:
     """export_poi.py's dedupe_water() on the reached rows (PO09)."""
     rows = _given(test, "int_points_of_interest__reached")
@@ -1037,6 +1067,13 @@ def test_osm_twins_of_opentrail_water_are_dropped_as_dedupe_water_drops_them():
     answers = deduplicated_answers(test)
     _held(_expected(test, "poi_key"), answers)
     assert None in answers.values(), "no twin"
+
+
+def test_photos_are_gated_and_attached_as_export_poi_does():
+    test = _unit_test(PHOTOS)
+    answers = photos_answers(test)
+    _held(_expected(test, "poi_id"), answers)
+    assert sum(answer is None for answer in answers.values()) >= 4, "held, refused, digestless and overruled all show none"
 
 
 def test_tombstones_resolve_as_lib_poi_identity_resolves():

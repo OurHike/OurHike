@@ -146,3 +146,31 @@ models:
       - name: _loaded_at
         description: When step_osm_water_grade wrote the table, UTC.
         data_tests: [not_null]
+
+  - name: stg_derived__poi_photos
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('derived', 'poi_photos')
+          config:
+            severity: warn
+    description: >
+      The photo manifests, from step_poi_photos's derived.poi_photos: one row
+      per found photo, Commons and ATC, in each POI's list order. Read by
+      int_points_of_interest__photos, which gates the Commons photos on the
+      face screen and attaches the card photo.
+    columns:
+      - name: poi_photo_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the table's name, the source, the POI id and the photo's place.
+        data_tests: [not_null, unique]
+      - name: poi_id
+        description: The published POI id.
+        data_tests: [not_null]
+      - name: flagged
+        description: Whether the face screen found a face.
+        data_tests: [not_null]
+      - name: _loaded_at
+        description: When step_poi_photos wrote the table, UTC.
+        data_tests: [not_null]

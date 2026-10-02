@@ -1492,6 +1492,10 @@ def _with_key_fields(content: str, fields: dict) -> str:
 #   (_osm_water_fixtures), which step_osm_water.py and step_osm_water_grade.py
 #   read, and one opentrail water waypoint beside a grid site for the dedupe
 #   to find a twin of.
+# - THE PHOTO MANIFESTS (PO24, PO38): Commons and ATC outcome records and a
+#   decisions ledger for grid sites (_poi_photo_fixtures), which
+#   step_poi_photos.py lands, reaching every branch of the face gate and the
+#   attachment. Labels hashed into digests, never bytes.
 POI_REFERENCE_DIR = Path(__file__).parent / "reference"
 
 # Shelter, campsite, vista, parking and privy inventory, one tuple of values
@@ -1749,8 +1753,106 @@ def _osm_water_fixtures(kept: list[dict]) -> tuple[dict[str, str], dict]:
     return files, waypoint
 
 
+# Photos (PO24, PO38): the two outcome files export_poi.py attaches photos
+# from, in the shapes their fetchers write them (fetch_poi_images.py's one
+# `photo` per POI, fetch_atc_photos.py's `photos` list), and a decisions
+# ledger in reference/photo_screen_decisions.json's shape. They live under
+# poi_photos/ rather than at data/raw/poi_images.json, where export_poi.py
+# reads them, so a run picks them up only when told to (step_poi_photos.py
+# under build_marts.py --fixtures, parity.py's old side); and not under
+# photos/, which is the fetchers' cache of the bytes. The digests name no
+# bytes anywhere: they are sha256 of a label, so nothing here is a picture of
+# anybody. Each POI is a grid site the scenario names; together they reach
+# every branch of gate_photos() and attach_photos().
+def _poi_photo_fixtures(kept: list[dict]) -> dict[str, str]:
+    """poi_photos/poi_images.json, poi_photos/poi_images_atc.json and poi_photos/photo_screen_decisions.json over the grid's sites."""
+    import hashlib
+
+    def poi_id(layer: str, nth: int) -> str:
+        sites = [site for site in kept if site["layer"] == layer]
+        return f"atc_{layer}:{sites[nth]['atc_global_id']}"
+
+    def digest(label: str) -> str:
+        return hashlib.sha256(f"fixture-photo-{label}".encode()).hexdigest()
+
+    # A field overridden with `...` is left out of the record, as a fetcher leaves out what it never wrote.
+    def commons(label: str, faces: object = 0, **override) -> dict:
+        photo = {
+            "title": f"File:Fixture {label}.jpg",
+            "dist": 42.0,
+            "url": f"https://upload.wikimedia.org/fixture/{label}.jpg",
+            "page_url": f"https://commons.wikimedia.org/wiki/File:Fixture_{label}.jpg",
+            "author": f"Fixture Photographer {label}",
+            "license": "CC BY-SA 4.0",
+            "taken": "2024-06-01",
+            "digest": digest(label),
+            "screen": {"faces": faces, "screener": "haar_frontalface_default", "on": "2026-08-20"},
+        }
+        photo.update(override)
+        return {k: v for k, v in photo.items() if v is not ...}
+
+    def atc(label: str, **override) -> dict:
+        photo = {
+            "page_url": f"https://atc.fixture/photos/{label}",
+            "author": "Appalachian Trail Conservancy",
+            "license": "ATC facility inventory",
+            "taken": "2023-09-15",
+            "digest": digest(label),
+        }
+        photo.update(override)
+        return {k: v for k, v in photo.items() if v is not ...}
+
+    def found(photo=None, photos=None) -> dict:
+        record = {"status": "found", "checked": "2026-09-01"}
+        if photo is not None:
+            record["photo"] = photo
+        if photos is not None:
+            record["photos"] = photos
+        return record
+
+    shelter = [poi_id("shelters", 40 + n) for n in range(10)]
+    campsite = [poi_id("campsites", 40 + n) for n in range(2)]
+    commons_pois = {
+        shelter[0]: found(commons("screened-clear")),
+        shelter[1]: found(commons("flagged-undecided", faces=2)),
+        shelter[2]: found(commons("flagged-cleared", faces=1)),
+        shelter[3]: found(commons("refused")),
+        shelter[4]: found(commons("unscreened", screen=...)),
+        shelter[5]: found(commons("undecodable", faces=None)),
+        shelter[6]: found(commons("no-digest", digest=...)),
+        shelter[7]: found(commons("overruled-by-atc")),
+        shelter[9]: found(commons("beside-digestless-atc")),
+        campsite[0]: {"status": "none", "checked": "2026-09-01"},
+        "atc_shelters:fixture-not-published": found(commons("orphan")),
+        "osm_water:9100000001": found(commons("spring")),
+    }
+    atc_pois = {
+        shelter[7]: found(photos=[atc("gallery-1"), atc("gallery-2", author=None)]),
+        shelter[8]: found(photos=[atc("no-digest-first", digest=...), atc("second-is-the-card")]),
+        shelter[9]: found(photos=[atc("digestless", digest=...)]),
+        # ATC's own shoot is not gated: a screen or a refusal on its digest changes nothing.
+        campsite[1]: found(photos=[{**atc("atc-with-a-face"), "screen": {"faces": 3}}]),
+    }
+    decisions = {
+        digest("flagged-cleared"): {"decision": "cleared", "on": "2026-08-21"},
+        digest("refused"): {"decision": "refused", "on": "2026-08-21"},
+        digest("atc-with-a-face"): {"decision": "refused", "on": "2026-08-21"},
+    }
+    return {
+        "poi_photos/poi_images.json": json.dumps({"pois": commons_pois}, indent=1),
+        "poi_photos/poi_images_atc.json": json.dumps({"pois": atc_pois}, indent=1),
+        "poi_photos/photo_screen_decisions.json": json.dumps(
+            {
+                "_README": "make_dbt_fixtures.py's decisions, in reference/photo_screen_decisions.json's shape.",
+                "decisions": decisions,
+            },
+            indent=1,
+        ),
+    }
+
+
 def _points_of_interest_fixtures(files: dict) -> dict:
-    """The POI family's additions to `files`: id fields, ATC's real shelters and campsites with inventory, facilities, a DEC privy, site and OSM water's inputs."""
+    """The POI family's additions to `files`: id fields, ATC's real shelters and campsites with inventory, facilities, a DEC privy, site and OSM water's inputs, photo manifests."""
     files = dict(files)
     id_fields = {
         "external/oprhp_facilities.geojson": ("OBJECTID", lambda i: 5501 + i),
@@ -1799,6 +1901,7 @@ def _points_of_interest_fixtures(files: dict) -> dict:
     files.update(_site_water_fixtures(kept))
     osm_water, waypoint = _osm_water_fixtures(kept)
     files.update(osm_water)
+    files.update(_poi_photo_fixtures(kept))
     opentrail = json.loads(files["opentrail_at.geojson"])
     opentrail["features"].append(waypoint)
     files["opentrail_at.geojson"] = json.dumps(opentrail)

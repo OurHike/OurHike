@@ -176,3 +176,59 @@ sources:
           - name: _loaded_at
             description: When the step wrote the table, UTC.
             data_tests: [not_null]
+      - name: poi_photos
+        data_tests:
+          # Rows sharing stg_derived__poi_photos's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'poi_photos'", "source", "poi_id", "photo_index"]
+        description: >
+          The photo manifests export_poi.py attaches, written by
+          step_poi_photos (pipeline/step_poi_photos.py): one row per found
+          photo in fetch_poi_images.py's poi_images.json (Commons) and
+          fetch_atc_photos.py's poi_images_atc.json (ATC), each with its bucket
+          key's digest, its credit, the face screen's flag and the human
+          decision on that digest from reference/photo_screen_decisions.json.
+          Manifest rows only: the bytes never enter the warehouse
+          (pipeline/ELT.md's PO24 and PO38).
+        columns:
+          - name: source
+            description: commons or atc, the outcome file the photo came from.
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: [commons, atc]
+          - name: poi_id
+            description: The published POI id the fetcher keyed the photo by.
+            data_tests: [not_null]
+          - name: photo_index
+            description: The photo's place in its POI's list, from 0; the first is the card photo.
+            data_tests: [not_null]
+          - name: digest
+            description: The sha256 of the stored bytes, which names the bucket object; null on a record from before the download step.
+          - name: page_url
+            description: The photo's own page, the credit link.
+          - name: author
+            description: Who to credit.
+          - name: license
+            description: The licence the photo ships under.
+          - name: taken
+            description: When the photo was taken, an ISO date.
+          - name: screened
+            description: Whether the record carries a face screen at all.
+            data_tests: [not_null]
+          - name: flagged
+            description: Whether the face screen affirmatively found a face (lib/photo_screen.py's flagged()).
+            data_tests: [not_null]
+          - name: decision
+            description: cleared or refused, a person's decision on this digest; null where nobody has decided.
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: [cleared, refused]
+          - name: photo
+            description: The photo record as the outcome file holds it.
+          - name: _loaded_at
+            description: When the step wrote the table, UTC.
+            data_tests: [not_null]

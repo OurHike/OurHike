@@ -218,6 +218,37 @@ models:
       - name: reason
         description: Why the point is not reachable, the grade's reason where it has one, else the distance pass's.
 
+  - name: int_points_of_interest__photos
+    description: >
+      Each POI's card photo and gallery (PO24, PO38): the Commons photos
+      through the face gate (refused never ships; flagged ships only once a
+      person has cleared it), ATC's list where a POI has one, and only a
+      photo with a digest to name its bucket object. export_poi.py's
+      gate_photos() and attach_photos(). One row per POI with a photo.
+    data_tests:
+      # photo_key() raises on a digest that is not sha256 hex, so a publish
+      # never names an object that cannot exist; so does this, for every
+      # photo in the gallery as well as the card's.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >-
+              len(list_filter(
+                json_extract_string(photos, '$[*].key'),
+                lambda photo: not regexp_full_match(photo, '^photos/[0-9a-f]{64}\.jpg$')
+              )) = 0
+          config:
+            severity: error
+    columns:
+      - name: poi_id
+        description: The published POI id.
+        data_tests: [not_null, unique]
+      - name: photo_key
+        description: The card photo's bucket key, photos/<digest>.jpg.
+        data_tests: [not_null]
+      - name: photos
+        description: Every photo shown, card photo first, as JSON objects of key, page_url, author, license and taken.
+        data_tests: [not_null]
+
   - name: int_points_of_interest__reached
     description: >
       The corridor's POIs a hiker could reach (PO08, PO10): every row that

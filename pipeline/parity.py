@@ -5,6 +5,7 @@
     python parity.py elevation --new data/processed/dbt/elevation_profile.json --raw-dir data/raw
     python parity.py nearby_trails --new data/processed/dbt/nearby_trails.geojson
     python parity.py network_overview --new data/processed/dbt/network_overview.geojson
+    python parity.py challenges --new data/processed/dbt/challenges.json
 
 pipeline/ELT.md, "How a rule moves: shadow-run parity", is the design: both
 paths read the same input, records are paired by their key, and each
@@ -649,6 +650,165 @@ FAMILIES.update(
         "retired_poi": Family(old=_retired_poi_old, records="features", key="properties.id", ordered=True, key_of=_poi_id),
     }
 )
+
+
+# --- the challenges family (#1793, stage 3) ---------------------------------
+#
+# challenges.json, keyed by each challenge's id, in the files' path order. The
+# old side reads what export_challenges.main() reads: the club folders and
+# publishers.json in git, sources.json, the poi_<type>.geojson files
+# export_poi.main() writes from the same raw layers, and trails.geojson's
+# centerline from export_trails.main(), cut to decision 8's six decimals as
+# the trails family cuts its old side, so both sides measure one line.
+
+#: Why a challenge can be in today's file and not in the dbt writer's.
+#: tests/test_dbt_challenges_parity.py holds the reason to a warehouse where
+#: the two writers answer that way, so it cannot outlive its case.
+CHALLENGE_REASONS = {
+    "held_back": (
+        "expected by rule 6 of pipeline/ELT.md's 'Who may publish': the club's folder (reference/challenges/<club>) "
+        "has no sources.json row and no unregistered_publishing_sources row, so int_sources__publication holds it "
+        "back, where export_challenges.py publishes the list as a labelled draft. The record the dbt models resolved "
+        "for it (int_challenges__resolved) equals today's, field for field"
+    ),
+}
+
+
+def _warehouse() -> Path:
+    """The warehouse dbt built, where build_marts.py put it: OURHIKE_WAREHOUSE, else data/warehouse.duckdb."""
+    import os
+
+    return Path(os.environ.get("OURHIKE_WAREHOUSE") or Path(__file__).resolve().parent / "data" / "warehouse.duckdb")
+
+
+def _challenges_old() -> dict:
+    """export_challenges.build_output() over main()'s own inputs, dated today in UTC as main() dates it, which is
+    the date the dbt build reads when the var challenges_build_date is unset. Each exporter's own lines go to a
+    buffer, so the step prints the comparison and nothing else."""
+    import contextlib
+    import io
+    import tempfile
+
+    from shapely.geometry import shape
+
+    import export_challenges
+    import export_poi
+    from export_nearby_trails import _rounded_geometry
+
+    with contextlib.redirect_stdout(io.StringIO()):
+        export_poi.NETWORK_LINES_PATH = _published_network()
+        export_poi.main()
+    trails = json.loads((_export_trails_run() / "trails.geojson").read_text(encoding="utf-8"))
+    for feature in trails["features"]:
+        feature["geometry"] = _rounded_geometry(shape(feature["geometry"]))
+    with tempfile.TemporaryDirectory() as scratch:
+        path = Path(scratch) / "trails.geojson"
+        path.write_text(json.dumps(trails), encoding="utf-8")
+        centerline = export_challenges.load_centerline(path)
+    pois = export_challenges.load_published_pois(export_poi.OUT_DIR)
+    publishers = export_challenges.load_publishers()
+    organizations = export_challenges.load_organizations()
+    org_trails, _ = export_challenges.publisher_scope(publishers, organizations, pois)
+    output, _ = export_challenges.build_output(
+        export_challenges.load_challenge_files(),
+        org_domains=export_challenges.publisher_domains(publishers, organizations, pois),
+        org_trails=org_trails,
+        organizations=organizations,
+        pois=pois,
+        centerline=centerline,
+        today=datetime.now(timezone.utc).date(),
+    )
+    return json.loads(json.dumps(output))
+
+
+def _resolved_challenge(row: dict) -> dict:
+    """A row of int_challenges__resolved as pub_challenges writes it: that writer's json_object, field for field.
+    A writer that changes its shape without this changing is a difference parity reports, never one it hides."""
+    return {
+        "id": row["challenge_id"],
+        "org": row["org"],
+        "trail": row["trail"],
+        "name": row["name"],
+        "status": row["status"],
+        "summary": row["challenge_summary"],
+        "window": {"opens": row["window_opens"], "closes": row["window_closes"]},
+        "finish": None if row["finish_count"] is None else {"count": row["finish_count"], "label": row["finish_label"]},
+        "reward": None
+        if row["reward_kind"] is None
+        else {"kind": row["reward_kind"], "rules_url": row["reward_rules_url"], "art": row["reward_art"]},
+        "takes_entries": row["takes_entries"],
+        "photo": row["photo"],
+        "sections": json.loads(row["sections_published"]),
+        "items": json.loads(row["items_published"]),
+        "reviewed": row["reviewed"],
+        "org_name": row["org_name"],
+        "org_short": row["org_short"],
+        "org_domain": row["org_domain"],
+    }
+
+
+RESOLVED_COLUMNS = (
+    "challenge_id",
+    "org",
+    "trail",
+    "name",
+    "status",
+    "challenge_summary",
+    "window_opens",
+    "window_closes",
+    "finish_count",
+    "finish_label",
+    "reward_kind",
+    "reward_rules_url",
+    "reward_art",
+    "takes_entries",
+    "photo",
+    "sections_published",
+    "items_published",
+    "reviewed",
+    "org_name",
+    "org_short",
+    "org_domain",
+)
+
+
+def _held_back_reasons(old: dict, new: dict, warehouse: Path | None = None) -> dict[str, str]:
+    """The challenges today's file publishes and the dbt writer's holds back, each explained only where the
+    warehouse shows both halves: int_sources__publication does not let its source publish (no row for it is the
+    case today, as the mart's inner join reads it), and int_challenges__resolved holds a record for it equal to
+    today's. The order is explained when it is today's with those challenges left out. Anything else the new
+    file lacks, adds or orders differently is still a difference."""
+    import duckdb
+
+    new_ids = [record["id"] for record in new.get("challenges") or []]
+    missing = [record for record in old.get("challenges") or [] if record["id"] not in new_ids]
+    if not missing:
+        return {}
+    # The columns _resolved_challenge() reads, by name: `select *` would fetch _loaded_at, and DuckDB converts a
+    # timestamptz through pytz, which requirements.txt does not carry (measured on a venv of it alone).
+    columns = ", ".join(f"resolved.{name}" for name in RESOLVED_COLUMNS)
+    with duckdb.connect(str(warehouse or _warehouse()), read_only=True) as con:
+        cursor = con.execute(
+            f"select {columns}, coalesce(publication.may_publish, false) as may_publish"
+            " from intermediate.int_challenges__resolved as resolved"
+            " left join intermediate.int_sources__publication as publication"
+            " on resolved.source_key = publication.source_key"
+            " where resolved.problem is null"
+        )
+        names = [column[0] for column in cursor.description]
+        resolved = {row["challenge_id"]: row for row in (dict(zip(names, values, strict=True)) for values in cursor.fetchall())}
+    reasons: dict[str, str] = {}
+    for record in missing:
+        row = resolved.get(record["id"])
+        if row is not None and not row["may_publish"] and canonical(_resolved_challenge(row)) == canonical(record):
+            reasons[f"id {record['id']}"] = CHALLENGE_REASONS["held_back"]
+    kept = [record["id"] for record in old.get("challenges") or [] if f"id {record['id']}" not in reasons]
+    if reasons and kept == new_ids:
+        reasons["order"] = CHALLENGE_REASONS["held_back"]
+    return reasons
+
+
+FAMILIES["challenges"] = Family(old=_challenges_old, records="challenges", key="id", ordered=True, explained=_held_back_reasons)
 
 
 def canonical(value) -> str:

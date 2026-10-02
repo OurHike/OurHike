@@ -217,7 +217,8 @@ jobs:
           # invocations (tests/test_build_marts.py holds this list to both).
           # The points_of_interest family's parity runs export_poi.py (and the
           # export_elevation.py mile axis it imports), export_nearby_poi.py and
-          # export_retired_poi.py.
+          # export_retired_poi.py. The challenges family's runs
+          # export_challenges.py.
           paths: >-
             pipeline/dbt/
             pipeline/extract/
@@ -240,6 +241,7 @@ jobs:
             pipeline/export_poi.py
             pipeline/export_nearby_poi.py
             pipeline/export_retired_poi.py
+            pipeline/export_challenges.py
             pipeline/requirements.txt
             pipeline/seed_spatial_extension.py
             pipeline/check_freshness.py
@@ -480,6 +482,11 @@ jobs:
           done
           "$RUNNER_TEMP/pipeline/bin/python" parity.py nearby_poi --new data/processed/dbt/nearby_poi.geojson
           "$RUNNER_TEMP/pipeline/bin/python" parity.py retired_poi --new data/processed/dbt/retired_poi.geojson
+          # The challenges list, from the club folders and publishers.json in
+          # git, against the POIs and centerline compared above. A challenge
+          # may_publish holds back is explained only where the warehouse's
+          # int_challenges__resolved record for it equals today's.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py challenges --new data/processed/dbt/challenges.json
 
       - name: dbt source freshness
         if: steps.scope.outputs.run == 'true'

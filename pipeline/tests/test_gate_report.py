@@ -242,15 +242,19 @@ def test_cut_cells_spells_its_index_context_and_cell_names_as_the_stubs_do():
         assert spelling in source, spelling
 
 
-def test_every_key_the_client_contract_fixture_publishes_is_in_today_keys(today, tmp_path, monkeypatch):
-    """The other census of these names, tests/test_published_key_contract.py's, agrees with this one."""
-    import publish
+def test_every_key_the_app_fetches_is_one_today_keys_lists(today):
+    """The app's own census (tests/test_published_key_contract.py reads it out of client/src) is inside this one.
 
-    keys = {gate_report.key_pattern(entry.key) for entry in today}
-    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
-    (tmp_path / "spurs_manifest.json").write_text(json.dumps({"path": str(tmp_path / "s"), "sha256": "x"}))
-    (tmp_path / "s").write_text("s")
-    assert set(publish.collect_artifacts()) <= keys
+    A key a phone asks for that today_keys() left out would be a key the gate
+    report never answers for, which is the one way this report could pass a
+    key by not looking at it."""
+    import re
+
+    from test_published_key_contract import client_keys
+
+    patterns = [re.compile(re.escape(gate_report.key_pattern(entry.key)).replace(r"\{\}", "[^/]+")) for entry in today]
+    missing = {key: asked_by for key, asked_by in client_keys().items() if not any(p.fullmatch(key) for p in patterns)}
+    assert not missing
 
 
 # --- the command line ------------------------------------------------------------
@@ -285,3 +289,10 @@ def test_main_writes_both_files_and_exits_2_without_results(tmp_path, capsys):
     assert spurs["verdict"] == "equal"
     assert report["counts"]["not_ported"] == len(report["keys"]) - 1
     assert "## Not yet ported" in (tmp_path / "out" / "gate_report.md").read_text()
+    # Nothing blocks: every other key is one the dbt path does not write.
+    assert (report["blocking"], gate_report.main([*arguments, "--strict"])) == ([], 0)
+    (tmp_path / "parity" / "spurs.json").write_text(
+        json.dumps(_result("spurs", "spurs.json", "differences", differences=[_difference("junction_mile")]))
+    )
+    assert gate_report.main([*arguments, "--strict"]) == 1
+    assert gate_report.main(arguments) == 0, "without --strict a written report exits 0 whatever it says"

@@ -1,6 +1,10 @@
 """gate_report: one answer for every R2 key today's pipeline publishes, from the shadow run's parity results.
 
-    python gate_report.py --parity-dir <dir> --out <dir> [--dbt-manifest dbt/target/manifest.json]
+    python gate_report.py --parity-dir <dir> --out <dir> [--dbt-manifest dbt/target/manifest.json] [--strict]
+
+Exits 0 once both files are written, whatever they say; 1 with --strict when
+any key blocks go (KeyRow.blocks_go); 2 when there are no parity results or
+no dbt manifest to read.
 
 Decision 30's go/no-go gate (pipeline/ELT.md, "The go/no-go gate") needs
 "every existing R2 key comes out byte-equal, or is listed with a reviewed
@@ -489,6 +493,13 @@ class KeyRow:
         return sorted({group for item in [*self.differences, *self.listed] for group in item.safety})
 
     @property
+    def blocks_go(self) -> bool:
+        """This report's reading of decision 30 item 2, for the maintainer to confirm: a key blocks go when it
+        differs, when nothing was compared, or when a dbt writer owns it and no result compared its file. A key the
+        dbt path does not write is listed with its reason and does not block."""
+        return self.verdict in ("differs", "not_compared") or self.why == "writer_without_result"
+
+    @property
     def rank(self) -> tuple:
         differing_safety = any(item.safety for item in self.differences)
         differing_location = any(touches_location(item.fields) for item in self.differences)
@@ -681,6 +692,10 @@ def render_markdown(rows: list[KeyRow], unmatched: list[dict], new_keys: list[Db
         f"**{len(safety_rows)} key(s) differ on a safety field**, and {len(explained_safety)} more carry an explained "
         "difference that touches one. ELT.md: safety fields are approved one row at a time, never in bulk.",
         "",
+        f"**{sum(row.blocks_go for row in rows)} key(s) block go** on this report's reading of decision 30 (for the "
+        "maintainer to confirm): a key that differs, that nothing was compared for, or that a dbt writer owns with no "
+        "parity result. A key the dbt path does not write is listed with its reason and does not block.",
+        "",
         '"Equal" is record for record, as parity.py compares: canonical JSON, keys sorted and whitespace gone. No key '
         "is claimed byte-equal: the old side is built in memory, so its bytes are never held, and the writers format "
         "differently (podcasts/episodes.json: compact against indented, 33,234 B → 25,457 B, measured 2026-10-01). "
@@ -761,7 +776,8 @@ def build_report(parity_dir: Path, dbt_manifest: Path) -> dict:
         "format": REPORT_FORMAT,
         "inputs": inputs,
         "counts": {verdict: sum(row.verdict == verdict for row in rows) for verdict in VERDICT_ORDER},
-        "keys": [{**asdict(row), "safety": row.safety} for row in rows],
+        "blocking": [row.key for row in rows if row.blocks_go],
+        "keys": [{**asdict(row), "safety": row.safety, "blocks_go": row.blocks_go} for row in rows],
         "unmatched_results": [{"family": r["family"], "new_file": r["new_file"], "outcome": r["outcome"]} for r in unmatched],
         "new_keys": [asdict(entry) for entry in new_keys],
         "markdown": render_markdown(rows, unmatched, new_keys, inputs),
@@ -773,6 +789,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--parity-dir", type=Path, required=True, help="where parity.py --json-dir wrote its <family>.json files")
     parser.add_argument("--out", type=Path, required=True, help="where gate_report.md and gate_report.json are written")
     parser.add_argument("--dbt-manifest", type=Path, default=DBT_MANIFEST_DEFAULT, help="the dbt manifest the writers ran from")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="exit 1 when any key blocks go (KeyRow.blocks_go); without it, a written report exits 0 whatever it says",
+    )
     args = parser.parse_args(argv)
     try:
         report = build_report(args.parity_dir, args.dbt_manifest)
@@ -784,8 +805,11 @@ def main(argv: list[str] | None = None) -> int:
     (args.out / "gate_report.md").write_text(markdown, encoding="utf-8")
     (args.out / "gate_report.json").write_text(json.dumps(report, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
     counts = ", ".join(f"{count} {verdict}" for verdict, count in report["counts"].items())
-    print(f"gate_report: {sum(report['counts'].values())} keys: {counts}; wrote {args.out / 'gate_report.md'}")
-    return 0
+    print(
+        f"gate_report: {sum(report['counts'].values())} keys: {counts}; {len(report['blocking'])} block go; "
+        f"wrote {args.out / 'gate_report.md'}"
+    )
+    return 1 if args.strict and report["blocking"] else 0
 
 
 if __name__ == "__main__":

@@ -60,6 +60,9 @@
 #   joins them too: int_trail_lines__coded_domains' columns are fixed as
 #   (source_key, field_name, code, label) so that an extract table of the
 #   layers' coded values can replace its var without touching a reader.
+#   `type` joins them for the phone-file writers: it is GeoJSON's own member
+#   name (`"type": "FeatureCollection"`), and COPY's JSON format writes each
+#   column as a member of that name, so the writer's column cannot be renamed.
 [sqlfluff]
 dialect = duckdb
 templater = jinja
@@ -89,4 +92,4 @@ indented_joins = false
 template_blocks_indent = false
 
 [sqlfluff:rules:references.keywords]
-ignore_words = name,source,provider,label
+ignore_words = name,source,provider,label,type

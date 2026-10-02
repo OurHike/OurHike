@@ -1,11 +1,11 @@
 version: 2
 
-# No primary-key test on any of the three, and a `loaded_at` not_null test
-# instead; nynjtc/_nynjtc__models.yml says why both, once. The trails and
-# closures layers have no recorded id. The facilities layer does - sources.json
-# declares id_field OBJECTID, as every DEC layer does - and this model does not
-# stage it yet; its row in seeds/dbt_project_evaluator_exceptions.csv says
-# what the fix touches.
+# No primary-key test on the trails or closures layers, and a `loaded_at`
+# not_null test instead; nynjtc/_nynjtc__models.yml says why both, once.
+# Neither has a recorded id. The facilities layer does - sources.json declares
+# id_field OBJECTID, as every DEC layer does - and stg_oprhp__facilities
+# stages it with the rest of the row, tested unique; the fixture carries it
+# since stage 3 (make_dbt_fixtures.py's _points_of_interest_fixture_fields).
 models:
   - name: stg_oprhp__trails
     data_tests:
@@ -77,12 +77,13 @@ models:
           config:
             severity: warn
     description: >
-      NYS Parks' 8,823 facility points, staged and NOT unioned. The entry
-      declares no poi_type because typing it is a WATER change - `Sub_Asset`
-      holds 136 'Water Spigot' and 15 'Drinking Fountain' among its 158
-      values - needing export_poi.py's confidence and provenance treatment
-      rather than a point dump. Both public flags are staged; the obvious one
-      (`Public_`, Y on all 8,823) discriminates nothing.
+      NYS Parks' 8,823 facility points, keyed and deduplicated, every column
+      kept. The entry declares no poi_type: rows are typed one by one
+      through export_nearby_poi.py's OPRHP_SUB_ASSET_TYPES, the
+      poi_value_types seed, in int_points_of_interest__classified, which
+      keeps the 'Water Spigot' and 'Drinking Fountain' rows back as a water
+      holdback. ParksApp sets confidence and drops nothing; `Public_` (Y on
+      all 8,823) discriminates nothing.
     columns:
       - name: poi_key
         description: >
@@ -91,6 +92,9 @@ models:
           the registry key first and then the columns measured unique for
           this layer.
         data_tests: [not_null, unique]
-      - name: loaded_at
-        description: The extract's `_loaded_at` for the read this row came from, naive UTC.
+      - name: objectid
+        description: OPRHP's OBJECTID, the entry's id_field and the id export_nearby_poi.py publishes.
+        data_tests: [not_null, unique]
+      - name: _loaded_at
+        description: The extract's `_loaded_at` for the read this row came from.
         data_tests: [not_null]

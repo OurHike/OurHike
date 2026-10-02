@@ -255,6 +255,8 @@ jobs:
             pipeline/export_network_elevation.py
             pipeline/export_network_profile.py
             pipeline/build_marts.py
+            pipeline/step_node_lines.py
+            pipeline/build_trail_graph.py
             pipeline/export_poi.py
             pipeline/export_nearby_poi.py
             pipeline/export_retired_poi.py
@@ -586,6 +588,11 @@ jobs:
           # may_publish holds back is explained only where the warehouse's
           # int_challenges__resolved record for it equals today's.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity challenges --new data/processed/dbt/challenges.json
+          # The junction graph: build_trail_graph.py over the dbt writers'
+          # nearby_trails.geojson and trails.geojson beside the new file, so
+          # both paths read the same lines.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity trail_graph --new data/processed/dbt/trail_graph.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity trail_graph_geometry --new data/processed/dbt/trail_graph_geometry.json
 
       # The parity results, kept with the run so gate_report.py can read them
       # without a rebuild: python gate_report.py --parity-dir <the downloaded

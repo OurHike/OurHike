@@ -72,3 +72,40 @@ models:
       - name: loaded_at
         description: When step_weather_squares wrote the row, UTC.
         data_tests: [not_null]
+  - name: stg_derived__graph_pieces
+    data_tests:
+      # Says how many rows the dedupe dropped, which for a step that writes
+      # one row per piece and landing is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('derived', 'graph_pieces')
+          config:
+            severity: warn
+    description: >
+      The junction graph's pieces and landings from step_node_lines's
+      derived.graph_pieces: every routable part cut where
+      int_trail_network__cuts says, in EPSG:5070 metres, and the point each
+      joined line end lands on. Read by int_trail_network__node_lookups.
+    columns:
+      - name: graph_piece_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the table's name, row_kind, part_id, piece_index and cut_key.
+        data_tests: [not_null, unique]
+      - name: row_kind
+        description: "'piece' or 'landing'."
+        data_tests: [not_null]
+      - name: part_id
+        description: On a piece, the routable part it was cut from.
+      - name: piece_index
+        description: On a piece, its place along the part, from 1.
+      - name: piece_rank
+        description: On a piece, its place among every piece, from 0, the order build_graph() walks them in.
+      - name: cut_key
+        description: On a landing, the int_trail_network__cuts row that joined the end.
+      - name: geom
+        description: The piece or landing in EPSG:5070 metres, no CRS set.
+        data_tests: [not_null]
+      - name: loaded_at
+        description: When step_node_lines wrote the row, UTC.
+        data_tests: [not_null]

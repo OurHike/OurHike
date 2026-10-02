@@ -259,11 +259,11 @@ def test_main_stops_at_the_first_command_that_fails_and_answers_with_its_exit_co
 
 
 def test_main_refuses_after_the_seeds_when_a_derived_source_has_no_step(monkeypatch, tmp_path, capsys):
-    code, recorder = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES, "graph_pieces"))
+    code, recorder = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES, "unwritten"))
 
     assert code == 1
     assert [argv[:2] for argv, _, _ in recorder.calls] == [("dbt", "seed")]
-    assert "source derived.graph_pieces is declared and no entry of build_marts.STEPS writes it" in capsys.readouterr().out
+    assert "source derived.unwritten is declared and no entry of build_marts.STEPS writes it" in capsys.readouterr().out
 
 
 def _dbt_job() -> dict:

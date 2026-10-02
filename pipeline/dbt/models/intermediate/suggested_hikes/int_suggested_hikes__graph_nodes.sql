@@ -1,4 +1,3 @@
--- INTERFACE: replace with tl-net's model
 {{ config(materialized='table') }}
 --
 -- The junction graph's nodes, which step_form_route reads beside
@@ -11,16 +10,15 @@
 -- read nodes off the edges' geometry: the grid it searches is built from
 -- these, and so is the reach of the geometry it keeps.
 --
--- Zero rows until the trail_network family publishes its nodes (stage 3 of
--- #1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a
--- monthly refresh, published docs, and lighter phone downloads). With none,
--- every generated hike finds no line within 500 m of its parking and every
--- published track finds no line to re-walk on, so none ships, which is the
--- Python's own answer on an empty graph. It reads the edges only so that it
--- is not a root model.
+-- The rows pub_trail_graph publishes as `nodes`, from the same
+-- int_trail_network__nodes, so a hike is routed over exactly the graph a
+-- phone would read. pub_trail_graph's parity against build_trail_graph.py is
+-- what holds them to today's: no differences on the fixtures' 172 edges, and
+-- byte-identical files over 6,504 and 16,126 nodes cut from live lines (the
+-- trail_network family, tl-net, 2026-10-02). Publication is already applied
+-- upstream of the noding, in the trail_lines mart, as it is for the file.
 select
-    cast(null as integer) as node_index,
-    cast(null as double) as lon,
-    cast(null as double) as lat
-from {{ ref('int_trail_network__edges') }}
-where false
+    node_index,
+    lon,
+    lat
+from {{ ref('int_trail_network__nodes') }}

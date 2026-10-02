@@ -167,6 +167,17 @@ class Step:
 #: The Python steps, in the order they run (pipeline/ELT.md, "Python steps,
 #: outside dbt", has the four planned and why each stays Python).
 STEPS: list[Step] = [
+    # TN04: every routable trail part cut where int_trail_network__cuts says,
+    # with build_trail_graph.py's own _split_all. Its inputs are the
+    # warehouse's alone, so --fixtures adds nothing. First of the steps:
+    # int_elevation__edge_sample_points reads int_trail_network__edges, which
+    # reads this step's graph_pieces, so step_dem_sampling's input
+    # (int_elevation__dem_points) is built only after it.
+    Step(
+        name="step_node_lines",
+        table="graph_pieces",
+        command=("step_node_lines.py", "--warehouse", "{warehouse}"),
+    ),
     # EL06: the DEM's elevation at every int_elevation__sample_points row.
     # Under --fixtures it reads the tile index and synthetic GeoTIFF
     # make_dbt_fixtures.py wrote; otherwise fetch_elevation.py's index, the

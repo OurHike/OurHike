@@ -2345,6 +2345,162 @@ def _north(lon: float, lat: float, degrees: float) -> dict:
     return {"type": "LineString", "coordinates": [[lon, lat], [lon, round(lat + degrees, 6)]]}
 
 
+#: Five metres and ten metres of latitude, near enough at 41.6 degrees north
+#: (111,320 m a degree); every graph assertion measures the built graph
+#: rather than trusting these.
+_FIVE_M = 0.0000449
+_TEN_M = 0.0000898
+
+
+def _line_geometry(*coordinates) -> dict:
+    return {"type": "LineString", "coordinates": [list(point) for point in coordinates]}
+
+
+#: OPRHP lines west of everything else (around -74.6, 41.6), one per branch
+#: of build_trail_graph.py's noding that the stacked fixture lines never
+#: reach, as (GlobalID, name, Alt_Name, Blaze, Status, Foot, geometry) rows
+#: for _network_rows' OPRHP list:
+#: - a main line with a bump, so other lines' envelopes meet it;
+#: - a stub ending 5 m short of it (joined within the 8 m tolerance, which
+#:   cuts the main line and welds the two) and one ending 10 m short (left
+#:   open);
+#: - a line beside it, 28 m off at its nearest end, its envelope meeting the
+#:   main line's (compared, never welded);
+#: - a MultiLineString whose first part crosses the main line and whose
+#:   second stands alone (one routable line per part);
+#: - a stub whose end lies on the main line (a touch is a crossing);
+#: - a 0.3 m line, a loop shorter than the node grid (never an edge);
+#: - two lines whose ends stop 0.3 m apart, the second doubling back
+#:   south-west under the first (two welds, and one node);
+#: - a stub ending 5 m short of a straight east-west line, whose envelope
+#:   meets the stub's only because EPSG:5070 tilts the line (joined);
+#: - two lines in line, east-west, the second starting 5 m east of the
+#:   first's end: their envelopes do not meet, so node_lines() never
+#:   compares them and the 5 m gap stays open (two nodes, no weld).
+NETWORK_GRAPH_LINES = [
+    (
+        "{00000000-0000-4000-8000-000000000421}",
+        "Fixture Graph Main",
+        None,
+        "Red",
+        "Open",
+        "Y",
+        _line_geometry((-74.60, 41.60), (-74.59, 41.6005), (-74.58, 41.60)),
+    ),
+    (
+        "{00000000-0000-4000-8000-000000000422}",
+        "Fixture Graph Near Stub",
+        None,
+        "Blue",
+        "Open",
+        "Y",
+        _line_geometry((-74.585, 41.590), (-74.585, round(41.60025 - _FIVE_M, 7))),
+    ),
+    (
+        "{00000000-0000-4000-8000-000000000423}",
+        "Fixture Graph Far Stub",
+        None,
+        "Blue",
+        "Open",
+        "Y",
+        _line_geometry((-74.583, 41.590), (-74.583, round(41.60015 - _TEN_M, 7))),
+    ),
+    (
+        "{00000000-0000-4000-8000-000000000424}",
+        "Fixture Graph Beside",
+        None,
+        "Yellow",
+        "Open",
+        "Y",
+        _line_geometry((-74.597, 41.6007), (-74.59, 41.6008), (-74.583, 41.6004)),
+    ),
+    (
+        "{00000000-0000-4000-8000-000000000425}",
+        "Fixture Graph Two Parts",
+        None,
+        "Green",
+        "Open",
+        "Y",
+        {
+            "type": "MultiLineString",
+            "coordinates": [[[-74.595, 41.599], [-74.595, 41.6015]], [[-74.62, 41.61], [-74.61, 41.61]]],
+        },
+    ),
+    (
+        "{00000000-0000-4000-8000-000000000426}",
+        "Fixture Graph Touching Stub",
+        None,
+        "Orange",
+        "Open",
+        "Y",
+        _line_geometry((-74.59, 41.595), (-74.59, 41.6005)),
+    ),
+    (
+        "{00000000-0000-4000-8000-000000000427}",
+        "Fixture Graph Speck",
+        None,
+        "Red",
+        "Open",
+        "Y",
+        _line_geometry((-74.63, 41.62), (-74.63, 41.6200027)),
+    ),
+    (
+        "{00000000-0000-4000-8000-000000000428}",
+        "Fixture Graph West Half",
+        None,
+        "Red",
+        "Open",
+        "Y",
+        _line_geometry((-74.64, 41.62), (-74.636, 41.62)),
+    ),
+    (
+        "{00000000-0000-4000-8000-000000000429}",
+        "Fixture Graph East Half",
+        None,
+        "Red",
+        "Open",
+        "Y",
+        _line_geometry((-74.6359964, 41.62), (-74.6362, 41.6195)),
+    ),
+    (
+        "{00000000-0000-4000-8000-000000000430}",
+        "Fixture Graph Straight",
+        None,
+        "White",
+        "Open",
+        "Y",
+        _line_geometry((-74.65, 41.63), (-74.64, 41.63)),
+    ),
+    (
+        "{00000000-0000-4000-8000-000000000431}",
+        "Fixture Graph Stub Below The Straight",
+        None,
+        "White",
+        "Open",
+        "Y",
+        _line_geometry((-74.645, 41.62), (-74.645, round(41.63 - _FIVE_M, 7))),
+    ),
+    (
+        "{00000000-0000-4000-8000-000000000432}",
+        "Fixture Graph In Line West",
+        None,
+        "Purple",
+        "Open",
+        "Y",
+        _line_geometry((-74.66, 41.64), (-74.656, 41.64)),
+    ),
+    (
+        "{00000000-0000-4000-8000-000000000433}",
+        "Fixture Graph In Line East",
+        None,
+        "Purple",
+        "Open",
+        "Y",
+        _line_geometry((-74.65594, 41.64), (-74.652, 41.6401)),
+    ),
+]
+
+
 def _network_rows() -> dict[str, list[dict]]:
     """Rows added to two network layers so parity reaches the rules the builders
     above never exercise, each named for the rule it is there for.
@@ -2399,6 +2555,7 @@ def _network_rows() -> dict[str, list[dict]]:
             "Y",
             _north(-74.25, 41.2, 0.01),
         ),
+        *NETWORK_GRAPH_LINES,
     ]
     long_path = {"Trail_Name": "Long Path", "Blaze": "aqua", "Maintainer": "NYNJTC", "Source": "NYNJTC", "Comments": None}
     return {

@@ -50,9 +50,10 @@ models:
         description: Whether the digest is a 64-character lowercase hex sha256, which photo_key() requires.
   - name: int_suggested_hikes__graph_nodes
     description: >
-      INTERFACE, zero rows until the trail_network family publishes its
-      nodes: the junction graph's nodes in trail_graph.json's order, which
-      step_form_route builds the graph from beside int_trail_network__edges.
+      The junction graph's nodes in trail_graph.json's order, the rows
+      pub_trail_graph publishes as `nodes`, from int_trail_network__nodes,
+      which step_form_route builds the graph from beside
+      int_trail_network__edges.
     columns:
       - name: node_index
         description: The node's place in trail_graph.json's `nodes`, an edge's from_node and to_node.

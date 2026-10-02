@@ -102,6 +102,11 @@ class Family:
     # what turns the writer's file, read from `--new`, into that shape. The
     # family's `old` returns its document already in it.
     new_shape: Callable[[dict, Path], dict] | None = None
+    # The old document is built from files the dbt writers wrote beside
+    # `--new`, so `old` takes that directory: the junction graph's input is
+    # nearby_trails.geojson and trails.geojson, and reading the writers' copies
+    # puts both paths on one input.
+    reads_new_dir: bool = False
 
 
 def _podcasts_old() -> dict:
@@ -1232,6 +1237,72 @@ def _held_back_reasons(old: dict, new: dict, warehouse: Path | None = None) -> d
 FAMILIES["challenges"] = Family(old=_challenges_old, records="challenges", key="id", ordered=True, explained=_held_back_reasons)
 
 
+# The junction graph (trail_network). build_trail_graph.py's input is two
+# phone files, so the old side builds the graph from the dbt writers' copies
+# of nearby_trails.geojson and trails.geojson beside `--new`: both paths then
+# read the same lines, and a difference is the graph's rules alone, not one
+# of the explained differences upstream (the GlobalID ids, the A.T.'s six
+# decimals). An edge has no id but its place, so edges are keyed by their
+# index; `nodes` is compared whole as a top-level field.
+@functools.cache
+def _trail_graph_built(new_dir: Path) -> tuple[list, list, list]:
+    """build_trail_graph.build() over the two files in `new_dir`: its nodes, its edges and their geometry, as JSON reads them."""
+    import contextlib
+    import io
+
+    import build_trail_graph
+
+    with contextlib.redirect_stdout(io.StringIO()):
+        collection = build_trail_graph.load_input(new_dir / build_trail_graph.INPUT_NAME)
+        at_collection = build_trail_graph.load_at_lines(new_dir / build_trail_graph.TRAILS_NAME)
+        graph, _ = build_trail_graph.build(collection, at_collection)
+    geometry = [edge.pop("geometry") for edge in graph["edges"]]
+    graph, geometry = json.loads(json.dumps(graph)), json.loads(json.dumps(geometry))
+    return graph["nodes"], graph["edges"], geometry
+
+
+def _indexed_edges(document: dict, path: Path | None = None) -> dict:
+    """trail_graph.json with each edge's place in `edges` written onto it, its only identity."""
+    return {**document, "edges": [{"edge_index": index, **edge} for index, edge in enumerate(document.get("edges") or [])]}
+
+
+def _indexed_geometry(document: list, path: Path | None = None) -> dict:
+    """trail_graph_geometry.json's bare array as one record per edge, keyed by its place."""
+    return {"edges": [{"edge_index": index, "coordinates": entry} for index, entry in enumerate(document)]}
+
+
+def _trail_graph_old(new_dir: Path) -> dict:
+    nodes, edges, _ = _trail_graph_built(new_dir)
+    return _indexed_edges({"nodes": nodes, "edges": edges})
+
+
+def _trail_graph_geometry_old(new_dir: Path) -> dict:
+    _, _, geometry = _trail_graph_built(new_dir)
+    return _indexed_geometry(geometry)
+
+
+FAMILIES.update(
+    {
+        "trail_graph": Family(
+            old=_trail_graph_old,
+            records="edges",
+            key="edge_index",
+            ordered=True,
+            new_shape=_indexed_edges,
+            reads_new_dir=True,
+        ),
+        "trail_graph_geometry": Family(
+            old=_trail_graph_geometry_old,
+            records="edges",
+            key="edge_index",
+            ordered=True,
+            new_shape=_indexed_geometry,
+            reads_new_dir=True,
+        ),
+    }
+)
+
+
 def canonical(value) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
@@ -1474,7 +1545,9 @@ def main(argv: list[str] | None = None) -> int:
         return exit_code
 
     try:
-        if family.reads_warehouse:
+        if family.reads_new_dir:
+            old = family.old(args.new.resolve().parent)
+        elif family.reads_warehouse:
             old = family.old(args.raw_dir, args.warehouse)
         elif family.reads_raw_dir:
             old = family.old(args.raw_dir)

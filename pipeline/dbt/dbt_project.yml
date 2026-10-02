@@ -193,6 +193,38 @@ vars:
   trail_lines_network_overview_seam_tolerance_m: 936.8665722140756
   trail_lines_network_overview_seam_decimals: 3
 
+  # The suggested_hikes family (sh), read by the int_suggested_hikes__ models
+  # and the pub_suggested_hikes and pub_highlights writers, and held to the
+  # Python by tests/test_dbt_suggested_hikes_parity.py until stage 5 of #1793
+  # deletes it. Each is export_suggested_hikes.py's, lib/hike_route_builder.py's,
+  # lib/trail_graph_route.py's or lib/highlights.py's constant under its own
+  # name, and its evidence is beside it there: every grading band is
+  # @unvalidated or calibrated against the 113 published tracks, as its own
+  # comment says, and the track tolerance is @unvalidated.
+  suggested_hikes_source_key: nynjtc_hike_finder
+  suggested_hikes_author_kind: club
+  suggested_hikes_content_licence: "By permission of the New York-New Jersey Trail Conference"
+  suggested_hikes_photo_licence: "By permission of the New York-New Jersey Trail Conference"
+  suggested_hikes_photo_prefix: photos
+  suggested_hikes_photo_extension: jpg
+  suggested_hikes_same_tread_note: "measured on the pipeline's copy of the trail lines without the phone's same-tread swap (trailGraph.ts holdDesignation), so a leg two organizations both draw can differ by up to 5% of its length"
+  suggested_hikes_track_reproduction_tolerance: 0.10
+  suggested_hikes_length_good: 0.20
+  suggested_hikes_length_fair: 0.40
+  suggested_hikes_retrace_min: 0.03
+  suggested_hikes_retrace_good: 0.30
+  suggested_hikes_retrace_fair: 0.60
+  suggested_hikes_trails_good: 0.9
+  suggested_hikes_trails_fair: 0.34
+  suggested_hikes_start_good_off_m: 150.0
+  suggested_hikes_closed_route_types:
+    - circuit
+    - lollipop
+    - out and back
+  highlights_source: reference/highlights.json
+  highlights_basis: named
+  highlights_cited_by: OurHike
+
   dbt_project_evaluator:
     # The mart names the maintainer chose carry no dim_/fct_ prefix
     # ("do not keep the dim_ and fct_ prefixes in the marts folders. Just

@@ -1,0 +1,186 @@
+version: 2
+
+# The suggested_hikes family (stage 3 of #1793 — Rebuild the data platform as
+# dlt → dbt: seven contracted marts, a monthly refresh, published docs, and
+# lighter phone downloads): NYNJTC's Hike Finder hikes and OurHike's curated
+# highlights, from their pages and reviewed files to the suggested_hikes
+# mart. The rules are pipeline/ELT.md's ledger rows SH01-SH15, applied in
+# today's order: export_suggested_hikes.py's over route_hikefinder.py's,
+# lib/hike_route_builder.py's grade, and lib/highlights.py's resolve().
+models:
+  - name: int_suggested_hikes__hike_finder
+    description: >
+      One row per Hike Finder hike, with the facts its record carries, the
+      client's slug for its difficulty (SH07) and hike_problems()'s review
+      notes (SH02). step_form_route reads it to form each route.
+    data_tests:
+      # SH02, a review aid and never a gate: names every hike a person should
+      # read before trusting its route, and drops none.
+      - dbt_utils.expression_is_true:
+          name: int_suggested_hikes__hike_finder_names_every_hike_missing_what_a_route_needs
+          arguments:
+            expression: "problems_json = '[]'"
+          config:
+            severity: warn
+    columns:
+      - name: hike_number
+        description: The export's hike id.
+        data_tests: [not_null, unique]
+      - name: hike_id
+        description: The record id, `nynjtc_hike_finder:<number>`.
+        data_tests: [not_null, unique]
+      - name: difficulty_slug
+        description: The client's slug for the publisher's difficulty, or null where it has no slot (SH07).
+      - name: problems_json
+        description: >
+          hike_problems()'s list, in its order and words: no coordinate, no
+          Description, no stated Length, no Route Type, no Features tags, no
+          Author. Empty means everything a route needs was on the page, not
+          that the hike is publishable.
+  - name: int_suggested_hikes__photos
+    description: >
+      One row per hike number a person confirmed a photograph for, the first
+      confirmed row in the file's order winning (SH09): its bucket key, its
+      credit with "Photo by " where it did not say so, and its licence.
+    columns:
+      - name: hike_key
+        description: The hike number after the last colon of the row's hike_id, so the sheet's `50` and `nynjtc_hike_finder:50` meet.
+        data_tests: [not_null, unique]
+      - name: digest_is_valid
+        description: Whether the digest is a 64-character lowercase hex sha256, which photo_key() requires.
+  - name: int_suggested_hikes__graph_nodes
+    description: >
+      INTERFACE, zero rows until the trail_network family publishes its
+      nodes: the junction graph's nodes in trail_graph.json's order, which
+      step_form_route builds the graph from beside int_trail_network__edges.
+    columns:
+      - name: node_index
+        description: The node's place in trail_graph.json's `nodes`, an edge's from_node and to_node.
+        data_tests: [not_null, unique]
+  - name: int_suggested_hikes__graph_climb
+    description: >
+      INTERFACE, zero rows until the elevation family publishes the network's
+      per-edge climb: trail_graph_elevation.json, one row per edge, which
+      step_form_route prices a walk's climb from.
+    columns:
+      - name: edge_index
+        description: The edge's place in trail_graph.json's `edges`.
+        data_tests: [not_null, unique]
+  - name: int_suggested_hikes__graded
+    description: >
+      Each Hike Finder hike's route graded, with every check that is not clean
+      in a reviewer's order: _grade() over a generated route (SH04), and
+      published_route()'s checks over a published track (SH15).
+    columns:
+      - name: hike_number
+        description: The export's hike id.
+        data_tests: [not_null, unique]
+      - name: grade
+        description: "`strong`, `fair` or `rejected`, the worst check's."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [strong, fair, rejected]
+      - name: route_notes_json
+        description: The checks that are not clean, as the record's routeNotes words them.
+  - name: int_suggested_hikes__routed
+    description: >
+      The Hike Finder hikes whose route ships (SH05, SH06), with the ends the
+      phone routes between, the miles and the climb (SH08), rounded as the
+      two Python files round them.
+    columns:
+      - name: hike_number
+        description: The export's hike id.
+        data_tests: [not_null, unique]
+      - name: segments_json
+        description: One segment of {coord, poiId} points, each [lon, lat] at 6 decimals, a closed walk's first end repeated.
+      - name: miles_json
+        description: round(round(miles, 3), 2), as JSON text.
+  - name: int_suggested_hikes__published_pois
+    description: >
+      INTERFACE, zero rows until the points_of_interest mart publishes its
+      ids and miles: every POI export_poi.py publishes, with its `id` and
+      `mile`, which a highlight's legs resolve against (SH12).
+    columns:
+      - name: poi_id
+        description: The POI's published id.
+        data_tests: [not_null, unique]
+  - name: int_suggested_hikes__club_stretches
+    description: >
+      INTERFACE, zero rows until the trail_lines family writes
+      club_sections.json: every maintaining club's stretches of the A.T., in
+      the file's order, which a highlight's club is read from.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [club_order, stretch_order]
+    columns:
+      - name: club_order
+        description: The club's place in club_sections.json's `clubs`, from 0.
+        data_tests: [not_null]
+      - name: stretch_order
+        description: The stretch's place in its club's `stretches`, from 0.
+        data_tests: [not_null]
+  - name: int_suggested_hikes__highlights
+    description: >
+      Every row of reference/highlights.json resolved against the published
+      POIs, in the file's order, with the first rule it breaks in
+      lib/highlights.py's words (SH12, SH13). The mart takes the rows with
+      none.
+    data_tests:
+      # A curated list quietly shrinking is the failure nobody notices: every
+      # dropped row is named, as export_highlights.py prints them, and none
+      # fails the build.
+      - dbt_utils.expression_is_true:
+          name: int_suggested_hikes__highlights_names_every_curated_row_that_does_not_publish
+          arguments:
+            expression: "problem is null"
+          config:
+            severity: warn
+      # resolve() does not survive a row that is not an object, so neither
+      # does the build.
+      - dbt_utils.expression_is_true:
+          name: int_suggested_hikes__highlights_every_curated_row_is_an_object
+          arguments:
+            expression: "coalesce(problem, '') != 'not an object'"
+    columns:
+      - name: file_row
+        description: The row's place in the file, from 0, the published order.
+        data_tests: [not_null, unique]
+      - name: highlight_id
+        description: The highlight's id, or `<no id>` for a row with none.
+      - name: legs_json
+        description: The legs, each its trail and its ordered mile range at 2 decimals; null on a row that does not publish.
+      - name: club
+        description: The maintaining club whose stretch the first leg starts in, or null.
+      - name: problem
+        description: The first rule the row breaks, in resolve()'s words, or null where it publishes.
+
+exposures:
+  - name: step_form_route
+    label: step_form_route.py
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The Python step that forms each Hike Finder hike's route over the
+      junction graph (pipeline/step_form_route.py), between the dbt
+      invocation that builds its inputs and the one that reads its answer
+      back as source('derived', 'formed_routes'). It is Python because the
+      route is a search over the graph and DuckDB 1.5.5 has no graph
+      extension (SH03, pipeline/ELT.md's ledger), and it searches with
+      lib/hike_route_builder.py and lib/trail_graph_route.py, the twin of the
+      phone's own router. Shown here so the docs draw both halves of the step.
+      It also reads int_trail_network__edges, a view, which the evaluator's
+      fct_exposure_parents_materializations refuses as an exposure's parent;
+      the docs reach it through the two graph models, which read it.
+    depends_on:
+      - ref('int_suggested_hikes__hike_finder')
+      - ref('int_suggested_hikes__graph_nodes')
+      - ref('int_suggested_hikes__graph_climb')
+    config:
+      meta:
+        writes: derived.formed_routes
+        cadence: monthly

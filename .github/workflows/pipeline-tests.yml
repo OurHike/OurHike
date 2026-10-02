@@ -210,8 +210,10 @@ jobs:
           # reference/trail_orgs.json are what a resource reads its URL and
           # its club from, and the rest of reference/ holds the reviewed
           # files fixture mode loads as they are. parity.py and the exporters
-          # it runs (export_podcasts.py, export_sources.py) are the parity
-          # step's; the same test holds the list to their imports too.
+          # it runs (export_podcasts.py, export_sources.py, export_elevation.py)
+          # are the parity step's; the same test holds the list to their
+          # imports too. step_dem_sampling.py is the Python step the build
+          # runs between its two dbt invocations.
           paths: >-
             pipeline/dbt/
             pipeline/extract/
@@ -221,6 +223,8 @@ jobs:
             pipeline/parity.py
             pipeline/export_podcasts.py
             pipeline/export_sources.py
+            pipeline/export_elevation.py
+            pipeline/step_dem_sampling.py
             pipeline/check_freshness.py
             pipeline/export_conditions.py
             pipeline/fetch_club_pdfs.py
@@ -407,6 +411,11 @@ jobs:
           python parity.py podcasts --new data/processed/dbt/podcasts_episodes.json
           python parity.py stewards --new data/processed/dbt/stewards.json
           python parity.py registry --new data/processed/dbt/registry.json
+          # The elevation profile's input is a fixture, not a file in git: the
+          # fixture centerline, markers and DEM tile make_dbt_fixtures.py wrote.
+          # export_elevation.py reads the DEM through rasterio, so this runs on
+          # the pipeline's own pins, in the venv step_dem_sampling.py ran in.
+          "$RUNNER_TEMP/steps/bin/python" parity.py elevation --new data/processed/dbt/elevation_profile.json --raw-dir data/raw
 
       - name: dbt source freshness
         if: steps.scope.outputs.run == 'true'

@@ -31,10 +31,11 @@ every sample included - also the ones int_elevation__profile drops where two
 pieces cover the same miles - because build_profile reads the DEM at all of
 them in that order, and the sampler's cache answers a second point within
 0.11 m of a first with the first's pixel ("whoever asked first",
-export_elevation.CACHE_KEY_DECIMALS). A line added to
-int_elevation__sample_points later (the trail network's edges) sorts after or
-before 'AT' by its line_id, which decides who asks first between lines;
-today's exporters run the A.T. first.
+export_elevation.CACHE_KEY_DECIMALS). The A.T. ('AT') asks before any other
+line int_elevation__sample_points gains later (the trail network's edges),
+then each line by its id: publish-vector-data.yml runs export_elevation.py
+before both network exporters, so on a cold cache the A.T. profile is always
+read at its own points, and this keeps that true however the ids sort.
 
 A value the sampler hands back is None or a finite float, and a value that is
 neither stops the step rather than reaching the table: the sampler already
@@ -70,9 +71,11 @@ class SamplePoint(NamedTuple):
 
 
 def read_sample_points(con: duckdb.DuckDBPyConnection, relation: str = SAMPLE_POINTS) -> list[SamplePoint]:
-    """Every row of the sample-point intermediate, in the order the DEM is asked about them."""
+    """Every row of the sample-point intermediate, in the order the DEM is asked about them: the A.T. first."""
     try:
-        rows = con.execute(f"select line_id, sample_index, lon, lat from {relation} order by line_id, sample_index").fetchall()
+        rows = con.execute(
+            f"select line_id, sample_index, lon, lat from {relation} order by line_id != 'AT', line_id, sample_index"
+        ).fetchall()
     except duckdb.CatalogException as missing:
         raise SystemExit(
             f"{relation} is not in the warehouse: build it with dbt first (everything but "

@@ -299,9 +299,12 @@ def test_step_dem_sampling_writes_the_samplers_own_answer_at_every_point(tmp_pat
     assert (types["_loaded_at"], types["elevation_m"]) == ("TIMESTAMP WITH TIME ZONE", "DOUBLE")
 
 
-def test_step_dem_sampling_asks_in_the_walks_order(tmp_path, fixtures, monkeypatch):
-    """The cache answers a second point within 0.11 m of a first with the first's pixel, so the order is build_profile's."""
-    warehouse = _warehouse_with_points(tmp_path / "warehouse.duckdb", list(reversed(STEP_POINTS)))
+def test_step_dem_sampling_asks_in_the_walks_order_the_at_first(tmp_path, fixtures, monkeypatch):
+    """The cache answers a second point within 0.11 m of a first with the first's pixel, so the order is build_profile's:
+    the A.T.'s walk, before any other line, as export_elevation.py runs before the network exporters today. 'A1' sorts
+    before 'AT', and asks after it."""
+    other_line = [("A1", 0, -73.995, 41.005), ("A1", 1, -73.995, 41.0051)]
+    warehouse = _warehouse_with_points(tmp_path / "warehouse.duckdb", list(reversed(STEP_POINTS + other_line)))
     asked = []
 
     def sample_many(self, points):
@@ -310,7 +313,7 @@ def test_step_dem_sampling_asks_in_the_walks_order(tmp_path, fixtures, monkeypat
 
     monkeypatch.setattr(export_elevation.ElevationSampler, "sample_many", sample_many)
     step_dem_sampling.main(["--warehouse", str(warehouse), "--index", str(fixtures / make_dbt_fixtures.ELEVATION_FIXTURE_INDEX)])
-    assert asked == [(lon, lat) for *_, lon, lat in STEP_POINTS]
+    assert asked == [(lon, lat) for *_, lon, lat in STEP_POINTS + other_line]
 
 
 def test_step_dem_sampling_refuses_a_warehouse_without_its_input(tmp_path, fixtures):

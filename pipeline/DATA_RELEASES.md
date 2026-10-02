@@ -34,7 +34,7 @@ Four separate things, deliberately not collapsed into one:
 | **Verification battery** | after each build | no | no |
 | **Release** | a merged PR, then a tag | no | **yes — this is the only one** (see §4's amendment) |
 
-The separation is the design. A scheduled job cannot change a hiker's data even if it wanted to, because the only thing that selects a dataset is a constant in the client source.
+The separation is the design. A scheduled job cannot change a hiker's data even if it wanted to, because the only thing that selects a dataset is a constant in the client source. (Since decision 44 that is a committed `channels.json`, uploaded only by a dispatch, with the constant kept as a first run's fallback: §4's last amendment.)
 
 ### R2 layout
 
@@ -277,6 +277,14 @@ The weekly build's last job opens a **draft PR** on `data-release/<version>` cha
 
 **One committed constant has to name a folder that exists in both data environments.** This section predates [../features/DATA_ENVIRONMENTS.md](../features/DATA_ENVIRONMENTS.md). UA is a prefix in the same bucket with its own `releases/` tree, written by its own publishes, so the id sets drift — measured 2026-09-09, production held 14 releases and UA 31, with only 10 in common. The guard is what makes this safe rather than a thing to remember: `pages.yml` **and `ua.yml`** each assert the pin against *their own* base, so a pin one environment lacks costs that environment a red deploy instead of costing a hiker their map.
 
+**Amended 2026-10-02 by decision 44 of [ELT.md](ELT.md)**, built at stage 4 of **#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads**. The pin is now two committed things, and the constant is the smaller of them:
+
+- **`channels.json`, at the repository root, is the release.** It names, per data environment and per schema version, the folder phones read: `{"production": {"v1": "<id>"}, "ua": {"v1": "<id>"}}`. Moving an entry is a reviewed commit, so the 2026-09-09 reason for a committed pin holds unchanged; what changes is that the commit needs no app release. It reaches phones only when a dispatch runs `publish.py --channels`, which uploads it to that environment's root beside `latest.json` and refuses first unless every release it names has its manifest in that environment's tree. No schedule and no push uploads it, the hourly conditions bake included. **Promotion** is the commit plus that dispatch; **rollback** is reverting the commit and dispatching again.
+- **`DATA_RELEASE` is the compiled fallback**, what a session reads until the phone has verified a `channels.json` entry: every first run, and any phone that has never reached the pointer. `client/src/lib/dataRelease.ts` reads the pointer on launch when online, records an entry only once its release's manifest resolves, and follows it from the *next* launch, never mid-session; a missing, malformed or unreachable pointer, or one naming a release that does not resolve, leaves the phone on the last release it verified.
+- **Both guards now assert both**: the fallback, because a first run that cannot reach the pointer reads it, and `channels.json`'s entry for the build's environment and schema version, so a pointer phones would refuse is a red deploy rather than phones that quietly never move.
+
+What a hiker is asked is unchanged: #919's row (`TrailDataUpdate.tsx`) offers the pointer's release when it differs from what the phone holds, under the 2026-08-21 decision that nothing is replaced unasked.
+
 ## Retention
 
 **Decided 2026-07-31: 90 days, with the clock starting when a release is superseded, and a floor of the 3 most recent released folders.**
@@ -303,6 +311,8 @@ Plus two hard exemptions the prune job refuses to cross, regardless of age:
 
 1. **The currently-released folder** — the one `latest.json` names — is never eligible. Ever.
 2. **Any release listed in `releases/pinned.json`** — a small committed-and-published list of releases that shipped app-store builds still point at. The release PR adds an entry; an entry is removed by hand when that app build is genuinely out of support. This is the escape hatch that makes a 90-day policy safe for a 7-month thru-hike.
+
+**Since decision 44 (§4's last amendment) both exemptions read differently, and the prune job is not built, so this is for whoever builds it.** The release a phone reads is the one `channels.json` names, so exemption 1 becomes every release `channels.json` names, in every environment and schema version, beside the one `latest.json` names. An installed build no longer reads its compiled `DATA_RELEASE` once it has reached the pointer, but a first run that cannot reach it does, so exemption 2 still lists each shipped build's compiled release, for that first run.
 
 The prune job runs on a schedule, computes the eligible set, and **prints what it would delete and why on every run**. Deletion happens only for objects that clear all three tiers plus both exemptions. A dry-run mode is the default for `workflow_dispatch`; the scheduled invocation passes the flag explicitly.
 

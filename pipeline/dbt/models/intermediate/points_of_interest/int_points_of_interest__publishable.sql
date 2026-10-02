@@ -103,6 +103,10 @@ select
     verdict.lon,
     verdict.lat,
     verdict.properties,
+    -- The park-boundary layer sources.json's entry names, which the network
+    -- ring admits a point inside of (int_points_of_interest__in_corridor).
+    json_extract_string(verdict.registry_entry, '$.boundary_source')
+        as boundary_source,
     verdict._loaded_at
 from verdict
 inner join publication on verdict.source_key = publication.source_key

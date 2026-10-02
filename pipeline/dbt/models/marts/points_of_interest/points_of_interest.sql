@@ -171,10 +171,13 @@ select
     unioned.site_id,
     unioned.site_role,
     unioned.site_name,
-    -- PO34, NOT PORTED: export_nearby_poi.py's mark_closed_trailheads()
-    -- reads the published network lines' trail_status, which no model holds
-    -- yet. Null is "not marked", which is also its answer whenever it cannot
-    -- run ("miss rather than cry wolf").
+    -- PO34, NOT PORTED YET, a safety gap: export_nearby_poi.py's
+    -- mark_closed_trailheads() marks a trailhead whose every line within
+    -- 100 m is closed, and counts the A.T.'s centerline and side trails as
+    -- open lines; stg_atc__side_trails carries no geometry, and marking
+    -- without the side trails would flag a trailhead beside an open A.T.
+    -- side trail as closed. Null is "not marked", the miss direction the
+    -- Python takes whenever it cannot run.
     cast(null as integer) as trails_closed_within_m,
     unioned.retired,
     unioned.superseded_by,

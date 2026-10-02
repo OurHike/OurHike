@@ -213,9 +213,11 @@ models:
         data_type: varchar
       - name: trails_closed_within_m
         description: >
-          On a trailhead whose every trail line within that many metres is
-          closed (export_nearby_poi.py's TRAILS_CLOSED_PROPERTY). Null on
-          every row until the network lines land (PO34, not ported).
+          On a trailhead whose every trail line within that many metres (100)
+          is closed, export_nearby_poi.py's TRAILS_CLOSED_PROPERTY; the phone
+          draws the trailhead with a closure cross. Null on every row until
+          the A.T.'s side trails carry geometry in staging (PO34, not ported:
+          a safety gap). Null is "not marked", never "open".
         data_type: integer
       - name: retired
         description: The release that retired a tombstone's id; null on a live POI.

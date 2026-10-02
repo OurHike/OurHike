@@ -39,6 +39,7 @@ Exit 1 on any difference, so a CI step fails on one.
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import sys
 from collections.abc import Callable
@@ -258,19 +259,44 @@ def _exact_copy_reasons(old: dict, new: dict) -> dict[str, str]:
     return reasons
 
 
+@functools.cache
+def _published_network() -> Path:
+    """nearby_trails.geojson as export_nearby_trails.main() writes it, in a folder kept for this process.
+
+    Both POI exporters read the published network: export_poi.py widens its
+    corridor by the 500 ft ring around it (NETWORK_LINES_PATH), and
+    export_nearby_poi.py clips its amenities to that ring and marks the
+    trailheads whose every line is closed. A publish run writes the file
+    first, so the old documents are built with it there, as the dbt models
+    are built with int_trail_lines__network_published.
+    """
+    import contextlib
+    import io
+    import tempfile
+
+    import export_nearby_trails
+
+    out = Path(tempfile.mkdtemp(prefix="parity-network-"))
+    with contextlib.redirect_stdout(io.StringIO()):
+        export_nearby_trails.OUT_DIR = out
+        export_nearby_trails.main()
+    return out / "nearby_trails.geojson"
+
+
 def _poi_by_type_old(poi_type: str) -> Callable[[], dict]:
     """export_poi.py's poi_<type>.geojson, as its own main() writes it.
 
     export_poi.py has no builder that returns the documents: main() writes
     all eight through GDAL, whose printing of a double is part of the shape
     being compared, so the old document is the file main() just wrote, read
-    back. Every input is a raw file or a reviewed file in git, and nothing
-    in main() fetches.
+    back. Every input is a raw file, a reviewed file in git or the published
+    network (_published_network()), and nothing in main() fetches.
     """
 
     def old() -> dict:
         import export_poi
 
+        export_poi.NETWORK_LINES_PATH = _published_network()
         export_poi.main()
         return json.loads((export_poi.OUT_DIR / f"{poi_type}.geojson").read_text(encoding="utf-8"))
 
@@ -284,7 +310,8 @@ def _nearby_poi_old() -> dict:
     reaches_hikers true, so main() raises without the guide's page cache, and
     the guide is not ported (ELT.md ledger row PO36). Everything else is
     main()'s: each registered layer's build_records() in poi_sources()'s
-    order, the network ring, the closed-trailhead mark, the place sites.
+    order, the network ring and the closed-trailhead mark against the
+    published network (_published_network()), the place sites.
     """
     import export_nearby_poi as nearby
 
@@ -294,10 +321,9 @@ def _nearby_poi_old() -> dict:
     for source in sources:
         features = json.loads((nearby.RAW_DIR / f"{source['key']}.geojson").read_text(encoding="utf-8")).get("features", [])
         records.extend(nearby.build_records(source, features)[0])
-    records, _ = nearby.clip_to_network(
-        records, nearby.OUT_DIR / nearby.NETWORK_ARTIFACT_NAME, nearby.boundary_paths_for(sources)
-    )
-    nearby.mark_closed_trailheads(records, nearby.OUT_DIR / nearby.NETWORK_ARTIFACT_NAME)
+    network = _published_network()
+    records, _ = nearby.clip_to_network(records, network, nearby.boundary_paths_for(sources))
+    nearby.mark_closed_trailheads(records, network)
     site_props = nearby.site_properties(nearby.group_place_sites(records))
     for record in records:
         record.update(site_props.get(record["id"], {}))

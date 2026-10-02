@@ -8,8 +8,15 @@
 -- attach_miles() and the order that model's comment gives a consumer:
 -- 1. the point in EPSG:5070 metres, transformed with always_xy, as
 --    _reproject_points_to_meters() transforms it;
--- 2. the nearest piece by st_distance, a tie going to the lower piece_id,
---    where shapely's STRtree.nearest() returns one of the tied pieces;
+-- 2. the nearest piece by st_distance, a tie going first to a piece the
+--    point does not end on and then to the lower piece_id, where shapely's
+--    STRtree.nearest() returns one of the tied pieces. That order is
+--    int_trail_lines__mile_axis's, measured by the trail_lines family on
+--    ATC's live centerline 2026-10-02: 3 of 216,767 vertices tie, all at one
+--    three-way junction near mile 1261, and it matches export_trails.py on
+--    all 216,767. @unvalidated beyond that junction, because STRtree's tie
+--    order is its implementation's; a POI exactly on a piece junction is
+--    the case that would show it;
 -- 3. how far along that piece the point projects, in miles: the located
 --    fraction times the piece's length, over the international mile (the
 --    Python's line.project(), then CalibratedPart.mile_at()'s division);
@@ -60,7 +67,9 @@ nearest as (
         row_number() over (
             partition by points.poi_id
             order by
-                st_distance(axis.geom_5070, points.point_5070), axis.piece_id
+                st_distance(axis.geom_5070, points.point_5070),
+                st_linelocatepoint(axis.geom_5070, points.point_5070) = 1,
+                axis.piece_id
         ) as pick
     from points
     cross join axis

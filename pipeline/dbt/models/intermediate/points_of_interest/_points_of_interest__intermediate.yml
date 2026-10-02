@@ -148,9 +148,11 @@ models:
   - name: int_points_of_interest__in_corridor
     description: >
       The publishable rows inside the ground their file covers: an A.T.-family
-      row inside lib/corridor.py's 30-mile corridor, and every other
-      organization's row. The 500 ft network rings wait on the trail_lines
-      family's network lines.
+      row inside lib/corridor.py's 30-mile corridor or within 500 ft of a
+      published network line, and another organization's row within the same
+      500 ft, inside a park boundary its layer names, or a parking area or
+      trailhead anywhere (export_nearby_poi.py's clip_to_network()). With no
+      published network line at all, no ring applies.
     columns:
       - name: poi_key
         description: The staging model's key.

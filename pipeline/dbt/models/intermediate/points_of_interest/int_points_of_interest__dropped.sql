@@ -13,13 +13,17 @@
 --    says internal (DEC's PUBLICUSE), or the source may not publish
 --    (int_sources__publication);
 -- 3. int_points_of_interest__in_corridor: an A.T.-family row outside the
---    corridor.
+--    corridor and its network ring, or another organization's amenity
+--    outside the ring and every park boundary its layer names.
 with classified as (
     select * from {{ ref('int_points_of_interest__classified') }}
 ),
 
 publishable as (
-    select poi_key from {{ ref('int_points_of_interest__publishable') }}
+    select
+        poi_key,
+        phone_files
+    from {{ ref('int_points_of_interest__publishable') }}
 ),
 
 in_corridor as (
@@ -65,10 +69,22 @@ refused_publication as (
 
 outside_corridor as (
     select
-        poi_key,
-        'outside the A.T. corridor' as drop_reason
+        publishable.poi_key,
+        case
+            when publishable.phone_files = 'poi_by_type'
+                then
+                    'outside the A.T. corridor and further than '
+                    || '{{ var("poi_network_ring_feet") }} ft from a '
+                    || 'published line'
+            else
+                'further than {{ var("poi_network_ring_feet") }} ft from a '
+                || 'published line, and inside no park boundary its layer names'
+        end as drop_reason
     from publishable
-    where poi_key not in (select in_corridor.poi_key from in_corridor)
+    where
+        publishable.poi_key not in (
+            select in_corridor.poi_key from in_corridor
+        )
 ),
 
 reasons as (

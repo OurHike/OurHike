@@ -1317,6 +1317,392 @@ def _with_key_fields(content: str, fields: dict) -> str:
     return json.dumps(collection)
 
 
+# --------------------------------------------------------------------------
+# The closures and warnings family (#1793, stage 3): the hourly lane's three
+# upstreams that are not layer files. extract/_fixtures.py serves each the way
+# its upstream answers: NWS's /alerts/active body, NYNJTC's WordPress routes,
+# and the rows OurHike's Postgres returns for each of export_conditions.py's
+# queries. The FIELD NAMES are measured: NWS's are the 30 properties
+# extract/_kinds.py's NWS_TEXT_PROPERTIES and NWS_JSON_PROPERTIES list (read
+# off 353 live alerts, 2026-10-01); NYNJTC's post fields and its place terms'
+# ids, names and slugs were read from its REST API on 2026-10-02; the Postgres
+# columns are the queries' own select lists. The VALUES are synthetic, chosen
+# so each branch the closures and warnings models take has a row: a Cancel and
+# a Test message NWS lands and the relay drops, an alert placed by polygon and
+# one by zone, null `ends` and `instruction`; NYNJTC titles carrying the two
+# entities measured on its live 18 (`&#8211;` twice, `&amp;` once) and a tag
+# inside a title; closures of each status; reports of both severities.
+
+
+def _nws_alert(number: int, event: str, status: str, message_type: str, geometry=None, **properties) -> dict:
+    alert_id = f"urn:oid:2.49.0.1.840.0.fixture.{number}"
+    return {
+        "id": f"https://api.weather.gov/alerts/{alert_id}",
+        "type": "Feature",
+        "geometry": geometry,
+        "properties": {
+            "@id": f"https://api.weather.gov/alerts/{alert_id}",
+            "@type": "wx:Alert",
+            "id": alert_id,
+            "areaDesc": "Rockland, NY; Orange, NY",
+            "geocode": {"SAME": ["036087", "036071"], "UGC": ["NYZ069", "NYZ067"]},
+            "affectedZones": [
+                "https://api.weather.gov/zones/forecast/NYZ069",
+                "https://api.weather.gov/zones/forecast/NYZ067",
+            ],
+            "references": [],
+            "sent": "2026-10-01T15:22:00-04:00",
+            "effective": "2026-10-01T15:22:00-04:00",
+            "onset": "2026-10-01T15:22:00-04:00",
+            "expires": "2026-10-01T16:15:00-04:00",
+            "ends": "2026-10-01T16:15:00-04:00",
+            "status": status,
+            "messageType": message_type,
+            "category": "Met",
+            "severity": "Severe",
+            "certainty": "Observed",
+            "urgency": "Immediate",
+            "event": event,
+            "sender": "w-nws.webmaster@noaa.gov",
+            "senderName": "NWS Upton NY",
+            "headline": f"{event} issued October 1 at 3:22PM EDT by NWS Upton NY",
+            "description": f"Fixture {event.lower()}.\n\n* WHAT...Fixture text, relayed as written.",
+            "instruction": "Fixture instruction.",
+            "response": "Shelter",
+            "parameters": {"NWSheadline": [f"FIXTURE {event.upper()}"]},
+            "scope": "Public",
+            "code": "IPAWSv1.0",
+            "language": "en-US",
+            "web": "http://www.weather.gov",
+            "eventCode": {"SAME": ["SVR"], "NationalWeatherService": ["SVW"]},
+            **properties,
+        },
+    }
+
+
+def _nws_alerts() -> dict:
+    """/alerts/active's body: two alerts the relay keeps, one each way of placing, and the two kinds it drops."""
+    storm_cell = {
+        "type": "Polygon",
+        "coordinates": [[[-74.12, 41.20], [-74.02, 41.20], [-74.02, 41.30], [-74.12, 41.30], [-74.12, 41.20]]],
+    }
+    return {
+        "type": "FeatureCollection",
+        "updated": "2026-10-01T19:30:00+00:00",
+        "features": [
+            _nws_alert(1, "Severe Thunderstorm Warning", "Actual", "Alert", storm_cell),
+            # Placed by zone: no polygon, and NWS gave it no end and no instruction.
+            _nws_alert(2, "Flood Watch", "Actual", "Update", None, ends=None, instruction=None, severity="Moderate"),
+            # Dropped by the relay (WN01): a cancellation, and a message that is not Actual.
+            _nws_alert(3, "Severe Thunderstorm Warning", "Actual", "Cancel", storm_cell),
+            _nws_alert(4, "Tornado Warning", "Test", "Alert", storm_cell),
+            # Null where NWS sends null: no headline, no onset.
+            _nws_alert(5, "Special Weather Statement", "Actual", "Alert", None, headline=None, onset=None, ends=None),
+        ],
+    }
+
+
+# NYNJTC's place terms as its REST API served them on 2026-10-02: real ids,
+# names and slugs, one region name carrying `&amp;` as the live one does.
+NYNJTC_TERMS = {
+    "trail": [
+        {"id": 40, "name": "Appalachian Trail", "slug": "appalachian-trail", "count": 9},
+        {"id": 68, "name": "Ramapo-Dunderberg Trail", "slug": "ramapo-dunderberg-trail", "count": 1},
+    ],
+    "park": [
+        {"id": 213, "name": "Harriman-Bear Mountain State Parks", "slug": "harriman-bear-mountain-state-parks", "count": 5},
+        {"id": 210, "name": "Mount Beacon Park", "slug": "mount-beacon-park", "count": 0},
+    ],
+    "region": [
+        {"id": 284, "name": "Harriman-Bear Mountain", "slug": "harriman-bear-mountain", "count": 4},
+        {"id": 282, "name": "Delaware Water Gap &amp; Kittatinny", "slug": "delaware-water-gap-kittatinny", "count": 3},
+    ],
+    "state": [
+        {"id": 66, "name": "New York", "slug": "new-york", "count": 16},
+        {"id": 67, "name": "New Jersey", "slug": "new-jersey", "count": 15},
+    ],
+}
+
+
+def _nynjtc_post(post_id: int, slug: str, title: str, modified: str, **tags) -> dict:
+    """One post as the posts route serves it, with the fields WordPress adds that the extract drops (WP_DROPPED)."""
+    return {
+        "id": post_id,
+        "date": "2026-03-01T09:00:00",
+        "date_gmt": "2026-03-01T14:00:00",
+        "guid": {"rendered": f"https://www.nynjtc.org/?p={post_id}"},
+        "modified": modified,
+        "modified_gmt": "2026-04-20T22:38:04",
+        "slug": slug,
+        "status": "publish",
+        "type": "post",
+        "link": f"https://www.nynjtc.org/trail-alerts/{slug}/",
+        "title": {"rendered": title},
+        "content": {"rendered": "<p>Fixture body text, which never reaches a phone.</p>", "protected": False},
+        "excerpt": {"rendered": "<p>Fixture excerpt.</p>", "protected": False},
+        "author": 9,
+        "featured_media": 0,
+        "comment_status": "closed",
+        "ping_status": "open",
+        "sticky": False,
+        "template": "",
+        "format": "standard",
+        "meta": {"_acf_changed": False, "footnotes": ""},
+        "categories": [6],
+        "tags": [],
+        "trail": tags.get("trail", []),
+        "park": tags.get("park", []),
+        "region": tags.get("region", []),
+        "state": tags.get("state", []),
+        "class_list": [f"post-{post_id}", "post"],
+        "yoast_head": "<meta name='author' content='Fixture Person'>",
+        "yoast_head_json": {"author": "Fixture Person"},
+        "_links": {"self": [{"href": f"https://www.nynjtc.org/wp-json/wp/v2/posts/{post_id}"}]},
+    }
+
+
+def _nynjtc_trail_alerts() -> dict:
+    """The category lookup, the Trail Alerts posts and the four place taxonomies, as nynjtc.org's REST API answers them."""
+    return {
+        "categories": [{"id": 6, "slug": "trail-alerts"}],
+        "posts": [
+            _nynjtc_post(
+                9001,
+                "fixture-detour-in-harriman",
+                "Fixture Detour &#8211; Harriman",
+                "2026-04-20T18:38:04",
+                trail=[40, 68],
+                park=[213],
+                region=[284],
+                state=[66],
+            ),
+            _nynjtc_post(
+                9002,
+                "fixture-closures-and-advisories",
+                "Fixture Closures &amp; Advisories (Updated: 11/21/25)",
+                "2026-05-04T10:25:39",
+                park=[213, 210],
+            ),
+            # A literal en dash, as one live title carries, a tag inside the title, and no place tags at all.
+            _nynjtc_post(
+                9003, "fixture-reroute-in-progress", "<em>Fixture</em> Reroute in Progress – March", "2025-06-24T15:33:28"
+            ),
+            # A region whose name carries an entity, and a term id the vocabulary does not hold (dropped, not faked).
+            _nynjtc_post(
+                9004,
+                "fixture-winter-closures",
+                "Fixture Winter Closures",
+                "2025-12-15T11:12:19",
+                region=[282, 999],
+                state=[67, 66],
+            ),
+        ],
+        "terms": NYNJTC_TERMS,
+    }
+
+
+def _ourhike_postgres() -> dict:
+    """What OurHike's Postgres answers for each of export_conditions.py's queries: the columns and their types, then the rows.
+
+    The rows are the QUERY's answer, after its predicate and window: fixture
+    mode stands in for the connection, not for the SQL (extract/_fixtures.py
+    says what that leaves unexercised). Timestamps are naive UTC, as the
+    columns are `timestamp without time zone` (backend/app/models/).
+    """
+    return {
+        "closures": {
+            "columns": [
+                ["id", "varchar"],
+                ["reported_at", "timestamp"],
+                ["trail_id", "varchar"],
+                ["start_mile_marker", "float8"],
+                ["end_mile_marker", "float8"],
+                ["reason_type", "varchar"],
+                ["note", "text"],
+                ["status", "varchar"],
+                ["moderation_status", "varchar"],
+                ["verified_at", "timestamp"],
+                ["closed_since", "timestamp"],
+                ["expected_reopen", "timestamp"],
+                ["reroute_url", "varchar"],
+                ["start_lat", "float8"],
+                ["start_lon", "float8"],
+                ["end_lat", "float8"],
+                ["end_lon", "float8"],
+            ],
+            "rows": [
+                {
+                    "id": "00000000-0000-4000-8000-00000000c001",
+                    "reported_at": "2026-09-20T13:05:00",
+                    "trail_id": "AT",
+                    "start_mile_marker": 1385.2,
+                    "end_mile_marker": 1386.0,
+                    "reason_type": "storm_damage",
+                    "note": "Fixture blowdown across the treadway.",
+                    "status": "closed",
+                    "moderation_status": "verified",
+                    "verified_at": "2026-09-20T15:00:00.250000",
+                    "closed_since": "2026-09-19T00:00:00",
+                    "expected_reopen": None,
+                    "reroute_url": None,
+                    "start_lat": 41.2671,
+                    "start_lon": -74.0893,
+                    "end_lat": 41.2702,
+                    "end_lon": -74.0811,
+                },
+                {
+                    "id": "00000000-0000-4000-8000-00000000c002",
+                    "reported_at": "2026-09-01T08:00:00",
+                    "trail_id": "AT",
+                    "start_mile_marker": 1026.7,
+                    "end_mile_marker": 1026.7,
+                    "reason_type": "maintenance",
+                    "note": None,
+                    "status": "reroute_available",
+                    "moderation_status": "verified",
+                    "verified_at": "2026-09-01T09:30:00",
+                    "closed_since": None,
+                    "expected_reopen": "2026-11-01T00:00:00",
+                    "reroute_url": "https://example.org/fixture-reroute",
+                    # Filed before #674 added the endpoints, so none.
+                    "start_lat": None,
+                    "start_lon": None,
+                    "end_lat": None,
+                    "end_lon": None,
+                },
+                {
+                    "id": "00000000-0000-4000-8000-00000000c003",
+                    "reported_at": "2026-08-10T10:00:00",
+                    "trail_id": "AT",
+                    "start_mile_marker": 476.6,
+                    "end_mile_marker": 485.8,
+                    "reason_type": "flooding",
+                    "note": "Fixture: reopened after the water went down.",
+                    "status": "open",
+                    "moderation_status": "verified",
+                    "verified_at": "2026-08-10T12:00:00",
+                    "closed_since": "2026-08-09T00:00:00",
+                    "expected_reopen": None,
+                    "reroute_url": None,
+                    "start_lat": None,
+                    "start_lon": None,
+                    "end_lat": None,
+                    "end_lon": None,
+                },
+            ],
+        },
+        "reports": {
+            "columns": [
+                ["id", "varchar"],
+                ["type", "varchar"],
+                ["poi_id", "varchar"],
+                ["lat", "float8"],
+                ["lon", "float8"],
+                ["mile", "float8"],
+                ["reporter_type", "varchar"],
+                ["timestamp", "timestamp"],
+                ["note", "text"],
+                ["follow_up", "json"],
+                ["status", "varchar"],
+                ["visibility", "varchar"],
+                ["severity", "varchar"],
+                ["verified_at", "timestamp"],
+            ],
+            "rows": [
+                {
+                    "id": "00000000-0000-4000-8000-00000000a001",
+                    "type": "blowdown",
+                    "poi_id": None,
+                    "lat": 41.2671,
+                    "lon": -74.0893,
+                    "mile": 1385.4,
+                    "reporter_type": "day",
+                    "timestamp": "2026-09-21T11:00:00",
+                    "note": "Fixture tree down, passable.",
+                    "follow_up": None,
+                    "status": "verified",
+                    "visibility": "public",
+                    "severity": "normal",
+                    "verified_at": "2026-09-21T12:00:00",
+                },
+                {
+                    "id": "00000000-0000-4000-8000-00000000a002",
+                    "type": "animals",
+                    "poi_id": "atc_shelters:fixture",
+                    "lat": 41.30,
+                    "lon": -74.02,
+                    "mile": None,
+                    "reporter_type": "thru",
+                    "timestamp": "2026-09-22T07:45:30.500000",
+                    "note": "Fixture bear at the shelter.",
+                    "follow_up": {"answers": {"still_there": "yes"}},
+                    "status": "verified",
+                    "visibility": "public",
+                    "severity": "serious",
+                    "verified_at": "2026-09-22T08:00:00",
+                },
+                {
+                    "id": "00000000-0000-4000-8000-00000000a003",
+                    "type": "flooding",
+                    "poi_id": None,
+                    "lat": 41.22,
+                    "lon": -74.10,
+                    "mile": 1380.0,
+                    "reporter_type": "section",
+                    "timestamp": "2026-09-23T16:20:00",
+                    "note": None,
+                    "follow_up": None,
+                    "status": "resolved",
+                    "visibility": "public",
+                    "severity": "serious",
+                    "verified_at": None,
+                },
+            ],
+        },
+        "notes": {
+            "columns": [
+                ["id", "varchar"],
+                ["poi_id", "varchar"],
+                ["lat", "float8"],
+                ["lon", "float8"],
+                ["mile", "float8"],
+                ["observation", "varchar"],
+                ["note", "text"],
+                ["observed_at", "timestamp"],
+                ["reporter_type", "varchar"],
+            ],
+            "rows": [
+                {
+                    "id": "00000000-0000-4000-8000-00000000d001",
+                    "poi_id": "atc_springs:fixture",
+                    "lat": None,
+                    "lon": None,
+                    "mile": None,
+                    "observation": "flowing",
+                    "note": "Fixture: running well.",
+                    "observed_at": "2026-09-25T09:00:00",
+                    "reporter_type": "day",
+                },
+            ],
+        },
+        "disputes": {
+            "columns": [["poi_id", "varchar"], ["accounts", "int8"], ["latest_at", "timestamp"], ["maintainer_said", "bool"]],
+            "rows": [
+                {"poi_id": "atc_springs:fixture-dry", "accounts": 2, "latest_at": "2026-09-24T18:00:00", "maintainer_said": False}
+            ],
+        },
+    }
+
+
+def closures_and_warnings_fixtures() -> dict[str, str]:
+    """The closures and warnings family's fixture files, under conditions/: NWS, NYNJTC's WordPress, OurHike's Postgres."""
+    return {
+        "conditions/nws_alerts.json": json.dumps(_nws_alerts()),
+        "conditions/nynjtc_trail_alerts.json": json.dumps(_nynjtc_trail_alerts()),
+        "conditions/ourhike_postgres.json": json.dumps(_ourhike_postgres()),
+    }
+
+
 def write_fixtures(raw_dir: Path) -> list[str]:
     files = {
         "shelters.geojson": _atc_layer("Shelter", 3),
@@ -1452,6 +1838,7 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         "external/pcta_centerline.geojson": _registered_trail_lines_layer("pcta_centerline", None),
         "external/cdtc_centerline.geojson": _registered_trail_lines_layer("cdtc_centerline", None),
         "external/wi_ice_age_trail.geojson": _registered_trail_lines_layer("wi_ice_age_trail", None),
+        **closures_and_warnings_fixtures(),
     }
     existing = [name for name in files if (raw_dir / name).exists()]
     if existing:

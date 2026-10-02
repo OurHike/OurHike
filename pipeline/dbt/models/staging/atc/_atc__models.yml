@@ -177,9 +177,9 @@ models:
           config:
             severity: warn
     description: >
-      Per-segment centerline attributes (surface, status, club acronyms).
-      Geometry deliberately stays in the Python spatial scripts - DBT.md's
-      scope line.
+      Per-segment centerline attributes (surface, status, club acronyms) and,
+      since stage 3 of #1793, the segment's geometry, which the trail_lines
+      family's mile axis and published lines read.
     columns:
       - name: trail_segment_key
         description: >
@@ -190,6 +190,16 @@ models:
         data_tests: [not_null, unique]
       - name: source_id
         data_tests: [not_null, unique]
+      - name: geom
+        description: >
+          The segment's line as ATC published it, full resolution, lon/lat
+          (GeoJSON's order). Null where the feature carries no geometry.
+      - name: source_row
+        description: >
+          The row's place in the raw table, which is the order the layer's
+          pages served the features (the model's comment says why, and what
+          is unmeasured). The axis merge and the chain merge read the
+          segments in this order, as the Python reads the GeoJSON file.
   - name: stg_atc__side_trails
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
@@ -260,6 +270,11 @@ models:
         data_tests: [not_null, unique]
       - name: measure_mi
         data_tests: [not_null]
+      - name: source_row
+        description: >
+          The row's place in the raw table, the order the layer's pages
+          served the markers. int_trail_lines__mile_axis breaks a tie
+          between two equally near markers on it.
   - name: stg_atc__treadway
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy

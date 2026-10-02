@@ -827,7 +827,9 @@ def _run(
             pipeline.abort_packages()
         pipeline.sync_destination()
         recorded = recorded_markers(pipeline)
-        plan_resources = due(plan_resources, run_log_rows(pipeline), checked_at)
+        # Read once: every run log file is a read of its own, and nothing writes the log before the run's end.
+        log = run_log_rows(pipeline)
+        plan_resources = due(plan_resources, log, checked_at)
     planned, unavailable = [], []
     with timed(report, "change checks"):
         for resource in plan_resources:
@@ -857,7 +859,7 @@ def _run(
     if carrying:
         complete = committed_load_ids(pipeline)
         kept = stored_progress(pipeline, complete)
-        carried_for(pipeline, to_run, kept, run_log_rows(pipeline), complete)
+        carried_for(pipeline, to_run, kept, log, complete)
 
     def progress(loaded: set[str] = frozenset()) -> dict[str, list[dict]] | None:
         return progress_after(kept, report, loaded) if carrying else None

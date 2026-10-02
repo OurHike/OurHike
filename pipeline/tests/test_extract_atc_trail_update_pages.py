@@ -44,6 +44,7 @@ from extract._run import (
     run_log_rows,
     run_pipeline,
     stored_progress,
+    summary_markdown,
 )
 from extract._warehouse import load_warehouse
 from lib import http_retry
@@ -431,11 +432,12 @@ def test_a_new_update_in_the_sitemap_is_read_before_the_set_lands(requests_mock,
     assert [row["slug"] for row in rows] == ["new-closure", "a", "b"]
 
 
-def test_a_page_served_older_than_its_lastmod_lands_as_served_and_is_read_again_first(requests_mock, clock):
+def test_a_page_served_older_than_its_lastmod_lands_as_served_and_is_read_again_first(requests_mock, clock, capsys):
     """The sitemap and the pages sit behind separate caches (max-age=600), so a page can lag its own lastmod.
 
     The row lands as the page said, because the committed row is older still, and the next run re-reads it
-    ahead of the pages read longest ago, though its lastmod did not move.
+    ahead of the pages read longest ago, though its lastmod did not move. Its new facts were expected, so
+    they are not reported as a change the lastmod hid.
     """
     stale = page("Fixture VA: a as cached", modified="2026-09-03T19:54:14+00:00")
     site = Site(requests_mock, clock).serve({"a": ("2026-09-20T10:00:00+00:00", stale), **updates("b", "c")})
@@ -450,6 +452,7 @@ def test_a_page_served_older_than_its_lastmod_lands_as_served_and_is_read_again_
 
     assert site.pages_read()[0] == "a"
     assert rows[0]["title"] == "Fixture VA: a now" and not page_behind_sitemap(rows[0])
+    assert "changed without its lastmod" not in capsys.readouterr().out
 
 
 def test_every_page_is_read_again_within_a_day_of_runs_and_a_change_its_lastmod_hid_is_printed(requests_mock, clock, capsys):
@@ -577,6 +580,8 @@ def test_a_first_run_lands_nothing_until_every_page_is_read_and_completes_over_s
             seen.append(len(stored_progress(pipeline)[TABLE]))
             latest = [row for row in run_log_rows(pipeline) if row["run_id"] == report.run_id and row["table_name"] == TABLE]
             assert [row["outcome"] for row in latest] == [INCOMPLETE]
+            summary = summary_markdown(report, "conditions_ua")
+            assert "**Read incomplete**" in summary and f"| `{TABLE}` | stale | incomplete, nothing landed |  |" in summary
         else:
             assert report.incomplete == {} and report.rows[TABLE] == report.proofs[TABLE] == 7
             assert counts[TABLE] == 7 and stored_progress(pipeline) == {}

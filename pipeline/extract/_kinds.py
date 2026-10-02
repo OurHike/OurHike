@@ -1988,7 +1988,8 @@ class AtcTrailUpdatePages(Resource):
                 if row is None:
                     failures.append(slug)
                     continue
-                if any(row[name] != known[slug][name] for name in ATC_PAGE_FACTS):
+                # A page that was behind its lastmod was expected to change; any other is the hazard's evidence.
+                if slug not in behind and any(row[name] != known[slug][name] for name in ATC_PAGE_FACTS):
                     stood = f"{slug}'s facts changed while its lastmod stood at {lastmods[slug]}"
                     print(f"::warning title={self.key} page changed without its lastmod::{stood}; the re-read lands")
                 fetched[slug] = row

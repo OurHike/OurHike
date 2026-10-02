@@ -538,36 +538,48 @@ def test_a_lane_refuses_a_monthly_step_that_reads_a_node_an_hourly_or_daily_sour
     ]
 
 
-def test_a_lane_passes_an_hourly_step_whose_table_unblocks_only_hourly_nodes():
+# Each derived table below feeds its own staging model first, as stg_derived__weather_squares does: a model no
+# source with a cadence reaches, whose lane is the lane of the writer it ends in.
+HOURLY_WRITER = "model.ourhike.pub_conditions_closures"
+MONTHLY_WRITER = "model.ourhike.pub_trails_geojson"
+
+
+def _writers_manifest(steps: list[Step], feeds: str) -> dict:
     manifest = _lane_manifest(
-        {step.name: [] for step in [*STEPS, SQUARES]}, unblocks={"weather_squares": ["model.ourhike.closures"]}
+        {step.name: [] for step in steps}, unblocks={"weather_squares": ["model.ourhike.stg_derived__weather_squares"]}
     )
+    manifest["child_map"] |= {
+        "model.ourhike.stg_derived__weather_squares": [feeds],
+        "model.ourhike.closures": [HOURLY_WRITER],
+        "model.ourhike.int_elevation__sample_points": [MONTHLY_WRITER],
+    }
+    return manifest
 
-    assert build_marts.lane_problems(manifest, [*STEPS, SQUARES], "hourly") == []
+
+def test_a_lane_passes_an_hourly_step_whose_table_feeds_only_hourly_writers():
+    manifest = _writers_manifest([*STEPS, SQUARES], feeds="model.ourhike.closures")
+
+    for lane in build_marts.LANES:
+        assert build_marts.lane_problems(manifest, [*STEPS, SQUARES], lane) == []
 
 
-def test_a_lane_refuses_a_monthly_step_whose_table_unblocks_only_the_hourly_lanes_nodes():
+def test_a_lane_refuses_a_monthly_step_whose_table_feeds_only_the_hourly_lanes_writers():
     monthly_squares = Step(name="step_weather_squares", table="weather_squares", command=("step_weather_squares.py",))
-    manifest = _lane_manifest(
-        {step.name: [] for step in [*STEPS, monthly_squares]}, unblocks={"weather_squares": ["model.ourhike.closures"]}
-    )
+    manifest = _writers_manifest([*STEPS, monthly_squares], feeds="model.ourhike.closures")
 
     assert build_marts.lane_problems(manifest, [*STEPS, monthly_squares], "monthly") == [
-        "step_weather_squares runs in the monthly lane, and everything derived.weather_squares unblocks is the hourly "
-        "lane's (model.ourhike.closures): give its STEPS entry lane=HOURLY"
+        "step_weather_squares runs in the monthly lane, and every writer derived.weather_squares feeds is the hourly "
+        f"lane's ({HOURLY_WRITER}): give its STEPS entry lane=HOURLY"
     ]
 
 
-def test_a_lane_refuses_an_hourly_step_whose_table_unblocks_a_monthly_node():
-    manifest = _lane_manifest(
-        {step.name: [] for step in [*STEPS, SQUARES]},
-        unblocks={"weather_squares": ["model.ourhike.int_elevation__sample_points"]},
-    )
+def test_a_lane_refuses_an_hourly_step_whose_table_feeds_a_monthly_writer():
+    manifest = _writers_manifest([*STEPS, SQUARES], feeds="model.ourhike.int_elevation__sample_points")
 
     assert build_marts.lane_problems(manifest, [*STEPS, SQUARES], "hourly") == [
-        "step_weather_squares runs in the hourly lane, and derived.weather_squares unblocks monthly-lane nodes "
-        "(model.ourhike.int_elevation__sample_points), which no hourly or daily source reaches: the monthly lane "
-        "would not rebuild them"
+        "step_weather_squares runs in the hourly lane, and derived.weather_squares feeds monthly-lane writers "
+        f"({MONTHLY_WRITER}), which no hourly or daily source reaches: the monthly lane leaves out what an hourly "
+        "step unblocks, so nothing would write them"
     ]
 
 
@@ -620,7 +632,7 @@ def test_every_step_names_what_it_reads_in_an_exposure_of_its_own_name():
 
 def test_a_step_that_reads_no_model_needs_no_exposure_in_either_lane():
     file_only = Step(name="step_weather_squares", table="weather_squares", command=("x.py",), lane="hourly", reads_no_model=True)
-    manifest = _lane_manifest({step.name: [] for step in STEPS}, unblocks={"weather_squares": ["model.ourhike.closures"]})
+    manifest = _writers_manifest(STEPS, feeds="model.ourhike.closures")
 
     for lane in build_marts.LANES:
         assert build_marts.lane_problems(manifest, [*STEPS, file_only], lane) == []
@@ -628,10 +640,11 @@ def test_a_step_that_reads_no_model_needs_no_exposure_in_either_lane():
 
 def test_a_step_that_says_it_reads_no_model_and_whose_exposure_lists_one_is_refused():
     file_only = Step(name="step_weather_squares", table="weather_squares", command=("x.py",), lane="hourly", reads_no_model=True)
-    manifest = _lane_manifest(
-        {**{step.name: [] for step in STEPS}, "step_weather_squares": ["model.ourhike.closures"]},
-        unblocks={"weather_squares": ["model.ourhike.closures"]},
-    )
+    manifest = _writers_manifest(STEPS, feeds="model.ourhike.closures")
+    manifest["exposures"]["exposure.ourhike.step_weather_squares"] = {
+        "name": "step_weather_squares",
+        "depends_on": {"nodes": ["model.ourhike.closures"]},
+    }
 
     assert build_marts.lane_problems(manifest, [*STEPS, file_only], "hourly") == [
         "step_weather_squares says it reads no dbt node (reads_no_model), and its exposure step_weather_squares lists some"

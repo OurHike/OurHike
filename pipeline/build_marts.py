@@ -58,7 +58,7 @@ among the sources it reads, and dbt's own graph selection gives it:
   whose `step_<name>` exposure is missing (unless its entry says
   `reads_no_model`: it reads a file and no node), a monthly step that reads a node
   an hourly or daily source reaches (the monthly lane would leave that input
-  unbuilt), and a step whose table unblocks only the other lane's nodes.
+  unbuilt), and a step whose table feeds only the other lane's writers.
   What a step reads is that exposure's `depends_on`
   (models/intermediate/*/_*__intermediate.yml).
 - --without-step NAME leaves a step out, and with it everything its table
@@ -327,22 +327,29 @@ def lane_problems(manifest: dict, steps: list[Step], lane: str | None) -> list[s
                         f"{step.name} reads {node}, which an hourly or daily source reaches: the monthly lane, where "
                         "the step runs, does not build it, so the step would read a stale or missing input"
                     )
-        unblocked = sorted(
-            node
-            for node in _reached(manifest, [derived[step.table]] if step.table in derived else [])
-            if node.startswith("model.")
-        )
-        if step.lane == MONTHLY and unblocked and all(node in reached for node in unblocked):
+        # A step's lane is the lane of the phone files its table ends in: the
+        # models between (its own staging, say) are reached by no source with a
+        # cadence, and are built by whichever lane runs the step.
+        unblocked = _reached(manifest, [derived[step.table]] if step.table in derived else [])
+        writers = sorted(node for node in unblocked if _is_writer(node))
+        if step.lane == MONTHLY and writers and all(node in reached for node in writers):
             problems.append(
-                f"{step.name} runs in the monthly lane, and everything derived.{step.table} unblocks is the hourly "
-                f"lane's ({', '.join(unblocked)}): give its STEPS entry lane=HOURLY"
+                f"{step.name} runs in the monthly lane, and every writer derived.{step.table} feeds is the hourly "
+                f"lane's ({', '.join(writers)}): give its STEPS entry lane=HOURLY"
             )
-        if step.lane == HOURLY and (monthly := [node for node in unblocked if node not in reached]):
+        if step.lane == HOURLY and (monthly := [node for node in writers if node not in reached]):
             problems.append(
-                f"{step.name} runs in the hourly lane, and derived.{step.table} unblocks monthly-lane nodes "
-                f"({', '.join(monthly)}), which no hourly or daily source reaches: the monthly lane would not rebuild them"
+                f"{step.name} runs in the hourly lane, and derived.{step.table} feeds monthly-lane writers "
+                f"({', '.join(monthly)}), which no hourly or daily source reaches: the monthly lane leaves out what an "
+                "hourly step unblocks, so nothing would write them"
             )
     return problems
+
+
+def _is_writer(node: str) -> bool:
+    """A pub_ writer's unique id, `model.<project>.pub_<file>` (models/publish/; the evaluator holds the prefix)."""
+    parts = node.split(".")
+    return len(parts) >= 3 and parts[0] == "model" and parts[2].startswith("pub_")
 
 
 def derived_source_problems(manifest: dict, steps: list[Step]) -> list[str]:

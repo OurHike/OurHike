@@ -30,7 +30,7 @@ samples as (
         line_id,
         seq,
         elevation_ft
-    from {{ ref('elevation') }}
+    from {{ ref('elevation', v=1) }}
     where line_id != 'AT'
 ),
 

@@ -231,9 +231,10 @@ def test_the_weekly_planner_gives_way_on_its_schedule_only_once_the_monthly_lane
 
 # --- The parity families, one home: CI's own step ---
 
-# `--json-dir <dir>` (gate_report.py's results, on every CI line) may sit between parity.py and the family.
+# `--json-dir <dir>` (gate_report.py's results, on every CI line) may sit between parity.py and the family,
+# and a family's name may hold a digit (stage 6's `elevation_v2`).
 CI_PARITY = re.compile(
-    r'parity\.py (?:--json-dir \S+ )?"?([a-z_$]+)"? --new "?data/processed/dbt/([^ "]+?)"?(?= |$)( --raw-dir data/raw)?', re.M
+    r'parity\.py (?:--json-dir \S+ )?"?([a-z0-9_$]+)"? --new "?data/processed/dbt/([^ "]+?)"?(?= |$)( --raw-dir data/raw)?', re.M
 )
 POI_LOOP = re.compile(r"for poi_type in ([a-z ]+); do")
 #: pipeline-tests.yml's parity lines for files the hourly conditions lane writes, not this one.

@@ -8,6 +8,9 @@
 // LineStrings (lib/trailPosition.ts's collectTrailParts), and the chain merge
 // upstream publishes the centerline as LineStrings, so those entries are
 // skipped here rather than flattened into something that could mis-align.
+// A v2 release's `v2/trail_miles.json` is the same file with `format` 2 and
+// each list delta-coded in thousandths (unpackTrailMiles below); both read to
+// the same numbers.
 //
 // The pairing with the lines is checked at download time against the
 // published hash (lib/trailData.ts's fetchTrailMiles), not here: by the time
@@ -44,13 +47,53 @@ export function parseTrailMiles(text: string): TrailMiles | null {
     return null
   }
   if (typeof parsed !== 'object' || parsed === null) return null
-  const { format, trails_sha256: trailsSha256, miles } = parsed as Record<string, unknown>
-  if (format !== 1 || typeof trailsSha256 !== 'string') return null
+  const {
+    format,
+    trails_sha256: trailsSha256,
+    miles,
+    milli_mile_deltas: deltas,
+  } = parsed as Record<string, unknown>
+  if (typeof trailsSha256 !== 'string') return null
+  if (format === 2) return unpackTrailMiles(trailsSha256, deltas)
+  if (format !== 1) return null
   if (typeof miles !== 'object' || miles === null) return null
 
   const byId = new Map<string, readonly number[]>()
   for (const [id, list] of Object.entries(miles as Record<string, unknown>)) {
     if (isNumberList(list)) byId.set(id, list)
+  }
+  return { trailsSha256, byId }
+}
+
+/**
+ * `v2/trail_miles.json` (decision 44, stage 6 of #1793): v1's file with each
+ * chain's miles as whole thousandths of a mile, the first vertex's as itself
+ * and every later one as its step from the vertex before
+ * (pipeline/dbt/models/publish/pub_trail_miles_v2.sql writes it). A step can
+ * be negative, where the chain runs backwards (lib/trailPosition.ts splits a
+ * piece there), and is kept.
+ *
+ * A thousandth-count over 1,000 is the double nearest the decimal, which is
+ * what JSON.parse makes of v1's text, so a chain reads the same numbers from
+ * either file (Reasoned from IEEE 754's correctly rounded division;
+ * pipeline/parity.py's trail_miles_v2 family holds the published files to
+ * it). A chain whose list is not whole numbers is skipped, as v1's reading
+ * skips a list that is not numbers: one step that is not whole would put
+ * every later vertex of that chain at the wrong mile.
+ */
+function unpackTrailMiles(trailsSha256: string, deltas: unknown): TrailMiles | null {
+  if (typeof deltas !== 'object' || deltas === null || Array.isArray(deltas)) return null
+  const byId = new Map<string, readonly number[]>()
+  for (const [id, list] of Object.entries(deltas as Record<string, unknown>)) {
+    if (!Array.isArray(list) || !list.every((step) => Number.isInteger(step))) continue
+    let milli = 0
+    byId.set(
+      id,
+      (list as number[]).map((step) => {
+        milli += step
+        return milli / 1000
+      }),
+    )
   }
   return { trailsSha256, byId }
 }

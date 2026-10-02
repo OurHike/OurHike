@@ -27,7 +27,7 @@
 -- Empty, it writes [], as json.dumps([]) does: the aggregate below is one
 -- row whatever the mart holds, so phone_file's when_empty never applies.
 with profile as (
-    select * from {{ ref('elevation') }}
+    select * from {{ ref('elevation', v=1) }}
     where line_id = 'AT'
 ),
 

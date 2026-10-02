@@ -64,8 +64,95 @@ interface RawSample {
 }
 
 /**
+ * `v2/elevation_profile.json` (decision 44, stage 6 of #1793): the samples
+ * v1's array carries, as three columns of whole numbers rather than one
+ * object per sample (pipeline/dbt/models/publish/pub_elevation_profile_v2.sql
+ * writes it):
+ *
+ * - `d_milli_mi`, each sample's mile in thousandths of a mile: the first as
+ *   itself, every later one as its step from the sample before;
+ * - `e_deci_ft`, each sample's elevation in tenths of a foot, null where the
+ *   DEM has no answer (never 0), and every other one as its step from the
+ *   last sample before it that has an elevation;
+ * - `part_start`, the index of each sample that begins a piece (#559).
+ *
+ * A thousandth-count over 1,000 is the double nearest the decimal, which is
+ * what JSON.parse makes of v1's `distance_mi` text, so both shapes fill the
+ * same Float32Arrays (Reasoned from IEEE 754's correctly rounded division;
+ * pipeline/parity.py's elevation_v2 family holds the published files to it).
+ */
+interface PackedProfile {
+  format: 2
+  d_milli_mi: unknown[]
+  e_deci_ft: unknown[]
+  part_start: unknown[]
+}
+
+function isPackedProfile(value: unknown): value is PackedProfile {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const {
+    format,
+    d_milli_mi: miles,
+    e_deci_ft: heights,
+    part_start: starts,
+  } = value as Record<string, unknown>
+  return (
+    format === 2 &&
+    Array.isArray(miles) &&
+    Array.isArray(heights) &&
+    Array.isArray(starts) &&
+    miles.length === heights.length
+  )
+}
+
+/**
+ * The packed profile as parallel arrays, or null when any of it is not what
+ * the format says.
+ *
+ * WHOLE OR NOTHING, where the array form drops one bad sample: each value is
+ * a step from the one before, so a step that is not a whole number would make
+ * every later mile or elevation wrong, not just its own. The ribbon then
+ * costs itself and nothing else, which is parseProfile's posture throughout.
+ */
+function unpackProfile(packed: PackedProfile): ElevationProfile | null {
+  const count = packed.d_milli_mi.length
+  if (count === 0) return null
+  const distanceMi = new Float32Array(count)
+  const elevationFt = new Float32Array(count)
+  const partStart = new Uint8Array(count)
+  let milli = 0
+  let deci = 0
+
+  for (let index = 0; index < count; index += 1) {
+    const step = packed.d_milli_mi[index]
+    const height = packed.e_deci_ft[index]
+    if (typeof step !== 'number' || !Number.isInteger(step)) return null
+    milli += step
+    distanceMi[index] = milli / 1000
+    // A DEM gap stays a gap, NaN as in the array form, and the next height
+    // steps from the last one that exists rather than from zero.
+    if (height === null) {
+      elevationFt[index] = Number.NaN
+    } else if (typeof height === 'number' && Number.isInteger(height)) {
+      deci += height
+      elevationFt[index] = deci / 10
+    } else {
+      return null
+    }
+  }
+  for (const start of packed.part_start) {
+    if (typeof start !== 'number' || !Number.isInteger(start)) return null
+    if (start < 0 || start >= count) return null
+    partStart[start] = 1
+  }
+
+  return { distanceMi, elevationFt, partStart }
+}
+
+/**
  * The published `elevation_profile.json` as parallel arrays, or null if it is
- * not the array of samples this expects.
+ * not the array of samples this expects - or, from a v2 release, the packed
+ * `v2/elevation_profile.json` (PackedProfile above), read to the same arrays.
  *
  * Returning null rather than throwing on a malformed body is the same call
  * refreshTrailData() makes about a truncated trails.geojson: the ribbon is a
@@ -79,6 +166,7 @@ export function parseProfile(text: string): ElevationProfile | null {
   } catch {
     return null
   }
+  if (isPackedProfile(parsed)) return unpackProfile(parsed)
   if (!Array.isArray(parsed)) return null
 
   const distanceMi = new Float32Array(parsed.length)

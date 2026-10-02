@@ -619,6 +619,14 @@ jobs:
               "challenges": ("challenges.json", ()),
               "trail_graph": ("trail_graph.json", ()),
               "trail_graph_geometry": ("trail_graph_geometry.json", ()),
+              # Stage 6's v2 files, each against the v1 file this build wrote beside it.
+              "elevation_v2": ("elevation_profile_v2.json", ()),
+              "trail_miles_v2": ("trail_miles_v2.json", ()),
+              **{
+                  f"poi_{kind}_v2": (f"poi_{kind}_v2.geojson", ())
+                  for kind in ("shelter", "campsite", "water", "resupply", "viewpoint", "parking", "privy", "trailhead")
+              },
+              "nearby_poi_v2": ("nearby_poi_v2.geojson", ()),
           }
           answered = re.compile(r"^\S+: (no differences|neither today's exporter nor the writer|\d+ difference\(s\))", re.M)
           summary = {}

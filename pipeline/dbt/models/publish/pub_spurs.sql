@@ -18,7 +18,7 @@
 -- Only the spurs trails.geojson draws: int_trail_lines__at_side_trails says
 -- what export_spurs.py also writes, which no phone can reach.
 with spurs as (
-    select * from {{ ref('trail_lines') }}
+    select * from {{ ref('trail_lines', v=1) }}
     where line_kind = 'spur'
 )
 

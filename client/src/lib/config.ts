@@ -33,7 +33,7 @@
 // run. Name that reason on the line.
 
 import type { DetailLevel } from './downloadDetail'
-import { RELEASE_MANIFEST_PATH, releasePath } from './dataRelease'
+import { DATA_SCHEMA_VERSION, RELEASE_MANIFEST_PATH, releasePath } from './dataRelease'
 
 const RAW_BASE: string = import.meta.env.VITE_DATA_BASE_URL ?? ''
 
@@ -772,6 +772,44 @@ export function poiKey(type: PoiType): string {
 }
 
 /**
+ * The phone files that have a v2 shape (decision 44, stage 6 of #1793), each
+ * published at `v2/<key>` inside the release folder, beside its v1 at `<key>`
+ * (pipeline/ELT.md, "Versions and channels"): the elevation profile and the
+ * per-vertex miles as delta-coded whole numbers, and every POI file with its
+ * position held once, as the point at 6 decimals. Each decodes to the values
+ * its v1 carries; pipeline/parity.py's v2 families hold the published files
+ * to that, and this build's readers decode either shape
+ * (elevationProfile.ts's parseProfile, trailMiles.ts's parseTrailMiles,
+ * trailData.ts's readPois).
+ *
+ * trails.geojson is not here: its 6 decimals are v1's already (decision 8),
+ * so it has no v2.
+ */
+export const V2_PHONE_FILE_KEYS: ReadonlySet<string> = new Set([
+  TRAIL_MILES_KEY,
+  ELEVATION_KEY,
+  NEARBY_POI_KEY,
+  ...POI_TYPES.map(poiKey),
+])
+
+/**
+ * The key this build fetches for the v1 file `key`: `v2/<key>` when the build
+ * reads schema version v2 and the file has a v2, and `key` itself otherwise.
+ *
+ * A BUILD READS v2 ONLY WHEN DATA_SCHEMA_VERSION SAYS SO, and today it says
+ * v1, so every key here is v1's and no phone fetches a v2 file. That is
+ * deliberate rather than unfinished: DATA_SCHEMA_VERSION is also the entry
+ * the build takes from channels.json, and pages.yml and ua.yml refuse to
+ * deploy a build whose entry does not resolve, so it moves to 'v2' only once
+ * a v2 release has been published and channels.json names it. Until then
+ * the readers above simply never see a v2 file, and a phone that cannot read
+ * v2 (every installed one) keeps reading v1, which keeps being written.
+ */
+export function phoneFileKey(key: string, schema: string = DATA_SCHEMA_VERSION): string {
+  return schema === 'v2' && V2_PHONE_FILE_KEYS.has(key) ? `v2/${key}` : key
+}
+
+/**
  * Every artifact `downloadTrailData` fetches, and therefore every artifact a
  * refresh compares and re-fetches (#919).
  *
@@ -783,6 +821,9 @@ export function poiKey(type: PoiType): string {
  *
  * The archives are deliberately absent - vector only, the maintainer's
  * decision (2026-08-21). See lib/dataRefresh.ts.
+ *
+ * Each key is the one this build fetches (phoneFileKey), so a refresh
+ * compares the manifest entry for the shape the download reads.
  */
 export const REFRESHABLE_KEYS: readonly string[] = [
   TRAILS_KEY,
@@ -795,4 +836,4 @@ export const REFRESHABLE_KEYS: readonly string[] = [
   HIGHLIGHTS_KEY,
   RETIRED_POI_KEY,
   ELEVATION_KEY,
-]
+].map((key) => phoneFileKey(key))

@@ -29,7 +29,7 @@
 -- by feature order, so a different order draws the same map (Reasoned from
 -- its TRAIL_SORT_KEY_EXPRESSION comment).
 with published as (
-    select * from {{ ref('trail_lines') }}
+    select * from {{ ref('trail_lines', v=1) }}
     where line_kind = 'network'
 ),
 

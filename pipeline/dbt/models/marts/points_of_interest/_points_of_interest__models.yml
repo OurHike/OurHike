@@ -15,6 +15,70 @@ models:
       access: public
       contract:
         enforced: true
+    # Decision 44: a phone file's shape is a version of the mart it is
+    # written from. v1 is today's shape at today's keys, and every pub_ writer
+    # reading this mart pins it, ref('points_of_interest', v=1). v2
+    # (points_of_interest_v2.sql) holds each POI's position once, as
+    # geom_geojson at 6 decimals, for the v2/poi_<type>.geojson and
+    # v2/nearby_poi.geojson files the pub_poi_<type>_v2 and pub_nearby_poi_v2
+    # writers write beside v1 (stage 6 of #1793; pipeline/ELT.md, "Making the
+    # download smaller"). v1 stays the latest version, so an unpinned ref
+    # reads v1; v2 is a version ahead of it until a v2 release ships. dbt
+    # 2.0.6 builds points_of_interest_v1 and points_of_interest_v2 and keeps
+    # `points_of_interest` as a view of the latest version.
+    latest_version: 1
+    versions:
+      - v: 1
+        defined_in: points_of_interest
+      - v: 2
+        defined_in: points_of_interest_v2
+        columns:
+          - include: all
+            exclude: [lat, lon, geom_geojson]
+          - name: geom_geojson
+            description: >
+              The POI's one position, an RFC 7946 Point in lon/lat at 6
+              decimals: Python's round(x, 6) of the lat and lon the row's v1
+              file prints as properties, which is what a v1 phone reads
+              (GDAL's printing for poi_<type>.geojson, every digit for the
+              other two files). Moved at most 0.056 m per axis from v1's.
+            data_type: varchar
+            constraints:
+              - type: not_null
+            data_tests: [not_null]
+        # The safety fields' tests, as v1 carries them (the values are v1's),
+        # and the position's: a point, in lon/lat, with at most 6 decimals.
+        data_tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "mile is null or (trail_id = 'AT' and not_on_at is null)"
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "capacity is null or capacity >= 1"
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "water_distance_ft is null or water_distance_ft > 0"
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "(water_distance_ft is null) = (water_distance_source is null)"
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "phone_files = 'retired_poi' or confidence in ('high', 'low')"
+          - dbt_utils.expression_is_true:
+              name: points_of_interest_v2_positions_are_lon_lat_points_at_six_decimals
+              arguments:
+                expression: >-
+                  st_geometrytype(st_geomfromgeojson(geom_geojson)) = 'POINT'
+                  and st_x(st_geomfromgeojson(geom_geojson)) between -180 and 180
+                  and st_y(st_geomfromgeojson(geom_geojson)) between -90 and 90
+                  and cast(printf('%.6f', st_x(st_geomfromgeojson(geom_geojson))) as double)
+                  = st_x(st_geomfromgeojson(geom_geojson))
+                  and cast(printf('%.6f', st_y(st_geomfromgeojson(geom_geojson))) as double)
+                  = st_y(st_geomfromgeojson(geom_geojson))
+          # The same rows as v1: the cut drops none and adds none.
+          - dbt_utils.equal_rowcount:
+              arguments:
+                compare_model: ref('points_of_interest', v=1)
     data_tests:
       # mile only on an A.T. POI that is on the A.T. (PO10, PO11):
       # attach_miles() "always succeeds - there is no distance at which it

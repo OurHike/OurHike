@@ -609,6 +609,22 @@ jobs:
           # both paths read the same lines.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity trail_graph --new data/processed/dbt/trail_graph.json
           "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity trail_graph_geometry --new data/processed/dbt/trail_graph_geometry.json
+          # Stage 6's v2 files (decision 44), each against the v1 file this
+          # same run wrote beside it, which the lines above hold to today's
+          # exporters: every elevation, mile and coordinate a v2 decodes to
+          # must be v1's, at decision 8's 6 decimals for a coordinate.
+          # parity.py decodes each file itself, so these read only JSON.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity elevation_v2 --new data/processed/dbt/elevation_profile_v2.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity trail_miles_v2 --new data/processed/dbt/trail_miles_v2.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity poi_shelter_v2 --new data/processed/dbt/poi_shelter_v2.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity poi_campsite_v2 --new data/processed/dbt/poi_campsite_v2.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity poi_water_v2 --new data/processed/dbt/poi_water_v2.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity poi_resupply_v2 --new data/processed/dbt/poi_resupply_v2.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity poi_viewpoint_v2 --new data/processed/dbt/poi_viewpoint_v2.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity poi_parking_v2 --new data/processed/dbt/poi_parking_v2.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity poi_privy_v2 --new data/processed/dbt/poi_privy_v2.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity poi_trailhead_v2 --new data/processed/dbt/poi_trailhead_v2.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity nearby_poi_v2 --new data/processed/dbt/nearby_poi_v2.geojson
 
       # The parity results, kept with the run so gate_report.py can read them
       # without a rebuild: python gate_report.py --parity-dir <the downloaded

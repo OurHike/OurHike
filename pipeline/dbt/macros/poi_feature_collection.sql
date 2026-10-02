@@ -16,8 +16,16 @@
 
     `relation` is the writer's own CTE over ref('points_of_interest'), so the
     ref stays in the model where dbt sees it.
+
+    `version` is the mart version the relation reads (decision 44). At 1,
+    the default, the document is today's shape, above. At 2 (stage 6 of
+    #1793, the eight pub_poi_<type>_v2 writers) the `lat` and `lon`
+    properties are left out, because the v2 mart holds a POI's position once,
+    as geom_geojson at 6 decimals (points_of_interest_v2.sql), and every other
+    property is v1's, in v1's order. So there is one list of properties for
+    both shapes, and a property added here reaches both.
 -#}
-{% macro poi_by_type_feature_collection(relation, poi_type) -%}
+{% macro poi_by_type_feature_collection(relation, poi_type, version=1) -%}
 select
     'FeatureCollection' as type,
     '{{ poi_type }}' as name,
@@ -33,8 +41,10 @@ select
                     'source_feature_id',
                     {{ gdal_geojson_string('source_feature_id') }},
                     'name', {{ gdal_geojson_string('name') }},
+                    {%- if version == 1 %}
                     'lat', {{ gdal_geojson_double('lat') }},
                     'lon', {{ gdal_geojson_double('lon') }},
+                    {%- endif %}
                     'mile', {{ gdal_geojson_double('mile') }},
                     'confidence', {{ gdal_geojson_string('confidence') }},
                     'capacity', capacity,

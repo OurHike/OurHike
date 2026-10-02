@@ -70,7 +70,7 @@ exposures:
       export_nearby_trails.py's file until stage 4 of #1793 moves it to this
       writer's.
     depends_on:
-      - ref('trail_lines')
+      - ref('trail_lines', v=1)
       - ref('pub_nearby_trails')
     config:
       meta:
@@ -96,7 +96,7 @@ exposures:
     # exposure's (tests/test_dbt_publish_writers.py), and this file's writer
     # is Python.
     depends_on:
-      - ref('trail_lines')
+      - ref('trail_lines', v=1)
     config:
       meta:
         r2_keys: [nearby_trails.pmtiles]
@@ -116,7 +116,7 @@ exposures:
       nearby_trails.pmtiles, unchanged, because dbt has no per-cell model
       fan-out.
     depends_on:
-      - ref('trail_lines')
+      - ref('trail_lines', v=1)
     config:
       meta:
         r2_keys:

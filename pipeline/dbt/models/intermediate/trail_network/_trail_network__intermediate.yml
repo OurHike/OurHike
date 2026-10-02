@@ -1,0 +1,66 @@
+version: 2
+
+# The trail_network family (stage 3 of #1793 — Rebuild the data platform as
+# dlt → dbt: seven contracted marts, a monthly refresh, published docs, and
+# lighter phone downloads): the junction graph a day hike routes over, which
+# build_trail_graph.py builds today. The rules are pipeline/ELT.md's TN rows,
+# applied in that file's order.
+models:
+  - name: int_trail_network__edges
+    description: >
+      One row per junction-graph edge: a piece of a maintained trail line
+      between two junctions, carrying its parent line's id, source, name and
+      blaze, in the order trail_graph.json lists them. The elevation family's
+      network models read it, as export_network_elevation.py and
+      export_network_profile.py read trail_graph.json and
+      trail_graph_geometry.json today: an edge's `source`, its two nodes and
+      its published vertices, by its place in the file. Zero rows until the
+      noding lands.
+    columns:
+      - name: edge_id
+        description: >
+          The edge's key: its parent line's trail_id, then `#`, the part of
+          that line it lies on and the piece along that part, each counted
+          from 1 (`centerline:chain:12#1.3`). The text after the last `#` is
+          always two integers, so no two edges share one. Positions are
+          global to a build: noding is global, so one changed line moves the
+          pieces of every line it crosses (pipeline/ELT.md).
+        data_tests: [not_null, unique]
+      - name: edge_index
+        description: >
+          The edge's place in trail_graph.json's `edges` and in
+          trail_graph_geometry.json, from 0. Every companion file
+          (trail_graph_elevation.json, trail_graph_profile.json) is aligned
+          by it: entry `i` there describes edge `i` here.
+        data_tests: [not_null, unique]
+      - name: club
+        description: The club folder that extracted the parent line.
+      - name: source_key
+        description: >
+          The parent line's source, published on the edge as `source`
+          (`centerline`, `side_trails`, `oprhp_trails`, ...): what frame `1j`
+          tallies legs by, and what the elevation manifests count coverage
+          per.
+      - name: _loaded_at
+        description: When the parent line's raw table was loaded, UTC.
+      - name: trail_id
+        description: The parent line's `id`, published as `trail_id`.
+      - name: name
+        description: The parent line's name, null where nothing names it.
+      - name: blaze_color
+        description: The parent line's blaze, as nearby_trails.geojson or trails.geojson publishes it.
+      - name: from_node
+        description: The published `from`, an index into trail_graph.json's `nodes`.
+      - name: to_node
+        description: The published `to`, an index into trail_graph.json's `nodes`.
+      - name: length_m
+        description: >
+          The piece's length in EPSG:5070 metres, rounded to 2 decimals as
+          published. Measured on the 1 m navigation line the graph is noded
+          from, as build_trail_graph.py measures it today.
+      - name: geom_geojson
+        description: >
+          The edge's vertices as a GeoJSON LineString in lon/lat (EPSG:4326),
+          from its `from` node to its `to` node. Its `coordinates` are the
+          edge's entry in trail_graph_geometry.json, each rounded to 6
+          decimals as build_trail_graph.py rounds them.

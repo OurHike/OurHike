@@ -1,0 +1,119 @@
+version: 2
+
+models:
+  - name: elevation
+    description: >
+      Elevation along each profiled line, one row per 25 m sample, in order
+      along the line. Today one line, the A.T. (`line_id` 'AT'): ATC's
+      centerline walked on ATC's own half-mile mile scale, with USGS 3DEP's
+      elevation read at each sample by step_dem_sampling.
+      elevation_profile.json is written from it (pub_elevation_profile). A
+      hiker's pace estimate and the climb the phone shows come off these
+      numbers, so each safety field is held by a constraint or a test:
+      elevation_ft is null where the DEM has no answer and never 0,
+      distance_mi is strictly increasing within a line, and part_start marks
+      every seam.
+    config:
+      access: public
+      contract:
+        enforced: true
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [line_id, seq]
+      # The first sample of a line begins a piece by definition (#559): a
+      # consumer starts a new run at every part_start without special-casing
+      # the first.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "part_start or seq > 0"
+      # No mile on the A.T. lies before Springer or past 2,300 miles, the
+      # ceiling the podcasts family uses (var podcast_max_at_mile); ATC's own
+      # half-mile Measure ends at Katahdin, about 2,198.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "distance_mi >= 0 and (line_id != 'AT' or distance_mi <= 2300)"
+    columns:
+      - name: line_id
+        description: >
+          The profiled line: 'AT' for the A.T., as export_poi.py's TRAIL_ID
+          names it on every A.T. POI.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests: [not_null]
+      - name: seq
+        description: >
+          The sample's place along its line, from 0: its index in
+          elevation_profile.json, which is published in this order.
+        data_type: integer
+        constraints:
+          - type: not_null
+        data_tests: [not_null]
+      - name: distance_mi
+        description: >
+          Miles along the line. On the A.T., ATC's own NOBO mile from
+          Springer, calibrated to its half-mile markers (int_trail_lines__
+          mile_axis) and rounded to three decimals as Python's round()
+          rounds: ties to even, on the double's exact value. Strictly
+          increasing within a line (assert_elevation_distance_mi_strictly_increases_within_each_line).
+        data_type: decimal(8,3)
+        constraints:
+          - type: not_null
+        data_tests: [not_null]
+      - name: elevation_ft
+        description: >
+          Elevation in feet, to one decimal, rounded as Python's round()
+          rounds. Null where the DEM has no answer at the sample (no tile
+          covers it, or the tile holds nodata there), never 0
+          (assert_elevation_ft_is_null_exactly_where_the_dem_has_no_answer).
+          Feet are the DEM's metres over 0.3048, the international foot.
+        data_type: decimal(6,1)
+        data_tests:
+          # The lowest and highest ground in the United States, which 3DEP
+          # covers: Badwater Basin, 282 ft below sea level, and Denali at
+          # 20,310 ft, each widened a little for a DEM's own noise. A value
+          # outside is a unit slip or a nodata value leaking through as an
+          # elevation (a -9999 m read would be -32,805 ft). Reasoned from the
+          # two summits, not measured against 3DEP; the margins are picked.
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: -300
+                max_value: 20500
+      - name: part_start
+        description: >
+          True on the first sample of each centerline piece the profile keeps
+          a sample of, the line's first sample included (#559). The step into
+          such a sample crosses a gap between two pieces as if they touched,
+          so it is a seam and not a slope: a gain total breaks its run there.
+          False everywhere else; elevation_profile.json carries the field
+          only where it is true.
+        data_type: boolean
+        constraints:
+          - type: not_null
+        data_tests: [not_null]
+      - name: club
+        description: The extract folder the profiled line comes from, `atc` for the A.T.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests: [not_null]
+      - name: source_key
+        description: The registry key of the profiled line's layer, `centerline` for the A.T.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('sources')
+                field: source_key
+      - name: _loaded_at
+        description: >
+          The newest load of the layers the line is built from: for the A.T.,
+          ATC's centerline and its half-mile markers.
+        data_type: timestamp with time zone
+        constraints:
+          - type: not_null
+        data_tests: [not_null]

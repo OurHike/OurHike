@@ -6,8 +6,8 @@ models:
       What a hiker should know that does not block the trail (decision 2):
       organization notices that do not obstruct it or that nobody has
       classified (decision 7: unknown lands here, never dropped), NWS's
-      relayed alerts, and OurHike's serious reports. Hazard POIs have no rows
-      until a hazard POI type exists. Every row's source may publish, and a
+      relayed alerts, and OurHike's serious reports. No hazard POIs:
+      ELT.md's warnings ledger, "No hazard POI exists to port". Every row's source may publish, and a
       notice's source passed int_closures__gate. Rebuilt whole each run, as
       the closures mart is.
     config:
@@ -56,14 +56,14 @@ models:
           - type: not_null
         data_tests: [not_null, unique]
       - name: warning_kind
-        description: org_notice, nws_alert or serious_report; hazard_poi once a hazard POI type exists.
+        description: org_notice, nws_alert or serious_report.
         data_type: varchar
         constraints:
           - type: not_null
         data_tests:
           - accepted_values:
               arguments:
-                values: [org_notice, nws_alert, serious_report, hazard_poi]
+                values: [org_notice, nws_alert, serious_report]
       - name: club
         description: The extract folder that landed the row (atc, nynjtc, ourhike, nws).
         data_type: varchar

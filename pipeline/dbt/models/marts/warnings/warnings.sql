@@ -1,9 +1,9 @@
 -- What a hiker should know that does not block the trail (pipeline/ELT.md,
 -- "The eleven marts", decision 2): organization notices that do not
 -- obstruct it or that nobody has classified, NWS's relayed alerts, and
--- OurHike's serious reports. Hazard POIs, decision 2's third kind, have no
--- branch yet (int_warnings__unioned says why). Every row's source may
--- publish (int_sources__publication), and a notice's source passed
+-- OurHike's serious reports. No hazard POIs: ELT.md's warnings ledger, "No
+-- hazard POI exists to port". Every row's source may publish
+-- (int_sources__publication), and a notice's source passed
 -- int_closures__gate.
 --
 -- DECISION 7'S SPLIT, WARNINGS' HALF: every notice whose `obstructs_trail` is

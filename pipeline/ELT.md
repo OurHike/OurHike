@@ -1001,7 +1001,7 @@ Every mart carries `club varchar` (the folder that extracted the row), `source_k
 | `elevation` | 25 m sample on a profiled line | (`line_id`, `seq integer`) | monthly | `int_elevation__profile` | `export_elevation.py` → `elevation_profile.json`; `export_network_elevation.py` → `trail_graph_elevation.json`; `export_network_profile.py` → `trail_graph_profile.json` |
 | `trail_network` | graph edge | `edge_id` | monthly | `int_trail_network__edges` | `build_trail_graph.py` → `trail_graph.json`, `trail_graph_geometry.json`; `cut_trail_graph.py` → `trail_graph_cells.json` + per-cell shards |
 | `closures` | notice, area or report that blocks the trail | `closure_id` | hourly | `int_closures__unioned`, `__gate` | `export_atc_updates.py` → `conditions/atc_updates.json`; `export_nynjtc_alerts.py` → `conditions/nynjtc_alerts.json`; `export_conditions.py` → `conditions/closures.json` |
-| `warnings` | NWS alert, non-blocking or unclassified notice, serious report, hazard POI | `warning_id` | hourly | the same, plus `int_warnings__unioned` | `export_weather_alerts.py` → `conditions/weather_alerts.json`; `export_conditions.py` → `conditions/reports.json` (serious); the two notice files above |
+| `warnings` | NWS alert, non-blocking or unclassified notice, serious report, hazard POI | `warning_id` | hourly | the same, plus `int_warnings__unioned` | `export_weather_alerts.py` → `conditions/weather_alerts.json`; `export_conditions.py` → `conditions/reports.json` (every public report, whatever its severity; the mart takes the serious ones); the two notice files above |
 | `podcasts` | episode | `spotify_id` | monthly | `int_podcasts__checked` (built) | `export_podcasts.py` → `podcasts/episodes.json` |
 | `challenges` | chosen at the port | chosen at the port | monthly | `points_of_interest`, `trail_lines` | `export_challenges.py` → `challenges.json` |
 | `places` | named park, town, trailhead, parking or trail | `place_id` | monthly | `int_places__resolved` | `export_places.py` → `places.json` |
@@ -1672,24 +1672,26 @@ Report 2 said `check_elevation_gain.py` checks the manifests' `estimate: true`. 
 
 | # | Rule | Today | K | Src | Goes | Extension tried | Target | Tests |
 |---|---|---|---|---|---|---|---|---|
-| CL01 | Mile within 0.5–2197.5 | `lib/atc_updates.py:43-44`, `:135` | S | 3 | SQL | — | `int_closures__atc_row_problems` | lib_atc_updates (33) |
-| CL02 | Closed category set | `:73` | S | 3 | SQL | — | `accepted_values` | — |
-| CL03 | Reversed range refused, not swapped; real boolean; http(s) URL | `:148-226` | S | 3 | SQL | — | row problems | — |
-| CL04 | Unique `atc_id` | `:227` | S | 3 | SQL | — | `unique` | — |
-| CL05 | Unreviewed file → nothing (exit 0); one bad row → nothing (exit 1) | `export_atc_updates.py:198-215` | S | 3 | SQL | — | gate 1 | export_atc_updates (14) |
-| CL06 | Only published fields leave | `lib/atc_updates.py:132`, `:277` | S | 3 | SQL | — | contract | — |
-| CL07 | Auto-publish only if edited strictly after review, titled, known category, states, one agreed in-range forward mile | `:313-398` | S | 3 | SQL | — | `stg_atc__warnings` | — |
-| CL08 | All mile references agree on one span | `:400-418` | S | 3 | SQL | — | same | — |
-| CL09 | Auto rows: `obstructs_trail` forced false, UTC stamps | `:420-462` | S | 3 | SQL | — | hence `warnings` only (decision 7) | — |
-| CL10 | Slugs ATC stopped listing kept, not republished | `fetch_atc_updates.py:136-146`, `export_atc_updates.py:112-122` | S | 3 | SQL | — | `where listed` | — |
+| CL01 | Mile within 0.5–2197.5 | `lib/atc_updates.py:43-44`, `:135` | S | 3 | SQL | — | `int_closures__atc_checked`, vars `atc_trail_mile_min`, `atc_trail_mile_max`; a mile written `"476.6"` is "not a mile", as in the Python (built) | lib_atc_updates (33) |
+| CL02 | Closed category set | `:73` | S | 3 | SQL | — | same, var `atc_update_categories` (built) | — |
+| CL03 | Reversed range refused, not swapped; real boolean; http(s) URL | `:148-226` | S | 3 | SQL | — | same, row problems in `row_problems()`'s order; the URL's scheme read as written, so a leading space is refused where `urlparse()` strips it (built) | — |
+| CL04 | Unique `atc_id` | `:227` | S | 3 | SQL | — | same, a row problem rather than a dedupe, which would publish one of the two (built) | — |
+| CL05 | Unreviewed file → nothing (exit 0); one bad row → nothing (exit 1) | `export_atc_updates.py:198-215` | S | 3 | SQL | — | `int_closures__gate`, gate 1; `pub_conditions_atc_updates` fails before writing, so the last good file stays. Two differences, both listed in `tests/test_dbt_conditions_parity.py` or the writer: an unreviewed file fails the job where the Python exits 0, and an empty reviewed file is held back where the Python publishes `[]` (built) | export_atc_updates (14) |
+| CL06 | Only published fields leave | `lib/atc_updates.py:132`, `:277` | S | 3 | SQL | — | `int_closures__atc_checked.published_row`, each field's JSON as written, and the writer's contract (built) | — |
+| CL07 | Auto-publish only if edited strictly after review, titled, known category, states, one agreed in-range forward mile | `:313-398` | S | 3 | SQL | — | not built: no extract lands `fetch_atc_updates.py`'s scrape, so `conditions/atc_updates.json` carries the reviewed rows only. Production's file can carry automatic rows the dbt writer lacks: a cutover blocker | — |
+| CL08 | All mile references agree on one span | `:400-418` | S | 3 | SQL | — | not built, as CL07 | — |
+| CL09 | Auto rows: `obstructs_trail` forced false, UTC stamps | `:420-462` | S | 3 | SQL | — | not built, as CL07; would land in `warnings` only (decision 7) | — |
+| CL10 | Slugs ATC stopped listing kept, not republished | `fetch_atc_updates.py:136-146`, `export_atc_updates.py:112-122` | S | 3 | SQL | — | not built, as CL07 | — |
 | CL11 | Scrape: thousands-separator miles, 24 h re-read, 20 pages, zero parse failures | `lib/atc_scrape.py:58-72`, `fetch_atc_updates.py:57` | P | 3 | edge | none: an HTML scrape is extraction | `atc/closures.py` | lib_atc_scrape (16) |
 | CL12 | Propose only refusals a person can act on | `propose_atc_updates.py:75-138` | S | 3 | edge | none: a job that opens a pull request | job outside the marts (gate 2) | propose_atc_updates (10) |
-| CL13 | OPRHP areas split the line; closed part takes the most-overlapping area's reason; no invented dates | `export_nearby_trails.py:1191-1346` | G | 3 | SQL | `spatial` | `int_closures__area_split` (`ST_Intersection`/`ST_Difference`); `@unvalidated` until its parity run | — |
-| CL14 | OPRHP `Closed` → `closure_kind: long_term` | `:437-444`, `:1130-1148` | S | 3 | SQL | — | `stg_nysparks__closures` | — |
-| CL15 | OurHike closures: `moderation_status = 'verified'`; `verified_by` never leaves | `export_conditions.py:158-190` | S | 3 | SQL | — | dlt predicate plus test (gate 4) | export_conditions (41) |
-| CL16 | Reader-role and row-security check; omit rather than publish empty | `:367-498` | P | 3 | edge | none: a database check before the dlt read | dlt pre-check | — |
-| CL17 | Work-project rows, file problems, review | `lib/work_projects.py:45-201` | S | 3 | SQL | — | `stg_ourhike__work_projects`; no mart owns it yet | export_work_projects (18) |
-| CL18 | A cancelled work project clears with the next bake | `export_work_projects.py:14-17` | S | 3 | SQL | — | hourly, `replace` | — |
+| CL13 | OPRHP areas split the line; closed part takes the most-overlapping area's reason; no invented dates | `export_nearby_trails.py:1191-1346` | G | 3 | SQL | `spatial` | the areas are built: `closures` rows with `closure_kind = 'area'`, `closure_reason`, `closure_place` and `geom_geojson`, from `int_closures__oprhp_areas`. The split of the line is the `trail_lines` family's, reading those rows; `@unvalidated` until its parity run | — |
+| CL14 | OPRHP `Closed` → `closure_kind: long_term` | `:437-444`, `:1130-1148` | S | 3 | SQL | — | the `trail_lines` family's: `closure_kind` is a `trail_lines` safety field ("The eleven marts"), set on a line, not a notice | — |
+| CL15 | OurHike closures: `moderation_status = 'verified'`; `verified_by` never leaves | `export_conditions.py:158-190` | S | 3 | SQL | — | the extract runs `PUBLIC_CLOSURES_SQL` whole; `int_closures__ourhike_checked` makes an unverified row a problem, so gate 4 holds OurHike's closures back (built) | export_conditions (41) |
+| CL16 | Reader-role and row-security check; omit rather than publish empty | `:367-498` | P | 3 | edge | none: a database check before the dlt read | dlt pre-check: `ConditionsQuery` runs `reader_problem()` before the read | — |
+| CL17 | Work-project rows, file problems, review | `lib/work_projects.py:45-201` | S | 3 | SQL | — | not built: `raw_ourhike__work_projects` has no row columns while `reference/work_projects.json` lists none (`reviewed_file` there is neither `verbatim` nor hinted), so no staging model can read it; `export_work_projects.py` keeps the file | export_work_projects (18) |
+| CL18 | A cancelled work project clears with the next bake | `export_work_projects.py:14-17` | S | 3 | SQL | — | not built, as CL17 | — |
+
+**Moved, and measured** (2026-10-02): ATC's reviewed file, NYNJTC's alerts, NYS Parks' closed areas and OurHike's verified closures are one row each in `int_closures__unioned`, held per source by `int_closures__gate`, and split by `obstructs_trail` into `closures` and `warnings`; `assert_every_notice_lands_in_exactly_one_of_closures_or_warnings` holds the partition. `pub_conditions_atc_updates`, `pub_conditions_nynjtc_alerts` and `pub_conditions_closures` write the three files, and each fails before writing when the gate holds its source back (for its rows, or because `int_sources__publication` does), so the last good file stays: on a copy of the fixture warehouse with one ATC mile written `"195.8"` and a NaN in one closure, both writers failed and both files stayed byte for byte. `parity.py` finds **no differences**: 35 rows of the real `reference/atc_updates.json`, 4 fixture NYNJTC alerts, 18 live ones read 2026-10-02, and 3 fixture closures. The refusals are held by unit tests, 39 ATC rows and 16 NYNJTC posts, one per branch, and `tests/test_dbt_conditions_parity.py` runs `file_problems()` and `parse_alert()` over the same rows: the same refusals in the same words, apart from five the SQL means. A `source_url` with a leading space is refused where `urlparse()` strips it; `&frac34;`, a name the unescape does not know, is left as written; one slug on two posts holds NYNJTC back, where the cache keeps the second; a title that is not a string is refused, where `_text_of()` publishes `str(5)`; and an empty reviewed ATC file is held back, because the review date rides each row's `_file` and no row carries it.
 
 #### warnings
 
@@ -1697,18 +1699,20 @@ WN05–WN08 were closures rows in report 3. Decision 7 sends every unclassified 
 
 | # | Rule | Today | K | Src | Goes | Extension tried | Target | Tests |
 |---|---|---|---|---|---|---|---|---|
-| WN01 | NWS: only `Actual`, non-`Cancel` | `export_weather_alerts.py:86-104`, `:117-120` | S | 3 | SQL | — | `stg_nws__warnings` | export_weather_alerts (14) |
-| WN02 | NWS text verbatim; missing stays null | `:86` | S | 3 | SQL | — | contract | — |
-| WN03 | Placed on a weather square by polygon, else zone | `:122-192`, `lib/nbm_grid.py:84` | G | 3 | SQL | `spatial` | `int_warnings__placed` | lib_nbm_grid (13) |
-| WN04 | A failed request writes nothing | `export_weather_alerts.py:194-204` | P | 3 | edge | none: the dlt resource refuses | the dlt resource refuses | — |
-| WN05 | NYNJTC term ids → names | `lib/nynjtc_alerts.py:139-212` | P | 3 | SQL | — | `stg_nynjtc__warnings` join | lib_nynjtc_alerts (13) |
-| WN06 | NYNJTC: unplaced, `category` null, never blocking, unreviewed | `:278-314` | S | 3 | SQL | — | same | export_nynjtc_alerts (14) |
-| WN07 | Locality: region → state → park | `:261-276` | S | 3 | SQL | — | same | — |
-| WN08 | `modified` stamped UTC with no offset (a known error of a few hours) | `:240-259` | S | 3 | SQL | — | same, carried not hidden | — |
-| WN09 | ATC notices with `obstructs_trail = false` | `lib/atc_updates.py:277`, `:438` | S | 3 | SQL | — | `stg_atc__warnings` | — |
-| WN10 | Reports `verified` or `resolved`, `severity` carried | `export_conditions.py:194-230` | S | 3 | SQL | — | `severity = 'serious'` | — |
-| WN11 | Notes: 5 most recent visible per POI; disputes need ≥ 2 accounts | `:235-316` | S | 3 | SQL | — | no mart; baked as today | — |
-| WN12 | Drought: corridor must cover the trail; classes disjoint; miles per band | `export_drought.py:93`, `:216`, `:241`, `:274` | G | 3 | edge | not tried: `export_drought.py` stays outside every mart (decision 2) | no mart (decision 2) | export_drought (15) |
+| WN01 | NWS: only `Actual`, non-`Cancel` | `export_weather_alerts.py:86-104`, `:117-120` | S | 3 | SQL | — | `int_warnings__nws_relayed`, since `base_nws__alerts` keeps every message (decision 40) (built) | export_weather_alerts (14) |
+| WN02 | NWS text verbatim; missing stays null | `:86` | S | 3 | SQL | — | same; times stay NWS's text, offsets and all; contract on `warnings` (built) | — |
+| WN03 | Placed on a weather square by polygon, else zone | `:122-192`, `lib/nbm_grid.py:84` | G | 3 | SQL | `spatial` | not built: `data/raw/weather/squares.json` is landed by no extract, so the `warnings` mart holds every US alert and `conditions/weather_alerts.json` stays `export_weather_alerts.py`'s | lib_nbm_grid (13) |
+| WN04 | A failed request writes nothing | `export_weather_alerts.py:194-204` | P | 3 | edge | none: the dlt resource refuses | `NwsAlerts.rows`: `check_response()` and the body's feature count as proof | — |
+| WN05 | NYNJTC term ids → names | `lib/nynjtc_alerts.py:139-212` | P | 3 | SQL | — | `int_closures__nynjtc_checked`, with macro `python_html_unescape()`: every numeric reference as Python reads it, 42 spellings of entity names against Python's 2,231 (built) | lib_nynjtc_alerts (13) |
+| WN06 | NYNJTC: unplaced, `category` null, never blocking, unreviewed | `:278-314` | S | 3 | SQL | — | `pub_conditions_nynjtc_alerts`'s constants; in the marts, `obstructs_trail` null and `not_reviewed` (built) | export_nynjtc_alerts (14) |
+| WN07 | Locality: region → state → park | `:261-276` | S | 3 | SQL | — | `int_closures__nynjtc_checked` (built) | — |
+| WN08 | `modified` stamped UTC with no offset (a known error of a few hours) | `:240-259` | S | 3 | SQL | — | same, macro `python_utc_seconds()`, carried not hidden (built) | — |
+| WN09 | ATC notices with `obstructs_trail = false` | `lib/atc_updates.py:277`, `:438` | S | 3 | SQL | — | the `warnings` mart's organization notices (built) | — |
+| WN10 | Reports `verified` or `resolved`, `severity` carried | `export_conditions.py:194-230` | S | 3 | SQL | — | `int_warnings__serious_reports`, `severity = 'serious'`, for the mart; `pub_conditions_reports` writes every public report from `base_ourhike__reports`, as today (built) | — |
+| WN11 | Notes: 5 most recent visible per POI; disputes need ≥ 2 accounts | `:235-316` | S | 3 | SQL | — | no mart; baked as today, the extract running the query whole; exposures on `base_ourhike__notes` and `base_ourhike__disputes` | — |
+| WN12 | Drought: corridor must cover the trail; classes disjoint; miles per band | `export_drought.py:93`, `:216`, `:241`, `:274` | G | 3 | edge | not tried: `export_drought.py` stays outside every mart (decision 2) | no mart (decision 2); no exposure while its fetch is on hold under **#1804 — fetch_drought.py fetches droughtmonitor.unl.edu/data/, a path the Drought Monitor's robots.txt disallows for every user agent** | export_drought (15) |
+
+**Moved, and measured** (2026-10-02): `int_warnings__nws_relayed` relays every `Actual` message that is not a cancellation, NWS's words and times as written, and `int_warnings__serious_reports` takes the public serious reports; the `warnings` mart adds the organization notices that do not block, `not_reviewed` wherever nobody has classified one. `pub_conditions_reports` writes `conditions/reports.json` from `base_ourhike__reports`, every public report as today: no differences across the 3 fixture reports, and a NaN mile in two of them failed the writer and left the file as it was. `conditions/weather_alerts.json` stays `export_weather_alerts.py`'s until WN03's squares are landed, so the mart holds alerts that file leaves out: every relayed alert in the US (3 of the fixture's 5), where the file keeps only those over a trail square.
 
 WN11 and WN12 sit in this table because report 3 listed them beside the warnings. Neither feeds the `warnings` mart: notes and disputes stay in the hourly conditions bake as today, and drought is outside the mart by decision 2.
 

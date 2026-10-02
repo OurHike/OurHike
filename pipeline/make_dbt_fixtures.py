@@ -1381,7 +1381,7 @@ def _nws_alert(number: int, event: str, status: str, message_type: str, geometry
 
 
 def _nws_alerts() -> dict:
-    """/alerts/active's body: two alerts the relay keeps, one each way of placing, and the two kinds it drops."""
+    """/alerts/active's body: three alerts the relay keeps, one placed by its polygon and two by their zones, and the two kinds it drops."""
     storm_cell = {
         "type": "Polygon",
         "coordinates": [[[-74.12, 41.20], [-74.02, 41.20], [-74.02, 41.30], [-74.12, 41.30], [-74.12, 41.20]]],

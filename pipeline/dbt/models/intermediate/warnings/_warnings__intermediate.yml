@@ -36,9 +36,8 @@ models:
   - name: int_warnings__unioned
     description: >
       The warnings that are not organization notices, one row each, by name:
-      NWS's relayed alerts and OurHike's serious reports. Hazard POIs, decision
-      2's third kind, have no branch until a hazard POI type exists (the
-      model's header says where it goes).
+      NWS's relayed alerts and OurHike's serious reports. No hazard POI
+      branch: ELT.md's warnings ledger, "No hazard POI exists to port".
     columns:
       - name: notice_id
         description: Unique across both branches.

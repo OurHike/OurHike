@@ -175,6 +175,28 @@ models:
         description: Why the row does not ship.
         data_tests: [not_null]
 
+  - name: int_points_of_interest__trailheads
+    description: >
+      Each of the other organizations' trailheads with how many trail lines
+      lie within 100 m and how many of them are closed, and
+      trails_closed_within_m where every one is (export_nearby_poi.py's
+      mark_closed_trailheads()). The A.T.'s centerline and side trails count
+      as open lines.
+    columns:
+      - name: poi_id
+        description: The trailhead's published id.
+        data_tests: [not_null, unique]
+      - name: lines_within_radius
+        description: Published network lines and A.T. lines within the radius.
+        data_tests: [not_null]
+      - name: closed_lines_within_radius
+        description: How many of those are closed.
+        data_tests: [not_null]
+      - name: trails_closed_within_m
+        description: >
+          The radius, 100, where at least one line is within it and every one
+          is closed; null otherwise, which is "not marked", never "open".
+
   - name: int_points_of_interest__identified
     description: >
       Every POI in its file's ground with the id it publishes under: the

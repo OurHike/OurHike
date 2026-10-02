@@ -49,6 +49,10 @@ publication as (
     select * from {{ ref('int_sources__publication') }}
 ),
 
+trailheads as (
+    select * from {{ ref('int_points_of_interest__trailheads') }}
+),
+
 live as (
     select
         described.poi_id,
@@ -171,14 +175,9 @@ select
     unioned.site_id,
     unioned.site_role,
     unioned.site_name,
-    -- PO34, NOT PORTED YET, a safety gap: export_nearby_poi.py's
-    -- mark_closed_trailheads() marks a trailhead whose every line within
-    -- 100 m is closed, and counts the A.T.'s centerline and side trails as
-    -- open lines; stg_atc__side_trails carries no geometry, and marking
-    -- without the side trails would flag a trailhead beside an open A.T.
-    -- side trail as closed. Null is "not marked", the miss direction the
-    -- Python takes whenever it cannot run.
-    cast(null as integer) as trails_closed_within_m,
+    -- PO34: set on a trailhead whose every trail line within 100 m is
+    -- closed (int_points_of_interest__trailheads); null is "not marked".
+    trailheads.trails_closed_within_m,
     unioned.retired,
     unioned.superseded_by,
     unioned.record_order,
@@ -187,4 +186,5 @@ select
     unioned._loaded_at
 from unioned
 inner join publication on unioned.source_key = publication.source_key
+left join trailheads on unioned.poi_id = trailheads.poi_id
 where publication.may_publish

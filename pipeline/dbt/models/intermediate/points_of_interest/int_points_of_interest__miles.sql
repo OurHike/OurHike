@@ -1,30 +1,24 @@
 {{ config(materialized='table') }}
 -- Each A.T.-family POI's NOBO mile from Springer, on the same
 -- marker-calibrated axis the elevation profile is sampled along (PO11,
--- export_poi.py's attach_miles(), #753, #652). A position, never a heading.
--- One row per poi_by_type POI that gets a mile.
+-- export_poi.py's attach_miles(); #753 — Publish a mile on every POI, because
+-- this codebase measures a mile two different ways and a plan cannot survive
+-- that; #652 — The elevation profile's mile axis is out of order in 18
+-- places, by up to 46 miles). A position, never a heading. One row per
+-- poi_by_type POI that gets a mile.
 --
--- How the mile is read off int_trail_lines__mile_axis, step for step with
--- attach_miles() and the order that model's comment gives a consumer:
--- 1. the point in EPSG:5070 metres, transformed with always_xy, as
---    _reproject_points_to_meters() transforms it;
--- 2. the nearest piece by st_distance, a tie going first to a piece the
---    point does not end on and then to the lower piece_id, where shapely's
---    STRtree.nearest() returns one of the tied pieces. That order is
---    int_trail_lines__mile_axis's, measured by the trail_lines family on
---    ATC's live centerline 2026-10-02: 3 of 216,767 vertices tie, all at one
---    three-way junction near mile 1261, and it matches export_trails.py on
---    all 216,767. @unvalidated beyond that junction, because STRtree's tie
---    order is its implementation's; a POI exactly on a piece junction is
---    the case that would show it;
--- 3. how far along that piece the point projects, in miles: the located
---    fraction times the piece's length, over the international mile (the
---    Python's line.project(), then CalibratedPart.mile_at()'s division);
--- 4. the mile there, mile_at_along(): unit slope before the first anchor
---    and past the last, interpolated between, as np.interp is;
--- 5. three decimals, rounded as Python's round() rounds (python_round(),
---    which DuckDB's round() is not: they disagree on 59,050 of 517,613
---    doubles, measured 2026-10-01).
+-- The mile is read off int_trail_lines__mile_axis by the axis_mile() macro,
+-- the trail_lines family's one rule for every reader of the axis
+-- (macros/axis_mile.sql says each step and what it rests on): the point in
+-- EPSG:5070 metres, transformed with always_xy as
+-- _reproject_points_to_meters() transforms it; its nearest piece, a tie
+-- going to the piece the point does not end on and then to the lower id
+-- (@unvalidated against STRtree's own tie order beyond the one junction the
+-- trail_lines family measured); how far along it the point projects; and
+-- the mile there, interpolated between ATC's half-mile markers. Then three
+-- decimals, cut as Python's round() cuts: printf('%.3f'), which agreed with
+-- Python's round(x, 3) on all 517,613 doubles tried, where DuckDB's round()
+-- disagreed on 59,050 (measured 2026-10-01).
 --
 -- A POI on another organization's trail gets no mile (PO10): attach_miles()
 -- "always succeeds - there is no distance at which it declines", so the
@@ -51,54 +45,10 @@ with points as (
         and not_on_at is null
 ),
 
-axis as (
-    select * from {{ ref('int_trail_lines__mile_axis') }}
-),
-
-nearest as (
-    select
-        points.poi_id,
-        points.point_5070,
-        axis.piece_id,
-        axis.geom_5070,
-        axis.length_m,
-        axis.anchor_along_mi,
-        axis.anchor_mile,
-        row_number() over (
-            partition by points.poi_id
-            order by
-                st_distance(axis.geom_5070, points.point_5070),
-                st_linelocatepoint(axis.geom_5070, points.point_5070) = 1,
-                axis.piece_id
-        ) as pick
-    from points
-    cross join axis
-),
-
-along as (
-    select
-        poi_id,
-        piece_id,
-        anchor_along_mi,
-        anchor_mile,
-        st_linelocatepoint(geom_5070, point_5070)
-        * length_m
-        / {{ var('mile_axis_metres_per_mile') }} as along_mi
-    from nearest
-    where pick = 1
-),
-
-placed as (
-    select
-        poi_id,
-        piece_id,
-        {{ mile_at_along('along_mi', 'anchor_along_mi', 'anchor_mile') }}
-            as unrounded_mile
-    from along
-)
+located as {{ axis_mile('points', ['poi_id'], 'point_5070') }}
 
 select
     poi_id,
     piece_id as mile_piece_id,
-    printf('%.3f', unrounded_mile) as mile
-from placed
+    printf('%.3f', mile) as mile
+from located

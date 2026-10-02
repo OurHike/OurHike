@@ -195,7 +195,10 @@ models:
       - name: trails_closed_within_m
         description: >
           The radius, 100, where at least one line is within it and every one
-          is closed; null otherwise, which is "not marked", never "open".
+          is closed; null otherwise, which is "not marked", never "open". Null
+          on every row where the A.T.'s centerline or side trails have no line
+          at all, as mark_closed_trailheads() marks nothing without either
+          file.
 
   - name: int_points_of_interest__identified
     description: >

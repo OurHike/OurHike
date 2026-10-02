@@ -19,10 +19,12 @@
 -- reads `closed` and open on anything else, a missing status included, plus
 -- the A.T.'s own centerline and side trails, which nearby_trails.geojson does
 -- not carry and which count as open lines: so a trailhead beside the open
--- A.T. and a closed side path is not marked. A trailhead with no line within
--- the radius is not marked either: "no trail here" is not "every trail here
--- is closed". The near test is the Python's: each line intersecting the
--- trailhead buffered by the radius in EPSG:5070 metres.
+-- A.T. and a closed side path is not marked, and where either A.T. layer
+-- has no line at all nothing is marked, as the Python marks nothing when
+-- either file is missing. A trailhead with no line within the radius is not
+-- marked either: "no trail here" is not "every trail here is closed". The
+-- near test is the Python's: each line intersecting the trailhead buffered
+-- by the radius in EPSG:5070 metres.
 with trailheads as (
     select
         poi_id,
@@ -49,6 +51,7 @@ network_lines as (
 
 at_lines as (
     select
+        'centerline' as at_layer,
         st_transform(geom, 'EPSG:4326', 'EPSG:5070', always_xy := true)
             as geom_5070,
         false as closed
@@ -56,6 +59,7 @@ at_lines as (
     where geom is not null
     union all
     select
+        'side_trails' as at_layer,
         st_transform(geom, 'EPSG:4326', 'EPSG:5070', always_xy := true)
             as geom_5070,
         false as closed
@@ -63,10 +67,26 @@ at_lines as (
     where geom is not null
 ),
 
+at_state as (
+    -- Both A.T. layers present, or nothing is marked: without them a
+    -- trailhead beside the open A.T. and a closed side path would read as
+    -- closed (the Python's `missing_at` return).
+    select
+        count(*) filter (where at_layer = 'centerline') > 0
+        and count(*) filter (where at_layer = 'side_trails') > 0 as has_both
+    from at_lines
+),
+
 lines as (
-    select * from network_lines
+    select
+        network_lines.geom_5070,
+        network_lines.closed
+    from network_lines
     union all
-    select * from at_lines
+    select
+        at_lines.geom_5070,
+        at_lines.closed
+    from at_lines
 ),
 
 near as (
@@ -87,8 +107,12 @@ select
     coalesce(near.line_count, 0) as lines_within_radius,
     coalesce(near.closed_count, 0) as closed_lines_within_radius,
     case
-        when near.line_count > 0 and near.closed_count = near.line_count
+        when
+            at_state.has_both
+            and near.line_count > 0
+            and near.closed_count = near.line_count
             then {{ radius }}
     end as trails_closed_within_m
 from trailheads
 left join near on trailheads.poi_id = near.poi_id
+cross join at_state

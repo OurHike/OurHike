@@ -238,6 +238,12 @@ select
     cleaned.properties,
     cleaned.entry as registry_entry,
     case
+        -- unify_all_sources() reads opentrail's icon before it asks
+        -- has_geometry(), so an icon that publishes nothing is skipped
+        -- uncounted whether or not the row has a geometry
+        -- (export_poi.py:1079-1092).
+        when cleaned.source_key = 'opentrail_at' and cleaned.poi_type is null
+            then 'icon not published'
         -- has_geometry(): the A.T. family skips a row with none at all.
         when cleaned.phone_files = 'poi_by_type' and cleaned.geom is null
             then 'no geometry'
@@ -246,8 +252,6 @@ select
             cleaned.phone_files = 'nearby_poi'
             and not coalesce(cleaned.is_point, false)
             then 'no usable point geometry'
-        when cleaned.poi_type is null and cleaned.phone_files = 'poi_by_type'
-            then 'icon not published'
         when cleaned.poi_type is null and exclusion.reason is not null
             then
                 'excluded: '

@@ -106,12 +106,21 @@ def raw_table(folder: str, key: str) -> str:
     Written as dlt's `table_name` and never passed through dlt's own
     normalizer: `normalize_table_identifier()` alone collapses the `__` to one
     underscore, while a run keeps the name as written (measured 2026-10-01,
-    dlt 1.30.0, ELT.md "Folder name = trail_orgs.json slug"). A key that is a
+    dlt 1.30.0, ELT.md "Folder name = trail_orgs.json slug"), unless the key
+    starts with a digit, which this refuses (below). A key that is a
     file path is written without `.json`, and under reference/ as its path
     there: `reference/challenges/atc` lands as `raw_atc__challenges_atc`, and
     the registry's own `sources.json` as `raw_registry__sources`.
     """
     key = key.removeprefix("reference/").removesuffix(".json").replace("/", "_")
+    # dlt normalizes a table name as a path split on `__`, and escapes a
+    # segment that starts with a digit with a leading underscore, so
+    # `raw_usgs__3dep_13_current` landed as `raw_usgs___3dep_13_current` and
+    # every check reading the name as written found nothing (measured
+    # 2026-10-02, dlt 1.30.0; tests/test_extract_layout.py holds every
+    # resource's table to dlt's own normalize_path).
+    if key[:1].isdigit():
+        raise ValueError(f"{folder}/{key}: a raw table's key may not start with a digit; dlt would rename the table")
     return f"raw_{folder}__{key.replace('-', '_')}"
 
 

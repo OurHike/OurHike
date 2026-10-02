@@ -859,7 +859,7 @@ DEM_PREFIX = "StagedProducts/Elevation/13/TIFF/current/"
 
 
 def dem_listing():
-    return BucketListing(key="3dep_13_current", club="usgs", type="elevation")
+    return BucketListing(key="tnm_3dep_13_current", club="usgs", type="elevation")
 
 
 def test_a_bucket_listing_walks_every_page_of_its_fetchers_prefix_and_lands_no_object(requests_mock):
@@ -867,9 +867,9 @@ def test_a_bucket_listing_walks_every_page_of_its_fetchers_prefix_and_lands_no_o
     bucket = FakeBucket(requests_mock, keys)
     proofs = {}
     rows = list(dem_listing().rows(proofs))
-    assert dem_listing().table == "raw_usgs__3dep_13_current"
+    assert dem_listing().table == "raw_usgs__tnm_3dep_13_current"
     assert [row["key"] for row in rows] == sorted(keys), "every object, the .xml beside each tile included"
-    assert proofs["raw_usgs__3dep_13_current"] == 6
+    assert proofs["raw_usgs__tnm_3dep_13_current"] == 6
     assert set(bucket.prefixes) == {DEM_PREFIX}, "the prefix is fetch_elevation.py's TILE_URL_TEMPLATE up to its first {cell}"
     assert len(bucket.prefixes) == 3, "three pages of two"
     assert rows[0] == {

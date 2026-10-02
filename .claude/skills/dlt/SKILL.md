@@ -166,7 +166,13 @@ imports and fails on one with no pin.
 exactly as written. A real run keeps that name under both `snake_case` and
 `sql_ci_v1`, but dlt's `normalize_table_identifier()` called on its own
 collapses the `__` to `raw_nysdec_dec_lean_tos` (measured 2026-10-01, dlt
-1.30.0), so no code here builds a table name by calling it.
+1.30.0), so no code here builds a table name by calling it. **A key may not
+start with a digit**: a run normalizes the name as a path split on `__` and
+escapes such a segment, so `raw_usgs__3dep_13_current` landed as
+`raw_usgs___3dep_13_current` and the run check, counting the name as written,
+refused the monthly lane for an empty table it had loaded (run 37058045092,
+2026-10-02). `raw_table()` refuses such a key, and the layout test holds every
+resource's table to dlt's own `normalize_path`.
 
 ## One extraction per upstream dataset
 

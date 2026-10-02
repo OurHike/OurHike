@@ -196,6 +196,26 @@ def test_no_table_is_written_by_two_resources_except_the_shared_org_table():
     assert all(len(lanes) == 1 for lanes in lanes_by_table.values()), "a table sits on one pipeline"
 
 
+def test_every_raw_table_is_named_as_dlt_lands_it():
+    # dlt normalizes a table_name as a path split on `__`; a name it would
+    # rewrite lands under the rewritten name, and the run check, the
+    # as-landed copy and dbt's sources all read the name as written. The
+    # monthly lane's first run refused on exactly this: `3dep_13_current`
+    # landed as `raw_usgs___3dep_13_current` (run 37058045092, 2026-10-02).
+    from dlt.common.normalizers.naming import sql_ci_v1
+
+    naming = sql_ci_v1.NamingConvention()
+    renamed = sorted(
+        (r.table, naming.normalize_path(r.table)) for r in all_resources(EVERY_FILE) if naming.normalize_path(r.table) != r.table
+    )
+    assert not renamed, f"tables dlt would land under another name: {renamed}"
+
+
+def test_a_raw_table_key_that_starts_with_a_digit_is_refused():
+    with pytest.raises(ValueError, match="may not start with a digit"):
+        raw_table("usgs", "3dep_13_current")
+
+
 def test_raw_table_names_keep_the_double_underscore():
     assert raw_table("nysdec", "dec_lean_tos") == "raw_nysdec__dec_lean_tos"
     assert raw_table("atc", "reference/water_distance.json") == "raw_atc__water_distance"

@@ -932,7 +932,7 @@ S3_MAX_PAGES = 50
 # reads and the prefix has one home. None of these is a sources.json row
 # (ELT.md, "What moves"); both are USGS's public `prd-tnm` bucket.
 BUCKET_LISTINGS = {
-    "3dep_13_current": DEM_TILE_URL_TEMPLATE,
+    "tnm_3dep_13_current": DEM_TILE_URL_TEMPLATE,
     "nhd_hu4_gpkg": NHD_GPKG_URL,
 }
 

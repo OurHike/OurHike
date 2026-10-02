@@ -121,7 +121,9 @@ exposures:
       explore, because "popular" has no source behind it yet), each with its
       basis and its A.T. mile range from the published POIs at its ends.
       Published in the release folder by publish-vector-data.yml from
-      export_highlights.py's file until stage 4 of #1793 moves it to this
+      export_highlights.py's file until stage 4 of #1793 — Rebuild the data
+      platform as dlt → dbt: seven contracted marts, a monthly refresh,
+      published docs, and lighter phone downloads — moves it to this
       writer's.
     depends_on:
       - ref('suggested_hikes')

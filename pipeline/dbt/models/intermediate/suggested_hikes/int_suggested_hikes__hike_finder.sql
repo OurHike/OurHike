@@ -10,8 +10,9 @@
 -- in its order and in its words. It is a review aid and never a gate: the
 -- `warn` test on it lists the hikes a person should read, and nothing here
 -- or downstream drops a hike for it. Its parse-time copy rides beside it
--- (`parse_problems_json`) until stage 5 of #1793 stops the extract stamping
--- one.
+-- (`parse_problems_json`) until stage 5 of #1793 — Rebuild the data platform
+-- as dlt → dbt: seven contracted marts, a monthly refresh, published docs,
+-- and lighter phone downloads — stops the extract stamping one.
 --
 -- SH07, `difficulty_slug`, is difficulty_slug(): the export's label,
 -- stripped as str.strip() strips and lowercased, looked up in

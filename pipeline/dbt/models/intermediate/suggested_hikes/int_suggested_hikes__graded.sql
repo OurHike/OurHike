@@ -25,7 +25,7 @@
 -- miles a number somebody typed, so a disagreement is reported (fair past
 -- LENGTH_GOOD 0.20, and past LENGTH_FAIR 0.40 called the publisher's own two
 -- figures disagreeing), as is a page that calls the walk a loop whose track
--- does not close (SH15).
+-- does not close (SH04's row carries both halves).
 --
 -- A route that did not form is `rejected`, its one note the step's reason.
 -- Each message is printf() of Python's f-string: printf('%.1f'), '%+.0f' and

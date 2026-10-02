@@ -4,7 +4,7 @@ version: 2
 # dlt → dbt: seven contracted marts, a monthly refresh, published docs, and
 # lighter phone downloads): NYNJTC's Hike Finder hikes and OurHike's curated
 # highlights, from their pages and reviewed files to the suggested_hikes
-# mart. The rules are pipeline/ELT.md's ledger rows SH01-SH15, applied in
+# mart. The rules are pipeline/ELT.md's ledger rows SH01-SH14, applied in
 # today's order: export_suggested_hikes.py's over route_hikefinder.py's,
 # lib/hike_route_builder.py's grade, and lib/highlights.py's resolve().
 models:
@@ -70,7 +70,7 @@ models:
     description: >
       Each Hike Finder hike's route graded, with every check that is not clean
       in a reviewer's order: _grade() over a generated route (SH04), and
-      published_route()'s checks over a published track (SH15).
+      published_route()'s checks over a published track, which SH04's row carries.
     columns:
       - name: hike_number
         description: The export's hike id.

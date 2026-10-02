@@ -196,7 +196,9 @@ vars:
   # The suggested_hikes family (sh), read by the int_suggested_hikes__ models
   # and the pub_suggested_hikes and pub_highlights writers, and held to the
   # Python by tests/test_dbt_suggested_hikes_parity.py until stage 5 of #1793
-  # deletes it. Each is export_suggested_hikes.py's, lib/hike_route_builder.py's,
+  # — Rebuild the data platform as dlt → dbt: seven contracted marts, a
+  # monthly refresh, published docs, and lighter phone downloads — deletes
+  # it. Each is export_suggested_hikes.py's, lib/hike_route_builder.py's,
   # lib/trail_graph_route.py's or lib/highlights.py's constant under its own
   # name, and its evidence is beside it there: every grading band is
   # @unvalidated or calibrated against the 113 published tracks, as its own

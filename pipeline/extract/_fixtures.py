@@ -27,7 +27,9 @@ pipeline/reference/, so CI reads the real thing: the podcast episodes, the
 POI identity ledger, ATC's reviewed Trail Updates and the rest.
 
 NYNJTC'S HIKE FINDER EXPORT IS ANSWERED TOO, so the suggested_hikes family's
-models build in CI (#1793, stage 3): make_dbt_fixtures.py's
+models build in CI (stage 3 of #1793 — Rebuild the data platform as dlt → dbt:
+seven contracted marts, a monthly refresh, published docs, and lighter phone
+downloads): make_dbt_fixtures.py's
 suggested_hikes_fixtures() writes a listing, the pages and their GPX under
 hikefinder/, served at `hikes.php`, `hike.php?id=<id>` and
 `download_gpx.php?id=<id>`, so PublishedHikes' own listing guard, parse and

@@ -2136,9 +2136,11 @@ def _trail_lines_at_fixtures(files: dict[str, str]) -> dict[str, str]:
     return out
 
 
-# --- suggested_hikes, NYNJTC's Hike Finder export (#1793, stage 3) -----------
+# --- suggested_hikes, NYNJTC's Hike Finder export -----------------------------
 #
-# The suggested_hikes family's models (pipeline/dbt/models/**/suggested_hikes/)
+# The suggested_hikes family's models (pipeline/dbt/models/**/suggested_hikes/,
+# stage 3 of #1793 — Rebuild the data platform as dlt → dbt: seven contracted
+# marts, a monthly refresh, published docs, and lighter phone downloads)
 # read raw_nynjtc__nynjtc_hike_finder, which the extract's PublishedHikes
 # resource lands from a listing, one page per hike and a GPX per routed hike.
 # extract/_fixtures.py serves the files below at those three URLs, so every

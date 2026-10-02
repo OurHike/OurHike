@@ -564,7 +564,7 @@ jobs:
 
       # DECISION 30's FROZEN-INPUT PARITY. One parity.py line per monthly
       # family, the same lines as pipeline-tests.yml's parity step less the
-      # four hourly conditions files, which the conditions lane writes. A
+      # six hourly conditions files, which the conditions lane writes. A
       # difference is evidence for the gate, not a failure of this lane, so
       # the step records every answer and fails only when it could record
       # none. Each family's output is kept verbatim as <family>.txt, and

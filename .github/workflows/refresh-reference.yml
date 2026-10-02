@@ -604,6 +604,8 @@ jobs:
               "spurs": ("spurs.json", ()),
               "club_sections": ("club_sections.json", ()),
               "elevation": ("elevation_profile.json", raw),
+              "trail_graph_elevation": ("trail_graph_elevation.json", raw),
+              "trail_graph_profile": ("trail_graph_profile.json", raw),
               **{
                   f"poi_{kind}": (f"poi_{kind}.geojson", ())
                   for kind in ("shelter", "campsite", "water", "resupply", "viewpoint", "parking", "privy", "trailhead")
@@ -614,6 +616,7 @@ jobs:
               "suggested_hikes_detail": ("suggested_hikes_detail.json", raw),
               "highlights": ("highlights.json", raw),
               "places": ("places.json", ()),
+              "challenges": ("challenges.json", ()),
           }
           answered = re.compile(r"^\S+: (no differences|neither today's exporter nor the writer|\d+ difference\(s\))", re.M)
           summary = {}

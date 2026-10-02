@@ -37,14 +37,14 @@ with atc_rows as (
         source_row_key,
         review_state = 'auto' as automatic,
         list_position
-    from {{ ref('closures') }}
+    from {{ ref('closures', v=1) }}
     where source_key = 'atc_trail_updates'
     union all
     select
         source_row_key,
         review_state = 'auto' as automatic,
         list_position
-    from {{ ref('warnings') }}
+    from {{ ref('warnings', v=1) }}
     where source_key = 'atc_trail_updates' and warning_kind = 'org_notice'
 ),
 

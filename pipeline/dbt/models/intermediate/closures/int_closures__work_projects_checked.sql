@@ -206,7 +206,7 @@ first_checks as (
                     when starts_type = 'VARCHAR' and starts_on is null
                         then
                             row_label || ': starts_on is not a date: '
-                            || {{ python_repr('starts_text') }}
+                            || {{ python_text_repr('starts_text') }}
                     when starts_type not in ('VARCHAR', 'NULL')
                         then
                             row_label
@@ -216,7 +216,7 @@ first_checks as (
                     when ends_type = 'VARCHAR' and ends_on is null
                         then
                             row_label || ': ends_on is not a date: '
-                            || {{ python_repr('ends_text') }}
+                            || {{ python_text_repr('ends_text') }}
                     when ends_type not in ('VARCHAR', 'NULL')
                         then
                             row_label

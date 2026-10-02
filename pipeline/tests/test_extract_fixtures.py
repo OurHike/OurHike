@@ -16,7 +16,16 @@ import requests
 import export_conditions
 import make_dbt_fixtures
 from extract._fixtures import FixtureAdapter, FixtureConnection, build, esri_type, fixture_file, fixture_resources
-from extract._kinds import AtcTrailUpdatePages, ConditionsQuery, NwsAlerts, ReviewedFile, WordpressPosts, WordpressTerms
+from extract._kinds import (
+    AtcTrailUpdatePages,
+    ConditionsQuery,
+    NwsAlerts,
+    PublishedHikes,
+    ReviewedDir,
+    ReviewedFile,
+    WordpressPosts,
+    WordpressTerms,
+)
 
 
 @pytest.fixture(scope="module")
@@ -30,7 +39,16 @@ def fixtures(tmp_path_factory):
 def test_every_fixture_file_with_a_resource_lands_whole(fixtures):
     root, counts = fixtures
     resources, _ = fixture_resources(root / "raw")
-    answered = ReviewedFile | NwsAlerts | WordpressPosts | WordpressTerms | ConditionsQuery | AtcTrailUpdatePages
+    answered = (
+        ReviewedFile
+        | ReviewedDir
+        | NwsAlerts
+        | WordpressPosts
+        | WordpressTerms
+        | ConditionsQuery
+        | PublishedHikes
+        | AtcTrailUpdatePages
+    )
     fetched = [r for r in resources if not isinstance(r, answered)]
     assert len(fetched) == 56, "55 monthly layers and OPRHP's temporary closures on the hourly lane"
     for resource in fetched:
@@ -58,6 +76,23 @@ def test_atcs_pages_land_one_row_per_update_the_fixture_sitemap_lists(fixtures):
     with duckdb.connect(str(root / "warehouse.duckdb"), read_only=True) as con:
         slugs = {slug for (slug,) in con.execute("select slug from raw.raw_atc__atc_trail_updates_pages").fetchall()}
     assert slugs == {slug for slug, *_ in make_dbt_fixtures.ATC_FIXTURE_UPDATES}
+
+
+def test_the_hike_finder_lands_every_page_its_listing_links_through_the_real_parse(fixtures):
+    """PublishedHikes reads make_dbt_fixtures.py's listing, pages and GPX through lib/hikefinder.py: every page lands,
+    a coordinate outside the NYNJTC box lands as no start, and a GPX holding no point lands as no track."""
+    root, counts = fixtures
+    hikes = make_dbt_fixtures._HIKEFINDER_HIKES
+    assert counts["raw_nynjtc__nynjtc_hike_finder"] == len(hikes)
+    with duckdb.connect(str(root / "warehouse.duckdb"), read_only=True) as con:
+        rows = {
+            hike_id: (start, gpx)
+            for hike_id, start, gpx in con.execute('select id, start, gpx from raw."raw_nynjtc__nynjtc_hike_finder"').fetchall()
+        }
+    assert set(rows) == {hike_id for hike_id, *_ in hikes}
+    assert rows[9][0] is None, "hike 9's coordinate is 0,0, which lib/hikefinder.py's _in_range() refuses"
+    assert rows[4][1] is not None and "<trkpt" in rows[4][1], "hike 4's GPX lands as served"
+    assert rows[11][1] is None, "hike 11's GPX holds no point, so PublishedHikes lands no track"
 
 
 def test_conditions_rows_land_in_the_shapes_their_real_kinds_give_them(fixtures):
@@ -120,6 +155,23 @@ def test_the_reviewed_files_land_from_git_whole(fixtures):
         document = json.loads(resource.file.read_text())
         rows = 1 if resource.rows_key is None else len(document[resource.rows_key])
         assert counts[resource.table] == rows, resource.table
+
+
+def test_a_folder_of_challenge_files_lands_one_verbatim_row_per_file(fixtures):
+    """reference/challenges/<org>/ is a ReviewedDir: each file whole, `_README` aside, so the dbt gate reads JSON types."""
+    root, counts = fixtures
+    folders = [r for r in fixture_resources(root / "raw")[0] if isinstance(r, ReviewedDir)]
+    assert {r.table for r in folders} >= {"raw_atc__challenges_atc"}
+    for folder in folders:
+        assert counts[folder.table] == len(folder.files), folder.table
+    with duckdb.connect(str(root / "warehouse.duckdb"), read_only=True) as con:
+        rows = con.execute('select _path, row_json, _parse_error from raw."raw_atc__challenges_atc" order by _path').fetchall()
+    on_disk = sorted((Path(make_dbt_fixtures.__file__).parent / "reference" / "challenges" / "atc").glob("*.json"))
+    assert [path for path, _, _ in rows] == [str(p.relative_to(p.parents[3])) for p in on_disk]
+    for (_, text, problem), path in zip(rows, on_disk, strict=True):
+        written = json.loads(path.read_text(encoding="utf-8"))
+        assert problem is None
+        assert json.loads(text) == {name: value for name, value in written.items() if name != "_README"}
 
 
 def test_a_verbatim_reviewed_file_lands_each_row_as_its_reviewer_wrote_it(fixtures):

@@ -38,7 +38,7 @@
 -- are bake()'s and two of them, `schema` and `source`, would be columns named
 -- for keywords.
 with alerts as (
-    select * from {{ ref('warnings') }}
+    select * from {{ ref('warnings', v=1) }}
     where warning_kind = 'nws_alert'
 ),
 

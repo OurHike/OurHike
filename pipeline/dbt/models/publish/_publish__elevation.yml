@@ -27,6 +27,64 @@ models:
         data_type: varchar
         data_tests: [not_null, unique]
 
+  - name: pub_trail_graph_elevation
+    description: >
+      Writes trail_graph_elevation.json, each junction-graph edge's climb,
+      from int_elevation__edge_climbs: one row holding the whole document, an
+      array with one entry per edge of int_trail_network__edges in edge_index
+      order, [gain_ft, loss_ft] or null. parity.py compares it with
+      export_network_elevation.py's array, entry by entry.
+    config:
+      access: public
+      contract:
+        enforced: true
+    data_tests:
+      # JSON, an array, and one entry per edge: an array of another length
+      # would print one trail's climb against another's name.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >-
+              json_valid(climbs_json) and json_type(cast(climbs_json as json)) = 'ARRAY'
+              and json_array_length(cast(climbs_json as json))
+                = (select count(*) from {{ ref('int_trail_network__edges') }})
+    columns:
+      - name: climbs_json
+        description: >
+          The file: a JSON array, entry i edge i's [gain_ft, loss_ft] in whole
+          feet or null where nobody measured it, with no spaces, as
+          json.dumps(climbs, separators=(",", ":")) writes it.
+        data_type: varchar
+        data_tests: [not_null, unique]
+
+  - name: pub_trail_graph_profile
+    description: >
+      Writes trail_graph_profile.json, each junction-graph edge's dense
+      profile in whole feet, from the elevation mart's edge rows: one row
+      holding the whole document, an array with one entry per edge of
+      int_trail_network__edges in edge_index order, the edge's samples or
+      null. parity.py compares it with export_network_profile.py's array,
+      entry by entry.
+    config:
+      access: public
+      contract:
+        enforced: true
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >-
+              json_valid(profiles_json) and json_type(cast(profiles_json as json)) = 'ARRAY'
+              and json_array_length(cast(profiles_json as json))
+                = (select count(*) from {{ ref('int_trail_network__edges') }})
+    columns:
+      - name: profiles_json
+        description: >
+          The file: a JSON array, entry i edge i's samples in whole feet from
+          its start to its end, a DEM hole as null in its place, or null for
+          an edge the DEM covers none of, with no spaces, as
+          json.dumps(profiles, separators=(",", ":")) writes it.
+        data_type: varchar
+        data_tests: [not_null, unique]
+
 exposures:
   - name: elevation_profile_json
     label: elevation_profile.json
@@ -57,3 +115,57 @@ exposures:
         # downloads today"), not a ceiling anyone chose.
         size_budget_bytes: 921533
         cadence: monthly
+  - name: trail_graph_elevation_json
+    label: trail_graph_elevation.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      Each junction-graph edge's climb, [gain_ft, loss_ft] or null,
+      index-aligned with trail_graph.json: what a day-hike card prices a
+      walk's climb and its Naismith time from, a route with one null edge
+      having no climb figure. A phone reads it through cut_trail_graph.py's
+      trail_graph_elevation_cell_<cell>.json shards, keyed by edge.
+      Published by publish-vector-data.yml from export_network_elevation.py's
+      file, held back whole when any of the graph's sources may not reach
+      hikers (publish.py), until stage 4 of #1793 moves it to this writer's.
+    # The writer alone: the climbs are a protected intermediate, which no
+    # exposure may depend on, until the trail_network mart carries them.
+    depends_on:
+      - ref('pub_trail_graph_elevation')
+    config:
+      meta:
+        r2_keys: [trail_graph_elevation.json]
+        format: json
+        cadence: monthly
+        # EL14: no published gain figure exists for any trail of the
+        # network's own, so the 3 m dead band checked on the A.T. is
+        # unchecked here, and the manifest says so; stage 4 writes it.
+        estimate: true
+  - name: trail_graph_profile_json
+    label: trail_graph_profile.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      Each junction-graph edge's dense profile in whole feet, index-aligned
+      with trail_graph.json, which the ribbon on a day hike draws; route
+      climb comes from trail_graph_elevation.json, never from summing this
+      file. A phone reads it through cut_trail_graph.py's
+      trail_graph_profile_cell_<cell>.json shards. Published by
+      publish-vector-data.yml from export_network_profile.py's file until
+      stage 4 of #1793 moves it to this writer's; its manifest's `seam` block
+      is int_elevation__seam_measurement.
+    depends_on:
+      - ref('elevation')
+      - ref('pub_trail_graph_profile')
+    config:
+      meta:
+        r2_keys: [trail_graph_profile.json]
+        format: json
+        cadence: monthly
+        # EL14, as trail_graph_elevation.json's.
+        estimate: true
+        route_gain_source: trail_graph_elevation.json

@@ -332,6 +332,22 @@ TILES_LAYER = "trails"
 TILES_MIN_ZOOM = 5
 TILES_MAX_ZOOM = 14
 
+# The tiler reads each line cut into runs of at most this many vertices,
+# consecutive runs sharing their end vertex, each run carrying its line's
+# properties (#1796). GDAL clips every feature against every tile it touches,
+# so one long feature costs its vertex count times its tile count: the
+# Continental Divide Trail arrives as a handful of features, one of them
+# 704,095 vertices. Measured 2026-10-02 on the network's 7 lines over 50,000
+# vertices (1,648,401 of its 17,292,860), z5-z14: whole, they had not tiled
+# after 25 minutes; cut at 1,000, they tiled in 47.3 s. The step that runs
+# this took 5m24s on run 153's 104,990 records and 38m12s on run 163's
+# 329,849. A tile draws the same line either way, since a tile only ever
+# holds a line's clipped pieces; what changes is the archive's bytes and its
+# per-tile feature counts. @unvalidated as a size: any value of 2 or more
+# draws the same, and the cost of the whole network at other sizes was not
+# measured.
+TILES_CHUNK_VERTICES = 1_000
+
 
 def _metres_per_pixel(zoom: float, latitude: float = 40.0) -> float:
     """Ground distance one CSS pixel covers at `zoom`, MapLibre's 512 px tiles.
@@ -1728,6 +1744,35 @@ def write_overview(records: list[dict]) -> dict:
     }
 
 
+def tile_input_sql(lines_sql: str, most: int = TILES_CHUNK_VERTICES) -> str:
+    """`lines_sql`'s rows, in its order, with every line of more than `most`
+    vertices cut into its parts and each part into runs of at most `most`
+    vertices that share their end vertex (TILES_CHUNK_VERTICES). Every other
+    column rides each run unchanged; a line at or under the cap passes through
+    as it is."""
+    return f"""
+        WITH src AS (SELECT *, row_number() OVER () AS _tile_row FROM ({lines_sql})),
+        parts AS (
+            SELECT * EXCLUDE (geom, part), part.geom AS geom, part.path AS _tile_part
+            FROM (SELECT *, unnest(ST_Dump(geom)) AS part FROM src WHERE ST_NPoints(geom) > {most})
+        ),
+        vertices AS (
+            SELECT *, list_transform(ST_Dump(ST_Points(geom)), point -> point.geom) AS _tile_vertices FROM parts
+        ),
+        runs AS (
+            SELECT * EXCLUDE (geom, _tile_vertices),
+                ST_MakeLine(list_slice(_tile_vertices, _tile_start, _tile_start + {most - 1})) AS geom
+            FROM vertices, generate_series(1, len(_tile_vertices) - 1, {most - 1}) AS starts(_tile_start)
+        )
+        SELECT * EXCLUDE (_tile_row, _tile_part, _tile_start) FROM (
+            SELECT *, NULL::INTEGER[] AS _tile_part, 0 AS _tile_start FROM src WHERE ST_NPoints(geom) <= {most}
+            UNION ALL BY NAME
+            SELECT * FROM runs
+        )
+        ORDER BY _tile_row, _tile_part, _tile_start
+    """
+
+
 def write_tiles(geojson_path: Path, concurrent_path: Path | None = None) -> dict:
     """Tile the artifact just written into TILES_ARTIFACT_NAME and return its
     manifest entry (#1257).
@@ -1767,7 +1812,7 @@ def write_tiles(geojson_path: Path, concurrent_path: Path | None = None) -> dict
         lines = f"{lines} UNION ALL BY NAME SELECT * FROM ST_Read('{concurrent_path.as_posix()}')"
     con.execute(
         f"""
-        COPY ({lines})
+        COPY ({tile_input_sql(lines)})
         TO '{path.as_posix()}'
         WITH (
             FORMAT GDAL, DRIVER 'PMTiles', LAYER_NAME '{TILES_LAYER}',

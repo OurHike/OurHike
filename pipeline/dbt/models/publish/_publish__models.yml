@@ -71,7 +71,7 @@ exposures:
       export_podcasts.py's file until stage 4 of #1793 moves the upload to
       this writer's.
     depends_on:
-      - ref('podcasts')
+      - ref('podcasts', v=1)
       - ref('pub_podcasts_episodes')
     config:
       meta:
@@ -94,7 +94,7 @@ exposures:
       publish-vector-data.yml from export_sources.py's file until stage 4 of
       #1793 moves it to this writer's.
     depends_on:
-      - ref('sources')
+      - ref('sources', v=1)
       - ref('pub_stewards')
     config:
       meta:
@@ -114,7 +114,7 @@ exposures:
       a hiker's. Published in the release folder by publish-vector-data.yml
       from export_sources.py's file until stage 4 of #1793.
     depends_on:
-      - ref('sources')
+      - ref('sources', v=1)
       - ref('pub_registry')
     config:
       meta:

@@ -1095,6 +1095,27 @@ def form_route(graph: router.Graph, hike: dict) -> FormedRoute:
     caller decides what to do with a `rejected` grade; this module's opinion
     is that it must not reach a hiker as a line.
     """
+    result = measure_route(graph, hike)
+    if result.route is None:
+        return result
+    result.grade, problems = _grade(result, hike.get("route_type"))
+    result.problems.extend(problems)
+    if result.grade == GRADE_REJECTED:
+        result.route = None
+        result.ends = []
+    return result
+
+
+def measure_route(graph: router.Graph, hike: dict) -> FormedRoute:
+    """form_route() up to its grade: the start, the itinerary, the search, and what the walk measures.
+
+    The half that needs the graph, which pipeline/step_form_route.py runs
+    outside dbt (pipeline/ELT.md's SH03, no graph extension for DuckDB
+    1.5.5); the grade is `_grade`'s, which int_suggested_hikes__graded applies
+    in SQL over these measurements (SH04). A result whose `route` is None did
+    not form: its grade is `rejected` and its one problem says why. Otherwise
+    its grade is still the `rejected` it started with, for the grade to set.
+    """
     hike_id = int(hike["id"])
     result = FormedRoute(hike_id=hike_id, provenance=GENERATED, grade=GRADE_REJECTED)
     result.stated_miles = hike.get("stated_miles")
@@ -1156,12 +1177,6 @@ def form_route(graph: router.Graph, hike: dict) -> FormedRoute:
         "steps_kept": len(walked_steps),
         "legs": len(route.legs),
     }
-
-    result.grade, problems = _grade(result, hike.get("route_type"))
-    result.problems.extend(problems)
-    if result.grade == GRADE_REJECTED:
-        result.route = None
-        result.ends = []
     return result
 
 
@@ -1176,25 +1191,10 @@ def published_route(hike: dict, track) -> FormedRoute:
     that its own length is recognisably the walk the page describes - and a
     track that fails them is reported, never quietly redrawn.
     """
-    hike_id = int(hike["id"])
-    result = FormedRoute(hike_id=hike_id, provenance=PUBLISHED, grade=GRADE_STRONG)
-    result.stated_miles = hike.get("stated_miles")
-
-    if track is None or len(track.points) < 2:
-        result.grade = GRADE_REJECTED
-        result.problems.append("the published GPX holds fewer than two points, so it is not a route")
+    result = measure_published(hike, track)
+    if result.grade == GRADE_REJECTED:
         return result
-
-    result.miles = track.length_miles
-    result.ends = [(point.lon, point.lat) for point in track.points]
-    first, last = track.points[0], track.points[-1]
-    gap_m = router.metres_between((first.lon, first.lat), (last.lon, last.lat))
-    result.closed = gap_m <= MIN_WAYPOINT_SEPARATION_M
-    result.checks = {
-        "points": len(track.points),
-        "with_elevation": sum(1 for point in track.points if point.ele_m is not None),
-        "end_to_end_gap_m": round(gap_m, 1),
-    }
+    gap_m = track_gap_m(result)
 
     error = result.length_error
     if error is None:
@@ -1221,3 +1221,37 @@ def published_route(hike: dict, track) -> FormedRoute:
         result.problems.append(f"the export calls this a '{hike.get('route_type')}' but the track's ends sit {gap_m:.0f} m apart")
         result.grade = GRADE_FAIR
     return result
+
+
+def measure_published(hike: dict, track) -> FormedRoute:
+    """published_route() before its checks: the track's own length, its points as the ends, and whether they meet.
+
+    The half pipeline/step_form_route.py runs, beside the parse of the GPX;
+    the checks on the length and the route type are int_suggested_hikes__graded's,
+    in SQL (SH04). A track of fewer than two points is `rejected` here, with
+    the one problem that says so.
+    """
+    hike_id = int(hike["id"])
+    result = FormedRoute(hike_id=hike_id, provenance=PUBLISHED, grade=GRADE_STRONG)
+    result.stated_miles = hike.get("stated_miles")
+
+    if track is None or len(track.points) < 2:
+        result.grade = GRADE_REJECTED
+        result.problems.append("the published GPX holds fewer than two points, so it is not a route")
+        return result
+
+    result.miles = track.length_miles
+    result.ends = [(point.lon, point.lat) for point in track.points]
+    gap_m = track_gap_m(result)
+    result.closed = gap_m <= MIN_WAYPOINT_SEPARATION_M
+    result.checks = {
+        "points": len(track.points),
+        "with_elevation": sum(1 for point in track.points if point.ele_m is not None),
+        "end_to_end_gap_m": round(gap_m, 1),
+    }
+    return result
+
+
+def track_gap_m(result: FormedRoute) -> float:
+    """How far apart a published track's first and last points sit, in the twin's metres."""
+    return router.metres_between(result.ends[0], result.ends[-1])

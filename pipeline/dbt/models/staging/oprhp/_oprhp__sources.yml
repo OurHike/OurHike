@@ -84,14 +84,22 @@ sources:
               why export_nearby_poi.py reads the N side as low confidence
               rather than dropping it.
       - name: raw_nysparks__oprhp_park_polygons
+        data_tests:
+          # Rows sharing base_oprhp__park_polygons's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'oprhp_park_polygons'", "globalid"]
         description: >
           NYS Park Polygons, unit boundaries (sources.json: discovered
-          2026-08-18). 858 park-unit boundary polygons, measured that day.
+          2026-08-18). 858 polygons, one per parcel rather than per park,
+          measured live again on 2026-10-02 (last edited 2026-08-21).
 
-          LOADED AND DELIBERATELY NOT STAGED, the only registered ArcGIS
-          layer in that position. sources.json records a count and a
-          last-edit date for it and NOT ONE FIELD NAME, so a staging model
-          would be a column list nobody has measured. The raw table is the
-          honest stopping point; DBT.md's Phase D section records the
-          exclusion and what would end it - one field-metadata read of the
-          service.
+          STAGED ONCE, by base_oprhp__park_polygons, for the places family.
+          It stood unstaged while sources.json recorded no field name for
+          it; the entry has since declared name_field Name, id_field GlobalID
+          and unit_field MasterAreaID (#1371 — First run's "where do you
+          hike" has nothing to search until the waypoints land, and no park
+          is on any phone: publish a places index), and the field-metadata read
+          that DBT.md's Phase D section asked for was made on 2026-10-02:
+          GlobalID unique on all 858 rows, MasterAreaID a small integer null
+          on one.

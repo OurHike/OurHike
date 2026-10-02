@@ -11,6 +11,18 @@ models:
       access: public
       contract:
         enforced: true
+    # Decision 44: a phone file's shape is a version of the mart it is
+    # written from. v1 is today's shape at today's keys, and every pub_ writer
+    # reading this mart pins it, ref('sources', v=1), so a later latest
+    # version cannot move a published file. A removed, renamed or retyped
+    # column ships as a v2 beside v1 until v1's deprecation_date;
+    # check_contract_versions.py holds that against the base's manifest. dbt
+    # 2.0.6 builds v1 as sources_v1 and keeps `sources` as a view of the latest
+    # version (measured 2026-10-02, on a scratch copy of this project).
+    latest_version: 1
+    versions:
+      - v: 1
+        defined_in: sources
     columns:
       - name: source_key
         description: The registry key, e.g. `atc_shelters`.

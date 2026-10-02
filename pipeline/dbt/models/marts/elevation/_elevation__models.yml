@@ -3,16 +3,18 @@ version: 2
 models:
   - name: elevation
     description: >
-      Elevation along each profiled line, one row per 25 m sample, in order
-      along the line. Today one line, the A.T. (`line_id` 'AT'): ATC's
-      centerline walked on ATC's own half-mile mile scale, with USGS 3DEP's
-      elevation read at each sample by step_dem_sampling.
-      elevation_profile.json is written from it (pub_elevation_profile). A
-      hiker's pace estimate and the climb the phone shows come off these
-      numbers, so each safety field is held by a constraint or a test:
-      elevation_ft is null where the DEM has no answer and never 0,
-      distance_mi is strictly increasing within a line, and part_start marks
-      every seam.
+      Elevation along each profiled line, one row per sample, in order along
+      the line. Two kinds of line: the A.T. (`line_id` 'AT'), ATC's
+      centerline walked every 25 m on ATC's own half-mile mile scale, and
+      each junction-graph edge (its `edge_id`), sampled at both ends and
+      about every 25 m between. USGS 3DEP's elevation is read at each sample
+      by step_dem_sampling. elevation_profile.json is written from the A.T.'s
+      rows (pub_elevation_profile) and trail_graph_profile.json from the
+      edges' (pub_trail_graph_profile). A hiker's pace estimate and the climb
+      the phone shows come off these numbers, so each safety field is held by
+      a constraint or a test: elevation_ft is null where the DEM has no
+      answer and never 0, distance_mi is strictly increasing along the A.T.,
+      and part_start marks every seam.
     config:
       access: public
       contract:
@@ -27,17 +29,36 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "part_start or seq > 0"
-      # No mile on the A.T. lies before Springer or past 2,300 miles, the
-      # ceiling the podcasts family uses (var podcast_max_at_mile); ATC's own
-      # half-mile Measure ends at Katahdin, about 2,198.
+      # Every A.T. sample has a mile, and no mile on the A.T. lies before
+      # Springer or past 2,300 miles, the ceiling the podcasts family uses
+      # (var podcast_max_at_mile); ATC's own half-mile Measure ends at
+      # Katahdin, about 2,198. An edge has no mile axis.
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "distance_mi >= 0 and (line_id != 'AT' or distance_mi <= 2300)"
+            expression: "(line_id = 'AT') = (distance_mi is not null)"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "distance_mi is null or (distance_mi >= 0 and distance_mi <= 2300)"
+      # The published feet are the DEM's metres rounded once, at the precision
+      # each file publishes: tenths on the A.T., whole feet on an edge. A
+      # published elevation with no measurement behind it, or one rounded
+      # from anything but its own metres, fails here.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >-
+              (elevation_ft is null) = (elevation_m is null)
+              and (elevation_m is null or elevation_ft = case
+                when line_id = 'AT'
+                  then cast(printf('%.1f', elevation_m / cast('{{ var("elevation_metres_per_foot") }}' as double)) as decimal(6, 1))
+                else cast(printf('%.0f', elevation_m / cast('{{ var("elevation_metres_per_foot") }}' as double)) as decimal(6, 1))
+              end)
     columns:
       - name: line_id
         description: >
           The profiled line: 'AT' for the A.T., as export_poi.py's TRAIL_ID
-          names it on every A.T. POI.
+          names it on every A.T. POI, or a junction-graph edge's edge_id
+          (int_trail_network__edges), `<trail_id>#<part>.<piece>`, which is
+          never 'AT'.
         data_type: varchar
         constraints:
           - type: not_null
@@ -45,27 +66,31 @@ models:
       - name: seq
         description: >
           The sample's place along its line, from 0: its index in
-          elevation_profile.json, which is published in this order.
+          elevation_profile.json for the A.T., and in the edge's own array of
+          trail_graph_profile.json for an edge. Both files are published in
+          this order.
         data_type: integer
         constraints:
           - type: not_null
         data_tests: [not_null]
       - name: distance_mi
         description: >
-          Miles along the line. On the A.T., ATC's own NOBO mile from
-          Springer, calibrated to its half-mile markers (int_trail_lines__
-          mile_axis) and rounded to three decimals as Python's round()
-          rounds: ties to even, on the double's exact value. Strictly
-          increasing within a line (assert_elevation_distance_mi_strictly_increases_within_each_line).
+          Miles along the A.T.: ATC's own NOBO mile from Springer, calibrated
+          to its half-mile markers (int_trail_lines__mile_axis) and rounded to
+          three decimals as Python's round() rounds, ties to even on the
+          double's exact value. Strictly increasing along the line
+          (assert_elevation_distance_mi_strictly_increases_within_each_line).
+          Null on an edge, which has no mile axis: trail_graph_profile.json
+          publishes no distance, and a consumer places sample j of an edge's
+          n at length_m * j / (n - 1).
         data_type: decimal(8,3)
-        constraints:
-          - type: not_null
-        data_tests: [not_null]
       - name: elevation_ft
         description: >
-          Elevation in feet, to one decimal, rounded as Python's round()
-          rounds. Null where the DEM has no answer at the sample (no tile
-          covers it, or the tile holds nodata there), never 0
+          Elevation in feet as the line's phone file publishes it: to one
+          decimal on the A.T., to the whole foot on an edge, each rounded
+          once from elevation_m as Python's round() rounds (ties to even on
+          the double's exact value). Null where the DEM has no answer at the
+          sample (no tile covers it, or the tile holds nodata there), never 0
           (assert_elevation_ft_is_null_exactly_where_the_dem_has_no_answer).
           Feet are the DEM's metres over 0.3048, the international foot.
         data_type: decimal(6,1)
@@ -80,26 +105,37 @@ models:
               arguments:
                 min_value: -300
                 max_value: 20500
+      - name: elevation_m
+        description: >
+          The DEM's elevation at the sample in metres, as step_dem_sampling
+          read it, unrounded: the one measurement every published foot and
+          every climb (int_elevation__edge_climbs) is computed from. Null
+          exactly where elevation_ft is.
+        data_type: double
       - name: part_start
         description: >
-          True on the first sample of each centerline piece the profile keeps
-          a sample of, the line's first sample included (#559). The step into
-          such a sample crosses a gap between two pieces as if they touched,
-          so it is a seam and not a slope: a gain total breaks its run there.
-          False everywhere else; elevation_profile.json carries the field
-          only where it is true.
+          True on the first sample of each piece: on the A.T., each
+          centerline piece the profile keeps a sample of, the line's first
+          sample included (#559); on an edge, its first sample, an edge being
+          one piece. The step into such a sample crosses a seam, not a slope,
+          so a gain total breaks its run there. False everywhere else;
+          elevation_profile.json carries the field only where it is true.
         data_type: boolean
         constraints:
           - type: not_null
         data_tests: [not_null]
       - name: club
-        description: The extract folder the profiled line comes from, `atc` for the A.T.
+        description: >
+          The extract folder the profiled line comes from: `atc` for the
+          A.T., the edge's parent line's club for an edge.
         data_type: varchar
         constraints:
           - type: not_null
         data_tests: [not_null]
       - name: source_key
-        description: The registry key of the profiled line's layer, `centerline` for the A.T.
+        description: >
+          The registry key of the profiled line's layer: `centerline` for the
+          A.T., the edge's published `source` for an edge.
         data_type: varchar
         constraints:
           - type: not_null
@@ -112,7 +148,8 @@ models:
       - name: _loaded_at
         description: >
           The newest load of the layers the line is built from: for the A.T.,
-          ATC's centerline and its half-mile markers.
+          ATC's centerline and its half-mile markers; for an edge, its parent
+          line's layer.
         data_type: timestamp with time zone
         constraints:
           - type: not_null

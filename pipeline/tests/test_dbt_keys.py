@@ -85,33 +85,36 @@ def _reviewed_tables() -> set[str]:
 
 def _row_tables() -> set[str]:
     """The raw tables of the kinds whose rows have no geometry column: WordPress posts and their place
-    terms, OurHike's own conditions queries, whose closures, reports and notes give a place as lat/lon,
-    and ATC's Trail Updates pages, which give one as an A.T. mile."""
+    terms, OurHike's own conditions queries, whose closures, reports and notes give a place as lat/lon, the
+    Hike Finder's pages, whose one coordinate is a lat/lon pair in `start`, and ATC's Trail Updates pages,
+    which give one as an A.T. mile."""
     from extract._contract import all_resources, discover, discover_shared
-    from extract._kinds import AtcTrailUpdatePages, ConditionsQuery, WordpressPosts, WordpressTerms
+    from extract._kinds import AtcTrailUpdatePages, ConditionsQuery, PublishedHikes, WordpressPosts, WordpressTerms
 
     resources = all_resources(discover() + discover_shared())
-    kinds = WordpressPosts | WordpressTerms | ConditionsQuery | AtcTrailUpdatePages
+    kinds = WordpressPosts | WordpressTerms | ConditionsQuery | PublishedHikes | AtcTrailUpdatePages
     return {resource.table for resource in resources if isinstance(resource, kinds)}
 
 
-def _geometryless_derived_tables() -> set[str]:
-    """The tables a Python step writes (build_marts.STEPS) whose source declares no `geometry` column: the
-    weather squares, landed as one JSON document (step_weather_squares.py). dem_samples declares one."""
-    (source,) = yaml.safe_load((STAGING / "derived" / "_derived__sources.yml").read_text())["sources"]
-    return {
-        table["name"] for table in source["tables"] if "geometry" not in {column["name"] for column in table.get("columns") or []}
-    }
+#: The derived tables a Python step writes with no geometry column (build_marts.py's STEPS): step_form_route's
+#: routes carry their ends as JSON lists of [lon, lat] at full precision, the exact doubles the graph search used,
+#: and step_weather_squares lands squares.json as one JSON document. dem_samples has a geometry.
+GEOMETRY_FREE_STEP_TABLES = {"formed_routes", "weather_squares"}
 
 
-def test_the_geometryless_derived_tables_are_the_weather_squares():
-    assert _geometryless_derived_tables() == {"weather_squares"}
+def test_the_geometry_free_step_tables_are_the_derived_tables_that_declare_no_geometry():
+    declared = {}
+    for path in (STAGING / "derived").rglob("_*__sources.yml"):
+        for source in yaml.safe_load(path.read_text())["sources"]:
+            for table in source.get("tables") or []:
+                declared[table["name"]] = {column["name"] for column in table.get("columns") or []}
+    assert {name for name, columns in declared.items() if "geometry" not in columns} == GEOMETRY_FREE_STEP_TABLES
 
 
 SPATIAL_MODELS = [
     path
     for path in MODELS
-    if SOURCE.search(path.read_text()).group(2) not in _reviewed_tables() | _row_tables() | _geometryless_derived_tables()
+    if SOURCE.search(path.read_text()).group(2) not in _reviewed_tables() | _row_tables() | GEOMETRY_FREE_STEP_TABLES
 ]
 
 
@@ -124,6 +127,7 @@ def test_the_row_kinds_models_read_no_geometry():
         "base_ourhike__notes",
         "base_ourhike__disputes",
         "base_atc__atc_trail_updates_pages",
+        "base_nynjtc__nynjtc_hike_finder",
     }
 
 
@@ -140,6 +144,10 @@ def test_only_the_reviewed_file_models_read_no_geometry():
         "base_atc__water_distance",
         "base_greenbelly__shelter_capacity",
         "base_ourhike__work_projects",
+        "base_ourhike__highlights",
+        "base_nynjtc__nynjtc_hike_photos",
+        "base_atc__challenges_atc",
+        "base_ourhike__challenges_publishers",
     }
 
 

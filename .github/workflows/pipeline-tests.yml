@@ -107,8 +107,14 @@ jobs:
           # test: test_export_spurs.py reads it to hold the doc and
           # export_spurs.py to the same destination partition (#501), and the
           # edit that breaks that agreement is a docs-only pull request.
+          #
+          # channels.json too (decision 44's pointer, at the repository root):
+          # test_publish_channels.py reads it as publish.py --channels will,
+          # and the pull request that moves it - a promotion or a rollback -
+          # changes nothing else.
           paths: >-
             pipeline/
+            channels.json
             features/SPUR_TRAILS.md
             client/src/lib/blaze.ts
             client/src/lib/config.ts
@@ -213,12 +219,14 @@ jobs:
           # it runs (export_podcasts.py, export_sources.py, export_elevation.py)
           # are the parity step's; the same test holds the list to their
           # imports too. build_marts.py runs the build, and
-          # step_dem_sampling.py and step_weather_squares.py are the Python
-          # steps it runs between dbt invocations (tests/test_build_marts.py
-          # holds this list to all three).
+          # step_dem_sampling.py, step_weather_squares.py and
+          # step_form_route.py are the Python steps it runs between dbt
+          # invocations (tests/test_build_marts.py holds this list to it and
+          # every step).
           # The points_of_interest family's parity runs export_poi.py (and the
           # export_elevation.py mile axis it imports), export_nearby_poi.py and
-          # export_retired_poi.py.
+          # export_retired_poi.py. The challenges family's runs
+          # export_challenges.py.
           paths: >-
             pipeline/dbt/
             pipeline/extract/
@@ -226,6 +234,7 @@ jobs:
             pipeline/.dlt/
             pipeline/reference/
             pipeline/parity.py
+            pipeline/check_contract_versions.py
             pipeline/export_podcasts.py
             pipeline/export_sources.py
             pipeline/export_atc_updates.py
@@ -239,10 +248,18 @@ jobs:
             pipeline/export_elevation.py
             pipeline/step_dem_sampling.py
             pipeline/step_weather_squares.py
+            pipeline/step_form_route.py
+            pipeline/export_suggested_hikes.py
+            pipeline/route_hikefinder.py
+            pipeline/export_highlights.py
+            pipeline/export_network_elevation.py
+            pipeline/export_network_profile.py
             pipeline/build_marts.py
             pipeline/export_poi.py
             pipeline/export_nearby_poi.py
             pipeline/export_retired_poi.py
+            pipeline/export_places.py
+            pipeline/export_challenges.py
             pipeline/requirements.txt
             pipeline/seed_spatial_extension.py
             pipeline/check_freshness.py
@@ -366,6 +383,44 @@ jobs:
         working-directory: pipeline/dbt
         run: dbt lint --profiles-dir .
 
+      # DECISION 44'S REFUSAL, which dbt 2.0.6 does not make itself: measured
+      # 2026-10-02 in a throwaway project, `-s state:modified --state` built a
+      # dropped v1 column and a retyped v2 key green, where dbt Core raises
+      # ContractBreakingChangeError. check_contract_versions.py compares this
+      # pull request's contracted model versions with the base's and fails on
+      # a removed column, a changed type, a version dropped before its
+      # deprecation_date or a contract switched off, unless the change arrives
+      # as a new version; and every pub_ writer must pin the version it reads
+      # and name it in its R2 keys (pipeline/ELT.md, "Versions and channels").
+      #
+      # THE BASE IS PARSED HERE, in a git worktree of the base commit: the
+      # state approach .claude/skills/dbt/SKILL.md gives for a pull request
+      # ("State, for a pull request"), which needs no storage and no
+      # credential. The commit is the event's own base (the pull request's,
+      # the merge queue's, or the push's previous head), fetched alone because
+      # the checkout above is one commit deep. A base without the script
+      # predates every contract version, so only the head's own rules run:
+      # that is #1805's own case, whose base still holds the dbt 1.x YAML that
+      # 2.0.6 refuses to parse.
+      - name: Contract versions against the base's manifest
+        if: steps.scope.outputs.run == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+        run: |
+          base="$RUNNER_TEMP/contract-base"
+          if [ -z "$BASE_SHA" ] || ! git fetch --quiet --depth=1 origin "$BASE_SHA"; then
+            echo "::error::Could not fetch the base commit ('$BASE_SHA') to compare contracts against."
+            exit 1
+          fi
+          git worktree add --quiet --detach "$base" "$BASE_SHA"
+          if [ ! -f "$base/pipeline/check_contract_versions.py" ]; then
+            echo "::notice::The base ($BASE_SHA) predates check_contract_versions.py, so it has no contract versions to break; only the head's own rules run."
+            python check_contract_versions.py --head dbt/target/manifest.json
+            exit 0
+          fi
+          (cd "$base/pipeline/dbt" && dbt deps --profiles-dir . && dbt parse --profiles-dir .)
+          python check_contract_versions.py --head dbt/target/manifest.json --base "$base/pipeline/dbt/target/manifest.json"
+
       # FIXTURE MODE (pipeline/ELT.md, "Fixture mode"): the warehouse comes
       # from the extract itself, run over make_dbt_fixtures.py's files by
       # extract/_fixtures.py, so every staging model here reads a table dlt
@@ -487,6 +542,12 @@ jobs:
           # export_elevation.py reads the DEM through rasterio, so this runs on
           # the pipeline's own pins, the venv step_dem_sampling.py runs in.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py elevation --new data/processed/dbt/elevation_profile.json --raw-dir data/raw
+          # The junction graph's two elevation files, on the build's own edges
+          # (int_trail_network__edges, which today's exporters read as
+          # trail_graph.json and trail_graph_geometry.json), after the A.T.'s
+          # profile on one cold DEM cache, as publish-vector-data.yml runs them.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py trail_graph_elevation --new data/processed/dbt/trail_graph_elevation.json --raw-dir data/raw --warehouse data/warehouse.duckdb
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py trail_graph_profile --new data/processed/dbt/trail_graph_profile.json --raw-dir data/raw --warehouse data/warehouse.duckdb
           # The points_of_interest family's ten files, on the fixture warehouse
           # and the reviewed files in git (water distances, capacities, the
           # identity ledger).
@@ -495,6 +556,33 @@ jobs:
           done
           "$RUNNER_TEMP/pipeline/bin/python" parity.py nearby_poi --new data/processed/dbt/nearby_poi.geojson
           "$RUNNER_TEMP/pipeline/bin/python" parity.py retired_poi --new data/processed/dbt/retired_poi.geojson
+          # The suggested hikes: the Hike Finder pages fixture mode served,
+          # under data/raw/hikefinder/, read through fetch_hikefinder.py's
+          # parse and routed by route_hikefinder.py over the warehouse's graph,
+          # the one step_form_route.py read. Either side writes no file when no
+          # hike ships, and two absent files agree. The highlights read
+          # reference/highlights.json from git against the POI files and
+          # club_sections.json this run's writers wrote, which the lines above
+          # hold to export_poi.py's and export_club_sections.py's. All three
+          # run on the pipeline's own pins, the venv step_form_route.py runs
+          # in, so the old side routes with the same duckdb and lib/ the step
+          # does; none imports dlt.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py suggested_hikes --new data/processed/dbt/suggested_hikes.json --raw-dir data/raw
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py suggested_hikes_detail --new data/processed/dbt/suggested_hikes_detail.json --raw-dir data/raw
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py highlights --new data/processed/dbt/highlights.json --raw-dir data/raw
+          # places.json, on the same fixture warehouse: OPRHP's park layer and
+          # ATC's Communities, measured over today's nearby_trails.geojson and
+          # trails.geojson (cut to 6 dp, decision 8), listing today's
+          # trailhead, parking and resupply POIs, each built as its own line
+          # above builds it. Its old side imports export_nearby_trails.py and
+          # export_poi.py, so it runs on the pipeline's pins, and nothing it
+          # imports needs dlt.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py places --new data/processed/dbt/places.json
+          # The challenges list, from the club folders and publishers.json in
+          # git, against the POIs and centerline compared above. A challenge
+          # may_publish holds back is explained only where the warehouse's
+          # int_challenges__resolved record for it equals today's.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py challenges --new data/processed/dbt/challenges.json
 
       - name: dbt source freshness
         if: steps.scope.outputs.run == 'true'

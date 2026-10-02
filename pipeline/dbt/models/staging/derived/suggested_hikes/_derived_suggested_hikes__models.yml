@@ -1,0 +1,81 @@
+version: 2
+
+models:
+  - name: stg_derived__formed_routes
+    data_tests:
+      # Says how many rows the dedupe dropped, which for a step that writes
+      # one row per hike is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('derived', 'formed_routes')
+          config:
+            severity: warn
+    description: >
+      Each Hike Finder hike's route as step_form_route measured it over the
+      junction graph, typed: a generated route formed from the description,
+      or a published track measured and re-walked between its samples. Read
+      by int_suggested_hikes__graded.
+    columns:
+      - name: formed_route_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the table's name and the hike's number.
+        data_tests: [not_null, unique]
+      - name: hike_number
+        description: The export's hike id.
+        data_tests: [not_null, unique]
+      - name: provenance
+        description: "`generated` or `published`."
+      - name: formed_problem
+        description: Why no route formed, in the builder's words; null where one did.
+      - name: route_miles
+        description: >
+          The route's own length in miles at full precision: a generated
+          route's walk over the graph, or a published track's length along
+          its points (lib/hikefinder.py's haversine). Null where none formed.
+      - name: start_offset_m
+        description: How far a generated route's start moved to reach a line, in the twin's metres.
+      - name: route_closed
+        description: >
+          Whether the walk ends where it began: a generated route's route
+          type is a closed one, or a published track's ends sit within 60 m.
+      - name: retrace_ratio
+        description: The share of a generated walk spent on ground it had already covered, by metres walked.
+      - name: climb_gain_ft
+        description: >
+          Feet gained over a generated walk, from this build's per-edge
+          climb; null, with climb_loss_ft, where any edge was never priced.
+          Absent means unknown, never flat (SH08).
+      - name: climb_loss_ft
+        description: Feet lost over a generated walk; null exactly where climb_gain_ft is.
+      - name: route_ends
+        description: >
+          The points the phone routes between, [lon, lat] at full precision:
+          a generated route's waypoints on the graph, or every point of a
+          published track.
+      - name: named_trails
+        description: The description's trails that became waypoints, as the builder labels them.
+      - name: walked_trails
+        description: Those of them the walk actually walks.
+      - name: route_checks
+        description: The step's counts for a reviewer (waypoints, steps, legs; or a track's points). Never graded.
+      - name: track_gap_m
+        description: How far apart a published track's ends sit, in the twin's metres.
+      - name: rewalk_problem
+        description: >
+          Why a published track did not re-walk on this build's lines: a
+          400 m sample more than 150 ft from any line, too few samples, or no
+          path between them. Null where it re-walked, and on a generated
+          route.
+      - name: rewalk_ends
+        description: The published track's samples, each pulled onto its line, [lon, lat] at full precision.
+      - name: rewalk_miles
+        description: The re-walk's length in miles, which the tolerance compares with the track's (SH06).
+      - name: rewalk_climb_gain_ft
+        description: Feet gained over the re-walk, the only climb a published hike carries; null where unpriced.
+      - name: rewalk_climb_loss_ft
+        description: Feet lost over the re-walk; null exactly where rewalk_climb_gain_ft is.
+      - name: climb_note
+        description: The graph's own note on its climb, such as "no trail_graph_elevation.json beside the graph".
+      - name: formed_at
+        description: When the step wrote the row, UTC.

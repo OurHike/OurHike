@@ -1,0 +1,711 @@
+version: 2
+
+# The places family's unit tests (stage 3 of #1793 — Rebuild the data platform
+# as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and
+# lighter phone downloads), one per case of tests/test_export_places.py, named
+# for it, on the model where that case's rule now lives. Each expectation is
+# what export_places.py answers on the same rows: tests/test_dbt_places_parity.py
+# writes each test's given rows out as the files the exporter reads, runs it,
+# and holds its answer to the rows below. Numbers a hiker reads (a point, a box,
+# the miles) are JSON text here, because a dbt 2.0.6 unit test compares a
+# DOUBLE only to one decimal place.
+unit_tests:
+  - name: places_a_park_is_one_row_however_many_polygons_the_layer_holds
+    model: int_places__park_units
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestParks::test_a_park_is_one_row_however_many_polygons_the_layer_holds.
+    given:
+      - input: ref('base_oprhp__park_polygons')
+        rows:
+          - {"park_polygon_key": "park-polygon-0", "source_row": 0, "globalid": "g1", "name": "Hudson Highlands", "masterareaid": 127, "category": "State Park", "geom": "POLYGON ((-74.0 41.0, -73.9616 41.0, -73.9616 41.02894, -74.0 41.02894, -74.0 41.0))", "_loaded_at": "2026-10-02 00:00:00+00"}
+          - {"park_polygon_key": "park-polygon-1", "source_row": 1, "globalid": "g2", "name": "Hudson Highlands", "masterareaid": 127, "category": "State Park", "geom": "POLYGON ((-73.9424 41.0, -73.90400000000001 41.0, -73.90400000000001 41.02894, -73.9424 41.02894, -73.9424 41.0))", "_loaded_at": "2026-10-02 00:00:00+00"}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {"source_key": "oprhp_park_polygons", "file_row": 0, "provider": "NYS OPRHP", "entry": "{\"key\": \"oprhp_park_polygons\", \"provider\": \"NYS OPRHP\", \"kind\": \"external_arcgis_layer\", \"name_field\": \"Name\", \"id_field\": \"GlobalID\", \"unit_field\": \"MasterAreaID\"}"}
+      - input: ref('int_sources__publication')
+        rows:
+          - {"source_key": "oprhp_park_polygons", "may_publish": true}
+      - input: ref('stg_registry__organizations')
+        rows:
+          - {"steward_id": "org:nysoprhp", "provider": "NYS OPRHP", "org_state": "NY"}
+    expect:
+      rows:
+        - {"place_id": "oprhp_park_polygons:127", "name": "Hudson Highlands", "category": "State Park", "state": "NY", "unit_order": 0, "polygons": 2}
+  - name: places_two_parks_sharing_a_name_stay_two_rows
+    model: int_places__park_units
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestParks::test_two_parks_sharing_a_name_stay_two_rows.
+    given:
+      - input: ref('base_oprhp__park_polygons')
+        rows:
+          - {"park_polygon_key": "park-polygon-0", "source_row": 0, "globalid": "g1", "name": "Robert Moses", "masterareaid": 127, "category": null, "geom": "POLYGON ((-74.0 41.0, -73.9616 41.0, -73.9616 41.02894, -74.0 41.02894, -74.0 41.0))", "_loaded_at": "2026-10-02 00:00:00+00"}
+          - {"park_polygon_key": "park-polygon-1", "source_row": 1, "globalid": "g2", "name": "Robert Moses", "masterareaid": 270, "category": null, "geom": "POLYGON ((-73.808 41.0, -73.76960000000001 41.0, -73.76960000000001 41.02894, -73.808 41.02894, -73.808 41.0))", "_loaded_at": "2026-10-02 00:00:00+00"}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {"source_key": "oprhp_park_polygons", "file_row": 0, "provider": "NYS OPRHP", "entry": "{\"key\": \"oprhp_park_polygons\", \"provider\": \"NYS OPRHP\", \"kind\": \"external_arcgis_layer\", \"name_field\": \"Name\", \"id_field\": \"GlobalID\", \"unit_field\": \"MasterAreaID\"}"}
+      - input: ref('int_sources__publication')
+        rows:
+          - {"source_key": "oprhp_park_polygons", "may_publish": true}
+      - input: ref('stg_registry__organizations')
+        rows:
+          - {"steward_id": "org:nysoprhp", "provider": "NYS OPRHP", "org_state": "NY"}
+    expect:
+      rows:
+        - {"place_id": "oprhp_park_polygons:127", "name": "Robert Moses", "category": null, "state": "NY", "unit_order": 0, "polygons": 1}
+        - {"place_id": "oprhp_park_polygons:270", "name": "Robert Moses", "category": null, "state": "NY", "unit_order": 1, "polygons": 1}
+  - name: places_a_unit_takes_the_name_most_of_its_polygons_wear
+    model: int_places__park_units
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestParks::test_a_unit_takes_the_name_most_of_its_polygons_wear.
+    given:
+      - input: ref('base_oprhp__park_polygons')
+        rows:
+          - {"park_polygon_key": "park-polygon-0", "source_row": 0, "globalid": "g1", "name": "Captree/Robert Moses", "masterareaid": 127, "category": null, "geom": "POLYGON ((-74.0 41.0, -73.9808 41.0, -73.9808 41.01447, -74.0 41.01447, -74.0 41.0))", "_loaded_at": "2026-10-02 00:00:00+00"}
+          - {"park_polygon_key": "park-polygon-1", "source_row": 1, "globalid": "g2", "name": "Robert Moses", "masterareaid": 127, "category": null, "geom": "POLYGON ((-73.9616 41.0, -73.9424 41.0, -73.9424 41.01447, -73.9616 41.01447, -73.9616 41.0))", "_loaded_at": "2026-10-02 00:00:00+00"}
+          - {"park_polygon_key": "park-polygon-2", "source_row": 2, "globalid": "g3", "name": "Robert Moses", "masterareaid": 127, "category": null, "geom": "POLYGON ((-73.9232 41.0, -73.904 41.0, -73.904 41.01447, -73.9232 41.01447, -73.9232 41.0))", "_loaded_at": "2026-10-02 00:00:00+00"}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {"source_key": "oprhp_park_polygons", "file_row": 0, "provider": "NYS OPRHP", "entry": "{\"key\": \"oprhp_park_polygons\", \"provider\": \"NYS OPRHP\", \"kind\": \"external_arcgis_layer\", \"name_field\": \"Name\", \"id_field\": \"GlobalID\", \"unit_field\": \"MasterAreaID\"}"}
+      - input: ref('int_sources__publication')
+        rows:
+          - {"source_key": "oprhp_park_polygons", "may_publish": true}
+      - input: ref('stg_registry__organizations')
+        rows:
+          - {"steward_id": "org:nysoprhp", "provider": "NYS OPRHP", "org_state": "NY"}
+    expect:
+      rows:
+        - {"place_id": "oprhp_park_polygons:127", "name": "Robert Moses", "category": null, "state": "NY", "unit_order": 0, "polygons": 3}
+  - name: places_a_polygon_with_no_unit_id_joins_the_unit_that_shares_its_name
+    model: int_places__park_units
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestParks::test_a_polygon_with_no_unit_id_joins_the_unit_that_shares_its_name.
+    given:
+      - input: ref('base_oprhp__park_polygons')
+        rows:
+          - {"park_polygon_key": "park-polygon-0", "source_row": 0, "globalid": "g1", "name": "Allegany", "masterareaid": 159, "category": null, "geom": "POLYGON ((-74.0 41.0, -73.9616 41.0, -73.9616 41.02894, -74.0 41.02894, -74.0 41.0))", "_loaded_at": "2026-10-02 00:00:00+00"}
+          - {"park_polygon_key": "park-polygon-1", "source_row": 1, "globalid": "g2", "name": "Allegany", "masterareaid": null, "category": null, "geom": "POLYGON ((-73.9424 41.0, -73.90400000000001 41.0, -73.90400000000001 41.02894, -73.9424 41.02894, -73.9424 41.0))", "_loaded_at": "2026-10-02 00:00:00+00"}
+          - {"park_polygon_key": "park-polygon-2", "source_row": 2, "globalid": "g3", "name": "Loner", "masterareaid": null, "category": null, "geom": "POLYGON ((-73.616 41.0, -73.5776 41.0, -73.5776 41.02894, -73.616 41.02894, -73.616 41.0))", "_loaded_at": "2026-10-02 00:00:00+00"}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {"source_key": "oprhp_park_polygons", "file_row": 0, "provider": "NYS OPRHP", "entry": "{\"key\": \"oprhp_park_polygons\", \"provider\": \"NYS OPRHP\", \"kind\": \"external_arcgis_layer\", \"name_field\": \"Name\", \"id_field\": \"GlobalID\", \"unit_field\": \"MasterAreaID\"}"}
+      - input: ref('int_sources__publication')
+        rows:
+          - {"source_key": "oprhp_park_polygons", "may_publish": true}
+      - input: ref('stg_registry__organizations')
+        rows:
+          - {"steward_id": "org:nysoprhp", "provider": "NYS OPRHP", "org_state": "NY"}
+    expect:
+      rows:
+        - {"place_id": "oprhp_park_polygons:159", "name": "Allegany", "category": null, "state": "NY", "unit_order": 0, "polygons": 2}
+        - {"place_id": "oprhp_park_polygons:g3", "name": "Loner", "category": null, "state": "NY", "unit_order": 1, "polygons": 1}
+  - name: places_the_fields_are_the_registry_entry_s
+    model: int_places__park_units
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestParks::test_the_fields_are_the_registry_entry_s.
+    given:
+      - input: ref('base_oprhp__park_polygons')
+        format: sql
+        rows: |
+          select
+              source_row,
+              park_polygon_key,
+              parkname,
+              objectid,
+              areaid,
+              st_geomfromtext(geom_wkt) as geom,
+              cast('2026-10-02 00:00:00+00' as timestamptz) as _loaded_at
+          from (values
+              (0, 'park-polygon-0', 'Other Park', 7, 9, 'POLYGON ((-74.0 41.0, -73.9616 41.0, -73.9616 41.02894, -74.0 41.02894, -74.0 41.0))')
+          ) as polygons (source_row, park_polygon_key, parkname, objectid, areaid, geom_wkt)
+      - input: ref('stg_registry__sources')
+        rows:
+          - {"source_key": "oprhp_park_polygons", "file_row": 0, "provider": "NYS OPRHP", "entry": "{\"key\": \"oprhp_park_polygons\", \"provider\": \"NYS OPRHP\", \"kind\": \"external_arcgis_layer\", \"name_field\": \"PARKNAME\", \"id_field\": \"OBJECTID\", \"unit_field\": \"AreaId\"}"}
+      - input: ref('int_sources__publication')
+        rows:
+          - {"source_key": "oprhp_park_polygons", "may_publish": true}
+      - input: ref('stg_registry__organizations')
+        rows:
+          - {"steward_id": "org:nysoprhp", "provider": "NYS OPRHP", "org_state": "NY"}
+    expect:
+      rows:
+        - {"place_id": "oprhp_park_polygons:9", "name": "Other Park", "category": null, "state": "NY", "unit_order": 0, "polygons": 1}
+  - name: places_parks_ship_behind_their_own_reaches_hikers
+    model: int_places__park_units
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestParks::test_parks_ship_behind_their_own_reaches_hikers.
+    given:
+      - input: ref('base_oprhp__park_polygons')
+        rows:
+          - {"park_polygon_key": "park-polygon-0", "source_row": 0, "globalid": "g1", "name": "Held Park", "masterareaid": null, "category": null, "geom": "POLYGON ((-74.0 41.0, -73.9616 41.0, -73.9616 41.02894, -74.0 41.02894, -74.0 41.0))", "_loaded_at": "2026-10-02 00:00:00+00"}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {"source_key": "oprhp_park_polygons", "file_row": 0, "provider": "NYS OPRHP", "entry": "{\"key\": \"oprhp_park_polygons\", \"provider\": \"NYS OPRHP\", \"kind\": \"external_arcgis_layer\", \"name_field\": \"Name\", \"id_field\": \"GlobalID\", \"unit_field\": \"MasterAreaID\"}"}
+      - input: ref('int_sources__publication')
+        rows:
+          - {"source_key": "oprhp_park_polygons", "may_publish": false}
+      - input: ref('stg_registry__organizations')
+        rows:
+          - {"steward_id": "org:nysoprhp", "provider": "NYS OPRHP", "org_state": "NY"}
+    expect:
+      rows: []
+  - name: places_an_unfetched_park_layer_is_a_reason_not_an_error
+    model: int_places__park_units
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestParks::test_an_unfetched_park_layer_is_a_reason_not_an_error.
+    given:
+      - input: ref('base_oprhp__park_polygons')
+        rows: []
+      - input: ref('stg_registry__sources')
+        rows:
+          - {"source_key": "oprhp_park_polygons", "file_row": 0, "provider": "NYS OPRHP", "entry": "{\"key\": \"oprhp_park_polygons\", \"provider\": \"NYS OPRHP\", \"kind\": \"external_arcgis_layer\", \"name_field\": \"Name\", \"id_field\": \"GlobalID\", \"unit_field\": \"MasterAreaID\"}"}
+      - input: ref('int_sources__publication')
+        rows:
+          - {"source_key": "oprhp_park_polygons", "may_publish": true}
+      - input: ref('stg_registry__organizations')
+        rows:
+          - {"steward_id": "org:nysoprhp", "provider": "NYS OPRHP", "org_state": "NY"}
+    expect:
+      rows: []
+  - name: places_a_park_with_no_name_or_no_geometry_is_not_a_place
+    model: int_places__park_units
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestParks::test_a_park_with_no_name_or_no_geometry_is_not_a_place.
+    given:
+      - input: ref('base_oprhp__park_polygons')
+        rows:
+          - {"park_polygon_key": "park-polygon-0", "source_row": 0, "globalid": "g1", "name": "  ", "masterareaid": null, "category": null, "geom": "POLYGON ((-74.0 41.0, -73.9616 41.0, -73.9616 41.02894, -74.0 41.02894, -74.0 41.0))", "_loaded_at": "2026-10-02 00:00:00+00"}
+          - {"park_polygon_key": "park-polygon-1", "source_row": 1, "globalid": "g2", "name": "Ghost", "masterareaid": null, "category": null, "geom": null, "_loaded_at": "2026-10-02 00:00:00+00"}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {"source_key": "oprhp_park_polygons", "file_row": 0, "provider": "NYS OPRHP", "entry": "{\"key\": \"oprhp_park_polygons\", \"provider\": \"NYS OPRHP\", \"kind\": \"external_arcgis_layer\", \"name_field\": \"Name\", \"id_field\": \"GlobalID\", \"unit_field\": \"MasterAreaID\"}"}
+      - input: ref('int_sources__publication')
+        rows:
+          - {"source_key": "oprhp_park_polygons", "may_publish": true}
+      - input: ref('stg_registry__organizations')
+        rows:
+          - {"steward_id": "org:nysoprhp", "provider": "NYS OPRHP", "org_state": "NY"}
+    expect:
+      rows: []
+  - name: places_a_self_crossing_polygon_is_made_valid_before_it_is_measured
+    model: int_places__park_units
+    description: >
+      PL03, which no case of tests/test_export_places.py covers: a ring that
+      crosses itself goes through ST_MakeValid and comes out two triangles,
+      which load_parks() and measure() also make of it.
+    given:
+      - input: ref('base_oprhp__park_polygons')
+        rows:
+          - {"park_polygon_key": "park-polygon-0", "source_row": 0, "globalid": "g1", "name": "Bowtie Park", "masterareaid": 300, "category": null, "geom": "POLYGON ((-74.0 41.0, -73.99 41.01, -74.0 41.01, -73.99 41.0, -74.0 41.0))", "_loaded_at": "2026-10-02 00:00:00+00"}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {"source_key": "oprhp_park_polygons", "file_row": 0, "provider": "NYS OPRHP", "entry": "{\"key\": \"oprhp_park_polygons\", \"provider\": \"NYS OPRHP\", \"kind\": \"external_arcgis_layer\", \"name_field\": \"Name\", \"id_field\": \"GlobalID\", \"unit_field\": \"MasterAreaID\"}"}
+      - input: ref('int_sources__publication')
+        rows:
+          - {"source_key": "oprhp_park_polygons", "may_publish": true}
+      - input: ref('stg_registry__organizations')
+        rows:
+          - {"steward_id": "org:nysoprhp", "provider": "NYS OPRHP", "org_state": "NY"}
+    expect:
+      rows:
+        - {"place_id": "oprhp_park_polygons:300", "name": "Bowtie Park", "category": null, "state": "NY", "unit_order": 0, "polygons": 1, "park_wkt": "MULTIPOLYGON (((-74 41, -73.995 41.004999999999995, -73.99 41, -74 41)), ((-73.995 41.004999999999995, -74 41.01, -73.99 41.01, -73.995 41.004999999999995)))"}
+  - name: places_a_line_whose_steward_is_held_back_measures_nothing_and_is_counted
+    model: int_places__lines
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestLines::test_a_line_whose_steward_is_held_back_measures_nothing_and_is_counted.
+    given:
+      - input: ref('trail_lines')
+        rows:
+          - {"trail_line_id": "held_trails:1", "club": "held", "source_key": "held_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "Unlicensed Trail", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-73.9808, 41.02894], [-73.9424, 41.02894]]}"}
+          - {"trail_line_id": "oprhp_trails:1", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "T", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-73.808, 41.0], [-73.78880000000001, 41.0]]}"}
+      - input: ref('int_sources__publication')
+        rows:
+          - {"source_key": "oprhp_trails", "may_publish": true}
+          - {"source_key": "held_trails", "may_publish": false}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {"source_key": "oprhp_trails", "file_row": 0, "provider": "NYS OPRHP", "entry": "{\"key\": \"oprhp_trails\", \"provider\": \"NYS OPRHP\", \"kind\": \"external_arcgis_layer\", \"blaze_default\": \"Blue\"}"}
+          - {"source_key": "held_trails", "file_row": 1, "provider": "Held Org", "entry": "{\"key\": \"held_trails\", \"provider\": \"Held Org\", \"kind\": \"external_arcgis_layer\", \"blaze_default\": \"Red\"}"}
+    expect:
+      rows:
+        - {"trail_line_id": "oprhp_trails:1", "source_key": "oprhp_trails", "name": "T", "trail_name": "T"}
+  - name: places_the_centerline_always_measures
+    model: int_places__lines
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestLines::test_the_centerline_always_measures.
+    given:
+      - input: ref('trail_lines')
+        rows:
+          - {"trail_line_id": "centerline:chain:0", "club": "atc", "source_key": "centerline", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "centerline", "name": "Georgia", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-73.9808, 41.02894], [-73.9424, 41.02894]]}"}
+      - input: ref('int_sources__publication')
+        rows:
+          - {"source_key": "centerline", "may_publish": true}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {"source_key": "centerline", "file_row": 0, "provider": "ATC", "entry": "{\"key\": \"centerline\", \"provider\": \"ATC\", \"owns_route_names\": [\"Appalachian Trail\"]}"}
+    expect:
+      rows:
+        - {"trail_line_id": "centerline:chain:0", "source_key": "centerline", "name": "Georgia", "trail_name": "Appalachian Trail"}
+  - name: places_an_a_t_side_trail_measures_nothing_as_today
+    model: int_places__lines
+    description: >
+      PL06 as export_places.py runs it today, which no case of
+      tests/test_export_places.py states: load_lines() keeps
+      shipped_line_source_keys() and the centerline, and side_trails is
+      neither, so a side trail or spur in trails.geojson measures nothing. A
+      finding, not a rule anyone wrote down (int_places__lines' header); pinned
+      so that changing it is a decision.
+    given:
+      - input: ref('trail_lines')
+        rows:
+          - {"trail_line_id": "centerline:chain:0", "club": "atc", "source_key": "centerline", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "centerline", "name": null, "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.0, 41.0], [-73.9616, 41.0]]}"}
+          - {"trail_line_id": "side_trails:s1", "club": "atc", "source_key": "side_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "side_trail", "name": "Blue Blaze Spur", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.0, 41.01447], [-73.9808, 41.01447]]}"}
+          - {"trail_line_id": "side_trails:s2", "club": "atc", "source_key": "side_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "spur", "name": "To The Shelter", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.0, 41.02894], [-73.9808, 41.02894]]}"}
+      - input: ref('int_sources__publication')
+        rows:
+          - {"source_key": "centerline", "may_publish": true}
+          - {"source_key": "side_trails", "may_publish": true}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {"source_key": "centerline", "file_row": 0, "provider": "ATC", "entry": "{\"key\": \"centerline\", \"provider\": \"ATC\", \"owns_route_names\": [\"Appalachian Trail\"]}"}
+          - {"source_key": "side_trails", "file_row": 1, "provider": "ATC", "entry": "{\"key\": \"side_trails\", \"provider\": \"ATC\", \"blaze_field\": \"Blaze\"}"}
+    expect:
+      rows:
+        - {"trail_line_id": "centerline:chain:0", "source_key": "centerline", "name": null, "trail_name": "Appalachian Trail"}
+  - name: places_waypoints_are_the_four_files_load_point_places_reads_in_its_order
+    model: int_places__waypoints
+    description: >
+      PL05's input, which no case of tests/test_export_places.py states because
+      the Python reads files: load_point_places() reads poi_trailhead.geojson,
+      poi_parking.geojson and poi_resupply.geojson in POINT_PLACE_KINDS order,
+      each in record order, then nearby_poi.geojson, and never
+      retired_poi.geojson or another type. A poi_<type>.geojson row's lon and
+      lat are what GDAL prints (-73.99000000000001 is read back as -73.99) and
+      a nearby_poi row's the double. dbt compares a DOUBLE to one decimal, so
+      tests/test_dbt_places_parity.py holds the lon and lat below to GDAL
+      exactly, writing these rows with export_poi.py's own write_poi_type().
+    given:
+      - input: ref('points_of_interest')
+        rows:
+          - {"phone_files": "poi_by_type", "poi_type": "parking", "poi_id": "atc_parking:p1", "source": "atc_parking", "source_key": "parking", "source_feature_id": "p1", "name": "Lot One", "lon": -73.99000000000001, "lat": 34.62661800000001, "record_order": 4000000000, "club": "atc", "_loaded_at": "2026-10-02 00:00:00+00"}
+          - {"phone_files": "poi_by_type", "poi_type": "resupply", "poi_id": "atc_communities:c1", "source": "atc_communities", "source_key": "communities", "source_feature_id": "c1", "name": "Unionville", "lon": -74.29599999999999, "lat": 41.0, "record_order": 6000000000, "club": "atc", "_loaded_at": "2026-10-02 00:00:00+00"}
+          - {"phone_files": "poi_by_type", "poi_type": "trailhead", "poi_id": "atc_trailheads:t1", "source": "atc_trailheads", "source_key": "atc_trailheads", "source_feature_id": "t1", "name": "Gap", "lon": -74.1, "lat": 41.1, "record_order": 9000000000, "club": "atc", "_loaded_at": "2026-10-02 00:00:00+00"}
+          - {"phone_files": "poi_by_type", "poi_type": "parking", "poi_id": "atc_parking:p0", "source": "atc_parking", "source_key": "parking", "source_feature_id": "p0", "name": "Lot Zero", "lon": -74.2, "lat": 41.2, "record_order": 3999999999, "club": "atc", "_loaded_at": "2026-10-02 00:00:00+00"}
+          - {"phone_files": "poi_by_type", "poi_type": "shelter", "poi_id": "atc_shelters:s1", "source": "atc_shelters", "source_key": "shelters", "source_feature_id": "s1", "name": "Not A Waypoint", "lon": -74.0, "lat": 41.0, "record_order": 1000000000, "club": "atc", "_loaded_at": "2026-10-02 00:00:00+00"}
+          - {"phone_files": "retired_poi", "poi_type": "resupply", "poi_id": "atc_communities:gone", "source": "atc_communities", "source_key": "communities", "source_feature_id": "gone", "name": "Retired Town", "lon": -74.0, "lat": 41.0, "record_order": 1, "club": "atc", "_loaded_at": "2026-10-02 00:00:00+00"}
+          - {"phone_files": "nearby_poi", "poi_type": "parking", "poi_id": "dec_parking_areas:3", "source": "dec_parking_areas", "source_key": "dec_parking_areas", "source_feature_id": "3", "name": "DEC Lot", "lon": -74.29599999999999, "lat": 41.010000000000005, "record_order": 1, "club": "nysdec", "_loaded_at": "2026-10-02 00:00:00+00"}
+          - {"phone_files": "nearby_poi", "poi_type": "campsite", "poi_id": "dec_primitive_campsites:4", "source": "dec_primitive_campsites", "source_key": "dec_primitive_campsites", "source_feature_id": "4", "name": "Not A Waypoint Either", "lon": -74.0, "lat": 41.0, "record_order": 0, "club": "nysdec", "_loaded_at": "2026-10-02 00:00:00+00"}
+          - {"phone_files": "nearby_poi", "poi_type": "trailhead", "poi_id": "usfs_rec_sites:7", "source": "usfs_rec_sites", "source_key": "usfs_rec_sites", "source_feature_id": "7", "name": "Notch", "lon": -73.5, "lat": 42.5, "record_order": 16000000000, "club": "usfs", "_loaded_at": "2026-10-02 00:00:00+00"}
+    expect:
+      rows:
+        - {"poi_id": "atc_trailheads:t1", "poi_type": "trailhead", "source": "atc_trailheads", "source_key": "atc_trailheads", "source_feature_id": "t1", "name": "Gap", "lon": -74.1, "lat": 41.1, "waypoint_order": 0}
+        - {"poi_id": "atc_parking:p0", "poi_type": "parking", "source": "atc_parking", "source_key": "parking", "source_feature_id": "p0", "name": "Lot Zero", "lon": -74.2, "lat": 41.2, "waypoint_order": 1}
+        - {"poi_id": "atc_parking:p1", "poi_type": "parking", "source": "atc_parking", "source_key": "parking", "source_feature_id": "p1", "name": "Lot One", "lon": -73.99, "lat": 34.626618, "waypoint_order": 2}
+        - {"poi_id": "atc_communities:c1", "poi_type": "resupply", "source": "atc_communities", "source_key": "communities", "source_feature_id": "c1", "name": "Unionville", "lon": -74.296, "lat": 41.0, "waypoint_order": 3}
+        - {"poi_id": "dec_parking_areas:3", "poi_type": "parking", "source": "dec_parking_areas", "source_key": "dec_parking_areas", "source_feature_id": "3", "name": "DEC Lot", "lon": -74.29599999999999, "lat": 41.010000000000005, "waypoint_order": 4}
+        - {"poi_id": "usfs_rec_sites:7", "poi_type": "trailhead", "source": "usfs_rec_sites", "source_key": "usfs_rec_sites", "source_feature_id": "7", "name": "Notch", "lon": -73.5, "lat": 42.5, "waypoint_order": 5}
+  - name: places_a_town_s_state_is_a_code_whatever_the_communities_layer_wrote
+    model: int_places__point_places
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestPointPlaces::test_a_town_s_state_is_a_code_whatever_the_communities_layer_wrote,
+      one town per parameter.
+    given:
+      - input: ref('int_places__waypoints')
+        rows:
+          - {"poi_id": "atc_communities:c0", "poi_type": "resupply", "source": "atc_communities", "source_key": "communities", "source_feature_id": "c0", "name": "Unionville 0", "lon": -74.0, "lat": 41.0, "waypoint_order": 0, "club": "atc", "_loaded_at": "2026-10-02 00:00:00+00"}
+          - {"poi_id": "atc_communities:c1", "poi_type": "resupply", "source": "atc_communities", "source_key": "communities", "source_feature_id": "c1", "name": "Unionville 1", "lon": -73.9808, "lat": 41.0, "waypoint_order": 1, "club": "atc", "_loaded_at": "2026-10-02 00:00:00+00"}
+          - {"poi_id": "atc_communities:c2", "poi_type": "resupply", "source": "atc_communities", "source_key": "communities", "source_feature_id": "c2", "name": "Unionville 2", "lon": -73.9616, "lat": 41.0, "waypoint_order": 2, "club": "atc", "_loaded_at": "2026-10-02 00:00:00+00"}
+          - {"poi_id": "atc_communities:c3", "poi_type": "resupply", "source": "atc_communities", "source_key": "communities", "source_feature_id": "c3", "name": "Unionville 3", "lon": -73.9424, "lat": 41.0, "waypoint_order": 3, "club": "atc", "_loaded_at": "2026-10-02 00:00:00+00"}
+          - {"poi_id": "atc_communities:c4", "poi_type": "resupply", "source": "atc_communities", "source_key": "communities", "source_feature_id": "c4", "name": "Unionville 4", "lon": -73.9232, "lat": 41.0, "waypoint_order": 4, "club": "atc", "_loaded_at": "2026-10-02 00:00:00+00"}
+          - {"poi_id": "atc_communities:c5", "poi_type": "resupply", "source": "atc_communities", "source_key": "communities", "source_feature_id": "c5", "name": "Unionville 5", "lon": -73.904, "lat": 41.0, "waypoint_order": 5, "club": "atc", "_loaded_at": "2026-10-02 00:00:00+00"}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {"source_key": "oprhp_facilities", "file_row": 0, "provider": "NYS OPRHP", "entry": "{\"key\": \"oprhp_facilities\", \"provider\": \"NYS OPRHP\", \"kind\": \"external_arcgis_layer\"}"}
+          - {"source_key": "usfs_rec_sites", "file_row": 1, "provider": "USFS", "entry": "{\"key\": \"usfs_rec_sites\", \"provider\": \"USFS\", \"kind\": \"external_arcgis_layer\"}"}
+          - {"source_key": "communities", "file_row": 2, "provider": "ATC", "entry": "{\"key\": \"communities\", \"provider\": \"ATC\", \"place_kind\": \"town\"}"}
+          - {"source_key": "parking", "file_row": 3, "provider": "ATC", "entry": "{\"key\": \"parking\", \"provider\": \"ATC\"}"}
+          - {"source_key": "dec_parking_areas", "file_row": 4, "provider": "NYS DEC", "entry": "{\"key\": \"dec_parking_areas\", \"provider\": \"NYS DEC\", \"kind\": \"external_arcgis_layer\"}"}
+      - input: ref('stg_registry__organizations')
+        rows:
+          - {"steward_id": "org:nysoprhp", "provider": "NYS OPRHP", "org_state": "NY"}
+      - input: ref('stg_atc__communities')
+        format: sql
+        rows: |
+          select *
+          from (values
+              ('c0', 'NY'),
+              ('c1', 'New York'),
+              ('c2', 'virginia'),
+              ('c3', 'Virgnia'),
+              ('c4', ' '),
+              ('c5', null)
+          ) as communities (globalid, state)
+    expect:
+      rows:
+        - {"place_id": "atc_communities:c0", "poi_id": "atc_communities:c0", "name": "Unionville 0", "kind": "town", "state": "NY", "source": "atc_communities", "lon": -74.0, "lat": 41.0, "waypoint_order": 0}
+        - {"place_id": "atc_communities:c1", "poi_id": "atc_communities:c1", "name": "Unionville 1", "kind": "town", "state": "NY", "source": "atc_communities", "lon": -73.9808, "lat": 41.0, "waypoint_order": 1}
+        - {"place_id": "atc_communities:c2", "poi_id": "atc_communities:c2", "name": "Unionville 2", "kind": "town", "state": "VA", "source": "atc_communities", "lon": -73.9616, "lat": 41.0, "waypoint_order": 2}
+        - {"place_id": "atc_communities:c3", "poi_id": "atc_communities:c3", "name": "Unionville 3", "kind": "town", "state": null, "source": "atc_communities", "lon": -73.9424, "lat": 41.0, "waypoint_order": 3}
+        - {"place_id": "atc_communities:c4", "poi_id": "atc_communities:c4", "name": "Unionville 4", "kind": "town", "state": null, "source": "atc_communities", "lon": -73.9232, "lat": 41.0, "waypoint_order": 4}
+        - {"place_id": "atc_communities:c5", "poi_id": "atc_communities:c5", "name": "Unionville 5", "kind": "town", "state": null, "source": "atc_communities", "lon": -73.904, "lat": 41.0, "waypoint_order": 5}
+  - name: places_a_resupply_point_whose_layer_is_not_a_town_layer_is_not_a_town
+    model: int_places__point_places
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestPointPlaces::test_a_resupply_point_whose_layer_is_not_a_town_layer_is_not_a_town.
+    given:
+      - input: ref('int_places__waypoints')
+        rows:
+          - {"poi_id": "opentrail_at:r1", "poi_type": "resupply", "source": "opentrail_at", "source_key": "opentrail_at", "source_feature_id": "r1", "name": "Outfitter", "lon": -74.0, "lat": 41.0, "waypoint_order": 0, "club": "nysparks", "_loaded_at": "2026-10-02 00:00:00+00"}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {"source_key": "oprhp_facilities", "file_row": 0, "provider": "NYS OPRHP", "entry": "{\"key\": \"oprhp_facilities\", \"provider\": \"NYS OPRHP\", \"kind\": \"external_arcgis_layer\"}"}
+          - {"source_key": "usfs_rec_sites", "file_row": 1, "provider": "USFS", "entry": "{\"key\": \"usfs_rec_sites\", \"provider\": \"USFS\", \"kind\": \"external_arcgis_layer\"}"}
+          - {"source_key": "communities", "file_row": 2, "provider": "ATC", "entry": "{\"key\": \"communities\", \"provider\": \"ATC\", \"place_kind\": \"town\"}"}
+          - {"source_key": "parking", "file_row": 3, "provider": "ATC", "entry": "{\"key\": \"parking\", \"provider\": \"ATC\"}"}
+          - {"source_key": "dec_parking_areas", "file_row": 4, "provider": "NYS DEC", "entry": "{\"key\": \"dec_parking_areas\", \"provider\": \"NYS DEC\", \"kind\": \"external_arcgis_layer\"}"}
+      - input: ref('stg_registry__organizations')
+        rows:
+          - {"steward_id": "org:nysoprhp", "provider": "NYS OPRHP", "org_state": "NY"}
+      - input: ref('stg_atc__communities')
+        format: sql
+        rows: |
+          select *
+          from (values
+              ('no-community', null)
+          ) as communities (globalid, state)
+    expect:
+      rows: []
+  - name: places_a_source_whose_organization_declares_no_state_gets_none
+    model: int_places__point_places
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestPointPlaces::test_a_source_whose_organization_declares_no_state_gets_none.
+    given:
+      - input: ref('int_places__waypoints')
+        rows:
+          - {"poi_id": "usfs_rec_sites:9", "poi_type": "trailhead", "source": "usfs_rec_sites", "source_key": "usfs_rec_sites", "source_feature_id": "9", "name": "Notch", "lon": -74.0, "lat": 41.0, "waypoint_order": 0, "club": "nysparks", "_loaded_at": "2026-10-02 00:00:00+00"}
+          - {"poi_id": "oprhp_facilities:7", "poi_type": "trailhead", "source": "oprhp_facilities", "source_key": "oprhp_facilities", "source_feature_id": "7", "name": "Reeves Meadow", "lon": -73.9808, "lat": 41.01447, "waypoint_order": 1, "club": "nysparks", "_loaded_at": "2026-10-02 00:00:00+00"}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {"source_key": "oprhp_facilities", "file_row": 0, "provider": "NYS OPRHP", "entry": "{\"key\": \"oprhp_facilities\", \"provider\": \"NYS OPRHP\", \"kind\": \"external_arcgis_layer\"}"}
+          - {"source_key": "usfs_rec_sites", "file_row": 1, "provider": "USFS", "entry": "{\"key\": \"usfs_rec_sites\", \"provider\": \"USFS\", \"kind\": \"external_arcgis_layer\"}"}
+          - {"source_key": "communities", "file_row": 2, "provider": "ATC", "entry": "{\"key\": \"communities\", \"provider\": \"ATC\", \"place_kind\": \"town\"}"}
+          - {"source_key": "parking", "file_row": 3, "provider": "ATC", "entry": "{\"key\": \"parking\", \"provider\": \"ATC\"}"}
+          - {"source_key": "dec_parking_areas", "file_row": 4, "provider": "NYS DEC", "entry": "{\"key\": \"dec_parking_areas\", \"provider\": \"NYS DEC\", \"kind\": \"external_arcgis_layer\"}"}
+      - input: ref('stg_registry__organizations')
+        rows:
+          - {"steward_id": "org:nysoprhp", "provider": "NYS OPRHP", "org_state": "NY"}
+      - input: ref('stg_atc__communities')
+        format: sql
+        rows: |
+          select *
+          from (values
+              ('no-community', null)
+          ) as communities (globalid, state)
+    expect:
+      rows:
+        - {"place_id": "usfs_rec_sites:9", "poi_id": "usfs_rec_sites:9", "name": "Notch", "kind": "trailhead", "state": null, "source": "usfs_rec_sites", "lon": -74.0, "lat": 41.0, "waypoint_order": 0}
+        - {"place_id": "oprhp_facilities:7", "poi_id": "oprhp_facilities:7", "name": "Reeves Meadow", "kind": "trailhead", "state": "NY", "source": "oprhp_facilities", "lon": -73.9808, "lat": 41.01447, "waypoint_order": 1}
+  - name: places_an_unnamed_lot_is_not_searchable_and_does_not_ship
+    model: int_places__point_places
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestPointPlaces::test_an_unnamed_lot_is_not_searchable_and_does_not_ship.
+    given:
+      - input: ref('int_places__waypoints')
+        rows:
+          - {"poi_id": "dec_parking_areas:3", "poi_type": "parking", "source": "dec_parking_areas", "source_key": "dec_parking_areas", "source_feature_id": "3", "name": null, "lon": -74.0, "lat": 41.0, "waypoint_order": 0, "club": "nysparks", "_loaded_at": "2026-10-02 00:00:00+00"}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {"source_key": "oprhp_facilities", "file_row": 0, "provider": "NYS OPRHP", "entry": "{\"key\": \"oprhp_facilities\", \"provider\": \"NYS OPRHP\", \"kind\": \"external_arcgis_layer\"}"}
+          - {"source_key": "usfs_rec_sites", "file_row": 1, "provider": "USFS", "entry": "{\"key\": \"usfs_rec_sites\", \"provider\": \"USFS\", \"kind\": \"external_arcgis_layer\"}"}
+          - {"source_key": "communities", "file_row": 2, "provider": "ATC", "entry": "{\"key\": \"communities\", \"provider\": \"ATC\", \"place_kind\": \"town\"}"}
+          - {"source_key": "parking", "file_row": 3, "provider": "ATC", "entry": "{\"key\": \"parking\", \"provider\": \"ATC\"}"}
+          - {"source_key": "dec_parking_areas", "file_row": 4, "provider": "NYS DEC", "entry": "{\"key\": \"dec_parking_areas\", \"provider\": \"NYS DEC\", \"kind\": \"external_arcgis_layer\"}"}
+      - input: ref('stg_registry__organizations')
+        rows:
+          - {"steward_id": "org:nysoprhp", "provider": "NYS OPRHP", "org_state": "NY"}
+      - input: ref('stg_atc__communities')
+        format: sql
+        rows: |
+          select *
+          from (values
+              ('no-community', null)
+          ) as communities (globalid, state)
+    expect:
+      rows: []
+  - name: places_the_same_waypoint_in_two_artifacts_ships_once
+    model: int_places__point_places
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestPointPlaces::test_the_same_waypoint_in_two_artifacts_ships_once.
+    given:
+      - input: ref('int_places__waypoints')
+        rows:
+          - {"poi_id": "atc_parking:p1", "poi_type": "parking", "source": "atc_parking", "source_key": "parking", "source_feature_id": "p1", "name": "Lot", "lon": -74.0, "lat": 41.0, "waypoint_order": 0, "club": "atc", "_loaded_at": "2026-10-02 00:00:00+00"}
+          - {"poi_id": "atc_parking:p1", "poi_type": "parking", "source": "atc_parking", "source_key": "parking", "source_feature_id": "p1", "name": "Lot", "lon": -74.0, "lat": 41.0, "waypoint_order": 1, "club": "atc", "_loaded_at": "2026-10-02 00:00:00+00"}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {"source_key": "oprhp_facilities", "file_row": 0, "provider": "NYS OPRHP", "entry": "{\"key\": \"oprhp_facilities\", \"provider\": \"NYS OPRHP\", \"kind\": \"external_arcgis_layer\"}"}
+          - {"source_key": "usfs_rec_sites", "file_row": 1, "provider": "USFS", "entry": "{\"key\": \"usfs_rec_sites\", \"provider\": \"USFS\", \"kind\": \"external_arcgis_layer\"}"}
+          - {"source_key": "communities", "file_row": 2, "provider": "ATC", "entry": "{\"key\": \"communities\", \"provider\": \"ATC\", \"place_kind\": \"town\"}"}
+          - {"source_key": "parking", "file_row": 3, "provider": "ATC", "entry": "{\"key\": \"parking\", \"provider\": \"ATC\"}"}
+          - {"source_key": "dec_parking_areas", "file_row": 4, "provider": "NYS DEC", "entry": "{\"key\": \"dec_parking_areas\", \"provider\": \"NYS DEC\", \"kind\": \"external_arcgis_layer\"}"}
+      - input: ref('stg_registry__organizations')
+        rows:
+          - {"steward_id": "org:nysoprhp", "provider": "NYS OPRHP", "org_state": "NY"}
+      - input: ref('stg_atc__communities')
+        format: sql
+        rows: |
+          select *
+          from (values
+              ('no-community', null)
+          ) as communities (globalid, state)
+    expect:
+      rows:
+        - {"place_id": "atc_parking:p1", "poi_id": "atc_parking:p1", "name": "Lot", "kind": "parking", "state": null, "source": "atc_parking", "lon": -74.0, "lat": 41.0, "waypoint_order": 0}
+  - name: places_a_park_carries_the_miles_of_published_line_inside_its_boundary
+    model: int_places__resolved
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestParks::test_a_park_carries_the_miles_of_published_line_inside_its_boundary.
+    given:
+      - input: ref('int_places__park_units')
+        rows:
+          - {"place_id": "oprhp_park_polygons:g1", "name": "Pine State Park", "category": "State Park", "state": "NY", "unit_order": 0, "polygons": 1, "park_wkt": "POLYGON ((-74.0 41.0, -73.9232 41.0, -73.9232 41.05788, -74.0 41.05788, -74.0 41.0))", "club": "nysparks", "source_key": "oprhp_park_polygons", "_loaded_at": "2026-10-02 00:00:00+00"}
+      - input: ref('int_places__point_places')
+        rows: []
+      - input: ref('int_places__lines')
+        rows:
+          - {"trail_line_id": "oprhp_trails:1", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "Pine Trail", "trail_name": "Pine Trail", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-73.9904, 41.02894], [-73.9328, 41.02894]]}"}
+          - {"trail_line_id": "oprhp_trails:2", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "Far Trail", "trail_name": "Far Trail", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-73.808, 41.0], [-73.76960000000001, 41.0]]}"}
+    expect:
+      rows:
+        - {"place_id": "oprhp_park_polygons:g1", "place_order": 1, "kind": "park", "name": "Pine State Park", "poi_id": null, "category": "State Park", "state": "NY", "within_park": null, "lon": "-73.9616", "lat": "41.02894", "bbox": "[-74.0,41.0,-73.9232,41.05788]", "trail_miles": "3.0", "trail_miles_measured": true, "source": "oprhp_park_polygons"}
+  - name: places_a_park_centres_on_its_centroid_and_carries_its_bbox
+    model: int_places__resolved
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestParks::test_a_park_centres_on_its_centroid_and_carries_its_bbox.
+    given:
+      - input: ref('int_places__park_units')
+        rows:
+          - {"place_id": "oprhp_park_polygons:g1", "name": "Square Park", "category": null, "state": "NY", "unit_order": 0, "polygons": 1, "park_wkt": "POLYGON ((-74.0 41.0, -73.9616 41.0, -73.9616 41.02894, -74.0 41.02894, -74.0 41.0))", "club": "nysparks", "source_key": "oprhp_park_polygons", "_loaded_at": "2026-10-02 00:00:00+00"}
+      - input: ref('int_places__point_places')
+        rows: []
+      - input: ref('int_places__lines')
+        rows:
+          - {"trail_line_id": "oprhp_trails:anchor", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "T", "trail_name": "T", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.0, 41.0], [-73.9808, 41.0]]}"}
+    expect:
+      rows:
+        - {"place_id": "oprhp_park_polygons:g1", "place_order": 1, "kind": "park", "name": "Square Park", "poi_id": null, "category": null, "state": "NY", "within_park": null, "lon": "-73.9808", "lat": "41.01447", "bbox": "[-74.0,41.0,-73.9616,41.02894]", "trail_miles": "0.0", "trail_miles_measured": true, "source": "oprhp_park_polygons"}
+  - name: places_a_park_with_no_published_line_reads_zero_not_absent
+    model: int_places__resolved
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestParks::test_a_park_with_no_published_line_reads_zero_not_absent.
+    given:
+      - input: ref('int_places__park_units')
+        rows:
+          - {"place_id": "oprhp_park_polygons:g1", "name": "Golf Course", "category": null, "state": "NY", "unit_order": 0, "polygons": 1, "park_wkt": "POLYGON ((-74.0 41.0, -73.9616 41.0, -73.9616 41.02894, -74.0 41.02894, -74.0 41.0))", "club": "nysparks", "source_key": "oprhp_park_polygons", "_loaded_at": "2026-10-02 00:00:00+00"}
+      - input: ref('int_places__point_places')
+        rows: []
+      - input: ref('int_places__lines')
+        rows:
+          - {"trail_line_id": "oprhp_trails:anchor", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "T", "trail_name": "T", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-73.616, 41.0], [-73.5968, 41.0]]}"}
+    expect:
+      rows:
+        - {"place_id": "oprhp_park_polygons:g1", "place_order": 1, "kind": "park", "name": "Golf Course", "poi_id": null, "category": null, "state": "NY", "within_park": null, "lon": "-73.9808", "lat": "41.01447", "bbox": "[-74.0,41.0,-73.9616,41.02894]", "trail_miles": "0.0", "trail_miles_measured": true, "source": "oprhp_park_polygons"}
+  - name: places_a_trailhead_near_a_line_ships_with_its_waypoint_id_and_the_park_it_sits_in
+    model: int_places__resolved
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestPointPlaces::test_a_trailhead_near_a_line_ships_with_its_waypoint_id_and_the_park_it_sits_in.
+    given:
+      - input: ref('int_places__park_units')
+        rows:
+          - {"place_id": "oprhp_park_polygons:g1", "name": "Pine State Park", "category": null, "state": "NY", "unit_order": 0, "polygons": 1, "park_wkt": "POLYGON ((-74.0 41.0, -73.9232 41.0, -73.9232 41.05788, -74.0 41.05788, -74.0 41.0))", "club": "nysparks", "source_key": "oprhp_park_polygons", "_loaded_at": "2026-10-02 00:00:00+00"}
+      - input: ref('int_places__point_places')
+        rows:
+          - {"place_id": "oprhp_facilities:7", "poi_id": "oprhp_facilities:7", "name": "Reeves Meadow", "kind": "trailhead", "state": "NY", "source": "oprhp_facilities", "lon": -73.9808, "lat": 41.01447, "waypoint_order": 0, "club": "nysparks", "source_key": "oprhp_facilities", "_loaded_at": "2026-10-02 00:00:00+00"}
+      - input: ref('int_places__lines')
+        rows:
+          - {"trail_line_id": "oprhp_trails:1", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "Pine Trail", "trail_name": "Pine Trail", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.0, 41.02894], [-73.9424, 41.02894]]}"}
+    expect:
+      rows:
+        - {"place_id": "oprhp_park_polygons:g1", "place_order": 1, "kind": "park", "name": "Pine State Park", "poi_id": null, "category": null, "state": "NY", "within_park": null, "lon": "-73.9616", "lat": "41.02894", "bbox": "[-74.0,41.0,-73.9232,41.05788]", "trail_miles": "3.0", "trail_miles_measured": true, "source": "oprhp_park_polygons"}
+        - {"place_id": "oprhp_facilities:7", "place_order": 2, "kind": "trailhead", "name": "Reeves Meadow", "poi_id": "oprhp_facilities:7", "category": null, "state": "NY", "within_park": "Pine State Park", "lon": "-73.9808", "lat": "41.01447", "bbox": null, "trail_miles": "3.0", "trail_miles_measured": true, "source": "oprhp_facilities"}
+  - name: places_a_trailhead_with_nothing_published_near_it_is_dropped_and_counted
+    model: int_places__resolved
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestPointPlaces::test_a_trailhead_with_nothing_published_near_it_is_dropped_and_counted.
+    given:
+      - input: ref('int_places__park_units')
+        rows: []
+      - input: ref('int_places__point_places')
+        rows:
+          - {"place_id": "usfs_rec_sites:9", "poi_id": "usfs_rec_sites:9", "name": "Somewhere Far", "kind": "trailhead", "state": null, "source": "usfs_rec_sites", "lon": -73.232, "lat": 41.0, "waypoint_order": 0, "club": "nysparks", "source_key": "usfs_rec_sites", "_loaded_at": "2026-10-02 00:00:00+00"}
+      - input: ref('int_places__lines')
+        rows:
+          - {"trail_line_id": "oprhp_trails:anchor", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "T", "trail_name": "T", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.0, 41.0], [-73.9808, 41.0]]}"}
+    expect:
+      rows: []
+  - name: places_a_trailhead_with_a_short_line_near_it_is_kept_though_it_prints_zero
+    model: int_places__resolved
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestPointPlaces::test_a_trailhead_with_a_short_line_near_it_is_kept_though_it_prints_zero.
+    given:
+      - input: ref('int_places__park_units')
+        rows: []
+      - input: ref('int_places__point_places')
+        rows:
+          - {"place_id": "oprhp_facilities:7", "poi_id": "oprhp_facilities:7", "name": "Stub", "kind": "trailhead", "state": "NY", "source": "oprhp_facilities", "lon": -74.0, "lat": 41.0, "waypoint_order": 0, "club": "nysparks", "source_key": "oprhp_facilities", "_loaded_at": "2026-10-02 00:00:00+00"}
+      - input: ref('int_places__lines')
+        rows:
+          - {"trail_line_id": "oprhp_trails:anchor", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "T", "trail_name": "T", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.0, 41.0], [-73.99904, 41.0]]}"}
+    expect:
+      rows:
+        - {"place_id": "oprhp_facilities:7", "place_order": 1, "kind": "trailhead", "name": "Stub", "poi_id": "oprhp_facilities:7", "category": null, "state": "NY", "within_park": null, "lon": "-74.0", "lat": "41.0", "bbox": null, "trail_miles": "0.0", "trail_miles_measured": true, "source": "oprhp_facilities"}
+  - name: places_a_town_with_nothing_published_near_it_is_kept_reading_zero
+    model: int_places__resolved
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestPointPlaces::test_a_town_with_nothing_published_near_it_is_kept_reading_zero.
+    given:
+      - input: ref('int_places__park_units')
+        rows: []
+      - input: ref('int_places__point_places')
+        rows:
+          - {"place_id": "atc_communities:c1", "poi_id": "atc_communities:c1", "name": "Harriman", "kind": "town", "state": null, "source": "atc_communities", "lon": -73.232, "lat": 41.0, "waypoint_order": 0, "club": "atc", "source_key": "communities", "_loaded_at": "2026-10-02 00:00:00+00"}
+      - input: ref('int_places__lines')
+        rows:
+          - {"trail_line_id": "oprhp_trails:anchor", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "T", "trail_name": "T", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.0, 41.0], [-73.9808, 41.0]]}"}
+    expect:
+      rows:
+        - {"place_id": "atc_communities:c1", "place_order": 1, "kind": "town", "name": "Harriman", "poi_id": "atc_communities:c1", "category": null, "state": null, "within_park": null, "lon": "-73.232", "lat": "41.0", "bbox": null, "trail_miles": "0.0", "trail_miles_measured": true, "source": "atc_communities"}
+  - name: places_a_trailhead_near_only_a_held_back_line_is_dropped
+    model: int_places__resolved
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestLines::test_a_trailhead_near_only_a_held_back_line_is_dropped.
+    given:
+      - input: ref('int_places__park_units')
+        rows: []
+      - input: ref('int_places__point_places')
+        rows:
+          - {"place_id": "oprhp_facilities:7", "poi_id": "oprhp_facilities:7", "name": "Reeves Meadow", "kind": "trailhead", "state": "NY", "source": "oprhp_facilities", "lon": -74.0, "lat": 41.0, "waypoint_order": 0, "club": "nysparks", "source_key": "oprhp_facilities", "_loaded_at": "2026-10-02 00:00:00+00"}
+      - input: ref('int_places__lines')
+        rows:
+          - {"trail_line_id": "oprhp_trails:1", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "T", "trail_name": "T", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-73.424, 41.0], [-73.40480000000001, 41.0]]}"}
+    expect:
+      rows: []
+  - name: places_a_named_trail_over_the_threshold_ships_with_its_length_and_bbox
+    model: int_places__resolved
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestTrails::test_a_named_trail_over_the_threshold_ships_with_its_length_and_bbox.
+    given:
+      - input: ref('int_places__park_units')
+        rows: []
+      - input: ref('int_places__point_places')
+        rows: []
+      - input: ref('int_places__lines')
+        rows:
+          - {"trail_line_id": "oprhp_trails:1", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "Long Path", "trail_name": "Long Path", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.0, 41.0], [-72.848, 41.0]]}"}
+          - {"trail_line_id": "oprhp_trails:2", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "Short Spur", "trail_name": "Short Spur", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.0, 41.01447], [-73.9424, 41.01447]]}"}
+    expect:
+      rows:
+        - {"place_id": "trail:oprhp_trails:Long Path", "place_order": 1, "kind": "trail", "name": "Long Path", "poi_id": null, "category": null, "state": null, "within_park": null, "lon": "-73.424", "lat": "41.0", "bbox": "[-74.0,41.0,-72.848,41.0]", "trail_miles": "59.7", "trail_miles_measured": true, "source": "oprhp_trails"}
+  - name: places_the_centerline_is_one_trail_under_the_route_name_its_source_owns
+    model: int_places__resolved
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestTrails::test_the_centerline_is_one_trail_under_the_route_name_its_source_owns.
+    given:
+      - input: ref('int_places__park_units')
+        rows: []
+      - input: ref('int_places__point_places')
+        rows: []
+      - input: ref('int_places__lines')
+        rows:
+          - {"trail_line_id": "centerline:chain:0", "club": "atc", "source_key": "centerline", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "centerline", "name": "Georgia section", "trail_name": "Appalachian Trail", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.0, 41.0], [-73.424, 41.0]]}"}
+          - {"trail_line_id": "centerline:chain:1", "club": "atc", "source_key": "centerline", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "centerline", "name": "Carolina section", "trail_name": "Appalachian Trail", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.0, 41.01447], [-73.424, 41.01447]]}"}
+    expect:
+      rows:
+        - {"place_id": "trail:centerline:Appalachian Trail", "place_order": 1, "kind": "trail", "name": "Appalachian Trail", "poi_id": null, "category": null, "state": null, "within_park": null, "lon": "-73.712", "lat": "41.00724", "bbox": "[-74.0,41.0,-73.424,41.01447]", "trail_miles": "59.7", "trail_miles_measured": true, "source": "centerline"}
+  - name: places_trail_miles_is_omitted_everywhere_and_the_document_says_so
+    model: int_places__resolved
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestNoLinesAtAll::test_trail_miles_is_omitted_everywhere_and_the_document_says_so.
+    given:
+      - input: ref('int_places__park_units')
+        rows:
+          - {"place_id": "oprhp_park_polygons:g1", "name": "Pine State Park", "category": null, "state": "NY", "unit_order": 0, "polygons": 1, "park_wkt": "POLYGON ((-74.0 41.0, -73.9616 41.0, -73.9616 41.02894, -74.0 41.02894, -74.0 41.0))", "club": "nysparks", "source_key": "oprhp_park_polygons", "_loaded_at": "2026-10-02 00:00:00+00"}
+      - input: ref('int_places__point_places')
+        rows:
+          - {"place_id": "oprhp_facilities:7", "poi_id": "oprhp_facilities:7", "name": "Reeves Meadow", "kind": "trailhead", "state": "NY", "source": "oprhp_facilities", "lon": -73.9808, "lat": 41.01447, "waypoint_order": 0, "club": "nysparks", "source_key": "oprhp_facilities", "_loaded_at": "2026-10-02 00:00:00+00"}
+      - input: ref('int_places__lines')
+        rows: []
+    expect:
+      rows:
+        - {"place_id": "oprhp_park_polygons:g1", "place_order": 1, "kind": "park", "name": "Pine State Park", "poi_id": null, "category": null, "state": "NY", "within_park": null, "lon": "-73.9808", "lat": "41.01447", "bbox": "[-74.0,41.0,-73.9616,41.02894]", "trail_miles": null, "trail_miles_measured": false, "source": "oprhp_park_polygons"}
+        - {"place_id": "oprhp_facilities:7", "place_order": 2, "kind": "trailhead", "name": "Reeves Meadow", "poi_id": "oprhp_facilities:7", "category": null, "state": "NY", "within_park": "Pine State Park", "lon": "-73.9808", "lat": "41.01447", "bbox": null, "trail_miles": null, "trail_miles_measured": false, "source": "oprhp_facilities"}
+  - name: places_rows_sort_by_kind_then_name_for_a_stable_diff
+    model: int_places__resolved
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestTheDocument::test_rows_sort_by_kind_then_name_for_a_stable_diff.
+    given:
+      - input: ref('int_places__park_units')
+        rows:
+          - {"place_id": "oprhp_park_polygons:g1", "name": "Zebra Park", "category": null, "state": "NY", "unit_order": 0, "polygons": 1, "park_wkt": "POLYGON ((-74.0 41.0, -73.9616 41.0, -73.9616 41.02894, -74.0 41.02894, -74.0 41.0))", "club": "nysparks", "source_key": "oprhp_park_polygons", "_loaded_at": "2026-10-02 00:00:00+00"}
+          - {"place_id": "oprhp_park_polygons:g2", "name": "Apple Park", "category": null, "state": "NY", "unit_order": 1, "polygons": 1, "park_wkt": "POLYGON ((-73.904 41.0, -73.8656 41.0, -73.8656 41.02894, -73.904 41.02894, -73.904 41.0))", "club": "nysparks", "source_key": "oprhp_park_polygons", "_loaded_at": "2026-10-02 00:00:00+00"}
+      - input: ref('int_places__point_places')
+        rows:
+          - {"place_id": "oprhp_facilities:7", "poi_id": "oprhp_facilities:7", "name": "Reeves Meadow", "kind": "trailhead", "state": "NY", "source": "oprhp_facilities", "lon": -74.0, "lat": 41.0, "waypoint_order": 0, "club": "nysparks", "source_key": "oprhp_facilities", "_loaded_at": "2026-10-02 00:00:00+00"}
+      - input: ref('int_places__lines')
+        rows:
+          - {"trail_line_id": "oprhp_trails:anchor", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "T", "trail_name": "T", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.0, 41.0], [-73.9808, 41.0]]}"}
+    expect:
+      rows:
+        - {"place_id": "oprhp_park_polygons:g2", "place_order": 1, "kind": "park", "name": "Apple Park", "poi_id": null, "category": null, "state": "NY", "within_park": null, "lon": "-73.8848", "lat": "41.01447", "bbox": "[-73.904,41.0,-73.8656,41.02894]", "trail_miles": "0.0", "trail_miles_measured": true, "source": "oprhp_park_polygons"}
+        - {"place_id": "oprhp_park_polygons:g1", "place_order": 2, "kind": "park", "name": "Zebra Park", "poi_id": null, "category": null, "state": "NY", "within_park": null, "lon": "-73.9808", "lat": "41.01447", "bbox": "[-74.0,41.0,-73.9616,41.02894]", "trail_miles": "0.0", "trail_miles_measured": true, "source": "oprhp_park_polygons"}
+        - {"place_id": "oprhp_facilities:7", "place_order": 3, "kind": "trailhead", "name": "Reeves Meadow", "poi_id": "oprhp_facilities:7", "category": null, "state": "NY", "within_park": null, "lon": "-74.0", "lat": "41.0", "bbox": null, "trail_miles": "1.0", "trail_miles_measured": true, "source": "oprhp_facilities"}
+  - name: places_a_point_s_miles_are_bounded_by_places_trail_radius_miles
+    model: int_places__resolved
+    description: >
+      PL08's radius, the half of
+      tests/test_export_places.py::TestTheDocument::test_the_radius_is_published_beside_the_figures_it_bounds
+      that is a measurement: at 3 miles, a lot 4 miles from the only line is
+      dropped and a town 2 miles from it counts the mile within reach.
+    overrides:
+      vars:
+        places_trail_radius_miles: 3.0
+        trail_lines_network_named_trail_threshold_miles: 50.0
+    given:
+      - input: ref('int_places__park_units')
+        rows: []
+      - input: ref('int_places__point_places')
+        rows:
+          - {"place_id": "oprhp_facilities:7", "poi_id": "oprhp_facilities:7", "name": "Four Miles Off", "kind": "parking", "state": "NY", "source": "oprhp_facilities", "lon": -74.0, "lat": 41.0, "waypoint_order": 0, "club": "nysparks", "source_key": "oprhp_facilities", "_loaded_at": "2026-10-02 00:00:00+00"}
+          - {"place_id": "atc_communities:c1", "poi_id": "atc_communities:c1", "name": "Two Miles Off", "kind": "town", "state": null, "source": "atc_communities", "lon": -73.8848, "lat": 41.0, "waypoint_order": 1, "club": "atc", "source_key": "communities", "_loaded_at": "2026-10-02 00:00:00+00"}
+      - input: ref('int_places__lines')
+        rows:
+          - {"trail_line_id": "oprhp_trails:1", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "T", "trail_name": "T", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-73.9232, 41.0], [-73.904, 41.0]]}"}
+    expect:
+      rows:
+        - {"place_id": "atc_communities:c1", "place_order": 1, "kind": "town", "name": "Two Miles Off", "poi_id": "atc_communities:c1", "category": null, "state": null, "within_park": null, "lon": "-73.8848", "lat": "41.0", "bbox": null, "trail_miles": "1.0", "trail_miles_measured": true, "source": "atc_communities"}

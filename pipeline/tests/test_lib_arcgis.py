@@ -400,3 +400,21 @@ def test_a_server_that_ignores_the_offset_is_refused_rather_than_read_forever(re
     requests_mock.get(LAYER_URL + "/query", json=page)
     with pytest.raises(RuntimeError, match="ignores resultOffset"):
         list(arcgis.iter_layer_pages(LAYER_URL))
+
+
+def test_every_page_and_the_count_name_the_pipeline_to_the_server(requests_mock):
+    """fetch_external_layers.py calls this with no session, so before
+    lib/http_retry.py's `named()` every page and the count went out as
+    `python-requests/<version>`."""
+    from lib.user_agent import USER_AGENT
+
+    query_url = LAYER_URL + "/query"
+    page = {"features": [{"type": "Feature", "properties": {"id": 1}, "geometry": None}]}
+    requests_mock.get(query_url, [{"json": page}, {"json": {"features": []}}, {"json": {"count": 1}}])
+    requests_mock.get(LAYER_URL, json={"editingInfo": {"dataLastEditDate": 1}})
+
+    fetch_layer_geojson(LAYER_URL)
+    get_layer_edit_date(LAYER_URL)
+
+    sent = [request.headers.get("User-Agent") for request in requests_mock.request_history]
+    assert sent == [USER_AGENT] * 4

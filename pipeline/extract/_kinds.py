@@ -1346,6 +1346,18 @@ class ReviewedDir(Resource):
     """
 
     path: str = ""
+    # As ReviewedFile's `verbatim`, for a folder a gate checks field by field:
+    # each file lands whole in `row_json`, as the JSON its reviewer wrote with
+    # `_README` left out, and dbt reads its fields, so a field's JSON type
+    # reaches the gate. A file that is not valid JSON lands with `row_json`
+    # null and the parser's complaint in `_parse_error`, where
+    # export_challenges.load_challenge_files() hands its resolver None and
+    # prints the complaint: one broken file is dropped and named, never a
+    # failed extract that holds back every other resource on its lane.
+    verbatim: bool = False
+
+    def column_hints(self) -> dict:
+        return {"row_json": {"data_type": "text"}, "_parse_error": {"data_type": "text"}} if self.verbatim else {}
 
     @property
     def files(self) -> list[Path]:
@@ -1364,11 +1376,30 @@ class ReviewedDir(Resource):
         files = self.files
         proofs[self.table] = len(files)
         for file in files:
+            if self.verbatim:
+                yield {**self._verbatim_row(file), "_path": str(file.relative_to(PIPELINE_DIR))}
+                continue
             document = json.loads(file.read_text())
             yield {
                 **{name: value for name, value in document.items() if name != "_README"},
                 "_path": str(file.relative_to(PIPELINE_DIR)),
             }
+
+    @staticmethod
+    def _verbatim_row(file: Path) -> dict:
+        """The file as json.loads reads it, `_README` aside, as JSON text; or null and why, for a file that does not parse.
+
+        Parsed here and written again, rather than landed as its bytes, so a
+        repeated key resolves as json.loads resolves it (the last wins), which
+        is what today's resolver reads. UTF-8, as load_challenge_files() reads.
+        """
+        try:
+            document = json.loads(file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as error:
+            return {"row_json": None, "_parse_error": str(error)}
+        if isinstance(document, dict):
+            document = {name: value for name, value in document.items() if name != "_README"}
+        return {"row_json": json.dumps(document, ensure_ascii=False), "_parse_error": None}
 
 
 def reviewed_dir(path: str, **overrides) -> ReviewedDir:

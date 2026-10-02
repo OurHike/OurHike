@@ -18,9 +18,12 @@ the file publish.py uploads, so the two are held together here:
   the name cannot hide a test that agrees;
 - the fixture DEM make_dbt_fixtures.py writes reads the way a 3DEP cell
   reads, and gives the fixture profile both kinds of gap;
-- step_dem_sampling writes the sampler's own answer at every sample point,
-  in the walk's order, a gap as NULL and never as NaN, and refuses what it
-  cannot write honestly.
+- step_dem_sampling writes the sampler's own answer at every point of
+  int_elevation__dem_points, in its ask_order, a gap as NULL and never as
+  NaN, and refuses what it cannot write honestly.
+
+The network half (the junction graph's edges) is held by
+tests/test_dbt_elevation_network_parity.py.
 
 parity.py's elevation family compares the two whole files in CI's dbt job.
 """
@@ -256,18 +259,26 @@ def test_the_fixture_refuses_to_overwrite_a_real_dem_index(tmp_path):
 STEP_POINTS = [("AT", 0, -74.0, 41.0), ("AT", 1, -74.0, 41.0029), ("AT", 2, -73.99, 41.0145), ("AT", 3, -73.99, 41.01)]
 
 
-def _warehouse_with_points(path: Path, points: list[tuple[str, int, float, float]]) -> Path:
+def _warehouse_with_points(path: Path, points: list[tuple[str, int, float, float]], ask_order: list[int] | None = None) -> Path:
+    """int_elevation__dem_points as dbt builds it, the points given in this order and asked in `ask_order` (theirs)."""
+    ask_order = list(range(len(points))) if ask_order is None else ask_order
     with duckdb.connect(str(path)) as warehouse:
         warehouse.execute("create schema intermediate")
         warehouse.execute(
-            "create table intermediate.int_elevation__sample_points (line_id varchar, sample_index integer, lon double, lat double)"
+            "create table intermediate.int_elevation__dem_points"
+            " (line_id varchar, sample_index integer, lon double, lat double, ask_order bigint)"
         )
-        warehouse.executemany("insert into intermediate.int_elevation__sample_points values (?, ?, ?, ?)", points)
+        warehouse.executemany(
+            "insert into intermediate.int_elevation__dem_points values (?, ?, ?, ?, ?)",
+            [(*point, order) for point, order in zip(points, ask_order)],
+        )
     return path
 
 
 def test_step_dem_sampling_writes_the_samplers_own_answer_at_every_point(tmp_path, fixtures):
-    warehouse = _warehouse_with_points(tmp_path / "warehouse.duckdb", list(reversed(STEP_POINTS)))
+    warehouse = _warehouse_with_points(
+        tmp_path / "warehouse.duckdb", list(reversed(STEP_POINTS)), ask_order=list(reversed(range(len(STEP_POINTS))))
+    )
     index = tmp_path / "tile_index.json"
     index.write_text((fixtures / make_dbt_fixtures.ELEVATION_FIXTURE_INDEX).read_text())
 
@@ -299,12 +310,15 @@ def test_step_dem_sampling_writes_the_samplers_own_answer_at_every_point(tmp_pat
     assert (types["_loaded_at"], types["elevation_m"]) == ("TIMESTAMP WITH TIME ZONE", "DOUBLE")
 
 
-def test_step_dem_sampling_asks_in_the_walks_order_the_at_first(tmp_path, fixtures, monkeypatch):
-    """The cache answers a second point within 0.11 m of a first with the first's pixel, so the order is build_profile's:
-    the A.T.'s walk, before any other line, as export_elevation.py runs before the network exporters today. 'A1' sorts
-    before 'AT', and asks after it."""
+def test_step_dem_sampling_asks_in_int_elevation__dem_points_ask_order(tmp_path, fixtures, monkeypatch):
+    """The cache answers a second point within 0.11 m of a first with the first's pixel, so the step asks in the order
+    int_elevation__dem_points sets (its unit test holds that the A.T.'s walk comes first and the edges follow by
+    edge_index), not in the order the rows come back or their ids sort: 'A1' sorts before 'AT', and asks after it."""
     other_line = [("A1", 0, -73.995, 41.005), ("A1", 1, -73.995, 41.0051)]
-    warehouse = _warehouse_with_points(tmp_path / "warehouse.duckdb", list(reversed(STEP_POINTS + other_line)))
+    points = STEP_POINTS + other_line
+    warehouse = _warehouse_with_points(
+        tmp_path / "warehouse.duckdb", list(reversed(points)), ask_order=list(reversed(range(len(points))))
+    )
     asked = []
 
     def sample_many(self, points):
@@ -319,7 +333,7 @@ def test_step_dem_sampling_asks_in_the_walks_order_the_at_first(tmp_path, fixtur
 def test_step_dem_sampling_refuses_a_warehouse_without_its_input(tmp_path, fixtures):
     warehouse = tmp_path / "warehouse.duckdb"
     duckdb.connect(str(warehouse)).close()
-    with pytest.raises(SystemExit, match="int_elevation__sample_points is not in the warehouse"):
+    with pytest.raises(SystemExit, match="int_elevation__dem_points is not in the warehouse"):
         step_dem_sampling.main(
             ["--warehouse", str(warehouse), "--index", str(fixtures / make_dbt_fixtures.ELEVATION_FIXTURE_INDEX)]
         )

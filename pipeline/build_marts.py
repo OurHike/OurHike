@@ -110,6 +110,15 @@ STEPS: list[Step] = [
         command=("step_weather_squares.py", "--warehouse", "{warehouse}"),
         fixture_args=("--squares", "{raw_dir}/weather/squares.json"),
     ),
+    # SH03, SH06: each Hike Finder hike's route formed from its description,
+    # or its published track re-walked, over the junction graph. Last of the
+    # steps, because it reads the graph's edges and their climb, which the
+    # graph's own step and the network elevation will write ahead of it.
+    Step(
+        name="step_form_route",
+        table="formed_routes",
+        command=("step_form_route.py", "--warehouse", "{warehouse}"),
+    ),
 ]
 
 
@@ -129,9 +138,18 @@ class Run:
     cwd: Path
 
 
-def plan(steps: list[Step], *, dbt: str, python: str, paths: Paths, fixtures: bool, threads: int | None = None) -> list[Run]:
+def plan(
+    steps: list[Step],
+    *,
+    dbt: str,
+    python: str,
+    paths: Paths,
+    fixtures: bool,
+    threads: int | None = None,
+    profiles_dir: str = ".",
+) -> list[Run]:
     """Every command of the build, in order, for these steps."""
-    common = ("--profiles-dir", ".", *(("--threads", str(threads)) if threads else ()))
+    common = ("--profiles-dir", profiles_dir, *(("--threads", str(threads)) if threads else ()))
     fields = {"warehouse": str(paths.warehouse), "raw_dir": str(paths.raw_dir)}
     runs = [Run(SEED, (dbt, "seed", *common), DBT_DIR)]
     stage_a_exclude = ["package:dbt_project_evaluator", "path:models/publish"]
@@ -205,6 +223,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--processed-dir", type=Path, help="default: OURHIKE_PROCESSED_DIR, else data/processed/dbt")
     parser.add_argument("--raw-dir", type=Path, default=PIPELINE_DIR / "data" / "raw", help="the fixtures' directory")
     parser.add_argument("--threads", type=int, help="passed to every dbt seed and build")
+    parser.add_argument(
+        "--profiles-dir",
+        type=Path,
+        help="default: pipeline/dbt, whose profiles.yml CI uses; another one can cap DuckDB's memory on a shared machine",
+    )
     parser.add_argument("--dry-run", action="store_true", help="print the commands and run none")
     args = parser.parse_args(argv)
 
@@ -213,7 +236,15 @@ def main(argv: list[str] | None = None) -> int:
         processed_dir=_resolved(args.processed_dir, "OURHIKE_PROCESSED_DIR", PIPELINE_DIR / "data" / "processed" / "dbt"),
         raw_dir=args.raw_dir.resolve(),
     )
-    runs = plan(STEPS, dbt=args.dbt, python=args.python, paths=paths, fixtures=args.fixtures, threads=args.threads)
+    runs = plan(
+        STEPS,
+        dbt=args.dbt,
+        python=args.python,
+        paths=paths,
+        fixtures=args.fixtures,
+        threads=args.threads,
+        profiles_dir=str(args.profiles_dir.resolve()) if args.profiles_dir else ".",
+    )
     files = {"OURHIKE_WAREHOUSE": str(paths.warehouse), "OURHIKE_PROCESSED_DIR": str(paths.processed_dir)}
     env = {**os.environ, **files}
     print("-- build_marts: " + " ".join(f"{name}={value}" for name, value in files.items()), flush=True)

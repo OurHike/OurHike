@@ -287,6 +287,10 @@ vars:
   trail_lines_spur_junction_max_m: 100.0
   trail_lines_spur_on_trail_m: 25.0
   trail_lines_spur_destination_max_m: 150.0
+  # export_spurs.DESTINATION_POI_TYPES: the POI types a spur may lead to,
+  # argued there and in features/SPUR_TRAILS.md (a privy is not where a
+  # trail goes).
+  trail_lines_spur_destination_poi_types: [shelter, water, campsite, resupply, viewpoint]
   # METERS_PER_DEGREE, for lib/spurs.py's equirectangular distance.
   trail_lines_metres_per_degree: 111320.0
   # lib/club_sections.py's club sections (int_trail_lines__club_stretches),
@@ -312,6 +316,124 @@ vars:
   elevation_sample_interval_m: 25.0
   # METERS_PER_FOOT, the international foot: a DEM metre over this is a foot.
   elevation_metres_per_foot: 0.3048
+  # The places family (pl), read by int_places__resolved and the pub_places
+  # writer, and held to export_places.py's PLACE_TRAIL_RADIUS_MILES by
+  # tests/test_dbt_places_parity.py until stage 5 of #1793 deletes the
+  # Python. @unvalidated, as the Python says: five miles is a round number
+  # chosen so a Community at the foot of a ridge counts the trail on the
+  # ridge, and what would settle it is the median distance from a published
+  # trailhead or Community to its nearest published line, measurable from
+  # the same two tables int_places__resolved joins. places.json prints it as
+  # `trailRadiusMiles`, so a screen says what was measured rather than
+  # "nearby". The long-trail threshold is TL12's,
+  # trail_lines_network_named_trail_threshold_miles above.
+  places_trail_radius_miles: 5.0
+
+  # The suggested_hikes family (sh), read by the int_suggested_hikes__ models
+  # and the pub_suggested_hikes and pub_highlights writers, and held to the
+  # Python by tests/test_dbt_suggested_hikes_parity.py until stage 5 of #1793
+  # — Rebuild the data platform as dlt → dbt: seven contracted marts, a
+  # monthly refresh, published docs, and lighter phone downloads — deletes
+  # it. Each is export_suggested_hikes.py's, lib/hike_route_builder.py's,
+  # lib/trail_graph_route.py's or lib/highlights.py's constant under its own
+  # name, and its evidence is beside it there: every grading band is
+  # @unvalidated or calibrated against the 113 published tracks, as its own
+  # comment says, and the track tolerance is @unvalidated.
+  suggested_hikes_source_key: nynjtc_hike_finder
+  suggested_hikes_author_kind: club
+  suggested_hikes_content_licence: "By permission of the New York-New Jersey Trail Conference"
+  suggested_hikes_photo_licence: "By permission of the New York-New Jersey Trail Conference"
+  suggested_hikes_photo_prefix: photos
+  suggested_hikes_photo_extension: jpg
+  suggested_hikes_same_tread_note: "measured on the pipeline's copy of the trail lines without the phone's same-tread swap (trailGraph.ts holdDesignation), so a leg two organizations both draw can differ by up to 5% of its length"
+  suggested_hikes_track_reproduction_tolerance: 0.10
+  suggested_hikes_length_good: 0.20
+  suggested_hikes_length_fair: 0.40
+  suggested_hikes_retrace_min: 0.03
+  suggested_hikes_retrace_good: 0.30
+  suggested_hikes_retrace_fair: 0.60
+  suggested_hikes_trails_good: 0.9
+  suggested_hikes_trails_fair: 0.34
+  suggested_hikes_start_good_off_m: 150.0
+  suggested_hikes_closed_route_types:
+    - circuit
+    - lollipop
+    - out and back
+  highlights_source: reference/highlights.json
+  highlights_basis: named
+  highlights_cited_by: OurHike
+  # lib/elevation_gain.py's DEFAULT_THRESHOLD_M, the dead band a climb must
+  # reverse by before it is banked (macros/dead_band_gain.sql): six times
+  # NOISE_FLOOR_M, the DEM's 0.5 m sample-to-sample error that the A.T.'s
+  # 17% raw over-count implies, and checked against three published A.T.
+  # sections by check_elevation_gain.py. Unchecked on the network's ground,
+  # which is why both network manifests say `estimate: true`.
+  elevation_gain_threshold_m: 3.0
+
+  # The challenges family (ch): lib/challenges.py's and export_challenges.py's
+  # constants, read by the int_challenges__ models and held to the Python's
+  # own by tests/test_dbt_challenges_parity.py until stage 5 of #1793 deletes
+  # the Python. Lists keep the Python's order, because a refusal message
+  # prints them in it.
+  challenges_match_kinds:
+    - place
+    - places_all
+    - poi_type
+    - elevation_min_ft
+    - section_walked
+    - workday
+    - self_report
+  challenges_reward_kinds:
+    - patch
+    - postcard
+    - sticker
+    - drawing
+  challenges_statuses:
+    - draft
+    - published
+  # DEFAULT_RADIUS_M, the tag radius in metres from the POI when a match
+  # gives none. @unvalidated: the handoff's examples (150 m for a named
+  # place, 60 m for "any shelter"), not a measurement. For scale, measured
+  # 2026-09-30 against release 2026-09-24-2: the median ATC shelter sits 63 m
+  # from the centerline and the 75th percentile 140 m. What would settle
+  # them is a phone that tags by distance, and tag prompts from real tracks
+  # counting misses (too small) against side-trail junctions asked (too
+  # large). Today only the radius check reads them; the phone tags by walked
+  # miles (lib/challenges.py's DEFAULT_RADIUS_M says so).
+  challenges_default_radius_m_place: 150
+  challenges_default_radius_m_places_all: 150
+  challenges_default_radius_m_poi_type: 60
+  # MIN_RADIUS_M and MAX_RADIUS_M. Reasoned in the Python: below 10 m a
+  # phone's fix error would decide the answer, above 2 km a place is a region.
+  challenges_min_radius_m: 10
+  challenges_max_radius_m: 2000
+  # DEFAULT_MIN_FRACTION, the share of a walked section that counts as walking
+  # it. @unvalidated: the handoff's example value; the walked share recorded
+  # on real tracks of hikers who did walk a section would settle it.
+  challenges_default_min_fraction: 0.9
+  # ID_MAX_CHARS (the backend's, backend/app/core/trail_challenge.py) and
+  # _ID's pattern, as the Python spells it.
+  challenges_id_max_chars: 120
+  challenges_id_pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+  # export_challenges.py's _DOMAIN, for a publishers.json row's `domain`.
+  challenges_domain_pattern: "^[a-z0-9-]+(?:\\.[a-z0-9-]+)+$"
+  # lib/poi_schema.py's POI_TYPES: a `poi_type` match must name one that at
+  # least one published POI carries.
+  challenges_poi_types:
+    - shelter
+    - campsite
+    - water
+    - resupply
+    - viewpoint
+    - parking
+    - privy
+    - trailhead
+  # The day mystery titles are sealed against (CH07): a title ships as
+  # sealed_title through its reveal_on, and in the clear from the next day.
+  # Unset, it is the build's UTC date, as export_challenges.main() defaults
+  # `today`; a run that must reproduce a file sets it, `--vars
+  # '{challenges_build_date: 2027-07-20}'`, and the unit tests set it.
+  challenges_build_date: null
 
   dbt_project_evaluator:
     # The mart names the maintainer chose carry no dim_/fct_ prefix

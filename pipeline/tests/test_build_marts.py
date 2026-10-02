@@ -25,6 +25,9 @@ DBT_DIR = PIPELINE_DIR / "dbt"
 REPO_DIR = PIPELINE_DIR.parent
 PATHS = Paths(warehouse=Path("/w/warehouse.duckdb"), processed_dir=Path("/w/processed"), raw_dir=Path("/w/raw"))
 DEM_SAMPLING = STEPS[0]
+# Every table STEPS writes, for the tests that run main() over the real STEPS:
+# its manifest check refuses a step whose table no source declares.
+STEP_TABLES = tuple(step.table for step in STEPS)
 # A second step, standing in for tl-net's step_node_lines (pipeline/ELT.md,
 # "Python steps, outside dbt"), which writes derived.graph_pieces.
 SECOND = Step(name="step_second", table="graph_pieces", command=("step_second.py", "--warehouse", "{warehouse}"))
@@ -223,7 +226,7 @@ def _main(monkeypatch, tmp_path, manifest: dict, codes: dict[int, int] | None = 
 
 
 def test_main_runs_the_plan_in_order_with_one_warehouse_for_dbt_and_the_steps(monkeypatch, tmp_path):
-    code, recorder = _main(monkeypatch, tmp_path, _manifest(*(step.table for step in STEPS)))
+    code, recorder = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES))
 
     tmp_path = tmp_path.resolve()
     paths = Paths(tmp_path / "warehouse.duckdb", tmp_path / "processed", tmp_path / "raw")
@@ -238,14 +241,14 @@ def test_main_runs_the_plan_in_order_with_one_warehouse_for_dbt_and_the_steps(mo
 
 
 def test_main_stops_at_the_first_command_that_fails_and_answers_with_its_exit_code(monkeypatch, tmp_path):
-    code, recorder = _main(monkeypatch, tmp_path, _manifest(*(step.table for step in STEPS)), codes={2: 2})
+    code, recorder = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), codes={2: 2})
 
     assert code == 2
     assert [argv[:2] for argv, _, _ in recorder.calls] == [("dbt", "seed"), ("dbt", "build")]
 
 
 def test_main_refuses_after_the_seeds_when_a_derived_source_has_no_step(monkeypatch, tmp_path, capsys):
-    code, recorder = _main(monkeypatch, tmp_path, _manifest("dem_samples", "graph_pieces"))
+    code, recorder = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES, "graph_pieces"))
 
     assert code == 1
     assert [argv[:2] for argv, _, _ in recorder.calls] == [("dbt", "seed")]

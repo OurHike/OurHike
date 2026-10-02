@@ -24,7 +24,18 @@ seen a value in (Reasoned).
 
 THE REVIEWED FILES RUN AS THEY ARE. Their upstream is a file in git under
 pipeline/reference/, so CI reads the real thing: the podcast episodes, the
-POI identity ledger, ATC's reviewed Trail Updates and the rest.
+POI identity ledger, ATC's reviewed Trail Updates and the rest, and each
+club's folder of challenge files (ReviewedDir), one row per file.
+
+NYNJTC'S HIKE FINDER EXPORT IS ANSWERED TOO, so the suggested_hikes family's
+models build in CI (stage 3 of #1793 — Rebuild the data platform as dlt → dbt:
+seven contracted marts, a monthly refresh, published docs, and lighter phone
+downloads): make_dbt_fixtures.py's
+suggested_hikes_fixtures() writes a listing, the pages and their GPX under
+hikefinder/, served at `hikes.php`, `hike.php?id=<id>` and
+`download_gpx.php?id=<id>`, so PublishedHikes' own listing guard, parse and
+GPX check run. The host's 10-second crawl delay is the live host's request,
+not the fixture's, so it is lifted while fixture mode runs.
 
 THE HOURLY LANE'S OTHER UPSTREAMS ARE ANSWERED TOO, so the closures and
 warnings marts build in CI (#1793, stage 3). make_dbt_fixtures.py writes one
@@ -88,6 +99,8 @@ from extract._kinds import (
     ConditionsQuery,
     NwsAlerts,
     OpentrailFeed,
+    PublishedHikes,
+    ReviewedDir,
     ReviewedFile,
     SocrataDataset,
     WordpressPosts,
@@ -118,12 +131,35 @@ def text_answers(document: dict) -> dict[str, tuple[str, str]]:
     return {url: (answer["content_type"], answer["body"]) for url, answer in document["answers"].items()}
 
 
+# The Hike Finder's answers (make_dbt_fixtures.py's suggested_hikes_fixtures()):
+# the listing, `hike-<id>.html` per page and `track-<id>.gpx` per GPX.
+HIKEFINDER_DIR = "hikefinder"
+
+
 def fixture_file(raw_dir: Path, key: str) -> Path | None:
     """The GeoJSON file make_dbt_fixtures.py wrote for a key, or None."""
     for candidate in (raw_dir / FILE_NAMES.get(key, f"{key}.geojson"), raw_dir / "external" / f"{key}.geojson"):
         if candidate.exists():
             return candidate
     return None
+
+
+HIKEFINDER_HTML = "text/html; charset=UTF-8"
+HIKEFINDER_GPX = "application/gpx+xml"
+
+
+def hikefinder_answers(raw_dir: Path, base: str) -> dict[str, tuple[str, str]] | None:
+    """{URL: (content type, body)} for the Hike Finder export at `base`, from make_dbt_fixtures.py's files, or None
+    when it wrote none: the listing and each page as HTML, each track as GPX, the shape FixtureAdapter's `pages` holds."""
+    folder = raw_dir / HIKEFINDER_DIR
+    if not (folder / "hikes.html").exists():
+        return None
+    answers = {base + "hikes.php": (HIKEFINDER_HTML, (folder / "hikes.html").read_text())}
+    for page in sorted(folder.glob("hike-*.html")):
+        answers[f"{base}hike.php?id={page.stem.removeprefix('hike-')}"] = (HIKEFINDER_HTML, page.read_text())
+    for track in sorted(folder.glob("track-*.gpx")):
+        answers[f"{base}download_gpx.php?id={track.stem.removeprefix('track-')}"] = (HIKEFINDER_GPX, track.read_text())
+    return answers
 
 
 def conditions_fixture(raw_dir: Path, name: str) -> dict | None:
@@ -276,7 +312,8 @@ def _response(request, body, status: int = 200, headers: dict | None = None) -> 
 
 
 def _text_response(request, content_type: str, body: str) -> requests.Response:
-    """A page as a site serves it: its own bytes and content type, not JSON."""
+    """A page or a file as a site serves it, its own bytes and content type, not JSON: ATC's pages, and the Hike
+    Finder's HTML and GPX."""
     response = _response(request, None, headers={"Content-Type": content_type})
     response._content = body.encode("utf-8")
     return response
@@ -300,7 +337,9 @@ class FixtureAdapter(requests.adapters.BaseAdapter):
         self.wordpress = wordpress or {}
         # NWS's /alerts/active body.
         self.nws = nws
-        # A website's pages, by their exact URL (text_answers()).
+        # Text served as a site serves it, by its exact URL: (content type, body).
+        # ATC's Trail Updates pages (text_answers()) and the Hike Finder export's
+        # listing, pages and GPX tracks (hikefinder_answers()).
         self.pages = pages or {}
 
     def send(self, request, **kwargs):
@@ -379,8 +418,8 @@ def fixture_resources(raw_dir: Path) -> tuple[list, FixtureAdapter]:
     arcgis, socrata, feeds, wordpress, pages, chosen = {}, {}, {}, {}, {}, []
     nws, postgres = conditions_fixture(raw_dir, NWS_FIXTURE), conditions_fixture(raw_dir, POSTGRES_FIXTURE)
     for resource in all_resources(discover() + discover_shared()):
-        if isinstance(resource, ReviewedFile):
-            chosen.append(resource)  # a committed file is its own fixture
+        if isinstance(resource, ReviewedFile | ReviewedDir):
+            chosen.append(resource)  # a committed file, or a folder of them, is its own fixture
             continue
         if isinstance(resource, AtcTrailUpdatePages):
             document = conditions_fixture(raw_dir, TEXT_FIXTURES[resource.key])
@@ -395,6 +434,12 @@ def fixture_resources(raw_dir: Path) -> tuple[list, FixtureAdapter]:
         if isinstance(resource, ConditionsQuery):
             # Served by FixtureConnection in build(); an artifact the file does not answer stays out.
             if postgres is not None and resource.key in postgres:
+                chosen.append(resource)
+            continue
+        if isinstance(resource, PublishedHikes):
+            answers = hikefinder_answers(raw_dir, registry_entry(resource.key)["url"].rstrip("/") + "/")
+            if answers is not None:
+                pages.update(answers)
                 chosen.append(resource)
             continue
         if isinstance(resource, WordpressPosts | WordpressTerms):
@@ -453,10 +498,12 @@ def build(raw_dir: Path, warehouse: Path, store: Path) -> dict[str, int]:
     # URL, so fixture mode names one that no real driver could reach.
     real_psycopg, url_was = _kinds.psycopg, os.environ.get(export_conditions.URL_ENV_VAR)
     postgres = conditions_fixture(raw_dir, POSTGRES_FIXTURE)
-    # No host is asked anything here, so ATC's Crawl-delay has nobody to be polite to.
-    crawl_delay = _kinds.ATC_CRAWL_DELAY_SECONDS
+    # No host is asked anything here, so neither host's crawl delay, ATC's
+    # Crawl-delay nor the Hike Finder's 10 s a request, has anybody to be
+    # polite to. Both are the live hosts' asks, restored below.
+    crawl_delay, real_throttle = _kinds.ATC_CRAWL_DELAY_SECONDS, _kinds.HIKEFINDER_THROTTLE_SECONDS
+    _kinds.ATC_CRAWL_DELAY_SECONDS, _kinds.HIKEFINDER_THROTTLE_SECONDS = 0, 0
     _kinds.session = fixture_session
-    _kinds.ATC_CRAWL_DELAY_SECONDS = 0
     if postgres is not None:
         _kinds.psycopg = FixturePsycopg(postgres)
         os.environ[export_conditions.URL_ENV_VAR] = "postgresql://fixture-mode.invalid/none"
@@ -468,6 +515,7 @@ def build(raw_dir: Path, warehouse: Path, store: Path) -> dict[str, int]:
         _kinds.session = real_session
         _kinds.ATC_CRAWL_DELAY_SECONDS = crawl_delay
         _kinds.psycopg = real_psycopg
+        _kinds.HIKEFINDER_THROTTLE_SECONDS = real_throttle
         if postgres is not None:
             if url_was is None:
                 os.environ.pop(export_conditions.URL_ENV_VAR, None)

@@ -5,7 +5,7 @@
 -- that has none rather than written as null (as_published's absent-means-
 -- unknown rule): json_merge_patch drops a member a patch sets to null.
 with podcasts as (
-    select * from {{ ref('podcasts') }}
+    select * from {{ ref('podcasts', v=1) }}
 ),
 
 episodes as (

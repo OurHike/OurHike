@@ -164,7 +164,7 @@ judged as (
                     false
                 )
                 then
-                    'category ' || {{ python_repr('category') }}
+                    'category ' || {{ python_text_repr('category') }}
                     || ' is not one this build knows'
             when state_count = 0 then 'no states on the page'
             when span_count != 1
@@ -183,10 +183,11 @@ judged as (
                     and {{ var('atc_trail_mile_max') }}
                 )
                 then
-                    {{ python_repr('reference_raw') }}
+                    {{ python_text_repr('reference_raw') }}
                     || ' is outside the trail''s own extent'
             when reference_end < reference_start
-                then {{ python_repr('reference_raw') }} || ' runs backwards'
+                then
+                    {{ python_text_repr('reference_raw') }} || ' runs backwards'
         end as refusal,
         -- A point's end is its start (auto_row()).
         case

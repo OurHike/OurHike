@@ -1705,6 +1705,215 @@ def closures_and_warnings_fixtures() -> dict[str, str]:
     }
 
 
+# --- trail_lines, the network half (#1793, stage 3) --------------------------
+#
+# The network's dbt models (pipeline/dbt/models/intermediate/trail_lines/
+# int_trail_lines__network_*) and today's export_nearby_trails.py both read
+# these layers, and parity.py compares the two files they write. That needs
+# fixtures today's exporter accepts: on the files above it stops at its first
+# registry check, because usfs_trails carries no `terra_motorized` and no park
+# polygon is named for the drives' boundary.
+
+#: The two boundaries sources.json's nyc_park_drives entry names in
+#: `boundary_names`. Central Park's box holds the drives fixture's EAST DR line
+#: (`_line(0)`), so that row is kept; Prospect Park's sits away from WEST DR
+#: (`_line(1)`), so that row is dropped as outside the boundary. Boxes, not
+#: NYC: the same synthetic-geometry convention as `_polygon`.
+NETWORK_PARK_BOUNDARIES = {
+    "Central Park": [[-74.001, 40.999], [-73.999, 40.999], [-73.999, 41.006], [-74.001, 41.006], [-74.001, 40.999]],
+    "Prospect Park": [[-73.95, 40.95], [-73.94, 40.95], [-73.94, 40.96], [-73.95, 40.96], [-73.95, 40.95]],
+}
+
+
+def _north(lon: float, lat: float, degrees: float) -> dict:
+    """A due-north LineString `degrees` of latitude long (0.3 is about 20.7 mi)."""
+    return {"type": "LineString", "coordinates": [[lon, lat], [lon, round(lat + degrees, 6)]]}
+
+
+def _network_rows() -> dict[str, list[dict]]:
+    """Rows added to two network layers so parity reaches the rules the builders
+    above never exercise, each named for the rule it is there for.
+
+    nynjtc_long_path gains three ~20.7 mi sections chained end to end, about 62
+    mi of one Long Path: the overview's through-route rule (TL12, 50 mi). OPRHP
+    gains the statuses and names its filters decide on: a `Closed` trail long
+    enough to clear the overview's 1-pixel floor (the safety row: it ships
+    closed, closure_kind long_term), a `Proposed` one (dropped), a `Foot` 'N'
+    one (dropped), its own copies of the two owned routes (suppressed, TL11),
+    and a trail the A.T. runs along under `Alt_Name` (kept)."""
+    oprhp = {
+        "Unit": "Palisades",
+        "Surface": "Native",
+        "Public_": "Y",
+        "Bike": "N",
+        "Horse": "N",
+        "XC": "N",
+        "SS": "N",
+        "Snowmb": "N",
+        "Map_Blaze": "Red",
+        "Miles": 3.4,
+    }
+    rows = [
+        (
+            "{00000000-0000-4000-8000-000000000411}",
+            "Fixture Closed Ridge Trail",
+            None,
+            "Red",
+            "Closed",
+            "Y",
+            _north(-74.2, 41.2, 0.05),
+        ),
+        (
+            "{00000000-0000-4000-8000-000000000412}",
+            "Fixture Proposed Connector",
+            None,
+            "Red",
+            "Proposed",
+            "Y",
+            _north(-74.21, 41.2, 0.01),
+        ),
+        ("{00000000-0000-4000-8000-000000000413}", "Fixture Bike Path", None, "Blue", "Open", "N", _north(-74.22, 41.2, 0.01)),
+        ("{00000000-0000-4000-8000-000000000414}", "Long Path", None, "Aqua", "Open", "Y", _north(-74.23, 41.2, 0.01)),
+        ("{00000000-0000-4000-8000-000000000415}", "Appalachian Trail", None, "White", "Open", "Y", _north(-74.24, 41.2, 0.01)),
+        (
+            "{00000000-0000-4000-8000-000000000416}",
+            "1777 East Trail",
+            "Appalachian Trail",
+            "Red",
+            "Open",
+            "Y",
+            _north(-74.25, 41.2, 0.01),
+        ),
+    ]
+    long_path = {"Trail_Name": "Long Path", "Blaze": "aqua", "Maintainer": "NYNJTC", "Source": "NYNJTC", "Comments": None}
+    return {
+        "external/oprhp_trails.geojson": [
+            {
+                "type": "Feature",
+                "properties": {
+                    **oprhp,
+                    "GlobalID": gid,
+                    "Name": name,
+                    "Alt_Name": alt,
+                    "Blaze": colour,
+                    "Status": status,
+                    "Foot": foot,
+                },
+                "geometry": geometry,
+            }
+            for gid, name, alt, colour, status, foot, geometry in rows
+        ],
+        "external/nynjtc_long_path.geojson": [
+            {
+                "type": "Feature",
+                "properties": {
+                    **long_path,
+                    "Mileage": 20.7,
+                    "LP_Section": str(section),
+                    "GuideURL": f"https://example.invalid/lp/{section}",
+                },
+                "geometry": _north(-74.3, round(41.5 + 0.3 * n, 6), 0.3),
+            }
+            for n, section in enumerate((3, 4, 5))
+        ],
+    }
+
+
+def _trail_lines_network_fixtures(files: dict[str, str]) -> dict[str, str]:
+    """`files` with the rows `_network_rows` adds, and three things the live
+    layers have and these fixtures lacked.
+
+    - usfs_trails' `terra_motorized`, the column the registry's
+      `excluded_when` reads (#1711, measured live 2026-09-28: 'N' 45,151 TERRA
+      rows, 'Y' 23,195, 'N/A' 9,810). The TERRA rows read 'N', except GREAT
+      GULF, which reads 'N/A' and ships, and one CRAWFORD PATH row, which
+      reads 'Y' and is dropped as motorized. Without the column
+      export_nearby_trails.py refuses the layer as renamed (#1646), and so
+      does int_trail_lines__network_sources' test.
+    - nyc_park_polygons' two boundaries, NETWORK_PARK_BOUNDARIES. Without a
+      polygon of either name the exporter refuses nyc_park_drives, because
+      every row would be dropped.
+    - each network line feature's own `id`, which the live servers write and
+      the builders above leave off: an ArcGIS layer's is its OBJECTID, where
+      the fixture carries one, and a Socrata layer's is the row id
+      lib/socrata.py promotes onto the feature, `row-<n>` in the order
+      extract/_fixtures.py's adapter numbers them. lib/feature_id.py falls
+      back to that `id` where a layer has no `GlobalID`, so without it every
+      such row's published id would be positional. That ArcGIS's GeoJSON
+      `id` is the OBJECTID is Reasoned from the REST API and @unvalidated
+      here; one live fetch comparing the two settles it.
+
+    The extract lands none of these ids (its rows are a feature's properties
+    and geometry), so the warehouse is unchanged by them.
+    """
+    registry = json.loads((Path(__file__).parent / "sources.json").read_text(encoding="utf-8"))
+    kinds = {entry["key"]: entry.get("kind") for entry in registry["sources"]}
+    out = dict(files)
+
+    for name, added in _network_rows().items():
+        collection = json.loads(out[name])
+        collection["features"] += added
+        out[name] = json.dumps(collection)
+
+    usfs = json.loads(out["external/usfs_trails.geojson"])
+    for feature in usfs["features"]:
+        properties = feature["properties"]
+        if properties.get("trail_type") != "TERRA":
+            continue
+        if properties.get("trail_name") == "FIXTURE GREAT GULF":
+            properties["terra_motorized"] = "N/A"
+        elif properties.get("national_trail_designation") == 2:
+            properties["terra_motorized"] = "Y"
+        else:
+            properties["terra_motorized"] = "N"
+    out["external/usfs_trails.geojson"] = json.dumps(usfs)
+
+    parks = json.loads(out["external/nyc_park_polygons.geojson"])
+    parks["features"] += [
+        {
+            "type": "Feature",
+            "properties": {"signname": name, "gispropnum": f"FIXTURE-{index}"},
+            "geometry": {"type": "Polygon", "coordinates": [ring]},
+        }
+        for index, (name, ring) in enumerate(NETWORK_PARK_BOUNDARIES.items())
+    ]
+    out["external/nyc_park_polygons.geojson"] = json.dumps(parks)
+
+    mapping = json.loads((Path(__file__).parent / "reference" / "blaze_mapping.json").read_text(encoding="utf-8"))["sources"]
+    entries = {entry["key"]: entry for entry in registry["sources"]}
+    for name in files:
+        key = Path(name).stem
+        entry = entries.get(key, {})
+        if not name.startswith("external/") or entry.get("kind") not in ("external_arcgis_layer", "socrata_geojson_layer"):
+            continue
+        if "blaze_field" not in entry and "blaze_default" not in entry:
+            continue
+        collection = json.loads(out[name])
+        for index, feature in enumerate(collection["features"]):
+            properties = feature.setdefault("properties", {})
+            if kinds[key] == "socrata_geojson_layer":
+                feature["id"] = f"row-{index}"
+            elif properties.get("OBJECTID") is not None:
+                feature["id"] = properties["OBJECTID"]
+            # A field the registry declares and no builder above writes (#1778's
+            # builder writes the name column alone, and two of its layers have
+            # since declared a blaze field). The exporter refuses a layer missing
+            # a declared column, so each gets one: the blaze field the first
+            # value its reviewed table maps, then null; a foot field the first
+            # value it allows; a status field 'Open'; an exclusion field null.
+            if entry.get("blaze_field") and entry["blaze_field"] not in properties:
+                table = sorted((mapping.get(key) or {}).get("mapped") or {})
+                properties[entry["blaze_field"]] = table[0] if table and index == 0 else None
+            if entry.get("foot_field") and entry["foot_field"] not in properties:
+                properties[entry["foot_field"]] = (entry.get("foot_allowed") or ["Y"])[0]
+            if entry.get("status_field") and entry["status_field"] not in properties:
+                properties[entry["status_field"]] = "Open"
+            for field in entry.get("excluded_when") or {}:
+                properties.setdefault(field, None)
+        out[name] = json.dumps(collection)
+    return out
+
+
 def write_fixtures(raw_dir: Path) -> list[str]:
     files = {
         "shelters.geojson": _atc_layer("Shelter", 3),
@@ -1842,6 +2051,7 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         "external/wi_ice_age_trail.geojson": _registered_trail_lines_layer("wi_ice_age_trail", None),
         **closures_and_warnings_fixtures(),
     }
+    files = _trail_lines_network_fixtures(files)
     existing = [name for name in files if (raw_dir / name).exists()]
     if existing:
         raise SystemExit(

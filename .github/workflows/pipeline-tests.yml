@@ -221,6 +221,9 @@ jobs:
             pipeline/parity.py
             pipeline/export_podcasts.py
             pipeline/export_sources.py
+            pipeline/export_atc_updates.py
+            pipeline/export_nynjtc_alerts.py
+            pipeline/fetch_nynjtc_alerts.py
             pipeline/check_freshness.py
             pipeline/export_conditions.py
             pipeline/fetch_club_pdfs.py
@@ -407,6 +410,14 @@ jobs:
           python parity.py podcasts --new data/processed/dbt/podcasts_episodes.json
           python parity.py stewards --new data/processed/dbt/stewards.json
           python parity.py registry --new data/processed/dbt/registry.json
+          # The hourly conditions files. atc_updates reads
+          # reference/atc_updates.json from git; the other three read the
+          # answers under data/raw/conditions/ that fixture mode built the
+          # warehouse from, since their upstreams are a website and a database.
+          python parity.py atc_updates --new data/processed/dbt/conditions_atc_updates.json
+          python parity.py nynjtc_alerts --new data/processed/dbt/conditions_nynjtc_alerts.json
+          python parity.py closures --new data/processed/dbt/conditions_closures.json
+          python parity.py reports --new data/processed/dbt/conditions_reports.json
 
       - name: dbt source freshness
         if: steps.scope.outputs.run == 'true'

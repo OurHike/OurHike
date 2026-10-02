@@ -1,0 +1,236 @@
+version: 2
+
+models:
+  - name: int_warnings__nws_relayed
+    description: >
+      The NWS alerts OurHike relays: every `Actual` message that is not a
+      cancellation (WN01), NWS's words and times exactly as written and null
+      where NWS sent null (WN02). Not yet placed on the trail's weather
+      squares (WN03), which no extract lands.
+    columns:
+      - name: notice_id
+        description: "`nws_alerts:` and NWS's message id; the warnings mart's key."
+        data_tests: [not_null, unique]
+      - name: alert_id
+        description: NWS's message id, published as `id`.
+        data_tests: [not_null]
+      - name: message_type
+        description: Alert or Update; never Cancel.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [Alert, Update]
+              config:
+                severity: warn
+
+  - name: int_warnings__serious_reports
+    description: >
+      OurHike's serious public reports, verified or resolved (WN10), for the
+      warnings mart. conditions/reports.json carries every public report and
+      is written from base_ourhike__reports instead.
+    columns:
+      - name: notice_id
+        description: "`ourhike_reports:` and the report's UUID; the warnings mart's key."
+        data_tests: [not_null, unique]
+
+  - name: int_warnings__unioned
+    description: >
+      The warnings that are not organization notices, one row each, by name:
+      NWS's relayed alerts and OurHike's serious reports. No hazard POI
+      branch: ELT.md's warnings ledger, "No hazard POI exists to port".
+    columns:
+      - name: notice_id
+        description: Unique across both branches.
+        data_tests: [not_null, unique]
+      - name: source_key
+        description: nws_alerts or ourhike_reports, the keys int_sources__publication reads them under.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [nws_alerts, ourhike_reports]
+
+unit_tests:
+  # base_nws__alerts' inputs are SQL, not rows: dbt 2.0.6 fetches a given
+  # model's schema to type dict rows, and that fetch fails on its GEOMETRY
+  # column ("Remote database error while fetching schema for unit test
+  # upstream relation", measured 2026-10-02), so each input names every column
+  # int_warnings__nws_relayed reads and types its own nulls.
+  - name: int_warnings__nws_relayed_test_messages_and_cancellations_are_not_relayed
+    description: >
+      test_export_weather_alerts.py's case of that name, with every other
+      `status` NWS's CAP profile defines, and the exactness of relayed()'s
+      two comparisons: `status` must be `Actual` as written, and
+      `messageType` anything but `Cancel` as written, so an alert with no
+      messageType is relayed (Python's `None != "Cancel"`).
+    model: int_warnings__nws_relayed
+    given:
+      - input: ref('base_nws__alerts')
+        format: sql
+        rows: |
+          select
+              alert_id as nws_alert_key,
+              alert_id,
+              alert_status,
+              message_type,
+              alert_event,
+              cast(null as varchar) as headline,
+              cast(null as varchar) as alert_description,
+              cast(null as varchar) as instruction,
+              cast(null as varchar) as alert_severity,
+              cast(null as varchar) as urgency,
+              cast(null as varchar) as certainty,
+              cast(null as varchar) as alert_response,
+              cast(null as varchar) as sent_at,
+              cast(null as varchar) as effective_at,
+              cast(null as varchar) as onset_at,
+              cast(null as varchar) as expires_at,
+              cast(null as varchar) as ends_at,
+              cast(null as varchar) as sender_name,
+              cast(null as varchar) as area_desc,
+              cast(null as json) as affected_zones,
+              cast(null as varchar) as collection_updated,
+              cast(null as geometry) as geom,
+              cast(null as timestamp) as _loaded_at
+          from (
+              values
+                  ('urn:oid:test.1', 'Test', 'Alert', 'Test Message'),
+                  ('urn:oid:test.2', 'Actual', 'Cancel', 'Wind Advisory'),
+                  ('urn:oid:test.3', 'Actual', 'Update', 'Wind Advisory'),
+                  ('urn:oid:test.4', 'Exercise', 'Alert', 'Wind Advisory'),
+                  ('urn:oid:test.5', 'System', 'Alert', 'Wind Advisory'),
+                  ('urn:oid:test.6', 'Draft', 'Alert', 'Wind Advisory'),
+                  ('urn:oid:test.7', null, 'Alert', 'Wind Advisory'),
+                  ('urn:oid:test.8', 'actual', 'Alert', 'Wind Advisory'),
+                  ('urn:oid:test.9', 'Actual', null, 'Wind Advisory'),
+                  ('urn:oid:test.10', 'Actual', 'Alert', 'Wind Advisory')
+          ) as given_alerts (alert_id, alert_status, message_type, alert_event)
+    expect:
+      rows:
+        - {notice_id: 'nws_alerts:urn:oid:test.3', message_type: Update}
+        - {notice_id: 'nws_alerts:urn:oid:test.9', message_type: null}
+        - {notice_id: 'nws_alerts:urn:oid:test.10', message_type: Alert}
+
+  - name: int_warnings__nws_relayed_every_kind_of_alert_is_relayed_including_beach_and_marine_kinds
+    description: >
+      test_export_weather_alerts.py's case of that name: "relay all", the
+      maintainer, 2026-09-26. OurHike does not pick which NWS alerts matter,
+      so no event or severity is filtered.
+    model: int_warnings__nws_relayed
+    given:
+      - input: ref('base_nws__alerts')
+        format: sql
+        rows: |
+          select
+              alert_id as nws_alert_key,
+              alert_id,
+              'Actual' as alert_status,
+              'Alert' as message_type,
+              alert_event,
+              cast(null as varchar) as headline,
+              cast(null as varchar) as alert_description,
+              cast(null as varchar) as instruction,
+              alert_severity,
+              cast(null as varchar) as urgency,
+              cast(null as varchar) as certainty,
+              cast(null as varchar) as alert_response,
+              cast(null as varchar) as sent_at,
+              cast(null as varchar) as effective_at,
+              cast(null as varchar) as onset_at,
+              cast(null as varchar) as expires_at,
+              cast(null as varchar) as ends_at,
+              cast(null as varchar) as sender_name,
+              cast(null as varchar) as area_desc,
+              cast(null as json) as affected_zones,
+              cast(null as varchar) as collection_updated,
+              cast(null as geometry) as geom,
+              cast(null as timestamp) as _loaded_at
+          from (
+              values
+                  ('urn:oid:test.0', 'Rip Current Statement', 'Moderate'),
+                  ('urn:oid:test.1', 'High Surf Advisory', 'Minor'),
+                  ('urn:oid:test.2', 'Air Quality Alert', 'Unknown'),
+                  ('urn:oid:test.3', 'Hydrologic Outlook', null)
+          ) as given_alerts (alert_id, alert_event, alert_severity)
+    expect:
+      rows:
+        - {alert_event: Rip Current Statement, alert_severity: Moderate, review_state: relayed, obstructs_trail: false}
+        - {alert_event: High Surf Advisory, alert_severity: Minor, review_state: relayed, obstructs_trail: false}
+        - {alert_event: Air Quality Alert, alert_severity: Unknown, review_state: relayed, obstructs_trail: false}
+        - {alert_event: Hydrologic Outlook, alert_severity: null, review_state: relayed, obstructs_trail: false}
+
+  - name: int_warnings__nws_relayed_nws_text_is_relayed_verbatim_and_a_missing_field_stays_null
+    description: >
+      test_export_weather_alerts.py's case of that name (WN02): the
+      description's line breaks, a headline's trailing space and every time's
+      offset come through as NWS wrote them, and a field NWS sent as null
+      stays null rather than becoming "" or now. The drawn polygon comes out
+      as GeoJSON text whose coordinates read back to the same doubles, the
+      text the closures and warnings marts carry in place of a geometry.
+    model: int_warnings__nws_relayed
+    given:
+      - input: ref('base_nws__alerts')
+        format: sql
+        rows: |
+          select
+              'k1' as nws_alert_key,
+              'urn:oid:test.1' as alert_id,
+              'Actual' as alert_status,
+              'Alert' as message_type,
+              'Wind Advisory' as alert_event,
+              'Wind Advisory issued September 26 at 9:00AM EDT by NWS Gray ME ' as headline,
+              '* WHAT...Northeast winds 15 to 25 mph with gusts up to 45 mph.' || chr(10) || chr(10) || '* WHERE...Southern Coos.' as alert_description,
+              cast(null as varchar) as instruction,
+              'Moderate' as alert_severity,
+              'Expected' as urgency,
+              'Likely' as certainty,
+              'Execute' as alert_response,
+              '2026-09-26T09:00:00-04:00' as sent_at,
+              '2026-09-26T09:00:00-04:00' as effective_at,
+              '2026-09-26T09:00:00-04:00' as onset_at,
+              '2026-09-26T17:00:00-04:00' as expires_at,
+              cast(null as varchar) as ends_at,
+              'NWS Gray ME' as sender_name,
+              'Southern Coos' as area_desc,
+              cast('["https://api.weather.gov/zones/forecast/NHZ002"]' as json) as affected_zones,
+              '2026-09-26T13:38:37+00:00' as collection_updated,
+              st_geomfromtext('POLYGON ((-71.33 44.25, -71.2 44.25, -71.2 44.3125, -71.33 44.25))') as geom,
+              timestamp '2026-09-26 13:39:33' as _loaded_at
+    expect:
+      rows:
+        - notice_id: 'nws_alerts:urn:oid:test.1'
+          headline: 'Wind Advisory issued September 26 at 9:00AM EDT by NWS Gray ME '
+          alert_description: "* WHAT...Northeast winds 15 to 25 mph with gusts up to 45 mph.\n\n* WHERE...Southern Coos."
+          instruction: null
+          sent_at: '2026-09-26T09:00:00-04:00'
+          onset_at: '2026-09-26T09:00:00-04:00'
+          expires_at: '2026-09-26T17:00:00-04:00'
+          ends_at: null
+          sender_name: NWS Gray ME
+          area_desc: Southern Coos
+          geom_geojson: '{"type":"Polygon","coordinates":[[[-71.33,44.25],[-71.2,44.25],[-71.2,44.3125],[-71.33,44.25]]]}'
+
+  - name: int_warnings__serious_reports_keeps_the_public_moderated_reports_a_moderator_called_serious
+    description: >
+      WN10's new rule: the warnings mart takes the reports
+      test_moderated_public_reports_are_exported_and_submitted_ones_are_not
+      lets out of the database (verified or resolved, and public), and of
+      those only the ones a moderator escalated to `serious`. A resolved one
+      stays, and reads as fixed. A report the query should never have landed,
+      submitted, rejected or private, is left out rather than published as
+      moderator-verified.
+    model: int_warnings__serious_reports
+    given:
+      - input: ref('base_ourhike__reports')
+        rows:
+          - {report_uuid: r1, report_severity: serious, report_status: verified, visibility: public}
+          - {report_uuid: r2, report_severity: serious, report_status: resolved, visibility: public}
+          - {report_uuid: r3, report_severity: normal, report_status: verified, visibility: public}
+          - {report_uuid: r4, report_severity: serious, report_status: submitted, visibility: public}
+          - {report_uuid: r5, report_severity: serious, report_status: verified, visibility: private}
+          - {report_uuid: r6, report_severity: null, report_status: verified, visibility: public}
+          - {report_uuid: r7, report_severity: serious, report_status: rejected, visibility: public}
+    expect:
+      rows:
+        - {notice_id: 'ourhike_reports:r1', report_status: verified, review_state: moderator_verified, obstructs_trail: false}
+        - {notice_id: 'ourhike_reports:r2', report_status: resolved, review_state: moderator_verified, obstructs_trail: false}

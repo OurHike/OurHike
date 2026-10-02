@@ -1,0 +1,593 @@
+version: 2
+
+models:
+  - name: int_closures__atc_checked
+    description: >
+      Every row of reference/atc_updates.json, read field by field and checked
+      against lib/atc_updates.py's file_problems() in row_problems()'s order
+      (CL01-CL06), with every problem the row has in `problems`. An empty
+      list means the row publishes; int_closures__gate holds ATC's whole file
+      back on any problem (CL05), and reads the review from the file landed
+      whole (base_atc__atc_updates).
+    columns:
+      - name: atc_update_row_key
+        description: base_atc__atc_trail_updates's key, the file and the row's place in it.
+        data_tests: [not_null, unique]
+      - name: file_row
+        description: The row's place in the file, from 0. The published order.
+      - name: row_label
+        description: The row as lib/atc_updates.py names it in a message, its atc_id or "update N".
+      - name: atc_id
+        description: ATC's slug for the update, where it is a string, as written.
+      - name: title
+        description: The update's headline as written, never stripped; null where it is not a string.
+      - name: states
+        description: The row's `states` as written, where it is a list, as JSON.
+      - name: start_mile_text
+        description: >
+          The NOBO mile the update starts at, as the reviewer wrote the number
+          (CL01). Text, because dbt 2.0.6's unit tests compare a DOUBLE only to
+          one decimal; int_closures__unioned casts it. A string such as "476.6"
+          is null here and a problem, as it is "not a mile" to
+          lib/atc_updates.py.
+      - name: end_mile_text
+        description: The NOBO mile it ends at, on the same terms.
+      - name: obstructs_trail
+        description: Whether a hiker is stopped from walking through, where the reviewer wrote a real boolean.
+      - name: updated_at
+        description: ATC's own last edit of the notice, as the reviewer wrote it.
+      - name: problems
+        description: Every problem with the row, each prefixed by its label, in row_problems()'s order, then CL04's repeat.
+      - name: problem
+        description: The same problems joined by " | ", or null where the row is fine.
+      - name: published_row
+        description: >
+          The row as lib/atc_updates.py's published_rows() publishes it, each
+          field's JSON as written plus source_key and review_state, for
+          pub_conditions_atc_updates.
+
+  - name: int_closures__nynjtc_checked
+    description: >
+      NYNJTC's Trail Alerts posts, read as lib/nynjtc_alerts.py's parse_alert()
+      reads them and shaped as published_rows() publishes them (WN05-WN08),
+      with why a post cannot be read in `problems`. int_closures__gate holds
+      NYNJTC's file back on any problem, or on a category with no posts.
+    columns:
+      - name: trail_alert_key
+        description: base_nynjtc__nynjtc_trail_alerts's key, the post's WordPress id.
+        data_tests: [not_null, unique]
+      - name: notice_id
+        description: >
+          `nynjtc_trail_alerts:<slug>`, the published notice_id, or
+          `nynjtc_trail_alerts:post-<id>` for a post with no readable slug or a
+          slug another post shares.
+        data_tests: [not_null, unique]
+      - name: slug
+        description: The post's slug, stripped, as parse_alert() strips it.
+      - name: title
+        description: The title as _text_of() reads it, tags out and entities unescaped twice.
+      - name: locality
+        description: The regions, else the states, else the parks a post is tagged with, by name; empty where none.
+      - name: source_url
+        description: The post's link, as NYNJTC serves it.
+      - name: modified_at
+        description: NYNJTC's own last edit of the alert.
+      - name: updated_at
+        description: The same, as the published text, to the second with a Z.
+      - name: problems
+        description: Why the post cannot be read, each prefixed by its slug or id.
+      - name: problem
+        description: The same joined by " | ", or null where the post reads.
+
+  - name: int_closures__oprhp_areas
+    description: >
+      NYS Parks' temporary closed areas, one row per area with a geometry,
+      its reason and place stripped and null where blank, and no dates
+      (export_nearby_trails.py's load_closure_areas(), CL13).
+    columns:
+      - name: closure_key
+        description: stg_oprhp__trail_closures's key.
+        data_tests: [not_null, unique]
+      - name: closure_reason
+        description: The layer's `Name`, its whole reason as prose, stripped.
+      - name: closure_place
+        description: The layer's `Descript`, where it is, stripped.
+      - name: geom_geojson
+        description: >
+          The closed area in lon/lat, as GeoJSON text: a GEOMETRY column in a
+          unit-tested model's output panics dbt 2.0.6, and contracted marts
+          cannot hold one (the closures mart's geom_geojson says why).
+        data_tests: [not_null]
+
+  - name: int_closures__ourhike_checked
+    description: >
+      OurHike's moderator-verified closures, each with whether it blocks the
+      trail (its status, read as client/src/lib/closureBanner.ts reads it) and
+      a problem for a row that is not verified (CL15).
+    columns:
+      - name: ourhike_closure_key
+        description: base_ourhike__closures's key.
+        data_tests: [not_null, unique]
+      - name: obstructs_trail
+        description: >
+          True for `closed` and `reroute_available`, false for `open` (a
+          reopened closure), null for a status the backend does not define.
+      - name: problems
+        description: Why the row cannot publish; empty where it can.
+
+  - name: int_closures__unioned
+    description: >
+      Every notice, closed area and closure the closures and warnings marts
+      are split from, one row each, by name, nothing filtered: ATC's reviewed
+      Trail Updates, NYNJTC's Trail Alerts, NYS Parks' temporary closed areas
+      and OurHike's verified closures, each with `obstructs_trail`,
+      `review_state` and its source's `problems`.
+    columns:
+      - name: notice_id
+        description: >
+          `<source key>:<the source's own id>`, unique across every source;
+          the closures and warnings marts' key.
+        data_tests: [not_null, unique]
+      - name: source_key
+        description: The registry key, or the unregistered key int_sources__publication reads it under.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [atc_trail_updates, nynjtc_trail_alerts, oprhp_trail_closures, ourhike_closures]
+      - name: review_state
+        description: Who stands behind the row.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [reviewed, not_reviewed, org_published, moderator_verified]
+      - name: obstructs_trail
+        description: >
+          Whether a hiker is stopped from walking through, as its source says;
+          null where nobody has classified it (every NYNJTC alert).
+      - name: problems
+        description: Why the row cannot publish, from its source's checks; empty where it can.
+        data_tests: [not_null]
+
+  - name: int_closures__gate
+    description: >
+      The per-source gate: one row per notice source, `rows_invalid` and
+      `passed`, so one bad ATC row holds back ATC's file and nothing else
+      (pipeline/ELT.md, "A whole-file gate becomes a per-source gate"). The
+      marts keep only passing sources, and each writer refuses to write a held
+      source's file, so the phone keeps the last good one. ATC's review is
+      read from the file landed whole, so an empty reviewed file passes and
+      publishes `atc_updates: []`, as export_atc_updates.py does.
+    data_tests:
+      # Warns, never fails: failing the build would hold back every source
+      # for one. dbt 2.0.6 reports only the count of held sources; to see
+      # which and why, from pipeline/dbt:
+      #   dbt show --profiles-dir . --inline "select source_key, held_because
+      #     from intermediate.int_closures__gate where not passed"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "passed"
+          config:
+            severity: warn
+    columns:
+      - name: source_key
+        description: The notice source, one row for each branch of int_closures__unioned.
+        data_tests: [not_null, unique]
+      - name: rows_total
+        description: The source's rows in int_closures__unioned.
+      - name: rows_invalid
+        description: Its rows with a problem.
+        data_tests: [not_null]
+      - name: may_publish
+        description: >
+          int_sources__publication's answer for the source, false where it has
+          no row. The marts join that model themselves; it is here so a writer
+          reads one answer per source.
+        data_tests: [not_null]
+      - name: reviewed_at
+        description: >
+          ATC's `reviewed_at`, as written in the file landed whole, which
+          pub_conditions_atc_updates publishes; null for every other source,
+          which no person reviews as a file.
+      - name: passed
+        description: Whether its rows may reach the marts and its file may be written.
+        data_tests: [not_null]
+      - name: held_because
+        description: Why not, in words for the job log; null where it passed.
+
+unit_tests:
+  - name: int_closures__atc_checked_finds_what_file_problems_finds
+    description: >
+      One row per branch of lib/atc_updates.py's row_problems() and the file's
+      repeat check, each named after the test in tests/test_lib_atc_updates.py
+      it stands in for, plus two the extract's verbatim landing made
+      checkable: a mile written "476.6" (row 25) and a misspelt
+      `Obstructs_Trail` (row 26), both refused as the Python refuses them.
+      Each expected problem is the Python's, with values rendered as JSON;
+      tests/test_dbt_conditions_parity.py runs row_problems() over these same
+      rows and fails where the two disagree, except row 36, a source_url with
+      a leading space, which this model refuses on purpose. Rows 0, 1, 3, 7-12
+      and 37 are fine: a real update, a point closure, the far end of the
+      trail, the six categories only page ten ever showed, and an upper-case
+      scheme.
+    model: int_closures__atc_checked
+    given:
+      - input: ref('base_atc__atc_trail_updates')
+        rows:
+          - {atc_update_row_key: k00, file_row: 0, atc_update: '{"atc_id": "a00", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k01, file_row: 1, atc_update: '{"atc_id": "a01", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": 1503.6, "end_mile_marker": 1503.6, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k02, file_row: 2, atc_update: '{"atc_id": "a02", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": 15036.0, "end_mile_marker": 15036.0, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k03, file_row: 3, atc_update: '{"atc_id": "a03", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": 2197.5, "end_mile_marker": 2197.5, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k04, file_row: 4, atc_update: '{"atc_id": "a04", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": 485.8, "end_mile_marker": 476.6, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k05, file_row: 5, atc_update: '{"atc_id": "a05", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "javascript:alert(1)"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k06, file_row: 6, atc_update: '{"atc_id": "a06", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Emergency", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k07, file_row: 7, atc_update: '{"atc_id": "a07", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Water", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k08, file_row: 8, atc_update: '{"atc_id": "a08", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Relocation", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k09, file_row: 9, atc_update: '{"atc_id": "a09", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Permits", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k10, file_row: 10, atc_update: '{"atc_id": "a10", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Construction", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k11, file_row: 11, atc_update: '{"atc_id": "a11", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Fire", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k12, file_row: 12, atc_update: '{"atc_id": "a12", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Conservation", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k13, file_row: 13, atc_update: '{"title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k14, file_row: 14, atc_update: '{"atc_id": "a14", "category": "Closure", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k15, file_row: 15, atc_update: '{"atc_id": "a15", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k16, file_row: 16, atc_update: '{"atc_id": "a16", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k17, file_row: 17, atc_update: '{"atc_id": "a17", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k18, file_row: 18, atc_update: '{"atc_id": "a18", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": 476.6, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k19, file_row: 19, atc_update: '{"atc_id": "a19", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k20, file_row: 20, atc_update: '{"atc_id": "a20", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k21, file_row: 21, atc_update: '{"atc_id": "a21", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k22, file_row: 22, atc_update: '{"atc_id": "a22", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Emergency", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "ftp://example.test/x"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k23, file_row: 23, atc_update: '{"atc_id": "a00", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k24, file_row: 24, atc_update: '{"atc_id": "a24", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": "yes", "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k25, file_row: 25, atc_update: '{"atc_id": "a25", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": "476.6", "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k26, file_row: 26, atc_update: '{"atc_id": "a26", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/", "Obstructs_Trail": true}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k27, file_row: 27, atc_update: '["a27"]', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k28, file_row: 28, atc_update: '{"atc_id": "  ", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k29, file_row: 29, atc_update: '{"atc_id": "a29", "title": 5, "category": "Closure", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k30, file_row: 30, atc_update: '{"atc_id": "a30", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": [], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k31, file_row: 31, atc_update: '{"atc_id": "a31", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA", " "], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k32, file_row: 32, atc_update: '{"atc_id": "a32", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": true, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k33, file_row: 33, atc_update: '{"atc_id": "a33", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": 5.0, "end_mile_marker": true, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k34, file_row: 34, atc_update: '{"atc_id": "a34", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "   ", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k35, file_row: 35, atc_update: '{"atc_id": "a35", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": null}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k36, file_row: 36, atc_update: '{"atc_id": "a36", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": " https://appalachiantrail.org/x"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k37, file_row: 37, atc_update: '{"atc_id": "a37", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "HTTPS://appalachiantrail.org/x"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k38, file_row: 38, atc_update: '{"atc_id": "a38", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": null, "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+    expect:
+      rows:
+        - {file_row: 0, problem: null}
+        - {file_row: 1, problem: null}
+        - {file_row: 2, problem: 'a02: start_mile_marker is 15036.0, outside the trail''s own extent (0.5-2197.5). A mile off the end of the trail is a mistake with a decimal point in it, not a place - see lib/atc_updates.py. | a02: end_mile_marker is 15036.0, outside the trail''s own extent (0.5-2197.5). A mile off the end of the trail is a mistake with a decimal point in it, not a place - see lib/atc_updates.py.'}
+        - {file_row: 3, problem: null}
+        - {file_row: 4, problem: 'a04: end_mile_marker 476.6 is before start_mile_marker 485.8'}
+        - {file_row: 5, problem: 'a05: source_url "javascript:alert(1)" is not an http(s) URL'}
+        - {file_row: 6, problem: 'a06: category "Emergency" is not one ATC publishes (Alert, Animal, Closure, Conservation, Construction, Detour, Fire, Hiking Safety, Parking, Permits, Relocation, Water)'}
+        - {file_row: 7, problem: null}
+        - {file_row: 8, problem: null}
+        - {file_row: 9, problem: null}
+        - {file_row: 10, problem: null}
+        - {file_row: 11, problem: null}
+        - {file_row: 12, problem: null}
+        - {file_row: 13, problem: 'update 13: missing atc_id'}
+        - {file_row: 14, problem: 'a14: missing title'}
+        - {file_row: 15, problem: 'a15: missing category'}
+        - {file_row: 16, problem: 'a16: missing states'}
+        - {file_row: 17, problem: 'a17: missing start_mile_marker'}
+        - {file_row: 18, problem: 'a18: missing end_mile_marker'}
+        - {file_row: 19, problem: 'a19: missing obstructs_trail'}
+        - {file_row: 20, problem: 'a20: missing updated_at'}
+        - {file_row: 21, problem: 'a21: missing source_url'}
+        - {file_row: 22, problem: 'a22: category "Emergency" is not one ATC publishes (Alert, Animal, Closure, Conservation, Construction, Detour, Fire, Hiking Safety, Parking, Permits, Relocation, Water) | a22: source_url "ftp://example.test/x" is not an http(s) URL'}
+        - {file_row: 23, problem: 'a00: appears more than once'}
+        - {file_row: 24, problem: 'a24: obstructs_trail must be true or false - whether a hiker is stopped from walking through, which is not the same question as ATC''s category (a closed shelter is a `Closure` and leaves the trail open)'}
+        - {file_row: 25, problem: 'a25: start_mile_marker is "476.6", which is not a mile'}
+        - {file_row: 26, problem: 'a26: missing obstructs_trail'}
+        - {file_row: 27, problem: 'update 27 is not an object'}
+        - {file_row: 28, problem: '  : atc_id is empty'}
+        - {file_row: 29, problem: 'a29: title is empty'}
+        - {file_row: 30, problem: 'a30: states must be a non-empty list of state codes'}
+        - {file_row: 31, problem: 'a31: states must be a non-empty list of state codes'}
+        - {file_row: 32, problem: 'a32: start_mile_marker is true, which is not a mile'}
+        - {file_row: 33, problem: 'a33: end_mile_marker is true, which is not a mile | a33: end_mile_marker True is before start_mile_marker 5.0'}
+        - {file_row: 34, problem: 'a34: updated_at is empty - it is ATC''s own date and the one a hiker cares about'}
+        - {file_row: 35, problem: 'a35: source_url null is not an http(s) URL'}
+        - {file_row: 36, problem: 'a36: source_url " https://appalachiantrail.org/x" is not an http(s) URL'}
+        - {file_row: 37, problem: null}
+        - {file_row: 38, problem: 'a38: category null is not one ATC publishes (Alert, Animal, Closure, Conservation, Construction, Detour, Fire, Hiking Safety, Parking, Permits, Relocation, Water)'}
+
+  - name: int_closures__nynjtc_checked_reads_each_post_as_parse_alert_does
+    description: >
+      One post per branch of lib/nynjtc_alerts.py's parse_alert(),
+      parse_terms(), locality_of() and published_rows(), after the tests in
+      tests/test_lib_nynjtc_alerts.py and test_export_nynjtc_alerts.py: an
+      entity-escaped title (n01, n02), a literal en dash (n03), an unknown
+      term id dropped rather than faked (n04), locality preferring the region,
+      then the state, then the park (n01, n02, n04), no tags at all (n03), and
+      the four ways a post cannot be read (n10-n13). n05-n08 hold
+      python_html_unescape() to html.unescape(): hex and decimal references,
+      the Windows-1252 and U+FFFD replacements, a name without its semicolon,
+      the double unescape _text_of() does, and an NBSP stripped as whitespace.
+      tests/test_dbt_conditions_parity.py runs the Python over these rows and
+      fails where the two disagree, except n09 (a named reference this model
+      does not decode), n14 and n15 (one slug on two posts) and n16 (a title
+      that is not a string), which it lists as deliberate.
+    model: int_closures__nynjtc_checked
+    given:
+      - input: ref('base_nynjtc__nynjtc_trail_alerts')
+        rows:
+          - {trail_alert_key: n01, post_id: 101, slug: highlands-trail-section-closed, link: 'https://www.nynjtc.org/trail-alerts/highlands-trail-section-closed/', title_json: '{"rendered": "Highlands Trail Section Closed: Rt 605 &#8211; Lackawanna Drive"}', modified_at: '2026-04-20 18:38:04+00', trail_term_ids: '[31]', park_term_ids: '[405]', region_term_ids: '[406, 287]', state_term_ids: '[67]'}
+          - {trail_alert_key: n02, post_id: 102, slug: bear-mountain-closures, link: 'https://www.nynjtc.org/trail-alerts/bear-mountain-closures/', title_json: '{"rendered": "Bear Mountain State Park Trail Closures &amp; Advisories"}', modified_at: '2026-05-04 10:25:39+00', trail_term_ids: '[]', park_term_ids: '[213]', region_term_ids: '[]', state_term_ids: '[]'}
+          - {trail_alert_key: n03, post_id: 103, slug: reroute-in-progress, link: 'https://www.nynjtc.org/trail-alerts/reroute-in-progress/', title_json: '{"rendered": "Highlands Trail Reroute in Progress – March 2025"}', modified_at: '2025-06-24 15:33:28+00', trail_term_ids: '[]', park_term_ids: '[]', region_term_ids: '[]', state_term_ids: '[]'}
+          - {trail_alert_key: n04, post_id: 104, slug: unknown-term, link: 'https://www.nynjtc.org/trail-alerts/unknown-term/', title_json: '{"rendered": "Winter Closures"}', modified_at: '2025-12-15 11:12:19+00', trail_term_ids: '[]', park_term_ids: '[]', region_term_ids: '[999]', state_term_ids: '[66]'}
+          - {trail_alert_key: n05, post_id: 105, slug: entities, link: 'https://www.nynjtc.org/trail-alerts/entities/', title_json: '{"rendered": "&#x2013; &#8364; &#128; &#0; &ampx &hellip; &#xD800; &lt;b&gt;"}', modified_at: '2026-01-01 00:00:00+00', trail_term_ids: '[]', park_term_ids: '[]', region_term_ids: '[282]', state_term_ids: '[]'}
+          - {trail_alert_key: n06, post_id: 106, slug: double-escaped, link: 'https://www.nynjtc.org/trail-alerts/double-escaped/', title_json: '{"rendered": "Fixture &amp;#8211; double &amp;amp; done"}', modified_at: '2026-01-02 00:00:00+00', trail_term_ids: '[]', park_term_ids: '[]', region_term_ids: '[]', state_term_ids: '[]'}
+          - {trail_alert_key: n07, post_id: 107, slug: tags-and-space, link: 'https://www.nynjtc.org/trail-alerts/tags-and-space/', title_json: '{"rendered": "<em>Fixture</em>\n  Reroute   in\tProgress "}', modified_at: '2026-01-03 00:00:00+00', trail_term_ids: '[]', park_term_ids: '[]', region_term_ids: '[]', state_term_ids: '[]'}
+          - {trail_alert_key: n08, post_id: 108, slug: nbsp, link: 'https://www.nynjtc.org/trail-alerts/nbsp/', title_json: '{"rendered": "&nbsp;Leading&nbsp;"}', modified_at: '2026-01-04 00:00:00+00', trail_term_ids: '[]', park_term_ids: '[]', region_term_ids: '[]', state_term_ids: '[]'}
+          - {trail_alert_key: n09, post_id: 109, slug: unlisted-name, link: 'https://www.nynjtc.org/trail-alerts/unlisted-name/', title_json: '{"rendered": "Three &frac34; mile detour"}', modified_at: '2026-01-05 00:00:00+00', trail_term_ids: '[]', park_term_ids: '[]', region_term_ids: '[]', state_term_ids: '[]'}
+          - {trail_alert_key: n10, post_id: 110, slug: unreadable-link, link: 'ftp://www.nynjtc.org/x', title_json: '{"rendered": "Bad link"}', modified_at: '2026-01-06 00:00:00+00', trail_term_ids: '[]', park_term_ids: '[]', region_term_ids: '[]', state_term_ids: '[]'}
+          - {trail_alert_key: n11, post_id: 111, slug: no-modified, link: 'https://www.nynjtc.org/trail-alerts/no-modified/', title_json: '{"rendered": "No date"}', modified_at: null, trail_term_ids: '[]', park_term_ids: '[]', region_term_ids: '[]', state_term_ids: '[]'}
+          - {trail_alert_key: n12, post_id: 112, slug: '  ', link: 'https://www.nynjtc.org/trail-alerts/blank/', title_json: '{"rendered": "Blank slug"}', modified_at: '2026-01-07 00:00:00+00', trail_term_ids: '[]', park_term_ids: '[]', region_term_ids: '[]', state_term_ids: '[]'}
+          - {trail_alert_key: n13, post_id: 113, slug: empty-title, link: 'https://www.nynjtc.org/trail-alerts/empty-title/', title_json: '{"rendered": "<p> </p>"}', modified_at: '2026-01-08 00:00:00+00', trail_term_ids: '[]', park_term_ids: '[]', region_term_ids: '[]', state_term_ids: '[]'}
+          - {trail_alert_key: n14, post_id: 114, slug: dup, link: 'https://www.nynjtc.org/trail-alerts/dup/', title_json: '{"rendered": "First"}', modified_at: '2026-01-09 00:00:00+00', trail_term_ids: '[]', park_term_ids: '[]', region_term_ids: '[]', state_term_ids: '[]'}
+          - {trail_alert_key: n15, post_id: 115, slug: dup, link: 'https://www.nynjtc.org/trail-alerts/dup-2/', title_json: '{"rendered": "Second"}', modified_at: '2026-01-10 00:00:00+00', trail_term_ids: '[]', park_term_ids: '[]', region_term_ids: '[]', state_term_ids: '[]'}
+          - {trail_alert_key: n16, post_id: 116, slug: numeric-title, link: 'https://www.nynjtc.org/trail-alerts/numeric-title/', title_json: '{"rendered": 5}', modified_at: '2026-01-11 00:00:00+00', trail_term_ids: '[]', park_term_ids: '[]', region_term_ids: '[]', state_term_ids: '[]'}
+      - input: ref('base_nynjtc__nynjtc_trail_alerts_terms')
+        rows:
+          - {place_term_key: t1, taxonomy: trail, term_id: 31, term_name: Highlands Trail, slug: highlands-trail}
+          - {place_term_key: t2, taxonomy: park, term_id: 405, term_name: Wawayanda State Park, slug: wawayanda-state-park}
+          - {place_term_key: t3, taxonomy: region, term_id: 406, term_name: Byram Twp, slug: byram-twp}
+          - {place_term_key: t4, taxonomy: region, term_id: 287, term_name: Northern New Jersey Highlands, slug: northern-new-jersey-highlands}
+          - {place_term_key: t5, taxonomy: state, term_id: 67, term_name: New Jersey, slug: new-jersey}
+          - {place_term_key: t6, taxonomy: state, term_id: 66, term_name: New York, slug: new-york}
+          - {place_term_key: t7, taxonomy: park, term_id: 213, term_name: Harriman-Bear Mountain State Parks, slug: harriman-bear-mountain-state-parks}
+          - {place_term_key: t8, taxonomy: region, term_id: 282, term_name: 'Delaware Water Gap &amp; Kittatinny', slug: delaware-water-gap-kittatinny}
+          - {place_term_key: t9, taxonomy: park, term_id: 500, term_name: null, slug: nameless}
+    expect:
+      rows:
+        - {notice_id: 'nynjtc_trail_alerts:highlands-trail-section-closed', title: 'Highlands Trail Section Closed: Rt 605 – Lackawanna Drive', locality: 'Byram Twp, Northern New Jersey Highlands', updated_at: '2026-04-20T18:38:04Z', problem: null}
+        - {notice_id: 'nynjtc_trail_alerts:bear-mountain-closures', title: 'Bear Mountain State Park Trail Closures & Advisories', locality: 'Harriman-Bear Mountain State Parks', updated_at: '2026-05-04T10:25:39Z', problem: null}
+        - {notice_id: 'nynjtc_trail_alerts:reroute-in-progress', title: 'Highlands Trail Reroute in Progress – March 2025', locality: '', updated_at: '2025-06-24T15:33:28Z', problem: null}
+        - {notice_id: 'nynjtc_trail_alerts:unknown-term', title: 'Winter Closures', locality: 'New York', updated_at: '2025-12-15T11:12:19Z', problem: null}
+        - {notice_id: 'nynjtc_trail_alerts:entities', title: '– € € � &x … � <b>', locality: 'Delaware Water Gap & Kittatinny', updated_at: '2026-01-01T00:00:00Z', problem: null}
+        - {notice_id: 'nynjtc_trail_alerts:double-escaped', title: 'Fixture – double & done', locality: '', updated_at: '2026-01-02T00:00:00Z', problem: null}
+        - {notice_id: 'nynjtc_trail_alerts:tags-and-space', title: 'Fixture Reroute in Progress', locality: '', updated_at: '2026-01-03T00:00:00Z', problem: null}
+        - {notice_id: 'nynjtc_trail_alerts:nbsp', title: 'Leading', locality: '', updated_at: '2026-01-04T00:00:00Z', problem: null}
+        - {notice_id: 'nynjtc_trail_alerts:unlisted-name', title: 'Three &frac34; mile detour', locality: '', updated_at: '2026-01-05T00:00:00Z', problem: null}
+        - {notice_id: 'nynjtc_trail_alerts:unreadable-link', title: 'Bad link', locality: '', updated_at: '2026-01-06T00:00:00Z', problem: 'unreadable-link: a link that is not http'}
+        - {notice_id: 'nynjtc_trail_alerts:no-modified', title: 'No date', locality: '', updated_at: null, problem: 'no-modified: no modified date'}
+        - {notice_id: 'nynjtc_trail_alerts:post-112', title: 'Blank slug', locality: '', updated_at: '2026-01-07T00:00:00Z', problem: 'post 112: no slug'}
+        - {notice_id: 'nynjtc_trail_alerts:empty-title', title: '', locality: '', updated_at: '2026-01-08T00:00:00Z', problem: 'empty-title: no title once read'}
+        - {notice_id: 'nynjtc_trail_alerts:post-114', title: 'First', locality: '', updated_at: '2026-01-09T00:00:00Z', problem: 'dup: a slug another post also has'}
+        - {notice_id: 'nynjtc_trail_alerts:post-115', title: 'Second', locality: '', updated_at: '2026-01-10T00:00:00Z', problem: 'dup: a slug another post also has'}
+        - {notice_id: 'nynjtc_trail_alerts:numeric-title', title: '', locality: '', updated_at: '2026-01-11T00:00:00Z', problem: 'numeric-title: no title once read'}
+
+  - name: int_closures__ourhike_checked_reads_status_as_closure_banner_does
+    description: >
+      OurHike's closure statuses, read as client/src/lib/closureBanner.ts
+      reads them: closed and reroute_available block the trail, open (a
+      reopened closure) does not, and a status the backend does not define is
+      unknown. A row the query should never have landed, one not moderator-
+      verified, is a problem (CL15, gate 4).
+    model: int_closures__ourhike_checked
+    given:
+      - input: ref('base_ourhike__closures')
+        rows:
+          - {ourhike_closure_key: c1, closure_uuid: u1, closure_status: closed, moderation_status: verified}
+          - {ourhike_closure_key: c2, closure_uuid: u2, closure_status: reroute_available, moderation_status: verified}
+          - {ourhike_closure_key: c3, closure_uuid: u3, closure_status: open, moderation_status: verified}
+          - {ourhike_closure_key: c4, closure_uuid: u4, closure_status: washed_out, moderation_status: verified}
+          - {ourhike_closure_key: c5, closure_uuid: u5, closure_status: closed, moderation_status: submitted}
+    expect:
+      rows:
+        - {closure_uuid: u1, obstructs_trail: true, problem: null}
+        - {closure_uuid: u2, obstructs_trail: true, problem: null}
+        - {closure_uuid: u3, obstructs_trail: false, problem: null}
+        - {closure_uuid: u4, obstructs_trail: null, problem: null}
+        - {closure_uuid: u5, obstructs_trail: true, problem: 'u5: moderation_status is submitted, and only a verified closure leaves the database'}
+
+  - name: int_closures__gate_holds_back_one_bad_atc_row_and_nothing_else
+    description: >
+      One bad ATC row holds back ATC's file and no other source's
+      (pipeline/ELT.md's per-source gate), as export_atc_updates.py publishes
+      nothing for a reviewed file with a bad row
+      (test_a_reviewed_file_with_a_bad_row_publishes_nothing_and_fails) and
+      leaves every other artifact alone. NYS Parks with no rows passes: an
+      empty closures layer is a good week.
+    model: int_closures__gate
+    given:
+      - input: ref('int_closures__unioned')
+        format: sql
+        rows: |
+          select 'atc_trail_updates' as source_key, cast([] as varchar[]) as problems
+          union all
+          select 'atc_trail_updates' as source_key, ['a01: missing obstructs_trail'] as problems
+          union all
+          select 'nynjtc_trail_alerts' as source_key, cast([] as varchar[]) as problems
+          union all
+          select 'ourhike_closures' as source_key, cast([] as varchar[]) as problems
+      - input: ref('int_closures__atc_checked')
+        format: sql
+        rows: |
+          select 0 as file_row
+          union all
+          select 1 as file_row
+      - input: ref('base_atc__atc_updates')
+        rows:
+          - {atc_updates_document_key: d1, document_json: '{"reviewed_at": "2026-08-24", "updates": [{}, {}]}'}
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: atc_trail_updates, may_publish: true}
+          - {source_key: nynjtc_trail_alerts, may_publish: true}
+          - {source_key: oprhp_trail_closures, may_publish: true}
+          - {source_key: ourhike_closures, may_publish: true}
+    expect:
+      rows:
+        - {source_key: atc_trail_updates, rows_total: 2, rows_invalid: 1, passed: false, held_because: '1 of 2 rows cannot publish, and a partial set of safety notices is worse than none'}
+        - {source_key: nynjtc_trail_alerts, rows_total: 1, rows_invalid: 0, passed: true, held_because: null}
+        - {source_key: oprhp_trail_closures, rows_total: 0, rows_invalid: 0, passed: true, held_because: null}
+        - {source_key: ourhike_closures, rows_total: 1, rows_invalid: 0, passed: true, held_because: null}
+
+  - name: int_closures__gate_holds_back_an_unreviewed_atc_file
+    description: >
+      An ATC file nobody has reviewed publishes nothing, however clean its
+      rows (test_an_unreviewed_file_publishes_nothing_and_does_not_fail): an
+      empty artifact would read as "ATC reports nothing", a different claim
+      from "we have not looked". NYNJTC with no posts at all is a parse that
+      broke (fetch_nynjtc_alerts.py).
+    model: int_closures__gate
+    given:
+      - input: ref('int_closures__unioned')
+        format: sql
+        rows: |
+          select 'atc_trail_updates' as source_key, cast([] as varchar[]) as problems
+      - input: ref('int_closures__atc_checked')
+        format: sql
+        rows: |
+          select 0 as file_row
+      - input: ref('base_atc__atc_updates')
+        rows:
+          - {atc_updates_document_key: d1, document_json: '{"reviewed_at": "  ", "updates": [{}]}'}
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: atc_trail_updates, may_publish: true}
+          - {source_key: nynjtc_trail_alerts, may_publish: true}
+          - {source_key: oprhp_trail_closures, may_publish: true}
+          - {source_key: ourhike_closures, may_publish: true}
+    expect:
+      rows:
+        - {source_key: atc_trail_updates, reviewed_at: '  ', passed: false, held_because: 'reference/atc_updates.json has no reviewed_at, so nobody has checked it against ATC''s page'}
+        - {source_key: nynjtc_trail_alerts, reviewed_at: null, passed: false, held_because: 'NYNJTC''s Trail Alerts category has no posts at all, which means the parse broke'}
+        - {source_key: oprhp_trail_closures, reviewed_at: null, passed: true, held_because: null}
+        - {source_key: ourhike_closures, reviewed_at: null, passed: true, held_because: null}
+
+  - name: int_closures__gate_passes_an_empty_reviewed_atc_file_and_holds_back_an_unverified_closure
+    description: >
+      A reviewed ATC file with no rows passes, and its writer publishes
+      `atc_updates: []` with the review date, as export_atc_updates.py does
+      (test_an_empty_reviewed_file_still_publishes): "we looked, and ATC has
+      nothing placeable" is a real answer, and the date is read from the
+      file landed whole. One OurHike closure that is not moderator-verified
+      holds back OurHike's closures and nothing else.
+    model: int_closures__gate
+    given:
+      - input: ref('int_closures__unioned')
+        format: sql
+        rows: |
+          select 'nynjtc_trail_alerts' as source_key, cast([] as varchar[]) as problems
+          union all
+          select 'ourhike_closures' as source_key, ['u5: moderation_status is submitted, and only a verified closure leaves the database'] as problems
+      - input: ref('int_closures__atc_checked')
+        rows: []
+      - input: ref('base_atc__atc_updates')
+        rows:
+          - {atc_updates_document_key: d1, document_json: '{"reviewed_at": "2026-08-24", "updates": []}'}
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: atc_trail_updates, may_publish: true}
+          - {source_key: nynjtc_trail_alerts, may_publish: true}
+          - {source_key: oprhp_trail_closures, may_publish: true}
+          - {source_key: ourhike_closures, may_publish: true}
+    expect:
+      rows:
+        - {source_key: atc_trail_updates, rows_total: 0, reviewed_at: '2026-08-24', passed: true, held_because: null}
+        - {source_key: nynjtc_trail_alerts, rows_total: 1, reviewed_at: null, passed: true, held_because: null}
+        - {source_key: oprhp_trail_closures, rows_total: 0, reviewed_at: null, passed: true, held_because: null}
+        - {source_key: ourhike_closures, rows_total: 1, reviewed_at: null, passed: false, held_because: '1 of 1 rows cannot publish, and a partial set of safety notices is worse than none'}
+
+  - name: int_closures__gate_holds_back_an_atc_file_whose_updates_is_not_a_list
+    description: >
+      file_problems()'s first check: "`updates` is missing or is not a
+      list", read from the file landed whole, before any row's.
+    model: int_closures__gate
+    given:
+      - input: ref('int_closures__unioned')
+        format: sql
+        rows: |
+          select 'nynjtc_trail_alerts' as source_key, cast([] as varchar[]) as problems
+      - input: ref('int_closures__atc_checked')
+        rows: []
+      - input: ref('base_atc__atc_updates')
+        rows:
+          - {atc_updates_document_key: d1, document_json: '{"reviewed_at": "2026-08-24", "updates": {"a01": {}}}'}
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: atc_trail_updates, may_publish: true}
+          - {source_key: nynjtc_trail_alerts, may_publish: true}
+          - {source_key: oprhp_trail_closures, may_publish: true}
+          - {source_key: ourhike_closures, may_publish: true}
+    expect:
+      rows:
+        - {source_key: atc_trail_updates, passed: false, held_because: '`updates` is missing or is not a list'}
+        - {source_key: nynjtc_trail_alerts, passed: true, held_because: null}
+        - {source_key: oprhp_trail_closures, passed: true, held_because: null}
+        - {source_key: ourhike_closures, passed: true, held_because: null}
+
+  - name: int_closures__gate_holds_back_an_atc_file_whose_two_landings_disagree
+    description: >
+      reference/atc_updates.json lands twice, as its rows and whole, and a
+      file whose two landings count different rows is two files, read in
+      different runs: held back rather than published with a review date
+      that belongs to the other.
+    model: int_closures__gate
+    given:
+      - input: ref('int_closures__unioned')
+        format: sql
+        rows: |
+          select 'atc_trail_updates' as source_key, cast([] as varchar[]) as problems
+          union all
+          select 'atc_trail_updates' as source_key, cast([] as varchar[]) as problems
+          union all
+          select 'nynjtc_trail_alerts' as source_key, cast([] as varchar[]) as problems
+      - input: ref('int_closures__atc_checked')
+        format: sql
+        rows: |
+          select 0 as file_row
+          union all
+          select 1 as file_row
+      - input: ref('base_atc__atc_updates')
+        rows:
+          - {atc_updates_document_key: d1, document_json: '{"reviewed_at": "2026-08-24", "updates": [{}]}'}
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: atc_trail_updates, may_publish: true}
+          - {source_key: nynjtc_trail_alerts, may_publish: true}
+          - {source_key: oprhp_trail_closures, may_publish: true}
+          - {source_key: ourhike_closures, may_publish: true}
+    expect:
+      rows:
+        - {source_key: atc_trail_updates, passed: false, held_because: 'reference/atc_updates.json lists 1 updates and 2 landed as rows, so the two landings are of different files'}
+        - {source_key: nynjtc_trail_alerts, passed: true, held_because: null}
+        - {source_key: oprhp_trail_closures, passed: true, held_because: null}
+        - {source_key: ourhike_closures, passed: true, held_because: null}
+
+  - name: int_closures__gate_holds_back_a_source_that_may_not_publish
+    description: >
+      A source int_sources__publication holds back, or has no row for, is held
+      back here too, however clean its rows: the marts drop its rows, and a
+      writer that saw no verdict would write `[]`, which reads as "nothing to
+      report" rather than "not ours to publish".
+    model: int_closures__gate
+    given:
+      - input: ref('int_closures__unioned')
+        format: sql
+        rows: |
+          select 'nynjtc_trail_alerts' as source_key, cast([] as varchar[]) as problems
+          union all
+          select 'ourhike_closures' as source_key, cast([] as varchar[]) as problems
+      - input: ref('int_closures__atc_checked')
+        rows: []
+      - input: ref('base_atc__atc_updates')
+        rows:
+          - {atc_updates_document_key: d1, document_json: '{"reviewed_at": "2026-08-24", "updates": []}'}
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: atc_trail_updates, may_publish: true, publication_rule: registered_and_publishable}
+          - {source_key: nynjtc_trail_alerts, may_publish: false, publication_rule: held_back_by_the_registry}
+          - {source_key: ourhike_closures, may_publish: true, publication_rule: publishing_before_registration}
+    expect:
+      rows:
+        - {source_key: atc_trail_updates, may_publish: true, passed: true, held_because: null}
+        - {source_key: nynjtc_trail_alerts, may_publish: false, passed: false, held_because: 'int_sources__publication holds nynjtc_trail_alerts back (held_back_by_the_registry)'}
+        - {source_key: oprhp_trail_closures, may_publish: false, passed: false, held_because: 'int_sources__publication has no row for oprhp_trail_closures, so nothing says it may publish'}
+        - {source_key: ourhike_closures, may_publish: true, passed: true, held_because: null}

@@ -1,0 +1,32 @@
+version: 2
+
+models:
+  - name: base_nws__alerts
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nws', 'raw_nws__alerts')
+          config:
+            severity: warn
+    description: >
+      Every active NWS alert, keyed, with NWS's text and times as NWS wrote
+      them. Read by int_warnings__nws_relayed.
+    columns:
+      - name: nws_alert_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          `nws_alerts` and NWS's message id.
+        data_tests: [not_null, unique]
+      - name: alert_id
+        description: NWS's message id, `urn:oid:...`, published as `id`.
+        data_tests: [not_null]
+      - name: alert_status
+        description: NWS's `status`; only `Actual` is relayed.
+      - name: message_type
+        description: NWS's `messageType`; a `Cancel` is not relayed.
+      - name: sent_at
+        description: NWS's `sent`, as text with its own offset.
+      - name: geom
+        description: The alert's own polygon in lon/lat, or null where NWS places it by zone.

@@ -243,6 +243,10 @@ jobs:
             pipeline/export_club_sections.py
             pipeline/export_elevation.py
             pipeline/step_dem_sampling.py
+            pipeline/step_form_route.py
+            pipeline/export_suggested_hikes.py
+            pipeline/route_hikefinder.py
+            pipeline/export_highlights.py
             pipeline/build_marts.py
             pipeline/export_poi.py
             pipeline/export_nearby_poi.py
@@ -525,6 +529,20 @@ jobs:
           done
           "$RUNNER_TEMP/pipeline/bin/python" parity.py nearby_poi --new data/processed/dbt/nearby_poi.geojson
           "$RUNNER_TEMP/pipeline/bin/python" parity.py retired_poi --new data/processed/dbt/retired_poi.geojson
+          # The suggested hikes: the Hike Finder pages fixture mode served,
+          # under data/raw/hikefinder/, read through fetch_hikefinder.py's
+          # parse and routed by route_hikefinder.py over the warehouse's graph,
+          # the one step_form_route.py read. Either side writes no file when no
+          # hike ships, and two absent files agree. The highlights read
+          # reference/highlights.json from git against the POI files and
+          # club_sections.json this run's writers wrote, which the lines above
+          # hold to export_poi.py's and export_club_sections.py's. All three
+          # run on the pipeline's own pins, the venv step_form_route.py runs
+          # in, so the old side routes with the same duckdb and lib/ the step
+          # does; none imports dlt.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py suggested_hikes --new data/processed/dbt/suggested_hikes.json --raw-dir data/raw
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py suggested_hikes_detail --new data/processed/dbt/suggested_hikes_detail.json --raw-dir data/raw
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py highlights --new data/processed/dbt/highlights.json --raw-dir data/raw
 
       - name: dbt source freshness
         if: steps.scope.outputs.run == 'true'

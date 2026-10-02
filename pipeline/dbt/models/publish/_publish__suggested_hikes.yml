@@ -1,0 +1,135 @@
+version: 2
+
+models:
+  - name: pub_suggested_hikes
+    description: >
+      Writes suggested_hikes.json, the hike shelf a phone reads, from the
+      suggested_hikes mart's written-up hikes: one row, `generated_at`,
+      `source` and `hikes`, which phone_file writes to
+      processed_dir/suggested_hikes.json as one JSON document. No row, and so
+      no file, when no hike ships. parity.py compares it with
+      export_suggested_hikes.py's shelf, record by record.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: generated_at
+        description: When the run started, UTC, to the second, as lib/stamps.py's utc_stamp() writes it.
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: source
+        description: The registry key the hikes come from, lib/hikefinder.py's SOURCE_KEY.
+        data_type: varchar
+      - name: hikes
+        description: Each shipped hike's shelf record, in hike-number order.
+        data_type: json[]
+  - name: pub_suggested_hikes_detail
+    description: >
+      Writes suggested_hikes_detail.json, every shipped hike's detail in shelf
+      order, from the suggested_hikes mart: one row, `details`. Each detail is
+      published on its own as suggested_hikes_detail_<number>.json, which is
+      stage 4's cut, outside dbt. No row, and so no file, when no hike ships.
+      parity.py compares each detail with export_suggested_hikes.py's.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: details
+        description: Each shipped hike's detail, flat, carrying its own `id`.
+        data_type: json[]
+        data_tests: [not_null, unique]
+  - name: pub_highlights
+    description: >
+      Writes highlights.json from the suggested_hikes mart's highlights: one
+      row, `source` and `highlights`, always, `highlights` empty when nothing
+      resolved. parity.py compares it with export_highlights.py's file,
+      record by record.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: source
+        description: The reviewed file the judgement lives in, export_highlights.py's literal.
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: highlights
+        description: Each resolved highlight, in the reviewed file's order.
+        data_type: json[]
+
+exposures:
+  - name: suggested_hikes_json
+    label: suggested_hikes.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The hike shelf (#1473 — The hike shelf is 85% of the cache ceiling, and
+      crossing it deletes the shelf rather than trimming it), read by
+      client/src/lib/suggestedHikesData.ts and cached whole by
+      conditionsCache.ts, whose 2 MB ceiling deletes the cached copy rather
+      than trimming it. Every hike's ends are what the phone routes a day
+      hike between, so a wrong end is a hiker sent somewhere the write-up
+      does not go: which ships is int_suggested_hikes__graded's and
+      __routed's (SH04-SH06). Published in the release folder by
+      publish-vector-data.yml from export_suggested_hikes.py's file until
+      stage 4 of #1793 — Rebuild the data platform as dlt → dbt: seven
+      contracted marts, a monthly refresh, published docs, and lighter phone
+      downloads moves it to this writer's.
+    depends_on:
+      - ref('suggested_hikes')
+      - ref('pub_suggested_hikes')
+    config:
+      meta:
+        r2_keys: [suggested_hikes.json]
+        format: json
+        offline_tier: hike_shelf
+        cadence: monthly
+  - name: suggested_hikes_detail_json
+    label: suggested_hikes_detail_<number>.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      Each shipped hike's detail, its own object at the bucket's root under a
+      flat name (export_suggested_hikes.py's DETAIL_KEY: lib/r2_keys.py
+      declares no prefix for them), fetched when somebody opens the hike.
+      pub_suggested_hikes_detail writes them as one file; cutting it into one
+      object per hike is stage 4's, as the per-cell files are, and until then
+      export_suggested_hikes.py's write_details() writes them.
+    depends_on:
+      - ref('suggested_hikes')
+      - ref('pub_suggested_hikes_detail')
+    config:
+      meta:
+        r2_keys: ["suggested_hikes_detail_{number}.json"]
+        format: json
+        cadence: monthly
+  - name: highlights_json
+    label: highlights.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The stretches worth going to, drawn below the corridor view's seam
+      (features/CORRIDOR_VIEW.md; #595 — The corridor view has nothing to
+      explore, because "popular" has no source behind it yet), each with its
+      basis and its A.T. mile range from the published POIs at its ends.
+      Published in the release folder by publish-vector-data.yml from
+      export_highlights.py's file until stage 4 of #1793 — Rebuild the data
+      platform as dlt → dbt: seven contracted marts, a monthly refresh,
+      published docs, and lighter phone downloads — moves it to this
+      writer's.
+    depends_on:
+      - ref('suggested_hikes')
+      - ref('pub_highlights')
+    config:
+      meta:
+        r2_keys: [highlights.json]
+        format: json
+        cadence: monthly

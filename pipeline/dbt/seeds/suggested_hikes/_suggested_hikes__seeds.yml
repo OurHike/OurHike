@@ -1,0 +1,32 @@
+version: 2
+
+seeds:
+  - name: suggested_hike_difficulty_slugs
+    description: >
+      The Hike Finder export's six difficulty labels onto the five slugs the
+      client holds (client/src/lib/suggestedHikes.ts's DIFFICULTIES), as
+      export_suggested_hikes.py's DIFFICULTY_SLUGS maps them, keyed on the
+      label stripped and lowercased as difficulty_slug() reads it (SH07).
+      "Very Strenuous" has no slot of its own and takes the hardest one,
+      `strenuous`, which understates it, so the record also carries the
+      publisher's own word in `publishedDifficulty`. A label with no row
+      here has no slug: the card prints no badge rather than a guessed one.
+      tests/test_dbt_suggested_hikes_parity.py holds this file to
+      DIFFICULTY_SLUGS until stage 5 of #1793 — Rebuild the data platform
+      as dlt → dbt: seven contracted marts, a monthly refresh, published
+      docs, and lighter phone downloads deletes the Python.
+    config:
+      column_types:
+        difficulty_label: varchar
+        difficulty_slug: varchar
+    columns:
+      - name: difficulty_label
+        description: The export's label, stripped and lowercased.
+        data_tests: [not_null, unique]
+      - name: difficulty_slug
+        description: The client's slug for it.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [easy, easy-moderate, moderate, moderate-strenuous, strenuous]

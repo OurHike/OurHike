@@ -1,0 +1,28 @@
+version: 2
+
+models:
+  - name: base_ourhike__highlights
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('ourhike', 'raw_ourhike__highlights')
+          config:
+            severity: warn
+    description: >
+      reference/highlights.json, one row per row of the curated list, each
+      the JSON its reviewer wrote. Read by int_suggested_hikes__highlights.
+    columns:
+      - name: highlight_row_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the file's path and the row's place in it.
+        data_tests: [not_null, unique]
+      - name: file_row
+        description: >
+          The row's place in the file, from 0, which is the published order:
+          lib/highlights.py keeps the file's order, "a thing a human
+          maintains".
+      - name: highlight
+        description: The row as its reviewer wrote it.

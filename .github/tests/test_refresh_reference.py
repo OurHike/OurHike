@@ -227,3 +227,39 @@ def test_the_weekly_planner_gives_way_on_its_schedule_only_once_the_monthly_lane
     assert '"schedule"' in script and "refresh-reference.yml/runs?status=success" in script
     assert "workflow_dispatch" in _triggers(workflow), "the dispatch stays (decision 28a)"
     assert not _secrets(give_way) and not _secrets(workflow["jobs"]["plan"])
+
+
+# --- The parity families, one home: CI's own step ---
+
+CI_PARITY = re.compile(r'parity\.py "?([a-z_$]+)"? --new "?data/processed/dbt/([^ "]+?)"?(?= |$)( --raw-dir data/raw)?', re.M)
+POI_LOOP = re.compile(r"for poi_type in ([a-z ]+); do")
+#: pipeline-tests.yml's parity lines for files the hourly conditions lane writes, not this one.
+HOURLY_FAMILIES = {"atc_updates", "nynjtc_alerts", "closures", "reports"}
+
+
+def _ci_families() -> dict[str, tuple[str, bool]]:
+    steps = _load(WORKFLOWS / "pipeline-tests.yml")["jobs"]["dbt"]["steps"]
+    script = next(step["run"] for step in steps if step.get("name") == "Parity with today's exporters")
+    kinds = POI_LOOP.search(script).group(1).split()
+    found = {}
+    for family, name, raw in CI_PARITY.findall(script):
+        for kind in kinds if "$poi_type" in family else [None]:
+            found[family.replace("$poi_type", kind or "")] = (name.replace("$poi_type", kind or ""), bool(raw))
+    return found
+
+
+def _lane_families(workflow: dict) -> dict[str, tuple[str, bool]]:
+    script = next(
+        step["run"] for step in workflow["jobs"]["parity"]["steps"] if step.get("name") == "Parity with today's exporters"
+    )
+    block = script[script.index("families = {") + len("families = ") : script.index("answered = ")]
+    raw = ("--raw-dir", "data/raw")
+    families = eval(block, {"raw": raw})  # noqa: S307 - the workflow's own literal, read to compare it with CI's
+    return {family: (name, extra == raw) for family, (name, extra) in families.items()}
+
+
+def test_the_monthly_parity_runs_every_family_ci_runs_except_the_hourly_conditions_files(workflow):
+    ci = _ci_families()
+
+    assert HOURLY_FAMILIES <= set(ci), "a conditions family left CI's step; HOURLY_FAMILIES is stale"
+    assert _lane_families(workflow) == {family: entry for family, entry in ci.items() if family not in HOURLY_FAMILIES}

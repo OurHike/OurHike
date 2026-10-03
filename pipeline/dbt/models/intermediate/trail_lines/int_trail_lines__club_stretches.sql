@@ -1,49 +1,43 @@
 {{ config(materialized='table') }}
--- Which club maintains which stretch of the A.T. (TL24-TL26),
--- export_club_sections.py with lib/club_sections.py's rules: one row per
--- run of half-mile markers one club maintains, in mile order, and the runs
--- the centerline names no club for, as stretches of miles.
+-- Which club maintains which stretch of the A.T. (TL24-TL26):
+-- export_club_sections.py with lib/club_sections.py's rules. One row per
+-- run of half-mile markers one club maintains, in mile order, plus the runs
+-- the centerline names no club for.
 --
--- THE ATTRIBUTION IS THE CENTERLINE'S (lib/club_sections.py's docstring has
--- the measurement: the line was edited 2026-08-04, the polygon layer
--- 2024-08-15). Each marker takes the club of the nearest centerline vertex
--- within MILEPOST_SNAP_M (100 m) in lib/spurs.py's equirectangular metres;
--- a marker with no vertex that near, or whose nearest vertex has no
--- attributable Acronym, is unattributed. A tie goes to the first vertex in
--- the layer's order, which is PointIndex's answer for the tie that happens
--- (two segments' shared end: one place, so one grid cell, searched in the
--- order the vertices went in). Two different places exactly as near would go
--- by PointIndex's cell order there and by the layer's order here; none of
--- the 4,395 live markers is one (measured 2026-10-02: every stretch equal).
--- DuckDB has no hypot(), so the distance is sqrt(dx * dx + dy * dy), which
--- can differ from Python's hypot() in the last bit: it moves an answer only
--- at such a tie or at exactly 100 m.
+-- The club comes from the centerline, not the staler polygon layer
+-- (lib/club_sections.py's docstring: the line was edited 2026-08-04, the
+-- polygons 2024-08-15). Each marker takes the club of the nearest
+-- centerline vertex within MILEPOST_SNAP_M (100 m). A tie goes to the first
+-- vertex in layer order, which matches PointIndex for the tie that occurs,
+-- two segments' shared end; two different places exactly as near would
+-- differ, and none of the 4,395 live markers is one (measured 2026-10-02:
+-- every stretch equal). sqrt(dx * dx + dy * dy) stands in for hypot(); it
+-- can differ in the last bit, which matters only at such a tie or at
+-- exactly 100 m.
 --
--- TL25, A DIGIT ACRONYM IS NEVER A CLUB (is_attributable): the text stripped
--- as Python strips it, empty or all ASCII digits, is no club, and its miles
--- publish as unattributed rather than borrowing the stale polygon layer's
--- answer. (str.isdigit() also takes other scripts' digits; the live layer's
--- 44 Acronym values are all ASCII.) WRONG IN TODAY'S CODE, reported and left
--- as it is because parity holds this file to the Python: lib/club_sections.py
--- calls the digit values "an unjoined FID or a shifted column upstream", and
--- they are the centerline Acronym field's own coded-value domain codes ('11'
--- is KTA, '27' CMC, '0' MATC, '23' RATC; the live layer's metadata, read
--- 2026-10-02, where 54 features carry one of 14 such codes). Measured the
--- same day: 33.0 of the 38.5 unattributed miles (66 of 77 markers) are such
--- a code and so decodable; the other 11 markers have no vertex within 100 m.
+-- TL25, a digit Acronym is never a club (is_attributable): empty or all
+-- ASCII digits is no club, and its miles publish as unattributed rather
+-- than borrowing the stale polygon layer's answer. (str.isdigit() also
+-- takes other scripts' digits; the live layer's 44 Acronym values are all
+-- ASCII.) Today's code is wrong here, reported and kept because parity
+-- holds this file to the Python: lib/club_sections.py calls the digit
+-- values "an unjoined FID or a shifted column upstream", but they are the
+-- Acronym field's own coded-value domain codes ('11' is KTA, '27' CMC, '0'
+-- MATC, '23' RATC; the live layer's metadata, read 2026-10-02: 54 features
+-- carry one of 14 such codes). Measured the same day: 33.0 of the 38.5
+-- unattributed miles (66 of 77 markers) carry such a code and could be
+-- decoded; the other 11 markers have no vertex within 100 m.
 --
--- TL24, THE RUNS: markers in mile order (ties in the layer's order, as
--- Python's stable sort keeps them); a new run where the club changes or two
--- markers are more than STRETCH_GAP_MILES (0.75) apart; each run owns
--- MILEPOST_HALF_WIDTH (0.25 mi) either side of its first and last marker.
--- TL26, PINNED TO THE TERMINI: the southernmost run starts at mile 0 and the
--- northernmost ends at the last marker, the first in run order winning a
--- tie, as min() and max() keep the first.
+-- TL24, the runs: a new run where the club changes or two markers are more
+-- than STRETCH_GAP_MILES (0.75) apart; each run owns MILEPOST_HALF_WIDTH
+-- (0.25 mi) either side of its end markers. TL26: the southernmost run
+-- starts at mile 0 and the northernmost ends at the last marker, a tie
+-- going to the first in the order min() and max() search (the `keyed`
+-- CTE).
 --
--- Each layer's data only where that layer may publish: the attribution is
--- the centerline's and the miles are the markers'; the Python reads both
--- unconditionally. `stretch_json` is the published {start_mile, end_mile} as
--- JSON text, so a unit test holds it to the bit.
+-- Each layer's data is used only where that layer may publish; the Python
+-- reads both unconditionally. `stretch_json` is JSON text so a unit test
+-- can check it exactly.
 with publication as (
     select * from {{ ref('int_sources__publication') }}
 ),

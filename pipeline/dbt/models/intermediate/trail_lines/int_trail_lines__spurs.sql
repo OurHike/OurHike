@@ -1,46 +1,33 @@
 {{ config(materialized='table') }}
--- What each blue-blazed spur leads to (TL27-TL29), export_spurs.py's
--- build_spur_records() and attach_junction_miles(), with lib/spurs.py's
--- rules: one row per side trail, its decoded `Type`, and for a spur what
--- spurs.json says of it.
+-- What each blue-blazed spur leads to (TL27-TL29): export_spurs.py's
+-- build_spur_records() and attach_junction_miles() with lib/spurs.py's
+-- rules. One row per side trail; a spur also gets its spurs.json record.
 --
--- TL27, A SPUR is a side trail whose Type decodes to "3" (SPUR_TYPE_CODE,
--- "Spur (eg View, Camp)"), lib/spurs.decode_type in its order: the text
--- stripped as Python strips it; a code of the domain as itself; one of
--- TYPE_LITERAL_ALIASES (the misspelt literal 60 live side trails carry for
--- "2"); a domain name read back to its code, ignoring case; a bare number
--- only when there is no domain at all. The domain is
--- int_trail_lines__coded_domains', a frozen copy of the live call.
+-- TL27: a spur is a side trail whose Type decodes to "3" (SPUR_TYPE_CODE),
+-- decoded in lib/spurs.decode_type()'s order (the `decoded` CTE).
+-- TYPE_LITERAL_ALIASES covers the misspelt literal that 60 live side
+-- trails carry for "2".
 --
--- TL28, THE TWO ENDS, from the side trail's full-resolution line: a
--- LineString's first and last vertex, a MultiLineString's first part's first
--- and last part's last. Each end's distance to the nearest vertex of ATC's
--- whole centerline, if within JUNCTION_MAX_M (100 m), in lib/spurs.py's
--- equirectangular metres. orient(): both ends within ON_TRAIL_M (25 m) is an
--- alternate route, two equal distances cannot be told apart, and no end near
--- the trail is not a junction, and each of the three gives no junction and no
--- destination; otherwise the nearer end is the junction, the other the far
--- end. The far end's destination is the nearest of
--- int_trail_lines__spur_destinations within DESTINATION_MAX_M (150 m) whose
--- type is one of DESTINATION_POI_TYPES (trail_lines_spur_destination_poi_types:
--- a privy, a parking lot or a trailhead is never where a spur goes), rounded
--- to the metre as Python's round() rounds it.
+-- TL28: orient() (the `oriented` CTE) makes the end nearer the centerline
+-- the junction, and gives none when both ends are within ON_TRAIL_M (25 m,
+-- an alternate route), the two distances tie, or neither end is within
+-- JUNCTION_MAX_M (100 m). The far end's destination is the nearest
+-- destination POI within DESTINATION_MAX_M (150 m); a privy, parking lot
+-- or trailhead is never where a spur goes.
 --
--- TL29, THE JUNCTION MILE: the junction on int_trail_lines__mile_axis by the
--- axis_mile macro, the same mile a POI gets (#136 — Publish the mile at
--- which each spur joins the AT), rounded to 3 decimals as
--- Python's round() does. Null where the ends cannot be told apart: absent
--- means unknown, never a guess at whichever end won by a metre.
+-- TL29: the junction mile comes from axis_mile(), the same mile a POI gets
+-- (#136 — Publish the mile at which each spur joins the AT). Null where no
+-- end is the junction: absent means unknown, never a guess at whichever
+-- end won by a metre.
 --
--- ONE DEPARTURE FROM THE PYTHON'S ARITHMETIC: distance_m() calls math.hypot,
--- and DuckDB has none, so this is sqrt(dx * dx + dy * dy), which can differ
--- from hypot in the last bit (Reasoned). That moves an answer only for a
--- distance within one bit of 25, 100 or 150 m, of another candidate's, or of
--- a half metre.
+-- One departure from the Python (Reasoned): DuckDB has no hypot, so
+-- sqrt(dx * dx + dy * dy) can differ from math.hypot in the last bit,
+-- which changes an answer only for a distance within one bit of 25, 100 or
+-- 150 m, of another candidate's, or of a half metre.
 --
--- spur_record_json is the spurs.json record itself, its keys sorted as
--- json.dumps(sort_keys=True) sorts them, so a unit test can hold every field
--- to the bit (a dbt 2.0.6 unit test compares a double only to one decimal).
+-- spur_record_json has its keys sorted as json.dumps(sort_keys=True) sorts
+-- them, so a unit test can check every field exactly (a dbt 2.0.6 unit
+-- test compares a double only to one decimal).
 with side_trails as (
     select * from {{ ref('int_trail_lines__at_features') }}
     where source_key = 'side_trails'

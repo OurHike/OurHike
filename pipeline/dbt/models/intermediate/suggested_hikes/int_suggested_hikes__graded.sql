@@ -1,36 +1,27 @@
--- The grade of each Hike Finder hike's route, and every check that is not
--- clean, in the order a reviewer should read them: the problems are the
--- record's `routeNotes`, word for word. step_form_route measured each route
--- over the graph (stg_derived__formed_routes); this grades the measurements,
--- in two halves, one per provenance.
+-- The grade of each Hike Finder hike's route, and the record's
+-- `routeNotes` word for word: every check that is not clean, in the order a
+-- reviewer should read them. step_form_route measured each route
+-- (stg_derived__formed_routes); this grades the measurements.
 --
--- A GENERATED ROUTE (SH04) is lib/hike_route_builder.py's _grade(), check for
--- check in its order: the share of the trails the description names that the
--- walk walks (rejected below TRAILS_FAIR 0.34, fair below TRAILS_GOOD 0.9),
--- the length against the publisher's stated miles (rejected past
--- LENGTH_FAIR 0.40, fair when none is stated), how much of a closed walk
--- doubles back (rejected past RETRACE_FAIR 0.60, fair past RETRACE_GOOD 0.30
--- or below RETRACE_MIN 0.03), and how far the parking sat from the line
--- (fair past START_GOOD_OFF_M, 150 m). A single failing check caps the grade;
--- they are not scored and summed, so a good number cannot hide a bad one.
--- Every one of those numbers is @unvalidated or calibrated against the 113
--- published tracks, and says which beside it in lib/hike_route_builder.py;
--- walking a sample of formed routes against their write-ups is what settles
--- the length bands (its :268-270). They are dbt_project.yml's
--- suggested_hikes_* vars, held to the Python's by
--- tests/test_dbt_suggested_hikes_parity.py.
+-- A generated route (SH04) gets lib/hike_route_builder.py's _grade(), check
+-- for check (the `generated_checks` CTE): trails walked of those named,
+-- length against the stated miles, how much of a closed walk doubles back,
+-- and how far the parking sits from the line. The worst check sets the
+-- grade; checks are not summed, so a good number cannot hide a bad one. The
+-- thresholds are the suggested_hikes_* vars, held to the Python's by
+-- tests/test_dbt_suggested_hikes_parity.py; each is @unvalidated or
+-- calibrated against the 113 published tracks, and lib/hike_route_builder.py
+-- says which beside it. Walking a sample of formed routes against their
+-- write-ups is what settles the length bands (its :268-270).
 --
--- A PUBLISHED TRACK is published_route()'s checks: never rejected for its
--- length, because the track is the publisher's own drawing and the stated
--- miles a number somebody typed, so a disagreement is reported (fair past
--- LENGTH_GOOD 0.20, and past LENGTH_FAIR 0.40 called the publisher's own two
--- figures disagreeing), as is a page that calls the walk a loop whose track
--- does not close (SH04's row carries both halves).
+-- A published track (published_route()) is never rejected for its length:
+-- the track is the publisher's own drawing and the stated miles a number
+-- somebody typed, so a gap is only reported, as is a page that calls the
+-- walk a loop whose track does not close. A route that did not form is
+-- `rejected`, with step_form_route's reason as its one note.
 --
--- A route that did not form is `rejected`, its one note the step's reason.
--- Each message is printf() of Python's f-string: printf('%.1f'), '%+.0f' and
--- '%.0f' answered as Python's format did on all 40,018 doubles measured
--- (2026-10-02, DuckDB 1.5.5), ties and -0 included.
+-- printf('%.1f'), '%+.0f' and '%.0f' matched Python's format on all 40,018
+-- doubles measured (2026-10-02, DuckDB 1.5.5), ties and -0 included.
 with formed as (
     select * from {{ ref('stg_derived__formed_routes') }}
 ),

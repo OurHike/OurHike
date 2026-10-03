@@ -1,47 +1,31 @@
 {{ config(materialized='table') }}
--- The parks places.json lists, one row per park UNIT: export_places.py's
--- load_parks() in SQL, step for step in its order (PL01, PL02, PL03).
+-- The parks places.json lists, one row per park unit: export_places.py's
+-- load_parks(), step for step (PL01-PL03).
 --
--- PL01, THE LAYER SHIPS ONLY BEHIND ITS OWN GATE. No row at all unless
--- oprhp_park_polygons may publish (int_sources__publication, the one home of
--- the rule), where load_parks() reads the entry's `reaches_hikers`. The two
--- agree on every registered source: 64 of 64 on the real sources.json,
--- measured 2026-10-02, which is the diff pipeline/ELT.md asks for before
--- may_publish replaces reaches_hikers in PL01. An unregistered layer, a
--- held-back one and an unfetched one all give no park, as in the Python;
--- the reason it prints into places_manifest.json is the manifest's, which
--- stays publish.py's.
+-- PL01: no rows unless oprhp_park_polygons may publish
+-- (int_sources__publication), where load_parks() reads `reaches_hikers`.
+-- Measured 2026-10-02: the two agree on 64 of 64 sources in the real
+-- sources.json, the check pipeline/ELT.md asks for before may_publish
+-- replaces reaches_hikers here.
 --
--- THE FIELDS ARE THE ENTRY'S. `name_field`, `id_field` and `unit_field`
--- name the columns (Name, GlobalID and MasterAreaID where the entry is
--- silent, export_places.py's PARK_FIELDS), each read under the name dlt
--- lands it as (sql_ci_v1, the steps int_trail_lines__network_sources spells
--- out), so a renamed column at OPRHP is a registry edit. `Category` is
--- PARK_CATEGORY_FIELD, the publisher's own word for what the unit is. A
--- field the layer does not carry reads as null, as ST_Read leaves the column
--- out.
+-- Columns are the registry entry's `name_field`, `id_field` and
+-- `unit_field` (default Name, GlobalID, MasterAreaID: export_places.py's
+-- PARK_FIELDS), read under dlt's names, so a column OPRHP renames is a
+-- registry edit. A field the layer lacks reads as null.
 --
--- PL03, MADE VALID FIRST: every polygon passes through ST_MakeValid before
--- anything is cut against it, because ST_Intersection refuses an invalid
--- polygon. Measured 2026-10-02: 9 of the live layer's 858 polygons are
--- invalid (ST_IsValid false), which settles the count export_places.py
--- left @unvalidated.
+-- PL03: every polygon goes through ST_MakeValid first, because
+-- ST_Intersection refuses an invalid one. Measured 2026-10-02: 9 of the
+-- live layer's 858 polygons fail ST_IsValid, which settles the count
+-- export_places.py left @unvalidated.
 --
--- PL02, ONE ROW PER UNIT. A polygon with no name or no id is not a place,
--- and never gets a generated id. A polygon carrying a unit joins its unit,
--- `oprhp_park_polygons:<unit>`. One with no unit joins the one unit whose
--- polygons wear its name, and otherwise stands alone as
--- `oprhp_park_polygons:<its id>`. A unit takes the name most of its
--- polygons wear, the shortest on a tie, then the first in code-point order,
--- and its commonest category the same way. Its geometry is the union of its
--- polygons, in their order, as WKT text (a dbt 2.0.6 unit test cannot hold a
--- GEOMETRY in a model's output).
---
--- `unit_order` is the unit's place in load_parks()'s list: the units with a
--- unit id in the order their first polygon appears, then the polygons that
--- stand alone in theirs. int_places__resolved names the park a point sits in
--- by the first unit in that order that holds it, as measure()'s min(idx)
--- does.
+-- PL02, one row per unit: a polygon with no name or id is not a place. A
+-- polygon joins its unit, `oprhp_park_polygons:<unit>`; one without a unit
+-- joins the single unit whose polygons wear its name, else stands alone as
+-- `oprhp_park_polygons:<id>`. A unit takes its commonest name (ties: the
+-- shortest, then code-point order) and commonest category (ties:
+-- code-point order). `unit_order` is its place in load_parks()'s list,
+-- which int_places__resolved uses to pick the first park holding a point,
+-- as measure()'s min(idx) does.
 with polygons as (
     select * from {{ ref('base_oprhp__park_polygons') }}
 ),
@@ -112,10 +96,8 @@ roles as (
     from entry
 ),
 
--- dlt's sql_ci_v1, in its own order: strip; each run of characters outside
--- [A-Za-z0-9_] becomes one `_`; a leading digit gets a `_` before it;
--- trailing `_` go unless the whole name is `_`; runs of `_` fold into one;
--- lowercase (dlt/common/normalizers/naming/sql_cs_v1.py and sql_ci_v1.py).
+-- dlt's sql_ci_v1 naming, the same steps int_trail_lines__network_sources
+-- spells out and tests against dlt's own normalize_identifier.
 replaced as (
     select
         field_role,
@@ -175,9 +157,8 @@ park_state as (
 ),
 
 -- Every polygon with a geometry, its columns as one JSON object keyed by
--- dlt's names, so a field is read by the name the entry gives it.
--- json_merge_patch drops a member a patch sets to null, so this is the row
--- without its geometry, which travels beside it.
+-- dlt's names, so a field is read by the name the entry gives it. The
+-- null patch drops `geom` from the object; the geometry travels beside it.
 attributes as (
     select
         source_row,

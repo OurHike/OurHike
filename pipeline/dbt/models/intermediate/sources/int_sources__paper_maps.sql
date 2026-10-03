@@ -1,21 +1,18 @@
--- Each landed paper-map table (#1574), its products in publishable shape and
--- the first problem export_sources.py's `_paper_maps` would refuse it for.
--- One row per table file, which a store block names by path. The problem
+-- Each landed paper-map table, its products in publishable shape, and the
+-- first problem export_sources.py's `_paper_maps` would refuse it for. One
+-- row per table file, which a store block names by path. The problem
 -- reaches the build through int_sources__stewards, and only for a table a
--- shipping steward's store block names, as `_paper_maps` runs only then.
+-- shipping steward's store block names, since `_paper_maps` runs only then.
 --
--- THE CHECKS, IN `_paper_maps`'S ORDER, the first failure being the table's:
--- the table holds products and an https `store.base`; then, product by
--- product, its handle is a Shopify handle, its title is not blank, it lists
--- sheets, each sheet is a sheet number listed by no earlier product or entry,
--- `sheet_covers` names exactly its sheets, each with a list of place names,
--- and `covers`, where present, is a list of place names. The two patterns
--- are vars held to the Python's by tests/test_dbt_sources_parity.py.
+-- Checks, in `_paper_maps`'s order (the first failure is the table's):
+-- products and an https `store.base`, then each product's handle, title,
+-- sheets, `sheet_covers` and `covers` (the `product_checks` CTE). The
+-- handle and sheet patterns are vars held to the Python's by
+-- tests/test_dbt_sources_parity.py.
 --
 -- Stricter than `_paper_maps` in one place, as int_podcasts__checked is: a
--- handle or sheet number must end at its last character, where re.match's
--- `$` also matches before a trailing newline. Messages render values as
--- JSON, where the Python uses repr, and name the path as it was landed.
+-- handle or sheet number ending in a newline is refused, where re.match's
+-- `$` lets it through.
 with tables as (
     select * from {{ ref('base_registry__nynjtc_paper_maps') }}
 ),
@@ -94,9 +91,9 @@ fields as (
     from products
 ),
 
--- Each sheet a product lists, in product and then list order, the order
--- `_paper_maps` meets them in. A repeat is any later listing of a sheet an
--- earlier entry, in this product or another, already listed.
+-- Each sheet a product lists, in product then list order, as `_paper_maps`
+-- meets them. A repeat is any later listing of a sheet already listed, in
+-- this product or another.
 sheets as (
     select
         file_path,

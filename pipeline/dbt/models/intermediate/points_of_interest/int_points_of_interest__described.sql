@@ -2,51 +2,25 @@
 -- Every published POI with its one-sentence `description`, or null where
 -- nothing usable is stated. One row per POI.
 --
--- THE A.T. FAMILY: lib/poi_description.py's describers (PO19), dispatched by
--- poi_type as export_poi.py's DESCRIBERS dispatches them, each composing
--- only from ATC's own inventory columns, so every clause is a fact ATC
--- states. A clause whose column is blank or holds a value no vocabulary
--- knows (the poi_description_terms seed) is dropped rather than guessed:
--- the sentence gets shorter, never wrong. A sentence that would only repeat
--- the card's type line ("Shelter.", "Privy.") is no description.
--- - shelter: storeys, exterior material, "sleeps N" from the capacity
---   (reference/shelter_capacity.json, never ATC's number, and the clause is
---   omitted where nobody stands behind one), what it has (fireplace, fire
---   ring, bear-proof food storage, porch), and the year it was built where
---   the year is plausible;
--- - campsite: group or not, then how many sites, tent pads and platforms;
--- - viewpoint: the arc swept clockwise from left to right bearing, rounded
---   to 5 degrees and never below 5, "panoramic" from 300, its middle as one
---   of eight compass points, and the landform it is seen from;
--- - parking: what you park on and whether there is room;
--- - privy: type, multi-seat, and "open to the air" for one with no
---   enclosure;
--- - water: the synthesized CSI point's own sentence
---   (int_points_of_interest__water), and describe_stream_point()'s for
---   fetch_trail_water.py's site water, a point that carries `sources`: the
---   stream's name or "A stream", "where it runs closest to the site", then
---   the flow claim in the words of whichever hydrography made it
---   (FLOW_WORDS; no claim where nobody classified the reach, because
---   silence is not a promise of year-round water) and who else mapped it;
---   and describe_water()'s own for an OSM water point: what was mapped
---   (WATER_KINDS), "mapped as intermittent" or "mapped as seasonal" only
---   where somebody tagged it, "Marked not drinking water." for
---   drinking_water=no, and the attribution. A tag present as JSON null
---   reads here as absent, where the Python's str() would read "none" and
---   claim "mapped as seasonal"; fetch_osm_water.py's feature() never writes
---   a null tag (it copies a tag only where it is not None), so no point
---   reaches either branch. opentrail's water carries a title and an icon
---   and composes nothing in the Python either.
--- Each ends with ATC's own `Comments`, attributed ("ATC notes: ..."), after
--- lib/atc_notes.py's clean_note() has dropped the sentences that are the
--- survey talking to itself (PO20).
+-- A.T. POIs: lib/poi_description.py's describers (PO19), picked by poi_type
+-- as export_poi.py's DESCRIBERS does, built only from ATC's own inventory
+-- columns. A clause whose column is blank, or holds a code the
+-- poi_description_terms seed does not know, is dropped rather than guessed:
+-- the sentence gets shorter, never wrong. A shelter's "sleeps N" comes from
+-- `capacity` (reference/shelter_capacity.json, never ATC's number) and is
+-- left out where nobody stands behind one. Water is
+-- int_points_of_interest__water's sentence for a CSI point, the stream
+-- CTEs' (describe_stream_point()) for fetch_trail_water.py's site water,
+-- and the osm_ CTEs' (describe_water()) for OSM water; opentrail's water
+-- composes nothing, in the Python either. Each sentence ends with ATC's
+-- own `Comments` as "ATC notes: ...", cleaned by lib/atc_notes.py's
+-- clean_note() (PO20). A sentence that only repeats the card's type line
+-- ("Shelter.", "Privy.") becomes null.
 --
--- THE OTHER ORGANIZATIONS: export_nearby_poi.py's compose_description(): the
--- asset value, title-cased where the organization writes capitals, "in" the
--- facility, both already cleaned of sentinels; nothing where there is no
--- asset. NYNJTC's Long Path guide's records carry their own sentence
--- (lib/nynjtc_long_path_guide.py's compose_description()), which ships as
--- it stands.
+-- Other organizations: export_nearby_poi.py's compose_description(), the
+-- asset (title-cased when written all in capitals) "in" the facility, or
+-- nothing without an asset; the Long Path guide's records carry their own
+-- sentence (the `guide` CTE).
 {%- set p = 'noted.properties' -%}
 {%- set rounding = var('poi_vista_arc_rounding_degrees') %}
 with enriched as (
@@ -445,8 +419,9 @@ streams as (
 ),
 
 claimed as (
-    -- The flow claim is attributed to whoever made it, and only where a
-    -- flow word exists.
+    -- The flow claim, in the words of the hydrography that made it
+    -- (FLOW_WORDS), and none where nobody classified the reach: silence is
+    -- not a promise of year-round water.
     select
         streams.*,
         case
@@ -514,9 +489,12 @@ stream_sentences as (
 ),
 
 osm_tags as (
-    -- describe_water()'s OSM half reads a water point with no `sources`:
-    -- its `kind` and the reliability tags, each lower-cased and compared as
-    -- str() of the value, an absent tag reading as "".
+    -- describe_water()'s OSM half, for a water point with no `sources`: its
+    -- `kind` (WATER_KINDS) and the reliability tags, lower-cased, an absent
+    -- tag reading as "". A JSON-null tag also reads as "" here, where
+    -- Python's str() would read "none" and claim "mapped as seasonal"; no
+    -- point reaches that, because fetch_osm_water.py's feature() never
+    -- writes a null tag.
     select
         noted.poi_id,
         water_kinds.phrase as head,

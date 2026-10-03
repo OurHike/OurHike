@@ -1,28 +1,26 @@
--- The network's line sources: one row per sources.json entry that
+-- The network's line sources: one row per sources.json entry
 -- export_nearby_trails.py exports, with every field its filters read, both
--- in the registry's spelling and as the column dlt landed it under.
+-- as the registry spells it and as the column dlt landed it under.
 --
--- WHICH ENTRIES (TL01). network_line_sources(): an external organization's
+-- Which entries (TL01), network_line_sources(): an external organization's
 -- layer (kind `external_arcgis_layer` or `socrata_geojson_layer`,
--- lib/source_registry.py's is_external_source) carrying blaze metadata, a
--- `blaze_field` or a `blaze_default` key. The same marker without an
--- external kind is an A.T. line source, which export_trails.py exports.
+-- lib/source_registry.py's is_external_source) with a `blaze_field` or
+-- `blaze_default` key. That marker on an A.T. source belongs to
+-- export_trails.py instead.
 --
--- WHAT A FIELD IS CALLED IN THE WAREHOUSE. sources.json names each column as
--- the steward spells it (`Trail_Name`, `MARKER`, `PrimaryName`), and the
--- extract lands it under dlt's sql_ci_v1 naming (extract/_run.py). The
--- `field_columns` CTE below is that naming in SQL, step for step in dlt's
--- order; tests/test_dbt_trail_lines_network_parity.py holds the unit test's
--- answers to dlt's own normalize_identifier. Folding case has a consequence
--- the Python never had: a field the registry spells `Name` also reads a
--- column the steward spelled `NAME` (Reasoned; no registered network layer
--- carries both spellings of one name, checked against the fixtures only).
+-- Column names: sources.json spells each as the steward does
+-- (`Trail_Name`, `MARKER`), and dlt lands it under its sql_ci_v1 naming,
+-- which the `replaced` to `field_columns` CTEs repeat in SQL
+-- (tests/test_dbt_trail_lines_network_parity.py checks them against dlt's
+-- normalize_identifier). Folding case means a field the registry spells
+-- `Name` also reads a column spelled `NAME`, which the Python never did
+-- (Reasoned; no registered network layer carries both, checked against the
+-- fixtures only).
 --
--- `may_publish` is int_sources__publication's, the one home of the rule
--- (pipeline/ELT.md, "Who may publish"). This model keeps every network
--- source whatever it says, because the build-stopping checks on the registry
--- (TL08, TL09) hold for a held-back source too: export_nearby_trails.py runs
--- them over every network source, shipping or not.
+-- `may_publish` is int_sources__publication's (pipeline/ELT.md, "Who may
+-- publish"). Every network source is kept whatever it says, because
+-- export_nearby_trails.py runs the build-stopping registry checks (TL08,
+-- TL09) over held-back sources too.
 with registry as (
     select * from {{ ref('stg_registry__sources') }}
 ),
@@ -222,11 +220,10 @@ named_columns as (
     group by declared.source_key
 ),
 
--- The columns each layer landed with, read off one of its rows: every row
--- of a layer is one table's row, so all carry the same keys, null or not.
--- A layer with no rows lands no list, and is not checked: an empty layer is
--- the completeness test's question (int_trail_lines__network_counts), as it
--- is fail_if_incomplete()'s in the Python.
+-- The columns each layer landed with, read off any one row, since every
+-- row of a layer carries the same keys, null or not. A layer with no rows
+-- is not checked here: an empty layer is int_trail_lines__network_counts'
+-- question, as it is fail_if_incomplete()'s in the Python.
 landed as (
     select
         source_key,
@@ -235,16 +232,17 @@ landed as (
     group by source_key
 ),
 
--- TL08, missing_declared_fields(): each field the entry declares whose
--- column the layer did not land, in declared order. Measured 2026-09-26: a
--- renamed motorized column on NH GRANIT's layer made `excluded_when` match
--- nothing, and 2,375 mi of motorized corridor shipped from a green run
--- (#1646). One difference from the Python, which asks whether any fetched
--- feature carries the key: the warehouse has a column only where the layer
--- declared one (an ArcGIS layer's field list, extract/_kinds.py's
--- column_hints) or some row had a value (a Socrata dataset, which declares
--- none). So on a Socrata layer a declared field null on every row reads as
--- missing here and stops the build, where the Python would carry on.
+-- TL08, missing_declared_fields(): each declared field whose column the
+-- layer did not land, in declared order. Measured 2026-09-26: a renamed
+-- motorized column on NH GRANIT's layer made `excluded_when` match nothing,
+-- and 2,375 mi of motorized corridor shipped from a green run (#1646 — NH
+-- GRANIT trails in cell n44w072 went from 2,278 to 3,685 miles between UA
+-- builds 2026-09-21-2 and 2026-09-23-4, and nothing says why). One
+-- difference from the Python, which asks whether any fetched feature has
+-- the key: the warehouse has a column only where the layer declared one (an
+-- ArcGIS field list, extract/_kinds.py's column_hints) or some row had a
+-- value (Socrata declares none). So a Socrata field null on every row reads
+-- as missing here and stops the build, where the Python carries on.
 missing as (
     select
         field_columns.source_key,

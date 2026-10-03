@@ -1,29 +1,22 @@
--- Every challenge file, read and checked as far as lib/challenges.py's
--- resolve_challenge() goes before it reads the items (CH02, CH03, CH10,
--- CH11, CH12), with export_challenges.build_output()'s two checks on where
--- the file was filed first. One row per file, in the order today's exporter
--- reads them: sorted(reference/challenges/*/*.json), pathlib's order, folder
--- by folder and then by file name (load_challenge_files()).
+-- Every challenge file, checked as far as lib/challenges.py's
+-- resolve_challenge() goes before it reads the items (CH02, CH03,
+-- CH10-CH12), after export_challenges.build_output()'s two checks on where
+-- the file was filed. One row per file, in the order today's exporter reads
+-- them (load_challenge_files(): sorted(reference/challenges/*/*.json)).
 --
 -- `misplaced_problem` is build_output()'s: the file's folder must be its
--- `org`, and a file the console's pull request saved (`published_by_domain`)
--- must name the domain publishers.json gives that org. A misplaced file is
--- never resolved, so nothing else is reported for it.
+-- `org`, and a file the console's pull request saved
+-- (`published_by_domain`) must name the domain publishers.json gives that
+-- org. A misplaced file is never resolved, so nothing else is reported.
 --
 -- `challenge_problem` is resolve_challenge()'s first refusal before the
--- items, in its order:
---   an object; an id (CH10); an org publishers.json accepts; a trail that org
---   publishes (CH03); a name; a status (CH12); a window that is an object,
---   with each end YYYY-MM-DD or null and closing on or after opening (CH11);
---   sections, each with a usable id and a title, no two sharing an id
---   (CH11); items.
--- A file refused here reports no item drops, as resolve_challenge() returns
--- none for it. Everything after the items (finish, reward, takes_entries,
--- photo, reviewed) is int_challenges__resolved's, because the finish line is
--- read against how many items resolved.
+-- items, in its order (the `checked` CTE). A file refused here reports no
+-- item drops, as resolve_challenge() returns none for it; the checks after
+-- the items are int_challenges__resolved's, because the finish line
+-- depends on how many items resolved.
 --
--- `report_label` is how resolve() names a file it drops: its `id` if that is
--- truthy, else its stem. A misplaced file is named by its stem.
+-- `report_label` is how resolve() names a file it drops: its `id` if
+-- truthy, else its stem; a misplaced file by its stem.
 with files as (
     select * from {{ ref('int_challenges__unioned') }}
 ),

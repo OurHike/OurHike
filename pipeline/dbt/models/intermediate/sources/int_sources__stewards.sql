@@ -1,29 +1,22 @@
--- One record per steward whose data reaches a hiker (#927): what
--- stewards.json says about it, and the first problem export_sources.py's
--- build_output() would refuse the whole file for. The test on this model
--- fails the build on any problem, as the Python's SystemExit does.
+-- One record per steward whose data reaches a hiker: what stewards.json
+-- says about it, and the first problem export_sources.py's build_output()
+-- would refuse the whole file for. This model's test fails the build on
+-- any problem, as the Python's SystemExit does.
 --
--- WHO IS A STEWARD: a `provider` with at least one source whose
--- `reaches_hikers` is true (SR01). A provider with none is not published at
--- all, which today is GATC and OPRHP.
+-- A steward is a `provider` with at least one source whose `reaches_hikers`
+-- is true (SR01); a provider with none (today GATC and OPRHP) is not
+-- published at all. A `<x>_licence`, `_support` or `_store` block joins it
+-- (SR02, SR03) when its `author`, or one of its `also_covers`, is a
+-- `steward` the provider's shipping sources name; the first such block in
+-- the file wins, as in `_block`, so photo_licence, which comes first, is
+-- ATC's licence block. `steward`, `trust` and `attribution` come from the
+-- sources only when every shipping source gives the same one (SR06,
+-- `_unanimous`; a source that gives none breaks the agreement).
 --
--- HOW A BLOCK JOINS ITS STEWARD (SR02, SR03): a `<x>_licence`, `_support` or
--- `_store` block belongs to the provider when its `author`, or one of its
--- `also_covers`, is the `steward` one of the provider's shipping sources
--- names. The first such block in the file wins, as in `_block`, so
--- photo_licence, which comes first, is ATC's licence block.
---
--- WHAT IS UNANIMOUS (SR06): `steward`, `trust` and `attribution` are taken
--- from the sources only when every shipping source gives the same one; a
--- source that gives none breaks the agreement, as `_unanimous` has it.
---
--- WHAT FAILS (SR04, SR05): a support or store block missing a required
--- field, with surfaces that are not a list or name a surface the seed does
--- not hold, a referral that is not a string, a store whose paper-map table
--- no resource lands, or a table int_sources__paper_maps refuses. Messages
--- are `_support_record`'s and `_store_record`'s, except the table that is
--- not landed: SQL sees the warehouse, not the checkout, so it says which
--- folder would land it.
+-- Problems (SR04, SR05) are `_support_record`'s and `_store_record`'s, in
+-- their words, except for a paper-map table no resource lands: SQL sees
+-- the warehouse, not the checkout, so it names the folder that would land
+-- it.
 with shipping as (
     select * from {{ ref('stg_registry__sources') }}
     where reaches_hikers
@@ -197,7 +190,7 @@ records as (
         json_extract_string(licence_block, '$.terms_verbatim') as terms,
         json_extract_string(licence_block, '$.terms_source') as terms_source,
         -- The donate line, or null where the organization has not asked
-        -- (#932). `donate_recipient` and `donate_blurb` only where set:
+        -- for one. `donate_recipient` and `donate_blurb` only where set:
         -- json_merge_patch drops a member a patch sets to null.
         case
             when support_block is not null
@@ -224,8 +217,8 @@ records as (
                     )
                 )
         end as support_record,
-        -- The paper-map store, or null where none is recorded (#1574), every
-        -- link carrying the organization's referral query.
+        -- The paper-map store (int_sources__paper_maps), or null where none
+        -- is recorded, every link carrying the organization's referral query.
         case
             when store_block is not null
                 then json_object(

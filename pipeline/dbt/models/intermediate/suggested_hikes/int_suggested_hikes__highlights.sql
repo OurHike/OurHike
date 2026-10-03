@@ -1,43 +1,31 @@
 -- The curated highlights resolved against the published POIs: one row per
--- row of reference/highlights.json, in the file's order, with the first rule
--- it breaks (`problem`, null where it publishes) in lib/highlights.py's
--- resolve()'s words and order (SH12, SH13). A row with a problem publishes
--- nothing: the mart takes only the rows with none, and a curated list
--- quietly shrinking is the failure nobody notices, so the `warn` test on
--- `problem` names every row dropped, as export_highlights.py prints them.
+-- row of reference/highlights.json, in file order, with the first rule it
+-- breaks (`problem`, null where it publishes) in lib/highlights.py's
+-- resolve()'s words and order (SH12, SH13). A curated list quietly
+-- shrinking is the failure nobody notices, so the `warn` test on `problem`
+-- names every dropped row, as export_highlights.py prints them.
 --
--- THE RULES, IN resolve()'S ORDER:
--- 1. an id that is a non-empty string, or "entry has no id";
--- 2. the first row to carry an id claims it, even when that row then fails a
---    later rule: a second is a "duplicate id", an editing accident that
---    would silently win a dict-keyed consumer;
--- 3. a name that is a non-empty string;
--- 4. legs that are a non-empty list;
--- 5. ALL LEGS OR NONE: the first leg that fails decides the row, because half
---    a walk drawn is a walk that ends where nothing ends. A leg is an object
---    naming a trail and two POIs, its from_poi checked before its to_poi,
---    each a published POI with a mile; both ends at one mile is no walk.
+-- Rules, in resolve()'s order (the `decided` and `leg_checks` CTEs): an id;
+-- no earlier row with that id (a "duplicate id" is an editing accident that
+-- would silently win in a consumer keyed by id, and the first row keeps the
+-- id even if it then fails); a name; legs. All legs or none: the first
+-- failing leg decides the row, because half a walk drawn is a walk that
+-- ends where nothing ends. A row that is not a JSON object fails the build
+-- through the error test on `problem`, as resolve() raises on it.
 --
--- A LEG'S MILES COME FROM THE PUBLISHED POIs
--- (int_suggested_hikes__published_pois),
--- never from a figure typed into the file: the reference file holds no mile
--- at all, and an end that cannot be placed is refused rather than guessed.
--- The ends are ordered, so a leg never runs backwards, and each is cut to 2
--- decimals with printf, as as_published() rounds them with round(x, 2).
+-- A leg's miles come only from the published POIs
+-- (int_suggested_hikes__published_pois): the reference file holds no mile,
+-- and an end that cannot be placed is refused rather than guessed. The ends
+-- are ordered, so a leg never runs backwards, and cut to 2 decimals as
+-- as_published()'s round(x, 2) cuts them.
 --
--- SH14, NOTHING DERIVED IS STORED: no length, no ascent, no Naismith time.
--- The phone derives all three from the elevation profile it already holds,
--- so a better profile improves every highlight without a republish.
+-- SH14, nothing derived is stored: no length, ascent or Naismith time. The
+-- phone derives all three from the elevation profile it holds, so a better
+-- profile improves every highlight without a republish.
 --
--- `club` is the maintaining club whose stretch the first leg starts in,
--- derived rather than written down, so "about thirty, one per maintaining
--- club" is a fact this can check: the first stretch, in club_sections.json's
--- order, with start <= mile < end (half-open, as client/src/lib/clubSections.ts
--- reads it, so a mile two clubs share resolves northbound).
---
--- A row that is not a JSON object is "not an object", which resolve() does
--- not survive (entry.get raises): the error test on `problem` fails the
--- build on it, as the Python fails the run.
+-- `club` is the maintaining club whose stretch the first leg starts in (the
+-- `first_stretch` CTE), derived rather than typed in, so "about thirty, one
+-- per maintaining club" is a fact this can check.
 with entries as (
     select * from {{ ref('base_ourhike__highlights') }}
 ),
@@ -90,8 +78,7 @@ claimed as (
     select
         *,
         coalesce(highlight_id, '') != '' as has_id,
-        -- `seen`: the id is claimed by the first row carrying it, whatever
-        -- happens to that row next.
+        -- resolve()'s `seen`: the first row with an id keeps it.
         row_number() over (
             partition by
                 case when coalesce(highlight_id, '') != '' then highlight_id end
@@ -213,11 +200,13 @@ decided as (
 ),
 
 first_stretch as (
-    -- club_for_mile(): the first stretch, by club and then by stretch, whose
-    -- half-open range holds the first leg's low end. Its acronym, null where
-    -- the file's is not a string: club_for_mile() answers None at the first
-    -- stretch that matches and looks no further, so arg_min_null, which
-    -- keeps a null, never arg_min, which would pass it for the next club's.
+    -- club_for_mile(): the first stretch, by club then stretch order, whose
+    -- range holds the first leg's low end, half-open (start <= mile < end,
+    -- as client/src/lib/clubSections.ts reads it, so a mile two clubs share
+    -- goes to the stretch that starts there). club_for_mile() stops at the
+    -- first match and answers None when its acronym is not a string, so
+    -- this is arg_min_null, which keeps that null, never arg_min, which
+    -- would skip to the next club's.
     select
         decided.file_row,
         arg_min_null(

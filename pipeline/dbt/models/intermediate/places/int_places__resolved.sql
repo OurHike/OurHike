@@ -4,53 +4,46 @@
 {%- set radius = var('places_trail_radius_miles') %}
 {%- set radius_m = "cast(" ~ radius ~ " as double) * 1609.344::double" %}
 {%- set threshold = var('trail_lines_network_named_trail_threshold_miles') %}
--- Every row places.json publishes, measured and in the file's order:
+-- Every row places.json publishes, measured, in file order:
 -- export_places.py's load_named_trails(), measure() and the end of
--- build_output() in SQL (PL07-PL11), in their order. The mart is this, typed.
+-- build_output() (PL07-PL11). The places mart is this, typed.
 --
--- PL07, THE LONG TRAILS. Every (source, name) whose published lines total
--- at least trail_lines_network_named_trail_threshold_miles (TL12's 50 miles,
--- export_nearby_trails.py's NAMED_TRAIL_THRESHOLD_MILES, @unvalidated in its
--- own comment, which names a run on the live registry as what settles it),
--- summed under int_places__lines' `trail_name`, so the A.T. is one trail.
--- A trail centres on its box's middle and carries the box.
+-- PL07, long trails: every (source, name) whose published lines total at
+-- least trail_lines_network_named_trail_threshold_miles (50, TL12's
+-- NAMED_TRAIL_THRESHOLD_MILES, @unvalidated in export_nearby_trails.py's
+-- own comment, which names a run on the live registry as what settles
+-- it), summed by `trail_name` so the A.T. is one trail.
 --
--- PL08, MILES OF PUBLISHED TRAIL, measured in EPSG:5070 metres:
--- - a park: the length of every published line inside its boundary;
--- - a trailhead, parking area or town: the length within
---   places_trail_radius_miles of its point, through a buffer of the point
---   (ST_Buffer's default of 8 segments a quarter, as export_places.py's
---   measure() builds it). The radius is @unvalidated: dbt_project.yml says
---   what would settle it;
--- - a trail: its own length.
--- Rounded to a tenth, as Python's round() rounds: the printf cut, never
--- DuckDB's round(), which differed from Python on 14,125 of 266,800 doubles
--- at the half (the tl-net worker's measurement in
--- int_trail_lines__network_published's header).
+-- PL08, miles of published trail, in EPSG:5070 metres: for a park, the
+-- lines inside its boundary; for a trailhead, parking area or town, the
+-- lines within places_trail_radius_miles of its point (@unvalidated;
+-- dbt_project.yml says what would settle it), through ST_Buffer's default
+-- circle as measure() builds it; for a trail, its own length. Rounded to a
+-- tenth with printf, as Python's round() rounds, never DuckDB's round(),
+-- which differed from Python on 14,125 of 266,800 doubles at the half
+-- (measured; int_trail_lines__network_published's header).
 --
--- PL09, `within`: the park a point sits in, by name, where its boundary
--- contains the point; where two do, the first in int_places__park_units'
--- `unit_order`, as measure()'s min(idx) takes it.
+-- PL09, `within`: the park whose boundary contains the point; where two
+-- do, the first in int_places__park_units' `unit_order`.
 --
--- PL10, A TRAILHEAD OR PARKING AREA WITH NO PUBLISHED LINE NEAR IT IS
--- DROPPED, when anything was measured: a USFS trailhead in Arizona is not a
--- place this app can put a trail under. Decided on the metres, not the
--- rounded figure: eighty metres of trail prints 0.0 and is kept. A town and
--- a park are never dropped: "no trail data held" is a true sentence and the
--- row a hiker who lives there should find.
+-- PL10: a trailhead or parking area with no published line near it is
+-- dropped when anything was measured: a USFS trailhead in Arizona is not a
+-- place this app can put a trail under. Decided on the metres, so eighty
+-- metres of trail prints 0.0 and is kept. A town or park is never dropped:
+-- "no trail data held" is true, and the row is what a hiker who lives
+-- there should find.
 --
--- PL11, NO LINES AT ALL: nothing is measured, `trail_miles` is null on
--- every row and `trail_miles_measured` false, never 0 on every row. That
--- state is ordinary (the licence gate holding every steward's lines back and
--- the A.T. export not run), and it must not read as "no park holds any
--- trail"; with nothing to measure, nothing is dropped for being far from it.
+-- PL11, no lines at all (an ordinary state: no steward's lines may publish
+-- and the A.T. export has not run): nothing is measured, so `trail_miles`
+-- is null and `trail_miles_measured` false on every row, never 0
+-- everywhere, which would read as "no park holds any trail"; and nothing
+-- is dropped for being far from a line.
 --
--- MUST-MATCH NUMBERS ARE TEXT HERE: `lon`, `lat`, `bbox` and `trail_miles`
--- are their JSON text, which the places mart casts back, because a dbt 2.0.6
--- unit test compares a DOUBLE only after rounding it to one decimal place
--- (.claude/skills/dbt/SKILL.md, "Contracts, and the traps in them"). A park's
--- and a trail's point and box are cut to 5 decimals, as round(x, 5) cuts
--- them; a waypoint's point is the published one, uncut.
+-- `lon`, `lat`, `bbox` and `trail_miles` are JSON text, cast back in the
+-- places mart, because a dbt 2.0.6 unit test compares a DOUBLE only to one
+-- decimal (.claude/skills/dbt/SKILL.md, "Contracts, and the traps in
+-- them"). A park's and a trail's point and box are cut to 5 decimals, as
+-- round(x, 5) cuts them.
 with parks as (
     select * from {{ ref('int_places__park_units') }}
 ),

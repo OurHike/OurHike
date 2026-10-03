@@ -1,66 +1,38 @@
 {{ config(materialized='table') }}
 -- Every network row, judged as export_nearby_trails.py's build_records()
--- judges a fetched feature: keep_reason()'s tests in its order, then the
--- geometry type, then the row's published id, name and status. A row ships
--- where `dropped_because` is null; otherwise that column says why, in
--- keep_reason()'s own words, so no row leaves without a named reason.
+-- judges a fetched feature. A row ships where `dropped_because` is null;
+-- otherwise that column gives keep_reason()'s words, so no row is dropped
+-- without a reason.
 --
--- THE TESTS, IN ORDER, the first to fail naming the drop:
--- 1. no geometry (TL04);
--- 2. outside the boundary the entry names, for nyc_park_drives (TL13): less
---    than INSIDE_BOUNDARY_MIN_FRACTION, 0.8, of the line's length inside the
---    union of the named park polygons, measured in degrees as
---    inside_boundary() measures it (a ratio of two lengths of one line, so
---    the scale divides out). 0.8 is @unvalidated in the Python's own comment,
---    which says what would settle it: a real drive between 0.8 and 1.0;
--- 3. not a foot trail (TL06): the entry's `foot_field` does not read one of
---    its `foot_allowed` values, default ['Y'];
--- 4. excluded use (TL07): an `excluded_when` field reads one of its values,
---    fields in the entry's order;
--- 5. status not shipped (TL10): the entry's `status_field` reads neither
---    'Open' nor 'Closed';
--- 6. route owned by another source (TL11): the row's name, stripped, is one
---    an `owns_route_names` entry claims, and not for this source. The name is
---    the name column's own value, before any placeholder rule;
--- 7. unsupported geometry: anything but a LineString or MultiLineString.
--- Values match as text only, as Python compares a JSON value with a
--- registry's strings: a number never reads as "1".
+-- The tests, in order (the `reasoned` CTE); the first to fail names the
+-- drop: no geometry (TL04), outside the named boundary (TL13), not a foot
+-- trail (TL06), excluded use (TL07), status not shipped (TL10), route owned
+-- by another source (TL11), unsupported geometry. Values match as text
+-- only, as the Python compares JSON values with the registry's strings: a
+-- number never reads as "1".
 --
--- WHAT A KEPT ROW CARRIES:
--- - `trail_line_id`, `{source_key}:{id}` (TL05, lib/feature_id.py): the
---   layer's GlobalID, whatever its case, else its OBJECTID, else Socrata's
---   row id, each read only where it is not null; else `generated-<n>`. The
---   Python reads the property `GlobalID` spelled exactly that way, then the
---   GeoJSON feature's own `id`, which the extract does not land: on ArcGIS
---   that `id` is the OBJECTID and on Socrata the row id that lands as
---   `_socrata_id` (lib/socrata.py's _with_row_ids). dlt's naming lowercases
---   every column, so the SQL cannot tell `GlobalID` from `GLOBALID`, and
---   matching the Python's exact case would need the field's spelling from
---   the layer's metadata, which is not landed. That the ArcGIS `id` always
---   equals the OBJECTID property is Reasoned from the REST API's GeoJSON
---   output and @unvalidated here: one live fetch comparing the two on each
---   registered ArcGIS layer settles it. n in `generated-<n>` is the row's
---   place among its layer's rows, every row counted as the Python counts
---   them. The place is the raw table's order (`source_row`) for the two
---   NYNJTC layers, the only ones with no id field, which is the fetched
---   file's order the Python counts in; any other layer that reached this
---   fallback would be numbered in staging-key order, because its base model
---   carries no such column. Positional ids renumber when a layer's rows
---   change, in both.
--- - `name`, declared_name(): the entry's `name_constant`, else the name
---   column's value, null where it is one of the entry's `name_placeholders`
---   (case and surrounding space ignored; DuckDB's lower() where Python
---   casefolds, which differ only on letters like ß).
--- - `trail_status` (TL10): 'open' or 'closed' from the status column, where
---   the entry has one. A layer with NO STATUS COLUMN SHIPS OPEN, which is
---   export_nearby_trails.py's DEFAULT_STATUS and a default, not a finding:
---   such a layer cannot say "closed", and `trail_status_basis` records which
---   of the two a row's status is. `closure_kind` is 'long_term' on a row its
---   steward marked closed. Temporary area closures are not applied here:
---   they moved to the closures family under #1152 — Move OPRHP's temporary
---   closures onto the conditions clock, where a safety layer belongs.
--- - `may_publish`, the source's, for int_trail_lines__network_deduplicated
---   to filter on before it compares two sources' lines.
+-- TL13 needs INSIDE_BOUNDARY_MIN_FRACTION (0.8) of the line's length inside
+-- the named park polygons, in degrees as inside_boundary() measures it. 0.8
+-- is @unvalidated in the Python's own comment, which names what would
+-- settle it: a real drive between 0.8 and 1.0.
+--
+-- `trail_line_id` is `{source_key}:{id}` (TL05, lib/feature_id.py): the
+-- first non-null of GlobalID, OBJECTID and Socrata's `_socrata_id`, else
+-- `generated-<n>` (`layer_position` below). The Python reads `GlobalID` in
+-- exactly that case and then the GeoJSON feature's `id`, which is not
+-- landed; dlt lowercases every column, so case cannot be matched here. That
+-- an ArcGIS feature's `id` always equals its OBJECTID is Reasoned from the
+-- REST API's GeoJSON output and @unvalidated: one live fetch comparing the
+-- two on each registered ArcGIS layer settles it.
+--
+-- `trail_status` (TL10) is 'open' or 'closed' from the status column, and
+-- `closure_kind` 'long_term' where the steward marked a line closed. A
+-- layer with no status column ships open: export_nearby_trails.py's
+-- DEFAULT_STATUS, a default rather than a finding, since such a layer
+-- cannot say "closed"; `trail_status_basis` records which. Temporary
+-- closures are not applied here: they moved to the closures family under
+-- #1152 — Move OPRHP's temporary closures onto the conditions clock, where
+-- a safety layer belongs.
 with unioned as (
     select * from {{ ref('int_trail_lines__network_unioned') }}
 ),
@@ -95,10 +67,10 @@ owned_routes as (
 ),
 
 -- The boundary each entry names: the union of its `boundary_source` layer's
--- polygons whose `signname` is one of its `boundary_names` (all of them where
--- it names none). nyc_park_polygons is the only boundary layer today; an
--- entry naming another fails this model's test rather than reading as no
--- boundary, as load_boundary() refuses a layer that is not on disk.
+-- polygons whose `signname` is in its `boundary_names` (all, where it names
+-- none). nyc_park_polygons is the only boundary layer today; an entry
+-- naming another fails this model's test, as load_boundary() refuses a
+-- layer that is not on disk.
 boundary_polygons as (
     select
         'nyc_park_polygons' as boundary_source,
@@ -161,10 +133,12 @@ read_fields as (
         json_extract(
             unioned.properties, '$.' || sources.name_column
         ) as name_value,
-        -- The feature's place in its layer, for `generated-<n>`: the raw
-        -- table's order where the staging model carries it, which is the
-        -- fetched file's (Reasoned, stg_nynjtc__long_path), else the
-        -- staging key's, every row counted.
+        -- The feature's place in its layer, for `generated-<n>`, every row
+        -- counted as the Python counts them: `source_row`, the raw table's
+        -- order and so the fetched file's (Reasoned, stg_nynjtc__long_path),
+        -- which only the two NYNJTC layers with no id field carry; any
+        -- other layer reaching this fallback is numbered in staging-key
+        -- order.
         coalesce(
             unioned.source_row,
             row_number() over (
@@ -367,7 +341,9 @@ reasoned as (
 ),
 
 -- declared_name()'s placeholder test: the stripped value, lowercased, is one
--- of the entry's placeholders, stripped and lowercased.
+-- of the entry's `name_placeholders`, stripped and lowercased. DuckDB's
+-- lower() stands in for Python's casefold(); they differ only on letters
+-- like ß.
 named as (
     select
         *,
@@ -420,10 +396,9 @@ select
     -- every row of the source would be dropped, so the test on this column
     -- stops the build instead.
     (boundary_source is not null and boundary is null) as boundary_missing,
-    -- WKT text rather than GEOMETRY, so a unit test can hold this model's
-    -- output (a 2.0.6 unit test panics on a GEOMETRY column,
-    -- .claude/skills/dbt/SKILL.md). DuckDB writes the shortest digits that
-    -- read back to the same double, so st_geomfromtext() downstream gets
+    -- WKT, not GEOMETRY: a dbt 2.0.6 unit test panics on a GEOMETRY column
+    -- (.claude/skills/dbt/SKILL.md). DuckDB writes the shortest digits that
+    -- read back as the same double, so st_geomfromtext() downstream gets
     -- every vertex back exactly.
     st_astext(geom) as geom_wkt,
     _loaded_at

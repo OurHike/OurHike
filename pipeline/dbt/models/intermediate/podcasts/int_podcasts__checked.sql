@@ -1,39 +1,26 @@
--- Every row of reference/podcast_episodes.json, read and checked against
--- lib/podcasts.py's validate() (#1683, #1690, #1718), with the first rule it
--- breaks in `rule_id` and why in `problem`. Null in both means the row
--- publishes. The test on this model fails the build if any row has a
--- problem, so a list that would drop a row writes nothing: export_podcasts.py
--- refuses an upload on any drop for the same reason (PC07).
+-- Every row of reference/podcast_episodes.json, checked against
+-- lib/podcasts.py's validate(): `rule_id` is the first rule a row breaks,
+-- in validate()'s order (the final select maps each check to its row of
+-- pipeline/ELT.md's podcasts rule table), and `problem` says why; null in
+-- both means the row publishes. This model's test fails the build on any
+-- problem, so a list that would drop a row writes nothing, as
+-- export_podcasts.py refuses an upload that drops one (PC07). The allowed
+-- fields, app hosts, id pattern and mile ceiling are seeds and vars that
+-- tests/test_dbt_podcasts_parity.py holds to the Python's constants.
 --
--- THE RULES, IN validate()'S ORDER, because a row reports only its first:
---   PC08 an object                  PC09 minutes      PC05 pois and places
---   PC03 only the known fields      PC10 hikes        PC04 links
---   PC01 the Spotify id             PC02 at_miles     PC11 reviewed
---   PC06 each episode once                            PC12 at least one anchor
---   PC08 a title and a show
--- (pipeline/ELT.md's podcasts rule table). The fields and app hosts are
--- seeds, and the id pattern and mile ceiling are vars, each held to its
--- Python constant by tests/test_dbt_podcasts_parity.py, which also runs
--- validate() over this model's unit test and compares the two.
+-- The extract lands each row as written, so a field's JSON type is checked
+-- as validate() checks a Python type: "34" is not a length and true is not
+-- a number.
 --
--- A FIELD IS ITS JSON, READ ONCE. The extract lands each row as written
--- (ReviewedFile's `verbatim`), so a field's JSON type is checked the way
--- validate() checks a Python type: "34" is not a length and true is not a
--- number. json_type is 'NULL' for a field that is null or absent, the two
--- cases row.get() does not tell apart. Strings are stripped by
--- python_strip(), which strips exactly what str.strip() does.
---
--- WHERE THIS IS STRICTER THAN validate(), deliberately, each a row validate()
--- would publish and this refuses, all three in the unit test:
---   - `reviewed` must be YYYY-MM-DD, as both messages say. Python 3.11's
---     date.fromisoformat() also takes 20260929 and 2026-W40-4.
---   - the Spotify id must end at its 22nd character. re.match's `$` also
---     matches before a trailing newline, which would then be spliced into
---     the phone's URL.
---   - a link's scheme and host are read as written. urlsplit() first strips
---     leading spaces and control characters, and the phone would then open
---     the link with them still in it.
--- Messages render a value as JSON, where validate() uses Python's repr.
+-- Stricter than validate() on purpose, each a row it would publish (all
+-- three in the unit test):
+--   - `reviewed` must be YYYY-MM-DD; Python 3.11's date.fromisoformat()
+--     also takes 20260929 and 2026-W40-4.
+--   - the Spotify id must end at its 22nd character; re.match's `$` lets a
+--     trailing newline through, into the phone's URL.
+--   - a link's scheme and host are read as written; urlsplit() first strips
+--     leading spaces and control characters, but the phone opens the link
+--     with them still in it.
 with episodes as (
     select * from {{ ref('base_podcasts__podcast_episodes') }}
 ),
@@ -225,9 +212,9 @@ parsed as (
             place_items,
             lambda p: {{ python_strip("json_extract_string(p, '$')") }}
         ) as place_names,
-        -- JSON, not a map, until the mart: dbt 2.0.6's unit tests cannot
-        -- parse a MAP column type ("Failed to parse column type 'map(varchar
-        -- not null, varchar)'", 2026-10-01).
+        -- JSON, not a map, until the podcasts mart: dbt 2.0.6's unit tests
+        -- cannot parse a MAP column type ("Failed to parse column type
+        -- 'map(varchar not null, varchar)'", 2026-10-01).
         case
             when links_type = 'OBJECT' then links_json
             else cast('{}' as json)
@@ -507,9 +494,9 @@ checks as (
         on parsed.episode_row_key = link_problems.episode_row_key
 ),
 
--- PC06: validate() remembers an id only once its row has passed every
--- check, so the row that keeps an id is the first with no problem at all,
--- and a later row with no problem before the repeat check is the repeat.
+-- PC06: validate() records an id only after its row passes every check,
+-- so the id belongs to the first row with no problem at all, and a later
+-- row that passed every check before PC06 is the repeat.
 kept as (
     select
         spotify_id,

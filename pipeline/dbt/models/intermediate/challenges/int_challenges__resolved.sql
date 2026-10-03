@@ -1,32 +1,27 @@
 {{ config(materialized='table') }}
--- A table: the mart, the refusals and their tests all read it.
--- Every challenge file, resolved to the end (CH08, CH09, CH10, CH11): the
--- checks lib/challenges.py's resolve_challenge() makes after its items, then
--- resolve()'s two, then build_output()'s, with the first refusal in
--- `problem` and, where there is none, the challenge as it publishes. One row
--- per file, in the order today's exporter reads them.
+-- A table: the challenges mart, int_challenges__refusals and their tests
+-- all read it.
+-- Every challenge file resolved to the end (CH08-CH11): the checks
+-- lib/challenges.py's resolve_challenge() makes after its items, then
+-- resolve()'s two, then build_output()'s. `problem` is the first refusal;
+-- with none, the row is the challenge as it publishes. One row per file, in
+-- the order today's exporter reads them.
 --
--- THE REFUSALS, IN THE PYTHON'S ORDER:
---   int_challenges__files' (the file's folder and saving domain, then
---   everything before the items);
---   a finish that is an object, with a whole count from 1 that the items
---   that resolved can reach (CH08: a "25 for the drawing" that can only ever
---   be 24 is a promise nobody can keep, so the whole challenge drops);
---   a reward of a kind the app knows, with a finish line to claim it at, its
---   rules and art https or nothing (CH09);
---   takes_entries true or false (CH09), and true only for a published
---   challenge with a reward;
---   a photo that is https or nothing; a reviewed date (CH11);
---   the file named for its id (CH10), and no earlier file with the same id
---   (CH10: the first in path order keeps it);
---   build_output()'s last two, a name and a provider for the org and a
---   domain for it, which the scope already guarantees (the Python's own
---   comments say both are reached only by a caller that built its scope
---   another way), so neither can fire here.
+-- Refusals, in the Python's order (the `checked`, `named` and `decided`
+-- CTEs): int_challenges__files' first; then the finish (CH08: its count
+-- must be one the resolved items can reach, because a "25 for the drawing"
+-- that can only ever be 24 is a promise nobody can keep, so the whole
+-- challenge drops); the reward and takes_entries (CH09); the photo and
+-- reviewed date (CH11); the file named for its id, and no earlier file with
+-- that id (CH10). build_output()'s last two checks (the org has a name,
+-- provider and domain) cannot fire here: publisher_scope()
+-- (int_challenges__publishers) already guarantees them, and the Python's
+-- comments say only a caller that built its scope another way reaches
+-- them.
 --
--- Item drops are counted for every file that reached its items, whether or
--- not the challenge itself then dropped, as resolve_challenge() returns them
--- either way; a file refused before its items reports none.
+-- Item drops are counted for every file that reached its items, even when
+-- the challenge then dropped, as resolve_challenge() returns them either
+-- way.
 with files as (
     select * from {{ ref('int_challenges__files') }}
 ),

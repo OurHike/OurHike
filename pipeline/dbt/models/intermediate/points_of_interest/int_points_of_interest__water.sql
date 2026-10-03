@@ -1,32 +1,34 @@
 {{ config(materialized='table') }}
 -- How far ATC says water is from each A.T. shelter and campsite, and the
--- water point export_poi.py synthesizes where that is all anyone knows
--- (PO14, PO15, PO16). One row per POI, plus one per synthesized water point.
+-- water point export_poi.py synthesizes where that distance is all anyone
+-- knows (PO14, PO15, PO16). One row per POI, plus one per synthesized water
+-- point.
 --
--- THE DISTANCE AND ITS SOURCE TRAVEL TOGETHER OR NOT AT ALL.
--- reference/water_distance.json (base_atc__water_distance) gives a shelter or
--- campsite `water_distance_ft`, CSI's figure in ATC's own feet, and beside it
--- `water_distance_source`, CSI's Nearest_Water_Source verbatim (#1728): 42 of
--- the 305 distances are OSA_Field_Estimate, a steward's round number, and the
--- phone prints those with a tilde. A row the file gives no distance gets
--- neither column (export_poi.py's load_water_distances() and
--- attach_water_distance()), and an empty provenance is no provenance. The
--- join is on the published id, `atc_shelters:` or `atc_campsites:` and the
--- GlobalID, as the Python's is, after the ledger has resolved ids.
+-- The distance and its source travel together or not at all.
+-- reference/water_distance.json (base_atc__water_distance) gives a shelter
+-- or campsite `water_distance_ft`, CSI's figure in feet, and
+-- `water_distance_source`, CSI's Nearest_Water_Source verbatim (#1728 — 42
+-- steward-estimated water distances reach the card in the same voice as a
+-- survey, and the synthesized water point says "ATC measured"): 42 of the
+-- 305 distances are OSA_Field_Estimate, a steward's round number, which the
+-- phone prints with a tilde. A POI with no distance gets neither column,
+-- and an empty source counts as none (export_poi.py's
+-- attach_water_distance()). The join is on the published id, as in the
+-- Python, after the POI identity ledger (base_ourhike__poi_identity) has
+-- resolved ids.
 --
--- THE SYNTHESIZED WATER POINT (#694, synthesize_csi_water()). CSI says how
--- FAR water is and never WHERE, so a site whose card promises water nearby
--- gets a water POI at its anchor's coordinates, riding the site as a member
--- and drawing no pin of its own. It is made for every shelter or campsite
--- that is not itself a member of a site, carries a distance no further than
--- the widest site radius (lib/poi_sites.py's 150 m, in feet: the same gate
--- the nearby line uses, so a member exists for every card that promises
--- water and for none that does not), and has no real water point in its
--- site. A lone anchor becomes a two-part site. The point is low confidence,
--- carries the anchor's distance and provenance, publishes as
--- `atc_csi:<GlobalID>` resolved through the ledger like every other id, and
--- its description says whose figure it is (the poi_water_claims seed) and
--- that the spot is unmapped.
+-- The synthesized water point (synthesize_csi_water(); #694 — A card can
+-- promise water 37 m away while its site shows no water at all). CSI says
+-- how far water is, never where, so a site whose card promises water
+-- nearby gets a water POI at its anchor's coordinates, a member of the site
+-- with no pin of its own. One is made for each shelter or campsite that is
+-- not itself a site member, whose distance is within the widest site
+-- radius (lib/poi_sites.py's 150 m, the limit the card's nearby line uses,
+-- so every card that promises water has a member and no other does), and
+-- whose site has no real water point. It is low confidence, carries the
+-- anchor's distance and source, publishes as `atc_csi:<GlobalID>` through
+-- the ledger like every other id, and its description says whose figure
+-- it is (the poi_water_claims seed) and that the spot is unmapped.
 with sites as (
     select * from {{ ref('int_points_of_interest__sites') }}
 ),

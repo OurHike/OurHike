@@ -1,41 +1,31 @@
 {{ config(materialized='table') }}
 -- What each unioned row is: its poi_type, the id and name it publishes
 -- under, its point, and, where it does not ship, the first reason why
--- (`drop_reason`, null on a row that goes on to
+-- (`drop_reason`; null on a row that goes on to
 -- int_points_of_interest__publishable). One row per unioned row.
 --
--- THE A.T. FAMILY, export_poi.py's unify_all_sources() (PO01, PO02, PO04):
--- ATC's six layers are typed whole by the poi_type_mapping seed's `atc`
--- rows, five at high confidence and the Communities at low (a town is a
--- proxy for resupply). opentrail's `icon` is typed by the seed's `opentrail`
--- rows: `w` is water at high, `s` water at low, and every other icon
--- publishes nothing. The two derived layers, OSM water and
--- fetch_trail_water.py's site water (`nhd_stream`), are water at low
--- confidence whole, as the poi_sources seed's own columns say
--- (export_poi.py's OSM_WATER_FIELD_MAP and load_trail_water()). The Long
--- Path guide's rows are records lib/nynjtc_long_path_guide.py's
--- build_records() already made (the seed's `unified`), so their type,
--- confidence, id and name are read as they stand, as export_nearby_poi.py
--- appends them. A row with no geometry is skipped, as has_geometry()
--- skips it; one whose geometry is not a point fails the build at this
--- model's test, as unify_poi() raises, because that is a wiring mistake
--- rather than a gap upstream.
+-- A.T. POIs, export_poi.py's unify_all_sources() (PO01, PO02, PO04): the
+-- poi_type_mapping seed types ATC's six layers whole (Communities at low
+-- confidence: a town is a proxy for resupply) and opentrail's rows by
+-- `icon` (an icon it does not list publishes nothing). OSM water and
+-- fetch_trail_water.py's site water are water at low confidence, as the
+-- poi_sources seed says. The Long Path guide's rows are already unified
+-- records (lib/nynjtc_long_path_guide.py's build_records()), read as they
+-- stand. A row with no geometry is skipped, as has_geometry() skips it; a
+-- non-point geometry fails this model's test, as unify_poi() raises,
+-- because that is a wiring mistake, not a gap upstream.
 --
--- THE OTHER ORGANIZATIONS, export_nearby_poi.py's build_records() and
--- classify() (PO30, PO31, PO32, PO37): a layer that declares a `poi_type` in
--- sources.json is typed whole by it; the three it types row by row
--- (TYPED_LAYERS) read one field each through the poi_value_types seed,
--- case-folded and stripped, and a value that maps to nothing is dropped with
--- the poi_named_exclusions seed's reason where it has one. A row that is not
--- a point with two coordinates is dropped, and a name or asset that is one
--- of DEC's null sentinels (var `poi_null_sentinels`) is no name.
+-- Other organizations, export_nearby_poi.py's build_records() and
+-- classify() (PO30-PO32, PO37): a layer with a sources.json `poi_type` is
+-- typed whole by it; the three TYPED_LAYERS read one field per row through
+-- the poi_value_types seed, and a value that maps to nothing is dropped,
+-- with the poi_named_exclusions seed's reason where it has one. A name or
+-- asset that is one of DEC's null sentinels (var `poi_null_sentinels`) is
+-- no name.
 --
--- The ids are `{source}:{the id field's value}`, the unified id
--- lib/poi_schema.py's unify_poi() mints (PO04): the A.T. family's id field is
--- the poi_sources seed's, from export_poi.py's field maps, and the other
--- organizations' is their sources.json id_field, OBJECTID where none is
--- declared, as export_nearby_poi.py reads it. dlt lowercases every field
--- name; Socrata's `:id` lands as `_socrata_id`.
+-- Ids are `{source}:{id field's value}`, as lib/poi_schema.py's unify_poi()
+-- mints them (PO04): the poi_sources seed's id field for A.T. POIs, the
+-- sources.json `id_field` (default OBJECTID) for the others.
 with unioned as (
     select * from {{ ref('int_points_of_interest__unioned') }}
 ),

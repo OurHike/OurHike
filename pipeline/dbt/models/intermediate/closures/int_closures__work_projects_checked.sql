@@ -1,37 +1,24 @@
--- reference/work_projects.json's rows, each with what lib/work_projects.py's
--- file_problems() says is wrong with it (CL17), and the row as
--- published_rows() writes it. One row per row of `rows`, in the file's order,
--- plus one row for the file itself, with no position: its review as
--- is_reviewed() reads it, and its own problems (`rows` not a list, the
--- retired `ua_sample_rows`).
--- pub_conditions_work_projects writes conditions/work_projects.json from
--- here, and nothing at all when any row has a problem: one bad row fails the
--- whole file, lib/work_projects.py's stance, "a partial set is worse than
--- none because the gap is invisible".
+-- One row per entry of reference/work_projects.json's `rows`, in file
+-- order, with what lib/work_projects.py's file_problems() finds wrong with
+-- it (CL17, in its order and words) and the row as published_rows() writes
+-- it; plus one row for the file itself (row_position null) with its review
+-- and its own problems. pub_conditions_work_projects writes nothing when
+-- any row has a problem: "a partial set is worse than none because the gap
+-- is invisible" (lib/work_projects.py).
 --
--- THE PROBLEMS, in file_problems()'s order and words: the file's own, then
--- each repeated string `id` ("duplicate id"), then row_problems() for each
--- row: a required field missing, null or "", a date that is not one, ends_on
--- before starts_on (only for a row with no problem so far), a status or
--- signup_mode outside its list, a contact-mode row without a mailto:, tel: or
--- https: signup_contact, no place (lat and lon, or a mile), a mile off the
--- trail, a capacity that is not a positive whole number.
---
--- WHERE THIS REFUSES AND THE PYTHON DOES NOT, each on purpose, and each the
--- direction a gate on what sends a hiker to a trailhead may err in
+-- Refused here but published by the Python, on purpose, since a check on
+-- what sends a hiker to a trailhead should err toward refusing
 -- (tests/test_dbt_conditions_parity.py's DELIBERATE_WORK_PROJECT_ROWS):
---   - a JSON true or false counts as no number here, where Python's
---     isinstance(True, int) is true: a lat, lon or mile of `true` is no place,
---     and a capacity of `true` is refused, where Python publishes them;
---   - a date written as an ISO week (2026-W37-6), which Python 3.11 and later
---     read and macro python_date_fromisoformat() does not;
---   - a signup_contact with spaces or control characters before its scheme,
---     which urlsplit() strips before reading the scheme, as
---     int_closures__atc_checked reads a link's scheme as written.
--- And where the Python stops with a traceback, so publishes nothing either: a
--- row that is not an object, a date that is not a string, and a contact whose
--- host has an unmatched bracket (urlsplit()'s "Invalid IPv6 URL"). Each is a
--- problem here, in words of its own.
+--   - JSON true or false is no number (Python's isinstance(True, int) is
+--     true), so `true` is no lat, lon, mile or capacity;
+--   - an ISO-week date (2026-W37-6), which Python 3.11+ reads and
+--     python_date_fromisoformat() does not;
+--   - a signup_contact with spaces or control characters before its
+--     scheme, which urlsplit() strips first.
+-- Where the Python stops with a traceback, and so publishes nothing either,
+-- this reports a problem: a row that is not an object, a date that is not a
+-- string, a contact host with an unmatched bracket (urlsplit()'s "Invalid
+-- IPv6 URL").
 with documents as (
     select * from {{ ref('base_ourhike__work_projects') }}
 ),

@@ -1,65 +1,42 @@
 {{ config(materialized='table') }}
--- A table: the distance check is the family's one heavy step, and three
--- models and its tests read the result.
--- Every item of every challenge file that int_challenges__files let through
--- to its items, resolved as lib/challenges.py's resolve_challenge() loop and
--- resolve_item() resolve it (CH01, CH03-CH09), with the first refusal in
--- `problem` and the item as it publishes in `published_item`. Null
--- `problem` means the item publishes.
+-- A table: the radius check is this family's one heavy step, and three
+-- models and their tests read the result.
 --
--- THE REFUSALS, IN THE PYTHON'S ORDER, because an item reports its first:
---   an id (CH10), then a repeat of an earlier item's id ("duplicate item
---   id": the first keeps it, since tags are keyed by item id, and a repeat
---   of an item that itself dropped is still a repeat);
---   a declared section; a well-formed mystery (CH07); a title, unless it is
---   a mystery;
---   the match (CH06): an object, one of the seven kinds, then the kind's own
---   checks, the places' among them (CH01, CH03, CH04, CH05); a photo that is
---   https or nothing.
+-- One row per item of each challenge file int_challenges__files passes,
+-- checked as lib/challenges.py's resolve_challenge() and resolve_item() do
+-- (CH01, CH03-CH10). `problem` is the first refusal, in the Python's order
+-- (the `resolved` CTE); where it is null, `published_item` publishes. A
+-- repeated id loses to the first, since tags are keyed by item id, even
+-- when the first is refused.
 --
--- A PLACE (`place`, each of `places_all`, a walked section's two ends) is a
--- published POI id (int_challenges__published_pois), on the challenge's
--- trail, with a mile and a coordinate; its mile, coordinate and name are
--- the published record's own, cut as _place() cuts them, to 3 and 6 places
--- by python_round(), which is Python's round(). `places_all` is all or
--- nothing. A walked section's ends are never measured against the trail.
+-- A place (`place`, each of `places_all`, a `section_walked` end) must be a
+-- published POI on the challenge's trail with a mile and a coordinate, and
+-- publishes that POI's name, mile, lat and lon, rounded as _place() rounds
+-- them. One bad place refuses a whole `places_all` item.
 --
--- THE RADIUS CHECK (CH04), for a `place` or `places_all` place that is not
--- `off_trail`: the place is refused when its distance from the A.T.
--- centerline (int_challenges__centerline) is more than its radius. The
--- distance is the smaller of two great-circle distances, by
--- challenges_haversine_m(), the Python's own formula:
---   - to the point on the nearest centerline chain closest to the place,
---     both found in EPSG:5070 (ST_ClosestPoint) and read back in lon/lat;
---   - to the nearest centerline vertex within 0.1 degree, which is today's
---     whole measure (trail_distance_index(), whose 3x3 search of 0.05-degree
---     cells reaches no farther).
--- Each is the distance to a point on the line, so neither reads shorter
--- than the line's own great-circle distance, and the smaller is never
--- longer than today's nearest vertex. Reasoned from those two facts: this
--- admits a place a vertex gap refused and no place outside its radius, the
--- direction pipeline/ELT.md's known-difference row claims. EPSG:5070's own
--- metres are not used to decide, because they lean with direction (measured
--- 2026-10-02 at 41 N 74 W: a 30.0 m east-west pair read 29.83 m, a
--- north-south one 30.21 m), which would admit a place up to about 0.6% past
--- its radius. The message prints the distance where the Python printed "more
--- than a grid cell" for a place more than a cell from every vertex.
+-- The radius check (CH04), for `place` and `places_all` places not marked
+-- `off_trail`: the smaller of two challenges_haversine_m() distances, to
+-- the closest point on the nearest centerline chain (ST_ClosestPoint in
+-- EPSG:5070) and to the nearest vertex within 0.1 degree (all that today's
+-- trail_distance_index() measures), must not exceed the radius. Reasoned:
+-- both points lie on the line, so neither undershoots the true distance
+-- and the smaller never exceeds today's; this admits places a gap between
+-- vertices refused, and none outside their radius (pipeline/ELT.md's
+-- known-difference row). EPSG:5070 metres do not decide, because they vary
+-- with bearing (measured 2026-10-02 at 41 N 74 W: a 30.0 m pair read
+-- 29.83 m east-west, 30.21 m north-south), enough to admit a place 0.6%
+-- past its radius. The refusal prints the distance, where the Python said
+-- "more than a grid cell". With no centerline (CH13) the check is skipped,
+-- and the warn test
+-- challenges_distance_check_has_a_centerline_to_measure_against says so.
 --
--- WITH NO CENTERLINE (CH13) the check is skipped, as the Python skips it;
--- the warn test challenges_distance_check_has_a_centerline_to_measure_against
--- is what says so, where export_challenges.py printed a ::warning::.
+-- Sealed titles (CH07): a mystery with a title and a reveal_on publishes
+-- `sealed_title` (base64) and a null `title` through the reveal_on day,
+-- against var challenges_build_date (default: today in UTC).
 --
--- SEALED MYSTERY TITLES (CH07): a mystery item with a title and a reveal_on
--- ships its title as `sealed_title`, base64 of the stripped title's UTF-8
--- bytes, and `title` null, through the reveal_on day itself, compared with
--- the build date (var challenges_build_date, else the build's UTC date). A
--- mystery with no title ships none and nothing to unseal; one with a title
--- and no reveal_on ships the title in the clear, as the Python does.
---
--- WHERE THIS IS STRICTER THAN THE PYTHON, deliberately, each in the unit
--- test and in tests/test_dbt_challenges_parity.py's list: an item id or a
--- section id with a trailing newline passes _id_ok() (re.match's `$`) and is
--- refused here (challenges_id_ok()).
+-- Stricter than the Python on purpose: an id ending in a newline is
+-- refused (challenges_id_ok() says why; tests/test_dbt_challenges_parity.py
+-- lists it).
 with challenge_files as (
     select * from {{ ref('int_challenges__files') }}
     where misplaced_problem is null and challenge_problem is null
@@ -78,10 +55,9 @@ publishers as (
     where accepted
 ),
 
--- The types at least one published POI carries, of lib/poi_schema.py's
--- POI_TYPES: build_output()'s `published_types`. `trailhead` is declared and
--- the ATC publishes none, so "tag any trailhead" would be an item nobody
--- could ever tag.
+-- lib/poi_schema.py's POI_TYPES that at least one published POI carries
+-- (build_output()'s `published_types`): `trailhead` is declared but the ATC
+-- publishes none, so an item asking for one could never be tagged.
 published_types as (
     select
         coalesce(
@@ -96,10 +72,10 @@ known_orgs as (
     from publishers
 ),
 
--- The var read inline as SQL, with no Jinja `if` or `set`: SQLFluff renders
--- the whole model once more for each (measured 2026-10-02, sqlfluff 4.3.0:
--- an `if` here made three renderings and a `set` two, each parsed in full).
--- A var that is not a date fails the cast, rather than falling back.
+-- The var is read inline, without a Jinja `if` or `set`, because SQLFluff
+-- renders the whole model again for each (measured 2026-10-02, sqlfluff
+-- 4.3.0: an `if` here made three renderings, a `set` two). A var that is
+-- not a date fails the cast rather than falling back.
 build as (
     select
         coalesce(

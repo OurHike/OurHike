@@ -1,38 +1,32 @@
 {{ config(materialized='table') }}
--- Which site each POI belongs to, if any, and its role in it: a shelter with
--- its privy, campsites and water, modelled as one place with parts (#523,
--- features/POI_SITES.md), published as site_id, site_role and site_name. One
--- row per POI; the three are null on a POI in no site, which is most of them.
+-- Which site each POI belongs to, if any, and its role in it: a shelter
+-- with its privy, campsites and water, modelled as one place with parts
+-- (features/POI_SITES.md), published as site_id, site_role and site_name.
+-- One row per POI; the three are null for a POI in no site, which is most.
 --
--- THE A.T. FAMILY: lib/poi_sites.py's group_sites() (PO18), the same two
--- passes in the same order. First every privy, campsite and water point
--- folds into its best SHELTER; then the campsites no shelter claimed anchor
--- the privies and water left over. A member's best anchor is one whose
--- base_name() it shares within var `poi_site_name_radius_m` (150 m) if any
--- is, preferring the anchor whose whole name the member's starts with, then
--- the nearest; else the nearest anchor within var
--- `poi_site_proximity_radius_m` (60 m); both radii are capped at
--- MAX_SITE_RADIUS_M, a mile. Ties go to the anchor the Python lists first,
--- its record order (the poi_sources seed's file_order, then the row's place
--- in its raw table), because sorted() is stable. Distances are
--- poi_distance_m(), lib/spurs.py's equirectangular formula, which the radii
--- were measured with. A site with no member is no site.
+-- A.T. POIs: lib/poi_sites.py's group_sites() (PO18), the same two passes
+-- in the same order: each privy, campsite and water point folds into its
+-- best shelter, then the campsites no shelter claimed anchor what is left.
+-- The best anchor shares the member's base_name() within
+-- `poi_site_name_radius_m` (150 m), preferring one whose whole name the
+-- member's starts with, then the nearest; else it is the nearest within
+-- `poi_site_proximity_radius_m` (60 m). Ties go to the anchor the Python
+-- lists first (file_order, then source_row), as sorted() is stable.
+-- Distances are poi_distance_m(), the formula the radii were measured
+-- with.
 --
--- THE OTHER ORGANIZATIONS: lib/poi_sites.py's group_place_sites() (PO35),
--- for New York City's fountains and restrooms, where a park name says "same
--- property", not "same place". Waypoints of one type sharing a normalised
--- name fold single-link within var `poi_place_site_radius_m` (80 m), and the
--- pin is the member nearest the cluster's mean position, id breaking ties:
--- always a real fountain, never a centroid on a lawn. A waypoint with no
--- name keeps its own pin.
+-- Other organizations: lib/poi_sites.py's group_place_sites() (PO35), for
+-- New York City's fountains and restrooms, where a shared park name means
+-- "same property", not "same place". Waypoints of one type sharing a
+-- normalised name fold single-link within `poi_place_site_radius_m`
+-- (80 m); the pin is the member nearest the cluster's mean position, so
+-- always a real fountain and never a centroid on a lawn.
 --
--- export_nearby_poi.py groups AFTER its network ring and closed-trailhead
--- pass, so that a site is composed of waypoints that ship, and so does this:
--- the ring is int_points_of_interest__in_corridor, upstream of this model,
--- and the closed-trailhead mark (int_points_of_interest__trailheads) removes
--- no waypoint, so the same waypoints are grouped.
-{#- min(NAME_MATCH_RADIUS_M, MAX_SITE_RADIUS_M), and the proximity one, as
-    _candidate_anchors() caps each gate; in SQL, so it is the same double. -#}
+-- Like export_nearby_poi.py, this groups only waypoints that ship: the
+-- network ring (int_points_of_interest__in_corridor) is upstream, and the
+-- closed-trailhead mark (int_points_of_interest__trailheads) removes none.
+{#- Each radius capped at MAX_SITE_RADIUS_M, as _candidate_anchors() caps
+    it, and computed in SQL so it is the same double. -#}
 {%- set max_radius = var('poi_site_max_radius_m') -%}
 {%- set name_radius =
     "least(" ~ var('poi_site_name_radius_m') ~ ", " ~ max_radius ~ ")" -%}

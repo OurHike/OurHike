@@ -1,13 +1,13 @@
--- Every row of reference/atc_updates.json, read field by field and checked
--- against lib/atc_updates.py's file_problems() (CL01-CL06), with EVERY
--- problem a row has, in the order row_problems() finds them, in `problems`.
--- An empty list means the row is fine. int_closures__gate fails ATC's whole
--- file on any problem, as export_atc_updates.py refuses it (CL05): "a
--- partial set of safety notices is worse than none". The review is the
--- file's, and the gate reads it from base_atc__atc_updates.
+-- Every row of reference/atc_updates.json, checked field by field against
+-- lib/atc_updates.py's file_problems() (CL01-CL06). `problems` lists every
+-- problem a row has, in row_problems()'s order; empty means the row is
+-- fine. int_closures__gate fails ATC's whole file on any problem, as
+-- export_atc_updates.py refuses it (CL05): "a partial set of safety notices
+-- is worse than none". The review is the file's, and int_closures__gate
+-- reads it from base_atc__atc_updates.
 --
--- THE CHECKS, IN row_problems()'S ORDER, each only for a field the row has
--- (`field in row`; a null value is present):
+-- The checks, each only for a field the row has (a null value counts as
+-- present):
 --   every field present (REQUIRED_FIELDS)       CL06
 --   atc_id, title: a string with something besides whitespace
 --   category: one ATC publishes                 CL02, var atc_update_categories
@@ -17,20 +17,14 @@
 --   obstructs_trail: a real boolean             CL03
 --   updated_at: a string with something in it
 --   source_url: an http or https URL            CL03
--- and then, across the file, an atc_id a row before it already used (CL04).
--- A row that is not an object gets "update N is not an object" and nothing
--- else, as file_problems() skips it.
+-- then an atc_id an earlier row already used (CL04). A field's JSON type is
+-- checked as the Python checks a type: "476.6" is not a mile and "true" is
+-- not a boolean.
 --
--- A FIELD IS ITS JSON (base_atc__atc_trail_updates lands each row as written),
--- so "476.6" is not a mile and "true" is not a boolean, as in the Python.
--- Each problem carries the row's label, its atc_id or "update N", and
--- renders a value as JSON where row_problems() uses Python's repr.
---
--- WHERE THIS IS STRICTER, deliberately, each a row file_problems() passes and
--- this refuses (tests/test_dbt_conditions_parity.py lists them): a
--- source_url's scheme is read as written, where urlparse() first strips
--- leading spaces and control characters, and the phone would then open the
--- link with them still in it, as int_podcasts__checked reads a link.
+-- Stricter than file_problems() on purpose (tests/test_dbt_conditions_parity.py
+-- lists it): a source_url's scheme is read as written, where urlparse()
+-- first strips leading spaces and control characters that the phone would
+-- keep when opening the link.
 with updates as (
     select * from {{ ref('base_atc__atc_trail_updates') }}
 ),
@@ -338,11 +332,10 @@ select
     title,
     category,
     case when states_type = 'ARRAY' then states_json end as states,
-    -- The miles as the reviewer wrote them, text, where each is a number: a
-    -- DOUBLE in a unit-tested model's output is compared only to one decimal
-    -- on dbt 2.0.6 (476.6 equals 476.64, measured by stage 3's trail_lines
-    -- worker), so the exact value travels as text and int_closures__unioned
-    -- casts it once.
+    -- Each mile as text, exactly as written, because dbt 2.0.6's unit tests
+    -- compare a DOUBLE output only to one decimal (measured: 476.6 equalled
+    -- 476.64; .claude/skills/dbt/SKILL.md, "Contracts, and the traps in
+    -- them"); int_closures__unioned casts it once.
     case
         when start_type in ('UBIGINT', 'BIGINT', 'DOUBLE')
             then cast(start_json as varchar)
@@ -359,10 +352,9 @@ select
     -- the unit test. Null where the row is fine.
     nullif(array_to_string(problems, ' | '), '') as problem,
     -- The row as lib/atc_updates.py's published_rows() publishes it, for
-    -- pub_conditions_atc_updates: each field's JSON exactly as the reviewer
-    -- wrote it, so a mile written 167 stays 167 rather than becoming 167.0,
-    -- and then the two constants. Only a file int_closures__gate passes is
-    -- written, so every field here has passed its check.
+    -- pub_conditions_atc_updates: each field's JSON as written (a mile
+    -- written 167 stays 167, not 167.0), then the two constants. Only a file
+    -- int_closures__gate passes is written, so every field has passed.
     json_object(
         'atc_id', atc_id_json,
         'title', title_json,

@@ -165,10 +165,13 @@ def test_the_parity_job_writes_nothing_and_keeps_its_answers(workflow):
 
 
 STUB_PARITY = """
-import json, os, sys
+import json, os, pathlib, sys
 with open(os.environ["STUB_LOG"], "a") as log:
     log.write(json.dumps(sys.argv[1:]) + "\\n")
 print(f"{sys.argv[1]}: no differences across 0 records, keyed by id")
+results = pathlib.Path(sys.argv[sys.argv.index("--json-dir") + 1])
+results.mkdir(parents=True, exist_ok=True)
+(results / f"{sys.argv[1]}.json").write_text(json.dumps({"outcome": "no_differences"}))
 """
 
 
@@ -205,6 +208,8 @@ def test_every_monthly_parity_run_writes_keys_only_into_the_uploaded_folder(work
     for argv in calls:
         assert "--keys-only" in argv, argv
         assert argv[argv.index("--json-dir") + 1] == str(parity_dir / "results"), argv
+    summary = json.loads((parity_dir / "summary.json").read_text())["families"]
+    assert {entry["status"] for entry in summary.values()} == {"match"}, "the status comes from results/<family>.json"
 
 
 def test_the_publish_job_stages_the_dbt_writers_files_on_ua_inside_publish_data(workflow):
@@ -303,7 +308,7 @@ def _lane_families(workflow: dict) -> dict[str, tuple[str, bool]]:
     script = next(
         step["run"] for step in workflow["jobs"]["parity"]["steps"] if step.get("name") == "Parity with today's exporters"
     )
-    block = script[script.index("families = {") + len("families = ") : script.index("answered = ")]
+    block = script[script.index("families = {") + len("families = ") : script.index("statuses = ")]
     raw = ("--raw-dir", "data/raw")
     families = eval(block, {"raw": raw})  # noqa: S307 - the workflow's own literal, read to compare it with CI's
     return {family: (name, extra == raw) for family, (name, extra) in families.items()}

@@ -562,7 +562,6 @@ jobs:
           "$RUNNER_TEMP/pipeline/bin/python" - <<'PY'
           import json
           import os
-          import re
           import subprocess
           import sys
           from pathlib import Path
@@ -607,20 +606,22 @@ jobs:
               },
               "nearby_poi_v2": ("nearby_poi_v2.geojson", ()),
           }
-          answered = re.compile(r"^\S+: (no differences|neither today's exporter nor the writer|\d+ difference\(s\))", re.M)
+          # parity.py's result_document() outcomes. A family with no results/<family>.json
+          # crashed before parity.py's finish() wrote one, so it is not_compared too.
+          statuses = {
+              "no_differences": "match",
+              "neither_writes": "match",
+              "differences": "differs",
+              "one_side_writes": "differs",
+              "old_side_refused": "not_compared",
+          }
           summary = {}
           for family, (name, extra) in families.items():
               argv = [python, "parity.py", family, "--new", f"data/processed/dbt/{name}", *extra, *report]
               done = subprocess.run(argv, capture_output=True, text=True)
-              log = done.stdout + done.stderr
-              (out / f"{family}.txt").write_text(log)
-              found = answered.search(done.stdout)
-              if found is None:
-                  status = "not_compared"
-              elif done.returncode == 0:
-                  status = "match"
-              else:
-                  status = "differs"
+              (out / f"{family}.txt").write_text(done.stdout + done.stderr)
+              result = out / "results" / f"{family}.json"
+              status = statuses[json.loads(result.read_text())["outcome"]] if result.exists() else "not_compared"
               summary[family] = {"status": status, "exit_code": done.returncode, "new": f"data/processed/dbt/{name}", "log": f"{family}.txt"}
               print(f"{family}: {status}")
           (out / "summary.json").write_text(json.dumps({"raw_run": os.environ["RAW_RUN"], "families": summary}, indent=2))
@@ -634,15 +635,13 @@ jobs:
 
       # The gate's per-key report, from pipeline/gate_report.py (ELT.md: "every
       # existing R2 key comes out byte-equal, or is listed with a reviewed
-      # reason"). Without that file the step says so rather than inventing
-      # a report.
+      # reason"). With no parity result to read, the step warns rather than
+      # inventing a report.
       - name: The gate's per-key report
         env:
           PARITY_DIR: ${{ runner.temp }}/parity
         run: |
-          if [ ! -f gate_report.py ]; then
-            echo "::notice title=No gate report yet::pipeline/gate_report.py is not on this branch; the parity answers are in the artifact as they are."
-          elif [ -z "$(find "$PARITY_DIR/results" -name '*.json' -print -quit 2>/dev/null)" ]; then
+          if [ -z "$(find "$PARITY_DIR/results" -name '*.json' -print -quit 2>/dev/null)" ]; then
             echo "::warning title=No parity results for the gate::parity.py wrote no --json-dir result, so gate_report.py has nothing to read."
           else
             "$RUNNER_TEMP/pipeline/bin/python" gate_report.py --parity-dir "$PARITY_DIR/results" --out "$PARITY_DIR/gate"

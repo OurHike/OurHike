@@ -333,10 +333,16 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     Trail Association's map outlines, extracted under decision 39 from a
     `refuse` organization and never published until its permission is
     recorded.
+
+    DECISION 54'S TRAIL-LINE ROWS, FEDERAL (2026-10-03), all `reaches_hikers:
+    false`: the Park Service's, BLM's and USFS Region 6's 27. 23 are federal
+    works on section 105's reading (`stated_by_org`), and 4 are NPS-hosted
+    layers whose own items say a county, a university, an intern or a
+    contractor made them (`public_gis`, decision 21a).
     """
     counts: dict[str, int] = {}
     for source in REGISTRY["sources"]:
         counts[source["licence_basis"]] = counts.get(source["licence_basis"], 0) + 1
 
     # Decision 53's ArcGIS closure and warning layers (2026-10-03) add 76 rows, all reaches_hikers false: 11 `maintainer_authorisation`, 35 `public_gis`, 30 `stated_by_org`.
-    assert counts == {"maintainer_authorisation": 48, "public_gis": 92, "stated_by_org": 93, "unresolved": 3}
+    assert counts == {"maintainer_authorisation": 48, "public_gis": 96, "stated_by_org": 116, "unresolved": 3}

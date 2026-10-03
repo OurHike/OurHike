@@ -31,6 +31,14 @@
       (USFS, lat 18.27) among them, and an alert there reaches the south
       coast below lat 18.
 
+    DECISION 54'S TRAIL-LINE ROWS (2026-10-03) are listed after
+    wi_ice_age_trail, each by the extent on its own sources.json row: the
+    layer's returnExtentOnly in EPSG:4326, or, for usfws_trail_segments, whose
+    returnExtentOnly answer (lat -24.99 to 90) no vertex bears out, every
+    vertex (lat 13.64 to 63.20, lon -159.48 to 144.87, Guam and Puerto Rico
+    the outliers). A row whose extent sits inside the eastern box has no
+    entry.
+
     @unvalidated Every margin is picked, not measured. What would settle it
     is the per-club box from trail_orgs.json's `states` that pipeline/ELT.md
     plans. A source loading outside the eastern box without a row in
@@ -61,6 +69,29 @@
     'pcta_centerline': 'national',
     'cdtc_centerline': 'national',
     'wi_ice_age_trail': 'national',
+    'nps_oregon_nht': 'national',
+    'nps_california_nht': 'national',
+    'nps_old_spanish_nht': 'national',
+    'nps_el_camino_tejas_nht': 'national',
+    'nps_pony_express_nht': 'national',
+    'nps_mormon_pioneer_nht': 'national',
+    'nps_santa_fe_nht': 'national',
+    'nps_trail_of_tears_nht': 'national',
+    'nps_el_camino_tierra_adentro_nht': 'national',
+    'nps_butterfield_overland_nht': 'national',
+    'nps_butterfield_srs_route': 'national',
+    'nps_lewis_clark_nht': 'national',
+    'nps_lewis_clark_water_trails': 'national',
+    'nps_ala_kahakai_kohala_hema': 'national',
+    'nps_ala_kahakai_alanui_aupuni': 'national',
+    'nps_ala_kahakai_kaawaloa': 'national',
+    'nps_ala_kahakai_kiholo_puako': 'national',
+    'nps_anza_recreation_trails': 'national',
+    'nps_anza_nht': 'national',
+    'blm_old_spanish_nht_trails': 'national',
+    'blm_old_spanish_nht_alignment': 'national',
+    'blm_iditarod_nht': 'national',
+    'usfs_pacific_northwest_trail': 'national',
     'nps_trails': 'us_and_territories',
     'nws_alerts': 'us_and_territories',
 } -%}

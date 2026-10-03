@@ -122,6 +122,7 @@ Settled by the maintainer on 2026-10-01, most by poll; 4 and 11 went without a p
 | 56 | When the editor-tracking person fields already loaded are purged | **After the fix re-reads** (poll, 2026-10-03). A worker found 15 loaded layers carrying staff names in `Creator`, `Editor`, `created_user` and `last_edited_user` (10 of ATC's 12 ArcGIS Online layers, `oprhp_park_polygons`, `nj_statewide_trails`, `utah_sgid_trails`, `ncta_trail`, `duluth_superior_hiking_trail`), and Alaska Trails' `DataOwner`, which holds a person's e-mail address on 31 rows, measured on the layers' live metadata 2026-10-03 (first counted as 17, recounted). `massgis_long_distance_trails` could not be checked: its host's robots.txt answered 502, which RFC 9309 reads as disallow. They reached the private raw store and its pinned copies only: no mart or `pub_` model carries them (contracts, and a search of `models/marts` and `models/publish`, 2026-10-03). The fix drops `PERSON_FIELDS`, each layer's own `editFieldsInfo` creator and editor fields, a row's `person_fields`, and any name matching a person-shaped pattern unless the row lists it in `not_person_fields`. The next monthly run re-reads every changed layer without them; then the dlt skill's purge ("A field that should never have loaded") deletes every older as-sent snapshot, pinned `raw_run`, stored warehouse and `browse/ourhike.duckdb` that holds them, so the next promotion needs a fresh UA build |
 | 57 | Where the row-history snapshots sit (amends decision 52) | **One snapshot per mart, built in the intermediate layer** (poll, 2026-10-03): *"I think it should snapshot the mart, but make that snapshot in the intermediate layer. We might choose how to merge features that have been removed at a later date."* Decision 52 had put a snapshot on every source, hashing every column, so a change to a field nothing uses (an editor's name, an edit time) moved a row's `_changed_at`; the maintainer: *"why track changes we don't care about?"* Now each mart's rows are snapshotted in the intermediate schema with every contracted column, so the snapshot holds a removed feature's last content and a later decision can merge removed features back; the mart reads its current rows and their two dates from it. Only the marts' rows carry `_first_seen_at` and `_changed_at`; other intermediates do not. Source history is not lost by this: the raw store keeps every pull's as-sent copy, write-once |
 | 58 | What the hourly closures and warnings publish does when the row history cannot be restored | **Publish, dates blank** (poll, 2026-10-03). The closures and warnings marts build from their final intermediate with `_first_seen_at` and `_changed_at` null, which means unknown and never "new"; the run goes red so the store gets fixed; nothing is saved to the history that run, so a bad restore cannot overwrite it. A hiker still gets the closure. The monthly lane, which is not a safety clock, still stops loudly on a lost store. Each snapshot version also records the build that wrote it, so a change to OurHike's own rules can be told apart from an upstream edit |
+| 59 | Whether a free-text column that carries personal data is kept for its useful notes | **Left out whole** (2026-10-03): *"Yeah, leave them out if there is PII."* NCTA's `descriptionText` and FLTC's `Description` carry water notes ("Seasonal potable water", "No privy, no water available") beside private hosts' names, e-mail addresses and phone numbers; IATA's `Parking_Notes` says whom to tell before leaving a car overnight beside four named state employees' addresses. Each such column is a row's `person_fields` and never loads, because rule 8 excludes in dlt and never redacts rows in dbt. A water fact lost this way is a gap in the notes, never a guess |
 
 Settled outside the numbered rows:
 
@@ -3440,7 +3441,8 @@ decision 28a).
 ### Phase C: dbt
 
 - One base and staging model per source, generated from its reader's shape, keyed
-  per decision 40, and carrying decision 52's `_first_seen_at` and `_changed_at`.
+  per decision 40. The row dates come from the closures and warnings marts' own
+  snapshots (decision 57), not from staging.
 - `int_closures__unioned` and `int_warnings__unioned` take every source.
   `int_closures__gate` reads its sources from the registry and the run log instead
   of its typed list of two.
@@ -3483,8 +3485,8 @@ the notices get their own leg rather than a shorter Crawl-delay.
 ### Order of work
 
 Phase A starts now, in parallel with decision 52's foundation. B follows A per
-format. C and D start once decision 52's staging conventions land, so the new
-staging models carry row dates from the start. E waits on the panel decision.
+format. C and D start once decision 57's mart snapshots land, so the notices
+file carries row dates from the start. E waits on the panel decision.
 F and G close it.
 
 ## Row dates (decision 52)

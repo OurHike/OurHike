@@ -1433,7 +1433,10 @@ KEY_FIELDS = {
         "ROUTE_PRMRY_NM": lambda i: f"Fixture BLM Route {i}",
     },
     "external/nyc_drinking_fountains.geojson": {"system": lambda i: f"fixture-system-{i}"},
-    "external/nyc_park_polygons.geojson": {"system": lambda i: f"fixture-system-{i}"},
+    # nyc_park_polygons needs no entry: its key, gispropnum, is already in _nyc_park_polygons_layer's
+    # rows. It used to get a `system` here, which the live layer does not have (Socrata enfh-gkve
+    # declares 33 columns, none of them `system`, read 2026-10-03), so CI passed on a key the
+    # monthly lane's first live build could not bind (refresh-reference.yml run 37109384156).
     "external/nyc_cscl_paths.geojson": {"globalid": lambda i: f"{{fixture-cscl-{i}}}"},
     "external/nyc_park_drives.geojson": {"globalid": lambda i: f"{{fixture-drive-{i}}}"},
 }

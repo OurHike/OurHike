@@ -36,8 +36,9 @@ models:
       - name: park_key
         description: >
           The row's key (decision 40): dbt_utils.generate_surrogate_key over
-          nyc_park_polygons, "system", gispropnum, the registry key first and
-          then the columns measured unique for this layer.
+          nyc_park_polygons and gispropnum, the registry key first and then
+          the column measured unique for this layer (2,061 of 2,061 live rows,
+          2026-10-03).
         data_tests: [not_null, unique]
   - name: base_nycparks__nyc_parks_trails
     data_tests:

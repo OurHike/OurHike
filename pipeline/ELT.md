@@ -977,7 +977,8 @@ A server's row id (`OBJECTID`, `FID`) is never an input on its own, because a tr
 | `massgis_long_distance_trails` | `GLOBALID` | 32 of 32 |
 | `cdtc_centerline` | `STATE` | 8 of 8, one row per state |
 | `pcta_centerline`, `wi_ice_age_trail` | the registry key alone | one row each |
-| `nyc_drinking_fountains`, `nyc_park_polygons` | `system`, `gispropnum` | 3,195 and 2,061 |
+| `nyc_drinking_fountains` | `system`, `gispropnum` | 3,195 |
+| `nyc_park_polygons` | `gispropnum` | 2,061 of 2,061, non-null on every row (re-measured 2026-10-03). This row used to share the fountains' key, and the layer has no `system` column (Socrata `enfh-gkve` declares 33, none of them `system`), so the monthly lane's first live build failed to bind it (refresh-reference.yml run 37109384156) |
 | `nyc_cscl_paths`, `nyc_park_drives` | `globalid` | 6,496 of 6,496; the drives are a filtered subset of the same dataset |
 | `nyc_dot_greenways` | `segmentid` | 2,995 of 2,995 **after 44 exact copies**: every repeated `segmentid` was a repeated record |
 | `nyc_parks_trails` | geometry, `date_collected` | 7,055 of 7,055 after 4 exact copies; `date_collected` is null on 4 |

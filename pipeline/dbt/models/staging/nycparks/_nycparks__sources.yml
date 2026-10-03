@@ -30,11 +30,14 @@ sources:
           # Rows sharing base_nycparks__nyc_park_polygons's key must be exact copies (decision 40).
           - duplicates_are_exact:
               arguments:
-                key_columns: ["'nyc_park_polygons'", "\"system\"", "gispropnum"]
+                key_columns: ["'nyc_park_polygons'", "gispropnum"]
         description: >
           NYC Parks Properties (park boundaries) (sources.json
-          `nyc_park_polygons`). Key: system and gispropnum, unique on 2,061
-          live rows.
+          `nyc_park_polygons`). Key: gispropnum, the registry's `id_field`,
+          unique and non-null on 2,061 of 2,061 live rows (measured
+          2026-10-03). The layer has no `system` column: that is the drinking
+          fountains' (Socrata enfh-gkve declares 33 columns, none of them
+          `system`).
       - name: raw_nycparks__nyc_parks_trails
         data_tests:
           # Rows sharing base_nycparks__nyc_parks_trails's key must be exact copies (decision 40).

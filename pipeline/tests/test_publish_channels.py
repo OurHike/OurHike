@@ -4,7 +4,7 @@ pipeline/ELT.md, "Versions and channels (decision 44), as stage 4 builds them":
 the committed channels.json names, per data environment and schema version,
 the release folder a phone reads, and is "uploaded to the bucket root
 (root-scoped, like latest.json) only by a dispatch, never by a push".
-client/src/lib/dataRelease.ts's readDataChannel is the reader. moto stands in
+client/src/lib/dataChannel.ts's readDataChannel is the reader. moto stands in
 for R2, as in tests/test_publish.py; nothing here reaches a bucket.
 """
 

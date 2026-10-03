@@ -58,7 +58,8 @@ OPENTRAIL_ICONS = ("c", "s", "o", "j", "w", "t", "r", "a")
 
 
 def _feature_collection(features):
-    return json.dumps({"type": "FeatureCollection", "features": features})
+    """A GeoJSON FeatureCollection as a dict; write_fixtures() dumps it, so the transforms below edit it in place."""
+    return {"type": "FeatureCollection", "features": features}
 
 
 def _point(i):
@@ -1438,11 +1439,10 @@ KEY_FIELDS = {
 }
 
 
-def _with_key_fields(content: str, fields: dict) -> str:
-    collection = json.loads(content)
+def _with_key_fields(collection: dict, fields: dict) -> dict:
     for index, feature in enumerate(collection["features"]):
         feature["properties"] = {**(feature.get("properties") or {}), **{name: value(index) for name, value in fields.items()}}
-    return json.dumps(collection)
+    return collection
 
 
 # --- The points_of_interest family (#1793, stage 3) ------------------------
@@ -1676,7 +1676,7 @@ def _site_water_fixtures(sites: list[dict]) -> dict[str, str]:
 _OSM_WATER_TWIN_DBID = 9001
 
 
-def _osm_water_fixtures(kept: list[dict]) -> tuple[dict[str, str], dict]:
+def _osm_water_fixtures(kept: list[dict]) -> tuple[dict[str, dict | str], dict]:
     """osm_water/points.geojson and osm_water/epqs_elevations.json over the grid's sites, and the opentrail waypoint the twin pairs with."""
 
     def site(layer: str, nth: int) -> tuple[float, float]:
@@ -2006,7 +2006,7 @@ def _highlight_end_fixtures(files: dict) -> dict:
     for poi_id, point in zip((leg["from_poi"], leg["to_poi"]), _HIGHLIGHT_END_POINTS, strict=True):
         row = ledger[poi_id]
         name = _HIGHLIGHT_END_LAYERS[row["source"]]
-        collection = json.loads(changed.get(name, files[name]))
+        collection = changed.get(name, files[name])
         collection["features"].append(
             {
                 "type": "Feature",
@@ -2014,7 +2014,7 @@ def _highlight_end_fixtures(files: dict) -> dict:
                 "geometry": {"type": "Point", "coordinates": point},
             }
         )
-        changed[name] = json.dumps(collection)
+        changed[name] = collection
     return changed
 
 
@@ -2026,18 +2026,14 @@ def _points_of_interest_fixtures(files: dict) -> dict:
         "external/usfs_rec_sites.geojson": ("objectid", lambda i: 3388401 + i),
     }
     for name, (field, value) in id_fields.items():
-        collection = json.loads(files[name])
-        for index, feature in enumerate(collection["features"]):
+        for index, feature in enumerate(files[name]["features"]):
             feature["properties"][field] = value(index)
-        files[name] = json.dumps(collection)
     for name, prefix in (
         ("external/nyc_public_restrooms.geojson", "row-fixture-restroom"),
         ("external/nyc_drinking_fountains.geojson", "row-fixture-fountain"),
     ):
-        collection = json.loads(files[name])
-        for index, feature in enumerate(collection["features"]):
+        for index, feature in enumerate(files[name]["features"]):
             feature["id"] = f"{prefix}-{index}"
-        files[name] = json.dumps(collection)
 
     sites = json.loads((POI_REFERENCE_DIR / "water_distance.json").read_text(encoding="utf-8"))["sites"]
     pois = json.loads((POI_REFERENCE_DIR / "poi_identity.json").read_text(encoding="utf-8"))["pois"]
@@ -2047,7 +2043,7 @@ def _points_of_interest_fixtures(files: dict) -> dict:
         key=lambda site: (site["layer"], site["atc_global_id"]),
     )
     for name, layer in (("shelters.geojson", "shelters"), ("campsites.geojson", "campsites")):
-        collection = json.loads(files[name])
+        collection = files[name]
         inventory = _POI_INVENTORY[layer]
         appended = 0
         for index, site in enumerate(kept):
@@ -2064,18 +2060,15 @@ def _points_of_interest_fixtures(files: dict) -> dict:
                     }
                 )
                 appended += 1
-        files[name] = json.dumps(collection)
     files.update(_site_water_fixtures(kept))
     osm_water, waypoint = _osm_water_fixtures(kept)
     files.update(osm_water)
     files.update(_poi_photo_fixtures(kept))
     files.update(_long_path_guide_fixtures())
-    opentrail = json.loads(files["opentrail_at.geojson"])
-    opentrail["features"].append(waypoint)
-    files["opentrail_at.geojson"] = json.dumps(opentrail)
+    files["opentrail_at.geojson"]["features"].append(waypoint)
 
     for row, (name, facilities) in enumerate(_POI_FACILITIES.items()):
-        collection = json.loads(files[name])
+        collection = files[name]
         stem = name.removesuffix(".geojson")
         for index, properties in enumerate(facilities):
             collection["features"].append(
@@ -2085,11 +2078,9 @@ def _points_of_interest_fixtures(files: dict) -> dict:
                     "geometry": {"type": "Point", "coordinates": [-74.30 + index * 0.005, 41.30 + row * 0.004]},
                 }
             )
-        files[name] = json.dumps(collection)
     files.update(_highlight_end_fixtures(files))
 
-    backcountry = json.loads(files["external/dec_backcountry_features.geojson"])
-    backcountry["features"].append(
+    files["external/dec_backcountry_features.geojson"]["features"].append(
         {
             "type": "Feature",
             "properties": {
@@ -2104,7 +2095,6 @@ def _points_of_interest_fixtures(files: dict) -> dict:
             "geometry": _point(3),
         }
     )
-    files["external/dec_backcountry_features.geojson"] = json.dumps(backcountry)
     return files
 
 
@@ -3067,7 +3057,7 @@ def _network_rows() -> dict[str, list[dict]]:
     }
 
 
-def _trail_lines_network_fixtures(files: dict[str, str]) -> dict[str, str]:
+def _trail_lines_network_fixtures(files: dict[str, dict | str | bytes]) -> dict[str, dict | str | bytes]:
     """`files` with the rows `_network_rows` adds, and three things the live
     layers have and these fixtures lacked.
 
@@ -3101,12 +3091,9 @@ def _trail_lines_network_fixtures(files: dict[str, str]) -> dict[str, str]:
     out = dict(files)
 
     for name, added in _network_rows().items():
-        collection = json.loads(out[name])
-        collection["features"] += added
-        out[name] = json.dumps(collection)
+        out[name]["features"] += added
 
-    usfs = json.loads(out["external/usfs_trails.geojson"])
-    for feature in usfs["features"]:
+    for feature in out["external/usfs_trails.geojson"]["features"]:
         properties = feature["properties"]
         if properties.get("trail_type") != "TERRA":
             continue
@@ -3116,10 +3103,8 @@ def _trail_lines_network_fixtures(files: dict[str, str]) -> dict[str, str]:
             properties["terra_motorized"] = "Y"
         else:
             properties["terra_motorized"] = "N"
-    out["external/usfs_trails.geojson"] = json.dumps(usfs)
 
-    parks = json.loads(out["external/nyc_park_polygons.geojson"])
-    parks["features"] += [
+    out["external/nyc_park_polygons.geojson"]["features"] += [
         {
             "type": "Feature",
             "properties": {"signname": name, "gispropnum": f"FIXTURE-{index}"},
@@ -3127,10 +3112,8 @@ def _trail_lines_network_fixtures(files: dict[str, str]) -> dict[str, str]:
         }
         for index, (name, ring) in enumerate(NETWORK_PARK_BOUNDARIES.items())
     ]
-    out["external/nyc_park_polygons.geojson"] = json.dumps(parks)
 
-    closures = json.loads(out["external/oprhp_trail_closures.geojson"])
-    closures["features"] += [
+    out["external/oprhp_trail_closures.geojson"]["features"] += [
         {
             "type": "Feature",
             "properties": {"Name": reason, "Descript": "Fixture State Park"},
@@ -3138,7 +3121,6 @@ def _trail_lines_network_fixtures(files: dict[str, str]) -> dict[str, str]:
         }
         for reason, ring in NETWORK_CLOSED_AREAS
     ]
-    out["external/oprhp_trail_closures.geojson"] = json.dumps(closures)
 
     mapping = json.loads((Path(__file__).parent / "reference" / "blaze_mapping.json").read_text(encoding="utf-8"))["sources"]
     entries = {entry["key"]: entry for entry in registry["sources"]}
@@ -3149,8 +3131,7 @@ def _trail_lines_network_fixtures(files: dict[str, str]) -> dict[str, str]:
             continue
         if "blaze_field" not in entry and "blaze_default" not in entry:
             continue
-        collection = json.loads(out[name])
-        for index, feature in enumerate(collection["features"]):
+        for index, feature in enumerate(out[name]["features"]):
             properties = feature.setdefault("properties", {})
             if kinds[key] == "socrata_geojson_layer":
                 feature["id"] = f"row-{index}"
@@ -3171,7 +3152,6 @@ def _trail_lines_network_fixtures(files: dict[str, str]) -> dict[str, str]:
                 properties[entry["status_field"]] = "Open"
             for field in entry.get("excluded_when") or {}:
                 properties.setdefault(field, None)
-        out[name] = json.dumps(collection)
     return out
 
 
@@ -3258,7 +3238,7 @@ TRAIL_LINES_AT_CLUB_POLYGONS = [
 ]
 
 
-def _trail_lines_at_fixtures(files: dict[str, str]) -> dict[str, str]:
+def _trail_lines_at_fixtures(files: dict[str, dict | str | bytes]) -> dict[str, dict | str | bytes]:
     """`files` with the A.T. line layers carrying what the live ones carry.
 
     - Every centerline and side trail feature gets an OBJECTID, served as the
@@ -3280,17 +3260,16 @@ def _trail_lines_at_fixtures(files: dict[str, str]) -> dict[str, str]:
     """
     out = dict(files)
     for name, added in (("centerline.geojson", []), ("side_trails.geojson", TRAIL_LINES_AT_SIDE_TRAILS)):
-        collection = json.loads(out[name])
+        collection = out[name]
         collection["features"] += [json.loads(json.dumps(feature)) for feature in added]
         for index, feature in enumerate(collection["features"]):
             feature["properties"]["OBJECTID"] = index + 1
             feature["id"] = index + 1
         if name == "centerline.geojson":
             collection["features"][1]["properties"]["Acronym"] = " TTC1 "
-        out[name] = json.dumps(collection)
-    polygons = json.loads(out["trail_club_sections.geojson"])
-    polygons["features"] += [json.loads(json.dumps(feature)) for feature in TRAIL_LINES_AT_CLUB_POLYGONS]
-    out["trail_club_sections.geojson"] = json.dumps(polygons)
+    out["trail_club_sections.geojson"]["features"] += [
+        json.loads(json.dumps(feature)) for feature in TRAIL_LINES_AT_CLUB_POLYGONS
+    ]
     return out
 
 
@@ -3526,7 +3505,7 @@ def _park(global_id: str, name, unit, category, ring) -> dict:
     return {"type": "Feature", "properties": properties, "geometry": geometry}
 
 
-def _places_fixtures(files: dict[str, str]) -> dict[str, str]:
+def _places_fixtures(files: dict[str, dict | str | bytes]) -> dict[str, dict | str | bytes]:
     """`files` with OPRHP's park layer given the four fields export_places.py reads, one polygon per rule.
 
     The fields are the ones the layer's sources.json entry declares
@@ -3589,14 +3568,9 @@ def _places_fixtures(files: dict[str, str]) -> dict[str, str]:
         _park("{00000000-0000-4000-8000-000000000511}", "  ", 400, "State Park", _box(-73.2, 40.6, -73.19, 40.61)),
         _park("{00000000-0000-4000-8000-000000000512}", "Fixture Ghost", 401, "State Park", None),
     ]  # fmt: skip
-    communities = json.loads(files["communities.geojson"])
-    for feature, state in zip(communities["features"], ("Virginia", "Virgnia"), strict=True):
+    for feature, state in zip(files["communities.geojson"]["features"], ("Virginia", "Virgnia"), strict=True):
         feature["properties"]["STATE"] = state
-    return {
-        **files,
-        "external/oprhp_park_polygons.geojson": _feature_collection(parks),
-        "communities.geojson": json.dumps(communities),
-    }
+    return {**files, "external/oprhp_park_polygons.geojson": _feature_collection(parks)}
 
 
 def write_fixtures(raw_dir: Path) -> list[str]:
@@ -3755,6 +3729,8 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         path.parent.mkdir(parents=True, exist_ok=True)
         if isinstance(content, bytes):
             path.write_bytes(content)  # the elevation fixture's GeoTIFF (_elevation_fixtures)
+        elif isinstance(content, dict):
+            path.write_text(json.dumps(content))  # a _feature_collection(), dumped once here
         else:
             path.write_text(content)
     return sorted(files)

@@ -1,25 +1,17 @@
-"""Standing Stone Trail Club: warnings, published, and not landed (coverage audit 2026-10-01, batch
-c8_regional_5).
+"""Standing Stone Trail Club: warnings, from the trail-alerts page, hourly (decision 53 phase B, 2026-10-03).
 
-Page. The hunting dates are explicit.
+`sstc_trail_alerts` reads https://www.standingstonetrail.org/trail-alerts as one PageNotice
+(extract/_notices.py), read live under our agent on 2026-10-03 (Wix robots.txt: `User-agent: *` /
+`Allow: /`). The club's one current page: "WEAR BLAZE ORANGE November 15 to December 15 ALL TRAIL
+SECTIONS", "NO PARKING ANYTIME Little Augwick Creek Side of highway 522", and a link to DCNR's 2023
+Rothrock State Forest activities PDF, which is stale and not read. Its hunting dates are explicit in
+the text the reader does not parse; the page states no update date.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Before decision 53 phase B this file was the coverage audit's note (confirmed 2026-10-01, batch
+c8_regional_5): "Page. The hunting dates are explicit."
 """
 
-from datetime import date
+from extract._kinds import page_notice
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        '`/trail-alerts`: "NOTICE: WEAR BLAZE ORANGE November 15 to December 15 ALL TRAIL SECTIONS"; "Many '
-        "sections of trail are 'Active In-Season Hunting Zones'\"; it also links DCNR's \"2023 Rothrock State "
-        'Forest Management Activities" PDF (stale).',
-    ),
-    where=(
-        "https://mapservices.pasda.psu.edu/server/rest/services",
-        "https://standingstonetrail.org/",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("sstc_trail_alerts",)
+RESOURCES = [page_notice("sstc_trail_alerts")]

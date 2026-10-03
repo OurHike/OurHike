@@ -10,12 +10,10 @@ loads. Change checks are _kinds.py's ArcgisLayer: a conditional GET of the layer
 Online, the statistics fingerprint on an on-prem server, and an allowed zero only beside the
 server's own returnCountOnly read in the same run.
 
-Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
-robots.txt, terms and change check):
-https://dec.ny.gov/things-to-do/hiking/adirondack-backcountry/backcountry-information-for-adirondack-park
-(html_page); https://content.govdelivery.com/accounts/NYSDEC/bulletins/37eccff (html_page);
-https://api.nysmesonet.org/data/firewx/GetFDRA/ (json_api - robots.txt disallows it, so not to be
-fetched).
+The decision 53 inventory's other DEC sources (2026-10-03): the Adirondack backcountry page lands in
+nysdec/closures.py as `nysdec_adk_backcountry`, which the warnings staging model reads too; DEC's
+GovDelivery bulletin is one bulletin per URL, not a channel; and the NYS Mesonet fire-danger API
+(https://api.nysmesonet.org/data/firewx/GetFDRA/) is disallowed by its robots.txt, so never fetched.
 
 Before decision 53 phase B, 2026-10-03, this file was a note. It read, whole:
 

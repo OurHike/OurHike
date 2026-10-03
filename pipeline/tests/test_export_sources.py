@@ -865,8 +865,11 @@ class TestTheRegistryTheConsoleReads:
         # GMC, Indiana and Iowa DNR, Lake County MN, OCTA, ONDA, Oregon Metro, SHTA, TKO and TPWD.
         # 78 since decision 54's points of interest (2026-10-03) registered org:cfpa.
         # 79 since its second batch of points registered org:blackhillstrails.
-        assert len(orgs) == 79
+        # 92 since decision 53's page and post notices for folders n to z and _shared/ (2026-10-03)
+        # registered 13 more; their other 4 stewards (Indiana DNR, SHTA, TKO, TPWD) already had rows.
+        assert len(orgs) == 92
         assert {org["steward_id"] for org in orgs} == {
+            "org:akstateparks",
             "org:alaskatrails",
             "org:amc",
             "org:ata",
@@ -885,6 +888,7 @@ class TestTheRegistryTheConsoleReads:
             "org:ctdeep",
             "org:desmoines",
             "org:duluth",
+            "org:ebrpd",
             "org:fltc",
             "org:fmst",
             "org:foot",
@@ -902,6 +906,8 @@ class TestTheRegistryTheConsoleReads:
             "org:midpen",
             "org:mohonk",
             "org:mtsg",
+            "org:nbatc",
+            "org:nchpta",
             "org:ncparks",
             "org:ncta",
             "org:ndmc",
@@ -916,19 +922,26 @@ class TestTheRegistryTheConsoleReads:
             "org:nysoprhp",
             "org:octa",
             "org:odfw",
+            "org:ohta",
             "org:onda",
             "org:oregonmetro",
             "org:osm",
+            "org:ota",
             "org:padcnr",
             "org:pasda",
             "org:patc",
+            "org:pcf",
             "org:pcta",
+            "org:pnta",
             "org:portlandparks",
             "org:ridgetrail",
             "org:sbts",
             "org:sccparks",
             "org:shta",
             "org:spnhf",
+            "org:sstc",
+            "org:sta",
+            "org:tatc",
             "org:tdec",
             "org:tehcc",
             "org:tko",
@@ -943,9 +956,11 @@ class TestTheRegistryTheConsoleReads:
             "org:usgs",
             "org:utahffsl",
             "org:wadnr",
+            "org:waldotrails",
             "org:warco",
             "org:wdnr",
             "org:wsprc",
+            "org:wta",
         }
 
     def test_composes_nothing_a_reviewer_would_have_to_check(self):

@@ -360,10 +360,19 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     `stated_by_org`: USGS's six and USFWS's two as federal works, CT DEEP's
     two under CC0, UGRC's trailheads and highest peaks under CC BY 4.0, and
     MA DCR's two Blue Hills layers, whose licenseInfo grants copying and use.
+
+    DECISION 53'S PAGE AND POST NOTICES, FOLDERS N TO Z AND _shared/ (2026-10-03): 68 rows, all
+    `reaches_hikers: false`. 16 `stated_by_org`: 15 USFS forests' alerts pages and NPS's Natchez
+    Trace status page, federal works on 17 U.S.C. 105. 1 `unresolved`: TATC's republished
+    ridgerunner reports, whose licence is the maintainer's open question. 51
+    `maintainer_authorisation`: decision 53's facts and a link, and for the 23 whose terms restrict
+    copying but not reading (OTA's 14 section pages, DEC, EBRPD, TPWD's two parks, WTA, mass.gov,
+    IN.gov, nc.gov and SBTS's copyright line), decision 55, their terms quoted on each row.
     """
     counts: dict[str, int] = {}
     for source in REGISTRY["sources"]:
         counts[source["licence_basis"]] = counts.get(source["licence_basis"], 0) + 1
 
     # Decision 53's ArcGIS closure and warning layers (2026-10-03) add 76 rows, all reaches_hikers false: 11 `maintainer_authorisation`, 35 `public_gis`, 30 `stated_by_org`.
-    assert counts == {"maintainer_authorisation": 48, "public_gis": 217, "stated_by_org": 135, "unresolved": 3}
+    # Decision 53's page and post notices, folders n to z and _shared/ (2026-10-03), add 68: 51, 16 and 1 (above).
+    assert counts == {"maintainer_authorisation": 99, "public_gis": 217, "stated_by_org": 151, "unresolved": 4}

@@ -1,31 +1,26 @@
-"""Sierra Buttes Trail Stewardship: closures, published, and not landed (coverage audit 2026-10-01,
-batch c6_regional_3).
+"""Sierra Buttes Trail Stewardship: closures, from Yuba Expeditions' trail-conditions page, hourly (decision 53
+phase B and decision 55, 2026-10-03).
 
-A page, not machine-readable. Squarespace's `robots.txt` disallows `?format=json`, so a parser must
-read the HTML. Only "CLEAR" appears today, so the word a closed trail would get is unseen (Reasoned:
-it would be a non-CLEAR word). Mountain-bike-first, but the Mt. Hough network is "open to all …
+`sbts_trail_conditions` reads https://www.yubaexpeditions.com/trail-conditions (the stewardship's own
+storefront, "an extension of the NON-Profit Sierra Buttes Trail Stewardship") as one PageNotice
+(extract/_notices.py), read live under our agent on 2026-10-03. Squarespace's robots.txt there
+disallows `?format=json` and similar query forms for every agent, so the HTML is the only allowed form
+and the reader asks the URL with no query. The page lists 40 named trails, each with a status word
+('CLEAR', 'CLEAR lower bridge is damaged'), in network blocks each stamped 'Updated 9/4/26'; the
+newest such stamp is the row's date. Only 'CLEAR' appears that day, so the word a closed trail would
+get is unseen (the coverage audit). The footer's "Copyright © 2025 Sierra Buttes Trail Stewardship.
+All Rights Reserved." is a copyright line, read under decision 55: facts and a link, quoted on the
+row.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+The status words are closures and warnings both (a damaged bridge on a trail still reading CLEAR is a
+warning, decision 7), so warnings.py shares this file.
+
+Before decision 53 phase B this file was the coverage audit's note (confirmed 2026-10-01, batch
+c6_regional_3): "A page, not machine-readable. Squarespace's `robots.txt` disallows `?format=json`, so a
+parser must read the HTML."
 """
 
-from datetime import date
+from extract._kinds import page_notice
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "~~No conditions page among the 171 sitemap URLs.~~ That holds for sierratrails.org only. "
-        '`https://www.yubaexpeditions.com/trail-conditions` (HTML, Squarespace). Its about page says "We are an'
-        ' extension of the NON-Profit Sierra Buttes Trail Stewardship", and the footer reads "Copyright © 2025 '
-        'Sierra Buttes Trail Stewardship. All Rights Reserved." It lists 40 named trails, each with a status '
-        "word: Mt. Hough / Quincy 19, Downieville 14, Mills Peak and Lakes Basin 7. Every network block is "
-        'stamped "Updated 9/4/26". There are also 6 highway and county-road statuses, "Updated 5/29/26". The '
-        "page …",
-    ),
-    where=(
-        "https://www.yubaexpeditions.com/trail-conditions",
-        "https://sierratrails.org",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("sbts_trail_conditions",)
+RESOURCES = [page_notice("sbts_trail_conditions")]

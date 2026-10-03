@@ -1,32 +1,28 @@
-"""Tennessee Eastman Hiking & Canoeing Club: closures, published, and not landed (coverage audit
-2026-10-01, batch c3_at_clubs_south).
+"""Tennessee Eastman Hiking & Canoeing Club: closures, from the club's Appalachian Trail posts, hourly (decision
+53 phase B, 2026-10-03).
 
-The Watauga banner looks stale. The Cherokee NF alerts page (`fs.usda.gov/r08/cherokee/alerts`, read
-2026-10-01) lists no Watauga, Wilbur Dam or US 321 A.T. closure (Reasoned that it has lapsed;
-whether it still stands is @unvalidated). So club banners must carry `as_of` and land as "not
-reviewed" …
+`tehcc_at_posts` reads the 'Appalachian Trail' category (id 3) through WordpressPosts, read live under our
+agent on 2026-10-03 after tehcc.org's robots.txt (`/wp-admin/` only): 87 posts by X-WP-Total, ids unique,
+the newest modified 2025-09-09. The titles carry the facts ('Laurel Fork Shelter damaged by fire',
+2024-08-15; 'Update: Clyde Smith Shelter reopened after temporarily closed due to bear activity',
+2025-05-30; two 'A.T. Camping Closure' posts, 2023-02-23). MOSTLY HISTORIC: a 2023 camping closure is
+not current, and expiry is dbt's rule. The posts' `content` and `excerpt` never load: they carried 14
+telephone numbers that day (decision 59; the row's person_fields), and the bodies are members-only
+anyway (the coverage audit: 12 of 87, every one since 2022-01-18). What lands is each post's title,
+dates, categories and link. The category's RSS feed (/category/appalachian-trail/feed/, 10 items) is a
+window of this list and is not read.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+The Cherokee National Forest's alerts page, which the coverage audit read for the Watauga banner, lands
+in usfs/closures.py as `usfs_r08_cherokee_alerts` (decision 34). The club's wiki announcements and its
+maintenance log are warnings.py's.
+
+Before decision 53 phase B this file was the coverage audit's note (confirmed 2026-10-01, batch
+c3_at_clubs_south): "The Watauga banner looks stale. The Cherokee NF alerts page ... lists no Watauga,
+Wilbur Dam or US 321 A.T. closure (Reasoned that it has lapsed; whether it still stands is
+@unvalidated)."
 """
 
-from datetime import date
+from extract._kinds import wordpress_posts
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "(1) WP category Appalachian Trail (id 3, 87 posts), RSS "
-        "`https://tehcc.org/category/appalachian-trail/feed/`. Titles are public, bodies members-only (12 of "
-        '87, every one since 2022-01-18). The titles carry facts: "Overmountain Shelter retired" (2023-12-01); '
-        '"Roan High Knob shelter closed for repairs to be made in 2025" (2024-09-07); "Laurel Fork Shelter '
-        'damaged by fire" (2024-08-15); "Update: Clyde Smith Shelter reopened after temporarily closed due to '
-        'bear activity" (2025-05-30); two 2023-02-23 "A.T. Camping Closure" posts. (2) Wiki '
-        "`Template:Announcement` boxes on 9 pages, for example …",
-    ),
-    where=(
-        "https://tehcc.org/category/appalachian-trail/feed/",
-        "https://fs.usda.gov/r08/cherokee/alerts",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("tehcc_at_posts",)
+RESOURCES = [wordpress_posts("tehcc_at_posts")]

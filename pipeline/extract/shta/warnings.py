@@ -1,26 +1,13 @@
-"""Superior Hiking Trail Association: warnings, published, and not landed (coverage audit 2026-10-01,
-batch c7_regional_4).
+"""Superior Hiking Trail Association: warnings, from the same trail-conditions page closures.py reads.
 
-Several of these are crossing hazards a hiker needs before setting out.
+Several are crossing hazards a hiker needs before setting out: "The McCarthy Creek bridge is out … wet
+crossing", the Gooseberry River washout, a failed structure near Middle Gooseberry, logging, high-water
+fords (Encampment, Split Rock, no bridge) and encampments with broken glass (the coverage audit,
+2026-10-01). They share one page with the closures, so this type shares closures.py's resource and dbt
+splits them (decision 7).
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Before decision 53 phase B (2026-10-03) this file was the coverage audit's note (confirmed 2026-10-01,
+batch c7_regional_4), which listed those items.
 """
 
-from datetime import date
-
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "The same page:",
-        '"The McCarthy Creek bridge is out … wet crossing"',
-        'Gooseberry River washout ("bushwack around")',
-        "a failed structure near Middle Gooseberry",
-        "logging",
-        "high-water fords (Encampment, Split Rock, no bridge)",
-        'encampments with broken glass; Also each `/trail-section/` page has a "Trail Alerts" block (seasonal wasp hazard).',
-    ),
-    where=("https://superiorhiking.org/",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+SHARES = "closures"

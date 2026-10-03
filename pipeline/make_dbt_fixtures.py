@@ -3021,6 +3021,296 @@ def _json_api_fixtures() -> dict[str, str]:
     }
 
 
+# --- decision 53 phase B's page notices and WordPress posts, folders n to z and _shared/ ------
+#
+# PAGES. One file per registry key under conditions/notices/, `{"answers": {url: {"content_type",
+# "body"}}}`, the shape extract/_fixtures.py's text_answers() reads, served by exact URL, so each
+# PageNotice runs its own fetch, region, title, date and hash over it. The URL is the registry row's,
+# or, for a WordPress page read through REST, `/wp-json/wp/v2/pages/<id>` at its origin. THE SHAPES
+# ARE MEASURED: each page's region, its title's place and its stated date's wording are what the
+# phase B live read found on 2026-10-03 (the session's scratchpad, never committed), and each row's
+# sources.json `notes` says which. THE TEXT IS INVENTED and starts with 'Fixture': no real notice,
+# name or number is copied. A PDF has no fixture here: PageNotice reads a PDF through pypdf, which the
+# pipeline suite's environment does not install (extract/_notices.py's read_pdf), so fixture mode
+# leaves those four resources out, as it leaves out any resource with no fixture file.
+#
+# POSTS. One WordPress document per registry key under conditions/, the shape NYNJTC's uses: the
+# category lookup by slug and the posts, each with the fields the live posts route served, so
+# WordpressPosts' change check, WP_DROPPED and the row's person_fields (`content` and `excerpt`) run.
+
+NOTICE_HTML = "text/html; charset=UTF-8"
+NOTICE_REST = "application/json; charset=UTF-8"
+FIXTURE_DAY = "September 21, 2026"
+
+
+def _notice_page(h1: str, dated: str | None = f"Updated {FIXTURE_DAY}", region: str = "main") -> str:
+    """An HTML page shaped like the live one: the notice in `region`, a menu and a footer the reader leaves out."""
+    date_line = f"<p>{dated}</p>" if dated else ""
+    title = f"<title>{h1}</title>"
+    inner = f"<h1>{h1}</h1>{date_line}<p>Fixture notice: a trail section is closed for repairs.</p>"
+    if region == "main":
+        body = f"<nav>Fixture menu</nav><main>{inner}</main><footer>Fixture footer</footer>"
+    elif region == "article":
+        body = f"<nav>Fixture menu</nav><article>{inner}</article><footer>Fixture footer</footer>"
+    else:
+        body = f"<nav>Fixture menu</nav><div>{inner}</div><footer>Fixture footer</footer>"
+    return f'<!doctype html><html><head><meta charset="utf-8">{title}</head><body>{body}</body></html>'
+
+
+def _usfs_alerts_page(unit: str, alerts: bool = True) -> str:
+    """A forest's alerts page: <main> whose <h1> is 'Alerts', the legend, and one alert card with its own start date
+    or, for the Nez Perce trail's empty page, the page's own 'There are no alerts listed.'"""
+    card = (
+        f'<li class="usa-card wfs-alert-flag critical"><h3><a href="/{unit}/alerts/fixture-trail-closure">'
+        f"<span>Fixture Trail Closure</span></a></h3><p>Alert Start Date: {FIXTURE_DAY}</p></li>"
+        if alerts
+        else "<li>There are no alerts listed.</li>"
+    )
+    legend = "".join(
+        f'<li class="usa-card wfs-alert-flag {level}"><h3>{level}</h3></li>'
+        for level in ("critical", "fire-restriction", "caution", "information")
+    )
+    return (
+        '<!doctype html><html><head><meta charset="utf-8"><title>Alerts | US Forest Service</title></head><body>'
+        f"<nav>Fixture menu</nav><main><h1>Alerts</h1><ul>{legend}</ul><ul>{card}</ul></main><footer>Fixture footer</footer>"
+        "</body></html>"
+    )
+
+
+def _wp_rest_page(page_id: int, title: str) -> str:
+    """A WordPress page as its REST route serves it: the fields PageNotice reads, and the ones it ignores."""
+    return json.dumps(
+        {
+            "id": page_id,
+            "date_gmt": "2026-01-05T14:00:00",
+            "modified_gmt": "2026-09-21T14:13:20",
+            "slug": "fixture-page",
+            "status": "publish",
+            "type": "page",
+            "link": "https://fixture.example.org/fixture-page/",
+            "title": {"rendered": title},
+            "content": {
+                "rendered": f"<h2>Fixture closure</h2><p>Updated {FIXTURE_DAY}</p><ul><li>Fixture bridge out.</li></ul>",
+                "protected": False,
+            },
+        }
+    )
+
+
+USFS_ALERT_UNITS = (
+    "r08/cherokee", "r08/gwj", "r08/northcarolina", "r08/alabama", "r08/chattahoochee-oconee", "r08/ouachita",
+    "r09/whitemountain", "r09/gmfl", "r02/psicc", "r02/blackhills", "r04/uinta-wasatch-cache", "r10/chugach",
+    "r01/dpg", "r05/lospadres",
+)  # fmt: skip
+#: Registry key -> the OTA section page's WordPress id (ota/closures.py's SECTION_PAGES).
+OTA_SECTION_PAGES = {
+    "ota_current_river_conditions": 42254, "ota_upper_current_river_conditions": 42332, "ota_eleven_point_conditions": 2678,
+    "ota_victory_conditions": 42311, "ota_wappapello_conditions": 42312, "ota_north_fork_conditions": 42309,
+    "ota_between_the_rivers_conditions": 42223, "ota_blair_creek_conditions": 2639, "ota_karkaghne_conditions": 42294,
+    "ota_taum_sauk_conditions": 42300, "ota_middle_fork_conditions": 42308, "ota_courtois_conditions": 42207,
+    "ota_trace_creek_conditions": 42310, "ota_marble_creek_conditions": 42307,
+}  # fmt: skip
+
+
+def _notice_pages_n_to_z() -> dict[str, tuple[str, str, str]]:
+    """Registry key -> (URL a PageNotice asks, content type, body)."""
+    pages = {
+        f"usfs_{unit.replace('/', '_').replace('-', '_')}_alerts": (
+            f"https://www.fs.usda.gov/{unit}/alerts",
+            NOTICE_HTML,
+            _usfs_alerts_page(unit),
+        )
+        for unit in USFS_ALERT_UNITS
+    }
+    pages["usfs_nez_perce_nht_alerts"] = (
+        "https://www.fs.usda.gov/trails/nez-perce-nht/alerts",
+        NOTICE_HTML,
+        _usfs_alerts_page("trails/nez-perce-nht", alerts=False),
+    )
+    html = {
+        "nps_natr_road_site_status": (
+            "https://www.nps.gov/natr/planyourvisit/road-and-site-status.htm",
+            _notice_page("Road and Site Status", f"Last updated: {FIXTURE_DAY}", region="body"),
+        ),
+        "nchpta_open_trails": (
+            "https://nchighpeaks.org/2024Hikes",
+            _notice_page("Fixture Trails Currently Open", "Update 9/21/2026", region="article"),
+        ),
+        "ncta_trail_alerts_page": (
+            "https://northcountrytrail.org/the-trail/trail-alerts/",
+            _notice_page("Fixture Trail Alerts", None, region="article"),
+        ),
+        "nysdec_adk_backcountry": (
+            "https://dec.ny.gov/things-to-do/hiking/adirondack-backcountry/backcountry-information-for-adirondack-park",
+            _notice_page("Fixture Backcountry Information", "New this week (9/21/2026)"),
+        ),
+        "palmetto_trail_closures": (
+            "https://www.palmettotrail.org/updates/post/trail-closures-updated-2-5-26",
+            _notice_page("Fixture Current Trail Closures", None),
+        ),
+        "palmetto_hunting_season": (
+            "https://www.palmettotrail.org/updates/post/hunting-season",
+            _notice_page("Fixture Hunting Season", None),
+        ),
+        "pa_dcnr_tioga_advisories": (
+            "https://www.pa.gov/agencies/dcnr/recreation/where-to-go/state-forests/find-a-forest/tioga/advisories",
+            _notice_page("Advisories", None),
+        ),
+        "patc_trails_banner": ("https://www.patc.net/trails", _notice_page("Fixture Trails", None, region="body")),
+        "patc_tuscarora_updates": (
+            "https://www.hikethetuscarora.org/updates",
+            _notice_page("Fixture Tuscarora Trail Updates", None),
+        ),
+        "pnta_trail_alerts": (
+            "https://www.pnt.org/pnta/know-before-you-go/plan-your-trip/trail-alerts/",
+            _notice_page("Fixture Trail Alerts", f"Last Updated: {FIXTURE_DAY}"),
+        ),
+        "pnta_trail_conditions": (
+            "https://www.pnt.org/pnta/know-before-you-go/plan-your-trip/trail-conditions/",
+            _notice_page("Fixture Trail Conditions", "Last Updated: August 1, 2025"),
+        ),
+        "ebrpd_alerts_closures": (
+            "https://www.ebparks.org/alerts-closures",
+            _notice_page("Fixture Alerts and Closures", f"Updated {FIXTURE_DAY}"),
+        ),
+        "sbts_trail_conditions": (
+            "https://www.yubaexpeditions.com/trail-conditions",
+            _notice_page("Fixture Trails and Conditions", "Updated 9/21/26"),
+        ),
+        "sta_alerts": ("https://sheltoweetrace.org/alerts", _notice_page("Fixture Alerts and Conditions", None)),
+        "sstc_trail_alerts": ("https://www.standingstonetrail.org/trail-alerts", _notice_page("Fixture Trail Alerts", None)),
+        "sstc_trail_relocation_notice": (
+            "https://www.standingstonetrail.org/copy-of-trail-relocation-notice",
+            _notice_page("Fixture Trail Relocation Notice", None),
+        ),
+        "sstc_trail_closure_notice": (
+            "https://www.standingstonetrail.org/trail-closure-notice",
+            _notice_page("Fixture Temporary Trail Relocation", None),
+        ),
+        "trta_trail_conditions": (
+            "https://tahoerimtrail.org/current-trail-conditions/",
+            _notice_page("Fixture Current Trail Conditions", f"Updated {FIXTURE_DAY}", region="body"),
+        ),
+        "tehcc_recent_maintenance": (
+            "https://tehcc.org/trail-maintenance/recent-at-maintenance/",
+            _notice_page("Fixture Recent AT Maintenance", None),
+        ),
+        "trustees_hunting": (
+            "https://thetrustees.org/content/hunting-on-trustees-properties/",
+            _notice_page("Fixture Hunting on Properties", None, region="body"),
+        ),
+        "tpwd_davis_mountains_alerts": (
+            "https://tpwd.texas.gov/state-parks/davis-mountains/alert",
+            _notice_page("Park Alerts", None),
+        ),
+        "tpwd_mckinney_falls_alerts": ("https://tpwd.texas.gov/state-parks/mckinney-falls/alert", _notice_page("Alerts", None)),
+        "hills_to_sea_closures": ("https://www.hillstosea.org/closures", _notice_page("Fixture Closures", None)),
+        "wta_signpost": ("https://www.wta.org/news/signpost", _notice_page("Fixture Signpost Blog", None, region="article")),
+        "portland_parks_trail_closures": (
+            "https://www.portland.gov/parks/nature/trail-closures-and-delays",
+            _notice_page("Fixture Trail Closures and Delays", f"This page was updated on {FIXTURE_DAY}."),
+        ),
+        "alaska_state_parks_conditions": (
+            "https://dnr.alaska.gov/parks/asp/curevnts.htm",
+            _notice_page("Fixture Division of Parks", f"Last Update: {FIXTURE_DAY}"),
+        ),
+        "in_dnr_knobstone_conditions": (
+            "https://www.in.gov/dnr/forestry/properties/knobstone-trail-conditions-reroutes-maps/",
+            _notice_page("Fixture Knobstone Trail Conditions", f"Knobstone Trail conditions Update: {FIXTURE_DAY}"),
+        ),
+    }
+    pages.update({key: (url, NOTICE_HTML, body) for key, (url, body) in html.items()})
+    # Mount Mitchell: the alert carousel sits in the page header, before <main>, which is why the resource's region is <body>.
+    pages["nc_parks_mount_mitchell_alerts"] = (
+        "https://www.ncparks.gov/state-parks/mount-mitchell-state-park",
+        NOTICE_HTML,
+        '<!doctype html><html><head><meta charset="utf-8"><title>Mount Mitchell State Park | NC State Parks</title></head><body>'
+        '<header><div id="block-ncalertsblock"><div class="carousel-item alert-item warning"><div class="message" role="alert">'
+        '<strong class="alert-type">Fixture alert: a road north of the park is closed.</strong></div></div></div></header>'
+        "<main><h1>Mount Mitchell State Park</h1><p>Fixture park text.</p></main><footer>Fixture footer</footer></body></html>",
+    )
+    # Fragments with no title of their own, read with registry_title: NBATC's items open with their own ISO dates.
+    pages["nbatc_announcements"] = (
+        "https://home.nbatc.org/cgi-bin/nbatcNews.cgi?ACTION=getPosts&OFFSET=0&TYPE=updates&ROLES=",
+        "text/html;",
+        "<h3>2026-09-21 Fixture trail update</h3><p>Fixture body.</p><h3>2026-08-01 Fixture club news</h3><p>Fixture body.</p>",
+    )
+    pages["ma_dcr_blue_hills_alerts"] = (
+        "https://www.mass.gov/alerts/page/14961",
+        NOTICE_HTML,
+        '<ul class="ma__header-alerts__container"><li><section class="ma__action-step">'
+        '<span class="ma__action-step__title-text">Fixture notice</span>'
+        '<span class="ma__action-step__title-suffix">Updated Sep. 21, 2026, 9:00 am</span></section></li></ul>',
+    )
+    rest = {
+        "ohta_trail_alerts": ("https://ozarkhighlandstrail.com", 2987),
+        "shta_trail_conditions": ("https://superiorhiking.org", 73),
+    }
+    rest.update({key: ("https://ozarktrail.com", page_id) for key, page_id in OTA_SECTION_PAGES.items()})
+    for key, (origin, page_id) in rest.items():
+        pages[key] = (f"{origin}/wp-json/wp/v2/pages/{page_id}", NOTICE_REST, _wp_rest_page(page_id, f"Fixture {key}"))
+    return pages
+
+
+def _wp_category_post(site: str, post_id: int, category: int, title: str, modified_gmt: str) -> dict:
+    """One post as a WordPress posts route serves it, `content` and `excerpt` included so the row's person_fields drop them."""
+    return {
+        "id": post_id,
+        "date": "2026-03-01T09:00:00",
+        "date_gmt": "2026-03-01T14:00:00",
+        "guid": {"rendered": f"{site}/?p={post_id}"},
+        "modified": modified_gmt.replace("T14", "T10"),
+        "modified_gmt": modified_gmt,
+        "slug": f"fixture-post-{post_id}",
+        "status": "publish",
+        "type": "post",
+        "link": f"{site}/fixture-post-{post_id}/",
+        "title": {"rendered": title},
+        "content": {"rendered": "<p>Fixture body, with a fixture number that never loads: 555-0100.</p>", "protected": False},
+        "excerpt": {"rendered": "<p>Fixture excerpt.</p>", "protected": False},
+        "author": 3,
+        "featured_media": 0,
+        "comment_status": "closed",
+        "ping_status": "closed",
+        "sticky": False,
+        "template": "",
+        "format": "standard",
+        "meta": {"footnotes": ""},
+        "categories": [category],
+        "tags": [],
+        "class_list": [f"post-{post_id}", "post"],
+        "_links": {"self": [{"href": f"{site}/wp-json/wp/v2/posts/{post_id}"}]},
+    }
+
+
+#: Registry key -> (site origin, category id, category slug), as the live categories route answered on 2026-10-03.
+WP_CATEGORY_POSTS = {
+    "ohta_trail_alerts_posts": ("https://ozarkhighlandstrail.com", 18, "trailalerts"),
+    "pnta_trail_conditions_posts": ("https://www.pnt.org", 188, "trail-conditions"),
+    "tehcc_at_posts": ("https://tehcc.org", 3, "appalachian-trail"),
+    "tko_oct_trail_conditions": ("https://trailkeepersoforegon.org", 10, "trail-conditions"),
+}
+
+
+def notice_pages_fixtures_n_to_z() -> dict[str, str]:
+    """Decision 53 phase B's page notices and WordPress posts for folders n to z and _shared/ (the comment above)."""
+    files = {
+        f"conditions/notices/{key}.json": json.dumps({"answers": {url: {"content_type": content_type, "body": body}}})
+        for key, (url, content_type, body) in _notice_pages_n_to_z().items()
+    }
+    for key, (site, category, slug) in WP_CATEGORY_POSTS.items():
+        posts = [
+            _wp_category_post(
+                site, 9100 + n, category, f"Fixture notice {n} &#8211; trail closed", f"2026-09-{20 + n:02d}T14:13:20"
+            )
+            for n in (1, 2)
+        ]
+        files[f"conditions/{key}.json"] = json.dumps(
+            {"categories": [{"id": category, "slug": slug}], "posts": posts, "terms": {}}
+        )
+    return files
+
+
 def closures_and_warnings_fixtures() -> dict[str, str]:
     """The closures and warnings family's fixture files, under conditions/: NWS, NYNJTC's WordPress, OurHike's Postgres,
     ATC's site, and the JSON API notice sources."""
@@ -7318,6 +7608,7 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         "external/wi_ice_age_trail.geojson": _registered_trail_lines_layer("wi_ice_age_trail", None),
         **{name: build() for name, build in ELEVATION_PRODUCT_FIXTURES.items()},
         **closures_and_warnings_fixtures(),
+        **notice_pages_fixtures_n_to_z(),
         **notice_layers_fixtures(),
         **suggested_hikes_fixtures(),
         **_club_places_fixtures(),

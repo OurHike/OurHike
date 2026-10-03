@@ -1,4 +1,5 @@
-"""USDA Forest Service: closures, 10 ArcGIS layers extracted here (decision 53 phase B, 2026-10-03).
+"""USDA Forest Service: closures, 10 ArcGIS layers and 15 forests' alerts pages extracted here (decision 53 phase B,
+2026-10-03).
 
 - `usfs_rec_opportunities_status`: USFS Recreation Opportunities: sites not open (EDW),
   `EDW/EDW_RecreationOpportunities_01/MapServer/0`. Filtered on the agency's own status field:
@@ -35,9 +36,27 @@ server's own returnCountOnly read in the same run.
 SAME_AS below: the on-prem `R04_Alerts_And_Closures_01/MapServer/0` is the same 233 orders as
 `usfs_r04_forest_orders`, so it is noted and never extracted.
 
-Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
-robots.txt, terms and change check): https://www.fs.usda.gov/r08/cherokee/alerts (html_page);
-https://www.fs.usda.gov/r08/gwj/alerts (html_page); https://www.wfas.net/ (html_page).
+THE FORESTS' ALERTS PAGES, one PageNotice each (extract/_notices.py), every one read live under our
+agent on 2026-10-03 after www.fs.usda.gov's robots.txt (a `User-agent: *` group of Drupal internals,
+no Crawl-delay, nothing matching `/<region>/<forest>/alerts`). They are the Forest Service's, so they
+land here once (decision 34) and the clubs that draw on them carry `via` notes naming this file:
+alaska_trails and iditarod (r10/chugach), black_hills (r02/blackhills), bartram, cmc, nc_high_peaks
+and nc_mst (r08/northcarolina), bartram and pinhoti (r08/chattahoochee-oconee), catamount (r09/gmfl),
+condor (r05/lospadres), mdhta (r01/dpg), nez_perce (trails/nez-perce-nht), ouachita (r08/ouachita),
+path (r08/gwj), pinhoti (r08/alabama), rmc (r09/whitemountain), rmfi (r02/psicc), wmc
+(r04/uinta-wasatch-cache), and tehcc (r08/cherokee).
+
+Each page is the one template every forest shares: a <main> whose <h1> is 'Alerts', alert cards
+by level (critical, fire-restriction, caution, information) after a four-card legend, each card a
+stable `/alerts/<slug>` link with its own 'Alert Start Date', and no pager or feed. 0 to 90 cards a
+page on 2026-10-03 (each row's notes count them). The reader lands the page's title, a hash of
+<main>'s text and the link, so `expect_title='Alerts'` refuses a page that turned into something
+else, and `date_pattern=None` because the page states no date of its own: a card's start date is
+the card's. Two reads about ten minutes apart hashed the same on all 15 (Measured), so the hourly
+read does not move every hour. The listing names no person; the detail pages do (GWJ's name staff
+with e-mail addresses, the coverage audit), and they are not read. A per-alert reader keyed on the
+slug is what phase A's evidence supports next. The alerts are closures and warnings both, and the
+warnings staging model reads these tables too, since a file takes one form.
 
 ArcGIS layers read and not wired as closures or warnings (decision 53 phase B, 2026-10-03):
 https://services1.arcgis.com/gGHDlz6USftL5Pau/arcgis/rest/services/CNF_ClosureAreaPolygons/FeatureServer,
@@ -75,7 +94,26 @@ registered key
 from datetime import date
 
 from extract._contract import SameAs
-from extract._kinds import arcgis_layer
+from extract._kinds import arcgis_layer, page_notice
+
+# The forests' alerts pages, one registry row each (sources.json, provider USFS).
+ALERTS_PAGES = (
+    "usfs_r08_cherokee_alerts",
+    "usfs_r08_gwj_alerts",
+    "usfs_r08_northcarolina_alerts",
+    "usfs_r08_alabama_alerts",
+    "usfs_r08_chattahoochee_oconee_alerts",
+    "usfs_r08_ouachita_alerts",
+    "usfs_r09_whitemountain_alerts",
+    "usfs_r09_gmfl_alerts",
+    "usfs_r02_psicc_alerts",
+    "usfs_r02_blackhills_alerts",
+    "usfs_r04_uinta_wasatch_cache_alerts",
+    "usfs_r10_chugach_alerts",
+    "usfs_r01_dpg_alerts",
+    "usfs_r05_lospadres_alerts",
+    "usfs_nez_perce_nht_alerts",
+)
 
 CLAIMS = (
     "usfs_rec_opportunities_status",
@@ -88,6 +126,7 @@ CLAIMS = (
     "usfs_r01_bmwc_trail_closures",
     "usfs_r01_kootenai_inaccessible",
     "usfs_forest_closure_area",
+    *ALERTS_PAGES,
 )
 RESOURCES = [
     arcgis_layer(
@@ -104,6 +143,7 @@ RESOURCES = [
     arcgis_layer("usfs_r01_bmwc_trail_closures"),
     arcgis_layer("usfs_r01_kootenai_inaccessible"),
     arcgis_layer("usfs_forest_closure_area"),
+    *(page_notice(key, expect_title="Alerts", date_pattern=None) for key in ALERTS_PAGES),
 ]
 SAME_AS = (
     SameAs(

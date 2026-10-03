@@ -1,4 +1,5 @@
-"""National Park Service: closures, 6 ArcGIS park layers extracted here (decision 53 phase B, 2026-10-03).
+"""National Park Service: closures, 6 ArcGIS park layers and 1 park status page extracted here (decision 53
+phase B, 2026-10-03).
 
 - `nps_grca_closures`: Grand Canyon National Park closures, `GRCAclosuresNPmapMay/FeatureServer/0`.
 - `nps_seki_closures`: Sequoia and Kings Canyon administrative closures,
@@ -16,6 +17,14 @@ Each layer's row in sources.json holds its counts, dates, terms and the person f
 loads. Change checks are _kinds.py's ArcgisLayer: a conditional GET of the layer document on ArcGIS
 Online, the statistics fingerprint on an on-prem server, and an allowed zero only beside the
 server's own returnCountOnly read in the same run.
+
+- `nps_natr_road_site_status`: the Natchez Trace Parkway's 'Road and Site Status' page, one
+  PageNotice (extract/_notices.py), read live 2026-10-03 after www.nps.gov's robots.txt (nothing
+  disallowed under /natr/planyourvisit/, no Crawl-delay). It states 'No Current Trail or Campground
+  Closures — Last updated: August 14, 2026', which lands as the row's date, and lists parkway road
+  closures by milepost: driving closures, not the footpath's. natr/closures.py draws on it. The
+  semo park's conditions page (nps.gov/semo/planyourvisit/conditions.htm) renders the alerts API's
+  own items, which `nps_alerts` already lands, so it is not read (decision 53's inventory, batch 2).
 
 THE ALERTS ARE THE OTHER HALF, AND THEY LAND IN nps/warnings.py. This file used to be
 `SHARES = "warnings"`, and its own docstring said these park layers would become its CLAIMS when
@@ -38,9 +47,9 @@ GRSM's roads, 697 of 1,925 'Temporarily Closed' and unedited since 2025-11-13: a
 attribute, not a current notice.
 """
 
-from extract._kinds import arcgis_layer
+from extract._kinds import arcgis_layer, page_notice
 
-CLAIMS = (
+LAYERS = (
     "nps_grca_closures",
     "nps_seki_closures",
     "nps_yose_trail_closures",
@@ -48,4 +57,8 @@ CLAIMS = (
     "nps_appa_helene_status",
     "grsm_trails_access",
 )
-RESOURCES = [arcgis_layer(key) for key in CLAIMS]
+CLAIMS = (*LAYERS, "nps_natr_road_site_status")
+RESOURCES = [
+    *(arcgis_layer(key) for key in LAYERS),
+    page_notice("nps_natr_road_site_status", expect_title="Status"),
+]

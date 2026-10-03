@@ -1,22 +1,12 @@
-"""NC Division of Parks & Recreation — NC Trails: warnings, published, and not landed (coverage audit
-2026-10-01, batch c9_federal_state_rest).
+"""NC Division of Parks & Recreation: warnings, from the same park page closures.py reads.
 
-Banners mix closure and warning text, so they need the decision-7 classifier.
+A park's alert carousel mixes closure and warning text ('There are no gas stations between Asheville &
+the park' beside 'the Parkway is closed'), so one resource feeds both types and dbt splits them
+(decision 7).
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Before decision 53 phase B (2026-10-03) this file was the coverage audit's note (confirmed 2026-10-01,
+batch c9_federal_state_rest): "Banners mix closure and warning text, so they need the decision-7
+classifier."
 """
 
-from datetime import date
-
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=('Same banners. Example: "There are no gas stations between Asheville & the park."',),
-    where=(
-        "https://services.nconemap.gov/secure/rest/services",
-        "https://services7.arcgis.com/SEKZuPu27jfvDQ5b/arcgis/rest/services",
-        "https://trails.nc.gov/",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+SHARES = "closures"

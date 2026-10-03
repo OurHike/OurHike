@@ -1,23 +1,13 @@
-"""Trailkeepers of Oregon: warnings, published, and not landed (coverage audit 2026-10-01, batch
-c6_regional_3).
+"""Trailkeepers of Oregon: warnings, from the same Trail Conditions posts closures.py reads.
 
-Water outages in the same posts ("No water at Arcadia Beach", Hug Point's broken water line) stay
-out of warnings, by poll 2. They belong with water-source attributes.
+The two posts' warnings (the Sand Lake crossing "ONLY when tide is low enough", landowners refusing
+hikers on N. Clancy Road, shelters on Tillamook Head being torn down) share their posts with the
+closures, so this type shares closures.py's resource and dbt splits them (decision 7). Water outages in
+the same posts ("No water at Arcadia Beach", Hug Point's broken water line) stay out of warnings by
+decision 2. The `/oct/` page's standing guidance on wading rivers is not a notice.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Before decision 53 phase B (2026-10-03) this file was the coverage audit's note (confirmed 2026-10-01,
+batch c6_regional_3), which listed those items.
 """
 
-from datetime import date
-
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        'The same two posts: Sand Lake crossing "ONLY when tide is low enough", landowners refusing hikers on '
-        'N. Clancy Road, shelters on Tillamook Head being torn down. `/oct/` warns that southern rivers "can be'
-        ' safely waded only between about mid-June and late October" and of falling trees in winter winds.',
-    ),
-    where=("https://trailkeepersoforegon.org/",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+SHARES = "closures"

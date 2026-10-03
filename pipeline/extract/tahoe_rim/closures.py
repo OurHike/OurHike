@@ -1,20 +1,25 @@
-"""Tahoe Rim Trail Association: closures, published, and not landed (coverage audit 2026-10-01, batch
-b7_long_trails_states).
+"""Tahoe Rim Trail Association: closures, from the current-trail-conditions page, hourly (decision 53 phase B,
+2026-10-03).
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+`trta_trail_conditions` reads https://tahoerimtrail.org/current-trail-conditions/ (WordPress page 16) as
+one PageNotice (extract/_notices.py), read live under our agent on 2026-10-03 after the site's
+robots.txt (the path allowed, no Crawl-delay). Its date is the page's own 'Updated August 17, 2026', the
+newest of its stamps (nine segments carry their own 'Last Updated: 6/24/26' to '7/7/26'); its
+Last-Modified is the request time and is not trusted. The page has no <main> or <article>, so the
+region is <body> (15,355 characters that day): Spooner backcountry construction closures, Watson Lake's
+dispersed camping closing November 15, the bear-canister rule. Cloudflare's passive challenge-platform
+script sits on the full 200 page and is not a wall.
+
+The segments mix closures and warnings, so warnings.py shares this file. Each segment's 'Water Sources'
+line is a water condition, not a warning (decision 2), and is left for the water path. The layers
+`Camping_Prohibited/0` (12 polygons, 2016) and `Camping_Restrictions/0` (1, 2020) are standing rules,
+not notices.
+
+Before decision 53 phase B this file was the coverage audit's note (confirmed 2026-10-01, batch
+b7_long_trails_states), whose `checked` named this page, per segment, 'Updated August 17, 2026'.
 """
 
-from datetime import date
+from extract._kinds import page_notice
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        'Format page: `tahoerimtrail.org/current-trail-conditions/`, per segment, "Updated August 17, 2026". '
-        'Example: "The dispersed camping area at Watson Lake is scheduled to close November…". '
-        "`Camping_Prohibited/0` (12 polygons, 2016) and `Camping_Restrictions/0` (1, 2020) are standing rules.",
-    ),
-    where=("https://tahoerimtrail.org/current-trail-conditions/",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("trta_trail_conditions",)
+RESOURCES = [page_notice("trta_trail_conditions")]

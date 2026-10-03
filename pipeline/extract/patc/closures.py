@@ -1,34 +1,30 @@
-"""Potomac Appalachian Trail Club: closures, published, and not landed (coverage audit 2026-10-01,
-batch c2_at_clubs_mid).
+"""Potomac Appalachian Trail Club: closures, from its trails page banner and the Tuscarora Trail's updates page,
+hourly (decision 53 phase B, 2026-10-03).
 
-~~(b) bites as soon as any Tuscarora line reaches a hiker.~~ Skeptic, 2026-10-01: (b) bites now.
-`usfs_trails` (`EDW_TrailNFSPublish_01/MapServer/0`, sources.json `reaches_hikers: true`) has
-`trail_name = 'TUSCARORA - DOLL RIDGE'`, 3.7 mi, `admin_org` 080804 (Measured).
-`export_nearby_trails.py` …
+Both read live under our agent on 2026-10-03, each as one PageNotice (extract/_notices.py) that lands a
+title, a hash of the page's region and the link, and no text:
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `patc_trails_banner`: https://www.patc.net/trails (robots.txt: `User-agent: *` with a Content-Signal
+  line and no Disallow). The page has no <main> or <article>, so the region is <body> (4,308
+  characters); it carried the banner 'Byron Bridge Update: Final Installation & Closure Starting July
+  27!', the C&O Canal towpath stairway. The banner names an ATC staff member's e-mail address, which
+  never lands.
+- `patc_tuscarora_updates`: https://www.hikethetuscarora.org/updates (Wix; robots.txt `User-agent: *` /
+  `Allow: /`). 'Virginia Tuscarora Trail Detour': the Doll Ridge section, Three Top Mountain to
+  Riverview Drive, "closed due to loss of landowner permission", detour about 7 miles. SAFETY:
+  `usfs_trails` already draws that 3.7-mile line to hikers as 'TUSCARORA - DOLL RIDGE' (the coverage
+  audit, Measured 2026-10-01), so this closure is the strongest case in decision 53's batch 5 for
+  reaching a phone before the line does. Neither page states a date.
+
+PATC's A.T. closures arrive through atc/ (decision 34). Its warnings channels (the Tuscarora section
+guides' advisories, an anonymously editable maintenance layer) stay warnings.py's note.
+
+Before decision 53 phase B this file was the coverage audit's note (confirmed 2026-10-01, batch
+c2_at_clubs_mid), whose `checked` named both pages and said "There is no feed for either: `/feed/rss2`
+is the newsletter, and none of the 58 services is a closures layer."
 """
 
-from datetime import date
+from extract._kinds import page_notice
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        '(a) `https://www.patc.net/trails` banner: "Byron Bridge Update… Stairway access to the C&O Canal '
-        'Towpath will be closed… starting Monday, July 27, 2026", with an NPS shuttle (HTML). (b) '
-        '`https://www.hikethetuscarora.org/updates`: the "Doll Ridge section from Three Top Mountain to '
-        'Riverview Drive" of the Tuscarora is "closed due to loss of landowner permission", with a road detour '
-        "of about 7 mi and turn-by-turn directions (HTML). There is no feed for either: `/feed/rss2` is the "
-        "newsletter, and none of the 58 services is a closures layer. The A.T. closures in PATC's section are "
-        "LOADED via atc …",
-    ),
-    where=(
-        "https://www.patc.net/trails",
-        "https://www.hikethetuscarora.org/updates",
-        "https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_TrailNFSPublish_01/MapServer/0",
-        "https://patc.net/",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("patc_trails_banner", "patc_tuscarora_updates")
+RESOURCES = [page_notice(key) for key in CLAIMS]

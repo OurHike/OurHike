@@ -1,28 +1,21 @@
-"""Sheltowee Trace Association: closures, published, and not landed (coverage audit 2026-10-01, batch
-c8_regional_5).
+"""Sheltowee Trace Association: closures, from the alerts page, hourly (decision 53 phase B, 2026-10-03).
 
-The page is live, but the RSS is not: the Alert-category feed has 1 item, from 2021-03-28. Read the
-page, not the feed. Skeptic, re-read 2026-10-01: the tornado closure, the Red River and Blue Herron
-items are all still there. The "Trail Conditions" category feed …
+`sta_alerts` reads https://sheltoweetrace.org/alerts as one PageNotice (extract/_notices.py), read live
+under our agent on 2026-10-03. Squarespace's robots.txt there allows /alerts and disallows its
+`?format=json` twin for every agent, so the page is read and the JSON is not. The page holds 6 items:
+the headline closure 'Spring Tornado Closes Trace From Highway 80 to Highway 192' (southbound miles
+183.9 to 201.4, "a 2-year projected closing", the coverage audit), four 'Map and Route Updates' (the
+Blue Herron Bridge closure, the Red River Suspension Bridge's high-water route) and 'Dogs on the
+Trace'. The row lands the page's title, a hash of <main> and the link; the page states no date, and
+its weak ETag is not trusted. The category RSS feeds are stale (newest 2021-03-28) and are not read.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+The items are closures and warnings both, split in dbt (decision 7), so warnings.py shares this file.
+
+Before decision 53 phase B this file was the coverage audit's note (confirmed 2026-10-01, batch
+c8_regional_5): "The page is live, but the RSS is not ... Read the page, not the feed."
 """
 
-from datetime import date
+from extract._kinds import page_notice
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        '`/alerts`: "Spring Tornado Closes Trace From Highway 80 to Highway 192" ("Far Out Miles (Southbound) '
-        'Highway 80 Mile 183.9 to Highway 192 Mile 201.4 are CLOSED … This is a 2-year projected closing"); '
-        '"Blue Herron Bridge Closure" ("Tipple Bridge has been closed … The closure is indefinite"); "Red River'
-        ' Suspension Bridge … inaccessible". 5 linked items in all.',
-    ),
-    where=(
-        "https://apps.fs.usda.gov/arcx/rest/services",
-        "https://sheltoweetrace.org/",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("sta_alerts",)
+RESOURCES = [page_notice("sta_alerts")]

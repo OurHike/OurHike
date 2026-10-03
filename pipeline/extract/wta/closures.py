@@ -1,24 +1,28 @@
-"""Washington Trails Association: closures, published, and not landed (coverage audit 2026-10-01, batch
-c7_regional_4).
+"""Washington Trails Association: closures, from the Signpost blog's listing, hourly (decision 53 phase B and
+decision 55, 2026-10-03).
 
-Page. WTA relays agency closures, so the authoritative channel is the agency (NPS/USFS). Restricted
-by the ToS.
+`wta_signpost` reads https://www.wta.org/news/signpost as one PageNotice (extract/_notices.py), read live
+under our agent on 2026-10-03 after www.wta.org's robots.txt, which asks `Crawl-delay: 60` and
+disallows `/*?` for every agent: the reader keeps 60 s and asks the URL with no query, one request an
+hour. WTA's weekly 'Hiker Headlines' posts relay agency closures ('Hiker Headlines: New ADA trail,
+Newhalem visitor center closed for winter, now hiring', 2026-10-01; 'Summerland trailhead will be
+closed Sept. 28–Oct. 31', 2026-09-24), each at a new URL, so the blog's listing is the channel; it
+also moves with every other blog post. The row lands the listing's title, a hash of its first
+<article> and the link. The footer's Signpost RSS link (/trail-news/signpost/the-signpost/RSS)
+answered 404 (the inventory, batch 4).
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+WTA's terms restrict its content to "internal informational purposes" (quoted on the sources.json
+row), which decision 55 names and reads as facts and a link. The inventory recommended not
+registering it, because WTA relays the agencies (NPS, USFS Region 6) that nps/ and usfs/ extract
+first-hand; decision 55 publishes WTA's notices on that split, so it lands, held by reaches_hikers, and
+the agencies stay the authoritative channel. warnings.py shares this file.
+
+Before decision 53 phase B this file was the coverage audit's note (confirmed 2026-10-01, batch
+c7_regional_4): "Page. WTA relays agency closures, so the authoritative channel is the agency
+(NPS/USFS). Restricted by the ToS."
 """
 
-from datetime import date
+from extract._kinds import page_notice
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        'Weekly "Hiker Headlines" posts. For example, '
-        "`/news/signpost/hiker-headlines-fall-colors-summerland-trailhead-closure-three-queens-fire-closure-reduced-9-24-26`"
-        ' (2026-09-24): "Summerland trailhead will be closed Sept. 28–Oct. 31", Hoh River Bridge full-day '
-        "closures, and the Three Queens Fire closure order reduced.",
-    ),
-    where=("https://wta.org/",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("wta_signpost",)
+RESOURCES = [page_notice("wta_signpost", crawl_delay=60)]

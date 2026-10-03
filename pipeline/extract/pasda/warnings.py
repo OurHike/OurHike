@@ -30,10 +30,8 @@ decision 54 wave 1's once registered: `agsprod/BOF/HuntStateForest/MapServer`
 (11 hunting layers), `pasda/DCNR2/MapServer/9` ("State Forest Gated Roads
 Open for Deer Season 202310", 308 features) and `BOF/SpongyMothSprayBlocks`.
 
-Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
-robots.txt, terms and change check):
-https://www.pa.gov/agencies/dcnr/recreation/where-to-go/state-forests/find-a-forest/tioga/advisories
-(html_page), the channel WHAT THIS MISSES names.
+The channel WHAT THIS MISSES names, Tioga's advisories page, lands in pasda/closures.py as
+`pa_dcnr_tioga_advisories` (decision 53 phase B, 2026-10-03), which the warnings staging model reads too.
 
 ArcGIS layers read and not wired as closures or warnings (decision 53 phase B, 2026-10-03):
 https://maps.dcnr.pa.gov/agsprod/rest/services/BOF/HuntStateForest/MapServer, 11 layers ('Roads

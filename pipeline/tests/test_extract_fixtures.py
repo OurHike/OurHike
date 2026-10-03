@@ -28,8 +28,10 @@ from extract._fixtures import (
 from extract._kinds import (
     AtcTrailUpdatePages,
     ConditionsQuery,
+    FeedNotices,
     GuidePages,
     NwsAlerts,
+    PageNotice,
     PublishedHikes,
     ReviewedDir,
     ReviewedFile,
@@ -59,6 +61,8 @@ def test_every_fixture_file_with_a_resource_lands_whole(fixtures):
         | PublishedHikes
         | AtcTrailUpdatePages
         | GuidePages
+        | PageNotice
+        | FeedNotices
     )
     fetched = [r for r in resources if not isinstance(r, answered) and not isinstance(r, JSON_API_KINDS)]
     assert len(fetched) == 388, (
@@ -69,6 +73,37 @@ def test_every_fixture_file_with_a_resource_lands_whole(fixtures):
     for resource in fetched:
         expected = len(json.loads(fixture_file(root / "raw", resource.key).read_text())["features"])
         assert counts[resource.table] == expected, resource.table
+
+
+def test_every_page_notice_with_a_fixture_lands_one_row_with_its_title(fixtures):
+    """A PageNotice is one notice a page (decision 53 phase B): fixture mode lands exactly one row for each page it
+    answers, with a title, so a page whose region or title the reader cannot find fails here, not in the hourly lane."""
+    root, counts = fixtures
+    resources, _ = fixture_resources(root / "raw")
+    notices = [resource for resource in resources if isinstance(resource, PageNotice)]
+    assert len(notices) >= 60, "folders n to z and _shared/ answer 61 page notices; a PDF has no fixture"
+    with duckdb.connect(str(root / "warehouse.duckdb"), read_only=True) as con:
+        for resource in notices:
+            assert counts[resource.table] == 1, resource.table
+            (title,) = con.execute(f'select title from raw."{resource.table}"').fetchone()
+            assert title, resource.table
+
+
+def test_a_wordpress_rows_person_fields_never_reach_the_raw_store(fixtures):
+    """Decision 59: OHTA's, TEHCC's, TKO's and PNTA's post bodies carried telephone numbers and an e-mail address on
+    2026-10-03, so their rows list `content` and `excerpt` as person_fields, and the table lands without them."""
+    root, counts = fixtures
+    with duckdb.connect(str(root / "warehouse.duckdb"), read_only=True) as con:
+        for table in (
+            "raw_ohta__ohta_trail_alerts_posts",
+            "raw_tehcc__tehcc_at_posts",
+            "raw_tko__tko_oct_trail_conditions",
+            "raw_pnta__pnta_trail_conditions_posts",
+        ):
+            assert counts[table] == 2, table
+            columns = {row[0] for row in con.execute(f'describe raw."{table}"').fetchall()}
+            assert not {name for name in columns if name.startswith(("content", "excerpt"))}, (table, sorted(columns))
+            assert "title__rendered" in columns or "title" in columns, (table, sorted(columns))
 
 
 def test_atcs_z_centerline_lands_its_z_and_its_rows_with_no_geometry(fixtures):

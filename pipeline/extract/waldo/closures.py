@@ -1,22 +1,24 @@
-"""Waldo County Trails Coalition: closures, published, and not landed (coverage audit 2026-10-01, batch
-c4_regional_1).
+"""Waldo County Trails Coalition: closures, from the Hills to Sea Trail's closures page, hourly (decision 53
+phase B, 2026-10-03).
 
-A page. Safety-relevant now: several closures start late September or Oct 3.
+`hills_to_sea_closures` reads https://www.hillstosea.org/closures as one PageNotice (extract/_notices.py),
+read live under our agent on 2026-10-03 after the Squarespace site's robots.txt (no rule matching
+/closures, no Crawl-delay). The trail crosses private land, and its '2026 Closures' are by town
+(Montville, Unity, Waldo), eight dated lines such as 'Closed from Oct 3 thru Dec 12 (Closure includes
+Sundays)', plus 'The trail on Hogback Mountain in Montville remains closed until further notice'.
+SAFETY, the day of the read: several hunting closures start on 2026-10-03. The page states no date and
+sends no Last-Modified, so the row's only date will be OurHike's first sight of it; its weak ETag is not
+trusted. The row lands the title, a hash of <main> and the link.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+The page's 'Hunting Seasons' section is the warnings half, so warnings.py shares this file. The
+/maps page carries no hunting or orange text in its HTML (the coverage audit's 'Wear orange' line may
+sit inside map images) and is not read.
+
+Before decision 53 phase B this file was the coverage audit's note (confirmed 2026-10-01, batch
+c4_regional_1): "A page. Safety-relevant now: several closures start late September or Oct 3."
 """
 
-from datetime import date
+from extract._kinds import page_notice
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        '`https://www.hillstosea.org/closures`: "Hogback Mountain section is closed until further notice", plus'
-        ' dated 2026 hunting closures per town (e.g. "Closed from Oct 3 thru Dec 12 (Closure includes '
-        'Sundays)").',
-    ),
-    where=("https://www.hillstosea.org/closures",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("hills_to_sea_closures",)
+RESOURCES = [page_notice("hills_to_sea_closures")]

@@ -16,9 +16,15 @@ loads. Change checks are _kinds.py's ArcgisLayer: a conditional GET of the layer
 Online, the statistics fingerprint on an on-prem server, and an allowed zero only beside the
 server's own returnCountOnly read in the same run.
 
-Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
-robots.txt, terms and change check): https://www.fs.usda.gov/r08/cherokee/alerts (html_page);
-https://www.fs.usda.gov/r08/gwj/alerts (html_page); https://www.wfas.net/ (html_page).
+THE FORESTS' ALERTS PAGES are warnings as much as closures (their levels run from 'critical' to
+'information'), and they land once, in usfs/closures.py, as 15 PageNotice tables that the warnings
+staging model reads too: a file takes one form, and this one claims the layers above.
+
+NOT WIRED: https://www.wfas.net/, the Wildland Fire Assessment System's front page (no robots.txt,
+404; ETag and Last-Modified 2026-09-09, read by decision 53's inventory, batch 4). It is a fire-danger
+site of maps and model products, not a notice, and nothing on its front page names a trail
+(Reasoned from the inventory's read, which did not parse it). Fire danger reaches warnings through
+the state layers already registered (_shared/wa_dnr/, wi_dnr/, njgin/).
 
 ArcGIS layers read and not wired as closures or warnings (decision 53 phase B, 2026-10-03):
 https://services1.arcgis.com/gGHDlz6USftL5Pau/arcgis/rest/services/CNF_ClosureAreaPolygons/FeatureServer,

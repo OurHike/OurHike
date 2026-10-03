@@ -3475,6 +3475,18 @@ Today a conditions leg reads within `--read-seconds 150`, and the job is held to
 (`@unvalidated`). Phase B's first full leg run measures it. If it does not fit,
 the notices get their own leg rather than a shorter Crawl-delay.
 
+**First measures** (Measured 2026-10-03). Soak run 506 (37154645937) met the
+76 ArcGIS notice layers at once: 85 to read, and the extract step was killed at
+its 4-minute cap while it read 92 tables into the warehouse, though its load had
+committed. Run 508 (37158027469), on `take_on_new_tables()`, was green at 3 m 21 s
+of the cap with 89 resources: 29 s of change checks asked one at a time, the
+reads inside their 150 s, and about 55 s reading the 92 tables one at a time.
+Both of those grow with every source, so `by_folder()` now asks each folder's
+upstreams in a thread of its own, one listing of the store (`table_listing()`)
+replaces a request per table, and a leg's warehouse read takes 8 tables at once
+(`LEG_READERS`, `@unvalidated`). Whether 190 more page, feed and WordPress sources
+then fit, or the notices need a leg of their own, is what the next runs measure.
+
 ### Phase G: the gate
 
 - The run check and the allowed-zero proof per reader.
@@ -3766,7 +3778,7 @@ The session works several things at once. This table is where each one stands, s
 | Decision 54, wave 1: every ArcGIS layer the clubs publish ([Loading everything](#loading-everything-the-clubs-publish-decision-54)) | four workers, one per type: points of interest, trail lines, places, elevation | started 2026-10-03, extract side only (registry rows, resources, fixtures) | dbt models once decision 52's foundation lands |
 | The gate's monthly run | `refresh-reference.yml` | run 8 (37121837559) failed on the POI region test, fixed in 75cfe400; **run 9 (37132427696) passed extract (1 h 51 min) and the region test, then ran out of memory** in `int_points_of_interest__in_corridor` (12.4 GiB of 12.4 GiB) | a worker moves the ring join onto table models the way `lib/corridor.py` does, measured at the real network's size; then run 10, which also re-reads the 15 layers without their person fields (decision 56) |
 | Person fields already loaded (decision 56) | the POI worker writes the fix; the lead purges | the fix in progress | after the first monthly run on the fix, purge per the dlt skill, then say in the pull request which fields loaded, for how long, and where |
-| The 3-day hourly UA soak (decision 46) | a routine, every hour at :18 | running; ends 2026-10-05 20:30. **24 of 24 runs green** from run 477 (2026-10-02 20:02) to run 505 (2026-10-03 20:21); the 05:18 tick on 2026-10-03 has no run. **Run 506 red** (37154645937): decision 53's 70 new layers overran the extract step's 4-minute cap; fixed by `take_on_new_tables()` and `exit_status()` above, so the hourly lane changed mid-soak | silent while green; a tally at the end. A change to the hourly lane may restart it, which is the maintainer's call |
+| The 3-day hourly UA soak (decision 46) | a routine, every hour at :18 | running; ends 2026-10-05 20:30. **24 of 24 runs green** from run 477 (2026-10-02 20:02) to run 505 (2026-10-03 20:21); the 05:18 tick on 2026-10-03 has no run. **Run 506 red** (37154645937): decision 53's 70 new layers overran the extract step's 4-minute cap; fixed by `take_on_new_tables()` and `exit_status()` above, so the hourly lane changed mid-soak. Run 508 green at 3 m 21 s of the extract step's 4 minutes, which phase F's first measures address | silent while green; a tally at the end. A change to the hourly lane may restart it, which is the maintainer's call |
 
 ### The go/no-go gate
 

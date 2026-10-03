@@ -446,6 +446,27 @@ def make_pipeline(lane: str, bucket_url: str, pipelines_dir: str | None = None):
     )
 
 
+def store_schema(pipeline) -> dlt.Schema:
+    """The one dlt schema everything a lane writes goes into: the store's default, or SOURCE_NAME's in a store with none.
+
+    dlt extracts its own state into the default schema's load package, so any
+    other schema makes a second package in the same run, and _extract_and_load
+    refuses a run that commits two. The monthly lane's first run
+    (refresh-reference.yml, 37058045092) was refused before its load, and its
+    second (37070628933) refused with "one load expected from this run, and 2
+    committed". tests/test_extract_run.py reproduces both: the refused run's
+    log, a bare resource, takes a schema named after the pipeline
+    (`ourhike_<lane>`), which becomes the store's default, and the next run's
+    `extract` schema is then a second one. The R2 store's own schema list was
+    not read (Reasoned from the reproduction). Writing to the default schema
+    when there is one keeps a store an older build left like that on one
+    package a run.
+    """
+    if pipeline.default_schema_name:
+        return pipeline.default_schema
+    return dlt.Schema(SOURCE_NAME)
+
+
 def recorded_markers(pipeline) -> dict[str, dict | None]:
     """Each resource's marker from the last load that committed, by resource name.
 
@@ -942,7 +963,7 @@ def write_run_log(
         yield log
 
     if progress is None:
-        pipeline.run(runs())
+        pipeline.run(runs(), schema=store_schema(pipeline))
         return
 
     @dlt.resource(
@@ -959,7 +980,7 @@ def write_run_log(
             for row in rows
         ]
 
-    pipeline.run([runs(), kept()])
+    pipeline.run([runs(), kept()], schema=store_schema(pipeline))
 
 
 def run_pipeline(
@@ -1128,7 +1149,9 @@ def _extract_and_load(
             ]
 
         with timed(report, "extract"):
-            pipeline.extract(dlt.source(resources, name=SOURCE_NAME)(), loader_file_format="parquet")
+            pipeline.extract(
+                dlt.source(resources, name=SOURCE_NAME)(), schema=store_schema(pipeline), loader_file_format="parquet"
+            )
         if as_landed is not None:
             # What ran: a lane's every non-FRESH resource, a leg's less those read_each() left out.
             as_landed.close(to_run)

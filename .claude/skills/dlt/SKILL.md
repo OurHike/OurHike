@@ -379,6 +379,14 @@ local `file://` destination; R2 is `@unvalidated`).
   entire publish**).
 - `_loaded_at` (naive UTC) is stamped in the map step **only when a resource
   runs**, so a `FRESH` table keeps its old stamp.
+- **One dlt schema per store**: every `pipeline.extract()` and `pipeline.run()`
+  passes `schema=store_schema(pipeline)`. dlt puts its own state in the
+  default schema's package, so a second schema means a second package and
+  the "one load expected" refusal. A bare resource such as the run log
+  otherwise takes a schema named after the pipeline. The monthly lane's
+  refused first run and then "2 committed" on its second
+  (refresh-reference.yml, 37070628933, 2026-10-02) reproduce that way in
+  `tests/test_extract_run.py`. The R2 store's own schema list was not read.
 - dbt runs as its own CLI step, never through `dlt.dbt`, whose default is
   `dbt>=1.7,<2` while this project runs `dbt` 2.0.6 (decision 32).
 

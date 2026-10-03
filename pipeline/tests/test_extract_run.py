@@ -15,6 +15,7 @@ the warehouse reads; a table that halves is refused.
 """
 
 import json
+import shutil
 from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -258,6 +259,47 @@ def test_an_empty_answer_with_no_count_is_refused_and_the_last_good_closures_sta
     layer.count_fails = False
     retry = lane(store, lines(), closures())
     assert retry.verdicts["raw_testclub__closures_layer"] == "stale", "the refused run advanced no marker"
+
+
+def test_a_store_whose_first_run_was_refused_loads_its_next_run_as_one_package_on_a_fresh_runner(registry, store, requests_mock):
+    """refresh-reference.yml's monthly lane, 37058045092 then 37070628933: refused, then "2 committed"."""
+    FakeLayer(requests_mock, LINES_URL, [feature(1)])
+    layer = FakeLayer(requests_mock, CLOSURES_URL, [])
+    layer.count_fails = True
+    with pytest.raises(ExtractRefused, match="no upstream count"):
+        lane(store, lines(), closures())
+    shutil.rmtree(store["pipelines_dir"])  # CI's runners start with no working directory
+
+    layer.count_fails, layer.features = False, [feature(10)]
+    report = lane(store, lines(), closures())
+
+    assert report.outcome == "loaded"
+    _, counts = warehouse(store)
+    assert counts["raw_testclub__closures_layer"] == 1
+
+
+def test_a_store_an_older_build_left_with_a_second_schema_still_loads_one_package_a_run(
+    registry, store, requests_mock, monkeypatch
+):
+    """A refused first run's log, written as a bare resource, made the store's default schema `ourhike_<lane>`."""
+    FakeLayer(requests_mock, LINES_URL, [feature(1)])
+    layer = FakeLayer(requests_mock, CLOSURES_URL, [])
+    layer.count_fails = True
+    with monkeypatch.context() as older:
+        older.setattr(_run, "store_schema", lambda pipeline: None)  # what dlt chose before store_schema()
+        with pytest.raises(ExtractRefused, match="no upstream count"):
+            lane(store, lines(), closures())
+    shutil.rmtree(store["pipelines_dir"])
+    synced = make_pipeline("hourly", store["bucket_url"], store["pipelines_dir"])
+    synced.sync_destination()
+    assert synced.default_schema_name == "ourhike_hourly", "the store this test exists for"
+
+    layer.count_fails, layer.features = False, [feature(10)]
+    report = lane(store, lines(), closures())
+
+    assert report.outcome == "loaded"
+    _, counts = warehouse(store)
+    assert counts["raw_testclub__closures_layer"] == 1
 
 
 def test_a_trail_layer_that_halves_is_refused(registry, store, requests_mock):

@@ -468,6 +468,8 @@ class Listed:
     safety: list[str] = field(default_factory=list)
     old: str | None = None
     new: str | None = None
+    # Set when parity.py ran with --keys-only: the sides that hold it, whose records were not written.
+    held_by: list[str] | None = None
 
 
 @dataclass
@@ -524,6 +526,7 @@ def _difference(item: dict, reason: str | None = None) -> Listed:
         safety=safety_groups(fields),
         old=item.get("old"),
         new=item.get("new"),
+        held_by=item.get("held_by"),
     )
 
 
@@ -642,6 +645,12 @@ def _clip(text: str | None, limit: int = 400) -> str:
     return text if len(text) <= limit else f"{text[:limit]}… ({len(text):,} characters; the whole text is in gate_report.json)"
 
 
+def _side(item: Listed, side: str) -> str:
+    if item.held_by is None:
+        return _clip(getattr(item, side))
+    return "(withheld: parity.py --keys-only)" if side in item.held_by else "(absent)"
+
+
 def _cell(text: str) -> str:
     return text.replace("|", "\\|").replace("\n", " ")
 
@@ -723,8 +732,7 @@ def render_markdown(rows: list[KeyRow], unmatched: list[dict], new_keys: list[Db
                     groups = f" (safety: {', '.join(item.safety)})" if item.safety else ""
                     lines += [
                         f"- **{_cell(item.what)}**{groups}: {item.reason}. Changed: {', '.join(f'`{f}`' for f in item.fields) or '—'}",
-                        f"  - old: `{_cell(_clip(item.old))}`",
-                        f"  - new: `{_cell(_clip(item.new))}`",
+                        *(f"  - {side}: `{_cell(_side(item, side))}`" for side in ("old", "new")),
                     ]
                 lines += [*_listed(row.listed), ""]
         elif verdict == "not_ported":

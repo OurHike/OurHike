@@ -17,7 +17,11 @@ a literal, and publish-conditions.yml's production leg is the one exemption.
 
 from __future__ import annotations
 
+import json
+import os
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -158,6 +162,49 @@ def test_the_parity_job_writes_nothing_and_keeps_its_answers(workflow):
     assert "parity.py" in runs and 'gate_report.py --parity-dir "$PARITY_DIR/results"' in runs
     uploads = [step for step in job["steps"] if str(step.get("uses", "")).startswith("actions/upload-artifact")]
     assert uploads and uploads[-1]["if"] == "always()"
+
+
+STUB_PARITY = """
+import json, os, sys
+with open(os.environ["STUB_LOG"], "a") as log:
+    log.write(json.dumps(sys.argv[1:]) + "\\n")
+print(f"{sys.argv[1]}: no differences across 0 records, keyed by id")
+"""
+
+
+def test_every_monthly_parity_run_writes_keys_only_into_the_uploaded_folder(workflow, tmp_path):
+    """The monthly-parity artifact is public, and its old side holds held-back sources: parity.py's
+    --keys-only (tests/test_parity.py) is what keeps their records and geometry out of it."""
+    steps = workflow["jobs"]["parity"]["steps"]
+    step = next(step for step in steps if step.get("name") == "Parity with today's exporters")
+    upload = next(step for step in steps if str(step.get("uses", "")).startswith("actions/upload-artifact"))
+    assert step["env"]["PARITY_DIR"] == "${{ runner.temp }}/parity"
+    assert upload["with"]["path"].rstrip("/") == "${{ runner.temp }}/parity"
+
+    script = step["run"].split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
+    (tmp_path / "work").mkdir()
+    (tmp_path / "work" / "parity.py").write_text(STUB_PARITY)
+    python = tmp_path / "runner" / "pipeline" / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    python.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+    python.chmod(0o755)
+    parity_dir = tmp_path / "runner" / "parity"
+    parity_dir.mkdir()
+    env = {
+        **os.environ,
+        "PARITY_DIR": str(parity_dir),
+        "RUNNER_TEMP": str(tmp_path / "runner"),
+        "RAW_RUN": "1",
+        "GITHUB_STEP_SUMMARY": str(tmp_path / "summary.md"),
+        "STUB_LOG": str(tmp_path / "calls.jsonl"),
+    }
+    subprocess.run([sys.executable, "-c", script], cwd=tmp_path / "work", env=env, check=True, capture_output=True)
+
+    calls = [json.loads(line) for line in (tmp_path / "calls.jsonl").read_text().splitlines()]
+    assert len(calls) == len(_lane_families(workflow))
+    for argv in calls:
+        assert "--keys-only" in argv, argv
+        assert argv[argv.index("--json-dir") + 1] == str(parity_dir / "results"), argv
 
 
 def test_the_publish_job_stages_the_dbt_writers_files_on_ua_inside_publish_data(workflow):

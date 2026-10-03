@@ -57,6 +57,12 @@ fields compared by form only (`stamps`) or dropped (`volatile`), and each
 side's record source keys (record_sources()). An old side that refuses (the
 SystemExit some builders raise) is written as `old_side_refused` before the
 exit, so a refusal reads as one and not as a missing run.
+
+`--keys-only` prints and writes each difference's key and changed fields,
+never either side's record (without_records()). refresh-reference.yml uses
+it because its results go into a public artifact, and its old side is
+today's exporters on every layer the raw store holds, held-back sources
+included.
 """
 
 from __future__ import annotations
@@ -1781,6 +1787,22 @@ def result_document(
     }
 
 
+def without_records(document: dict) -> dict:
+    """`document` with each difference's `old` and `new` replaced by `held_by`, the sides that hold it (--keys-only).
+
+    The changed field paths stay; the records and their geometry do not."""
+
+    def strip(entry: dict) -> dict:
+        kept = {name: value for name, value in entry.items() if name not in ("old", "new")}
+        return {**kept, "held_by": [side for side in ("old", "new") if entry.get(side) is not None]}
+
+    return {
+        **document,
+        "explained": [strip(entry) for entry in document["explained"]],
+        "differences": [strip(entry) for entry in document["differences"]],
+    }
+
+
 def write_result(json_dir: Path, document: dict) -> Path:
     """`document` as `<json_dir>/<family>.json`, the directory made if need be."""
     json_dir.mkdir(parents=True, exist_ok=True)
@@ -1805,13 +1827,19 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="also write the result as <dir>/<family>.json, for gate_report.py; the console and exit code are unchanged",
     )
+    parser.add_argument(
+        "--keys-only",
+        action="store_true",
+        help="print and write each difference's key and changed fields, never either side's record (without_records())",
+    )
     args = parser.parse_args(argv)
 
     family = FAMILIES[args.family]
 
     def finish(exit_code: int, outcome: str, **fields) -> int:
         if args.json_dir is not None:
-            write_result(args.json_dir, result_document(args.family, family, args.new, outcome, exit_code, **fields))
+            document = result_document(args.family, family, args.new, outcome, exit_code, **fields)
+            write_result(args.json_dir, without_records(document) if args.keys_only else document)
         return exit_code
 
     try:
@@ -1873,7 +1901,7 @@ def main(argv: list[str] | None = None) -> int:
         return finish(0, "no_differences", old=old, new=new, found=found, reasons=reasons)
     print(f"{args.family}: {len(unexplained)} difference(s):")
     for what, a, b in unexplained:
-        print(f"  {what}\n    old: {a}\n    new: {b}")
+        print(f"  {what}" if args.keys_only else f"  {what}\n    old: {a}\n    new: {b}")
     return finish(1, "differences", old=old, new=new, found=found, reasons=reasons)
 
 

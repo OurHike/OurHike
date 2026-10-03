@@ -546,9 +546,14 @@ jobs:
       # Each family's output is kept as <family>.txt, and summary.json gives
       # each `match`, `differs` or `not_compared` (today's exporter could not
       # run: an input no pin holds, or a crash; the log has the traceback).
-      # When parity.py takes --json-dir, results go to results/<family>.json
-      # for gate_report.py, which refuses any other JSON there, so
-      # summary.json sits one level up.
+      # Results go to results/<family>.json for gate_report.py, which refuses
+      # any other JSON there, so summary.json sits one level up.
+      #
+      # --keys-only: the artifact is public, and the old side runs on every
+      # layer the pin holds, held-back sources included. So the log and the
+      # results name each difference by key and changed fields, never with
+      # either record. To see the records, rerun that family's parity.py line
+      # without the flag, on this raw_run's pin, as the steps above set it up.
       - name: Parity with today's exporters
         env:
           PARITY_DIR: ${{ runner.temp }}/parity
@@ -564,8 +569,7 @@ jobs:
 
           out = Path(os.environ["PARITY_DIR"])
           python = f"{os.environ['RUNNER_TEMP']}/pipeline/bin/python"
-          usage = subprocess.run([python, "parity.py", "--help"], capture_output=True, text=True).stdout
-          json_dir = ("--json-dir", str(out / "results")) if "--json-dir" in usage else ()
+          report = ("--json-dir", str(out / "results"), "--keys-only")
           raw = ("--raw-dir", "data/raw")
           families = {
               "podcasts": ("podcasts_episodes.json", ()),
@@ -606,7 +610,7 @@ jobs:
           answered = re.compile(r"^\S+: (no differences|neither today's exporter nor the writer|\d+ difference\(s\))", re.M)
           summary = {}
           for family, (name, extra) in families.items():
-              argv = [python, "parity.py", family, "--new", f"data/processed/dbt/{name}", *extra, *json_dir]
+              argv = [python, "parity.py", family, "--new", f"data/processed/dbt/{name}", *extra, *report]
               done = subprocess.run(argv, capture_output=True, text=True)
               log = done.stdout + done.stderr
               (out / f"{family}.txt").write_text(log)

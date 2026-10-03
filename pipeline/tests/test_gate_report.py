@@ -165,6 +165,16 @@ def test_a_safety_field_difference_ranks_first_in_the_rows_and_the_markdown():
     assert "**1 key(s) differ on a safety field**" in markdown
 
 
+def test_a_keys_only_result_says_its_records_were_withheld_and_which_side_lacks_one():
+    lost = {"what": "properties.id x", "old": '{"name":"Lost Spring"}', "new": None, "fields": ["properties.name"]}
+    result = parity.without_records(_result("poi_water", "poi_water.geojson", "differences", differences=[lost]))
+    rows, unmatched, new_keys = key_rows(TODAY, DBT, {"poi_water": result})
+    markdown = gate_report.render_markdown(rows, unmatched, new_keys, {"parity_dir": "d", "dbt_manifest": "m", "results": 1})
+
+    assert "  - old: `(withheld: parity.py --keys-only)`\n  - new: `(absent)`" in markdown
+    assert "Lost Spring" not in markdown
+
+
 def test_an_explained_safety_difference_is_listed_for_approval_on_its_own_row():
     explained = {**_difference("properties.confidence"), "reason": "expected by decision 40"}
     rows, _, _ = key_rows(TODAY, DBT, {"poi_water": _result("poi_water", "poi_water.geojson", explained=[explained])})

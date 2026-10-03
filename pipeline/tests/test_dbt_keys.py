@@ -235,7 +235,8 @@ def _socrata_tables() -> set[str]:
 
 
 SOCRATA_MODELS = [path for path in MODELS if SOURCE.search(path.read_text()).group(2) in _socrata_tables()]
-GENERIC_TEST = DBT / "tests" / "generic" / "duplicates_are_exact.sql"
+#: Where duplicates_are_exact's default row ids live: row_hash_row_ids(), which the row-history snapshots share.
+ROW_HASH_MACROS = DBT / "macros" / "row_hash.sql"
 
 
 def test_the_socrata_models_are_the_seven_nyc_base_models():
@@ -262,8 +263,8 @@ def test_each_socrata_tables_duplicates_are_exact_skips_socrata_id_as_a_row_id(p
     (test,) = [t["duplicates_are_exact"] for t in source_tests()[source] if isinstance(t, dict) and "duplicates_are_exact" in t]
     row_ids = test["arguments"].get("row_id_columns")
     if row_ids is None:
-        default = re.search(r"row_id_columns=(\[.*?\])", GENERIC_TEST.read_text(), re.S)
-        assert default, f"{GENERIC_TEST.name}: no row_id_columns default to read"
+        default = re.search(r"macro row_hash_row_ids\(\).*?return\((\[.*?\])\)", ROW_HASH_MACROS.read_text(), re.S)
+        assert default, f"{ROW_HASH_MACROS.name}: no row_hash_row_ids() list to read"
         row_ids = ast.literal_eval(default.group(1))
     assert "_socrata_id" in row_ids, f"{source[1]}'s duplicates_are_exact compares `_socrata_id`, so every copy fails it"
 

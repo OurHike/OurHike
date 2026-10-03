@@ -14,7 +14,10 @@
     `key_columns` are the same expressions the staging model passes to
     dbt_utils.generate_surrogate_key; tests/test_dbt_keys.py holds the two
     lists equal. `row_id_columns` are the columns a server mints per row
-    (OBJECTID, FID), which differ between two copies of one record.
+    (OBJECTID, FID), which differ between two copies of one record; left
+    out, they are macros/row_hash.sql's row_hash_row_ids(), the list the
+    row-history snapshots leave out too. Rows are compared by row_hash(),
+    that file's one hash of a row.
 
     `_socrata_id` is one of them: Socrata's row id `:id`, which
     extract/_kinds.py's SocrataDataset lands under that name. It was missing
@@ -26,27 +29,12 @@
     and `_dlt_id`. pipeline/spike_table_keys.py, which counted those copies
     on 2026-10-01, already treated `:id` as a row id; this list had not.
 -#}
-{% test duplicates_are_exact(
-    model, key_columns, row_id_columns=['objectid', 'fid', 'ogc_fid', '_dlt_id', '_socrata_id']
-) %}
-
-{#- Every column but the row ids, by name. Spelled out rather than written as
-    DuckDB's *COLUMNS(* EXCLUDE ...), which dbt 2.0.6's own SQL parser does
-    not read (one warning per test, measured 2026-10-01). -#}
-{%- set compared = [] -%}
-{%- if execute -%}
-{%- set row_ids = row_id_columns | map('lower') | list -%}
-{%- for column in adapter.get_columns_in_relation(model) -%}
-{%- if column.name | lower not in row_ids -%}
-{%- do compared.append(adapter.quote(column.name)) -%}
-{%- endif -%}
-{%- endfor -%}
-{%- endif %}
+{% test duplicates_are_exact(model, key_columns, row_id_columns=none) %}
 
 with keyed as (
     select
         {{ dbt_utils.generate_surrogate_key(key_columns) }} as key_value,
-        md5(cast(row({{ compared | join(', ') or 'null' }}) as varchar))
+        {{ row_hash(model, row_id_columns if row_id_columns is not none else row_hash_row_ids()) }}
             as row_hash
     from {{ model }}
 )

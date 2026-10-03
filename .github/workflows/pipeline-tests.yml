@@ -241,6 +241,8 @@ jobs:
             pipeline/export_network_elevation.py
             pipeline/export_network_profile.py
             pipeline/build_marts.py
+            pipeline/row_history.py
+            pipeline/row_history_stores.toml
             pipeline/step_node_lines.py
             pipeline/build_trail_graph.py
             pipeline/export_poi.py

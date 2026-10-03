@@ -18,7 +18,7 @@ import pytest
 import yaml
 
 import build_marts
-from build_marts import STEPS, Paths, Step, derived_source_problems, plan
+from build_marts import STEPS, History, Paths, Step, derived_source_problems, plan
 
 PIPELINE_DIR = Path(build_marts.__file__).resolve().parent
 DBT_DIR = PIPELINE_DIR / "dbt"
@@ -217,6 +217,8 @@ def _main(
     (tmp_path / "manifest.json").write_text(json.dumps(manifest))
     monkeypatch.setattr(build_marts, "MANIFEST_PATH", tmp_path / "manifest.json")
     monkeypatch.setattr(build_marts.subprocess, "run", recorder)
+    # So built_by() asks git nothing: the recorder stands in for every subprocess.run.
+    monkeypatch.setenv("OURHIKE_BUILT_BY", "abc123 run 7.1")
     code = build_marts.main(
         [
             "--fixtures",
@@ -230,10 +232,23 @@ def _main(
             str(tmp_path / "processed"),
             "--raw-dir",
             str(tmp_path / "raw"),
+            "--history-url",
+            str(tmp_path / "history"),
+            "--history-python",
+            "python",
             *extra,
         ]
     )
     return code, recorder
+
+
+def _history(tmp_path: Path) -> History:
+    """The store _main() names: not in row_history_stores.toml, so an empty one may start its history."""
+    return History(str(tmp_path / "history"), True, "python")
+
+
+#: The restore's first two arguments: main() runs it before anything else.
+RESTORE = ("python", "row_history.py")
 
 
 def test_main_runs_the_plan_in_order_with_one_warehouse_for_dbt_and_the_steps(monkeypatch, tmp_path):
@@ -243,26 +258,29 @@ def test_main_runs_the_plan_in_order_with_one_warehouse_for_dbt_and_the_steps(mo
     paths = Paths(tmp_path / "warehouse.duckdb", tmp_path / "processed", tmp_path / "raw")
     assert code == 0
     assert [(argv, cwd) for argv, cwd, _ in recorder.calls] == argvs(
-        plan(STEPS, dbt="dbt", python="python", paths=paths, fixtures=True)
+        plan(STEPS, dbt="dbt", python="python", paths=paths, fixtures=True, history=_history(tmp_path))
     )
+    assert recorder.calls[0][0][:3] == (*RESTORE, "restore") and recorder.calls[-1][0][:3] == (*RESTORE, "save")
     for _, _, env in recorder.calls:
         assert env["OURHIKE_WAREHOUSE"] == str(tmp_path / "warehouse.duckdb")
         assert env["OURHIKE_PROCESSED_DIR"] == str(tmp_path / "processed")
+        assert env["TZ"] == "UTC", "macros/row_hash.sql: a TIMESTAMPTZ hashes in the session's zone"
     assert (tmp_path / "processed").is_dir(), "COPY creates no directory, so the writers' folder must exist first"
 
 
 def test_main_stops_at_the_first_command_that_fails_and_answers_with_its_exit_code(monkeypatch, tmp_path):
-    code, recorder = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), codes={2: 2})
+    code, recorder = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), codes={3: 2})
 
     assert code == 2
-    assert [argv[:2] for argv, _, _ in recorder.calls] == [("dbt", "seed"), ("dbt", "build")]
+    assert [argv[:2] for argv, _, _ in recorder.calls] == [RESTORE, ("dbt", "seed"), ("dbt", "build")]
+    assert not [argv for argv, _, _ in recorder.calls if argv[2:3] == ("save",)], "a failed build never saves"
 
 
 def test_main_refuses_after_the_seeds_when_a_derived_source_has_no_step(monkeypatch, tmp_path, capsys):
     code, recorder = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES, "unwritten"))
 
     assert code == 1
-    assert [argv[:2] for argv, _, _ in recorder.calls] == [("dbt", "seed")]
+    assert [argv[:2] for argv, _, _ in recorder.calls] == [RESTORE, ("dbt", "seed")]
     assert "source derived.unwritten is declared and no entry of build_marts.STEPS writes it" in capsys.readouterr().out
 
 
@@ -614,7 +632,7 @@ def test_main_refuses_after_the_seeds_when_the_monthly_lane_would_leave_a_steps_
     code, recorder = _main(monkeypatch, tmp_path, manifest, extra=("--lane", "monthly"))
 
     assert code == 1
-    assert [argv[:2] for argv, _, _ in recorder.calls] == [("dbt", "seed")]
+    assert [argv[:2] for argv, _, _ in recorder.calls] == [RESTORE, ("dbt", "seed")]
     assert f"{DEM_SAMPLING.name} reads model.ourhike.closures" in capsys.readouterr().out
 
 
@@ -629,7 +647,7 @@ def test_main_runs_the_monthly_lanes_plan_when_every_step_reads_monthly_nodes(mo
     paths = Paths(tmp_path / "warehouse.duckdb", tmp_path / "processed", tmp_path / "raw")
     assert code == 0
     assert [(argv, cwd) for argv, cwd, _ in recorder.calls] == argvs(
-        plan(STEPS, dbt="dbt", python="python", paths=paths, fixtures=True, lane="monthly")
+        plan(STEPS, dbt="dbt", python="python", paths=paths, fixtures=True, lane="monthly", history=_history(tmp_path))
     )
 
 
@@ -666,3 +684,102 @@ def test_a_step_that_says_it_reads_no_model_and_whose_exposure_lists_one_is_refu
     assert build_marts.lane_problems(manifest, [*PAIR, file_only], "hourly") == [
         "step_weather_squares says it reads no dbt node (reads_no_model), and its exposure step_weather_squares lists some"
     ]
+
+
+# --- The row history (build_marts.py's docstring, "THE ROW HISTORY IS RESTORED FIRST AND SAVED LAST") ---
+
+
+def test_plan_with_a_history_store_restores_before_the_seeds_and_saves_after_the_writers():
+    history = History("s3://bucket/history/monthly", False, "/venv/extract/bin/python")
+    runs = plan([], dbt="dbt", python="python", paths=PATHS, fixtures=False, history=history)
+
+    store = ("--url", "s3://bucket/history/monthly", "--warehouse", "/w/warehouse.duckdb")
+    assert runs[0].argv == ("/venv/extract/bin/python", "row_history.py", "restore", *store)
+    assert runs[1].argv[:2] == ("dbt", "seed")
+    assert runs[-1].argv == ("/venv/extract/bin/python", "row_history.py", "save", *store)
+    assert runs[-2].argv[-2:] == ("-s", "path:models/publish"), "the save waits for the writers"
+
+
+def test_a_cold_start_reaches_the_restore_as_its_flag():
+    runs = plan([], dbt="dbt", python="python", paths=PATHS, fixtures=True, history=History("/h", True, "python"))
+
+    assert runs[0].argv[-1] == "--cold-start"
+
+
+def test_no_history_store_outside_the_fixtures_is_refused_before_anything_runs(monkeypatch, tmp_path):
+    monkeypatch.delenv("OURHIKE_HISTORY_URL", raising=False)
+    with pytest.raises(ValueError, match="no row-history store"):
+        build_marts.resolve_history(None, fixtures=False, cold_start=False, python="python", started={})
+    with pytest.raises(SystemExit):
+        build_marts.main(["--lane", "monthly", "--warehouse", str(tmp_path / "w.duckdb"), "--dry-run"])
+
+
+def test_the_fixtures_with_no_store_named_cold_start_in_a_new_temporary_directory():
+    history, notice = build_marts.resolve_history(None, fixtures=True, cold_start=False, python="python", started={})
+
+    assert history.cold_start and Path(history.url).is_dir() and not any(Path(history.url).iterdir())
+    assert "no later run reads" in notice
+
+
+def test_a_store_listed_as_started_may_not_cold_start_and_one_not_listed_may_with_a_warning():
+    started = {"monthly": "refresh-reference.yml run 1"}
+
+    listed, quiet = build_marts.resolve_history(
+        "s3://b/history/monthly", fixtures=False, cold_start=False, python="python", started=started
+    )
+    unlisted, warning = build_marts.resolve_history(
+        "s3://b/history/conditions_ua", fixtures=False, cold_start=False, python="python", started=started
+    )
+    forced, _ = build_marts.resolve_history(
+        "s3://b/history/monthly", fixtures=False, cold_start=True, python="python", started=started
+    )
+
+    assert not listed.cold_start and quiet is None
+    assert unlisted.cold_start and warning.startswith("::warning") and "conditions_ua" in warning
+    assert forced.cold_start
+
+
+def test_row_history_stores_toml_lists_store_names_with_the_run_that_started_each():
+    started = build_marts.started_history_stores()
+
+    assert all("/" not in name and isinstance(run, str) and run for name, run in started.items())
+
+
+def test_a_failed_restore_stops_the_build_before_dbt_by_default(monkeypatch, tmp_path):
+    code, recorder = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), codes={1: 1})
+
+    assert code == 1
+    assert [argv[:2] for argv, _, _ in recorder.calls] == [RESTORE]
+
+
+def test_a_degraded_build_runs_every_dbt_command_without_snapshots_or_history_and_saves_nothing(monkeypatch, tmp_path):
+    """The conditions legs (--history-on-failure degrade): publish with null dates, save nothing, exit DEGRADED_EXIT."""
+    code, recorder = _main(
+        monkeypatch, tmp_path, _manifest(*STEP_TABLES), codes={1: 2}, extra=("--history-on-failure", "degrade")
+    )
+
+    tmp_path = tmp_path.resolve()
+    paths = Paths(tmp_path / "warehouse.duckdb", tmp_path / "processed", tmp_path / "raw")
+    after_restore = [(argv, cwd) for argv, cwd, _ in recorder.calls][1:]
+    assert code == build_marts.DEGRADED_EXIT
+    assert after_restore == argvs(plan(STEPS, dbt="dbt", python="python", paths=paths, fixtures=True, snapshots=False))
+    assert not [argv for argv, _, _ in recorder.calls if argv[2:3] == ("save",)], "a degraded build never saves"
+    builds = [argv for argv, _, _ in recorder.calls if argv[:2] == ("dbt", "build")]
+    writers = [argv for argv in builds if "-s" in argv and argv[argv.index("-s") + 1] == "path:models/publish"]
+    assert len(writers) == 1 and all(build_marts.SNAPSHOTS in argv for argv in builds if argv not in writers)
+    for _, _, env in recorder.calls[1:]:
+        assert env["OURHIKE_ROW_HISTORY"] == "off", "macros/row_history.sql's row_history_enabled() reads it"
+
+
+def test_without_snapshots_every_build_but_the_writers_excludes_them():
+    runs = plan([DEM_SAMPLING], dbt="dbt", python="python", paths=PATHS, fixtures=True, snapshots=False)
+
+    builds = [run.argv for run in runs if run.argv[:2] == ("dbt", "build")]
+    assert [build_marts.SNAPSHOTS in argv for argv in builds] == [True, True, False]
+
+
+def test_built_by_names_the_commit_and_the_workflow_run_in_characters_a_sql_literal_takes():
+    environ = {"GITHUB_SHA": "0123456789abcdef0123", "GITHUB_RUN_ID": "37109384156", "GITHUB_RUN_ATTEMPT": "2"}
+
+    assert build_marts.built_by(environ) == "0123456789ab run 37109384156.2"
+    assert build_marts.built_by({"OURHIKE_BUILT_BY": "x'; drop table t; --"}) == "x drop table t --"

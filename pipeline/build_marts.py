@@ -73,6 +73,41 @@ a `derived` table no step writes, which would leave everything downstream of
 it unbuilt without one failing node, and a step writing a table no source
 declares.
 
+THE ROW HISTORY IS RESTORED FIRST AND SAVED LAST. The row-history snapshots
+(int_<mart>__history, one per mart, decision 57; macros/row_history.sql) are
+the only state a build carries from one run to the next, and the warehouse is
+rebuilt from raw every
+run, so `row_history.py restore` runs before `dbt seed` and `row_history.py
+save` after the writers, only when every command before it succeeded. The
+store is --history-url, else OURHIKE_HISTORY_URL. A store with no history
+yet is a cold start, and cold starts are allowed only:
+- under --fixtures with no store named, into a new temporary directory, so
+  CI and scripts/test.sh start history in every run and keep none;
+- for a store whose name (its URL's last part, `monthly` for
+  s3://<bucket>/history/monthly) row_history_stores.toml does not list as
+  started: its first run, said in a warning;
+- with --history-cold-start, by hand.
+Anything else with no history fails before dbt runs, because a silent cold
+start would date every row as first seen in this build. Without --fixtures a
+store must be named: there is no default that keeps history. The restore and
+the save run on --history-python (default: this interpreter), which needs
+DuckDB, and s3fs for an s3:// store: the extract's venv in a workflow.
+Every dbt command runs with TZ=UTC, so a TIMESTAMPTZ column is hashed in the
+same characters on every machine (macros/row_hash.sql), and with
+OURHIKE_BUILT_BY, the git commit and workflow run, which each snapshot
+version records as `_built_by` (never hashed), so a reader can tell a change
+upstream from a change to this project's rules.
+
+--history-on-failure degrade IS THE CONDITIONS LEGS' (the maintainer, by poll,
+2026-10-03): closures and warnings must still publish when their history
+cannot be restored. Then the restore's failure is printed as an error, every
+dbt command runs with OURHIKE_ROW_HISTORY=off and leaves the snapshots out,
+so the marts read their final intermediates with both dates null (unknown,
+never "new"), nothing is saved, and the build exits DEGRADED_EXIT once
+everything else has passed, so the workflow publishes and then goes red. The
+default, `fail`, is the monthly lane's: a restore that fails stops the build
+before dbt runs.
+
 --dbt and --python differ in CI, where dbt is in the job's
 requirements-dbt.txt venv and the steps need requirements.txt's rasterio
 ($RUNNER_TEMP/pipeline); this file imports only the standard library, so it
@@ -88,8 +123,11 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+
+import tomllib
 
 PIPELINE_DIR = Path(__file__).resolve().parent
 DBT_DIR = PIPELINE_DIR / "dbt"
@@ -265,6 +303,83 @@ class Paths:
     raw_dir: Path
 
 
+#: The history stores that have been saved to at least once, by name (the store URL's last part), each with the
+#: run that started it: an empty one of these is lost history, never a first run (the module docstring, "THE ROW
+#: HISTORY IS RESTORED FIRST AND SAVED LAST").
+HISTORY_STORES = PIPELINE_DIR / "row_history_stores.toml"
+RESTORE_LABEL, SAVE_LABEL = "restore the row history", "save the row history"
+#: What --history-on-failure degrade leaves out of every dbt build once the restore has failed: the snapshots,
+#: which would otherwise start a history this run cannot keep and the marts must not read.
+SNAPSHOTS = "resource_type:snapshot"
+#: build_marts.py's exit when a degraded build passed: the marts and their writers are built, with null dates,
+#: and nothing was saved. Not 0, so the workflow goes red once it has published; not 1, so it can tell.
+DEGRADED_EXIT = 4
+HISTORY_ON_FAILURE = ("fail", "degrade")
+
+
+@dataclass(frozen=True)
+class History:
+    """Where the row-history snapshots are kept between runs, whether an empty store may start them, and the
+    interpreter row_history.py runs on."""
+
+    url: str
+    cold_start: bool
+    python: str
+
+
+def resolve_history(
+    url: str | None, *, fixtures: bool, cold_start: bool, python: str, started: dict[str, str]
+) -> tuple[History, str | None]:
+    """The store this build restores from and saves to, and a line to print about it.
+
+    Raises ValueError when no store is named outside --fixtures."""
+    if not url:
+        if not fixtures:
+            raise ValueError(
+                "no row-history store: pass --history-url or set OURHIKE_HISTORY_URL. Without one every snapshot "
+                "would start its history again in a warehouse this run throws away (pipeline/row_history.py)."
+            )
+        url = tempfile.mkdtemp(prefix="ourhike-history-")
+        return History(url, True, python), (
+            f"--fixtures with no history store named: a cold start in {url}, a new temporary directory no later run reads"
+        )
+    if cold_start:
+        return History(url, True, python), f"--history-cold-start: an empty {url} starts its history in this build"
+    name = history_store_name(url)
+    if name not in started:
+        return History(url, True, python), (
+            f"::warning title=Row history store not started::{name} is not in row_history_stores.toml, so an empty "
+            f"{url} starts its history in this build. Once this run has saved, list {name} there, so that from then "
+            "on an empty store is refused as lost history."
+        )
+    return History(url, False, python), None
+
+
+def built_by(environ: dict[str, str]) -> str:
+    """What each snapshot version records as `_built_by`: OURHIKE_BUILT_BY when set, else the commit (GITHUB_SHA,
+    else `git rev-parse HEAD`) and, in a workflow, `run <GITHUB_RUN_ID>.<GITHUB_RUN_ATTEMPT>`. Only characters a SQL
+    string literal takes as they are (macros/row_history.sql writes it into one)."""
+    value = environ.get("OURHIKE_BUILT_BY")
+    if not value:
+        commit = environ.get("GITHUB_SHA")
+        if not commit:
+            found = subprocess.run(["git", "rev-parse", "HEAD"], cwd=PIPELINE_DIR, capture_output=True, text=True, check=False)
+            commit = found.stdout.strip() if found.returncode == 0 else "unknown"
+        value = commit[:12]
+        if run_id := environ.get("GITHUB_RUN_ID"):
+            value += f" run {run_id}.{environ.get('GITHUB_RUN_ATTEMPT', '1')}"
+    return "".join(character for character in value if character.isalnum() or character in " .:/_-")
+
+
+def history_store_name(url: str) -> str:
+    """A store's name in row_history_stores.toml: the last part of its URL."""
+    return url.rstrip("/").rsplit("/", 1)[-1]
+
+
+def started_history_stores(path: Path = HISTORY_STORES) -> dict[str, str]:
+    return tomllib.loads(path.read_text(encoding="utf-8"))["started"]
+
+
 @dataclass(frozen=True)
 class Run:
     """One command of the build: what the log calls it, its argv, and the directory it runs in."""
@@ -286,8 +401,12 @@ def plan(
     lane: str | None = None,
     state: Path | None = None,
     without: tuple[str, ...] = (),
+    history: History | None = None,
+    snapshots: bool = True,
 ) -> list[Run]:
-    """Every command of the build, in order, for these steps, in `lane` (None: every node), less the steps `without` names."""
+    """Every command of the build, in order, for these steps, in `lane` (None: every node), less the steps `without` names,
+    between the row history's restore and its save when `history` names a store, and with no snapshot built when
+    `snapshots` is false (the module docstring, "--history-on-failure degrade")."""
     if lane not in (None, *LANES):
         raise ValueError(f"no lane {lane!r}; lanes are {', '.join(LANES)}")
     if state is not None and lane != HOURLY:
@@ -313,7 +432,8 @@ def plan(
     stage_a_exclude = ["package:dbt_project_evaluator", "path:models/publish"]
     if running:
         stage_a_exclude.append(f"source:{DERIVED_SOURCE}+")
-    stage_a_exclude += [*held, *lane_exclude]
+    no_snapshots = () if snapshots else (SNAPSHOTS,)
+    stage_a_exclude += [*held, *lane_exclude, *no_snapshots]
     label = "stage A: everything no Python step reads back"
     if lane == HOURLY:
         label = "stage A of the hourly lane: every node an hourly or daily source reaches, no step reads back"
@@ -323,6 +443,7 @@ def plan(
         runs.append(Run(step.name, (python, *(argument.format(**fields) for argument in arguments)), PIPELINE_DIR))
         later = [f"source:{DERIVED_SOURCE}.{following.table}+" for following in running[position + 1 :]]
         unblocks = ("-s", f"source:{DERIVED_SOURCE}.{step.table}+", "--exclude", "path:models/publish", *later, *held)
+        unblocks += no_snapshots
         runs.append(
             Run(
                 f"what {DERIVED_SOURCE}.{step.table} unblocks", (dbt, "build", *common, *unblocks, *lane_exclude, *after), DBT_DIR
@@ -337,6 +458,11 @@ def plan(
     if held or lane_exclude:
         writers += ("--exclude", *lane_exclude, *held)
     runs.append(Run(label, (dbt, "build", *common, *writers, *after), DBT_DIR))
+    if history is not None:
+        store = ("--url", history.url, "--warehouse", str(paths.warehouse))
+        restore = (history.python, "row_history.py", "restore", *store, *(("--cold-start",) if history.cold_start else ()))
+        runs.insert(0, Run(RESTORE_LABEL, restore, PIPELINE_DIR))
+        runs.append(Run(SAVE_LABEL, (history.python, "row_history.py", "save", *store), PIPELINE_DIR))
     return runs
 
 
@@ -476,6 +602,25 @@ def main(argv: list[str] | None = None) -> int:
         metavar="NAME",
         help="leave this STEPS entry out, and everything its derived table unblocks, writers included (repeatable)",
     )
+    parser.add_argument(
+        "--history-url",
+        default=os.environ.get("OURHIKE_HISTORY_URL"),
+        help="the row-history store, a directory or s3:// URL (default: OURHIKE_HISTORY_URL; none: --fixtures only)",
+    )
+    parser.add_argument(
+        "--history-cold-start", action="store_true", help="let an empty history store start its history in this build"
+    )
+    parser.add_argument(
+        "--history-python",
+        default=sys.executable,
+        help="the interpreter row_history.py runs on: DuckDB, and s3fs for an s3:// store (default: this one)",
+    )
+    parser.add_argument(
+        "--history-on-failure",
+        choices=HISTORY_ON_FAILURE,
+        default="fail",
+        help="degrade: a failed restore builds and publishes with null row dates and exits DEGRADED_EXIT (conditions legs)",
+    )
     parser.add_argument("--dry-run", action="store_true", help="print the commands and run none")
     args = parser.parse_args(argv)
 
@@ -485,23 +630,34 @@ def main(argv: list[str] | None = None) -> int:
         raw_dir=args.raw_dir.resolve(),
     )
     try:
-        runs = plan(
-            STEPS,
-            dbt=args.dbt,
-            python=args.python,
-            paths=paths,
+        history, notice = resolve_history(
+            args.history_url,
             fixtures=args.fixtures,
-            threads=args.threads,
-            profiles_dir=str(args.profiles_dir.resolve()) if args.profiles_dir else ".",
-            lane=args.lane,
-            state=args.state.resolve() if args.state else None,
-            without=tuple(args.without_step),
+            cold_start=args.history_cold_start,
+            python=args.history_python,
+            started=started_history_stores(),
         )
+        options = {
+            "dbt": args.dbt,
+            "python": args.python,
+            "paths": paths,
+            "fixtures": args.fixtures,
+            "threads": args.threads,
+            "profiles_dir": str(args.profiles_dir.resolve()) if args.profiles_dir else ".",
+            "lane": args.lane,
+            "state": args.state.resolve() if args.state else None,
+            "without": tuple(args.without_step),
+        }
+        runs = plan(STEPS, **options, history=history)
     except ValueError as refused:
         parser.error(str(refused))
     files = {"OURHIKE_WAREHOUSE": str(paths.warehouse), "OURHIKE_PROCESSED_DIR": str(paths.processed_dir)}
-    env = {**os.environ, **files}
+    # TZ=UTC and OURHIKE_BUILT_BY: the module docstring, "THE ROW HISTORY IS RESTORED FIRST AND SAVED LAST".
+    env = {**os.environ, **files, "TZ": "UTC", "OURHIKE_BUILT_BY": built_by(os.environ)}
     print("-- build_marts: " + " ".join(f"{name}={value}" for name, value in files.items()), flush=True)
+    print(f"-- build_marts: OURHIKE_BUILT_BY={env['OURHIKE_BUILT_BY']}", flush=True)
+    if notice:
+        print(f"-- build_marts: {notice}", flush=True)
     if args.dry_run:
         for run in runs:
             print(f"{run.label}: (cd {run.cwd} && {' '.join(run.argv)})")
@@ -509,9 +665,25 @@ def main(argv: list[str] | None = None) -> int:
 
     # COPY creates no directory (phone_file.sql), and the writers write here.
     paths.processed_dir.mkdir(parents=True, exist_ok=True)
-    for position, run in enumerate(runs, start=1):
+    degraded = False
+    position = 0
+    while position < len(runs):
+        run = runs[position]
+        position += 1
         print(f"-- build_marts {position}/{len(runs)}: {run.label}", flush=True)
         completed = subprocess.run(run.argv, cwd=run.cwd, env=env, check=False)
+        if completed.returncode != 0 and run.label == RESTORE_LABEL and args.history_on_failure == "degrade":
+            # The module docstring, "--history-on-failure degrade": build and publish with null dates, save nothing.
+            print(
+                f"::error title=Row history not restored::{run.label} failed (exit {completed.returncode}); this leg "
+                "builds and publishes with _first_seen_at and _changed_at null, saves no history, and goes red "
+                "afterwards. Fix the store before the next run.",
+                flush=True,
+            )
+            degraded = True
+            env["OURHIKE_ROW_HISTORY"] = "off"
+            runs = runs[:position] + plan(STEPS, **options, snapshots=False)
+            continue
         if completed.returncode != 0:
             print(f"-- build_marts: {run.label} failed (exit {completed.returncode}): {' '.join(run.argv)}", flush=True)
             return completed.returncode
@@ -521,6 +693,9 @@ def main(argv: list[str] | None = None) -> int:
                 for problem in problems:
                     print(f"-- build_marts: {problem}", flush=True)
                 return 1
+    if degraded:
+        print(f"-- build_marts: built without the row history; exit {DEGRADED_EXIT}", flush=True)
+        return DEGRADED_EXIT
     return 0
 
 

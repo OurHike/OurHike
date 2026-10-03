@@ -31,7 +31,6 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-from datetime import UTC
 from pathlib import Path
 
 import duckdb
@@ -116,8 +115,16 @@ def _query(warehouse: Path, sql: str) -> list[tuple]:
         return con.execute(sql).fetchall()
 
 
+# The marts' dates are TIMESTAMPTZ, and DuckDB hands one to Python only with
+# pytz installed, which the dbt job's venv (requirements.txt) does not carry:
+# every test here errored "No module named 'pytz'" on f06f8b1b. So the SQL
+# turns each into naive UTC, and _DATE_TYPES reads the column type instead.
+_DATES = "timezone('UTC', _first_seen_at), timezone('UTC', _changed_at)"
+_DATE_TYPES = "select distinct typeof(_first_seen_at), typeof(_changed_at) from marts.podcasts_v1"
+
+
 def _dates(warehouse: Path) -> dict[str, tuple]:
-    rows = _query(warehouse, "select title, _first_seen_at, _changed_at from marts.podcasts_v1")
+    rows = _query(warehouse, f"select title, {_DATES} from marts.podcasts_v1")
     return {title[0]: (first, changed) for title, first, changed in rows}
 
 
@@ -150,11 +157,12 @@ def builds(tmp_path_factory) -> dict:
     _build(three, root, history=False)
     return {
         "first": _dates(one),
+        "types": _query(one, _DATE_TYPES),
         "second": _dates(two),
         "versions": versions,
         "restored": restored,
         "pointer": json.loads((root / "history" / row_history.POINTER).read_text()),
-        "degraded": _query(three, "select title, _first_seen_at, _changed_at from marts.podcasts_v1 order by title"),
+        "degraded": _query(three, f"select title, {_DATES} from marts.podcasts_v1 order by title"),
         "untouched": (before, _query(three, "select count(*) from intermediate.int_podcasts__history")),
     }
 
@@ -180,7 +188,7 @@ def test_a_removed_row_leaves_the_mart_and_its_last_version_closes_with_its_cont
     (closed,) = [row for row in builds["versions"] if row[0] == "C" * 22]
     _, title, _, valid_to, _ = closed
     assert title == "Charlie" and valid_to is not None
-    assert valid_to >= builds["first"]["C"][1].astimezone(UTC).replace(tzinfo=None), "valid_to is naive UTC"
+    assert valid_to >= builds["first"]["C"][1], "valid_to is naive UTC, as _DATES makes the mart's"
 
 
 def test_a_new_row_is_first_seen_and_changed_in_the_build_that_first_saw_it(builds):
@@ -195,10 +203,11 @@ def test_each_version_names_the_build_that_wrote_it_and_an_unchanged_row_keeps_i
 
 
 def test_the_dates_are_utc_timestamptz_and_every_first_build_row_shares_the_history_start(builds):
-    starts = {first_seen.astimezone(UTC) for first_seen, _ in builds["first"].values()}
-    assert len(starts) == 1 and all(first.tzinfo is not None for first, _ in builds["first"].values())
+    assert builds["types"] == [("TIMESTAMP WITH TIME ZONE", "TIMESTAMP WITH TIME ZONE")]
+    starts = {first_seen for first_seen, _ in builds["first"].values()}
+    assert len(starts) == 1
     recorded = builds["pointer"]["tables"]["int_podcasts__history"]["history_started_at"]
-    assert recorded == next(iter(starts)).replace(tzinfo=None).isoformat() + "Z"
+    assert recorded == next(iter(starts)).isoformat() + "Z"
 
 
 def test_a_build_without_its_history_still_builds_the_mart_with_both_dates_null(builds):

@@ -5,7 +5,7 @@ import json
 import parity
 from parity import Family, differences
 
-FAMILY = Family(old=dict, records="episodes", key="spotify_id", ordered=True, volatile=("generated_at",))
+FAMILY = Family(old=dict, records="episodes", key="spotify_id", ordered=True)
 
 
 def _document(*episodes, source="reference/podcast_episodes.json"):
@@ -43,10 +43,6 @@ def test_a_top_level_field_counts():
     assert differences(_document(A), _document(A, source="elsewhere"), FAMILY) == [
         ("field source", '"reference/podcast_episodes.json"', '"elsewhere"')
     ]
-
-
-def test_volatile_keys_are_dropped():
-    assert differences(_document({**A, "generated_at": 1}), _document({**A, "generated_at": 2}), FAMILY) == []
 
 
 def test_ints_and_floats_print_apart():

@@ -102,7 +102,6 @@ def _result(family: str, file_name: str, outcome: str = "no_differences", **fiel
         "key": "properties.id",
         "ordered": True,
         "compared_by_form_only": [],
-        "dropped_before_comparing": [],
         "outcome": outcome,
         "exit_code": 0 if outcome == "no_differences" else 1,
         "message": None,
@@ -198,7 +197,7 @@ def test_status_is_a_safety_field_in_a_conditions_file_and_not_in_challenges_jso
     assert rows[0].key == "conditions/closures.json"
 
 
-def test_stamps_volatile_and_an_unordered_family_are_listed_never_called_equal():
+def test_stamps_and_an_unordered_family_are_listed_never_called_equal():
     result = _result("poi_water", "poi_water.geojson", compared_by_form_only=["generated_at"], ordered=False)
     rows, _, _ = key_rows(TODAY, DBT, {"poi_water": result})
     water = next(row for row in rows if row.key == "poi_water.geojson")

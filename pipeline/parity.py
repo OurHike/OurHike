@@ -53,10 +53,10 @@ Exit 1 on any difference, so a CI step fails on one.
 family's result into decision 30's per-key report; the console and exit code
 are unchanged. Beyond what the console prints, the file holds the file
 compared, each difference's changed field paths (changed_fields()), the
-fields compared by form only (`stamps`) or dropped (`volatile`), and each
-side's record source keys (record_sources()). An old side that refuses (the
-SystemExit some builders raise) is written as `old_side_refused` before the
-exit, so a refusal reads as one and not as a missing run.
+fields compared by form only (`stamps`), and each side's record source keys
+(record_sources()). An old side that refuses (the SystemExit some builders
+raise) is written as `old_side_refused` before the exit, so a refusal reads
+as one and not as a missing run.
 
 `--keys-only` prints and writes each difference's key and changed fields,
 never either side's record (without_records()). refresh-reference.yml uses
@@ -85,7 +85,6 @@ class Family:
     records: str
     key: str
     ordered: bool = False
-    volatile: tuple[str, ...] = ()
     # The file is a bare JSON array of records (elevation_profile.json), read
     # as {records: <the array>}, the shape `old` returns.
     bare_list: bool = False
@@ -1586,9 +1585,6 @@ def canonical(value) -> str:
 def differences(old: dict, new: dict, family: Family) -> list[tuple[str, str | None, str | None]]:
     """(what, old, new) for every record and top-level field that differs, by key; empty when the two agree."""
 
-    def drop(record: dict) -> dict:
-        return {name: value for name, value in record.items() if name not in family.volatile}
-
     found: list[tuple[str, str | None, str | None]] = []
     for name in sorted((old.keys() | new.keys()) - {family.records, *family.stamps}):
         a = canonical(old[name]) if name in old else None
@@ -1606,7 +1602,7 @@ def differences(old: dict, new: dict, family: Family) -> list[tuple[str, str | N
         return family.normalize(record) if family.normalize else record
 
     def index(document: dict) -> dict[str, str]:
-        return {record_key(record): canonical(drop(shaped(record))) for record in document.get(family.records) or []}
+        return {record_key(record): canonical(shaped(record)) for record in document.get(family.records) or []}
 
     a, b = index(old), index(new)
     found += [(f"{family.key} {key}", a.get(key), b.get(key)) for key in sorted(a.keys() | b.keys()) if a.get(key) != b.get(key)]
@@ -1772,7 +1768,6 @@ def result_document(
         "key": family.key,
         "ordered": family.ordered,
         "compared_by_form_only": list(family.stamps),
-        "dropped_before_comparing": list(family.volatile),
         "outcome": outcome,
         "exit_code": exit_code,
         "message": message,

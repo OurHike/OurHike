@@ -47,8 +47,8 @@ THE ANSWERS, worst first:
   never counted as passing.
 - `equal_apart_from_listed`: no unexplained difference, and everything not
   held equal is listed with its reason: a difference the family's `explained`
-  names, a field held to its form only (`stamps`), a field dropped
-  (`volatile`), record order for an unordered family.
+  names, a field held to its form only (`stamps`), record order for an
+  unordered family.
 - `equal`: every record and top-level field equal, in order where order is
   published.
 
@@ -587,10 +587,6 @@ def judge(result: dict, pattern_note: str | None = None) -> tuple[str, str, list
             "held to its form (a UTC stamp, parity.STAMP) on both sides, never to its value: it is the moment the run happened",
         )
         for name in result.get("compared_by_form_only") or []
-    ]
-    listed += [
-        Listed(f"field {name}", "dropped from every record before comparing (the family's `volatile`)")
-        for name in result.get("dropped_before_comparing") or []
     ]
     if not result.get("ordered"):
         listed.append(

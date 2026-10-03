@@ -5,6 +5,14 @@ Format: page. The fire closure order is the one a hiker most needs, and it is on
 USFS public domain (federal) → open_licence (public domain, federal). Folder: `usfs/`.
 
 Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+
+Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
+robots.txt, terms and change check): https://www.fs.usda.gov/r01/dpg/alerts (html_page).
+
+ArcGIS layers read and not wired as closures or warnings (decision 53 phase B, 2026-10-03):
+https://services1.arcgis.com/GOcSXpzwBHyk2nog/arcgis/rest/services/NDGISHUB_Deer_Units/FeatureServer/0,
+North Dakota's 39 deer units, last edited 2021-12-21, with no dates: a management geography, not a
+notice.
 """
 
 from datetime import date

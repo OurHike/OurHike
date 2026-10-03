@@ -4,6 +4,14 @@
 The forecasts themselves are the Utah Avalanche Center's.
 
 Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+
+ArcGIS layers read and not wired as closures or warnings (decision 53 phase B, 2026-10-03):
+https://services1.arcgis.com/99lidPhWCzftIe9K/ArcGIS/rest/services/recreation_avalanche_center_forecast_zones/FeatureServer/0,
+9 static zones linking to the Utah Avalanche Center's forecasts; the forecasts are UAC's, a _shared/
+question;
+https://services1.arcgis.com/99lidPhWCzftIe9K/ArcGIS/rest/services/Utah_Fire_Restriction_Areas_Lookup/FeatureServer/0,
+a 19-row lookup table last edited 2020-09-28, not restrictions; FFSL's live layer is
+_shared/utah_ffsl/.
 """
 
 from datetime import date

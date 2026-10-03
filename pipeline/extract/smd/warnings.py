@@ -6,6 +6,11 @@ Folders: `ebrpd/`; WFIGS goes in `_shared/nifc/` (new, Reasoned). Today's Level 
 the layer. Where EBRPD publishes it is UNKNOWN.
 
 Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+
+ArcGIS layers read and not wired as closures or warnings (decision 53 phase B, 2026-10-03):
+https://services2.arcgis.com/jeEP9c9zZoQQwtck/arcgis/rest/services/Fire_Warning_Extreme_Danger_Level_2/FeatureServer/6,
+EBRPD's 132 areas that close at fire-danger Level 2, last edited 2023-08-23: a standing map, not
+today's level, which EBRPD publishes elsewhere (UNKNOWN where).
 """
 
 from datetime import date

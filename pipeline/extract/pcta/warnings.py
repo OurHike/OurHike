@@ -5,6 +5,10 @@ The Interactive Map's fire, smoke and IFPL layers are third-party (NIFC, ODF, WA
 go to `_shared/`, not here.
 
 Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+
+Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
+robots.txt, terms and change check): https://closures.pcta.org/ (html_page);
+https://www.pcta.org/discover-the-trail/trail-conditions/ (html_page).
 """
 
 from datetime import date

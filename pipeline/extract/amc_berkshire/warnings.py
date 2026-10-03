@@ -7,6 +7,10 @@ crosses in MA; which of those parks are DCR's was not checked against the layer'
 vocabulary …
 
 Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+
+Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
+robots.txt, terms and change check): https://www.amc-wma.org/documents-more.cgi?id=112 (html_page);
+https://www.amc-wma.org/documents-more.cgi?id=13 (html_page).
 """
 
 from datetime import date

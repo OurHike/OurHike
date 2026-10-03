@@ -4,6 +4,10 @@ p02_persist).
 Licence: open_licence, public domain, a federal work. Folder: `usfs`.
 
 Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+
+Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
+robots.txt, terms and change check): https://www.fs.usda.gov/r08/alabama/alerts (html_page);
+https://www.fs.usda.gov/r08/chattahoochee-oconee/alerts (html_page).
 """
 
 from datetime import date

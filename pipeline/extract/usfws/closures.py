@@ -5,6 +5,9 @@ Page, scraped per refuge (about 570). The `fws-sync-trails` block name suggests 
 the trails inventory (Reasoned). If so, closures could land on segments. Nobody has confirmed it.
 
 Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+
+Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
+robots.txt, terms and change check): https://www.fws.gov/refuge/blackwater (html_page).
 """
 
 from datetime import date

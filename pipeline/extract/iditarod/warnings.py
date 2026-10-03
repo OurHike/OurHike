@@ -7,6 +7,18 @@ so none_stated. Its `EDITOR` field holds 1 distinct value, a person's name or ac
 The …
 
 Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+
+Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
+robots.txt, terms and change check): https://www.blm.gov/press-release/alaska/rss (rss);
+https://www.fs.usda.gov/r10/chugach/alerts (html_page);
+https://api.avalanche.org/v2/public/products/map-layer/CNFAIC (json_api).
+
+ArcGIS layers read and not wired as closures or warnings (decision 53 phase B, 2026-10-03):
+https://services1.arcgis.com/gGHDlz6USftL5Pau/arcgis/rest/services/CNF_ClosureAreaPolygons/FeatureServer,
+Chugach NF's 22 winter motorized closure-area layers, deferred in usfs/closures.py;
+https://services2.arcgis.com/Ce3DhLRthdwbHlfF/arcgis/rest/services/AvalancheZones/FeatureServer/0,
+historic avalanche paths last edited 2019-11-15, planning-grade and not a forecast; its EDITOR field
+names a person.
 """
 
 from datetime import date

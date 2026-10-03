@@ -12,6 +12,10 @@ Not landed, and why: the statewide pa.gov fragment `sunday-hunting` (an AEM pers
 same path, which nobody has checked. Hunting season is in scope when it does. The coverage audit's
 skeptic also pointed at `gis.dcnr.pa.gov/dcnrbsc/rest/services/Forestry/` for state-forest warnings,
 which are ArcGIS and decision 54 wave 1's; the LHHT is state park, not state forest.
+
+ArcGIS layers read and not wired as closures or warnings (decision 53 phase B, 2026-10-03):
+https://gis.dcnr.pa.gov/dcnrbsc/rest/services/Forestry, a folder listing, not a layer; not followed
+(state forests are not the LHHT's manager).
 """
 
 from datetime import date

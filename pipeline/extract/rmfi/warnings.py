@@ -4,6 +4,10 @@ batch p07_persist).
 Licence: as above. Folders: `usfs`, `cpw`.
 
 Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+
+Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
+robots.txt, terms and change check): https://www.fs.usda.gov/r02/psicc/alerts (html_page);
+https://coloradosprings.gov/ (City trail-closure page; no URL recorded by the audit) (html_page).
 """
 
 from datetime import date

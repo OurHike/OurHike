@@ -6,6 +6,11 @@ peregrine closures are cliff areas with no published geometry. They would be `pl
 Skeptic additions (Measured 2026-10-01): the page still reads "There are currently not closures" …
 
 Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+
+Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
+robots.txt, terms and change check): https://mohonkpreserve.org/wp-json/wp/v2/pages/13789
+(wordpress); https://mohonkpreserve.org/wp-json/wp/v2/pages?slug=peregrine-watch-updates
+(wordpress); https://mohonkpreserve.org/wp-json/wp/v2/wphash_ntf_bar (wordpress).
 """
 
 from datetime import date

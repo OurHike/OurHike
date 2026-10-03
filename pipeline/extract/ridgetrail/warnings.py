@@ -12,6 +12,9 @@ The coverage audit's note, kept as it was (restated from reference/org_coverage.
 trimmed where it ends in '…'):
 
 Do not load: it is personal data. It is listed only so the record is complete.
+
+Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
+robots.txt, terms and change check): https://www.ebparks.org/alerts-closures (html_page).
 """
 
 from datetime import date

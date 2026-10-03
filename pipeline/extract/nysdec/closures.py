@@ -4,6 +4,13 @@ The NYS GIS Clearinghouse decision (decisions 20 and 22) covers DEC's
 datasets, not its web pages (ELT.md, "Who may publish", rule 6), and the
 page's items are undated prose. So nothing loads for closures until a person
 decides how the page may be read.
+
+Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
+robots.txt, terms and change check):
+https://dec.ny.gov/things-to-do/hiking/adirondack-backcountry/backcountry-information-for-adirondack-park
+(html_page); https://content.govdelivery.com/accounts/NYSDEC/bulletins/37eccff (html_page);
+https://api.nysmesonet.org/data/firewx/GetFDRA/ (json_api - robots.txt disallows it, so not to be
+fetched).
 """
 
 from datetime import date

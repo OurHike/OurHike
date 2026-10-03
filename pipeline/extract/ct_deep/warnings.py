@@ -6,6 +6,19 @@ not route around the CAPTCHA: asking DEEP Forestry for a feed is the path. Skept
 CAPTCHA is still there on re-test. A search of the DEEP AGOL org for "fire danger" returns 0 …
 
 Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+
+Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
+robots.txt, terms and change check): https://ctparks.com/sitemap.xml (html_page);
+https://portal.ct.gov/deep/state-parks/emergency-message---parks (html_page);
+https://www.depdata.ct.gov/forestry/forestfire/firerpt.cshtml (html_page - robots.txt disallows it,
+so not to be fetched).
+
+ArcGIS layers read and not wired as closures or warnings (decision 53 phase B, 2026-10-03):
+https://services1.arcgis.com/FjPcSmEFuDYlIdKC/arcgis/rest/services/Areas_Closed_to_Hunting/FeatureServer/0,
+384 season-flag polygons saying which seasons apply where, not when;
+https://services1.arcgis.com/FjPcSmEFuDYlIdKC/arcgis/rest/services/DEEP_Trails_Set/FeatureServer/3,
+TRAILSTAT 'Needs Repair' on 3 of about 13,883 trails, an inventory flag rather than a closure (a
+trail_lines layer).
 """
 
 from datetime import date

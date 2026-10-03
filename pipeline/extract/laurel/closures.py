@@ -10,6 +10,10 @@ than guess"). On 2026-10-03 none of the four items was a closure.
 The page-banner fragment on pa.gov (`laurel-ridge-state-park-alert-cf`) is a standing pointer to
 the alerts page, "Important Park Alerts & Advisories" since 2024-10-23, not a notice, so it is not
 read. The trail's own conditions are posted on Facebook, which is not a notice source here.
+
+ArcGIS layers read and not wired as closures or warnings (decision 53 phase B, 2026-10-03):
+https://gis.dcnr.pa.gov/dcnrbsc/rest/services/Forestry, a folder listing, not a layer; not followed
+(state forests are not the LHHT's manager).
 """
 
 from datetime import date

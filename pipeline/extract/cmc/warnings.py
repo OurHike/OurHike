@@ -6,6 +6,11 @@ run: `https://carolinamountainclub.org/e-news-archive/` (page builder; REST `con
 read the HTML) links 34 eNews PDFs, 2024-01 to 2026-07 …
 
 Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+
+Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
+robots.txt, terms and change check): https://carolinamountainclub.org/trail-alerts/feed/ (rss);
+https://carolinamountainclub.org/wp-json/wp/v2/posts?categories=59 (wordpress);
+https://www.fs.usda.gov/r08/northcarolina/alerts (html_page).
 """
 
 from datetime import date

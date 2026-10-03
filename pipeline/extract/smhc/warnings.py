@@ -6,6 +6,15 @@ redirect to signed `cdn.wildapricot.com` URLs. (skeptic) Spot-checked: the newes
 (3,187,809 bytes, last-modified 2026-08-26); the page links 60 month slots to 2026-12 and the …
 
 Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+
+Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
+robots.txt, terms and change check):
+https://smhclub.org/resources/Documents/atmc_newsletters/2026/ATMC-0926.pdf (pdf).
+
+ArcGIS layers read and not wired as closures or warnings (decision 53 phase B, 2026-10-03):
+https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/GRSM_ROADS/FeatureServer/0,
+GRSM's roads, 697 of 1,925 'Temporarily Closed' and unedited since 2025-11-13: a seasonal road
+attribute, not a current notice.
 """
 
 from datetime import date

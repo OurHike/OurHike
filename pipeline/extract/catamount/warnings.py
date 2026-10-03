@@ -5,6 +5,16 @@ A page, and a NOTE paragraph rather than a structured field. One live hazard ban
 sections. Low volume, but it is the club's own hazard notice, which is what this mart holds.
 
 Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+
+Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
+robots.txt, terms and change check):
+https://catamounttrail.org/wp-json/wp/v2/pages?slug=section-31-jay-pass-to-canadian-border
+(wordpress); https://www.fs.usda.gov/r09/gmfl/alerts (html_page).
+
+ArcGIS layers read and not wired as closures or warnings (decision 53 phase B, 2026-10-03):
+https://anrmaps.vermont.gov/arcgis/rest/services/map_services/MAP_ANR_ANRATLASFPR_WM_NOCACHE/MapServer/3,
+Vermont ANR's trail layer: 1,625 trails, every Status 'EX', so it carries no closure (a trail_lines
+layer for decision 54's first wave).
 """
 
 from datetime import date

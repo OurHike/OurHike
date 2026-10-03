@@ -29,6 +29,19 @@ The coverage audit's other DCNR warnings (2026-10-01), all ArcGIS and all
 decision 54 wave 1's once registered: `agsprod/BOF/HuntStateForest/MapServer`
 (11 hunting layers), `pasda/DCNR2/MapServer/9` ("State Forest Gated Roads
 Open for Deer Season 202310", 308 features) and `BOF/SpongyMothSprayBlocks`.
+
+Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
+robots.txt, terms and change check):
+https://www.pa.gov/agencies/dcnr/recreation/where-to-go/state-forests/find-a-forest/tioga/advisories
+(html_page), the channel WHAT THIS MISSES names.
+
+ArcGIS layers read and not wired as closures or warnings (decision 53 phase B, 2026-10-03):
+https://maps.dcnr.pa.gov/agsprod/rest/services/BOF/HuntStateForest/MapServer, 11 layers ('Roads
+Opened for Deer Season', 'Elk Hunt Zones'); no layer was read, so none can be registered yet;
+https://maps.dcnr.pa.gov/agsprod/rest/services/BOF/SpongyMothSprayBlocks/MapServer, one layer
+'Spongy Moth Spray Blocks', not read;
+https://mapservices.pasda.psu.edu/server/rest/services/pasda/DCNR2/MapServer/9, 'Gated Roads Open
+for Deer Season 202310', the 2023 season's roads; self-expiring and three seasons old.
 """
 
 from extract._json_apis import dcnr_park_advisories

@@ -4,6 +4,10 @@ p07_persist).
 As for closures.
 
 Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+
+Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
+robots.txt, terms and change check): https://www.portland.gov/parks/nature/trail-closures-and-delays
+(html_page).
 """
 
 from datetime import date

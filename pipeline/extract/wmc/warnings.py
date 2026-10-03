@@ -6,6 +6,11 @@ explicit_restriction (quoted in the TYT warnings row). Folders: `_shared/utah_ug
 `usfs/warnings.py`, and `_shared/avalanche_org` if permitted. Avalanche matters from November.
 
 Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+
+Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
+robots.txt, terms and change check): https://www.fs.usda.gov/r04/uinta-wasatch-cache/alerts
+(html_page); https://api.avalanche.org/v2/public/products/map-layer (json_api);
+https://wasatchmountainclub.org/announcements (html_page).
 """
 
 from datetime import date

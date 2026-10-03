@@ -20,6 +20,12 @@ them; I did not read DNR's site terms. Its robots.txt allows `/parks` and disall
 and query strings. Folders: `nps/closures.py`, `usfs/closures.py`, and a new `alaska-state-parks`
 row for ASP. Do not read: `AKLT_Trail_Segments_(Internal)_view` answers 200 anonymously, but its
 name says internal. I did not open it; ask Alaska Trails first.
+
+Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
+robots.txt, terms and change check):
+https://www.fs.usda.gov/r10/chugach/alerts (html_page);
+https://dnr.alaska.gov/parks/asp/curevnts.htm (html_page);
+https://www.alaska-trails.org/trail-reports (html_page).
 """
 
 from datetime import date

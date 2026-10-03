@@ -6,6 +6,9 @@ until somebody reads a sample of each. Skeptic: today's split is type 3: 61, typ
 Alert 199, "Park Closed Due to Construction", is type 3, the same code as alert 177's "Need to …
 
 Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+
+Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
+robots.txt, terms and change check): https://tnstateparks.com/api/alerts (json_api).
 """
 
 from datetime import date

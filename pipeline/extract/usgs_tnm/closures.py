@@ -5,6 +5,10 @@ aggregates, keyed by `sourceoriginator`. The numeric `seasonopen` codes are undo
 not be read as open or closed (Reasoned).
 
 Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+
+The one notice source the phase A inventory listed for this folder (2026-10-03), USGS's elevated
+volcanoes API, lands once in _shared/usgs/volcanoes.py as `usgs_elevated_volcanoes`, on the warnings
+lane (decision 53, phase B), so nothing is left to wire here.
 """
 
 from datetime import date

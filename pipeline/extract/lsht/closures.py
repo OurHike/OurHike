@@ -4,6 +4,17 @@ c8_regional_5).
 The 2024 GeoJSON is stale-risk. The club says "the USFS website is the official position."
 
 Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+
+Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
+robots.txt, terms and change check):
+https://lonestartrail.org/content.aspx?page_id=22&club_id=738078&module_id=678717 (html_page);
+https://lonestartrail.org/content.aspx?page_id=3&club_id=738078 (html_page);
+https://lonestartrail.org/popup.aspx?page_id=126&club_id=738078 (html_page).
+
+ArcGIS layers read and not wired as closures or warnings (decision 53 phase B, 2026-10-03):
+https://www.arcgis.com/sharing/rest/content/items/26ead23c99224bdaac4702a269306301, a GeoJSON file
+item 'Closed Trail Sections' (59,545 B), not a layer, created and modified 2024-06-23; a GIS-file
+source for decision 54's second wave, 15 months stale.
 """
 
 from datetime import date

@@ -7,6 +7,13 @@ them. Skeptic: `https://www.mass.gov/locations/blue-hills-reservation` answers 4
 has no …
 
 Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+
+Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
+robots.txt, terms and change check): https://www.mass.gov/alerts/page/14961 (html_page);
+https://www.mass.gov/locations/blue-hills-reservation (html_page);
+https://friendsofthebluehills.org/feed/ (rss);
+https://friendsofthebluehills.org/wp-json/wp/v2/categories?per_page=100&_fields=id,name,slug,count
+(wordpress).
 """
 
 from datetime import date

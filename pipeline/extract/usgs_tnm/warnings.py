@@ -9,9 +9,9 @@ loads. Change checks are _kinds.py's ArcgisLayer: a conditional GET of the layer
 Online, the statistics fingerprint on an on-prem server, and an allowed zero only beside the
 server's own returnCountOnly read in the same run.
 
-Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
-robots.txt, terms and change check):
-https://volcanoes.usgs.gov/hans-public/api/volcano/getElevatedVolcanoes (json_api).
+The one notice source the phase A inventory listed for this folder (2026-10-03), USGS's elevated
+volcanoes API, lands once in _shared/usgs/volcanoes.py as `usgs_elevated_volcanoes`, on the warnings
+lane (decision 53, phase B), so nothing is left to wire here.
 
 Before decision 53 phase B, 2026-10-03, this file was a note. It read, whole:
 

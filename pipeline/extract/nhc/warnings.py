@@ -6,6 +6,11 @@ a cross-check plus the bear-box fact. The feed also carries volunteer-hour remin
 title ("Nantahala Hiking Club Newsletter").
 
 Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+
+Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
+robots.txt, terms and change check):
+https://us7.campaign-archive.com/feed?u=925ff9fcd932406a399b6bcf3&id=e76f54b460 (rss - robots.txt
+disallows it, so not to be fetched); https://nantahalahikingclub.org/newsletters/ (html_page).
 """
 
 from datetime import date

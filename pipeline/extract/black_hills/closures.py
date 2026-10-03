@@ -5,6 +5,10 @@ Pages and RSS, not GIS, so decision 21's presumption does not apply. Both are fe
 domain under `usfs_licence` (17 U.S.C. 105) and the same basis for BLM. Folders: `usfs/`, `blm/`.
 
 Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+
+Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
+robots.txt, terms and change check): https://www.fs.usda.gov/r02/blackhills/alerts (html_page);
+https://www.blm.gov/press-release/montana-dakotas/rss (rss).
 """
 
 from datetime import date

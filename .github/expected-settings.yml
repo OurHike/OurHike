@@ -93,6 +93,19 @@ settings:
       The other half, shown once at creation, so a lost one is a reminted
       key. Required: false for R2_RAW_BUCKET's reason.
 
+  NPS_API_KEY:
+    where: secret
+    required: false
+    why: >-
+      The National Park Service alerts API's key (developer.nps.gov, free from
+      https://www.nps.gov/subjects/developer/get-started.htm), read by
+      publish-conditions.yml's conditions extract step for decision 53's NPS
+      alerts and road events (pipeline/extract/_json_apis.py, "THE KEY").
+      REQUIRED: FALSE because an hour without it is honest rather than wrong:
+      the two NPS tables read as unavailable with a warning, no NPS alert
+      reaches dbt for the 27 park codes 26 clubs draw on, and the leg stays
+      green. Not created yet (2026-10-03); the maintainer mints it.
+
   HIKEFINDER_PASSWORD:
     where: secret
     required: false

@@ -3168,13 +3168,19 @@
       "attribution": "Washington State Department of Natural Resources",
       "person_fields": [
         "REGION_EMAIL_ADDR",
-        "REGION_PHONE_NO"
+        "REGION_PHONE_NO",
+        "REGION_LN_1_ADDR",
+        "REGION_LN_2_ADDR",
+        "REGION_CITY_NAME",
+        "REGION_STATE",
+        "REGION_ZIP_CODE",
+        "REGION_ZIP_EXT"
       ],
-      "person_fields_comment": "Read off the layer's live field list in the decision 53 phase A inventory (2026-10-03): each names or reaches a person (an editor account, an e-mail address, a phone number, a named team member), so the extract leaves it out of the fields it asks for and it never reaches the raw store (pipeline/ELT.md, 'Who may publish', rule 8).",
+      "person_fields_comment": "Read off the layer's live field list in the decision 53 phase A inventory (2026-10-03): each names or reaches a person (an editor account, an e-mail address, a phone number, a named team member), so the extract leaves it out of the fields it asks for and it never reaches the raw store (pipeline/ELT.md, 'Who may publish', rule 8). The region office's mailing address fields are left out with its phone and e-mail, as the phase A inventory's reading of this layer said ('Region phone/address/email fields: never copy', 2026-10-03): an office contact, not a closure fact, and nothing a hiker's card needs.",
       "id_field": "OBJECTID",
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 5, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
-      "notes": "23 fire-danger-rating areas on 2026-10-03: Moderate 18, Low 5 (20 and 3 on 2026-10-01: it moves). FIRE_DANGER_LEVEL_NM, BURN_BAN_LEVEL_NM, NOTES_TXT. On-prem ArcGIS Server 11.5 with no date field: the change check answers UNKNOWN and the 23 polygons are read each hour. Contact fields REGION_PHONE_NO and REGION_EMAIL_ADDR are left out with the person fields; the office address fields are kept. Layer /1 (Burn Bans) was not re-read and is not wired. Read by this step at 2026-10-03T16:09:36Z: returnCountOnly under the row's `where` answered 23, and `OBJECTID` is distinct on 23 of them (returnDistinctValues), the key phase C builds on.",
+      "notes": "23 fire-danger-rating areas on 2026-10-03: Moderate 18, Low 5 (20 and 3 on 2026-10-01: it moves). FIRE_DANGER_LEVEL_NM, BURN_BAN_LEVEL_NM, NOTES_TXT. On-prem ArcGIS Server 11.5 with no date field: the change check answers UNKNOWN and the 23 polygons are read each hour. Contact fields REGION_PHONE_NO and REGION_EMAIL_ADDR and the region office's six address fields are left out with the person fields. Layer /1 (Burn Bans) was not re-read and is not wired. Read by this step at 2026-10-03T16:09:36Z: returnCountOnly under the row's `where` answered 23, and `OBJECTID` is distinct on 23 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
       "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
     },
@@ -3192,9 +3198,12 @@
       "attribution": "Washington State Department of Natural Resources",
       "person_fields": [
         "RGN_EMAIL",
-        "RGN_PHONE"
+        "RGN_PHONE",
+        "RGN_ADDR",
+        "RGN_CITY",
+        "RGN_ZIP"
       ],
-      "person_fields_comment": "Read off the layer's live field list in the decision 53 phase A inventory (2026-10-03): each names or reaches a person (an editor account, an e-mail address, a phone number, a named team member), so the extract leaves it out of the fields it asks for and it never reaches the raw store (pipeline/ELT.md, 'Who may publish', rule 8).",
+      "person_fields_comment": "Read off the layer's live field list in the decision 53 phase A inventory (2026-10-03): each names or reaches a person (an editor account, an e-mail address, a phone number, a named team member), so the extract leaves it out of the fields it asks for and it never reaches the raw store (pipeline/ELT.md, 'Who may publish', rule 8). The region office's mailing address fields are left out with its phone and e-mail, as the phase A inventory's reading of this layer said ('Region phone/address/email fields: never copy', 2026-10-03): an office contact, not a closure fact, and nothing a hiker's card needs.",
       "freshness": {
         "kind": "arcgis_max_field",
         "field": "EDIT_DT",
@@ -3203,7 +3212,7 @@
       "id_field": "OBJECTID",
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 5, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
-      "notes": "37 zones on 2026-10-03, all level 1; max FIRE_PRECAUTION_EFFECTIVE_DT 2026-10-03. Contact fields RGN_PHONE and RGN_EMAIL are left out with the person fields. Read by this step at 2026-10-03T16:09:41Z: returnCountOnly under the row's `where` answered 37, and `OBJECTID` is distinct on 37 of them (returnDistinctValues), the key phase C builds on.",
+      "notes": "37 zones on 2026-10-03, all level 1; max FIRE_PRECAUTION_EFFECTIVE_DT 2026-10-03. Contact fields RGN_PHONE and RGN_EMAIL and the region office's three address fields are left out with the person fields. Read by this step at 2026-10-03T16:09:41Z: returnCountOnly under the row's `where` answered 37, and `OBJECTID` is distinct on 37 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
       "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
     },

@@ -32,7 +32,10 @@ import hashlib
 import json
 import os
 import sys
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
+from itertools import islice
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -56,6 +59,7 @@ from extract._run import (
     proven_zero,
     run_log_rows,
     table_files,
+    table_listing,
 )
 
 
@@ -171,11 +175,19 @@ def not_yet_loaded(pipeline, committed: dict[str, str], log: list[dict] | None =
 
 
 def load_warehouse(
-    con: duckdb.DuckDBPyConnection, pipeline, schema: str = "raw", log: list[dict] | None = None
+    con: duckdb.DuckDBPyConnection, pipeline, schema: str = "raw", log: list[dict] | None = None, readers: int = 1
 ) -> dict[str, int]:
     """Replace each extracted table in `schema` with its committed rows. Returns {table: rows}.
 
     `log` is `_extract_runs` where the caller has read it already; it is read once otherwise.
+
+    `readers` tables are read from the store at once, in a window that holds
+    no more than that many tables' rows: one for the monthly lane, whose
+    tables run to hundreds of megabytes and whose ninth run ran out of memory,
+    and LEG_READERS for a conditions leg, whose 92 tables took about 55 s one
+    after another in soak run 508 (publish-conditions.yml 37158027469). The
+    files are listed once (table_listing()), and only this thread writes to
+    `con`, so the window changes how long the read takes, never what lands.
     """
     client = _client(pipeline)
     con.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
@@ -183,8 +195,18 @@ def load_warehouse(
     log = run_log_rows(pipeline) if log is None else log
     log_rows = {(row["table_name"], row.get("load_id")): row for row in log}
     committed = committed_tables(pipeline, log=log)
-    for table, load_id in sorted(committed.items()):
-        files = table_files(pipeline, table, load_id)
+    listing = table_listing(pipeline, list(committed))
+
+    def read(item: tuple[str, str]):
+        table, load_id = item
+        files = [path for path in listing.get(table, []) if os.path.basename(path).startswith(f"{load_id}.")]
+        if not files:
+            return files, None
+        return files, pa.concat_tables(
+            [pq.read_table(client.fs_client.open(path)) for path in files], promote_options="permissive"
+        )
+
+    for (table, load_id), (files, arrow) in windowed(read, sorted(committed.items()), readers):
         if not files:
             row = log_rows.get((table, load_id)) or {}
             if proven_zero(row):
@@ -192,7 +214,6 @@ def load_warehouse(
                 loaded[table] = 0
                 continue
             raise BuildRefused(f"{table}: no committed file from load {load_id}; refusing rather than reading it as empty")
-        arrow = pa.concat_tables([pq.read_table(client.fs_client.open(path)) for path in files], promote_options="permissive")
         con.register("_committed", arrow)
         con.execute(f'CREATE OR REPLACE TABLE "{schema}"."{table}" AS SELECT * FROM _committed')
         con.unregister("_committed")
@@ -214,6 +235,32 @@ def load_warehouse(
         con.execute(f'CREATE OR REPLACE TABLE "{schema}"."{RUNS_TABLE}" AS SELECT * FROM _runs')
         con.unregister("_runs")
     return loaded
+
+
+#: A conditions leg's warehouse read: tables read from the store at once (load_warehouse()).
+#: 8 is @unvalidated: a leg's tables are small (soak run 508's 92 held 11,999 rows),
+#: and the step summary's warehouse timing on the next runs settles whether it is enough.
+LEG_READERS = 8
+
+
+def windowed(work, items: list, size: int):
+    """(item, work(item)) for each item, in order, with at most `size` running or waiting to be taken at once."""
+    if size <= 1:
+        for item in items:
+            yield item, work(item)
+        return
+    pending = deque()
+    with ThreadPoolExecutor(max_workers=size) as pool:
+        queue = iter(items)
+        for item in islice(queue, size):
+            pending.append((item, pool.submit(work, item)))
+        while pending:
+            item, future = pending.popleft()
+            answer = future.result()
+            following = next(queue, None)
+            if following is not None:
+                pending.append((following, pool.submit(work, following)))
+            yield item, answer
 
 
 # --- A pinned raw_run (the module docstring, "A PINNED RAW_RUN") ---

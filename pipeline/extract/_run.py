@@ -85,6 +85,7 @@ os.environ.setdefault("SCHEMA__NAMING", "sql_ci_v1")
 import dlt  # noqa: E402
 import pyarrow.parquet as pq  # noqa: E402
 from dlt.common.schema.exceptions import DataValidationError  # noqa: E402
+from dlt.common.storages.fsspec_filesystem import glob_files  # noqa: E402
 from dlt.pipeline.exceptions import PipelineStepFailed  # noqa: E402
 
 from extract import _kinds  # noqa: E402
@@ -377,6 +378,35 @@ def quiet_refusals(report: RunReport, resources: list[Resource]) -> set[str]:
         if row is not None and row.get("reaches_hikers") is False:
             quiet.add(name)
     return quiet
+
+
+def by_folder(resources: list[Resource], work: Callable) -> list:
+    """`work(resource)` for each resource, in order, one thread per extract folder.
+
+    A folder's resources are asked one after another, so no host is asked
+    twice at once, the rule read_each() keeps. Each answer is what `work`
+    returned, or the exception it raised, for the caller to handle in order.
+    Soak run 508 (publish-conditions.yml 37158027469) spent 29 s asking 89
+    upstreams one at a time, with 190 more notice sources being wired.
+    """
+    answers: dict[int, object] = {}
+
+    def run(items: list[tuple[int, Resource]]) -> None:
+        for index, resource in items:
+            try:
+                answers[index] = work(resource)
+            except BaseException as failure:  # noqa: BLE001 - handed back to the caller, which re-raises it
+                answers[index] = failure
+
+    groups: dict[str | None, list[tuple[int, Resource]]] = defaultdict(list)
+    for index, resource in enumerate(resources):
+        groups[resource.club].append((index, resource))
+    threads = [threading.Thread(target=run, args=(items,), name=f"check {club}", daemon=True) for club, items in groups.items()]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    return [answers[index] for index in range(len(resources))]
 
 
 def exit_status(report: RunReport) -> int:
@@ -861,6 +891,28 @@ def table_files(pipeline, table: str, load_id: str | None = None) -> list[str]:
     return sorted(files)
 
 
+def table_listing(pipeline, tables: list[str]) -> dict[str, list[str]]:
+    """{table: its Parquet files} for each of `tables`, from one listing of the dataset rather than one per table.
+
+    The same files table_files() lists: dlt 1.30.0's list_table_files() globs
+    the table's directory and keeps the paths under the table's own prefix,
+    and this keeps the paths under each prefix from one glob of the dataset.
+    tests/test_extract_run.py holds the two equal. A store with nothing in it
+    yet lists nothing.
+    """
+    client = _client(pipeline)
+    root = client.pathlib.join(client.dataset_path, "")
+    try:
+        found = [
+            client.pathlib.join(root, details["relative_path"])
+            for details in glob_files(client.fs_client, client.make_remote_url(root), "**")
+        ]
+    except FileNotFoundError:
+        return {}
+    found = sorted(path for path in found if path.endswith(".parquet"))
+    return {table: [path for path in found if path.startswith(client.get_table_prefix(table))] for table in tables}
+
+
 def rows_on_disk(pipeline, files: list[str]) -> int:
     client = _client(pipeline)
     return sum(pq.ParquetFile(client.fs_client.open(path)).metadata.num_rows for path in files)
@@ -900,14 +952,16 @@ def readable_tables(pipeline, log: list[dict], complete: set[str]) -> dict[str, 
     return committed_tables(pipeline, log=log, complete=complete)
 
 
-def fresh_but_unserved(pipeline, resource: Resource, load_id: str | None, row: dict, landed=None) -> str | None:
+def fresh_but_unserved(
+    pipeline, resource: Resource, load_id: str | None, row: dict, landed=None, files: list[str] | None = None
+) -> str | None:
     """Why a FRESH verdict cannot stand, or None. `landed`, in an --as-landed run, gives a load's as-landed index.
 
     FRESH keeps the served load, so that load must still have its files, and,
     in an --as-landed run, the as-landed file the pin copies: an upload that
     failed after the run log leaves a logged load with none.
     """
-    if not load_id or not served_files_intact(pipeline, resource.table, load_id, row):
+    if not load_id or not served_files_intact(pipeline, resource.table, load_id, row, files=files):
         return f"the files of load {load_id} are gone"
     if landed is not None and as_landed_path(resource) is not None and resource.table not in landed(load_id):
         return f"load {load_id} wrote no as-landed file"
@@ -919,7 +973,7 @@ def proven_zero(row: dict) -> bool:
     return row.get("rows") == 0 and row.get("count_proof") == 0 and row.get("column_hints") is not None
 
 
-def served_files_intact(pipeline, table: str, load_id: str, row: dict) -> bool:
+def served_files_intact(pipeline, table: str, load_id: str, row: dict, files: list[str] | None = None) -> bool:
     """Whether the table's files are still those of `load_id`, the load a build serves it from.
 
     A later load's `replace` deletes them, and that load's marker can reach
@@ -927,7 +981,7 @@ def served_files_intact(pipeline, table: str, load_id: str, row: dict) -> bool:
     complete_load() stores the state before the `_dlt_loads` row. A first-run
     proven zero has no file at all.
     """
-    files = table_files(pipeline, table)
+    files = table_files(pipeline, table) if files is None else files
     if any(not os.path.basename(path).startswith(f"{load_id}.") for path in files):
         return False
     return bool(files) or proven_zero(row)
@@ -1223,15 +1277,18 @@ def _run(
             return as_landed_index(_client(pipeline).fs_client, bucket_url, load_id, indexes)
 
         plan_resources = due(plan_resources, log, checked_at)
+        # One listing of the store for every FRESH verdict's served-files check,
+        # not one per table: each was a request to R2.
+        listing = table_listing(pipeline, [resource.table for resource in plan_resources])
     planned, unavailable = [], []
     with timed(report, "change checks"):
-        for resource in plan_resources:
+
+        def ask(resource: Resource):
             # A MARKER COUNTS ONLY BESIDE ROWS A BUILD CAN READ. With no logged,
             # committed load (`current`) it is read as none: refresh-reference.yml's
             # monthly run 37070628933 committed with no `_extract_runs` row, and
             # 37081046157 then answered 53 resources FRESH whose rows no build
-            # could see. And a FRESH verdict is UNKNOWN when the served load cannot
-            # give a build what it needs (fresh_but_unserved()).
+            # could see.
             stored = recorded.get(resource.name) if resource.table in current else None
             # A marker of another definition of the resource, or of none, is no marker (definition_digest()).
             definition = definition_digest(resource)
@@ -1239,22 +1296,30 @@ def _run(
                 before = {name: value for name, value in stored.items() if name != DEFINITION_KEY}
             else:
                 before = None
-            try:
-                verdict, marker = resource.change_check(before)
-                marker = {**marker, DEFINITION_KEY: definition} if marker else None
-                if verdict is Freshness.FRESH:
-                    load_id = current.get(resource.table)
-                    row = served.get((resource.table, load_id), {})
-                    if gap := fresh_but_unserved(pipeline, resource, load_id, row, landed if as_landed else None):
-                        print(f"  {resource.name}: fresh, but {gap}; reading it again")
-                        verdict = Freshness.UNKNOWN
-            except Unavailable as reason:
+            verdict, marker = resource.change_check(before)
+            return stored, verdict, {**marker, DEFINITION_KEY: definition} if marker else None
+
+        # The upstreams are asked one folder per thread (by_folder()), and
+        # everything that touches the store or the report happens here, in order.
+        for resource, outcome in zip(plan_resources, by_folder(plan_resources, ask)):
+            if isinstance(outcome, Unavailable):
                 # An annotation, so the gap reaches the run summary rather than only the step log.
-                print(f"::warning title={resource.name} is unavailable::{reason}")
+                print(f"::warning title={resource.name} is unavailable::{outcome}")
                 unavailable.append(resource)
-                report.unavailable[resource.name] = str(reason)
+                report.unavailable[resource.name] = str(outcome)
                 report.verdicts[resource.name] = UNAVAILABLE
                 continue
+            if isinstance(outcome, BaseException):
+                raise outcome
+            stored, verdict, marker = outcome
+            if verdict is Freshness.FRESH:
+                # A FRESH verdict is UNKNOWN when the served load cannot give a build what it needs.
+                load_id = current.get(resource.table)
+                row = served.get((resource.table, load_id), {})
+                files = listing.get(resource.table, [])
+                if gap := fresh_but_unserved(pipeline, resource, load_id, row, landed if as_landed else None, files=files):
+                    print(f"  {resource.name}: fresh, but {gap}; reading it again")
+                    verdict = Freshness.UNKNOWN
             planned.append(Planned(resource, verdict, stored, marker))
             report.verdicts[resource.name] = verdict.value
     to_run = [item for item in planned if item.verdict is not Freshness.FRESH]
@@ -1503,11 +1568,12 @@ def load_committed(
     Imported here rather than at the top, because that module imports this one."""
     import duckdb
 
-    from extract._warehouse import load_warehouse
+    from extract._warehouse import LEG_READERS, load_warehouse
 
     warehouse.parent.mkdir(parents=True, exist_ok=True)
     with duckdb.connect(str(warehouse)) as con:
-        return load_warehouse(con, make_pipeline(lane, bucket_url, pipelines_dir), log=log)
+        readers = LEG_READERS if lane in LEGS else 1
+        return load_warehouse(con, make_pipeline(lane, bucket_url, pipelines_dir), log=log, readers=readers)
 
 
 def main(argv: list[str] | None = None) -> RunReport:

@@ -15,6 +15,7 @@ under tmp_path, under conftest.py's socket guard.
 
 from __future__ import annotations
 
+import threading
 import time
 from dataclasses import dataclass
 
@@ -491,3 +492,61 @@ def test_a_refusal_fails_the_exit_only_when_its_source_may_reach_a_hiker(monkeyp
         report.isolated = {resources[0].name: "answered 500", other.name: "answered 500"}
         report.quiet = _run.quiet_refusals(report, resources)
         assert report.quiet == {"raw_c0__quiet"} and _run.exit_status(report) == _run.PARTIAL_EXIT, other.key
+
+
+def test_one_listing_of_the_store_gives_each_table_the_files_table_files_lists(store):
+    """table_listing() replaces a request per table with one glob, so it must list exactly what table_files() does."""
+    leg(store, club_closures("atc", "a1", count=1), club_closures("nynjtc", "n1", count=1))
+    leg(store, club_closures("atc", "a1", "a2", count=2), club_closures("nynjtc", "n1", count=1))
+    pipeline = make_pipeline("conditions_ua", store["url"], store["dir"])
+    tables = ["raw_atc__closures", "raw_nynjtc__closures", "raw_never__closures", "_extract_runs"]
+
+    listing = _run.table_listing(pipeline, tables)
+
+    assert listing == {table: _run.table_files(pipeline, table) for table in tables}
+    assert listing["raw_atc__closures"] and listing["raw_never__closures"] == []
+
+
+def test_the_warehouse_window_reads_in_order_and_never_holds_more_than_its_size():
+    from extract._warehouse import windowed
+
+    running, most = 0, 0
+    lock = threading.Lock()
+
+    def work(item):
+        nonlocal running, most
+        with lock:
+            running += 1
+            most = max(most, running)
+        time.sleep(0.01)
+        with lock:
+            running -= 1
+        return item * 2
+
+    assert list(windowed(work, list(range(12)), 3)) == [(n, n * 2) for n in range(12)]
+    assert 1 < most <= 3
+    assert list(windowed(work, [1, 2], 1)) == [(1, 2), (2, 4)]
+
+
+def test_change_checks_run_a_folder_at_a_time_in_order_and_hand_back_a_failure():
+    """by_folder(): no host is asked twice at once, answers come back in the resources' order, a raise is returned."""
+    resources = [club_closures(club, "x") for club in ("a", "b", "a", "c", "b", "a")]
+    busy: dict[str, int] = {}
+    overlapped = []
+    lock = threading.Lock()
+
+    def work(resource):
+        with lock:
+            busy[resource.club] = busy.get(resource.club, 0) + 1
+            overlapped.append(busy[resource.club] > 1)
+        time.sleep(0.01)
+        with lock:
+            busy[resource.club] -= 1
+        if resource.club == "c":
+            raise RuntimeError("c answered 500")
+        return resource.club
+
+    answers = _run.by_folder(resources, work)
+
+    assert answers[:3] == ["a", "b", "a"] and answers[4:] == ["b", "a"]
+    assert isinstance(answers[3], RuntimeError) and not any(overlapped)

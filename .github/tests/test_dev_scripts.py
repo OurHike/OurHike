@@ -18,6 +18,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = [
     REPO_ROOT / "scripts" / "test.sh",
@@ -100,6 +102,23 @@ def test_the_client_scope_carries_the_entries_whose_absence_was_the_drift():
     assert "site/" in scope
     assert "pipeline/reference/" in scope
     assert ".github/ISSUE_TEMPLATE/" in scope
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        # client/src/lib/dataRelease.pointer.test.ts and config.phoneFileKey.test.ts
+        "channels.json",
+        # client/src/lib/config.phoneFileKey.test.ts, which reads every *.yml there
+        "pipeline/dbt/models/publish/_publish__elevation.yml",
+    ],
+)
+def test_the_client_scope_covers_the_files_decision_44s_client_tests_read(path):
+    """client-tests.yml's own rule: a suite's scope includes every file its
+    tests read. Without these, the promotion pull request, which changes
+    channels.json and nothing else, ran no check of its entries against the
+    client's release-id rule. Matched as changed-paths matches, by prefix."""
+    assert any(path.startswith(prefix) for prefix in _scope("client").split()), path
 
 
 def test_no_script_invokes_a_bare_python_or_python3():

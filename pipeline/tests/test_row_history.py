@@ -66,7 +66,8 @@ def test_a_saved_history_restores_into_a_new_warehouse_row_for_row(tmp_path):
     assert "restored save" in message
     assert _rows(second) == _rows(first)
     with duckdb.connect(str(second)) as con:
-        types = con.execute("select data_type from information_schema.columns where table_name = 'int_things__history'").fetchall()
+        columns = "select data_type from information_schema.columns where table_name = 'int_things__history'"
+        types = con.execute(columns).fetchall()
     assert ("TIMESTAMP",) in types, "dbt_valid_from comes back as the TIMESTAMP dbt wrote, not as text"
 
 
@@ -168,7 +169,8 @@ def test_a_cold_start_drops_whatever_history_the_warehouse_already_held(tmp_path
     restore(str(tmp_path / "store"), warehouse, cold_start=True)
 
     with duckdb.connect(str(warehouse)) as con:
-        assert con.execute("select count(*) from information_schema.tables where table_schema = 'intermediate'").fetchone() == (0,)
+        tables = "select count(*) from information_schema.tables where table_schema = 'intermediate'"
+        assert con.execute(tables).fetchone() == (0,)
 
 
 def test_only_tables_named_history_are_saved_restored_or_dropped_never_the_intermediate_models_beside_them(tmp_path):

@@ -15,7 +15,9 @@ This is the design for **#1793 — Rebuild the data platform as dlt → dbt: sev
 - [Where data lives between runs](#where-data-lives-between-runs): storage tiers, DuckLake, a full reload that cannot empty a safety table, skip checks, stable keys, how dbt builds (open), geometry rules
 - [Running it](#running-it): workflows, the hourly lanes, cadence, CI, secrets, docs, skills
 - [Every club's closures and alerts (decision 53)](#every-clubs-closures-and-alerts-decision-53): where it stands, the rules it keeps, phases A to G
-- [Phases](#phases): the build stages of one pull request, and the go/no-go gate
+- [Row dates (decision 52)](#row-dates-decision-52): first seen and last changed on every row, from one dbt snapshot per source
+- [What the clubs publish that is not loaded yet](#what-the-clubs-publish-that-is-not-loaded-yet): the tally, what makes the gaps, the plan for the rest
+- [Phases](#phases): the build stages of one pull request, the work in flight, and the go/no-go gate
 - [Risks and what nobody has checked](#risks-and-what-nobody-has-checked): the register, and every `@unvalidated` claim
 - [Open questions for the maintainer](#open-questions-for-the-maintainer)
 
@@ -3475,6 +3477,92 @@ format. C and D start once decision 52's staging conventions land, so the new
 staging models carry row dates from the start. E waits on the panel decision.
 F and G close it.
 
+## Row dates (decision 52)
+
+**Every row of every intermediate and mart model says when OurHike first saw it and when it last changed.** The maintainer, 2026-10-03: *"Is there a date field for each row? Maybe we should track when the last updated at datetime was … Like for every row in the int & marts folders."* Until this lands, a row carries `_loaded_at`, which is the run that last fetched its table, not the day the row itself appeared or moved.
+
+### What a row carries
+
+| column | means | comes from |
+|---|---|---|
+| `_first_seen_at` | the first run in which a row with this key existed | the source's snapshot: the earliest `dbt_valid_from` for the key |
+| `_changed_at` | the last run in which this row's content differed from the run before | the snapshot: the newest `dbt_valid_from` for the key |
+| the source's own date, under its own name | what the publisher says, such as ArcGIS `dataLastEditDate` or a WordPress `modified` | the raw table, unchanged. Never filled in when the source has none |
+
+**Neither date is ever invented.** A source with no date of its own carries only the two OurHike dates, and a reader is never told the publisher's date is OurHike's.
+
+### How the dates are made
+
+1. **One dbt snapshot per base model**, under `dbt/snapshots/`, with the check strategy on the model's key and `_row_hash` (a hash of every column except the bookkeeping ones). The snapshot holds only the key, the hash and dbt's validity columns, so it stays small whatever the row is.
+2. **The snapshots outlive the warehouse.** `warehouse.duckdb` is rebuilt every run, so each job restores the snapshot tables from `OURHIKE_HISTORY_URL` (a prefix in the private raw store) before `dbt build` and writes them back after a build whose checks passed. A failed build writes nothing back, so a bad run cannot rewrite history.
+3. **A deleted row closes.** The snapshots set `hard_deletes`, so a key that leaves its source gets an end date rather than lingering as current.
+4. **Downstream models carry both columns.** A model that joins several inputs takes the earliest `_first_seen_at` and the latest `_changed_at` of the rows it combined, through two macros, so a mart row moves when any of its inputs moved.
+5. **A test enforces it.** A pytest fails any intermediate or mart model without both columns. It starts with a `PENDING` set of the models not yet converted, and go needs that set empty.
+
+### The cold start, said honestly
+
+**The first run has no history.** Every row it sees gets that run's time as `_first_seen_at`, which is the day history began, not the row's age. The same holds after a lost history prefix. So the first run's dates are marked as the start of history, and nothing a hiker sees may read "new" from a `_first_seen_at` equal to it. The exact marker is the foundation commit's to set; until it is in, this paragraph is the rule.
+
+### Order of work
+
+1. **The foundation** (one worker): the snapshot macro and one snapshot per base model, the restore and write-back steps in `refresh-reference.yml` and `publish-conditions.yml`, the two carrying macros, and the test with every model in `PENDING`.
+2. **Five family conversions, in parallel**, each emptying its own part of `PENDING`: closures and warnings; trail_lines and trail_network; points_of_interest; elevation and suggested_hikes; places, sources, podcasts and challenges.
+3. **Notices' `checked_at`** (decision 53, phase D) rides on top: the time OurHike last read the notice, which moves every hour even when `_changed_at` does not.
+
+### What nobody has checked yet
+
+- **The hourly cost.** Restoring and writing back the closures and warnings snapshots adds time to every hourly run, which has a read budget (phase F of decision 53 measures it). `@unvalidated`: settled by timing the first hourly run that carries them.
+- **How large the history grows.** One row per key per change. `@unvalidated`: settled by the history prefix's size after the 3-day soak.
+- **The hash is only as good as the columns it covers.** A column that changes every fetch without meaning anything (a server timestamp) would make every row look changed every run. Each base model's hash leaves those columns out, and the test cannot know which they are, so this is a reviewer's check.
+
+## What the clubs publish that is not loaded yet
+
+**The maintainer, 2026-10-03:** *"How many of the data sources haven't been loaded? Like I thought we were loading ALL of the data. Do the other POIs need to get loaded for the orgs? What else is making data gaps?"*
+
+**Every one of the 145 club folders exists, and each extracts only what has a `sources.json` row.** Decision 18 made the folders and decision 35 made extraction ungated, but a builder takes a registry key, never a URL ([The folder contract](#the-folder-contract)), so a dataset nobody has registered is written as a dated note and is not fetched.
+
+### The tally (Measured 2026-10-03, the branch at 61614049, every type file in the 145 folders)
+
+| type | loaded | shared with a sibling file | drawn from another folder | **published, not loaded** | not published | unclear |
+|---|---|---|---|---|---|---|
+| trail_lines | 26 | | 59 | **55** | 4 | 1 |
+| points_of_interest | 7 | | 19 | **112** | 4 | 3 |
+| elevation | 0 | 1 | 1 | **34** | 98 | 10 |
+| closures | 3 | | 9 | **121** | 9 | 2 |
+| warnings | 0 | 2 | 5 | **124** | 11 | 2 |
+| places | 3 | | 15 | **122** | 3 | 1 |
+| suggested_hikes | 1 | 1 | | **115** | 25 | 2 |
+| podcasts | 1 | | | **37** | 102 | 4 |
+| challenges | 1 | | | **89** | 51 | 3 |
+| photos | 1 | 1 | 17 | **33** | 78 | 15 |
+| **all ten** | **43** | **5** | **125** | **842** | **385** | **43** |
+
+Every folder's `org.py` also loads its catalogue row (145 of 145). Seven files hold some other note, such as a terms quotation, and are not counted above. "Drawn from another folder" is the `via` rule: the club's portion of a dataset another folder extracts, such as USFS's national trail layer (decision 34). "Not published" is a note saying the search found nothing; "unclear" is a note whose search was not finished.
+
+**What format the 842 are in** (Reasoned, not counted file by file): `reference/org_coverage.json`'s evidence for the same clubs' AVAILABLE_NOT_LOADED rows, classified by keyword, gives about 206 ArcGIS layers, 13 GIS files (KML, GPX, GeoJSON, shapefiles), 203 feeds or APIs, 72 PDFs and 374 web pages. That file counts 868 such rows for these clubs, not 842, and the two have not been reconciled; the folder notes are the one home.
+
+### What makes the gaps
+
+1. **No registry row** (the 842). Each needs a `sources.json` row with its licence and terms recorded, then a resource. This is the whole gap for the 206 ArcGIS layers, whose reader already exists.
+2. **No reader for the format.** Readers exist for ArcGIS, Socrata, WordPress, NYNJTC's guide pages and Hike Finder, and GATC's water PDF. The 374 web pages and 72 PDFs mostly need a reader per site.
+3. **Loaded but held back.** Publication is decided in dbt (`int_sources__publication`), and 5 of the 64 registry rows have `reaches_hikers` false. The open questions in [The go/no-go gate](#the-gono-go-gate), PA DCNR's Explore PA Trails and ONDA's `ODT Tracks` among them, hold their rows too.
+4. **Organisations with no folder.** `org_coverage.json` holds 120 organisations outside the 145: the 92 candidate stewards `trail_candidates.json` names, the umbrellas and route-only trails `_shared/not_clubs.py` lists, and two USFS units. Their 1,200 rows are not extracted at all, because decision 18's folders are `trail_orgs.json`'s managing clubs.
+5. **Blocked on another issue.** OSM's water on **#1652 — Download OSM's Geofabrik extracts at most once a month, into a private raw bucket that outlives the 7-day Actions cache**, and the drought feed on **#1804 — fetch_drought.py fetches droughtmonitor.unl.edu/data/, a path the Drought Monitor's robots.txt disallows for every user agent**.
+6. **Elevation has holes the DEM leaves.** 125 of 3,551,452 network edges have no elevation at all (124 NPS, 1 CDTC), measured on publish-vector-data.yml run 37114537637 (`int_elevation__edge_climbs.sql`).
+7. **The note's name hides the gap.** A published-but-unregistered dataset is written as a `NOT_AVAILABLE` note, whose name says the data does not exist. The note's `checked` text says it does, but nothing a test or a grep sees separates the 842 from the 385. A `NOT_REGISTERED` note, or a field on the note, would make the gap countable in one command. Not built.
+
+### The plan for the rest
+
+Decision 53 does this for closures and warnings. The same five steps load the other types, and **the default, until the maintainer says otherwise, is to start step 1 for the GIS-shaped types now** (trail_lines, points_of_interest, places, elevation), because it reads only and decides nothing:
+
+1. **Inventory**: workers re-read each published-not-loaded row's endpoint, at a polite rate under `USER_AGENT`, and record the format, row count, edit date, robots.txt answer and terms, word for word. Same rule as decision 53: access is checked per host, never assumed.
+2. **Register**: a `sources.json` row per dataset, licence basis recorded, terms quoted. One extraction per upstream (decision 34): a copy is a `SAME_AS` note.
+3. **Readers**: ArcGIS first (a row is all it needs), then GIS files, then feeds, then pages and PDFs, one reader per format rather than per club where the format allows.
+4. **dbt**: base and staging models per new raw table, the club's portion assigned in `int_<mart>__stewardship`, deduplication after the load ([Club by club](#club-by-club)).
+5. **The gate**: every new layer in the new-data review report (decision 31), and its map shot.
+
+**Open: whether steps 2 to 5 for these types land in this pull request or after it.** This pull request is already the go/no-go change for the platform, and every layer it adds is another layer the gate has to review. The inventory is useful either way.
+
 ## Phases
 
 **The implementation lands as one pull request**, which closes **#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads** and which the maintainer reviews and merges as a single go/no-go change (decision 29: *"this should be a go / no go change"*). That supersedes the issue's own "the implementation phases become their own issues once the plan is agreed". The phases below are **build stages on one branch**, `claude/intelligent-feynman-sw3ewm`, each a reviewable run of commits; chained branches are allowed as a working method, but they converge on that one pull request (the session's call). Elsewhere this document says "phase N" for stage N; decision 4's poll wording ("phase 1", "phase 2") is the one use that does not mean a stage.
@@ -3493,6 +3581,20 @@ F and G close it.
 | 7 | Docs at `/data/`; boards as YAML | Docs live at the next tag; boards wait for dbt Charts to support v2 | nothing in the app; the docs page at the next tag |
 | 8 | Switch on `refresh-reference.yml`'s schedule | UA refreshes monthly, unattended | nothing until a promotion |
 | 9 | Delete `load_raw.py`, replaced `fetch_*.py`, unported exporter code | One home per rule | nothing, if parity held |
+
+### Work in flight (updated as it moves)
+
+The session works several things at once. This table is where each one stands, so a reader, or the next session, does not have to reconstruct it from chat. Times are UTC.
+
+| workstream | who | state (2026-10-03) | next |
+|---|---|---|---|
+| Row dates, the foundation ([Row dates](#row-dates-decision-52), step 1) | worker, worktree `agent-a36e6b48` | probing dbt snapshot behaviour: time zone, the hash, the restore path | the lead integrates its commits, then starts the five family conversions |
+| Row dates, five family conversions | not started | waits on the foundation | one worker per family, in parallel |
+| Notices, phase A inventory ([decision 53](#every-clubs-closures-and-alerts-decision-53)) | five workers, batches 1 to 5 of the 129 clubs | reading each club's notice pages, robots.txt and terms | results to `inventory/batch{N}_result.json` in the session scratchpad; then phase B |
+| Notices, phases B to G | not started | waits on phase A | as written in decision 53's section |
+| Other types' inventory ([What is not loaded yet](#what-the-clubs-publish-that-is-not-loaded-yet), step 1) | not started | the default, after decision 53's phase A returns, so no host is read by two workers at once | workers per batch of clubs |
+| The gate's monthly run | `refresh-reference.yml` run 37121837559 on ea0fe674 | in extract since 12:07 | on failure, root-cause and fix; on success, the gate reports |
+| The 3-day hourly UA soak (decision 46) | a routine, every hour at :18 | running; ends 2026-10-05 20:30 | silent while green; a tally at the end. A change to the hourly lane may restart it, which is the maintainer's call |
 
 ### The go/no-go gate
 

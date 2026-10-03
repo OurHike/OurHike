@@ -1044,19 +1044,60 @@ jobs:
       # conditions/weather_alerts.json keeps its last file. Measured on the
       # fixtures 2026-10-02, a loaded 4-core sandbox: 56.8 s for the marts
       # and their 184 nodes, 21.5 s for the four writers.
+      #
+      # THE ROW HISTORY (pipeline/row_history.py): this leg's snapshots,
+      # int_closures__history and int_warnings__history, are restored from
+      # history/conditions_<leg>/ in the raw store's bucket before dbt runs,
+      # and saved back only after the writers succeed. There is one prefix
+      # per leg because each leg is its own pipeline. Both go through the
+      # extract's venv, which has s3fs. The key is the raw store's own, as
+      # the extract step above has it. Only the UA leg reaches this step
+      # today: the dbt path refuses a production leg (above).
+      #
+      # A FAILED RESTORE DOES NOT STOP THE PUBLISH (the maintainer, by poll,
+      # 2026-10-03). This includes an empty prefix once row_history_stores.toml
+      # lists the leg. `--history-on-failure degrade` then builds both marts
+      # from their final intermediates with `_first_seen_at` and `_changed_at`
+      # null (unknown, never "new") and saves nothing. build_marts.py exits
+      # DEGRADED_EXIT, 4, which only that path returns. This step records it
+      # as history_lost and carries on, so the files publish. The last step
+      # below then turns the run red so the store gets fixed. Any other
+      # failure stops here, as before.
+      #
+      # Whether the restore and the save fit beside the build inside this
+      # step's 4 minutes is @unvalidated; the first soak run's log settles it.
+      # On the fixture warehouse the two snapshots saved as 12,797 and
+      # 27,034 bytes of Parquet (measured 2026-10-03), so the transfer itself
+      # should be small (Reasoned).
       - name: Build the closures and warnings marts and their writers (dbt path)
+        id: build
         if: env.PHONE_FILES == 'dbt'
         timeout-minutes: 4
         env:
           ENVIRONMENT: ${{ matrix.data_environment }}
+          R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
         run: |
           started=$SECONDS
           without=()
           if [ "$ENVIRONMENT" != "ua" ] || [ ! -s data/raw/weather/squares.json ]; then
             without=(--without-step step_weather_squares)
           fi
-          python build_marts.py --lane hourly --dbt "$RUNNER_TEMP/dbt/bin/dbt" "${without[@]}"
-          printf -- '- build_marts.py --lane hourly %s: %s s\n\n' "${without[*]}" "$((SECONDS - started))" >> "$GITHUB_STEP_SUMMARY"
+          set +e
+          python build_marts.py --lane hourly --dbt "$RUNNER_TEMP/dbt/bin/dbt" "${without[@]}" \
+            --history-url "s3://$R2_RAW_BUCKET/history/conditions_$ENVIRONMENT" \
+            --history-python "$RUNNER_TEMP/extract/bin/python" --history-on-failure degrade
+          status=$?
+          set -e
+          printf -- '- build_marts.py --lane hourly %s: %s s, exit %s\n\n' "${without[*]}" "$((SECONDS - started))" "$status" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -eq 4 ]; then
+            echo "history_lost=true" >> "$GITHUB_OUTPUT"
+          elif [ "$status" -ne 0 ]; then
+            exit "$status"
+          fi
 
       - name: Export verified conditions
         id: export
@@ -1136,6 +1177,18 @@ jobs:
         if: steps.extract.outputs.partial == 'true'
         run: |
           echo "::error title=A source was refused::This leg left at least one upstream out of its extract, and its last committed table stood in for it. The run summary names it and the reason; everything else was published."
+          exit 1
+
+      # Last for the same reason: the closures and warnings files published
+      # with their row dates null, and the run still goes red, because the
+      # history store needs fixing before the next run can date anything.
+      # build_marts.py's own ::error above says which restore failed.
+      - name: Fail the run if the row history was not restored (dbt path)
+        if: steps.build.outputs.history_lost == 'true'
+        env:
+          ENVIRONMENT: ${{ matrix.data_environment }}
+        run: |
+          echo "::error title=Row history not restored::This leg's row history (history/conditions_$ENVIRONMENT/ in the raw store) could not be restored, so closures and warnings published with _first_seen_at and _changed_at null and nothing was saved. Fix the store; the next run that restores it dates rows again."
           exit 1
 
       - name: Save dbt's DuckDB driver and v2's spatial extension

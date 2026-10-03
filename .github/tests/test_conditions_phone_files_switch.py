@@ -78,3 +78,33 @@ def test_every_step_of_one_path_names_its_path_by_the_switch():
         if any(marker in text for marker in exporters_only) and "env.PHONE_FILES == 'exporters'" not in condition:
             unmarked.append(f"{step.get('name') or step.get('uses')}: an exporters-path step without its condition")
     assert unmarked == []
+
+
+def test_the_dbt_path_keeps_each_legs_row_history_under_a_prefix_of_its_own():
+    """pipeline/row_history.py: each conditions leg is its own pipeline, so its snapshots are restored from and
+    saved to history/conditions_<leg>/, never one prefix for both, and never with a cold start forced."""
+    (build,) = [step for step in _steps() if "build_marts.py" in str(step.get("run", ""))]
+
+    assert '--history-url "s3://$R2_RAW_BUCKET/history/conditions_$ENVIRONMENT"' in build["run"]
+    assert build["env"]["ENVIRONMENT"] == "${{ matrix.data_environment }}"
+    assert '--history-python "$RUNNER_TEMP/extract/bin/python"' in build["run"]
+    assert "--history-cold-start" not in build["run"]
+
+
+def test_a_failed_history_restore_still_publishes_and_then_turns_the_run_red():
+    """The maintainer, by poll, 2026-10-03: closures and warnings publish without their history, with both row
+    dates null, and the run goes red afterwards. build_marts.py --history-on-failure degrade exits 4 for exactly
+    that (DEGRADED_EXIT, which no other failure returns); the build step records it and carries on, and the last
+    step fails the run on it, after the publish."""
+    steps = _steps()
+    names = [step.get("name") or step.get("uses") for step in steps]
+    (build,) = [step for step in steps if "build_marts.py" in str(step.get("run", ""))]
+    (red,) = [step for step in steps if "steps.build.outputs.history_lost" in str(step.get("if", ""))]
+    (publish,) = [step for step in steps if step.get("name") == "Publish to R2"]
+
+    assert build["id"] == "build" and "--history-on-failure degrade" in build["run"]
+    assert 'if [ "$status" -eq 4 ]; then\n  echo "history_lost=true" >> "$GITHUB_OUTPUT"' in build["run"]
+    assert 'elif [ "$status" -ne 0 ]; then\n  exit "$status"' in build["run"], "any other failure still stops the leg"
+    assert red["if"] == "steps.build.outputs.history_lost == 'true'" and red["run"].rstrip().endswith("exit 1")
+    assert names.index(publish["name"]) < names.index(red["name"]), "the files publish before the run goes red"
+    assert "if" not in publish, "the publish runs on a degraded build, whose step succeeded"

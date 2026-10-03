@@ -1,62 +1,53 @@
-"""The dbt docs site, checked before ourhike.org/data/ serves it (decision 10).
+"""Check the dbt docs site before ourhike.org/data/ serves it (pipeline/ELT.md decision 10).
 
     python check_docs_site.py <site dir> [--project dbt]
 
-pipeline/ELT.md, "Docs and charts at https://ourhike.org/data/": the page is
-public and counts only, with no maps, so no coordinates in it (decision 10).
-dbt 2.0.6 writes it as a directory: `index.html`, an `assets/` folder, and the
-Parquet files the page reads with DuckDB-WASM. This is the one home of what
-that directory must hold and must not, and three call sites run it, each on
-the directory it produced: pipeline-tests.yml's `dbt` job on the docs of the
-fixture build, so a pull request finds a failure before a tag does, and
-pages.yml's and pr-preview.yml's assembly steps on `_site/data/`, the bytes
-that ship. scripts/test.sh runs it as the `dbt` job does.
+The page is public, counts only and no maps, so it must hold no coordinates
+(ELT.md, "Docs and charts at https://ourhike.org/data/"). dbt 2.0.6 writes it
+as `index.html`, an `assets/` folder and the Parquet files the page reads with
+DuckDB-WASM. Each caller runs this on the directory it produced:
+pipeline-tests.yml's `dbt` job and scripts/test.sh on the fixture build's
+docs, so a pull request fails before a tag does, and pages.yml's and
+pr-preview.yml's assembly steps on `_site/data/`, the bytes that ship.
 
 FAILS (exit 1) on any of:
 
 1. A MISSING PART: `index.html`, a file under `assets/`, or a Parquet file.
-   On a preview nothing else would show it: `_site/404.html` is the app shell
-   (pr-preview.yml's assembly), so a request for a docs file that is not
-   there is answered with the app, not with anything saying the docs broke.
-2. A `--vars` OVERRIDE RECORDED IN THE PAGE. `dbt_rt.invocations` keeps each
-   invocation's `vars_override`, so a value passed through `--vars` is
-   published with the site. Nothing here passes one; this makes the rule
-   "never pass a secret through --vars" a check rather than a habit.
-3. TELEMETRY LEFT ON IN THE PAGE. `index.html` carries the build's settings
-   as `window.__DBT_DOCS__ = {...}`, and on 2026-10-03 they read
-   `"telemetry":{"enabled":false,...}` under the documented opt-out,
-   DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS=false, that every build here sets.
-   What the page does in a visitor's browser with it on is unmeasured; a
-   public page is not where to find out, so a page saying anything else, or
-   whose settings cannot be read, fails.
-4. COORDINATE-SHAPED TEXT anywhere in the site. Every text file and every
-   Parquet cell, cast to text, is searched for the four shapes in SHAPES:
-   WKT with a number in it (POINT, LINESTRING, POLYGON and their MULTI forms,
-   with or without Z/M); a GeoJSON `coordinates` array; a lat, lon, lng,
-   latitude or longitude key holding a decimal; and a bare pair of decimals
-   of four or more places, each within +-180.
+   Nothing else would show it on a preview, where `_site/404.html` answers a
+   missing docs file with the app shell.
+2. A `--vars` OVERRIDE. `dbt_rt.invocations` publishes each invocation's
+   `vars_override`. Nothing here passes one; this makes "never pass a secret
+   through --vars" a check rather than a habit.
+3. TELEMETRY NOT OFF. `index.html` carries the build's settings as
+   `window.__DBT_DOCS__ = {...}`, which on 2026-10-03 read
+   `"telemetry":{"enabled":false,...}` under the opt-out every build here sets
+   (DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS=false). What the page does in a
+   visitor's browser with it on is unmeasured, so anything else, or settings
+   that cannot be read, fails.
+4. COORDINATE-SHAPED TEXT in any text file or Parquet cell (cast to text),
+   by the four SHAPES: WKT with a number (POINT, LINESTRING, POLYGON, their
+   MULTI forms, with or without Z/M); a GeoJSON `coordinates` array; a lat,
+   lon, lng, latitude or longitude key holding a decimal; and a bare pair of
+   decimals of four or more places, each within +-180.
 
-ONE PLACE THEY ARE EXPECTED, and it passes on provenance only: the unit
-tests' `given` and `expect` rows, in `dbt.unit_tests`. Measured 2026-10-03 on
-dbt 2.0.6, building this project's docs against an empty warehouse: 159 of
-the 244 unit tests carry coordinate-shaped text there, hand-written rows such
-as `LINESTRING (-74.12345678901 41.00000049999, ...)`, and all 8,209 numbers
-of three or more decimal places in those cells appear in the YAML file that
-declares the test. So a match in one of those two cells passes when every
-such number in the cell is a number in that test's own `original_file_path`
-under --project, which is the repository's committed YAML; anything else
+ONE EXEMPTION, on provenance: the unit tests' `given` and `expect` cells in
+`dbt.unit_tests`. Measured 2026-10-03 on dbt 2.0.6, with the docs built
+against an empty warehouse: 159 of the 244 unit tests carry coordinate-shaped
+text there (hand-written rows such as
+`LINESTRING (-74.12345678901 41.00000049999, ...)`), and all 8,209 numbers of
+three or more decimal places in those cells appear in the test's own YAML. So
+such a cell passes when every such number in it is in the test's
+`original_file_path` under --project (the committed YAML); anything else
 fails. Three decimal places is about 110 m of latitude, and a number with
-fewer is not traced: that threshold is `@unvalidated`, picked here, and what
-would settle it is the coarsest precision at which a published point still
-gives a sensitive site away, which nobody has measured. Whether decision 10
-means the page to carry those rows at all is the maintainer's to say
-(pipeline/ELT.md, "Docs and charts at https://ourhike.org/data/"); `dbt docs
-generate --exclude resource_type:unit_test` does not keep them out (measured
-the same day: the page still held all 244).
+fewer is not traced: that threshold is `@unvalidated`, and what would settle
+it is the coarsest precision at which a published point still gives a
+sensitive site away, which nobody has measured. Whether decision 10 allows
+these rows on the page at all is the maintainer's call; `dbt docs generate
+--exclude resource_type:unit_test` does not remove them (measured the same
+day: the page still held all 244).
 
-A failure names the file, the column, the row and the shape, and never
-prints the matched text: a coordinate that should not be published should
-not be republished in a public CI log either.
+A failure names the file, column, row and shape and never prints the matched
+text, so a coordinate is not republished in a public CI log.
 
 Exit 0 with a one-line summary otherwise; 2 when the site directory does not
 exist.

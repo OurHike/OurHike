@@ -15,53 +15,48 @@
     python parity.py poi_water_v2 --new data/processed/dbt/poi_water_v2.geojson
 
 A v2 family (decision 44, stage 6) compares a v2 file with the v1 file its
-own build wrote beside it, decoded as a phone would decode it: the last
-section below.
+own build wrote beside it, decoded as a phone would decode it (the last
+section below).
 
 pipeline/ELT.md, "How a rule moves: shadow-run parity", is the design: both
-paths read the same input, records are paired by their key, and each
-record's canonical JSON (keys sorted, whitespace gone) is compared. The
-answer is the list of (key, old, new) differences, never a count, so a
-reviewer can see where they are and classify each one: expected by a
-decision, an improvement, or a defect in the new path.
+paths read the same input, records are paired by their key, and each pair's
+canonical JSON (keys sorted, whitespace gone) is compared. The answer is the
+list of (key, old, new) differences, never a count, so a reviewer can find
+each one and classify it: expected by a decision, an improvement, or a defect
+in the new path. Whitespace, key order and the trailing newline are not
+differences; a record's place in the list is one where the family's order is
+published (the podcast list is shown in file order), and so is every
+top-level field beside the records.
 
-Whitespace, key order and the trailing newline are not differences. A
-record's place in the list is, for a family whose order is published (the
-podcast list is shown in the file's order), and so is every top-level field
-beside the records.
-
-A FAMILY JOINS by a row in FAMILIES: how to get the old document, where its
-records are, and what keys them. The old document comes from the exporter's
-own builder, not a file it wrote, when the exporter has one that needs no
-network, as export_podcasts.build_document does.
-
-Four optional parts, for a family whose records do not fit that (the trail
-lines network's two GeoJSON files are the first):
-- `key_of` reads a record's key where it is not a top-level field, as a
-  GeoJSON feature's `properties.id` is not; `key` then only names it;
-- `normalize` puts a record in the form it is compared in, where a part of
-  it has no published order (a MultiLineString's parts);
+A FAMILY is a row in FAMILIES: how to get the old document, where its records
+are, and what keys them. The old document comes from the exporter's own
+builder rather than a file it wrote, where it has one that needs no network
+(export_podcasts.build_document). Four optional parts serve records that do
+not fit that (the trail lines network's two GeoJSON files were the first):
+- `key_of` reads a key that is not a top-level field, such as a GeoJSON
+  feature's `properties.id`; `key` then only names it;
+- `normalize` puts a record in the form it is compared in, where part of it
+  has no published order (a MultiLineString's parts);
 - `explained` names the differences a decision or a classified improvement
   accounts for, each with its reason: printed, and not counted. Every other
-  difference still exits 1, and the family's parity test holds each reason
-  to a case where the two writers answer differently;
-- `new_shape` turns the writer's whole file into the shape the family's
-  `old` returns, where the records are not a list of flat objects: the
-  A.T.'s files (trails.geojson's features, trail_miles.json's and
-  spurs.json's objects keyed by id).
+  difference still exits 1, and the family's parity test holds each reason to
+  a case where the two writers answer differently;
+- `new_shape` turns the writer's whole file into the shape `old` returns,
+  where the records are not a list of flat objects: the A.T.'s files
+  (trails.geojson's features, trail_miles.json's and spurs.json's objects
+  keyed by id).
 
 Exit 1 on any difference, so a CI step fails on one.
 
 `--json-dir DIR` also writes the comparison as `DIR/<family>.json`
-(RESULT_FORMAT, written by result_document()), for gate_report.py, which
-turns every family's result into decision 30's per-key report. The console
-lines and the exit code are the same with or without it. The file holds what
-the console prints, plus what a reader of many families needs: which file
-was compared, each difference's changed field paths (changed_fields()), the
-fields compared by form only (`stamps`) or dropped (`volatile`), and the
-records' source keys on each side (record_sources()). An old side that
-refuses (the SystemExit some builders raise) is written as `old_side_refused`
-before the exit, so a refusal reads as one and not as a missing run.
+(RESULT_FORMAT, from result_document()) for gate_report.py, which turns every
+family's result into decision 30's per-key report; the console and exit code
+are unchanged. Beyond what the console prints, the file holds the file
+compared, each difference's changed field paths (changed_fields()), the
+fields compared by form only (`stamps`) or dropped (`volatile`), and each
+side's record source keys (record_sources()). An old side that refuses (the
+SystemExit some builders raise) is written as `old_side_refused` before the
+exit, so a refusal reads as one and not as a missing run.
 """
 
 from __future__ import annotations
@@ -85,38 +80,34 @@ class Family:
     key: str
     ordered: bool = False
     volatile: tuple[str, ...] = ()
-    # The file is a bare JSON array of records, as elevation_profile.json is,
-    # rather than an object holding them: the new file is read as
-    # {records: <the array>}, the shape `old` returns it in.
+    # The file is a bare JSON array of records (elevation_profile.json), read
+    # as {records: <the array>}, the shape `old` returns.
     bare_list: bool = False
-    # The old document is built from make_dbt_fixtures.py's raw files rather
-    # than from a file in git, so `old` takes the --raw-dir they are in.
+    # `old` takes --raw-dir: the old document is built from
+    # make_dbt_fixtures.py's raw files rather than from a file in git.
     reads_raw_dir: bool = False
-    # The old side's input is rows the build itself made, the junction graph's
-    # edges, which today's exporters read from files the fixtures have none
-    # of, so `old` takes --raw-dir and --warehouse.
+    # `old` takes --raw-dir and --warehouse: the old side's input is rows the
+    # build made (the junction graph's edges), which today's exporters read
+    # from files the fixtures do not have.
     reads_warehouse: bool = False
-    # Top-level fields that hold the moment a run happened, such as the
-    # conditions files' `generated_at`: two runs never agree on the value, so
-    # each is held to its form (a UTC stamp, STAMP) on both sides instead.
+    # Top-level fields holding the moment a run happened, such as `generated_at`:
+    # two runs never agree on the value, so each is held to its form (a UTC
+    # stamp, STAMP) on both sides instead.
     stamps: tuple[str, ...] = ()
     key_of: Callable[[dict], str] | None = None
     normalize: Callable[[dict], dict] | None = None
     explained: Callable[[dict, dict], dict[str, str]] | None = None
-    # For a file whose records are not a list of flat objects (trails.geojson's
-    # features key on a property; spurs.json keys on the object's own keys):
-    # what turns the writer's file, read from `--new`, into that shape. The
-    # family's `old` returns its document already in it.
+    # Turns the writer's file (read from `--new`) into the shape `old` returns,
+    # for records that are not a list of flat objects: trails.geojson's
+    # features key on a property, spurs.json on the object's own keys.
     new_shape: Callable[[dict, Path], dict] | None = None
-    # The old document is built from files the dbt writers wrote beside
-    # `--new`, so `old` takes that directory: the junction graph's input is
-    # nearby_trails.geojson and trails.geojson, and reading the writers' copies
-    # puts both paths on one input.
+    # `old` takes the directory of `--new`: the junction graph's input is
+    # nearby_trails.geojson and trails.geojson, and reading the dbt writers'
+    # copies puts both paths on one input.
     reads_new_dir: bool = False
-    # A v2 file (decision 44; stage 6 of #1793) is compared with the v1 file
-    # its own build wrote, not with an exporter: the v1 writer's own parity
-    # line holds v1 to today's exporter, and this holds v2 to v1. The v1 file
-    # is the one of this name beside --new, and `old` takes its path.
+    # A v2 file (decision 44; stage 6 of #1793) is compared with the v1 file of
+    # this name beside --new, whose path `old` takes: the v1 writer's own
+    # parity line holds v1 to today's exporter, and this holds v2 to v1.
     v1_beside: str | None = None
 
 
@@ -185,11 +176,9 @@ def _graph_edges(warehouse: Path) -> tuple[dict, list]:
 def _graph_companions_old(raw_dir: Path, warehouse: Path) -> tuple[list, list]:
     """export_network_elevation.build and export_network_profile.build over the build's own graph.
 
-    In publish-vector-data.yml's order on one cold copy of the tile index:
-    export_elevation.py's A.T. profile first, then the climbs, then the
-    profiles, so the sampler's cache answers an edge point keyed like an
-    A.T. point with the A.T.'s pixel on this side exactly as
-    step_dem_sampling's one question does on the dbt side."""
+    Run in publish-vector-data.yml's order on one cold copy of the tile index: export_elevation.py's A.T. profile,
+    then the climbs, then the profiles. The A.T. profile fills the sampler's cache first, so an edge point sharing an
+    A.T. point's cache key gets the A.T.'s pixel here, as step_dem_sampling's single query gives it on the dbt side."""
     import shutil
     import tempfile
 
@@ -439,12 +428,10 @@ NETWORK_ID_REASONS = {
 def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
     """The `properties.id` differences that are only a line's id, each with its reason.
 
-    A line is the same line in both files when its source, its other
-    properties and its geometry are. Where such a line carries other ids in
-    the two files, every id it carries is explained, by the case its ids
-    show. Two positional ids for one line are never explained: both writers
-    number a layer with no id in its file's order (int_trail_lines__network_judged),
-    so a line they number differently is a defect.
+    A line is the same line in both files when its source, other properties and geometry are, and every id such a line
+    carries differently is explained by the case its ids show. Two positional ids for one line are never explained:
+    both writers number a layer with no id in its file's order (int_trail_lines__network_judged), so a line they
+    number differently is a defect.
     """
 
     def line(feature: dict) -> str:
@@ -477,22 +464,15 @@ def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
 def _places_old() -> dict:
     """export_places.py's document for the input the dbt side reads, through its own build_output().
 
-    Every input is today's own file on the fixture warehouse's raw layers,
-    each the one the dbt side's mart matches in its own parity line:
+    Every input is today's own file on the fixture warehouse's raw layers, each held to the dbt side by its own parity
+    line and built by that family's parity helper, called as it is; this only writes them where build_output() reads:
     - OPRHP's park layer and ATC's Communities, as fixture mode landed them;
-    - nearby_trails.geojson, from export_nearby_trails.main()
-      (_published_network(), which the POI exporters below read too);
-    - trails.geojson, from export_trails.main() (_export_trails_run()), cut
-      to six decimals as _trails_old() cuts it, because the dbt side measures
-      the trail_lines mart's geometry, which is the cut file's (decision 8):
-      measured 2026-10-02 on 1,546 real places, the cut moves one lot's
-      trailMiles by a tenth, 17.8 to 17.9, and nothing else;
-    - the trailhead, parking and resupply poi_<type>.geojson files, from
-      export_poi.main(), as _poi_by_type_old() runs it;
+    - nearby_trails.geojson from export_nearby_trails.main() (_published_network(), which the POI exporters read too);
+    - trails.geojson from export_trails.main() (_export_trails_run()), cut to six decimals as _trails_old() cuts it,
+      because the dbt side measures the trail_lines mart's geometry, which is the cut file's (decision 8). Measured
+      2026-10-02 on 1,546 real places: the cut moves one lot's trailMiles by a tenth, 17.8 to 17.9, and nothing else;
+    - the trailhead, parking and resupply poi_<type>.geojson files from export_poi.main(), as _poi_by_type_old() runs it;
     - nearby_poi.geojson, as _nearby_poi_old() builds it.
-
-    Those helpers are the other families' parity code, called as they are;
-    this only writes their documents where build_output() reads them.
     """
     import contextlib
     import io
@@ -666,10 +646,9 @@ def _published_pois() -> Path:
     export_spurs.py's load_destination_pois() reads in a publish run, from the same raw files and published network
     (_published_network()) the points_of_interest mart is built from.
 
-    A folder of its own, never data/processed/poi: the poi_<type> parity lines and any earlier run write there, and
-    a POI file one of them left made export_spurs.py name a destination the dbt side never saw (side_trails:
-    spur-to-shelter, measured by the lead 2026-10-02). export_poi.py's module paths are put back afterwards, so the
-    other families in the process see what they would have.
+    Never data/processed/poi: the poi_<type> parity lines and earlier runs write there, and a POI file left there made
+    export_spurs.py name a destination the dbt side never saw (side_trails: spur-to-shelter, measured 2026-10-02).
+    export_poi.py's module paths are put back afterwards, so the other families in the process see what they would have.
     """
     import contextlib
     import io
@@ -716,17 +695,16 @@ def _club_sections_old() -> dict:
     return json.loads(json.dumps(export_club_sections.build_output()))
 
 
-# The suggested_hikes family: export_suggested_hikes.py's shelf and details,
-# and export_highlights.py's file. The Hike Finder's pages are not in git, so
-# fixture mode built the warehouse from make_dbt_fixtures.py's under
-# <raw-dir>/hikefinder/, and the old side reads those same pages through
-# fetch_hikefinder.py's own parse into its cache, routes them with
-# route_hikefinder.py's own build_results(), and builds the records with
-# export_suggested_hikes.py's build_document(), as a publish runs the three.
-# Both sides route over one graph: the warehouse's (beside <raw-dir>, as CI
-# lays it out), written out in route_hikefinder.py's three files by
-# step_form_route.graph_files() and loaded by route_hikefinder.load_graph(),
-# which is how trail_graph.json reaches route_hikefinder.py today.
+# The suggested_hikes family: export_suggested_hikes.py's shelf (the
+# suggested-hikes list) and details, and export_highlights.py's file. The Hike
+# Finder's pages are not in git, so fixture mode builds the warehouse from
+# make_dbt_fixtures.py's copies under <raw-dir>/hikefinder/, and the old side
+# runs those same pages through what a publish runs: fetch_hikefinder.py's
+# parse into its cache, route_hikefinder.py's build_results(), and
+# export_suggested_hikes.py's build_document(). Both sides route over the
+# warehouse's graph (beside <raw-dir>, as CI lays it out), written as
+# route_hikefinder.py's three files by step_form_route.graph_files() and read
+# by route_hikefinder.load_graph(), as trail_graph.json reaches it today.
 
 
 def _hikefinder_cache(folder: Path, gpx_dir: Path) -> dict:
@@ -959,12 +937,10 @@ def _row_id_order(value) -> tuple:
 def _exact_copy_reasons(old: dict, new: dict) -> dict[str, str]:
     """The POIs today's file publishes and the dbt writer's does not, each an exact copy of one it does.
 
-    A copy is a feature of the same layer that agrees with another on its
-    geometry and on every property but `id` and `source_feature_id`, the
-    server's own row id, and the one kept is the copy with the lowest id, as
-    the staging dedupe keeps the lowest OBJECTID. A missing feature is
-    explained only when the copy that is kept is in the new file; anything
-    else the new file lacks, or has extra, is still a difference.
+    A copy is a feature of the same layer that agrees with another on its geometry and every property but `id` and
+    `source_feature_id` (the server's own row id); the copy with the lowest id is kept, as the staging dedupe keeps
+    the lowest OBJECTID. A missing feature is explained only when the kept copy is in the new file; anything else the
+    new file lacks, or has extra, is still a difference.
     """
 
     def body(feature: dict) -> tuple[str, str]:
@@ -992,12 +968,10 @@ def _exact_copy_reasons(old: dict, new: dict) -> dict[str, str]:
 def _published_network() -> Path:
     """nearby_trails.geojson as export_nearby_trails.main() writes it, in a folder kept for this process.
 
-    Both POI exporters read the published network: export_poi.py widens its
-    corridor by the 500 ft ring around it (NETWORK_LINES_PATH), and
-    export_nearby_poi.py clips its amenities to that ring and marks the
-    trailheads whose every line is closed. A publish run writes the file
-    first, so the old documents are built with it there, as the dbt models
-    are built with int_trail_lines__network_published.
+    Both POI exporters read it: export_poi.py widens its corridor by the 500 ft ring around the network
+    (NETWORK_LINES_PATH), and export_nearby_poi.py clips its amenities to that ring and marks the trailheads whose every
+    line is closed. A publish run writes the file first, so the old documents are built with it there, as the dbt
+    models are built with int_trail_lines__network_published.
     """
     import contextlib
     import io
@@ -1041,14 +1015,11 @@ def _poi_by_type_old(poi_type: str) -> Callable[[], dict]:
 def _site_water_old() -> Path:
     """data/raw/trail_water.json as fetch_trail_water.py derives it, from the inputs step_site_water reads, in a folder kept for this process.
 
-    fetch_trail_water.py's main() fetches ATC's two layers and reads the
-    hydrography and EPQS, none of which CI may do. So the old side is its
-    build() and render() over the fixture's own shelters and campsites, in
-    build_water_distance.fetch_atc_features()' shape and order, and the
-    candidate reaches and EPQS answers make_dbt_fixtures.py wrote, which
-    build_marts.py --fixtures hands step_site_water. A point the answers do
-    not hold has no elevation, as EPQS's silence reads. With no candidates
-    file there is no trail_water.json, as on a run that never derived one.
+    CI may not fetch ATC's two layers or read the hydrography and EPQS, as fetch_trail_water.py's main() does, so the
+    old side is its build() and render() over the fixture's shelters and campsites (in
+    build_water_distance.fetch_atc_features()' shape and order) and the candidate reaches and EPQS answers
+    make_dbt_fixtures.py wrote for step_site_water. A point the answers do not hold has no elevation, as EPQS's
+    silence reads. With no candidates file there is no trail_water.json, as on a run that never derived one.
     """
     import tempfile
 
@@ -1088,11 +1059,9 @@ def _site_water_old() -> Path:
 def _photos_old(export_poi) -> None:
     """Point export_poi.py at make_dbt_fixtures.py's photo manifests and decisions, where step_poi_photos reads them.
 
-    The outcome files are the photo fetchers' (fetch_poi_images.py,
-    fetch_atc_photos.py), which reach the network for every POI; the fixture
-    holds them under poi_photos/, so export_poi.py is told their names, and
-    its face gate reads the fixture's decisions ledger in place of
-    reference/photo_screen_decisions.json, as step_poi_photos is told to.
+    The outcome files are the photo fetchers' (fetch_poi_images.py, fetch_atc_photos.py), which reach the network for
+    every POI. The fixture holds them under poi_photos/, so export_poi.py is told their names, and its face gate reads
+    the fixture's decisions ledger in place of reference/photo_screen_decisions.json, as step_poi_photos is told to.
     Without the fixture's files nothing changes.
     """
     from lib import photo_screen
@@ -1110,16 +1079,12 @@ def _photos_old(export_poi) -> None:
 def _osm_water_old() -> tuple[str, str] | None:
     """OSM water's points and verdicts as a publish run leaves them for export_poi.py: (the points' name under RAW_DIR, the verdict file).
 
-    fetch_osm_water.py reads fourteen Geofabrik extracts and
-    build_osm_water_reach.py asks EPQS, neither of which CI may do. So the
-    points are make_dbt_fixtures.py's osm_water/points.geojson, which
-    step_osm_water lands, and the verdicts are build_osm_water_reach.py's own
-    measure_distances(), apply_grade_gate() and write() over them, with the
-    fixture's layers and the published network (_published_network()) where
-    that script reads data/raw/ and nearby_trails.geojson, and the EPQS
-    answers step_osm_water_grade reads. write() runs unguarded: its floor of
-    40 reachable points watches a real scan, and the fixture has a dozen. With
-    no points file there is no OSM water, as on a run that never fetched it.
+    CI may not read fetch_osm_water.py's fourteen Geofabrik extracts or ask EPQS as build_osm_water_reach.py does. So
+    the points are make_dbt_fixtures.py's osm_water/points.geojson, which step_osm_water lands, and the verdicts are
+    build_osm_water_reach.py's own measure_distances(), apply_grade_gate() and write() over them, with the fixture's
+    layers, the published network (_published_network()) and the EPQS answers step_osm_water_grade reads in place of
+    data/raw/, nearby_trails.geojson and EPQS. write() runs unguarded: its floor of 40 reachable points watches a real
+    scan, and the fixture has a dozen. With no points file there is no OSM water, as on a run that never fetched it.
     """
     import contextlib
     import io
@@ -1158,12 +1123,10 @@ def _osm_water_old() -> tuple[str, str] | None:
 def _guide_sections_old() -> Path:
     """A folder holding sections.json as fetch_nynjtc_long_path_guide.py writes it, parsed from the fixture's guide pages.
 
-    The fetcher reads NYNJTC's forty pages, which CI may not; the fixture's
-    pages (make_dbt_fixtures.py's guide_pages/nynjtc_long_path_guide/) are
-    parsed here by lib/nynjtc_long_path_guide.py's own parse_index() and
-    parse_section(), the functions the guide_pages kind calls, in the index's
-    order. With no fixture pages the folder holds nothing, as a run that
-    never fetched the guide.
+    The fetcher reads NYNJTC's forty pages, which CI may not. The fixture's pages (make_dbt_fixtures.py's
+    guide_pages/nynjtc_long_path_guide/) are parsed here in the index's order by lib/nynjtc_long_path_guide.py's own
+    parse_index() and parse_section(), the functions the guide_pages kind calls. With no fixture pages the folder holds
+    nothing, as on a run that never fetched the guide.
     """
     import tempfile
 
@@ -1186,14 +1149,11 @@ def _guide_sections_old() -> Path:
 def _nearby_poi_old() -> dict:
     """export_nearby_poi.py's nearby_poi.geojson, by its own functions in main()'s order.
 
-    main() itself cannot run on the fixtures: it reads the guide's cache from
-    data/raw/nynjtc_long_path_guide/, which no fixture writes. So this is
-    main()'s sequence, function by function: each registered layer's
-    build_records() in poi_sources()'s order, then guide_records() over the
-    fixture guide's parsed sections (_guide_sections_old()) and the layer's
-    own Long Path lines, appended because the guide reaches hikers, then the
-    network ring and the closed-trailhead mark against the published network
-    (_published_network()), and the place sites.
+    main() cannot run on the fixtures: it reads the guide's cache from data/raw/nynjtc_long_path_guide/, which no
+    fixture writes. So this calls main()'s functions in its order: each registered layer's build_records() in
+    poi_sources()'s order; guide_records() over the fixture guide's parsed sections (_guide_sections_old()) and the
+    layer's own Long Path lines, appended because the guide reaches hikers; the network ring and closed-trailhead mark
+    against the published network (_published_network()); and the place sites.
     """
     import export_nearby_poi as nearby
 
@@ -1475,13 +1435,12 @@ FAMILIES.update(
 # --- stage 6: the v2 phone files decode to v1's values (#1793) --------------
 #
 # Decision 44 writes each packed or one-coordinate file as a v2 beside its v1,
-# and a v2 must decode to exactly the values its v1 carries, at decision 8's
-# 6 decimals: elevation, miles and coordinates are safety fields, so any
-# difference fails the line, and none is ever explained away. Each family
-# reads the v1 file its own build wrote beside the v2 (`v1_beside`) and the
-# v2 file through the decoder a phone would use, written here a second time
-# in Python so the dbt writer and the client's reader are each checked
-# against something neither of them is.
+# and a v2 must decode to exactly its v1's values at decision 8's 6 decimals.
+# Elevation, miles and coordinates are safety fields, so any difference fails
+# the line and none is ever explained away. Each family reads the v1 file its
+# own build wrote beside the v2 (`v1_beside`), and the v2 through a Python copy
+# of the decoder a phone uses, so the dbt writer and the client's reader are
+# each checked against an implementation that is neither of them.
 
 
 def decode_elevation_profile_v2(document: dict) -> list[dict]:

@@ -4,50 +4,49 @@
     python check_contract_versions.py --head dbt/target/manifest.json
 
 pipeline/ELT.md, "Versions and channels (decision 44), as stage 4 builds them":
-a phone file's shape is a dbt model version. v1 is today's shape. A removed,
-renamed or retyped column is a breaking change, and it ships as a new version
-written beside the old one until the old one's `deprecation_date`. An added
-column is not breaking, because a phone ignores fields it does not know.
+a phone file's shape is a dbt model version, and v1 is today's shape.
+Removing, renaming or retyping a column is breaking, so the change ships as a
+new version written beside the old one until the old one's
+`deprecation_date`. Adding a column is not breaking: a phone ignores fields it
+does not know.
 
-WHY THIS FILE EXISTS. dbt Core refuses a breaking change between states
-(`ContractBreakingChangeError`); dbt 2.0.6 does not. Measured 2026-10-02 for
-decision 44 in a throwaway project: under `-s state:modified --state`,
-dropping a column from a contracted v1 and retyping a contracted v2 table's
-key in both its SQL and its YAML each built green. So the refusal is this
-script's, run by pipeline-tests.yml's `dbt` job on every pull request.
+dbt Core refuses a breaking change between states
+(`ContractBreakingChangeError`); dbt 2.0.6 does not. Measured 2026-10-02 in a
+throwaway project: under `-s state:modified --state`, dropping a column from a
+contracted v1 and retyping a contracted v2 table's key in both its SQL and its
+YAML each built green. So this script is the refusal, run by
+pipeline-tests.yml's `dbt` job on every pull request.
 
 AGAINST THE BASE (`--base`), each contracted model version there is looked up
 in the head by package, name and version, and the head FAILS on:
 
   1. a column the base has and the head does not (removed or renamed);
-  2. a column whose type changed (DuckDB's own spellings of one type, such as
-     `text` for `varchar`, are the same type);
+  2. a column whose type changed (DuckDB's aliases of one type, such as
+     `text` for `varchar`, count as the same type);
   3. a version the head no longer has, unless the base gave it a
      `deprecation_date` that has passed;
-  4. a contract the head no longer enforces, which would let 1 and 2 through
-     unseen.
+  4. a contract the head no longer enforces, which would hide 1 and 2.
 
-"Unless the change arrives as a new version" is how those read, not a fifth
-rule: a version the base does not have is new and compared with nothing, so a
-change made in a v2 beside an untouched v1 passes. A model gaining `versions:`
-for the first time is the same model: its v1 is compared with the base's
-unversioned one. A removed `not_null` or other constraint is reported as a
-warning, never a failure: dbt Core counts it as breaking, and decision 44 did
-not name it.
+A version the base does not have is new and compared with nothing, so a change
+made as a v2 beside an untouched v1 passes. A model gaining `versions:` for the
+first time is the same model: its v1 is compared with the base's unversioned
+one. A removed `not_null` or other constraint is a warning, never a failure:
+dbt Core counts it as breaking, and decision 44 did not name it.
 
-IN THE HEAD ALONE, every time, for the pub_ writers (materialised
+IN THE HEAD ALONE, on every run, for the pub_ writers (materialised
 `phone_file`), because "its writer names the version in the R2 key":
 
   5. a writer that reads a versioned model pins it, `ref('podcasts', v=1)`,
-     so a new latest version can never move a published file underneath it;
+     so a new latest version cannot move a published file underneath it;
   6. a writer reads one version, not two;
-  7. each key it writes (keys_by_writer pairs an exposure's keys with its
-     writers) carries that version's segment, and v1's keys carry none: `v2/<file>` for a release-scoped file (publish.py puts
-     it under `releases/<id>/`), `conditions/v2/<file>` and
-     `podcasts/v2/<file>` for the root-scoped ones.
+  7. each key it writes (keys_by_writer() pairs an exposure's keys with its
+     writers) carries that version's segment, and v1's keys carry none:
+     `v2/<file>` for a release-scoped file (publish.py puts it under
+     `releases/<id>/`), `conditions/v2/<file>` and `podcasts/v2/<file>` for
+     the root-scoped ones.
 
-Exit 1 on any failure, so the CI step fails on one; 2 on a manifest that
-cannot be read.
+Exit 1 on any failure, so the CI step fails; 2 on a manifest that cannot be
+read.
 """
 
 from __future__ import annotations

@@ -3,33 +3,31 @@
     python new_data_report.py --warehouse data/warehouse.duckdb --out <dir> [--parity-dir <dir>]
 
 Parity (parity.py, gate_report.py) holds every key today's pipeline publishes
-to today's exporter. It cannot check a row today's exporters never wrote, so
-decision 31 ("publish new data in this PR", pipeline/ELT.md, "The go/no-go
-gate") adds a review of what the new marts carry. This writes
-`new_data_report.md`, for a maintainer reading a pull request, and
-`new_data_report.json`, with:
+to today's exporter, so it cannot check a row no exporter ever wrote. Decision
+31 ("publish new data in this PR"; pipeline/ELT.md, "The go/no-go gate") adds
+a review of what the new marts carry. This writes `new_data_report.md`, for a
+maintainer reading a pull request, and `new_data_report.json`, with:
 
 1. rows per org × type × mart: every table in the warehouse's `marts` schema,
    counted by its `club` and by the column MART_TYPES names for it;
-2. the licence basis and `may_publish` of every layer, from
-   `int_sources__publication` (ELT.md, "Who may publish"), with the `sources`
-   mart's steward, title and kind beside it and the layer's rows in each mart;
+2. every layer's licence basis and `may_publish`, from
+   `int_sources__publication` (ELT.md, "Who may publish"), beside the
+   `sources` mart's steward, title and kind and the layer's rows per mart;
 3. every closure, warning, water and shelter source the marts carry, one line
-   each, and whether today's files carry rows from it: read from parity.py's
-   results (`--parity-dir`, the `<family>.json` files `--json-dir` writes),
-   whose `old_sources` count the records today's exporter wrote on the same
-   input by the source each names. Without `--parity-dir` the answer is "not
-   measured".
+   each, and whether today's files carry rows from it, read from parity.py's
+   `--json-dir` results (`--parity-dir`), whose `old_sources` count today's
+   exporter's records on the same input by the source each names. Without
+   `--parity-dir` the answer is "not measured".
 
-WHAT IT NEVER HOLDS, and how that is made true rather than hoped for:
+WHAT IT NEVER HOLDS, enforced rather than hoped for:
 - no person field. Every query names its columns (never `select *`), none of
-  them a row's free text, and the document is refused before it is written
-  if any field in it is named in extract/_kinds.py's PERSON_FIELDS (the
-  denylist, read with `ast` so this needs none of the extract's imports);
+  them a row's free text, and the document is refused before it is written if
+  any field in it is named in extract/_kinds.py's PERSON_FIELDS (the
+  denylist, read with `ast` so none of the extract's imports are needed);
 - no location at all, so no dispersed campsite's: counts, source keys and
-  registry fields only, and the same refusal for any field named in
-  LOCATION_FIELDS. CLAUDE.md, "Show what you changed", lists "a dispersed
-  campsite at a readable zoom" among what must never be published, and a
+  registry fields only, with the same refusal for any field in
+  LOCATION_FIELDS. CLAUDE.md's "Show what you changed" lists "a dispersed
+  campsite at a readable zoom" among what must never be shown, and a
   coordinate in a report is that location at any zoom.
 
 Map shot recipes (decision 31's third item) are not here; the report's last

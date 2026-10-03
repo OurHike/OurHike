@@ -9,95 +9,75 @@
 The one home of the build order (pipeline/ELT.md, "Python steps, outside dbt"
 and "Running it"). CI's dbt job and scripts/test.sh call it with --fixtures.
 
-WHY MORE THAN ONE `dbt build`. A rule that has to stay Python runs as a step
-between dbt invocations: it reads a named intermediate and writes
-`derived.<table>`, which dbt reads back as a source (models/staging/derived/).
-A single `dbt build` cannot do that: it reaches the first stg_derived__ model
-before any step has written its table, and fails. So:
+WHY MORE THAN ONE `dbt build`. A rule that stays Python runs as a step between
+dbt invocations: it reads a named intermediate and writes `derived.<table>`,
+which dbt reads back as a source (models/staging/derived/). A single
+`dbt build` would reach the first stg_derived__ model before any step had
+written its table, and fail. So:
 
 1. `dbt seed`;
-2. stage A, everything that is not downstream of a `derived` source - the
-   steps' inputs among it - except the evaluator package, which CI runs on its
-   own at severity error, and the pub_ writers;
-3. for each entry of STEPS, in order: the step, then
-   `dbt build -s source:derived.<its table>+`, which is what that table
-   unblocks. Anything also downstream of a later step's table waits for that
-   step, so each invocation excludes the later tables' descendants;
-4. the pub_ writers, `dbt build -s path:models/publish`, LAST: `dbt build`
-   tests each model after building it, so a writer built beside its parents
-   would write its file before a failing test upstream stopped it
-   (pipeline/ELT.md, "Publish (reverse ETL)").
+2. stage A: everything not downstream of a `derived` source, except the pub_
+   writers and the evaluator package (CI runs it on its own, at severity
+   error);
+3. for each STEPS entry, in order: the step, then
+   `dbt build -s source:derived.<its table>+`, less what a later step's table
+   also feeds, which waits for that step;
+4. the pub_ writers LAST (`-s path:models/publish`): `dbt build` tests each
+   model after building it, so a writer built beside its parents would write
+   its file before a failing test upstream could stop it (ELT.md, "Publish
+   (reverse ETL)").
 
-Contracts are enforced by the models' own config in every invocation;
-nothing here turns them off. `dbt deps` is not here: CI and scripts/test.sh
-run it before `dbt parse` and `dbt lint`, which need the packages first, and
-a sandbox whose proxy cannot fetch them skips it (scripts/test.sh
---no-dbt-deps).
+Contracts stay enforced in every invocation. `dbt deps` is not here: CI and
+scripts/test.sh run it first, and a sandbox whose proxy cannot fetch the
+packages skips it (scripts/test.sh --no-dbt-deps).
 
-A LANE BUILDS ONLY ITS OWN NODES (--lane; pipeline/ELT.md, "Every node
-carries its cadence": "each node is built only by the lane equal to its
-effective cadence"). A node's effective cadence is the fastest `meta.cadence`
-among the sources it reads, and dbt's own graph selection gives it:
-`config.meta.cadence:hourly+` is every node an hourly source reaches.
-- `monthly` (refresh-reference.yml) is the build above with every node an
-  hourly or daily source reaches excluded from each invocation, the writers'
-  included. Its warehouse holds only the monthly lane's raw tables, so those
-  nodes would fail on a missing source rather than build, and a monthly
-  build that did build them would store month-old closures (ELT.md's probe,
-  measured on dbt-oss 2.0.5). A source with no `meta.cadence` is built here:
-  excluding is what the lane does, so an untagged source lands where today's
-  build puts it rather than nowhere.
-- `hourly` is the seeds, then every node an hourly or daily source reaches,
-  then each hourly step and what its table unblocks, then those nodes'
-  writers. What an hourly node reads from the monthly lane comes, with
-  --state, through `--defer --state`; without it, the build also takes every
-  parent of an hourly or daily node (LANE_PARENTS), so the warehouse must
-  hold the monthly raw tables those parents read (the registry, today).
-- A STEPS entry runs in its own `lane`, the lane of what its derived table
-  unblocks. After `dbt seed` writes the manifest, a lane build refuses a step
-  whose `step_<name>` exposure is missing (unless its entry says
-  `reads_no_model`: it reads a file and no node), a monthly step that reads a node
-  an hourly or daily source reaches (the monthly lane would leave that input
-  unbuilt), and a step whose table feeds only the other lane's writers.
-  What a step reads is that exposure's `depends_on`
-  (models/intermediate/*/_*__intermediate.yml).
-- --without-step NAME leaves a step out, and with it everything its table
-  unblocks, writers included, so their writers keep their last files
-  (publish.py's `kept`). For an input a run does not have: the hourly
-  production leg has no weather squares (publish-conditions.yml).
-With no --lane, every step and node builds, as CI's fixture build needs: the
-fixture warehouse holds both lanes' tables.
+A LANE BUILDS ONLY ITS OWN NODES (--lane; ELT.md, "Every node carries its
+cadence"). A node's cadence is the fastest `meta.cadence` among the sources
+it reads, so `config.meta.cadence:hourly+` selects every node an hourly
+source reaches.
+- `monthly` (refresh-reference.yml) excludes every node an hourly or daily
+  source reaches, writers included: its warehouse holds only the monthly raw
+  tables, so those nodes would fail on a missing source or, if built, store
+  month-old closures (ELT.md's probe, measured on dbt-oss 2.0.5). A source
+  with no `meta.cadence` is built here, so an untagged source lands where
+  today's build puts it rather than nowhere.
+- `hourly` builds the seeds, every node an hourly or daily source reaches,
+  the hourly steps and what they unblock, then those nodes' writers. What
+  they read from the monthly lane comes through `--defer --state`; without
+  --state the build also takes every parent of those nodes (LANE_PARENTS),
+  so the warehouse must hold the monthly raw tables they read (the registry,
+  today).
+- Each STEPS entry runs in its `lane`. After `dbt seed`, lane_problems()
+  refuses a step with no `step_<name>` exposure listing its inputs
+  (models/intermediate/*/_*__intermediate.yml) unless it `reads_no_model`, a
+  monthly step reading a node an hourly or daily source reaches, and a step
+  whose table feeds only the other lane's writers.
+- --without-step NAME leaves a step out with everything its table unblocks,
+  so those writers keep their last files (publish.py's `kept`): for an input
+  a run does not have, such as the weather squares the hourly production leg
+  lacks (publish-conditions.yml).
+With no --lane every step and node builds, as CI's fixture warehouse, which
+holds both lanes' tables, needs.
 
-dbt's `selectors.yml` (ELT.md's shape) is not the home: each invocation here
-already carries its own `-s`/`--exclude`, and dbt documents `--selector` as
-not combinable with either, so a selector file would need one selector per
-invocation per lane. A lane is one more `--exclude` on each invocation
-instead, and LANE_EXCLUDES is the one home. That 2.0.6 keeps dbt's rule is
-@unvalidated: the one probe (2026-10-02) named an undefined selector beside
-`--exclude`, and dbt crashed rather than answering.
+NOT dbt's `selectors.yml` (ELT.md's shape): dbt documents `--selector` as not
+combinable with `-s` or `--exclude`, which every invocation here carries, so a
+selector file would need one selector per invocation per lane. A lane is one
+more `--exclude` on each, and LANE_EXCLUDES is its one home. That 2.0.6 keeps
+dbt's rule is @unvalidated: the one probe (2026-10-02) named an undefined
+selector beside `--exclude`, and dbt crashed rather than answering.
 
-A NEW STEP IS ONE ENTRY IN STEPS, plus its script: its name, the derived
-table it writes, its command, and the arguments --fixtures adds to point it
-at the fixture inputs make_dbt_fixtures.py wrote. The command's `{warehouse}`
-and `{raw_dir}` are filled in from the arguments here. Nothing in CI or
-scripts/test.sh changes for one.
+A NEW STEP IS ONE STEPS ENTRY plus its script; nothing in CI or
+scripts/test.sh changes. After `dbt seed`, derived_source_problems() refuses
+a `derived` table no step writes, which would leave everything downstream of
+it unbuilt without one failing node, and a step writing a table no source
+declares.
 
-THE DERIVED SOURCES AND STEPS AGREE, or nothing past the seeds runs. A
-`derived` table no step writes would leave everything downstream of it
-unbuilt without one failing node, so after `dbt seed` this reads the
-manifest it wrote (target/manifest.json) and refuses either mismatch.
-
-WHICH PROGRAM RUNS WHAT. --dbt is the dbt executable (default `dbt`, from
-PATH); --python is the interpreter the steps run on (default this one).
-They differ in CI, where dbt is in the job's own requirements-dbt.txt venv
-and the steps need requirements.txt's rasterio, in $RUNNER_TEMP/pipeline.
-This file imports nothing beyond the standard library, so it runs on either.
-
-WHERE THE FILES ARE. dbt's profile reads the warehouse from OURHIKE_WAREHOUSE
-and dbt_project.yml's processed_dir from OURHIKE_PROCESSED_DIR. This passes
-both to every dbt command, as absolute paths, so dbt and the steps always
-read one warehouse: --warehouse and --processed-dir set them, else those
-variables as the caller set them, else the profile's own defaults.
+--dbt and --python differ in CI, where dbt is in the job's
+requirements-dbt.txt venv and the steps need requirements.txt's rasterio
+($RUNNER_TEMP/pipeline); this file imports only the standard library, so it
+runs on either. Every dbt command gets OURHIKE_WAREHOUSE and
+OURHIKE_PROCESSED_DIR as absolute paths, so dbt and the steps read one
+warehouse.
 """
 
 from __future__ import annotations
@@ -133,11 +113,11 @@ LANE_EXCLUDES = tuple(f"config.meta.cadence:{cadence}+" for cadence in FASTER_TH
 #: parent of a node whose own cadence is hourly or daily (the hourly exposures
 #: among them), so the monthly nodes the closures and warnings marts read
 #: (int_sources__publication, the registry staging, two seeds) are built in
-#: the same warehouse. Under `--indirect-selection cautious`, because with the
-#: default (eager) the relationships tests on points_of_interest,
+#: the same warehouse. Selected under `--indirect-selection cautious`: with the
+#: default (eager), the relationships tests on points_of_interest,
 #: suggested_hikes and int_trail_lines__coded_domains come along and fail on
-#: tables an hourly warehouse does not hold. Both measured 2026-10-02 by ln-h on
-#: dbt 2.0.6 against the fixture warehouse: `dbt ls -s +config.meta.cadence:hourly
+#: tables an hourly warehouse does not hold. Both measured 2026-10-02 on dbt
+#: 2.0.6 against the fixture warehouse: `dbt ls -s +config.meta.cadence:hourly
 #: --indirect-selection cautious` selected 30 models and seeds, 11 sources and
 #: the 4 pub_conditions_* writers.
 LANE_PARENTS = tuple(f"+config.meta.cadence:{cadence}" for cadence in FASTER_THAN_MONTHLY)
@@ -167,16 +147,17 @@ class Step:
 #: The Python steps, in the order they run (pipeline/ELT.md, "Python steps,
 #: outside dbt", has the four planned and why each stays Python).
 STEPS: list[Step] = [
-    # THE POI STEPS COME FIRST. Every table they write reaches the trail_lines
+    # THE POI STEPS COME FIRST: every table they write reaches the trail_lines
     # mart (points_of_interest -> int_trail_lines__spur_destinations -> the
     # spurs -> int_trail_lines__at_published -> trail_lines), which
     # step_node_lines' int_trail_network__routable and step_dem_sampling's
-    # sample points both read, so those inputs are built only after them.
-    # PO36: NYNJTC's Long Path guide placed as waypoints, over the sections the
-    # guide_pages kind landed and the Long Path layer's lines, both staged; the
-    # same inputs under --fixtures, where extract/_fixtures.py serves the pages.
-    # Before the water steps: its records join int_points_of_interest__unioned,
-    # which OSM water's distance pass is downstream of.
+    # sample points both read.
+    # PO36 (a row of pipeline/ELT.md's ledger, as is each code below): NYNJTC's
+    # Long Path guide placed as waypoints, from the guide_pages sections and the
+    # Long Path layer's lines, both staged; under --fixtures,
+    # extract/_fixtures.py serves the pages. Before the water steps, because its
+    # records join int_points_of_interest__unioned, upstream of OSM water's
+    # distance pass.
     Step(
         name="step_long_path_guide",
         table="long_path_guide",
@@ -234,12 +215,10 @@ STEPS: list[Step] = [
         reads_no_model=True,
     ),
     # TN04: every routable trail part cut where int_trail_network__cuts says,
-    # with build_trail_graph.py's own _split_all. Its inputs are the
-    # warehouse's alone, so --fixtures adds nothing. After the POI steps, and
-    # before step_dem_sampling: int_elevation__edge_sample_points reads
-    # int_trail_network__edges, which reads this step's graph_pieces, so
-    # step_dem_sampling's input (int_elevation__dem_points) is built only
-    # after it.
+    # by build_trail_graph.py's own _split_all, from warehouse inputs alone (so
+    # no fixture_args). Before step_dem_sampling, whose input
+    # int_elevation__dem_points is downstream of this step's graph_pieces
+    # (through int_trail_network__edges and int_elevation__edge_sample_points).
     Step(
         name="step_node_lines",
         table="graph_pieces",

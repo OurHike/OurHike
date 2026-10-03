@@ -8,67 +8,57 @@ no dbt manifest to read.
 
 Decision 30's go/no-go gate (pipeline/ELT.md, "The go/no-go gate") needs
 "every existing R2 key comes out byte-equal, or is listed with a reviewed
-reason". This is that list. `<dir>` holds the `<family>.json` files
-`parity.py <family> --new <file> --json-dir <dir>` writes, one per line of CI's
-"Parity with today's exporters" step; this writes `gate_report.md`, for a
-maintainer reading a pull request, and `gate_report.json`, the same rows for a
-program. Nothing here runs a pipeline, reads a bucket or needs a credential.
+reason". This is that list, built from the `<family>.json` files that
+`parity.py <family> --new <file> --json-dir <dir>` writes, one per line of
+CI's "Parity with today's exporters" step. It writes `gate_report.md` for a
+maintainer reading a pull request and `gate_report.json`, the same rows for a
+program, and runs no pipeline, reads no bucket and needs no credential.
 
-EVERY KEY, AND WHERE THE LIST COMES FROM. today_keys() is publish.py's own
-answer, not a list kept here:
-- publish.collect_artifacts(), the function publish() uploads from, run over
-  a directory holding one stub of every manifest it reads. Which manifests
-  those are is read out of publish.py's source (manifests_publish_reads()),
-  and this refuses to run when a manifest it reads has no stub here, or a stub
-  names one it no longer reads. A manifest's inner names are the writers' own
-  constants: lib/poi_schema.POI_TYPES, each conditions exporter's PAYLOAD,
-  export_conditions.py's *_OUT_PATH files, export_suggested_hikes.DETAIL_KEY,
-  cut_trail_graph.py's cell keys. The keys are whatever collect_artifacts()
-  makes of them. A key one of a kind per cell or per hike is written once,
-  with a `{placeholder}`.
-- the keys published outside it: export_podcasts.PODCASTS_KEY (a person's
-  dispatch, or `publish.py --live`), archive_nynjtc_sheet_extents.ARCHIVE_KEY,
-  publish.SIDECARS, the photo store (lib/photo_store.photo_key) and the
-  recovered-photo park, and the two keys publish() writes about the others
-  (publish.MANIFEST_KEY, lib/releases.RELEASE_INDEX_KEY).
-Given every manifest, that is every name a run can upload, so a run publishes
-a subset of it. Where publish() then puts each name (the environment's root,
-a release folder) is publish()'s, and the same for either pipeline:
-publish.with_dbt_phone_files() swaps only the entries.
+EVERY KEY comes from publish.py's own code (today_keys()), never a list kept
+here: publish.collect_artifacts() run over one stub of every manifest it
+reads, plus the keys published outside it (export_podcasts.PODCASTS_KEY,
+archive_nynjtc_sheet_extents.ARCHIVE_KEY, publish.SIDECARS, the photo store
+and its recovered-photo park, publish.MANIFEST_KEY and
+lib/releases.RELEASE_INDEX_KEY). Which manifests it reads is read out of
+publish.py's source (manifests_publish_reads()), and a manifest with no stub
+here, or a stub for one it no longer reads, stops the report. A key that
+exists once per cell or per hike is listed once, with a `{placeholder}`.
+Where publish() puts each key (the environment's root, a release folder) is
+the same for either pipeline: publish.with_dbt_phone_files() swaps only the
+entries.
 
-WHICH KEYS DBT WRITES is the dbt manifest's: each exposure's `meta.r2_keys`,
-paired with its phone_file writer by check_contract_versions.keys_by_writer(),
-which publish.collect_dbt_phone_files() pairs them with too. A parity result
-reaches a key through the file it compared (`--new`), which is that writer's
-`location`.
+WHICH KEYS DBT WRITES comes from the dbt manifest: each exposure's
+`meta.r2_keys`, paired with its phone_file writer by
+check_contract_versions.keys_by_writer(), as publish.collect_dbt_phone_files()
+pairs them. A parity result reaches a key through the file it compared
+(`--new`), which is that writer's `location`.
 
 THE ANSWERS, worst first:
-- `differs`: parity found differences nothing explains, or one side wrote no
-  file. A difference touching a SAFETY_FIELDS field ranks first: ELT.md's
-  "How a rule moves" approves safety fields "one row at a time, never in
-  bulk", and a safety field that differs is a defect unless a decision names
-  it.
-- `not_compared`: a parity result exists and compared no record, because
-  neither side wrote a file on this input, or today's builder refused it.
-- `not_ported`: no parity result covers the key. Either a dbt writer owns it
-  and no result names the writer's file, or no dbt writer owns it at all, so
-  today's exporter writes it under either setting of OURHIKE_PHONE_FILES. A
-  key no family covers is never counted as passing.
-- `equal_apart_from_listed`: no unexplained difference, and each thing the
-  comparison did not hold equal is listed with its reason: a difference the
-  family's `explained` names, a field held to its form only (`stamps`), a field
-  dropped (`volatile`), record order for an unordered family.
+- `differs`: differences nothing explains, or one side wrote no file. A
+  difference touching a SAFETY_FIELDS field ranks first: ELT.md's "How a rule
+  moves" approves safety fields "one row at a time, never in bulk", and a
+  safety field that differs is a defect unless a decision names it.
+- `not_compared`: a parity result compared no record, because neither side
+  wrote a file on this input or today's builder refused it.
+- `not_ported`: no parity result covers the key, either because none names
+  its dbt writer's file or because no dbt writer owns it (so today's exporter
+  writes it whatever OURHIKE_PHONE_FILES says). A key no family covers is
+  never counted as passing.
+- `equal_apart_from_listed`: no unexplained difference, and everything not
+  held equal is listed with its reason: a difference the family's `explained`
+  names, a field held to its form only (`stamps`), a field dropped
+  (`volatile`), record order for an unordered family.
 - `equal`: every record and top-level field equal, in order where order is
   published.
 
-NOT BYTE-EQUAL, AND WHY THE WORD IS NOT USED. parity.py compares canonical
-JSON, keys sorted and whitespace gone, and never holds the old file's bytes,
-because most old sides are built in memory from the exporter's own builder.
-So `equal` is record-for-record content, and the two files' bytes differ
-wherever the writers format differently: podcasts/episodes.json is compact
-from dbt and indented from export_podcasts.py (measured 2026-10-01: 33,234 B
-→ 25,457 B, no content difference; ELT.md's known-differences table). That
-formatting is the reviewed reason every `equal` key carries, stated once.
+WHY NOT "BYTE-EQUAL". parity.py compares canonical JSON (keys sorted,
+whitespace gone) and never holds the old file's bytes, because most old sides
+are built in memory from the exporter's own builder. So `equal` means
+record-for-record content, and the bytes differ wherever the writers format
+differently: podcasts/episodes.json is compact from dbt and indented from
+export_podcasts.py (measured 2026-10-01: 33,234 B → 25,457 B, no content
+difference; ELT.md's known-differences table). That formatting is the
+reviewed reason every `equal` key carries, stated once.
 """
 
 from __future__ import annotations
@@ -346,10 +336,10 @@ def _stub_manifests(root: Path, publish_module) -> tuple[dict[str, str], dict[st
     for name in publish_module.CONDITIONS_MANIFESTS:
         payloads = conditions_payloads(name)
         write(name, {"artifacts": {payload: entry(name, payload) for payload in payloads}}, "the exporter's PAYLOAD")
-    # cut_cells.py names a sheet family's files inline (its context_name,
-    # cell_key and index_name, cut_cells.py:409-410 and :484), so they are
-    # spelled here as it spells them; tests/test_gate_report.py holds the
-    # three f-strings to that file. cut_trail_graph.py exports its own.
+    # cut_cells.py spells a sheet family's file names inline (context_name,
+    # cell_key, index_name), so they are spelled here the same way, and
+    # tests/test_gate_report.py holds the three f-strings to that file.
+    # cut_trail_graph.py exports its own.
     for family in publish_module.ALL_CELL_FAMILIES:
         name = f"{family}_cells_manifest.json"
         if family == cut_trail_graph.FAMILY:
@@ -393,8 +383,8 @@ def today_keys() -> list[TodayKey]:
                 artifacts = publish.collect_artifacts()
         finally:
             publish.PROCESSED_DIR = saved
-    # The manifest is the provenance: which script writes it is that script's
-    # business, and a grep for the name finds its readers too.
+    # found_in names the manifest, not the script that wrote it: a grep for the
+    # manifest's name finds its writer and its readers.
     for key, entry in sorted(artifacts.items()):
         manifest = origin.get(str(Path(entry["path"]).resolve()), "?")
         keys.append(TodayKey(key, "artifact", f"publish.collect_artifacts(), from {manifest} ({naming.get(manifest, '?')})"))

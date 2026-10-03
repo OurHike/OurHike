@@ -1535,16 +1535,14 @@ def _collect_cells(family: str, artifacts: dict[str, dict]) -> None:
 # ones every artifact already gets, under the keys today's exporters use.
 # ---------------------------------------------------------------------------
 
-#: THE CUTOVER SWITCH, and it is off by default. `exporters` (also what an
-#: unset variable means) publishes exactly what this module published before
-#: stage 4: the Python exporters' manifests and nothing dbt wrote. `dbt` makes
-#: every key a dbt writer's exposure names come from that writer's file, and
-#: drops the exporter's entry for the same key, so each key has one owner per
-#: run; keys no exposure names (the cells, the archives, the weather and field
-#: note files) stay the exporters'. An environment variable rather than a
-#: constant, so the UA soak (decision 30) can run the dbt path while
-#: production stays on the exporters; any other value refuses, because a
-#: typo here must not quietly pick a pipeline.
+#: THE CUTOVER SWITCH, off by default. `exporters` (or unset) publishes exactly
+#: what this module published before stage 4: the exporters' manifests and
+#: nothing dbt wrote. `dbt` takes every key a dbt writer's exposure names from
+#: that writer's file and drops the exporter's entry for it, so each key has
+#: one owner per run; keys no exposure names (the cells, the archives, the
+#: weather and field note files) stay the exporters'. An environment variable,
+#: so the UA soak (decision 30) can run the dbt path while production stays on
+#: the exporters; any other value refuses, so a typo cannot quietly pick one.
 PHONE_FILES_ENV_VAR = "OURHIKE_PHONE_FILES"
 PHONE_FILES_FROM_EXPORTERS = "exporters"
 PHONE_FILES_FROM_DBT = "dbt"
@@ -1577,13 +1575,13 @@ LIVE_CACHE_CONTROL = "public, max-age=300"
 
 #: How much older than its writer's run a file may look and still count as
 #: written by it. dbt stamps the run to the nanosecond, and a filesystem that
-#: keeps mtimes to the whole second (FAT keeps two) could stamp a file written
-#: in the run's first second as older than the run. A leftover from an
-#: earlier build is older by the time between two builds, which is at least
-#: the minutes a build takes (Reasoned). @unvalidated as a number: two seconds
-#: covers the coarsest mtime named above, and nobody has read the mtimes a
-#: publish job's filesystem keeps. The sandbox this was written in kept them
-#: to the nanosecond on the writers' files (read 2026-10-02).
+#: keeps mtimes to the second (FAT to two) could stamp a file written in the
+#: run's first second as older than the run, while a leftover from an earlier
+#: build is older by at least the minutes a build takes (Reasoned).
+#: @unvalidated as a number: two seconds covers the coarsest mtime named above.
+#: What would settle it is the mtimes a publish job's filesystem keeps, which
+#: nobody has read; the sandbox this was written in kept nanoseconds on the
+#: writers' files (read 2026-10-02).
 WRITER_CLOCK_SLACK_S = 2.0
 
 
@@ -1635,9 +1633,9 @@ class DbtPhoneFiles:
 def _run_started_at(result: dict) -> float | None:
     """The epoch second a writer's run began, from its run-results timing.
 
-    dbt 2.0.6 writes nanoseconds (`2026-10-02T04:40:30.713484251Z`, read off
-    this branch's own run_results.json); datetime takes six digits, so the
-    rest is cut rather than trusted to every Python's parser."""
+    dbt 2.0.6 writes nanoseconds (`2026-10-02T04:40:30.713484251Z`, read off a
+    run_results.json of this project); datetime takes six digits, so the rest
+    is cut rather than trusted to every Python's parser."""
     stamps = [entry.get("started_at") for entry in result.get("timing") or [] if isinstance(entry, dict)]
     parsed = []
     for stamp in stamps:

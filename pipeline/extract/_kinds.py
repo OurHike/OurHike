@@ -102,17 +102,16 @@ TRAIL_ORGS_PATH = PIPELINE_DIR / "reference" / "trail_orgs.json"
 REFERENCE_DIR = PIPELINE_DIR / "reference"
 
 # Fields that name or reach a person, which never load, whatever the licence
-# (ELT.md, "Who may publish", rule 8). Dropped inside the resource, before dlt
+# (ELT.md, "Who may publish", rule 8): dropped inside the resource, before dlt
 # sees the row, so no copy exists in the raw store to leak; never filtered in
-# dbt. Compared case-insensitively against each layer's own field names.
+# dbt. Matched case-insensitively against each layer's own field names.
 #
-# The list is the ones the coverage audit read off live layers (2026-10-01):
-# Forest Ranger Contact's RANGER, PHONE_CELL, PHONE_ALT, EMAIL, SUPERVISOR and
+# The names the coverage audit read off live layers (2026-10-01): Forest
+# Ranger Contact's RANGER, PHONE_CELL, PHONE_ALT, EMAIL, SUPERVISOR and
 # SUPERVIS_1, and the Central Iowa Trail Association status API's
-# updateByDisplay. It is a denylist, so it is only as complete as the layers
-# somebody has read: a new layer with a person field under another name loads
-# it until the name is added here. That is the known weakness of a denylist,
-# and the reason a new registry row is reviewed field by field.
+# updateByDisplay. A denylist is only as complete as the layers somebody has
+# read: a person field under another name loads until its name is added here,
+# which is why a new registry row is reviewed field by field.
 PERSON_FIELDS = frozenset(
     name.lower()
     for name in (
@@ -161,8 +160,7 @@ def session() -> requests.Session:
     Every request sends lib/user_agent.py's USER_AGENT, on every host, and
     never a browser's (decision 39): an operator should see who is asking from
     one line of their log, and a host that refuses our own named agent has
-    refused us. lib/arcgis.py's fetchers send requests' default agent today;
-    this one does not.
+    refused us.
     """
     named = requests.Session()
     named.headers["User-Agent"] = USER_AGENT
@@ -196,9 +194,9 @@ class ArcgisLayer(Resource):
     Pages come from `lib.arcgis.iter_layer_pages`, the loop every fetcher
     already uses - stop on an empty page, advance by rows returned, halve a
     page the server refuses (#1790) - and the read is held to the server's own
-    `returnCountOnly` count afterwards (#1730). ELT.md's first draft named
-    dlt's `rest_api` source here; it is not used, because its OffsetPaginator
-    steps by `limit` and a second pager is what #1295 took out.
+    `returnCountOnly` count afterwards (#1730). Not dlt's `rest_api` source,
+    which ELT.md's first draft named: its OffsetPaginator steps by `limit`,
+    and a second pager is what #1295 took out.
     """
 
     @property
@@ -1070,22 +1068,22 @@ class NwsAlerts(Resource):
     The endpoint is lib/nws_alerts.py's, shared with export_weather_alerts.py,
     which bakes today's `conditions/weather_alerts.json` from the same body.
     NWS is a non-registry input (ELT.md, "What moves"). Nothing is filtered
-    here: `Test` messages and cancellations land, and staging leaves them out
+    here: `Test` messages and cancellations land and staging leaves them out
     (WN01, `stg_nws__warnings`), because a filter belongs in the extract only
-    when the request itself carries it (the dlt skill, "Load every club, gate
+    when the request carries it (the dlt skill, "Load every club, gate
     publication downstream").
 
-    No change check. `/alerts/active` ignores both If-None-Match and
-    If-Modified-Since: each returned 200 with the same ETag (measured
-    2026-10-01, ELT.md, "The skip-unchanged check, by platform"). So every run
-    reads it, which is one request a run.
+    No change check: `/alerts/active` ignores both If-None-Match and
+    If-Modified-Since, each answering 200 with the same ETag (measured
+    2026-10-01, ELT.md, "The skip-unchanged check, by platform"), so every run
+    reads it, one request a run.
 
-    THE ZERO. A quiet hour is a real answer, and warnings may be empty, so the
-    proof is the body's own feature count. A 200 FeatureCollection with no
-    features proves the zero. Anything else raises in check_nws_response, and
-    a failed request raises in request_with_retry, so the run refuses before
-    the load and the last good table stands. A failed request never becomes an
-    empty table (ELT.md, "Source kinds"), which would read as "no warnings".
+    THE ZERO. A quiet hour is a real answer, so the proof is the body's own
+    feature count: a 200 FeatureCollection with no features proves the zero.
+    Anything else raises in check_nws_response, and a failed request raises in
+    request_with_retry, so the run refuses before the load and the last good
+    table stands. A failed request never becomes an empty table, which would
+    read as "no warnings" (ELT.md, "Source kinds").
     """
 
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
@@ -1172,14 +1170,14 @@ class ConditionsQuery(Resource):
     `accounts`, `latest_at` and `maintainer_said`. So the hints come from
     describing the query itself.
 
-    The check runs reader_problem() first, as the bake does: a missing grant
-    or policy reads as zero rows, and "empty is indistinguishable from a quiet
-    trail". On a table export_conditions.py's PENDING_READER_SETUP names, the
-    problem is Unavailable, and the lane carries on without it. On any other
-    table it stops the lane. The read asks again, in the same transaction as
-    the rows, so a policy dropped between the check and the read cannot prove
-    a false zero. The proof is the query's own `count(*)`, under REPEATABLE
-    READ with the rows.
+    The check runs reader_problem() first, as the bake does, because a missing
+    grant or policy reads as zero rows ("empty is indistinguishable from a
+    quiet trail"). On a table export_conditions.py's PENDING_READER_SETUP
+    names, the problem is Unavailable and the lane carries on without it; on
+    any other table it stops the lane. The read asks again in the same
+    REPEATABLE READ transaction as the rows and their proof, the query's own
+    `count(*)`, so a policy dropped between check and read cannot prove a
+    false zero.
     """
 
     @property
@@ -1260,15 +1258,14 @@ class ReviewedFile(Resource):
     # somewhere: dlt creates no column it never saw a value for, so a field no
     # row carries yet would otherwise be missing from the table.
     hints: tuple[tuple[str, str], ...] = ()
-    # For a file a gate checks field by field, such as the podcast episodes:
-    # each row lands whole in one `row_json` column, as the JSON text of what the
-    # reviewer wrote, and dbt reads its fields. With no `rows_key`, the whole
-    # document is that one row, which is how sources.json lands: its blocks
-    # sit beside its rows, and dbt reads both. Typed columns would hide the
-    # typos the gate exists to refuse. Measured 2026-10-01 on dlt 1.30.0: a
-    # bigint hint landed "minutes": "34" as 34, a text hint landed
-    # "title": 5 as "5", sql_ci_v1 folded a misspelt "At_Miles" into
-    # at_miles, and a field null on every row made no column at all.
+    # For a file a gate checks field by field (the podcast episodes): each row
+    # lands whole in one `row_json` column, the JSON text the reviewer wrote,
+    # and dbt reads its fields. With no `rows_key` the whole document is that
+    # one row, which is how sources.json lands, its blocks beside its rows.
+    # Typed columns would hide the typos the gate exists to refuse. Measured
+    # 2026-10-01 on dlt 1.30.0: a bigint hint landed "minutes": "34" as 34, a
+    # text hint landed "title": 5 as "5", sql_ci_v1 folded a misspelt
+    # "At_Miles" into at_miles, and a field null on every row made no column.
     verbatim: bool = False
 
     def column_hints(self) -> dict:
@@ -1356,13 +1353,12 @@ class ReviewedDir(Resource):
 
     path: str = ""
     # As ReviewedFile's `verbatim`, for a folder a gate checks field by field:
-    # each file lands whole in `row_json`, as the JSON its reviewer wrote with
-    # `_README` left out, and dbt reads its fields, so a field's JSON type
-    # reaches the gate. A file that is not valid JSON lands with `row_json`
-    # null and the parser's complaint in `_parse_error`, where
-    # export_challenges.load_challenge_files() hands its resolver None and
-    # prints the complaint: one broken file is dropped and named, never a
-    # failed extract that holds back every other resource on its lane.
+    # each file lands whole in `row_json` (`_README` left out), so a field's
+    # JSON type reaches the gate. A file that is not valid JSON lands with
+    # `row_json` null and the parser's complaint in `_parse_error`, as
+    # export_challenges.load_challenge_files() treats it (None to its
+    # resolver, the complaint printed): one broken file is dropped and named,
+    # never a failed extract that holds back every other resource on its lane.
     verbatim: bool = False
 
     def column_hints(self) -> dict:
@@ -1490,13 +1486,13 @@ def _feed_column(tag: str) -> str:
 class PodcastFeed(Resource):
     """A podcast's RSS feed, one row per episode: its metadata, never its audio.
 
-    Change check: a conditional GET with the feed's own validators. A 304 is
-    FRESH. A feed is a change signal only on a safety path (an RSS window is not
-    a list of current items; ELT.md, "The skip-unchanged check, by platform"),
-    and podcasts are not one. A podcast feed lists the whole show: The Green
-    Tunnel's held 51 items against Apple's count of 51 episodes (2026-10-01).
-    Each episode's `guid` is the key it is staged on (51 of 51 unique, the
-    same day).
+    Change check: a conditional GET with the feed's own validators; a 304 is
+    FRESH. On a safety path a feed may only signal a change, because an RSS
+    window is not a list of current items (ELT.md, "The skip-unchanged check,
+    by platform"). Podcasts are not a safety path, and a podcast feed lists the
+    whole show: The Green Tunnel's held 51 items against Apple's count of 51
+    episodes (2026-10-01). Each episode's `guid` is the key it is staged on
+    (51 of 51 unique, the same day).
 
     An <enclosure> is kept as its URL, length and type, and is never fetched.
     """
@@ -1565,25 +1561,25 @@ ATC_CRAWL_DELAY_SECONDS = 10
 # The sitemap protocol's namespace, which ATC's All in One SEO sitemap declares (read 2026-10-02).
 SITEMAP_NAMESPACE = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9"}
 
-# How long a sitemap the change check read is reused by the read that follows
-# it in the same run, rather than asked for again. ATC's own cache sends it
-# with `cache-control: max-age=600` (Cloudflare and WP Engine in front of it;
-# Measured 2026-10-02 18:13 UTC, the body "generated" 11 minutes before it was
-# served), so a re-read younger than that can come back the same copy.
+# How long the read reuses the sitemap the change check fetched in the same
+# run, instead of asking again. ATC serves it with `cache-control: max-age=600`
+# through Cloudflare and WP Engine (measured 2026-10-02 18:13 UTC: the body
+# "generated" 11 minutes before it was served), so a re-read sooner than that
+# can return the same copy.
 ATC_LISTING_REUSE_SECONDS = 600
 
 # The time one page read is allowed beyond the Crawl-delay's wait, when the
 # read has a budget: no page is started that this much time would not see
-# finish. Reasoned from cw2's crawl of 2026-10-02 (98 requests, every one 200,
+# finish. Reasoned from a full crawl of 2026-10-02 (98 requests, every one 200,
 # 1,062 s at 10 s apart, so about 0.9 s each beyond the wait): 15 s is about
-# 16 times that. A page slower than this still finishes, and only a read that
-# overruns the leg's whole budget is abandoned (extract/_run.py's read_each).
+# 16 times that. A slower page still finishes; only a read that overruns the
+# whole budget the run gives it is abandoned (extract/_run.py's read_each).
 ATC_PAGE_ALLOWANCE_SECONDS = 15
 
-# Kept back from the budget a run hands the read, for what follows the last
-# page (building the rows) and for the read_each thread's own start.
-# @unvalidated: a round number; the soak's summaries, which time the read,
-# would show whether it is ever needed.
+# Kept back from the read's budget for what follows the last page (building
+# the rows) and for the read_each thread's own start. @unvalidated: a round
+# number; what would settle it is the UA soak's summaries (decision 30),
+# which time the read and would show whether the margin is ever needed.
 ATC_READ_MARGIN_SECONDS = 5
 
 # How many runs it takes to re-read every carried page once when nothing
@@ -1681,16 +1677,15 @@ def _instant(stamp: str | None) -> datetime | None:
 def page_behind_sitemap(row: dict) -> bool:
     """Whether the page a row was parsed from was older than the sitemap entry it was read for.
 
-    A page's own latest stamp, the later of its JSON-LD dateModified and
-    datePublished, equalled the sitemap's lastmod on all 86 pages of cw2's
-    crawl (Measured 2026-10-02, 04:42-05:00 UTC; dateModified alone equalled
-    it on 85, helene-storm-damage carrying a datePublished of 2026-07-29 after
-    a dateModified of 2025-09-23). So a page that reads older than its lastmod
-    was served from a cache that had not caught up with the sitemap yet: the
-    sitemap and each page are cached apart, each answered with
-    `cache-control: max-age=600` from Cloudflare's edge (Measured 2026-10-02,
-    the sitemap at 18:13 UTC, harpers-ferry-footbridge-closure at 18:59 UTC,
-    `cf-cache-status: HIT`).
+    A page's latest stamp (the later of its JSON-LD dateModified and
+    datePublished) equalled the sitemap's lastmod on all 86 pages of a full
+    crawl (measured 2026-10-02, 04:42-05:00 UTC; dateModified alone on 85,
+    helene-storm-damage carrying a datePublished of 2026-07-29 after a
+    dateModified of 2025-09-23). So a page older than its lastmod came from a
+    cache that had not caught up with the sitemap: Cloudflare's edge caches the
+    sitemap and each page apart, each with `cache-control: max-age=600`
+    (measured 2026-10-02: the sitemap at 18:13 UTC,
+    harpers-ferry-footbridge-closure at 18:59 UTC, `cf-cache-status: HIT`).
     False where either stamp cannot be read, since that proves nothing.
     """
     stamps = [stamp for stamp in (_instant(row.get("date_modified")), _instant(row.get("date_published"))) if stamp]
@@ -1736,87 +1731,69 @@ def _page_row(row: dict) -> dict:
 class AtcTrailUpdatePages(Resource):
     """ATC's Trail Updates read off their website: one row per update their trail-updates sitemap lists.
 
-    ELT.md puts an HTML scrape in extraction ("What stays outside dbt", CL11),
-    so the parse is lib/atc_scrape.py's own parse_update(), unchanged: the
-    thousands separator in `NOBO mile 1,503.6`, the chip's states and category,
-    JSON-LD's dateModified. Whether a row may publish without a person is
-    dbt's (int_closures__atc_automatic, CL07-CL10), never this resource's.
+    The parse is lib/atc_scrape.py's parse_update(), unchanged, because ELT.md
+    puts an HTML scrape in extraction ("What stays outside dbt", CL11). Whether
+    a row may publish without a person is dbt's call
+    (int_closures__atc_automatic, CL07-CL10), never this resource's.
 
     THE SITEMAP, NOT THE LISTING (ELT.md, "The skip-unchanged check, by
-    platform"). fetch_atc_updates.py walks the ten listing pages every hour and
-    re-reads each update's page once a day (lib/atc_scrape.py's CACHE_TTL),
-    because the listing cannot say that an edit happened. The sitemap can: each
-    URL carries its `lastmod`. Its slug set equalled the listing's on both days
-    it was compared (86 = 86 on 2026-10-01, ELT.md; 86 = 86 on 2026-10-02, no
-    difference either way), so an update ATC stops listing leaves the sitemap
-    and this table, and is not republished (CL10).
+    platform"). The listing cannot show an edit, so fetch_atc_updates.py walks
+    its ten pages hourly and re-reads every update daily (lib/atc_scrape.py's
+    CACHE_TTL); the sitemap carries each URL's `lastmod`. Its slug set equalled
+    the listing's on both days compared (86 = 86, 2026-10-01 and 2026-10-02),
+    so an update ATC stops listing leaves this table and is not republished
+    (CL10).
 
-    ONLY WHAT MOVED IS READ, AND THE WHOLE TABLE STILL LANDS. Every run reads
-    the sitemap, then the page of each update that is new or whose lastmod
-    differs from the row the last committed load holds for it, at the full
-    Crawl-delay. Every other row is carried from that load (extract/_run.py
-    hands it over as Carried.committed, read from the load's own files by
-    name), and a slug the sitemap no longer lists is dropped. What lands is
-    the whole current set under `replace`, so a refused load, a skipped run
-    and the run check behave as for any table, and a removal is a removal. A
-    full re-read of 86 pages and the sitemap is 87 requests 10 s apart, about
-    15 minutes (cw2, Reasoned), and the conditions leg gives a read 150 s
-    (publish-conditions.yml's `--read-seconds`), so a read of every page each
-    time the set moved was abandoned on every such hour and the table froze.
-    A row carried or read is the same row: tests/test_extract_atc_trail_update_pages.py
-    holds an incremental read after a change equal to a full read of the same
-    pages.
+    ONLY WHAT MOVED IS READ, AND THE WHOLE TABLE STILL LANDS. Each run reads the
+    sitemap, then, at the full Crawl-delay, the page of each update that is new
+    or whose lastmod moved since the last committed load. Every other row is
+    carried from that load (Carried.committed) and an unlisted slug is
+    dropped. The whole set lands under `replace`, so a refused load, a skipped
+    run and the run check behave as for any table. Reading every page whenever
+    the set moved froze the table: 87 requests 10 s apart is about 15 minutes
+    (Reasoned), and the conditions leg gives a read 150 s
+    (publish-conditions.yml's `--read-seconds`).
+    tests/test_extract_atc_trail_update_pages.py holds an incremental read
+    after a change equal to a full read of the same pages.
 
-    A READ THAT RUNS OUT OF BUDGET LANDS NOTHING (Incomplete). With no
-    committed load to carry from, a first run reads as many pages as fit and
-    lands none of them, because a partial set under `replace` reads as the
-    whole: an update not reached yet would read as one ATC took down. What it
-    read is kept as progress, never as the data (extract/_run.py's
-    `_extract_progress`), and the next run carries it, so a first run on an
-    empty raw store completes over several hours at the full delay: 86 pages
-    at about 12 a run is 8 runs (Reasoned from ATC_PAGE_ALLOWANCE_SECONDS'
-    figures). An hour in which more pages moved than fit is the same case, and
-    the last committed table stands until every moved page is read.
+    A READ THAT RUNS OUT OF BUDGET LANDS NOTHING (Incomplete): a partial set
+    under `replace` reads as the whole, so an update not reached yet would read
+    as one ATC took down. What it read is kept as progress, never as data
+    (extract/_run.py's `_extract_progress`), and the next run carries it, so a
+    first run on an empty raw store takes about 8 runs (86 pages at about 12 a
+    run; Reasoned from ATC_PAGE_ALLOWANCE_SECONDS' figures). Until every moved
+    page is read, the last committed table stands.
 
-    LASTMOD IS NOT EVERY CHANGE. All in One SEO's lastmod is the later of the
-    post's modified and published dates (page_behind_sitemap() has the
-    measurement), and WordPress moves neither when a term the chip shows is
-    renamed, when a field is written without a save, or when the theme
-    changes what the page renders. A carried row would then be a false fresh,
-    so every run also re-reads the pages read longest ago, enough that every
-    page is re-read within ATC_REVALIDATION_RUNS runs, after the moved pages
-    and only in the budget they leave; a page re-read that differs from its
-    carried row while its lastmod did not move is printed, as the evidence
-    that settles the rate. A row whose page was older than its lastmod when
-    it was read (page_behind_sitemap) was served from a cache the sitemap had
-    already passed, and is re-read first. And the sitemap itself is cached
-    for up to 600 s (ATC_LISTING_REUSE_SECONDS), so an edit can take that long
-    to reach the change check, as it would to reach a listing page.
+    LASTMOD IS NOT EVERY CHANGE. It moves with the post's modified and
+    published dates only (page_behind_sitemap() has the measurement), not when
+    a state or category term the page shows is renamed, a field is written
+    without a save, or the theme changes the page. So, in the budget the moved
+    pages leave, each run re-reads any page that was behind its lastmod when
+    read, then the pages read longest ago, enough to cover every page within
+    ATC_REVALIDATION_RUNS runs, and prints any re-read whose facts changed
+    while its lastmod did not. ATC's cache serves the sitemap for up to 600 s
+    (ATC_LISTING_REUSE_SECONDS), so an edit can take that long to reach the
+    change check.
 
-    THE CHECK reads the sitemap, one request, 27,252 bytes on 2026-10-02
-    (ELT.md measured 3,411 on 2026-10-01), and is never FRESH, because every
-    run has pages to re-read; the marker it records is a hash of the
-    (slug, lastmod) set, which moves on a new, removed or edited update. The
-    read that follows reuses its sitemap rather than asking twice. About 5
-    requests an hour, 10 s apart, against about 350 a day today with no delay
-    (Reasoned: the sitemap, ceil(86 / 24) = 4 re-reads, and about one moved
-    page a day, which is what two reads of the sitemap 38 hours apart found:
-    one lastmod moved and nothing added or removed, 2026-10-01 03:53 to
-    2026-10-02 18:13 UTC).
+    THE CHECK reads the sitemap (27,252 bytes on 2026-10-02; ELT.md measured
+    3,411 on 2026-10-01) and is never FRESH, because every run has pages to
+    re-read; its marker hashes the (slug, lastmod) set. About 5 requests an
+    hour, 10 s apart, against about 350 a day today with no delay (Reasoned:
+    the sitemap, ceil(86 / 24) = 4 re-reads, and about one moved page a day,
+    as two reads of the sitemap 38 hours apart found: one lastmod moved,
+    nothing added or removed, 2026-10-01 03:53 to 2026-10-02 18:13 UTC).
 
     WHAT DOES NOT LAND: ATC's prose. The parse's `text` is the update's body,
     which no rule reads and sources.json's licence keeps on ATC's page ("Facts
     and a link only, and NOT a grant to mirror ATC's prose"); the page itself
-    belongs in the as-sent copy, which is not built. `page_sha256` is the page's
-    hash, for provenance, and `page_fetched_at` when the page was read, which
-    a carried row keeps.
+    belongs in the as-sent copy, not built yet. `page_sha256` (provenance) and
+    `page_fetched_at` land instead, and a carried row keeps both.
 
-    A READ THAT FAILS LOUDLY. An empty sitemap is a broken read, never "ATC has
-    nothing posted" (fetch_atc_updates.py's rule), one page that does not
-    parse refuses the whole read (TOLERATED_PARSE_FAILURES, zero), and so does
-    a page that does not answer; the run refuses that resource and the last
-    committed table stands, as today's cache does. The proof is the sitemap's
-    own slug count, read in the same run, which the landed rows must equal
+    A READ THAT FAILS, FAILS LOUDLY. An empty sitemap is a broken read, never
+    "ATC has nothing posted" (fetch_atc_updates.py's rule), and one page that
+    does not parse (TOLERATED_PARSE_FAILURES, zero) or answer refuses the
+    whole read, so the last committed table stands, as today's cache does. The
+    proof is the sitemap's own slug count, which the landed rows must equal
     (`exact_proof`; ELT.md, "A full reload that cannot empty a safety table").
     """
 

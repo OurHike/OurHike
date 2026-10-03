@@ -208,10 +208,12 @@ vars:
   # asset or facility is missing, '-99' being DEC's own null sentinel.
   poi_null_sentinels: ['-99', 'N/A', 'NA', 'NONE', 'UNKNOWN', 'TBD']
   poi_network_ring_feet: 500               # lib/corridor.py NETWORK_BUFFER_FEET
-  # The longest line part the ring asks whole; a longer part is asked segment
-  # by segment, which keeps the same points (int_points_of_interest__in_corridor
-  # says why and what was measured). A memory bound, not a rule: no Python
-  # constant, and the unit test that sets it to 2 holds the answer unchanged.
+  # The longest line part a disc-against-line join asks whole; a longer part
+  # is asked segment by segment (macros/line_pieces.sql, read by the corridor
+  # ring and the trailheads' closed-trail count), which keeps the same rows
+  # (int_points_of_interest__in_corridor says why and what was measured). A
+  # memory bound, not a rule: no Python constant, and each model's unit test
+  # that sets it to 2 holds the answer unchanged.
   poi_network_ring_part_max_vertices: 1024
   # export_nearby_poi.py's NETWORK_RING_EXEMPT_TYPES: the types the ring
   # never drops, because a hiker drives to them.

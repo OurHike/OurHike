@@ -1344,6 +1344,74 @@ unit_tests:
         - {poi_id: 'usfs_rec_sites:t-06', lines_within_radius: 1, closed_lines_within_radius: 1, trails_closed_within_m: 100}
         - {poi_id: 'usfs_rec_sites:t-07', lines_within_radius: 1, closed_lines_within_radius: 0, trails_closed_within_m: null}
 
+  - name: int_points_of_interest__trailheads_counts_a_line_once_when_asked_by_segment
+    description: >
+      The rows of the test above, with poi_network_ring_part_max_vertices at
+      2, so every line of more than two vertices is asked as its segments:
+      the Viewpoint Spur, whose two segments both meet t-01's 100 m disc at
+      their shared vertex, still counts as one line, and every count and
+      mark is the test above's.
+      tests/test_dbt_points_of_interest_parity.py holds the rows to
+      mark_closed_trailheads(), which asks whole lines.
+    model: int_points_of_interest__trailheads
+    overrides:
+      # dbt 2.0.6 replaces the project's vars with these rather than merging
+      # them, so every var the model reads is here; the second is
+      # dbt_project.yml's own, which the parity test holds it to.
+      vars:
+        poi_network_ring_part_max_vertices: 2
+        poi_trailhead_trail_radius_m: 100
+    given:
+      - input: ref('int_points_of_interest__identified')
+        rows:
+          - {poi_id: 'usfs_rec_sites:t-01', phone_files: 'nearby_poi', poi_type: 'trailhead', lon: -74.002, lat: 41.0058}
+          - {poi_id: 'usfs_rec_sites:t-02', phone_files: 'nearby_poi', poi_type: 'trailhead', lon: -73.95, lat: 41.05}
+          - {poi_id: 'usfs_rec_sites:t-03', phone_files: 'nearby_poi', poi_type: 'trailhead', lon: -73.9, lat: 41.1}
+          - {poi_id: 'oprhp_facilities:t-04', phone_files: 'nearby_poi', poi_type: 'trailhead', lon: -73.85, lat: 41.15}
+          - {poi_id: 'oprhp_facilities:t-05', phone_files: 'nearby_poi', poi_type: 'trailhead', lon: -73.8005, lat: 41.205}
+          - {poi_id: 'usfs_rec_sites:t-06', phone_files: 'nearby_poi', poi_type: 'trailhead', lon: -73.75, lat: 41.25}
+          - {poi_id: 'usfs_rec_sites:t-07', phone_files: 'nearby_poi', poi_type: 'trailhead', lon: -73.7, lat: 41.3}
+          - {poi_id: 'dec_parking_areas:t-08', phone_files: 'nearby_poi', poi_type: 'parking', lon: -73.65, lat: 41.35}
+          - {poi_id: 'atc_parking:t-09', phone_files: 'poi_by_type', poi_type: 'trailhead', lon: -73.95, lat: 41.05}
+      - input: ref('int_trail_lines__network_published')
+        rows:
+          - {geom_geojson: '{"type": "LineString", "coordinates": [[-74.0025, 41.0062], [-74.0015, 41.0062]]}', trail_status: 'closed'}
+          - {geom_geojson: '{"type": "LineString", "coordinates": [[-73.9505, 41.0503], [-73.9495, 41.0503]]}', trail_status: 'closed'}
+          - {geom_geojson: '{"type": "LineString", "coordinates": [[-73.9503, 41.0495], [-73.9503, 41.049]]}', trail_status: 'closed'}
+          - {geom_geojson: '{"type": "LineString", "coordinates": [[-73.9, 41.1014], [-73.899, 41.1014]]}', trail_status: 'closed'}
+          - {geom_geojson: '{"type": "LineString", "coordinates": [[-73.8505, 41.1503], [-73.8495, 41.1503]]}', trail_status: 'closed'}
+          - {geom_geojson: '{"type": "LineString", "coordinates": [[-73.8505, 41.1496], [-73.8495, 41.1496]]}', trail_status: null}
+          - {geom_geojson: '{"type": "LineString", "coordinates": [[-73.8008, 41.2053], [-73.8008, 41.2047]]}', trail_status: 'closed'}
+          - {geom_geojson: '{"type": "LineString", "coordinates": [[-73.7505, 41.2503], [-73.7495, 41.2503]]}', trail_status: 'CLOSED'}
+          - {geom_geojson: '{"type": "LineString", "coordinates": [[-73.7005, 41.3003], [-73.6995, 41.3003]]}', trail_status: 'closed '}
+          - {geom_geojson: '{"type": "LineString", "coordinates": [[-73.6505, 41.3503], [-73.6495, 41.3503]]}', trail_status: 'closed'}
+      - input: ref('stg_atc__centerline_segments')
+        rows:
+          - {source_row: 0, source_id: 'fixture-centerline-0', geom: 'LINESTRING (-74 41, -74 41.005)'}
+          - {source_row: 1, source_id: 'fixture-centerline-1', geom: 'LINESTRING (-73.99 41.01, -73.99 41.015)'}
+          - {source_row: 2, source_id: 'unit-centerline-2', geom: 'LINESTRING (-73.8 41.2, -73.8 41.21)'}
+      - input: ref('stg_atc__side_trails')
+        rows:
+          - {source_row: 0, source_id: 'side-trail-0', name: 'Side Trail 0', geom: 'LINESTRING (-74 41, -74 41.005)'}
+          - {source_row: 1, source_id: 'side-trail-1', name: 'Side Trail 1', geom: 'LINESTRING (-73.99 41.01, -73.99 41.015)'}
+          - {source_row: 2, source_id: 'spur-to-shelter', name: 'Spur To Shelter', geom: 'LINESTRING (-73.9901 41.0151, -73.985 41.018, -73.9805 41.0199)'}
+          - {source_row: 3, source_id: 'viewpoint-spur', name: 'Viewpoint Spur', geom: 'LINESTRING (-74.0001 41.0049, -74.002 41.0055, -74.004 41.006)'}
+          - {source_row: 4, source_id: 'access-trail', name: 'Access Trail', geom: 'MULTILINESTRING ((-73.9995 41.001, -73.997 41.001), (-73.997 41.001, -73.995 41.0012))'}
+          - {source_row: 5, source_id: 'significant-non-blaze-trail', name: 'Significant Non-Blaze Trail', geom: 'LINESTRING (-73.9905 41.0105, -73.9895 41.012)'}
+          - {source_row: 6, source_id: 'gold-loop', name: 'Gold Loop', geom: 'LINESTRING (-73.99 41.0101, -73.9895 41.0125, -73.99 41.0149)'}
+          - {source_row: 7, source_id: 'far-side-trail', name: 'Far Side Trail', geom: 'LINESTRING (-80 35, -80 35.01)'}
+          - {source_row: 8, source_id: 'trail-with-no-line', name: 'Trail With No Line', geom: null}
+          - {source_row: 9, source_id: 'short-stub', name: 'Short Stub', geom: 'LINESTRING (-73.9950001 41.0040001, -73.9950002 41.0040002)'}
+    expect:
+      rows:
+        - {poi_id: 'usfs_rec_sites:t-01', lines_within_radius: 2, closed_lines_within_radius: 1, trails_closed_within_m: null}
+        - {poi_id: 'usfs_rec_sites:t-02', lines_within_radius: 2, closed_lines_within_radius: 2, trails_closed_within_m: 100}
+        - {poi_id: 'usfs_rec_sites:t-03', lines_within_radius: 0, closed_lines_within_radius: 0, trails_closed_within_m: null}
+        - {poi_id: 'oprhp_facilities:t-04', lines_within_radius: 2, closed_lines_within_radius: 1, trails_closed_within_m: null}
+        - {poi_id: 'oprhp_facilities:t-05', lines_within_radius: 2, closed_lines_within_radius: 1, trails_closed_within_m: null}
+        - {poi_id: 'usfs_rec_sites:t-06', lines_within_radius: 1, closed_lines_within_radius: 1, trails_closed_within_m: 100}
+        - {poi_id: 'usfs_rec_sites:t-07', lines_within_radius: 1, closed_lines_within_radius: 0, trails_closed_within_m: null}
+
   - name: int_points_of_interest__trailheads_marks_nothing_without_the_side_trails
     description: >
       PO34's miss-rather-than-cry-wolf direction when an A.T. layer is

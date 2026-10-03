@@ -25,6 +25,15 @@
 -- marked either: "no trail here" is not "every trail here is closed". The
 -- near test is the Python's: each line intersecting the trailhead buffered
 -- by the radius in EPSG:5070 metres.
+--
+-- A LONG LINE IS ASKED SEGMENT BY SEGMENT (macros/line_pieces.sql), and the
+-- counts count distinct lines, so every count is the whole line's. Why:
+-- asking whole lines ran out of memory on the national network, measured
+-- 2026-10-03 on DuckDB 1.5.4 (dbt 2.0.6's engine) under memory_limit 8GB,
+-- against UA's published network (release 2026-10-03-2, 329,446 lines) and
+-- the 7,655 trailheads UA's nearby_poi.geojson ships: "Out of Memory Error:
+-- failed to allocate data of size 16.0 MiB (7.4 GiB/7.4 GiB used)" after
+-- 55 s. int_points_of_interest__in_corridor's header has the cause.
 with trailheads as (
     select
         poi_id,
@@ -78,26 +87,40 @@ at_state as (
 ),
 
 lines as (
+    -- `line_key` tells one line from another once a long one is pieces.
     select
-        network_lines.geom_5070,
-        network_lines.closed
-    from network_lines
-    union all
-    select
-        at_lines.geom_5070,
-        at_lines.closed
-    from at_lines
+        row_number() over () as line_key,
+        unioned.geom_5070,
+        unioned.closed
+    from (
+        select
+            network_lines.geom_5070,
+            network_lines.closed
+        from network_lines
+        union all
+        select
+            at_lines.geom_5070,
+            at_lines.closed
+        from at_lines
+    ) as unioned
+),
+
+pieces as (
+    {{ line_pieces('lines', 'geom_5070', ['line_key', 'closed']) }}
 ),
 
 near as (
     select
         trailheads.poi_id,
-        count(*) as line_count,
-        count(*) filter (where lines.closed) as closed_count
+        count(distinct pieces.line_key) as line_count,
+        count(distinct pieces.line_key) filter (
+            where pieces.closed
+        ) as closed_count
     from trailheads
-    inner join lines
+    inner join pieces
         on st_intersects(
-            lines.geom_5070, st_buffer(trailheads.point_5070, {{ radius }})
+            pieces.piece_5070,
+            st_buffer(trailheads.point_5070, {{ radius }})
         )
     group by trailheads.poi_id
 )

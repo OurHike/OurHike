@@ -62,6 +62,7 @@ NO_NETWORK = "int_points_of_interest__in_corridor_applies_no_ring_without_a_netw
 LONG_LINES = "int_points_of_interest__in_corridor_asks_a_long_line_segment_by_segment"
 TRAILHEADS = "int_points_of_interest__trailheads_marks_like_mark_closed_trailheads"
 NO_SIDE_TRAILS = "int_points_of_interest__trailheads_marks_nothing_without_the_side_trails"
+TRAILHEAD_SEGMENTS = "int_points_of_interest__trailheads_counts_a_line_once_when_asked_by_segment"
 MILES = "int_points_of_interest__miles_reads_the_axis_like_attach_miles"
 IDENTIFIED = "int_points_of_interest__identified_applies_the_ledger_like_apply_ledger_ids"
 RETIRED = "int_points_of_interest__retired_resolves_like_lib_poi_identity"
@@ -1026,20 +1027,28 @@ def test_the_corridor_and_the_ring_keep_what_the_python_keeps(name, tmp_path):
     _held(_expected(test, "poi_key"), in_corridor_answers(test, tmp_path))
 
 
-def test_the_segment_unit_test_changes_only_the_part_size():
-    """The long-line unit test splits every part past two vertices, and every other var it must restate is the project's own.
+@pytest.mark.parametrize("name", [LONG_LINES, TRAILHEAD_SEGMENTS])
+def test_the_segment_unit_tests_change_only_the_part_size(name):
+    """Each segment unit test splits every part past two vertices, and every other var it must restate is the project's own.
 
-    dbt 2.0.6 replaces a unit test's vars rather than merging them, so the test
-    restates the ring's distance and the corridor's width; a restated value that
+    dbt 2.0.6 replaces a unit test's vars rather than merging them, so these
+    tests restate the radii and the corridor's width; a restated value that
     drifted from dbt_project.yml would test a different rule.
     """
-    overridden = _unit_test(LONG_LINES)["overrides"]["vars"]
+    overridden = dict(_unit_test(name)["overrides"]["vars"])
     project = yaml.safe_load((DBT / "dbt_project.yml").read_text())["vars"]
     assert overridden.pop("poi_network_ring_part_max_vertices") == 2
-    assert overridden == {name: project[name] for name in overridden}
+    assert overridden == {var: project[var] for var in overridden}
 
 
-@pytest.mark.parametrize("name", [TRAILHEADS, NO_SIDE_TRAILS])
+def test_the_trailhead_segment_test_is_the_trailhead_test_split():
+    """The trailheads' segment unit test gives and expects exactly what the whole-line one does."""
+    whole, split = _unit_test(TRAILHEADS), _unit_test(TRAILHEAD_SEGMENTS)
+    assert split["given"] == whole["given"]
+    assert split["expect"] == whole["expect"]
+
+
+@pytest.mark.parametrize("name", [TRAILHEADS, NO_SIDE_TRAILS, TRAILHEAD_SEGMENTS])
 def test_trailheads_are_marked_as_mark_closed_trailheads_marks(name, tmp_path):
     test = _unit_test(name)
     _held(_expected(test, "poi_id"), trailheads_answers(test, tmp_path))

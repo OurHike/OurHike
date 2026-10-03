@@ -158,6 +158,16 @@ models:
           - accepted_values:
               arguments:
                 values: [nws_alerts, ourhike_reports]
+  - name: int_warnings__final
+    description: >
+      The warnings mart's rows before their row dates (decision 57):
+      what models/marts/warnings/warnings.sql held until then, every
+      contracted column but _first_seen_at and _changed_at.
+      int_warnings__history snapshots it, and the mart reads that snapshot.
+    columns:
+      - name: warning_id
+        description: The mart's key.
+        data_tests: [not_null, unique]
 
 unit_tests:
   # base_nws__alerts' inputs are SQL, not rows: dbt 2.0.6 fetches a given

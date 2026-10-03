@@ -251,6 +251,22 @@ models:
       - name: source_row_key
         description: The row's key in its staging model, for lineage.
         data_type: varchar
+      - name: _first_seen_at
+        description: "{{ doc('row_first_seen_at') }}"
+        data_type: timestamptz
+        data_tests:
+          - not_null:
+              config:
+                # warn only on a leg build_marts.py built without its history,
+                # where both dates are null and the run is red already.
+                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' else 'error' }}"
+      - name: _changed_at
+        description: "{{ doc('row_changed_at') }}"
+        data_type: timestamptz
+        data_tests:
+          - not_null:
+              config:
+                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' else 'error' }}"
 
 unit_tests:
   - name: closures_takes_what_blocks_the_trail_from_a_source_that_passed_and_may_publish
@@ -261,7 +277,7 @@ unit_tests:
       warnings mart (warnings_takes_every_notice_that_does_not_block_and_reads_a_null_as_not_reviewed),
       a closure from a held-back source goes nowhere, and so does one from a
       source that may not publish.
-    model: closures
+    model: int_closures__final
     given:
       - input: ref('int_closures__unioned')
         rows:

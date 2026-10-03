@@ -332,6 +332,16 @@ models:
           stripped, whose first ten characters date.fromisoformat() reads,
           YYYY-MM-DD or YYYYMMDD (macro python_date_fromisoformat(), which
           reads no ISO week date); on the file's own row only.
+  - name: int_closures__final
+    description: >
+      The closures mart's rows before their row dates (decision 57):
+      what models/marts/closures/closures.sql held until then, every
+      contracted column but _first_seen_at and _changed_at.
+      int_closures__history snapshots it, and the mart reads that snapshot.
+    columns:
+      - name: closure_id
+        description: The mart's key.
+        data_tests: [not_null, unique]
 
 unit_tests:
   - name: int_closures__atc_checked_finds_what_file_problems_finds

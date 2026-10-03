@@ -52,6 +52,7 @@ fields as (
         episodes.episode_row_key,
         episodes.file_row,
         episodes.episode,
+        episodes._loaded_at,
         row_fields.allowed,
         json_type(episodes.episode) as episode_type,
         json_extract(episodes.episode, '$.spotify_id') as spotify_id_json,
@@ -370,6 +371,7 @@ checks as (
     select
         parsed.episode_row_key,
         parsed.file_row,
+        parsed._loaded_at,
         parsed.spotify_id,
         parsed.title,
         parsed.show_name,
@@ -525,6 +527,7 @@ repeats as (
 select
     episode_row_key,
     file_row,
+    _loaded_at,
     'row ' || file_row || coalesce(' (' || spotify_id || ')', '') as row_label,
     spotify_id,
     title,

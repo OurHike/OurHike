@@ -27,6 +27,8 @@ models:
         data_tests: [not_null, unique]
       - name: file_row
         description: The row's place in the file, from 0.
+      - name: _loaded_at
+        description: When the extract loaded reference/podcast_episodes.json.
       - name: row_label
         description: The row as validate() names it in a message, "row N (spotify_id)".
       - name: spotify_id

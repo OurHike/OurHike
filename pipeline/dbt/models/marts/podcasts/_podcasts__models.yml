@@ -35,6 +35,31 @@ models:
         constraints:
           - type: not_null
         data_tests: [not_null, unique]
+      - name: club
+        description: The extract folder that landed the list (_shared/podcasts).
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: source_key
+        description: >
+          `ourhike_podcast_episodes`, the key unregistered_publishing_sources
+          lets publish. Tested against int_sources__publication, which holds
+          it: the sources mart holds registered sources only.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests:
+          # Every episode's source may publish, the rule's one home deciding.
+          - dbt_utils.relationships_where:
+              arguments:
+                to: ref('int_sources__publication')
+                field: source_key
+                to_condition: may_publish
+      - name: _loaded_at
+        description: When the extract loaded reference/podcast_episodes.json.
+        data_type: timestamptz
+        constraints:
+          - type: not_null
       - name: title
         description: The episode's title, stripped.
         data_type: varchar

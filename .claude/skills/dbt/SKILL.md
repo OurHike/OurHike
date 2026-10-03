@@ -137,7 +137,9 @@ Present, among others: `ST_LineLocatePoint`, `ST_LineInterpolatePoints`,
 | union | `int_<mart>__unioned` | `intermediate/<mart>/` | every `stg_<club>__<mart>` | `union all by name`, no filter |
 | heavy | `int_<mart>__<verb>` | `intermediate/<mart>/` | unions, intermediates, `stg_derived__*` | dedup, corridor, water distance, mile axis, graph |
 | stewardship | `int_<mart>__stewardship` | `intermediate/<mart>/` | the deduplicated intermediate, `stg_registry__orgs`, ATC's club sections | one row per (feature, club, basis, evidence): which clubs steward each feature. It assigns, never copies |
-| mart | one of the eleven names | `marts/<mart>/` | intermediates | contract, `access: public`, exposures |
+| final | `int_<mart>__final` | `intermediate/<mart>/` | intermediates | the mart's rows, every contracted column but the two row dates ([Row dates](#row-dates-one-snapshot-per-mart)) |
+| row history | `int_<mart>__history` | `snapshots/<mart>/` | its `int_<mart>__final` | a dbt snapshot: every version of every row, whole, schema `intermediate` |
+| mart | one of the eleven names | `marts/<mart>/` | its history and its final model | `row_history_mart()`: the current rows and their two dates. Contract, `access: public`, exposures |
 | reporting | `rpt_<thing>` | `reporting/` | marts | counts for the docs page |
 | publish | `pub_<file>` | `publish/` | the marts its exposure names | writes one phone file |
 
@@ -191,11 +193,11 @@ staging model put every DEC lean-to in Antarctica on a green build, `PASS=145`
 that region test anyway: a swap inside one base model still unions cleanly.
 
 **Materializations.** `base_` and `stg_` models are views. Unions and heavy
-intermediates are tables. Marts are contracted tables. Whether snapshots or
-incremental models join them is **an open question for the maintainer**
-(decision 27), answered at the phase that ports the POI marts. Do not add a
-snapshot or an incremental model before that answer. `closures` and `warnings`
-stay `table` in every option.
+intermediates are tables, and `int_<mart>__final` models are views. Marts are
+contracted tables. Snapshots exist for one purpose, the row dates: one
+`int_<mart>__history` per mart and no other (decision 57, amending 52). Add
+no incremental model and no other snapshot without a decision (decision 27).
+`closures` and `warnings` stay `table`.
 
 **Every source and every exposure carries `meta.cadence`**, one of `hourly`,
 `daily`, `weekly`, `monthly` (decision 28). Models are not tagged: a model's
@@ -244,6 +246,48 @@ a `source()` (today's `stg_`, the target's `base_`):
   intermediate work. Today's POI staging models still carry `poi_type` and
   `confidence` literals; they move when stage 3 rebuilds staging.
 
+## Row dates: one snapshot per mart
+
+Every mart row carries **`_first_seen_at`** and **`_changed_at`**
+(`timestamptz`, UTC); nothing else is asked to (decision 57, amending 52).
+`pipeline/ELT.md`, "Row dates (decision 52)", has the design and its
+measurements; `macros/row_history.sql` has the macros. This is what to do.
+
+- **A new mart** is three files and a YAML entry each.
+  - `intermediate/<mart>/int_<mart>__final.sql` holds the mart's SQL.
+  - `snapshots/<mart>/int_<mart>__history.sql` is
+    `{{ config(unique_key='<key>') }}` and
+    `{{ row_history_snapshot('int_<mart>__final') }}` inside a snapshot
+    block.
+  - `marts/<mart>/<mart>.sql` is
+    `{{ row_history_mart('int_<mart>__history', 'int_<mart>__final', '<key>') }}`.
+  - The contract declares both dates `timestamptz`, with
+    `description: "{{ doc('row_first_seen_at') }}"` (and `row_changed_at`)
+    and a not_null test whose severity is exactly
+    `"{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' else 'error' }}"`.
+  - Copy `closures`. `pipeline/tests/test_dbt_row_dates.py` fails until
+    every piece is there.
+- **A later version** (`<mart>_v2`) selects v1's two dates. It gets no
+  snapshot of its own.
+- **Unit tests of a mart's logic** go on `int_<mart>__final`, where the SQL
+  is.
+- **The hash** covers every column but `_loaded_at` and the other load
+  columns (`row_hash_load_columns()`). A column that changes on every run
+  while the row does not goes in `row_history_snapshot()`'s `skip=[...]`.
+  Otherwise every row reads as changed every run.
+- **`_first_seen_at` equal to the history start means "at or before"**
+  (`row_history_started_at()`, and history.json's `history_started_at`).
+  Never read it as "new".
+- **A removed row** stays in the snapshot with dbt_valid_to set and leaves
+  the mart. Nothing reads it back yet; `row_history_removed()` is the hook
+  for that later decision.
+- **History lives outside the warehouse.** `build_marts.py` restores it
+  before dbt and saves it after the writers (`pipeline/row_history.py`).
+  - Never force a cold start in a lane's workflow.
+  - List a store in `pipeline/row_history_stores.toml` once its first
+    run has saved.
+  - Only the conditions legs pass `--history-on-failure degrade`.
+
 ## Publication is decided once, in SQL, before dedup
 
 - **`may_publish` has one home: `int_sources__publication`.** Every mart except
@@ -283,7 +327,7 @@ and each feature appears once, its stewards attached from
 | `_loaded_at` is `TIMESTAMPTZ` on every dlt raw table, though `extract/_run.py` stamps naive UTC | measured 2026-10-01, dlt 1.30.0 filesystem destination: 63 of 64 fixture-mode tables, and `_warehouse.py`'s proven-empty table was the 64th until it was made the same. `TIMESTAMP` was `load_raw.py`'s, measured on 1.12.2 | declare `timestamptz` |
 | no `foreign_key` constraint | Reasoned: DuckDB refuses to drop a table a foreign key references, and every rebuild drops it | a relationships test instead |
 | `primary_key` and `check` fail any build into DuckLake | measured 2026-10-01 on 2.0.5 | why the warehouse moves to DuckLake only at phase 4 |
-| v2 refuses `contract` on a snapshot; a contracted incremental model must set `on_schema_change` | measured 2026-10-01 on 2.0.5 | matters only once decision 27 is answered |
+| v2 refuses `contract` on a snapshot; a contracted incremental model must set `on_schema_change` | measured 2026-10-01 on 2.0.5 | why `int_<mart>__history` has no contract: the mart's contract holds its columns |
 | **On 2.0.6, a contracted model with a `GEOMETRY` column fails at build**: "Failed to convert type BinaryView ... not supported for DuckDB", from the contract's column check. The row above was measured on 2.0.5 and does not hold on 2.0.6 | measured 2026-10-02 on 2.0.6, the fixture warehouse, a closures mart (the cw worker), repro: any contracted `select st_point(1, 2) as geom` with `data_type: geometry`. An uncontracted model carries `GEOMETRY` fine | every contracted mart and `pub_` writer carries **`geom_geojson varchar`**, an RFC 7946 geometry in OGC:CRS84 at the phone file's precision, with tests that `st_geomfromgeojson` parses it. Keep `GEOMETRY` in uncontracted intermediates and convert at the mart, never earlier |
 | **A 2.0.6 unit test compares a `DOUBLE` only after rounding it to one decimal place**: VARCHAR, integer and boolean compare exactly | measured 2026-10-02 on 2.0.6 by planting values in `expect` (the tl-at worker): 3365.9 and 0.44 passed against 3365.936… and 0.4004, and 4.0 against 3.985; 3365.96, 0.45 and 3.94 failed | carry a mile, a distance, an elevation or any must-match double as text (`varchar`, or JSON, which round-tripped 5,005 of 5,005 doubles exactly) in a unit-tested intermediate, and cast in the consumer. A unit test on a double safety field otherwise passes anything within about 0.05 |
 | a 2.0.6 unit test cannot hold a `GEOMETRY` or a list column in a model's output: geometry panics ("BinaryView is not supported for DuckDB"), lists are refused ("Only primitive types ... supported for unit_testing") | measured 2026-10-02 on 2.0.6 (the tl-at worker) | WKT text for geometry (exact: DuckDB prints the shortest digits that read back to the same double), JSON text for a list |

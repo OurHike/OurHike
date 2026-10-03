@@ -230,7 +230,9 @@ def test_a_club_file_never_names_a_url_to_fetch():
             continue
         tree = ast.parse(club_file.path.read_text())
         strings = [node.value for node in ast.walk(tree) if isinstance(node, ast.Constant) and isinstance(node.value, str)]
-        docstring = ast.get_docstring(tree) or ""
+        # The raw constant, not the cleaned text: get_docstring() strips the closing newline, so a docstring that
+        # names a URL (a step-2 list of sources still to wire) never matched itself and read as a fetched URL.
+        docstring = ast.get_docstring(tree, clean=False) or ""
         copies = {url for note in club_file.same_as for url in note.copy}
         urls = [s for s in strings if s != docstring and s not in copies and re.search(r"https?://", s)]
         assert not urls, f"{club_file.club}/{club_file.type}.py holds a URL outside its docstring: {urls}"

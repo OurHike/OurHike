@@ -7,11 +7,10 @@ the closures half, split from the rest in dbt; a Park Closure most often closes 
 rather than a trail, and no alert carries geometry, so it never sets `obstructs_trail` alone.
 
 This club's closures also arrive through _shared/ca_state_parks/ `cdpr_park_unit_status`;
-_shared/midpen/ `midpen_preserve_access`; _shared/scc_parks/ `scc_parks_closed_areas`, each
-extracted once in its steward's folder (decision 34). Its portion is assigned in dbt.
-
-Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
-robots.txt, terms and change check): https://www.ebparks.org/alerts-closures (html_page).
+_shared/midpen/ `midpen_preserve_access`; _shared/scc_parks/ `scc_parks_closed_areas`; and
+_shared/ebrpd/ `ebrpd_alerts_closures`, the East Bay Regional Park District's alerts page (52.1 Ridge
+Trail miles are EBRPD's), each extracted once in its steward's folder (decision 34). Its portion is
+assigned in dbt.
 
 The coverage audit's note, kept as it was (restated from reference/org_coverage.json, whose text is
 trimmed where it ends in '…'):
@@ -42,6 +41,10 @@ NOT_AVAILABLE = NotAvailable(
             "`Santa_Clara_County_Parks_Closed_Areas_view/FeatureServer/1`"
         ),
         (
+            "via _shared/ebrpd/ `ebrpd_alerts_closures` (decision 53 phase B, 2026-10-03): the EBRPD alerts-and-closures "
+            "page, about 70 posted items (Trail Closure 24, Area Closure 12), read as one PageNotice."
+        ),
+        (
             "(coverage audit, 2026-10-01) `Park_Managers` takes 46 values. The largest by miles: Santa Clara "
             "County Parks 55.0, EBRPD 52.1, MROSD 50.2, NPS 31.2, Napa County Regional Parks 22.1, CDPR 21.0. "
             "Midpen `services2.arcgis.com/qmhndvC947rDNl6t/…/Preserve_Access_(public)/FeatureServer/0`: 195 "
@@ -56,12 +59,13 @@ NOT_AVAILABLE = NotAvailable(
         "https://services2.arcgis.com/qmhndvC947rDNl6t/arcgis/rest/services/Preserve_Access_(public)/FeatureServer/0",
         "https://services1.arcgis.com/4QPaqCJqF1UIaPbN/arcgis/rest/services/Santa_Clara_County_Parks_Closed_Areas_view/FeatureServer/1",
         "https://services5.arcgis.com/6iLCtMhqIxD1wlgk/arcgis/rest/services",
+        "https://www.ebparks.org/alerts-closures",
         "https://ridgetrail.org/",
         "https://ridgetrail.org/{arcgis,server,gis}/rest/services",
     ),
     reason=(
-        "drawn from nps/'s and _shared/ca_state_parks/'s and _shared/midpen/'s and _shared/scc_parks/'s "
-        "resources, extracted once there (decision 34); checked names the layers this org's data arrives in; "
-        "the org's own non-ArcGIS sources are listed in the docstring, still to wire"
+        "drawn from nps/'s and _shared/ca_state_parks/'s, _shared/midpen/'s, _shared/scc_parks/'s and "
+        "_shared/ebrpd/'s resources, extracted once there (decision 34); checked names the sources this org's "
+        "closures arrive in"
     ),
 )

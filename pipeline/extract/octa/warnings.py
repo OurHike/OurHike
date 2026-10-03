@@ -18,6 +18,9 @@ NOT_AVAILABLE = NotAvailable(
             "Landed by nps/warnings.py as nps_alerts."
         ),
         "(coverage audit, 2026-10-01) Same endpoint, Danger/Caution categories, 0 today",
+        "(decision 53 inventory, batch 5, 2026-10-03) https://octa-trails.org/robots.txt answered Cloudflare's "
+        "managed challenge (403, 'Just a moment...', cf-mitigated: challenge) to our agent; not solved, and no page "
+        "was asked, so whether OCTA publishes notices of its own stays unknown.",
     ),
     where=(
         "https://developer.nps.gov/api/v1/alerts?parkCode=cali,oreg",

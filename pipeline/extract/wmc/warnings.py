@@ -7,10 +7,10 @@ explicit_restriction (quoted in the TYT warnings row). Folders: `_shared/utah_ug
 
 Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
-Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
-robots.txt, terms and change check): https://www.fs.usda.gov/r04/uinta-wasatch-cache/alerts
-(html_page); https://api.avalanche.org/v2/public/products/map-layer (json_api);
-https://wasatchmountainclub.org/announcements (html_page).
+Decision 53 phase B (2026-10-03): the Uinta-Wasatch-Cache's alerts page lands in usfs/closures.py as
+`usfs_r04_uinta_wasatch_cache_alerts`, which the warnings staging model reads too; the club's
+announcements page held no notice. The avalanche rating stays unfetched: avalanche.org's 'contact …
+for permission' is decision 55's one ask still to send, so this note keeps its reason.
 """
 
 from datetime import date

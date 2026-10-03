@@ -1,13 +1,20 @@
-"""Pinhoti Trail Alliance: warnings, published, and not landed (coverage audit 2026-10-01, batch
-p02_persist).
+"""Pinhoti Trail Alliance: warnings, drawn from usfs/closures.py's two national forests' alerts pages
+(decision 53 phase B, 2026-10-03).
 
-Licence: open_licence, public domain, a federal work. Folder: `usfs`.
+The prescribed-fire, food-storage, bear and flood alerts the coverage audit listed are cards on the
+National Forests in Alabama's and the Chattahoochee-Oconee's alerts pages, which land once in
+usfs/closures.py as `usfs_r08_alabama_alerts` and `usfs_r08_chattahoochee_oconee_alerts` (decision 34);
+the warnings staging model reads them too.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+THE CLUB'S OWN DOMAIN IS HIJACKED. https://pinhotitrailalliance.org/ answered 200 on 2026-10-03 with an
+Indonesian online-lottery spam page (title 'GACOR188: Platform Terbaru Situs Toto Online Pasaran Macau
+...'), its robots.txt the same HTML (decision 53's inventory, batch 3). Nothing is read from it, and
+trail_orgs.json's `website` for this club and anything else that links a hiker there should stop
+(a safety item for the maintainer; not changed here, being outside this file's scope). The PTA's
+Facebook group sits behind a login.
 
-Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
-robots.txt, terms and change check): https://www.fs.usda.gov/r08/alabama/alerts (html_page);
-https://www.fs.usda.gov/r08/chattahoochee-oconee/alerts (html_page).
+Before decision 53 phase B this file was the coverage audit's note (confirmed 2026-10-01, batch
+p02_persist), whose `checked` is kept below.
 """
 
 from datetime import date
@@ -15,8 +22,9 @@ from datetime import date
 from extract._contract import NotAvailable
 
 NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
+    confirmed=date(2026, 10, 3),
     checked=(
+        "via usfs/closures.py `usfs_r08_alabama_alerts` (29 alert cards) and `usfs_r08_chattahoochee_oconee_alerts` (30) (decision 53 phase B, 2026-10-03).",
         "`…/r08/alabama/alerts/alabamas-national-forests-begin-prescribed-fires` and "
         "`…/food-storage-forest-order`. `…/r08/chattahoochee-oconee/alerts/be-bear-aware`, "
         "`…/chattahoochee-oconee-national-forest-begins-prescribed-fires`, `…/flash-flood-awareness`, "
@@ -26,8 +34,10 @@ NOT_AVAILABLE = NotAvailable(
         "audit's prescribed-burn channel) stays behind its …",
     ),
     where=(
+        "https://www.fs.usda.gov/r08/alabama/alerts",
+        "https://www.fs.usda.gov/r08/chattahoochee-oconee/alerts",
         "https://conservationgis.alabama.gov/adcnrweb/rest/services/State_Park_Burn_Units_UTM_06_26_2023/MapServer",
         "https://pinhotitrailalliance.org/",
     ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    reason="drawn from usfs/'s resources, extracted once there (decision 34); checked names the pages this org's warnings arrive in",
 )

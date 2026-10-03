@@ -5,8 +5,12 @@ NPS's alerts for park codes `blri` and `grsm` land once, in nps/warnings.py's `n
 sources.json entry lists them against this folder in `park_codes` (decision 34). NPS's Danger,
 Caution and Information categories are the warnings half, split from the rest in dbt.
 
-The inventory also found a web page, an RSS feed for this club, which other phase B readers take; if
-one lands for this type it takes this file, and this note becomes a line in its docstring.
+The state parks' and the national forests' pages land in their stewards' folders (decision 53 phase B,
+2026-10-03): Mount Mitchell State Park's page in nc_dpr/closures.py as `nc_parks_mount_mitchell_alerts`,
+and the National Forests in North Carolina's alerts page in usfs/closures.py as
+`usfs_r08_northcarolina_alerts`; this note names all three. NC State Parks' RSS feed
+(https://www.ncparks.gov/rss.xml) answered our agent with CloudFront's 403 'Request blocked.' on
+2026-10-03 while the park pages answered 200 (the inventory, batch 3): a wall, not retried.
 
 The coverage audit's note, kept as it was (restated from reference/org_coverage.json, whose text is
 trimmed where it ends in '…'):
@@ -29,6 +33,12 @@ NOT_AVAILABLE = NotAvailable(
             "NPS alerts API, `parkCode=blri,grsm` (the decision 53 inventory, batch 3, 2026-10-03): 0 alerts. "
             "BLRI returned 0 today (the audit's DEMO_KEY call had 429'd). Landed by nps/warnings.py as "
             "nps_alerts."
+        ),
+        (
+            "Landed elsewhere in decision 53 phase B (2026-10-03): nc_dpr/closures.py `nc_parks_mount_mitchell_alerts` "
+            "(Mount Mitchell State Park's page) and usfs/closures.py `usfs_r08_northcarolina_alerts` (59 alert "
+            "cards). https://www.ncparks.gov/rss.xml answered 403, CloudFront's 'The request could not be "
+            "satisfied. Request blocked.', to our agent (inventory, batch 3): a wall, not retried."
         ),
         (
             "(coverage audit, 2026-10-01) NC DPR park pages. The `block-ncalertsblock` carousel is "
@@ -70,12 +80,15 @@ NOT_AVAILABLE = NotAvailable(
     ),
     where=(
         "https://developer.nps.gov/api/v1/alerts?parkCode=blri,grsm",
+        "https://www.ncparks.gov/state-parks/mount-mitchell-state-park",
+        "https://www.ncparks.gov/rss.xml",
         "https://www.fs.usda.gov/r08/northcarolina/alerts",
         "https://data.gov",
         "https://trails.nc.gov/",
         "https://services7.arcgis.com/SEKZuPu27jfvDQ5b/arcgis/rest/services",
     ),
     reason=(
-        "drawn from nps/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
+        "drawn from nps/'s, nc_dpr/'s and usfs/'s resources, extracted once there (decision 34); checked names "
+        "the sources this org's notices arrive in"
     ),
 )

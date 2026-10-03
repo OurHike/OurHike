@@ -7,8 +7,12 @@ Closure` category is the closures half, split from the rest in dbt; a Park Closu
 a facility or a road rather than a trail, and no alert carries geometry, so it never sets
 `obstructs_trail` alone.
 
-The inventory also found a web page, an RSS feed for this club, which other phase B readers take; if
-one lands for this type it takes this file, and this note becomes a line in its docstring.
+The state parks' and the national forests' pages land in their stewards' folders (decision 53 phase B,
+2026-10-03): Mount Mitchell State Park's page in nc_dpr/closures.py as `nc_parks_mount_mitchell_alerts`,
+and the National Forests in North Carolina's alerts page in usfs/closures.py as
+`usfs_r08_northcarolina_alerts`; this note names all three. NC State Parks' RSS feed
+(https://www.ncparks.gov/rss.xml) answered our agent with CloudFront's 403 'Request blocked.' on
+2026-10-03 while the park pages answered 200 (the inventory, batch 3): a wall, not retried.
 """
 
 from datetime import date
@@ -24,6 +28,12 @@ NOT_AVAILABLE = NotAvailable(
             "nps_alerts."
         ),
         (
+            "Landed elsewhere in decision 53 phase B (2026-10-03): nc_dpr/closures.py `nc_parks_mount_mitchell_alerts` "
+            "(Mount Mitchell State Park's page) and usfs/closures.py `usfs_r08_northcarolina_alerts` (59 alert "
+            "cards). https://www.ncparks.gov/rss.xml answered 403, CloudFront's 'The request could not be "
+            "satisfied. Request blocked.', to our agent (inventory, batch 3): a wall, not retried."
+        ),
+        (
             "(coverage audit, 2026-10-01) Format page. Park pages carry an alert block (`block-nc-alert-block` in "
             "the HTML of `/state-parks/crowders-mountain-state-park/trails`). The sitemap (733 URLs) has closure "
             "news pages, e.g. `/state-parks/dismal-swamp-state-park/news/closure-bridge-repairs`. `rss.xml` "
@@ -32,9 +42,13 @@ NOT_AVAILABLE = NotAvailable(
     ),
     where=(
         "https://developer.nps.gov/api/v1/alerts?parkCode=blri,grsm",
+        "https://www.ncparks.gov/state-parks/mount-mitchell-state-park",
+        "https://www.ncparks.gov/rss.xml",
+        "https://www.fs.usda.gov/r08/northcarolina/alerts",
         "https://trails.nc.gov/",
     ),
     reason=(
-        "drawn from nps/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
+        "drawn from nps/'s, nc_dpr/'s and usfs/'s resources, extracted once there (decision 34); checked names "
+        "the sources this org's notices arrive in"
     ),
 )

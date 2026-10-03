@@ -76,11 +76,11 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from lib.poi_schema import ALLOWED_EMPTY_POI_TYPES
+from parity import RESULT_FORMAT as PARITY_RESULT_FORMAT
 
 PIPELINE_DIR = Path(__file__).resolve().parent
 DBT_MANIFEST_DEFAULT = PIPELINE_DIR / "dbt" / "target" / "manifest.json"
 REPORT_FORMAT = "ourhike-gate-report/1"
-PARITY_RESULT_FORMAT = "ourhike-parity-result/1"  # parity.RESULT_FORMAT; tests hold the two equal
 
 #: The phone-file field names a hiker's safety turns on, by the group ELT.md's
 #: "How a rule moves" names: "water distance, capacity, `confidence`, `mile`,

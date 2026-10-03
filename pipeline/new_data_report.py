@@ -43,9 +43,10 @@ import re
 import sys
 from pathlib import Path
 
+from parity import RESULT_FORMAT as PARITY_RESULT_FORMAT
+
 PIPELINE_DIR = Path(__file__).resolve().parent
 REPORT_FORMAT = "ourhike-new-data-report/1"
-PARITY_RESULT_FORMAT = "ourhike-parity-result/1"  # parity.RESULT_FORMAT; tests hold the two equal
 
 #: The column each mart's rows are typed by, for the org × type × mart counts.
 #: A mart not named here is counted by club alone, and says so.

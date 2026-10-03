@@ -249,12 +249,6 @@ def test_a_key_pattern_matches_whichever_placeholder_each_side_writes():
     assert "the cut into one object each is not" in rows[0].listed[-1].reason
 
 
-def test_the_two_reports_and_parity_agree_on_the_result_format():
-    import new_data_report
-
-    assert gate_report.PARITY_RESULT_FORMAT == parity.RESULT_FORMAT == new_data_report.PARITY_RESULT_FORMAT
-
-
 # --- every key today's pipeline publishes ---------------------------------------
 
 

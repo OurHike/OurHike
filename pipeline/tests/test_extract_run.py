@@ -796,6 +796,53 @@ def test_an_onprem_fingerprint_sees_a_delete_that_the_edit_date_alone_would_miss
     assert resource.change_check(marker)[0] is Freshness.STALE
 
 
+def test_an_onprem_fingerprint_sees_a_redrawn_line_that_count_ids_and_the_date_all_miss(registry, requests_mock):
+    """A line moved in place, its maintained date kept by hand: only the summed length moves (the dlt skill's rule 4)."""
+    fields = [
+        {"name": "OBJECTID", "type": "esriFieldTypeOID"},
+        {"name": "UPDATED", "type": "esriFieldTypeDate"},
+        {"name": "Shape_Length", "type": "esriFieldTypeDouble"},
+    ]
+    requests_mock.get(ONPREM_URL, json={"objectIdField": "OBJECTID", "fields": fields})
+    asked = []
+    answer = {"features": [{"attributes": {"n": 40, "max_oid": 40, "max_date": 1790000000000, "sum_measure": 81234.5}}]}
+
+    def statistics(request, context):
+        outstatistics = json.loads(parse_qs(urlsplit(request.url).query)["outStatistics"][0])
+        asked.append({(stat["statisticType"], stat["onStatisticField"]) for stat in outstatistics})
+        return answer
+
+    requests_mock.get(ONPREM_URL + "/query", json=statistics)
+    resource = ArcgisLayer(key="onprem_dated", club="testclub", type="trail_lines")
+
+    verdict, marker = resource.change_check(None)
+    assert verdict is Freshness.STALE
+    assert ("sum", "Shape_Length") in asked[0]
+    assert resource.change_check(marker) == (Freshness.FRESH, marker)
+
+    answer["features"][0]["attributes"]["sum_measure"] = 81240.25  # a reroute: same rows, same ids, same date
+    assert resource.change_check(marker)[0] is Freshness.STALE
+
+
+def test_an_onprem_point_layer_fingerprints_without_a_measure(registry, requests_mock):
+    """A point layer has no length or area field, so its statistics stay the three they were."""
+    requests_mock.get(
+        ONPREM_URL, json={"objectIdField": "OBJECTID", "fields": [{"name": "OBJECTID", "type": "esriFieldTypeOID"}]}
+    )
+    asked = []
+
+    def statistics(request, context):
+        outstatistics = json.loads(parse_qs(urlsplit(request.url).query)["outStatistics"][0])
+        asked.append({stat["outStatisticFieldName"] for stat in outstatistics})
+        return {"features": [{"attributes": {"n": 5, "max_oid": 5, "max_date": 1790000000000}}]}
+
+    requests_mock.get(ONPREM_URL + "/query", json=statistics)
+    verdict, marker = ArcgisLayer(key="onprem_dated", club="testclub", type="points_of_interest").change_check(None)
+    assert verdict is Freshness.STALE
+    assert asked == [{"n", "max_oid", "max_date"}]
+    assert set(marker) == {"n", "max_oid", "max_date"}
+
+
 def test_an_onprem_fingerprint_asks_for_the_layers_own_id_field_when_its_metadata_does_not_name_one(registry, requests_mock):
     """CAJO's shape (measured 2026-10-03): no objectIdField key, and its id field is FID, typed esriFieldTypeOID."""
     fields = [{"name": "FID", "type": "esriFieldTypeOID"}, {"name": "UPDATED", "type": "esriFieldTypeDate"}]

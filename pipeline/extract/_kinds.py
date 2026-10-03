@@ -283,6 +283,31 @@ def object_id_field(metadata: dict) -> str:
     return "OBJECTID"
 
 
+# The names ArcGIS gives a layer's system length and area fields, lower-cased:
+# file and enterprise geodatabases, hosted layers, SQL Server and Oracle.
+LENGTH_FIELD_NAMES = ("shape_length", "shape__length", "shape.len", "shape.stlength()", "st_length(shape)")
+AREA_FIELD_NAMES = ("shape_area", "shape__area", "shape.area", "shape.starea()", "st_area(shape)")
+
+
+def geometry_measure_field(metadata: dict) -> str | None:
+    """A layer's system length field, else its area field, else None (a point layer has neither).
+
+    The metadata's `geometryProperties` names them where the server says;
+    otherwise the field list is read for ArcGIS's own names. Length first,
+    because a polygon layer that has both moves its length on a redraw too.
+    """
+    named = metadata.get("geometryProperties") or {}
+    for key in ("shapeLengthFieldName", "shapeAreaFieldName"):
+        if named.get(key):
+            return named[key]
+    fields = {(field.get("name") or "").lower(): field.get("name") for field in metadata.get("fields") or []}
+    for names in (LENGTH_FIELD_NAMES, AREA_FIELD_NAMES):
+        for name in names:
+            if name in fields:
+                return fields[name]
+    return None
+
+
 @dataclass(frozen=True)
 class ArcgisLayer(Resource):
     """An ArcGIS FeatureServer or MapServer layer, read whole through lib/arcgis.py's own loop.
@@ -395,12 +420,20 @@ class ArcgisLayer(Resource):
         date_field = (self.entry.get("freshness") or {}).get("field")
         if not date_field:
             return Freshness.UNKNOWN, None
-        oid = object_id_field(self.metadata())
+        metadata = self.metadata()
+        oid = object_id_field(metadata)
         statistics = [
             {"statisticType": "count", "onStatisticField": oid, "outStatisticFieldName": "n"},
             {"statisticType": "max", "onStatisticField": oid, "outStatisticFieldName": "max_oid"},
             {"statisticType": "max", "onStatisticField": date_field, "outStatisticFieldName": "max_date"},
         ]
+        # The dlt skill's rule 4 fingerprint includes sum(Shape_Length): a redrawn
+        # line or polygon moves it even where the maintained date is kept by hand
+        # and nobody touched it (the trail-lines worker's finding, 2026-10-03).
+        # Only when the layer has such a field; a point layer has none.
+        measure = geometry_measure_field(metadata)
+        if measure:
+            statistics.append({"statisticType": "sum", "onStatisticField": measure, "outStatisticFieldName": "sum_measure"})
         response = request_with_retry(
             self.url + "/query",
             session=session(),
@@ -411,7 +444,7 @@ class ArcgisLayer(Resource):
         if not features:
             return Freshness.UNKNOWN, None
         attributes = features[0].get("attributes") or {}
-        marker = {name: attributes.get(name) for name in ("n", "max_oid", "max_date")}
+        marker = {name: attributes.get(name) for name in ("n", "max_oid", "max_date") + (("sum_measure",) if measure else ())}
         if any(value is None for value in marker.values()):
             return Freshness.UNKNOWN, None
         marker = {name: str(value) for name, value in marker.items()}

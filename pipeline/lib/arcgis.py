@@ -87,6 +87,7 @@ def iter_layer_pages(
     where: str = "1=1",
     session=None,
     backoff: tuple[int, ...] = DEFAULT_BACKOFF_SECONDS,
+    return_z: bool = False,
 ):
     """Yield each page of GeoJSON features `fetch_layer_geojson` would collect, in order.
 
@@ -115,6 +116,18 @@ def iter_layer_pages(
     against a live server, since none registered here has been seen doing
     it). Two consecutive pages identical feature for feature cannot come
     from one layer read in order, so the second one raises.
+
+    `return_z` KEEPS EACH VERTEX'S ELEVATION, which `f=geojson` drops.
+    Measured 2026-10-03 on ATC's Z-enabled `ATX_Ratings/FeatureServer/9`:
+    `f=geojson&returnZ=true` answered 2-D coordinates, while `f=json&returnZ=true`
+    answered [x, y, z] on every vertex. So with `return_z` the pages are asked
+    for as Esri JSON with `returnZ=true` and converted here, by
+    `esri_feature_to_geojson`, into the same GeoJSON features this loop yields
+    otherwise, each coordinate carrying its Z. It is the same loop - stop on
+    an empty page, advance by rows returned, halve a refused page, refuse a
+    repeated one - so it is not a second pager. Off by default, and with it
+    off the request is exactly what it was before (tests/test_lib_arcgis.py
+    pins the whole query).
     """
     query_url = layer_url.rstrip("/") + "/query"
     records = PAGE_SIZE if page_size is None else page_size
@@ -129,6 +142,9 @@ def iter_layer_pages(
             "resultOffset": offset,
             "resultRecordCount": records,
         }
+        if return_z:
+            params["f"] = "json"
+            params["returnZ"] = "true"
         if geometry_precision is not None:
             params["geometryPrecision"] = geometry_precision
         resp = request_with_retry(query_url, session=session, params=params, timeout=60, backoff=backoff)
@@ -141,6 +157,8 @@ def iter_layer_pages(
             records = smaller
             continue
         batch = resp.json().get("features", [])
+        if return_z:
+            batch = [esri_feature_to_geojson(feature) for feature in batch]
         if not batch:
             return
         if batch == previous:
@@ -148,6 +166,49 @@ def iter_layer_pages(
         yield batch
         previous = batch
         offset += len(batch)
+
+
+def esri_geometry_to_geojson(geometry: dict | None) -> dict | None:
+    """One Esri JSON geometry as a GeoJSON geometry, every coordinate kept as the server sent it, Z included.
+
+    Points, multipoints and polylines, which is every Z-enabled layer
+    registered so far: a polyline of one path is a LineString and of several
+    a MultiLineString, as `f=geojson` answers them. An empty geometry is None,
+    GeoJSON's null geometry. A POLYGON RAISES: Esri rings are told apart as
+    outer or hole by their winding and must be regrouped, which this does not
+    do yet, and a polygon read wrong is worse than one not read. A Z-enabled
+    polygon layer is read without `return_z` until somebody builds that.
+    """
+    if not geometry:
+        return None
+    if "x" in geometry:
+        if geometry.get("x") is None or geometry.get("x") == "NaN":
+            return None
+        coordinates = [geometry["x"], geometry["y"]]
+        if geometry.get("z") is not None:
+            coordinates.append(geometry["z"])
+        return {"type": "Point", "coordinates": coordinates}
+    if "points" in geometry:
+        return {"type": "MultiPoint", "coordinates": geometry["points"]} if geometry["points"] else None
+    if "paths" in geometry:
+        paths = [path for path in geometry["paths"] if path]
+        if not paths:
+            return None
+        if len(paths) == 1:
+            return {"type": "LineString", "coordinates": paths[0]}
+        return {"type": "MultiLineString", "coordinates": paths}
+    if "rings" in geometry:
+        raise ValueError("an Esri polygon is not converted with its Z yet; read this layer without return_z")
+    raise ValueError(f"an Esri geometry of no known shape: {sorted(geometry)}")
+
+
+def esri_feature_to_geojson(feature: dict) -> dict:
+    """One Esri JSON feature as the GeoJSON feature `f=geojson` would have answered, its Z kept."""
+    return {
+        "type": "Feature",
+        "properties": feature.get("attributes") or {},
+        "geometry": esri_geometry_to_geojson(feature.get("geometry")),
+    }
 
 
 def check_not_truncated(query_url: str, fetched: int) -> None:

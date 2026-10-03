@@ -289,6 +289,19 @@ class ArcgisLayer(Resource):
         return super().may_be_empty or bool(self.entry.get("may_be_empty"))
 
     @property
+    def return_z(self) -> bool:
+        """Whether the read keeps each vertex's Z: the entry's own `return_z`, off unless its row says so.
+
+        A layer whose elevation is the reason it is registered, such as ATC's
+        Z-enabled `ATX_Ratings` centerline, carries `return_z: true`, and its
+        pages are read as Esri JSON with `returnZ=true`, because `f=geojson`
+        drops Z (measured 2026-10-03; lib/arcgis.py's iter_layer_pages). The
+        `geometry` column is still GeoJSON, its coordinates [x, y, z]. Off by
+        default so that no layer registered before it changes shape.
+        """
+        return bool(self.entry.get("return_z"))
+
+    @property
     def schema_contract(self) -> dict:
         """New columns are welcome; a column whose type changes is refused at normalize.
 
@@ -453,7 +466,14 @@ class ArcgisLayer(Resource):
         # Person fields are left out of the field list asked for, so they never
         # cross the wire; "*" only when the layer has none to leave out.
         out_fields = "*" if len(kept) == len(fields) else ",".join(kept)
-        pages = iter_layer_pages(self.url, where=self.where, out_fields=out_fields, session=named, backoff=self.read_backoff)
+        pages = iter_layer_pages(
+            self.url,
+            where=self.where,
+            out_fields=out_fields,
+            session=named,
+            backoff=self.read_backoff,
+            return_z=self.return_z,
+        )
         features = [feature for page in pages for feature in page]
         count = layer_count(self.url + "/query", where=self.where, session=named, backoff=self.read_backoff)
         if count is not None:

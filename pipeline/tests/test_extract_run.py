@@ -14,6 +14,7 @@ empty answer without that proof is refused and the last good rows stay what
 the warehouse reads; a table that halves is refused.
 """
 
+import hashlib
 import json
 import shutil
 from datetime import date, timedelta
@@ -58,6 +59,7 @@ from tests.test_lib_hikefinder import GPX, page
 
 AGOL = "https://services1.arcgis.com/orgid/arcgis/rest/services"
 LINES_URL = f"{AGOL}/Trails/FeatureServer/0"
+LINES_Z_URL = f"{AGOL}/CenterlineZ/FeatureServer/9"
 CLOSURES_URL = f"{AGOL}/Closures/FeatureServer/0"
 STAFFED_URL = f"{AGOL}/Waypoints/FeatureServer/1"
 ONPREM_URL = "https://gis.example.gov/arcgis/rest/services/assets/MapServer/3"
@@ -114,6 +116,47 @@ class FakeLayer:
         return {"type": "FeatureCollection", "features": self.features[offset : offset + size]}
 
 
+class FakeZLayer(FakeLayer):
+    """A Z-enabled layer, answering as ArcGIS Online did on 2026-10-03: f=geojson drops Z even with returnZ, f=json keeps it.
+
+    `features` are Esri JSON features with three-number vertices.
+    """
+
+    def query(self, request, context):
+        params = {key.lower(): value[0] for key, value in request.qs.items()}
+        if params.get("returncountonly") == "true":
+            return {"count": len(self.features)}
+        offset = int(params["resultoffset"])
+        page = self.features[offset : offset + min(int(params["resultrecordcount"]), self.max_records)]
+        if params.get("f") == "json":
+            keep = 3 if params.get("returnz") == "true" else 2
+            return {
+                "geometryType": "esriGeometryPolyline",
+                "features": [
+                    {"attributes": f["attributes"], "geometry": {"paths": [[p[:keep] for p in f["geometry"]["paths"][0]]]}}
+                    for f in page
+                ],
+            }
+        return {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "properties": f["attributes"],
+                    "geometry": {"type": "LineString", "coordinates": [p[:2] for p in f["geometry"]["paths"][0]]},
+                }
+                for f in page
+            ],
+        }
+
+
+def z_feature(oid, z):
+    return {
+        "attributes": {"OBJECTID": oid, "NAME": "Centerline"},
+        "geometry": {"paths": [[[-68.92, 45.90, z], [-68.93, 45.91, z - 9.5]]]},
+    }
+
+
 def feature(oid, name="Trail", ranger=None):
     properties = {"OBJECTID": oid, "GlobalID": f"g{oid}", "NAME": name, "EDITED": 1790000000000, "CAPACITY": None}
     if ranger:
@@ -130,6 +173,7 @@ def registry(tmp_path, monkeypatch):
             {
                 "sources": [
                     {"key": "trails", "url": LINES_URL},
+                    {"key": "centerline_z", "url": LINES_Z_URL, "return_z": True},
                     {"key": "closures_layer", "url": CLOSURES_URL},
                     {
                         "key": "staffed",
@@ -638,6 +682,58 @@ def test_a_name_added_to_a_rows_person_fields_reads_an_unmoved_layer_again(regis
     assert after_the_row != before
     monkeypatch.setattr(_kinds, "PERSON_SHAPED", _kinds.re.compile("steward"))
     assert _run.definition_digest(staffed()) != after_the_row, "a change to the backstop reads every layer again too"
+
+
+def z_centerline():
+    return ArcgisLayer(key="centerline_z", club="testclub", type="elevation", cadence_override="hourly", cadence_reason="a test")
+
+
+def test_a_layer_registered_with_return_z_lands_each_vertex_elevation_through_to_a_geometry(registry, store, requests_mock):
+    """f=geojson drops Z, so a row with `return_z: true` is read as Esri JSON and lands GeoJSON whose vertices keep it."""
+    FakeZLayer(requests_mock, LINES_Z_URL, [z_feature(1, 1600.48), z_feature(2, 1149.9), z_feature(3, 443.03)])
+
+    report = lane(store, z_centerline())
+
+    assert report.outcome == "loaded"
+    assert report.rows == {"raw_testclub__centerline_z": 3}
+    pages = [r.qs for r in requests_mock.request_history if r.path.endswith("/query") and "resultoffset" in r.qs]
+    assert pages and all(qs["f"] == ["json"] and qs["returnz"] == ["true"] for qs in pages)
+    con, _ = warehouse(store)
+    con.execute("INSTALL spatial; LOAD spatial;")
+    starts = con.execute(
+        "select objectid, st_z(st_startpoint(st_geomfromgeojson(geometry::varchar))),"
+        " st_z(st_endpoint(st_geomfromgeojson(geometry::varchar)))"
+        " from raw.raw_testclub__centerline_z order by objectid"
+    ).fetchall()
+    assert starts == [(1, 1600.48, 1590.98), (2, 1149.9, 1140.4), (3, 443.03, 433.53)]
+
+
+def test_a_layer_without_return_z_is_asked_for_exactly_what_it_was_asked_for_before(registry, requests_mock):
+    FakeLayer(requests_mock, LINES_URL, [feature(1)])
+
+    rows = list(lines().rows({}))
+
+    assert rows[0]["geometry"] == {"type": "Point", "coordinates": [-74.0, 42.0]}
+    pages = [r.qs for r in requests_mock.request_history if r.path.endswith("/query") and "resultoffset" in r.qs]
+    assert pages and all(set(qs) == {"where", "outfields", "outsr", "f", "resultoffset", "resultrecordcount"} for qs in pages)
+    assert all(qs["f"] == ["geojson"] for qs in pages)
+
+
+def test_turning_return_z_on_reads_a_layer_again_and_leaves_every_other_digest_as_it_was(registry):
+    def digest_before_return_z(resource):
+        definition = {
+            "resource": repr(resource),
+            "person_fields": sorted(_kinds.PERSON_FIELDS),
+            "person_shaped": _kinds.PERSON_SHAPED.pattern,
+            "field_rules": getattr(resource, "field_rules", None),
+            "wordpress_dropped": sorted(_kinds.WP_DROPPED),
+            "withheld_columns": sorted(_kinds.WITHHELD_COLUMNS),
+            "where": getattr(resource, "where", None),
+        }
+        return hashlib.sha256(json.dumps(definition, sort_keys=True).encode()).hexdigest()
+
+    assert _run.definition_digest(lines()) == digest_before_return_z(lines()), "a marker recorded before return_z still matches"
+    assert _run.definition_digest(z_centerline()) != digest_before_return_z(z_centerline())
 
 
 def test_an_onprem_layer_with_no_maintained_date_is_always_read(registry, requests_mock):

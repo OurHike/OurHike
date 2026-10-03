@@ -487,6 +487,10 @@ def definition_digest(resource: Resource) -> str:
         "withheld_columns": sorted(_kinds.WITHHELD_COLUMNS),
         "where": getattr(resource, "where", None),
     }
+    # Only when on, so every digest recorded before return_z existed still matches:
+    # turning it on changes the geometry a read lands, so the layer is read once more.
+    if getattr(resource, "return_z", False):
+        definition["return_z"] = True
     return hashlib.sha256(json.dumps(definition, sort_keys=True).encode()).hexdigest()
 
 

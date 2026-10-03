@@ -418,3 +418,101 @@ def test_every_page_and_the_count_name_the_pipeline_to_the_server(requests_mock)
 
     sent = [request.headers.get("User-Agent") for request in requests_mock.request_history]
     assert sent == [USER_AGENT] * 4
+
+
+# --- return_z: a layer whose elevation is why it is registered ----------------
+#
+# Measured 2026-10-03 on ATC's ATX_Ratings/FeatureServer/9 (hasZ true):
+# `f=geojson&returnZ=true` answered 2-D coordinates; `f=json&returnZ=true`
+# answered [x, y, z] on every vertex. These pages are that second shape, with
+# invented coordinates.
+
+Z_PATH = [[-68.92149, 45.90447, 1600.4792], [-68.92156, 45.90449, 1600.3816]]
+
+
+def _esri_page(start: int, count: int) -> dict:
+    return {
+        "geometryType": "esriGeometryPolyline",
+        "hasZ": True,
+        "spatialReference": {"wkid": 4326},
+        "features": [
+            {"attributes": {"OBJECTID": start + i}, "geometry": {"paths": [[[x, y, z + start + i] for x, y, z in Z_PATH]]}}
+            for i in range(count)
+        ],
+    }
+
+
+def test_a_layer_read_with_return_z_keeps_every_vertex_elevation_that_geojson_would_drop(requests_mock):
+    query_url = LAYER_URL + "/query"
+    requests_mock.get(query_url, [{"json": _esri_page(1, 2)}, {"json": _esri_page(3, 1)}, {"json": {"features": []}}])
+
+    pages = list(arcgis.iter_layer_pages(LAYER_URL, return_z=True))
+
+    features = [feature for page in pages for feature in page]
+    assert [feature["properties"]["OBJECTID"] for feature in features] == [1, 2, 3], "every page, in order"
+    assert features[0] == {
+        "type": "Feature",
+        "properties": {"OBJECTID": 1},
+        "geometry": {"type": "LineString", "coordinates": [[-68.92149, 45.90447, 1601.4792], [-68.92156, 45.90449, 1601.3816]]},
+    }
+    asked = requests_mock.request_history[0].qs
+    assert asked["f"] == ["json"] and asked["returnz"] == ["true"]
+    # Everything else about the query is what the default path sends, so the
+    # loop is the same one: the offset advances by rows returned (2, then 3).
+    assert set(asked) == {"where", "outfields", "outsr", "f", "resultoffset", "resultrecordcount", "returnz"}
+    assert [r.qs["resultoffset"][0] for r in requests_mock.request_history] == ["0", "2", "3"]
+
+
+def test_return_z_off_asks_exactly_what_the_loop_asked_before_it_existed(requests_mock):
+    """The same whole-dict pin as the fetch_layer_geojson defaults above, on the generator the extract calls."""
+    requests_mock.get(LAYER_URL + "/query", [{"json": {"features": []}}])
+
+    assert list(arcgis.iter_layer_pages(LAYER_URL, return_z=False)) == []
+
+    assert requests_mock.request_history[0].qs == {
+        "where": ["1=1"],
+        "outfields": ["*"],
+        "outsr": ["4326"],
+        "f": ["geojson"],
+        "resultoffset": ["0"],
+        "resultrecordcount": ["1000"],
+    }
+
+
+def test_a_return_z_server_that_ignores_the_offset_is_still_refused(requests_mock):
+    requests_mock.get(LAYER_URL + "/query", json=_esri_page(1, 1))
+    with pytest.raises(RuntimeError, match="ignores resultOffset"):
+        list(arcgis.iter_layer_pages(LAYER_URL, return_z=True))
+
+
+@pytest.mark.parametrize(
+    ("esri", "geojson"),
+    [
+        ({"x": -91.46, "y": 47.97, "z": 457.7}, {"type": "Point", "coordinates": [-91.46, 47.97, 457.7]}),
+        ({"x": -91.46, "y": 47.97}, {"type": "Point", "coordinates": [-91.46, 47.97]}),
+        ({"x": None, "y": None}, None),
+        ({"x": "NaN", "y": "NaN"}, None),
+        (
+            {"points": [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]},
+            {"type": "MultiPoint", "coordinates": [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]},
+        ),
+        (
+            {"paths": [[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]]},
+            {"type": "LineString", "coordinates": [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]},
+        ),
+        (
+            {"paths": [[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], [[7.0, 8.0, 9.0], [1.0, 1.0, 1.0]]]},
+            {"type": "MultiLineString", "coordinates": [[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], [[7.0, 8.0, 9.0], [1.0, 1.0, 1.0]]]},
+        ),
+        ({"paths": []}, None),
+        (None, None),
+        ({}, None),
+    ],
+)
+def test_an_esri_geometry_becomes_the_geojson_shape_f_geojson_answers_with_its_z_kept(esri, geojson):
+    assert arcgis.esri_geometry_to_geojson(esri) == geojson
+
+
+def test_an_esri_polygon_is_refused_rather_than_read_with_its_holes_wrong():
+    with pytest.raises(ValueError, match="polygon"):
+        arcgis.esri_geometry_to_geojson({"rings": [[[0, 0, 1], [0, 1, 1], [1, 1, 1], [0, 0, 1]]]})

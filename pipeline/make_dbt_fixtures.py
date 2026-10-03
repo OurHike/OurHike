@@ -5034,6 +5034,391 @@ def _club_places_fixtures() -> dict[str, dict]:
     return files
 
 
+# --- Decision 54, wave 1: the clubs' trail lines ------------------------------
+#
+# 98 layers registered 2026-10-03 (pipeline/ELT.md, "Loading everything the
+# clubs publish"). Each entry is the live layer's own field list, in its own
+# order, read off its metadata that day, with each field's type as a code:
+# o object id, i integer, d double, t date (epoch ms), g GlobalID or GUID,
+# s string. The VALUES are invented, two rows per layer, each key column
+# distinct per row, and person fields carry an invented account name so CI
+# exercises the drop the row's `person_fields` asks for. Nothing here is a
+# real feature. A layer whose row says `return_z` gets lines whose vertices
+# carry a Z, as its Esri JSON pages land.
+CLUB_TRAIL_LINE_FIELDS = {
+    "nps_oregon_nht": "OBJECTID:o Id:i DateSent:t GlobalID:g CreationDate:t Creator:s EditDate:t Editor:s",
+    "nps_california_nht": "OBJECTID:o Id:i DateSent:t GlobalID:g",
+    "nps_old_spanish_nht": "OBJECTID:o Id:i DateSent:t Miles:d GlobalID:g",
+    "nps_el_camino_tejas_nht": "OBJECTID:o Id:i DateSent:t GlobalID:g",
+    "nps_pony_express_nht": "OBJECTID:o Id:i DateSent:t GlobalID:g CreationDate:t Creator:s EditDate:t Editor:s",
+    "nps_mormon_pioneer_nht": "OBJECTID:o Id:i DateSent:t mile_check:d GlobalID:g CreationDate:t Creator:s EditDate:t Editor:s",
+    "nps_santa_fe_nht": (
+        "OBJECTID:o TRNAME:s TRALTNAME:s TRNUMBER:s TRTYPE:s TYPEROUTE:s ADMINORG:s MANAGINGORG:s "
+        "NATTRDESIGNATION:s NHTNSTADMINISTRATOR:s NHTPUBLICUSESEGMENT:s SHAREDSYSTEM:s ROADSYSTEM:s STATE:s "
+        "COUNTY:s EDITDATE:t MAPMETHOD:s XYACCURACY:s AGENCYDATASOURCE:s NOTES:s FEATUREID:s GEOMETRYID:s "
+        "PUBLICDISPLAY:s DATAACCESS:s UNITCODE:s UNITNAME:s GROUPCODE:s GROUPNAME:s REGIONCODE:s CREATEDATE:t "
+        "CREATEUSER:s EDITUSER:s MAPSOURCE:s SOURCEDATE:t ROUTENAME:s Shape__Length:d GlobalID:g"
+    ),
+    "nps_trail_of_tears_nht": (
+        "OBJECTID:o TRNAME:s TRALTNAME:s MAPLABEL:s TRNUMBER:s TRTYPE:s TRSURFACE:s TRCLASS:s TRUSE:s "
+        "TYPEOFROUTE:s MAINTAINER:s AGENCY_UNIT:s DESIGNEDUSE:s MANAGEDUSE:s ADMINORG:s MANAGINGORG:s "
+        "NATTRDESIGNATION:s NHTNSTNUMBER:s NHTNSTADMINISTRATOR:s HISTSIGNIFICANCE:s NHTCERTSTATUS:s "
+        "NRHPCRITERIA:s SHAREDSYSTEM:s ROADSYSTEM:s STATE:s COUNTY:s MAPMETHOD:s MAPSOURCE:s XYACCURACY:s "
+        "SRC_SCALE:s AGENCYDATASOURCE:s YYYYMMDDIMPORTED:i GEOMETRYID:s PUBLICDISPLAY:s DATAACCESS:s "
+        "ACCESSNOTES:s ORIGINATOR:s UNITCODE:s UNITNAME:s UNITTYPE:s GROUPCODE:s GROUPNAME:s REGIONCODE:s "
+        "SOURCEDATE:t CREATEDATE:t CREATEUSER:s EDITDATE:t EDITUSER:s LINETYPE:s OBSERVABLE:s ISEXTANT:s "
+        "OPENTOPUBLIC:s QUAD24K:s QUAD100K:s GlobalID:g Shape__Length:d"
+    ),
+    "nps_el_camino_tierra_adentro_nht": (
+        "OBJECTID:o TRNAME:s NATTRDESIGNATION:s NHTNSTADMINISTRATOR:s STATE:s MAPMETHOD:s XYACCURACY:s "
+        "AGENCYDATASOURCE:s PUBLICDISPLAY:s DATAACCESS:s UNITCODE:s UNITNAME:s GROUPCODE:s GROUPNAME:s "
+        "REGIONCODE:s CREATEDATE:t MAPSOURCE:s SOURCEDATE:t GlobalID:g Shape__Length:d"
+    ),
+    "nps_butterfield_overland_nht": (
+        "OBJECTID:o GlobalID:g TRNAME:s TRTYPE:s TRSURFACE:s TRCLASS:s TRUSE:s TYPEOFROUTE:s NATTRDESIGNATION:s "
+        "NHTNSTADMINISTRATOR:s STATE:s COUNTY:s MAPMETHOD:s COMMENTS:s MAPSOURCE:s SOURCEDATE:t XYACCURACY:s "
+        "SRC_SCALE:s AGENCYDATASOURCE:s PUBLICDISPLAY:s DATAACCESS:s ORIGINATOR:s UNITCODE:s UNITNAME:s "
+        "UNITTYPE:s GROUPCODE:s GROUPNAME:s REGIONCODE:s CREATEDATE:t CREATEUSER:s EDITDATE:t EDITUSER:s "
+        "LINETYPE:s Shape__Length:d"
+    ),
+    "nps_butterfield_srs_route": "OBJECTID:o Id:i DateSent:t GlobalID:g Shape__Length:d",
+    "nps_star_spangled_banner_nht": "OBJECTID:o Unit_Name:s Shape__Length:d",
+    "nps_captain_john_smith_nht": "FID:o TRAIL_NAME:s TRAIL_TYPE:s CNCT_NAME:s Shape_Le_1:d Shape__Length:d",
+    "nps_lewis_clark_nht": (
+        "FID:o OBJECTID:i Source:s Exped_Seg:s DIST_MILE:d DIST_TOTAL:d TRIP_TYPE:s TRAIL_TYPE:s LEADER:s "
+        "JOURNEY:s Shape_Leng:d Shape__Length:d"
+    ),
+    "nps_lewis_clark_water_trails": "OBJECTID:o Trail_Name:s Web_URL:s Trail_Org:s Designations:s Shape__Length:d",
+    "nps_overmountain_victory_nht": "OBJECTID:o TrailName:s TrailWebsi:s Shape__Length:d",
+    "nps_washington_rochambeau_nht": "FID:o OBJECTID:i Name:s Descr:s Shape_Leng:d Shape__Length:d",
+    "nps_ala_kahakai_kohala_hema": "FID:o Length_mil:d Shape_Leng:d Shape__Length:d",
+    "nps_ala_kahakai_alanui_aupuni": "OBJECTID:o Trail_Name:s Shape__Length:d",
+    "nps_ala_kahakai_kaawaloa": "OBJECTID:o Trail_name:s Shape__Length:d",
+    "nps_ala_kahakai_kiholo_puako": "OBJECTID:o Trail_Name:s Shape__Length:d",
+    "nps_anza_recreation_trails": (
+        "OBJECTID:o TRNAME:s TRALTNAME:s MAPLABEL:s TRNUMBER:s TRTYPE:s TRSURFACE:s TRCLASS:s TRUSE:s "
+        "TYPEOFROUT:s DESIGNEDUS:s MANAGEDUSE:s ADMINORG:s MANAGINGOR:s NATTRDESIG:s NHTNSTNUMB:s NHTNSTADMI:s "
+        "HISTSIGNIF:s NHTCERTSTA:s NHTCONDCAT:s NHTHIGHPOT:s NHTPUBLICU:s NRHPCRITER:s SHAREDSYST:s ROADSYSTEM:s "
+        "STATE:s EDITDATE:t MAPMETHOD:s XYACCURACY:s AGENCYDATA:s YYYYMMDDIM:i NOTES:s FEATUREID:s GEOMETRYID:s "
+        "PUBLICDISP:s DATAACCESS:s ACCESSNOTE:s ORIGINATOR:s UNITCODE:s UNITNAME:s UNITTYPE:s GROUPCODE:s "
+        "GROUPNAME:s REGIONCODE:s CREATEDATE:t CREATEUSER:s EDITUSER:s LINETYPE:s MAPSOURCE:s SOURCEDATE:t "
+        "OBSERVABLE:s ISEXTANT:s OPENTOPUBL:s CR_ID:s RESNAME:s BND_TYPE:s BND_OTHER:s EXTANT_OTH:s CONTRIBRES:s "
+        "RESTRICT_:s SRC_SCALE:s VERT_ERROR:s SRC_COORD:s MAP_MTH_OT:s CONSTRANT:s CR_NOTES:s NRIS_Refnu:s "
+        "NPGalleryI:s Hyper:s Link:s TRLFEATTYP:s SEASONAL:s SEASDESC:s SMA_OWNERS:s COUNTY:s TRLSTATUS:s "
+        "QUAD24K:s QUAD100K:s GIS_Notes:s Shape_Leng:d GlobalID:g CreationDate:t Creator:s EditDate_1:t Editor:s "
+        "Planning_Notes:s Shape__Length:d"
+    ),
+    "nps_anza_nht": (
+        "FID:o TRNAME:s TRALTNAME:s MAPLABEL:s TRNUMBER:s TRTYPE:s TRSURFACE:s TRCLASS:s TRUSE:s TYPEOFROUT:s "
+        "MAINTAINER:s DESIGNEDUS:s MANAGEDUSE:s ADMINORG:s MANAGINGOR:s NATTRDESIG:s NHTNSTNUMB:s NHTNSTADMI:s "
+        "HISTSIGNIF:s NHTCERTSTA:s NHTCONDCAT:s NHTHIGHPOT:s NHTPUBLICU:s NRHPCRITER:s SHAREDSYST:s ROADSYSTEM:s "
+        "STATE:s COUNTY:s MAPMETHOD:s MAPSOURCE:s SOURCEDATE:t XYACCURACY:s SRC_SCALE:s AGENCYDATA:s YYYYMMDDIM:i "
+        "NOTES:s FEATUREID:s GEOMETRYID:s PUBLICDISP:s DATAACCESS:s ACCESSNOTE:s ORIGINATOR:s UNITCODE:s "
+        "UNITNAME:s UNITTYPE:s GROUPCODE:s GROUPNAME:s REGIONCODE:s CREATEDATE:t CREATEUSER:s EDITDATE:t "
+        "EDITUSER:s LINETYPE:s OBSERVABLE:s ISEXTANT:s OPENTOPUBL:s ALTLANGNAM:s ALTLANG:s SEASONAL:s SEASDESC:s "
+        "TRLFEATTYP:s TRLSTATUS:s RESNAME:s CONTRIBRES:s RESTRICT_:s CR_NOTES:s QUAD24K:s QUAD100K:s Hyper:s "
+        "GIS_Notes:s Shape_Leng:d Shape__Length:d"
+    ),
+    "blm_old_spanish_nht_trails": (
+        "OBJECTID:o Trail_Surface_Type:s Trail_Name:s Trail_Type:s SiteMgmtCo:s SiteMgmtCo_Link:s Creator:s "
+        "Editor:s Creation_Date:t Edition_Date:t Shape__Length:d GlobalID:g"
+    ),
+    "blm_old_spanish_nht_alignment": (
+        "OBJECTID:o LAND_PLAN:s NAT_TR_DES:s TR_NAME:s ROUTE_NAME:s NHTNST_ADM:s GROUPCODE:s UNITCODE:s NOTES:s "
+        "RESTRICTIO:s EDITDATE:t Shape__Len:d GlobalID:s CreationDate:t Creator:s EditDate_1:t Editor:s "
+        "Shape__Length:d GlobalID_2:g"
+    ),
+    "blm_iditarod_nht": "OBJECTID_1:o TrailName:s Website:s Shape__Length:d",
+    "usfs_pacific_northwest_trail": (
+        "FID:o Layer:s RTE_NAME:s SEGMENT:s COMMENT:s ROUTE_ID:s MILES:d PNT_Sectio:s State:s TableLink:i Shape_Leng:d"
+    ),
+    "ata_arizona_trail": "Passage:s Miles:d Name:s Weblink:s MP_Name:s OBJECTID:o Sort:i Shape_Leng:d GlobalID:g Shape__Length:d",
+    "ata_mountain_bike_passages": "OBJECTID:o type:s ident:s desc_:s link:s Length_mi:d Shape_Leng:d GlobalID:g Shape__Length:d",
+    "ttc_butler_trail": (
+        "OBJECTID:o ASSET_MGMT_ID:s STATION_ID:s PARK_NAME:s ASSET_NAME:s TRAIL_SYSTEM_NAME:s SHARED_NAME:s "
+        "SYSTEM_TYPE:s CITY_MUNICIPAL:s COUNTY:s STATE:s ASSET_STATUS:s YEAR_BUILT:i ASSET_SIZE:d "
+        "UNIT_OF_MEASUREMENT:s ASSET_SURFACE:s SURFACE_COMMENT:s WIDTH_FT:i DIFFICULTY_RATING:s DESIGN_USE:s "
+        "USE_COMMENT:s ACCESSIBLITY_STATUS:s ACCESS_TYPE:s MOTORIZED_USE:s HIKE:s ROAD_BIKE:s MOUNTAIN_BIKE:s "
+        "EQUESTRIAN:s DOG_SLED:s SNOWMOBILE:s SNOWSHOE:s CROSS_COUNTRY_SKI:s WATERCRAFT_MOTORIZED:s "
+        "WATERCRAFT_NONMOTORIZED:s PORTAGE:s ATV:s FOUR_WD:s MOTORCYCLE:s PARK_TRAIL:s ON_STREET_BIKE:s "
+        "MANAGING_NAME:s MANAGING_TYPE:s MAINTENANCE_LITTER:s MAINTENANCE_VEGETATION:s MAINTENANCE_SURFACE:s "
+        "SERVICE_AREA:s COUNCIL_DISTRICT:s COUNCIL_DISTRICT_AREAS:s MXASSETNUM:s MXLOCATION:s MXSITEID:s "
+        "MXCREATIONSTATE:i MXSTATUS:s MXCONDITIONCODE:s MXPRIORITY:i MXLOADID:s GLOBALID:g CREATED_BY:s "
+        "CREATED_DATE:t MODIFIED_BY:s MODIFIED_DATE:t Shape__Length:d GlobalID_2:g CreationDate:t Creator:s "
+        "EditDate:t Editor:s Shape__Length_2:d"
+    ),
+    "austin_pard_trails": (
+        "OBJECTID:o ASSET_MGMT_ID:s PARK_NAME:s ASSET_NAME:s TRAIL_SYSTEM_NAME:s SHARED_NAME:s SYSTEM_TYPE:s "
+        "CITY_MUNICIPAL:s COUNTY:s STATE:s ASSET_STATUS:s YEAR_BUILT:i ASSET_SIZE:d UNIT_OF_MEASUREMENT:s "
+        "ASSET_SURFACE:s SURFACE_COMMENT:s WIDTH_FT:i DIFFICULTY_RATING:s DESIGN_USE:s USE_COMMENT:s "
+        "ACCESSIBLITY_STATUS:s ACCESS_TYPE:s MOTORIZED_USE:s HIKE:s ROAD_BIKE:s MOUNTAIN_BIKE:s EQUESTRIAN:s "
+        "DOG_SLED:s SNOWMOBILE:s SNOWSHOE:s CROSS_COUNTRY_SKI:s WATERCRAFT_MOTORIZED:s WATERCRAFT_NONMOTORIZED:s "
+        "PORTAGE:s ATV:s FOUR_WD:s MOTORCYCLE:s PARK_TRAIL:s ON_STREET_BIKE:s MANAGING_NAME:s MANAGING_TYPE:s "
+        "MAINTENANCE_LITTER:s MAINTENANCE_VEGETATION:s MAINTENANCE_SURFACE:s SERVICE_AREA:s COUNCIL_DISTRICT:i "
+        "COUNCIL_DISTRICT_AREAS:s MXASSETNUM:s MXLOCATION:s MXPARENT:s MXSITEID:s MXCREATIONSTATE:i MXSTATUS:s "
+        "MXCONDITIONCODE:s MXPRIORITY:i MXLOADID:s GLOBALID:g CREATED_BY:s CREATED_DATE:t MODIFIED_BY:s "
+        "MODIFIED_DATE:t Shape__Length:d"
+    ),
+    "dcr_blue_hills_trails": (
+        "FID:o SOURCE:s TYPE:s MAP_SYMBOL:s STATUS:s ILLEGAL:s COMMENTS:s SURFACE:s WIDTH:s CONDITION:s "
+        "VEHICACCES:s TRAIL_MARK:s NAME:s LOOP1:s LOOP2:s LOOP3:s BLAZECOLOR:s HEALTHY_HT:s USE_HIKE:s USE_RUN:s "
+        "USE_MTBIKE:s USE_BIKE:s USE_ATV:s USE_MCYCLE:s USE_EQUEST:s USE_DHSKI:s USE_XCSKI:s USE_GROOM:s "
+        "USE_SNOMO:s USE_WINTER:s USE_DOGS:s UA_HIKE:s PLANNING:s SLOPE_AVG:d SLOPE_MAX:d FACIL_CODE:s "
+        "SHAPEFILEN:s GPS_DATE:s GPS_TIME:s LENGTH_MI:d LENGTH_FT:d Shape_Leng:d GlobalID:s created_us:s "
+        "created_da:t last_edite:s last_edi_1:t UNIQUE_ID:i Shape__Length:d GlobalID_2:g"
+    ),
+    "dcr_roads_and_trails": (
+        "OBJECTID:o TYPE:s ILLEGAL:s SURFACE:s WIDTH:s CONDITION:s VEHICACCES:s TRAIL_MARK:s COMMENTS:s "
+        "GPS_DATE:t GPS_TIME:s NAME:s MILES:d METERS:d GlobalID:g"
+    ),
+    "chesapeake_cajo_complete": (
+        "FID:o COM_ID:i RCH_CODE:s RCH_DATE:s LEVEL:i METERS:d GNIS_ID:s STRAHLER:i SHREVE:i WBODY:i SHORE:i "
+        "NAME:s TRAIL_NAME:s LOCATION_S:s CANOEING_O:s MAP_AND_GU:s HISTORICAL:s NATURAL_AR:s WILDLIFE_V:s "
+        "CAMPING:s FISHING:s SHAPE_Leng:d"
+    ),
+    "chesapeake_baywide_trails": (
+        "OBJECTID:o State:s Trail_Name:s Alt_Name:s Type:s Surface:s MILES:d STATUS:s MAINTENANC:s MANAGEME_1:s "
+        "MANAGING_A:s Management:s LandUnit:s Owner:s Owner_2:s COUNTY:s direction:s TRACK:s on_road:s "
+        "Managed_Us:s Designed_U:s Public:s ATV:s HORSE:s BIKE:s XC:s SS:s ER:s MOTORV:s SNOWMB:s MotorBoat:s "
+        "PaddleBoat:s Dog:s Hike:s Interp:s Off_Road:s Four_Wheel:s Rort:s Railine:s backpack:s xcski:s fitness:s "
+        "water:s ohv:s dirtbike:s nationalTr:s ada:s UTV:s RIM_BICYCL:s RIM_BICY_2:s WT_NAME:s notes:s Desc_:s "
+        "source:s sourceData:s DATE_COMPL:t DATE_UPGRA:t sharedSegm:s sharedSe_2:s multiSegme:i ecg_review:s "
+        "spine:s signed:s Trail_Widt:i LENGTH:d Shape_Length:d"
+    ),
+    "des_moines_trails": (
+        "OBJECTID:o Name:s RegionalName:s Status:s SurfaceType:s LengthMile:d FacilityType:s "
+        "FacilityDescription:s Structure:s Hyperlink:s GlobalID:g created_user:s created_date:t "
+        "last_edited_user:s last_edited_date:t Classification:s Location:s OwnershipJurisdiction:s "
+        "MaintenanceJurisdiction:s FacilitySubtype:s WidthFeet:i ConstructionYear:i RehabilitationYear:i "
+        "WinterMaintenance:s FacilityContext:s EquestrianPermitted:s SkiPermitted:s SnowmobilePermitted:s "
+        "TotalCost:d CostPerMile:d CostDescription:s Comments:s ExtID:d Shape__Length:d"
+    ),
+    "iowa_dnr_state_park_trails": (
+        "OBJECTID:o Type:s Use_type:s Surface:s Descrip:s Width:i Bike:s Horse:s Ski:s Skate:s Snowmobile:s "
+        "Hike:s Rec_uses:s Source:s HC_Access:s Seasonal:s Length_m:d idStPark:s idAdminB:s Trail_Name:s Owner:s "
+        "Mtn_Bike:s created_user:s created_date:t last_edited_user:s last_edited_date:t GlobalID:g "
+        "Shape.STLength():d Length_mi:d ADA_access:s Mt_Bike:s"
+    ),
+    "tdec_state_park_trails_2024": (
+        "OBJECTID:o TSP_UID:s TR_NAME:s SEGMNT_NAME:s SEGTYP:s RATING:i BLZCLR:s BLZMAT:s BLZDSC:s TRSTAT:s "
+        "TRLUSE:s TRSURF:s MANAGE:s OWNERS:s SEGLEN:d TRLLEN:d PRIMARY_NAME__LONG_:s SECONDARY_NAME__LONG_:s "
+        "USE_TYPE:s GlobalID:g"
+    ),
+    "tdec_public_trails_view": (
+        "OBJECTID:o Trail_UID:s Park_ID:s Trail_Name:s Segment_Name__if_Applicable_:s Segment_Type:s Park_Name:s "
+        "GlobalID:g Park:s State_Natural_Area:s TRSTAT:s MAX_BLZCLR:s TAIDataYN:s AccessibilityPageLink:s "
+        "GradeTypical:d GradeMax:d CrossSlopeTypical:d CrossSlopeMax:d TreadWidthTypical:d TreadWidthMin:d "
+        "TAISurfaceDesc:s TAIObstructions:s TAIElevGain:d TAIElevLoss:d State_Natural_Area_1:s Promoted_Mileage:d "
+        "GIS_Trail_Route_Type:s Trail_Description:s Surf_Paved:s Surf_Gravel:s Surf_Natural:s Surf_Mulch:s "
+        "Surf_Water:s Surf_Riverbed:s Use_Hike:s Use_Bike:s Use_MtnBike:s Use_Paddle:s Use_Equestrian:s "
+        "Use_Climb:s Use_Fitness:s Use_Wheelchair:s Use_AllTerrain_Wheelchair:s Use_Storybook:s Node_ID:s "
+        "TrailCardsYN:s GIS_Trail_Length:d Difficulty:s Last_Assessed_Date:s"
+    ),
+    "tdec_public_trails": (
+        "OBJECTID:o TSP_UID:s TR_NAME:s SEGMNT_NAME:s SEGTYP:s RATING:i BLZCLR:s BLZMAT:s BLZDSC:s TRSTAT:s "
+        "TRLUSE:s TRLVIN:s TRSURF:s MANAGE:s OWNERS:s SEGLEN:d TRLLEN:d SOURCE:s COLMET:s CREATED_BY:s "
+        "CREATED_DATE:t EDITED_BY:s EDITED_DATE:t PRIMARY_NAME__LONG_:s SECONDARY_NAME__LONG_:s USE_TYPE:s "
+        "PRIMARY_DESIGNATION:s SECONDARY_DESIGNATION:s Shape__Length:d GlobalID:g"
+    ),
+    "ctsst_open_ct_trail_2020": (
+        "OBJECTID:o Park_Name:s Trail_Name:s Trail_Statue:s Trail_Discription:s Trail_Mileage:d sequence:d Shape__Length:d"
+    ),
+    "ctsst_comp_trails_2020": "OBJECTID:o Trail_Name:s Location:s Trail_Useage:s Mileage:d Status:s State:s Shape__Length:d",
+    "ctsst_road_walks_2020": "OBJECTID:o Name:s Existing:s Miles:d Type:s Shape__Length:d",
+    "ctsst_overall_route_2023": (
+        "OBJECTID:o Park_Name:s Trail_Name:s Trail_Statue:s Trail_Discription:s Trail_Mileage:d County:s Year:d "
+        "Order_:d Shape__Length:d"
+    ),
+    "ctsst_glyph_parkway": "OBJECTID_1:o OBJECTID:i Name:s Mileage:d Shape__Length:d",
+    "ctsst_duskin_piney_trail": (
+        "OBJECTID:o Park_Name:s Trail_Name:s Trail_Statue:s Trail_Discription:s Trail_Mileage:d County:s Shape__Length:d"
+    ),
+    "ctsst_newby_piney_trail": "OBJECTID:o Name:s Mileage:d SHAPE__Length:d",
+    "fltc_flt_main": (
+        "FID:o OBJECTID:i LABEL:s NOTES:s Len_Meters:d Len_Miles:d Data_Type:s PassOvrCol:s BrochurCol:s "
+        "Mod_Date:t Shape_Leng:d Point_Coun:i Shape__Length:d"
+    ),
+    "fltc_non_flt_trails": (
+        "FID:o OBJECTID:i BlazeColor:s Symbol:s LABEL:s Jurisdict:s Maps:s Data_Type:s NOTES:s Len_Meters:d "
+        "Len_Miles:d Date_Modif:t Shape_Leng:d Shape__Length:d"
+    ),
+    "portland_parks_trails": (
+        "OBJECTID:o PROPERTYID:d Local_Name:s TYPE:s STATUS:s Manager:s SURFACE:s WIDTH_FT:i SOURCE:s "
+        "Regional_trail:s Columbia_Slough:s Forty_Mile_Loop:s I_205:s Marine_Drive:s MARQUAM:s Springwater:s "
+        "Willamette_Greenway:s Notes:s Red_Electric:s Hillsdale_Lake_Oswego:s Fanno_Creek_Greenway:s MILES:d "
+        "Shape_Length:d Fire_access:s"
+    ),
+    "ppr_trails": (
+        "OBJECTID:o PROPERTYID:d NAME:s TYPE:s STATUS:s DT_OPEN:t DT_IMPROVED:t DT_CLOSED:t MANAGE:s SURFACE:s "
+        "SURFPROP:s WIDTH_FT:i INTER_LINE:s COND:i CONDYEAR:i CONDINIT:s SOURCE:s SOURC_GEN:s USERPED:s "
+        "USERHORSE:s USERADA:s USERROLL:s BIKEMTN:s BIKEROAD:s REGIONAL:s COL_SLOUGH:s FORTY_MILE:s I_205:s "
+        "MARINEDRTR:s MARQUAM:s SPRINGH2O:s WILL_GRNWY:s SW_TRAILS:s PLANNED:s SWTRAIL1:s RED_LECTRC:s SWTRAIL3:s "
+        "SWTRAIL4:s SWTRAIL5:s SWTRAIL6:s SWTRAIL7:s HLLSDL_LO:s FANNO_CRK:s MILES:d Fire_access:s GlobalID:g"
+    ),
+    "oregon_metro_trails": (
+        "FID:o TRAILNAME:s SYSTEMNAME:s SHAREDNAME:s SYSTEMTYPE:s STATUS:s TRLSURFACE:s WIDTH:s ACCESSIBLE:s "
+        "HIKE:s ROADBIKE:s MTNBIKE:s EQUESTRIAN:s WCRAFT_NON:s AGENCYNAME:s MILEAGE:d TRAILID:i WILRIVGNWY:s "
+        "FORTYMLOOP:s REGPLAN:s AGENCYTYPE:s LAST_EDIT:t LENGTH:d Shape__Length:d SYMB_CAT:s"
+    ),
+    "gmc_trail_master": (
+        "FID:o TrailName:s MaintName:s TrailType:s Division:s Maint_code:s Maint_ID:s FeatureID:s Feat_Code:s "
+        "AT:s Length_mi:d Length_ft:d Source:s Sourcedate:s Notes:s LastEdDate:t LastEdBy:s AF_CONF:i "
+        "Shape__Length:d GlobalID:g"
+    ),
+    "in_dnr_open_trails": (
+        "objectid:o segcode:d segmiles:d segname:s status:s reportedsegdistance:d trailtype:s surface:s "
+        "managingentity:s yropen:i geogsource:s hike:s exercise:s intrp:s roadbike:s mtnbike:s horse:s ski:s "
+        "whlchr:s snowbile:s atv:s mocycle:s fwdrive:s canoe:s skate:s otheruse:s multiuse:s property:s "
+        "entitytype:s railtrail:s entityaddress:s entityphone:s entityemail:s county:s trailcode:i "
+        "reportedtraildistance:d globalid:g creationdate:t creator:s editdate:t editor:s entityweb:s trailname:s "
+        "SHAPE__Length:d"
+    ),
+    "ncta_spurs": "OBJECTID:o seg_name:s prop_name:s len_miles:d updated:t owner:s source:s public_map:s Shape__Length:d",
+    "ncta_nearby_trails": (
+        "OBJECTID:o seg_name:s prop_name:s state:s chapter:s len_miles:d updated:t owner:s source:s public_map:s "
+        "Max_Slope:d Avg_Slope:d Shape__Length:d"
+    ),
+    "ncta_superior_hiking_trail": (
+        "OBJECTID:o seg_name:s trail_stat:s trail_type:s trail_surf:s len_miles:d built_on:t bike:s horse:s "
+        "camping:s opn_camp:s closure:s cls_date:s prop_name:s ownership:s mng_auth:s state:s chapter:s "
+        "data_type:s cert_stat:s updated:t seg_id:s cert_doc:s ncta_region:s easement_id:s easement_type:s "
+        "cong_dist:s source:s public_map:s special_regs:s Shape__Length:d"
+    ),
+    "ncta_finger_lakes_trail": (
+        "OBJECTID:o seg_name:s trail_stat:s trail_type:s trail_surf:s len_miles:d built_on:t bike:s horse:s "
+        "camping:s opn_camp:s closure:s cls_date:s prop_name:s ownership:s mng_auth:s state:s chapter:s "
+        "data_type:s cert_stat:s updated:t seg_id:s cert_doc:s source:s public_map:s special_regs:s "
+        "created_user:s created_date:t last_edited_user:s last_edited_date:t Shape__Length:d"
+    ),
+    "octa_hastings_cutoff_route": "FID:o Title:s Source:s Latitude:d Longitude:d ident:s rident:s Shape__Length:d",
+    "octa_naches_pass_trail": (
+        "FID:o Name:s SName:s Comment:s Symbol:i Points:i LatN:d LatS:d LonE:d LonW:d Class:s TrailSys:s ResStat:s"
+    ),
+    "octa_natcon_boardman_tracks_2016": (
+        "FID:o Name:s SName:s Comment:s Symbol:i Points:i LatN:d LatS:d LonE:d LonW:d Class:s TrailSys:s ResStat:s"
+    ),
+    "octa_corral_springs_tracks_2015": (
+        "FID:o Name:s SName:s Comment:s Symbol:i Points:i LatN:d LatS:d LonE:d LonW:d Class:s TrailSys:s ResStat:s SubTrail:s"
+    ),
+    "octa_whitman_longsegs_2020": (
+        "FID:o Name:s SName:s Comment:s Symbol:i Points:i LatN:d LatS:d LonE:d LonW:d Class:s TrailSys:s ResStat:s"
+    ),
+    "octa_polylines_oregon_trail_kml": (
+        "OBJECTID:o Name:s FolderPath:s SymbolID:i AltMode:i Base:d Clamped:i Extruded:i Snippet:s PopupInfo:s Shape__Length:d"
+    ),
+    "octa_lockhart_trail_route": "FID:o Id:i Shape__Length:d",
+    "octa_barlow_road_62": "OBJECTID:o InLine_FID:i MaxSimpTol:d MinSimpTol:d Shape__Length:d",
+    "octa_barlow_road_63": "OBJECTID:o InLine_FID:i MaxSimpTol:d MinSimpTol:d Shape__Length:d",
+    "octa_barlow_road_64": "OBJECTID:o InLine_FID:i MaxSimpTol:d MinSimpTol:d Shape__Length:d",
+    "octa_barlow_road_65": "OBJECTID:o InLine_FID:i MaxSimpTol:d MinSimpTol:d Shape__Length:d",
+    "octa_barlow_road_86": "OBJECTID:o InLine_FID:i MaxSimpTol:d MinSimpTol:d Shape__Length:d",
+    "octa_molalla_young_trail_62": "OBJECTID:o InLine_FID:i MaxSimpTol:d MinSimpTol:d Shape__Length:d",
+    "octa_molalla_young_trail_63": "OBJECTID:o InLine_FID:i MaxSimpTol:d MinSimpTol:d Shape__Length:d",
+    "octa_klamath_fremont_trail_65": "OBJECTID:o InLine_FID:i MaxSimpTol:d MinSimpTol:d Shape__Length:d",
+    "octa_klamath_fremont_trail_71": "OBJECTID:o InLine_FID:i MaxSimpTol:d MinSimpTol:d Shape__Length:d",
+    "octa_meek_trail_65": "OBJECTID:o InLine_FID:i MaxSimpTol:d MinSimpTol:d Shape__Length:d",
+    "octa_meek_trail_71": "OBJECTID:o InLine_FID:i MaxSimpTol:d MinSimpTol:d Shape__Length:d",
+    "octa_meek_trail_86": "OBJECTID:o InLine_FID:i MaxSimpTol:d MinSimpTol:d Shape__Length:d",
+    "octa_oregon_trail_71": "OBJECTID:o InLine_FID:i MaxSimpTol:d MinSimpTol:d Shape__Length:d",
+    "octa_oregon_trail_81": "OBJECTID:o InLine_FID:i MaxSimpTol:d MinSimpTol:d Shape__Length:d",
+    "octa_oregon_trail_85": "OBJECTID:o InLine_FID:i MaxSimpTol:d MinSimpTol:d Shape__Length:d",
+    "octa_oregon_trail_86": "OBJECTID:o InLine_FID:i MaxSimpTol:d MinSimpTol:d Shape__Length:d",
+    "octa_oregon_trail_87": "OBJECTID:o InLine_FID:i MaxSimpTol:d MinSimpTol:d Shape__Length:d",
+    "octa_oregon_trail_88": "OBJECTID:o InLine_FID:i MaxSimpTol:d MinSimpTol:d Shape__Length:d",
+    "octa_oregon_trail_89": "OBJECTID:o InLine_FID:i MaxSimpTol:d MinSimpTol:d Shape__Length:d",
+    "octa_bonneville_trail_1834_86": "OBJECTID:o InLine_FID:i MaxSimpTol:d MinSimpTol:d Shape__Length:d",
+    "onda_odt_tracks": (
+        "creator:s stroke_opacity:i stroke_width:i title:s fill:s class:s updated:d stroke:s fill_opacity:d "
+        "folderId:s gpstype:s ObjectId:o Shape__Length:d"
+    ),
+    "patc_trails_master": (
+        "OBJECTID:o TrailName:s TrailType:s MapMethod:s MapSource:s SurveyDate:s District:s Maintainer:s "
+        "GuidebookSection:s Easement:s Comments:s SegmentLengthMiles:d MapFootprint:s SegmentFrom:s SegmentTo:s "
+        "Legacy_SegmentName:s Legacy_Segment_ID:s GlobalID:g Shape__Length:d CreationDate:t Creator:s EditDate:t "
+        "Editor:s"
+    ),
+    "ridgetrail_official_route": (
+        "OBJECTID:o Section_Number:i Section_Name:s Section_Status:s Trail_Type:s BRT_Web_Mileage:d "
+        "Calculated_Mileage:d Park_Managers:s Region:s County:s Segment_Name:s AllTrails_Link:s BRT_Website:s "
+        "Outerspacial:s Hike_Miles:d Biker_Miles:d Equestrian_Miles:d Partner_Website:s Dog_Permissions:s "
+        "Dog_Notes:s Bike_Permissions:s Bike_Notes:s Horse_Permissions:s Horse_Notes:s Restrooms:s "
+        "Restroom_Notes:s Parking_Fee:s Picnic_Tables:s Picnic_Table_Notes:s Camping:s Camp_Type:s Camp_Name:s "
+        "Camp_Website:s Peaks:s Ocean_Views:s Inland_Views:s Lakes_Ponds:s Shady:s Family_Friendly:s Easy_Grade:s "
+        "Highest_Elevation:s Shape__Length:d CreationDate:t Creator:s EditDate:t Editor:s DedicationYear:i "
+        "BRT_Website_Embed:s ElevationGainLoss:s Segment_ID:s"
+    ),
+    "sbts_maintained": "OBJECTID:o Name:s Forest:s Type:s ProjectName:s Trail_Number:s Miles:d Shape__Length:d",
+    "shta_line_2025": (
+        "FID:o OBJECTID:i OBJECTID_1:i altname:s maintrail:i details:s isNew:i status:i meters:d miles:d "
+        "Shape_Leng:d Length_FT:d SectionSou:i MileMarker:i Shape_Le_1:d Shape_Le_2:d Shape__Length:d"
+    ),
+    "shta_spurs_and_loops": (
+        "FID:o OBJECTID:i altname:s maintrail:i details:s isNew:i status:i meters:d miles:d Shape_Leng:d "
+        "Length_FT:d SectionSou:i Shape__Length:d"
+    ),
+    "shta_spirit_mountain_spur_2025": (
+        "FID:o OBJECTID:i altname:s maintrail:i details:s isNew:i status:i meters:d miles:d Shape_Leng:d "
+        "Length_FT:d SectionSou:i Field:d newmiles:d Shape__Length:d"
+    ),
+    "lake_county_superior_hiking_trail": "OBJECTID:o COLLECTOR:s SHT_TYPE:s MILES:d LENGTH:d Shape_Leng:d Shape__Length:d",
+    "tko_oregon_coast_trail": (
+        "OCT_Section_Name:s OBJECTID:o FENAME:s COMMENTS:s Section:s GapName:s TrailStatus:s TrailType:s OCT_ID:s "
+        "HRA_Recommendation:s Section_Name:s Shape__Length:d"
+    ),
+    "tpwd_state_park_trails": "OBJECTID:o ParkName:s Official:s Name1:s TrailUse:s LengthMI:d GlobalID:g Shape_Length:d",
+    "usace_mobile_trails": (
+        "OBJECTID:o GlobalID:g featureDescription:s featureName:s isInterpretive:s isNatureTrail:s mediaId:s "
+        "metadataId:s officialLength:d officialLengthUom:s recreationalTrailUse:s recreationTrailIdpk:s rpnid:s "
+        "rpsuid:i rpuid:s sdsId:g created_user:s created_date:t last_edited_user:s last_edited_date:t "
+        "difficultyRating:s managedBy:s status:s Shape__Length:d"
+    ),
+    "usace_tulsa_trails": (
+        "featureDescription:s featureName:s isInterpretive:s isNatureTrail:s mediaId:s metadataId:s "
+        "officialLength:d officialLengthUom:s propertyIdCode:s recreationalTrailUse:s recreationTrailIdpk:s "
+        "rpnid:s rpsuid:i rpuid:s sdsId:g GlobalID:g created_user:s created_date:t last_edited_user:s "
+        "last_edited_date:t dataSource:s dataYear:s OBJECTID:o Shape__Length:d"
+    ),
+    "usfws_trail_segments": (
+        "OBJECTID:o ORGCODE:s ORGNAME:s TRNAME:s TRALTNAME:s TRNUMBER:s SECNUMBER:s TRTYPE:s TRSURFACE:s "
+        "TRSURFACEFWS:s TRSURFACEOTHER:s TRCLASS:s TRCONDITION:s TYPEROUTE:s SHAREDSYSTEM:s DESIGNEDUSE:s "
+        "MANAGEDUSE:s TRUSE:s ADMINORG:s MANAGINGORG:s OWNER:s OWNERNAME:s MAINTAINER:s MAINTAINERNAME:s "
+        "NATTRDESIGNATION:s NHTNSTNUMBER:s NHTNSTADMINISTRATOR:s MAPMETHOD:s XYACCURACY:s AGENCYDATASOURCE:s "
+        "YYYYMMDDIMPORTED:i FEATUREID:s GEOMETRYID:s CYCLEID:d GPSDATE:t REGION:i STATE:s LOCATION:s ASSETCODE:s "
+        "WIDTH:i MAXSLOPE:i AVGSLOPE:i AVGXSLOPE:i SECLENGTHFT:i TRAILFT:i SECLENGTHMI:d TRAILMI:d STARTLAT:d "
+        "STARTLONG:d ENDLAT:d ENDLONG:d STARTDESCRIPTION:s ENDDESCRIPTION:s ACCESSIBILITYINFO:s INFOTYPE:s "
+        "BICYCLES:s DOGS:s DATAACCESS:s PUBLICDISPLAY:s SEASONAL:s SEASONALDESC:s NOTES:s CREATEUSER:s "
+        "CREATEDATE:t EDITUSER:s EDITDATE:t GlobalID:g RelateGUID:g Shape__Length:d"
+    ),
+}
+CLUB_TRAIL_LINES_WITH_Z = frozenset({"ata_arizona_trail"})
+
+
+def _club_value(key: str, name: str, code: str, i: int):
+    if code in ("o", "i"):
+        return i + 1
+    if code == "d":
+        return 1.5 + i
+    if code == "t":
+        return 1759000000000 + i * 86_400_000
+    if code == "g":
+        return f"{{fixture-{key}-{i + 1}}}"
+    return f"fixture {name} {i + 1}"
+
+
+def _club_trail_lines_fixtures() -> dict[str, dict]:
+    """One fixture per decision 54 trail-line layer, from CLUB_TRAIL_LINE_FIELDS."""
+    files = {}
+    for key, spec in CLUB_TRAIL_LINE_FIELDS.items():
+        columns = [tuple(item.rsplit(":", 1)) for item in spec.split()]
+        features = []
+        for i in range(2):
+            geometry = _z_line(i, 5505.0 + i * 100) if key in CLUB_TRAIL_LINES_WITH_Z else _line(i)
+            properties = {name: _club_value(key, name, code, i) for name, code in columns}
+            features.append({"type": "Feature", "properties": properties, "geometry": geometry})
+        files[f"external/{key}.geojson"] = _feature_collection(features)
+    return files
+
+
 def write_fixtures(raw_dir: Path) -> list[str]:
     files = {
         "shelters.geojson": _atc_layer("Shelter", 3),
@@ -5175,6 +5560,7 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         **notice_layers_fixtures(),
         **suggested_hikes_fixtures(),
         **_club_places_fixtures(),
+        **_club_trail_lines_fixtures(),
     }
     files = _trail_lines_network_fixtures(files)
     files = _trail_lines_at_fixtures(files)

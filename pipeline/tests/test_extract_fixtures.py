@@ -61,10 +61,10 @@ def test_every_fixture_file_with_a_resource_lands_whole(fixtures):
         | GuidePages
     )
     fetched = [r for r in resources if not isinstance(r, answered) and not isinstance(r, JSON_API_KINDS)]
-    assert len(fetched) == 221, (
+    assert len(fetched) == 319, (
         "61 monthly layers and OPRHP's temporary closures on the hourly lane, and decision 53's 76 ArcGIS "
         "closure and warning layers: 70 hourly, 3 daily, 3 monthly, and decision 54's 83 places layers, all "
-        "monthly"
+        "monthly, and its 98 trail-line layers, all monthly"
     )
     for resource in fetched:
         expected = len(json.loads(fixture_file(root / "raw", resource.key).read_text())["features"])
@@ -83,6 +83,45 @@ def test_atcs_z_centerline_lands_its_z_and_its_rows_with_no_geometry(fixtures):
             ' from raw."raw_atc__atc_atx_centerline" order by objectid'
         ).fetchall()
     assert rows == [(1, 330.5), (2, 1149.9), (3, None)], "metres as served, and the live layer's geometry-less repeat"
+
+
+def test_a_club_trail_line_layers_person_fields_never_land_and_the_fields_its_row_clears_do(fixtures):
+    """Decision 54's trail lines: a row's `person_fields` never reach the raw table, and its `not_person_fields` do.
+
+    NCTA's spurs name surveyors in `source` (an ordinary name, so only the row's
+    list catches it) and carry land-holder classes in `owner` (person-shaped by
+    name, so only the row's clearance lets it load); TDEC's 2025 layer names
+    staff in `SOURCE` beside editor accounts in CREATED_BY and EDITED_BY.
+    """
+    root, counts = fixtures
+    assert counts["raw_ncta__ncta_spurs"] == 2 and counts["raw_cumberland__tdec_public_trails"] == 2
+    with duckdb.connect(str(root / "warehouse.duckdb"), read_only=True) as con:
+        spurs = {
+            row[0]
+            for row in con.execute(
+                "select column_name from information_schema.columns where table_name = 'raw_ncta__ncta_spurs'"
+            ).fetchall()
+        }
+        tdec = {
+            row[0]
+            for row in con.execute(
+                "select column_name from information_schema.columns where table_name = 'raw_cumberland__tdec_public_trails'"
+            ).fetchall()
+        }
+    assert "source" not in spurs and "owner" in spurs and "seg_name" in spurs
+    assert not {"source", "created_by", "edited_by"} & tdec and "tr_name" in tdec
+
+
+def test_the_arizona_trails_z_lands_on_every_vertex(fixtures):
+    """ATA's layer 3 carries `return_z`, so its fixture's Z survives the Esri JSON pages and dlt, like ATC's."""
+    root, counts = fixtures
+    with duckdb.connect(str(root / "warehouse.duckdb"), read_only=True) as con:
+        con.execute("LOAD spatial")
+        zs = con.execute(
+            "select st_z(st_startpoint(st_geomfromgeojson(geometry::varchar)))"
+            ' from raw."raw_ata__ata_arizona_trail" order by objectid'
+        ).fetchall()
+    assert zs == [(5505.0,), (5605.0,)], "feet as served; staging forces 2-D for the network"
 
 
 def test_the_long_path_guide_lands_one_row_per_page_its_index_links(fixtures):

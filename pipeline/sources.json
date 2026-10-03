@@ -2837,7 +2837,7 @@
       "freshness": {
         "kind": "arcgis_max_field",
         "field": "LAST_CHANGED_DATE",
-        "notes": "An on-prem MapServer: its ETag (\"91de4239\") hashes the body, so the change check is the statistics fingerprint, count and max(OBJECTID) beside max(LAST_CHANGED_DATE), the county's rating-change time. Reasoned from the field's name to move whenever a rating does; @unvalidated whether an edit to ADD_COMMENT alone moves it."
+        "notes": "An on-prem MapServer: its ETag (\"91de4239\") hashes the body, so the change check is the statistics fingerprint, count, max(OBJECTID) and sum(SHAPE.LEN) beside max(LAST_CHANGED_DATE), the county's rating-change time. Reasoned from the field's name to move whenever a rating does; @unvalidated whether an edit to ADD_COMMENT alone moves it. The summed length is the polygon layer's system length field, as extract/_kinds.py's geometry_measure_field() names it from the field list the phase A inventory saved (2026-10-03), so a boundary redrawn under an unchanged date still reads as moved."
       },
       "id_field": "OBJECTID",
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 2, measured 2026-10-03; registered in phase B (ArcGIS).",
@@ -2957,7 +2957,7 @@
       "freshness": {
         "kind": "arcgis_max_field",
         "field": "last_edited_date",
-        "notes": "An on-prem MapServer: its ETag hashes the body, so the change check is the statistics fingerprint, count and max(OBJECTID) beside max(last_edited_date), the layer's Esri editor-tracking date, which the server sets on every edit (Reasoned from editor tracking's definition; @unvalidated on this server)."
+        "notes": "An on-prem MapServer: its ETag hashes the body, so the change check is the statistics fingerprint, count, max(OBJECTID) and sum(Shape.STLength()) beside max(last_edited_date), the layer's Esri editor-tracking date, which the server sets on every edit (Reasoned from editor tracking's definition; @unvalidated on this server). The summed length is the polygon layer's system length field, as extract/_kinds.py's geometry_measure_field() names it from the field list the phase A inventory saved (2026-10-03), so a boundary redrawn under an unchanged date still reads as moved."
       },
       "id_field": "GlobalID",
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 3, measured 2026-10-03; registered in phase B (ArcGIS).",
@@ -3198,7 +3198,7 @@
       "freshness": {
         "kind": "arcgis_max_field",
         "field": "EDIT_DT",
-        "notes": "An on-prem MapServer: its ETag hashes the body, so the change check is the statistics fingerprint, count and max(OBJECTID) beside max(EDIT_DT), the layer's own edit date (max 2026-10-02 16:42 UTC on 2026-10-03). Reasoned to move on every edit from its name; @unvalidated."
+        "notes": "An on-prem MapServer: its ETag hashes the body, so the change check is the statistics fingerprint, count, max(OBJECTID) and sum(SHAPE.LEN) beside max(EDIT_DT), the layer's own edit date (max 2026-10-02 16:42 UTC on 2026-10-03). Reasoned to move on every edit from its name; @unvalidated. The summed length is the polygon layer's system length field, as extract/_kinds.py's geometry_measure_field() names it from the field list the phase A inventory saved (2026-10-03), so a boundary redrawn under an unchanged date still reads as moved."
       },
       "id_field": "OBJECTID",
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 5, measured 2026-10-03; registered in phase B (ArcGIS).",

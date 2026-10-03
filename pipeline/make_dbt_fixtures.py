@@ -4899,6 +4899,141 @@ ELEVATION_PRODUCT_FIXTURES = {
 }
 
 
+# Decision 54's wave 1 places layers (pipeline/ELT.md, "Loading everything the
+# clubs publish"): every `club_arcgis_layer` row a club's places.py claims,
+# registered 2026-10-03. Each fixture carries what its sources.json row
+# declares as read off the live layer that day - the key (`id_field`, or
+# `id_fields` for a pair), `name_field` and `category_field` - and an
+# OBJECTID, and nothing else, because no model reads these tables yet
+# (decision 52's base models are phase C). The values are invented: no real
+# feature is copied. Two rows each, in the row's own `geometry_kind`.
+CLUB_PLACES_KEYS = (
+    "fltc_map_sheet_index",
+    "dec_lands",
+    "dec_conservation_easements",
+    "dec_wildlife_management_areas",
+    "dec_adirondack_park_boundary",
+    "dec_catskill_park_boundary",
+    "mohonk_preserve_boundary",
+    "nj_state_open_space",
+    "nj_state_natural_areas",
+    "nj_parks_points",
+    "nj_place_names",
+    "ct_deep_property",
+    "ct_deep_greenways",
+    "massgis_openspace",
+    "dcnr_state_park_boundaries",
+    "dcnr_state_forest_boundaries",
+    "pasda_dcnr_wild_natural_areas",
+    "pasda_dcnr_local_parks",
+    "nps_park_boundaries",
+    "nps_legislated_wilderness",
+    "grsm_municipal_boundaries",
+    "grsm_park_boundary_lines",
+    "pohe_trail_regions",
+    "blm_national_monuments_ncas",
+    "blm_wilderness_areas",
+    "blm_wilderness_study_areas",
+    "blm_recreation_areas",
+    "blm_recreation_site_polygons",
+    "blm_public_lands_access_lines",
+    "pcta_trail_towns",
+    "pcta_letter_sections",
+    "pcta_centerline_regions",
+    "pcta_permit_areas",
+    "pcta_wilderness_areas",
+    "pcta_sheriffs_offices",
+    "aklt_communities",
+    "aklt_story_map_pins",
+    "duluth_park_boundaries",
+    "azt_gateway_communities",
+    "azt_passage_areas",
+    "azt_land_ownership",
+    "iat_trail_communities",
+    "iata_properties",
+    "iata_land_ownership",
+    "fta_gateway_communities",
+    "fta_managed_conservation_areas",
+    "amc_properties_and_landscapes",
+    "amc_chapter_boundaries",
+    "spnhf_public_access_properties",
+    "trustees_properties",
+    "mtsg_heritage_area_boundary",
+    "sbts_trail_town_amenities",
+    "fpc_ancient_forest_preserve",
+    "usfws_refuge_boundaries",
+    "nc_state_park_boundaries",
+    "tn_state_park_boundaries",
+    "nh_conservation_lands",
+    "nh_recreation_areas",
+    "usfs_forest_boundaries",
+    "usfs_ranger_districts",
+    "usfs_wilderness_areas",
+    "usfs_national_grasslands",
+    "usfs_other_designated_areas",
+    "usfs_special_interest_areas",
+    "ttc_management_areas",
+    "cdtc_gateway_communities",
+    "cdtc_trail_sections",
+    "trta_special_management_areas",
+    "trta_desolation_wilderness_zones",
+    "trta_trail_sections",
+    "cpw_managed_properties",
+    "cpw_property_centroids",
+    "wa_public_lands_inventory",
+    "wa_recreation_areas",
+    "ugrc_municipal_boundaries",
+    "ugrc_state_park_boundaries",
+    "ugrc_state_park_points",
+    "ugrc_cities_towns",
+    "ugrc_local_parks",
+    "wdnr_managed_properties",
+    "patc_lands_compilation",
+    "buckeye_retail_map_outlines",
+    "usgs_gnis_populated_places",
+)
+# The keys the live layers type as numbers (read 2026-10-03), so the fixture's
+# column is typed as the live one is; every other key column is a string.
+CLUB_PLACES_NUMERIC_KEYS = {
+    "dec_conservation_easements": {"LANDS_UID": int},
+    "nj_parks_points": {"PARK_ID": int},
+    "nj_place_names": {"FEATURE_ID": float},
+    "azt_land_ownership": {"OWNER": int},
+    "nh_recreation_areas": {"NHRECPOL_": int},
+}
+
+
+def _multipoint(i):
+    return {"type": "MultiPoint", "coordinates": [_point(i)["coordinates"]]}
+
+
+CLUB_PLACES_GEOMETRY = {"polygon": _polygon, "point": _point, "line": _line, "multipoint": _multipoint}
+
+
+def _club_places_fixtures() -> dict[str, dict]:
+    """One `<key>.geojson` per CLUB_PLACES_KEYS row, with the columns its registry row declares."""
+    sources = {s["key"]: s for s in json.loads((Path(__file__).parent / "sources.json").read_text())["sources"]}
+    files = {}
+    for key in CLUB_PLACES_KEYS:
+        entry = sources[key]
+        numeric = CLUB_PLACES_NUMERIC_KEYS.get(key, {})
+        id_fields = entry.get("id_fields") or ([entry["id_field"]] if entry.get("id_field") else [])
+        features = []
+        for i in range(2):
+            properties = {"OBJECTID": i + 1}
+            for field in id_fields:
+                properties[field] = numeric[field](100 + i) if field in numeric else f"fixture-{key}-{i}"
+            if entry.get("name_field") and entry["name_field"] not in properties:
+                properties[entry["name_field"]] = f"Fixture {entry['title']} {i}"
+            if entry.get("category_field") and entry["category_field"] not in properties:
+                properties[entry["category_field"]] = "Fixture category"
+            features.append(
+                {"type": "Feature", "properties": properties, "geometry": CLUB_PLACES_GEOMETRY[entry["geometry_kind"]](i)}
+            )
+        files[f"{key}.geojson"] = _feature_collection(features)
+    return files
+
+
 def write_fixtures(raw_dir: Path) -> list[str]:
     files = {
         "shelters.geojson": _atc_layer("Shelter", 3),
@@ -5039,6 +5174,7 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         **closures_and_warnings_fixtures(),
         **notice_layers_fixtures(),
         **suggested_hikes_fixtures(),
+        **_club_places_fixtures(),
     }
     files = _trail_lines_network_fixtures(files)
     files = _trail_lines_at_fixtures(files)

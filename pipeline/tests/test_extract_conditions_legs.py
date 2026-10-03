@@ -34,7 +34,16 @@ from extract._run import (
     summary_markdown,
 )
 from extract._warehouse import load_warehouse
+from lib import http_retry
 from lib.freshness_state import Freshness
+from tests.test_extract_run import (  # noqa: F401 - `registry` is a fixture
+    CLOSURES_URL,
+    FIELDS,
+    FakeLayer,
+    closures,
+    feature,
+    registry,
+)
 
 
 class Answers:
@@ -178,6 +187,58 @@ def test_a_club_table_the_run_check_refuses_is_left_out_and_the_rest_load(store)
     assert set(report.isolated) == {"raw_atc__closures"}
     assert "0 rows and no upstream count" in report.isolated["raw_atc__closures"]
     assert warehouse_ids(store) == {"raw_atc__closures": ["a1"], "raw_nynjtc__closures": ["n3"]}
+
+
+@pytest.mark.usefixtures("registry")
+def test_an_arcgis_field_retyped_upstream_refuses_that_layer_only_and_the_rest_load(store, requests_mock):
+    """dlt's `data_type: freeze` contract raises at extract, which runs every resource of the leg at once."""
+    layer = FakeLayer(requests_mock, CLOSURES_URL, [feature(10, "Bridge out")])
+    leg(store, closures(), club_closures("nynjtc", "n1", count=1))
+    retyped = [dict(field, type="esriFieldTypeInteger") if field["name"] == "NAME" else field for field in FIELDS]
+    first_metadata = layer.metadata
+
+    def metadata(request, context):
+        answer = first_metadata(request, context)
+        return answer if answer is None else {**answer, "fields": retyped}
+
+    requests_mock.get(CLOSURES_URL, json=metadata)
+    layer.etag, layer.features = "v2", [feature(10, 7)]
+
+    report = leg(store, closures(), club_closures("nynjtc", "n1", "n2", count=2), read_seconds=60)
+
+    assert set(report.isolated) == {"raw_testclub__closures_layer"}
+    assert "contract" in report.isolated["raw_testclub__closures_layer"]
+    assert report.rows == {"raw_nynjtc__closures": 2}
+    with duckdb.connect() as con:
+        counts = load_warehouse(con, make_pipeline("conditions_ua", store["url"], store["dir"]))
+    assert counts == {"raw_nynjtc__closures": 2, "raw_testclub__closures_layer": 1}, "the layer's first-run row stands"
+    again = leg(store, closures(), club_closures("nynjtc", "n1", "n2", count=2), read_seconds=60)
+    assert again.verdicts["raw_testclub__closures_layer"] != "fresh", "the refused layer advanced no marker"
+
+
+@pytest.mark.usefixtures("registry")
+def test_an_arcgis_layer_whose_metadata_stops_answering_mid_read_refuses_that_layer_only(store, requests_mock, monkeypatch):
+    """column_hints() asks for the metadata a third time; outside read_each(), a 503 there stopped the whole leg."""
+    monkeypatch.setattr(http_retry.time, "sleep", lambda seconds: None)
+    layer = FakeLayer(requests_mock, CLOSURES_URL, [feature(10)])
+    leg(store, closures(), club_closures("nynjtc", "n1", count=1))
+    asked = {"n": 0}
+    first_metadata = layer.metadata
+
+    def metadata(request, context):
+        asked["n"] += 1
+        if asked["n"] >= 3:  # the change check and one more answer; every request after them fails
+            context.status_code = 503
+            return {"error": "busy"}
+        return first_metadata(request, context)
+
+    requests_mock.get(CLOSURES_URL, json=metadata)
+    layer.etag, layer.features = "v2", [feature(10), feature(11)]
+
+    report = leg(store, closures(), club_closures("nynjtc", "n1", "n2", count=2), read_seconds=60)
+
+    assert set(report.isolated) == {"raw_testclub__closures_layer"}
+    assert report.rows == {"raw_nynjtc__closures": 2}
 
 
 def test_a_slow_club_is_left_out_when_the_read_budget_runs_out_and_nothing_waits_for_it(store):

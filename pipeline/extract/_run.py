@@ -80,6 +80,8 @@ os.environ.setdefault("SCHEMA__NAMING", "sql_ci_v1")
 
 import dlt  # noqa: E402
 import pyarrow.parquet as pq  # noqa: E402
+from dlt.common.schema.exceptions import DataValidationError  # noqa: E402
+from dlt.pipeline.exceptions import PipelineStepFailed  # noqa: E402
 
 from extract._contract import (  # noqa: E402
     CADENCES,
@@ -197,8 +199,8 @@ class RunReport:
     proofs: dict[str, int] = field(default_factory=dict)
     verdicts: dict[str, str] = field(default_factory=dict)
     problems: list[str] = field(default_factory=list)
-    # Each table's column hints, as to_dlt handed them to dlt. Kept in the run
-    # log only for a proven zero, which is the one case the warehouse needs them.
+    # Each table's column hints, as read_each() or to_dlt read them. Kept in the
+    # run log only for a proven zero, which is the one case the warehouse needs them.
     hints: dict[str, dict] = field(default_factory=dict)
     # Resources whose change check raised Unavailable, by name: why each was left out.
     unavailable: dict[str, str] = field(default_factory=dict)
@@ -317,14 +319,17 @@ def read_each(report: RunReport, to_run: list[Planned], seconds: float | None) -
 
     Returns the resources that answered, and {name: rows}. One whose read
     failed or ran out of time goes in `report.isolated`, or is re-raised where
-    stops_the_leg() says so.
+    stops_the_leg() says so. Column hints are read here too, first, because
+    ArcGIS's ask the layer's metadata again; they go in `report.hints`.
     """
     results: dict[str, object] = {}
+    hints: dict[str, dict] = {}
 
     def read(items: list[Planned]) -> None:
         for item in items:
             proofs: dict[str, int] = {}
             try:
+                hints[item.resource.table] = item.resource.column_hints()
                 if item.resource.carries:
                     left = None if deadline is None else max(0.0, deadline - time.monotonic())
                     rows = list(item.resource.rows_carried(proofs, replace(item.carried or Carried(), seconds=left)))
@@ -347,6 +352,7 @@ def read_each(report: RunReport, to_run: list[Planned], seconds: float | None) -
     for thread in threads:
         thread.join(None if deadline is None else max(0.0, deadline - time.monotonic()))
     answered = dict(results)  # a thread that finishes after the deadline changes nothing below
+    report.hints.update(hints)
 
     kept, read_rows = [], {}
     for item in to_run:
@@ -373,6 +379,17 @@ def read_each(report: RunReport, to_run: list[Planned], seconds: float | None) -
         report.isolated[name] = f"read failed: {type(failure).__name__}: {failure}"
         print(f"::error title={name} refused::{report.isolated[name]}; its last committed table stands")
     return kept, read_rows
+
+
+def contract_breach(failure: BaseException) -> DataValidationError | None:
+    """The schema-contract refusal behind a failed dlt step, or None. A retyped ArcGIS field raises one at extract."""
+    seen = set()
+    while failure is not None and id(failure) not in seen:
+        if isinstance(failure, DataValidationError):
+            return failure
+        seen.add(id(failure))
+        failure = failure.__cause__ or failure.__context__
+    return None
 
 
 def only_tables(resources: list[Resource], tables: list[str], lane: str) -> list[Resource]:
@@ -466,10 +483,12 @@ def to_dlt(
     upstream on its own first, read_each()); None reads them here, through
     rows_carried() with `carried` and no budget for a resource that carries.
     `as_landed`, an AsLanded, copies each row it yields, read here or before
-    (the module docstring)."""
-    columns = resource.column_hints()
-    if hints is not None:
-        hints[resource.table] = columns
+    (the module docstring). Hints already in `hints` are used as they are."""
+    columns = None if hints is None else hints.get(resource.table)
+    if columns is None:
+        columns = resource.column_hints()
+        if hints is not None:
+            hints[resource.table] = columns
 
     @dlt.resource(
         name=resource.name,
@@ -1118,9 +1137,9 @@ def _extract_and_load(
     # A CONDITIONS LEG ISOLATES EACH UPSTREAM, so one club's failure does not
     # hold back another club's closures. A leg reads every resource first
     # (read_each), and one whose read fails, runs out of time or is refused by
-    # the run check is left out like a FRESH one: its last committed table
-    # stands, it is logged `refused`, and the rest load (extracted again after
-    # a run-check refusal). OurHike's own rows are the exception
+    # the run check or dlt's schema contract is left out like a FRESH one: its
+    # last committed table stands, it is logged `refused`, and the rest load
+    # (extracted again after a refusal). OurHike's own rows are the exception
     # (stops_the_leg). On the monthly and hourly lanes one refusal refuses the run.
     read = None
     if to_run and lane in LEGS:
@@ -1146,15 +1165,28 @@ def _extract_and_load(
                 for item in items
             ]
 
-        with timed(report, "extract"):
-            pipeline.extract(
-                dlt.source(resources, name=SOURCE_NAME)(), schema=store_schema(pipeline), loader_file_format="parquet"
-            )
-        if as_landed is not None:
-            # What ran: a lane's every non-FRESH resource, a leg's less those read_each() left out.
-            as_landed.close(to_run)
-        with timed(report, "normalize"):
-            pipeline.normalize()
+        try:
+            with timed(report, "extract"):
+                pipeline.extract(
+                    dlt.source(resources, name=SOURCE_NAME)(), schema=store_schema(pipeline), loader_file_format="parquet"
+                )
+            if as_landed is not None:
+                # What ran: a lane's every non-FRESH resource, a leg's less those read_each() left out.
+                as_landed.close(to_run)
+            with timed(report, "normalize"):
+                pipeline.normalize()
+        except PipelineStepFailed as failure:
+            # On a leg, a table dlt's schema contract refuses is left out like one the run check refuses.
+            breach = contract_breach(failure) if read is not None else None
+            items = [item for item in to_run if breach is not None and item.resource.table == breach.table_name]
+            if not items or any(stops_the_leg(item.resource) for item in items):
+                raise
+            pipeline.abort_packages()
+            for item in items:
+                report.isolated[item.resource.name] = f"schema contract: {breach}"
+                print(f"::error title={item.resource.name} refused::schema contract; its last committed table stands")
+            to_run = [item for item in to_run if item not in items]
+            continue
         report.rows = {
             table: count
             for table, count in pipeline.last_trace.last_normalize_info.row_counts.items()

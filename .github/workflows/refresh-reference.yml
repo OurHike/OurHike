@@ -1,76 +1,57 @@
-# The monthly lane: every monthly resource through dlt, the warehouse and
-# every mart through dbt, and a release staged on UA from the dbt writers'
-# files. pipeline/ELT.md, "Workflows" and "Why a scheduled run cannot reach
-# production", is the design, under #1793 - Rebuild the data platform as
-# dlt -> dbt: seven contracted marts, a monthly refresh, published docs, and
-# lighter phone downloads (decision 1: a monthly base, the fast lanes kept).
+# The monthly lane: dlt extracts every monthly resource, dbt builds the
+# warehouse and every mart, and the dbt writers' files are staged as a UA
+# release. Designed in pipeline/ELT.md, "Workflows", for #1793 - Rebuild the
+# data platform as dlt -> dbt: seven contracted marts, a monthly refresh,
+# published docs, and lighter phone downloads.
 #
-# NOTHING HERE CAN REACH PRODUCTION, from the schedule or from a dispatch.
-#   - No input names an environment. `data_environment` is not declared, and
-#     the one publish step sets OURHIKE_DATA_ENV to the literal `ua`.
-#   - publish.py scopes every key it writes by OURHIKE_DATA_ENV, so a UA run
-#     cannot write production's keys (publish-vector-data.yml's publish step
-#     says so; lib/data_env.py does it).
-#   - Phones read the release their channel names: channels.json (decision
-#     44), which only the release train uploads (`publish.py --channels`),
-#     and nothing here runs.
-#   - Promotion is the release train's (.claude/skills/release-train/
-#     SKILL.md), and it builds from this run's pin: the same raw_run, read
-#     from steps/raw_inputs/<raw_run>/, so what is promoted is what UA showed.
-# .github/tests/test_refresh_reference.py holds each of those.
+# NOTHING HERE CAN REACH PRODUCTION (ELT.md, "Why a scheduled run cannot
+# reach production"; .github/tests/test_refresh_reference.py holds it):
+#   - No input names an environment, and the one publish step sets
+#     OURHIKE_DATA_ENV to the literal `ua`. publish.py scopes every key it
+#     writes by that value (lib/data_env.py).
+#   - Phones follow channels.json (decision 44), which only the release
+#     train uploads (`publish.py --channels`).
+#   - Promotion is the release train's, built from this run's pinned inputs
+#     (steps/raw_inputs/<raw_run>/), so what is promoted is what UA showed.
 #
-# FIVE JOBS, EACH HOLDING ONLY ITS OWN CREDENTIALS.
-#   extract  R2_RAW_* and HIKEFINDER_PASSWORD (pipeline/ELT.md, "Where data
-#            lands"). No public-bucket key. Lands every monthly resource in
-#            the private raw store (`our-hike-raw`, decision 43) with the run
-#            check before the load and the after-run check after it, plus the
-#            as-landed copy the parity job reads (extract/_run.py).
-#   build    R2_RAW_* only, writing only under steps/. Pins the run's raw
-#            inputs, builds the warehouse from the pin alone, runs
-#            build_marts.py --lane monthly (every mart, step and pub_ writer,
-#            never an inline dbt command), stores the warehouse beside its
-#            manifest, and hands the phone files on.
-#   publish  The public bucket's R2_* only. publish.py with
-#            OURHIKE_PHONE_FILES=dbt, in `publish-data`, as every writer of
-#            latest.json is.
-#   confirm  No credential: reads UA's latest.json over HTTPS, and goes red
-#            unless every phone file the build wrote is what UA now serves
-#            (#1513 - A queued publish is silently cancelled when another one
-#            joins publish-data, and it looks like a green build).
-#   parity   R2_RAW_* to read the pin, writing nothing: decision 30's frozen-
-#            input parity, today's exporters against the dbt writers on the
-#            pinned inputs, uploaded as an artifact for the go/no-go gate.
+# FIVE JOBS, EACH HOLDING ONLY ITS OWN CREDENTIALS:
+#   extract  R2_RAW_* and HIKEFINDER_PASSWORD, no public-bucket key. Lands
+#            every monthly resource in the private raw store (`our-hike-raw`,
+#            decision 43), checked before and after the load, plus the
+#            as-landed copy the parity job reads.
+#   build    R2_RAW_* only, writing only under steps/. Pins the raw inputs,
+#            builds the warehouse and marts from the pin, hands files on.
+#   publish  The public bucket's R2_* only: publish.py, OURHIKE_PHONE_FILES=dbt.
+#   confirm  No credential. Fails unless UA's latest.json names every phone
+#            file the build wrote.
+#   parity   R2_RAW_* to read the pin; writes nothing. Today's exporters
+#            against the dbt writers on the pinned inputs (decision 30).
 #
-# WHAT IS NOT HERE YET, from ELT.md's shape: the `notes` job (decision 14's
-# note ageing), `verify` (verify-release.yml has no workflow_call), the cell
-# and shard cutters (`export`: cut_cells.py and cut_trail_graph.py read the
-# exporters' files, not data/processed/dbt/), and `maintain`, which is the raw
-# lake's and waits for DuckLake (stage 3's first step, after its three
-# go/no-go runs).
+# NOT HERE YET: `notes` (decision 14's note ageing), `verify`
+# (verify-release.yml has no workflow_call), the cell and shard cutters
+# (cut_cells.py and cut_trail_graph.py read the exporters' files, not
+# data/processed/dbt/), and `maintain`, which waits for DuckLake (ELT.md
+# stage 3).
 name: Refresh reference data
 
 on:
   schedule:
-    # 05:15 UTC on the 3rd (pipeline/ELT.md, "The schedule: 05:15 UTC on the
-    # 3rd"): off the hour, clear of the hourly slots (:07, :37, :40, :55) and
-    # of every daily or weekly job in .github/workflows/README.md's table;
-    # off the 1st by analogy with the :00 rule only (@unvalidated: GitHub's
-    # load by day of month is unmeasured). Schedules fire from main only, so
-    # this runs for the first time on the 3rd after the merge.
-    # check-upstream-freshness.yml reports in #478 - Upstream data freshness
-    # when the last successful run is over 35 days old, and a dispatch is the
-    # fallback.
+    # 05:15 UTC on the 3rd (ELT.md, "The schedule: 05:15 UTC on the 3rd"):
+    # clear of the hourly slots (:07, :37, :40, :55) and of every daily or
+    # weekly job in .github/workflows/README.md. Off the 1st only by analogy
+    # with avoiding :00 (@unvalidated: GitHub's load by day of month is
+    # unmeasured). Schedules fire from main only. If the last success is over
+    # 35 days old, check-upstream-freshness.yml reports it in #478 - Upstream
+    # data freshness, and a dispatch is the fallback.
     - cron: "15 5 3 * *"
   # No inputs, on purpose: the environment is not a choice here.
   workflow_dispatch:
 
-# ONE RUN AT A TIME, and a queued one is not cancelled by a running one. The
-# raw store's monthly prefix and the step cache have one writer each, this
-# workflow (ELT.md, "One catalog per lake, one writer"). The cost is the one
-# found by #1513 - A queued publish is silently cancelled when another one
-# joins publish-data, and it looks like a green build: GitHub keeps one
-# pending run per group, so a dispatch made while another is already queued
-# replaces it without going red.
+# ONE RUN AT A TIME, because this workflow is the only writer of the raw
+# store's monthly prefix and of the step cache under steps/ (ELT.md, "One
+# catalog per lake, one writer"). The cost: GitHub keeps one pending run
+# per group, so a dispatch made while another is queued replaces it
+# without going red.
 concurrency:
   group: raw-lake-monthly
   cancel-in-progress: false
@@ -81,11 +62,10 @@ permissions:
 env:
   PYTHONUNBUFFERED: "1"
   # dlt's telemetry is on by default and would send from a job holding R2
-  # write keys (the dlt skill, rule 3). Every job here that imports dlt
-  # inherits this.
+  # write keys (the dlt skill, rule 3). Every job here inherits this.
   RUNTIME__DLTHUB_TELEMETRY: "false"
-  # dbt's documented opt-out, the only switch set (pipeline-tests.yml's dbt
-  # job says why: the dbt Product Licensing Agreement, section 3.2).
+  # dbt's documented opt-out, and the only switch set (pipeline-tests.yml's
+  # dbt job says why: the dbt Product Licensing Agreement, section 3.2).
   DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS: "false"
 
 jobs:
@@ -110,11 +90,10 @@ jobs:
           cache: pip
           cache-dependency-path: pipeline/requirements-extract.txt
 
-      # Whether the maintainer has stored these is unknown (ELT.md, "Secrets
-      # and buckets"), so the job stops here, naming each one, rather than
-      # failing somewhere inside dlt. HIKEFINDER_PASSWORD only warns: without
-      # it the Hike Finder resource reads as an anonymous reader and refuses
-      # a locked export by its own listing guard.
+      # Stops here, naming each missing secret, rather than failing somewhere
+      # inside dlt (ELT.md, "Secrets and buckets"). HIKEFINDER_PASSWORD only
+      # warns: without it Hike Finder is read anonymously, and the resource's
+      # listing guard refuses a locked export.
       - name: Name every secret this job needs, and stop if one is missing
         env:
           R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
@@ -143,14 +122,13 @@ jobs:
           python -m venv "$RUNNER_TEMP/extract"
           "$RUNNER_TEMP/extract/bin/pip" install --quiet -r requirements-extract.txt
 
-      # The run check before the load and the after-run check after it are
-      # extract/_run.py's own; either failing exits 1, after the run log is
-      # written, and nothing it loaded is read. --as-landed writes each
-      # ArcGIS, Socrata and opentrail layer back out as today's fetcher's
-      # file, under as_landed/<load_id>/, for the parity job.
-      # --cross-lane-inputs also reads the one hourly-lane table a monthly
-      # node reads (extract/_run.py's ALSO_READS). The run's id is the
-      # raw_run every later job names.
+      # extract/_run.py's run check (before the load) or after-run check
+      # failing exits 1 after the run log is written, and nothing it loaded
+      # is read. --as-landed writes each ArcGIS, Socrata and opentrail layer
+      # back out as today's fetcher's file, under as_landed/<load_id>/, for
+      # the parity job. --cross-lane-inputs also reads the one hourly-lane
+      # table a monthly node needs (_run.py's ALSO_READS). The run's id is
+      # the raw_run every later job names.
       - name: Extract every monthly resource
         id: extract
         env:
@@ -197,7 +175,7 @@ jobs:
     runs-on: ubuntu-latest
     # @unvalidated: the dbt build on real data is untimed (ELT.md, "Runtime").
     # The DEM index is 3m45s (publish-vector-data.yml, run #120) and the
-    # profile's sampling 1m01s; the vector build's own ceiling is 180.
+    # profile's sampling 1m01s; the vector build's own timeout is 180 min.
     timeout-minutes: 180
     defaults:
       run:
@@ -263,18 +241,15 @@ jobs:
         working-directory: pipeline/dbt
         run: dbt deps --profiles-dir .
 
-      # THE PIN (ELT.md, "Storage tiers", the raw_inputs row). Write-once: a
-      # rerun of this job finds the first attempt's pin and builds from it.
-      # Otherwise the committed loads' as-landed files come down first,
-      # because fetch_elevation.py computes the DEM tile index from them: the
-      # A.T. corridor from data/raw/centerline.geojson, and the network's
-      # cells from data/processed/nearby_trails.geojson, which
-      # export_nearby_trails.py writes from data/raw/external/ first, in
-      # publish-vector-data.yml's order. That file is read for the cell list
-      # and nothing else: the job hands on data/processed/dbt/ alone. The
-      # index is then pinned beside the tables. The DEM tiles themselves are
-      # read in place (decision 35), so the pin freezes which tiles, not
-      # their bytes.
+      # THE PIN: a write-once copy of this run's raw inputs (ELT.md, "Storage
+      # tiers", the raw_inputs row). A rerun builds from the first attempt's
+      # pin. Otherwise the as-landed files come down first, because
+      # fetch_elevation.py computes the DEM tile index from the A.T. corridor
+      # (data/raw/centerline.geojson) and the network's cells
+      # (data/processed/nearby_trails.geojson, which export_nearby_trails.py
+      # writes first, as publish-vector-data.yml does; used for the cell list
+      # only). The index is pinned beside the tables. DEM tiles are read in
+      # place (decision 35), so the pin freezes which tiles, not their bytes.
       - name: Pin this run's raw inputs
         env:
           R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
@@ -310,11 +285,10 @@ jobs:
           --steps-url "s3://$R2_RAW_BUCKET/steps" --raw-run "$RAW_RUN"
           --warehouse data/warehouse.duckdb --raw-dir data/raw
 
-      # The build order is build_marts.py's, and --lane monthly leaves out
-      # every node an hourly or daily source reaches, the hourly writers among
-      # them, so publish.py keeps UA's conditions/ files as the conditions
-      # lane wrote them. The pub_ writers run last; their manifest and run
-      # results are dbt's last invocation here, which publish.py reads.
+      # --lane monthly leaves out every node an hourly or daily source
+      # reaches, so UA's conditions/ files stay as the conditions lane wrote
+      # them. The pub_ writers run last, so dbt's last manifest and run
+      # results, which publish.py reads, are theirs.
       - name: dbt build, the Python steps and the pub_ writers (build_marts.py --lane monthly)
         run: python build_marts.py --lane monthly --python "$RUNNER_TEMP/pipeline/bin/python"
 
@@ -393,12 +367,11 @@ jobs:
           name: monthly-phone-files
           path: pipeline/
 
-      # OURHIKE_PHONE_FILES=dbt: every key a dbt exposure names comes from
-      # its pub_ writer's file (publish.collect_dbt_phone_files), and a
-      # writer that did not run this invocation keeps the bucket's last good
-      # object; every key no exposure names is carried forward from UA's
-      # latest.json, as publish.py carries any key a run did not produce.
-      # publish() stages the release folder when a release-scoped file moved.
+      # OURHIKE_PHONE_FILES=dbt: each key a dbt exposure names comes from its
+      # pub_ writer's file (publish.collect_dbt_phone_files). A writer that
+      # did not run keeps the bucket's last good object, and keys no exposure
+      # names carry forward from UA's latest.json. publish() stages a release
+      # folder when a release-scoped file moved.
       - name: Publish to UA
         id: publish
         env:
@@ -413,8 +386,8 @@ jobs:
 
       # podcasts/episodes.json is a live root key, outside every release
       # folder (pipeline/DATA_RELEASES.md:274; publish.py's
-      # LIVE_ROOT_PREFIXES), so it is put in place on its own, on UA. That is
-      # ELT.md's monthly podcasts call; production podcasts stay a dispatch.
+      # LIVE_ROOT_PREFIXES), so it is uploaded on its own, to UA. Production's
+      # podcast list stays a dispatch of publish-podcasts.yml.
       - name: Put the podcast list in place on UA
         env:
           R2_WRITE_ENABLED: "true"
@@ -429,8 +402,9 @@ jobs:
   confirm:
     name: Confirm UA serves what the build wrote
     needs: [build, publish]
-    # Also when publish was cancelled or skipped, which is the case it exists
-    # for (#1513 - A queued publish is silently cancelled when another one joins publish-data, and it looks like a green build).
+    # Also when publish was cancelled or skipped, the case this job exists
+    # for: #1513 - A queued publish is silently cancelled when another one
+    # joins publish-data, and it looks like a green build.
     if: always() && needs.build.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -454,10 +428,10 @@ jobs:
           name: monthly-phone-files
           path: pipeline/
 
-      # One public HTTPS GET, no credential. Each phone file a writer wrote
-      # this run must be in UA's latest.json with the sha256 of the bytes the
-      # build wrote; `generated_at` proves nothing, because the conditions
-      # bake rewrites latest.json too.
+      # One public HTTPS GET, no credential. Each phone file written this run
+      # must be in UA's latest.json with the sha256 the build wrote.
+      # `generated_at` proves nothing: the conditions bake rewrites
+      # latest.json too.
       - name: Every written phone file is what UA's latest.json names
         env:
           DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
@@ -491,7 +465,7 @@ jobs:
     runs-on: ubuntu-latest
     # @unvalidated: today's exporters on real data. export_nearby_trails.py
     # and export_poi.py are the long ones; the vector build's whole export
-    # stage fits its 180.
+    # stage fits its 180-minute timeout.
     timeout-minutes: 120
     defaults:
       run:
@@ -525,8 +499,8 @@ jobs:
             exit 1
           fi
 
-      # The old side imports today's exporters (shapely, pyproj, rasterio,
-      # requests); the pin is read through the extract's own pins.
+      # Today's exporters import shapely, pyproj, rasterio and requests; the
+      # pin is read through the extract's own pins.
       - name: Install the extract's pins and the pipeline's pins
         run: |
           python -m venv "$RUNNER_TEMP/extract"
@@ -541,13 +515,12 @@ jobs:
           name: monthly-phone-files
           path: pipeline/
 
-      # Both sides read one input. The dbt side read the pinned tables; the
-      # old side reads the pinned as-landed files at today's fetchers' paths
-      # under data/raw/ (extract/_run.py says what that copy is and is not),
-      # the warehouse the build stored (suggested_hikes' old side routes over
-      # its graph), and the reviewed files in git. An input no dlt table
-      # holds is not here, so a family reading one is recorded as not
-      # compared, never as passing.
+      # Both sides of parity read the same pin. The dbt side read the pinned
+      # tables; today's exporters read the pinned as-landed files at their
+      # fetchers' paths under data/raw/ (extract/_run.py says what that copy
+      # is and is not), the warehouse the build stored (suggested_hikes
+      # routes over its graph), and the reviewed files in git. A family whose
+      # input no dlt table holds is recorded as not compared, never passing.
       - name: Today's fetchers' files and the built warehouse, from the pin
         env:
           R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
@@ -562,18 +535,16 @@ jobs:
           "$RUNNER_TEMP/extract/bin/python" -m extract._warehouse fetch "${store[@]}" \
             --steps-url "s3://$R2_RAW_BUCKET/steps" --key "dbt_warehouse/ua/$RAW_RUN" --out data warehouse.duckdb
 
-      # DECISION 30's FROZEN-INPUT PARITY. One parity.py line per monthly
-      # family, the same lines as pipeline-tests.yml's parity step less the
-      # six hourly conditions files, which the conditions lane writes. A
-      # difference is evidence for the gate, not a failure of this lane, so
-      # the step records every answer and fails only when it could record
-      # none. Each family's output is kept verbatim as <family>.txt, and
-      # summary.json says, per family, `match`, `differs` or `not_compared`
-      # (the old side could not run: an input no pin holds, or a crash; the
-      # log has the traceback). Where parity.py takes --json-dir (the gate
-      # worker's, for gate_report.py), each family's machine-readable result
-      # goes to results/<family>.json; gate_report.py refuses any other JSON
-      # there, which is why summary.json sits one level up.
+      # DECISION 30's PARITY ON FROZEN INPUTS: one parity.py run per monthly
+      # family, pipeline-tests.yml's parity families less the six hourly
+      # conditions files. A difference is evidence for the gate, not a failure
+      # of this lane, so the step fails only when no family could be compared.
+      # Each family's output is kept as <family>.txt, and summary.json gives
+      # each `match`, `differs` or `not_compared` (today's exporter could not
+      # run: an input no pin holds, or a crash; the log has the traceback).
+      # When parity.py takes --json-dir, results go to results/<family>.json
+      # for gate_report.py, which refuses any other JSON there, so
+      # summary.json sits one level up.
       - name: Parity with today's exporters
         env:
           PARITY_DIR: ${{ runner.temp }}/parity
@@ -653,10 +624,10 @@ jobs:
           sys.exit(1 if counts["match"] + counts["differs"] == 0 else 0)
           PY
 
-      # The gate's per-key report (decision 30, "every existing R2 key
-      # byte-equal, or listed with a reviewed reason"), from the gate
-      # worker's pipeline/gate_report.py, through its interface. Until that
-      # file is on the branch this says so rather than inventing the report.
+      # The gate's per-key report, from pipeline/gate_report.py (ELT.md: "every
+      # existing R2 key comes out byte-equal, or is listed with a reviewed
+      # reason"). Without that file the step says so rather than inventing
+      # a report.
       - name: The gate's per-key report
         env:
           PARITY_DIR: ${{ runner.temp }}/parity

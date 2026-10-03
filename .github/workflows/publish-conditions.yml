@@ -12,13 +12,13 @@
 # data platform as dlt → dbt: seven contracted marts, a monthly refresh,
 # published docs, and lighter phone downloads. `exporters` is the bake this
 # header describes, and what the schedule runs. `dbt` is pipeline/ELT.md's
-# hourly lane: dlt extracts each leg's closures and warnings into the private
-# raw store, dbt builds the closures and warnings marts and their pub_
-# writers, and publish.py publishes those writers' files under
-# OURHIKE_PHONE_FILES=dbt, with the exporters still writing the files no dbt
-# writer owns yet (drought, notes and disputes among them). Decision 30, shortened by decision
-# 46, soaks the dbt path on UA for three days of hourly dispatches before the merge, which is why a
-# dispatch from any ref but main runs the UA leg alone (the matrix below).
+# hourly lane: dlt extracts each leg's closures and warnings into the
+# private raw store, dbt builds those marts and their pub_ writers, and
+# publish.py publishes the writers' files. The exporters still write the
+# files no dbt writer owns yet (drought, notes and disputes among them).
+# ELT.md decisions 30 and 46 soak the dbt path on UA for three days of
+# hourly dispatches before the merge, which is why a dispatch from any ref
+# but main runs the UA leg alone.
 #
 # HOURLY since 2026-08-15 (#720), where this used to be daily on the
 # maintainer's "a closure can be latent by a day" from 2026-08-08. What
@@ -226,24 +226,17 @@ on:
     - cron: "40 * * * *"
   workflow_dispatch:
     inputs:
-      # UA ALONE, FOR A DISPATCH THAT MUST NOT TOUCH WHAT HIKERS READ. #1793 —
-      # Rebuild the data platform as dlt → dbt: seven contracted marts, a
-      # monthly refresh, published docs, and lighter phone downloads soaks its
-      # new path on UA for three days of hourly runs before the merge
-      # (pipeline/ELT.md, "The go/no-go gate", decision 30 as decision 46
-      # amends it), dispatched from
-      # the pull request's branch. `both` is today's behaviour and the
-      # schedule's; it means both legs only from main (the matrix below).
+      # `ua` runs the UA leg alone, for a dispatch that must not touch what
+      # hikers read: the dbt path's three-day UA soak, dispatched from the
+      # pull request's branch (pipeline/ELT.md, "The go/no-go gate"). `both`
+      # is the schedule's behaviour, and means both legs only from main.
       data_environment:
         description: "Which legs to run: both (production and UA; from main only) or ua alone"
         type: choice
         options: [both, ua]
         default: both
-      # Which pipeline writes the phone files this run: today's Python bake
-      # (`exporters`), or pipeline/ELT.md's hourly lane (`dbt`: dlt extracts
-      # into the private raw store, dbt builds the closures and warnings marts
-      # and their pub_ writers, and publish.py takes those writers' files).
-      # The schedule's choice is PHONE_FILES below.
+      # Which of the header's TWO PATHS writes the phone files this run. The
+      # schedule's choice is PHONE_FILES below.
       phone_files:
         description: "Which pipeline writes the phone files: exporters (today's bake) or dbt (dlt -> dbt)"
         type: choice
@@ -259,15 +252,11 @@ permissions:
 # workflow that runs 48 times a day.
 env:
   PYTHONUNBUFFERED: "1"
-  # THE CUTOVER SWITCH, ONE LINE EITHER WAY. `exporters` is today's bake and
-  # stays what the schedule runs: when the dbt path takes over after the
-  # merge is pipeline/ELT.md's open question 4 ("does the bake keep its
-  # direct production publish from the merge, as today, or run UA-only for a
-  # further probation?"), which only the maintainer answers. The cutover is
-  # this line's `'exporters'` becoming `'dbt'`, and the rollback is the
-  # reverse; a dispatch picks its own with `phone_files`. Both paths run the
-  # same steps up to the fetches, and the `dbt` path's own steps say so in
-  # their `if:`. publish.py reads the same value as OURHIKE_PHONE_FILES and
+  # THE CUTOVER SWITCH. The schedule runs `exporters` until the maintainer
+  # answers pipeline/ELT.md's open question 4 (when the dbt path takes over
+  # after the merge). The cutover is changing this line's `'exporters'` to
+  # `'dbt'`, and the rollback is the reverse; a dispatch picks its own with
+  # `phone_files`. publish.py reads this value as OURHIKE_PHONE_FILES and
   # refuses anything else, so a typo here publishes nothing.
   PHONE_FILES: ${{ inputs.phone_files || 'exporters' }}
   # Both off, in every step: dlt's telemetry is on by default and sends to
@@ -293,18 +282,17 @@ jobs:
     # unreachable is not a reason to leave production's safety data a day
     # older than it needs to be.
     #
-    # THE PRODUCTION LEG EXISTS ONLY FOR A RUN FROM MAIN. A schedule fires
-    # from main alone, but a dispatch runs whichever ref it names, with that
-    # ref's copy of this file - and the production leg writes the keys every
-    # hiker's phone reads within the hour, with no release or review between
-    # (pipeline/ELT.md, "Why a scheduled run cannot reach production": this
-    # bake is the one exemption). So a dispatch from a pull request's branch
-    # gets the UA leg alone, whatever `data_environment` says, and so does a
-    # dispatch from main that asks for `ua`. Two locks, because GitHub's `==`
-    # ignores case and a branch called `Main` would pass it: the matrix
-    # below leaves the leg out, and the first step refuses it with bash's
-    # case-sensitive comparison if it is ever there anyway. Held by
-    # .github/tests/test_conditions_production_leg_needs_main.py.
+    # THE PRODUCTION LEG EXISTS ONLY FOR A RUN FROM MAIN. A dispatch runs
+    # whichever ref it names, with that ref's copy of this file, and the
+    # production leg writes the keys every hiker's phone reads within the
+    # hour, with no release or review between (pipeline/ELT.md, "Why a
+    # scheduled run cannot reach production": this bake is the one
+    # exemption). So any other ref gets the UA leg alone, whatever
+    # `data_environment` says, and so does main asking for `ua`. Two locks,
+    # because GitHub's `==` ignores case and a branch called `Main` would
+    # pass it: the matrix leaves the leg out, and the first step refuses it
+    # with bash's case-sensitive comparison if it is ever there anyway. Both
+    # are held by .github/tests/test_conditions_production_leg_needs_main.py.
     strategy:
       fail-fast: false
       matrix:
@@ -313,10 +301,9 @@ jobs:
       run:
         working-directory: pipeline
     steps:
-      # First, before the checkout and before any step that reads a secret.
-      # The UA leg passes and says so when a production leg was asked for
-      # and left out, so a dispatch that meant both is not read as having
-      # run both.
+      # First, before the checkout and any step that reads a secret. When a
+      # production leg was asked for and left out, the UA leg says so, so the
+      # run is not read as having run both.
       - name: Refuse a production leg from any ref but main
         working-directory: .
         env:
@@ -368,13 +355,11 @@ jobs:
       # the ATC layer wait on Supabase account work it has nothing to do with.
       - uses: actions/checkout@v7
 
-      # THE dbt PATH'S PYTHON (phone_files: dbt only). requirements-extract.txt
-      # and requirements-dbt.txt are compiled for 3.12, which is what CI's dbt
-      # job installs them on (pipeline-tests.yml), and they cannot share one
-      # environment: requirements-extract.txt's click 8.5.0 against
-      # requirements-dbt.txt's 8.4.2 (pipeline/ELT.md, "Fixture mode"). Set up
-      # before 3.14 below, so `python` stays 3.14 for every step of today's
-      # bake and `python3.12` is there beside it.
+      # THE dbt PATH'S PYTHON. requirements-extract.txt and requirements-dbt.txt
+      # are compiled for 3.12, as pipeline-tests.yml's dbt job installs them,
+      # and need separate venvs (click 8.5.0 against 8.4.2; pipeline/ELT.md,
+      # "Fixture mode"). Set up before 3.14 below, so `python` stays 3.14 for
+      # today's bake and `python3.12` sits beside it.
       - uses: actions/setup-python@v7
         if: env.PHONE_FILES == 'dbt'
         with:
@@ -411,14 +396,13 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # THE dbt PATH NEEDS THE RAW STORE AND THIS LEG'S DATABASE, and says
-      # which is missing by name. The raw bucket's three secrets are set: this
-      # step passed on run 481, 2026-10-02 (pipeline/ELT.md, "Secrets and
-      # buckets: a maintainer action"; decision 43: one bucket, `our-hike-raw`,
-      # one key, and R2_ENDPOINT_URL reused). Today's bake skips its database
-      # half with a warning when the database is unset; the dbt path has no
-      # half to skip, because OurHike's own closures are one of its sources,
-      # so it fails here instead, before reading anything.
+      # THE dbt PATH NEEDS THE RAW STORE AND THIS LEG'S DATABASE, and names
+      # whichever is missing. The raw store's secrets are set: this step
+      # passed on run 481, 2026-10-02 (ELT.md decision 43: one bucket,
+      # `our-hike-raw`, one key, R2_ENDPOINT_URL reused). Today's bake skips
+      # its database half with a warning when there is no database; the dbt
+      # path reads OurHike's own closures as a source, so it fails here,
+      # before reading anything.
       - name: Check the dbt path has its raw store and its database
         if: env.PHONE_FILES == 'dbt'
         env:
@@ -443,10 +427,9 @@ jobs:
             exit 1
           fi
 
-      # dbt's ADBC driver and v2's spatial build, about 151 MB that dbt
-      # otherwise downloads on its first command (pipeline-tests.yml's dbt
-      # job, which measured both and caches them under this same key; its
-      # comment has the argument). Saved at the end of the job on a miss.
+      # dbt's ADBC driver and v2's spatial build, about 151 MB dbt otherwise
+      # downloads on its first command. pipeline-tests.yml's dbt job measured
+      # both and caches them under this key. Saved at the end on a miss.
       - name: Restore dbt's DuckDB driver and v2's spatial extension
         id: dbt-runtime
         if: env.PHONE_FILES == 'dbt'
@@ -457,11 +440,10 @@ jobs:
             ~/.duckdb/extensions/v1.5.4
           key: dbt-v2-runtime-${{ runner.os }}-${{ hashFiles('pipeline/requirements-dbt.txt') }}
 
-      # Two environments, the extract's and dbt's, as CI's dbt job keeps
-      # them, then dbt's packages, which `dbt deps` fetches from dbt Hub on a
-      # runner. Timed into the summary, because whether the installs fit
-      # beside the bake inside this job's ten minutes is pipeline/ELT.md's
-      # open "one timed run settles it" ("The hourly lanes").
+      # Separate venvs for the extract and dbt, as CI's dbt job keeps them,
+      # then `dbt deps` from dbt Hub. Timed into the summary: whether the
+      # installs fit beside the bake in this job's ten minutes is open in
+      # pipeline/ELT.md ("The hourly lanes": "one timed run settles it").
       - name: Install the extract's and dbt's own pins (dbt path)
         if: env.PHONE_FILES == 'dbt'
         timeout-minutes: 4
@@ -518,15 +500,14 @@ jobs:
       # hour plus one refresh per update per day. Same reasoning, and the same
       # shape, as the drought inputs further down this file.
       #
-      # TODAY'S BAKE ONLY, FROM HERE TO "Export NYNJTC's trail alerts". On the
-      # dbt path the extract reads ATC's reviewed file and NYNJTC's posts
+      # TODAY'S BAKE ONLY, FROM HERE TO "Export NYNJTC's trail alerts". The
+      # dbt path's extract reads ATC's reviewed file and NYNJTC's posts
       # itself, and publish.py takes conditions/atc_updates.json and
-      # conditions/nynjtc_alerts.json from their dbt writers and drops these
-      # exporters' files for the same keys, so running both would ask ATC and
-      # NYNJTC twice for files nobody publishes. One thing these steps do that
-      # the dbt path does not: they keep the `atc-updates-` cache warm that
-      # propose-atc-updates.yml reads on main. A cutover of the schedule to the
-      # dbt path has to give that workflow another input first.
+      # conditions/nynjtc_alerts.json from the dbt writers, so running these
+      # too would ask both sites twice for files nobody publishes. But these
+      # steps also keep warm the `atc-updates-` cache propose-atc-updates.yml
+      # reads on main, so moving the schedule to the dbt path must first give
+      # that workflow another input.
       - name: Restore ATC's trail updates
         if: env.PHONE_FILES == 'exporters'
         uses: actions/cache/restore@v6
@@ -894,22 +875,20 @@ jobs:
             pipeline/data/processed/conditions/drought.json
           key: drought-inputs-${{ hashFiles('pipeline/data/raw/drought/**', 'pipeline/data/raw/centerline.geojson') }}
 
-      # NWS'S ACTIVE ALERTS, MOVED HERE FROM publish-weather.yml (decision 28a,
-      # pipeline/ELT.md, "One job owns `warnings`"): this job builds the
-      # warnings mart, so it is the one job that reads NWS, and the weather job
-      # keeps the NBM forecast alone. The UA leg only, because
-      # conditions/weather_alerts.json is UA's only today ("UA ONLY, BY DESIGN
-      # FOR NOW" in publish-weather.yml: nothing a hiker runs reads it yet),
-      # and the squares it is placed on are built from UA's trails.
+      # NWS'S ACTIVE ALERTS, MOVED HERE FROM publish-weather.yml (ELT.md
+      # decision 28a, "One job owns `warnings`"): this job builds the warnings
+      # mart, so it alone reads NWS; the weather job keeps the NBM forecast.
+      # UA leg only: conditions/weather_alerts.json is UA's only today
+      # (publish-weather.yml's "UA ONLY, BY DESIGN FOR NOW": nothing a hiker
+      # runs reads it yet), and its squares are built from UA's trails.
       #
       # The squares are publish-weather.yml's: build_weather_squares.py
       # rebuilds them when UA's release moves and saves them under
-      # `weather-squares-`, and this restores the newest. Restore only: this
-      # job never builds them, and a save here would race the weather job's.
-      # The four paths are that save's exactly, because a cache entry is
-      # found by its paths as well as its key (actions/cache's version hash).
-      # How many bytes the three grids add to every UA run is unmeasured; the
-      # restore step's own log line on the first run says.
+      # `weather-squares-`. Restore only, because a save here would race the
+      # weather job's. The four paths match that save exactly, because
+      # actions/cache finds an entry by its paths as well as its key. How many
+      # bytes the three grids add to every UA run is unmeasured; the first
+      # run's restore log line says.
       - name: Restore the weather squares (UA leg)
         if: matrix.data_environment == 'ua'
         uses: actions/cache/restore@v6
@@ -925,12 +904,10 @@ jobs:
       # One request: NWS's whole active list, 2.6 MB at 2026-09-25 20:54 UTC
       # (export_weather_alerts.py's docstring), placed on the squares.
       # Measured "alerts under 1 s" on the weather job's runners
-      # (publish-weather.yml, 2026-09-25/29), so one minute is the NYNJTC
-      # step's argument: about sixty times the observed cost, reached only by
-      # something going wrong, and it has to fit this job's ten minutes.
-      # `continue-on-error`, as the weather job's two halves never held each
-      # other back: NWS not answering must not hold back the closures, and
-      # export_weather_alerts.py writes nothing when it fails, so publish.py
+      # (publish-weather.yml, 2026-09-25/29), so the one-minute cap is about
+      # sixty times the observed cost and fits this job's ten minutes.
+      # `continue-on-error` so NWS not answering never holds back the
+      # closures: export_weather_alerts.py then writes nothing, and publish.py
       # carries the last weather_alerts.json forward with its own fetched_at.
       - name: Fetch NWS's active alerts and place them on trail squares (UA leg)
         if: matrix.data_environment == 'ua'
@@ -943,19 +920,18 @@ jobs:
           fi
           python export_weather_alerts.py
 
-      # THE dbt PATH (phone_files: dbt), pipeline/ELT.md's hourly lane, in
-      # three steps: the registry, this leg's upstreams, and the build.
+      # THE dbt PATH, pipeline/ELT.md's hourly lane, in three steps: the
+      # registry, this leg's upstreams, and the build.
       #
       # 1. THE REGISTRY, FROM THIS CHECKOUT. The closures and warnings marts
-      # keep only rows whose source may publish (int_sources__publication),
-      # which reads sources.json. ELT.md has each hourly leg defer to the
-      # monthly warehouse its environment serves for that ("Each leg defers
-      # to its own environment's warehouse"), and no monthly warehouse is
-      # stored yet, so until one is, the leg loads sources.json itself:
-      # through the monthly lane's own resource, the file in git at this
-      # commit, into a store on this runner that dies with it. Nothing of it
-      # reaches the raw store. First, because the leg's load below replaces
-      # the warehouse's `_extract_runs` with its own run log.
+      # keep only rows whose source may publish (int_sources__publication,
+      # which reads sources.json). ELT.md has each hourly leg defer to its
+      # environment's monthly warehouse for that, and none is stored yet, so
+      # the leg loads sources.json itself: git's copy at this commit, through
+      # the monthly lane's own resource, into a store on this runner that
+      # dies with it. Nothing of it reaches the raw store. It runs first
+      # because the leg's load below replaces `_extract_runs` with its own
+      # run log.
       - name: Load the source registry from this checkout (dbt path)
         if: env.PHONE_FILES == 'dbt'
         timeout-minutes: 1
@@ -966,37 +942,35 @@ jobs:
           --summary "$GITHUB_STEP_SUMMARY"
 
       # 2. THIS LEG'S UPSTREAMS, THROUGH dlt, INTO THE RAW STORE: each club's
-      # closures and warnings files, OurHike's own rows from this leg's
-      # database, NWS, NYNJTC's terms when a day old (extract/_run.py's
-      # conditions_production or conditions_ua, each its own dlt pipeline at
-      # its own prefix, s3://<R2_RAW_BUCKET>/raw/dlt/<leg>/). Then
-      # every table the leg has committed goes into the warehouse, by the
-      # committed-file read that refuses a table whose recorded load left no
-      # file rather than reading it as "no closures".
+      # closures and warnings, OurHike's own rows from this leg's database,
+      # NWS, and NYNJTC's terms when a day old (extract/_run.py's
+      # conditions_production or conditions_ua lane, each its own dlt
+      # pipeline at s3://<R2_RAW_BUCKET>/raw/dlt/<leg>/). Every table the leg
+      # has committed then goes into the warehouse; a table whose recorded
+      # load left no file is refused, not read as "no closures".
       #
-      # ONE UPSTREAM'S FAILURE IS ITS OWN. The leg reads each upstream
-      # separately, within --read-seconds, and one that fails, runs out of
-      # time or is refused by the run check is left out, its last committed
-      # table standing, while the rest load (extract/_run.py's read_each).
-      # Nothing shortens a host's Crawl-delay to fit: ATC's is 10 s, so its
-      # trail-updates pages are read only where the sitemap's lastmod moved,
-      # plus a few re-reads, and the rest carried from the last committed
-      # load (extract/_kinds.py's AtcTrailUpdatePages; about 12 pages fit
-      # the budget, Reasoned). A read that runs out lands nothing, keeps
-      # what it read for the next hour, and is annotated "not yet loaded" or
-      # "incomplete" without turning the run red; a first run on an empty
-      # raw store completes over about 8 hours that way. OurHike's own rows
-      # are the exception and stop the leg, as export_conditions.py stops
-      # today's bake. A leg that left something out as refused exits 3; this
-      # step records it, and the last step turns the run red after what did
-      # load is published.
+      # ONE UPSTREAM'S FAILURE IS ITS OWN (extract/_run.py's read_each). Each
+      # is read separately within --read-seconds; one that fails, times out
+      # or is refused by the run check is left out, its last committed table
+      # standing, while the rest load. No host's Crawl-delay is shortened to
+      # fit: ATC's is 10 s, so only trail-updates pages whose sitemap lastmod
+      # moved are read, plus a few re-reads, and the rest carry over
+      # (extract/_kinds.py's AtcTrailUpdatePages; about 12 pages fit the
+      # budget, Reasoned). A read that runs out lands nothing, keeps what it
+      # read for the next hour, and is annotated "not yet loaded" or
+      # "incomplete" without failing the run, so a first run on an empty raw
+      # store completes over about 8 hours. OurHike's own rows are the
+      # exception and stop the leg, as export_conditions.py stops today's
+      # bake. A refusal exits 3: this step records it, and the last step
+      # fails the run after everything that loaded is published.
       #
-      # 150 s of reading inside a 4-minute step, the cap today's ATC fetch
-      # had (#1318 sized it), leaving about 90 s for dlt's normalize, the load
-      # to R2 and the warehouse. Both are @unvalidated against R2: on the
-      # fixtures the whole leg took 2.7 s (Measured 2026-10-02, 11 tables,
-      # 69 rows, a file:// store; features/CONDITIONS_DELIVERY.md has the
-      # table), and the first soak run's summary gives the real figures.
+      # 150 s of reading inside a 4-minute step (the cap "Fetch ATC's trail
+      # updates" has; its comment says why) leaves about 90 s for dlt's
+      # normalize and the loads to R2 and the warehouse. Both @unvalidated
+      # against R2: on the fixtures the whole leg took 2.7 s (Measured
+      # 2026-10-02, 11 tables, 69 rows, a file:// store;
+      # features/CONDITIONS_DELIVERY.md has the table), and the first soak
+      # run's summary gives the real figures.
       - name: Extract this leg's closures and warnings into the raw store (dbt path)
         id: extract
         if: env.PHONE_FILES == 'dbt'
@@ -1028,18 +1002,17 @@ jobs:
             exit "$status"
           fi
 
-      # 3. THE BUILD: the closures and warnings marts, every test on the way,
-      # then their pub_ writers last, into data/processed/dbt/, which
-      # publish.py reads under OURHIKE_PHONE_FILES=dbt. build_marts.py is the
-      # one home of that order, and `--lane hourly` builds only the hourly
-      # nodes and the monthly ones they read (the registry above), with
+      # 3. THE BUILD, in build_marts.py's order: the closures and warnings
+      # marts with their tests, then their pub_ writers last, into
+      # data/processed/dbt/. `--lane hourly` builds only the hourly nodes and
+      # the monthly ones they read (the registry above), with
       # `--indirect-selection cautious` so no test on a monthly mart this
-      # warehouse lacks is pulled in. The weather squares' step runs only
-      # where squares.json is here, the UA leg on a cache hit; elsewhere
-      # `--without-step` leaves it out with everything it unblocks, and
+      # warehouse lacks is pulled in. The weather squares' step needs
+      # squares.json (the UA leg, on a cache hit); otherwise `--without-step`
+      # drops it and everything it unblocks, and
       # conditions/weather_alerts.json keeps its last file. Measured on the
-      # fixtures 2026-10-02 on a loaded 4-core sandbox: 56.8 s for the
-      # marts and their 184 nodes and 21.5 s for the four writers.
+      # fixtures 2026-10-02, a loaded 4-core sandbox: 56.8 s for the marts
+      # and their 184 nodes, 21.5 s for the four writers.
       - name: Build the closures and warnings marts and their writers (dbt path)
         if: env.PHONE_FILES == 'dbt'
         timeout-minutes: 4
@@ -1104,13 +1077,12 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          # The cutover switch, as publish.py reads it (`dbt` takes every key
-          # a dbt writer's exposure names from that writer's file, and drops
-          # the exporter's entry for the same key; pipeline/publish.py,
-          # "THE CUTOVER SWITCH"). On the dbt path the writers that did not
-          # run in this job's build, every release-scoped file among them,
-          # are "kept": publish.py writes nothing for them, as today's bake
-          # writes nothing outside conditions/.
+          # The cutover switch, as publish.py reads it ("THE CUTOVER SWITCH"
+          # there): `dbt` takes each key a dbt exposure names from its
+          # writer's file and drops the exporter's entry. Writers that did not
+          # run in this job, every release-scoped one among them, are "kept":
+          # nothing is written for them, as today's bake writes nothing
+          # outside conditions/.
           OURHIKE_PHONE_FILES: ${{ env.PHONE_FILES }}
         # publish.py collects whatever data/processed/ holds, which in this
         # job is the conditions manifest and nothing else - a fresh checkout

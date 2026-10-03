@@ -398,21 +398,20 @@ jobs:
       # (or a fresh environment prefix), and an absent outcome file just means
       # a cold crawl - the state this step exists to make rare, not an error.
       # An empty DATA_BASE_URL variable skips the step entirely.
-      # A photo outcome record vouches that a photo was uploaded ONCE, to the
-      # bucket it was published to. When the bucket changes, the records
-      # still vouch and the bytes are not there: run 164 (37000311109,
-      # 2026-10-02), the first vector publish after the public bucket moved to
-      # `our-hike` with no copy (#1793, decision 43), restored the cached
-      # outcomes, and publish.py's verify_photo_promises refused the release:
-      # 3,033 photo keys the POI files referenced were neither local nor in
-      # the bucket. It was right to refuse; nothing was uploaded. The fix is the
-      # one that message names: start the outcomes cold, so the fetchers
-      # download every photo and publish.py uploads it into the bucket that
-      # now serves it. One-time, so it is an input that defaults to false.
-      # The face gate is unchanged: its decisions are keyed by each photo's
-      # digest, and a re-fetched photo is the same bytes, so a held photo stays
-      # held (Reasoned: a source that re-encoded an image would give a new
-      # digest, which the gate then screens as a new photo).
+      #
+      # refetch_photos: an outcome record says a photo was uploaded once, to
+      # the bucket it was published to, so after a bucket move it vouches for
+      # bytes that are not there. Run 164 (37000311109, 2026-10-02), the first
+      # vector publish after the public bucket moved to `our-hike` with no
+      # copy (pipeline/ELT.md decision 43), restored the cached outcomes, and
+      # publish.py's verify_photo_promises rightly refused the release,
+      # uploading nothing: 3,033 photo keys the POI files referenced were
+      # neither local nor in the bucket. Starting cold makes the fetchers
+      # download every photo and publish.py upload it to the bucket that now
+      # serves it. The face gate is unchanged: its decisions are keyed by each
+      # photo's digest, and a re-fetched photo is the same bytes, so a held
+      # photo stays held (Reasoned: a source that re-encoded an image would
+      # give a new digest, which the gate then screens as a new photo).
       - name: Start the photo outcomes cold
         if: inputs.include_photos && inputs.refetch_photos
         run: |

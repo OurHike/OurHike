@@ -169,36 +169,31 @@ jobs:
         run: python -m pytest -v
 
   # The dbt transform layer (pipeline/DBT.md's CI plan, #100), on dbt v2:
-  # the full `dbt` 2.0.6 distribution, one dbt version everywhere (#1793 —
-  # Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly
-  # refresh, published docs, and lighter phone downloads; decision 32 chose it
-  # over dbt-oss 2.0.5, which also ran every step of this job green and stays
-  # the documented fallback - requirements-dbt.in says how). Its own job
-  # rather than steps on `pytest`, because its dependency set
-  # (requirements-dbt.txt) shares nothing with the pytest job's beyond
-  # duckdb. Same no-`if:`-on-the-job rule as above, and the job id stays
-  # `dbt`: it is a required check (.github/expected-protections.yml), and a
-  # renamed required job hangs the merge queue (.github/workflows/README.md).
+  # the full `dbt` 2.0.6 distribution, one version everywhere. ELT.md
+  # decision 32 chose it over dbt-oss 2.0.5, which also ran this job green
+  # and stays the documented fallback (requirements-dbt.in says how). Its
+  # own job because requirements-dbt.txt shares nothing with the pytest
+  # job's set beyond duckdb. Same no-`if:`-on-the-job rule as above. The job
+  # id stays `dbt`: it is a required check (.github/expected-protections.yml),
+  # and renaming a required job hangs the merge queue
+  # (.github/workflows/README.md).
   #
-  # The order is cheapest failure first: lint and `dbt parse` need no
-  # warehouse, so a style slip or a YAML shape v2 refuses fails in seconds,
-  # before fixtures are built.
+  # Cheapest failure first: lint and `dbt parse` need no warehouse, so a
+  # style slip or a YAML shape v2 refuses fails in seconds.
   dbt:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: pipeline
-    # TELEMETRY OFF, by the opt-out dbt documents. The dbt Product Licensing
-    # Agreement (§2.3) has dbt collect usage information, and v2 sends it to
-    # p.vx.dbt.com on every invocation unless this is set (docs.getdbt.com,
-    # "Anonymous usage stats" and "dbt v2 networking requirements"). It is the
-    # documented switch and nothing more: §3.2 forbids disabling licence
-    # validation or anything else that talks to dbt's services, so no other
-    # switch is set here, ever. Measured 2026-10-01 through a proxy that logs
-    # every host: without this, each dbt 2.0.6 command tried (parse, show)
-    # opened p.vx.dbt.com; with it, parse, show and build opened none.
-    # DO_NOT_TRACK=1, which the same docs page offers, still opened it, so it
-    # is not used.
+    # TELEMETRY OFF, by dbt's documented opt-out. Under the dbt Product
+    # Licensing Agreement (§2.3) v2 sends usage information to p.vx.dbt.com
+    # on every invocation unless this is set (docs.getdbt.com, "Anonymous
+    # usage stats"). §3.2 forbids disabling licence validation or anything
+    # else that talks to dbt's services, so no other switch is ever set here.
+    # Measured 2026-10-01 through a proxy logging every host: without this,
+    # parse and show each opened p.vx.dbt.com; with it, parse, show and build
+    # opened none. DO_NOT_TRACK=1, which the same page offers, still opened
+    # it, so it is not used.
     env:
       DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS: "false"
     steps:
@@ -207,34 +202,16 @@ jobs:
       - id: scope
         uses: ./.github/actions/changed-paths
         with:
-          # Narrower than the pytest job's list: this job builds the dbt
-          # project off the warehouse fixture mode writes (extract/_fixtures.py,
-          # the real extract over make_dbt_fixtures.py's files), and the paths
-          # below are the rest of pipeline/ that reaches it. extract/, lib/ and
-          # the six top-level modules are the extract's own imports, which
-          # tests/test_extract_layout.py holds this list to; sources.json and
-          # reference/trail_orgs.json are what a resource reads its URL and
-          # its club from, and the rest of reference/ holds the reviewed
-          # files fixture mode loads as they are. parity.py and the exporters
-          # it runs (export_podcasts.py, export_sources.py, export_elevation.py)
-          # are the parity step's; the same test holds the list to their
-          # imports too. build_marts.py runs the build, and
-          # step_node_lines.py (with build_trail_graph.py, whose _split_all it
-          # calls), step_dem_sampling.py, step_weather_squares.py and
-          # step_form_route.py are Python steps it runs between dbt
-          # invocations, beside the POI family's below
-          # (tests/test_build_marts.py holds this list to it and every step).
-          # The points_of_interest family's parity runs export_poi.py (and the
-          # export_elevation.py mile axis it imports), export_nearby_poi.py and
-          # export_retired_poi.py; step_site_water.py is that family's step,
-          # fetch_trail_water.py's rule, which imports build_water_distance.py
-          # and export_basemap.py; step_osm_water.py and
-          # step_osm_water_grade.py are its OSM water steps, the second
-          # calling build_osm_water_reach.py's grade loop; step_poi_photos.py
-          # lands the photo manifests; step_long_path_guide.py places the
-          # Long Path guide through lib/nynjtc_long_path_guide.py. The
-          # challenges family's runs export_challenges.py.
-          # check_docs_site.py checks the site the docs step writes.
+          # Narrower than the pytest job's list: the parts of pipeline/ that
+          # reach this job's build, which starts from the warehouse fixture
+          # mode writes (extract/_fixtures.py, the real extract over
+          # make_dbt_fixtures.py's files). That is the extract and its imports
+          # (extract/, lib/, sources.json, and reference/'s reviewed files);
+          # build_marts.py and every Python step it runs, with their imports;
+          # parity.py and every exporter a parity line runs, with theirs; and
+          # the check scripts the steps below call. Two tests hold this list
+          # to those imports: tests/test_extract_layout.py (the extract and
+          # parity) and tests/test_build_marts.py (the build and its steps).
           paths: >-
             pipeline/dbt/
             pipeline/extract/
@@ -300,12 +277,10 @@ jobs:
             .github/workflows/pipeline-tests.yml
             .github/actions/changed-paths/
 
-      # Python 3.12, still. It used to be forced: dbt-core lagged the newest
-      # CPython the pytest job runs. dbt v2 is not a Python program - its
-      # wheel is a Rust binary tagged cp311-abi3, so any CPython >= 3.11
-      # runs it (PyPI, read 2026-10-01). What still ties this job to 3.12 is
-      # requirements-dbt.txt, which pip-compile resolved on 3.12; moving the
-      # version means recompiling that file on the new one.
+      # Python 3.12 because pip-compile resolved requirements-dbt.txt on it;
+      # moving the version means recompiling that file. dbt v2 itself is a
+      # Rust binary in a cp311-abi3 wheel, so any CPython >= 3.11 runs it
+      # (PyPI, read 2026-10-01).
       - uses: actions/setup-python@v7
         if: steps.scope.outputs.run == 'true'
         with:
@@ -316,34 +291,30 @@ jobs:
             pipeline/requirements-extract.txt
 
       # WHAT dbt FETCHES AT RUN TIME, CACHED. Neither v2 distribution ships a
-      # database driver. On its first command dbt downloads the ADBC driver
-      # for the profile's adapter from public.cdn.getdbt.com
-      # (docs.getdbt.com, "dbt v2 networking requirements"), and its DuckDB
-      # then installs spatial from extensions.duckdb.org. Measured 2026-10-01
-      # from an empty HOME, dbt 2.0.6: libadbc_driver_duckdb-1.5.4.so,
-      # 70,458,712 bytes, into ~/.cache/com.getdbt/adbc/, and the 1.5.4
-      # spatial build, 80,848,518 bytes, into ~/.duckdb/extensions/v1.5.4/.
+      # database driver: on its first command dbt downloads the profile's ADBC
+      # driver from public.cdn.getdbt.com (docs.getdbt.com, "dbt v2 networking
+      # requirements"), and its DuckDB installs spatial from
+      # extensions.duckdb.org. Measured 2026-10-01 from an empty HOME, dbt
+      # 2.0.6: libadbc_driver_duckdb-1.5.4.so, 70,458,712 bytes, into
+      # ~/.cache/com.getdbt/adbc/, and the 1.5.4 spatial build, 80,848,518
+      # bytes, into ~/.duckdb/extensions/v1.5.4/.
       #
-      # Cached, because with both present dbt 2.0.6 parsed and built all 153
-      # nodes with every outbound connection refused (measured the same day).
-      # So a warm cache turns an outage of either host into nothing, which is
-      # #321 — Pin the Python dependency sets and cache the DuckDB spatial
-      # extension in CI's argument, and saves about 151 MB a run. It is not a
-      # way around anything dbt does: the docs' own answer for an offline
-      # machine is to pre-cache drivers (`dbt system install-drivers`, which
-      # fetches all seven adapters' drivers, so not used here), and dbt still
-      # makes its per-command call to public.cdn.getdbt.com either way
-      # (measured: one connection per command with the driver already
-      # cached; dbt-oss 2.0.5 made none. What it carries is not in the debug
-      # log, and nothing here touches it).
+      # With both present, dbt 2.0.6 parsed and built all 153 nodes with every
+      # outbound connection refused (measured the same day), so a warm cache
+      # rides out an outage of either host, as #321 — Pin the Python
+      # dependency sets and cache the DuckDB spatial extension in CI argued,
+      # and saves about 151 MB a run. It works around nothing dbt does: dbt's
+      # own offline answer is pre-caching drivers (`dbt system
+      # install-drivers`, which fetches all seven adapters', so not used), and
+      # dbt still calls public.cdn.getdbt.com once per command either way
+      # (measured; dbt-oss 2.0.5 made none; what the call carries is not in
+      # the debug log, and nothing here touches it).
       #
-      # What a cache cannot do: a miss (the first run on a new requirements
-      # hash, or an entry GitHub evicted) downloads both again. And the two
-      # paths are what dbt wrote here, not a documented location: if a later
-      # dbt moves them, this restores files nothing reads and the run
-      # downloads as before - slower, never wrong. The key is the
-      # requirements file, which pins dbt, and the driver comes with the dbt
-      # version (its checksums ship inside the binary, per the same docs page).
+      # A miss (a new requirements hash, or an evicted entry) downloads both
+      # again. The paths are where dbt wrote, not a documented location: if a
+      # later dbt moves them, this restores files nothing reads, slower but
+      # never wrong. The key is the requirements file, which pins dbt, and the
+      # driver comes with the dbt version (its checksums ship in the binary).
       - name: Restore dbt's DuckDB driver and v2's spatial extension
         id: dbt-runtime
         if: steps.scope.outputs.run == 'true'
@@ -354,13 +325,12 @@ jobs:
             ~/.duckdb/extensions/v1.5.4
           key: dbt-v2-runtime-${{ runner.os }}-${{ hashFiles('pipeline/requirements-dbt.txt') }}
 
-      # dbt 2.0.6 is a 3,291-byte sdist on PyPI whose build step downloads the
-      # real wheel from public.cdn.getdbt.com/fs/wheels and checks its sha256
-      # (requirements-dbt.in says more). So a cold install depends on dbt's
-      # CDN as well as PyPI. pip keeps the wheel it built in its cache, which
-      # the setup step above restores, so a warm run should not repeat the
-      # download (Reasoned, from how pip caches wheels built from an sdist;
-      # not yet watched on a runner).
+      # dbt 2.0.6 is a 3,291-byte sdist on PyPI whose build downloads the real
+      # wheel from public.cdn.getdbt.com/fs/wheels and checks its sha256
+      # (requirements-dbt.in), so a cold install needs dbt's CDN as well as
+      # PyPI. pip caches the built wheel, which the setup step restores, so a
+      # warm run should skip the download (Reasoned from how pip caches
+      # wheels built from an sdist; not yet watched on a runner).
       - name: Install dependencies
         if: steps.scope.outputs.run == 'true'
         run: pip install -r requirements-dbt.txt
@@ -379,49 +349,45 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: sqlfluff lint dbt/models dbt/tests
 
-      # The first dbt command after deps (parse needs the packages), and the
-      # v2 gate: dbt-oss 2.0.5 refused this project's v1-shaped YAML with 64
-      # errors until the YAML moved to v2's shape, and 2.0.6 parses the moved
-      # YAML clean (both measured 2026-10-01). Parse needs no warehouse, so a
-      # regression to the old shape fails here, in about a second, rather
-      # than after the fixtures load.
+      # The v2 YAML check: dbt-oss 2.0.5 refused this project's v1-shaped
+      # YAML with 64 errors until it moved to v2's shape, which 2.0.6 parses
+      # clean (both measured 2026-10-01). Parse needs the packages but no
+      # warehouse, so a regression fails here in about a second.
       - name: dbt parse
         if: steps.scope.outputs.run == 'true'
         working-directory: pipeline/dbt
         run: dbt parse --profiles-dir .
 
-      # dbt's own linter, beside SQLFluff and not instead of it (decision
-      # 33). It reads pipeline/.sqlfluff but warns that it supports only
-      # SQLFluff's `dbt` templater ("Continuing anyway"), and it misses some
-      # of what SQLFluff reports: measured 2026-10-01 on dbt 2.0.6, it linted
-      # the 32 files in 0.08 s and failed on a planted CP01 (keyword case) but
-      # passed a planted LT01 (a space before a comma) that SQLFluff fails.
-      # After deps and parse because it loads the whole project, and with no
-      # dbt_packages/ it installs the packages itself.
+      # dbt's own linter, beside SQLFluff and not instead of it (decision 33):
+      # it reads pipeline/.sqlfluff but warns it supports only SQLFluff's
+      # `dbt` templater ("Continuing anyway"), and misses some of what
+      # SQLFluff reports. Measured 2026-10-01 on dbt 2.0.6: the 32 files in
+      # 0.08 s, failing a planted CP01 (keyword case) but passing a planted
+      # LT01 (a space before a comma) that SQLFluff fails. After deps and
+      # parse because it loads the whole project.
       - name: dbt lint
         if: steps.scope.outputs.run == 'true'
         working-directory: pipeline/dbt
         run: dbt lint --profiles-dir .
 
-      # DECISION 44'S REFUSAL, which dbt 2.0.6 does not make itself: measured
-      # 2026-10-02 in a throwaway project, `-s state:modified --state` built a
-      # dropped v1 column and a retyped v2 key green, where dbt Core raises
-      # ContractBreakingChangeError. check_contract_versions.py compares this
-      # pull request's contracted model versions with the base's and fails on
-      # a removed column, a changed type, a version dropped before its
-      # deprecation_date or a contract switched off, unless the change arrives
-      # as a new version; and every pub_ writer must pin the version it reads
-      # and name it in its R2 keys (pipeline/ELT.md, "Versions and channels").
+      # BREAKING CONTRACT CHANGES FAIL HERE (ELT.md decision 44), because dbt
+      # 2.0.6 does not refuse them: measured 2026-10-02 in a throwaway
+      # project, `-s state:modified --state` built a dropped v1 column and a
+      # retyped v2 key green, where dbt Core raises
+      # ContractBreakingChangeError. check_contract_versions.py fails on a
+      # removed column, a changed type, a version dropped before its
+      # deprecation_date or a contract switched off, unless the change
+      # arrives as a new version, and requires every pub_ writer to pin the
+      # version it reads and name it in its R2 keys (ELT.md, "Versions and
+      # channels").
       #
-      # THE BASE IS PARSED HERE, in a git worktree of the base commit: the
-      # state approach .claude/skills/dbt/SKILL.md gives for a pull request
-      # ("State, for a pull request"), which needs no storage and no
-      # credential. The commit is the event's own base (the pull request's,
-      # the merge queue's, or the push's previous head), fetched alone because
-      # the checkout above is one commit deep. A base without the script
-      # predates every contract version, so only the head's own rules run:
-      # that is #1805's own case, whose base still holds the dbt 1.x YAML that
-      # 2.0.6 refuses to parse.
+      # The base is parsed in a git worktree of the event's base commit (the
+      # pull request's, the merge queue's, or the push's previous head),
+      # fetched alone because the checkout is one commit deep; this is the dbt
+      # skill's "State, for a pull request", needing no storage or credential.
+      # A base without the script predates every contract version, so only
+      # the head's own rules run (such a base holds dbt 1.x YAML, which 2.0.6
+      # refuses to parse).
       - name: Contract versions against the base's manifest
         if: steps.scope.outputs.run == 'true'
         env:
@@ -441,36 +407,29 @@ jobs:
           (cd "$base/pipeline/dbt" && dbt deps --profiles-dir . && dbt parse --profiles-dir .)
           python check_contract_versions.py --head dbt/target/manifest.json --base "$base/pipeline/dbt/target/manifest.json"
 
-      # FIXTURE MODE (pipeline/ELT.md, "Fixture mode"): the warehouse comes
-      # from the extract itself, run over make_dbt_fixtures.py's files by
-      # extract/_fixtures.py, so every staging model here reads a table dlt
-      # wrote, as it will in production. Until stage 3 of #1793 it came from
-      # load_raw.py's ST_Read, whose tables no extract run would ever write.
+      # FIXTURE MODE (pipeline/ELT.md, "Fixture mode"): extract/_fixtures.py
+      # runs the real extract over make_dbt_fixtures.py's files, so every
+      # staging model reads a table dlt wrote, as in production (it used to
+      # be load_raw.py's ST_Read, whose tables no extract would write).
       #
       # ITS OWN VENV, because requirements-extract.txt and
-      # requirements-dbt.txt cannot share one: click is 8.5.0 in the first
-      # and 8.4.2 in the second (2026-10-01). The extract pins are the extract
-      # jobs' own, so this is the dependency set the fixtures run under in
-      # production too. No secret is in this job.
-      #
-      # No spatial seeding any more. It was for load_raw.py's ST_Read; the
-      # extract reads no geometry, landing it as GeoJSON text, and dbt loads
-      # its own spatial build through the cache step above.
+      # requirements-dbt.txt cannot share one (click 8.5.0 against 8.4.2,
+      # 2026-10-01); these are the extract jobs' own pins. No secret is in
+      # this job. No spatial seeding: the extract lands geometry as GeoJSON
+      # text, and dbt gets spatial through the cache step above.
       - name: Install the extract's own pins
         if: steps.scope.outputs.run == 'true'
         run: |
           python -m venv "$RUNNER_TEMP/extract"
           "$RUNNER_TEMP/extract/bin/pip" install -r requirements-extract.txt
 
-      # THE PIPELINE'S OWN PINS, for today's exporters on the old side of
-      # parity and for the Python steps (pipeline/ELT.md, "Python steps,
-      # outside dbt"). Those import shapely, numpy, pyproj, requests and
-      # rasterio, which neither requirements-dbt.txt nor
-      # requirements-extract.txt carries, so they get requirements.txt in a
-      # venv of their own, one for every family's lines. export_trails.py and
-      # export_elevation.py run `INSTALL spatial`, so the venv's DuckDB gets
-      # spatial from PyPI, as the pytest job's does, rather than from
-      # extensions.duckdb.org on every run.
+      # THE PIPELINE'S OWN PINS (requirements.txt), for today's exporters in
+      # the parity step and for the Python steps (ELT.md, "Python steps,
+      # outside dbt"): they import shapely, numpy, pyproj, requests and
+      # rasterio, which neither other requirements file carries.
+      # export_trails.py and export_elevation.py run `INSTALL spatial`, so this
+      # venv's DuckDB gets spatial from PyPI, as the pytest job's does, rather
+      # than from extensions.duckdb.org on every run.
       - name: Install the pipeline's own pins (today's exporters, the Python steps)
         if: steps.scope.outputs.run == 'true'
         run: |
@@ -491,18 +450,15 @@ jobs:
           "$RUNNER_TEMP/extract/bin/python" -m extract._fixtures
           --raw-dir data/raw --warehouse data/warehouse.duckdb
 
-      # THE BUILD, in the order pipeline/build_marts.py owns (pipeline/ELT.md,
-      # "Python steps, outside dbt"): the seeds; stage A, everything no Python
-      # step reads back; each entry of build_marts.STEPS, then what its
-      # derived table unblocks; and the pub_ writers LAST, once every test
-      # above them has passed (ELT.md, "Publish (reverse ETL)"), because
+      # THE BUILD, in pipeline/build_marts.py's order (ELT.md, "Python steps,
+      # outside dbt"): the seeds; stage A, everything no Python step reads
+      # back; each entry of build_marts.STEPS, then what its derived table
+      # unblocks; and the pub_ writers LAST (ELT.md, "Publish (reverse ETL)").
       # `dbt build` tests a model after building it, so a writer built beside
       # its parents would write its file before a failing test upstream
-      # stopped it. The writers write under data/processed/dbt/
-      # (dbt_project.yml's processed_dir says why there), and nothing here
-      # uploads anything. dbt is this job's own; the Python steps run on the
-      # pipeline's pins, the venv the step above built. A new Python step is
-      # an entry in build_marts.STEPS, never a step here.
+      # stopped it. The writers write under data/processed/dbt/ and nothing
+      # here uploads. The Python steps run on the pipeline's pins. A new
+      # Python step is an entry in build_marts.STEPS, never a step here.
       - name: dbt build, the Python steps and the pub_ writers (build_marts.py)
         if: steps.scope.outputs.run == 'true'
         run: python build_marts.py --fixtures --python "$RUNNER_TEMP/pipeline/bin/python"
@@ -514,20 +470,18 @@ jobs:
       # fixture. Fails on any difference.
       - name: Parity with today's exporters
         if: steps.scope.outputs.run == 'true'
-        # EVERY LINE RUNS ON THE PIPELINE'S OWN PINS ($RUNNER_TEMP/pipeline,
-        # built above), because the old side imports today's exporters:
-        # export_atc_updates.py needs requests (through lib/atc_scrape.py),
-        # export_conditions.py psycopg, and export_nearby_trails.py shapely,
-        # pyproj and rasterio, none of which requirements-dbt.txt pins. The
-        # job's own python failed the first conditions line on requests.
-        # Except closures and reports, which run on the extract's venv: their
-        # old side reads OurHike's Postgres answers through fixture mode's own
-        # FixtureConnection (extract/_fixtures.py), which imports dlt, and
-        # requirements.txt has no dlt (measured: "No module named 'dlt'" on a
-        # venv of requirements.txt alone, and no differences on the extract's).
-        # --json-dir writes each family's result as data/processed/parity/
-        # <family>.json for gate_report.py (decision 30's per-key report); the
-        # console lines and the exit codes are the same without it.
+        # EVERY LINE RUNS ON THE PIPELINE'S OWN PINS ($RUNNER_TEMP/pipeline),
+        # because today's exporters need requests (export_atc_updates.py),
+        # psycopg (export_conditions.py), and shapely, pyproj and rasterio
+        # (export_nearby_trails.py), none of which requirements-dbt.txt pins;
+        # the job's own python failed the first conditions line on requests.
+        # Except closures and reports, on the extract's venv: their exporters
+        # read OurHike's Postgres answers through extract/_fixtures.py's
+        # FixtureConnection, which imports dlt, and requirements.txt has none
+        # (measured: "No module named 'dlt'" on requirements.txt alone, no
+        # differences on the extract's venv). --json-dir writes each family's
+        # result to data/processed/parity/<family>.json for gate_report.py;
+        # the console lines and exit codes are the same without it.
         run: |
           "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity podcasts --new data/processed/dbt/podcasts_episodes.json
           "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity stewards --new data/processed/dbt/stewards.json
@@ -630,13 +584,12 @@ jobs:
           "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity poi_trailhead_v2 --new data/processed/dbt/poi_trailhead_v2.geojson
           "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity nearby_poi_v2 --new data/processed/dbt/nearby_poi_v2.geojson
 
-      # The parity results, kept with the run so gate_report.py can read them
-      # without a rebuild: python gate_report.py --parity-dir <the downloaded
-      # folder> --out <dir>, beside the dbt manifest. Uploaded when the parity
-      # step fails too: every family before the failing line wrote its file,
-      # and the failing family's says what differed. The records in it are the
-      # fixtures' and the reviewed files' in git, nothing a hiker sent; kept
-      # seven days, as the other short-lived uploads are.
+      # Kept with the run so gate_report.py can read them without a rebuild
+      # (python gate_report.py --parity-dir <downloaded folder> --out <dir>).
+      # Uploaded when parity fails too: each family before the failing line
+      # wrote its file, and the failing family's says what differed. The
+      # records are the fixtures' and git's reviewed files, nothing a hiker
+      # sent.
       - name: Upload the parity results
         if: always() && steps.scope.outputs.run == 'true'
         uses: actions/upload-artifact@v4
@@ -651,22 +604,18 @@ jobs:
         working-directory: pipeline/dbt
         run: dbt source freshness --profiles-dir .
 
-      # v2's docs are a directory, not v1's one file: index.html, an assets/
-      # folder and the Parquet artifacts the page reads with DuckDB-WASM
-      # (measured 2026-10-01 on dbt 2.0.6: 315 assets and 38 Parquet files,
-      # 12,301,390 bytes; dbt-oss 2.0.5 wrote the same counts in 12,291,821
-      # bytes). Written to target/docs, inside the gitignored target/, so
-      # nothing here can be committed; .github/tests/test_no_committed_data.py
-      # refuses any path under pipeline/dbt/target/ besides.
+      # v2's docs are a directory: index.html, assets/ and the Parquet files
+      # the page reads with DuckDB-WASM (measured 2026-10-01 on dbt 2.0.6: 315
+      # assets and 38 Parquet files, 12,301,390 bytes; dbt-oss 2.0.5, the same
+      # counts in 12,291,821 bytes). Written inside the gitignored target/, and
+      # .github/tests/test_no_committed_data.py refuses any path under
+      # pipeline/dbt/target/ besides.
       #
-      # pages.yml and pr-preview.yml publish this site at /data/, built by
-      # .github/actions/dbt-docs-site against an empty warehouse rather than
-      # this job's fixtures, and run check_docs_site.py on the copy they
-      # ship. It runs here too, on this build's copy, so a pull request finds
-      # a missing part, a recorded --vars or coordinate-shaped text before a
-      # tag does (pipeline/ELT.md, "Docs and charts at
-      # https://ourhike.org/data/"). The script is the one home of what the
-      # site must hold.
+      # pages.yml and pr-preview.yml publish the site at /data/, built by
+      # .github/actions/dbt-docs-site against an empty warehouse, and run
+      # check_docs_site.py (the one home of what the site must hold) on the
+      # copy they ship. It runs here too, so a pull request finds a missing
+      # part, a recorded --vars or coordinate-shaped text before a tag does.
       - name: dbt docs generate
         if: steps.scope.outputs.run == 'true'
         working-directory: pipeline/dbt

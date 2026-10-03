@@ -347,12 +347,11 @@ jobs:
 
       # The pinned release must actually be there, checked against THIS
       # build's own base (#1333). Since decision 44 the pin is the compiled
-      # fallback: what a session reads until this phone has verified a
-      # channels.json entry, which is every first run (lib/dataRelease.ts). A
-      # fallback naming a folder the bucket does not have is a first run that
-      # deploys and then 404s every artifact - no map, not a stale one, and
-      # the client has no fallback behind it (trailData.ts throws; App.tsx
-      # stops before the archive).
+      # fallback (lib/dataRelease.ts): what a phone reads until it has
+      # verified a channels.json entry, so every first run reads it. A
+      # fallback naming a folder the bucket lacks is a first run that 404s
+      # every artifact - no map, not a stale one, and nothing behind it
+      # (trailData.ts throws; App.tsx stops before the archive).
       #
       # AGAINST THIS BUILD'S BASE is the load-bearing half, and it is the
       # reason one committed constant is safe across two data environments.
@@ -383,17 +382,16 @@ jobs:
             exit 1
           fi
 
-      # Decision 44's pointer, against the same base: channels.json's entry
-      # for this build's data environment and schema version must resolve here
-      # too (pipeline/ELT.md, "Versions and channels"). The client refuses an
+      # channels.json's entry for this build's data environment and schema
+      # version must resolve against the same base (pipeline/ELT.md,
+      # "Versions and channels", decision 44). The client already refuses an
       # entry whose manifest does not resolve and keeps its last release
-      # (lib/dataRelease.ts's readDataChannel), so a bad entry cannot strand a
-      # phone; this is the louder, earlier half, a red deploy rather than
-      # phones that quietly never move. Both this and the step above hold for
-      # as long as the compiled fallback exists, because a first run reads the
-      # fallback before it has reached the pointer. The environment is read
-      # off the base as the client reads it: `.../environments/<name>` is that
-      # environment's, anything else production's.
+      # (lib/dataRelease.ts's readDataChannel); this is the louder, earlier
+      # check, a red deploy rather than phones that quietly never move. Both
+      # checks stay while the compiled fallback exists, because a first run
+      # reads the fallback before the pointer. The environment comes off the
+      # base as the client reads it: `.../environments/<name>`, else
+      # production.
       - name: Confirm channels.json's release exists
         working-directory: client
         env:
@@ -448,20 +446,19 @@ jobs:
             exit 1
           fi
 
-      # The page at /data/ (pipeline/ELT.md, "Docs and charts at
-      # https://ourhike.org/data/"). The action says why it is built against
-      # an empty warehouse, and it reads no secret. Here, in the production
-      # build rather than a workflow of its own, because the publish step
-      # below replaces the whole gh-pages branch with _site: a second
-      # workflow writing /data/ would be deleted by the next deploy. The page
-      # changes only at a tag, so a monthly data refresh moves UA's data and
-      # not these docs (Reasoned, ELT.md).
+      # The dbt docs page at /data/ (pipeline/ELT.md, "Docs and charts at
+      # https://ourhike.org/data/"); the action says why an empty warehouse,
+      # and it reads no secret. Built here, not in a workflow of its own,
+      # because the publish step below replaces the whole gh-pages branch
+      # with _site, so another workflow's /data/ would be deleted by the next
+      # deploy. The page changes only at a tag, so a monthly data refresh
+      # moves UA's data and not these docs (Reasoned, ELT.md).
       #
-      # A re-run is no longer a push of nothing. Measured 2026-10-03 across
-      # two builds of one commit: the 315 assets were byte-identical, while
-      # index.html (its `generated_at`) and 16 of the 38 Parquet files
-      # (1,154,363 bytes) differed, so republishing a tag commits about
-      # 1.2 MB to gh-pages where it used to commit nothing.
+      # Republishing a tag now commits about 1.2 MB to gh-pages, where it used
+      # to commit nothing. Measured 2026-10-03 across two builds of one
+      # commit: the 315 assets were byte-identical; index.html (its
+      # `generated_at`) and 16 of the 38 Parquet files (1,154,363 bytes)
+      # differed.
       - name: Build the data docs
         id: docs
         uses: ./.github/actions/dbt-docs-site

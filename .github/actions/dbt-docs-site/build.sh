@@ -4,12 +4,11 @@
 #
 #   build.sh <output dir> [--no-dbt-deps]
 #
-# Run from the repository root, with the dbt that pipeline/requirements-dbt.txt
-# pins first on PATH. --no-dbt-deps is scripts/test.sh's sandbox workaround:
-# use pipeline/dbt/dbt_packages/ as it is, because a web session's proxy cannot
-# fetch the package tarballs (the dbt skill has the clone commands). The site
-# is not checked here; the caller checks the copy it ships, with
-# pipeline/check_docs_site.py.
+# Run from the repository root, with pipeline/requirements-dbt.txt's dbt first
+# on PATH. --no-dbt-deps (scripts/test.sh's sandbox workaround) uses
+# pipeline/dbt/dbt_packages/ as it is, because a web session's proxy cannot
+# fetch the package tarballs (the dbt skill has the clone commands). The
+# caller checks the copy it ships, with pipeline/check_docs_site.py.
 set -euo pipefail
 
 out="${1:?usage: build.sh <output dir> [--no-dbt-deps]}"
@@ -17,9 +16,8 @@ deps=true
 if [ "${2:-}" = "--no-dbt-deps" ]; then
   deps=false
 fi
-# Refused rather than cleared: a site left from an earlier build would mix
-# into this one, and an `rm -rf` of a path a caller typed is not this script's
-# to run.
+# Refused rather than cleared: an earlier build's files would mix into this
+# one, and this script will not `rm -rf` a path a caller typed.
 if [ -e "$out" ]; then
   echo "::error::$out already exists. Give build.sh a directory that is not there yet." >&2
   exit 1

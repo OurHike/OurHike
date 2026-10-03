@@ -564,12 +564,11 @@ jobs:
           node scripts/photograph-preview.mjs --dist --changed="$LIST"
           echo "taken=true" >> "$GITHUB_OUTPUT"
 
-      # The page production serves at /data/, built the way pages.yml builds
-      # it, by the same action; the action says why against an empty
-      # warehouse, and it reads no secret. Not continue-on-error: a preview
-      # whose /data/ is broken is a preview of a broken docs page, and the
-      # assembly below refuses a missing part rather than letting 404.html
-      # paper over it.
+      # The /data/ page, built by the same action as pages.yml (the action
+      # says why an empty warehouse; it reads no secret). Not
+      # continue-on-error: a broken docs page should fail the preview, and
+      # the assembly below refuses a missing part rather than letting
+      # 404.html cover for it.
       - name: Build the data docs
         id: docs
         if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'

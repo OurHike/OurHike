@@ -386,7 +386,7 @@ jobs:
       # version must resolve against the same base (pipeline/ELT.md,
       # "Versions and channels", decision 44). The client already refuses an
       # entry whose manifest does not resolve and keeps its last release
-      # (lib/dataRelease.ts's readDataChannel); this is the louder, earlier
+      # (lib/dataChannel.ts's readDataChannel); this is the louder, earlier
       # check, a red deploy rather than phones that quietly never move. Both
       # checks stay while the compiled fallback exists, because a first run
       # reads the fallback before the pointer. The environment comes off the

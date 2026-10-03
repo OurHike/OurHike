@@ -842,8 +842,15 @@ export const READS_V2 = (DATA_SCHEMA_VERSION as string) === 'v2'
  *
  * Each key is the one this build fetches (phoneFileKey), so a refresh
  * compares the manifest entry for the shape the download reads.
+ *
+ * Annotated pure so a worker that imports this module for something else
+ * does not build the list: measured 2026-10-03 by gzipping the built chunks,
+ * demWorker went from 20,933 bytes to 20,789 and poiIconWorker from 2,965 to
+ * 2,825. The eager closure did not move beyond the ~10 bytes one tree's builds
+ * differ by. The same annotation on dataRelease.ts's readMirror() call moved
+ * neither, so it is not there.
  */
-export const REFRESHABLE_KEYS: readonly string[] = [
+export const REFRESHABLE_KEYS: readonly string[] = /* @__PURE__ */ [
   TRAILS_KEY,
   TRAIL_MILES_KEY,
   ...POI_TYPES.map(poiKey),

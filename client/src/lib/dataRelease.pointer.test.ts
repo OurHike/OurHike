@@ -46,11 +46,12 @@ const COMPILED = '2026-09-24-2'
 const LAST_GOOD = '2026-10-01'
 const NEWER = '2026-10-03-2'
 
-/** One launch of the app: this module evaluated afresh against `base`. */
+/** One launch of the app: lib/dataRelease.ts and the pointer reader it is
+ *  split from, lib/dataChannel.ts, evaluated afresh against `base`. */
 async function launch(base = BASE) {
   vi.resetModules()
   vi.stubEnv('VITE_DATA_BASE_URL', base)
-  return import('./dataRelease')
+  return { ...(await import('./dataRelease')), ...(await import('./dataChannel')) }
 }
 
 function record(release: string, environment = 'production') {

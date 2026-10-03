@@ -15,7 +15,6 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { DATA_BASE_URL, DATA_CONFIGURED, TRAILS_KEY } from './config'
-import { readDataChannel } from './dataRelease'
 import type { TrailIndex } from './trailPosition'
 import { packPois, resolveTrailIndex } from './trailIndexBuild'
 import {
@@ -585,8 +584,15 @@ export function useTrailData(
     // The pointer (decision 44, channels.json), read here because this is
     // the check that runs on launch when online. What it names is this
     // phone's release from the NEXT launch, never this one (lib/dataRelease.ts
-    // says why), so nothing below waits on it. It never rejects.
-    void readDataChannel(DATA_BASE_URL, { signal: controller.signal })
+    // says why), so nothing below waits on it. It never rejects; the import
+    // can, when its chunk cannot be fetched, and that costs only this read.
+    // Loaded here rather than imported, to keep it out of the eager bundle
+    // (lib/dataChannel.ts says why).
+    void import('./dataChannel')
+      .then(({ readDataChannel }) =>
+        readDataChannel(DATA_BASE_URL, { signal: controller.signal }),
+      )
+      .catch(() => {})
 
     void (async () => {
       const stored = await recallRelease()

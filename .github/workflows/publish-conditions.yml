@@ -1009,6 +1009,9 @@ jobs:
           DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
           DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
           DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          # The NPS alerts API's key (extract/_json_apis.py, "THE KEY"). Absent, the two
+          # NPS tables read as unavailable with a warning and the leg stays green.
+          NPS_API_KEY: ${{ secrets.NPS_API_KEY }}
         run: |
           if [ "$ENVIRONMENT" = "production" ]; then
             export CONDITIONS_DATABASE_URL="$PRODUCTION_URL"

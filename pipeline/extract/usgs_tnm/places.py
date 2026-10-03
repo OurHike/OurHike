@@ -1,23 +1,14 @@
-"""USGS — The National Map: places, published, and not landed (coverage audit 2026-10-01, batch
-c9_federal_state_rest).
+"""USGS — The National Map: places, extracted (decision 54, wave 1; live read 2026-10-03 under
+lib/user_agent.py's USER_AGENT).
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `usgs_gnis_populated_places`: GNIS Populated Places (The National Map), 176,566 multipoint features;
+  places kind `town`.
+
+govunits/MapServer/24, Incorporated Place (19,725 polygons, GLOBALID unique), republishes the Census's
+place boundaries and is not registered; geonames' other layers (landforms, streams) are not places.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "GNIS `geonames/MapServer` (Populated Places, Landforms); `govunits/MapServer`; National Boundary "
-        "Dataset via TNM Access.",
-    ),
-    where=(
-        "https://earthquake.usgs.gov/arcgis/rest/services",
-        "https://partnerships.nationalmap.gov/arcgis/rest/services",
-        "https://usgs.gov/",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("usgs_gnis_populated_places",)
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

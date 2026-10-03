@@ -1,22 +1,11 @@
-"""US Fish & Wildlife Service: places, published, and not landed (coverage audit 2026-10-01, batch
-c9_federal_state_rest).
+"""US Fish & Wildlife Service: places, extracted (decision 54, wave 1; live read 2026-10-03 under
+lib/user_agent.py's USER_AGENT).
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `usfws_refuge_boundaries`: FWS National Realty Boundaries (National Wildlife Refuge System), 1,085
+  polygon features; places kind `park`.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        '`.../National_Wildlife_Refuge_System_Boundaries/FeatureServer/0` ("FWS National Realty Boundaries", '
-        "owner `an email address`): 1,085 polygons. Also `FWSApproved_Authoritative` and `FWSWilderness`.",
-    ),
-    where=(
-        "https://services.arcgis.com/QVENGdaPbd4LUkLV/arcgis/rest/services",
-        "https://fws.gov/",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("usfws_refuge_boundaries",)
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

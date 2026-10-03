@@ -1,22 +1,26 @@
-"""USDA Forest Service: places, published, and not landed (coverage audit 2026-10-01, batch
-b6_federal).
+"""USDA Forest Service: places, extracted (decision 54, wave 1; live read 2026-10-03 under
+lib/user_agent.py's USER_AGENT).
 
-No editingInfo (on-prem server).
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `usfs_forest_boundaries`: Administrative Forest Boundaries - National Extent, 112 polygon features;
+  places kind `park`.
+- `usfs_ranger_districts`: Ranger District Boundaries - National Extent, 503 polygon features; no places
+  kind.
+- `usfs_wilderness_areas`: National Wilderness Areas (USFS), 449 polygon features; places kind `park`.
+- `usfs_national_grasslands`: National Grassland Units, 20 polygon features; places kind `park`.
+- `usfs_other_designated_areas`: National Forest Lands with Nationally Designated Management or Use
+  Limitations, 227 polygon features; places kind `park`.
+- `usfs_special_interest_areas`: Special Interest Management Areas, 1,906 polygon features; no places
+  kind.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "EDW layer 0 of each: `ForestSystemBoundaries_01` 112, `RangerDistricts_03` 503, `Wilderness_02` 449, "
-        "`NationalGrassland_01` 20, `OtherNationalDesignatedArea_01` 227, `SpecialInterestManagementArea_01` "
-        "1,906 (all polygon).",
-    ),
-    where=("https://apps.fs.usda.gov/arcx/rest/services",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+CLAIMS = (
+    "usfs_forest_boundaries",
+    "usfs_ranger_districts",
+    "usfs_wilderness_areas",
+    "usfs_national_grasslands",
+    "usfs_other_designated_areas",
+    "usfs_special_interest_areas",
 )
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

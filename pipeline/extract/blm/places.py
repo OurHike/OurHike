@@ -1,36 +1,44 @@
-"""Bureau of Land Management: places, published, and not landed (coverage audit 2026-10-01, batch
-b6_federal).
+"""Bureau of Land Management: places, extracted (decision 54, wave 1; live read 2026-10-03 under
+lib/user_agent.py's USER_AGENT).
 
-SMA says whose land a hiker stands on. It is useful for places, and it is large. Skeptic: PLAD says
-where legal public access to BLM land exists. That makes it access data for the "get off the trail"
-question (Reasoned).
+- `blm_national_monuments_ncas`: BLM NLCS National Monuments, National Conservation Areas and Similar
+  Designations, 57 polygon features; places kind `park`.
+- `blm_wilderness_areas`: BLM NLCS Wilderness Areas, 306 polygon features; places kind `park`.
+- `blm_wilderness_study_areas`: BLM NLCS Wilderness Study Areas, 1,120 polygon features; places kind
+  `park`.
+- `blm_recreation_areas`: BLM National Recreation Areas, 588 polygon features; places kind `park`.
+- `blm_recreation_site_polygons`: BLM Recreation Sites (polygons), 3,477 polygon features; places kind
+  `park`.
+- `blm_public_lands_access_lines`: BLM National Public Lands Access Data (lines), 4,835 polyline
+  features; no places kind.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Not read: the Surface Management Agency layer (lands/BLM_Natl_SMA_LimitedScale), which says whose land a
+hiker stands on, at national scale.
+SAME_AS below: copies of a registered layer, noted and never loaded (decision 34).
 """
 
 from datetime import date
 
-from extract._contract import NotAvailable
+from extract._contract import SameAs
+from extract._kinds import arcgis_layer
 
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "`lands/BLM_Natl_NLCS_NM_NCA_poly/MapServer/1` (National Monuments, NCAs): 57; "
-        "`lands/BLM_Natl_NLCS_WLD_WSA/MapServer/0` Wilderness 306, `/1` WSA 1,120; "
-        "`recreation/BLM_Natl_Recreation/MapServer/9` Recreation Areas 588; "
-        "`recreation/BLM_Natl_Recs_poly/MapServer/1` 3,477. Surface Management Agency: "
-        "`lands/BLM_Natl_SMA_LimitedScale`.",
-        "Skeptic adds (Measured): "
-        "`https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_PLAD_Line/FeatureServer/0`"
-        ' ("BLM Natl Public Lands Access Data Line") holds 4,835 lines; item modified 2026-09-25. A polygon '
-        "twin exists.",
+CLAIMS = (
+    "blm_national_monuments_ncas",
+    "blm_wilderness_areas",
+    "blm_wilderness_study_areas",
+    "blm_recreation_areas",
+    "blm_recreation_site_polygons",
+    "blm_public_lands_access_lines",
+)
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]
+SAME_AS = (
+    SameAs(
+        original="blm_recreation_site_polygons",
+        copy=("https://gis.blm.gov/arcgis/rest/services/recreation/BLM_Natl_Recs_poly/MapServer/0",),
+        confirmed=date(2026, 10, 3),
+        checked=(
+            "Layer 0 of the map service whose layer 1 is registered, both named 'Recreation Sites': 3,477 rows on each, "
+            "the same 16 columns, and the same 3,477 Original_GlobalID values (read 2026-10-03)",
+        ),
     ),
-    where=(
-        "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/BLM_Natl_PLAD_Line/FeatureServer/0",
-        "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_NLCS_NM_NCA_poly/MapServer/1",
-        "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_NLCS_WLD_WSA/MapServer/0",
-        "https://gis.blm.gov/arcgis/rest/services/recreation/BLM_Natl_Recreation/MapServer/9",
-        "https://gis.blm.gov/arcgis/rest/services/recreation/BLM_Natl_Recs_poly/MapServer/1",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
 )

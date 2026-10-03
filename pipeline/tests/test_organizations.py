@@ -318,10 +318,15 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     here); NJDEP's county high points, `nj_high_elevation_points`, carry the
     Data Distribution Agreement `njdep_licence` reads (+1 `stated_by_org`);
     and NCTA's, PCTA's and PASDA's four state nothing and are `public_gis`.
+
+    DECISION 54'S PLACES WAVE, FEDERAL (2026-10-03): 19 place layers - NPS,
+    BLM, USFS, USFWS and USGS boundaries and gazetteers - each `stated_by_org`
+    on 17 U.S.C. 105, the reading usfs_licence records, and each at
+    `reaches_hikers: false` until a mart reads it.
     """
     counts: dict[str, int] = {}
     for source in REGISTRY["sources"]:
         counts[source["licence_basis"]] = counts.get(source["licence_basis"], 0) + 1
 
     # Decision 53's ArcGIS closure and warning layers (2026-10-03) add 76 rows, all reaches_hikers false: 11 `maintainer_authorisation`, 35 `public_gis`, 30 `stated_by_org`.
-    assert counts == {"maintainer_authorisation": 48, "stated_by_org": 64, "unresolved": 2, "public_gis": 39}
+    assert counts == {"maintainer_authorisation": 48, "public_gis": 39, "stated_by_org": 83, "unresolved": 2}

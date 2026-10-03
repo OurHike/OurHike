@@ -1,28 +1,27 @@
-"""National Park Service: places, published, and not landed (coverage audit 2026-10-01, batch
-b6_federal).
+"""National Park Service: places, extracted (decision 54, wave 1; live read 2026-10-03 under
+lib/user_agent.py's USER_AGENT).
 
-Wilderness count is UNKNOWN; the service exists. Skeptic (Measured 2026-10-01): the Wilderness count
-still returns HTTP 500 on FeatureServer and MapServer `returnCountOnly`, and on `returnIdsOnly`. The
-layer's metadata answers (polygon; `Name`, `Acre_Legis`, `PUBLICDISPLAY`), so the service is up …
+- `nps_park_boundaries`: NPS Boundary (Land Resources Division), 442 polygon features; places kind
+  `park`.
+- `nps_legislated_wilderness`: NPS Legislated Wilderness, 61 polygon features; places kind `park`.
+- `grsm_municipal_boundaries`: Great Smoky Mountains gateway municipal boundaries (GRSM), 22 polygon
+  features; places kind `town`.
+- `grsm_park_boundary_lines`: Great Smoky Mountains park boundary lines (GRSM), 19 polyline features; no
+  places kind.
+- `pohe_trail_regions`: Potomac Heritage NST management regions (POHE), 9 polygon features; no places
+  kind.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Not registered: layers 0 (boundary centroids) and 1 (tracts) of the boundary service. The NPS API's
+/places needs a key and waits for wave 3.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "`https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/NPS_Land_Resources_Division_Boundary_and_Tract_Data_Service/FeatureServer/2`"
-        ' ("NPS Boundary", polygon): 442, `dataLastEditDate` 2026-08-17. Layer 0 is the boundary centroids; '
-        "layer 1 is tracts. `.../Wilderness/NPS_Legislated_Wilderness/FeatureServer/0` (polygon): count query "
-        "returned HTTP 500 today, as it did for c9. API `/places`: 17,483 (c9).",
-    ),
-    where=(
-        "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/NPS_Land_Resources_Division_Boundary_and_Tract_Data_Service/FeatureServer/2",
-        "https://mapservices.nps.gov/arcgis/rest/services",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+CLAIMS = (
+    "nps_park_boundaries",
+    "nps_legislated_wilderness",
+    "grsm_municipal_boundaries",
+    "grsm_park_boundary_lines",
+    "pohe_trail_regions",
 )
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

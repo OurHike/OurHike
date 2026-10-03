@@ -1,12 +1,5 @@
-"""Nez Perce (Nee-Me-Poo) Trail Foundation: places, published, and not landed (coverage audit
-2026-10-01, batch p02_persist).
-
-Licence: NPS LRD: open_licence, public domain, a federal work (`copyrightText` "National Park
-Service Land Resources Division"). BLM: open_licence: "None, these data are considered public
-domain." USFS R01: open_licence, a federal work, with a disclaimer: "The USDA Forest Service makes
-no claims …
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+"""Nez Perce (Nee-Me-Poo) Trail Foundation: places, drawn from nps/'s resources (decision 54, wave 1, read
+2026-10-03).
 """
 
 from datetime import date
@@ -14,18 +7,13 @@ from datetime import date
 from extract._contract import NotAvailable
 
 NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
+    confirmed=date(2026, 10, 3),
     checked=(
-        "NPS LRD boundary "
-        "`https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/NPS_Land_Resources_Division_Boundary_and_Tract_Data_Service/FeatureServer/2`:"
-        " `UNIT_CODE='NEPE'` has 1 (multipart) polygon. NPS Data API `places?parkCode=nepe`: ≥16 places per "
-        "audit c11 (today's call hit `OVER_RATE_LIMIT`). USFS KML \"Auto Tour Stops\" (110) is the trail's own "
-        "site directory. USFS Region 1 centerline "
-        "`…/R01_NezPerceNeeMePoo_NationalHistoricTrail_Centerline/FeatureServer/0` has 532 features, modified "
-        "2024-09-28. It is a trail line, noted for the `trail_lines` row that audit c11 already marked …",
+        "via nps `nps_park_boundaries` (442 polygons, UNIT_CODE 'NEPE' one of them), registered 2026-10-03. The USFS "
+        "Region 1 centerline is trail_lines', and the NPS API's places need a key (wave 3).",
     ),
     where=(
         "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/NPS_Land_Resources_Division_Boundary_and_Tract_Data_Service/FeatureServer/2",
     ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    reason="drawn from nps/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in",
 )

@@ -1,11 +1,5 @@
-"""New Mexico Volunteers for the Outdoors: places, published, and not landed (coverage audit
-2026-10-01, batch p05_persist).
-
-USFS: public domain. RGIS `useconst`: "This data shall not be used to define legal boundaries of
-State Parks, nor to define the limits of jurisdiction or ownership between adjacent property owners.
-Use of this data implies authors' release from liability as to accuracy of data." `accconst`: "No …
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+"""New Mexico Volunteers for the Outdoors: places, drawn from usfs/'s resources, and the rest not landed
+(decision 54, wave 1, read 2026-10-03).
 """
 
 from datetime import date
@@ -13,16 +7,16 @@ from datetime import date
 from extract._contract import NotAvailable
 
 NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
+    confirmed=date(2026, 10, 3),
     checked=(
-        "USFS `EDW_ForestSystemBoundaries_01/MapServer/0`: Cibola (0303, 3,215,660 acres), Santa Fe (0310) and "
-        "Lincoln (0308). `EDW_Wilderness_02`: Sandia Mountain Wilderness (37,690 acres) and Pecos Wilderness "
-        "(221,836 acres). NM State Parks boundaries: RGIS GStoRE dataset "
-        '`057d2f19-4ec6-47d5-82a4-f03309ef94fb`, "New Mexico State Parks / State Park boundaries", last updated'
-        " 2025-01-22, served as GeoJSON, shapefile, KML and CSV. I did not count its features, because it is "
-        "download-only. City of Albuquerque "
-        "`https://coageo.cabq.gov/cabqgeo/rest/services/agis/Open_Space/FeatureServer/0`: 65 polygons. …",
+        "via usfs `usfs_forest_boundaries` (Cibola 0303, Santa Fe 0310, Lincoln 0308) and `usfs_wilderness_areas` (Sandia"
+        " Mountain, Pecos), registered 2026-10-03.",
+        "Not landed: the City of Albuquerque's Open_Space/FeatureServer/0 (65 polygons), whose steward has no folder "
+        "(wave 6), and the RGIS 'New Mexico State Parks / State Park boundaries' download (wave 2).",
     ),
-    where=("https://coageo.cabq.gov/cabqgeo/rest/services/agis/Open_Space/FeatureServer/0",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    where=(
+        "https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_ForestSystemBoundaries_01/MapServer/0",
+        "https://coageo.cabq.gov/cabqgeo/rest/services/agis/Open_Space/FeatureServer/0",
+    ),
+    reason="partly drawn from usfs/'s resources (decision 34); the City of Albuquerque's and RGIS's layers are not landed yet",
 )

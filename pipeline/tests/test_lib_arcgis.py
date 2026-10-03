@@ -608,3 +608,19 @@ def test_a_server_that_ignores_object_ids_is_refused_rather_than_read_as_the_lay
     UnpagedLayer(requests_mock, ids=range(4), ignores_object_ids=True)
     with pytest.raises(RuntimeError, match="ignores objectIds"):
         list(arcgis.iter_layer_pages(LAYER_URL, paginate=False, page_size=2))
+
+
+def test_a_page_query_too_long_for_a_get_goes_as_a_post_form_and_a_short_one_stays_a_get(requests_mock):
+    """ArcGIS Online answered 404 to a 2,622-character GET of WFIGS's perimeters, and 200 to the same as a POST."""
+    query = "https://example.test/arcgis/rest/services/X/FeatureServer/0/query"
+    requests_mock.get(query, json={"features": []})
+    requests_mock.post(query, json={"features": []})
+    short = {"where": "1=1", "outFields": "a,b", "f": "geojson"}
+    long = {**short, "outFields": ",".join(f"field_number_{n}" for n in range(200))}
+
+    arcgis.query_page(query, short)
+    arcgis.query_page(query, long)
+
+    get, post = requests_mock.request_history
+    assert get.method == "GET" and get.qs["outfields"] == ["a,b"]
+    assert post.method == "POST" and "field_number_199" in post.text and "?" not in post.url

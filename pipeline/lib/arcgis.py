@@ -20,6 +20,25 @@ from lib.http_retry import DEFAULT_BACKOFF_SECONDS, request_with_retry
 
 PAGE_SIZE = 1000
 
+# A PAGE QUERY WHOSE GET URL WOULD BE LONGER THAN THIS GOES AS A POST FORM,
+# the same parameters in the body (query_page()). Measured 2026-10-03 on
+# services3.arcgis.com's WFIGS_Interagency_Perimeters_Current/FeatureServer/0,
+# whose 118 kept fields make a 3,018-character query: a GET of 2,075
+# characters answered 200, one of 2,622 answered 404, and the whole query as
+# a POST answered all 113 features. 2,000 sits under the longest GET seen to
+# answer. Where between 2,075 and 2,622 that host's limit lies is
+# @unvalidated, and other hosts' limits are unmeasured; a shorter query is
+# sent by GET exactly as before, so no layer read today changes request.
+GET_URL_LIMIT = 2000
+
+
+def query_page(query_url: str, params: dict, *, session=None, backoff: tuple[int, ...] = DEFAULT_BACKOFF_SECONDS):
+    """One page query: a GET, or a POST form when the GET's URL would pass GET_URL_LIMIT."""
+    url = requests.Request("GET", query_url, params=params).prepare().url
+    if len(url) <= GET_URL_LIMIT:
+        return request_with_retry(query_url, session=session, params=params, timeout=60, backoff=backoff)
+    return request_with_retry(query_url, session=session, method="post", data=params, timeout=60, backoff=backoff)
+
 
 def fetch_layer_geojson(
     layer_url: str,
@@ -172,7 +191,7 @@ def iter_layer_pages(
             params["returnZ"] = "true"
         if geometry_precision is not None:
             params["geometryPrecision"] = geometry_precision
-        resp = request_with_retry(query_url, session=session, params=params, timeout=60, backoff=backoff)
+        resp = query_page(query_url, params, session=session, backoff=backoff)
         refusal = page_refusal(resp)
         if refusal is not None:
             if records <= 1:

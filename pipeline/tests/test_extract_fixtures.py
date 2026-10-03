@@ -233,6 +233,28 @@ def test_a_url_with_no_fixture_fails_rather_than_reaching_the_network():
         session.get("https://services.arcgis.com/elsewhere/FeatureServer/0", params={"f": "json"})
 
 
+def test_a_return_z_layer_is_answered_as_esri_json_with_its_z_and_lands_with_it():
+    """A row with `return_z` asks for f=json&returnZ=true; fixture mode answers as ArcGIS does, so the Z survives the pager."""
+    from lib.arcgis import iter_layer_pages
+
+    url = "https://services9.arcgis.com/fixture/arcgis/rest/services/Z/FeatureServer/9"
+    line = {
+        "type": "Feature",
+        "properties": {"OBJECTID": 1},
+        "geometry": {"type": "LineString", "coordinates": [[-68.9, 45.9, 1600.5], [-68.8, 45.8, 1590.0]]},
+    }
+    point = {"type": "Feature", "properties": {"OBJECTID": 2}, "geometry": {"type": "Point", "coordinates": [-91.4, 47.9, 457.7]}}
+    session = requests.Session()
+    session.mount("https://", FixtureAdapter({url: [line, point]}, {}, {}))
+
+    with_z = [feature for page in iter_layer_pages(url, session=session, return_z=True) for feature in page]
+    without = [feature for page in iter_layer_pages(url, session=session) for feature in page]
+
+    assert [feature["geometry"] for feature in with_z] == [line["geometry"], point["geometry"]]
+    assert [feature["properties"] for feature in with_z] == [{"OBJECTID": 1}, {"OBJECTID": 2}]
+    assert without == [line, point], "the default path is answered exactly as before"
+
+
 @pytest.mark.parametrize(
     ("values", "expected"),
     [

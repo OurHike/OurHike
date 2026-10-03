@@ -297,6 +297,32 @@ def layer_metadata(features: list[dict]) -> dict:
     return {"objectIdField": oid, "fields": fields, "maxRecordCount": MAX_RECORD_COUNT}
 
 
+def _esri_feature(feature: dict, keep_z: bool) -> dict:
+    """A fixture's GeoJSON feature as ArcGIS answers it under f=json: attributes, and an Esri geometry.
+
+    The shapes lib/arcgis.py's esri_feature_to_geojson converts back, which are
+    the shapes a Z-enabled fixture layer has: points, multipoints and lines.
+    """
+    geometry = feature.get("geometry")
+
+    def vertex(coordinates: list) -> list:
+        return list(coordinates[:3] if keep_z else coordinates[:2])
+
+    if geometry is None:
+        esri = None
+    elif geometry["type"] == "Point":
+        esri = dict(zip(("x", "y", "z"), vertex(geometry["coordinates"]), strict=False))
+    elif geometry["type"] == "MultiPoint":
+        esri = {"points": [vertex(point) for point in geometry["coordinates"]]}
+    elif geometry["type"] == "LineString":
+        esri = {"paths": [[vertex(point) for point in geometry["coordinates"]]]}
+    elif geometry["type"] == "MultiLineString":
+        esri = {"paths": [[vertex(point) for point in path] for path in geometry["coordinates"]]}
+    else:
+        raise ValueError(f"fixture mode answers no {geometry['type']} as Esri JSON")
+    return {"attributes": feature.get("properties") or {}, "geometry": esri}
+
+
 def _response(request, body, status: int = 200, headers: dict | None = None) -> requests.Response:
     response = requests.Response()
     response.status_code = status
@@ -369,7 +395,13 @@ class FixtureAdapter(requests.adapters.BaseAdapter):
             return {"features": []}  # no statistics in fixture mode, so the on-prem check answers UNKNOWN and fetches
         offset = int(query.get("resultOffset", 0))
         size = min(int(query.get("resultRecordCount", MAX_RECORD_COUNT)), MAX_RECORD_COUNT)
-        return {"type": "FeatureCollection", "features": features[offset : offset + size]}
+        page = features[offset : offset + size]
+        if query.get("f") == "json":
+            # A layer registered with `return_z` asks for Esri JSON, because f=geojson drops Z
+            # (lib/arcgis.py's iter_layer_pages); a server keeps the Z only when returnZ asks.
+            keep_z = query.get("returnZ") == "true"
+            return {"features": [_esri_feature(feature, keep_z) for feature in page]}
+        return {"type": "FeatureCollection", "features": page}
 
     @staticmethod
     def _wordpress(request, document: dict, route: str, query: dict) -> requests.Response:

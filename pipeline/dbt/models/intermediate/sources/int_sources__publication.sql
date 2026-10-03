@@ -69,7 +69,8 @@ decided as (
         registered.source_key,
         registered.licence_basis,
         case
-            when not registered.reaches_hikers
+            -- A null verdict holds the row back: nobody said it ships.
+            when not coalesce(registered.reaches_hikers, false)
                 then 'held_back_by_the_registry'
             when bases.licence_basis is null
                 then 'basis_not_publishable'

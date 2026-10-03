@@ -260,8 +260,9 @@ unit_tests:
   - name: int_sources__publication_publishes_only_what_a_rule_makes_true
     description: >
       One row per branch of "Who may publish" this model decides: rule 1
-      both ways, a basis nobody settled, and each guard refusing a row that
-      rule 1 alone would publish.
+      both ways, a verdict nobody recorded (null reaches_hikers), a basis
+      nobody settled, and each guard refusing a row that rule 1 alone would
+      publish.
     model: int_sources__publication
     given:
       - input: ref('stg_registry__sources')
@@ -269,6 +270,7 @@ unit_tests:
           - {source_key: ships_stated, provider: 'A', kind: external_arcgis_layer, reaches_hikers: true, licence_basis: stated_by_org}
           - {source_key: ships_authorised, provider: 'B', kind: null, reaches_hikers: true, licence_basis: maintainer_authorisation}
           - {source_key: held_back, provider: 'C', kind: club_pdf, reaches_hikers: false, licence_basis: stated_by_org}
+          - {source_key: verdict_missing, provider: 'A', kind: external_arcgis_layer, reaches_hikers: null, licence_basis: stated_by_org}
           - {source_key: unresolved_basis, provider: 'A', kind: podcast_feed, reaches_hikers: true, licence_basis: unresolved}
           - {source_key: no_basis, provider: 'A', kind: external_arcgis_layer, reaches_hikers: true, licence_basis: null}
           - {source_key: state_public_domain, provider: 'D', kind: external_arcgis_layer, reaches_hikers: true, licence_basis: public_domain}
@@ -302,6 +304,7 @@ unit_tests:
         - {source_key: ships_stated, may_publish: true, publication_rule: registered_and_publishable}
         - {source_key: ships_authorised, may_publish: true, publication_rule: registered_and_publishable}
         - {source_key: held_back, may_publish: false, publication_rule: held_back_by_the_registry}
+        - {source_key: verdict_missing, may_publish: false, publication_rule: held_back_by_the_registry}
         - {source_key: unresolved_basis, may_publish: false, publication_rule: basis_not_publishable}
         - {source_key: no_basis, may_publish: false, publication_rule: basis_not_publishable}
         - {source_key: state_public_domain, may_publish: false, publication_rule: public_domain_needs_a_federal_organization}

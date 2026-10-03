@@ -739,11 +739,30 @@ def _read_rows(pipeline, files: list[str]) -> list[dict]:
     return rows
 
 
-def readable_tables(pipeline, log: list[dict], complete: set[str]) -> set[str]:
-    """The tables a build reads rows of: extract/_warehouse.py's committed_tables(), imported here for committed_rows()' reason."""
+def readable_tables(pipeline, log: list[dict], complete: set[str]) -> dict[str, str]:
+    """{table: the load a build reads it from}: extract/_warehouse.py's committed_tables(), imported here for committed_rows()' reason."""
     from extract._warehouse import committed_tables
 
-    return set(committed_tables(pipeline, log=log, complete=complete))
+    return committed_tables(pipeline, log=log, complete=complete)
+
+
+def proven_zero(row: dict) -> bool:
+    """Whether a run log row is a load of 0 rows beside the upstream's own 0, with the hints to create the table empty."""
+    return row.get("rows") == 0 and row.get("count_proof") == 0 and row.get("column_hints") is not None
+
+
+def served_files_intact(pipeline, table: str, load_id: str, row: dict) -> bool:
+    """Whether the table's files are still those of `load_id`, the load a build serves it from.
+
+    A later load's `replace` deletes them, and that load's marker can reach
+    dlt state with no `_extract_runs` row: dlt 1.30.0's filesystem
+    complete_load() stores the state before the `_dlt_loads` row. A first-run
+    proven zero has no file at all.
+    """
+    files = table_files(pipeline, table)
+    if any(not os.path.basename(path).startswith(f"{load_id}.") for path in files):
+        return False
+    return bool(files) or proven_zero(row)
 
 
 def committed_rows(pipeline, table: str, *, log: list[dict] | None = None, complete: set[str] | None = None) -> tuple[dict, ...]:
@@ -1021,19 +1040,26 @@ def _run(
         log = run_log_rows(pipeline)
         complete = committed_load_ids(pipeline)
         current = readable_tables(pipeline, log, complete)
+        served = {(row["table_name"], row.get("load_id")): row for row in log}
         plan_resources = due(plan_resources, log, checked_at)
     planned, unavailable = [], []
     with timed(report, "change checks"):
         for resource in plan_resources:
-            # A MARKER COUNTS ONLY BESIDE ROWS A BUILD CAN READ: one whose table
-            # has no logged, committed load (`current`) is read as none, and the
-            # resource fetches again. A load can commit its markers with no
-            # `_extract_runs` row: refresh-reference.yml's monthly run 37070628933
-            # did, and the next (37081046157) answered 53 resources FRESH whose
-            # rows no build could see, raw_nysparks__oprhp_trails among them.
+            # A MARKER COUNTS ONLY BESIDE ROWS A BUILD CAN READ. With no logged,
+            # committed load (`current`) it is read as none: refresh-reference.yml's
+            # monthly run 37070628933 committed with no `_extract_runs` row, and
+            # 37081046157 then answered 53 resources FRESH whose rows no build
+            # could see. And a FRESH verdict is UNKNOWN when a later load has
+            # replaced the served load's files (served_files_intact()).
             before = recorded.get(resource.name) if resource.table in current else None
             try:
                 verdict, marker = resource.change_check(before)
+                load_id = current.get(resource.table)
+                if verdict is Freshness.FRESH and not (
+                    load_id and served_files_intact(pipeline, resource.table, load_id, served.get((resource.table, load_id), {}))
+                ):
+                    print(f"  {resource.name}: fresh, but the files of load {load_id} are gone; reading it again")
+                    verdict = Freshness.UNKNOWN
             except Unavailable as reason:
                 # An annotation, so the gap reaches the run summary rather than only the step log.
                 print(f"::warning title={resource.name} is unavailable::{reason}")

@@ -326,6 +326,68 @@ def test_a_load_that_committed_without_its_run_log_is_read_again_rather_than_ans
     assert counts == {"raw_testclub__trails": 2, "raw_testclub__closures_layer": 1}
 
 
+def _run_log_dies(monkeypatch):
+    def dies(*args, **kwargs):
+        raise RuntimeError("the runner went away after the load committed")
+
+    monkeypatch.setattr(_run, "write_run_log", dies)
+    return RuntimeError
+
+
+def _after_run_check_fails(monkeypatch):
+    monkeypatch.setattr(_run, "committed", lambda *args, **kwargs: ["injected: rows on disk differ"])
+    return ExtractRefused
+
+
+def _dlt_loads_row_fails(monkeypatch):
+    """dlt 1.30.0's FilesystemClient.complete_load() stores the state, markers included, before this row."""
+    from dlt.destinations.impl.filesystem.filesystem import FilesystemClient
+
+    def fails(self, load_id):
+        raise OSError("R2 503 writing the _dlt_loads row")
+
+    monkeypatch.setattr(FilesystemClient, "_store_load", fails)
+    return PipelineStepFailed
+
+
+@pytest.mark.parametrize("fresh_runner", [False, True], ids=["same runner", "fresh runner"])
+@pytest.mark.parametrize("fault", [_run_log_dies, _after_run_check_fails, _dlt_loads_row_fails])
+def test_a_marker_from_a_newer_unlogged_load_is_not_trusted_when_it_deleted_the_logged_loads_files(
+    registry, store, requests_mock, monkeypatch, fault, fresh_runner
+):
+    """The newer load's `replace` deleted the logged load's files, so its marker describes rows no build can read."""
+    layer = FakeLayer(requests_mock, CLOSURES_URL, [feature(10), feature(11)])
+    lane(store, closures())
+    layer.features, layer.etag = [feature(12)], "v2"
+    with monkeypatch.context() as scoped:
+        with pytest.raises(fault(scoped)):
+            lane(store, closures())
+    if fresh_runner:
+        shutil.rmtree(store["pipelines_dir"])
+
+    third = lane(store, closures())
+
+    assert third.verdicts["raw_testclub__closures_layer"] == "unknown"
+    _, counts = warehouse(store)
+    assert counts["raw_testclub__closures_layer"] == 1
+
+
+def test_a_marker_from_an_unlogged_load_over_a_logged_proven_zero_is_not_trusted(registry, store, requests_mock, monkeypatch):
+    """A first-run zero writes no file, so the files check alone cannot see the newer load; its own files can."""
+    layer = FakeLayer(requests_mock, CLOSURES_URL, [])
+    lane(store, closures())
+    layer.features, layer.etag = [feature(12)], "v2"
+    with monkeypatch.context() as scoped:
+        with pytest.raises(_run_log_dies(scoped)):
+            lane(store, closures())
+
+    third = lane(store, closures())
+
+    assert third.verdicts["raw_testclub__closures_layer"] == "unknown", "a FRESH here serves the logged zero: no closures"
+    _, counts = warehouse(store)
+    assert counts["raw_testclub__closures_layer"] == 1
+
+
 def test_a_trail_layer_that_halves_is_refused(registry, store, requests_mock):
     layer = FakeLayer(requests_mock, LINES_URL, [feature(i) for i in range(1, 7)])
     FakeLayer(requests_mock, CLOSURES_URL, [feature(10)])

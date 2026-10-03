@@ -51,6 +51,7 @@ from extract._run import (
     committed_load_ids,
     fs_path,
     make_pipeline,
+    proven_zero,
     run_log_rows,
     table_files,
 )
@@ -177,7 +178,7 @@ def load_warehouse(con: duckdb.DuckDBPyConnection, pipeline, schema: str = "raw"
         files = table_files(pipeline, table, load_id)
         if not files:
             row = log_rows.get((table, load_id)) or {}
-            if row.get("rows") == 0 and row.get("count_proof") == 0 and row.get("column_hints") is not None:
+            if proven_zero(row):
                 _create_proven_empty(con, schema, table, json.loads(row["column_hints"]), pipeline)
                 loaded[table] = 0
                 continue
@@ -299,7 +300,7 @@ def pin_raw_inputs(
         files = table_files(pipeline, table, load_id)
         if not files:
             row = by_load.get((table, load_id)) or {}
-            if row.get("rows") == 0 and row.get("count_proof") == 0 and row.get("column_hints") is not None:
+            if proven_zero(row):
                 tables[table] = {"load_id": load_id, "rows": 0, "file": None, "column_hints": json.loads(row["column_hints"])}
                 continue
             raise BuildRefused(f"{table}: no committed file from load {load_id}; refusing rather than pinning it as empty")

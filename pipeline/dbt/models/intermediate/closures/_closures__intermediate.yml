@@ -592,6 +592,10 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as bigint) as row_position, true as is_reviewed, cast([] as varchar[]) as row_problems, cast([] as varchar[]) as duplicate_problems
+      - input: ref('base_extract__runs')
+        format: sql
+        rows: |
+          select '20261003T000000.000000Z' as run_id, 'raw_nynjtc__nynjtc_trail_alerts' as table_name, 'loaded' as outcome, cast(1 as bigint) as rows_loaded, cast(1 as bigint) as count_proof
     expect:
       rows:
         - {source_key: atc_trail_updates, rows_total: 2, rows_invalid: 1, passed: false, held_because: '1 of 2 rows cannot publish, and a partial set of safety notices is worse than none'}
@@ -607,8 +611,8 @@ unit_tests:
       An ATC file nobody has reviewed publishes nothing, however clean its
       rows (test_an_unreviewed_file_publishes_nothing_and_does_not_fail): an
       empty artifact would read as "ATC reports nothing", a different claim
-      from "we have not looked". NYNJTC with no posts at all is a parse that
-      broke (fetch_nynjtc_alerts.py).
+      from "we have not looked". NYNJTC with no posts, in a build whose
+      loaded run counted some, is a read that may have broken.
     model: int_closures__gate
     given:
       - input: ref('int_closures__unioned')
@@ -641,10 +645,14 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as bigint) as row_position, true as is_reviewed, cast([] as varchar[]) as row_problems, cast([] as varchar[]) as duplicate_problems
+      - input: ref('base_extract__runs')
+        format: sql
+        rows: |
+          select '20261003T000000.000000Z' as run_id, 'raw_nynjtc__nynjtc_trail_alerts' as table_name, 'loaded' as outcome, cast(1 as bigint) as rows_loaded, cast(1 as bigint) as count_proof
     expect:
       rows:
         - {source_key: atc_trail_updates, reviewed_at: '  ', passed: false, held_because: 'reference/atc_updates.json has no reviewed_at, so nobody has checked it against ATC''s page', awaiting_review: true}
-        - {source_key: nynjtc_trail_alerts, reviewed_at: null, passed: false, held_because: 'NYNJTC''s Trail Alerts category has no posts at all, which means the parse broke', awaiting_review: false}
+        - {source_key: nynjtc_trail_alerts, reviewed_at: null, passed: false, held_because: 'NYNJTC''s Trail Alerts category has no posts, and no count of zero from NYNJTC''s own site backs that, so the read may have broken', awaiting_review: false}
         - {source_key: oprhp_trail_closures, reviewed_at: null, passed: true, held_because: null, awaiting_review: false}
         - {source_key: ourhike_closures, reviewed_at: null, passed: true, held_because: null, awaiting_review: false}
         - {source_key: ourhike_reports, reviewed_at: null, passed: true, held_because: null, awaiting_review: false}
@@ -691,6 +699,10 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as bigint) as row_position, true as is_reviewed, cast([] as varchar[]) as row_problems, cast([] as varchar[]) as duplicate_problems
+      - input: ref('base_extract__runs')
+        format: sql
+        rows: |
+          select '20261003T000000.000000Z' as run_id, 'raw_nynjtc__nynjtc_trail_alerts' as table_name, 'loaded' as outcome, cast(1 as bigint) as rows_loaded, cast(1 as bigint) as count_proof
     expect:
       rows:
         - {source_key: atc_trail_updates, rows_total: 0, reviewed_at: '2026-08-24', passed: true, held_because: null}
@@ -735,6 +747,10 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as bigint) as row_position, true as is_reviewed, cast([] as varchar[]) as row_problems, cast([] as varchar[]) as duplicate_problems
+      - input: ref('base_extract__runs')
+        format: sql
+        rows: |
+          select '20261003T000000.000000Z' as run_id, 'raw_nynjtc__nynjtc_trail_alerts' as table_name, 'loaded' as outcome, cast(1 as bigint) as rows_loaded, cast(1 as bigint) as count_proof
     expect:
       rows:
         - {source_key: atc_trail_updates, passed: false, held_because: '`updates` is missing or is not a list'}
@@ -789,6 +805,10 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as bigint) as row_position, true as is_reviewed, cast([] as varchar[]) as row_problems, cast([] as varchar[]) as duplicate_problems
+      - input: ref('base_extract__runs')
+        format: sql
+        rows: |
+          select '20261003T000000.000000Z' as run_id, 'raw_nynjtc__nynjtc_trail_alerts' as table_name, 'loaded' as outcome, cast(1 as bigint) as rows_loaded, cast(1 as bigint) as count_proof
     expect:
       rows:
         - {source_key: atc_trail_updates, passed: false, held_because: 'reference/atc_updates.json lists 1 updates and 2 landed as rows, so the two landings are of different files'}
@@ -834,6 +854,10 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as bigint) as row_position, true as is_reviewed, cast([] as varchar[]) as row_problems, cast([] as varchar[]) as duplicate_problems
+      - input: ref('base_extract__runs')
+        format: sql
+        rows: |
+          select '20261003T000000.000000Z' as run_id, 'raw_nynjtc__nynjtc_trail_alerts' as table_name, 'loaded' as outcome, cast(1 as bigint) as rows_loaded, cast(1 as bigint) as count_proof
     expect:
       rows:
         - {source_key: atc_trail_updates, may_publish: true, passed: true, held_because: null}
@@ -894,6 +918,10 @@ unit_tests:
           select cast(null as bigint) as row_position, true as is_reviewed, cast([] as varchar[]) as row_problems, cast([] as varchar[]) as duplicate_problems
           union all
           select 0 as row_position, cast(null as boolean) as is_reviewed, ['rows[0]: date is not a date'] as row_problems, cast([] as varchar[]) as duplicate_problems
+      - input: ref('base_extract__runs')
+        format: sql
+        rows: |
+          select '20261003T000000.000000Z' as run_id, 'raw_nynjtc__nynjtc_trail_alerts' as table_name, 'loaded' as outcome, cast(1 as bigint) as rows_loaded, cast(1 as bigint) as count_proof
     expect:
       rows:
         - {source_key: atc_trail_updates, rows_total: 1, rows_invalid: 0, passed: true, held_because: null, awaiting_review: false}
@@ -940,6 +968,10 @@ unit_tests:
           select cast(null as bigint) as row_position, false as is_reviewed, cast([] as varchar[]) as row_problems, cast([] as varchar[]) as duplicate_problems
           union all
           select 0 as row_position, cast(null as boolean) as is_reviewed, ['rows[0]: date is not a date'] as row_problems, cast([] as varchar[]) as duplicate_problems
+      - input: ref('base_extract__runs')
+        format: sql
+        rows: |
+          select '20261003T000000.000000Z' as run_id, 'raw_nynjtc__nynjtc_trail_alerts' as table_name, 'loaded' as outcome, cast(1 as bigint) as rows_loaded, cast(1 as bigint) as count_proof
     expect:
       rows:
         - {source_key: atc_trail_updates, passed: true, held_because: null, awaiting_review: false}
@@ -949,6 +981,113 @@ unit_tests:
         - {source_key: ourhike_reports, passed: true, held_because: null, awaiting_review: false}
         - {source_key: nws_alerts, passed: true, held_because: null, awaiting_review: false}
         - {source_key: 'reference/work_projects.json', passed: false, held_because: 'nobody has reviewed reference/work_projects.json', awaiting_review: true}
+
+  - name: int_closures__gate_passes_a_nynjtc_category_its_own_count_proves_empty
+    description: >
+      NYNJTC lifting its last alert: the run that loaded the category read
+      none and NYNJTC's own count (X-WP-Total) of none, so the file
+      publishes `nynjtc_alerts: []`. The later run that found it unchanged
+      (skipped, no count) and the earlier one with posts do not decide.
+    model: int_closures__gate
+    given:
+      - input: ref('int_closures__unioned')
+        format: sql
+        rows: |
+          select 'ourhike_closures' as source_key, cast([] as varchar[]) as problems
+      - input: ref('base_extract__runs')
+        format: sql
+        rows: |
+          select '20261002T230000.000000Z' as run_id, 'raw_nynjtc__nynjtc_trail_alerts' as table_name, 'loaded' as outcome, cast(3 as bigint) as rows_loaded, cast(3 as bigint) as count_proof
+          union all
+          select '20261003T000000.000000Z', 'raw_nynjtc__nynjtc_trail_alerts', 'loaded', 0, 0
+          union all
+          select '20261003T010000.000000Z', 'raw_nynjtc__nynjtc_trail_alerts', 'skipped', null, null
+          union all
+          select '20261003T020000.000000Z', 'raw_ourhike__closures', 'loaded', 0, 3
+      - input: ref('int_closures__atc_checked')
+        rows: []
+      - input: ref('base_atc__atc_updates')
+        rows:
+          - {atc_updates_document_key: d1, document_json: '{"reviewed_at": "2026-08-24", "updates": []}'}
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: atc_trail_updates, may_publish: true}
+          - {source_key: nynjtc_trail_alerts, may_publish: true}
+          - {source_key: oprhp_trail_closures, may_publish: true}
+          - {source_key: ourhike_closures, may_publish: true}
+          - {source_key: ourhike_reports, may_publish: true}
+          - {source_key: nws_alerts, may_publish: true}
+          - {source_key: 'reference/work_projects.json', may_publish: true}
+      - input: ref('base_ourhike__reports')
+        rows: []
+      - input: ref('base_nws__alerts')
+        format: sql
+        rows: |
+          select 'k1' as nws_alert_key
+      - input: ref('int_closures__work_projects_checked')
+        format: sql
+        rows: |
+          select cast(null as bigint) as row_position, true as is_reviewed, cast([] as varchar[]) as row_problems, cast([] as varchar[]) as duplicate_problems
+    expect:
+      rows:
+        - {source_key: atc_trail_updates, rows_total: 0, passed: true, held_because: null}
+        - {source_key: nynjtc_trail_alerts, rows_total: 0, passed: true, held_because: null}
+        - {source_key: oprhp_trail_closures, rows_total: 0, passed: true, held_because: null}
+        - {source_key: ourhike_closures, rows_total: 1, passed: true, held_because: null}
+        - {source_key: ourhike_reports, rows_total: 0, passed: true, held_because: null}
+        - {source_key: nws_alerts, rows_total: 1, passed: true, held_because: null}
+        - {source_key: 'reference/work_projects.json', rows_total: 0, passed: true, held_because: null}
+
+  - name: int_closures__gate_holds_a_nynjtc_category_no_count_proves_empty
+    description: >
+      No NYNJTC posts reached the notices while the run that loaded them
+      landed posts, so the zero is the build's, not NYNJTC's: held. A
+      refused run's count of zero is no proof, because nothing of it loaded.
+    model: int_closures__gate
+    given:
+      - input: ref('int_closures__unioned')
+        format: sql
+        rows: |
+          select 'ourhike_closures' as source_key, cast([] as varchar[]) as problems
+      - input: ref('base_extract__runs')
+        format: sql
+        rows: |
+          select '20261003T000000.000000Z' as run_id, 'raw_nynjtc__nynjtc_trail_alerts' as table_name, 'loaded' as outcome, cast(4 as bigint) as rows_loaded, cast(4 as bigint) as count_proof
+          union all
+          select '20261003T010000.000000Z', 'raw_nynjtc__nynjtc_trail_alerts', 'refused', null, 0
+      - input: ref('int_closures__atc_checked')
+        rows: []
+      - input: ref('base_atc__atc_updates')
+        rows:
+          - {atc_updates_document_key: d1, document_json: '{"reviewed_at": "2026-08-24", "updates": []}'}
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: atc_trail_updates, may_publish: true}
+          - {source_key: nynjtc_trail_alerts, may_publish: true}
+          - {source_key: oprhp_trail_closures, may_publish: true}
+          - {source_key: ourhike_closures, may_publish: true}
+          - {source_key: ourhike_reports, may_publish: true}
+          - {source_key: nws_alerts, may_publish: true}
+          - {source_key: 'reference/work_projects.json', may_publish: true}
+      - input: ref('base_ourhike__reports')
+        rows: []
+      - input: ref('base_nws__alerts')
+        format: sql
+        rows: |
+          select 'k1' as nws_alert_key
+      - input: ref('int_closures__work_projects_checked')
+        format: sql
+        rows: |
+          select cast(null as bigint) as row_position, true as is_reviewed, cast([] as varchar[]) as row_problems, cast([] as varchar[]) as duplicate_problems
+    expect:
+      rows:
+        - {source_key: atc_trail_updates, passed: true, held_because: null}
+        - {source_key: nynjtc_trail_alerts, passed: false, held_because: 'NYNJTC''s Trail Alerts category has no posts, and no count of zero from NYNJTC''s own site backs that, so the read may have broken'}
+        - {source_key: oprhp_trail_closures, passed: true, held_because: null}
+        - {source_key: ourhike_closures, passed: true, held_because: null}
+        - {source_key: ourhike_reports, passed: true, held_because: null}
+        - {source_key: nws_alerts, passed: true, held_because: null}
+        - {source_key: 'reference/work_projects.json', passed: true, held_because: null}
 
   - name: int_closures__atc_automatic_refuses_what_auto_publish_refusal_refuses
     description: >

@@ -9,7 +9,8 @@
 -- fails the run for each held file (its writer's `meta.gate` names the row).
 -- A table, so that read needs no spatial extension.
 --
--- WHAT HOLDS A SOURCE BACK, each as today's code holds it back:
+-- WHAT HOLDS A SOURCE BACK, each as today's code holds it back but NYNJTC's
+-- zero:
 --   atc_trail_updates     a file nobody reviewed (no `reviewed_at`, read
 --                         from the file landed whole, base_atc__atc_updates),
 --                         a file whose `updates` is not a list, then any row
@@ -17,8 +18,13 @@
 --                         order; and a file whose two landings disagree on
 --                         how many rows it has. An empty reviewed file
 --                         passes, and publishes `atc_updates: []` as today
---   nynjtc_trail_alerts   any post that cannot be read, or no posts at all,
---                         which fetch_nynjtc_alerts.py reads as a broken parse
+--   nynjtc_trail_alerts   any post that cannot be read, or no posts at all
+--                         unless the run that loaded them read a count of 0
+--                         from NYNJTC's own site (X-WP-Total, recorded in
+--                         _extract_runs). fetch_nynjtc_alerts.py reads every
+--                         empty category as a broken parse, so today's file
+--                         never empties; this one publishes `[]` when NYNJTC
+--                         lifts its last alert
 --   ourhike_closures      a row that is not moderator-verified (CL15), or
 --                         whose mile or coordinate is not a finite number
 --   oprhp_trail_closures  nothing: an empty layer is a good week
@@ -47,6 +53,20 @@ with notices as (
 
 publication as (
     select * from {{ ref('int_sources__publication') }}
+),
+
+-- The latest run that loaded NYNJTC's posts, the load extract/_warehouse.py
+-- reads if it committed: whether it loaded none beside NYNJTC's own count of
+-- none. One row, false with no such run.
+nynjtc_load as (
+    select
+        coalesce(
+            arg_max(rows_loaded = 0 and count_proof = 0, run_id), false
+        ) as proven_empty
+    from {{ ref('base_extract__runs') }}
+    where
+        table_name = 'raw_nynjtc__nynjtc_trail_alerts'
+        and outcome = 'loaded'
 ),
 
 atc_rows as (
@@ -250,9 +270,11 @@ judged as (
             when
                 gated_sources.source_key = 'nynjtc_trail_alerts'
                 and coalesce(counts.rows_total, 0) = 0
+                and not nynjtc_load.proven_empty
                 then
-                    'NYNJTC''s Trail Alerts category has no posts at all, '
-                    || 'which means the parse broke'
+                    'NYNJTC''s Trail Alerts category has no posts, and no '
+                    || 'count of zero from NYNJTC''s own site backs that, so '
+                    || 'the read may have broken'
             when coalesce(counts.rows_invalid, 0) > 0
                 then
                     counts.rows_invalid || ' of ' || counts.rows_total
@@ -290,6 +312,7 @@ judged as (
                     || work_projects.file_problems[1]
         end as held_because
     from gated_sources
+    cross join nynjtc_load
     cross join atc_rows
     cross join atc_document
     cross join ourhike_reports

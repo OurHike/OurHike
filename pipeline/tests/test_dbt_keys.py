@@ -130,10 +130,22 @@ def test_the_geometry_free_step_tables_are_the_derived_tables_that_declare_no_ge
     assert {name for name, columns in declared.items() if "geometry" not in columns} == GEOMETRY_FREE_STEP_TABLES
 
 
+#: The extract's own run log (extract/_run.py's RUNS_TABLE), one row per resource per run, which holds no geometry.
+RUN_LOG_TABLES = {"_extract_runs"}
+
+
+def test_the_run_log_table_is_the_one_extract_run_writes():
+    from extract._run import RUNS_TABLE
+
+    assert RUN_LOG_TABLES == {RUNS_TABLE}
+    assert {path.stem for path in MODELS if SOURCE.search(path.read_text()).group(2) in RUN_LOG_TABLES} == {"base_extract__runs"}
+
+
 SPATIAL_MODELS = [
     path
     for path in MODELS
-    if SOURCE.search(path.read_text()).group(2) not in _reviewed_tables() | _row_tables() | GEOMETRY_FREE_STEP_TABLES
+    if SOURCE.search(path.read_text()).group(2)
+    not in _reviewed_tables() | _row_tables() | GEOMETRY_FREE_STEP_TABLES | RUN_LOG_TABLES
 ]
 
 

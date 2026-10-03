@@ -12,3 +12,4 @@
 
 [started]
 # monthly = "2026-11-03, refresh-reference.yml run <id>"
+conditions_ua = "2026-10-03, publish-conditions.yml run 37151246098 (soak run 505), which saved 2 snapshot tables, 457 rows"

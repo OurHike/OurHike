@@ -685,6 +685,13 @@ def run_check(planned: list[Planned], rows: dict[str, int], proofs: dict[str, in
             problems.append(
                 f"{table}: {landed} rows, and the upstream counts {proof}, which must be exactly the rows this table holds"
             )
+        elif proof is None and resource.may_be_empty:
+            # A table that may empty has no shrink floor, so it may shrink only
+            # beside the same proof a zero needs.
+            problems.append(
+                f"{table}: {landed} rows and no upstream count read this run; a {resource.type} table has no "
+                "shrink floor, so a read cut short would pass as rows removed"
+            )
         prior = previous.get(table)
         if not resource.may_be_empty and prior and landed < COLLAPSE_FLOOR * prior:
             problems.append(f"{table}: {landed} rows against {prior} last time, below the {COLLAPSE_FLOOR:.0%} floor")

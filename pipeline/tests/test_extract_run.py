@@ -261,6 +261,41 @@ def test_an_empty_answer_with_no_count_is_refused_and_the_last_good_closures_sta
     assert retry.verdicts["raw_testclub__closures_layer"] == "stale", "the refused run advanced no marker"
 
 
+def test_a_closures_read_cut_short_with_no_readable_count_is_refused_and_the_last_good_closures_stay(
+    registry, store, requests_mock
+):
+    """Closures have no shrink floor, so only the server's own count can tell a short read from closures lifted."""
+    layer = FakeLayer(requests_mock, CLOSURES_URL, [feature(i) for i in range(10, 16)], max_records=2)
+    lane(store, closures())
+    first_query = layer.query
+
+    def cut_short(request, context):
+        params = {key.lower(): value[0] for key, value in request.qs.items()}
+        if params.get("returncountonly") != "true" and int(params["resultoffset"]) >= 2:
+            return {"type": "FeatureCollection", "features": []}  # an empty page in place of an error
+        return first_query(request, context)
+
+    requests_mock.get(CLOSURES_URL + "/query", json=cut_short)
+    layer.etag, layer.count_fails = "v2", True
+
+    with pytest.raises(ExtractRefused, match="raw_testclub__closures_layer: 2 rows and no upstream count"):
+        lane(store, closures())
+    _, counts = warehouse(store)
+    assert counts["raw_testclub__closures_layer"] == 6
+
+
+def test_run_check_refuses_a_closures_table_of_any_size_without_the_upstreams_count():
+    resource = Resource(key="k", club="c", type="closures")
+    planned = [Planned(resource, Freshness.STALE, None, None)]
+    assert run_check(planned, {"raw_c__k": 4}, {}, {"raw_c__k": 6}) == [
+        "raw_c__k: 4 rows and no upstream count read this run; a closures table has no shrink floor, "
+        "so a read cut short would pass as rows removed"
+    ]
+    assert run_check(planned, {"raw_c__k": 4}, {"raw_c__k": 4}, {"raw_c__k": 6}) == []
+    trails = [Planned(Resource(key="k", club="c", type="trail_lines"), Freshness.STALE, None, None)]
+    assert run_check(trails, {"raw_c__k": 4}, {}, {"raw_c__k": 6}) == [], "the 50% floor holds a type that has one"
+
+
 def test_a_store_whose_first_run_was_refused_loads_its_next_run_as_one_package_on_a_fresh_runner(registry, store, requests_mock):
     """refresh-reference.yml's monthly lane, 37058045092 then 37070628933: refused, then "2 committed"."""
     FakeLayer(requests_mock, LINES_URL, [feature(1)])

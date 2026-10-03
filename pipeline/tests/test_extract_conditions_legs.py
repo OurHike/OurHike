@@ -189,6 +189,16 @@ def test_a_club_table_the_run_check_refuses_is_left_out_and_the_rest_load(store)
     assert warehouse_ids(store) == {"raw_atc__closures": ["a1"], "raw_nynjtc__closures": ["n3"]}
 
 
+def test_a_club_closures_read_with_no_upstream_count_is_left_out_and_its_last_table_stands(store):
+    leg(store, club_closures("atc", "a1", "a2", count=2), club_closures("nynjtc", "n1", count=1))
+
+    report = leg(store, club_closures("atc", "a1"), club_closures("nynjtc", "n1", count=1))
+
+    assert set(report.isolated) == {"raw_atc__closures"}
+    assert "1 rows and no upstream count" in report.isolated["raw_atc__closures"]
+    assert warehouse_ids(store) == {"raw_atc__closures": ["a1", "a2"], "raw_nynjtc__closures": ["n1"]}
+
+
 @pytest.mark.parametrize(
     "atc",
     [club_closures("atc", error="ATC answered 503"), club_closures("atc")],

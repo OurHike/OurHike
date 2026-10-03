@@ -14,6 +14,7 @@ This is the design for **#1793 — Rebuild the data platform as dlt → dbt: sev
 - [Background map: the plan, not the change](#background-map-the-plan-not-the-change): the basemap plan, on hold
 - [Where data lives between runs](#where-data-lives-between-runs): storage tiers, DuckLake, a full reload that cannot empty a safety table, skip checks, stable keys, how dbt builds (open), geometry rules
 - [Running it](#running-it): workflows, the hourly lanes, cadence, CI, secrets, docs, skills
+- [Every club's closures and alerts (decision 53)](#every-clubs-closures-and-alerts-decision-53): where it stands, the rules it keeps, phases A to G
 - [Phases](#phases): the build stages of one pull request, and the go/no-go gate
 - [Risks and what nobody has checked](#risks-and-what-nobody-has-checked): the register, and every `@unvalidated` claim
 - [Open questions for the maintainer](#open-questions-for-the-maintainer)
@@ -112,6 +113,8 @@ Settled by the maintainer on 2026-10-01, most by poll; 4 and 11 went without a p
 | 49 | What the monthly lane does when one source still fails after its retries | **Keep last month's copy** (poll, 2026-10-03, after DEC's GIS server stalled two monthly runs, refresh-reference.yml 37097625268 and 37099504783). That source is left on its last committed table, the rest publish, and the run is marked partial and red, as the conditions legs already do; a source with no earlier copy publishes nothing new. **Built after the gate run, not before it.** Until then one failed read still fails the run, after `extract/_kinds.py`'s `MONTHLY_READ_BACKOFF_SECONDS` (about 18 minutes of retries) |
 | 50 | What a deploy does when the dbt docs cannot build | **Fail loudly, as built** (poll, 2026-10-03). `.github/actions/dbt-docs-site` needs PyPI, dbt's CDN and the dbt package hub, so an outage of any of them blocks previews and tag deploys. The alternative was deploying without `/data/`, which would serve the app shell at that path |
 | 51 | Whether each club's notices keep a phone file of their own | **One generic file, as a follow-up after this pull request** (poll, 2026-10-03). Today `conditions/atc_updates.json` (ATC's own shape, with A.T. mile markers) and `conditions/nynjtc_alerts.json` (`OrgNotice`, `features/ORG_NOTICES.md`) are one file per club, though the `closures` and `warnings` marts already hold every club by `source_key`. The follow-up writes one `conditions/notices.json` in the `OrgNotice` shape as a v2 file beside the two (decision 44), with ATC's mile markers as an optional placement, and holds back a failing club by keeping that club's last good rows with their own date rather than by withholding the file. This pull request keeps both files as today's exporters write them, because parity against today's files is the gate. Tracked in **#1811 — Fast follows after PR #1805's dlt → dbt re-platform: the hiker's own download choice, the cutover, and what the port found in today's code** |
+| 52 | Whether every warehouse row carries when it was first seen and last changed (amends decision 41) | **Yes, every row of every intermediate and mart model, in this pull request** (poll, 2026-10-03), detected by **a dbt snapshot per source** (check strategy on each row's key and content hash), with `_first_seen_at` and `_changed_at` carried downstream and enforced by a test. Snapshots persist between runs outside the warehouse, which is rebuilt each run. Notices also carry OurHike's `checked_at` (decision 53) |
+| 53 | Which clubs' closures and alerts are brought in | **All of them, in this pull request** (2026-10-03): *"Add all to this PR. Publish all 121 closures … Bring in all closure and alerts notices."* Published as facts and a link (`features/ORG_NOTICES.md` §7). Access is checked per host (robots.txt for our agent, the site's terms), never assumed: *"Don't just assume it blocks automated access … we'll be careful about not burdening their servers."* A real refusal stays a quoted note until the club permits. Decision 51's single notices file moves into this pull request. The plan is "Every club's closures and alerts (decision 53)" |
 
 Settled outside the numbered rows:
 
@@ -3330,6 +3333,147 @@ CLAUDE.md wins over both. **The dbt Labs plugin** joins the three already enable
 The marketplace name and its plugins (`dbt`, `dbt-migration`, `dbt-extras`) were read from its `.claude-plugin/marketplace.json` on 2026-10-01. The repo skill wins where they disagree.
 
 **dltHub's AI Harness is not installed** (decision 16). Its licence permits use "solely in connection with dltHub Services under a governing Agreement" and does not permit "Deploying … on a third-party runtime platform or orchestration service that is not part of dltHub Services", which GitHub Actions is (Reasoned: OurHike holds no dltHub Agreement, and Actions is where every pipeline here runs). `dlt-mcp` 0.3.0 is not installed either. dlt 1.30.0 itself is Apache-2.0.
+
+## Every club's closures and alerts (decision 53)
+
+The maintainer, 2026-10-03, after reading that 121 of the 145 club folders note
+closures they publish and nobody lands: *"Add all to this PR. Publish all 121
+closures. Make a detailed plan of what needs to happen. Bring in all closure and
+alerts notices."* And, on access: *"Don't just assume it blocks automated access …
+Get the data, we'll be careful about not burdening their servers."*
+
+### Where it stands (Measured 2026-10-03)
+
+Counted from each club folder's `closures.py` and `warnings.py`, and from
+`reference/org_coverage.json`'s AVAILABLE_NOT_LOADED rows for those folders:
+
+| closures notes | count |
+|---|---:|
+| extracted (`atc`, `nynjtc`, `nysparks`), plus `_shared/ourhike` | 3 |
+| drawn from ATC's layer (decision 34) | 9 |
+| **published and not landed** | **121** |
+| no closures published (no reason recorded) | 9 |
+| the audit could not tell | 2 |
+| DEC's web page, outside the clearinghouse decision | 1 |
+
+`warnings.py` is the same picture, 124 published and not landed. Together that is
+**129 clubs** with 251 unloaded closure or warning rows. Each club's best format,
+from the audit's evidence text (a keyword read, so Reasoned until phase A checks
+each one live):
+
+| best format | clubs |
+|---|---:|
+| ArcGIS layer | 43 |
+| JSON API | 14 |
+| WordPress | 8 |
+| RSS or Atom | 8 |
+| HTML page only | 53 |
+| PDF only | 3 |
+
+The note type for these is `NOT_AVAILABLE`, and its `reason` says the opposite.
+They are renamed to `NOT_LANDED` notes as each club's resource replaces them.
+
+### The rules this keeps
+
+- **Facts and a link, never the club's paragraphs.** A notice publishes its title,
+  category, dates, place and link, the split ATC's notices ship on
+  (`features/ORG_NOTICES.md` §7). The maintainer's "publish all" is the
+  publication decision for every club's notices on that split.
+- **Access is checked, never assumed.** Each host's `robots.txt` is read for
+  `lib/user_agent.py`'s agent and the exact path, and each site's terms are read and
+  quoted. A notice source is fetched unless one of those refuses it. The audit's
+  flags (7 clubs mention terms, robots or a JavaScript wall) are checked one by one
+  and not taken as answers.
+- **A real refusal stays a dated note** quoting the words, and its route forward is
+  the club's permission, recorded as decision 47 records ATC's. Nothing imitates a
+  browser, solves a challenge or works round a wall.
+- **Gentle on their servers.** One request per source per run, conditional
+  (`If-None-Match`/`If-Modified-Since`) wherever the host sends validators, every
+  host's `Crawl-delay` honoured, one thread per club, and no page fetched more often
+  than its lane.
+- **Omit rather than guess.** `place` is `unplaced` unless the source itself gives
+  geometry or a reviewed term (`ORG_NOTICES.md` §3-4); `obstructs_trail` is true
+  only where the source's own structured status says closed. An unplaced notice
+  carries `locality` from the club's states.
+
+### Phase A: a live inventory, all 129 clubs (workers, in parallel)
+
+For each club, one request per URL, logged:
+
+1. Every closure and alert URL the audit found, re-read live.
+2. `robots.txt` verdict for our agent and that path, and the terms text that bears
+   on automated collection, quoted.
+3. The format, and what one item carries: title, date (which one), category,
+   geometry or place names, a stable id.
+4. The change check (validators, a count with a max date, a sitemap `lastmod`) and
+   the count that proves an allowed zero (`dlt` skill rule 4 and its second half).
+5. A drafted `sources.json` row, with `licence_basis` and the terms quoted.
+
+Output: the reviewed registry rows (committed, as every source's are) and a
+per-club inventory kept in the scratchpad, never in the repository.
+
+### Phase B: one reader per format
+
+Every club becomes a one-line resource over a generic reader:
+
+| format | reader |
+|---|---|
+| ArcGIS layer | `ArcgisLayer`, with the agency's own status filter (the only filter allowed before dbt) |
+| WordPress | `WordpressPosts`, category or tag scoped, `X-WP-Total` as the count |
+| RSS or Atom | **new** `FeedNotices`: one row per item, the item count in the same response as the proof |
+| JSON API | a small adapter per API (NPS alerts, Tennessee, FLTC and the rest phase A finds) |
+| HTML page | **new** `PageNotice`: **one notice per page**, carrying its title, its own stated date (or `Last-Modified`) and the link. No prose is parsed. A page that names items in markup a reader can address stably may get a per-item reader later, by phase A's evidence |
+| PDF | the same page-level notice over `ClubPdf`'s fetch |
+
+All are hourly-lane resources (closures and warnings are the hourly types,
+decision 28a).
+
+### Phase C: dbt
+
+- One base and staging model per source, generated from its reader's shape, keyed
+  per decision 40, and carrying decision 52's `_first_seen_at` and `_changed_at`.
+- `int_closures__unioned` and `int_warnings__unioned` take every source.
+  `int_closures__gate` reads its sources from the registry and the run log instead
+  of its typed list of two.
+- `place` resolved only from the source's own geometry or reviewed terms.
+
+### Phase D: one notices file
+
+Decision 51's `conditions/notices.json` moves into this pull request, because 129
+files is not a design. It is `OrgNotice` for every club. ATC's rows carry
+`at_miles`, NYNJTC's `org_terms`, and every row carries the club's `updated_at`
+plus OurHike's `checked_at` (the run log's last confirmation). A club the gate
+holds keeps its last good rows, with their own `checked_at`, and the rest publish.
+`conditions/atc_updates.json` and `conditions/nynjtc_alerts.json` stay as they are,
+for parity and for phones already installed.
+
+### Phase E: the phone
+
+The notices panel reads `notices.json`. With 129 clubs, which notices a hiker sees
+is a design decision (`ORG_NOTICES.md` §9's locality question), and it goes to the
+maintainer with a drawing before any code.
+
+### Phase F: the hourly lane's budget
+
+Today a conditions leg reads within `--read-seconds 150`, and the job is held to
+10 minutes. 129 more hosts, mostly answering 304, is unmeasured
+(`@unvalidated`). Phase B's first full leg run measures it. If it does not fit,
+the notices get their own leg rather than a shorter Crawl-delay.
+
+### Phase G: the gate
+
+- The run check and the allowed-zero proof per reader.
+- Every new source in the new-data review report (decision 31), because today's
+  files have no parity line for them.
+- **The soak.** The 3-day soak covers the hourly lane as built. Adding 129 sources
+  changes that lane, so the soak's clock restarting is a maintainer's call.
+
+### Order of work
+
+Phase A starts now, in parallel with decision 52's foundation. B follows A per
+format. C and D start once decision 52's staging conventions land, so the new
+staging models carry row dates from the start. E waits on the panel decision.
+F and G close it.
 
 ## Phases
 

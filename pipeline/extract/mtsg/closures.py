@@ -7,9 +7,9 @@ This club's closures arrive through usfs/ `usfs_r06_fire_closure_points`,
 `king_county_parks_alerts_areas`; _shared/wa_state_parks/ `wsprc_winter_rec_closures`, each
 extracted once in its steward's folder (decision 34). Its portion is assigned in dbt.
 
-Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
-robots.txt, terms and change check): https://mtsgreenway.org/wp-json/wp/v2/posts?search=closure
-(wordpress).
+Read and not wired (the decision 53 inventory, batch 3, 2026-10-03):
+https://mtsgreenway.org/wp-json/wp/v2/posts?search=closure, 24 blog posts, none a notice (the newest
+2026-01-16, an essay on wildfire resilience). The Trust publishes no notices of its own.
 
 Before decision 53 phase B, 2026-10-03, this note read:
 
@@ -45,5 +45,5 @@ NOT_AVAILABLE = NotAvailable(
         "https://mtsgreenway.org/{arcgis,server,gis}/rest/services",
         "https://mtsgreenway.org/",
     ),
-    reason="drawn from usfs/'s and _shared/king_county_parks/'s and _shared/wa_state_parks/'s resources, extracted once there (decision 34); checked names the layers this org's data arrives in; the org's own non-ArcGIS sources are listed in the docstring, still to wire",
+    reason="drawn from usfs/'s and _shared/king_county_parks/'s and _shared/wa_state_parks/'s resources, extracted once there (decision 34); checked names the layers this org's data arrives in",
 )

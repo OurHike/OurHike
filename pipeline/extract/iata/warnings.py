@@ -17,10 +17,11 @@ warnings half, split from the rest in dbt. The decision 53 inventory (batch 3, 2
 (Information 11, all titled 'Reroute in Effect — ...'; Caution 5 'Use Caution — ...'): the same
 events republished by NPS, deduplicated against the IATA layers in dbt.
 
-Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
-robots.txt, terms and change check):
-https://iceagetrail.org/explore/plan-hike/hunting-season-iata/ (html_page - robots.txt disallows it,
-so not to be fetched).
+Refused by robots.txt and never fetched (the decision 53 inventory, batch 3, 2026-10-03):
+iceagetrail.org's website, the hunting-season page
+(https://iceagetrail.org/explore/plan-hike/hunting-season-iata/) among it: `User-agent: *` /
+`Disallow: /`, with `crawl-delay: 300`. The layers above live on services.arcgis.com, another host,
+and decision 39 counts a club's public layer as published.
 
 Before decision 53 phase B, 2026-10-03, this file was a note. It read, whole:
 

@@ -18,11 +18,13 @@ are the warnings half, split from the rest in dbt. The decision 53 inventory (ba
 read 2 (Park Closure 'Teklanika Area Closures' 2026-09-24; Information 'Road Open To: Mile 30');
 NPS manages 8 AKLT segments.
 
-Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
-robots.txt, terms and change check):
-https://www.fs.usda.gov/r10/chugach/alerts (html_page);
-https://dnr.alaska.gov/parks/asp/curevnts.htm (html_page);
-https://www.alaska-trails.org/trail-reports (html_page).
+The club's other notice sources are the land managers', each read once outside this folder (decision
+34): the Chugach NF's alerts page (https://www.fs.usda.gov/r10/chugach/alerts, 8 forest and 3 region
+alerts on 2026-10-03) in usfs/closures.py as `usfs_r10_chugach_alerts`, and Alaska State Parks'
+condition reports (https://dnr.alaska.gov/parks/asp/curevnts.htm, 'Last Update: September 30, 2026',
+linking 28 per-park PDFs), a steward with no club folder, in _shared/alaska_state_parks/ as
+`alaska_state_parks_conditions`. The club's own https://www.alaska-trails.org/trail-reports is a
+list of links to those managers, not a notice.
 
 Before decision 53 phase B, 2026-10-03, this file was a note. It read, whole:
 

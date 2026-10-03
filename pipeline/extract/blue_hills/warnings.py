@@ -4,12 +4,14 @@
 This club's warnings arrive through _shared/ma_dcr/ `ma_dcr_blue_hills_hunt_areas`, each extracted
 once in its steward's folder (decision 34). Its portion is assigned in dbt.
 
-Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
-robots.txt, terms and change check): https://www.mass.gov/alerts/page/14961 (html_page);
-https://www.mass.gov/locations/blue-hills-reservation (html_page);
-https://friendsofthebluehills.org/feed/ (rss);
-https://friendsofthebluehills.org/wp-json/wp/v2/categories?per_page=100&_fields=id,name,slug,count
-(wordpress).
+DCR's notices for the reservation are mass.gov's per-park alerts fragment
+(https://www.mass.gov/alerts/page/14961, the node the park page
+https://www.mass.gov/locations/blue-hills-reservation loads; 1 item on 2026-10-03, an event notice
+'Updated Sep. 24, 2026'). It is DCR's, read once in _shared/ma_dcr/ as `ma_dcr_blue_hills_alerts`
+(decision 34). mass.gov's terms ("the Commonwealth forbids any copying or use other than 'fair
+use'") restrict copying, not reading: decision 55's case. Friends of the Blue Hills' WordPress has
+13 categories and none for closures or alerts, so its feed (https://friendsofthebluehills.org/feed/)
+is not read: choosing its 'TRAIL ALERT!!' posts out of the blog would be prose parsing.
 
 Before decision 53 phase B, 2026-10-03, this note read:
 
@@ -31,6 +33,9 @@ NOT_AVAILABLE = NotAvailable(
         "via _shared/ma_dcr/ `ma_dcr_blue_hills_hunt_areas` (decision 53 phase B, 2026-10-03): `ma_dcr_blue_hills_hunt_areas` reads `HuntAreas_BH_PGC_FM/FeatureServer/18`",
         'DCR\'s "Blue Hills Hunt Areas", `https://services1.arcgis.com/7iJyYTjCtKsZS1LR/arcgis/rest/services/HuntAreas_BH_PGC_FM/FeatureServer/18`: 13 polygons, YrHuntArea, lastEdit 2026-07-28. Plus "Clipped Wildlife Management Zones". FBH posts each year on "White-Tailed Deer Management Program 2025" and "Traffic Advisory Related to Controlled Deer Hunt".',
     ),
-    where=("https://services1.arcgis.com/7iJyYTjCtKsZS1LR/arcgis/rest/services/HuntAreas_BH_PGC_FM/FeatureServer/18",),
-    reason="drawn from _shared/ma_dcr/'s resources, extracted once there (decision 34); checked names the layers this org's data arrives in; the org's own non-ArcGIS sources are listed in the docstring, still to wire",
+    where=(
+        "https://services1.arcgis.com/7iJyYTjCtKsZS1LR/arcgis/rest/services/HuntAreas_BH_PGC_FM/FeatureServer/18",
+        "https://www.mass.gov/alerts/page/14961",
+    ),
+    reason="drawn from _shared/ma_dcr/'s resources, extracted once there (decision 34); checked names the layers this org's data arrives in; and from its mass.gov fragment, `ma_dcr_blue_hills_alerts`",
 )

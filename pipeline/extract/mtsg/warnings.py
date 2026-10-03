@@ -4,9 +4,9 @@ B, 2026-10-03).
 This club's warnings arrive through _shared/wa_dnr/ `wa_dnr_wildfire_danger`, each extracted once in
 its steward's folder (decision 34). Its portion is assigned in dbt.
 
-Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
-robots.txt, terms and change check): https://mtsgreenway.org/wp-json/wp/v2/posts?search=closure
-(wordpress).
+Read and not wired (the decision 53 inventory, batch 3, 2026-10-03):
+https://mtsgreenway.org/wp-json/wp/v2/posts?search=closure, 24 blog posts, none a notice (the newest
+2026-01-16, an essay on wildfire resilience). The Trust publishes no notices of its own.
 
 Before decision 53 phase B, 2026-10-03, this note read:
 
@@ -35,5 +35,5 @@ NOT_AVAILABLE = NotAvailable(
         "https://gis.dnr.wa.gov/site3/rest/services/Public_Wildfire/WADNR_PUBLIC_WD_WildfireDanger/MapServer/0",
         "https://avalanche.org",
     ),
-    reason="drawn from _shared/wa_dnr/'s resources, extracted once there (decision 34); checked names the layers this org's data arrives in; the org's own non-ArcGIS sources are listed in the docstring, still to wire",
+    reason="drawn from _shared/wa_dnr/'s resources, extracted once there (decision 34); checked names the layers this org's data arrives in",
 )

@@ -4,9 +4,11 @@
 This club's closures arrive through _shared/portland_parks/ `portland_parks_closed_assets`, each
 extracted once in its steward's folder (decision 34). Its portion is assigned in dbt.
 
-Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
-robots.txt, terms and change check): https://www.portland.gov/parks/nature/trail-closures-and-delays
-(html_page).
+Portland Parks & Recreation's trail closures and delays page
+(https://www.portland.gov/parks/nature/trail-closures-and-delays, 'This page was updated on
+September 28, 2026', six sections, Forest Park's among them) is PP&R's, read once in
+_shared/portland_parks/ as `portland_parks_trail_closures` beside its closed-assets layer (decision
+34). portland.gov's robots.txt asks Crawl-delay 2.
 
 Before decision 53 phase B, 2026-10-03, this note read:
 
@@ -33,5 +35,5 @@ NOT_AVAILABLE = NotAvailable(
         "https://www.portland.gov/parks/nature/trail-closures-and-delays",
         "https://portland.gov",
     ),
-    reason="drawn from _shared/portland_parks/'s resources, extracted once there (decision 34); checked names the layers this org's data arrives in; the org's own non-ArcGIS sources are listed in the docstring, still to wire",
+    reason="drawn from _shared/portland_parks/'s resources, extracted once there (decision 34); checked names the layers this org's data arrives in; and from its trail closures page, `portland_parks_trail_closures`",
 )

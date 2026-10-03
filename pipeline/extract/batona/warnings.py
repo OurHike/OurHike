@@ -4,8 +4,9 @@
 This club's warnings arrive through njgin/ `njdep_fire_danger`, each extracted once in its steward's
 folder (decision 34). Its portion is assigned in dbt.
 
-Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
-robots.txt, terms and change check): https://batona.wildapricot.org/RSS (rss).
+Batona's only feed (https://batona.wildapricot.org/RSS, robots.txt Crawl-delay 10) carries hike
+events, 7 on 2026-10-03, and no notice, so it is not read (the decision 53 inventory, batch 3).
+Last-minute changes go to members by e-mail.
 
 Before decision 53 phase B, 2026-10-03, this note read:
 
@@ -30,5 +31,5 @@ NOT_AVAILABLE = NotAvailable(
         '`services1.arcgis.com/QWdNfRs7lkPq4g4Q/arcgis/rest/services/Envr_admin_FFS_danger_public/FeatureServer/2`, "NJ Wildfire Danger Level": 3 division polygons with `FIRE_DANGER`, `RECFIRE_RESTRICTION`, `BUILDUP`, `KBDI` and `EditDate`. The Batona Trail lies in CENTRAL NJ (by intersect), which reads LOW with no restriction, edited 2026-09-30. Hunting: `Features/Land/MapServer/67` has `HUNTING_PERMITTED = Yes` on Wharton, Bass River and Brendan T. Byrne state forests. Pennsylvania section: PASDA `PennsylvaniaGameCommission/MapServer/4`, State Game Land 168 (7,800 acres), intersects ATC\'s Batona …',
     ),
     where=("https://services1.arcgis.com/QWdNfRs7lkPq4g4Q/arcgis/rest/services/Envr_admin_FFS_danger_public/FeatureServer/2",),
-    reason="drawn from njgin/'s resources, extracted once there (decision 34); checked names the layers this org's data arrives in; the org's own non-ArcGIS sources are listed in the docstring, still to wire",
+    reason="drawn from njgin/'s resources, extracted once there (decision 34); checked names the layers this org's data arrives in",
 )

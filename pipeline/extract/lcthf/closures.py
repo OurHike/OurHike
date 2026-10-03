@@ -6,8 +6,10 @@ entry lists it against this folder in `park_codes` (decision 34). NPS's `Park Cl
 the closures half, split from the rest in dbt; a Park Closure most often closes a facility or a road
 rather than a trail, and no alert carries geometry, so it never sets `obstructs_trail` alone.
 
-The inventory also found WordPress for this club, which other phase B readers take; if one lands for
-this type it takes this file, and this note becomes a line in its docstring.
+The club's own site holds no notice: the decision 53 inventory (batch 3, 2026-10-03) read
+https://lewisandclark.org/wp-json/wp/v2/search?search=closure&per_page=20, and WordPress's own
+search for 'closure' answered an empty list. So nothing of the club's own is wired here (phase B,
+pages, feeds and WordPress, 2026-10-03).
 
 The coverage audit's note, kept as it was (restated from reference/org_coverage.json, whose text is
 trimmed where it ends in '…'):
@@ -22,18 +24,14 @@ from extract._contract import NotAvailable
 NOT_AVAILABLE = NotAvailable(
     confirmed=date(2026, 10, 3),
     checked=(
-        (
-            "NPS alerts API, `parkCode=lecl` (the decision 53 inventory, batch 3, 2026-10-03): 0 alerts. Allowed "
-            "zero: total=0 for lecl. Landed by nps/warnings.py as nps_alerts."
-        ),
+        "NPS alerts API, `parkCode=lecl` (the decision 53 inventory, batch 3, 2026-10-03): 0 alerts. Allowed zero: total=0 for lecl. Landed by nps/warnings.py as nps_alerts.",
         "(coverage audit, 2026-10-01) `NPSAPI/alerts?parkCode=lecl`: 0 today",
+        "(the decision 53 inventory, batch 3, 2026-10-03) https://lewisandclark.org/wp-json/wp/v2/search?search=closure&per_page=20: WordPress's own search for 'closure' answered an empty list.",
     ),
     where=(
         "https://developer.nps.gov/api/v1/alerts?parkCode=lecl",
         "https://mapservices.nps.gov/arcgis/rest/services",
         "https://lewisandclark.org/",
     ),
-    reason=(
-        "drawn from nps/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
-    ),
+    reason="drawn from nps/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in",
 )

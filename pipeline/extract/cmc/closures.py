@@ -4,10 +4,14 @@
 This club's closures arrive through usfs/ `usfs_rec_opportunities_status`, each extracted once in
 its steward's folder (decision 34). Its portion is assigned in dbt.
 
-Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
-robots.txt, terms and change check): https://carolinamountainclub.org/trail-alerts/feed/ (rss);
-https://carolinamountainclub.org/wp-json/wp/v2/posts?categories=59 (wordpress);
-https://www.fs.usda.gov/r08/northcarolina/alerts (html_page).
+Read and not wired (the decision 53 inventory, batch 3, 2026-10-03): the club's 'Trail Alerts' feed
+(https://carolinamountainclub.org/trail-alerts/feed/) held 0 items, the page carrying hike-schedule
+changes only, and its eNews category
+(https://carolinamountainclub.org/wp-json/wp/v2/posts?categories=59, 5 monthly newsletters) is
+newsletters, not notices. The National Forests in North Carolina's alerts page
+(https://www.fs.usda.gov/r08/northcarolina/alerts, 59 alerts, Max Patch's restrictions and Graveyard
+Fields' camping prohibitions among them) is the Forest Service's, read once in usfs/closures.py as
+`usfs_r08_northcarolina_alerts`. NPS's GRSM and BLRI alerts land once in nps/.
 
 Before decision 53 phase B, 2026-10-03, this note read:
 
@@ -36,5 +40,5 @@ NOT_AVAILABLE = NotAvailable(
         "MST Waterrock Knob–Black Mountains …",
     ),
     where=("https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_RecreationOpportunities_01/MapServer/0",),
-    reason="drawn from usfs/'s resources, extracted once there (decision 34); checked names the layers this org's data arrives in; the org's own non-ArcGIS sources are listed in the docstring, still to wire",
+    reason="drawn from usfs/'s resources, extracted once there (decision 34); checked names the layers this org's data arrives in; and from its alerts page, `usfs_r08_northcarolina_alerts`",
 )

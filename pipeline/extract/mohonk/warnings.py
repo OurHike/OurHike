@@ -9,10 +9,9 @@ loads. Change checks are _kinds.py's ArcgisLayer: a conditional GET of the layer
 Online, the statistics fingerprint on an on-prem server, and an allowed zero only beside the
 server's own returnCountOnly read in the same run.
 
-Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
-robots.txt, terms and change check): https://mohonkpreserve.org/wp-json/wp/v2/pages/13789
-(wordpress); https://mohonkpreserve.org/wp-json/wp/v2/pages?slug=peregrine-watch-updates
-(wordpress); https://mohonkpreserve.org/wp-json/wp/v2/wphash_ntf_bar (wordpress).
+The preserve's alerts and peregrine-watch pages are read in closures.py (`mohonk_alerts`,
+`mohonk_peregrine_updates`, decision 53 phase B, 2026-10-03); their notices are split into closures
+and warnings in dbt.
 
 Before decision 53 phase B, 2026-10-03, this file was a note. It read, whole:
 

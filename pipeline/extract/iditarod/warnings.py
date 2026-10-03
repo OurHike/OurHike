@@ -8,10 +8,12 @@ The …
 
 Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
-Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
-robots.txt, terms and change check): https://www.blm.gov/press-release/alaska/rss (rss);
-https://www.fs.usda.gov/r10/chugach/alerts (html_page);
-https://api.avalanche.org/v2/public/products/map-layer/CNFAIC (json_api).
+BLM Alaska's press releases (https://www.blm.gov/press-release/alaska/rss) are read once, in
+blm/warnings.py as `blm_press_alaska` (decision 34): 50 items on 2026-10-03, a window, none naming
+the INHT. The Chugach NF's alerts page (https://www.fs.usda.gov/r10/chugach/alerts) is the Forest
+Service's, read once in usfs/closures.py as `usfs_r10_chugach_alerts`. avalanche.org's CNFAIC zones
+wait on the permission its API root asks for, noted once in _shared/avalanche_org/notes.py and not
+fetched (decision 55).
 
 ArcGIS layers read and not wired as closures or warnings (decision 53 phase B, 2026-10-03):
 https://services1.arcgis.com/gGHDlz6USftL5Pau/arcgis/rest/services/CNF_ClosureAreaPolygons/FeatureServer,
@@ -26,20 +28,15 @@ from datetime import date
 from extract._contract import NotAvailable
 
 NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
+    confirmed=date(2026, 10, 3),
     checked=(
-        "avalanche.org `https://api.avalanche.org/v2/public/products/map-layer/CNFAIC` (GeoJSON) holds 4 "
-        "forecast zones: Chugach State Park, Seward and Lost Lake, Summit Lake, and Turnagain Pass and "
-        'Girdwood. Those are the Seward-to-Eagle-River segments. Today every zone reads `danger` "no rating", '
-        "`off_season` true. Fields include `danger_level`, `travel_advice` and `warning`. Municipality of "
-        "Anchorage "
-        "`https://services2.arcgis.com/Ce3DhLRthdwbHlfF/arcgis/rest/services/AvalancheZones/FeatureServer/0` "
-        '("Historic Avalanche Zones within MOA", item `9e39d70c7c434187b95a99c3a144cdb2`, 2026-08-25) holds …',
+        'avalanche.org `https://api.avalanche.org/v2/public/products/map-layer/CNFAIC` (GeoJSON) holds 4 forecast zones: Chugach State Park, Seward and Lost Lake, Summit Lake, and Turnagain Pass and Girdwood. Those are the Seward-to-Eagle-River segments. Today every zone reads `danger` "no rating", `off_season` true. Fields include `danger_level`, `travel_advice` and `warning`. Municipality of Anchorage `https://services2.arcgis.com/Ce3DhLRthdwbHlfF/arcgis/rest/services/AvalancheZones/FeatureServer/0` ("Historic Avalanche Zones within MOA", item `9e39d70c7c434187b95a99c3a144cdb2`, 2026-08-25) holds …',
+        "via blm/ `blm_press_alaska` (decision 53 phase B, 2026-10-03): FeedNotices, 50 items read live, a window, 0 naming the INHT",
     ),
     where=(
         "https://api.avalanche.org/v2/public/products/map-layer/CNFAIC",
         "https://services2.arcgis.com/Ce3DhLRthdwbHlfF/arcgis/rest/services/AvalancheZones/FeatureServer/0",
         "https://avalanche.org",
     ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    reason="drawn from blm/'s `blm_press_alaska`, extracted once there (decision 34); and from usfs/'s `usfs_r10_chugach_alerts`; avalanche.org waits on its permission",
 )

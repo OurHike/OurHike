@@ -14,9 +14,9 @@ loads. Change checks are _kinds.py's ArcgisLayer: a conditional GET of the layer
 Online, the statistics fingerprint on an on-prem server, and an allowed zero only beside the
 server's own returnCountOnly read in the same run.
 
-Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
-robots.txt, terms and change check): https://cpw.state.co.us/hunting/big-game (html_page);
-https://cpw.state.co.us/living-bears (html_page).
+Read and not wired (decision 53 phase B, 2026-10-03): https://cpw.state.co.us/hunting/big-game (now
+/activities/hunting/big-game) and https://cpw.state.co.us/living-bears, evergreen guidance pages
+(JSON-LD dateModified 2026-09-29 and 2026-08-14), not notices; season dates are in brochures.
 
 Before decision 53 phase B, 2026-10-03, this file was a note. It read, whole:
 

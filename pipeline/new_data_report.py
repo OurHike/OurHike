@@ -396,8 +396,9 @@ def build_report(warehouse: Path, parity_dir: Path | None) -> dict:
     con = duckdb.connect(str(warehouse), read_only=True)
     try:
         # Every query is a grouped count over named columns, so this needs
-        # little memory and leaves a shared runner room. Reasoned: nobody
-        # has run it on a real warehouse yet, which would measure it.
+        # little memory and leaves a shared runner room. @unvalidated: 1500 MB
+        # and the thread count were picked; a run on a real monthly warehouse
+        # would measure them.
         con.execute("set memory_limit = '1500MB'")
         con.execute("set threads = 2")
         tables = _tables(con)

@@ -64,7 +64,8 @@ combinable with `-s` or `--exclude`, which every invocation here carries, so a
 selector file would need one selector per invocation per lane. A lane is one
 more `--exclude` on each, and LANE_EXCLUDES is its one home. That 2.0.6 keeps
 dbt's rule is @unvalidated: the one probe (2026-10-02) named an undefined
-selector beside `--exclude`, and dbt crashed rather than answering.
+selector beside `--exclude`, and dbt crashed rather than answering. A probe
+with a defined selector beside `--exclude` would settle it.
 
 A NEW STEP IS ONE STEPS ENTRY plus its script; nothing in CI or
 scripts/test.sh changes. After `dbt seed`, derived_source_problems() refuses

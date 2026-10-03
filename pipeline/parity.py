@@ -429,6 +429,19 @@ NETWORK_ID_REASONS = {
 }
 
 
+#: Why a line today's file publishes more than once is published once by the
+#: dbt writer. Not one of NETWORK_ID_REASONS, which are each a unit-test row of
+#: int_trail_lines__network_judged: this one is the staging dedupe's, upstream
+#: of that model, and tests/test_dbt_trail_lines_network_parity.py holds it to
+#: a pair of files instead.
+NETWORK_COPY_REASON = (
+    "expected by decision 40: staging keeps one of a layer's exact copies, the lowest Socrata or server row id "
+    "(macros/duckdb__deduplicate.sql), where export_nearby_trails.py draws every copy. Measured 2026-10-03 on NYC "
+    "Open Data's live rows: nyc_dot_greenways repeats 10 segments on 54 rows and nyc_parks_trails 4 on 8, each copy "
+    "differing only in Socrata's row id"
+)
+
+
 def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
     """The `properties.id` differences that are only a line's id, each with its reason.
 
@@ -456,6 +469,12 @@ def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
     for shared in old_ids.keys() & new_ids.keys():
         was, now = sorted(old_ids[shared]), sorted(new_ids[shared])
         if was == now:
+            continue
+        if len(now) < len(was):
+            # Copies of one line: the dbt writer kept fewer of them, so every
+            # id either side holds for it is the dedupe's, whatever its form.
+            for feature_id in set(was) | set(now):
+                reasons[f"properties.id {feature_id}"] = NETWORK_COPY_REASON
             continue
         if all(positional(feature_id) for feature_id in was + now):
             continue

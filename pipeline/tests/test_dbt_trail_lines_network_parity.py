@@ -697,6 +697,18 @@ def test_parity_explains_an_id_only_difference_and_nothing_else():
     assert reasons["properties.id s:1"] == parity.NETWORK_ID_REASONS["globalid_in_any_case"]
 
 
+def test_parity_explains_copies_of_one_line_the_dbt_writer_published_once_and_not_a_line_it_lost():
+    family = parity.FAMILIES["nearby_trails"]
+    a, b = [[0.0, 0.0], [1.0, 1.0]], [[2.0, 2.0], [3.0, 3.0]]
+    old = {"features": [_line("s:1", "A", a), _line("s:2", "A", a), _line("s:3", "A", a), _line("s:4", "B", b)]}
+    new = {"features": [_line("s:{R-1}", "A", a)]}
+    reasons = family.explained(old, new)
+    assert {f"properties.id s:{n}" for n in (1, 2, 3)} | {"properties.id s:{R-1}"} == set(reasons)
+    assert set(reasons.values()) == {parity.NETWORK_COPY_REASON}
+    # Line B is gone from the new file, and no copy of it is left there, so nothing explains its absence.
+    assert "properties.id s:4" not in reasons
+
+
 def test_parity_never_explains_two_positional_ids_that_name_different_lines():
     family = parity.FAMILIES["nearby_trails"]
     a, b = [[0.0, 0.0], [1.0, 1.0]], [[2.0, 2.0], [3.0, 3.0]]

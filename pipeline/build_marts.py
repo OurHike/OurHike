@@ -484,8 +484,6 @@ def main(argv: list[str] | None = None) -> int:
         processed_dir=_resolved(args.processed_dir, "OURHIKE_PROCESSED_DIR", PIPELINE_DIR / "data" / "processed" / "dbt"),
         raw_dir=args.raw_dir.resolve(),
     )
-    if args.state is not None and args.lane != HOURLY:
-        parser.error("--state is the hourly lane's: only it defers to another build's nodes")
     try:
         runs = plan(
             STEPS,

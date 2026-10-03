@@ -154,6 +154,20 @@ def test_the_build_builds_from_the_pin_and_writes_only_under_steps(workflow):
         assert f"extract._warehouse {command}" in runs
 
 
+def test_the_build_keeps_the_row_history_at_history_monthly_through_the_extracts_venv(workflow):
+    """pipeline/row_history.py: the snapshots go in the raw store's bucket under this lane's own prefix, and the
+    restore and save need s3fs, which only the extract's venv carries."""
+    (step,) = [step for step in workflow["jobs"]["build"]["steps"] if "build_marts.py" in (step.get("run") or "")]
+
+    assert '--history-url "s3://$R2_RAW_BUCKET/history/monthly"' in step["run"]
+    assert '--history-python "$RUNNER_TEMP/extract/bin/python"' in step["run"]
+    assert "--history-cold-start" not in step["run"], "a cold start is row_history_stores.toml's to allow, never a flag"
+    assert {"R2_RAW_BUCKET", "R2_RAW_ACCESS_KEY_ID", "R2_RAW_SECRET_ACCESS_KEY", "R2_ENDPOINT_URL"} <= _secrets(step)
+    # The monthly lane fails loudly: only the conditions legs publish without their history (the maintainer, by
+    # poll, 2026-10-03), so a failed restore here stops the build before dbt runs.
+    assert "--history-on-failure" not in step["run"]
+
+
 def test_the_parity_job_writes_nothing_and_keeps_its_answers(workflow):
     job = workflow["jobs"]["parity"]
     runs = _runs(job)

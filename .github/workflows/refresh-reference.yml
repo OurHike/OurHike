@@ -20,8 +20,9 @@
 #            every monthly resource in the private raw store (`our-hike-raw`,
 #            decision 43), checked before and after the load, plus the
 #            as-landed copy the parity job reads.
-#   build    R2_RAW_* only, writing only under steps/. Pins the raw inputs,
-#            builds the warehouse and marts from the pin, hands files on.
+#   build    R2_RAW_* only, writing only under steps/ and history/monthly/.
+#            Pins the raw inputs, builds the warehouse and marts from the
+#            pin with the row history restored and saved, hands files on.
 #   publish  The public bucket's R2_* only: publish.py, OURHIKE_PHONE_FILES=dbt.
 #   confirm  No credential. Fails unless UA's latest.json names every phone
 #            file the build wrote.
@@ -292,8 +293,25 @@ jobs:
       # reaches, so UA's conditions/ files stay as the conditions lane wrote
       # them. The pub_ writers run last, so dbt's last manifest and run
       # results, which publish.py reads, are theirs.
+      #
+      # THE ROW HISTORY (pipeline/row_history.py): build_marts.py restores
+      # the snapshots from history/monthly/ in the raw store's bucket before
+      # dbt runs, and saves them back only after the writers succeed, through
+      # the extract's venv, which has s3fs. One prefix for this lane; each
+      # conditions leg keeps its own. The key is the raw store's own, as for
+      # the pin above, under the names dlt reads. A restore that fails, or an
+      # empty prefix once row_history_stores.toml lists `monthly`, stops the
+      # build before dbt runs, so no run silently dates every row as new.
       - name: dbt build, the Python steps and the pub_ writers (build_marts.py --lane monthly)
-        run: python build_marts.py --lane monthly --python "$RUNNER_TEMP/pipeline/bin/python"
+        env:
+          R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
+        run: >-
+          python build_marts.py --lane monthly --python "$RUNNER_TEMP/pipeline/bin/python"
+          --history-url "s3://$R2_RAW_BUCKET/history/monthly" --history-python "$RUNNER_TEMP/extract/bin/python"
 
       - name: Save dbt's DuckDB driver and v2's spatial extension
         if: always() && steps.dbt-runtime.outputs.cache-hit != 'true' && hashFiles('pipeline/requirements-dbt.txt') != ''

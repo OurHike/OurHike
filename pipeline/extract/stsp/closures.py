@@ -1,7 +1,10 @@
-"""Star-Spangled Banner NHT (NPS): closures, published, and not landed (coverage audit 2026-10-01,
-batch c11_nht).
+"""Star-Spangled Banner NHT (NPS): closures, drawn from nps/warnings.py's NPS alerts resource (decision
+53, phase B, 2026-10-03).
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+NPS's alerts for park code `stsp` land once, in nps/warnings.py's `nps_alerts`, whose sources.json
+entry lists it against this folder in `park_codes` (decision 34). NPS's `Park Closure` category is
+the closures half, split from the rest in dbt; a Park Closure most often closes a facility or a road
+rather than a trail, and no alert carries geometry, so it never sets `obstructs_trail` alone.
 """
 
 from datetime import date
@@ -9,11 +12,23 @@ from datetime import date
 from extract._contract import NotAvailable
 
 NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=('`NPSAPI/alerts?parkCode=stsp`: 1 alert, category Information ("We cannot mail out at this time"), 0 closures',),
+    confirmed=date(2026, 10, 3),
+    checked=(
+        (
+            "NPS alerts API, `parkCode=stsp` (the decision 53 inventory, batch 5, 2026-10-03): 1 alerts. Landed "
+            "by nps/warnings.py as nps_alerts."
+        ),
+        (
+            '(coverage audit, 2026-10-01) `NPSAPI/alerts?parkCode=stsp`: 1 alert, category Information ("We '
+            'cannot mail out at this time"), 0 closures'
+        ),
+    ),
     where=(
+        "https://developer.nps.gov/api/v1/alerts?parkCode=stsp",
         "https://mapservices.nps.gov/arcgis/rest/services",
         "https://nps.gov/stsp/",
     ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    reason=(
+        "drawn from nps/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
+    ),
 )

@@ -867,7 +867,9 @@ class TestTheRegistryTheConsoleReads:
         # 79 since its second batch of points registered org:blackhillstrails.
         # 92 since decision 53's page and post notices for folders n to z and _shared/ (2026-10-03)
         # registered 13 more; their other 4 stewards (Indiana DNR, SHTA, TKO, TPWD) already had rows.
-        assert len(orgs) == 92
+        # 104 since its pages, feeds and WordPress sources in folders a to m (phase B, 2026-10-03)
+        # registered 12 more; their other 3 stewards (ATA, CFPA, GMC) already had rows.
+        assert len(orgs) == 104
         assert {org["steward_id"] for org in orgs} == {
             "org:akstateparks",
             "org:alaskatrails",
@@ -878,20 +880,26 @@ class TestTheRegistryTheConsoleReads:
             "org:azgeo",
             "org:blackhillstrails",
             "org:blm",
+            "org:bmecc",
+            "org:bmta",
             "org:bta",
+            "org:catamount",
             "org:cdpr",
             "org:cdtc",
             "org:cfpa",
             "org:chesapeakeconservancy",
+            "org:cohos",
             "org:cpw",
             "org:ctc",
             "org:ctdeep",
+            "org:cvatc",
             "org:desmoines",
             "org:duluth",
             "org:ebrpd",
             "org:fltc",
             "org:fmst",
             "org:foot",
+            "org:foothills",
             "org:fpc",
             "org:fta",
             "org:gatc",
@@ -901,10 +909,16 @@ class TestTheRegistryTheConsoleReads:
             "org:iowadnr",
             "org:kingcountyparks",
             "org:lakecountymn",
+            "org:lsht",
             "org:madcr",
             "org:massgis",
+            "org:matc",
+            "org:mcomd",
             "org:midpen",
             "org:mohonk",
+            "org:mratc",
+            "org:msgtc",
+            "org:msta",
             "org:mtsg",
             "org:nbatc",
             "org:nchpta",

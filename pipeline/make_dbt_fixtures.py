@@ -3021,25 +3021,35 @@ def _json_api_fixtures() -> dict[str, str]:
     }
 
 
-# --- decision 53 phase B's page notices and WordPress posts, folders n to z and _shared/ ------
+# --- the clubs' notice pages, feeds and WordPress posts (decision 53 phase B) ------
 #
-# PAGES. One file per registry key under conditions/notices/, `{"answers": {url: {"content_type",
-# "body"}}}`, the shape extract/_fixtures.py's text_answers() reads, served by exact URL, so each
-# PageNotice runs its own fetch, region, title, date and hash over it. The URL is the registry row's,
-# or, for a WordPress page read through REST, `/wp-json/wp/v2/pages/<id>` at its origin. THE SHAPES
-# ARE MEASURED: each page's region, its title's place and its stated date's wording are what the
-# phase B live read found on 2026-10-03 (the session's scratchpad, never committed), and each row's
-# sources.json `notes` says which. THE TEXT IS INVENTED and starts with 'Fixture': no real notice,
-# name or number is copied. A PDF has no fixture here: PageNotice reads a PDF through pypdf, which the
-# pipeline suite's environment does not install (extract/_notices.py's read_pdf), so fixture mode
-# leaves those four resources out, as it leaves out any resource with no fixture file.
+# PAGES AND FEEDS. One file per registry key under conditions/notices/, each the answers the key's
+# reader asks for: `{"answers": {url: {"content_type", "body"}}, "rows": n}`, served by exact URL
+# (extract/_fixtures.py's text_answers()), where `rows` is what the reader lands from them: one for a
+# page, one an item for a feed. The URL is the registry row's, or, for a WordPress page read through
+# REST, `/wp-json/wp/v2/pages/<id>` at its origin. THE SHAPES ARE MEASURED: each page's region, its
+# title's place and its stated date's wording, WordPress's REST page and post (`title.rendered`,
+# `content.rendered`, `modified_gmt`), and RSS 2.0 as WordPress, Drupal and Weebly serve it, are what
+# decision 53's inventory and phase B's live reads found on 2026-10-03 (each row's sources.json `notes`
+# says which). EVERY VALUE IS INVENTED and starts with 'Fixture': no real notice, name, title, post or
+# number is copied. Each feed item carries a `dc:creator` and a `description`, so the reader's rule
+# that neither lands is run. The two phase B batches wrote their halves separately: folders a to m in
+# NOTICE_FIXTURES (numbered pages, feeds and REST pages), folders n to z and _shared/ in
+# _notice_pages_n_to_z() (each page shaped like its own live one).
+#
+# Not here: the four PDFs (bmta_alerts_pdf, foot_hiker_alert_mm195, tatc_ridgerunner_reports and
+# trustees_hunting_designations), which PageNotice reads through pypdf (extract/_notices.py's
+# read_pdf), and the pipeline and dbt jobs do not install pypdf (requirements.in's note); fixture mode
+# leaves them out the way it leaves GATC's water PDF out, as any resource with no fixture file.
 #
 # POSTS. One WordPress document per registry key under conditions/, the shape NYNJTC's uses: the
-# category lookup by slug and the posts, each with the fields the live posts route served, so
-# WordpressPosts' change check, WP_DROPPED and the row's person_fields (`content` and `excerpt`) run.
+# category lookup by slug, the posts, the terms, and a custom post type's route under `types` (GMC's
+# `alert`), each post with the fields its live posts route served, so WordpressPosts' change check,
+# WP_DROPPED and the row's person_fields run.
 
 NOTICE_HTML = "text/html; charset=UTF-8"
 NOTICE_REST = "application/json; charset=UTF-8"
+NOTICE_RSS = "application/rss+xml; charset=UTF-8"
 FIXTURE_DAY = "September 21, 2026"
 
 
@@ -3292,10 +3302,10 @@ WP_CATEGORY_POSTS = {
 }
 
 
-def notice_pages_fixtures_n_to_z() -> dict[str, str]:
+def _notice_fixtures_n_to_z() -> dict[str, str]:
     """Decision 53 phase B's page notices and WordPress posts for folders n to z and _shared/ (the comment above)."""
     files = {
-        f"conditions/notices/{key}.json": json.dumps({"answers": {url: {"content_type": content_type, "body": body}}})
+        f"conditions/notices/{key}.json": json.dumps({"answers": {url: {"content_type": content_type, "body": body}}, "rows": 1})
         for key, (url, content_type, body) in _notice_pages_n_to_z().items()
     }
     for key, (site, category, slug) in WP_CATEGORY_POSTS.items():
@@ -3311,9 +3321,223 @@ def notice_pages_fixtures_n_to_z() -> dict[str, str]:
     return files
 
 
+#: Registry key -> (shape, the URL its reader asks). Shapes: "html" a page, "wp" a
+#: WordPress page or post through its REST route, "feed" RSS, "region:<css>" a page
+#: whose notice is the one element the resource names.
+NOTICE_FIXTURES = {
+    "amc_net_closures_notices": ("wp", "https://newenglandtrail.org/wp-json/wp/v2/pages/27"),
+    "amc_facility_conditions": ("html", "https://www.outdoors.org/weather-trail-conditions/"),
+    "amc_wma_at_parking": ("html", "https://www.amc-wma.org/documents-more.cgi?id=112"),
+    "amc_wma_at_campsites": ("html", "https://www.amc-wma.org/documents-more.cgi?id=13"),
+    "amcdv_bear_safety": ("wp", "https://amcdv.org/wp-json/wp/v2/posts/5079"),
+    "ttc_butler_trail_detours": ("wp", "https://thetrailconservancy.org/wp-json/wp/v2/pages/5616"),
+    "blm_alerts": ("html", "https://www.blm.gov/alerts"),
+    "bmecc_fluorescent_orange": ("html", "https://www.bmecc.org/appalachian-trail/fluorescent-orange"),
+    "bmecc_appalachian_trail": ("html", "https://www.bmecc.org/appalachian-trail"),
+    "bmta_alert_bar": ("region:alert-bar__content", "https://bmta.org/"),
+    "catamount_section_31": ("wp", "https://catamounttrail.org/wp-json/wp/v2/pages/12414"),
+    "cfpa_trail_notices": ("html", "https://ctwoodlands.org/trail-notices/"),
+    "cfpa_trail_notices_feed": ("feed", "https://ctwoodlands.org/trail-notices/feed/"),
+    "cohos_trail_changes": ("wp", "https://www.cohostrail.org/wp-json/wp/v2/pages/66"),
+    "cohos_trouble_spots": ("wp", "https://www.cohostrail.org/wp-json/wp/v2/pages/168"),
+    "ct_deep_parks_emergency_message": ("html", "https://portal.ct.gov/deep/state-parks/emergency-message---parks"),
+    "cvatc_news": ("feed", "https://www.cvatclub.org/news/feed"),
+    "duluth_parks_news": ("html", "https://duluthmn.gov/parks/"),
+    "foothills_trail_conditions": ("wp", "https://foothillstrail.org/wp-json/wp/v2/pages/25"),
+    "gatc_alerts": ("feed", "https://georgia-atclub.org/alerts/feed/"),
+    "gatc_news_feed": ("feed", "https://georgia-atclub.org/feed/"),
+    "lsht_thru_hike_notes": ("html", "https://lonestartrail.org/content.aspx?page_id=22&club_id=738078&module_id=678717"),
+    "lsht_news": ("html", "https://lonestartrail.org/content.aspx?page_id=3&club_id=738078"),
+    "matc_kennebec_ferry": ("wp", "https://www.matc.org/wp-json/wp/v2/pages/474"),
+    "mcomd_club_news_feed": ("feed", "https://www.mcomd.org/category/club-news-and-announcements/feed/"),
+    "mohonk_alerts": ("wp", "https://www.mohonkpreserve.org/wp-json/wp/v2/pages/13789"),
+    "mohonk_peregrine_updates": ("wp", "https://www.mohonkpreserve.org/wp-json/wp/v2/pages/1502"),
+    "mratc_trail_alerts": ("html", "https://www.mratc.org/"),
+    "mratc_blog_feed": ("feed", "https://www.mratc.org/blog-feed.xml"),
+    "msgtc_trail_conditions": ("wp", "https://www.msgtc.org/wp-json/wp/v2/pages/24"),
+}
+NOTICE_FIXTURES.update(
+    {
+        f"fta_closures_nth_{part}": ("feed", f"https://floridatrail.org/category/{slug}/feed/")
+        for part, slug in (
+            ("general", "closures-notice-to-hikers-general"),
+            ("panhandle", "closures-and-nth-panhandle"),
+            ("north", "closures-and-nth-north"),
+            ("central", "closures-and-nth-central"),
+            ("south", "closures-and-nth-south"),
+        )
+    }
+)
+NOTICE_FIXTURES.update(
+    {
+        f"blm_press_{state}": ("feed", f"https://www.blm.gov/press-release/{state.replace('_', '-')}/rss")
+        for state in (
+            "national_office", "alaska", "arizona", "california", "colorado", "eastern_states", "idaho",
+            "montana_dakotas", "nevada", "new_mexico", "oregon_washington", "utah", "wyoming",
+        )
+    }
+)  # fmt: skip
+NOTICE_FIXTURES.update(
+    {
+        f"blm_fire_restrictions_{state}": ("html", f"https://www.blm.gov/programs/{path}/fire-restrictions")
+        for state, path in (
+            ("alaska_fire_service", "fire-and-aviation/regional-info/alaska-fire-service"),
+            ("arizona", "public-safety-and-fire/fire/regional-info/arizona"),
+            ("california", "fire/regional-info/california"),
+            ("colorado", "fire/regional-info/colorado"),
+            ("idaho", "fire/regional-info/idaho"),
+            ("montana", "fire/regional-info/montana"),
+            ("new_mexico", "fire/regional-info/new-mexico"),
+            ("north_dakota", "fire/regional-info/north-dakota"),
+            ("oregon_washington", "fire/regional-info/oregon-washington"),
+            ("south_dakota", "fire/regional-info/south-dakota"),
+            ("utah", "fire/regional-info/utah"),
+            ("wyoming", "fire/regional-info/wyoming"),
+        )
+    }
+)
+NOTICE_FIXTURES.update(
+    {
+        f"bta_section_{section}": ("html", f"https://buckeyetrail.org/sections/{section.replace('_', '-')}")
+        for section in (
+            "burton", "mogadore", "massillon", "bowerston", "belle_valley", "stockport", "road_fork", "whipple",
+            "new_straitsville", "old_mans_cave", "scioto_trail", "sinking_spring", "shawnee", "west_union",
+            "williamsburg", "loveland", "caesar_creek", "troy", "st_marys", "delphos", "defiance", "pemberville",
+            "norwalk", "medina", "akron", "bedford",
+        )
+    }
+)  # fmt: skip
+NOTICE_FIXTURES.update(
+    {
+        f"msta_{section}": ("html", f"https://hike-mst.org/index.php/the-trail/section-updates/{article}-{section.replace('_', '-')}")
+        for section, article in (
+            ("section_1", 134), ("section_2", 135), ("section_3", 136), ("section_4", 137), ("section_5", 138),
+            ("section_6", 139), ("section_7", 140), ("section_8", 143), ("section_9", 144), ("section_10", 145),
+            ("section_11", 147), ("section_12", 148), ("section_13", 149), ("section_14", 150), ("section_15", 151),
+            ("section_16", 152), ("section_17", 153), ("section_18", 168), ("section_19", 155), ("section_20", 156),
+            ("section_a", 157), ("section_b", 158), ("section_c", 229),
+        )
+    }
+)  # fmt: skip
+
+
+def _numbered_notice_page(n: int, region: str | None = None) -> str:
+    """A page as its site serves it: <title>, a menu and a footer the reader leaves out, and the notice in <main>."""
+    notice = f"<h1>Fixture Notice Page {n}</h1><p>Updated September 21, 2026</p><p>Fixture notice text {n}.</p>"
+    if region:
+        notice = f'<div class="{region}"><a href="/fixture.pdf">Fixture alert bar text {n}.</a></div>'
+    return (
+        f"<!DOCTYPE html><html><head><title>Fixture Site {n}</title>"
+        '<script type="application/ld+json">{"@type": "WebPage", "dateModified": "2026-09-20T12:00:00Z"}</script></head>'
+        f"<body><nav><a href='/'>Fixture menu</a></nav><main>{notice}</main>"
+        "<footer>Fixture footer. This page last updated: 2026-04-14</footer></body></html>"
+    )
+
+
+def _notice_wp(n: int, url: str) -> str:
+    """A WordPress page or post through its REST route, the fields PageNotice reads and some it does not."""
+    return json.dumps(
+        {
+            "id": n,
+            "date_gmt": "2025-01-02T10:00:00",
+            "modified_gmt": "2026-09-21T14:13:20",
+            "slug": f"fixture-page-{n}",
+            "link": url,
+            "title": {"rendered": f"Fixture Notice Page {n}"},
+            "content": {"rendered": f"<p>Fixture notice text {n}.</p><p>Fixture second paragraph.</p>", "protected": False},
+            "author": 9,
+            "yoast_head": "<meta name='author' content='Fixture Person'>",
+        }
+    )
+
+
+def _notice_feed(n: int, url: str) -> str:
+    """RSS 2.0 with two items, each with a guid, a link, a pubDate, a category, a creator and prose that never land."""
+    site = url.split("/")[2]
+    items = "".join(
+        f"<item><title>Fixture Notice {n}.{i}</title><link>https://{site}/fixture-notice-{n}-{i}/</link>"
+        f"<dc:creator><![CDATA[Fixture Person]]></dc:creator><pubDate>Mon, 2{i} Sep 2026 14:00:00 +0000</pubDate>"
+        f'<category>Fixture Category</category><guid isPermaLink="false">https://{site}/?p={n * 10 + i}</guid>'
+        f"<description><![CDATA[<p>Fixture prose {n}.{i}.</p>]]></description></item>"
+        for i in (1, 2)
+    )
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">'
+        f"<channel><title>Fixture Feed {n}</title><link>https://{site}/</link>{items}</channel></rss>"
+    )
+
+
+def _notice_fixtures() -> dict[str, str]:
+    files = {}
+    for n, (key, (shape, url)) in enumerate(sorted(NOTICE_FIXTURES.items()), 1):
+        if shape == "feed":
+            answer, rows = {"content_type": NOTICE_RSS, "body": _notice_feed(n, url)}, 2
+        elif shape == "wp":
+            answer, rows = {"content_type": NOTICE_REST, "body": _notice_wp(n, url)}, 1
+        else:
+            region = shape.split(":", 1)[1] if shape.startswith("region:") else None
+            answer, rows = {"content_type": NOTICE_HTML, "body": _numbered_notice_page(n, region)}, 1
+        files[f"conditions/notices/{key}.json"] = json.dumps({"answers": {url: answer}, "rows": rows})
+    return files
+
+
+def _club_wp_post(post_id: int, site: str, categories: list[int], **taxonomies) -> dict:
+    """One post as a club's posts route serves it, with the fields WP_DROPPED leaves out (author, Yoast, Spectra)."""
+    return {
+        "id": post_id,
+        "date_gmt": "2026-08-30T16:04:07",
+        "modified_gmt": "2026-09-04T18:52:05",
+        "slug": f"fixture-notice-{post_id}",
+        "status": "publish",
+        "link": f"https://{site}/fixture-notice-{post_id}/",
+        "title": {"rendered": f"Fixture Notice {post_id}"},
+        "content": {"rendered": "<p>Fixture body text, which never reaches a phone.</p>", "protected": False},
+        "excerpt": {"rendered": "<p>Fixture excerpt.</p>", "protected": False},
+        "author": 9,
+        "categories": categories,
+        "tags": [],
+        **taxonomies,
+        "class_list": [f"post-{post_id}"],
+        "yoast_head": "<meta name='author' content='Fixture Person'>",
+        "yoast_head_json": {"author": "Fixture Person"},
+        "uagb_author_info": {"display_name": "Fixture Person"},
+        "_links": {"self": [{"href": f"https://{site}/wp-json/wp/v2/posts/{post_id}"}]},
+    }
+
+
+def _club_wordpress_fixtures() -> dict[str, str]:
+    """The category lookup and posts of the three club WordPress sources phase B registered, or GMC's `alert` type.
+
+    Field names are the ones each site's posts route served on 2026-10-03
+    (sources.json's `notes`); ATA's category 251 carries a passage term beside
+    it, as its live posts do; MATC's category is 157; GMC's posts sit in no
+    category and carry `alert-category` terms.
+    """
+    ata, gmc, matc = "aztrail.org", "greenmountainclub.org", "www.matc.org"
+    documents = {
+        "ata_closures_reroutes": {
+            "categories": [{"id": 251, "slug": "closures-reroutes"}],
+            "posts": [_club_wp_post(8001, ata, [251, 140]), _club_wp_post(8002, ata, [251])],
+            "terms": {},
+        },
+        "gmc_trail_alerts": {
+            "categories": [],
+            "posts": [],
+            "terms": {},
+            "types": {"alert": [_club_wp_post(8101, gmc, [], **{"alert-category": [3]})]},
+        },
+        "matc_hazard_posts": {
+            "categories": [{"id": 157, "slug": "hazard"}],
+            "posts": [_club_wp_post(8201, matc, [157]), _club_wp_post(8202, matc, [157])],
+            "terms": {},
+        },
+    }
+    return {f"conditions/{key}.json": json.dumps(document) for key, document in documents.items()}
+
+
 def closures_and_warnings_fixtures() -> dict[str, str]:
     """The closures and warnings family's fixture files, under conditions/: NWS, NYNJTC's WordPress, OurHike's Postgres,
-    ATC's site, and the JSON API notice sources."""
+    ATC's site, the JSON API notice sources, and the clubs' notice pages, feeds and WordPress posts."""
     return {
         "conditions/nws_alerts.json": json.dumps(_nws_alerts()),
         "conditions/nynjtc_trail_alerts.json": json.dumps(_nynjtc_trail_alerts()),
@@ -3321,6 +3545,9 @@ def closures_and_warnings_fixtures() -> dict[str, str]:
         "conditions/atc_trail_updates.json": json.dumps(_atc_trail_updates()),
         "weather/squares.json": json.dumps(_weather_squares(), separators=(",", ":")),
         **_json_api_fixtures(),
+        **_notice_fixtures(),
+        **_notice_fixtures_n_to_z(),
+        **_club_wordpress_fixtures(),
     }
 
 
@@ -7608,7 +7835,6 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         "external/wi_ice_age_trail.geojson": _registered_trail_lines_layer("wi_ice_age_trail", None),
         **{name: build() for name, build in ELEVATION_PRODUCT_FIXTURES.items()},
         **closures_and_warnings_fixtures(),
-        **notice_pages_fixtures_n_to_z(),
         **notice_layers_fixtures(),
         **suggested_hikes_fixtures(),
         **_club_places_fixtures(),

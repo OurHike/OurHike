@@ -15,9 +15,11 @@ import requests
 
 import export_conditions
 import make_dbt_fixtures
+from extract._contract import all_resources, discover, discover_shared
 from extract._fixtures import (
     JSON_API_DIR,
     JSON_API_KINDS,
+    NOTICES_DIR,
     FixtureAdapter,
     FixtureConnection,
     build,
@@ -75,18 +77,30 @@ def test_every_fixture_file_with_a_resource_lands_whole(fixtures):
         assert counts[resource.table] == expected, resource.table
 
 
-def test_every_page_notice_with_a_fixture_lands_one_row_with_its_title(fixtures):
-    """A PageNotice is one notice a page (decision 53 phase B): fixture mode lands exactly one row for each page it
-    answers, with a title, so a page whose region or title the reader cannot find fails here, not in the hourly lane."""
+#: The notice resources fixture mode leaves out: PDFs, which PageNotice reads through pypdf, and the pipeline and dbt
+#: jobs install no pypdf (make_dbt_fixtures.py's notice comment).
+NOTICE_PDFS = {"bmta_alerts_pdf", "foot_hiker_alert_mm195", "tatc_ridgerunner_reports", "trustees_hunting_designations"}
+
+
+def test_every_notice_page_and_feed_lands_the_rows_its_answers_make_and_each_page_row_a_title(fixtures):
+    """Decision 53 phase B: each PageNotice and FeedNotices resource with a conditions/notices/ file lands exactly
+    the file's `rows` (one a page, one an item for a feed), and a page's row carries a title, so a page whose region
+    or title the reader cannot find fails here rather than in a live run. The four PDFs are the only notice
+    resources with no file."""
     root, counts = fixtures
     resources, _ = fixture_resources(root / "raw")
-    notices = [resource for resource in resources if isinstance(resource, PageNotice)]
-    assert len(notices) >= 60, "folders n to z and _shared/ answer 61 page notices; a PDF has no fixture"
+    notices = [r for r in resources if isinstance(r, FeedNotices | PageNotice)]
+    registered = {r.key for r in all_resources(discover() + discover_shared()) if isinstance(r, FeedNotices | PageNotice)}
+    files = sorted((root / "raw" / "conditions" / NOTICES_DIR).glob("*.json"))
+    assert {r.key for r in notices} == {path.stem for path in files}
+    assert registered - {r.key for r in notices} == NOTICE_PDFS
     with duckdb.connect(str(root / "warehouse.duckdb"), read_only=True) as con:
         for resource in notices:
-            assert counts[resource.table] == 1, resource.table
-            (title,) = con.execute(f'select title from raw."{resource.table}"').fetchone()
-            assert title, resource.table
+            expected = json.loads((root / "raw" / "conditions" / NOTICES_DIR / f"{resource.key}.json").read_text())["rows"]
+            assert counts[resource.table] == expected, resource.table
+            if isinstance(resource, PageNotice):
+                (title,) = con.execute(f'select title from raw."{resource.table}"').fetchone()
+                assert title, resource.table
 
 
 def test_a_wordpress_rows_person_fields_never_reach_the_raw_store(fixtures):
@@ -202,6 +216,18 @@ def test_the_json_api_notice_sources_land_from_their_answers_with_no_nps_key_in_
     assert landed == set(JSON_API_ROWS)
     assert all((root / "raw" / "conditions" / JSON_API_DIR / f"{r.key}.json").exists() for r in resources if r.table in landed)
     assert {table: counts[table] for table in JSON_API_ROWS} == JSON_API_ROWS
+
+
+def test_a_notice_feed_lands_no_creator_and_no_prose_and_a_page_lands_its_own_title_and_date(fixtures):
+    """Decision 55 and rule 8 at the warehouse: the fixture feed's `dc:creator` and `description` arrive nowhere."""
+    root, _ = fixtures
+    with duckdb.connect(str(root / "warehouse.duckdb"), read_only=True) as con:
+        feed = {row[0] for row in con.execute("describe raw.raw_cvatc__cvatc_news").fetchall()}
+        values = json.dumps(con.execute("select * from raw.raw_cvatc__cvatc_news").fetchall(), default=str)
+        page = con.execute("select title, date, date_source from raw.raw_msgtc__msgtc_trail_conditions").fetchone()
+    assert not {"description", "creator", "dc_creator", "content"} & feed
+    assert "Fixture Person" not in values and "Fixture prose" not in values
+    assert page[1:] == ("2026-09-21", "wp_modified") and page[0].startswith("Fixture Notice Page")
 
 
 def test_the_lead_advisory_and_the_sheets_person_columns_reach_the_warehouse_as_their_readers_decide(fixtures):

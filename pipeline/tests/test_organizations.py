@@ -368,6 +368,12 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     `maintainer_authorisation`: decision 53's facts and a link, and for the 23 whose terms restrict
     copying but not reading (OTA's 14 section pages, DEC, EBRPD, TPWD's two parks, WTA, mass.gov,
     IN.gov, nc.gov and SBTS's copyright line), decision 55, their terms quoted on each row.
+
+    DECISION 53'S PAGES, FEEDS AND WORDPRESS SOURCES, FOLDERS A TO M (2026-10-03): 113 rows, all
+    `reaches_hikers: false`. 87 `maintainer_authorisation`, on decision 53 (facts and a link) or,
+    where the terms restrict copying and not reading, decision 55 (ATA, Buckeye, the City of Duluth,
+    the Mid State Trail, the New England Trail's footer); BLM's 26 `stated_by_org`, federal works on
+    17 U.S.C. 105.
     """
     counts: dict[str, int] = {}
     for source in REGISTRY["sources"]:
@@ -375,4 +381,5 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
 
     # Decision 53's ArcGIS closure and warning layers (2026-10-03) add 76 rows, all reaches_hikers false: 11 `maintainer_authorisation`, 35 `public_gis`, 30 `stated_by_org`.
     # Decision 53's page and post notices, folders n to z and _shared/ (2026-10-03), add 68: 51, 16 and 1 (above).
-    assert counts == {"maintainer_authorisation": 99, "public_gis": 217, "stated_by_org": 151, "unresolved": 4}
+    # Its pages, feeds and WordPress sources in folders a to m (phase B, 2026-10-03) add 113: 87 and 26 (above).
+    assert counts == {"maintainer_authorisation": 186, "public_gis": 217, "stated_by_org": 177, "unresolved": 4}

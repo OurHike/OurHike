@@ -16,7 +16,7 @@ This is the design for **#1793 — Rebuild the data platform as dlt → dbt: sev
 - [Running it](#running-it): workflows, the hourly lanes, cadence, CI, secrets, docs, skills
 - [Every club's closures and alerts (decision 53)](#every-clubs-closures-and-alerts-decision-53): where it stands, the rules it keeps, phases A to G
 - [Row dates (decision 52)](#row-dates-decision-52): first seen and last changed on every row, from one dbt snapshot per source
-- [What the clubs publish that is not loaded yet](#what-the-clubs-publish-that-is-not-loaded-yet): the tally, what makes the gaps, the plan for the rest
+- [What the clubs publish that is not loaded yet](#what-the-clubs-publish-that-is-not-loaded-yet): the tally, what makes the gaps, and loading all of it (decision 54)
 - [Phases](#phases): the build stages of one pull request, the work in flight, and the go/no-go gate
 - [Risks and what nobody has checked](#risks-and-what-nobody-has-checked): the register, and every `@unvalidated` claim
 - [Open questions for the maintainer](#open-questions-for-the-maintainer)
@@ -117,6 +117,7 @@ Settled by the maintainer on 2026-10-01, most by poll; 4 and 11 went without a p
 | 51 | Whether each club's notices keep a phone file of their own | **One generic file, as a follow-up after this pull request** (poll, 2026-10-03). Today `conditions/atc_updates.json` (ATC's own shape, with A.T. mile markers) and `conditions/nynjtc_alerts.json` (`OrgNotice`, `features/ORG_NOTICES.md`) are one file per club, though the `closures` and `warnings` marts already hold every club by `source_key`. The follow-up writes one `conditions/notices.json` in the `OrgNotice` shape as a v2 file beside the two (decision 44), with ATC's mile markers as an optional placement, and holds back a failing club by keeping that club's last good rows with their own date rather than by withholding the file. This pull request keeps both files as today's exporters write them, because parity against today's files is the gate. Tracked in **#1811 — Fast follows after PR #1805's dlt → dbt re-platform: the hiker's own download choice, the cutover, and what the port found in today's code** |
 | 52 | Whether every warehouse row carries when it was first seen and last changed (amends decision 41) | **Yes, every row of every intermediate and mart model, in this pull request** (poll, 2026-10-03), detected by **a dbt snapshot per source** (check strategy on each row's key and content hash), with `_first_seen_at` and `_changed_at` carried downstream and enforced by a test. Snapshots persist between runs outside the warehouse, which is rebuilt each run. Notices also carry OurHike's `checked_at` (decision 53). dlt's SCD2 was weighed and is not available here: dlt 1.30.0's filesystem destination, the raw store's, offers merge only as `upsert` or `insert-only` and only on Delta or Iceberg tables, and no SCD2 (read in its `filesystem/factory.py`, 2026-10-03). Revisit at phase 3, when the monthly lane moves to DuckLake, whose own snapshots could replace the export and restore |
 | 53 | Which clubs' closures and alerts are brought in | **All of them, in this pull request** (2026-10-03): *"Add all to this PR. Publish all 121 closures … Bring in all closure and alerts notices."* Published as facts and a link (`features/ORG_NOTICES.md` §7). Access is checked per host (robots.txt for our agent, the site's terms), never assumed: *"Don't just assume it blocks automated access … we'll be careful about not burdening their servers."* A real refusal stays a quoted note until the club permits. Decision 51's single notices file moves into this pull request. The plan is "Every club's closures and alerts (decision 53)" |
+| 54 | Whether every dataset the clubs publish is loaded, not only notices | **Yes, all of them** (2026-10-03): *"OK, so we want to load all those clubs!!! Make the registry row if that is needed. Make a plan to do that correctly. That's a lot of data to load."* The 842 published-but-unregistered type × club cells get a `sources.json` row each where the dataset is real and reachable, then a resource, then dbt. Read here as this pull request, like decision 53, because the maintainer added it to the same list; the maintainer may move any wave out. The plan is "Loading everything the clubs publish (decision 54)" |
 
 Settled outside the numbered rows:
 
@@ -3551,17 +3552,50 @@ Every folder's `org.py` also loads its catalogue row (145 of 145). Seven files h
 6. **Elevation has holes the DEM leaves.** 125 of 3,551,452 network edges have no elevation at all (124 NPS, 1 CDTC), measured on publish-vector-data.yml run 37114537637 (`int_elevation__edge_climbs.sql`).
 7. **The note's name hides the gap.** A published-but-unregistered dataset is written as a `NOT_AVAILABLE` note, whose name says the data does not exist. The note's `checked` text says it does, but nothing a test or a grep sees separates the 842 from the 385. A `NOT_REGISTERED` note, or a field on the note, would make the gap countable in one command. Not built.
 
-### The plan for the rest
+### Loading everything the clubs publish (decision 54)
 
-Decision 53 does this for closures and warnings. The same five steps load the other types, and **the default, until the maintainer says otherwise, is to start step 1 for the GIS-shaped types now** (trail_lines, points_of_interest, places, elevation), because it reads only and decides nothing:
+**The 842 cells become datasets in waves by format, and each wave is ordered by what a hiker's safety turns on.** Closures and warnings are decision 53's and are already moving. Within each wave the order is water and shelter points first, then trail lines, then places, elevation, suggested hikes, challenges, podcasts and photos.
 
-1. **Inventory**: workers re-read each published-not-loaded row's endpoint, at a polite rate under `USER_AGENT`, and record the format, row count, edit date, robots.txt answer and terms, word for word. Same rule as decision 53: access is checked per host, never assumed.
-2. **Register**: a `sources.json` row per dataset, licence basis recorded, terms quoted. One extraction per upstream (decision 34): a copy is a `SAME_AS` note.
-3. **Readers**: ArcGIS first (a row is all it needs), then GIS files, then feeds, then pages and PDFs, one reader per format rather than per club where the format allows.
-4. **dbt**: base and staging models per new raw table, the club's portion assigned in `int_<mart>__stewardship`, deduplication after the load ([Club by club](#club-by-club)).
-5. **The gate**: every new layer in the new-data review report (decision 31), and its map shot.
+#### What has to be true before a dataset loads
 
-**Open: whether steps 2 to 5 for these types land in this pull request or after it.** This pull request is already the go/no-go change for the platform, and every layer it adds is another layer the gate has to review. The inventory is useful either way.
+1. **A live read**, under `USER_AGENT`, robots.txt read first and every `Crawl-delay` honoured: the row count from the server's own count, the last edit date, the fields, and the terms word for word. The coverage audit's evidence is two days old and is the starting list, not the answer; decision 53's inventory found sites that had moved, walled themselves or turned into spam since it.
+2. **One extraction per upstream** (decision 34). A layer that is a copy of one another folder extracts is a `SAME_AS` note. NCTA and FLTC share about 424 miles, and both publish that stretch: two datasets, deduplicated in dbt after the load, never one of them dropped before it.
+3. **A `sources.json` row**, the licence basis by decisions 21a and 36 to 38, the terms quoted verbatim, `reaches_hikers` and `licence_basis` deciding publication in `int_sources__publication`. A refusal in the terms or in robots.txt stays a dated note that quotes it.
+
+#### The waves
+
+| wave | format | cells (Reasoned, keyword count) | reader | what is new |
+|---|---|---|---|---|
+| 1 | ArcGIS layers | about 206 | exists (`_kinds.py`) | registry rows and resources only |
+| 2 | GIS files: KML, KMZ, GPX, GeoJSON, shapefiles, Google My Maps | about 13 | one `gis_file` kind | the kind, and a change check per file (ETag or length, never a site-wide validator) |
+| 3 | feeds and APIs: WordPress, RSS, JSON, OGC Features | about 203 | WordPress exists; OGC Features and generic JSON are new | NCTA's hub is OGC Features (`trail_orgs.json`'s `endpoint_kind`), the adapter `SOURCE_REGISTRY.md` names as missing |
+| 4 | PDFs | about 72 | the club-PDF kind exists (GATC) | a parser per document family; a PDF that only a person can read stays a note |
+| 5 | web pages | about 374 | none | a parser per site. This wave is the one most likely not to finish in this pull request, and it says so per club rather than leaving a note that reads "not available" |
+| 6 | organisations with no folder | 1,200 rows for 120 organisations | as above | a reviewed `trail_orgs.json` row and a folder first; candidates from `trail_candidates.json` |
+
+#### How the work is split so that workers do not collide
+
+- **`sources.json` is one file.** Workers never edit it. Each writes its proposed rows to a JSON file in the session scratchpad, and the lead inserts each wave's rows in one commit, sorted the way the file is.
+- **One worker per type within a wave**, each owning that type's file in every club folder (`<club>/points_of_interest.py` and so on), so no two workers touch one file.
+- **dbt models are generated, not hand-written, wherever a layer has a measured key**: a `base_<folder>__<key>` per raw table from one template, keyed and deduped on the key the live read found, and each mart's union reading the registry for its branches, as `int_points_of_interest__unioned` does today.
+- **Fixtures**: every new resource gets a fixture row in `make_dbt_fixtures.py`, written from the live read's own field list, with no real feature copied in.
+
+#### Volume, and what it does to each clock
+
+- **The monthly extract** took 1 h 48 min for today's registry (run 37121837559, Measured 2026-10-03), against a 6 h job limit. Wave 1 adds about 206 layers. `@unvalidated`: whether one job still fits. What would settle it is the first monthly run with wave 1. If it does not fit, the extract splits into a matrix by host, which also keeps one host's slowness from holding the rest.
+- **The change checks** (ArcGIS's statistics fingerprint, rule 4) keep most layers out of most runs, so the second run of a month is the cheap one.
+- **The phone download** grows with every POI. Stage 6's packed download puts other clubs' POIs, except water and shelters, into 1° cells, so a hiker downloads only the cells they choose. Every wave's new-data report carries the byte count it adds, before and after packing.
+- **The hourly lane** carries closures and warnings only (decision 53's phase F measures its budget), so waves 1 to 6 never touch it.
+
+#### Order of work
+
+1. Wave 1's live read, one worker per type (points of interest, trail lines, places, elevation), once decision 53's inventory has finished with each host.
+2. Registry rows for wave 1, inserted by the lead; resources; fixtures; generated base models; the unions; the new-data report.
+3. Waves 2 and 3 together, since both are small readers.
+4. Waves 4 and 5, club by club, water and shelters first.
+5. Wave 6.
+
+Every wave ends with `scripts/test.sh`, a fixture build, and the new-data report's counts in this section, so the plan says what landed, not only what was meant to.
 
 ## Phases
 
@@ -3592,7 +3626,7 @@ The session works several things at once. This table is where each one stands, s
 | Row dates, five family conversions | not started | waits on the foundation | one worker per family, in parallel |
 | Notices, phase A inventory ([decision 53](#every-clubs-closures-and-alerts-decision-53)) | five workers, batches 1 to 5 of the 129 clubs | **batch 5 done** (25 clubs, 115 requests, every `Crawl-delay` honoured): 24 extract, 1 refused (KTA, whose one closure sits under CalTopo's `/api/`, which its robots.txt disallows). Six of the 24 are one source, the NPS alerts API by park code, which needs a key: the public `DEMO_KEY` allows 10 calls an hour. Two sites sit behind a challenge page (octa-trails.org, mountainstoseatrail.org), recorded and not bypassed. Ozark Trail's terms restrict reproduction, not access, which goes to the maintainer as a question. Batches 1 to 4 still reading | results to `inventory/batch{N}_result.json` in the session scratchpad; then phase B |
 | Notices, phases B to G | not started | waits on phase A | as written in decision 53's section |
-| Other types' inventory ([What is not loaded yet](#what-the-clubs-publish-that-is-not-loaded-yet), step 1) | not started | the default, after decision 53's phase A returns, so no host is read by two workers at once | workers per batch of clubs |
+| Decision 54, wave 1: every ArcGIS layer the clubs publish ([Loading everything](#loading-everything-the-clubs-publish-decision-54)) | not started | waits on decision 53's batch 4, the last host overlap | one worker per type: points of interest, trail lines, places, elevation |
 | The gate's monthly run | `refresh-reference.yml` run 37121837559 on ea0fe674 | **failed at 14:40** after extract (green, 1 h 48 min) and the full `dbt build` (978 nodes, 0 errors): the POI region test found 3 USFS recreation sites USFS places in the oceans and in Asia | the test now fails a moved layer, not a stray point; re-dispatch once that is pushed |
 | The 3-day hourly UA soak (decision 46) | a routine, every hour at :18 | running; ends 2026-10-05 20:30 | silent while green; a tally at the end. A change to the hourly lane may restart it, which is the maintainer's call |
 

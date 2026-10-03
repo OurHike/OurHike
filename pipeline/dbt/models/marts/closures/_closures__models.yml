@@ -73,6 +73,15 @@ models:
               and st_ymax(st_geomfromgeojson(geom_geojson)) <= 90
           config:
             where: "geom_geojson is not null"
+      # The lon/lat swap test, which the range test above cannot be: a swapped
+      # point is still inside +/-180 and +/-90. Its boxes and their evidence are
+      # tests/generic/lands_in_the_region_its_source_publishes_in.sql's.
+      # A swap in stg_oprhp__trail_closures passed every other test while every
+      # closed section left nearby_trails.geojson (measured 2026-10-03).
+      - lands_in_the_region_its_source_publishes_in:
+          name: closures_areas_land_in_the_region_their_source_publishes_in
+          arguments:
+            geometry: st_geomfromgeojson(geom_geojson)
     columns:
       - name: closure_id
         description: >

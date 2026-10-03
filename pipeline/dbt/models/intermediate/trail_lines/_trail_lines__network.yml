@@ -403,6 +403,12 @@ models:
               and st_xmax(st_geomfromgeojson(geom_geojson)) <= 180
               and st_ymin(st_geomfromgeojson(geom_geojson)) >= -90
               and st_ymax(st_geomfromgeojson(geom_geojson)) <= 90
+      # The lon/lat swap test, which the range test above cannot be: a swapped
+      # point is still inside +/-180 and +/-90. Its boxes and their evidence are
+      # tests/generic/lands_in_the_region_its_source_publishes_in.sql's.
+      - lands_in_the_region_its_source_publishes_in:
+          arguments:
+            geometry: st_geomfromgeojson(geom_geojson)
       - dbt_utils.expression_is_true:
           arguments:
             expression: "st_geometrytype(st_geomfromgeojson(geom_geojson)) in ('LINESTRING', 'MULTILINESTRING')"

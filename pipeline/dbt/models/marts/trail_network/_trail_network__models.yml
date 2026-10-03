@@ -27,6 +27,13 @@ models:
               and st_xmax(st_geomfromgeojson(geom_geojson)) <= 180
               and st_ymin(st_geomfromgeojson(geom_geojson)) >= -90
               and st_ymax(st_geomfromgeojson(geom_geojson)) <= 90
+      # The lon/lat swap test, which the range test above cannot be: a swapped
+      # point is still inside +/-180 and +/-90. Its boxes and their evidence are
+      # tests/generic/lands_in_the_region_its_source_publishes_in.sql's.
+      - lands_in_the_region_its_source_publishes_in:
+          name: trail_network_edges_land_in_the_region_their_source_publishes_in
+          arguments:
+            geometry: st_geomfromgeojson(geom_geojson)
       # An edge is a line with two or more vertices, never a point, so a
       # consumer can walk it from its first vertex to its last.
       - dbt_utils.expression_is_true:

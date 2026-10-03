@@ -80,6 +80,15 @@ models:
               arguments:
                 compare_model: ref('points_of_interest', v=1)
     data_tests:
+      # The lon/lat swap test on what ships. A stray point upstream (three
+      # USFS recreation sites on 2026-10-03,
+      # tests/singular/assert_pois_land_in_the_region_this_build_covers.sql)
+      # is allowed into the intermediates and never into this mart. The boxes
+      # are macros/lands_outside_its_region.sql's.
+      - lands_in_the_region_its_source_publishes_in:
+          name: points_of_interest_land_in_the_region_their_source_publishes_in
+          arguments:
+            geometry: st_geomfromgeojson(geom_geojson)
       # mile only on an A.T. POI that is on the A.T. (PO10, PO11):
       # attach_miles() "always succeeds - there is no distance at which it
       # declines", so a mile anywhere else is a perfectly formed wrong one.

@@ -211,6 +211,37 @@ def test_two_absent_files_are_not_compared_rather_than_equal():
     assert next(row.verdict for row in rows if row.key == "poi_water.geojson") == "not_compared"
 
 
+def test_two_files_with_no_records_are_not_compared_unless_the_family_may_be_empty():
+    """An empty file equal to an empty file says nothing about the writer's records, so 0/0 blocks go."""
+    today = [TodayKey("conditions/work_projects.json", "artifact", "x"), TodayKey("poi_trailhead.geojson", "artifact", "x")]
+    dbt = [
+        DbtKey("conditions/work_projects.json", "e", "model.ourhike.pub_conditions_work_projects", "work_projects.json"),
+        DbtKey("poi_trailhead.geojson", "e", "model.ourhike.pub_poi_trailhead", "poi_trailhead.geojson"),
+    ]
+    results = {
+        family: _result(family, file_name, old_records=0, new_records=0)
+        for family, file_name in (("work_projects", "work_projects.json"), ("poi_trailhead", "poi_trailhead.geojson"))
+    }
+    rows = {row.key: row for row in key_rows(today, dbt, results)[0]}
+
+    work = rows["conditions/work_projects.json"]
+    assert (work.verdict, work.blocks_go) == ("not_compared", True)
+    assert "MAY_COMPARE_NO_RECORDS" in work.detail
+    trailhead = rows["poi_trailhead.geojson"]
+    assert (trailhead.verdict, trailhead.blocks_go) == ("equal_apart_from_listed", False)
+    assert "ALLOWED_EMPTY_POI_TYPES" in next(item.reason for item in trailhead.listed if item.what == "records")
+
+
+def test_only_the_poi_types_export_poi_may_publish_empty_may_compare_no_records():
+    """One home: lib/poi_schema.ALLOWED_EMPTY_POI_TYPES. Work projects and highlights are not on it."""
+    from lib.poi_schema import ALLOWED_EMPTY_POI_TYPES
+
+    expected = {f"poi_{kind}{version}" for kind in ALLOWED_EMPTY_POI_TYPES for version in ("", "_v2")}
+    assert set(gate_report.MAY_COMPARE_NO_RECORDS) == expected == {"poi_trailhead", "poi_trailhead_v2"}
+    assert set(gate_report.MAY_COMPARE_NO_RECORDS) <= set(parity.FAMILIES)
+    assert all(reason.strip() for reason in gate_report.MAY_COMPARE_NO_RECORDS.values())
+
+
 def test_a_key_pattern_matches_whichever_placeholder_each_side_writes():
     today = [TodayKey("suggested_hikes_detail_{id}.json", "artifact", "x")]
     dbt = [DbtKey("suggested_hikes_detail_{number}.json", "e", "model.ourhike.w", "suggested_hikes_detail.json")]

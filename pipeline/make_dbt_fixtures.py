@@ -1987,6 +1987,37 @@ def _long_path_guide_fixtures() -> dict[str, str]:
     return files
 
 
+# The two ends of reference/highlights.json's first highlight, by ATC's real
+# GlobalIDs and the names the identity ledger records for them, so
+# highlights.json publishes one record on these fixtures and its parity line
+# compares it. Every other highlight drops, as it does today, because its ends
+# are not here. The places are invented: beside the fixture centerline's two
+# segments, so the two ends take different miles (the facilities grid above
+# all projects onto one mile, and a leg whose ends share a mile drops).
+_HIGHLIGHT_END_LAYERS = {"atc_parking": "parking.geojson", "atc_viewpoints": "viewpoints.geojson"}
+_HIGHLIGHT_END_POINTS = ([-74.0005, 41.001], [-73.9905, 41.014])
+
+
+def _highlight_end_fixtures(files: dict) -> dict:
+    highlight = json.loads((POI_REFERENCE_DIR / "highlights.json").read_text(encoding="utf-8"))["highlights"][0]
+    ledger = json.loads((POI_REFERENCE_DIR / "poi_identity.json").read_text(encoding="utf-8"))["pois"]
+    (leg,) = highlight["legs"]
+    changed = {}
+    for poi_id, point in zip((leg["from_poi"], leg["to_poi"]), _HIGHLIGHT_END_POINTS, strict=True):
+        row = ledger[poi_id]
+        name = _HIGHLIGHT_END_LAYERS[row["source"]]
+        collection = json.loads(changed.get(name, files[name]))
+        collection["features"].append(
+            {
+                "type": "Feature",
+                "properties": {"GlobalID": row["source_feature_id"], "Name": row["name"]},
+                "geometry": {"type": "Point", "coordinates": point},
+            }
+        )
+        changed[name] = json.dumps(collection)
+    return changed
+
+
 def _points_of_interest_fixtures(files: dict) -> dict:
     """The POI family's additions to `files`: id fields, ATC's real shelters and campsites with inventory, facilities, a DEC privy, site and OSM water's inputs, photo manifests, the Long Path guide's pages."""
     files = dict(files)
@@ -2055,6 +2086,7 @@ def _points_of_interest_fixtures(files: dict) -> dict:
                 }
             )
         files[name] = json.dumps(collection)
+    files.update(_highlight_end_fixtures(files))
 
     backcountry = json.loads(files["external/dec_backcountry_features.geojson"])
     backcountry["features"].append(

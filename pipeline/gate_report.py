@@ -39,7 +39,8 @@ THE ANSWERS, worst first:
   moves" approves safety fields "one row at a time, never in bulk", and a
   safety field that differs is a defect unless a decision names it.
 - `not_compared`: a parity result compared no record, because neither side
-  wrote a file on this input or today's builder refused it.
+  wrote a file on this input, today's builder refused it, or both files held
+  no record and the family is not in MAY_COMPARE_NO_RECORDS.
 - `not_ported`: no parity result covers the key, either because none names
   its dbt writer's file or because no dbt writer owns it (so today's exporter
   writes it whatever OURHIKE_PHONE_FILES says). A key no family covers is
@@ -73,6 +74,8 @@ import sys
 import tempfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+
+from lib.poi_schema import ALLOWED_EMPTY_POI_TYPES
 
 PIPELINE_DIR = Path(__file__).resolve().parent
 DBT_MANIFEST_DEFAULT = PIPELINE_DIR / "dbt" / "target" / "manifest.json"
@@ -132,6 +135,24 @@ SAFETY_FIELDS: dict[str, str] = {
 LOCATION_FIELDS = frozenset(
     {"geometry", "coordinates", "lat", "lon", "bbox", "length_ft", "length_miles", "destination_distance_m", "trailMiles"}
 )
+
+#: The parity families allowed to compare no record on either side and still
+#: pass, each with why its input is empty rather than broken. Any other family
+#: whose two files hold no record reads `not_compared` and blocks go: an empty
+#: file equal to an empty file says nothing about the writer's records.
+#: The POI types are lib/poi_schema.ALLOWED_EMPTY_POI_TYPES, the list
+#: export_poi.py's own completeness gate reads, so the two cannot drift.
+MAY_COMPARE_NO_RECORDS: dict[str, str] = {
+    f"poi_{poi_type}{version}": (
+        f"`{poi_type}` is in lib/poi_schema.ALLOWED_EMPTY_POI_TYPES: ATC publishes no trailhead layer "
+        "(#1197 — Tier 1 of the map's label ladder is trailheads, parking and roads, and trailheads are not a thing "
+        "the pipeline publishes), so the A.T. family's file is empty on real data too (0 features on the 2026-09-04 "
+        "production release, export_poi.write_poi_type()'s docstring); the trailheads that ship are OPRHP's, in "
+        "nearby_poi.geojson"
+    )
+    for poi_type in ALLOWED_EMPTY_POI_TYPES
+    for version in ("", "_v2")
+}
 
 VERDICT_ORDER = ("differs", "not_compared", "not_ported", "equal_apart_from_listed", "equal")
 VERDICT_TITLES = {
@@ -550,6 +571,15 @@ def judge(result: dict, pattern_note: str | None = None) -> tuple[str, str, list
         return "not_compared", f"today's builder refused this input, so nothing was compared: {result.get('message')}", [], []
     if outcome != "no_differences":
         raise ValueError(f"{result['family']}: unknown parity outcome {outcome!r}")
+    empty = not result.get("old_records") and not result.get("new_records")
+    if empty and result["family"] not in MAY_COMPARE_NO_RECORDS:
+        return (
+            "not_compared",
+            f"both files hold no {result.get('records')} on this input, so no record was compared, and "
+            "gate_report.MAY_COMPARE_NO_RECORDS does not say this family may be empty",
+            [],
+            [],
+        )
     listed = [_difference(item) for item in result["explained"]]
     listed += [
         Listed(
@@ -568,11 +598,12 @@ def judge(result: dict, pattern_note: str | None = None) -> tuple[str, str, list
         )
     if pattern_note:
         listed.append(Listed("key pattern", pattern_note))
-    if not result.get("old_records") and not result.get("new_records"):
+    if empty:
         listed.append(
             Listed(
                 "records",
-                f"no {result.get('records')} on either side on this input, so only the file's top-level fields were compared",
+                f"no {result.get('records')} on either side on this input, so only the file's top-level fields were "
+                f"compared; the family may be empty because {MAY_COMPARE_NO_RECORDS[result['family']]}",
             )
         )
     records = f"{result.get('new_records')} {result.get('records')}"

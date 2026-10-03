@@ -49,6 +49,11 @@ the HTTP session or the Postgres connection, is swapped:
   today's fetcher;
 - a guide published as web pages (the guide_pages kind), page by page from
   guide_pages/<key>/, so its own parser reads NYNJTC's skeleton;
+- each page or feed notice (extract/_notices.py's PageNotice and FeedNotices),
+  from conditions/notices/<key>.json: `{"answers": {url: {"content_type",
+  "body"}}}`, served by exact URL as TEXT_FIXTURES are, so each reader's fetch,
+  region, title, stated date and hash run. Their hosts' Crawl-delays and the
+  readers' two-second gap are not waited out here, since no host is asked;
 - each JSON API notice source (extract/_json_apis.py: NPS's alerts and road
   events, PA DCNR's advisories, USGS's volcanoes, TEHCC's wiki, FoOT's sheet
   and FMST's map), from conditions/json_apis/<key>.json: a list of answers,
@@ -86,16 +91,18 @@ import requests
 from requests.structures import CaseInsensitiveDict
 
 import export_conditions
-from extract import _json_apis, _kinds
+from extract import _json_apis, _kinds, _notices
 from extract._contract import all_resources, discover, discover_shared
 from extract._kinds import (
     CONDITIONS_QUERIES,
     ArcgisLayer,
     AtcTrailUpdatePages,
     ConditionsQuery,
+    FeedNotices,
     GuidePages,
     NwsAlerts,
     OpentrailFeed,
+    PageNotice,
     PublishedHikes,
     ReviewedDir,
     ReviewedFile,
@@ -128,6 +135,9 @@ TEXT_FIXTURES = {"atc_trail_updates": "atc_trail_updates.json"}
 # The JSON API notice sources' answers (make_dbt_fixtures.py's _json_api_fixtures()),
 # one file per registry key: `{"answers": [{"url", "query", "content_type", "body"}]}`.
 JSON_API_DIR = "json_apis"
+# The page and feed notices' answers (make_dbt_fixtures.py), one file per registry key, the TEXT_FIXTURES
+# shape: `{"answers": {url: {"content_type": ..., "body": ...}}}`.
+NOTICES_DIR = "notices"
 JSON_API_KINDS = (
     _json_apis.NpsAlerts,
     _json_apis.NpsRoadEvents,
@@ -488,6 +498,13 @@ def fixture_resources(raw_dir: Path) -> tuple[list, FixtureAdapter]:
                 routed.extend(document["answers"])
                 chosen.append(resource)
             continue
+        if isinstance(resource, FeedNotices | PageNotice):
+            # A page or feed notice, served by exact URL; one with no file (a PDF, which needs pypdf) stays out.
+            document = conditions_fixture(raw_dir, f"{NOTICES_DIR}/{resource.key}.json")
+            if document is not None:
+                pages.update(text_answers(document))
+                chosen.append(resource)
+            continue
         if isinstance(resource, AtcTrailUpdatePages):
             document = conditions_fixture(raw_dir, TEXT_FIXTURES[resource.key])
             if document is not None:
@@ -579,6 +596,9 @@ def build(raw_dir: Path, warehouse: Path, store: Path) -> dict[str, int]:
     _kinds.ATC_CRAWL_DELAY_SECONDS, _kinds.HIKEFINDER_THROTTLE_SECONDS = 0, 0
     polite_gap, nps_key_was = _json_apis.POLITE_GAP_SECONDS, os.environ.get(_json_apis.NPS_API_KEY_ENV)
     _json_apis.POLITE_GAP_SECONDS = 0
+    # The notice readers' per-host gap (extract/_notices.py's polite()) waits in _pause; nothing waits here.
+    real_pause = _notices._pause
+    _notices._pause = lambda seconds: None
     # The NPS readers refuse to run without a key (Unavailable). No request leaves
     # the process here, so a placeholder stands in when the environment has none.
     os.environ.setdefault(_json_apis.NPS_API_KEY_ENV, FIXTURE_NPS_KEY)
@@ -596,6 +616,7 @@ def build(raw_dir: Path, warehouse: Path, store: Path) -> dict[str, int]:
         _kinds.psycopg = real_psycopg
         _kinds.HIKEFINDER_THROTTLE_SECONDS = real_throttle
         _json_apis.POLITE_GAP_SECONDS = polite_gap
+        _notices._pause = real_pause
         if nps_key_was is None:
             os.environ.pop(_json_apis.NPS_API_KEY_ENV, None)
         if postgres is not None:

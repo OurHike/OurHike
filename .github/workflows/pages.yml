@@ -165,7 +165,14 @@ jobs:
           echo "value=$value" >> "$GITHUB_OUTPUT"
           echo "Releasing: $value"
 
+      # No token left in .git/config. This job holds `contents: write`, and
+      # "Build the data docs" below installs dbt, runs `dbt deps` and fetches
+      # a native driver, none of them hash-pinned. Nothing here needs the
+      # persisted token: the publish step pushes from a fresh `git init`
+      # with the token it is handed (.github/actions/publish-to-pages).
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       # Gate 12 (RELEASING.md §8): a tag with no notes committed beside it is a
       # release nobody wrote down, and the notes file is canonical rather than

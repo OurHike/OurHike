@@ -916,6 +916,28 @@ class TestTheDataDocs:
         assert not [line for line in commands if "--vars" in line]
         assert "DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS=false" in script
 
+    def test_the_deploy_job_leaves_no_write_token_on_disk_for_the_docs_build(self):
+        """pages.yml's build job holds `contents: write` and replaces gh-pages,
+        and the docs step installs dbt, runs `dbt deps` and downloads a native
+        driver, none of them hash-pinned. A checkout that persists its token
+        leaves that token in .git/config for every one of them to read.
+
+        The publish needs no persisted token: it pushes from a fresh `git init`
+        through a remote URL carrying the token it is handed, so the checkout
+        can keep none.
+        """
+        parsed = yaml.safe_load((WORKFLOW_DIR / "pages.yml").read_text(encoding="utf-8"))
+        steps = parsed["jobs"]["build"]["steps"]
+        checkouts = [step for step in steps if str(step.get("uses", "")).startswith("actions/checkout@")]
+        assert checkouts, "the build job checks the repository out"
+        assert all(step.get("with", {}).get("persist-credentials") is False for step in checkouts)
+        publish = next(step for step in steps if step.get("uses") == "./.github/actions/publish-to-pages")
+        assert publish["with"]["token"] == "${{ secrets.GITHUB_TOKEN }}"
+        assert "x-access-token:${{ inputs.token }}@" in (ACTION_DIR / "action.yml").read_text(encoding="utf-8")
+        script = SCRIPT.read_text(encoding="utf-8")
+        assert 'git init -q "$WORK"' in script
+        assert 'git -C "$WORK" remote add origin "$REMOTE_URL"' in script
+
 
 class TestTheUploadedPointer:
     """Both deploy guards hold the committed channels.json to the copy phones read.

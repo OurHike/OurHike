@@ -768,7 +768,15 @@ def test_a_degraded_build_runs_every_dbt_command_without_snapshots_or_history_an
     writers = [argv for argv in builds if "-s" in argv and argv[argv.index("-s") + 1] == "path:models/publish"]
     assert len(writers) == 1 and all(build_marts.SNAPSHOTS in argv for argv in builds if argv not in writers)
     for _, _, env in recorder.calls[1:]:
-        assert env["OURHIKE_ROW_HISTORY"] == "off", "macros/row_history.sql's row_history_enabled() reads it"
+        assert env["OURHIKE_ROW_HISTORY"] == "off", "macros/row_history.sql's row_history_mart() reads it"
+
+
+def test_a_command_that_fails_with_the_degraded_exit_code_is_answered_as_a_plain_failure(monkeypatch, tmp_path):
+    """publish-conditions.yml publishes on DEGRADED_EXIT, so only a build that did degrade may answer with it."""
+    for extra in ((), ("--history-on-failure", "degrade")):
+        code, _ = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), codes={3: build_marts.DEGRADED_EXIT}, extra=extra)
+
+        assert code == 1
 
 
 def test_without_snapshots_every_build_but_the_writers_excludes_them():

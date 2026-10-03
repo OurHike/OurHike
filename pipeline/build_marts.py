@@ -104,7 +104,9 @@ cannot be restored. Then the restore's failure is printed as an error, every
 dbt command runs with OURHIKE_ROW_HISTORY=off and leaves the snapshots out,
 so the marts read their final intermediates with both dates null (unknown,
 never "new"), nothing is saved, and the build exits DEGRADED_EXIT once
-everything else has passed, so the workflow publishes and then goes red. The
+everything else has passed, so the workflow publishes and then goes red. A
+command that fails with that code itself is answered with 1, so the workflow
+never reads a failed build as a publishable one. The
 default, `fail`, is the monthly lane's: a restore that fails stops the build
 before dbt runs.
 
@@ -686,7 +688,8 @@ def main(argv: list[str] | None = None) -> int:
             continue
         if completed.returncode != 0:
             print(f"-- build_marts: {run.label} failed (exit {completed.returncode}): {' '.join(run.argv)}", flush=True)
-            return completed.returncode
+            # DEGRADED_EXIT means built-and-publishable to publish-conditions.yml, so a command's own 4 is a 1.
+            return 1 if completed.returncode == DEGRADED_EXIT else completed.returncode
         if run.label == SEED:
             manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
             if problems := derived_source_problems(manifest, STEPS) + lane_problems(manifest, STEPS, args.lane):

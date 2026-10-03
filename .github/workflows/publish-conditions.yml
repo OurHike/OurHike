@@ -293,10 +293,16 @@ jobs:
     # pass it: the matrix leaves the leg out, and the first step refuses it
     # with bash's case-sensitive comparison if it is ever there anyway. Both
     # are held by .github/tests/test_conditions_production_leg_needs_main.py.
+    #
+    # NOR FOR A DISPATCH THAT PICKS THE dbt PATH. It has soaked on UA only
+    # (decision 30), and whether it may write production's conditions/ is
+    # pipeline/ELT.md's open question 4, the maintainer's. So `phone_files:
+    # dbt` runs the UA leg alone, by the same two locks. The schedule passes no
+    # input, so its path stays the PHONE_FILES line above.
     strategy:
       fail-fast: false
       matrix:
-        data_environment: ${{ fromJSON((github.ref == 'refs/heads/main' && inputs.data_environment != 'ua') && '["production", "ua"]' || '["ua"]') }}
+        data_environment: ${{ fromJSON((github.ref == 'refs/heads/main' && inputs.data_environment != 'ua' && inputs.phone_files != 'dbt') && '["production", "ua"]' || '["ua"]') }}
     defaults:
       run:
         working-directory: pipeline
@@ -317,6 +323,24 @@ jobs:
           fi
           if [ "$LEG" = "ua" ] && [ "$REF" != "refs/heads/main" ] && [ "$ASKED" != "ua" ]; then
             echo "::notice title=UA leg only::$REF is not refs/heads/main, so the production leg was left out and this run publishes UA alone."
+          fi
+
+      # The second lock on the matrix's dbt rule, lowercased because GitHub's
+      # `!=` ignores case. It reads the dispatch's own input, never
+      # PHONE_FILES, so the cutover stays that one line.
+      - name: Refuse a production leg on a dispatched dbt path
+        working-directory: .
+        env:
+          LEG: ${{ matrix.data_environment }}
+          ASKED: ${{ inputs.data_environment }}
+          ASKED_PHONE_FILES: ${{ inputs.phone_files }}
+        run: |
+          if [ "$LEG" = "production" ] && [ "${ASKED_PHONE_FILES,,}" = "dbt" ]; then
+            echo "::error title=Production leg refused::phone_files=dbt was dispatched, and the dbt path has soaked on UA only (pipeline/ELT.md, open question 4). Nothing was read or published for production."
+            exit 1
+          fi
+          if [ "$LEG" = "ua" ] && [ "${ASKED_PHONE_FILES,,}" = "dbt" ] && [ "$ASKED" != "ua" ]; then
+            echo "::notice title=UA leg only::phone_files=dbt runs the UA leg alone, so production's conditions/ were left as they are."
           fi
 
       - name: Is there a database to read

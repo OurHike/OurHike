@@ -25,6 +25,12 @@ TWO LOCKS, AND THIS FILE HOLDS BOTH.
    comparing strings"), so lock 1 alone would let a branch named `Main`
    through. The step's own script is run here under bash for that case.
 
+The same two locks keep the production leg from a dispatch that picks
+`phone_files: dbt`, from any ref: that path has soaked on UA only, and
+whether it may publish production's conditions/ is pipeline/ELT.md's open
+question 4, the maintainer's. The schedule passes no input, so it is
+untouched.
+
 WHAT THIS DOES NOT COVER. A dispatch runs the named ref's copy of the
 workflow, so these locks bind only refs that carry them: a branch cut before
 this change still runs both legs if dispatched. Keeping production's keys out
@@ -47,6 +53,7 @@ import yaml
 WORKFLOW = Path(__file__).resolve().parents[1] / "workflows" / "publish-conditions.yml"
 JOB = "publish"
 GUARD_STEP = "Refuse a production leg from any ref but main"
+DBT_GUARD_STEP = "Refuse a production leg on a dispatched dbt path"
 
 MAIN = "refs/heads/main"
 # Refs a dispatch can name: a pull request's branch (the soak's own), a tag,
@@ -56,6 +63,8 @@ OTHER_REFS = ("refs/heads/claude/intelligent-feynman-sw3ewm", "refs/tags/v1.0.0"
 # What `inputs.data_environment` holds: each choice, and None on a schedule,
 # which carries no inputs.
 INPUTS = ("both", "ua", None)
+# What `inputs.phone_files` holds: each choice, and None on a schedule.
+PHONE_FILES = ("exporters", "dbt", None)
 
 
 # --- a small evaluator of GitHub's expression language -----------------------
@@ -206,7 +215,7 @@ def _triggers(workflow: dict) -> dict:
     return workflow.get("on", workflow.get(True)) or {}
 
 
-def _legs(ref: str, data_environment: str | None, event: str) -> list[str]:
+def _legs(ref: str, data_environment: str | None, event: str, phone_files: str | None = None) -> list[str]:
     """What the publish job's matrix makes of one run's `github` and `inputs`."""
     matrix = _workflow()["jobs"][JOB]["strategy"]["matrix"]
     legs = matrix["data_environment"]
@@ -216,6 +225,8 @@ def _legs(ref: str, data_environment: str | None, event: str) -> list[str]:
     if isinstance(legs, list):
         return legs
     inputs = {} if data_environment is None else {"data_environment": data_environment}
+    if phone_files is not None:
+        inputs["phone_files"] = phone_files
     return _evaluate(_expression(legs), {"github": {"ref": ref, "event_name": event}, "inputs": inputs})
 
 
@@ -223,6 +234,13 @@ def _guard(leg: str, ref: str, asked: str | None) -> subprocess.CompletedProcess
     """The first step's script, run under bash with the env the step gives it."""
     step = _workflow()["jobs"][JOB]["steps"][0]
     env = {"LEG": leg, "REF": ref, "ASKED": asked or "", "PATH": "/usr/bin:/bin"}
+    return subprocess.run(["bash", "-e", "-c", step["run"]], env=env, capture_output=True, text=True)
+
+
+def _dbt_guard(leg: str, asked: str | None, asked_phone_files: str | None) -> subprocess.CompletedProcess:
+    """The dbt lock's script, run under bash with the env the step gives it."""
+    step = next(step for step in _workflow()["jobs"][JOB]["steps"] if step.get("name") == DBT_GUARD_STEP)
+    env = {"LEG": leg, "ASKED": asked or "", "ASKED_PHONE_FILES": asked_phone_files or "", "PATH": "/usr/bin:/bin"}
     return subprocess.run(["bash", "-e", "-c", step["run"]], env=env, capture_output=True, text=True)
 
 
@@ -279,8 +297,43 @@ def test_the_schedule_and_a_main_dispatch_run_both_legs_as_today():
     for both, run both legs, and the first step lets both through."""
     assert _legs(MAIN, None, "schedule") == ["production", "ua"]
     assert _legs(MAIN, "both", "workflow_dispatch") == ["production", "ua"]
+    assert _legs(MAIN, "both", "workflow_dispatch", phone_files="exporters") == ["production", "ua"]
     assert _guard("production", MAIN, None).returncode == 0
     assert _guard("ua", MAIN, None).returncode == 0
+    assert _dbt_guard("production", None, None).returncode == 0
+    assert _dbt_guard("production", "both", "exporters").returncode == 0
+
+
+@pytest.mark.parametrize(("ref", "asked"), list(product((MAIN, *OTHER_REFS), INPUTS)))
+def test_a_dispatch_of_the_dbt_path_never_reaches_the_production_leg(ref, asked):
+    """From main as from any other ref, under every data_environment, a
+    dispatch that picks phone_files=dbt runs the UA leg alone."""
+    legs = _legs(ref, asked, "workflow_dispatch", phone_files="dbt")
+    assert legs == ["ua"], f"{ref} with data_environment={asked!r} and phone_files=dbt gave {legs}"
+
+
+@pytest.mark.parametrize("asked_phone_files", ["dbt", "DBT"])
+def test_the_dbt_lock_refuses_a_production_leg_that_reaches_it(asked_phone_files):
+    """The second lock, if the matrix ever lets one through. Lowercased,
+    because the matrix's `!=` ignores case."""
+    refused = _dbt_guard("production", "both", asked_phone_files)
+    assert refused.returncode != 0
+    assert "Production leg refused" in refused.stdout
+    assert _dbt_guard("ua", "both", asked_phone_files).returncode == 0
+
+
+def test_every_phone_files_choice_is_one_this_file_evaluates():
+    """A new choice would need its own case above."""
+    choice = _triggers(_workflow())["workflow_dispatch"]["inputs"]["phone_files"]
+    assert set(choice["options"]) == {value for value in PHONE_FILES if value}
+
+
+def test_the_dbt_lock_runs_before_any_step_that_reads_a_secret():
+    steps = _workflow()["jobs"][JOB]["steps"]
+    names = [step.get("name") for step in steps]
+    assert names[1] == DBT_GUARD_STEP
+    assert "if" not in steps[1], "the refusal must run on every leg, not only when a condition holds"
+    assert "secrets." not in json.dumps(steps[1])
 
 
 def test_a_dispatch_can_choose_the_ua_leg_alone_even_from_main():

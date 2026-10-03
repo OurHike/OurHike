@@ -46,11 +46,16 @@ def test_the_schedule_runs_todays_bake_and_a_dispatch_chooses_either():
 
 
 def test_the_cutover_is_one_line_the_default_in_phone_files():
-    """`inputs.phone_files` is read once, in the workflow-level PHONE_FILES, so the schedule's path is that one
-    expression's fallback and nothing else names it."""
+    """`inputs.phone_files` picks the path only in the workflow-level PHONE_FILES, so the schedule's path is that
+    one expression's fallback. Its two other readers keep a dispatched dbt path off the production leg (the matrix,
+    which cannot read `env`, and its bash lock; test_conditions_production_leg_needs_main.py), and a schedule passes
+    no input."""
     text = WORKFLOW.read_text(encoding="utf-8")
-    assert len(re.findall(r"inputs\.phone_files", text)) == 1
     assert re.search(r"^  PHONE_FILES: \$\{\{ inputs\.phone_files \|\| '(exporters|dbt)' \}\}$", text, re.M)
+    readers = [line.strip() for line in text.splitlines() if "inputs.phone_files" in line]
+    assert len(readers) == 3, readers
+    assert readers[1].startswith("data_environment: ${{ fromJSON(") and "inputs.phone_files != 'dbt'" in readers[1]
+    assert readers[2] == "ASKED_PHONE_FILES: ${{ inputs.phone_files }}"
 
 
 def test_publish_py_is_told_the_path_the_steps_branched_on():

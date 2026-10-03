@@ -1050,6 +1050,67 @@ unit_tests:
         - {poi_key: 'k-12', source_key: 'dec_lean_tos'}
         - {poi_key: 'k-14', source_key: 'dec_lean_tos'}
 
+  - name: int_points_of_interest__in_corridor_asks_a_long_line_segment_by_segment
+    description: >
+      The ring asked of a line's segments keeps what the whole line keeps.
+      With poi_network_ring_part_max_vertices at 2, every part longer than
+      two vertices is probed segment by segment: a four-vertex zigzag, the
+      three-vertex part of a MultiLineString beside its two-vertex part
+      (probed whole), and a line whose first vertex repeats (a zero-length
+      segment). Points 111-133 m from a first, middle and last segment and
+      from the repeated vertex are kept; a point inside the zigzag's bounding
+      box but 372 m from it, one between the MultiLineString's parts, and one
+      167 m past the repeated vertex are not. One A.T.-family row is outside
+      the corridor and kept by the ring alone.
+      tests/test_dbt_points_of_interest_parity.py holds every row to
+      clip_to_corridor() and clip_to_network(), which ask whole lines.
+    model: int_points_of_interest__in_corridor
+    overrides:
+      # dbt 2.0.6 replaces the project's vars with these rather than merging
+      # them, so every var the model reads is here; all but the first are
+      # dbt_project.yml's own, which the parity test holds them to.
+      vars:
+        poi_network_ring_part_max_vertices: 2
+        poi_network_ring_feet: 500
+        poi_metres_per_foot: 0.3048
+        poi_corridor_buffer_miles: 30
+        mile_axis_metres_per_mile: 1609.344
+        poi_network_ring_exempt_types: ['parking', 'trailhead']
+    given:
+      - input: ref('int_points_of_interest__publishable')
+        rows:
+          - {poi_key: 's-01', source_key: 'dec_lean_tos', phone_files: 'nearby_poi', poi_type: 'shelter', lon: -75.4985, lat: 42.005, boundary_source: null}
+          - {poi_key: 's-02', source_key: 'dec_lean_tos', phone_files: 'nearby_poi', poi_type: 'shelter', lon: -75.495, lat: 42.0112, boundary_source: null}
+          - {poi_key: 's-03', source_key: 'dec_lean_tos', phone_files: 'nearby_poi', poi_type: 'shelter', lon: -75.4955, lat: 42.005, boundary_source: null}
+          - {poi_key: 's-04', source_key: 'dec_lean_tos', phone_files: 'nearby_poi', poi_type: 'shelter', lon: -75.4915, lat: 42.019, boundary_source: null}
+          - {poi_key: 's-05', source_key: 'dec_lean_tos', phone_files: 'nearby_poi', poi_type: 'shelter', lon: -76.995, lat: 44.0111, boundary_source: null}
+          - {poi_key: 's-06', source_key: 'dec_lean_tos', phone_files: 'nearby_poi', poi_type: 'shelter', lon: -75.9985, lat: 45.005, boundary_source: null}
+          - {poi_key: 's-07', source_key: 'dec_lean_tos', phone_files: 'nearby_poi', poi_type: 'shelter', lon: -76.5, lat: 44.5, boundary_source: null}
+          - {poi_key: 's-08', source_key: 'dec_lean_tos', phone_files: 'nearby_poi', poi_type: 'shelter', lon: -78.0, lat: 42.999, boundary_source: null}
+          - {poi_key: 's-09', source_key: 'dec_lean_tos', phone_files: 'nearby_poi', poi_type: 'shelter', lon: -78.0, lat: 42.9985, boundary_source: null}
+          - {poi_key: 's-10', source_key: 'shelters', phone_files: 'poi_by_type', poi_type: 'shelter', lon: -75.495, lat: 42.0088, boundary_source: null}
+      - input: ref('stg_atc__centerline_segments')
+        rows:
+          - {source_row: 0, source_id: 'fixture-centerline-0', geom: 'LINESTRING (-74 41, -74 41.005)'}
+          - {source_row: 1, source_id: 'fixture-centerline-1', geom: 'LINESTRING (-73.99 41.01, -73.99 41.015)'}
+      - input: ref('int_trail_lines__network_published')
+        rows:
+          - {geom_geojson: '{"type": "LineString", "coordinates": [[-75.5, 42.0], [-75.5, 42.01], [-75.49, 42.01], [-75.49, 42.02]]}', trail_status: 'open'}
+          - {geom_geojson: '{"type": "MultiLineString", "coordinates": [[[-77.0, 44.0], [-77.0, 44.01], [-76.99, 44.01]], [[-76.0, 45.0], [-76.0, 45.01]]]}', trail_status: 'open'}
+          - {geom_geojson: '{"type": "LineString", "coordinates": [[-78.0, 43.0], [-78.0, 43.0], [-78.0, 43.01]]}', trail_status: 'open'}
+      - input: ref('base_nycparks__nyc_park_polygons')
+        rows:
+          - {geom: 'POLYGON ((-73.96 40.77, -73.95 40.77, -73.95 40.78, -73.96 40.78, -73.96 40.77))'}
+    expect:
+      rows:
+        - {poi_key: 's-01', source_key: 'dec_lean_tos'}
+        - {poi_key: 's-02', source_key: 'dec_lean_tos'}
+        - {poi_key: 's-04', source_key: 'dec_lean_tos'}
+        - {poi_key: 's-05', source_key: 'dec_lean_tos'}
+        - {poi_key: 's-06', source_key: 'dec_lean_tos'}
+        - {poi_key: 's-08', source_key: 'dec_lean_tos'}
+        - {poi_key: 's-10', source_key: 'shelters'}
+
   - name: int_points_of_interest__osm_water_reach_measures_like_measure_distances
     description: >
       PO06's distance half: build_osm_water_reach.py's measure_distances()

@@ -59,6 +59,7 @@ CLASSIFIED = "int_points_of_interest__classified_types_and_refuses_like_the_expo
 PUBLISHABLE = "int_points_of_interest__publishable_keeps_and_rates_like_public_verdict"
 IN_CORRIDOR = "int_points_of_interest__in_corridor_keeps_what_the_corridor_and_the_ring_keep"
 NO_NETWORK = "int_points_of_interest__in_corridor_applies_no_ring_without_a_network"
+LONG_LINES = "int_points_of_interest__in_corridor_asks_a_long_line_segment_by_segment"
 TRAILHEADS = "int_points_of_interest__trailheads_marks_like_mark_closed_trailheads"
 NO_SIDE_TRAILS = "int_points_of_interest__trailheads_marks_nothing_without_the_side_trails"
 MILES = "int_points_of_interest__miles_reads_the_axis_like_attach_miles"
@@ -1019,10 +1020,23 @@ def test_public_flags_keep_and_rate_as_public_verdict_does():
     _held(_expected(test, "poi_key"), publishable_answers(test))
 
 
-@pytest.mark.parametrize("name", [IN_CORRIDOR, NO_NETWORK])
+@pytest.mark.parametrize("name", [IN_CORRIDOR, NO_NETWORK, LONG_LINES])
 def test_the_corridor_and_the_ring_keep_what_the_python_keeps(name, tmp_path):
     test = _unit_test(name)
     _held(_expected(test, "poi_key"), in_corridor_answers(test, tmp_path))
+
+
+def test_the_segment_unit_test_changes_only_the_part_size():
+    """The long-line unit test splits every part past two vertices, and every other var it must restate is the project's own.
+
+    dbt 2.0.6 replaces a unit test's vars rather than merging them, so the test
+    restates the ring's distance and the corridor's width; a restated value that
+    drifted from dbt_project.yml would test a different rule.
+    """
+    overridden = _unit_test(LONG_LINES)["overrides"]["vars"]
+    project = yaml.safe_load((DBT / "dbt_project.yml").read_text())["vars"]
+    assert overridden.pop("poi_network_ring_part_max_vertices") == 2
+    assert overridden == {name: project[name] for name in overridden}
 
 
 @pytest.mark.parametrize("name", [TRAILHEADS, NO_SIDE_TRAILS])

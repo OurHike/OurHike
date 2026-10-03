@@ -207,6 +207,8 @@ attribution so that screen has one place to read them from when it does.
 
 import json
 import math
+import resource
+import time
 from pathlib import Path
 
 import duckdb
@@ -329,6 +331,25 @@ TILES_ARTIFACT_NAME = "nearby_trails.pmtiles"
 TILES_LAYER = "trails"
 TILES_MIN_ZOOM = 5
 TILES_MAX_ZOOM = 14
+
+# The tiler reads each line cut into runs of at most this many vertices,
+# consecutive runs sharing their end vertex, each run carrying its line's
+# properties (#1796). GDAL clips every feature against every tile it touches,
+# so one long feature costs its vertex count times its tile count: the
+# Continental Divide Trail arrives as a handful of features, one of them
+# 704,095 vertices. Measured 2026-10-02 on the network's 7 lines over 50,000
+# vertices (1,648,401 of its 17,292,860), z5-z14: whole, they had not tiled
+# after 25 minutes; cut at 1,000, they tiled in 47.3 s. The step that runs
+# this took 5m24s on run 153's 104,990 records and 38m12s on run 163's
+# 329,849, before the cut. With it, run 166 (37073452481, 2026-10-02) tiled
+# the whole network's 329,690 records in 461 s, and the step took 12m55s; its
+# peak RSS rose from 7,801 MB to 11,072 MB during the tiling, on a
+# 15,990 MB runner. A tile draws the same line either way, since a tile only
+# ever holds a line's clipped pieces; what changes is the archive's bytes and
+# its per-tile feature counts. @unvalidated as a size: any value of 2 or more
+# draws the same, and the whole network's cost at sizes other than 1,000 was
+# not measured.
+TILES_CHUNK_VERTICES = 1_000
 
 
 def _metres_per_pixel(zoom: float, latitude: float = 40.0) -> float:
@@ -1726,6 +1747,35 @@ def write_overview(records: list[dict]) -> dict:
     }
 
 
+def tile_input_sql(lines_sql: str, most: int = TILES_CHUNK_VERTICES) -> str:
+    """`lines_sql`'s rows, in its order, with every line of more than `most`
+    vertices cut into its parts and each part into runs of at most `most`
+    vertices that share their end vertex (TILES_CHUNK_VERTICES). Every other
+    column rides each run unchanged; a line at or under the cap passes through
+    as it is."""
+    return f"""
+        WITH src AS (SELECT *, row_number() OVER () AS _tile_row FROM ({lines_sql})),
+        parts AS (
+            SELECT * EXCLUDE (geom, part), part.geom AS geom, part.path AS _tile_part
+            FROM (SELECT *, unnest(ST_Dump(geom)) AS part FROM src WHERE ST_NPoints(geom) > {most})
+        ),
+        vertices AS (
+            SELECT *, list_transform(ST_Dump(ST_Points(geom)), point -> point.geom) AS _tile_vertices FROM parts
+        ),
+        runs AS (
+            SELECT * EXCLUDE (geom, _tile_vertices),
+                ST_MakeLine(list_slice(_tile_vertices, _tile_start, _tile_start + {most - 1})) AS geom
+            FROM vertices, generate_series(1, len(_tile_vertices) - 1, {most - 1}) AS starts(_tile_start)
+        )
+        SELECT * EXCLUDE (_tile_row, _tile_part, _tile_start) FROM (
+            SELECT *, NULL::INTEGER[] AS _tile_part, 0 AS _tile_start FROM src WHERE ST_NPoints(geom) <= {most}
+            UNION ALL BY NAME
+            SELECT * FROM runs
+        )
+        ORDER BY _tile_row, _tile_part, _tile_start
+    """
+
+
 def write_tiles(geojson_path: Path, concurrent_path: Path | None = None) -> dict:
     """Tile the artifact just written into TILES_ARTIFACT_NAME and return its
     manifest entry (#1257).
@@ -1765,7 +1815,7 @@ def write_tiles(geojson_path: Path, concurrent_path: Path | None = None) -> dict
         lines = f"{lines} UNION ALL BY NAME SELECT * FROM ST_Read('{concurrent_path.as_posix()}')"
     con.execute(
         f"""
-        COPY ({lines})
+        COPY ({tile_input_sql(lines)})
         TO '{path.as_posix()}'
         WITH (
             FORMAT GDAL, DRIVER 'PMTiles', LAYER_NAME '{TILES_LAYER}',
@@ -1853,6 +1903,33 @@ def write_artifact(records: list[dict], per_source: dict) -> dict:
         "bbox": exported_bbox(records),
         "sources": per_source,
     }
+
+
+def _rss_mb() -> float | None:
+    """This process's resident memory now, in MB, from /proc; None where there is no /proc."""
+    try:
+        for line in Path("/proc/self/status").read_text().splitlines():
+            if line.startswith("VmRSS:"):
+                return int(line.split()[1]) / 1024
+    except OSError:
+        return None
+    return None
+
+
+def _progress(started: float, step: str) -> None:
+    """One line before each pass after the closures step, which used to run silent (#1796).
+
+    Seven passes ran between "closed area(s)" and the first write message with
+    no output at all, and on runs 157, 158 and 160 the hosted runner was lost
+    inside that span, so the log could not say which pass it was. Each line
+    carries the elapsed time, this process's resident memory now and its peak
+    so far (ru_maxrss is KiB on Linux), which is what tells a pass that is
+    merely slow from one that is exhausting the machine.
+    """
+    now = _rss_mb()
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
+    rss = "unknown" if now is None else f"{now:,.0f} MB"
+    print(f"  [{time.monotonic() - started:7.1f}s] {step} (rss {rss}, peak {peak:,.0f} MB)", flush=True)
 
 
 def main() -> dict:
@@ -1958,25 +2035,39 @@ def main() -> dict:
     # (Douglas-Peucker, endpoints preserved, and a degenerate result falls back
     # to the original geometry rather than being dropped) that a second copy
     # would be one edit away from losing.
+    passes_started = time.monotonic()
+    try:
+        total = next(line for line in Path("/proc/meminfo").read_text().splitlines() if line.startswith("MemTotal:"))
+        print(f"  machine memory: {int(total.split()[1]) / 1024:,.0f} MB", flush=True)
+    except (OSError, StopIteration):
+        pass
+    _progress(passes_started, f"simplifying {len(all_records):,} records")
     simplified = simplify_records(all_records)
+    _progress(passes_started, "writing the network lines")
     manifest = write_artifact(simplified, per_source)
     manifest["closures"] = closure_stats
     manifest["duplicates"] = duplicate_stats
     # The shared-ground pairs (#1384), from the records just written plus the
     # A.T.'s centerline, into their own file - never into the one above, for
     # the eleven readers the module docstring counts.
+    _progress(passes_started, "loading the A.T. centerline")
     at_records = load_at_centerline()
-    pairs, shared = find_shared_ground(simplified + at_records)
+    _progress(passes_started, f"finding shared ground among {len(simplified) + len(at_records):,} lines")
+    pairs, shared = find_shared_ground(simplified + at_records, progress=lambda step: _progress(passes_started, step))
+    _progress(passes_started, f"writing the shared ground ({len(pairs):,} pairs)")
     manifest["concurrent"] = write_concurrent(pairs, shared, at_paired=bool(at_records))
     # The corridor-view sketch, from the same simplified records the artifact
     # was just written from - export_trails.py's ordering, for its reason: the
     # overview simplifies the same geometry a second time at its own coarser
     # tolerance.
+    _progress(passes_started, "writing the overview")
     manifest["overview"] = write_overview(simplified)
     # The same lines as vector tiles (#1257), cut from the file just written
     # so the two cannot disagree - see write_tiles for what a phone gains.
     # The pairs ride in the tiles, and only when there are any to ride.
+    _progress(passes_started, "cutting the vector tiles")
     manifest["tiles"] = write_tiles(Path(manifest["path"]), Path(manifest["concurrent"]["path"]) if pairs else None)
+    _progress(passes_started, "every pass done")
 
     size = Path(manifest["path"]).stat().st_size
     print(f"\n  {manifest['feature_count']:,} features -> {manifest['path']} ({size:,} bytes)")
@@ -1992,7 +2083,9 @@ def main() -> dict:
         f"{'' if concurrent['at_paired'] else ' (network only)'} "
         f"(within {concurrent['tolerance_m']:g} m for {concurrent['min_length_m']:g} m or more; "
         f"{concurrent['dropped_short']} shorter pieces dropped, {concurrent['dropped_unpainted']} with no blaze to paint, "
-        f"{concurrent['dropped_same_blaze']} in one paint, {concurrent['nameless_skipped']} nameless lines skipped) "
+        f"{concurrent['dropped_same_blaze']} in one paint, {concurrent['nameless_skipped']} nameless lines skipped; "
+        f"{concurrent['skipped_unpainted_pairs']} pairs with no paint on one side and "
+        f"{concurrent['skipped_same_blaze_pairs']} in one paint never built) "
         f"-> {concurrent['path']}"
     )
 

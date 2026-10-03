@@ -1,0 +1,248 @@
+version: 2
+
+# The points_of_interest family's seeds (#1793, stage 3). Each transcribes a
+# constant of today's exporters, and tests/test_dbt_points_of_interest_parity.py
+# holds each to the Python it came from, so a change on one side fails CI
+# until the other side follows. They become the one home of each rule when
+# stage 5 deletes the Python.
+seeds:
+  - name: poi_sources
+    description: >
+      Every layer a POI file publishes from, one row each: export_poi.py's
+      DIRECT_SOURCES, opentrail, OSM water and fetch_trail_water.py's site
+      water (the eight poi_<type>.geojson files, `poi_by_type`), in
+      unify_all_sources()' order, and export_nearby_poi.py's poi_sources() (nearby_poi.geojson,
+      `nearby_poi`), with the name its ids start with, the extract folder
+      that lands it, and its trail_id (`AT`, or export_nearby_poi.py's
+      TRAIL_IDS for its provider). The A.T. family's id and name fields are
+      export_poi.py's field maps; the other organizations' come from their
+      sources.json rows, so they are blank here.
+    config:
+      column_types:
+        source_key: varchar
+        file_order: integer
+        club: varchar
+        source: varchar
+        phone_files: varchar
+        trail_id: varchar
+        id_field: varchar
+        name_field: varchar
+        type_field: varchar
+        poi_type: varchar
+        confidence: varchar
+        unified: boolean
+    columns:
+      - name: source_key
+        description: >
+          The sources.json key, or one of the two layers with no registry row,
+          `opentrail_at` and `nhd_stream` (each a row of unregistered_publishing_sources).
+          `nynjtc_long_path_guide` is a registry key whose rows are a Python
+          step's records rather than a layer's features (`unified`).
+        data_tests: [not_null, unique]
+      - name: file_order
+        description: >
+          The order the exporter reads its layers in: DIRECT_SOURCES, then
+          opentrail, for export_poi.py, and sources.json's own order for
+          export_nearby_poi.py. With each row's place in its raw table
+          (`source_row`), it is the record order the Python's stable sorts
+          break ties by.
+        data_tests: [not_null, unique]
+      - name: club
+        description: The pipeline/extract/ folder that lands the layer.
+        data_tests: [not_null]
+      - name: source
+        description: What the layer's published ids start with, `{source}:{id}` (lib/poi_schema.py's unify_poi()).
+        data_tests: [not_null, unique]
+      - name: phone_files
+        description: >
+          `poi_by_type` for export_poi.py's eight poi_<type>.geojson files,
+          `nearby_poi` for export_nearby_poi.py's nearby_poi.geojson.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [poi_by_type, nearby_poi]
+      - name: trail_id
+        description: The `trail_id` every row of the layer publishes.
+        data_tests: [not_null]
+      - name: id_field
+        description: export_poi.py's id field for the layer; blank where sources.json declares it.
+      - name: name_field
+        description: export_poi.py's name field for the layer; blank where sources.json declares it.
+      - name: type_field
+        description: >
+          The field export_nearby_poi.py's TYPED_LAYERS types a row by, for
+          the three layers typed row by row; blank for a layer typed whole.
+      - name: unified
+        description: >
+          True for a layer whose rows a Python step already unified into
+          records, which carry their own poi_type, confidence, id and name and
+          are read as they are: NYNJTC's Long Path guide, whose records
+          lib/nynjtc_long_path_guide.py's build_records() makes
+          (step_long_path_guide.py), as export_nearby_poi.py's guide_records()
+          appends them after every layer. Blank on every other layer.
+      - name: poi_type
+        description: >
+          The type every row of a derived layer publishes as: `water` for OSM
+          water (export_poi.py's OSM_WATER_FIELD_MAP) and the site water
+          (load_trail_water()). Blank where the poi_type_mapping seed or a
+          value map types the layer.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('poi_types')
+                field: poi_type
+      - name: confidence
+        description: >
+          The confidence every row of a derived layer ships at, `low` for both:
+          a mapped spring is one contributor's observation, and a stream point
+          is geometry nobody stood at. Blank where the poi_type_mapping seed
+          or the public flags set it.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [high, low]
+  - name: poi_value_types
+    description: >
+      export_nearby_poi.py's value maps, one row per value: DEC_ASSET_TYPES,
+      OPRHP_SUB_ASSET_TYPES and USFS_SITE_TYPES, in each organization's own
+      casing. A row's value is matched stripped and case-folded, as
+      `_folded()` matches it; a value no row names publishes nothing. These
+      allowlists are the decision, and the module docstring says what each
+      absence holds back, the water holdbacks and USFS's dispersed camping
+      among them.
+    config:
+      column_types:
+        source_key: varchar
+        value: varchar
+        poi_type: varchar
+    data_tests:
+      # `_folded()` refuses two values that fold to one; one row per folded value is stricter.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [source_key, value]
+    columns:
+      - name: source_key
+        description: The layer the value belongs to.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('poi_sources')
+                field: source_key
+      - name: value
+        description: The organization's value, as it writes it.
+        data_tests: [not_null]
+      - name: poi_type
+        description: The type a row with that value publishes as.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('poi_types')
+                field: poi_type
+  - name: poi_named_exclusions
+    description: >
+      export_nearby_poi.py's NAMED_EXCLUSIONS: values held back on purpose,
+      each with its reason, so a dropped row says why rather than "not a
+      published POI type". Not a filter: a value no poi_value_types row names
+      publishes nothing either way.
+    config:
+      column_types:
+        value: varchar
+        reason: varchar
+    columns:
+      - name: value
+        description: The organization's value, as it writes it.
+        data_tests: [not_null, unique]
+      - name: reason
+        description: Why it does not publish.
+        data_tests: [not_null]
+  - name: poi_types
+    description: >
+      lib/poi_schema.py's POI_TYPES, each `published`, and WITHDRAWN_POI_TYPES,
+      each `withdrawn`, with whether a published type may legally publish
+      nothing (ALLOWED_EMPTY_POI_TYPES). A live POI is one of the published
+      types; a tombstone may be a withdrawn one, which is how 5,319 crossings
+      stay resolvable.
+    config:
+      column_types:
+        poi_type: varchar
+        state: varchar
+        may_be_empty: boolean
+        why: varchar
+    columns:
+      - name: poi_type
+        description: The type.
+        data_tests: [not_null, unique]
+      - name: state
+        description: "`published`, or `withdrawn` for a type a release no longer serves."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [published, withdrawn]
+      - name: may_be_empty
+        description: Whether export_poi.py's completeness gate lets the type publish nothing (fail_if_any_type_is_empty).
+        data_tests: [not_null]
+      - name: why
+        description: The reason a type may be empty, or was withdrawn.
+  - name: poi_water_claims
+    description: >
+      export_poi.py's WATER_PROVENANCE_CLAIMS and, under `*`,
+      UNKNOWN_WATER_PROVENANCE_CLAIM: the first clause of a synthesized water
+      point's description, by how ATC arrived at the distance (#1728). The
+      verb is the claim's real size: a distance taken against a mapped point
+      is measured, a steward's round number is estimated. `{placed_on}` is
+      the site's name, or "the shelter".
+    config:
+      column_types:
+        provenance: varchar
+        claim: varchar
+    columns:
+      - name: provenance
+        description: CSI's Nearest_Water_Source value, or `*` for any other, and for none.
+        data_tests: [not_null, unique]
+      - name: claim
+        description: The clause, with `{placed_on}` where the site is named.
+        data_tests: [not_null]
+  - name: poi_description_terms
+    description: >
+      The vocabularies lib/poi_description.py composes an A.T. POI's
+      sentence from, one row per code: STOREYS (`storeys`), EXTERIOR_MATERIALS
+      (`exterior_material`), PARKING_SURFACES (`parking_surface`),
+      PRIVY_TYPES (`privy_type`) and VISTA_LOCATIONS (`vista_location`, keyed
+      on the lower-cased first value of ATC's `Location`), and the three a
+      stream point's sentence reads, STREAM_SOURCES (`stream_source`),
+      STREAM_CLAIMS (`stream_claim`) and FLOW_WORDS (`stream_flow`), and the
+      head an OSM water point's sentence opens with, WATER_KINDS
+      (`water_kind`). The Python
+      transcribed ATC's coded domains on 2026-08-09, "dated so the next
+      reader knows what to re-check", rather than fetching them. A code with
+      no row drops its clause, so the sentence gets shorter rather than
+      wrong; Exterior_M 9 and 10 (siding, not structure), parking surfaces 2
+      and 6, and privy type 5 are absent on purpose, for the reasons the
+      Python gives.
+    config:
+      column_types:
+        vocabulary: varchar
+        code: varchar
+        phrase: varchar
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [vocabulary, code]
+    columns:
+      - name: vocabulary
+        description: Which of the Python's maps the row is from.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [storeys, exterior_material, parking_surface, privy_type, vista_location, stream_source, stream_claim, stream_flow, water_kind]
+      - name: code
+        description: ATC's value as the composer looks it up, a coded-domain code or a lower-cased landform.
+        data_tests: [not_null]
+      - name: phrase
+        description: The words the sentence uses for it.
+        data_tests: [not_null]

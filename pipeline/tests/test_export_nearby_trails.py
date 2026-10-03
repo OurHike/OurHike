@@ -2321,3 +2321,79 @@ def test_every_alias_spelling_belongs_to_a_source_the_network_exports():
             assert spellings, f"{entry['trail']} lists {source} with no spelling"
             for spelling in spellings:
                 assert index[(source, spelling)] == entry["trail"]
+
+
+def _tile_input_rows(lines_sql, most):
+    import duckdb
+
+    con = duckdb.connect()
+    con.execute("LOAD spatial")
+    return con.sql(f"SELECT id, name, ST_AsText(geom) FROM ({ex.tile_input_sql(lines_sql, most)})").fetchall()
+
+
+def test_the_tiler_reads_a_long_line_as_runs_that_share_their_ends_and_nothing_else_changes():
+    """#1796: a line over TILES_CHUNK_VERTICES reaches GDAL as consecutive runs, never altered or reordered.
+
+    A 2,501-vertex line between two short ones, cut at 1,000: three runs whose
+    vertices, joined at their shared ends, are the line's own, each with the
+    line's properties; the short lines pass through as they were; and every
+    row keeps its place, so the draw order inside a tile does not move.
+    """
+    coords = [(i, i % 7) for i in range(2501)]
+    long_wkt = "LINESTRING (" + ", ".join(f"{x} {y}" for x, y in coords) + ")"
+    lines_sql = f"""SELECT * FROM (VALUES
+        (1, 'before', ST_GeomFromText('LINESTRING (0 0, 1 1)')),
+        (2, 'Continental Divide Trail', ST_GeomFromText('{long_wkt}')),
+        (3, 'after', ST_GeomFromText('LINESTRING (9 9, 8 8)'))
+    ) AS t(id, name, geom)"""
+
+    rows = _tile_input_rows(lines_sql, 1000)
+
+    assert [(row[0], row[1]) for row in rows] == [(1, "before"), *[(2, "Continental Divide Trail")] * 3, (3, "after")]
+    assert rows[0][2] == "LINESTRING (0 0, 1 1)" and rows[-1][2] == "LINESTRING (9 9, 8 8)"
+    runs = [[tuple(map(float, point.split())) for point in wkt[len("LINESTRING (") : -1].split(", ")] for _, _, wkt in rows[1:4]]
+    assert [len(run) for run in runs] == [1000, 1000, 503]
+    assert all(previous[-1] == following[0] for previous, following in zip(runs, runs[1:]))
+    joined = runs[0] + [point for run in runs[1:] for point in run[1:]]
+    assert joined == [(float(x), float(y)) for x, y in coords]
+
+
+def test_a_line_at_the_tile_cap_reaches_the_tiler_whole():
+    coords = ", ".join(f"{i} 0" for i in range(1000))
+    rows = _tile_input_rows(f"SELECT 1 AS id, 'x' AS name, ST_GeomFromText('LINESTRING ({coords})') AS geom", 1000)
+    assert len(rows) == 1 and rows[0][2].count(",") == 999
+
+
+def test_a_long_line_still_cuts_a_tile_archive_the_client_can_read(tmp_path, monkeypatch):
+    """The cut runs go through GDAL's PMTiles driver as the whole lines did: one layer, the client's zooms."""
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path)
+    monkeypatch.setattr(ex, "TILES_CHUNK_VERTICES", 100)
+    coordinates = [[-74.0 + i * 0.0005, 41.2 + (i % 5) * 0.0001] for i in range(2501)]
+    path = tmp_path / "lines.geojson"
+    path.write_text(
+        json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "properties": {
+                            "id": "cdtc:1",
+                            "source": "cdtc_centerline",
+                            "name": "Continental Divide Trail",
+                            "blaze_color": "Unknown",
+                            "trail_status": "open",
+                        },
+                        "geometry": {"type": "LineString", "coordinates": coordinates},
+                    }
+                ],
+            }
+        )
+    )
+
+    tiles = ex.write_tiles(path)
+
+    assert tiles["tile_count"] > 0
+    with Path(tiles["path"]).open("rb") as f:
+        header = Reader(MmapSource(f)).header()
+    assert (header["min_zoom"], header["max_zoom"]) == (ex.TILES_MIN_ZOOM, ex.TILES_MAX_ZOOM)

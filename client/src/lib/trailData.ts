@@ -30,7 +30,9 @@ import {
   CLUB_SECTIONS_KEY,
   STEWARDS_KEY,
   HIGHLIGHTS_KEY,
+  phoneFileKey,
   poiKey,
+  READS_V2,
   NEARBY_POI_KEY,
   REFRESHABLE_KEYS,
   RETIRED_POI_KEY,
@@ -53,7 +55,11 @@ import {
   storedTombstones,
   type Tombstones,
 } from './poiIdentity'
-import { parseProfile, type ElevationProfile } from './elevationProfile'
+import {
+  parsePackedProfile,
+  parseProfile,
+  type ElevationProfile,
+} from './elevationProfile'
 import type { NearbyPart } from './nearbyClause'
 import type { SpurRecord } from './spurDestination'
 import { publishedSnapshot, type PublishedHashLookup } from './dataManifest'
@@ -464,15 +470,57 @@ function waterDistanceProp(value: unknown): number | undefined {
     : undefined
 }
 
+/**
+ * Where a POI is, as [lat, lon], or null when the feature does not say.
+ *
+ * TWO SHAPES (decision 44, stage 6 of #1793). A v1 file carries the position
+ * twice, as `geometry` and again as `lat`/`lon` properties, and this build
+ * reads the properties, exactly as every earlier build did, so a v1 file
+ * reads the same numbers it always has. A v2 file (`v2/poi_<type>.geojson`,
+ * `v2/nearby_poi.geojson`; config.ts's V2_PHONE_FILE_KEYS) carries it once,
+ * as the Point's coordinates at 6 decimals, and no properties, so a build
+ * that reads v2 (config.ts's READS_V2) reads the geometry where the
+ * properties are absent. Each v2 coordinate is Python's round(x, 6) of the
+ * property v1 carries (pipeline/parity.py's v2 families hold the published
+ * files to that), so the two shapes place a POI within 0.056 m of each other
+ * per axis.
+ *
+ * Anything else, including a non-finite number, is no position: the caller
+ * drops the POI rather than draw it somewhere nobody said it was.
+ */
+function poiPosition(
+  props: PoiProperties,
+  geometry: unknown,
+): [lat: number, lon: number] | null {
+  if (typeof props.lat === 'number' && typeof props.lon === 'number') {
+    return [props.lat, props.lon]
+  }
+  // Only a v2 build reads the Point: a v1 build never fetches a v2 file, and
+  // the constant leaves this reading out of its bundle (config.ts's READS_V2).
+  if (!READS_V2) return null
+  if (typeof geometry !== 'object' || geometry === null) return null
+  const { type, coordinates } = geometry as { type?: unknown; coordinates?: unknown }
+  if (type !== 'Point' || !Array.isArray(coordinates) || coordinates.length < 2)
+    return null
+  const [lon, lat] = coordinates as unknown[]
+  if (typeof lat !== 'number' || typeof lon !== 'number') return null
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null
+  return [lat, lon]
+}
+
 function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
-  const parsed = JSON.parse(text) as { features?: Array<{ properties?: PoiProperties }> }
+  const parsed = JSON.parse(text) as {
+    features?: Array<{ properties?: PoiProperties; geometry?: unknown }>
+  }
   const pois: StoredPoi[] = []
 
   for (const feature of parsed.features ?? []) {
     const props = feature.properties ?? {}
     // A POI with no coordinates cannot be drawn, found by search or reported
     // against, so it is dropped rather than carried as a broken row.
-    if (typeof props.lat !== 'number' || typeof props.lon !== 'number') continue
+    const position = poiPosition(props, feature.geometry)
+    if (position === null) continue
+    const [lat, lon] = position
 
     // A key, resolved here rather than stored resolved: what is kept in
     // IndexedDB should survive the app being rebuilt against a different
@@ -518,11 +566,11 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
         : undefined
 
     pois.push({
-      id: String(props.id ?? `${fallbackType}:${props.lat},${props.lon}`),
+      id: String(props.id ?? `${fallbackType}:${lat},${lon}`),
       type,
       name: typeof props.name === 'string' ? props.name : 'Unnamed',
-      lat: props.lat,
-      lon: props.lon,
+      lat,
+      lon,
       // Only an explicit 'high' counts as verified. Anything else - a missing
       // field, a value this build does not know - reads as low, which the map
       // draws with a broken rim, the waypoint card says in words, and the
@@ -861,7 +909,11 @@ async function fetchTrailMiles(
   expected: PublishedHashLookup,
   signal?: AbortSignal,
 ): Promise<Blob | null> {
-  const fetched = await fetchOptionalArtifact(TRAIL_MILES_KEY, expected, signal)
+  const fetched = await fetchOptionalArtifact(
+    phoneFileKey(TRAIL_MILES_KEY),
+    expected,
+    signal,
+  )
   if (fetched === null) return null
   const trailsHash = expected(TRAILS_KEY)
   const claimed = trailMilesClaimedHash(
@@ -922,7 +974,11 @@ async function fetchNearbyPois(
   expected: PublishedHashLookup,
   signal?: AbortSignal,
 ): Promise<StoredPoi[]> {
-  const fetched = await fetchOptionalArtifact(NEARBY_POI_KEY, expected, signal)
+  const fetched = await fetchOptionalArtifact(
+    phoneFileKey(NEARBY_POI_KEY),
+    expected,
+    signal,
+  )
   if (fetched === null) return []
   const types = new Set<string>(POI_TYPES)
   return readPois(decode(fetched.bytes), POI_TYPES[0]).filter((poi) =>
@@ -998,9 +1054,16 @@ async function fetchElevation(
   expected: PublishedHashLookup,
   signal?: AbortSignal,
 ): Promise<ElevationProfile | null> {
-  const fetched = await fetchOptionalArtifact(ELEVATION_KEY, expected, signal)
+  const fetched = await fetchOptionalArtifact(
+    phoneFileKey(ELEVATION_KEY),
+    expected,
+    signal,
+  )
   if (fetched === null) return null
-  return parseProfile(decode(fetched.bytes))
+  // A v2 build fetched the packed file (phoneFileKey); a v1 build never does,
+  // and the constant leaves the packed reader out of its bundle.
+  const text = decode(fetched.bytes)
+  return READS_V2 ? parsePackedProfile(text) : parseProfile(text)
 }
 
 export async function downloadTrailData({
@@ -1122,7 +1185,7 @@ export async function downloadTrailData({
   ] = await Promise.all([
     Promise.all(
       POI_TYPES.map(async (type) => {
-        const fetched = await fetchArtifact(poiKey(type), expected, signal)
+        const fetched = await fetchArtifact(phoneFileKey(poiKey(type)), expected, signal)
         finished(type)
         return readPois(decode(fetched.bytes), type)
       }),

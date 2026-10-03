@@ -1,0 +1,29 @@
+version: 2
+
+models:
+  - name: stg_opentrail__waypoints
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('opentrail', 'raw_opentrail__at')
+          config:
+            severity: warn
+    description: >
+      opentrail waypoints, one row per waypoint, keyed and deduplicated, with
+      every column the extract lands. What a waypoint is (its poi_type and
+      confidence, from its `icon` through the poi_type_mapping seed) is
+      int_points_of_interest__classified's to say: decision 40 moved the seed
+      join out of staging.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          opentrail_at, dbid,
+          the registry key first and then the columns measured unique for
+          this layer.
+        data_tests: [not_null, unique]
+      - name: dbid
+        description: opentrail's own integer waypoint id, the id export_poi.py publishes.
+        data_tests: [not_null, unique]

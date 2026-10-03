@@ -1,0 +1,119 @@
+version: 2
+
+models:
+  - name: podcasts
+    description: >
+      The podcast episodes picked for hikes, one row per episode, as the
+      phone lists them (podcasts/episodes.json, written by
+      pub_podcasts_episodes). Each is anchored to the hikes, the A.T. mile
+      ranges or the published POIs it talks about, and carries each other
+      podcast app's own link for it. Every row of
+      reference/podcast_episodes.json, because a build in which any row has a
+      problem fails at int_podcasts__checked's test.
+    config:
+      access: public
+      contract:
+        enforced: true
+    # Decision 44: a phone file's shape is a version of the mart it is
+    # written from. v1 is today's shape at today's keys, and every pub_ writer
+    # reading this mart pins it, ref('podcasts', v=1), so a later latest
+    # version cannot move a published file. A removed, renamed or retyped
+    # column ships as a v2 beside v1 until v1's deprecation_date;
+    # check_contract_versions.py holds that against the base's manifest. dbt
+    # 2.0.6 builds v1 as podcasts_v1 and keeps `podcasts` as a view of the latest
+    # version (measured 2026-10-02, on a scratch copy of this project).
+    latest_version: 1
+    versions:
+      - v: 1
+        defined_in: podcasts
+    columns:
+      - name: spotify_id
+        description: >
+          The episode's Spotify id, the 22 base-62 characters after /episode/
+          in its link. The phone splices it into a URL and a Spotify URI.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests: [not_null, unique]
+      - name: club
+        description: The extract folder that landed the list (_shared/podcasts).
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: source_key
+        description: >
+          `ourhike_podcast_episodes`, the key unregistered_publishing_sources
+          lets publish. Tested against int_sources__publication, which holds
+          it: the sources mart holds registered sources only.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests:
+          # Every episode's source may publish, the rule's one home deciding.
+          - dbt_utils.relationships_where:
+              arguments:
+                to: ref('int_sources__publication')
+                field: source_key
+                to_condition: may_publish
+      - name: _loaded_at
+        description: When the extract loaded reference/podcast_episodes.json.
+        data_type: timestamptz
+        constraints:
+          - type: not_null
+      - name: title
+        description: The episode's title, stripped.
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: show_name
+        description: The show's name, stripped. Published as `show`.
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: minutes
+        description: >
+          The episode's length in minutes. Null where nobody gave one: the
+          phone's file leaves the field out rather than print a guess.
+        data_type: bigint
+      - name: hikes
+        description: >
+          Suggested-hike ids the episode is picked for. Nothing checks that a
+          hike id exists (lib/podcasts.py says why), so one that matches no
+          hike shows on no card.
+        data_type: varchar[]
+      - name: at_miles
+        description: >
+          A.T. mile ranges, each [start, end], running forward inside 0 to
+          2300 miles from Springer.
+        data_type: double[][]
+      - name: pois
+        description: >
+          Published POI ids the episode talks about (#1718), each live in the
+          POI identity ledger under the name the reviewer wrote beside it.
+        data_type: varchar[]
+      - name: links
+        description: >
+          App key to that app's own link for the episode (#1690), each an
+          https link on one of that app's hosts (seed podcast_app_link_hosts).
+        data_type: map(varchar, varchar)
+      - name: list_position
+        description: The episode's place in reference/podcast_episodes.json, from 0, which is the published order.
+        data_type: bigint
+        constraints:
+          - type: not_null
+      - name: _first_seen_at
+        description: "{{ doc('row_first_seen_at') }}"
+        data_type: timestamptz
+        data_tests:
+          - not_null:
+              config:
+                # warn only on a leg build_marts.py built without its history,
+                # where both dates are null and the run is red already.
+                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' else 'error' }}"
+      - name: _changed_at
+        description: "{{ doc('row_changed_at') }}"
+        data_type: timestamptz
+        data_tests:
+          - not_null:
+              config:
+                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' else 'error' }}"

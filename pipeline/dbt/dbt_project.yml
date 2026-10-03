@@ -1,5 +1,6 @@
 # The dbt transform layer - the T of the ELT architecture DBT.md specifies
-# (#100). load_raw.py puts fetched raw layers into data/warehouse.duckdb's
+# (#100). The extract (pipeline/extract/, dlt) lands raw layers, and
+# extract/_warehouse.py loads their committed files into data/warehouse.duckdb's
 # `raw` schema; everything from there to a mart is owned by the models here.
 name: ourhike
 version: "1.0.0"
@@ -9,6 +10,7 @@ model-paths: ["models"]
 seed-paths: ["seeds"]
 test-paths: ["tests"]
 macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
 
 target-path: target
 clean-targets: [target, dbt_packages]
@@ -28,7 +30,523 @@ models:
       # Final, tested, documented - the only layer materialized as tables.
       +materialized: table
       +schema: marts
+    publish:
+      # The pub_ writers (pipeline/ELT.md, "Publish (reverse ETL)"): each
+      # builds a table and copies it to a phone file under processed_dir
+      # (macros/materializations/phone_file.sql). They run last, as their own
+      # `--select path:models/publish` once every other test has passed,
+      # because `dbt build` tests a model after building it, and a writer
+      # would otherwise write its file before the tests upstream of it fail.
+      +materialized: phone_file
+      +schema: publish
+
+# The row-history snapshots, one per mart (macros/row_history.sql):
+# decision 57, which amends decision 52, puts them in the intermediate layer,
+# so they build into the `intermediate` schema as int_<mart>__history. Each
+# holds the mart's whole row and `_row_hash`, so `check` on that one column
+# opens a new version exactly when the hash moves, and `invalidate` sets
+# dbt_valid_to on a key that leaves the mart, keeping its last content.
+# Measured on dbt 2.0.6, 2026-10-03, in a scratch project: these settings
+# here apply to every snapshot under snapshots/, a list unique_key works,
+# and the legacy invalidate_hard_deletes is refused beside hard_deletes
+# ("You cannot set both"). build_marts.py restores these tables before dbt
+# runs and saves them after the build (pipeline/row_history.py).
+snapshots:
+  ourhike:
+    +schema: intermediate
+    +strategy: check
+    +check_cols: ["_row_hash"]
+    +hard_deletes: invalidate
 
 seeds:
   ourhike:
     +schema: seeds
+  # The evaluator ships an empty dbt_project_evaluator_exceptions seed of its
+  # own, and its filter_exceptions() macro ignores every exception while that
+  # copy is the one in the graph. Disabling it lets ref() land on ours,
+  # seeds/dbt_project_evaluator_exceptions.csv; its entry in seeds/seeds.yml
+  # says what a row must carry.
+  dbt_project_evaluator:
+    dbt_project_evaluator_exceptions:
+      +enabled: false
+
+# dbt_project_evaluator is ENFORCED: every finding fails the evaluator step
+# in pipeline-tests.yml's `dbt` job, rather than warning (#1793 — Rebuild
+# the data platform as dlt → dbt: seven contracted marts, a monthly refresh,
+# published docs, and lighter phone downloads; the maintainer's words were
+# "Enforce all standards in that tool"). A finding is fixed, or excepted by a
+# row in the exceptions seed that says why. The env var is the evaluator's
+# own documented switch, for a local survey of what would fail:
+#   DBT_PROJECT_EVALUATOR_SEVERITY=warn dbt build -s package:dbt_project_evaluator
+# Not a global --warn-error, which would also escalate dbt's deprecation
+# warnings and every deliberate `warn`, such as source freshness.
+data_tests:
+  dbt_project_evaluator:
+    +severity: "{{ env_var('DBT_PROJECT_EVALUATOR_SEVERITY', 'error') }}"
+
+vars:
+  # Where the pub_ writers write, relative to pipeline/dbt/. A folder of its
+  # own under data/processed/ while each family's Python writer still runs:
+  # export_sources.py writes data/processed/stewards.json and registry.json,
+  # the names the writers use, and a dbt file written over one would leave
+  # its manifest's sha256 describing the bytes it replaced. Shadow-run parity
+  # wants the two copies anyway (pipeline/ELT.md, "How a rule moves"). Stage
+  # 4 of #1793 points this at data/processed/ as each Python writer goes.
+  # publish.py uploads by its manifests, never by a glob, so nothing here
+  # reaches a bucket. scripts/test.sh points it at a temporary directory.
+  processed_dir: "{{ env_var('OURHIKE_PROCESSED_DIR', '../data/processed/dbt') }}"
+
+  # lib/podcasts.py's two scalar rules, read by int_podcasts__checked.
+  # tests/test_dbt_podcasts_parity.py holds them to the Python constants
+  # until stage 5 of #1793 deletes the Python, when these become the one home.
+  podcast_spotify_id_pattern: "^[0-9A-Za-z]{22}$"
+  podcast_max_at_mile: 2300
+
+  # export_sources.py's two patterns for a paper-map row, read by
+  # int_sources__paper_maps and held to the Python by
+  # tests/test_dbt_sources_parity.py, as the podcast ones are.
+  registry_product_handle_pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+  registry_sheet_number_pattern: "^[0-9]{3}[A-Z]?$"
+
+  # The closures and warnings family: lib/atc_updates.py's constants, read by
+  # int_closures__atc_checked and held to the Python by
+  # tests/test_dbt_conditions_parity.py until the Python is deleted. The
+  # trail's own extent is ATC's half-mile marker layer, `Measure` 0.5 to
+  # 2197.5 (measured 2026-08-09, lib/atc_updates.py). The categories are the
+  # closed set ATC publishes, sorted, as the refusal message prints them.
+  atc_trail_mile_min: 0.5
+  atc_trail_mile_max: 2197.5
+  atc_update_categories:
+    - Alert
+    - Animal
+    - Closure
+    - Conservation
+    - Construction
+    - Detour
+    - Fire
+    - Hiking Safety
+    - Parking
+    - Permits
+    - Relocation
+    - Water
+  # lib/work_projects.py's TRAIL_MILE_MIN and TRAIL_MILE_MAX, which
+  # int_closures__work_projects_checked holds a workday's mile to (CL17),
+  # held to the Python by tests/test_dbt_conditions_parity.py. That module
+  # calls them lib/atc_updates.py's extent, whose minimum is 0.5 (ATC's
+  # half-mile markers); 0.0 is kept here as the Python has it, and the
+  # refusal message prints both as written.
+  work_project_mile_min: 0.0
+  work_project_mile_max: 2197.5
+  # NOAA's NBM CONUS grid, lib/nbm_grid.py's pinned constants, which
+  # int_warnings__nws_alert_shapes places NWS alerts on (WN03), held to that
+  # module by tests/test_dbt_conditions_parity.py. Read off a live NBM v5.0
+  # GeoTIFF on 2026-09-24 (that module's docstring); `+R=6371200` is the
+  # sphere GRIB's shape-of-the-earth code 6 means, as NBM is not on WGS84.
+  nbm_grid_proj4: "+proj=lcc +lat_0=25 +lon_0=-95 +lat_1=25 +lat_2=25 +x_0=0 +y_0=0 +R=6371200 +units=m +no_defs"
+  nbm_grid_origin_x: -3272421.4573371694
+  nbm_grid_origin_y: 3790842.106035436
+  nbm_grid_square_m: 2539.703
+  # The trail_lines network's constants (tl-net), read by the
+  # int_trail_lines__network_* models and held to the Python's own by
+  # tests/test_dbt_trail_lines_network_parity.py until stage 5 of #1793
+  # deletes the Python: export_trails.py's DEFAULT_SIMPLIFY_TOLERANCE_M and
+  # OVERVIEW_SIMPLIFY_TOLERANCE_M, lib/duplicates.py's two, and
+  # export_nearby_trails.py's others under their own names. Each one's
+  # evidence is beside it in the Python.
+  trail_lines_network_navigation_tolerance_m: 1.0
+  trail_lines_network_coordinate_decimals: 6
+  trail_lines_network_duplicate_tolerance_m: 10.0
+  trail_lines_network_duplicate_min_share: 0.5
+  trail_lines_network_inside_boundary_min_fraction: 0.8
+  trail_lines_network_overview_simplify_tolerance_m: 100.0
+  trail_lines_network_chain_tolerance_m: 200.0
+  trail_lines_network_named_trail_threshold_miles: 50.0
+  trail_lines_network_overview_min_feature_m: 1873.7331444281513
+  trail_lines_network_overview_seam_tolerance_m: 936.8665722140756
+  trail_lines_network_overview_seam_decimals: 3
+
+  # The trail_lines family (stage 3 of #1793). First, export_elevation.py's
+  # marker calibration of the A.T. mile axis, read by the
+  # int_trail_lines__mile_axis_* models and held to the Python constants by
+  # tests/test_dbt_trail_lines_parity.py until stage 5 deletes the Python,
+  # when these become the one home.
+  #
+  # SPRINGER_LONLAT and KATAHDIN_LONLAT: the straight axis the merged pieces
+  # are first put in order along, "approximate trailhead coordinates ... not
+  # for anything requiring geodetic precision" (export_elevation.py).
+  mile_axis_springer_lon: -84.1942
+  mile_axis_springer_lat: 34.6272
+  mile_axis_katahdin_lon: -68.9214
+  mile_axis_katahdin_lat: 45.9044
+  # MARKER_SNAP_MAX_M: how near a piece a half-mile marker must sit to
+  # calibrate it, "~30x the worst real offset" measured 2026-08-18.
+  mile_axis_marker_snap_max_m: 100.0
+  # METERS_PER_MILE, the international mile.
+  mile_axis_metres_per_mile: 1609.344
+  # MARKER_HOLDOUT_MAX_MEDIAN_MI, _P95_MI and _MI: the held-out gate, in
+  # miles. Reasoned in export_elevation.py from the 2026-08-18 measurement,
+  # "4-15x headroom over what was observed".
+  mile_axis_holdout_max_median_mi: 0.05
+  mile_axis_holdout_max_p95_mi: 0.25
+  mile_axis_holdout_max_mi: 1.0
+
+  # points_of_interest (#1793, stage 3): the constants the POI rules read,
+  # each the Python's own, held to it by
+  # tests/test_dbt_points_of_interest_parity.py until stage 5 deletes the
+  # Python and these become the one home. The measurement behind each is on
+  # the Python constant it names.
+  poi_corridor_buffer_miles: 30            # lib/corridor.py BUFFER_MILES
+  poi_metres_per_degree: 111320.0          # lib/spurs.py METERS_PER_DEGREE, distance_m()'s scale
+  poi_metres_per_foot: 0.3048              # export_poi.py M_PER_FT
+  poi_site_name_radius_m: 150.0            # lib/poi_sites.py NAME_MATCH_RADIUS_M
+  poi_site_proximity_radius_m: 60.0        # lib/poi_sites.py PROXIMITY_RADIUS_M
+  poi_site_max_radius_m: 1609.344          # lib/poi_sites.py MAX_SITE_RADIUS_M
+  poi_place_site_radius_m: 80.0            # lib/poi_sites.py PLACE_PROXIMITY_RADIUS_M
+  poi_nearby_min_part_ft: 3.28084          # lib/poi_description.py MIN_PART_FT
+  # export_nearby_poi.py's DIRT, less its "" (the classifier treats an empty
+  # string so without a row): what an organization writes where a real name,
+  # asset or facility is missing, '-99' being DEC's own null sentinel.
+  poi_null_sentinels: ['-99', 'N/A', 'NA', 'NONE', 'UNKNOWN', 'TBD']
+  poi_network_ring_feet: 500               # lib/corridor.py NETWORK_BUFFER_FEET
+  # The longest line part a disc-against-line join asks whole; a longer part
+  # is asked segment by segment (macros/line_pieces.sql, read by the corridor
+  # ring and the trailheads' closed-trail count), which keeps the same rows
+  # (int_points_of_interest__in_corridor says why and what was measured). A
+  # memory bound, not a rule: no Python constant, and each model's unit test
+  # that sets it to 2 holds the answer unchanged.
+  poi_network_ring_part_max_vertices: 1024
+  # export_nearby_poi.py's NETWORK_RING_EXEMPT_TYPES: the types the ring
+  # never drops, because a hiker drives to them.
+  poi_network_ring_exempt_types: ['parking', 'trailhead']
+  poi_trailhead_trail_radius_m: 100        # export_nearby_poi.py TRAILHEAD_TRAIL_RADIUS_M
+  poi_description_earliest_year: 1800      # lib/poi_description.py EARLIEST_PLAUSIBLE_YEAR
+  poi_description_latest_year: 2100        # lib/poi_description.py LATEST_PLAUSIBLE_YEAR
+  poi_vista_panorama_degrees: 300          # lib/poi_description.py PANORAMA_DEGREES
+  poi_vista_arc_rounding_degrees: 5        # lib/poi_description.py ARC_ROUNDING_DEGREES
+  # lib/poi_description.py COMPASS_POINTS, in bearing order from north.
+  poi_compass_points: ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west']
+  # lib/atc_notes.py EMPTY_VALUES and INTERNAL_PATTERNS, which say why each
+  # pattern is there; matched case-insensitively, as INTERNAL is compiled.
+  poi_note_empty_values: ['none', 'no name', 'na', 'n/a', 'unknown', '-']
+  poi_note_internal_patterns:
+    - '\b(?:gis|fmss|arcgis|fbms)\b'
+    - '\b(?:added|adjusted|adusted|updated)\s+based\s+on'
+    - '\baerial\s+imagery\b'
+    - '\binventory\s+form\b'
+    - '\bnot\s+sure\b'
+    - '\bneed\s+to\s+confirm\b'
+    - '\bnot\s+(?:on|in)\s+(?:the\s+)?(?:collection\s+)?list\b'
+    - '\b(?:please\s+)?see\s+photos?\b'
+    - '\bphotos?\s+taken\b'
+    - '\bi\s+(?:took|failed\s+to)\b'
+    - '\bimprovements\s*='
+    - '\bvri\b'
+    - '\b(?:extent|location|scope)\s+(?:adjus|based\s+on)'
+    - '\badjused\s+based\s+on'
+    - '\btrimble\b'
+    - '\bcompass\b'
+    - '\bbearings?\s+(?:measured|were)\b'
+    - '\bmeasured\s+(?:the\s+)?bearings?\b'
+    - '\bvaro\b'
+    - '\bpreliminary\s+review\b'
+    - '\bvp\s?\d+'
+    - '\bnot\s+(?:on|in)\b[^.;]{0,30}\blist\b'
+    - '\bneed\s+to\s+determine\b'
+    - '\bsocked\b'
+  # OSM water's reach (PO06) and dedupe (PO09), each the Python's constant:
+  # the radius is fetch_trail_water.py's, which build_osm_water_reach.py
+  # imports so both water gates move together; the ceiling is a reporting
+  # limit and the range join's radius, not a gate.
+  poi_water_match_radius_ft: 100.0         # fetch_trail_water.py MATCH_RADIUS_FT
+  poi_osm_water_measure_ceiling_m: 8046.72 # build_osm_water_reach.py MEASURE_CEILING_M (5 mi)
+  poi_water_dedup_radius_m: 25.0           # export_poi.py WATER_DEDUP_RADIUS_M
+  # The ArcGIS coded-value domains export_trails.py and export_spurs.py read
+  # live (lib/arcgis.get_field_coded_domain) mid-transform, as rows of
+  # [source_key, field_name, code, label]: int_trail_lines__coded_domains.
+  # @unvalidated as a copy: read from side_trails' live field metadata
+  # (`fields[].domain.codedValues`) on 2026-10-02, and nothing re-reads it.
+  # What settles it is the extract landing that metadata, which replaces
+  # this var in one model. tests/test_dbt_trail_lines_parity.py holds it to
+  # the codes export_trails.py's and export_spurs.py's own tests use.
+  trail_lines_coded_domains:
+    - [side_trails, Blaze, "0", "None"]
+    - [side_trails, Blaze, "1", "Blue"]
+    - [side_trails, Blaze, "2", "White"]
+    - [side_trails, Blaze, "3", "Red"]
+    - [side_trails, Blaze, "4", "Orange"]
+    - [side_trails, Blaze, "5", "Yellow"]
+    - [side_trails, Blaze, "6", "Green"]
+    - [side_trails, Blaze, "7", "Purple"]
+    - [side_trails, Blaze, "8", "Black"]
+    - [side_trails, Blaze, "9", "Other"]
+    - [side_trails, Type, "0", "Access (eg Parking)"]
+    - [side_trails, Type, "1", "Alternate Route"]
+    - [side_trails, Type, "2", "Significant Non-Blaze"]
+    - [side_trails, Type, "3", "Spur (eg View, Camp)"]
+    - [side_trails, Type, "4", "Other"]
+    - [side_trails, Type, "5", "Unknown"]
+
+  # export_trails.py's and lib/corridor.py's numbers for the A.T.'s lines,
+  # held to the Python constants by tests/test_dbt_trail_lines_parity.py as
+  # the mile axis's are. Each says where its reasoning lives.
+  #
+  # lib/corridor.BUFFER_MILES: the corridor's half-width, argued there from
+  # the resupply POIs a thru-hiker leaves the trail for.
+  trail_lines_corridor_buffer_miles: 30
+  # DEFAULT_SIMPLIFY_TOLERANCE_M: under one screen pixel at every zoom, and
+  # under the survey's own accuracy (measured in export_trails.py).
+  trail_lines_simplify_tolerance_m: 1.0
+  # OVERVIEW_SIMPLIFY_TOLERANCE_M and OVERVIEW_COORDINATE_DECIMALS: the
+  # corridor-view sketch, trails_overview.geojson (#869).
+  trail_lines_overview_tolerance_m: 100.0
+  trail_lines_overview_decimals: 4
+  # TRAIL_MILE_DECIMALS: matches every POI's `mile` and the elevation
+  # profile's distance_mi, digit for digit.
+  trail_lines_mile_decimals: 3
+  # Decision 8's six decimals for trails.geojson, which
+  # export_nearby_trails.py's NEARBY_COORDINATE_DECIMALS already cuts the
+  # network's lines to.
+  trail_lines_published_decimals: 6
+  # lib/spurs.py's spur rules (int_trail_lines__spurs). SPUR_TYPE_CODE: Type
+  # 3 is "Spur (eg View, Camp)". TYPE_LITERAL_ALIASES: the literal 60 live
+  # side trails carry in place of code 2, misspelling included, lowercased.
+  trail_lines_spur_type_code: "3"
+  trail_lines_type_literal_aliases:
+    - ["signficant non-blaze", "2"]
+    - ["significant non-blaze", "2"]
+  # JUNCTION_MAX_M, ON_TRAIL_M and DESTINATION_MAX_M: lib/spurs.py argues
+  # each (generous for telling the ends apart, tight for "on the trail", the
+  # loose bound the client narrows), in metres.
+  trail_lines_spur_junction_max_m: 100.0
+  trail_lines_spur_on_trail_m: 25.0
+  trail_lines_spur_destination_max_m: 150.0
+  # export_spurs.DESTINATION_POI_TYPES: the POI types a spur may lead to,
+  # argued there and in features/SPUR_TRAILS.md (a privy is not where a
+  # trail goes).
+  trail_lines_spur_destination_poi_types: [shelter, water, campsite, resupply, viewpoint]
+  # METERS_PER_DEGREE, for lib/spurs.py's equirectangular distance.
+  trail_lines_metres_per_degree: 111320.0
+  # lib/club_sections.py's club sections (int_trail_lines__club_stretches),
+  # each argued there. MILEPOST_SNAP_M: a sanity bound, not a tuning
+  # parameter. STRETCH_GAP_MILES: markers sit 0.5 mi apart, so one missing
+  # marker (a 1.0 mi gap) already ends a stretch. MILEPOST_HALF_WIDTH: each
+  # marker owns a quarter mile either side, so runs tile the trail.
+  # SPRINGER_MILE: mile 0.
+  trail_lines_club_milepost_snap_m: 100.0
+  trail_lines_club_stretch_gap_mi: 0.75
+  trail_lines_club_milepost_half_width_mi: 0.25
+  trail_lines_club_springer_mile: 0.0
+
+  # The elevation family, the A.T. half (stage 3 of #1793):
+  # export_elevation.py's two constants, read by int_elevation__sample_points
+  # and int_elevation__profile and held to the Python by
+  # tests/test_dbt_elevation_parity.py until stage 5 deletes the Python.
+  #
+  # SAMPLE_INTERVAL_METERS: one DEM read every 25 m of trail. Kept, not
+  # thinned: thinning to 50 m cut the measured 520,757 ft of total gain by
+  # 4.80%, and to 200 m by 16.59% (research report 5, pipeline/ELT.md, "The
+  # eleven marts"), and gain feeds Naismith's time estimate.
+  elevation_sample_interval_m: 25.0
+  # METERS_PER_FOOT, the international foot: a DEM metre over this is a foot.
+  elevation_metres_per_foot: 0.3048
+  # The places family (pl), read by int_places__resolved and the pub_places
+  # writer, and held to export_places.py's PLACE_TRAIL_RADIUS_MILES by
+  # tests/test_dbt_places_parity.py until stage 5 of #1793 deletes the
+  # Python. @unvalidated, as the Python says: five miles is a round number
+  # chosen so a Community at the foot of a ridge counts the trail on the
+  # ridge, and what would settle it is the median distance from a published
+  # trailhead or Community to its nearest published line, measurable from
+  # the same two tables int_places__resolved joins. places.json prints it as
+  # `trailRadiusMiles`, so a screen says what was measured rather than
+  # "nearby". The long-trail threshold is TL12's,
+  # trail_lines_network_named_trail_threshold_miles above.
+  places_trail_radius_miles: 5.0
+
+  # The suggested_hikes family (sh), read by the int_suggested_hikes__ models
+  # and the pub_suggested_hikes and pub_highlights writers, and held to the
+  # Python by tests/test_dbt_suggested_hikes_parity.py until stage 5 of #1793
+  # — Rebuild the data platform as dlt → dbt: seven contracted marts, a
+  # monthly refresh, published docs, and lighter phone downloads — deletes
+  # it. Each is export_suggested_hikes.py's, lib/hike_route_builder.py's,
+  # lib/trail_graph_route.py's or lib/highlights.py's constant under its own
+  # name, and its evidence is beside it there: every grading band is
+  # @unvalidated or calibrated against the 113 published tracks, as its own
+  # comment says, and the track tolerance is @unvalidated.
+  suggested_hikes_source_key: nynjtc_hike_finder
+  suggested_hikes_author_kind: club
+  suggested_hikes_content_licence: "By permission of the New York-New Jersey Trail Conference"
+  suggested_hikes_photo_licence: "By permission of the New York-New Jersey Trail Conference"
+  suggested_hikes_photo_prefix: photos
+  suggested_hikes_photo_extension: jpg
+  suggested_hikes_same_tread_note: "measured on the pipeline's copy of the trail lines without the phone's same-tread swap (trailGraph.ts holdDesignation), so a leg two organizations both draw can differ by up to 5% of its length"
+  suggested_hikes_track_reproduction_tolerance: 0.10
+  suggested_hikes_length_good: 0.20
+  suggested_hikes_length_fair: 0.40
+  suggested_hikes_retrace_min: 0.03
+  suggested_hikes_retrace_good: 0.30
+  suggested_hikes_retrace_fair: 0.60
+  suggested_hikes_trails_good: 0.9
+  suggested_hikes_trails_fair: 0.34
+  suggested_hikes_start_good_off_m: 150.0
+  suggested_hikes_closed_route_types:
+    - circuit
+    - lollipop
+    - out and back
+  highlights_source: reference/highlights.json
+  highlights_basis: named
+  highlights_cited_by: OurHike
+  # lib/elevation_gain.py's DEFAULT_THRESHOLD_M, the dead band a climb must
+  # reverse by before it is banked (macros/dead_band_gain.sql): six times
+  # NOISE_FLOOR_M, the DEM's 0.5 m sample-to-sample error that the A.T.'s
+  # 17% raw over-count implies, and checked against three published A.T.
+  # sections by check_elevation_gain.py. Unchecked on the network's ground,
+  # which is why both network manifests say `estimate: true`.
+  elevation_gain_threshold_m: 3.0
+
+  # The challenges family (ch): lib/challenges.py's and export_challenges.py's
+  # constants, read by the int_challenges__ models and held to the Python's
+  # own by tests/test_dbt_challenges_parity.py until stage 5 of #1793 deletes
+  # the Python. Lists keep the Python's order, because a refusal message
+  # prints them in it.
+  challenges_match_kinds:
+    - place
+    - places_all
+    - poi_type
+    - elevation_min_ft
+    - section_walked
+    - workday
+    - self_report
+  challenges_reward_kinds:
+    - patch
+    - postcard
+    - sticker
+    - drawing
+  challenges_statuses:
+    - draft
+    - published
+  # DEFAULT_RADIUS_M, the tag radius in metres from the POI when a match
+  # gives none. @unvalidated: the handoff's examples (150 m for a named
+  # place, 60 m for "any shelter"), not a measurement. For scale, measured
+  # 2026-09-30 against release 2026-09-24-2: the median ATC shelter sits 63 m
+  # from the centerline and the 75th percentile 140 m. What would settle
+  # them is a phone that tags by distance, and tag prompts from real tracks
+  # counting misses (too small) against side-trail junctions asked (too
+  # large). Today only the radius check reads them; the phone tags by walked
+  # miles (lib/challenges.py's DEFAULT_RADIUS_M says so).
+  challenges_default_radius_m_place: 150
+  challenges_default_radius_m_places_all: 150
+  challenges_default_radius_m_poi_type: 60
+  # MIN_RADIUS_M and MAX_RADIUS_M. Reasoned in the Python: below 10 m a
+  # phone's fix error would decide the answer, above 2 km a place is a region.
+  challenges_min_radius_m: 10
+  challenges_max_radius_m: 2000
+  # DEFAULT_MIN_FRACTION, the share of a walked section that counts as walking
+  # it. @unvalidated: the handoff's example value; the walked share recorded
+  # on real tracks of hikers who did walk a section would settle it.
+  challenges_default_min_fraction: 0.9
+  # ID_MAX_CHARS (the backend's, backend/app/core/trail_challenge.py) and
+  # _ID's pattern, as the Python spells it.
+  challenges_id_max_chars: 120
+  challenges_id_pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+  # export_challenges.py's _DOMAIN, for a publishers.json row's `domain`.
+  challenges_domain_pattern: "^[a-z0-9-]+(?:\\.[a-z0-9-]+)+$"
+  # lib/poi_schema.py's POI_TYPES: a `poi_type` match must name one that at
+  # least one published POI carries.
+  challenges_poi_types:
+    - shelter
+    - campsite
+    - water
+    - resupply
+    - viewpoint
+    - parking
+    - privy
+    - trailhead
+  # The day mystery titles are sealed against (CH07): a title ships as
+  # sealed_title through its reveal_on, and in the clear from the next day.
+  # Unset, it is the build's UTC date, as export_challenges.main() defaults
+  # `today`; a run that must reproduce a file sets it, `--vars
+  # '{challenges_build_date: 2027-07-20}'`, and the unit tests set it.
+  challenges_build_date: null
+
+  # The trail_network family (tl-net), the junction graph a day hike routes
+  # over: build_trail_graph.py's constants, read by the int_trail_network__
+  # models and held to the Python's own by
+  # tests/test_dbt_trail_network_parity.py until stage 5 of #1793 — Rebuild
+  # the data platform as dlt → dbt: seven contracted marts, a monthly
+  # refresh, published docs, and lighter phone downloads — deletes the
+  # Python.
+  #
+  # AT_GRAPH_SOURCES: the trails.geojson sources that become edges, the
+  # centerline and the blue-blazed side trails; road approaches and anything
+  # else stay out (#931 — Roads and connectors: a loop that only closes
+  # along a shoulder, drawn honestly or not at all).
+  trail_network_at_sources: [centerline, side_trails]
+  # ENDPOINT_SNAP_M, @unvalidated: a line whose END lies within this many
+  # metres of another line it does not cross is joined to it. Chosen under
+  # build_water_distance.py's measured 21 m median offset for points, on the
+  # reasoning that a trail end is surveyed more carefully and that missing a
+  # junction fails safe; build_trail_graph.py --sweep against real layers
+  # (the knee where components stop falling) is what settles it.
+  trail_network_endpoint_snap_m: 8.0
+  # NODE_QUANT_M, @unvalidated: two ends this close are one node, and a
+  # piece no longer than this between one node and itself is float noise.
+  # The Python calls it housekeeping for float noise; nobody has measured
+  # the largest gap between two ends of one junction on real layers, which
+  # is what would settle it.
+  trail_network_node_quant_m: 0.5
+  # Not a rule: how many rounds int_trail_network__node_lookups gives the
+  # first-come node grid to settle, each a chain of ends closer than
+  # NODE_QUANT_M one step longer. An end still unsettled after the last
+  # round fails the build rather than guessing a node.
+  trail_network_node_rounds: 8
+
+  dbt_project_evaluator:
+    # The mart names the maintainer chose carry no dim_/fct_ prefix
+    # ("do not keep the dim_ and fct_ prefixes in the marts folders. Just
+    # use the names I provided"). The evaluator reads a model's prefix as
+    # everything before its first underscore plus the underscore,
+    # so these ten cover the eleven marts - trail_ is both trail_lines and
+    # trail_network, and a name with no underscore (closures, warnings,
+    # podcasts, challenges, elevation, places, sources) reads as itself
+    # plus `_`. No `dim_`: the maintainer's review, 2026-10-01, "No dim_ !",
+    # so today's POI mart, once dim_pois, is points_of_interest already, in
+    # models/marts/points_of_interest/, and stage 3 rebuilds it in place.
+    #
+    # A prefix outranks a folder in the evaluator's typing, so a future
+    # trail_* model outside models/marts/ is flagged by fct_model_directories
+    # rather than slipping through - wanted. Measured 2026-10-01 with
+    # evaluator 1.4.0, on dbt 2.0.6 and again on dbt-oss 2.0.5, against a
+    # scratch copy holding one model for each of the eleven names under
+    # models/marts/<name>/: no naming or directory finding for any of them.
+    marts_prefixes:
+      - trail_
+      - points_
+      - elevation_
+      - closures_
+      - warnings_
+      - podcasts_
+      - challenges_
+      - places_
+      - suggested_
+      - sources_
+    # The phone-file writers (models/publish/pub_<file>). pipeline/ELT.md
+    # left open whether the evaluator accepts pub_ as it stands; it does not:
+    # measured 2026-10-01 on dbt 2.0.6, fct_model_naming_conventions typed
+    # pub_podcasts_episodes as `other` and wanted rpt_, the default's only
+    # other prefix. rpt_ stays, for the reporting models ELT.md plans.
+    other_prefixes:
+      - rpt_
+      - pub_
+
+# dbt_utils has no DuckDB version of `deduplicate`, and its default joins the
+# kept rows back with a NATURAL JOIN, where NULL never equals NULL: every row
+# holding a null in any column disappears (measured 2026-10-01, DuckDB 1.5.5:
+# of (1,'a',NULL), (2,'b','x'), (3,'b','x') deduplicated on the second
+# column, it kept only (2,'b','x')). Every ATC staging model carries a null
+# public_use. Dispatch is dbt_utils' own way for a project to supply an
+# adapter's implementation, so models call `dbt_utils.deduplicate` and dbt
+# finds macros/duckdb__deduplicate.sql here first. Measured on dbt 2.0.6, the
+# same three rows came back as (1,'a',NULL), (2,'b','x').
+dispatch:
+  - macro_namespace: dbt_utils
+    search_order: ["ourhike", "dbt_utils"]

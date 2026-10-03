@@ -26,15 +26,15 @@ This is ordered so that each step unblocks the next. Steps 1–3 get a working m
 
 Everything downstream needs this. Without it the app has no data to fetch.
 
-**1.1 Create the bucket.** ✅ **Done** — bucket `your-hike` created 2026-07-31. (Cloudflare dashboard → R2 → Create bucket, for reference.)
+**1.1 Create the bucket.** ✅ **Done** — bucket `our-hike` created 2026-10-02. It replaced `your-hike` (created 2026-07-31), whose contents were not copied: `our-hike` is filled by fresh publishes, and `your-hike` is deleted on 2026-10-05 (decision 43 in `pipeline/ELT.md`). (Cloudflare dashboard → R2 → Create bucket, for reference.)
 
-**1.2 Create an API token.** Still manual — dashboard-only, since minting credentials isn't something to automate. R2 → Manage API Tokens → Create → **Object Read & Write**, scoped to `your-hike`. You get an Access Key ID and a Secret Access Key. The secret is shown **once**.
+**1.2 Create an API token.** Still manual — dashboard-only, since minting credentials isn't something to automate. R2 → Manage API Tokens → Create → **Object Read & Write**, scoped to `our-hike`. You get an Access Key ID and a Secret Access Key. The secret is shown **once**.
 
 **1.3 Set four repository secrets in GitHub** (not just local env vars — publishing now runs in CI, see 1.6): Settings → Secrets and variables → Actions → **Secrets** tab → New repository secret, one each for:
 
 ```
 R2_ENDPOINT_URL=https://<accountid>.r2.cloudflarestorage.com
-R2_BUCKET=your-hike
+R2_BUCKET=our-hike
 R2_ACCESS_KEY_ID=<from 1.2>
 R2_SECRET_ACCESS_KEY=<from 1.2>
 ```
@@ -49,7 +49,7 @@ Whether they're still *there* is checked continuously after that: `.github/expec
 
 **1.4 Configure CORS — this one is easy to miss and fails confusingly.** The client reads PMTiles via HTTP **range requests**. Without CORS exposing the right headers, the map fails in a way that looks like a corrupt archive rather than a permissions problem.
 
-R2 → `your-hike` → Settings → CORS policy. The app is hosted on GitHub Pages (see step 3 — that's settled now, unlike when this list was first written), and its previews on Cloudflare Pages (3a), so there are **two** origins to allow plus local dev.
+R2 → `our-hike` → Settings → CORS policy. The app is hosted on GitHub Pages (see step 3 — that's settled now, unlike when this list was first written), and its previews on Cloudflare Pages (3a), so there are **two** origins to allow plus local dev.
 
 **Do not copy a policy out of this document.** The origins and the headers are declared once, in [`.github/expected-origins.yml`](.github/expected-origins.yml), and the policy to paste is generated from that declaration:
 
@@ -89,13 +89,13 @@ Roughly 1.6 GB on the first run (all three background tiers plus trails, POIs an
 
 Everything in 1.1–1.6 is *published* data, and 1.5 turns public read on for exactly that reason. A report photo is not published data. `bad_hikers` reports are routed `internal_only` because they concern a person, `thanks` is `club_only`, and every type is photographed at submit time — before a moderator has looked, which [#229](https://github.com/OurHike/OurHike/issues/229) established is not publicly visible. Putting those objects in a world-readable bucket publishes the image while the report it belongs to stays private.
 
-1. **Create the bucket.** R2 → Create bucket, e.g. `your-hike-photos`. **Leave public access off** — do not do 1.5 for this one. **No CORS entry either, and that is still true now that the moderation queue renders these photos** ([#385](https://github.com/OurHike/OurHike/issues/385)): what reaches the bucket is an `<img src>` holding a signed URL the backend authorised, and images are exempt from CORS. The alternative — a cross-origin `fetch` of the bytes — would have needed a policy here, which is why it is not what got built.
-2. **Create a second API token**, Object Read & Write, **scoped to this bucket alone.** Same reason 1.2's is scoped to `your-hike`: a token that can reach both buckets is one bug away from writing a photo of a person into the public one.
+1. **Create the bucket.** R2 → Create bucket, e.g. `our-hike-photos`. **Leave public access off** — do not do 1.5 for this one. **No CORS entry either, and that is still true now that the moderation queue renders these photos** ([#385](https://github.com/OurHike/OurHike/issues/385)): what reaches the bucket is an `<img src>` holding a signed URL the backend authorised, and images are exempt from CORS. The alternative — a cross-origin `fetch` of the bytes — would have needed a policy here, which is why it is not what got built.
+2. **Create a second API token**, Object Read & Write, **scoped to this bucket alone.** Same reason 1.2's is scoped to `our-hike`: a token that can reach both buckets is one bug away from writing a photo of a person into the public one.
 3. **Set five variables on the backend's host, not in GitHub Actions** (see `backend/README.md`'s Deployment section for which host, and 6 below):
 
 ```
 R2_PHOTO_ENDPOINT_URL=https://<accountid>.r2.cloudflarestorage.com
-R2_PHOTO_BUCKET=your-hike-photos
+R2_PHOTO_BUCKET=our-hike-photos
 R2_PHOTO_ACCESS_KEY_ID=<from 1.7.2>
 R2_PHOTO_SECRET_ACCESS_KEY=<from 1.7.2>
 R2_PHOTO_WRITE_ENABLED=true

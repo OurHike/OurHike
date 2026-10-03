@@ -1,0 +1,229 @@
+version: 2
+
+models:
+  - name: elevation
+    description: >
+      Elevation along each profiled line, one row per sample, in order along
+      the line. Two kinds of line: the A.T. (`line_id` 'AT'), ATC's
+      centerline walked every 25 m on ATC's own half-mile mile scale, and
+      each junction-graph edge (its `edge_id`), sampled at both ends and
+      about every 25 m between. USGS 3DEP's elevation is read at each sample
+      by step_dem_sampling. elevation_profile.json is written from the A.T.'s
+      rows (pub_elevation_profile) and trail_graph_profile.json from the
+      edges' (pub_trail_graph_profile). A hiker's pace estimate and the climb
+      the phone shows come off these numbers, so each safety field is held by
+      a constraint or a test: elevation_ft is null where the DEM has no
+      answer and never 0, distance_mi is strictly increasing along the A.T.,
+      and part_start marks every seam.
+    config:
+      access: public
+      contract:
+        enforced: true
+    # Decision 44: a phone file's shape is a version of the mart it is
+    # written from. v1 is today's shape at today's key, elevation_profile.json,
+    # and pub_elevation_profile pins it, ref('elevation', v=1). v2
+    # (elevation_v2.sql) carries each number as a whole count of its
+    # published unit, for the packed v2/elevation_profile.json that
+    # pub_elevation_profile_v2 writes beside v1 (stage 6 of #1793; pipeline/
+    # ELT.md, "Making the download smaller"). v1 stays the latest version, so
+    # an unpinned ref reads v1; v2 is a version ahead of it until a v2 release
+    # ships. dbt 2.0.6 builds the two as elevation_v1 and elevation_v2 and
+    # keeps `elevation` as a view of the latest version (measured 2026-10-02
+    # on the podcasts mart by stage 4).
+    latest_version: 1
+    versions:
+      - v: 1
+        defined_in: elevation
+      - v: 2
+        defined_in: elevation_v2
+        columns:
+          - include: all
+            exclude: [distance_mi, elevation_ft]
+          - name: distance_milli_mi
+            description: >
+              v1's distance_mi in thousandths of a mile, a whole number: v1's
+              decimal(8,3) times 1,000, exact. Strictly increasing within a
+              line, as distance_mi is. Null on a junction-graph edge, as v1's
+              distance_mi is, because an edge has no mile axis.
+            data_type: bigint
+          - name: elevation_deci_ft
+            description: >
+              v1's elevation_ft in tenths of a foot, a whole number: v1's
+              decimal(6,1) times 10, exact. Null exactly where v1's
+              elevation_ft is, where the DEM has no answer at the sample,
+              never 0.
+            data_type: integer
+        data_tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns: [line_id, seq]
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "part_start or seq > 0"
+          # Every A.T. sample has a mile and no edge sample does, as v1 holds it.
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "(line_id = 'AT') = (distance_milli_mi is not null)"
+          # v1's mile range, in thousandths: Springer to 2,300 miles.
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "distance_milli_mi >= 0 and (line_id != 'AT' or distance_milli_mi <= 2300000)"
+          # v1's elevation range, in tenths of a foot (v1's accepted_range has the reasoning).
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "elevation_deci_ft is null or elevation_deci_ft between -3000 and 205000"
+          # The same rows as v1: the coding drops none and adds none.
+          - dbt_utils.equal_rowcount:
+              arguments:
+                compare_model: ref('elevation', v=1)
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [line_id, seq]
+      # The first sample of a line begins a piece by definition (#559): a
+      # consumer starts a new run at every part_start without special-casing
+      # the first.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "part_start or seq > 0"
+      # Every A.T. sample has a mile, and no mile on the A.T. lies before
+      # Springer or past 2,300 miles, the ceiling the podcasts family uses
+      # (var podcast_max_at_mile); ATC's own half-mile Measure ends at
+      # Katahdin, about 2,198. An edge has no mile axis.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(line_id = 'AT') = (distance_mi is not null)"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "distance_mi is null or (distance_mi >= 0 and distance_mi <= 2300)"
+      # The published feet are the DEM's metres rounded once, at the precision
+      # each file publishes: tenths on the A.T., whole feet on an edge. A
+      # published elevation with no measurement behind it, or one rounded
+      # from anything but its own metres, fails here.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >-
+              (elevation_ft is null) = (elevation_m is null)
+              and (elevation_m is null or elevation_ft = case
+                when line_id = 'AT'
+                  then cast(printf('%.1f', elevation_m / cast('{{ var("elevation_metres_per_foot") }}' as double)) as decimal(6, 1))
+                else cast(printf('%.0f', elevation_m / cast('{{ var("elevation_metres_per_foot") }}' as double)) as decimal(6, 1))
+              end)
+    columns:
+      - name: line_id
+        description: >
+          The profiled line: 'AT' for the A.T., as export_poi.py's TRAIL_ID
+          names it on every A.T. POI, or a junction-graph edge's edge_id
+          (int_trail_network__edges), `<trail_id>#<part>.<piece>`, which is
+          never 'AT'.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests: [not_null]
+      - name: seq
+        description: >
+          The sample's place along its line, from 0: its index in
+          elevation_profile.json for the A.T., and in the edge's own array of
+          trail_graph_profile.json for an edge. Both files are published in
+          this order.
+        data_type: integer
+        constraints:
+          - type: not_null
+        data_tests: [not_null]
+      - name: distance_mi
+        description: >
+          Miles along the A.T.: ATC's own NOBO mile from Springer, calibrated
+          to its half-mile markers (int_trail_lines__mile_axis) and rounded to
+          three decimals as Python's round() rounds, ties to even on the
+          double's exact value. Strictly increasing along the line
+          (assert_elevation_distance_mi_strictly_increases_within_each_line).
+          Null on an edge, which has no mile axis: trail_graph_profile.json
+          publishes no distance, and a consumer places sample j of an edge's
+          n at length_m * j / (n - 1).
+        data_type: decimal(8,3)
+      - name: elevation_ft
+        description: >
+          Elevation in feet as the line's phone file publishes it: to one
+          decimal on the A.T., to the whole foot on an edge, each rounded
+          once from elevation_m as Python's round() rounds (ties to even on
+          the double's exact value). Null where the DEM has no answer at the
+          sample (no tile covers it, or the tile holds nodata there), never 0
+          (assert_elevation_ft_is_null_exactly_where_the_dem_has_no_answer).
+          Feet are the DEM's metres over 0.3048, the international foot.
+        data_type: decimal(6,1)
+        data_tests:
+          # The lowest and highest ground in the United States, which 3DEP
+          # covers: Badwater Basin, 282 ft below sea level, and Denali at
+          # 20,310 ft, each widened a little for a DEM's own noise. A value
+          # outside is a unit slip or a nodata value leaking through as an
+          # elevation (a -9999 m read would be -32,805 ft). Reasoned from the
+          # two summits, not measured against 3DEP; the margins are picked.
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: -300
+                max_value: 20500
+      - name: elevation_m
+        description: >
+          The DEM's elevation at the sample in metres, as step_dem_sampling
+          read it, unrounded: the one measurement every published foot and
+          every climb (int_elevation__edge_climbs) is computed from. Null
+          exactly where elevation_ft is.
+        data_type: double
+      - name: part_start
+        description: >
+          True on the first sample of each piece: on the A.T., each
+          centerline piece the profile keeps a sample of, the line's first
+          sample included (#559); on an edge, its first sample, an edge being
+          one piece. The step into such a sample crosses a seam, not a slope,
+          so a gain total breaks its run there. False everywhere else;
+          elevation_profile.json carries the field only where it is true.
+        data_type: boolean
+        constraints:
+          - type: not_null
+        data_tests: [not_null]
+      - name: club
+        description: >
+          The extract folder the profiled line comes from: `atc` for the
+          A.T., the edge's parent line's club for an edge.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests: [not_null]
+      - name: source_key
+        description: >
+          The registry key of the profiled line's layer: `centerline` for the
+          A.T., the edge's published `source` for an edge.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('sources')
+                field: source_key
+      - name: _loaded_at
+        description: >
+          The newest load of the layers the line is built from: for the A.T.,
+          ATC's centerline and its half-mile markers; for an edge, its parent
+          line's layer.
+        data_type: timestamp with time zone
+        constraints:
+          - type: not_null
+        data_tests: [not_null]
+      - name: _first_seen_at
+        description: "{{ doc('row_first_seen_at') }}"
+        data_type: timestamptz
+        data_tests:
+          - not_null:
+              config:
+                # warn only on a leg build_marts.py built without its history,
+                # where both dates are null and the run is red already.
+                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' else 'error' }}"
+      - name: _changed_at
+        description: "{{ doc('row_changed_at') }}"
+        data_type: timestamptz
+        data_tests:
+          - not_null:
+              config:
+                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' else 'error' }}"

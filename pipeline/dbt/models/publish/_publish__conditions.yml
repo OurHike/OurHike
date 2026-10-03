@@ -1,0 +1,342 @@
+version: 2
+
+# The closures and warnings family's phone files (pipeline/ELT.md, "Publish
+# (reverse ETL)"): six writers, and an exposure for each of the eight files
+# they and export_conditions.py's notes and disputes write. Each writer names
+# its int_closures__gate row in `meta.gate` and selects no row while that
+# source is held, so its last copy stays on the phone while the others are
+# written, and publish.py fails the run afterwards. None of them uploads
+# anything: publish-conditions.yml and publish-weather.yml still upload the
+# Python exporters' files until stage 4 of #1793 — Rebuild the data platform
+# as dlt → dbt: seven contracted marts, a monthly refresh, published docs,
+# and lighter phone downloads.
+
+models:
+  - name: pub_conditions_atc_updates
+    description: >
+      Writes conditions/atc_updates.json, ATC's reviewed Trail Updates and the
+      ones ATC posted since the review that publish without a person, from
+      the closures and warnings marts: one row, `generated_at`, the file's
+      `reviewed_at` and `atc_updates`, which phone_file copies to
+      processed_dir/conditions_atc_updates.json. Writes nothing while
+      int_closures__gate holds ATC back, for a bad row, an unreviewed file or
+      int_sources__publication.
+      parity.py compares it with export_atc_updates.py's build_document().
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: generated_at
+        description: When the run started, stamped as export_atc_updates.py's _stamp_utc() stamps.
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: reviewed_at
+        description: The reviewed file's `reviewed_at`, as written.
+        data_type: varchar
+      - name: atc_updates
+        description: >
+          Every reviewed row in the file's order, each as lib/atc_updates.py's
+          published_rows() writes it, then every automatic row in slug order,
+          each as auto_row() writes it, with obstructs_trail false and
+          review_state `unreviewed` (CL07-CL10, int_closures__atc_automatic).
+        data_type: json[]
+
+  - name: pub_conditions_weather_alerts
+    description: >
+      Writes conditions/weather_alerts.json, every relayed NWS alert that
+      reaches a trail square, from the warnings mart's NWS rows placed by
+      int_warnings__nws_placed (WN03): one document, written verbatim by
+      phone_file's json_document format to
+      processed_dir/conditions_weather_alerts.json. Writes nothing while
+      int_closures__gate holds NWS back (int_sources__publication, or no
+      alert landed to say when NWS was asked), and fails without exactly one
+      weather squares document. parity.py compares it with
+      export_weather_alerts.py's bake().
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: document
+        description: >
+          The file: payload, schema, source and credit, fetched_at,
+          nws_updated, generated_at, the squares' release and zone_files,
+          `alerts` in id order (NWS's words under bake()'s names, placed_by,
+          squares) and unknown_zones.
+        data_type: json
+        data_tests: [not_null, unique]
+
+  - name: pub_conditions_nynjtc_alerts
+    description: >
+      Writes conditions/nynjtc_alerts.json, NYNJTC's Trail Alerts, from the
+      warnings mart (and the closures mart, which holds none of them today):
+      one row, `generated_at` and `nynjtc_alerts`. Writes nothing while
+      int_closures__gate holds NYNJTC back.
+      parity.py compares it with export_nynjtc_alerts.py's build_document().
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: generated_at
+        description: When the run started, stamped as export_nynjtc_alerts.py's _stamp_utc() stamps.
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: nynjtc_alerts
+        description: Every alert by slug, each as lib/nynjtc_alerts.py's published_rows() writes it.
+        data_type: json[]
+
+  - name: pub_conditions_closures
+    description: >
+      Writes conditions/closures.json, OurHike's moderator-verified closures,
+      from the closures and warnings marts: one row, `generated_at` and
+      `closures`. Writes nothing while int_closures__gate holds OurHike's
+      closures back, for a row, a number that is not finite or
+      int_sources__publication. parity.py compares it with
+      export_conditions.py's read_closures() and build_document().
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: generated_at
+        description: When the run started, stamped as export_conditions.py's _stamp_utc() stamps, and the same for conditions/reports.json.
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: closures
+        description: Every verified closure, by start_mile_marker then id, each as PUBLIC_CLOSURES_SQL selects it.
+        data_type: json[]
+
+  - name: pub_conditions_reports
+    description: >
+      Writes conditions/reports.json, every verified or resolved public
+      report whatever its severity, from base_ourhike__reports: one row,
+      `generated_at` and `reports`. Writes nothing while int_closures__gate
+      holds OurHike's reports back, for int_sources__publication or a number
+      that is not finite. parity.py compares it with
+      export_conditions.py's read_reports() and build_document().
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: generated_at
+        description: When the run started, stamped as export_conditions.py's _stamp_utc() stamps, and the same for conditions/closures.json.
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: reports
+        description: Every public report, by "timestamp" then id, each as PUBLIC_REPORTS_SQL selects it.
+        data_type: json[]
+
+  - name: pub_conditions_work_projects
+    description: >
+      Writes conditions/work_projects.json, the club workdays a hiker can see
+      and join (#760), from int_closures__work_projects_checked: one row,
+      `generated_at`, the file's `reviewed_at` and `work_projects`, which
+      phone_file copies to processed_dir/conditions_work_projects.json.
+      Writes nothing while int_closures__gate holds the file back:
+      int_sources__publication does not let it publish, nobody reviewed it,
+      or lib/work_projects.py's file_problems() would find a problem. No mart
+      owns work projects. parity.py compares it with
+      export_work_projects.py's main().
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: generated_at
+        description: When the run started, stamped as export_work_projects.py's _stamp_utc() stamps.
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: reviewed_at
+        description: The reviewed file's `reviewed_at`, as written.
+        data_type: varchar
+      - name: work_projects
+        description: Every row of the file in its order, each as published_rows() writes it (CL17).
+        data_type: json[]
+
+exposures:
+  - name: conditions_atc_updates_json
+    label: conditions/atc_updates.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      ATC's own Trail Updates (#460 — Publish the ATC's own Trail Updates as
+      a static artifact), read by client/src/lib/atcUpdates.ts through
+      publishedConditions.ts's PUBLISHED_ATC_UPDATES_KEY: the reviewed rows,
+      and the rows ATC posted since the review that its gate publishes
+      unreviewed (#963 — Publish the mechanically unambiguous ATC updates
+      hourly, without waiting for a person), which never obstruct the trail.
+      Rewritten in place under conditions/, outside every release folder.
+      Uploaded by publish-conditions.yml from export_atc_updates.py's file
+      until stage 4 of #1793 moves the upload to this writer's.
+    depends_on:
+      - ref('closures', v=1)
+      - ref('warnings', v=1)
+      - ref('pub_conditions_atc_updates')
+    config:
+      meta:
+        r2_keys: [conditions/atc_updates.json]
+        format: json
+        # publish-conditions.yml's cron, "40 * * * *", which fires about
+        # five times a day (#1346).
+        cadence: hourly
+
+  - name: conditions_weather_alerts_json
+    label: conditions/weather_alerts.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      Every active NWS alert that reaches a trail square (#1056), the offline
+      fallback for a phone that cannot ask NWS itself for its square's zones,
+      read by client/src/lib/weatherForecast.ts as WEATHER_ALERTS_KEY, which
+      refuses a document whose `payload` is not weather_alerts or whose
+      `schema` is not 1. Rewritten in place under
+      conditions/, outside every release folder. Uploaded by
+      publish-weather.yml from export_weather_alerts.py's file until stage 4
+      of #1793 moves it to the conditions job (decision 28a) and the upload to
+      this writer's.
+    depends_on:
+      - ref('warnings', v=1)
+      - ref('pub_conditions_weather_alerts')
+    config:
+      meta:
+        r2_keys: [conditions/weather_alerts.json]
+        format: json
+        # publish-weather.yml's cron, "55 * * * *", until decision 28a moves
+        # the alerts to the conditions job's hourly lane.
+        cadence: hourly
+
+  - name: conditions_nynjtc_alerts_json
+    label: conditions/nynjtc_alerts.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      NYNJTC's Trail Alerts, unplaced and unreviewed, read through
+      publishedConditions.ts's PUBLISHED_NYNJTC_ALERTS_KEY. Uploaded by
+      publish-conditions.yml from export_nynjtc_alerts.py's file until stage
+      4 of #1793.
+    depends_on:
+      - ref('closures', v=1)
+      - ref('warnings', v=1)
+      - ref('pub_conditions_nynjtc_alerts')
+    config:
+      meta:
+        r2_keys: [conditions/nynjtc_alerts.json]
+        format: json
+        cadence: hourly
+
+  - name: conditions_closures_json
+    label: conditions/closures.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      OurHike's moderator-verified closures, the offline baseline of the live
+      closures endpoint, read through publishedConditions.ts's
+      PUBLISHED_CLOSURES_KEY. Uploaded by publish-conditions.yml from
+      export_conditions.py's file until stage 4 of #1793.
+    depends_on:
+      - ref('closures', v=1)
+      - ref('warnings', v=1)
+      - ref('pub_conditions_closures')
+    config:
+      meta:
+        r2_keys: [conditions/closures.json]
+        format: json
+        cadence: hourly
+
+  - name: conditions_reports_json
+    label: conditions/reports.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      Every verified or resolved public report, the offline baseline of the
+      live reports endpoint, read through publishedConditions.ts's
+      PUBLISHED_REPORTS_KEY. The serious ones are also in the warnings mart.
+      Uploaded by publish-conditions.yml from export_conditions.py's file
+      until stage 4 of #1793.
+    depends_on:
+      - ref('pub_conditions_reports')
+    config:
+      meta:
+        r2_keys: [conditions/reports.json]
+        format: json
+        cadence: hourly
+
+  # The two files below have no writer here, so each exposure names what
+  # it reads and the Python that still writes it.
+  - name: conditions_notes_json
+    label: conditions/notes.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      Each POI's most recent visible field notes (WN11), read by
+      client/src/lib/fieldNotes.ts. Baked by export_conditions.py as today;
+      no mart owns field notes ("The eleven marts", what reaches a phone from
+      no mart), so this reads the staging model of the query's own rows.
+    depends_on:
+      - ref('base_ourhike__notes')
+    config:
+      meta:
+        r2_keys: [conditions/notes.json]
+        format: json
+        cadence: hourly
+
+  - name: conditions_disputes_json
+    label: conditions/disputes.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The corroborated disputes, two or more accounts saying a POI is not
+      there (WN11), read through publishedConditions.ts's
+      PUBLISHED_DISPUTES_KEY. Baked by export_conditions.py as today, from
+      no mart.
+    depends_on:
+      - ref('base_ourhike__disputes')
+    config:
+      meta:
+        r2_keys: [conditions/disputes.json]
+        format: json
+        cadence: hourly
+
+  - name: conditions_work_projects_json
+    label: conditions/work_projects.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The club workdays a hiker can see and join (#760), read through
+      publishedConditions.ts's PUBLISHED_WORK_PROJECTS_KEY; workProjects.ts
+      gives way to an out-of-date notice after 48 h. The first data in the
+      app that expires, so rewritten in place under conditions/, outside
+      every release folder, and never in an offline package: a cancelled
+      workday clears with the next build (CL18). Uploaded by
+      publish-conditions.yml from export_work_projects.py's file until stage
+      4 of #1793 moves the upload to this writer's.
+    depends_on:
+      - ref('pub_conditions_work_projects')
+    config:
+      meta:
+        r2_keys: [conditions/work_projects.json]
+        format: json
+        cadence: hourly
+
+  # conditions/drought.json (WN12) has no exposure: its fetch is on hold
+  # under #1804 — fetch_drought.py fetches droughtmonitor.unl.edu/data/, a
+  # path the Drought Monitor's robots.txt disallows for every user agent.

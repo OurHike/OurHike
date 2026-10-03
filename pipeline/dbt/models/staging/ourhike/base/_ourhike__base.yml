@@ -1,0 +1,96 @@
+version: 2
+
+models:
+  - name: base_ourhike__poi_identity
+    data_tests:
+      # Says how many rows the dedupe dropped, which for a key unique by
+      # construction is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('ourhike', 'raw_ourhike__poi_identity')
+          config:
+            severity: warn
+    description: >
+      The POI identity ledger, every POI ever published, retired ones
+      included. Read by int_podcasts__checked, which holds a tagged POI to
+      the ledger's name for it and refuses a retired one.
+    columns:
+      - name: poi_identity_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the file's path and poi_id.
+        data_tests: [not_null, unique]
+      - name: poi_id
+        description: The published OurHike id, never re-minted or reused.
+        data_tests: [not_null, unique]
+      - name: name
+        description: The POI's name as it was last published.
+      - name: first_seen
+        description: The release that first published the POI, as the ledger writes it.
+      - name: retired
+        description: >
+          The release that stopped publishing the POI, as the ledger writes
+          it. Null while the POI is live.
+      - name: superseded_by
+        description: >
+          The live POI a retired one was folded into, where reconciliation
+          knows one. On no row on 2026-10-01.
+  - name: base_ourhike__blaze_mapping
+    data_tests:
+      # Says how many rows the dedupe dropped, which for one file is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('ourhike', 'raw_ourhike__blaze_mapping')
+          config:
+            severity: warn
+    description: >
+      pipeline/reference/blaze_mapping.json as its one row, keyed: the per-source blaze tables (#782), read by the trail-line models for TL03.
+    columns:
+      - name: blaze_mapping_document_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the file's name and its landed path.
+        data_tests: [not_null, unique]
+      - name: document_json
+        description: The file as written, as JSON.
+        data_tests: [not_null]
+  - name: base_ourhike__trail_name_aliases
+    data_tests:
+      # Says how many rows the dedupe dropped, which for one file is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('ourhike', 'raw_ourhike__trail_name_aliases')
+          config:
+            severity: warn
+    description: >
+      pipeline/reference/trail_name_aliases.json as its one row, keyed: each through route's names by publisher, read by the network overview for TL21.
+    columns:
+      - name: trail_name_aliases_document_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the file's name and its landed path.
+        data_tests: [not_null, unique]
+      - name: document_json
+        description: The file as written, as JSON.
+        data_tests: [not_null]
+  - name: base_ourhike__work_projects
+    data_tests:
+      # Says how many rows the dedupe dropped, which for one file is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('ourhike', 'raw_ourhike__work_projects')
+          config:
+            severity: warn
+    description: >
+      pipeline/reference/work_projects.json as its one row, keyed: the
+      reviewed club workdays (#760), read by int_closures__work_projects_checked
+      for CL17 whatever `rows` holds, since the review is the file's.
+    columns:
+      - name: work_projects_document_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the file's name and its landed path.
+        data_tests: [not_null, unique]
+      - name: document_json
+        description: The file as its reviewer wrote it, `_README` aside, as JSON.
+        data_tests: [not_null]

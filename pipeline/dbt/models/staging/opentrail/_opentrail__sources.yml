@@ -3,18 +3,24 @@ version: 2
 sources:
   - name: opentrail
     description: >
-      opentrail.org's community A.T. waypoints, fetched by
-      fetch_opentrail.py (a community API with documented ETag support, not
-      an ArcGIS layer - which is why it is registered in load_raw.py's
-      EXTRA_LAYERS rather than sources.json) and loaded untouched by
-      load_raw.py. Data-reuse terms are an open question tracked as #98;
+      opentrail.org's community A.T. waypoints, landed by
+      pipeline/extract/_shared/opentrail/at.py from fetch_opentrail.py's
+      API_URL (a community API with documented ETag support, not an ArcGIS
+      layer, and a non-registry input, so it has no sources.json row), with
+      every user comment left out. Data-reuse terms are an open question tracked as #98;
       nothing here changes what ships, only where transforms live.
     schema: raw
-    loaded_at_field: _loaded_at
-    freshness:
-      warn_after: {count: 7, period: day}
+    config:
+      loaded_at_field: _loaded_at
+      freshness:
+        warn_after: {count: 7, period: day}
     tables:
       - name: raw_opentrail__at
+        data_tests:
+          # Rows sharing stg_opentrail__waypoints's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'opentrail_at'", "dbid"]
         description: >
           One row per community waypoint. `icon` is the upstream type code;
           the documented legend lives in fetch_opentrail.py's ICON_LEGEND
@@ -33,4 +39,5 @@ sources:
             data_tests:
               - not_null
               - accepted_values:
-                  values: ["c", "s", "o", "j", "w", "t", "r", "a"]
+                  arguments:
+                    values: ["c", "s", "o", "j", "w", "t", "r", "a"]

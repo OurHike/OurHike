@@ -1,0 +1,363 @@
+version: 2
+
+models:
+  - name: int_elevation__sample_points
+    description: >
+      Where the A.T. elevation profile reads the DEM: one row per 25 m sample
+      along the mile axis (int_trail_lines__mile_axis), in walk order, with
+      the point in lon/lat and the published mile of each. EL05 of
+      pipeline/ELT.md's ledger, export_elevation.sample_points_along_parts
+      and the mile half of build_profile. step_dem_sampling reads every row;
+      int_elevation__profile drops the ones two pieces both cover.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [line_id, sample_index]
+      # A point in lon/lat order, and on the A.T.: x first is a longitude
+      # within the A.T.'s spread (-84.2 at Springer to -68.9 at Katahdin) and
+      # y a latitude within its own (34.6 to 45.9), each widened by about half
+      # a degree, which is picked. A swapped x and y would read the DEM 3,000
+      # km away and come back null, quietly; this fails instead.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "line_id != 'AT' or (lon between -84.7 and -68.4 and lat between 34.1 and 46.4)"
+    columns:
+      - name: line_id
+        description: The profiled line, 'AT' for the A.T. (export_poi.py's TRAIL_ID).
+        data_tests: [not_null]
+      - name: sample_index
+        description: >
+          The sample's place in its line's walk, from 0, every sample counted:
+          the order step_dem_sampling asks the DEM in, which is
+          build_profile's.
+        data_tests: [not_null]
+      - name: piece_id
+        description: The mile-axis piece the sample lies on (int_trail_lines__mile_axis).
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int_trail_lines__mile_axis')
+                field: piece_id
+      - name: along_m
+        description: >
+          How far along its piece the sample lies, in EPSG:5070 metres: the
+          carry from the piece before plus 25 m at a time, as the Python adds
+          it.
+        data_tests: [not_null]
+      - name: mile
+        description: The sample's mile on the axis, unrounded, as a double.
+        data_tests: [not_null]
+      - name: distance_mi_text
+        description: >
+          The mile as elevation_profile.json publishes it: three decimals,
+          rounded as Python's round() rounds (ties to even), as text so a
+          unit test holds it exactly. int_elevation__profile clips on it.
+        data_tests: [not_null]
+      - name: lon
+        description: The sample's longitude, EPSG:4326, where the DEM is read.
+        data_tests: [not_null]
+      - name: lat
+        description: The sample's latitude, EPSG:4326.
+        data_tests: [not_null]
+
+  - name: int_elevation__profile
+    description: >
+      The A.T. elevation profile as elevation_profile.json publishes it, one
+      row per published sample in order: EL07 (the first piece to reach a
+      mile keeps it), EL08 (part_start at each seam) and EL09 (a DEM gap is
+      null, never 0) of pipeline/ELT.md's ledger, export_elevation's
+      profile_records. The numbers are text so unit tests hold them exactly;
+      the elevation mart casts them.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [line_id, seq]
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [line_id, sample_index]
+    columns:
+      - name: line_id
+        description: The profiled line, 'AT' for the A.T.
+        data_tests: [not_null]
+      - name: seq
+        description: The published sample's place along its line, from 0.
+        data_tests: [not_null]
+      - name: sample_index
+        description: The sample's place in the walk (int_elevation__sample_points), clipped samples counted.
+        data_tests: [not_null]
+      - name: piece_id
+        description: The mile-axis piece the sample lies on.
+        data_tests: [not_null]
+      - name: distance_mi_text
+        description: The published mile, three decimals, as text.
+        data_tests: [not_null]
+      - name: elevation_ft_text
+        description: >
+          The published elevation in feet, one decimal, rounded as Python's
+          round() rounds, as text. Null where the DEM has no answer.
+      - name: part_start
+        description: True on the first published sample of each piece, the very first included.
+        data_tests: [not_null]
+      - name: dem_read
+        description: >
+          True where step_dem_sampling's table has this sample's row, read at
+          this sample's own point. assert_every_elevation_sample_was_read_at_its_own_point
+          fails the build on any sample where it is not.
+        data_tests: [not_null]
+      - name: club
+        description: The extract folder the profiled line comes from.
+        data_tests: [not_null]
+      - name: source_key
+        description: The registry key of the profiled line's layer.
+        data_tests: [not_null]
+      - name: _loaded_at
+        description: The newest load of the centerline and half-mile marker layers the profile is built from.
+        data_tests: [not_null]
+      - name: elevation_m
+        description: The DEM's answer at the sample in metres, unrounded, null where it has none.
+
+  - name: int_elevation__edge_sample_points
+    description: >
+      Where each junction-graph edge reads the DEM: one row per sample along
+      an edge of int_trail_network__edges, both ends included, round(length /
+      25) intervals and at least one, in lon/lat. The SQL form of
+      export_network_elevation.edge_sample_points, which both network
+      exporters walk an edge with. An edge with no projected length reads its
+      first vertex once; an edge with no vertex reads nothing.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [edge_id, sample_index]
+    columns:
+      - name: edge_id
+        description: The edge (int_trail_network__edges).
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int_trail_network__edges')
+                field: edge_id
+      - name: edge_index
+        description: The edge's place in trail_graph.json, the order the DEM is asked about edges in.
+        data_tests: [not_null]
+      - name: sample_index
+        description: The sample's place along its edge, from 0 at the edge's start.
+        data_tests: [not_null]
+      - name: lon
+        description: The sample's longitude, EPSG:4326, where the DEM is read.
+        data_tests: [not_null]
+      - name: lat
+        description: The sample's latitude, EPSG:4326.
+        data_tests: [not_null]
+
+  - name: int_elevation__dem_points
+    description: >
+      Every point step_dem_sampling asks the DEM about, in the order today's
+      exporters ask: the A.T.'s walk (int_elevation__sample_points), then each
+      junction-graph edge's samples (int_elevation__edge_sample_points) by
+      edge_index. The order is part of the answer, because the sampler gives a
+      later point within 0.11 m of an earlier one the earlier one's pixel.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [line_id, sample_index]
+    columns:
+      - name: line_id
+        description: "'AT' for the A.T., the edge's edge_id for an edge: derived.dem_samples' line_id."
+        data_tests: [not_null]
+      - name: sample_index
+        description: The sample's place in its line, as the line's own model numbers it.
+        data_tests: [not_null]
+      - name: lon
+        description: The point's longitude, EPSG:4326.
+        data_tests: [not_null]
+      - name: lat
+        description: The point's latitude, EPSG:4326.
+        data_tests: [not_null]
+      - name: ask_order
+        description: The point's place in the one question step_dem_sampling asks, from 0.
+        data_tests: [not_null, unique]
+
+  - name: int_elevation__edge_samples
+    description: >
+      Each junction-graph edge's samples with the DEM's answer at each: the
+      metres as read, and the whole feet trail_graph_profile.json publishes,
+      rounded once from the metres (EL12 of pipeline/ELT.md's ledger,
+      export_network_profile.edge_profile's rounding). Null where the DEM has
+      no answer, never 0.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [edge_id, sample_index]
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(elevation_m is null) = (elevation_ft is null)"
+    columns:
+      - name: edge_id
+        description: The edge.
+        data_tests: [not_null]
+      - name: edge_index
+        description: The edge's place in trail_graph.json.
+        data_tests: [not_null]
+      - name: sample_index
+        description: The sample's place along its edge, from 0.
+        data_tests: [not_null]
+      - name: elevation_m
+        description: The DEM's answer in metres, unrounded, null where it has none.
+      - name: elevation_ft
+        description: >
+          The elevation in whole feet, rounded once from elevation_m as
+          Python's round() rounds (ties to even), null where it is.
+
+  - name: int_elevation__edge_climbs
+    description: >
+      Each junction-graph edge's climb, gain and loss in whole feet, or null
+      where the DEM answered none of its samples: EL10 and EL11 of
+      pipeline/ELT.md's ledger, export_network_elevation.edge_climb over
+      lib/elevation_gain.py's 3 m dead band (macros/dead_band_gain.sql),
+      measured within the edge and never across a node join. One row per
+      edge of int_trail_network__edges, the ones with no sample included.
+      trail_graph_elevation.json is written from it; the trail_network mart
+      is planned to carry it as climb_gain_ft and climb_loss_ft.
+    data_tests:
+      # Both null means unknown, never [0, 0] (pipeline/ELT.md's safety
+      # table for trail_network): one without the other would be a climb
+      # nobody can price.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(gain_ft is null) = (loss_ft is null) and (gain_ft is null) = (not measured)"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "gain_ft is null or (gain_ft >= 0 and loss_ft >= 0)"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "not partially_covered or measured"
+    columns:
+      - name: edge_id
+        description: The edge.
+        data_tests: [not_null, unique]
+      - name: edge_index
+        description: The edge's place in trail_graph.json.
+        data_tests: [not_null, unique]
+      - name: source_key
+        description: The edge's published `source`, which coverage is counted per.
+      - name: sample_count
+        description: How many samples the edge has, 0 for an edge with no vertex.
+        data_tests: [not_null]
+      - name: measured_sample_count
+        description: How many of them the DEM answered.
+        data_tests: [not_null]
+      - name: gain_ft
+        description: >
+          Confirmed ascent along the edge in feet, over each unbroken run of
+          samples, rounded to the nearest whole foot as Python's round()
+          rounds. Null where nobody measured the edge.
+      - name: loss_ft
+        description: Confirmed descent along the edge in feet, as a positive number, rounded the same way. Null where gain_ft is.
+      - name: measured
+        description: True where the DEM answered at least one of the edge's samples (the manifest's `measured`).
+        data_tests: [not_null]
+      - name: partially_covered
+        description: >
+          True where it answered some and not all, so the climb is measured
+          over the runs it has and under-counts by whatever happened inside
+          the gaps (the manifest's `partial` and `partially_covered`).
+        data_tests: [not_null]
+      - name: may_publish
+        description: >
+          Whether the edge's source may publish (int_sources__publication),
+          false for a source the registry does not list. pub_trail_graph_elevation
+          publishes no climb where it is false.
+        data_tests: [not_null]
+
+  - name: int_elevation__seam_nodes
+    description: >
+      The vertical step at every junction two or more edge-ends meet at, one
+      row per such node: export_network_profile.measure_seams per node (EL13
+      of pipeline/ELT.md's ledger). `coincident` where every incident end is
+      one published coordinate; step_ft, in the published whole feet, where
+      two or more ends were measured.
+    columns:
+      - name: node_id
+        description: The node, as trail_graph.json numbers it (int_trail_network__edges' from_node and to_node).
+        data_tests: [not_null, unique]
+      - name: incident_ends
+        description: How many edge-ends meet at the node, a loop's two counted twice; always more than one here.
+        data_tests: [not_null]
+      - name: coincident
+        description: True where every incident end is the same published coordinate.
+        data_tests: [not_null]
+      - name: measured_ends
+        description: How many of the ends have a published elevation.
+        data_tests: [not_null]
+      - name: step_ft
+        description: The highest measured end less the lowest, in feet, null with fewer than two measured ends.
+
+  - name: int_elevation__seam_measurement
+    description: >
+      The junction graph's seam as trail_graph_profile_manifest.json's
+      `seam` block reports it, one row (EL13 of pipeline/ELT.md's ledger,
+      export_network_profile.measure_seams): shared nodes, coincident ones,
+      steps, steps over the dead band, and the median, 95th percentile and
+      largest step, nearest-rank. Writing the manifest is stage 4's.
+    data_tests:
+      # Each count is a subset of the one before it.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >-
+              coincident_ends <= shared_nodes and measured_nodes <= shared_nodes
+              and nodes_with_a_step <= measured_nodes and steps_over_dead_band <= nodes_with_a_step
+              and step_ft_p50 <= step_ft_p95 and step_ft_p95 <= step_ft_max
+    columns:
+      - name: shared_nodes
+        description: Nodes two or more edge-ends meet at. The model has one row, so this is its key.
+        data_tests: [not_null, unique]
+      - name: coincident_ends
+        description: Of those, the ones whose ends are all one published coordinate.
+      - name: measured_nodes
+        description: Nodes with a step, two or more measured ends.
+      - name: nodes_with_a_step
+        description: Of those, the ones whose step is more than 0 ft.
+      - name: steps_over_dead_band
+        description: Steps of at least the 3 m dead band, in feet.
+      - name: step_ft_p50
+        description: The median step in feet, nearest-rank, one decimal.
+      - name: step_ft_p95
+        description: The 95th-percentile step in feet, nearest-rank, one decimal.
+      - name: step_ft_max
+        description: The largest step in feet, one decimal; 0.0 with no step.
+  - name: int_elevation__final
+    description: >
+      The elevation mart's rows before their row dates (decision 57):
+      what models/marts/elevation/elevation.sql held until then, every
+      contracted column but _first_seen_at and _changed_at.
+      int_elevation__history snapshots it, and the mart reads that snapshot.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [line_id, seq]
+
+exposures:
+  - name: step_dem_sampling
+    label: step_dem_sampling.py
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The Python step that reads USGS 3DEP's DEM at every elevation sample
+      point, the A.T.'s and each junction-graph edge's
+      (pipeline/step_dem_sampling.py), between the dbt invocation that builds
+      int_elevation__dem_points and the one that reads its answer back as
+      source('derived', 'dem_samples'). It is Python because DuckDB
+      has no raster type that is both fast and right (EL06, pipeline/ELT.md's
+      ledger), and it reads through export_elevation.ElevationSampler, the
+      sampler today's export_elevation.py uses. Shown here so the docs draw
+      both halves of the step.
+    depends_on:
+      - ref('int_elevation__dem_points')
+    config:
+      meta:
+        writes: derived.dem_samples
+        cadence: monthly

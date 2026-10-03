@@ -1,0 +1,123 @@
+version: 2
+
+# The trail_network family's phone files (stage 3 of #1793 — Rebuild the data
+# platform as dlt → dbt: seven contracted marts, a monthly refresh, published
+# docs, and lighter phone downloads): the junction graph a day hike routes
+# over, which build_trail_graph.py and cut_trail_graph.py write today.
+# parity.py compares each dbt-written file with build_trail_graph.py's on the
+# same lines.
+models:
+  - name: pub_trail_graph
+    description: >
+      Writes trail_graph.json from the trail_network mart and
+      int_trail_network__nodes: one row, one column, the whole object as
+      text (`nodes`, then `edges`), which phone_file's json_document format
+      writes verbatim. parity.py compares it with build_trail_graph.py's,
+      the nodes whole and the edges by position.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: graph_json
+        description: >
+          The file: `nodes`, every node as [lon, lat] at 6 decimals in
+          int_trail_network__nodes' order, then `edges`, one object per edge
+          in edge_index order with build_graph()'s keys (from, to, length_m,
+          trail_id, source, name, blaze_color).
+        data_type: varchar
+        data_tests: [not_null, unique]
+
+  - name: pub_trail_graph_geometry
+    description: >
+      Writes trail_graph_geometry.json from the trail_network mart: one row,
+      one column, the whole bare array as text, which phone_file's
+      json_document format writes verbatim. Entry i is edge i's vertices.
+      parity.py compares it with build_trail_graph.py's, entry by entry.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: geometry_json
+        description: The file, a JSON array of each edge's [lon, lat] vertices in edge_index order.
+        data_type: varchar
+        data_tests: [not_null, unique]
+
+exposures:
+  - name: trail_graph_json
+    label: trail_graph.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The routing half of the junction graph, nodes and edges with their
+      lengths and attribution, which PlanKindSheet reads at launch to say
+      whether a day hike is on offer and client/src/lib/trailGraph.ts paths
+      over. Published by publish-vector-data.yml from build_trail_graph.py's
+      file until stage 4 of #1793 — Rebuild the data platform as dlt → dbt:
+      seven contracted marts, a monthly refresh, published docs, and lighter
+      phone downloads — moves it to this writer's; the current
+      client reads its 1-degree cells (trail_graph_cells), which
+      cut_trail_graph.py cuts from it.
+    depends_on:
+      - ref('trail_network')
+      - ref('int_trail_network__nodes')
+      - ref('pub_trail_graph')
+    config:
+      meta:
+        r2_keys: [trail_graph.json]
+        format: json
+        cadence: monthly
+  - name: trail_graph_geometry_json
+    label: trail_graph_geometry.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      Every edge's vertices, index-aligned with trail_graph.json's edges,
+      which the day-hike builder draws a route from and projects taps onto.
+      Without it an edge is the straight chord between its junctions, which
+      across a switchback is a picture of a trail that does not exist.
+      Published by publish-vector-data.yml from build_trail_graph.py's file
+      until stage 4 moves it to this writer's.
+    depends_on:
+      - ref('trail_network')
+      - ref('pub_trail_graph_geometry')
+    config:
+      meta:
+        r2_keys: [trail_graph_geometry.json]
+        format: json
+        cadence: monthly
+  - name: trail_graph_cells
+    label: trail_graph_cells.json and its cells
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The graph in 1-degree coverage cells, so a phone loads the cells under
+      the hike it is planning (#1257 — Deliver the network lines and the
+      junction graph in pieces a phone can read by range, so no growth in
+      the data can freeze or crash it): each cell's graph, geometry and, where
+      they align, elevation and profile, with global ids and local
+      positions (TN09, TN10). Written outside dbt: cut_trail_graph.py cuts
+      them from the whole files, unchanged, because dbt has no per-cell
+      model fan-out.
+    # The edges it is cut from, not a writer: each writer is one exposure's
+    # (tests/test_dbt_publish_writers.py), and this file's writer is Python.
+    depends_on:
+      - ref('trail_network')
+    config:
+      meta:
+        r2_keys:
+          - trail_graph_cells.json
+          - trail_graph_cell_<cell>.json
+          - trail_graph_geometry_cell_<cell>.json
+          - trail_graph_elevation_cell_<cell>.json
+          - trail_graph_profile_cell_<cell>.json
+        format: json
+        cadence: monthly
+        written_by: cut_trail_graph.py, from trail_graph.json and its companions

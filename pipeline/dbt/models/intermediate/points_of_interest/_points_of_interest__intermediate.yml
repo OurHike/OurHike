@@ -1,0 +1,608 @@
+version: 2
+
+# The points_of_interest family's rules, in the order export_poi.py and
+# export_nearby_poi.py apply them (pipeline/ELT.md's ledger rows PO01-PO38):
+# unioned -> classified -> publishable -> in_corridor -> identified -> sites
+# -> water -> enriched -> described, with miles beside described, the
+# tombstones in retired, and every row that does not ship in dropped. Each
+# model's own comment says which Python function it is and what is not
+# ported. None of them carries a GEOMETRY column past unioned: a point is
+# its lon and lat, so a unit test can hold every column, and dbt 2.0.6
+# cannot hold a GEOMETRY in a unit-tested model's output.
+models:
+  - name: int_points_of_interest__unioned
+    description: >
+      Every staged row of every layer a POI file publishes from, one row
+      each, joined by name rather than by position: its source_key, the
+      staging model's key, its place in its raw table, its geometry, and the
+      rest of the staged row as JSON (`properties`), which the classifier
+      reads each layer's own fields out of.
+    columns:
+      - name: poi_key
+        description: The staging model's surrogate key (decision 40).
+        data_tests: [not_null, unique]
+      - name: source_key
+        description: The layer's sources.json key, or opentrail_at.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('poi_sources')
+                field: source_key
+      - name: source_row
+        description: >
+          The row's rowid in its raw table, its place in the file the
+          Python reads, which with poi_sources.file_order is the record
+          order the Python's stable sorts break ties by. Null on the three
+          base-model layers, which keep no row number; none of them is in a
+          tie-broken pass.
+      - name: geom
+        description: The staged geometry, in lon/lat.
+      - name: properties
+        description: The staged row as JSON, its geometry and source_row left out.
+      - name: _loaded_at
+        description: When the extract landed the row.
+
+  - name: int_points_of_interest__classified
+    description: >
+      Each unioned row's poi_type, the id and name it publishes under, its
+      point, and, where it does not ship, the first reason why
+      (`drop_reason`). export_poi.py's unify_all_sources() for the A.T.
+      family and export_nearby_poi.py's build_records() and classify() for
+      the other organizations.
+    data_tests:
+      # unify_poi() raises on an A.T.-family row whose geometry is not a
+      # Point: a wiring mistake, not a gap upstream. A row with no geometry
+      # at all is skipped (drop_reason 'no geometry').
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "phone_files != 'poi_by_type' or geometry_type is null or (geometry_type = 'POINT' and is_point)"
+          config:
+            severity: error
+      # unify_poi() raises on a feature with no usable id, in either file.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "drop_reason is not null or source_feature_id is not null"
+          config:
+            severity: error
+    columns:
+      - name: poi_key
+        description: The staging model's key.
+        data_tests: [not_null, unique]
+      - name: source_key
+        description: The layer's key.
+        data_tests: [not_null]
+      - name: file_order
+        description: The layer's place in the order its exporter reads layers (the poi_sources seed).
+        data_tests: [not_null]
+      - name: phone_files
+        description: "`poi_by_type` (export_poi.py) or `nearby_poi` (export_nearby_poi.py)."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [poi_by_type, nearby_poi]
+      - name: source_feature_id
+        description: The layer's own id for the feature, as text.
+      - name: source_feature_id_json
+        description: >
+          The same id as the JSON value the layer wrote, so a file that
+          publishes OBJECTID as a number still does (export_nearby_poi.py
+          keeps the type json.loads gives it).
+      - name: derived_id
+        description: "`{source}:{source_feature_id}`, lib/poi_schema.py's unify_poi() id."
+      - name: name
+        description: >
+          The name the feature publishes: ATC's and opentrail's as written,
+          the other organizations' stripped and null where it is one of DEC's
+          sentinels.
+      - name: poi_type
+        description: The published type, null on a row that does not ship.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('poi_types')
+                field: poi_type
+      - name: family_confidence
+        description: The A.T. family's confidence, from the poi_type_mapping seed; null on the other organizations' rows.
+      - name: geometry_type
+        description: The staged geometry's type, POINT on every row that can ship.
+      - name: is_point
+        description: Whether the geometry is a non-empty point.
+      - name: lon
+        description: The point's longitude, null where it is not a point.
+      - name: lat
+        description: The point's latitude, null where it is not a point.
+      - name: drop_reason
+        description: Why the row does not ship, or null where it goes on.
+
+  - name: int_points_of_interest__publishable
+    description: >
+      The typed rows that may ship, at the confidence each ships at: the
+      organizations' own public flags (DEC's PUBLICUSE filters, OPRHP's
+      ParksApp sets confidence), each layer's confidence floor, and
+      int_sources__publication's may_publish, before anything is merged.
+    columns:
+      - name: poi_key
+        description: The staging model's key.
+        data_tests: [not_null, unique]
+      - name: confidence
+        description: "`high` or `low`, lib/poi_schema.py's two tiers."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [high, low]
+      - name: confidence_floor
+        description: >
+          The layer's sources.json `confidence_floor`. confidence_for()
+          raises on any floor but `low`, so the build fails on one here
+          rather than shipping the layer high.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [low]
+              config:
+                severity: error
+
+  - name: int_points_of_interest__in_corridor
+    description: >
+      The publishable rows inside the ground their file covers: an A.T.-family
+      row inside lib/corridor.py's 30-mile corridor or within 500 ft of a
+      published network line, and another organization's row within the same
+      500 ft, inside a park boundary its layer names, or a parking area or
+      trailhead anywhere (export_nearby_poi.py's clip_to_network()). With no
+      published network line at all, no ring applies.
+    columns:
+      - name: poi_key
+        description: The staging model's key.
+        data_tests: [not_null, unique]
+
+  - name: int_points_of_interest__osm_water_reach
+    description: >
+      The distance half of OSM water's reach (PO06), one row per OSM water
+      point in the corridor: the nearest of the centerline, a side trail, a
+      published network line whose organization reaches hikers, a shelter
+      and a campsite, within the 5-mile ceiling, and whether it is within
+      fetch_trail_water.py's MATCH_RADIUS_FT (100 ft).
+      build_osm_water_reach.py's measure_distances(). step_osm_water_grade
+      reads it for the grade.
+    columns:
+      - name: poi_key
+        description: The staging model's key.
+        data_tests: [not_null, unique]
+      - name: osm_id
+        description: The OSM node id, which the verdicts are keyed by.
+        data_tests: [not_null, unique]
+      - name: nearest
+        description: >
+          centerline, side_trail, network_trail, shelter or campsite: which
+          one the point is nearest; null where nothing is within the ceiling.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [centerline, side_trail, network_trail, shelter, campsite]
+      - name: nearest_source
+        description: The network line's organization (its registry key), where the nearest is a network trail.
+      - name: nearest_m
+        description: The distance to the nearest, EPSG:5070 metres at 2 dp, as text.
+      - name: walk_key
+        description: >
+          The other end of the walk, the nearest point on the feature, as
+          the EPQS cache keys it: "lat,lon" at 6 dp.
+      - name: passes_distance
+        description: Within MATCH_RADIUS_FT of the nearest; false where nothing is near.
+        data_tests: [not_null]
+      - name: reason
+        description: Why the point fails the distance gate, in build_osm_water_reach.py's words; null where it passes.
+
+  - name: int_points_of_interest__osm_water_verdicts
+    description: >
+      Every corridor OSM water point's verdict, both halves as
+      build_osm_water_reach.py's verdict file holds them: the distance pass
+      beside the grade step_osm_water_grade took. `reachable` is null only
+      where the step wrote no verdict, which
+      assert_every_corridor_osm_water_point_has_a_verdict fails the build on.
+    columns:
+      - name: poi_key
+        description: The staging model's key.
+        data_tests: [not_null, unique]
+      - name: osm_id
+        description: The OSM node id.
+        data_tests: [not_null, unique]
+      - name: has_verdict
+        description: Whether the step wrote a verdict for the point.
+        data_tests: [not_null]
+      - name: reachable
+        description: Both gates passed, an ungraded point not reachable; null where there is no verdict.
+      - name: reason
+        description: Why the point is not reachable, the grade's reason where it has one, else the distance pass's.
+
+  - name: int_points_of_interest__photos
+    description: >
+      Each POI's card photo and gallery (PO24, PO38): the Commons photos
+      through the face gate (refused never ships; flagged ships only once a
+      person has cleared it), ATC's list where a POI has one, and only a
+      photo with a digest to name its bucket object. export_poi.py's
+      gate_photos() and attach_photos(). One row per POI with a photo.
+    data_tests:
+      # photo_key() raises on a digest that is not sha256 hex, so a publish
+      # never names an object that cannot exist; so does this, for every
+      # photo in the gallery as well as the card's.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >-
+              len(list_filter(
+                json_extract_string(photos, '$[*].key'),
+                lambda photo: not regexp_full_match(photo, '^photos/[0-9a-f]{64}\.jpg$')
+              )) = 0
+          config:
+            severity: error
+    columns:
+      - name: poi_id
+        description: The published POI id.
+        data_tests: [not_null, unique]
+      - name: photo_key
+        description: The card photo's bucket key, photos/<digest>.jpg.
+        data_tests: [not_null]
+      - name: photos
+        description: Every photo shown, card photo first, as JSON objects of key, page_url, author, license and taken.
+        data_tests: [not_null]
+
+  - name: int_points_of_interest__reached
+    description: >
+      The corridor's POIs a hiker could reach (PO08, PO10): every row that
+      is not OSM water, and every OSM water point whose verdict says
+      reachable. A point with no verdict is dropped (export_poi.py's
+      gate_osm_water_reach()). A reachable point whose nearest walk is
+      another organization's trail carries that organization as not_on_at.
+    columns:
+      - name: poi_key
+        description: The staging model's key.
+        data_tests: [not_null, unique]
+      - name: not_on_at
+        description: >
+          The other organization's trail an OSM water point is reached from,
+          which withholds its A.T. mile (PO10, mark_off_trail_records());
+          null on every other row, as the Python marks no other source.
+
+  - name: int_points_of_interest__deduplicated
+    description: >
+      The reached POIs less each OSM water point within
+      WATER_DEDUP_RADIUS_M (25 m) of an opentrail water point (PO09,
+      export_poi.py's dedupe_water()): opentrail imports OSM, so the pair is
+      largely one node arriving through two doors, and the opentrail one
+      keeps its published id.
+    columns:
+      - name: poi_key
+        description: The staging model's key.
+        data_tests: [not_null, unique]
+
+  - name: int_points_of_interest__dropped
+    description: >
+      Every unioned row that does not ship, with the first reason why, from
+      the five stages that drop: classified, publishable, in_corridor,
+      reached and deduplicated.
+    columns:
+      - name: poi_key
+        description: The staging model's key.
+        data_tests: [not_null, unique]
+      - name: drop_reason
+        description: Why the row does not ship.
+        data_tests: [not_null]
+
+  - name: int_points_of_interest__trailheads
+    description: >
+      Each of the other organizations' trailheads with how many trail lines
+      lie within 100 m and how many of them are closed, and
+      trails_closed_within_m where every one is (export_nearby_poi.py's
+      mark_closed_trailheads()). The A.T.'s centerline and side trails count
+      as open lines.
+    columns:
+      - name: poi_id
+        description: The trailhead's published id.
+        data_tests: [not_null, unique]
+      - name: lines_within_radius
+        description: Published network lines and A.T. lines within the radius.
+        data_tests: [not_null]
+      - name: closed_lines_within_radius
+        description: How many of those are closed.
+        data_tests: [not_null]
+      - name: trails_closed_within_m
+        description: >
+          The radius, 100, where at least one line is within it and every one
+          is closed; null otherwise, which is "not marked", never "open". Null
+          on every row where the A.T.'s centerline or side trails have no line
+          at all, as mark_closed_trailheads() marks nothing without either
+          file.
+
+  - name: int_points_of_interest__identified
+    description: >
+      Every POI in its file's ground with the id it publishes under: the
+      identity ledger's live id for an A.T.-family POI whose (source,
+      source_feature_id) is a live ledger row (export_poi.py's
+      apply_ledger_ids()), else the derived id.
+    columns:
+      - name: poi_id
+        description: The published id.
+        data_tests: [not_null, unique]
+      - name: poi_key
+        description: The staging model's key.
+        data_tests: [not_null, unique]
+
+  - name: int_points_of_interest__sites
+    description: >
+      Every identified POI with the site it belongs to and its role there:
+      lib/poi_sites.py's group_sites() for the A.T. family (a shelter with
+      its privy, campsites and water) and group_place_sites() for New York
+      City's fountains and restrooms.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(site_id is null) = (site_role is null)"
+          config:
+            severity: error
+    columns:
+      - name: poi_id
+        description: The published id.
+        data_tests: [not_null, unique]
+      - name: site_id
+        description: The site's anchor's id, null on a POI in no site.
+      - name: site_role
+        description: "`anchor` or `member`, null on a POI in no site."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [anchor, member]
+      - name: site_name
+        description: The anchor's name.
+
+  - name: int_points_of_interest__water
+    description: >
+      Every POI with ATC's distance to water and where that figure came
+      from, for an A.T. shelter or campsite reference/water_distance.json
+      gives one, plus the water point export_poi.py's synthesize_csi_water()
+      makes where that distance is all anyone knows (#694).
+    data_tests:
+      # A distance never travels without the provenance the phone prints its
+      # tilde from: all 305 distances carry one (measured 2026-10-01).
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(water_distance_ft is null) = (water_distance_source is null)"
+          config:
+            severity: error
+    columns:
+      - name: poi_id
+        description: The published id, `atc_csi:<GlobalID>` on a synthesized point.
+        data_tests: [not_null, unique]
+      - name: record_order
+        description: >
+          The POI's place in export_poi.py's record list: file_order, then its
+          raw row, and the synthesized points after every other record, in
+          their anchors' order, as synthesize_csi_water() appends them.
+        data_tests: [not_null]
+      - name: water_distance_ft
+        description: CSI's distance to the nearest water, in ATC's own feet.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: false
+      - name: water_distance_source
+        description: CSI's Nearest_Water_Source, verbatim (#1728).
+      - name: synthesized_description
+        description: The synthesized point's sentence, which says whose figure it is and that the spot is unmapped.
+
+  - name: int_points_of_interest__enriched
+    description: >
+      Every POI with its capacity (reference/shelter_capacity.json) and the
+      nearby parts a site's anchor publishes (attach_nearby()).
+    columns:
+      - name: poi_id
+        description: The published id.
+        data_tests: [not_null, unique]
+      - name: capacity
+        description: How many the shelter sleeps, null where nobody has said; never 0.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+              config:
+                severity: error
+      - name: nearby
+        description: >
+          The parts around a site's anchor as JSON, each a phrase and a
+          distance in feet, and the source of a distance ATC published
+          rather than measured. Null on every POI that anchors no site.
+
+  - name: int_points_of_interest__described
+    description: >
+      Every POI with its one-sentence description: lib/poi_description.py's
+      describers for the A.T. family, with ATC's own notes cleaned by
+      lib/atc_notes.py's clean_note(), and export_nearby_poi.py's
+      compose_description() for the other organizations.
+    columns:
+      - name: poi_id
+        description: The published id.
+        data_tests: [not_null, unique]
+      - name: description
+        description: The sentence, null where nothing usable is stated.
+
+  - name: int_points_of_interest__miles
+    description: >
+      Each A.T.-family POI's NOBO mile from Springer on the marker-calibrated
+      axis (int_trail_lines__mile_axis), as export_poi.py's attach_miles()
+      reads it: nearest piece, located along it, interpolated between ATC's
+      own half-mile markers, rounded to three decimals as Python rounds.
+      None on a POI on another organization's trail.
+    columns:
+      - name: poi_id
+        description: The published id.
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('int_points_of_interest__enriched')
+                field: poi_id
+      - name: mile_piece_id
+        description: The mile axis piece the POI projects onto.
+        data_tests: [not_null]
+      - name: mile
+        description: >
+          The mile as its three-decimal text, which the mart casts to the
+          double Python's round(mile, 3) gives; text so a unit test can
+          hold it exactly.
+        data_tests: [not_null]
+
+  - name: int_points_of_interest__retired
+    description: >
+      The tombstones: every POI id the identity ledger has ever retired, with
+      where it was and what took its place, for retired_poi.geojson.
+    data_tests:
+      # export_retired_poi.py's main() refuses to write a tombstone whose
+      # successor resolves to no live row: the pointer a hiker's photos
+      # follow must lead somewhere.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "superseded_by is null or resolves_to is not null"
+          config:
+            severity: error
+    columns:
+      - name: poi_id
+        description: The retired id, never re-minted.
+        data_tests: [not_null, unique]
+      - name: poi_key
+        description: The ledger row's key (base_ourhike__poi_identity).
+        data_tests: [not_null, unique]
+      - name: poi_type
+        description: The type the POI published as, a withdrawn one included.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('poi_types')
+                field: poi_type
+      - name: retired
+        description: The release that stopped publishing it.
+        data_tests: [not_null]
+      - name: superseded_by
+        description: The live POI that took its place, where reconciliation knows one.
+      - name: resolves_to
+        description: The live id superseded_by leads to, followed transitively; null where it leads nowhere.
+
+  - name: int_points_of_interest__water_sites
+    description: >
+      The A.T. shelters and campsites step_site_water.py asks about (PO07,
+      PO17): one row per staged row of ATC's two layers that has a point, as
+      fetch_trail_water.py reads them through build_water_distance.py's
+      fetch_atc_features(), which keeps a feature only where it carries a
+      geometry. The step orders them as fetch_atc_features() does, by name
+      and then GlobalID, and reads nothing else.
+    data_tests:
+      # One row per site: each staging model keys and dedupes its layer on
+      # GlobalID (decision 40), so a site is its layer and its GlobalID.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [layer, global_id]
+    columns:
+      - name: layer
+        description: shelters or campsites, fetch_trail_water.py's two layers.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [shelters, campsites]
+      - name: global_id
+        description: ATC's GlobalID, which load_trail_water() publishes the site water under.
+        data_tests: [not_null]
+      - name: name
+        description: ATC's Name; a null sorts as the empty string, as fetch_atc_features() sorts it.
+      - name: lat
+        description: The site's latitude, EPSG:4326.
+        data_tests: [not_null]
+      - name: lon
+        description: The site's longitude, EPSG:4326.
+        data_tests: [not_null]
+  - name: int_points_of_interest__final
+    description: >
+      The points of interest mart's rows before their row dates (decision 57):
+      what models/marts/points_of_interest/points_of_interest.sql held until then, every
+      contracted column but _first_seen_at and _changed_at.
+      int_points_of_interest__history snapshots it, and the mart reads that snapshot.
+    columns:
+      - name: poi_id
+        description: The mart's key.
+        data_tests: [not_null, unique]
+
+exposures:
+  - name: step_site_water
+    label: step_site_water.py
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The Python step that decides which shelters and campsites have water a
+      hiker can walk to (pipeline/step_site_water.py, PO07 and PO17), between
+      the dbt invocation that builds int_points_of_interest__water_sites and
+      the one that reads its answer back as source('derived', 'site_water').
+      It calls fetch_trail_water.py's build() unchanged, because the gates sit
+      between the hydrography's files and USGS EPQS, two reads SQL cannot
+      make in this build (pipeline/ELT.md's ledger). By default it lands the
+      last trail_water.json; --derive re-derives. Shown here so the docs draw
+      both halves of the step.
+    depends_on:
+      - ref('int_points_of_interest__water_sites')
+    config:
+      meta:
+        writes: derived.site_water
+        cadence: monthly
+  - name: step_osm_water_grade
+    label: step_osm_water_grade.py
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The Python step that takes the grade half of OSM water's reach
+      (pipeline/step_osm_water_grade.py, PO06 and PO07), between the dbt
+      invocation that builds int_points_of_interest__osm_water_reach and the
+      one that reads its verdicts back as source('derived',
+      'osm_water_grade'). It calls build_osm_water_reach.py's
+      apply_grade_gate() and write() guards unchanged, because the grade needs
+      USGS EPQS's elevations at both ends of each walk, a read SQL cannot make
+      in this build. Shown here so the docs draw both halves of the step.
+      step_osm_water.py, which lands the points, reads no intermediate and
+      has no exposure.
+    depends_on:
+      - ref('int_points_of_interest__osm_water_reach')
+    config:
+      meta:
+        writes: derived.osm_water_grade
+        cadence: monthly
+  - name: step_long_path_guide
+    label: step_long_path_guide.py
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The Python step that places NYNJTC's Long Path guide as waypoints
+      (pipeline/step_long_path_guide.py, PO36), between the dbt invocation
+      that builds the guide's staged sections and the Long Path's staged
+      lines and the one that reads its records back as source('derived',
+      'long_path_guide'). It calls lib/nynjtc_long_path_guide.py's
+      build_records() unchanged, because the guide's classification uses
+      look-ahead and look-behind, which DuckDB's RE2 does not have. It reads
+      the two staging models themselves, so this exposure's parents are
+      views; build_marts.py's lane check reads each step's inputs off its
+      exposure, which is why it is here, and the project evaluator's
+      exceptions seed says why its view parents are allowed.
+    depends_on:
+      - ref('stg_nynjtc__long_path_guide')
+      - ref('stg_nynjtc__long_path')
+    config:
+      meta:
+        writes: derived.long_path_guide
+        cadence: monthly

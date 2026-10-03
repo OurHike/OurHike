@@ -1,0 +1,441 @@
+version: 2
+
+unit_tests:
+  # Each test is named for the build_trail_graph.py rule it holds, and most
+  # for the tests/test_build_trail_graph.py case it ports (pipeline/ELT.md,
+  # "Tests move with their rule"). tests/test_dbt_trail_network_parity.py
+  # runs build_trail_graph's own functions over each test's given rows and
+  # holds every expected row to the Python's answer: routable_lines() and
+  # at_lines_of() for int_trail_network__routable, node_lines() for
+  # int_trail_network__cuts, _node_id() for int_trail_network__node_lookups,
+  # build_graph() for int_trail_network__raw_edges, _geographic_vertices()
+  # for int_trail_network__edges.
+  #
+  # The fixtures sit at 41.25 N, -74.10, test_build_trail_graph.py's own
+  # Harriman-ish ring point, and every metre figure in a description was
+  # measured on the fixture with DuckDB 1.5.4 (dbt 2.0.6's engine) rather
+  # than worked out from degrees. A dbt 2.0.6 unit test compares a DOUBLE to
+  # one decimal place only, so the points a cut lands on travel as WKT text
+  # and the edge geometry as GeoJSON text, compared exactly, and the pytest
+  # holds both to the Python's doubles.
+
+  # ------------------------------------------------- the routable lines
+
+  - name: int_trail_network__routable_refuses_a_closed_trail_in_any_case_or_padding
+    description: >
+      Ports test_a_closed_trail_is_never_routable_and_the_refusal_is_counted
+      and test_closed_matching_ignores_case_and_padding_because_stewards_publish_both:
+      the open line is the one routable part, and each of the four spellings
+      of closed is refused and counted, never an edge. A router that paths
+      down a trail NYS OPRHP marks closed is the failure this exists to
+      prevent (TN01, a safety field).
+    model: int_trail_network__routable
+    given:
+      - input: ref('trail_lines')
+        rows:
+          - {trail_line_id: 'oprhp_trails:1', source_key: oprhp_trails, line_kind: network, feature_order: 0, trail_status: open, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.25], [-74.08, 41.25]]}'}
+          - {trail_line_id: 'oprhp_trails:9', source_key: oprhp_trails, line_kind: network, feature_order: 1, trail_status: Closed, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.26], [-74.08, 41.26]]}'}
+          - {trail_line_id: 'oprhp_trails:10', source_key: oprhp_trails, line_kind: network, feature_order: 2, trail_status: closed, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.27], [-74.08, 41.27]]}'}
+          - {trail_line_id: 'oprhp_trails:11', source_key: oprhp_trails, line_kind: network, feature_order: 3, trail_status: CLOSED, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.28], [-74.08, 41.28]]}'}
+          - {trail_line_id: 'oprhp_trails:12', source_key: oprhp_trails, line_kind: network, feature_order: 4, trail_status: ' Closed ', geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.29], [-74.08, 41.29]]}'}
+    expect:
+      rows:
+        - {part_id: 'oprhp_trails:1#1', part_order: 0, trail_id: 'oprhp_trails:1', refused_because: null, geom_wkt: 'LINESTRING (-74.1 41.25, -74.08 41.25)'}
+        - {part_id: 'oprhp_trails:9#', part_order: null, trail_id: 'oprhp_trails:9', refused_because: closed, geom_wkt: null}
+        - {part_id: 'oprhp_trails:10#', part_order: null, trail_id: 'oprhp_trails:10', refused_because: closed, geom_wkt: null}
+        - {part_id: 'oprhp_trails:11#', part_order: null, trail_id: 'oprhp_trails:11', refused_because: closed, geom_wkt: null}
+        - {part_id: 'oprhp_trails:12#', part_order: null, trail_id: 'oprhp_trails:12', refused_because: closed, geom_wkt: null}
+
+  - name: int_trail_network__routable_refuses_what_is_not_a_line
+    description: >
+      Ports test_a_feature_with_no_geometry_is_counted_rather_than_crashing
+      and test_a_polygon_is_refused_as_not_a_line: a line with no geometry
+      and one whose LineString has no coordinates are each counted `empty`,
+      a Polygon is counted `not_a_line`, and none of the three is an edge.
+    model: int_trail_network__routable
+    given:
+      - input: ref('trail_lines')
+        rows:
+          - {trail_line_id: 'oprhp_trails:1', source_key: oprhp_trails, line_kind: network, feature_order: 0, trail_status: open, geom_geojson: null}
+          - {trail_line_id: 'oprhp_trails:2', source_key: oprhp_trails, line_kind: network, feature_order: 1, trail_status: open, geom_geojson: '{"type": "LineString", "coordinates": []}'}
+          - {trail_line_id: 'oprhp_trails:3', source_key: oprhp_trails, line_kind: network, feature_order: 2, trail_status: open, geom_geojson: '{"type": "Polygon", "coordinates": [[[-74.1, 41.25], [-74.09, 41.25], [-74.09, 41.26], [-74.1, 41.25]]]}'}
+    expect:
+      rows:
+        - {part_id: 'oprhp_trails:1#', part_order: null, refused_because: empty}
+        - {part_id: 'oprhp_trails:2#', part_order: null, refused_because: empty}
+        - {part_id: 'oprhp_trails:3#', part_order: null, refused_because: not_a_line}
+
+  - name: int_trail_network__routable_a_multilinestring_is_one_part_per_line
+    description: >
+      Ports test_a_multilinestring_becomes_one_routable_line_per_part: each
+      part of a MultiLineString is routable on its own, in the line's order
+      (NEARBY_TRAILS.md's Beaver Pond Campground has 34 disjoint parts), and
+      the line after it is numbered after both.
+    model: int_trail_network__routable
+    given:
+      - input: ref('trail_lines')
+        rows:
+          - {trail_line_id: 'oprhp_trails:1', source_key: oprhp_trails, line_kind: network, feature_order: 0, trail_status: open, geom_geojson: '{"type": "MultiLineString", "coordinates": [[[-74.1, 41.25], [-74.09, 41.25]], [[-74.1, 41.27], [-74.09, 41.27]]]}'}
+          - {trail_line_id: 'oprhp_trails:2', source_key: oprhp_trails, line_kind: network, feature_order: 1, trail_status: open, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.29], [-74.09, 41.29]]}'}
+    expect:
+      rows:
+        - {part_id: 'oprhp_trails:1#1', part_order: 0, part_index: 1, trail_id: 'oprhp_trails:1', geom_wkt: 'LINESTRING (-74.1 41.25, -74.09 41.25)'}
+        - {part_id: 'oprhp_trails:1#2', part_order: 1, part_index: 2, trail_id: 'oprhp_trails:1', geom_wkt: 'LINESTRING (-74.1 41.27, -74.09 41.27)'}
+        - {part_id: 'oprhp_trails:2#1', part_order: 2, part_index: 1, trail_id: 'oprhp_trails:2', geom_wkt: 'LINESTRING (-74.1 41.29, -74.09 41.29)'}
+
+  - name: int_trail_network__routable_the_at_routes_whole_after_the_network
+    description: >
+      load_at_lines() and build()'s merge (TN02, a safety field): the
+      network's lines come first in their feature order, then the A.T.'s,
+      kept to the sources in trail_network_at_sources (AT_GRAPH_SOURCES), so
+      a line of any other trails.geojson source never becomes an edge.
+      Without the A.T. here the graph refuses a tap on the widest line on
+      the map with a sentence that is false there.
+    model: int_trail_network__routable
+    given:
+      - input: ref('trail_lines')
+        rows:
+          - {trail_line_id: 'oprhp_trails:2', source_key: oprhp_trails, line_kind: network, feature_order: 1, trail_status: open, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.26], [-74.09, 41.26]]}'}
+          - {trail_line_id: 'centerline:1', source_key: centerline, line_kind: centerline, feature_order: 0, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.27], [-74.09, 41.27]]}'}
+          - {trail_line_id: 'side_trails:5', source_key: side_trails, line_kind: side_trail, feature_order: 1, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.28], [-74.09, 41.28]]}'}
+          - {trail_line_id: 'road_approaches:1', source_key: road_approaches, line_kind: side_trail, feature_order: 2, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.29], [-74.09, 41.29]]}'}
+          - {trail_line_id: 'oprhp_trails:1', source_key: oprhp_trails, line_kind: network, feature_order: 0, trail_status: open, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.25], [-74.09, 41.25]]}'}
+    expect:
+      rows:
+        - {part_id: 'oprhp_trails:1#1', part_order: 0, is_at: false, source_key: oprhp_trails, geom_wkt: 'LINESTRING (-74.1 41.25, -74.09 41.25)'}
+        - {part_id: 'oprhp_trails:2#1', part_order: 1, is_at: false, source_key: oprhp_trails, geom_wkt: 'LINESTRING (-74.1 41.26, -74.09 41.26)'}
+        - {part_id: 'centerline:1#1', part_order: 2, is_at: true, source_key: centerline, geom_wkt: 'LINESTRING (-74.1 41.27, -74.09 41.27)'}
+        - {part_id: 'side_trails:5#1', part_order: 3, is_at: true, source_key: side_trails, geom_wkt: 'LINESTRING (-74.1 41.28, -74.09 41.28)'}
+
+  # ---------------------------------------------------------- the cuts
+
+  - name: int_trail_network__cuts_two_lines_that_cross_are_cut_once
+    description: >
+      Ports test_two_lines_that_cross_are_split_and_share_one_node: the
+      east-west and north-south lines cross, so the pair is one `crossing`
+      row, the lower part first, and no end of either is also joined (the
+      Python `continue`s past a pair that crosses).
+    model: int_trail_network__cuts
+    given:
+      - input: ref('int_trail_network__routable')
+        rows:
+          - {part_id: 'oprhp_trails:1#1', part_order: 0, refused_because: null, geom_wkt: 'LINESTRING (-74.1 41.25, -74.08 41.25)'}
+          - {part_id: 'nynjtc_long_path:2#1', part_order: 1, refused_because: null, geom_wkt: 'LINESTRING (-74.09 41.24, -74.09 41.26)'}
+    expect:
+      rows:
+        - {cut_key: 'crossing:oprhp_trails:1#1|nynjtc_long_path:2#1', cut_order: 0, cut_kind: crossing, line_part_id: 'oprhp_trails:1#1', other_part_id: 'nynjtc_long_path:2#1', end_side: null, end_point_wkt: null}
+
+  - name: int_trail_network__cuts_lines_that_touch_at_a_shared_end_are_a_crossing
+    description: >
+      Ports test_lines_that_merely_touch_at_a_shared_end_make_one_node_and_no_split:
+      a touch is an intersection with no tolerance, so the pair is a
+      `crossing` (cut at the shared end, which cuts nothing) and never an
+      `endpoint_join`.
+    model: int_trail_network__cuts
+    given:
+      - input: ref('int_trail_network__routable')
+        rows:
+          - {part_id: 'oprhp_trails:1#1', part_order: 0, refused_because: null, geom_wkt: 'LINESTRING (-74.1 41.25, -74.09 41.25)'}
+          - {part_id: 'oprhp_trails:2#1', part_order: 1, refused_because: null, geom_wkt: 'LINESTRING (-74.09 41.25, -74.08 41.25)'}
+    expect:
+      rows:
+        - {cut_key: 'crossing:oprhp_trails:1#1|oprhp_trails:2#1', cut_order: 0, cut_kind: crossing, end_side: null}
+
+  - name: int_trail_network__cuts_an_end_stopping_short_is_joined_within_the_tolerance
+    description: >
+      Ports test_an_end_stopping_short_of_another_line_is_joined_within_the_tolerance:
+      the stub's north end stops 6.76 m short of the main line (measured in
+      EPSG:5070), inside trail_network_endpoint_snap_m's 8 m, so it is one
+      `endpoint_join`, carrying the end's point in EPSG:5070 metres. Its
+      south end, a kilometre off, is not.
+    model: int_trail_network__cuts
+    given:
+      - input: ref('int_trail_network__routable')
+        rows:
+          - {part_id: 'oprhp_trails:1#1', part_order: 0, refused_because: null, geom_wkt: 'LINESTRING (-74.1 41.25, -74.08 41.25)'}
+          - {part_id: 'nynjtc_long_path:2#1', part_order: 1, refused_because: null, geom_wkt: 'LINESTRING (-74.09 41.24, -74.09 41.24994)'}
+    expect:
+      rows:
+        - {cut_key: 'endpoint_join:nynjtc_long_path:2#1|oprhp_trails:1#1|end', cut_order: 0, cut_kind: endpoint_join, line_part_id: 'nynjtc_long_path:2#1', other_part_id: 'oprhp_trails:1#1', end_side: end, end_point_wkt: 'POINT (1805708.902606994 2236055.64823628)'}
+
+  - name: int_trail_network__cuts_the_same_gap_is_left_open_at_zero_tolerance
+    description: >
+      Ports test_the_same_gap_is_left_open_when_the_tolerance_is_zero: the
+      same 6.76 m gap with trail_network_endpoint_snap_m at 0 is no cut at
+      all, so the stub stays its own island.
+    model: int_trail_network__cuts
+    overrides:
+      vars:
+        trail_network_endpoint_snap_m: 0.0
+    given:
+      - input: ref('int_trail_network__routable')
+        rows:
+          - {part_id: 'oprhp_trails:1#1', part_order: 0, refused_because: null, geom_wkt: 'LINESTRING (-74.1 41.25, -74.08 41.25)'}
+          - {part_id: 'nynjtc_long_path:2#1', part_order: 1, refused_because: null, geom_wkt: 'LINESTRING (-74.09 41.24, -74.09 41.24994)'}
+    expect:
+      rows: []
+
+  - name: int_trail_network__cuts_parallel_trails_are_never_welded
+    description: >
+      Ports test_parallel_trails_are_not_welded_together_at_the_default_tolerance,
+      the failure the endpoint-only rule exists to prevent: two trails
+      running side by side 44.78 m apart (measured in EPSG:5070) for their
+      whole length have envelopes that meet, and no end within 8 m of the
+      other, so no cut joins them. #771 measured 48% of sampled A.T. points
+      through Harriman within 150 m of a different marked trail.
+    model: int_trail_network__cuts
+    given:
+      - input: ref('int_trail_network__routable')
+        rows:
+          - {part_id: 'oprhp_trails:1#1', part_order: 0, refused_because: null, geom_wkt: 'LINESTRING (-74.1 41.25, -74.08 41.25)'}
+          - {part_id: 'nynjtc_long_path:2#1', part_order: 1, refused_because: null, geom_wkt: 'LINESTRING (-74.1 41.2504, -74.08 41.2504)'}
+    expect:
+      rows: []
+
+  - name: int_trail_network__cuts_a_line_beside_another_is_never_joined
+    description: >
+      Ports test_a_line_running_beside_another_is_untouched_however_long_it_runs:
+      only an end can be joined, never a line's interior, so a line whose
+      whole 2.5 km runs 26.69 m beside a longer one, both its ends 26.69 m
+      off it (measured in EPSG:5070), is no cut.
+    model: int_trail_network__cuts
+    given:
+      - input: ref('int_trail_network__routable')
+        rows:
+          - {part_id: 'oprhp_trails:1#1', part_order: 0, refused_because: null, geom_wkt: 'LINESTRING (-74.1 41.25, -74.05 41.25)'}
+          - {part_id: 'nynjtc_long_path:2#1', part_order: 1, refused_because: null, geom_wkt: 'LINESTRING (-74.09 41.25024, -74.06 41.25024)'}
+    expect:
+      rows: []
+
+  # ------------------------------------------------------ the node grid
+
+  - name: int_trail_network__node_lookups_a_shared_end_is_one_node
+    description: >
+      The node half of test_lines_that_merely_touch_at_a_shared_end_make_one_node_and_no_split:
+      two pieces meeting end to start ask the grid four times and make three
+      nodes, the second piece's start finding the node the first piece's
+      end made.
+    model: int_trail_network__node_lookups
+    given:
+      - input: ref('stg_derived__graph_pieces')
+        format: sql
+        rows: |
+          select 'k0' as graph_piece_key, 'piece' as row_kind, 'oprhp_trails:1#1' as part_id, 0 as piece_index, 0 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (0 0, 10 0)') as geom, cast(null as timestamp) as loaded_at
+          union all
+          select 'k1' as graph_piece_key, 'piece' as row_kind, 'oprhp_trails:2#1' as part_id, 0 as piece_index, 1 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (10 0, 20 0)') as geom, cast(null as timestamp) as loaded_at
+      - input: ref('int_trail_network__cuts')
+        rows: []
+    expect:
+      rows:
+        - {seq: 0, lookup_kind: piece_start, makes_node: true, node_raw: 0}
+        - {seq: 1, lookup_kind: piece_end, makes_node: true, node_raw: 1}
+        - {seq: 2, lookup_kind: piece_start, makes_node: false, node_raw: 1}
+        - {seq: 3, lookup_kind: piece_end, makes_node: true, node_raw: 2}
+
+  - name: int_trail_network__node_lookups_is_first_come_not_nearest
+    description: >
+      _node_id()'s grid is sequential: three starts 0.4 m apart in a row make
+      two nodes, not one, because the middle one finds the first and makes
+      none, and the third is 0.8 m from the first. It takes the rounds
+      two passes to settle the third.
+    model: int_trail_network__node_lookups
+    given:
+      - input: ref('stg_derived__graph_pieces')
+        format: sql
+        rows: |
+          select 'k0' as graph_piece_key, 'piece' as row_kind, 'a#1' as part_id, 0 as piece_index, 0 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (0 0, 100 0)') as geom, cast(null as timestamp) as loaded_at
+          union all
+          select 'k1' as graph_piece_key, 'piece' as row_kind, 'b#1' as part_id, 0 as piece_index, 1 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (0.4 0, 100 50)') as geom, cast(null as timestamp) as loaded_at
+          union all
+          select 'k2' as graph_piece_key, 'piece' as row_kind, 'c#1' as part_id, 0 as piece_index, 2 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (0.8 0, 100 -50)') as geom, cast(null as timestamp) as loaded_at
+      - input: ref('int_trail_network__cuts')
+        rows: []
+    expect:
+      rows:
+        - {seq: 0, makes_node: true, node_raw: 0}
+        - {seq: 1, makes_node: true, node_raw: 1}
+        - {seq: 2, makes_node: false, node_raw: 0}
+        - {seq: 3, makes_node: true, node_raw: 2}
+        - {seq: 4, makes_node: true, node_raw: 3}
+        - {seq: 5, makes_node: true, node_raw: 4}
+
+  - name: int_trail_network__node_lookups_the_scan_takes_the_first_cell_not_the_nearest_node
+    description: >
+      The third piece's start is 0.5 m from the first node, exactly the
+      tolerance (0.5 ** 2 is 0.25 to the bit, so `<=` takes it), and 0.4 m
+      from the second, and finds the first: _node_id() scans the cells west
+      to east and returns the first node it meets within 0.5 m, not the
+      nearest.
+    model: int_trail_network__node_lookups
+    given:
+      - input: ref('stg_derived__graph_pieces')
+        format: sql
+        rows: |
+          select 'k0' as graph_piece_key, 'piece' as row_kind, 'a#1' as part_id, 0 as piece_index, 0 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (0 0, 50 50)') as geom, cast(null as timestamp) as loaded_at
+          union all
+          select 'k1' as graph_piece_key, 'piece' as row_kind, 'b#1' as part_id, 0 as piece_index, 1 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (0.9 0, 50 -50)') as geom, cast(null as timestamp) as loaded_at
+          union all
+          select 'k2' as graph_piece_key, 'piece' as row_kind, 'c#1' as part_id, 0 as piece_index, 2 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (0.5 0, -50 0)') as geom, cast(null as timestamp) as loaded_at
+      - input: ref('int_trail_network__cuts')
+        rows: []
+    expect:
+      rows:
+        - {seq: 0, makes_node: true, node_raw: 0}
+        - {seq: 1, makes_node: true, node_raw: 1}
+        - {seq: 2, makes_node: true, node_raw: 2}
+        - {seq: 3, makes_node: true, node_raw: 3}
+        - {seq: 4, makes_node: false, node_raw: 0}
+        - {seq: 5, makes_node: true, node_raw: 4}
+
+  - name: int_trail_network__node_lookups_a_weld_asks_the_grid_after_every_piece
+    description: >
+      build_graph()'s welds: after every piece's two ends, each endpoint
+      join asks the grid for its line end, then for where it landed, so the
+      stub's end 5 m short of the main line finds the node the stub's own
+      end made, and the landing finds the junction node the main line was
+      cut at.
+    model: int_trail_network__node_lookups
+    given:
+      - input: ref('stg_derived__graph_pieces')
+        format: sql
+        rows: |
+          select 'k0' as graph_piece_key, 'piece' as row_kind, 'main#1' as part_id, 0 as piece_index, 0 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (0 0, 100 0)') as geom, cast(null as timestamp) as loaded_at
+          union all
+          select 'k1' as graph_piece_key, 'piece' as row_kind, 'main#1' as part_id, 1 as piece_index, 1 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (100 0, 200 0)') as geom, cast(null as timestamp) as loaded_at
+          union all
+          select 'k2' as graph_piece_key, 'piece' as row_kind, 'stub#1' as part_id, 0 as piece_index, 2 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (100 -50, 100 -5)') as geom, cast(null as timestamp) as loaded_at
+          union all
+          select 'k3' as graph_piece_key, 'landing' as row_kind, 'main#1' as part_id, cast(null as bigint) as piece_index, cast(null as bigint) as piece_rank, 'endpoint_join:stub#1|main#1|end' as cut_key, st_geomfromtext('POINT (100 0)') as geom, cast(null as timestamp) as loaded_at
+      - input: ref('int_trail_network__cuts')
+        rows:
+          - {cut_key: 'endpoint_join:stub#1|main#1|end', cut_order: 0, cut_kind: endpoint_join, line_part_id: 'stub#1', other_part_id: 'main#1', end_side: end, end_point_wkt: 'POINT (100 -5)'}
+    expect:
+      rows:
+        - {seq: 0, lookup_kind: piece_start, makes_node: true, node_raw: 0}
+        - {seq: 1, lookup_kind: piece_end, makes_node: true, node_raw: 1}
+        - {seq: 2, lookup_kind: piece_start, makes_node: false, node_raw: 1}
+        - {seq: 3, lookup_kind: piece_end, makes_node: true, node_raw: 2}
+        - {seq: 4, lookup_kind: piece_start, makes_node: true, node_raw: 3}
+        - {seq: 5, lookup_kind: piece_end, makes_node: true, node_raw: 4}
+        - {seq: 6, lookup_kind: weld_end, makes_node: false, node_raw: 4}
+        - {seq: 7, lookup_kind: weld_landing, makes_node: false, node_raw: 1}
+
+  # ---------------------------------------------------------- the edges
+
+  - name: int_trail_network__raw_edges_a_weld_makes_the_stub_end_the_junction
+    description: >
+      The graph half of test_an_end_stopping_short_of_another_line_is_joined_within_the_tolerance:
+      the weld merges the stub end's node (4) into the junction's (1),
+      keeping the lower, so the stub's edge runs from its own start to the
+      junction, which three edges now share. Nodes are numbered as the
+      edges first reach them.
+    model: int_trail_network__raw_edges
+    given:
+      - input: ref('int_trail_network__node_lookups')
+        rows:
+          - {seq: 0, lookup_kind: piece_start, part_id: 'main#1', piece_index: 0, piece_rank: 0, cut_key: null, x: 0.0, y: 0.0, status: makes, makes_node: true, node_raw: 0}
+          - {seq: 1, lookup_kind: piece_end, part_id: 'main#1', piece_index: 0, piece_rank: 0, cut_key: null, x: 100.0, y: 0.0, status: makes, makes_node: true, node_raw: 1}
+          - {seq: 2, lookup_kind: piece_start, part_id: 'main#1', piece_index: 1, piece_rank: 1, cut_key: null, x: 100.0, y: 0.0, status: finds, makes_node: false, node_raw: 1}
+          - {seq: 3, lookup_kind: piece_end, part_id: 'main#1', piece_index: 1, piece_rank: 1, cut_key: null, x: 200.0, y: 0.0, status: makes, makes_node: true, node_raw: 2}
+          - {seq: 4, lookup_kind: piece_start, part_id: 'stub#1', piece_index: 0, piece_rank: 2, cut_key: null, x: 100.0, y: -50.0, status: makes, makes_node: true, node_raw: 3}
+          - {seq: 5, lookup_kind: piece_end, part_id: 'stub#1', piece_index: 0, piece_rank: 2, cut_key: null, x: 100.0, y: -5.0, status: makes, makes_node: true, node_raw: 4}
+          - {seq: 6, lookup_kind: weld_end, part_id: null, piece_index: null, piece_rank: null, cut_key: 'endpoint_join:stub#1|main#1|end', x: 100.0, y: -5.0, status: finds, makes_node: false, node_raw: 4}
+          - {seq: 7, lookup_kind: weld_landing, part_id: null, piece_index: null, piece_rank: null, cut_key: 'endpoint_join:stub#1|main#1|end', x: 100.0, y: 0.0, status: finds, makes_node: false, node_raw: 1}
+      - input: ref('stg_derived__graph_pieces')
+        format: sql
+        rows: |
+          select 'k0' as graph_piece_key, 'piece' as row_kind, 'main#1' as part_id, 0 as piece_index, 0 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (0 0, 100 0)') as geom, cast(null as timestamp) as loaded_at
+          union all
+          select 'k1' as graph_piece_key, 'piece' as row_kind, 'main#1' as part_id, 1 as piece_index, 1 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (100 0, 200 0)') as geom, cast(null as timestamp) as loaded_at
+          union all
+          select 'k2' as graph_piece_key, 'piece' as row_kind, 'stub#1' as part_id, 0 as piece_index, 2 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (100 -50, 100 -5)') as geom, cast(null as timestamp) as loaded_at
+          union all
+          select 'k3' as graph_piece_key, 'landing' as row_kind, 'main#1' as part_id, cast(null as bigint) as piece_index, cast(null as bigint) as piece_rank, 'endpoint_join:stub#1|main#1|end' as cut_key, st_geomfromtext('POINT (100 0)') as geom, cast(null as timestamp) as loaded_at
+    expect:
+      rows:
+        - {edge_rank: 0, part_id: 'main#1', piece_index: 0, from_node: 0, to_node: 1, length_m: 100.0, dropped_as_a_loop: false}
+        - {edge_rank: 1, part_id: 'main#1', piece_index: 1, from_node: 1, to_node: 2, length_m: 100.0, dropped_as_a_loop: false}
+        - {edge_rank: 2, part_id: 'stub#1', piece_index: 0, from_node: 3, to_node: 1, length_m: 45.0, dropped_as_a_loop: false}
+
+  - name: int_trail_network__raw_edges_a_loop_shorter_than_the_grid_is_noise
+    description: >
+      build_graph()'s first loop rule: a 341.42 m loop trail whose ends are
+      one node is an edge from that node to itself, while a 0.37 m speck
+      whose ends are one node is float noise and never an edge, its node
+      never numbered.
+    model: int_trail_network__raw_edges
+    given:
+      - input: ref('int_trail_network__node_lookups')
+        rows:
+          - {seq: 0, lookup_kind: piece_start, part_id: 'loop#1', piece_index: 0, piece_rank: 0, x: 0.0, y: 0.0, status: makes, makes_node: true, node_raw: 0}
+          - {seq: 1, lookup_kind: piece_end, part_id: 'loop#1', piece_index: 0, piece_rank: 0, x: 0.0, y: 0.0, status: finds, makes_node: false, node_raw: 0}
+          - {seq: 2, lookup_kind: piece_start, part_id: 'speck#1', piece_index: 0, piece_rank: 1, x: 200.0, y: 0.0, status: makes, makes_node: true, node_raw: 1}
+          - {seq: 3, lookup_kind: piece_end, part_id: 'speck#1', piece_index: 0, piece_rank: 1, x: 200.1, y: 0.0, status: finds, makes_node: false, node_raw: 1}
+          - {seq: 4, lookup_kind: piece_start, part_id: 'line#1', piece_index: 0, piece_rank: 2, x: 300.0, y: 0.0, status: makes, makes_node: true, node_raw: 2}
+          - {seq: 5, lookup_kind: piece_end, part_id: 'line#1', piece_index: 0, piece_rank: 2, x: 400.0, y: 0.0, status: makes, makes_node: true, node_raw: 3}
+      - input: ref('stg_derived__graph_pieces')
+        format: sql
+        rows: |
+          select 'k0' as graph_piece_key, 'piece' as row_kind, 'loop#1' as part_id, 0 as piece_index, 0 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (0 0, 100 0, 100 100, 0 0)') as geom, cast(null as timestamp) as loaded_at
+          union all
+          select 'k1' as graph_piece_key, 'piece' as row_kind, 'speck#1' as part_id, 0 as piece_index, 1 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (200 0, 200.2 0.1, 200.1 0)') as geom, cast(null as timestamp) as loaded_at
+          union all
+          select 'k2' as graph_piece_key, 'piece' as row_kind, 'line#1' as part_id, 0 as piece_index, 2 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (300 0, 400 0)') as geom, cast(null as timestamp) as loaded_at
+    expect:
+      rows:
+        - {edge_rank: 0, part_id: 'loop#1', from_node: 0, to_node: 0, length_m: 341.4, dropped_as_a_loop: false}
+        - {edge_rank: 1, part_id: 'line#1', from_node: 1, to_node: 2, length_m: 100.0, dropped_as_a_loop: false}
+
+  - name: int_trail_network__raw_edges_a_piece_a_weld_closes_on_itself_is_dropped
+    description: >
+      build_graph()'s second loop rule, after the welds: the 0.45 m piece
+      runs between two nodes, because its start found the west line's node
+      0.45 m off and its end, 0.9 m from that node, made its own; then a
+      weld merges its end's node into its start's, and a piece of at most
+      0.5 m from a node to itself is dropped, keeping its place in the
+      numbering.
+    model: int_trail_network__raw_edges
+    given:
+      - input: ref('int_trail_network__node_lookups')
+        rows:
+          - {seq: 0, lookup_kind: piece_start, part_id: 'west#1', piece_index: 0, piece_rank: 0, x: 0.0, y: 0.0, status: makes, makes_node: true, node_raw: 0}
+          - {seq: 1, lookup_kind: piece_end, part_id: 'west#1', piece_index: 0, piece_rank: 0, x: -50.0, y: 0.0, status: makes, makes_node: true, node_raw: 1}
+          - {seq: 2, lookup_kind: piece_start, part_id: 'short#1', piece_index: 0, piece_rank: 1, x: 0.45, y: 0.0, status: finds, makes_node: false, node_raw: 0}
+          - {seq: 3, lookup_kind: piece_end, part_id: 'short#1', piece_index: 0, piece_rank: 1, x: 0.9, y: 0.0, status: makes, makes_node: true, node_raw: 2}
+          - {seq: 4, lookup_kind: weld_end, cut_key: 'endpoint_join:short#1|west#1|end', x: 0.9, y: 0.0, status: finds, makes_node: false, node_raw: 2}
+          - {seq: 5, lookup_kind: weld_landing, cut_key: 'endpoint_join:short#1|west#1|end', x: 0.0, y: 0.0, status: finds, makes_node: false, node_raw: 0}
+      - input: ref('stg_derived__graph_pieces')
+        format: sql
+        rows: |
+          select 'k0' as graph_piece_key, 'piece' as row_kind, 'west#1' as part_id, 0 as piece_index, 0 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (0 0, -50 0)') as geom, cast(null as timestamp) as loaded_at
+          union all
+          select 'k1' as graph_piece_key, 'piece' as row_kind, 'short#1' as part_id, 0 as piece_index, 1 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (0.45 0, 0.9 0)') as geom, cast(null as timestamp) as loaded_at
+    expect:
+      rows:
+        - {edge_rank: 0, part_id: 'west#1', from_node: 0, to_node: 1, dropped_as_a_loop: false}
+        - {edge_rank: 1, part_id: 'short#1', from_node: 0, to_node: 0, dropped_as_a_loop: true}
+
+  - name: int_trail_network__edges_an_edge_is_its_piece_back_in_lon_lat
+    description: >
+      Ports test_every_edge_carries_its_pieces_own_vertices_in_walking_order:
+      each kept edge's GeoJSON carries its piece's own vertices back in
+      lon/lat at six decimals, the bend at the corner included, so a route
+      is drawn on the trail and not as a chord across it. An edge compaction
+      dropped is not an edge, and the ones after it close the gap, so
+      edge_index stays trail_graph.json's position.
+    model: int_trail_network__edges
+    given:
+      - input: ref('int_trail_network__raw_edges')
+        rows:
+          - {edge_rank: 0, part_id: 'oprhp_trails:1#1', piece_index: 0, from_node: 0, to_node: 1, length_m: 1641.45, dropped_as_a_loop: false, geom_m_wkt: 'LINESTRING (1804897.8642884493 2235872.222025077, 1805707.3676826158 2236062.1874913694, 1805451.548120733 2237152.058364394)'}
+          - {edge_rank: 1, part_id: 'oprhp_trails:3#1', piece_index: 0, from_node: 1, to_node: 1, length_m: 0.3, dropped_as_a_loop: true, geom_m_wkt: 'LINESTRING (1805451.548120733 2237152.058364394, 1805451.848120733 2237152.058364394)'}
+          - {edge_rank: 2, part_id: 'nynjtc_long_path:2#1', piece_index: 0, from_node: 1, to_node: 2, length_m: 831.37, dropped_as_a_loop: false, geom_m_wkt: 'LINESTRING (1805451.548120733 2237152.058364394, 1806260.9168392865 2237342.0820857477)'}
+      - input: ref('int_trail_network__routable')
+        rows:
+          - {part_id: 'oprhp_trails:1#1', refused_because: null, trail_id: 'oprhp_trails:1', source_key: oprhp_trails, club: OPRHP, name: Pine Meadow Trail, blaze_color: Blue}
+          - {part_id: 'oprhp_trails:3#1', refused_because: null, trail_id: 'oprhp_trails:3', source_key: oprhp_trails, club: OPRHP, name: Speck, blaze_color: Red}
+          - {part_id: 'nynjtc_long_path:2#1', refused_because: null, trail_id: 'nynjtc_long_path:2', source_key: nynjtc_long_path, club: NYNJTC, name: Seven Hills Trail, blaze_color: White}
+    expect:
+      rows:
+        - {edge_id: 'oprhp_trails:1#1.0', edge_index: 0, trail_id: 'oprhp_trails:1', name: Pine Meadow Trail, from_node: 0, to_node: 1, geom_geojson: '{"type":"LineString","coordinates":[[-74.1,41.25],[-74.09,41.25],[-74.09,41.26]]}'}
+        - {edge_id: 'nynjtc_long_path:2#1.0', edge_index: 1, trail_id: 'nynjtc_long_path:2', name: Seven Hills Trail, from_node: 1, to_node: 2, geom_geojson: '{"type":"LineString","coordinates":[[-74.09,41.26],[-74.08,41.26]]}'}

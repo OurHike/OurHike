@@ -1,0 +1,27 @@
+version: 2
+
+sources:
+  - name: duluth
+    description: >
+      City of Duluth's registered layers, landed by the extract's duluth/
+      folder (pipeline/extract/duluth/) as raw_duluth__<key>, and staged once
+      each by a base model here. Descriptions transcribed from sources.json's
+      titles.
+    schema: raw
+    config:
+      loaded_at_field: _loaded_at
+      freshness:
+        # The extract's cadence, not the steward's. @unvalidated, the same
+        # threshold and open question as _atc__sources.yml.
+        warn_after: {count: 7, period: day}
+    tables:
+      - name: raw_duluth__duluth_superior_hiking_trail
+        data_tests:
+          # Rows sharing base_duluth__superior_hiking_trail's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'duluth_superior_hiking_trail'", "globalid"]
+        description: >
+          Superior Hiking Trail (Duluth section) (sources.json
+          `duluth_superior_hiking_trail`). Key: GlobalID unique on 67 live
+          rows.

@@ -52,6 +52,8 @@ put here is published, not stored. Also never: credentials, mirrors of raw upstr
 about generated data), and anything whose licence has not been established
 ([CONTRIBUTING.md](../CONTRIBUTING.md)).
 
+**Raw never lands in this bucket.** Decision 43 of `pipeline/ELT.md` (2026-10-01) superseded decision 42, which had put raw and the step cache here with a hold-out list for the rows this project never publishes. Every raw table and the step cache now go in one private bucket, `our-hike-raw`, under `raw/` and `steps/`, with one key, so nothing here is raw and there is no hold-out list to keep (the maintainer: *"Noooooo don't partition the sources … Can you make the private r2 bucket for me and store the secrets to GitHub?"*). **#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads** builds it. The earlier design, which reached the same answer for its own reasons:
+
 **There is a design for a raw store, and it is a different bucket** —
 [INCREMENTAL.md](INCREMENTAL.md), designed 2026-09-09, unbuilt. It exists to keep the
 fetchers' outputs between runs, which is exactly the "mirror of raw upstream pulls" the

@@ -37,16 +37,32 @@ disinclined to. OURHIKE_DATA_ENV must name one of RELEASING.md §3's three
 environments; unset is an error and not production, for the reason
 features/DATA_ENVIRONMENTS.md gives - the wrong guess overwrites what hikers
 have already downloaded.
+
+WHICH PIPELINE'S FILES, from stage 4 of #1793 — Rebuild the data platform as
+dlt → dbt: seven contracted marts, a monthly refresh, published docs, and
+lighter phone downloads. `OURHIKE_PHONE_FILES` unset (or `exporters`) is
+today's path, the Python exporters' manifests. `dbt` takes every key a dbt
+exposure names from its pub_ writer's file instead (collect_dbt_phone_files),
+and `python publish.py --live podcasts/episodes.json` puts the one live root
+key in place from its writer. The cutover is setting it; nothing does yet.
+
+`python publish.py --channels` uploads the committed channels.json, decision
+44's pointer to the release folder each environment's phones read, and nothing
+else. It is the release train's step, run by a dispatch; publish() never does
+it, so no scheduled run can move what a phone reads.
 """
 
 from __future__ import annotations
 
+import argparse
 import gzip
 import json
 import os
+import re
 import shutil
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
@@ -55,6 +71,7 @@ import boto3
 from boto3.s3.transfer import TransferConfig
 from botocore.config import Config as BotocoreConfig
 
+import check_contract_versions
 from lib import data_change, data_env, releases
 from lib.content_types import BINARY_TYPES, COMPRESSIBLE_TYPES
 from lib.hashing import sha256_file
@@ -62,7 +79,7 @@ from lib.manifest_paths import from_manifest_path, to_manifest_path
 from lib.photo_screen import load_decisions, unpublishable_digests
 from lib.photo_store import PHOTO_EXTENSION, PHOTO_PREFIX, PHOTOS_DIRNAME, photo_key
 from lib.poi_schema import WITHDRAWN_POI_TYPES
-from lib.r2_keys import assert_valid_keys
+from lib.r2_keys import RELEASE_ID_PATTERN, assert_valid_keys
 
 ROOT = Path(__file__).parent
 PROCESSED_DIR = ROOT / "data" / "processed"
@@ -1502,6 +1519,353 @@ def _collect_cells(family: str, artifacts: dict[str, dict]) -> None:
         artifacts[name] = {"path": entry["path"], "sha256": entry["sha256"]}
 
 
+# ---------------------------------------------------------------------------
+# The dbt writers' phone files (pipeline/ELT.md, "Publish (reverse ETL)").
+#
+# Stage 4 of #1793 — Rebuild the data platform as dlt → dbt: seven contracted
+# marts, a monthly refresh, published docs, and lighter phone downloads. Each
+# phone file dbt writes is a `pub_` model materialised as `phone_file`
+# (dbt/macros/materializations/phone_file.sql), which writes one document
+# under the `processed_dir` var, and each has an exposure whose
+# `meta.r2_keys` names the key a phone reads it from. This section reads both
+# out of dbt's own artifacts, never by globbing the directory, and hands
+# publish() the same {name: {path, sha256, size_bytes}} entries
+# collect_artifacts() builds from the Python exporters' manifests - so the
+# release folder, the manifest diff, the gzip and the cache headers are the
+# ones every artifact already gets, under the keys today's exporters use.
+# ---------------------------------------------------------------------------
+
+#: THE CUTOVER SWITCH, off by default. `exporters` (or unset) publishes exactly
+#: what this module published before stage 4: the exporters' manifests and
+#: nothing dbt wrote. `dbt` takes every key a dbt writer's exposure names from
+#: that writer's file and drops the exporter's entry for it, so each key has
+#: one owner per run; keys no exposure names (the cells, the archives, the
+#: weather and field note files) stay the exporters'. An environment variable,
+#: so the UA soak (decision 30) can run the dbt path while production stays on
+#: the exporters; any other value refuses, so a typo cannot quietly pick one.
+PHONE_FILES_ENV_VAR = "OURHIKE_PHONE_FILES"
+PHONE_FILES_FROM_EXPORTERS = "exporters"
+PHONE_FILES_FROM_DBT = "dbt"
+
+DBT_PROJECT_DIR = ROOT / "dbt"
+#: The manifest and run results of the dbt invocation that ran the writers.
+#: In the build that is the last invocation (pipeline/ELT.md, "Running it":
+#: "the `pub_` writers last"), so they are target/'s own files; a job that
+#: runs anything dbt after the writers has to keep these two aside first.
+DBT_MANIFEST_PATH = DBT_PROJECT_DIR / "target" / "manifest.json"
+DBT_RUN_RESULTS_PATH = DBT_PROJECT_DIR / "target" / "run_results.json"
+#: dbt_project.yml's `processed_dir` var: this variable if set, resolved the
+#: way dbt resolves it (against pipeline/dbt/, where dbt runs), else
+#: ../data/processed/dbt. Spelled twice, here and there, because publish.py
+#: never runs dbt to ask it.
+DBT_PROCESSED_DIR_ENV_VAR = "OURHIKE_PROCESSED_DIR"
+DBT_PROCESSED_DIR_DEFAULT = "../data/processed/dbt"
+#: profiles.yml's warehouse, by the same rule: this variable if set, else
+#: ../data/warehouse.duckdb, against pipeline/dbt/.
+DBT_WAREHOUSE_ENV_VAR = "OURHIKE_WAREHOUSE"
+DBT_WAREHOUSE_DEFAULT = "../data/warehouse.duckdb"
+#: The model whose rows say which conditions source is held this run, and
+#: why. A writer names its row with `meta.gate`, and selects no row while the
+#: row is held (models/intermediate/closures/int_closures__gate.sql).
+DBT_GATE_MODEL = "int_closures__gate"
+
+#: Keys a phone reads at the bucket root and that no manifest names: the
+#: podcast list, which export_podcasts.py puts in place on a person's dispatch
+#: (#1683 — Offer podcast episodes picked for the hike, with a one-tap Spotify
+#: save and an in-app player). publish() never uploads these - they are not in
+#: `latest.json` today and a release folder must not copy them - so
+#: collect_dbt_phone_files() hands them back apart, for publish_live().
+#: `conditions/` is not here: it is in the manifest, and lib/releases keeps it
+#: out of every release folder.
+LIVE_ROOT_PREFIXES = ("podcasts/",)
+#: export_podcasts.upload()'s header for the same object, kept as it is.
+LIVE_CACHE_CONTROL = "public, max-age=300"
+
+#: How much older than its writer's run a file may look and still count as
+#: written by it. dbt stamps the run to the nanosecond, and a filesystem that
+#: keeps mtimes to the second (FAT to two) could stamp a file written in the
+#: run's first second as older than the run, while a leftover from an earlier
+#: build is older by at least the minutes a build takes (Reasoned).
+#: @unvalidated as a number: two seconds covers the coarsest mtime named above.
+#: What would settle it is the mtimes a publish job's filesystem keeps, which
+#: nobody has read; the sandbox this was written in kept nanoseconds on the
+#: writers' files (read 2026-10-02).
+WRITER_CLOCK_SLACK_S = 2.0
+
+
+class UnknownPhoneFileSource(ValueError):
+    """A value of PHONE_FILES_ENV_VAR that names neither pipeline. Its own type
+    so the command line turns it into a sentence, as it does an unknown
+    environment."""
+
+
+def phone_files_source(value: str | None = None) -> str:
+    """Which pipeline's phone files this run publishes: `value`, else
+    `$OURHIKE_PHONE_FILES`, else the exporters."""
+    raw = (value if value is not None else os.environ.get(PHONE_FILES_ENV_VAR, "")).strip()
+    if raw == "":
+        return PHONE_FILES_FROM_EXPORTERS
+    if raw not in (PHONE_FILES_FROM_EXPORTERS, PHONE_FILES_FROM_DBT):
+        raise UnknownPhoneFileSource(
+            f"{PHONE_FILES_ENV_VAR}={raw!r} names neither {PHONE_FILES_FROM_EXPORTERS!r} (today's Python "
+            f"exporters, the default) nor {PHONE_FILES_FROM_DBT!r} (the dbt writers). Nothing was published."
+        )
+    return raw
+
+
+def dbt_processed_dir() -> Path:
+    """Where the pub_ writers wrote, by dbt_project.yml's `processed_dir` rule."""
+    raw = Path(os.environ.get(DBT_PROCESSED_DIR_ENV_VAR) or DBT_PROCESSED_DIR_DEFAULT)
+    return raw if raw.is_absolute() else (DBT_PROJECT_DIR / raw).resolve()
+
+
+def dbt_warehouse() -> Path:
+    """The warehouse dbt built in, by profiles.yml's `path` rule."""
+    raw = Path(os.environ.get(DBT_WAREHOUSE_ENV_VAR) or DBT_WAREHOUSE_DEFAULT)
+    return raw if raw.is_absolute() else (DBT_PROJECT_DIR / raw).resolve()
+
+
+@dataclass(frozen=True)
+class GateVerdict:
+    """One int_closures__gate row: why its source is held (None: it passed), and
+    whether the hold is an unreviewed file, which the Python exits 0 for."""
+
+    held_because: str | None
+    awaiting_review: bool = False
+
+
+def read_gate(manifest: dict, warehouse: Path | None = None) -> dict[str, GateVerdict]:
+    """int_closures__gate's rows, by source_key, from the warehouse the writers read.
+
+    The relation is the manifest's, so a schema rename moves both. The model is
+    a table, so reading it needs no spatial extension."""
+    import duckdb  # only the dbt path reads the warehouse
+
+    node = next(
+        (
+            node
+            for node in (manifest.get("nodes") or {}).values()
+            if node.get("resource_type") == "model" and node.get("name") == DBT_GATE_MODEL
+        ),
+        None,
+    )
+    if node is None:
+        raise RuntimeError(
+            f"The manifest has no {DBT_GATE_MODEL}, so no gated writer's file can be judged. Nothing was published."
+        )
+    warehouse = warehouse or dbt_warehouse()
+    relation = f'"{node["schema"]}"."{node.get("alias") or node["name"]}"'
+    with duckdb.connect(str(warehouse), read_only=True) as con:
+        rows = con.execute(f"select source_key, held_because, awaiting_review from {relation}").fetchall()
+    return {key: GateVerdict(held_because, bool(awaiting)) for key, held_because, awaiting in rows}
+
+
+@dataclass
+class DbtPhoneFiles:
+    """What the dbt writers left for this publish.
+
+    `artifacts` and `live` are the files a writer wrote in the run being
+    published, in collect_artifacts()' entry shape: `artifacts` for keys the
+    manifest names (the release folder's, and `conditions/`), `live` for the
+    root keys in LIVE_ROOT_PREFIXES. `kept` is every key whose writer wrote
+    nothing this run, with the reason: publish() carries the bucket's last good
+    object forward for it, as it does for any key a run did not produce.
+    `held` is the kept keys whose gate row held their source, which fail the
+    run once everything else is published (fail_for_held_files()).
+    `owned` is every key a dbt writer's exposure names, written or kept.
+    """
+
+    artifacts: dict[str, dict] = field(default_factory=dict)
+    live: dict[str, dict] = field(default_factory=dict)
+    kept: dict[str, str] = field(default_factory=dict)
+    held: dict[str, str] = field(default_factory=dict)
+    owned: set[str] = field(default_factory=set)
+
+
+def _run_started_at(result: dict) -> float | None:
+    """The epoch second a writer's run began, from its run-results timing.
+
+    dbt 2.0.6 writes nanoseconds (`2026-10-02T04:40:30.713484251Z`, read off a
+    run_results.json of this project); datetime takes six digits, so the rest
+    is cut rather than trusted to every Python's parser."""
+    stamps = [entry.get("started_at") for entry in result.get("timing") or [] if isinstance(entry, dict)]
+    parsed = []
+    for stamp in stamps:
+        if not isinstance(stamp, str) or not stamp:
+            continue
+        text = re.sub(r"(\.\d{6})\d+", r"\1", stamp).replace("Z", "+00:00")
+        try:
+            parsed.append(datetime.fromisoformat(text).timestamp())
+        except ValueError:
+            continue
+    return min(parsed) if parsed else None
+
+
+def collect_dbt_phone_files(
+    manifest_path: Path | None = None,
+    run_results_path: Path | None = None,
+    processed_dir: Path | None = None,
+    gate: dict[str, GateVerdict] | None = None,
+) -> DbtPhoneFiles:
+    """Every phone file a dbt writer wrote in the run being published, keyed
+    by the R2 key its exposure names.
+
+    THE RUN RESULTS ARE THE PROOF OF WRITING, not the directory. phone_file
+    writes nothing when a writer under `meta: {when_empty: keep_last_file}`
+    selects no row (an ATC review nobody has done yet), and a directory that
+    outlived an earlier build would still hold that writer's old file. So a
+    file counts only when its writer is in this invocation's run results,
+    succeeded, and left a file no older than its own start. Everything else is
+    `kept`, and publish() then carries the bucket's last good object forward:
+    nothing empty is written and nothing is deleted.
+
+    That proof is whole only where the files keep the mtimes the writer gave
+    them. Across an Actions artifact they may all arrive stamped with the
+    download time, which reads every file as fresh: a build job that starts
+    from an empty `processed_dir`, as a fresh runner does, is what keeps that
+    direction safe (Reasoned; nothing here caches data/processed/dbt/).
+
+    A WRITER WITH `meta.gate` writes nothing while that int_closures__gate row
+    holds its source (`gate`, else read from the warehouse). Its key is kept,
+    and `held` too unless the hold is an unreviewed file. The gate is what
+    tells that choice from a writer that selected no row by mistake, so a
+    gated writer that wrote nothing while its row passed is refused, as is
+    one that wrote a held source's file.
+
+    Refuses, rather than publishing less: a missing manifest or run results;
+    run results naming none of the writers (the build's last dbt invocation
+    was not the writers', and every dbt file would read as kept); a writer
+    whose run did not succeed; a writer that must write (`when_empty` other
+    than keep_last_file) with no file this run; a gated writer whose file
+    disagrees with its gate row, or that has no row; an empty file; and one
+    key named by two writers.
+    """
+    manifest_path = manifest_path or DBT_MANIFEST_PATH
+    run_results_path = run_results_path or DBT_RUN_RESULTS_PATH
+    processed_dir = processed_dir or dbt_processed_dir()
+    for path, what in ((manifest_path, "manifest"), (run_results_path, "run results")):
+        if not path.exists():
+            raise FileNotFoundError(
+                f"{PHONE_FILES_ENV_VAR}={PHONE_FILES_FROM_DBT} publishes the dbt writers' files, and needs the "
+                f"{what} of the dbt invocation that ran them at {path}. Nothing was published."
+            )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    run_results = json.loads(run_results_path.read_text(encoding="utf-8"))
+    nodes = manifest.get("nodes") or {}
+    results = {entry.get("unique_id"): entry for entry in run_results.get("results") or [] if isinstance(entry, dict)}
+
+    found = DbtPhoneFiles()
+    owner: dict[str, str] = {}
+    writers_seen = 0
+    verdicts = gate
+    for exposure_id, exposure in sorted((manifest.get("exposures") or {}).items()):
+        # Which writer writes which key: one writer every key, several writers
+        # each the key named for its own file (the eight poi_<type>.geojson
+        # share one exposure). An exposure with no writer documents a file
+        # Python still writes, such as conditions/weather_alerts.json, and is
+        # not dbt's to publish.
+        try:
+            paired = check_contract_versions.keys_by_writer(exposure, nodes)
+        except ValueError as exc:
+            raise RuntimeError(f"{exposure_id}: {exc}") from exc
+        for writer_id, keys in paired.items():
+            config = nodes[writer_id].get("config") or {}
+            when_empty = (config.get("meta") or {}).get("when_empty", "fail")
+            path = processed_dir / config["location"]
+            for key in keys:
+                if key in owner:
+                    raise RuntimeError(f"{key} is named by {owner[key]} and by {exposure_id}; one key has one writer.")
+                owner[key] = exposure_id
+            found.owned.update(keys)
+
+            result = results.get(writer_id)
+            if result is None:
+                for key in keys:
+                    found.kept[key] = f"{writer_id} did not run in the dbt invocation being published"
+                continue
+            writers_seen += 1
+            if result.get("status") != "success":
+                raise RuntimeError(
+                    f"{writer_id} finished {result.get('status')!r}, so {', '.join(keys)} cannot be published from it."
+                )
+            started = _run_started_at(result)
+            written = path.exists() and (started is None or path.stat().st_mtime >= started - WRITER_CLOCK_SLACK_S)
+            gate_key = (config.get("meta") or {}).get("gate")
+            verdict = None
+            if gate_key is not None:
+                if verdicts is None:
+                    verdicts = read_gate(manifest)
+                verdict = verdicts.get(gate_key)
+                if verdict is None:
+                    raise RuntimeError(
+                        f"{writer_id} names {gate_key} as its gate, and {DBT_GATE_MODEL} has no row for it, so nothing "
+                        "says whether it was held."
+                    )
+                if written and verdict.held_because is not None:
+                    raise RuntimeError(
+                        f"{writer_id} wrote {path} while {DBT_GATE_MODEL} holds {gate_key} ({verdict.held_because}); "
+                        "a held source's file is never published."
+                    )
+                if not written and verdict.held_because is None:
+                    raise RuntimeError(
+                        f"{writer_id} wrote nothing this run, and {DBT_GATE_MODEL} holds nothing for {gate_key}: a "
+                        "writer that selected no row by mistake must not pass as one that chose to."
+                    )
+            if not written:
+                if when_empty != "keep_last_file":
+                    state = "is older than its run" if path.exists() else "is not there"
+                    raise RuntimeError(
+                        f"{writer_id} succeeded, but its file {path} {state}, and it is not a keep_last_file "
+                        f"writer: either processed_dir is not where it wrote, or something else wrote there."
+                    )
+                reason = "predates this run, and" if path.exists() else "is absent:"
+                for key in keys:
+                    found.kept[key] = (
+                        f"{config['location']} {reason} {writer_id} wrote nothing this run (when_empty: keep_last_file)"
+                    )
+                    if verdict is not None:
+                        found.kept[key] += f", because {DBT_GATE_MODEL} holds {gate_key}: {verdict.held_because}"
+                        if not verdict.awaiting_review:
+                            found.held[key] = f"{gate_key} is held: {verdict.held_because}"
+                continue
+            size = path.stat().st_size
+            if size == 0:
+                raise RuntimeError(f"{path} is empty; a phone file is never published empty ({writer_id}).")
+            entry = {"path": to_manifest_path(path), "sha256": sha256_file(path), "size_bytes": size}
+            for key in keys:
+                (found.live if key.startswith(LIVE_ROOT_PREFIXES) else found.artifacts)[key] = dict(entry)
+
+    if found.owned and writers_seen == 0:
+        raise RuntimeError(
+            f"{run_results_path} names none of the {len(found.owned)} phone files' writers, so it is not the "
+            "run that wrote them. Keep the writers' run results aside before any later dbt command."
+        )
+    return found
+
+
+def fail_for_held_files(held: dict[str, str]) -> None:
+    """Fail the run, once everything else is published, for each phone file
+    whose source int_closures__gate held: the phone keeps that file's last
+    copy, with its own age, and the red run is how somebody finds out."""
+    if not held:
+        return
+    for key, why in sorted(held.items()):
+        print(f"::error title={key} not rewritten::{why}. Its last published copy stands; every other file was published.")
+    raise SystemExit(f"{len(held)} phone file(s) held back by {DBT_GATE_MODEL}: {', '.join(sorted(held))}.")
+
+
+def with_dbt_phone_files(artifacts: dict[str, dict], dbt: DbtPhoneFiles) -> dict[str, dict]:
+    """The exporters' artifacts with every dbt-owned key taken from dbt.
+
+    An exporter's entry for a key a dbt writer owns is dropped even when that
+    writer kept its last file: the key then publishes nothing this run and the
+    bucket's last good object is carried forward, rather than the exporter's
+    file standing in for the pipeline this run publishes from."""
+    merged = {name: entry for name, entry in artifacts.items() if name not in dbt.owned}
+    merged.update(dbt.artifacts)
+    return merged
+
+
 def verify_hashes(entries: dict[str, dict]) -> None:
     """Every collected sha256 must describe the bytes on disk NOW, not the
     bytes the exporter had when it wrote its manifest (#659). Most entries
@@ -2079,13 +2443,248 @@ def publish(
     }
 
 
-def main() -> dict:
+def publish_live(
+    keys: list[str],
+    *,
+    dbt: DbtPhoneFiles | None = None,
+    s3_client=None,
+    bucket: str | None = None,
+    environment: str | None = None,
+) -> dict:
+    """Put each root key in LIVE_ROOT_PREFIXES in place, from its dbt writer.
+
+    The dbt path's half of `export_podcasts.py --upload`, for the cutover: the
+    same object (`podcasts/episodes.json`, scoped by environment), the same
+    headers (`application/json`, LIVE_CACHE_CONTROL, no Content-Encoding, so a
+    reader sees exactly the bytes the writer wrote), the same three guards
+    (the key is legal, the environment is named, writes are enabled), and no
+    entry in `latest.json` or any release folder, as today. A key whose writer
+    kept its last file uploads nothing and says so, which leaves the live
+    object as it was.
+
+    Only with OURHIKE_PHONE_FILES=dbt: on the exporters' path the podcast list
+    is export_podcasts.py's to upload, and two uploaders of one live key would
+    have the last one to run decide what phones read.
+    """
+    if not writes_enabled():
+        raise PermissionError(f"R2 writes are disabled. Set {WRITE_ENABLED_ENV_VAR}=true before publishing.")
+    environment = data_env.resolve(environment)
+    if phone_files_source() != PHONE_FILES_FROM_DBT:
+        raise UnknownPhoneFileSource(
+            f"--live uploads a dbt writer's file, and {PHONE_FILES_ENV_VAR} is not {PHONE_FILES_FROM_DBT!r}: "
+            "on the exporters' path, export_podcasts.py --upload writes podcasts/episodes.json."
+        )
+    dbt = dbt if dbt is not None else collect_dbt_phone_files()
+    refused = [key for key in keys if not key.startswith(LIVE_ROOT_PREFIXES) or key not in dbt.owned]
+    if refused:
+        raise RuntimeError(
+            f"--live takes a live root key a dbt writer owns ({', '.join(LIVE_ROOT_PREFIXES)}); "
+            f"not {', '.join(refused)}. Nothing was published."
+        )
+    assert_valid_keys([data_env.scope_key(environment, key) for key in keys])
+    verify_hashes({key: dbt.live[key] for key in keys if key in dbt.live})
+
+    if s3_client is None:
+        s3_client = boto3.client(
+            "s3",
+            endpoint_url=os.environ["R2_ENDPOINT_URL"],
+            aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
+            aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+            config=BotocoreConfig(read_timeout=PUBLISH_READ_TIMEOUT_S),
+        )
+    if bucket is None:
+        bucket = os.environ["R2_BUCKET"]
+
+    uploaded = []
+    for key in keys:
+        if key not in dbt.live:
+            print(f"  KEPT: {key} is left as it is - {dbt.kept.get(key, 'its writer wrote nothing this run')}.")
+            continue
+        suffix = Path(key).suffix
+        s3_client.put_object(
+            Bucket=bucket,
+            Key=data_env.scope_key(environment, key),
+            Body=from_manifest_path(dbt.live[key]["path"]).read_bytes(),
+            ContentType=COMPRESSIBLE_TYPES.get(suffix) or BINARY_TYPES.get(suffix) or "application/octet-stream",
+            CacheControl=LIVE_CACHE_CONTROL,
+        )
+        uploaded.append(key)
+    return {"environment": environment, "uploaded": uploaded, "kept": sorted(set(keys) - set(uploaded))}
+
+
+#: The committed pointer (decision 44; pipeline/ELT.md, "Versions and
+#: channels"): which release folder a phone reads, per data environment and
+#: schema version, e.g. {"production": {"v1": "2026-09-24-2"}, "ua": {...}}.
+#: client/src/lib/dataRelease.ts reads the uploaded copy at each
+#: environment's root, beside latest.json.
+CHANNELS_PATH = ROOT.parent / "channels.json"
+CHANNELS_KEY = "channels.json"
+_SCHEMA_VERSION_PATTERN = re.compile(r"^v\d+$")
+
+
+def load_channels(path: Path | None = None) -> dict[str, dict[str, str]]:
+    """The committed channels.json, refused unless every part of it can be read
+    the way a phone reads it: data environments that exist (a typo such as
+    `prod` would name a channel no phone ever asks for), schema versions
+    spelled `v<n>`, and release ids lib/releases.next_release_id could have
+    written."""
+    path = path or CHANNELS_PATH
+    document = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(document, dict) or not document:
+        raise ValueError(f"{path} is not an object of data environments")
+    for environment, entries in document.items():
+        if environment not in data_env.ENVIRONMENTS:
+            raise ValueError(
+                f"{path} names {environment!r}, which is not a data environment ({', '.join(data_env.ENVIRONMENTS)})"
+            )
+        if not isinstance(entries, dict) or not entries:
+            raise ValueError(f"{path}'s {environment} is not an object of schema versions")
+        for version, release_id in entries.items():
+            if not _SCHEMA_VERSION_PATTERN.match(version):
+                raise ValueError(f"{path}'s {environment} names schema version {version!r}; versions are v1, v2 and so on")
+            if not isinstance(release_id, str) or not RELEASE_ID_PATTERN.match(release_id):
+                raise ValueError(f"{path}'s {environment} {version} names {release_id!r}, which is not a release id")
+    return document
+
+
+def publish_channels(
+    *,
+    path: Path | None = None,
+    s3_client=None,
+    bucket: str | None = None,
+    environment: str | None = None,
+) -> dict:
+    """Upload the committed channels.json to this environment's root.
+
+    THE PROMOTION AND THE ROLLBACK (decision 44): a reviewed commit moves an
+    entry, and this, run by a dispatch, is what puts it where phones read it.
+    Never part of publish(), so no scheduled run - the hourly conditions bake
+    included - can move what a phone reads; and never by a push, which no
+    publishing workflow here triggers on.
+
+    Refused, before anything is written, unless every release this
+    environment's entries name has its manifest in this environment's bucket
+    tree. A phone would refuse such an entry and keep its last release (the
+    client's readDataChannel checks the same thing), so uploading it would
+    only make the pointer lie.
+
+    Written as committed, byte for byte, both environments' entries in each
+    copy: a phone takes its own environment's, so one file serves both and a
+    reviewer reads exactly what the bucket holds. `no-cache`, as latest.json
+    is served, because this too says which release is current.
+    """
+    if not writes_enabled():
+        raise PermissionError(f"R2 writes are disabled. Set {WRITE_ENABLED_ENV_VAR}=true before publishing.")
+    environment = data_env.resolve(environment)
+    path = path or CHANNELS_PATH
+    document = load_channels(path)
+    entries = document.get(environment)
+    if not entries:
+        raise RuntimeError(f"{path.name} names no release for {environment}, so there is nothing for its phones to read.")
+    key = data_env.scope_key(environment, CHANNELS_KEY)
+    manifests = {
+        version: data_env.scope_key(environment, releases.release_key(release_id, releases.RELEASE_MANIFEST_NAME))
+        for version, release_id in sorted(entries.items())
+    }
+    assert_valid_keys([key, *manifests.values()])
+
+    if s3_client is None:
+        s3_client = boto3.client(
+            "s3",
+            endpoint_url=os.environ["R2_ENDPOINT_URL"],
+            aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
+            aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+        )
+    if bucket is None:
+        bucket = os.environ["R2_BUCKET"]
+
+    for version, manifest_key in manifests.items():
+        try:
+            s3_client.head_object(Bucket=bucket, Key=manifest_key)
+        except Exception as exc:
+            if "404" not in str(exc) and "NoSuchKey" not in str(exc) and "Not Found" not in str(exc):
+                raise
+            raise RuntimeError(
+                f"{path.name} points {environment}'s {version} at {entries[version]}, and {manifest_key} is not in "
+                "the bucket: a phone would refuse it and keep its last release. Nothing was uploaded."
+            ) from exc
+
+    s3_client.put_object(
+        Bucket=bucket,
+        Key=key,
+        Body=path.read_bytes(),
+        ContentType="application/json",
+        CacheControl=MANIFEST_CACHE_CONTROL,
+    )
+    return {"environment": environment, "key": key, "entries": dict(sorted(entries.items()))}
+
+
+def _arguments(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Upload the exported artifacts to R2 (see this module's docstring).")
+    parser.add_argument(
+        "--channels",
+        action="store_true",
+        help="upload the committed channels.json to this environment's root (a promotion or a rollback), and nothing else",
+    )
+    parser.add_argument(
+        "--live",
+        action="append",
+        default=[],
+        metavar="KEY",
+        help=f"put this live root key ({', '.join(LIVE_ROOT_PREFIXES)}) in place from its dbt writer instead of publishing a version",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> dict:
+    # `[]` rather than sys.argv when called with nothing, so a caller in a test
+    # runner never has the runner's own arguments read as this module's.
+    args = _arguments(argv if argv is not None else [])
+
     # Resolved before the artifacts are collected so that a run with no
     # environment set says so immediately, rather than after it has hashed
     # 1.6 GB of PMTiles to discover it has nowhere to put them.
     environment = data_env.resolve()
+    # The cutover switch, read as early and for the same reason.
+    source = phone_files_source()
+
+    if args.channels:
+        result = publish_channels(environment=environment)
+        print(f"channels.json uploaded to {result['key']}: {result['entries']}.")
+        return result
+    if args.live:
+        result = publish_live(args.live, environment=environment)
+        print(f"Live keys put in place in {environment}: {result['uploaded'] or 'none'}.")
+        return result
 
     artifacts = collect_artifacts()
+    kept_everything = False
+    held: dict[str, str] = {}
+    if source == PHONE_FILES_FROM_DBT:
+        dbt = collect_dbt_phone_files()
+        artifacts = with_dbt_phone_files(artifacts, dbt)
+        print(
+            f"Phone files from the dbt writers ({PHONE_FILES_ENV_VAR}={PHONE_FILES_FROM_DBT}): {sorted(dbt.artifacts) or 'none'}."
+        )
+        for key, why in sorted(dbt.kept.items()):
+            print(f"  KEPT: {key} carries the bucket's last good file forward - {why}.")
+        if dbt.live:
+            print(f"  Not published here, by design: {sorted(dbt.live)} - `publish.py --live` puts those in place.")
+        # Writers that ran and chose to write nothing are an answer, not the
+        # broken handoff the refusal below is for: the run results say they ran.
+        kept_everything = not artifacts and bool(dbt.kept)
+        held = dbt.held
+    if kept_everything:
+        print("Nothing to publish: every phone file's writer kept its last good file this run. No new version written.")
+        fail_for_held_files(held)
+        return {
+            "environment": environment,
+            "uploaded": [],
+            "skipped": [],
+            "photos_uploaded": [],
+            "version_written": False,
+            "version": None,
+        }
     if not artifacts:
         # AN EMPTY COLLECTION IS AN ANSWER LOCALLY AND A FAULT WHEN WRITING
         # (#1347). Run by hand, or as a dry run, "there is nothing exported
@@ -2148,13 +2747,16 @@ def main() -> dict:
     # goes looking for a fault that is not there.
     if not result["version_written"] and not result["photos_uploaded"]:
         print(f"Nothing changed - all {len(result['skipped'])} artifacts already up to date. No new version written.")
+    fail_for_held_files(held)
     return result
 
 
 if __name__ == "__main__":
+    import sys
+
     try:
-        main()
-    except (PermissionError, data_env.UnknownEnvironment) as exc:
+        main(sys.argv[1:])
+    except (PermissionError, data_env.UnknownEnvironment, UnknownPhoneFileSource) as exc:
         # Both are refusals to publish rather than faults, and both are worth
         # reading as a sentence: a traceback for "you did not say where" buries
         # the one line that says what to type.

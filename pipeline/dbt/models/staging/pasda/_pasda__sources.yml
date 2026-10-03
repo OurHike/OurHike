@@ -1,0 +1,25 @@
+version: 2
+
+sources:
+  - name: pasda
+    description: >
+      PASDA's registered layers, landed by the extract's pasda/ folder
+      (pipeline/extract/pasda/) as raw_pasda__<key>, and staged once each by a
+      base model here. Descriptions transcribed from sources.json's titles.
+    schema: raw
+    config:
+      loaded_at_field: _loaded_at
+      freshness:
+        # The extract's cadence, not the steward's. @unvalidated, the same
+        # threshold and open question as _atc__sources.yml.
+        warn_after: {count: 7, period: day}
+    tables:
+      - name: raw_pasda__pasda_dcnr_trails
+        data_tests:
+          # Rows sharing base_pasda__dcnr_trails's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'pasda_dcnr_trails'", "trailid"]
+        description: >
+          Pennsylvania DCNR land trails (PASDA) (sources.json
+          `pasda_dcnr_trails`). Key: TRAILID unique on 684 of 684 live rows.

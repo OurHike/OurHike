@@ -107,8 +107,14 @@ jobs:
           # test: test_export_spurs.py reads it to hold the doc and
           # export_spurs.py to the same destination partition (#501), and the
           # edit that breaks that agreement is a docs-only pull request.
+          #
+          # channels.json too (decision 44's pointer, at the repository root):
+          # test_publish_channels.py reads it as publish.py --channels will,
+          # and the pull request that moves it - a promotion or a rollback -
+          # changes nothing else.
           paths: >-
             pipeline/
+            channels.json
             features/SPUR_TRAILS.md
             client/src/lib/blaze.ts
             client/src/lib/config.ts
@@ -162,106 +168,502 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: python -m pytest -v
 
-  # The dbt transform layer (pipeline/DBT.md's CI plan, #100). Its own job
-  # rather than steps on `pytest`: it pins Python 3.12 deliberately - dbt
-  # tends to lag the newest CPython the pytest job runs bleeding-edge - and
-  # its dependency set (requirements-dbt.txt) shares nothing with the
-  # pytest job's beyond duckdb. Same no-`if:`-on-the-job rule as above.
+  # The dbt transform layer (pipeline/DBT.md's CI plan, #100), on dbt v2:
+  # the full `dbt` 2.0.6 distribution, one version everywhere. ELT.md
+  # decision 32 chose it over dbt-oss 2.0.5, which also ran this job green
+  # and stays the documented fallback (requirements-dbt.in says how). Its
+  # own job because requirements-dbt.txt shares nothing with the pytest
+  # job's set beyond duckdb. Same no-`if:`-on-the-job rule as above. The job
+  # id stays `dbt`: it is a required check (.github/expected-protections.yml),
+  # and renaming a required job hangs the merge queue
+  # (.github/workflows/README.md).
+  #
+  # Cheapest failure first: lint and `dbt parse` need no warehouse, so a
+  # style slip or a YAML shape v2 refuses fails in seconds.
   dbt:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: pipeline
+    # TELEMETRY OFF, by dbt's documented opt-out. Under the dbt Product
+    # Licensing Agreement (§2.3) v2 sends usage information to p.vx.dbt.com
+    # on every invocation unless this is set (docs.getdbt.com, "Anonymous
+    # usage stats"). §3.2 forbids disabling licence validation or anything
+    # else that talks to dbt's services, so no other switch is ever set here.
+    # Measured 2026-10-01 through a proxy logging every host: without this,
+    # parse and show each opened p.vx.dbt.com; with it, parse, show and build
+    # opened none. DO_NOT_TRACK=1, which the same page offers, still opened
+    # it, so it is not used.
+    env:
+      DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS: "false"
     steps:
       - uses: actions/checkout@v7
 
       - id: scope
         uses: ./.github/actions/changed-paths
         with:
-          # Narrower than the pytest job's list: this job builds the dbt
-          # project off load_raw.py's warehouse, and nothing else in
-          # pipeline/ reaches it. sources.json is here because it is
-          # load_raw.py's registry - a row added there changes what loads.
+          # Narrower than the pytest job's list: the parts of pipeline/ that
+          # reach this job's build, which starts from the warehouse fixture
+          # mode writes (extract/_fixtures.py, the real extract over
+          # make_dbt_fixtures.py's files). That is the extract and its imports
+          # (extract/, lib/, sources.json, and reference/'s reviewed files);
+          # build_marts.py and every Python step it runs, with their imports;
+          # parity.py and every exporter a parity line runs, with theirs; and
+          # the check scripts the steps below call. Two tests hold this list
+          # to those imports: tests/test_extract_layout.py (the extract and
+          # parity) and tests/test_build_marts.py (the build and its steps).
           paths: >-
             pipeline/dbt/
-            pipeline/load_raw.py
+            pipeline/extract/
+            pipeline/lib/
+            pipeline/.dlt/
+            pipeline/reference/
+            pipeline/parity.py
+            pipeline/check_contract_versions.py
+            pipeline/check_docs_site.py
+            pipeline/export_podcasts.py
+            pipeline/export_sources.py
+            pipeline/export_atc_updates.py
+            pipeline/export_nynjtc_alerts.py
+            pipeline/fetch_nynjtc_alerts.py
+            pipeline/fetch_atc_updates.py
+            pipeline/export_nearby_trails.py
+            pipeline/export_trails.py
+            pipeline/export_spurs.py
+            pipeline/export_club_sections.py
+            pipeline/export_elevation.py
+            pipeline/step_dem_sampling.py
+            pipeline/step_weather_squares.py
+            pipeline/step_form_route.py
+            pipeline/export_suggested_hikes.py
+            pipeline/route_hikefinder.py
+            pipeline/export_highlights.py
+            pipeline/export_network_elevation.py
+            pipeline/export_network_profile.py
+            pipeline/build_marts.py
+            pipeline/row_history.py
+            pipeline/row_history_stores.toml
+            pipeline/tests/test_dbt_row_dates_builds.py
+            pipeline/step_node_lines.py
+            pipeline/build_trail_graph.py
+            pipeline/export_poi.py
+            pipeline/export_nearby_poi.py
+            pipeline/export_retired_poi.py
+            pipeline/export_places.py
+            pipeline/export_challenges.py
+            pipeline/step_site_water.py
+            pipeline/fetch_trail_water.py
+            pipeline/build_water_distance.py
+            pipeline/export_basemap.py
+            pipeline/step_osm_water.py
+            pipeline/step_osm_water_grade.py
+            pipeline/build_osm_water_reach.py
+            pipeline/step_poi_photos.py
+            pipeline/step_long_path_guide.py
+            pipeline/requirements.txt
+            pipeline/seed_spatial_extension.py
+            pipeline/check_freshness.py
+            pipeline/export_conditions.py
+            pipeline/export_weather_alerts.py
+            pipeline/export_work_projects.py
+            pipeline/fetch_club_pdfs.py
+            pipeline/fetch_elevation.py
+            pipeline/fetch_hikefinder.py
+            pipeline/fetch_opentrail.py
             pipeline/make_dbt_fixtures.py
             pipeline/sources.json
             pipeline/requirements-dbt.in
             pipeline/requirements-dbt.txt
+            pipeline/requirements-extract.in
+            pipeline/requirements-extract.txt
             pipeline/.sqlfluff
             .github/workflows/pipeline-tests.yml
             .github/actions/changed-paths/
 
+      # Python 3.12 because pip-compile resolved requirements-dbt.txt on it;
+      # moving the version means recompiling that file. dbt v2 itself is a
+      # Rust binary in a cp311-abi3 wheel, so any CPython >= 3.11 runs it
+      # (PyPI, read 2026-10-01).
       - uses: actions/setup-python@v7
         if: steps.scope.outputs.run == 'true'
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: pipeline/requirements-dbt.txt
+          cache-dependency-path: |
+            pipeline/requirements-dbt.txt
+            pipeline/requirements-extract.txt
 
+      # WHAT dbt FETCHES AT RUN TIME, CACHED. Neither v2 distribution ships a
+      # database driver: on its first command dbt downloads the profile's ADBC
+      # driver from public.cdn.getdbt.com (docs.getdbt.com, "dbt v2 networking
+      # requirements"), and its DuckDB installs spatial from
+      # extensions.duckdb.org. Measured 2026-10-01 from an empty HOME, dbt
+      # 2.0.6: libadbc_driver_duckdb-1.5.4.so, 70,458,712 bytes, into
+      # ~/.cache/com.getdbt/adbc/, and the 1.5.4 spatial build, 80,848,518
+      # bytes, into ~/.duckdb/extensions/v1.5.4/.
+      #
+      # With both present, dbt 2.0.6 parsed and built all 153 nodes with every
+      # outbound connection refused (measured the same day), so a warm cache
+      # rides out an outage of either host, as #321 — Pin the Python
+      # dependency sets and cache the DuckDB spatial extension in CI argued,
+      # and saves about 151 MB a run. It works around nothing dbt does: dbt's
+      # own offline answer is pre-caching drivers (`dbt system
+      # install-drivers`, which fetches all seven adapters', so not used), and
+      # dbt still calls public.cdn.getdbt.com once per command either way
+      # (measured; dbt-oss 2.0.5 made none; what the call carries is not in
+      # the debug log, and nothing here touches it).
+      #
+      # A miss (a new requirements hash, or an evicted entry) downloads both
+      # again. The paths are where dbt wrote, not a documented location: if a
+      # later dbt moves them, this restores files nothing reads, slower but
+      # never wrong. The key is the requirements file, which pins dbt, and the
+      # driver comes with the dbt version (its checksums ship in the binary).
+      - name: Restore dbt's DuckDB driver and v2's spatial extension
+        id: dbt-runtime
+        if: steps.scope.outputs.run == 'true'
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cache/com.getdbt/adbc
+            ~/.duckdb/extensions/v1.5.4
+          key: dbt-v2-runtime-${{ runner.os }}-${{ hashFiles('pipeline/requirements-dbt.txt') }}
+
+      # dbt 2.0.6 is a 3,291-byte sdist on PyPI whose build downloads the real
+      # wheel from public.cdn.getdbt.com/fs/wheels and checks its sha256
+      # (requirements-dbt.in), so a cold install needs dbt's CDN as well as
+      # PyPI. pip caches the built wheel, which the setup step restores, so a
+      # warm run should skip the download (Reasoned from how pip caches
+      # wheels built from an sdist; not yet watched on a runner).
       - name: Install dependencies
         if: steps.scope.outputs.run == 'true'
         run: pip install -r requirements-dbt.txt
-
-      # Take the spatial extension from PyPI instead of extensions.duckdb.org
-      # (#321). `INSTALL spatial` is a live network fetch, and it is the one
-      # standing exception to TESTING.md's "tests never touch the network" -
-      # so an extension-repo outage reddens this suite for a reason that has
-      # nothing to do with the change under test.
-      #
-      # The version is duckdb's OWN, asked of the interpreter rather than read
-      # back out of the requirements file: extensions are ABI-locked to the
-      # exact build, and the installed one is the only version that has to
-      # match. Same script the web session hook runs, for the same reason.
-      - name: Seed the duckdb spatial extension
-        if: steps.scope.outputs.run == 'true'
-        run: |
-          pip install "duckdb-extension-spatial==$(python -c 'import duckdb; print(duckdb.__version__)')"
-          python seed_spatial_extension.py
-
-      - name: Generate synthetic raw fixtures
-        if: steps.scope.outputs.run == 'true'
-        run: python make_dbt_fixtures.py
-
-      - name: Load the warehouse
-        if: steps.scope.outputs.run == 'true'
-        run: python load_raw.py
 
       - name: dbt deps
         if: steps.scope.outputs.run == 'true'
         working-directory: pipeline/dbt
         run: dbt deps --profiles-dir .
 
-      - name: dbt seed
-        if: steps.scope.outputs.run == 'true'
-        working-directory: pipeline/dbt
-        run: dbt seed --profiles-dir .
-
+      # The jinja templater (pipeline/.sqlfluff says why not the dbt one), so
+      # this needs no warehouse. It does need the packages: dbt_utils' macros
+      # render from dbt_packages/ (dbt/sqlfluff_libs/dbt_utils.py), so it runs
+      # after deps. The enforced lint (decision 33): 0 violations, 3.8 s serial
+      # on the 32 files of 2026-10-01.
       - name: sqlfluff lint
         if: steps.scope.outputs.run == 'true'
-        env:
-          OURHIKE_WAREHOUSE: data/warehouse.duckdb
         run: sqlfluff lint dbt/models dbt/tests
 
-      - name: dbt build
+      # The v2 YAML check: dbt-oss 2.0.5 refused this project's v1-shaped
+      # YAML with 64 errors until it moved to v2's shape, which 2.0.6 parses
+      # clean (both measured 2026-10-01). Parse needs the packages but no
+      # warehouse, so a regression fails here in about a second.
+      - name: dbt parse
         if: steps.scope.outputs.run == 'true'
         working-directory: pipeline/dbt
-        run: dbt build --profiles-dir . --exclude package:dbt_project_evaluator
+        run: dbt parse --profiles-dir .
+
+      # dbt's own linter, beside SQLFluff and not instead of it (decision 33):
+      # it reads pipeline/.sqlfluff but warns it supports only SQLFluff's
+      # `dbt` templater ("Continuing anyway"), and misses some of what
+      # SQLFluff reports. Measured 2026-10-01 on dbt 2.0.6: the 32 files in
+      # 0.08 s, failing a planted CP01 (keyword case) but passing a planted
+      # LT01 (a space before a comma) that SQLFluff fails. After deps and
+      # parse because it loads the whole project.
+      - name: dbt lint
+        if: steps.scope.outputs.run == 'true'
+        working-directory: pipeline/dbt
+        run: dbt lint --profiles-dir .
+
+      # BREAKING CONTRACT CHANGES FAIL HERE (ELT.md decision 44), because dbt
+      # 2.0.6 does not refuse them: measured 2026-10-02 in a throwaway
+      # project, `-s state:modified --state` built a dropped v1 column and a
+      # retyped v2 key green, where dbt Core raises
+      # ContractBreakingChangeError. check_contract_versions.py fails on a
+      # removed column, a changed type, a version dropped before its
+      # deprecation_date or a contract switched off, unless the change
+      # arrives as a new version, and requires every pub_ writer to pin the
+      # version it reads and name it in its R2 keys (ELT.md, "Versions and
+      # channels").
+      #
+      # The base is parsed in a git worktree of the event's base commit (the
+      # pull request's, the merge queue's, or the push's previous head),
+      # fetched alone because the checkout is one commit deep; this is the dbt
+      # skill's "State, for a pull request", needing no storage or credential.
+      # A base without the script predates every contract version, so only
+      # the head's own rules run (such a base holds dbt 1.x YAML, which 2.0.6
+      # refuses to parse).
+      - name: Contract versions against the base's manifest
+        if: steps.scope.outputs.run == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+        run: |
+          base="$RUNNER_TEMP/contract-base"
+          if [ -z "$BASE_SHA" ] || ! git fetch --quiet --depth=1 origin "$BASE_SHA"; then
+            echo "::error::Could not fetch the base commit ('$BASE_SHA') to compare contracts against."
+            exit 1
+          fi
+          git worktree add --quiet --detach "$base" "$BASE_SHA"
+          if [ ! -f "$base/pipeline/check_contract_versions.py" ]; then
+            echo "::notice::The base ($BASE_SHA) predates check_contract_versions.py, so it has no contract versions to break; only the head's own rules run."
+            python check_contract_versions.py --head dbt/target/manifest.json
+            exit 0
+          fi
+          (cd "$base/pipeline/dbt" && dbt deps --profiles-dir . && dbt parse --profiles-dir .)
+          python check_contract_versions.py --head dbt/target/manifest.json --base "$base/pipeline/dbt/target/manifest.json"
+
+      # FIXTURE MODE (pipeline/ELT.md, "Fixture mode"): extract/_fixtures.py
+      # runs the real extract over make_dbt_fixtures.py's files, so every
+      # staging model reads a table dlt wrote, as in production (it used to
+      # be load_raw.py's ST_Read, whose tables no extract would write).
+      #
+      # ITS OWN VENV, because requirements-extract.txt and
+      # requirements-dbt.txt cannot share one (click 8.5.0 against 8.4.2,
+      # 2026-10-01); these are the extract jobs' own pins. No secret is in
+      # this job. No spatial seeding: the extract lands geometry as GeoJSON
+      # text, and dbt gets spatial through the cache step above.
+      - name: Install the extract's own pins
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          python -m venv "$RUNNER_TEMP/extract"
+          "$RUNNER_TEMP/extract/bin/pip" install -r requirements-extract.txt
+
+      # THE PIPELINE'S OWN PINS (requirements.txt), for today's exporters in
+      # the parity step and for the Python steps (ELT.md, "Python steps,
+      # outside dbt"): they import shapely, numpy, pyproj, requests and
+      # rasterio, which neither other requirements file carries.
+      # export_trails.py and export_elevation.py run `INSTALL spatial`, so this
+      # venv's DuckDB gets spatial from PyPI, as the pytest job's does, rather
+      # than from extensions.duckdb.org on every run.
+      - name: Install the pipeline's own pins (today's exporters, the Python steps)
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          python -m venv "$RUNNER_TEMP/pipeline"
+          "$RUNNER_TEMP/pipeline/bin/pip" install --quiet -r requirements.txt
+          "$RUNNER_TEMP/pipeline/bin/pip" install --quiet "duckdb-extension-spatial==$("$RUNNER_TEMP/pipeline/bin/python" -c 'import duckdb; print(duckdb.__version__)')"
+          "$RUNNER_TEMP/pipeline/bin/python" seed_spatial_extension.py
+
+      - name: Generate synthetic raw fixtures
+        if: steps.scope.outputs.run == 'true'
+        run: python make_dbt_fixtures.py
+
+      - name: Load the warehouse through the extract (fixture mode)
+        if: steps.scope.outputs.run == 'true'
+        env:
+          RUNTIME__DLTHUB_TELEMETRY: "false"
+        run: >-
+          "$RUNNER_TEMP/extract/bin/python" -m extract._fixtures
+          --raw-dir data/raw --warehouse data/warehouse.duckdb
+
+      # THE BUILD, in pipeline/build_marts.py's order (ELT.md, "Python steps,
+      # outside dbt"): the seeds; stage A, everything no Python step reads
+      # back; each entry of build_marts.STEPS, then what its derived table
+      # unblocks; and the pub_ writers LAST (ELT.md, "Publish (reverse ETL)").
+      # `dbt build` tests a model after building it, so a writer built beside
+      # its parents would write its file before a failing test upstream
+      # stopped it. The writers write under data/processed/dbt/ and nothing
+      # here uploads. The Python steps run on the pipeline's pins. A new
+      # Python step is an entry in build_marts.STEPS, never a step here.
+      - name: dbt build, the Python steps and the pub_ writers (build_marts.py)
+        if: steps.scope.outputs.run == 'true'
+        run: python build_marts.py --fixtures --python "$RUNNER_TEMP/pipeline/bin/python"
+
+      # ROW DATES ACROSS BUILDS (decision 57): the podcasts mart built three
+      # times in fresh warehouses, with row_history.py's store restored
+      # between them, as every production run starts. The third build runs
+      # as a conditions leg whose restore failed, with its snapshots left
+      # out. Here, not in the pytest job, because it drives this job's dbt;
+      # the pytest job skips it. Its own warehouses and target path, so it
+      # touches nothing the steps around it read. On the pipeline's pins,
+      # which carry duckdb for row_history.py, plus the pytest that
+      # requirements-dev.txt pins. Measured locally 2026-10-03 on dbt 2.0.6:
+      # 8 passed in 119 to 142 s over three runs.
+      - name: Row dates across builds (tests/test_dbt_row_dates_builds.py)
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          "$RUNNER_TEMP/pipeline/bin/pip" install --quiet "$(grep -E '^pytest==' requirements-dev.txt)"
+          OURHIKE_DBT="$(command -v dbt)" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_row_dates_builds.py
+
+      # Shadow-run parity (ELT.md, "How a rule moves"): each family the dbt
+      # path writes, against today's exporter on the same input, record by
+      # record. Most families read the fixture warehouse the step above
+      # built; the podcast list and the source registry read their committed
+      # files. Fails on any difference.
+      - name: Parity with today's exporters
+        if: steps.scope.outputs.run == 'true'
+        # EVERY LINE RUNS ON THE PIPELINE'S OWN PINS ($RUNNER_TEMP/pipeline),
+        # because today's exporters need requests (export_atc_updates.py),
+        # psycopg (export_conditions.py), and shapely, pyproj and rasterio
+        # (export_nearby_trails.py), none of which requirements-dbt.txt pins;
+        # the job's own python failed the first conditions line on requests.
+        # Except closures and reports, on the extract's venv: their exporters
+        # read OurHike's Postgres answers through extract/_fixtures.py's
+        # FixtureConnection, which imports dlt, and requirements.txt has none
+        # (measured: "No module named 'dlt'" on requirements.txt alone, no
+        # differences on the extract's venv). --json-dir writes each family's
+        # result to data/processed/parity/<family>.json for gate_report.py;
+        # the console lines and exit codes are the same without it.
+        run: |
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity podcasts --new data/processed/dbt/podcasts_episodes.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity stewards --new data/processed/dbt/stewards.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity registry --new data/processed/dbt/registry.json
+          # The hourly conditions files. atc_updates reads
+          # reference/atc_updates.json from git, and its automatic rows from
+          # fetch_atc_updates.py's own run over the ATC pages fixture mode
+          # served (data/raw/conditions/atc_trail_updates.json); the other
+          # three read the answers under data/raw/conditions/ that fixture
+          # mode built the warehouse from, since their upstreams are a website
+          # and a database.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity atc_updates --new data/processed/dbt/conditions_atc_updates.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity nynjtc_alerts --new data/processed/dbt/conditions_nynjtc_alerts.json
+          "$RUNNER_TEMP/extract/bin/python" parity.py --json-dir data/processed/parity closures --new data/processed/dbt/conditions_closures.json
+          "$RUNNER_TEMP/extract/bin/python" parity.py --json-dir data/processed/parity reports --new data/processed/dbt/conditions_reports.json
+          # NWS's alerts, placed on the weather squares: bake() over the body
+          # fixture mode served and the squares.json step_weather_squares.py
+          # landed, both under data/raw/. bake() imports shapely and pyproj.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity weather_alerts --new data/processed/dbt/conditions_weather_alerts.json --raw-dir data/raw
+          # The club workdays: export_work_projects.py's main() over
+          # reference/work_projects.json from git, written into a temporary folder.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity work_projects --new data/processed/dbt/conditions_work_projects.json
+          # The trail lines network, whose input is the fixture warehouse, not
+          # a file in git.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity nearby_trails --new data/processed/dbt/nearby_trails.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity network_overview --new data/processed/dbt/network_overview.geojson
+          # The A.T.'s files, on the fixture's layers (ATC's are not in git); parity.py applies decision 8's 6 dp to the old side.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity trails --new data/processed/dbt/trails.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity trail_miles --new data/processed/dbt/trail_miles.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity trails_overview --new data/processed/dbt/trails_overview.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity spurs --new data/processed/dbt/spurs.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity club_sections --new data/processed/dbt/club_sections.json
+          # The elevation profile's input is a fixture, not a file in git: the
+          # fixture centerline, markers and DEM tile make_dbt_fixtures.py wrote.
+          # export_elevation.py reads the DEM through rasterio, so this runs on
+          # the pipeline's own pins, the venv step_dem_sampling.py runs in.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity elevation --new data/processed/dbt/elevation_profile.json --raw-dir data/raw
+          # The junction graph's two elevation files, on the build's own edges
+          # (int_trail_network__edges, which today's exporters read as
+          # trail_graph.json and trail_graph_geometry.json), after the A.T.'s
+          # profile on one cold DEM cache, as publish-vector-data.yml runs them.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity trail_graph_elevation --new data/processed/dbt/trail_graph_elevation.json --raw-dir data/raw --warehouse data/warehouse.duckdb
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity trail_graph_profile --new data/processed/dbt/trail_graph_profile.json --raw-dir data/raw --warehouse data/warehouse.duckdb
+          # The points_of_interest family's ten files, on the fixture warehouse
+          # and the reviewed files in git (water distances, capacities, the
+          # identity ledger).
+          for poi_type in shelter campsite water resupply viewpoint parking privy trailhead; do
+            "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity "poi_$poi_type" --new "data/processed/dbt/poi_$poi_type.geojson"
+          done
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity nearby_poi --new data/processed/dbt/nearby_poi.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity retired_poi --new data/processed/dbt/retired_poi.geojson
+          # The suggested hikes: the Hike Finder pages fixture mode served,
+          # under data/raw/hikefinder/, read through fetch_hikefinder.py's
+          # parse and routed by route_hikefinder.py over the warehouse's graph,
+          # the one step_form_route.py read. Either side writes no file when no
+          # hike ships, and two absent files agree. The highlights read
+          # reference/highlights.json from git against the POI files and
+          # club_sections.json this run's writers wrote, which the lines above
+          # hold to export_poi.py's and export_club_sections.py's. All three
+          # run on the pipeline's own pins, the venv step_form_route.py runs
+          # in, so the old side routes with the same duckdb and lib/ the step
+          # does; none imports dlt.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity suggested_hikes --new data/processed/dbt/suggested_hikes.json --raw-dir data/raw
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity suggested_hikes_detail --new data/processed/dbt/suggested_hikes_detail.json --raw-dir data/raw
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity highlights --new data/processed/dbt/highlights.json --raw-dir data/raw
+          # places.json, on the same fixture warehouse: OPRHP's park layer and
+          # ATC's Communities, measured over today's nearby_trails.geojson and
+          # trails.geojson (cut to 6 dp, decision 8), listing today's
+          # trailhead, parking and resupply POIs, each built as its own line
+          # above builds it. Its old side imports export_nearby_trails.py and
+          # export_poi.py, so it runs on the pipeline's pins, and nothing it
+          # imports needs dlt.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity places --new data/processed/dbt/places.json
+          # The challenges list, from the club folders and publishers.json in
+          # git, against the POIs and centerline compared above. The ATC's list
+          # publishes (ELT.md decision 47, on the maintainer's authorisation),
+          # so nothing is held back today. A challenge may_publish would hold
+          # back is explained only where the warehouse's
+          # int_challenges__resolved record for it equals today's.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity challenges --new data/processed/dbt/challenges.json
+          # The junction graph: build_trail_graph.py over the dbt writers'
+          # nearby_trails.geojson and trails.geojson beside the new file, so
+          # both paths read the same lines.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity trail_graph --new data/processed/dbt/trail_graph.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity trail_graph_geometry --new data/processed/dbt/trail_graph_geometry.json
+          # Stage 6's v2 files (decision 44), each against the v1 file this
+          # same run wrote beside it, which the lines above hold to today's
+          # exporters: every elevation, mile and coordinate a v2 decodes to
+          # must be v1's, at decision 8's 6 decimals for a coordinate.
+          # parity.py decodes each file itself, so these read only JSON.
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity elevation_v2 --new data/processed/dbt/elevation_profile_v2.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity trail_miles_v2 --new data/processed/dbt/trail_miles_v2.json
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity poi_shelter_v2 --new data/processed/dbt/poi_shelter_v2.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity poi_campsite_v2 --new data/processed/dbt/poi_campsite_v2.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity poi_water_v2 --new data/processed/dbt/poi_water_v2.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity poi_resupply_v2 --new data/processed/dbt/poi_resupply_v2.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity poi_viewpoint_v2 --new data/processed/dbt/poi_viewpoint_v2.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity poi_parking_v2 --new data/processed/dbt/poi_parking_v2.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity poi_privy_v2 --new data/processed/dbt/poi_privy_v2.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity poi_trailhead_v2 --new data/processed/dbt/poi_trailhead_v2.geojson
+          "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity nearby_poi_v2 --new data/processed/dbt/nearby_poi_v2.geojson
+
+      # Kept with the run so gate_report.py can read them without a rebuild
+      # (python gate_report.py --parity-dir <downloaded folder> --out <dir>).
+      # Uploaded when parity fails too: each family before the failing line
+      # wrote its file, and the failing family's says what differed. The
+      # records are the fixtures' and git's reviewed files, nothing a hiker
+      # sent.
+      - name: Upload the parity results
+        if: always() && steps.scope.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: parity-results
+          path: pipeline/data/processed/parity/
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: dbt source freshness
         if: steps.scope.outputs.run == 'true'
         working-directory: pipeline/dbt
         run: dbt source freshness --profiles-dir .
 
+      # v2's docs are a directory: index.html, assets/ and the Parquet files
+      # the page reads with DuckDB-WASM (measured 2026-10-01 on dbt 2.0.6: 315
+      # assets and 38 Parquet files, 12,301,390 bytes; dbt-oss 2.0.5, the same
+      # counts in 12,291,821 bytes). Written inside the gitignored target/, and
+      # .github/tests/test_no_committed_data.py refuses any path under
+      # pipeline/dbt/target/ besides.
+      #
+      # pages.yml and pr-preview.yml publish the site at /data/, built by
+      # .github/actions/dbt-docs-site against an empty warehouse, and run
+      # check_docs_site.py (the one home of what the site must hold) on the
+      # copy they ship. It runs here too, so a pull request finds a missing
+      # part, a recorded --vars or coordinate-shaped text before a tag does.
       - name: dbt docs generate
         if: steps.scope.outputs.run == 'true'
         working-directory: pipeline/dbt
-        run: dbt docs generate --profiles-dir .
+        run: |
+          dbt docs generate --profiles-dir . --output-dir target/docs
+          python ../check_docs_site.py target/docs
 
       # Separate from the data build so "did my data pass" and "does my
       # project follow conventions" stay independently readable (DBT.md).
+      # ENFORCED: dbt_project.yml sets every evaluator test's severity from
+      # this variable, so a finding fails the job. Set here rather than left
+      # to the default so the step says what it does. A finding is fixed, or
+      # excepted with a reason in dbt/seeds/dbt_project_evaluator_exceptions.csv.
       - name: dbt project evaluator
         if: steps.scope.outputs.run == 'true'
         working-directory: pipeline/dbt
+        env:
+          DBT_PROJECT_EVALUATOR_SEVERITY: error
         run: dbt build -s package:dbt_project_evaluator --profiles-dir .
+
+      # Saved on a miss, and on a failed run too: the downloads happen on the
+      # job's first dbt command, so a run that fails later still holds them
+      # (test_cache_keys_are_content_addressed.py's rule for every save).
+      - name: Save dbt's DuckDB driver and v2's spatial extension
+        if: always() && steps.scope.outputs.run == 'true' && steps.dbt-runtime.outputs.cache-hit != 'true' && hashFiles('pipeline/requirements-dbt.txt') != ''
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cache/com.getdbt/adbc
+            ~/.duckdb/extensions/v1.5.4
+          key: dbt-v2-runtime-${{ runner.os }}-${{ hashFiles('pipeline/requirements-dbt.txt') }}

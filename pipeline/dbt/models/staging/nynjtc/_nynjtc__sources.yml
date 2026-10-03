@@ -4,25 +4,31 @@ sources:
   - name: nynjtc
     description: >
       NYNJTC's two trail extracts on their own ArcGIS org - the Long Path and
-      the Highlands Trail - fetched by fetch_external_layers.py into
-      data/raw/external/ and loaded untouched by load_raw.py. These are the
+      the Highlands Trail - landed by the extract's nynjtc/ folder
+      (pipeline/extract/nynjtc/trail_lines.py). These are the
       first non-A.T. TRAILS the warehouse has ever held, which is the whole
       point of Phase D (#100): a second trail's sources become new rows in
       the registry and new staging models here, not a parallel pipeline.
       Descriptions below are transcribed from sources.json's own measured
       notes, not authored here.
     schema: raw
-    loaded_at_field: _loaded_at
-    freshness:
-      # Measures "how recently did load_raw.py run", NOT upstream NYNJTC
-      # staleness - the fetcher owns real upstream change-detection via
-      # editingInfo.dataLastEditDate. @unvalidated: 7 days is inherited from
-      # the atc source's threshold and nobody has measured what load cadence
-      # actually makes a warehouse stale here. What would settle it is one
-      # bake cadence being decided; see _atc__sources.yml for the same tag.
-      warn_after: {count: 7, period: day}
+    config:
+      loaded_at_field: _loaded_at
+      freshness:
+        # Measures "how recently did the extract read this layer", NOT upstream
+        # NYNJTC staleness - the extract owns real upstream change-detection via
+        # editingInfo.dataLastEditDate. @unvalidated: 7 days is inherited from
+        # the atc source's threshold and nobody has measured what load cadence
+        # actually makes a warehouse stale here. What would settle it is one
+        # bake cadence being decided; see _atc__sources.yml for the same tag.
+        warn_after: {count: 7, period: day}
     tables:
       - name: raw_nynjtc__nynjtc_long_path
+        data_tests:
+          # Rows sharing stg_nynjtc__long_path's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nynjtc_long_path'", "lp_section", "mileage"]
         description: >
           NYNJTC Long Path (sources.json: discovered 2026-08-24). 43 polyline
           segments, measured live that day - the same count and field list
@@ -41,6 +47,11 @@ sources:
           - name: Trail_Name
             description: The route name; 'Long Path' on all 43 rows.
       - name: raw_nynjtc__nynjtc_highlands_trail
+        data_tests:
+          # Rows sharing stg_nynjtc__highlands_trail's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nynjtc_highlands_trail'", "section_name"]
         description: >
           NYNJTC Highlands Trail, NY and NJ sections (sources.json:
           discovered 2026-08-24). 12 section features, measured live that
@@ -54,3 +65,24 @@ sources:
         columns:
           - name: Trail_Name
             description: "'Highlands' on all 12 rows."
+      - name: raw_nynjtc__nynjtc_long_path_guide
+        data_tests:
+          # Rows sharing stg_nynjtc__long_path_guide's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nynjtc_long_path_guide'", "number"]
+        description: >
+          NYNJTC's Long Path End-to-End Section Guide (sources.json's
+          nynjtc_long_path_guide), landed by the guide_pages kind
+          (pipeline/extract/nynjtc/points_of_interest.py): one row per
+          section page as lib/nynjtc_long_path_guide.py's parse_section()
+          reads it, its three blocks' mile-marked entries as JSON lists, and
+          the page's sha256. 40 sections and 1,256 entries, read live
+          2026-10-01. The entries keep the guide's prose in the raw store;
+          what publishes is the facts build_records() makes of them.
+        columns:
+          - name: number
+            description: The section's number, the Long Path layer's LP_Section.
+            data_tests: [not_null]
+          - name: description
+            description: The Detailed Trail Description block's entries, as JSON.

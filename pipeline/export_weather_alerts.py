@@ -60,6 +60,7 @@ from lib.atomic_write import write_text_atomically
 from lib.hashing import sha256_file
 from lib.http_retry import request_with_retry
 from lib.manifest_paths import to_manifest_path
+from lib.nws_alerts import ACCEPT, ALERTS_URL, check_response
 
 ROOT = Path(__file__).resolve().parent
 SQUARES_PATH = ROOT / "data" / "raw" / "weather" / "squares.json"
@@ -67,7 +68,6 @@ CONDITIONS_DIR = ROOT / "data" / "processed" / "conditions"
 ALERTS_PATH = CONDITIONS_DIR / "weather_alerts.json"
 MANIFEST_PATH = ROOT / "data" / "processed" / "weather_alerts_manifest.json"
 
-ALERTS_URL = "https://api.weather.gov/alerts/active"
 # NWS asks every caller for a User-Agent that identifies the app and a way to
 # reach it (weather.gov/documentation/services-web-api). The repository is
 # the contact: no person's address goes in a request header.
@@ -112,15 +112,6 @@ def _stamp(value: datetime) -> str:
 
 # --------------------------------------------------------------------------
 # Pure pieces - what the tests pin.
-
-
-def check_response(body: object) -> list[dict]:
-    """The alert features, refusing anything that is not the GeoJSON
-    FeatureCollection NWS documents. A 200 carrying some other shape is a
-    changed API, and publishing its absence of alerts would say "none"."""
-    if not isinstance(body, dict) or body.get("type") != "FeatureCollection" or not isinstance(body.get("features"), list):
-        raise RuntimeError(f"{ALERTS_URL} did not answer with a FeatureCollection; refusing to publish its alerts as none")
-    return body["features"]
 
 
 def relayed(feature: dict) -> bool:
@@ -204,7 +195,7 @@ def fetch() -> tuple[dict, datetime]:
     """(the response body, when it was asked for)."""
     session = requests.Session()
     session.headers["User-Agent"] = USER_AGENT
-    session.headers["Accept"] = "application/geo+json"
+    session.headers["Accept"] = ACCEPT
     asked = datetime.now(UTC)
     body = request_with_retry(ALERTS_URL, session=session, timeout=60, label="NWS active alerts").json()
     return body, asked

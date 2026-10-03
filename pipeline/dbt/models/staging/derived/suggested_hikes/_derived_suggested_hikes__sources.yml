@@ -1,0 +1,66 @@
+version: 2
+
+# step_form_route's table, in its own file beside el's _derived__sources.yml,
+# which declares the `derived` source and its other tables: dbt merges one
+# source's tables across files (dbt 2.0.6, as _nynjtc_alerts__sources.yml
+# found), so this block repeats the source's schema and config for its own
+# table.
+sources:
+  - name: derived
+    description: >
+      The tables this project's Python steps write between dbt invocations
+      (pipeline/ELT.md, "Python steps, outside dbt"). This file holds
+      step_form_route's.
+    schema: derived
+    config:
+      loaded_at_field: _loaded_at
+      freshness:
+        # The step runs inside every build, so a stale `_loaded_at` is a
+        # build reading a table an earlier build left behind. @unvalidated:
+        # 7 days is the derived source's picked number (_derived__sources.yml
+        # says why), not one measured for this step.
+        warn_after: {count: 7, period: day}
+      meta:
+        cadence: monthly
+    tables:
+      - name: formed_routes
+        data_tests:
+          # Rows sharing stg_derived__formed_routes's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'formed_routes'", "hike_number"]
+        description: >
+          Each Hike Finder hike's route over this build's junction graph,
+          written by step_form_route (pipeline/step_form_route.py) from
+          int_suggested_hikes__hike_finder and the graph's edges: a generated
+          route formed from the description (lib/hike_route_builder.py's
+          measure_route(), SH03), or a published track measured
+          (measure_published()) and re-walked between its 400 m samples
+          (SH06). One row per hike, keyed by its number. What the graph
+          measured and nothing graded: the grade is
+          int_suggested_hikes__graded's (SH04). Every number a grade or the
+          phone reads is the double's repr as text, so no step between the
+          search and the grade rounds it; every list is JSON.
+        columns:
+          - name: hike_number
+            description: The export's hike id.
+            data_tests: [not_null]
+          - name: provenance
+            description: >
+              `generated` (formed from the prose) or `published` (the
+              publisher's GPX track), lib/hike_route_builder.py's GENERATED
+              and PUBLISHED.
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: [generated, published]
+          - name: formed_problem
+            description: >
+              Why no route formed, in the builder's words: no coordinate, a
+              parking too far from any line, no trail the description names
+              within reach, no path, or a track of fewer than two points.
+              Null where a route formed.
+          - name: _loaded_at
+            description: When the step wrote the table, UTC.
+            data_tests: [not_null]

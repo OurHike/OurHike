@@ -24,8 +24,10 @@ concurrency group that looks like queueing and is not.
 
 from __future__ import annotations
 
+import json
 import os
 import re
+import stat
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -829,3 +831,252 @@ class TestDraftingWithoutDeploying:
         assert "%{http_code}" in post
         assert "::error::Drafting" in run
         assert ".message" in run
+
+
+class TestTheDataDocs:
+    """The dbt docs at `/data/` (pipeline/ELT.md, "Docs and charts at https://ourhike.org/data/").
+
+    Stage 7 of **#1793 — Rebuild the data platform as dlt → dbt: seven
+    contracted marts, a monthly refresh, published docs, and lighter phone
+    downloads**. Production and every preview serve the page beside the app,
+    built by `.github/actions/dbt-docs-site` and checked by
+    `pipeline/check_docs_site.py` as copied; UA has no site and gets none. The
+    first three tests are the three assertions ELT.md names; the fourth is
+    its "the docs step needs no secret".
+    """
+
+    ACTION = REPO_ROOT / ".github" / "actions" / "dbt-docs-site"
+    CHECKER = REPO_ROOT / "pipeline" / "check_docs_site.py"
+    SITE_BUILDS = [("pages.yml", "Assemble the site"), ("pr-preview.yml", "Assemble the preview")]
+
+    @staticmethod
+    def _steps(workflow: str) -> list[dict]:
+        parsed = yaml.safe_load((WORKFLOW_DIR / workflow).read_text(encoding="utf-8"))
+        return [step for job in parsed["jobs"].values() for step in job["steps"]]
+
+    @pytest.mark.parametrize(("workflow", "assemble"), SITE_BUILDS)
+    def test_both_site_builds_assemble_the_docs_at_data_index_html(self, workflow, assemble):
+        """Built before the assembly, copied into `_site/data/` by it, and checked there.
+
+        The check is on the copy because the copy is what ships, and it is the
+        only thing between a preview and its trap: `_site/404.html` is the app
+        shell, so a missing `_site/data/index.html` would be answered with the
+        app rather than with a failure.
+        """
+        steps = self._steps(workflow)
+        names = [step.get("name") for step in steps]
+        build = next(step for step in steps if step.get("uses") == "./.github/actions/dbt-docs-site")
+        step = next(step for step in steps if step.get("name") == assemble)
+        assert names.index(build["name"]) < names.index(assemble)
+        assert step["env"]["DOCS_DIR"] == "${{ steps.%s.outputs.dir }}" % build["id"]
+        assert 'cp -r "$DOCS_DIR"/. _site/data/' in step["run"]
+        assert "python pipeline/check_docs_site.py _site/data" in step["run"]
+        # And the checker is what refuses a site with no index.html.
+        assert 'site / "index.html"' in self.CHECKER.read_text(encoding="utf-8")
+
+    @pytest.mark.parametrize(("workflow", "assemble"), SITE_BUILDS)
+    def test_nothing_lands_under_the_apps_data_path(self, workflow, assemble):
+        """`/app/` is the app's base path and its PWA scope, so docs there would be the installed app's.
+
+        Everything copied under `_site/app/` is the app's own build, and
+        client/public, which Vite copies into that build, holds no `data/`.
+        """
+        steps = self._steps(workflow)
+        run = next(step for step in steps if step.get("name") == assemble)["run"]
+        copies = [line.split() for line in run.splitlines() if line.strip().startswith("cp ")]
+        into_app = [words for words in copies if words[-1].startswith("_site/app")]
+        assert into_app and all(words[-2] == "client/dist/." for words in into_app), into_app
+        docs = [words for words in copies if '"$DOCS_DIR"/.' in words]
+        assert [words[-1] for words in docs] == ["_site/data/"]
+        assert "_site/app/data" not in yaml.safe_dump(steps)
+        assert not (REPO_ROOT / "client" / "public" / "data").exists()
+
+    def test_ua_still_deploys_client_dist_alone(self):
+        """UA has no site, and giving it one is a separate decision (ELT.md)."""
+        steps = self._steps("ua.yml")
+        deploy = next(step for step in steps if "wrangler-action" in step.get("uses", ""))
+        assert "pages deploy client/dist" in deploy["with"]["command"]
+        assert "_site" not in yaml.safe_dump(steps)
+        assert all(step.get("uses") != "./.github/actions/dbt-docs-site" for step in steps)
+        assert "check_docs_site" not in yaml.safe_dump(steps)
+
+    def test_the_docs_build_reads_no_secret_and_passes_no_vars(self):
+        """`dbt_rt.invocations` publishes `args` and `vars_override` with the page.
+
+        So the build holds no secret to leak, and nothing reaches dbt through
+        `--vars`; check_docs_site.py refuses a page that records one anyway.
+        """
+        action = (self.ACTION / "action.yml").read_text(encoding="utf-8")
+        assert "secrets." not in action
+        for workflow, _ in self.SITE_BUILDS:
+            build = next(step for step in self._steps(workflow) if step.get("uses") == "./.github/actions/dbt-docs-site")
+            assert "secrets." not in yaml.safe_dump(build)
+        script = (self.ACTION / "build.sh").read_text(encoding="utf-8")
+        commands = [line for line in script.splitlines() if not line.strip().startswith("#")]
+        assert not [line for line in commands if "--vars" in line]
+        assert "DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS=false" in script
+
+    def test_the_deploy_job_leaves_no_write_token_on_disk_for_the_docs_build(self):
+        """pages.yml's build job holds `contents: write` and replaces gh-pages,
+        and the docs step installs dbt, runs `dbt deps` and downloads a native
+        driver, none of them hash-pinned. A checkout that persists its token
+        leaves that token in .git/config for every one of them to read.
+
+        The publish needs no persisted token: it pushes from a fresh `git init`
+        through a remote URL carrying the token it is handed, so the checkout
+        can keep none.
+        """
+        parsed = yaml.safe_load((WORKFLOW_DIR / "pages.yml").read_text(encoding="utf-8"))
+        steps = parsed["jobs"]["build"]["steps"]
+        checkouts = [step for step in steps if str(step.get("uses", "")).startswith("actions/checkout@")]
+        assert checkouts, "the build job checks the repository out"
+        assert all(step.get("with", {}).get("persist-credentials") is False for step in checkouts)
+        publish = next(step for step in steps if step.get("uses") == "./.github/actions/publish-to-pages")
+        assert publish["with"]["token"] == "${{ secrets.GITHUB_TOKEN }}"
+        assert "x-access-token:${{ inputs.token }}@" in (ACTION_DIR / "action.yml").read_text(encoding="utf-8")
+        script = SCRIPT.read_text(encoding="utf-8")
+        assert 'git init -q "$WORK"' in script
+        assert 'git -C "$WORK" remote add origin "$REMOTE_URL"' in script
+
+
+class TestTheUploadedPointer:
+    """Both deploy guards hold the committed channels.json to the copy phones read.
+
+    Phones read `${base}/channels.json`, which only the release train's
+    `publish.py --channels` uploads (RELEASING.md §10), and the guard used to
+    read only `../channels.json`, so a deploy went green while phones followed
+    another release. That was the first defect in the client review of
+    **#1805 — dlt → dbt re-platform as one go/no-go change: every club through
+    dlt, eleven contracted marts writing every phone file, and the hourly and
+    monthly lanes**. The step's own script runs here against a stub `curl`
+    serving a fake bucket, because the refusal is in the shell.
+    """
+
+    STEP = "Confirm channels.json's release exists"
+    BASE = "https://data.example.org"
+    WORKFLOWS = ["pages.yml", "ua.yml"]
+    # The base each environment's build is given (lib/dataRelease.ts's
+    # environmentOf): production is the bucket root, UA is its prefix.
+    PREFIXES = {"production": "", "ua": "/environments/ua"}
+
+    @classmethod
+    def _script(cls, workflow: str) -> str:
+        parsed = yaml.safe_load((WORKFLOW_DIR / workflow).read_text(encoding="utf-8"))
+        steps = [step for job in parsed["jobs"].values() for step in job["steps"]]
+        return next(step for step in steps if step.get("name") == cls.STEP)["run"]
+
+    @staticmethod
+    def _committed() -> dict:
+        return json.loads((REPO_ROOT / "channels.json").read_text(encoding="utf-8"))
+
+    @staticmethod
+    def _stub_curl(directory: Path) -> None:
+        """A `curl` answering from `$STUB_BUCKET`: 200 with the file's bytes,
+        404 for a missing one, or the code in a `<file>.status` beside it.
+        Honours `-o`, `-w '%{http_code}'` and `-f` as the real one does."""
+        script = r"""#!/usr/bin/env bash
+out=""; fmt=""; fail=false; url=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o) out="$2"; shift 2 ;;
+    -w) fmt="$2"; shift 2 ;;
+    --retry|--max-time) shift 2 ;;
+    -f*) fail=true; shift ;;
+    -*) shift ;;
+    *) url="$1"; shift ;;
+  esac
+done
+path="$STUB_BUCKET/${url#"$STUB_BASE"/}"
+if [ -f "$path.status" ]; then code=$(cat "$path.status"); elif [ -f "$path" ]; then code=200; else code=404; fi
+if [ "$code" = 200 ] && [ -n "$out" ]; then cp "$path" "$out"; fi
+if [ -n "$fmt" ]; then printf '%s' "$code"; fi
+if [ "$code" != 200 ] && $fail; then echo "curl: (22) The requested URL returned error: $code" >&2; exit 22; fi
+exit 0
+"""
+        path = directory / "curl"
+        path.write_text(script, encoding="utf-8")
+        path.chmod(path.stat().st_mode | stat.S_IEXEC)
+
+    def _run(self, tmp_path: Path, workflow: str, environment: str, uploaded: dict | None, *, status: int | None = None):
+        """The step against `environment`'s base, where the committed entry's
+        manifest is published and `uploaded` (None for no copy) is at the root."""
+        prefix = self.PREFIXES[environment]
+        root = tmp_path / "bucket" / prefix.strip("/")
+        release = self._committed()[environment]["v1"]
+        manifest = root / "releases" / release / "manifest.json"
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text('{"artifacts": {}}', encoding="utf-8")
+        if uploaded is not None:
+            (root / "channels.json").write_text(json.dumps(uploaded), encoding="utf-8")
+        if status is not None:
+            (root / "channels.json.status").write_text(str(status), encoding="utf-8")
+        stubs = tmp_path / "stubs"
+        stubs.mkdir()
+        self._stub_curl(stubs)
+        runner_temp = tmp_path / "runner-temp"
+        runner_temp.mkdir()
+        return subprocess.run(
+            # How Actions runs a `run:` block under bash.
+            ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", self._script(workflow)],
+            cwd=REPO_ROOT / "client",
+            env={
+                **os.environ,
+                "PATH": f"{stubs}{os.pathsep}{os.environ['PATH']}",
+                "DATA_URL": f"{self.BASE}{prefix}",
+                "RUNNER_TEMP": str(runner_temp),
+                "STUB_BUCKET": str(tmp_path / "bucket"),
+                "STUB_BASE": self.BASE,
+            },
+            capture_output=True,
+            text=True,
+        )
+
+    @pytest.mark.parametrize("workflow", WORKFLOWS)
+    @pytest.mark.parametrize("environment", ["production", "ua"])
+    def test_an_uploaded_copy_naming_the_committed_release_passes(self, tmp_path, workflow, environment):
+        completed = self._run(tmp_path, workflow, environment, self._committed())
+
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        assert "The uploaded channels.json at" in completed.stdout
+
+    @pytest.mark.parametrize("workflow", WORKFLOWS)
+    @pytest.mark.parametrize("environment", ["production", "ua"])
+    def test_an_uploaded_copy_naming_another_release_fails_and_names_the_fix(self, tmp_path, workflow, environment):
+        """The regression: the committed entry resolves, and phones follow another."""
+        uploaded = self._committed()
+        uploaded[environment]["v1"] = "2026-01-01"
+
+        completed = self._run(tmp_path, workflow, environment, uploaded)
+
+        assert completed.returncode != 0
+        assert "::error::" in completed.stdout
+        assert "publish.py --channels" in completed.stdout
+        # The uploaded entry is remote text, and never reaches a workflow command.
+        assert "2026-01-01" not in completed.stdout
+
+    @pytest.mark.parametrize("workflow", WORKFLOWS)
+    def test_an_uploaded_copy_with_no_entry_for_this_environment_fails(self, tmp_path, workflow):
+        uploaded = self._committed()
+        del uploaded["ua"]
+
+        completed = self._run(tmp_path, workflow, "ua", uploaded)
+
+        assert completed.returncode != 0
+        assert "publish.py --channels" in completed.stdout
+
+    @pytest.mark.parametrize("workflow", WORKFLOWS)
+    def test_no_uploaded_copy_passes_with_a_notice(self, tmp_path, workflow):
+        """A 404: phones then read the compiled DATA_RELEASE, checked one step earlier."""
+        completed = self._run(tmp_path, workflow, "production", None)
+
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        assert "::notice::" in completed.stdout
+        assert "DATA_RELEASE" in completed.stdout
+
+    @pytest.mark.parametrize("workflow", WORKFLOWS)
+    def test_an_unreadable_uploaded_copy_fails(self, tmp_path, workflow):
+        """Neither a copy nor a 404, so nothing says which release phones follow."""
+        completed = self._run(tmp_path, workflow, "production", self._committed(), status=503)
+
+        assert completed.returncode != 0
+        assert "answered 503" in completed.stdout

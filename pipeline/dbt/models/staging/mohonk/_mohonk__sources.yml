@@ -4,17 +4,24 @@ sources:
   - name: mohonk
     description: >
       Mohonk Preserve's public trails-and-carriage-roads extract on their own
-      ArcGIS org, fetched by fetch_external_layers.py into
-      data/raw/external/. Transcribed from sources.json's measured notes.
+      ArcGIS org, landed by the extract's mohonk/ folder
+      (pipeline/extract/mohonk/). Transcribed from sources.json's measured
+      notes.
     schema: raw
-    loaded_at_field: _loaded_at
-    freshness:
-      # As for every source here: this measures load_raw.py's cadence, not
-      # Mohonk's. @unvalidated, same threshold and same open question as
-      # _atc__sources.yml.
-      warn_after: {count: 7, period: day}
+    config:
+      loaded_at_field: _loaded_at
+      freshness:
+        # As for every source here: this measures the extract's cadence, not
+        # Mohonk's. @unvalidated, same threshold and same open question as
+        # _atc__sources.yml.
+        warn_after: {count: 7, period: day}
     tables:
       - name: raw_mohonk__mohonk_trails
+        data_tests:
+          # Rows sharing stg_mohonk__trails's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'mohonk_trails'", "globalid"]
         description: >
           Mohonk Preserve Trails and Carriage Roads (sources.json: discovered
           2026-08-25). 304 polyline segments, measured live that day via

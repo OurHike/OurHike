@@ -1,0 +1,302 @@
+version: 2
+
+models:
+  - name: suggested_hikes
+    description: >
+      The hikes a phone is offered, one row per hike, keyed by the id it
+      publishes under. Two kinds, by `phone_file`: a hike somebody wrote up
+      (NYNJTC's Hike Finder export today), whose route ships, with every
+      field the shelf and its detail print; and a stretch of the A.T. from
+      OurHike's curated highlights, resolved against the published POIs. Only
+      rows whose source may publish (int_sources__publication).
+    config:
+      access: public
+      contract:
+        enforced: true
+    data_tests:
+      # SH08: absent means never priced, never 0, and both feet go together.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(climb_gain_ft is null) = (climb_loss_ft is null)"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "climb_gain_ft is null or (climb_gain_ft >= 0 and climb_loss_ft >= 0)"
+      # SH09: a photograph is its url, credit and licence, or nothing at all.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(photo_url is null) = (photo_credit is null) and (photo_url is null) = (photo_licence is null)"
+      # photo_key() raises on a digest that is not a sha256, which fails the
+      # whole export; this fails the build on the same row.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "photo_url is null or regexp_full_match(photo_url, 'photos/[0-9a-f]{64}[.]jpg')"
+      # SH10: a hike credits a named steward, and ships a publication block
+      # only with the author its page names.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "phone_file != 'suggested_hikes' or author_name is not null"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "publication_submitted_by is null or publication_submitted_by != ''"
+      # The record says where its line came from, and how much it is worth,
+      # wherever the line is drawn. A rejected route never reaches here (SH05).
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >-
+              phone_file != 'suggested_hikes'
+              or (route_provenance in ('generated', 'published') and route_grade in ('strong', 'fair'))
+      # write_details() raises on an id lib/suggestedHikesData.ts's
+      # detailKeyFor would answer null for, `<source>:<digits>`.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "phone_file != 'suggested_hikes' or regexp_full_match(hike_id, '.+:[0-9]+')"
+      # The client draws no hike with fewer than two ends (dayHikes.ts's
+      # validSegments). Every route the step forms has two or more, so one
+      # with fewer is a defect in the step, not a refusal; warn, because
+      # export_suggested_hikes.py would publish it and the client drop it.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "phone_file != 'suggested_hikes' or json_array_length(json_extract(segments, '$[0]')) >= 2"
+          config:
+            severity: warn
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "phone_file != 'highlights' or json_array_length(highlight_legs) > 0"
+    columns:
+      - name: hike_id
+        description: >
+          The id a phone keys the hike on: `nynjtc_hike_finder:<number>` for a
+          written-up hike (its detail is published under the number), or the
+          highlight's own id from reference/highlights.json.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests: [not_null, unique]
+      - name: phone_file
+        description: >
+          The phone file the row goes to: `suggested_hikes` (the shelf and
+          each hike's detail) or `highlights`.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [suggested_hikes, highlights]
+      - name: list_position
+        description: >
+          The row's place in its file: a hike's number, the order
+          export_suggested_hikes.py writes the shelf in; a highlight's place
+          in reference/highlights.json, from 0.
+        data_type: bigint
+        constraints:
+          - type: not_null
+      - name: club
+        description: The folder that extracted the row's source, `nynjtc` or `ourhike`.
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: source_key
+        description: >
+          The row's source: `nynjtc_hike_finder` (sources.json) or
+          `ourhike_highlights` (unregistered_publishing_sources).
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('int_sources__publication')
+                field: source_key
+      - name: _loaded_at
+        description: When the extract loaded the row's source.
+        data_type: timestamptz
+      - name: name
+        description: The hike's name, as its page or the reviewer wrote it.
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: hike_number
+        description: The Hike Finder export's own id; null on a highlight.
+        data_type: bigint
+      - name: miles
+        description: >
+          The route's length in miles, 2 decimals: a generated route's walk
+          over this build's lines, a published track's own length.
+        data_type: double
+      - name: climb_gain_ft
+        description: >
+          Feet gained over the walk, whole feet, from this build's per-edge
+          climb. Null, with climb_loss_ft, where any edge was never priced:
+          absent means unknown, never flat (SH08).
+        data_type: integer
+      - name: climb_loss_ft
+        description: Feet lost over the walk; null exactly where climb_gain_ft is.
+        data_type: integer
+      - name: difficulty
+        description: >
+          The client's slug for the publisher's difficulty (SH07), null where
+          it has no slot, so the card prints no badge rather than a guess.
+        data_type: varchar
+      - name: published_difficulty
+        description: The publisher's own word, which "Very Strenuous" needs beside its understating slug.
+        data_type: varchar
+      - name: author_kind
+        description: The client's AUTHOR_KINDS member for the maintaining organization, `club`.
+        data_type: varchar
+      - name: author_name
+        description: >
+          The steward the card credits: the registry's `steward`, else its
+          `attribution`. A route with no named publisher is not shown.
+        data_type: varchar
+      - name: photo_url
+        description: >
+          The confirmed photograph's bucket key, `photos/<sha256>.jpg`, only
+          from the person-confirmed join (SH09); null where none is confirmed.
+        data_type: varchar
+      - name: photo_credit
+        description: The photographer's credit as the page carried it, with "Photo by " where it did not say so.
+        data_type: varchar
+      - name: photo_licence
+        description: The permission the photograph ships on.
+        data_type: varchar
+      - name: segments
+        description: >
+          The ends the phone routes between: one segment of {coord, poiId}
+          points in walking order, each [lon, lat] at 6 decimals, a closed
+          walk's first end repeated at its end.
+        data_type: json
+      - name: route_provenance
+        description: "`published` (a line the publisher drew) or `generated` (formed from their prose)."
+        data_type: varchar
+      - name: route_grade
+        description: "`strong` or `fair`: how much the route is worth. A `rejected` one never ships."
+        data_type: varchar
+      - name: route_notes
+        description: Every check on the route that is not clean, as the grade words it.
+        data_type: json
+      - name: features
+        description: The export's Features tags, as published, in page order.
+        data_type: json
+      - name: region
+        description: The page's Region.
+        data_type: varchar
+      - name: park
+        description: The page's Park.
+        data_type: varchar
+      - name: estimated_hours
+        description: The page's Estimated Time in hours, the publisher's figure.
+        data_type: double
+      - name: dogs
+        description: The page's Dogs field.
+        data_type: varchar
+      - name: route_type
+        description: The page's Route Type, as published.
+        data_type: varchar
+      - name: closed
+        description: Whether the walk ends where it began.
+        data_type: boolean
+      - name: source_url
+        description: The hike's page, published as `url`.
+        data_type: varchar
+      - name: published_miles
+        description: The page's own stated length, beside this build's measurement.
+        data_type: double
+      - name: overview
+        description: The page's Summary, as a one-item list, or an empty one.
+        data_type: json
+      - name: description
+        description: The page's Description card, a paragraph per item.
+        data_type: json
+      - name: trails
+        description: The trails a generated walk walks, as the builder labels them; empty for a published track.
+        data_type: json
+      - name: has_start
+        description: Whether the page carries a coordinate inside the NYNJTC box.
+        data_type: boolean
+      - name: start_lat
+        description: The page's coordinate's latitude.
+        data_type: double
+      - name: start_lon
+        description: The page's coordinate's longitude.
+        data_type: double
+      - name: start_basis
+        description: What the page says its coordinate is ("Parking location").
+        data_type: varchar
+      - name: published_on
+        description: The page's Publish Date, as printed.
+        data_type: varchar
+      - name: updated_on
+        description: The page's Last Updated, as printed; null where it was never revised.
+        data_type: varchar
+      - name: directions
+        description: The page's Directions to Trailhead card.
+        data_type: json
+      - name: public_transport
+        description: The page's Public Transportation card.
+        data_type: json
+      - name: content_licence
+        description: The licence line a card prints under the credit.
+        data_type: varchar
+      - name: measured_miles
+        description: The miles this build measured, published under `measured` beside the note on how.
+        data_type: double
+      - name: measured_note
+        description: lib/trail_graph_route.py's SAME_TREAD_NOTE, on how the measurement can differ from the phone's.
+        data_type: varchar
+      - name: publication_submitted_by
+        description: >
+          The Author the page names, which a publication block needs; null on
+          a page that names nobody, which ships no block (SH10).
+        data_type: varchar
+      - name: track_reproduction
+        description: How far a published track's re-walk sat from its own length, as a percentage; null on a generated route.
+        data_type: varchar
+      - name: highlight_note
+        description: A highlight's note, why it is worth going to; "" where the reviewer wrote none.
+        data_type: varchar
+      - name: highlight_reviewed
+        description: When a highlight was reviewed, as the reviewer wrote it.
+        data_type: varchar
+      - name: highlight_legs
+        description: >
+          A highlight's legs, each its trail and its A.T. mile range, 2
+          decimals, from the published POIs at its ends; never a mile typed
+          into the file.
+        data_type: json
+      - name: section_club
+        description: >
+          The maintaining club whose stretch a highlight's first leg starts in,
+          published as `club`; null where no club section covers it.
+        data_type: varchar
+      - name: shelf_record
+        description: >
+          A written-up hike's shelf record as suggested_hikes.json carries it
+          (int_suggested_hikes__records): the fields above, in the client's
+          spelling, a photo and a climb only where there is one.
+        data_type: json
+      - name: detail_record
+        description: >
+          A written-up hike's detail as its own object carries it: the page's
+          prose and figures, flat, with the hike's own id, a publication block
+          only with a named author.
+        data_type: json
+      - name: highlight_record
+        description: A highlight's record as highlights.json carries it, lib/highlights.py's as_published().
+        data_type: json
+      - name: _first_seen_at
+        description: "{{ doc('row_first_seen_at') }}"
+        data_type: timestamptz
+        data_tests:
+          - not_null:
+              config:
+                # warn only on a leg build_marts.py built without its history,
+                # where both dates are null and the run is red already.
+                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' else 'error' }}"
+      - name: _changed_at
+        description: "{{ doc('row_changed_at') }}"
+        data_type: timestamptz
+        data_tests:
+          - not_null:
+              config:
+                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' else 'error' }}"

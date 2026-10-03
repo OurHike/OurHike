@@ -1,0 +1,28 @@
+version: 2
+
+sources:
+  - name: alaska_trails
+    description: >
+      Alaska Trails's registered layers, landed by the extract's
+      alaska_trails/ folder (pipeline/extract/alaska_trails/) as
+      raw_alaska_trails__<key>, and staged once each by a base model here.
+      Descriptions transcribed from sources.json's titles.
+    schema: raw
+    config:
+      loaded_at_field: _loaded_at
+      freshness:
+        # The extract's cadence, not the steward's. @unvalidated, the same
+        # threshold and open question as _atc__sources.yml.
+        warn_after: {count: 7, period: day}
+    tables:
+      - name: raw_alaska_trails__alaska_trails
+        data_tests:
+          # Rows sharing base_alaska_trails__alaska_trails's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'alaska_trails'", "trailname", "trailtype", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
+        description: >
+          Alaska Trail Database (sources.json `alaska_trails`). Key:
+          TrailName, TrailType and geometry, 1,595 of 1,595 live rows after 7
+          exact copies; TrailType is null on 126, and without it one line
+          carries two named trails.

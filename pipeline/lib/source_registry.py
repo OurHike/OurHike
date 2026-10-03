@@ -161,6 +161,33 @@ PUBLISHED_HIKES = "published_hikes"
 # fetch_all.py skips it like everything not ArcGIS.
 SOCRATA_GEOJSON_LAYER = "socrata_geojson_layer"
 
+# A podcast's own RSS feed, read whole for its episode list - The Green
+# Tunnel first, which ATC sponsors (the maintainer, reviewing #1793's pull
+# request on 2026-10-01). Its rows are episode metadata (title, date, guid,
+# links), never audio: an episode is linked, never re-hosted (#1683 — Offer
+# podcast episodes picked for the hike, with a one-tap Spotify save and an
+# in-app player). Read by pipeline/extract/'s podcast_feed builder only;
+# fetch_all.py skips it like everything not ArcGIS, and no exporter reads it.
+# reference/podcast_episodes.json stays the editorial file that decides which
+# episode a hike offers.
+PODCAST_FEED = "podcast_feed"
+
+# A club's ArcGIS layer, registered for pipeline/extract/ alone (decision 54 in
+# pipeline/ELT.md, "Loading everything the clubs publish"): read only by the
+# extract's arcgis_layer builder, so publication is decided in dbt
+# (int_sources__publication) and nowhere else. No legacy fetcher, loader or
+# exporter reads it, and that is the reason for its own kind rather than
+# EXTERNAL_ARCGIS_LAYER. Under that kind, publish-vector-data.yml's
+# fetch_external_layers.py would fetch every such row whatever its
+# reaches_hikers says, and its completeness gate fails the whole publish on
+# one failed or empty layer. Wave 1 registers layers on about 44 club hosts,
+# so one club server down would have stopped the A.T.'s water and shelters
+# publishing. load_raw.py would load them too. The rows also carry no
+# `poi_type` and no `blaze_field`, the two fields export_nearby_poi.py's
+# poi_sources() and export_trails.py's line sources select on.
+# tests/test_lib_source_registry.py fails if any of those readers selects one.
+CLUB_ARCGIS_LAYER = "club_arcgis_layer"
+
 KNOWN_KINDS = frozenset(
     {
         ARCGIS_FEATURE_LAYER,
@@ -173,6 +200,8 @@ KNOWN_KINDS = frozenset(
         GUIDE_PAGES,
         PUBLISHED_HIKES,
         SOCRATA_GEOJSON_LAYER,
+        PODCAST_FEED,
+        CLUB_ARCGIS_LAYER,
     }
 )
 

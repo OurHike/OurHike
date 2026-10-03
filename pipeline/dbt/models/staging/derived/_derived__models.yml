@@ -1,0 +1,271 @@
+version: 2
+
+models:
+  - name: stg_derived__dem_samples
+    data_tests:
+      # Says how many rows the dedupe dropped, which for a step that writes
+      # one row per sample point is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('derived', 'dem_samples')
+          config:
+            severity: warn
+    description: >
+      The DEM's answer at each elevation sample point, from
+      step_dem_sampling's derived.dem_samples: the line and sample it
+      answers, the point it was read at in lon/lat, and the elevation in
+      metres, null where the DEM has none. Read by int_elevation__profile.
+    columns:
+      - name: dem_sample_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the table's name, line_id and sample_index.
+        data_tests: [not_null, unique]
+      - name: line_id
+        description: The profiled line, as int_elevation__sample_points names it.
+        data_tests: [not_null]
+      - name: sample_index
+        description: The sample's place in its line's walk, from 0.
+        data_tests: [not_null]
+      - name: lon
+        description: Longitude the DEM was read at, EPSG:4326.
+        data_tests: [not_null]
+      - name: lat
+        description: Latitude the DEM was read at, EPSG:4326.
+        data_tests: [not_null]
+      - name: elevation_m
+        description: >
+          The DEM's elevation there in metres, null where no tile covers the
+          point or none holds a real value there. Never 0 for a gap.
+      - name: loaded_at
+        description: When step_dem_sampling wrote the row, UTC.
+        data_tests: [not_null]
+  - name: stg_derived__weather_squares
+    data_tests:
+      # Says how many rows the dedupe dropped, which for one document per
+      # release is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('derived', 'weather_squares')
+          config:
+            severity: warn
+    description: >
+      The NBM weather squares build_weather_squares.py chose for a release,
+      from step_weather_squares's derived.weather_squares: squares.json's
+      document as JSON, read by int_warnings__weather_squares and
+      int_warnings__nws_placed to place NWS alerts (WN03).
+    columns:
+      - name: weather_squares_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the table's name and the release.
+        data_tests: [not_null, unique]
+      - name: release
+        description: The data release the squares were chosen for.
+        data_tests: [not_null]
+      - name: squares_document
+        description: >
+          squares.json as JSON: `cells` (trail cell -> [row, col] squares),
+          `zones` ("<kind>/<id>" -> squares), `known_zones` (kind -> every
+          id in its pinned file), `zone_files` and `release`.
+        data_tests: [not_null]
+      - name: loaded_at
+        description: When step_weather_squares wrote the row, UTC.
+        data_tests: [not_null]
+  - name: stg_derived__graph_pieces
+    data_tests:
+      # Says how many rows the dedupe dropped, which for a step that writes
+      # one row per piece and landing is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('derived', 'graph_pieces')
+          config:
+            severity: warn
+    description: >
+      The junction graph's pieces and landings from step_node_lines's
+      derived.graph_pieces: every routable part cut where
+      int_trail_network__cuts says, in EPSG:5070 metres, and the point each
+      joined line end lands on. Read by int_trail_network__node_lookups.
+    columns:
+      - name: graph_piece_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the table's name, row_kind, part_id, piece_index and cut_key.
+        data_tests: [not_null, unique]
+      - name: row_kind
+        description: "'piece' or 'landing'."
+        data_tests: [not_null]
+      - name: part_id
+        description: On a piece, the routable part it was cut from.
+      - name: piece_index
+        description: On a piece, its place along the part, from 1.
+      - name: piece_rank
+        description: On a piece, its place among every piece, from 0, the order build_graph() walks them in.
+      - name: cut_key
+        description: On a landing, the int_trail_network__cuts row that joined the end.
+      - name: geom
+        description: The piece or landing in EPSG:5070 metres, no CRS set.
+        data_tests: [not_null]
+      - name: loaded_at
+        description: When step_node_lines wrote the row, UTC.
+        data_tests: [not_null]
+
+  - name: stg_derived__site_water
+    data_tests:
+      # Says how many rows the dedupe dropped, which for a step that writes
+      # one row per site is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('derived', 'site_water')
+          config:
+            severity: warn
+    description: >
+      Which A.T. shelters and campsites have water a hiker can walk to, from
+      step_site_water's derived.site_water: the site, and the water it can
+      reach with its stream's facts, or why it cannot. Read by
+      int_points_of_interest__unioned, which publishes the water as
+      export_poi.py's load_trail_water() does.
+    columns:
+      - name: site_water_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the table's name, the layer and the site's GlobalID.
+        data_tests: [not_null, unique]
+      - name: site_row
+        description: The record's place in the file's `sites` array, from 0.
+        data_tests: [not_null]
+      - name: atc_global_id
+        description: The site's ATC GlobalID, which names its water point (`nhd_stream:<GlobalID>`).
+        data_tests: [not_null]
+      - name: has_water
+        description: Whether the site has water a hiker can walk to.
+        data_tests: [not_null]
+      - name: water_lon
+        description: The water point's longitude, the nearest point on the stream; null where there is no water.
+      - name: water_lat
+        description: The water point's latitude; null where there is no water.
+      - name: sources
+        description: >
+          Which hydrographies drew the stream, `nhd` and `osm`, as a JSON
+          list in the file's order: a point both drew carries both.
+      - name: flow
+        description: >
+          perennial, intermittent or ephemeral, whoever classified the reach;
+          null where nobody did, which is never "year-round".
+      - name: flow_source
+        description: Which hydrography made the flow claim, null where none did.
+      - name: _loaded_at
+        description: When step_site_water wrote the table, UTC.
+        data_tests: [not_null]
+
+  - name: stg_derived__osm_water
+    data_tests:
+      # Says how many rows the dedupe dropped: fetch_osm_water.py's
+      # scan_states() already keeps one row per node, so none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('derived', 'osm_water')
+          config:
+            severity: warn
+    description: >
+      OSM's water points, from step_osm_water's derived.osm_water, one row
+      per node, its properties as fetch_osm_water.py writes them. Read by
+      int_points_of_interest__unioned. Only fixture mode lands rows until
+      #1652 — Download OSM's Geofabrik extracts at most once a month, into
+      a private raw bucket that outlives the 7-day Actions cache.
+    columns:
+      - name: osm_water_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the table's name and the OSM node id.
+        data_tests: [not_null, unique]
+      - name: osm_id
+        description: The OSM node id, which names the point (`osm_water:<osm_id>`).
+        data_tests: [not_null]
+      - name: properties
+        description: The feature's properties as JSON, absent tags absent.
+      - name: _loaded_at
+        description: When step_osm_water wrote the table, UTC.
+        data_tests: [not_null]
+
+  - name: stg_derived__osm_water_grade
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('derived', 'osm_water_grade')
+          config:
+            severity: warn
+    description: >
+      The verdict on every corridor OSM water point, from
+      step_osm_water_grade's derived.osm_water_grade. Read by
+      int_points_of_interest__reached, which drops every OSM point that is
+      not reachable or has no verdict.
+    columns:
+      - name: osm_water_grade_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the table's name and the OSM node id.
+        data_tests: [not_null, unique]
+      - name: osm_id
+        description: The OSM node id.
+        data_tests: [not_null]
+      - name: reachable
+        description: Both gates passed; an ungraded point is not reachable.
+        data_tests: [not_null]
+      - name: _loaded_at
+        description: When step_osm_water_grade wrote the table, UTC.
+        data_tests: [not_null]
+
+  - name: stg_derived__poi_photos
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('derived', 'poi_photos')
+          config:
+            severity: warn
+    description: >
+      The photo manifests, from step_poi_photos's derived.poi_photos: one row
+      per found photo, Commons and ATC, in each POI's list order. Read by
+      int_points_of_interest__photos, which gates the Commons photos on the
+      face screen and attaches the card photo.
+    columns:
+      - name: poi_photo_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the table's name, the source, the POI id and the photo's place.
+        data_tests: [not_null, unique]
+      - name: poi_id
+        description: The published POI id.
+        data_tests: [not_null]
+      - name: flagged
+        description: Whether the face screen found a face.
+        data_tests: [not_null]
+      - name: _loaded_at
+        description: When step_poi_photos wrote the table, UTC.
+        data_tests: [not_null]
+
+  - name: stg_derived__long_path_guide
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('derived', 'long_path_guide')
+          config:
+            severity: warn
+    description: >
+      NYNJTC's Long Path guide as waypoints, from step_long_path_guide's
+      derived.long_path_guide, one row per record. Read by
+      int_points_of_interest__unioned, which publishes them to
+      nearby_poi.geojson as export_nearby_poi.py's guide_records() does,
+      and by the points_of_interest mart for the guide's own fields.
+    columns:
+      - name: long_path_guide_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the table's name and the record's id.
+        data_tests: [not_null, unique]
+      - name: id
+        description: The record's published id.
+        data_tests: [not_null, unique]
+      - name: _loaded_at
+        description: When step_long_path_guide wrote the table, UTC.
+        data_tests: [not_null]

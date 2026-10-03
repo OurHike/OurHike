@@ -30,7 +30,9 @@ import {
   SPURS_KEY,
   TRAILS_KEY,
   TRAIL_MILES_KEY,
+  V2_PHONE_FILE_KEYS,
 } from './config'
+import { SESSION_RELEASE } from './dataRelease'
 import {
   readTrailsMerged,
   TRAILS_MERGED_STORAGE_KEY,
@@ -63,6 +65,33 @@ vi.mock('./dataManifest', () => ({
 }))
 
 const mockedPublishedSnapshot = vi.mocked(publishedSnapshot)
+
+// Whether the build under test reads v2 phone files (config.ts's READS_V2).
+// A constant in a real build, so a v1 bundle carries no v2 reader; here a
+// switch, so the v2 tests below can stand in for the build that flips it and
+// every other test stays a v1 build.
+//
+// The switch has to reach the key builder too. phoneFileKey's default schema
+// is DATA_SCHEMA_VERSION, read inside config.ts where the spread below cannot
+// reach it, so flipping READS_V2 alone ran a v2 reader over v1 URLs: a build
+// that cannot exist, which never requested a `v2/` key. REFRESHABLE_KEYS is
+// built from phoneFileKey when config.ts loads, so it follows the same switch.
+const build = vi.hoisted(() => ({ readsV2: false }))
+vi.mock('./config', async (importOriginal) => {
+  const config = await importOriginal<typeof import('./config')>()
+  const schema = () => (build.readsV2 ? 'v2' : 'v1')
+  return {
+    ...config,
+    get READS_V2() {
+      return build.readsV2
+    },
+    phoneFileKey: (key: string, version: string = schema()) =>
+      config.phoneFileKey(key, version),
+    get REFRESHABLE_KEYS() {
+      return config.REFRESHABLE_KEYS.map((key) => config.phoneFileKey(key, schema()))
+    },
+  }
+})
 
 /**
  * What `latest.json` publishes, in the shape the download now reads it: ONE
@@ -305,6 +334,185 @@ describe('trail data', () => {
       lat: 45.45,
       lon: -69.26,
       confidence: 'high',
+    })
+  })
+
+  // v2/poi_<type>.geojson (decision 44, stage 6 of #1793) holds a POI's
+  // position once, as the Point's coordinates at 6 decimals, with no lat and
+  // lon properties. Dropping the properties without this reading would drop
+  // every waypoint, every water source among them (pipeline/ELT.md, "One copy
+  // of each POI coordinate").
+  describe('a POI position, in v1 and v2 files', () => {
+    beforeEach(() => {
+      build.readsV2 = true
+    })
+    afterEach(() => {
+      build.readsV2 = false
+    })
+
+    function collection(features: Array<Record<string, unknown>>) {
+      return JSON.stringify({
+        type: 'FeatureCollection',
+        features: features.map((feature) => ({ type: 'Feature', ...feature })),
+      })
+    }
+
+    it('readPois in a v1 build drops a POI with no lat or lon properties, whatever its Point says', async () => {
+      // A v1 build never fetches a v2 file, so its bundle leaves the Point
+      // reading out (config.ts's READS_V2), and a feature without the two
+      // properties is the broken row it always was.
+      build.readsV2 = false
+      serve(
+        collection([
+          {
+            properties: { id: 'atc_water:1', poi_type: 'water' },
+            geometry: { type: 'Point', coordinates: [-69.260001, 45.450001] },
+          },
+        ]),
+      )
+      await downloadTrailData()
+
+      expect(store.get(POIS_KEY)).toEqual([])
+    })
+
+    it('readPois takes a v2 POI with no lat or lon properties from geometry.coordinates, lon first', async () => {
+      serve(
+        collection([
+          {
+            properties: {
+              id: 'atc_water:1',
+              poi_type: 'water',
+              name: 'Spring',
+              confidence: 'high',
+            },
+            geometry: { type: 'Point', coordinates: [-69.260001, 45.450001] },
+          },
+        ]),
+      )
+      await downloadTrailData()
+
+      const pois = store.get(POIS_KEY) as StoredPoi[]
+      expect(pois[0]).toEqual({
+        id: 'atc_water:1',
+        type: 'water',
+        name: 'Spring',
+        lat: 45.450001,
+        lon: -69.260001,
+        confidence: 'high',
+      })
+    })
+
+    it('readPois keeps reading a v1 POI from its lat and lon properties, whatever its geometry says', async () => {
+      // GDAL prints a v1 poi_<type>.geojson geometry with digits of its own;
+      // every earlier build read the properties, and a v1 file must read the
+      // numbers it always has.
+      serve(
+        collection([
+          {
+            properties: { id: 'atc_water:1', poi_type: 'water', lat: 45.45, lon: -69.26 },
+            geometry: {
+              type: 'Point',
+              coordinates: [-69.26000000000001, 45.449999999999996],
+            },
+          },
+        ]),
+      )
+      await downloadTrailData()
+
+      const [poi] = store.get(POIS_KEY) as StoredPoi[]
+      expect([poi.lat, poi.lon]).toEqual([45.45, -69.26])
+    })
+
+    it.each([
+      ['no geometry', { properties: { id: 'a', poi_type: 'water' } }],
+      [
+        'a line, not a point',
+        {
+          properties: { id: 'a', poi_type: 'water' },
+          geometry: {
+            type: 'LineString',
+            coordinates: [
+              [-69.26, 45.45],
+              [-69.25, 45.46],
+            ],
+          },
+        },
+      ],
+      [
+        'a coordinate that is not a number',
+        {
+          properties: { id: 'a', poi_type: 'water' },
+          geometry: { type: 'Point', coordinates: ['-69.26', 45.45] },
+        },
+      ],
+      [
+        'one coordinate',
+        {
+          properties: { id: 'a', poi_type: 'water' },
+          geometry: { type: 'Point', coordinates: [-69.26] },
+        },
+      ],
+    ])(
+      'readPois drops a POI with %s and no lat or lon properties, rather than placing it',
+      async (_case, feature) => {
+        serve(collection([feature]))
+        await downloadTrailData()
+
+        expect(store.get(POIS_KEY)).toEqual([])
+      },
+    )
+  })
+
+  // The other half of a v2 build: the URLs it asks for, and the packed
+  // profile it reads at one of them (config.ts's phoneFileKey and
+  // V2_PHONE_FILE_KEYS; trailData.ts's fetchElevation).
+  describe('what a v2 build requests, and the packed profile it reads', () => {
+    beforeEach(() => {
+      build.readsV2 = true
+    })
+    afterEach(() => {
+      build.readsV2 = false
+    })
+
+    function requested(): string[] {
+      return vi.mocked(fetch).mock.calls.map(([url]) => String(url))
+    }
+
+    it('fetches every file that has a v2 from releases/<id>/v2/, and never its v1 key', async () => {
+      serve()
+      await downloadTrailData()
+
+      expect(
+        requested().filter((url) =>
+          url.endsWith(`/releases/${SESSION_RELEASE}/v2/poi_water.geojson`),
+        ),
+      ).toHaveLength(1)
+      for (const key of V2_PHONE_FILE_KEYS) {
+        expect(requested()).toContain(dataUrl(`v2/${key}`))
+        expect(requested()).not.toContain(dataUrl(key))
+      }
+      // trails.geojson has no v2 (decision 8), so it keeps its one key.
+      expect(requested()).toContain(dataUrl(TRAILS_KEY))
+    })
+
+    it('stores a packed v2/elevation_profile.json as the arrays a v1 profile fills', async () => {
+      // pub_elevation_profile_v2.sql's shape: the first value absolute, every
+      // later one a step, miles in thousandths and feet in tenths.
+      const packed = JSON.stringify({
+        format: 2,
+        d_milli_mi: [0, 1000],
+        e_deci_ft: [37822, -7822],
+        part_start: [0],
+      })
+      serve(poiCollection([]), '{}', packed)
+
+      await downloadTrailData()
+
+      const profile = store.get(ELEVATION_STORE_KEY) as ElevationProfile
+      expect(Array.from(profile.distanceMi)).toEqual([0, 1])
+      expect(profile.elevationFt[0]).toBeCloseTo(3782.2, 3)
+      expect(profile.elevationFt[1]).toBeCloseTo(3000, 3)
+      expect(Array.from(profile.partStart ?? [])).toEqual([1, 0])
     })
   })
 

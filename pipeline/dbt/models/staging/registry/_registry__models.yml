@@ -1,0 +1,90 @@
+version: 2
+
+models:
+  - name: stg_registry__sources
+    description: >
+      Every source sources.json registers, one row each in the file's order,
+      typed as the registry writes it. The registry's own list of what the
+      pipeline reads, and the join every mart's `source_key` names.
+    columns:
+      - name: source_key
+        description: The registry key, e.g. `atc_shelters`. Unique across the file.
+        data_tests: [not_null, unique]
+      - name: file_row
+        description: The source's place in the file's `sources`, from 1.
+      - name: provider
+        description: >
+          The registry's key for who publishes it, '' where a source names
+          none, as export_sources.py reads it.
+      - name: steward
+        description: The organization's full name where the source gives one; null otherwise.
+      - name: reaches_hikers
+        description: >
+          Whether an exporter ships this source's data to a phone. The
+          registry's answer, not a licence judgement (sources.json's
+          reaches_hikers_comment).
+        data_tests:
+          # SR01's hard failure: a source with no answer stops the build
+          # rather than defaulting either way, as build_output() refuses.
+          # Stricter in one place: export_sources.py reads any value by its
+          # truth, so "no" in quotes would ship; here only a boolean counts.
+          - not_null
+  - name: stg_registry__top_level
+    description: >
+      Every top-level entry of sources.json, in the file's order, with what
+      kind of block it is: `licence`, `support` or `store` for an object
+      whose key ends that way, else null.
+    columns:
+      - name: entry_name
+        description: The top-level key, e.g. `atc_licence`.
+        data_tests: [not_null, unique]
+      - name: entry_position
+        description: >
+          The entry's place in the file, from 1. The first block that names a
+          steward is the one it gets, so this is the tie-break.
+        data_tests: [not_null, unique]
+      - name: block_kind
+        description: licence, support or store for a block; null for any other entry.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [licence, support, store]
+      - name: author
+        description: The organization a block is about, matched against a source's `steward`.
+      - name: also_covers
+        description: >
+          Further organizations a block's terms govern (#1432): nyc_licence
+          covers NYC DOT as well as NYC Parks, because New York City's open
+          data law is the City's.
+  - name: stg_registry__organizations
+    description: >
+      The `organizations` block: one row per organization, keyed by the
+      stable steward id #929 introduced, with the `provider` it stands for.
+    columns:
+      - name: steward_id
+        description: The organization's stable id. Never derived from the provider string.
+        data_tests: [not_null, unique]
+      - name: provider
+        description: The registry `provider` this organization is.
+        data_tests:
+          # Unique, where export_sources.py's provider-keyed dict quietly
+          # keeps the last of two: two organizations claiming one provider
+          # is a registry error to fix, not to resolve by file order.
+          - unique
+          - not_null
+          # Every organization has a source, so registry.json's list of
+          # organizations, written from the sources mart, misses none.
+          - relationships:
+              arguments:
+                to: ref('stg_registry__sources')
+                field: provider
+  - name: stg_registry__org_marks
+    description: >
+      The `org_marks` block (#933): one row per provider, with where
+      OurHike's ask for that organization's logo or wordmark stands.
+    columns:
+      - name: provider
+        description: The registry `provider`.
+        data_tests: [not_null, unique]
+      - name: mark_state
+        description: The ask's state, in the block's own `state_vocabulary`.

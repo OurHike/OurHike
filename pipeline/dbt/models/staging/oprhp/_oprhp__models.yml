@@ -1,0 +1,100 @@
+version: 2
+
+# No primary-key test on the trails or closures layers, and a `loaded_at`
+# not_null test instead; nynjtc/_nynjtc__models.yml says why both, once.
+# Neither has a recorded id. The facilities layer does - sources.json declares
+# id_field OBJECTID, as every DEC layer does - and stg_oprhp__facilities
+# stages it with the rest of the row, tested unique; the fixture carries it
+# since stage 3 (make_dbt_fixtures.py's _points_of_interest_fixture_fields).
+models:
+  - name: stg_oprhp__trails
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('oprhp', 'raw_nysparks__oprhp_trails')
+          config:
+            severity: warn
+    description: >
+      NYS Parks' 16,641 statewide segments, the largest layer in the
+      warehouse. Two blaze columns rather than the three the layer has: only
+      `Blaze` and `Map_Blaze` were ever written down. `status` and
+      `public_flag` are staged and nothing filters on them, because what they
+      gate is unmeasured.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          oprhp_trails, globalid,
+          the registry key first and then the columns measured unique for
+          this layer.
+        data_tests: [not_null, unique]
+      - name: loaded_at
+        description: The extract's `_loaded_at` for the read this row came from, naive UTC.
+        data_tests: [not_null]
+  - name: stg_oprhp__trail_closures
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('oprhp', 'raw_nysparks__oprhp_trail_closures')
+          config:
+            severity: warn
+    description: >
+      OPRHP's temporary closure polygons - a safety surface, and the layer
+      whose freshness matters most of anything Phase D stages. TWO COLUMNS
+      ONLY: no full field list was ever measured, and a closure model with
+      invented columns is the worst place for one. No row-count floor test
+      either: an honest count of zero is the expected answer in a good week.
+    columns:
+      - name: closure_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          oprhp_trail_closures, name, geometry_key('geom'),
+          the registry key first and then the columns measured unique for
+          this layer.
+        data_tests: [not_null, unique]
+      - name: source_row
+        description: >
+          The row's place in the raw table, the order the layer's pages
+          served the areas (the model's comment says why, and what is
+          Reasoned): the order load_closure_areas() lists them in, which
+          breaks apply_area_closures()' tie between two areas a trail
+          overlaps equally.
+        data_tests: [not_null, unique]
+      - name: loaded_at
+        description: The extract's `_loaded_at` for the read this row came from, naive UTC.
+        data_tests: [not_null]
+  - name: stg_oprhp__facilities
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('oprhp', 'raw_nysparks__oprhp_facilities')
+          config:
+            severity: warn
+    description: >
+      NYS Parks' 8,823 facility points, keyed and deduplicated, every column
+      kept. The entry declares no poi_type: rows are typed one by one
+      through export_nearby_poi.py's OPRHP_SUB_ASSET_TYPES, the
+      poi_value_types seed, in int_points_of_interest__classified, which
+      keeps the 'Water Spigot' and 'Drinking Fountain' rows back as a water
+      holdback. ParksApp sets confidence and drops nothing; `Public_` (Y on
+      all 8,823) discriminates nothing.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          oprhp_facilities, globalid,
+          the registry key first and then the columns measured unique for
+          this layer.
+        data_tests: [not_null, unique]
+      - name: objectid
+        description: OPRHP's OBJECTID, the entry's id_field and the id export_nearby_poi.py publishes.
+        data_tests: [not_null, unique]
+      - name: _loaded_at
+        description: The extract's `_loaded_at` for the read this row came from.
+        data_tests: [not_null]

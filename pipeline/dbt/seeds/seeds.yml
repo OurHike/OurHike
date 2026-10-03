@@ -1,6 +1,37 @@
 version: 2
 
 seeds:
+  - name: dbt_project_evaluator_exceptions
+    description: >
+      The findings dbt_project_evaluator is told to skip, and why. The
+      evaluator is enforced (dbt_project.yml), so a finding either gets
+      fixed or gets a row here. Every row's `comment` says why the finding
+      is a deliberate state rather than a defect, what ends it, and the
+      issue it rests on by number AND title;
+      pipeline/tests/test_dbt_evaluator_exceptions.py refuses a row
+      without them. `id_to_exclude` is a SQL LIKE pattern, so `_` matches
+      any one character and `%` any run: keep a pattern as narrow as the
+      models it means, because a wide one switches a rule off silently.
+
+      Not every rule can be excepted here. valid_test_coverage and
+      documentation coverage compare one project-wide percentage to a
+      target and take no exceptions, so the answer there is a test or a
+      description on the model.
+    config:
+      column_types:
+        fct_name: varchar
+        column_name: varchar
+        id_to_exclude: varchar
+        comment: varchar
+    columns:
+      - name: fct_name
+        description: The evaluator model whose findings the row filters.
+      - name: column_name
+        description: The column of that model the pattern is matched against.
+      - name: id_to_exclude
+        description: A SQL LIKE pattern; findings whose column matches it are skipped.
+      - name: comment
+        description: Why, what ends it, and the issue by number and title.
   - name: poi_type_mapping
     description: >
       Source-system codes -> the one unified poi_type, transcribed from code
@@ -55,7 +86,8 @@ seeds:
               # source_system nobody added a row for is a typo, not a new
               # organization - but adding one is now a one-line change here
               # rather than a re-think.
-              values: ["atc", "opentrail", "dec"]
+              arguments:
+                values: ["atc", "opentrail", "dec"]
       - name: code
         description: >
           The raw value as upstream sends it - an opentrail `icon` letter,
@@ -78,18 +110,68 @@ seeds:
           # tests/test_dbt_seed_sync.py holds the seed inside POI_TYPES
           # from the Python side.
           - accepted_values:
-              values:
-                - shelter
-                - campsite
-                - water
-                - resupply
-                - viewpoint
-                - parking
-                - privy
+              arguments:
+                values:
+                  - shelter
+                  - campsite
+                  - water
+                  - resupply
+                  - viewpoint
+                  - parking
+                  - privy
       - name: confidence
         description: >
           lib/poi_schema.py's CONFIDENCE_* tier for POIs minted from this
           code; empty exactly where poi_type is empty.
         data_tests:
           - accepted_values:
-              values: ["high", "low"]
+              arguments:
+                values: ["high", "low"]
+  - name: publishable_licence_bases
+    description: >
+      The licence bases a source may publish on, each with the scope it is
+      admitted for and the rule or decision that admits it (pipeline/ELT.md,
+      "Who may publish"). A basis not listed here never publishes:
+      `unresolved` and `unstated` say nobody has settled it, and an absent
+      licence is not permission. int_sources__publication reads it.
+    config:
+      column_types:
+        licence_basis: varchar
+        applies_to: varchar
+        admitted_by: varchar
+    columns:
+      - name: licence_basis
+        description: The value sources.json or trail_orgs.json records.
+        data_tests: [not_null, unique]
+      - name: applies_to
+        description: >
+          `any`, or the one scope it is admitted for: `federal` organizations,
+          the `nys_clearinghouse` (NYS DEC and OPRHP), or `gis` endpoints.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [any, federal, nys_clearinghouse, gis]
+      - name: admitted_by
+        description: The rule of "Who may publish", or the decision, that admits it.
+  - name: unregistered_publishing_sources
+    description: >
+      The sources an exporter publishes today with no sources.json row, each
+      with the issue that keeps it unregistered. int_sources__publication
+      lets them publish as they do today rather than drop off phones with
+      nobody having decided that; removing a row is that decision.
+      tests/test_dbt_sources_parity.py refuses a row whose key the registry
+      already holds, so a source cannot be in both.
+    config:
+      column_types:
+        source_key: varchar
+        why: varchar
+        decided_by: varchar
+    columns:
+      - name: source_key
+        description: The key the exporter's rows carry as their source, e.g. `opentrail_at`.
+        data_tests: [not_null, unique]
+      - name: why
+        description: What publishes today, and why there is no registry row.
+      - name: decided_by
+        description: The issue, by number and title, and the position recorded there.
+

@@ -1,0 +1,15 @@
+# The row-history stores that have been saved to at least once, by name: the
+# store URL's last part, so `monthly` for s3://<R2_RAW_BUCKET>/history/monthly.
+# Each names the run that first saved it.
+#
+# build_marts.py refuses a store listed here that holds no history.json,
+# because that is lost history, and a cold start would date every row as
+# first seen in that build. A store not listed may cold-start, with a
+# warning. List a store in the pull request after its first run has saved,
+# never before (pipeline/row_history.py, build_marts.py's docstring).
+#
+# Read with tomllib, so build_marts.py stays standard-library only.
+
+[started]
+# monthly = "2026-11-03, refresh-reference.yml run <id>"
+conditions_ua = "2026-10-03, publish-conditions.yml run 37151246098 (soak run 505), which saved 2 snapshot tables, 457 rows"

@@ -16,9 +16,28 @@ from pathlib import Path
 
 import requests
 
-from lib.http_retry import request_with_retry
+from lib.http_retry import DEFAULT_BACKOFF_SECONDS, request_with_retry
 
 PAGE_SIZE = 1000
+
+# A PAGE QUERY WHOSE GET URL WOULD BE LONGER THAN THIS GOES AS A POST FORM,
+# the same parameters in the body (query_page()). Measured 2026-10-03 on
+# services3.arcgis.com's WFIGS_Interagency_Perimeters_Current/FeatureServer/0,
+# whose 118 kept fields make a 3,018-character query: a GET of 2,075
+# characters answered 200, one of 2,622 answered 404, and the whole query as
+# a POST answered all 113 features. 2,000 sits under the longest GET seen to
+# answer. Where between 2,075 and 2,622 that host's limit lies is
+# @unvalidated, and other hosts' limits are unmeasured; a shorter query is
+# sent by GET exactly as before, so no layer read today changes request.
+GET_URL_LIMIT = 2000
+
+
+def query_page(query_url: str, params: dict, *, session=None, backoff: tuple[int, ...] = DEFAULT_BACKOFF_SECONDS):
+    """One page query: a GET, or a POST form when the GET's URL would pass GET_URL_LIMIT."""
+    url = requests.Request("GET", query_url, params=params).prepare().url
+    if len(url) <= GET_URL_LIMIT:
+        return request_with_retry(query_url, session=session, params=params, timeout=60, backoff=backoff)
+    return request_with_retry(query_url, session=session, method="post", data=params, timeout=60, backoff=backoff)
 
 
 def fetch_layer_geojson(
@@ -71,21 +90,108 @@ def fetch_layer_geojson(
     or by bytes is not distinguished, because it does not change what to do.
     """
     query_url = layer_url.rstrip("/") + "/query"
-    records = PAGE_SIZE if page_size is None else page_size
     features = []
+    for batch in iter_layer_pages(layer_url, out_fields=out_fields, geometry_precision=geometry_precision, page_size=page_size):
+        features.extend(batch)
+    check_not_truncated(query_url, len(features))
+    return {"type": "FeatureCollection", "features": features}
+
+
+def iter_layer_pages(
+    layer_url: str,
+    *,
+    out_fields: str = "*",
+    geometry_precision: int | None = None,
+    page_size: int | None = None,
+    where: str = "1=1",
+    session=None,
+    backoff: tuple[int, ...] = DEFAULT_BACKOFF_SECONDS,
+    return_z: bool = False,
+    paginate: bool = True,
+):
+    """Yield each page of GeoJSON features `fetch_layer_geojson` would collect, in order.
+
+    The loop itself, with every rule fetch_layer_geojson's docstring states:
+    stop on an empty page and never a short one, advance by the rows the
+    page returned, halve a refused page. It is a generator so the dlt
+    resource in extract/_kinds.py can yield page by page through THIS loop
+    rather than a second one (#1793, pipeline/ELT.md) - a second pager is
+    the thing #1295 removed, and dlt's own OffsetPaginator steps by `limit`
+    rather than by rows returned, which skips rows on any server whose
+    `maxRecordCount` sits below the page asked for (ELT.md, "dlt
+    configuration requirements": 4 of 10 rows, measured 2026-10-01).
+
+    `where` is the entry's own filter, for a layer read only through the
+    agency's status field (ELT.md, "Status layers are often stale"). The
+    count that proves a short read must be taken under the same clause, so
+    `layer_count` takes it too. `session` is the caller's, so a caller that
+    names itself to the server (lib/user_agent.py) does so on every page.
+    `backoff` is the caller's too: how long each page waits out a server that
+    stops answering (lib/http_retry.py).
+
+    A SERVER THAT IGNORES `resultOffset` IS REFUSED, not looped on. One that
+    does not support pagination answers every offset with page one, and
+    this loop, which stops only on an empty page, would never stop (ELT.md
+    asks for a `maximum_offset` on every layer for this reason; @unvalidated
+    against a live server, since none registered here has been seen doing
+    it). Two consecutive pages identical feature for feature cannot come
+    from one layer read in order, so the second one raises.
+
+    `return_z` KEEPS EACH VERTEX'S ELEVATION, which `f=geojson` drops.
+    Measured 2026-10-03 on ATC's Z-enabled `ATX_Ratings/FeatureServer/9`:
+    `f=geojson&returnZ=true` answered 2-D coordinates, while `f=json&returnZ=true`
+    answered [x, y, z] on every vertex. So with `return_z` the pages are asked
+    for as Esri JSON with `returnZ=true` and converted here, by
+    `esri_feature_to_geojson`, into the same GeoJSON features this loop yields
+    otherwise, each coordinate carrying its Z. It is the same loop - stop on
+    an empty page, advance by rows returned, halve a refused page, refuse a
+    repeated one - so it is not a second pager. Off by default, and with it
+    off the request is exactly what it was before (tests/test_lib_arcgis.py
+    pins the whole query).
+
+    `paginate=False` IS FOR A SERVER THAT REFUSES `resultOffset`, one whose
+    layer metadata reads `advancedQueryCapabilities.supportsPagination: false`.
+    Measured 2026-10-03 on cicgis.org's `Chesapeake/CAJO/MapServer/0`: a paged
+    query answers `{"error": {"code": 400, "message": "Pagination is not
+    supported."}}`, which this loop would halve down to a page of one and then
+    fail on. That layer answers `returnIdsOnly` (843 ids under `FID`) and an
+    `objectIds` query by GET and by POST alike, so `iter_pages_by_object_id`
+    reads the ids once and then the features in batches of `page_size`, in
+    object-id order. The caller sets `page_size` no larger than the layer's
+    `maxRecordCount`; the proof of a whole read stays the caller's
+    `returnCountOnly` count.
+    """
+    query_url = layer_url.rstrip("/") + "/query"
+    records = PAGE_SIZE if page_size is None else page_size
+    if not paginate:
+        yield from iter_pages_by_object_id(
+            query_url,
+            out_fields=out_fields,
+            geometry_precision=geometry_precision,
+            batch_size=records,
+            where=where,
+            session=session,
+            backoff=backoff,
+            return_z=return_z,
+        )
+        return
     offset = 0
+    previous = None
     while True:
         params = {
-            "where": "1=1",
+            "where": where,
             "outFields": out_fields,
             "outSR": 4326,
             "f": "geojson",
             "resultOffset": offset,
             "resultRecordCount": records,
         }
+        if return_z:
+            params["f"] = "json"
+            params["returnZ"] = "true"
         if geometry_precision is not None:
             params["geometryPrecision"] = geometry_precision
-        resp = request_with_retry(query_url, params=params, timeout=60)
+        resp = query_page(query_url, params, session=session, backoff=backoff)
         refusal = page_refusal(resp)
         if refusal is not None:
             if records <= 1:
@@ -95,12 +201,132 @@ def fetch_layer_geojson(
             records = smaller
             continue
         batch = resp.json().get("features", [])
+        if return_z:
+            batch = [esri_feature_to_geojson(feature) for feature in batch]
         if not batch:
-            break
-        features.extend(batch)
+            return
+        if batch == previous:
+            raise RuntimeError(f"{query_url} answered offset {offset} with the page before it; it ignores resultOffset")
+        yield batch
+        previous = batch
         offset += len(batch)
-    check_not_truncated(query_url, len(features))
-    return {"type": "FeatureCollection", "features": features}
+
+
+def _feature_object_id(feature: dict, oid_field: str | None):
+    """A page's feature's object id, or None where it carries none: GeoJSON's `id`, else the id field's value."""
+    if feature.get("id") is not None:
+        return feature["id"]
+    properties = feature.get("properties") or {}
+    return properties.get(oid_field) if oid_field else None
+
+
+def iter_pages_by_object_id(
+    query_url: str,
+    *,
+    out_fields: str = "*",
+    geometry_precision: int | None = None,
+    batch_size: int = PAGE_SIZE,
+    where: str = "1=1",
+    session=None,
+    backoff: tuple[int, ...] = DEFAULT_BACKOFF_SECONDS,
+    return_z: bool = False,
+):
+    """Yield a non-paginating layer's features in pages, by object id: iter_layer_pages' `paginate=False` path.
+
+    One `returnIdsOnly` query under `where`, then the ids in ascending order,
+    `batch_size` at a time, each batch POSTed as `objectIds`. POST, because a
+    thousand ids are several kilobytes of URL, past the 2,048-byte query
+    string IIS allows by default (Reasoned from IIS's documented default; the
+    measured layer answered GET and POST the same for 3 ids). A batch the
+    server refuses is asked for again at half the size, as a refused page is.
+    A server that answers a batch with features whose ids it was not asked
+    for is ignoring `objectIds` and is refused, rather than read as the
+    layer. An empty id list is an empty layer; whether it is a whole one is
+    the caller's `returnCountOnly` check, as for the paged loop.
+    """
+    answer = request_with_retry(
+        query_url,
+        session=session,
+        params={"where": where, "returnIdsOnly": "true", "f": "json"},
+        timeout=60,
+        backoff=backoff,
+    )
+    refusal = page_refusal(answer)
+    if refusal is not None:
+        raise RuntimeError(f"{query_url} {refusal} when asked for its object ids")
+    body = answer.json()
+    oid_field = body.get("objectIdFieldName")
+    ids = sorted(body.get("objectIds") or [])
+    size = batch_size
+    index = 0
+    while index < len(ids):
+        batch = ids[index : index + size]
+        form = {"objectIds": ",".join(str(oid) for oid in batch), "outFields": out_fields, "outSR": 4326, "f": "geojson"}
+        if return_z:
+            form["f"] = "json"
+            form["returnZ"] = "true"
+        if geometry_precision is not None:
+            form["geometryPrecision"] = geometry_precision
+        resp = request_with_retry(query_url, session=session, method="post", data=form, timeout=60, backoff=backoff)
+        refusal = page_refusal(resp)
+        if refusal is not None:
+            if size <= 1:
+                raise RuntimeError(f"{query_url} {refusal} for 1 object id")
+            print(f"  {query_url} {refusal} for {size} object ids; retrying at {size // 2}")
+            size //= 2
+            continue
+        features = resp.json().get("features", [])
+        if return_z:
+            features = [esri_feature_to_geojson(feature) for feature in features]
+        asked = set(batch)
+        stray = [oid for oid in (_feature_object_id(f, oid_field) for f in features) if oid is not None and oid not in asked]
+        if stray:
+            raise RuntimeError(f"{query_url} answered object ids it was not asked for ({stray[:3]}); it ignores objectIds")
+        yield features
+        index += len(batch)
+
+
+def esri_geometry_to_geojson(geometry: dict | None) -> dict | None:
+    """One Esri JSON geometry as a GeoJSON geometry, every coordinate kept as the server sent it, Z included.
+
+    Points, multipoints and polylines, which is every Z-enabled layer
+    registered so far: a polyline of one path is a LineString and of several
+    a MultiLineString, as `f=geojson` answers them. An empty geometry is None,
+    GeoJSON's null geometry. A POLYGON RAISES: Esri rings are told apart as
+    outer or hole by their winding and must be regrouped, which this does not
+    do yet, and a polygon read wrong is worse than one not read. A Z-enabled
+    polygon layer is read without `return_z` until somebody builds that.
+    """
+    if not geometry:
+        return None
+    if "x" in geometry:
+        if geometry.get("x") is None or geometry.get("x") == "NaN":
+            return None
+        coordinates = [geometry["x"], geometry["y"]]
+        if geometry.get("z") is not None:
+            coordinates.append(geometry["z"])
+        return {"type": "Point", "coordinates": coordinates}
+    if "points" in geometry:
+        return {"type": "MultiPoint", "coordinates": geometry["points"]} if geometry["points"] else None
+    if "paths" in geometry:
+        paths = [path for path in geometry["paths"] if path]
+        if not paths:
+            return None
+        if len(paths) == 1:
+            return {"type": "LineString", "coordinates": paths[0]}
+        return {"type": "MultiLineString", "coordinates": paths}
+    if "rings" in geometry:
+        raise ValueError("an Esri polygon is not converted with its Z yet; read this layer without return_z")
+    raise ValueError(f"an Esri geometry of no known shape: {sorted(geometry)}")
+
+
+def esri_feature_to_geojson(feature: dict) -> dict:
+    """One Esri JSON feature as the GeoJSON feature `f=geojson` would have answered, its Z kept."""
+    return {
+        "type": "Feature",
+        "properties": feature.get("attributes") or {},
+        "geometry": esri_geometry_to_geojson(feature.get("geometry")),
+    }
 
 
 def check_not_truncated(query_url: str, fetched: int) -> None:
@@ -123,17 +349,38 @@ def check_not_truncated(query_url: str, fetched: int) -> None:
     turn a missing capability into an outage. @unvalidated: the support
     is asserted by the ArcGIS REST spec, not checked per registered source.
     """
+    count = layer_count(query_url)
+    if count is not None and fetched < count:
+        raise RuntimeError(f"{query_url} holds {count} features but {fetched} were fetched; the layer was truncated")
+
+
+def layer_count(
+    query_url: str, *, where: str = "1=1", session=None, backoff: tuple[int, ...] = DEFAULT_BACKOFF_SECONDS
+) -> int | None:
+    """The server's own `returnCountOnly` count for `where`, or None when it cannot be read.
+
+    Split out of check_not_truncated so the extract run check can record
+    the count as the proof an empty or short table needs (pipeline/ELT.md,
+    "A full reload that cannot empty a safety table"). None is printed with
+    its reason and is never a count of zero: an allowed-empty closures layer
+    without a readable count is UNKNOWN there, not a quiet trail.
+    """
     try:
-        resp = request_with_retry(query_url, params={"where": "1=1", "returnCountOnly": "true", "f": "json"}, timeout=60)
+        resp = request_with_retry(
+            query_url,
+            session=session,
+            params={"where": where, "returnCountOnly": "true", "f": "json"},
+            timeout=60,
+            backoff=backoff,
+        )
         count = resp.json().get("count")
     except (ValueError, AttributeError, requests.RequestException) as exc:
         print(f"  {query_url} count check skipped: {exc}")
-        return
+        return None
     if not isinstance(count, int):
         print(f"  {query_url} count check skipped: no integer count in the answer")
-        return
-    if fetched < count:
-        raise RuntimeError(f"{query_url} holds {count} features but {fetched} were fetched; the layer was truncated")
+        return None
+    return count
 
 
 def page_refusal(resp) -> str | None:

@@ -1,0 +1,10 @@
+poi_type,state,may_be_empty,why
+shelter,published,false,
+campsite,published,false,
+water,published,false,
+resupply,published,false,
+viewpoint,published,false,
+parking,published,false,
+privy,published,false,
+trailhead,published,true,"ATC publishes no trailhead layer at all (#1197); the ones that ship are OPRHP's and USFS's, in nearby_poi.geojson"
+crossing,withdrawn,true,"#1674 - removed from the map, the legend and the pipeline at the maintainer's request"

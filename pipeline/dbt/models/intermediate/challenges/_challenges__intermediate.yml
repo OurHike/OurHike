@@ -1,0 +1,218 @@
+version: 2
+
+models:
+  - name: int_challenges__published_pois
+    description: >
+      The POIs export_poi.py's eight poi_<type>.geojson files carry (the
+      points_of_interest mart's poi_by_type rows), with each one's published
+      id, trail, type, name, and its mile, lat and lon as GDAL prints them in
+      those files. What a challenge place may name (CH01).
+    data_tests:
+      # export_challenges.main()'s "no published POIs" WARNING: every place
+      # would drop, which looks like a club that published nothing.
+      - dbt_utils.at_least_one:
+          name: challenges_have_published_pois_to_name
+          arguments:
+            column_name: poi_id
+          config:
+            severity: warn
+    columns:
+      - name: poi_id
+        description: The POI's published id.
+        data_tests: [not_null, unique]
+      - name: trail_id
+        description: The trail the POI is published on, AT for the A.T. family's.
+      - name: mile
+        description: Its published A.T. mile, 3 places.
+
+  - name: int_challenges__centerline
+    description: >
+      The A.T. centerline's published chains, trails.geojson's `centerline`
+      features (the trail_lines mart's rows with source_key centerline), as
+      GeoJSON in lon/lat at decision 8's 6 decimals. What a challenge place's
+      tag radius is measured against (CH04).
+    data_tests:
+      # CH13: with no centerline the radius check is skipped, never silently.
+      # export_challenges.main() printed this as a ::warning:: annotation;
+      # here it is a WARN line in the build.
+      - dbt_utils.at_least_one:
+          name: challenges_distance_check_has_a_centerline_to_measure_against
+          arguments:
+            column_name: trail_line_id
+          config:
+            severity: warn
+    columns:
+      - name: trail_line_id
+        description: The chain's published id, centerline:chain:<n>.
+        data_tests: [not_null, unique]
+      - name: geom_geojson
+        description: The chain's geometry, RFC 7946 GeoJSON in lon/lat, LineString or MultiLineString.
+        data_tests: [not_null]
+
+  - name: int_challenges__unioned
+    description: >
+      Every club's challenge files, one row per file, unioned by name from
+      each stg_<club>__challenges. The ATC's alone today.
+    columns:
+      - name: challenge_file_key
+        description: The file's key, from its club's base model.
+        data_tests: [not_null, unique]
+
+  - name: int_challenges__publishers
+    description: >
+      reference/challenges/publishers.json, one row per row, through
+      export_challenges.py's publisher_scope() in its order (CH02): whether
+      the row is the organization's accepted scope, and why not where it is
+      not. An accepted row carries the organization's name and short name
+      from sources.json and its domain, lower-cased.
+    columns:
+      - name: publisher_position
+        description: The row's place in `publishers`, from 1.
+        data_tests: [not_null, unique]
+      - name: org
+        description: The row's `org`, where it is a string.
+      - name: accepted
+        description: True for the one row of an organization that is its scope.
+        data_tests: [not_null]
+      - name: problem
+        description: Why the row was refused, in publisher_scope()'s words. Null where it was accepted.
+      - name: org_domain
+        description: The accepted row's web domain, lower-cased, which every challenge of the org carries as `org_domain`.
+      - name: trails_json
+        description: The accepted row's `trails`, as JSON text.
+
+  - name: int_challenges__publisher_trails
+    description: >
+      Each trail an accepted publishers.json row names, in order, and whether
+      a published POI carries it, which is what puts it in the organization's
+      scope (CH02, CH03).
+    columns:
+      - name: publisher_trail_id
+        description: The row's position and the trail's within it, as `<row>.<trail>`.
+        data_tests: [not_null, unique]
+      - name: in_scope
+        description: True where the trail is a string some published POI carries as its trail_id.
+        data_tests: [not_null]
+      - name: problem
+        description: Why a trail is not in scope, in publisher_scope()'s words.
+
+  - name: int_challenges__files
+    description: >
+      Every challenge file, in today's path order, checked as far as
+      resolve_challenge() goes before its items: build_output()'s placing
+      checks in `misplaced_problem`, then the challenge's own in
+      `challenge_problem` (CH02, CH03, CH10, CH11, CH12), each null where the
+      file passes, with the fields the later models read.
+    columns:
+      - name: challenge_file_key
+        description: The file's key.
+        data_tests: [not_null, unique]
+      - name: list_position
+        description: The file's place in sorted(reference/challenges/*/*.json), from 1.
+        data_tests: [not_null, unique]
+      - name: misplaced_problem
+        description: >
+          build_output()'s refusal: the file's folder is not its `org`, or it
+          was saved under a domain publishers.json does not give that org.
+      - name: challenge_problem
+        description: resolve_challenge()'s first refusal before the items, in its words.
+      - name: report_label
+        description: How the exporter names the file when it drops it, its truthy `id` or else its stem.
+        data_tests: [not_null]
+
+  - name: int_challenges__items
+    description: >
+      Every item of every file that reached its items, resolved as
+      resolve_challenge()'s loop and resolve_item() resolve it (CH01,
+      CH03-CH09): the first refusal in `problem`, and where there is none the
+      item as it publishes. A place is a published POI with its own mile,
+      coordinate and name; a place that is not off_trail must lie within its
+      radius of the centerline (CH04), measured as the model's header says.
+    columns:
+      - name: item_key
+        description: The file's key and the item's position.
+        data_tests: [not_null, unique]
+      - name: report_label
+        description: The item's id, or <no id> where it has none usable, as the exporter names a dropped item.
+        data_tests: [not_null]
+      - name: problem
+        description: The item's first refusal, in lib/challenges.py's words. Null where it publishes.
+      - name: sealed
+        description: True where the item ships its title only as sealed_title (CH07).
+        data_tests: [not_null]
+      - name: place_distances
+        description: >
+          Each place's measured distance from the centerline, metres to 3
+          places, as a JSON list in the item's order; null for a place that
+          was not measured (off_trail, a walked section's end, no centerline).
+      - name: published_item
+        description: The item as challenges.json carries it.
+
+  - name: int_challenges__resolved
+    description: >
+      Every challenge file resolved to the end, in today's path order: the
+      first refusal in `problem` (CH08-CH11, after int_challenges__files'),
+      and where there is none the challenge's published fields. The challenges
+      mart keeps the rows with no problem whose source may publish.
+    columns:
+      - name: challenge_file_key
+        description: The file's key.
+        data_tests: [not_null, unique]
+      - name: problem
+        description: Why the challenge did not publish, in the Python's words. Null where it resolved.
+      - name: challenge_id
+        description: The challenge's id.
+        data_tests:
+          # Every challenge that resolved reaches the mart, unless may_publish
+          # holds its source back. WARN, because that is a decision and not a
+          # defect: it names a challenge rule 6 of "Who may publish" holds
+          # back until its club's permission is recorded. The ATC's list has
+          # its row (unregistered_publishing_sources, ELT.md decision 47, on
+          # the maintainer's authorisation), so on today's files it names none.
+          - relationships:
+              name: challenges_every_resolved_challenge_may_publish
+              arguments:
+                to: ref('challenges')
+                field: challenge_id
+              config:
+                where: "problem is null"
+                severity: warn
+      - name: report_label
+        description: How the exporter names the file when it drops it.
+        data_tests: [not_null]
+
+  - name: int_challenges__refusals
+    description: >
+      Everything the port refused, in export_challenges.main()'s report
+      order: publishers.json rows and trails, challenges, items (CH08). Each
+      `report_line` is the line the exporter prints to stderr.
+    data_tests:
+      # The exporter's closing ::warning::, "N challenge(s) and M item(s) did
+      # not publish, and K publishers.json line(s) were refused": a refusal
+      # never fails the run, and is never silent either.
+      - dbt_utils.expression_is_true:
+          name: challenges_every_publisher_challenge_and_item_publishes
+          arguments:
+            expression: "problem is null"
+          config:
+            severity: warn
+    columns:
+      - name: refusal_order
+        description: The line's place in the report, from 1.
+        data_tests: [not_null, unique]
+      - name: problem
+        description: Why, in the Python's words.
+        data_tests: [not_null]
+      - name: report_line
+        description: The line as export_challenges.py prints it, two-space indent left out.
+        data_tests: [not_null]
+  - name: int_challenges__final
+    description: >
+      The challenges mart's rows before their row dates (decision 57):
+      what models/marts/challenges/challenges.sql held until then, every
+      contracted column but _first_seen_at and _changed_at.
+      int_challenges__history snapshots it, and the mart reads that snapshot.
+    columns:
+      - name: challenge_id
+        description: The mart's key.
+        data_tests: [not_null, unique]

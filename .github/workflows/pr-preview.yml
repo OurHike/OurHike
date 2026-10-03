@@ -47,6 +47,10 @@
 #   taking it from anywhere else "breaks deep links in exactly one environment
 #   - the one nobody tests". This was that environment.
 #
+# The dbt docs land at `/data/` here as they do in production, built by the
+# same action (.github/actions/dbt-docs-site), so a pull request that changes
+# the dbt project shows its docs page before a tag publishes it.
+#
 # WHAT THIS DELIBERATELY DOES NOT COPY FROM pages.yml: `site/CNAME` and
 # `.nojekyll`. Both are GitHub Pages mechanisms - a custom domain, and
 # Jekyll's rule about leading underscores - and Cloudflare Pages reads
@@ -560,6 +564,16 @@ jobs:
           node scripts/photograph-preview.mjs --dist --changed="$LIST"
           echo "taken=true" >> "$GITHUB_OUTPUT"
 
+      # The /data/ page, built by the same action as pages.yml (the action
+      # says why an empty warehouse; it reads no secret). Not
+      # continue-on-error: a broken docs page should fail the preview, and
+      # the assembly below refuses a missing part rather than letting
+      # 404.html cover for it.
+      - name: Build the data docs
+        id: docs
+        if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
+        uses: ./.github/actions/dbt-docs-site
+
       # What gets uploaded, laid out the way pages.yml lays out its own
       # `_site` - the header at the top of this file has the argument and the
       # two files this one leaves out. The directory reuses that name because
@@ -580,6 +594,7 @@ jobs:
         env:
           VITE_DATA_BASE_URL: ${{ steps.data.outputs.url }}
           VITE_SUPABASE_URL: ${{ steps.supabase.outputs.url }}
+          DOCS_DIR: ${{ steps.docs.outputs.dir }}
         run: |
           mkdir -p _site/app
           # The BUILT site, not the source tree - site/src would be shipped raw
@@ -591,6 +606,21 @@ jobs:
           # Astro's output holds no icon to answer with. Copied as a file from
           # the app's own copy, exactly as pages.yml does it.
           cp client/public/favicon.svg _site/favicon.svg
+          # The dbt docs at /data/, copied and checked exactly as pages.yml
+          # does it, and for one more reason here: the 404.html below is the
+          # app shell, so a docs file missing from this upload would be
+          # answered with the app, and a reviewer opening /data/ would see the
+          # map rather than anything saying the docs are broken.
+          # check_docs_site.py refuses the missing part instead.
+          if [ -e _site/data ]; then
+            echo "::error::site/dist already holds data/, which is the dbt docs' path. Move one of them."
+            exit 1
+          fi
+          mkdir -p _site/data
+          # Never empty: `cp -r "/." _site/data/` would copy the runner's root.
+          : "${DOCS_DIR:?the docs step named no directory}"
+          cp -r "$DOCS_DIR"/. _site/data/
+          python pipeline/check_docs_site.py _site/data
           # THE ONE PLACE THIS PREVIEW IS DELIBERATELY NOT PRODUCTION, and it
           # is one line. Cloudflare Pages reads `_redirects`; GitHub Pages
           # ignores the file entirely, so production is untouched by it.
@@ -664,7 +694,7 @@ jobs:
           # them. That file holds the directives and the evidence for each.
           node client/scripts/csp.mjs --headers > _site/_headers
           echo "Policy served on $(head -1 _site/_headers): $(sed -n '2p' _site/_headers | cut -c1-120)..."
-          echo "Uploading $(find _site -type f | wc -l) files: $(find _site/app -type f | wc -l) of them the app."
+          echo "Uploading $(find _site -type f | wc -l) files: $(find _site/app -type f | wc -l) of them the app, $(find _site/data -type f | wc -l) the dbt docs."
 
       - name: Publish the preview
         id: deploy
@@ -706,6 +736,7 @@ jobs:
             echo "base=$BASE"
             echo "app=$BASE/app/"
             echo "orgs=$BASE/for-orgs/"
+            echo "docs=$BASE/data/"
           } >> "$GITHUB_OUTPUT"
 
       # Cloudflare mints the `pr-<n>` alias the first time a pull request
@@ -826,9 +857,13 @@ jobs:
             marketing site, at the root of the same preview. This build is laid out the
             way production is: the site at `/`, the app at `/app/`.
 
-            Built from ${{ github.event.pull_request.head.sha || github.sha }}. Both links
-            stay the same as you push - they always serve the latest build of this pull
-            request.
+            **[Open the data docs](${{ steps.links.outputs.docs }})** - the dbt project's
+            documentation, built from the code against an empty warehouse, as
+            `ourhike.org/data/` serves it from the next release.
+
+            Built from ${{ github.event.pull_request.head.sha || github.sha }}. All three
+            links stay the same as you push - they always serve the latest build of this
+            pull request.
 
             ${{ steps.data.outputs.banner }}
 

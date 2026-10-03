@@ -1,0 +1,42 @@
+version: 2
+
+sources:
+  - name: extract
+    description: >
+      The extract's own record of each run (pipeline/extract/_run.py's
+      write_run_log()), which extract/_warehouse.py's load_warehouse() copies
+      whole into the warehouse beside the tables it loaded. The hourly lane's
+      copy is the conditions leg's own log.
+    schema: raw
+    config:
+      loaded_at_field: checked_at
+      meta:
+        cadence: hourly
+      freshness:
+        # Every run appends its rows, so this measures whether the lane ran.
+        # @unvalidated: 7 hours is the hourly sources' threshold (the worst
+        # measured publish-conditions.yml gap, 6.3 h, rounded up); the 99th
+        # percentile of this table's own checked_at gaps over 30 days settles
+        # it.
+        warn_after: {count: 7, period: hour}
+    tables:
+      - name: _extract_runs
+        data_tests:
+          # Rows sharing base_extract__runs's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'extract_runs'", "run_id", "resource_name"]
+        description: >
+          One row per resource per run, appended and never rewritten: the
+          run's verdict and outcome, the rows it loaded, and `count_proof`,
+          the upstream's own count read in the same run (WordPress
+          X-WP-Total, ArcGIS returnCountOnly and the rest; the dlt skill,
+          rule 2). A zero loads only beside a count of zero (_run.py's
+          run_check()). Key: the run and the resource.
+        columns:
+          - name: run_id
+            description: The run, as a UTC stamp that sorts in time order.
+            data_tests: [not_null]
+          - name: resource_name
+            description: The resource the row is for.
+            data_tests: [not_null]

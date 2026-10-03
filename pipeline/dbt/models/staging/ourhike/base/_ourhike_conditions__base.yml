@@ -1,0 +1,150 @@
+version: 2
+
+models:
+  - name: base_ourhike__closures
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('ourhike', 'raw_ourhike__closures')
+          config:
+            severity: warn
+    description: >
+      OurHike's moderator-verified closures, keyed, every column
+      PUBLIC_CLOSURES_SQL selects. Read by int_closures__ourhike_checked.
+    columns:
+      - name: ourhike_closure_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          `ourhike_closures` and the closure's UUID.
+        data_tests: [not_null, unique]
+      - name: closure_uuid
+        description: The closure's UUID primary key, published as `id`.
+        data_tests: [not_null]
+      - name: closure_status
+        description: open, closed or reroute_available (app/models/closure.py's ClosureStatus), published as `status`.
+      - name: moderation_status
+        description: Always `verified`, by the query; int_closures__ourhike_checked holds it to that.
+  - name: base_ourhike__reports
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('ourhike', 'raw_ourhike__reports')
+          config:
+            severity: warn
+    description: >
+      OurHike's public reports, keyed, every severity, every column
+      PUBLIC_REPORTS_SQL selects. pub_conditions_reports writes all of them
+      as conditions/reports.json; int_warnings__serious_reports takes the
+      serious ones.
+    columns:
+      - name: ourhike_report_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          `ourhike_reports` and the report's UUID.
+        data_tests: [not_null, unique]
+      - name: report_uuid
+        description: The report's UUID primary key, published as `id`.
+        data_tests: [not_null]
+      - name: report_type
+        description: The report's `type`, renamed because `type` is a keyword.
+      - name: reported_at
+        description: The report's `timestamp`, when the hiker filed it, renamed because `timestamp` is a keyword.
+      - name: report_severity
+        description: normal or serious (app/models/report.py's Severity).
+  - name: base_ourhike__notes
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('ourhike', 'raw_ourhike__notes')
+          config:
+            severity: warn
+    description: >
+      OurHike's visible field notes, keyed. Public because the
+      conditions/notes.json exposure names it: export_conditions.py still
+      writes that file (WN11), and no mart reads these rows.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: ourhike_note_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          `ourhike_notes` and the note's UUID.
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: note_uuid
+        description: The note's UUID primary key, published as `id`.
+        data_type: varchar
+      - name: poi_id
+        description: The published POI the note is about, or null for a note dropped on the map.
+        data_type: varchar
+      - name: lat
+        description: Where the note was left, when it was not on a POI.
+        data_type: double
+      - name: lon
+        description: Where the note was left, when it was not on a POI.
+        data_type: double
+      - name: mile
+        description: The A.T. mile it was left at, where it has one.
+        data_type: double
+      - name: observation
+        description: What the hiker saw, from the field-note vocabulary (features/FIELD_NOTES.md).
+        data_type: varchar
+      - name: note
+        description: The hiker's own words.
+        data_type: varchar
+      - name: observed_at
+        description: When the hiker saw it.
+        data_type: timestamptz
+      - name: reporter_type
+        description: thru, section, day or maintainer.
+        data_type: varchar
+      - name: _loaded_at
+        description: When the extract read it.
+        data_type: timestamptz
+      - name: _dlt_id
+        description: dlt's id for the landed row, the dedupe's tie-break.
+        data_type: varchar
+  - name: base_ourhike__disputes
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('ourhike', 'raw_ourhike__disputes')
+          config:
+            severity: warn
+    description: >
+      The places field notes say are gone, as account counts, keyed. Public
+      because the conditions/disputes.json exposure names it:
+      export_conditions.py still writes that file (WN11).
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: ourhike_dispute_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          `ourhike_disputes` and the place's POI id.
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: poi_id
+        description: The disputed place's published POI id.
+        data_type: varchar
+      - name: accounts
+        description: How many accounts marked it not found inside 180 days; two or more, by the query.
+        data_type: bigint
+      - name: latest_at
+        description: The latest of those marks.
+        data_type: timestamptz
+      - name: maintainer_said
+        description: Always false in the bake, which cannot see maintainer assignments (export_conditions.py).
+        data_type: boolean
+      - name: _loaded_at
+        description: When the extract read it.
+        data_type: timestamptz
+      - name: _dlt_id
+        description: dlt's id for the landed row, the dedupe's tie-break.
+        data_type: varchar

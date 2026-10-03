@@ -1,4 +1,14 @@
+# Everything dbt writes here is generated, and none of it is committed
+# (CONTRIBUTING.md, "Data does not go in commits"). target/ holds the
+# compiled SQL, the manifest, the run artifacts, and v2's docs site
+# (index.html, its assets and Parquet) once `dbt docs generate` has run.
 dbt_packages/
 logs/
 target/
 .user.yml
+# dbt-oss 2.0.5 appended this line itself on its first `dbt deps` here
+# (2026-10-01), before decision 32 moved the project to the full dbt 2.0.6.
+# The directory never appeared in this sandbox under either distribution,
+# where deps cannot finish, so what v2 keeps in it is unread; it is ignored
+# so that wherever v2 does write it, it cannot be committed.
+dbt_internal_packages/

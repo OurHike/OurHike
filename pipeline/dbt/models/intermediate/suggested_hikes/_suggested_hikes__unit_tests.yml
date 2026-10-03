@@ -1,0 +1,655 @@
+version: 2
+
+# The suggested_hikes family's unit tests, one per pytest behaviour the
+# rules carry and at least one row per refusal branch, each row commented
+# with the case it mirrors. tests/test_dbt_suggested_hikes_parity.py runs
+# today's Python over these same rows and fails where the two disagree,
+# outside the differences it lists as deliberate.
+unit_tests:
+  - name: int_suggested_hikes__hike_finder_lists_what_hike_problems_lists
+    description: >
+      SH02, a review aid and never a gate: lib/hikefinder.py's hike_problems(),
+      check for check in its order and its words, from test_lib_hikefinder.py's
+      two cases and one row per check, each a page missing only that, with the
+      two boundaries `is None` draws (a Length of 0 and an Author of '' are
+      stated).
+    model: int_suggested_hikes__hike_finder
+    given:
+      - input: ref('base_nynjtc__nynjtc_hike_finder')
+        rows:
+          # test_problems_name_what_is_missing_and_a_complete_page_has_none: a complete page
+          - {hike_number: 1, name: 'Hike 1', start_json: '{"lat":41.6,"lon":-74.3005,"label":"Parking location"}', description_json: '["Follow the red-blazed Pine Meadow Trail to the lake."]', stated_miles: 4.8, route_type: 'Circuit', features_json: '["Views"]', author: 'Daniel Chazin'}
+          # the same pytest: a bare page, every problem in hike_problems()'s order
+          - {hike_number: 2, name: 'Hike 2', start_json: null, description_json: '[]', stated_miles: null, route_type: null, features_json: '[]', author: null}
+          # test_a_page_with_no_coordinate_parses_and_says_so_in_its_problems
+          - {hike_number: 3, name: 'Hike 3', start_json: null, description_json: '["Follow the red-blazed Pine Meadow Trail to the lake."]', stated_miles: 4.8, route_type: 'Circuit', features_json: '["Views"]', author: 'Daniel Chazin'}
+          # no Description card at all
+          - {hike_number: 4, name: 'Hike 4', start_json: '{"lat":41.6,"lon":-74.3005,"label":"Parking location"}', description_json: null, stated_miles: 4.8, route_type: 'Circuit', features_json: '["Views"]', author: 'Daniel Chazin'}
+          # an empty Description card
+          - {hike_number: 5, name: 'Hike 5', start_json: '{"lat":41.6,"lon":-74.3005,"label":"Parking location"}', description_json: '[]', stated_miles: 4.8, route_type: 'Circuit', features_json: '["Views"]', author: 'Daniel Chazin'}
+          # no stated Length
+          - {hike_number: 6, name: 'Hike 6', start_json: '{"lat":41.6,"lon":-74.3005,"label":"Parking location"}', description_json: '["Follow the red-blazed Pine Meadow Trail to the lake."]', stated_miles: null, route_type: 'Circuit', features_json: '["Views"]', author: 'Daniel Chazin'}
+          # a stated Length of 0 is a stated Length: `is None`
+          - {hike_number: 7, name: 'Hike 7', start_json: '{"lat":41.6,"lon":-74.3005,"label":"Parking location"}', description_json: '["Follow the red-blazed Pine Meadow Trail to the lake."]', stated_miles: 0.0, route_type: 'Circuit', features_json: '["Views"]', author: 'Daniel Chazin'}
+          # no Route Type
+          - {hike_number: 8, name: 'Hike 8', start_json: '{"lat":41.6,"lon":-74.3005,"label":"Parking location"}', description_json: '["Follow the red-blazed Pine Meadow Trail to the lake."]', stated_miles: 4.8, route_type: null, features_json: '["Views"]', author: 'Daniel Chazin'}
+          # no Features tags at all
+          - {hike_number: 9, name: 'Hike 9', start_json: '{"lat":41.6,"lon":-74.3005,"label":"Parking location"}', description_json: '["Follow the red-blazed Pine Meadow Trail to the lake."]', stated_miles: 4.8, route_type: 'Circuit', features_json: null, author: 'Daniel Chazin'}
+          # an empty Features list
+          - {hike_number: 10, name: 'Hike 10', start_json: '{"lat":41.6,"lon":-74.3005,"label":"Parking location"}', description_json: '["Follow the red-blazed Pine Meadow Trail to the lake."]', stated_miles: 4.8, route_type: 'Circuit', features_json: '[]', author: 'Daniel Chazin'}
+          # no Author
+          - {hike_number: 11, name: 'Hike 11', start_json: '{"lat":41.6,"lon":-74.3005,"label":"Parking location"}', description_json: '["Follow the red-blazed Pine Meadow Trail to the lake."]', stated_miles: 4.8, route_type: 'Circuit', features_json: '["Views"]', author: null}
+          # an Author of '' is an Author: `is None`
+          - {hike_number: 12, name: 'Hike 12', start_json: '{"lat":41.6,"lon":-74.3005,"label":"Parking location"}', description_json: '["Follow the red-blazed Pine Meadow Trail to the lake."]', stated_miles: 4.8, route_type: 'Circuit', features_json: '["Views"]', author: ''}
+      - input: ref('suggested_hike_difficulty_slugs')
+        rows:
+          - {difficulty_label: 'easy', difficulty_slug: 'easy'}
+          - {difficulty_label: 'easy to moderate', difficulty_slug: 'easy-moderate'}
+          - {difficulty_label: 'moderate', difficulty_slug: 'moderate'}
+          - {difficulty_label: 'moderate to strenuous', difficulty_slug: 'moderate-strenuous'}
+          - {difficulty_label: 'strenuous', difficulty_slug: 'strenuous'}
+          - {difficulty_label: 'very strenuous', difficulty_slug: 'strenuous'}
+    expect:
+      rows:
+        - {hike_number: 1, problems_json: '[]'}
+        - {hike_number: 2, problems_json: '["no GPS coordinate on the page - a route has nowhere to start from","no Description card - nothing to build a route from and nothing to print","no stated Length to check a built route against","no Route Type, so whether the walk closes back on itself is unknown","no Features tags","no Author - nobody''s name to carry with the write-up"]'}
+        - {hike_number: 3, problems_json: '["no GPS coordinate on the page - a route has nowhere to start from"]'}
+        - {hike_number: 4, problems_json: '["no Description card - nothing to build a route from and nothing to print"]'}
+        - {hike_number: 5, problems_json: '["no Description card - nothing to build a route from and nothing to print"]'}
+        - {hike_number: 6, problems_json: '["no stated Length to check a built route against"]'}
+        - {hike_number: 7, problems_json: '[]'}
+        - {hike_number: 8, problems_json: '["no Route Type, so whether the walk closes back on itself is unknown"]'}
+        - {hike_number: 9, problems_json: '["no Features tags"]'}
+        - {hike_number: 10, problems_json: '["no Features tags"]'}
+        - {hike_number: 11, problems_json: '["no Author - nobody''s name to carry with the write-up"]'}
+        - {hike_number: 12, problems_json: '[]'}
+  - name: int_suggested_hikes__hike_finder_slugs_what_difficulty_slug_slugs
+    description: >
+      SH07: export_suggested_hikes.py's difficulty_slug(), the label stripped
+      as str.strip() strips and lowercased, looked up in the seed; no slot is
+      no slug, never a guessed one, and the publisher's own word stays beside
+      it. From test_export_suggested_hikes.py's three difficulty cases, one row
+      per label.
+    model: int_suggested_hikes__hike_finder
+    given:
+      - input: ref('base_nynjtc__nynjtc_hike_finder')
+        rows:
+          # test_the_publishers_difficulty_becomes_the_slug_the_client_holds
+          - {hike_number: 21, name: 'Hike 21', difficulty: 'Easy'}
+          # the same pytest: the export's own casing
+          - {hike_number: 22, name: 'Hike 22', difficulty: 'Easy To Moderate'}
+          # the same pytest
+          - {hike_number: 23, name: 'Hike 23', difficulty: 'Moderate'}
+          # the same pytest
+          - {hike_number: 24, name: 'Hike 24', difficulty: 'Moderate To Strenuous'}
+          # the same pytest
+          - {hike_number: 25, name: 'Hike 25', difficulty: 'Strenuous'}
+          # test_very_strenuous_takes_the_hardest_slug_there_is_and_keeps_its_own_word
+          - {hike_number: 26, name: 'Hike 26', difficulty: 'Very Strenuous'}
+          # test_a_difficulty_the_client_has_no_slot_for_is_absent_rather_than_guessed
+          - {hike_number: 27, name: 'Hike 27', difficulty: 'Extreme'}
+          # no Difficulty at all
+          - {hike_number: 28, name: 'Hike 28', difficulty: null}
+          # an empty Difficulty
+          - {hike_number: 29, name: 'Hike 29', difficulty: ''}
+          # str.strip() strips a no-break space too
+          - {hike_number: 30, name: 'Hike 30', difficulty: ' Moderate '}
+          # any case
+          - {hike_number: 31, name: 'Hike 31', difficulty: 'EASY'}
+      - input: ref('suggested_hike_difficulty_slugs')
+        rows:
+          - {difficulty_label: 'easy', difficulty_slug: 'easy'}
+          - {difficulty_label: 'easy to moderate', difficulty_slug: 'easy-moderate'}
+          - {difficulty_label: 'moderate', difficulty_slug: 'moderate'}
+          - {difficulty_label: 'moderate to strenuous', difficulty_slug: 'moderate-strenuous'}
+          - {difficulty_label: 'strenuous', difficulty_slug: 'strenuous'}
+          - {difficulty_label: 'very strenuous', difficulty_slug: 'strenuous'}
+    expect:
+      rows:
+        - {hike_number: 21, difficulty: 'Easy', difficulty_slug: 'easy'}
+        - {hike_number: 22, difficulty: 'Easy To Moderate', difficulty_slug: 'easy-moderate'}
+        - {hike_number: 23, difficulty: 'Moderate', difficulty_slug: 'moderate'}
+        - {hike_number: 24, difficulty: 'Moderate To Strenuous', difficulty_slug: 'moderate-strenuous'}
+        - {hike_number: 25, difficulty: 'Strenuous', difficulty_slug: 'strenuous'}
+        - {hike_number: 26, difficulty: 'Very Strenuous', difficulty_slug: 'strenuous'}
+        - {hike_number: 27, difficulty: 'Extreme', difficulty_slug: null}
+        - {hike_number: 28, difficulty: null, difficulty_slug: null}
+        - {hike_number: 29, difficulty: '', difficulty_slug: null}
+        - {hike_number: 30, difficulty: ' Moderate ', difficulty_slug: 'moderate'}
+        - {hike_number: 31, difficulty: 'EASY', difficulty_slug: 'easy'}
+  - name: int_suggested_hikes__photos_confirms_what_confirmed_photos_confirms
+    description: >
+      SH09: a photograph only from the person-confirmed join, a row needing all
+      three of hike, digest and credit, each read for its own truth; both
+      spellings of the hike id join, the first confirmed row for a number wins,
+      and a credit is printed as the page carried it, with 'Photo by ' where it
+      did not say so. From test_export_suggested_hikes.py's photograph cases.
+      Three rows are DELIBERATE, stricter than confirmed_photos() and
+      photo_for() on purpose (tests/test_dbt_suggested_hikes_parity.py lists
+      them): a credit of only whitespace or of true, which would ship an
+      attribution naming nobody, and a digest with a trailing newline, which
+      would ship a bucket key with a newline in it.
+    model: int_suggested_hikes__photos
+    given:
+      - input: ref('base_nynjtc__nynjtc_hike_photos')
+        rows:
+          # test_the_sheets_bare_hike_number_joins_to_the_records_prefixed_id
+          - {file_row: 0, photo: '{"hike_id":"50","digest":"ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb","credit":"Daniel Chazin"}'}
+          # test_a_row_already_carrying_the_prefixed_id_joins_too
+          - {file_row: 1, photo: '{"hike_id":"nynjtc_hike_finder:51","digest":"3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d","credit":"Jane Daniels"}'}
+          # two rows confirm hike 52: the first in the file wins (setdefault)
+          - {file_row: 2, photo: '{"hike_id":"52","digest":"2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6","credit":"First Photographer"}'}
+          # the second, in the other spelling, is not used
+          - {file_row: 3, photo: '{"hike_id":"nynjtc_hike_finder:52","digest":"18ac3e7343f016890c510e93f935261169d9e3f565436429830faf0934f4f8e4","credit":"Second Photographer"}'}
+          # no digest confirms nothing
+          - {file_row: 4, photo: '{"hike_id":"53","credit":"Daniel Chazin"}'}
+          # test_a_confirmed_row_naming_no_photographer_ships_no_photograph
+          - {file_row: 5, photo: '{"hike_id":"54","digest":"3f79bb7b435b05321651daefd374cdc681dc06faa65e374e38337b88ca046dea"}'}
+          # no hike confirms nothing
+          - {file_row: 6, photo: '{"digest":"252f10c83610ebca1a059c0bae8255eba2f95be4d1d7bcfa89d7248a82d9f111","credit":"Daniel Chazin"}'}
+          # test_a_credit_that_already_says_photo_by_is_not_given_it_twice
+          - {file_row: 7, photo: '{"hike_id":"55","digest":"cd0aa9856147b6c5b4ff2b7dfee5da20aa38253099ef1b4a64aced233c9afe29","credit":"Photo by Daniel Chazin"}'}
+          # nor one that says Photo:
+          - {file_row: 8, photo: '{"hike_id":"56","digest":"aaa9402664f1a41f40ebbc52c9993eb66aeb366602958fdfaa283b71e64db123","credit":"Photo: Jane Daniels"}'}
+          # the credit as the page carried it, stripped
+          - {file_row: 9, photo: '{"hike_id":"57","digest":"de7d1b721a1e0632b7cf04edf5032c8ecffa9f9a08492152b926f1a5a7e765d7","credit":"  Daniel Chazin  "}'}
+          # DELIBERATE: a credit of only whitespace, which photo_for() prints as 'Photo by ' with nobody after it
+          - {file_row: 10, photo: '{"hike_id":"58","digest":"189f40034be7a199f1fa9891668ee3ab6049f82d38c68be70f596eab2e1857b7","credit":"   "}'}
+          # a hike number written as a number
+          - {file_row: 11, photo: '{"hike_id":59,"digest":"8254c329a92850f6d539dd376f4816ee2764517da5e0235514af433164480d7a","credit":"Daniel Chazin"}'}
+          # a row that is not an object confirms nothing
+          - {file_row: 12, photo: '"a note somebody left in the list"'}
+          # a digest that is not a sha256: photo_key() raises, and the mart's test fails the build
+          - {file_row: 13, photo: '{"hike_id":"60","digest":"not-a-digest","credit":"Daniel Chazin"}'}
+          # an empty hike id confirms nothing
+          - {file_row: 14, photo: '{"hike_id":"","digest":"acac86c0e609ca906f632b0e2dacccb2b77d22b0621f20ebece1a4835b93f6f0","credit":"Daniel Chazin"}'}
+          # a credit of 0 is falsy and names nobody
+          - {file_row: 15, photo: '{"hike_id":"61","digest":"62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a","credit":0}'}
+          # a credit that is a number is printed as one
+          - {file_row: 16, photo: '{"hike_id":"62","digest":"1b16b1df538ba12dc3f97edbb85caa7050d46c148134290feba80f8236c83db9","credit":5}'}
+          # any case of Photo by
+          - {file_row: 17, photo: '{"hike_id":"63","digest":"65c74c15a686187bb6bbf9958f494fc6b80068034a659a9ad44991b08c58f2d2","credit":"PHOTO BY JANE DANIELS"}'}
+          # DELIBERATE: a credit of true, which photo_for() prints as 'Photo by True'
+          - {file_row: 18, photo: '{"hike_id":"64","digest":"148de9c5a7a44d19e56cd9ae1a554bf67847afb0c58f6e12fa29ac7ddfca9940","credit":true}'}
+          # DELIBERATE: a digest with a trailing newline, which re.match's $ lets through
+          - {file_row: 19, photo: '{"hike_id":"65","digest":"8e35c2cd3bf6641bdb0e2050b76932cbb2e6034a0ddacc1d9bea82a6ba57f7cf\n","credit":"Daniel Chazin"}'}
+          # an uppercase digest is not the store's spelling
+          - {file_row: 20, photo: '{"hike_id":"66","digest":"454349E422F05297191EAD13E21D3DB520E5ABEF52055E4964B82FB213F593A1","credit":"Daniel Chazin"}'}
+          # a digest that is a number: photo_key() raises
+          - {file_row: 21, photo: '{"hike_id":"67","digest":5,"credit":"Daniel Chazin"}'}
+          # a hike id that is a list joins no hike
+          - {file_row: 22, photo: '{"hike_id":[68],"digest":"043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89","credit":"Daniel Chazin"}'}
+          # nor one that is a float
+          - {file_row: 23, photo: '{"hike_id":69.0,"digest":"e3b98a4da31a127d4bde6e43033f66ba274cab0eb7eb1c70ec41402bf6273dd8","credit":"Daniel Chazin"}'}
+    expect:
+      rows:
+        - {hike_key: '50', file_row: 0, digest_is_valid: true, photo_url: 'photos/ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb.jpg', photo_credit: 'Photo by Daniel Chazin', photo_licence: 'By permission of the New York-New Jersey Trail Conference'}
+        - {hike_key: '51', file_row: 1, digest_is_valid: true, photo_url: 'photos/3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d.jpg', photo_credit: 'Photo by Jane Daniels', photo_licence: 'By permission of the New York-New Jersey Trail Conference'}
+        - {hike_key: '52', file_row: 2, digest_is_valid: true, photo_url: 'photos/2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6.jpg', photo_credit: 'Photo by First Photographer', photo_licence: 'By permission of the New York-New Jersey Trail Conference'}
+        - {hike_key: '55', file_row: 7, digest_is_valid: true, photo_url: 'photos/cd0aa9856147b6c5b4ff2b7dfee5da20aa38253099ef1b4a64aced233c9afe29.jpg', photo_credit: 'Photo by Daniel Chazin', photo_licence: 'By permission of the New York-New Jersey Trail Conference'}
+        - {hike_key: '56', file_row: 8, digest_is_valid: true, photo_url: 'photos/aaa9402664f1a41f40ebbc52c9993eb66aeb366602958fdfaa283b71e64db123.jpg', photo_credit: 'Photo: Jane Daniels', photo_licence: 'By permission of the New York-New Jersey Trail Conference'}
+        - {hike_key: '57', file_row: 9, digest_is_valid: true, photo_url: 'photos/de7d1b721a1e0632b7cf04edf5032c8ecffa9f9a08492152b926f1a5a7e765d7.jpg', photo_credit: 'Photo by Daniel Chazin', photo_licence: 'By permission of the New York-New Jersey Trail Conference'}
+        - {hike_key: '59', file_row: 11, digest_is_valid: true, photo_url: 'photos/8254c329a92850f6d539dd376f4816ee2764517da5e0235514af433164480d7a.jpg', photo_credit: 'Photo by Daniel Chazin', photo_licence: 'By permission of the New York-New Jersey Trail Conference'}
+        - {hike_key: '60', file_row: 13, digest_is_valid: false, photo_url: 'photos/not-a-digest.jpg', photo_credit: 'Photo by Daniel Chazin', photo_licence: 'By permission of the New York-New Jersey Trail Conference'}
+        - {hike_key: '62', file_row: 16, digest_is_valid: true, photo_url: 'photos/1b16b1df538ba12dc3f97edbb85caa7050d46c148134290feba80f8236c83db9.jpg', photo_credit: 'Photo by 5', photo_licence: 'By permission of the New York-New Jersey Trail Conference'}
+        - {hike_key: '63', file_row: 17, digest_is_valid: true, photo_url: 'photos/65c74c15a686187bb6bbf9958f494fc6b80068034a659a9ad44991b08c58f2d2.jpg', photo_credit: 'PHOTO BY JANE DANIELS', photo_licence: 'By permission of the New York-New Jersey Trail Conference'}
+        - {hike_key: '65', file_row: 19, digest_is_valid: false, photo_url: "photos/8e35c2cd3bf6641bdb0e2050b76932cbb2e6034a0ddacc1d9bea82a6ba57f7cf\n.jpg", photo_credit: 'Photo by Daniel Chazin', photo_licence: 'By permission of the New York-New Jersey Trail Conference'}
+        - {hike_key: '66', file_row: 20, digest_is_valid: false, photo_url: 'photos/454349E422F05297191EAD13E21D3DB520E5ABEF52055E4964B82FB213F593A1.jpg', photo_credit: 'Photo by Daniel Chazin', photo_licence: 'By permission of the New York-New Jersey Trail Conference'}
+        - {hike_key: '67', file_row: 21, digest_is_valid: false, photo_url: null, photo_credit: 'Photo by Daniel Chazin', photo_licence: 'By permission of the New York-New Jersey Trail Conference'}
+  - name: int_suggested_hikes__graded_grades_a_generated_route_as_grade_grades
+    description: >
+      SH04: lib/hike_route_builder.py's _grade() over the step's measurements,
+      check for check in its order: the share of named trails walked, the
+      length against the stated one, a closed walk's retrace, and the parking's
+      distance from the line, each band's edge on both sides, the worst check
+      capping the grade. tests/test_dbt_suggested_hikes_parity.py runs _grade()
+      over the same rows.
+    model: int_suggested_hikes__graded
+    given:
+      - input: ref('stg_derived__formed_routes')
+        rows:
+          # a route every check passes
+          - {hike_number: 101, provenance: 'generated', formed_problem: null, route_miles: 4.0, start_offset_m: 50.0, route_closed: true, retrace_ratio: 0.1, named_trails: '["Trail 1 (red)","Trail 2 (red)"]', walked_trails: '["Trail 1 (red)","Trail 2 (red)"]'}
+          # the description names no trail this build draws
+          - {hike_number: 102, provenance: 'generated', formed_problem: null, route_miles: 4.0, start_offset_m: 50.0, route_closed: true, retrace_ratio: 0.1, named_trails: '[]', walked_trails: '[]'}
+          # walks 1 of 3 named trails, under TRAILS_FAIR 0.34
+          - {hike_number: 103, provenance: 'generated', formed_problem: null, route_miles: 4.0, start_offset_m: 50.0, route_closed: true, retrace_ratio: 0.1, named_trails: '["Trail 1 (red)","Trail 2 (red)","Trail 3 (red)"]', walked_trails: '["Trail 1 (red)"]'}
+          # 17 of 50 is exactly 0.34, not under it: fair
+          - {hike_number: 104, provenance: 'generated', formed_problem: null, route_miles: 4.0, start_offset_m: 50.0, route_closed: true, retrace_ratio: 0.1, named_trails: '["Trail 1 (red)","Trail 2 (red)","Trail 3 (red)","Trail 4 (red)","Trail 5 (red)","Trail 6 (red)","Trail 7 (red)","Trail 8 (red)","Trail 9 (red)","Trail 10 (red)","Trail 11 (red)","Trail 12 (red)","Trail 13 (red)","Trail 14 (red)","Trail 15 (red)","Trail 16 (red)","Trail 17 (red)","Trail 18 (red)","Trail 19 (red)","Trail 20 (red)","Trail 21 (red)","Trail 22 (red)","Trail 23 (red)","Trail 24 (red)","Trail 25 (red)","Trail 26 (red)","Trail 27 (red)","Trail 28 (red)","Trail 29 (red)","Trail 30 (red)","Trail 31 (red)","Trail 32 (red)","Trail 33 (red)","Trail 34 (red)","Trail 35 (red)","Trail 36 (red)","Trail 37 (red)","Trail 38 (red)","Trail 39 (red)","Trail 40 (red)","Trail 41 (red)","Trail 42 (red)","Trail 43 (red)","Trail 44 (red)","Trail 45 (red)","Trail 46 (red)","Trail 47 (red)","Trail 48 (red)","Trail 49 (red)","Trail 50 (red)"]', walked_trails: '["Trail 1 (red)","Trail 2 (red)","Trail 3 (red)","Trail 4 (red)","Trail 5 (red)","Trail 6 (red)","Trail 7 (red)","Trail 8 (red)","Trail 9 (red)","Trail 10 (red)","Trail 11 (red)","Trail 12 (red)","Trail 13 (red)","Trail 14 (red)","Trail 15 (red)","Trail 16 (red)","Trail 17 (red)"]'}
+          # walks 1 of 2, under TRAILS_GOOD 0.9
+          - {hike_number: 105, provenance: 'generated', formed_problem: null, route_miles: 4.0, start_offset_m: 50.0, route_closed: true, retrace_ratio: 0.1, named_trails: '["Trail 1 (red)","Trail 2 (red)"]', walked_trails: '["Trail 1 (red)"]'}
+          # 9 of 10 is exactly 0.9, not under it: clean
+          - {hike_number: 106, provenance: 'generated', formed_problem: null, route_miles: 4.0, start_offset_m: 50.0, route_closed: true, retrace_ratio: 0.1, named_trails: '["Trail 1 (red)","Trail 2 (red)","Trail 3 (red)","Trail 4 (red)","Trail 5 (red)","Trail 6 (red)","Trail 7 (red)","Trail 8 (red)","Trail 9 (red)","Trail 10 (red)"]', walked_trails: '["Trail 1 (red)","Trail 2 (red)","Trail 3 (red)","Trail 4 (red)","Trail 5 (red)","Trail 6 (red)","Trail 7 (red)","Trail 8 (red)","Trail 9 (red)"]'}
+          # no stated length
+          - {hike_number: 107, provenance: 'generated', formed_problem: null, route_miles: 4.0, start_offset_m: 50.0, route_closed: true, retrace_ratio: 0.1, named_trails: '["Trail 1 (red)","Trail 2 (red)"]', walked_trails: '["Trail 1 (red)","Trail 2 (red)"]'}
+          # a stated length of 0 is none: `not self.stated_miles`
+          - {hike_number: 108, provenance: 'generated', formed_problem: null, route_miles: 4.0, start_offset_m: 50.0, route_closed: true, retrace_ratio: 0.1, named_trails: '["Trail 1 (red)","Trail 2 (red)"]', walked_trails: '["Trail 1 (red)","Trail 2 (red)"]'}
+          # 50% over the stated length, past LENGTH_FAIR 0.40
+          - {hike_number: 109, provenance: 'generated', formed_problem: null, route_miles: 6.0, start_offset_m: 50.0, route_closed: true, retrace_ratio: 0.1, named_trails: '["Trail 1 (red)","Trail 2 (red)"]', walked_trails: '["Trail 1 (red)","Trail 2 (red)"]'}
+          # exactly 40% over is not past it
+          - {hike_number: 110, provenance: 'generated', formed_problem: null, route_miles: 7.0, start_offset_m: 50.0, route_closed: true, retrace_ratio: 0.1, named_trails: '["Trail 1 (red)","Trail 2 (red)"]', walked_trails: '["Trail 1 (red)","Trail 2 (red)"]'}
+          # 45% under
+          - {hike_number: 111, provenance: 'generated', formed_problem: null, route_miles: 2.2, start_offset_m: 50.0, route_closed: true, retrace_ratio: 0.1, named_trails: '["Trail 1 (red)","Trail 2 (red)"]', walked_trails: '["Trail 1 (red)","Trail 2 (red)"]'}
+          # 6.25 prints as 6.2, half to even, as Python's format does
+          - {hike_number: 112, provenance: 'generated', formed_problem: null, route_miles: 6.25, start_offset_m: 50.0, route_closed: true, retrace_ratio: 0.1, named_trails: '["Trail 1 (red)","Trail 2 (red)"]', walked_trails: '["Trail 1 (red)","Trail 2 (red)"]'}
+          # 75% walked twice, past RETRACE_FAIR 0.60
+          - {hike_number: 113, provenance: 'generated', formed_problem: null, route_miles: 4.0, start_offset_m: 50.0, route_closed: true, retrace_ratio: 0.75, named_trails: '["Trail 1 (red)","Trail 2 (red)"]', walked_trails: '["Trail 1 (red)","Trail 2 (red)"]'}
+          # 50% doubles back, past RETRACE_GOOD 0.30
+          - {hike_number: 114, provenance: 'generated', formed_problem: null, route_miles: 4.0, start_offset_m: 50.0, route_closed: true, retrace_ratio: 0.5, named_trails: '["Trail 1 (red)","Trail 2 (red)"]', walked_trails: '["Trail 1 (red)","Trail 2 (red)"]'}
+          # exactly 0.30 is not past it
+          - {hike_number: 115, provenance: 'generated', formed_problem: null, route_miles: 4.0, start_offset_m: 50.0, route_closed: true, retrace_ratio: 0.3, named_trails: '["Trail 1 (red)","Trail 2 (red)"]', walked_trails: '["Trail 1 (red)","Trail 2 (red)"]'}
+          # exactly 0.60 is past 0.30 and not past 0.60: fair
+          - {hike_number: 116, provenance: 'generated', formed_problem: null, route_miles: 4.0, start_offset_m: 50.0, route_closed: true, retrace_ratio: 0.6, named_trails: '["Trail 1 (red)","Trail 2 (red)"]', walked_trails: '["Trail 1 (red)","Trail 2 (red)"]'}
+          # retraces under RETRACE_MIN 0.03
+          - {hike_number: 117, provenance: 'generated', formed_problem: null, route_miles: 4.0, start_offset_m: 50.0, route_closed: true, retrace_ratio: 0.01, named_trails: '["Trail 1 (red)","Trail 2 (red)"]', walked_trails: '["Trail 1 (red)","Trail 2 (red)"]'}
+          # exactly 0.03 is not under it
+          - {hike_number: 118, provenance: 'generated', formed_problem: null, route_miles: 4.0, start_offset_m: 50.0, route_closed: true, retrace_ratio: 0.03, named_trails: '["Trail 1 (red)","Trail 2 (red)"]', walked_trails: '["Trail 1 (red)","Trail 2 (red)"]'}
+          # an open walk's retrace is not checked
+          - {hike_number: 119, provenance: 'generated', formed_problem: null, route_miles: 4.0, start_offset_m: 50.0, route_closed: false, retrace_ratio: 0.9, named_trails: '["Trail 1 (red)","Trail 2 (red)"]', walked_trails: '["Trail 1 (red)","Trail 2 (red)"]'}
+          # a closed walk with no retrace measured is not checked
+          - {hike_number: 120, provenance: 'generated', formed_problem: null, route_miles: 4.0, start_offset_m: 50.0, route_closed: true, retrace_ratio: null, named_trails: '["Trail 1 (red)","Trail 2 (red)"]', walked_trails: '["Trail 1 (red)","Trail 2 (red)"]'}
+          # the parking 151 m off, past START_GOOD_OFF_M 150
+          - {hike_number: 121, provenance: 'generated', formed_problem: null, route_miles: 4.0, start_offset_m: 151.0, route_closed: true, retrace_ratio: 0.1, named_trails: '["Trail 1 (red)","Trail 2 (red)"]', walked_trails: '["Trail 1 (red)","Trail 2 (red)"]'}
+          # exactly 150 m is not past it
+          - {hike_number: 122, provenance: 'generated', formed_problem: null, route_miles: 4.0, start_offset_m: 150.0, route_closed: true, retrace_ratio: 0.1, named_trails: '["Trail 1 (red)","Trail 2 (red)"]', walked_trails: '["Trail 1 (red)","Trail 2 (red)"]'}
+          # 150.5 m is past it, and prints as 150, half to even
+          - {hike_number: 123, provenance: 'generated', formed_problem: null, route_miles: 4.0, start_offset_m: 150.5, route_closed: true, retrace_ratio: 0.1, named_trails: '["Trail 1 (red)","Trail 2 (red)"]', walked_trails: '["Trail 1 (red)","Trail 2 (red)"]'}
+          # no start offset measured
+          - {hike_number: 124, provenance: 'generated', formed_problem: null, route_miles: 4.0, start_offset_m: null, route_closed: true, retrace_ratio: 0.1, named_trails: '["Trail 1 (red)","Trail 2 (red)"]', walked_trails: '["Trail 1 (red)","Trail 2 (red)"]'}
+          # every check failing at once: the worst caps the grade, the notes in _grade()'s order
+          - {hike_number: 125, provenance: 'generated', formed_problem: null, route_miles: 6.0, start_offset_m: 200.0, route_closed: true, retrace_ratio: 0.5, named_trails: '["Trail 1 (red)","Trail 2 (red)"]', walked_trails: '["Trail 1 (red)"]'}
+          # a route that did not form is rejected, its one note the step's reason
+          - {hike_number: 126, provenance: 'generated', formed_problem: 'this build''s lines hold no path from the start through any trail the description names', route_miles: null, start_offset_m: 50.0, route_closed: null, retrace_ratio: null, named_trails: '["Trail 1 (red)","Trail 2 (red)"]', walked_trails: null}
+          # an out-and-back's own words in the retrace note
+          - {hike_number: 127, provenance: 'generated', formed_problem: null, route_miles: 4.0, start_offset_m: 50.0, route_closed: true, retrace_ratio: 0.7, named_trails: '["Trail 1 (red)","Trail 2 (red)"]', walked_trails: '["Trail 1 (red)","Trail 2 (red)"]'}
+      - input: ref('int_suggested_hikes__hike_finder')
+        rows:
+          - {hike_number: 101, name: 'Hike 101', stated_miles: 4.0, route_type: 'Circuit'}
+          - {hike_number: 102, name: 'Hike 102', stated_miles: 4.0, route_type: 'Circuit'}
+          - {hike_number: 103, name: 'Hike 103', stated_miles: 4.0, route_type: 'Circuit'}
+          - {hike_number: 104, name: 'Hike 104', stated_miles: 4.0, route_type: 'Circuit'}
+          - {hike_number: 105, name: 'Hike 105', stated_miles: 4.0, route_type: 'Circuit'}
+          - {hike_number: 106, name: 'Hike 106', stated_miles: 4.0, route_type: 'Circuit'}
+          - {hike_number: 107, name: 'Hike 107', stated_miles: null, route_type: 'Circuit'}
+          - {hike_number: 108, name: 'Hike 108', stated_miles: 0.0, route_type: 'Circuit'}
+          - {hike_number: 109, name: 'Hike 109', stated_miles: 4.0, route_type: 'Circuit'}
+          - {hike_number: 110, name: 'Hike 110', stated_miles: 5.0, route_type: 'Circuit'}
+          - {hike_number: 111, name: 'Hike 111', stated_miles: 4.0, route_type: 'Circuit'}
+          - {hike_number: 112, name: 'Hike 112', stated_miles: 4.0, route_type: 'Circuit'}
+          - {hike_number: 113, name: 'Hike 113', stated_miles: 4.0, route_type: 'Circuit'}
+          - {hike_number: 114, name: 'Hike 114', stated_miles: 4.0, route_type: 'Circuit'}
+          - {hike_number: 115, name: 'Hike 115', stated_miles: 4.0, route_type: 'Circuit'}
+          - {hike_number: 116, name: 'Hike 116', stated_miles: 4.0, route_type: 'Circuit'}
+          - {hike_number: 117, name: 'Hike 117', stated_miles: 4.0, route_type: 'Lollipop'}
+          - {hike_number: 118, name: 'Hike 118', stated_miles: 4.0, route_type: 'Circuit'}
+          - {hike_number: 119, name: 'Hike 119', stated_miles: 4.0, route_type: 'Shuttle'}
+          - {hike_number: 120, name: 'Hike 120', stated_miles: 4.0, route_type: 'Circuit'}
+          - {hike_number: 121, name: 'Hike 121', stated_miles: 4.0, route_type: 'Circuit'}
+          - {hike_number: 122, name: 'Hike 122', stated_miles: 4.0, route_type: 'Circuit'}
+          - {hike_number: 123, name: 'Hike 123', stated_miles: 4.0, route_type: 'Circuit'}
+          - {hike_number: 124, name: 'Hike 124', stated_miles: 4.0, route_type: 'Circuit'}
+          - {hike_number: 125, name: 'Hike 125', stated_miles: 4.0, route_type: 'Circuit'}
+          - {hike_number: 126, name: 'Hike 126', stated_miles: 4.0, route_type: 'Circuit'}
+          - {hike_number: 127, name: 'Hike 127', stated_miles: 4.0, route_type: 'Out and back'}
+    expect:
+      rows:
+        - {hike_number: 101, grade: 'strong', route_notes_json: '[]'}
+        - {hike_number: 102, grade: 'rejected', route_notes_json: '["the description names no trail this build draws, so nothing tied the route to the write-up"]'}
+        - {hike_number: 103, grade: 'rejected', route_notes_json: '["walks 1 of the 3 trails the description names - it is not following the write-up"]'}
+        - {hike_number: 104, grade: 'fair', route_notes_json: '["walks 17 of the 50 trails the description names"]'}
+        - {hike_number: 105, grade: 'fair', route_notes_json: '["walks 1 of the 2 trails the description names"]'}
+        - {hike_number: 106, grade: 'strong', route_notes_json: '[]'}
+        - {hike_number: 107, grade: 'fair', route_notes_json: '["the export states no length, so nothing independent says whether this route is the right one"]'}
+        - {hike_number: 108, grade: 'fair', route_notes_json: '["the export states no length, so nothing independent says whether this route is the right one"]'}
+        - {hike_number: 109, grade: 'rejected', route_notes_json: '["6.0 mi against the export''s 4.0 mi (+50%) - too far apart to be the same walk"]'}
+        - {hike_number: 110, grade: 'strong', route_notes_json: '[]'}
+        - {hike_number: 111, grade: 'rejected', route_notes_json: '["2.2 mi against the export''s 4.0 mi (-45%) - too far apart to be the same walk"]'}
+        - {hike_number: 112, grade: 'rejected', route_notes_json: '["6.2 mi against the export''s 4.0 mi (+56%) - too far apart to be the same walk"]'}
+        - {hike_number: 113, grade: 'rejected', route_notes_json: '["75% of this ''Circuit'' is walked twice - it closed as an out-and-back, not a loop"]'}
+        - {hike_number: 114, grade: 'fair', route_notes_json: '["50% of the walk doubles back on itself"]'}
+        - {hike_number: 115, grade: 'strong', route_notes_json: '[]'}
+        - {hike_number: 116, grade: 'fair', route_notes_json: '["60% of the walk doubles back on itself"]'}
+        - {hike_number: 117, grade: 'fair', route_notes_json: '["a ''Lollipop'' that retraces nothing is usually a walk with too few waypoints to have gone round"]'}
+        - {hike_number: 118, grade: 'strong', route_notes_json: '[]'}
+        - {hike_number: 119, grade: 'strong', route_notes_json: '[]'}
+        - {hike_number: 120, grade: 'strong', route_notes_json: '[]'}
+        - {hike_number: 121, grade: 'fair', route_notes_json: '["the parking sits 151 m from the nearest line, so the route starts somewhere the hiker is not"]'}
+        - {hike_number: 122, grade: 'strong', route_notes_json: '[]'}
+        - {hike_number: 123, grade: 'fair', route_notes_json: '["the parking sits 150 m from the nearest line, so the route starts somewhere the hiker is not"]'}
+        - {hike_number: 124, grade: 'strong', route_notes_json: '[]'}
+        - {hike_number: 125, grade: 'rejected', route_notes_json: '["walks 1 of the 2 trails the description names","6.0 mi against the export''s 4.0 mi (+50%) - too far apart to be the same walk","50% of the walk doubles back on itself","the parking sits 200 m from the nearest line, so the route starts somewhere the hiker is not"]'}
+        - {hike_number: 126, grade: 'rejected', route_notes_json: '["this build''s lines hold no path from the start through any trail the description names"]'}
+        - {hike_number: 127, grade: 'rejected', route_notes_json: '["70% of this ''Out and back'' is walked twice - it closed as an out-and-back, not a loop"]'}
+  - name: int_suggested_hikes__graded_checks_a_published_track_as_published_route_checks
+    description: >
+      published_route()'s checks over a published track: reported as fair,
+      never rejected for its length, because the track is the publisher's own
+      drawing; and a page that calls the walk a loop whose track does not
+      close. tests/test_dbt_suggested_hikes_parity.py runs published_route()
+      over the same rows.
+    model: int_suggested_hikes__graded
+    given:
+      - input: ref('stg_derived__formed_routes')
+        rows:
+          # a track that agrees with the page
+          - {hike_number: 201, provenance: 'published', formed_problem: null, route_miles: 4.0, route_closed: false, track_gap_m: 850.0}
+          # no stated length: reported, never rejected
+          - {hike_number: 202, provenance: 'published', formed_problem: null, route_miles: 4.0, route_closed: false, track_gap_m: 850.0}
+          # 25% over, past LENGTH_GOOD 0.20
+          - {hike_number: 203, provenance: 'published', formed_problem: null, route_miles: 5.0, route_closed: false, track_gap_m: 850.0}
+          # exactly 20% over is not past it
+          - {hike_number: 204, provenance: 'published', formed_problem: null, route_miles: 6.0, route_closed: false, track_gap_m: 850.0}
+          # 50% over, past LENGTH_FAIR 0.40: the publisher's own two figures disagree
+          - {hike_number: 205, provenance: 'published', formed_problem: null, route_miles: 6.0, route_closed: false, track_gap_m: 850.0}
+          # a page that calls it a loop whose track does not close
+          - {hike_number: 206, provenance: 'published', formed_problem: null, route_miles: 4.0, route_closed: false, track_gap_m: 812.4}
+          # a loop whose track closes
+          - {hike_number: 207, provenance: 'published', formed_problem: null, route_miles: 4.0, route_closed: true, track_gap_m: 12.0}
+          # the route type is read stripped, and printed as the page wrote it
+          - {hike_number: 208, provenance: 'published', formed_problem: null, route_miles: 4.0, route_closed: false, track_gap_m: 300.0}
+          # 3.75 prints as 3.8, half to even
+          - {hike_number: 209, provenance: 'published', formed_problem: null, route_miles: 3.75, route_closed: false, track_gap_m: 850.0}
+          # both checks at once, in published_route()'s order
+          - {hike_number: 210, provenance: 'published', formed_problem: null, route_miles: 6.0, route_closed: false, track_gap_m: 1500.0}
+          # a GPX of fewer than two points is rejected, its one note measure_published()'s
+          - {hike_number: 211, provenance: 'published', formed_problem: 'the published GPX holds fewer than two points, so it is not a route', route_miles: null, route_closed: null, track_gap_m: null}
+          # a stated length of 0 is none
+          - {hike_number: 212, provenance: 'published', formed_problem: null, route_miles: 4.0, route_closed: false, track_gap_m: 850.0}
+          # an open route type is never told it should close
+          - {hike_number: 213, provenance: 'published', formed_problem: null, route_miles: 4.0, route_closed: false, track_gap_m: 850.0}
+      - input: ref('int_suggested_hikes__hike_finder')
+        rows:
+          - {hike_number: 201, name: 'Hike 201', stated_miles: 4.0, route_type: 'Shuttle'}
+          - {hike_number: 202, name: 'Hike 202', stated_miles: null, route_type: 'Shuttle'}
+          - {hike_number: 203, name: 'Hike 203', stated_miles: 4.0, route_type: 'Shuttle'}
+          - {hike_number: 204, name: 'Hike 204', stated_miles: 5.0, route_type: 'Shuttle'}
+          - {hike_number: 205, name: 'Hike 205', stated_miles: 4.0, route_type: 'Shuttle'}
+          - {hike_number: 206, name: 'Hike 206', stated_miles: 4.0, route_type: 'Out and back'}
+          - {hike_number: 207, name: 'Hike 207', stated_miles: 4.0, route_type: 'Circuit'}
+          - {hike_number: 208, name: 'Hike 208', stated_miles: 4.0, route_type: ' Lollipop '}
+          - {hike_number: 209, name: 'Hike 209', stated_miles: 3.0, route_type: 'Shuttle'}
+          - {hike_number: 210, name: 'Hike 210', stated_miles: 4.0, route_type: 'Circuit'}
+          - {hike_number: 211, name: 'Hike 211', stated_miles: 4.0, route_type: 'Circuit'}
+          - {hike_number: 212, name: 'Hike 212', stated_miles: 0.0, route_type: 'Shuttle'}
+          - {hike_number: 213, name: 'Hike 213', stated_miles: 4.0, route_type: 'Shuttle'}
+    expect:
+      rows:
+        - {hike_number: 201, grade: 'strong', route_notes_json: '[]'}
+        - {hike_number: 202, grade: 'fair', route_notes_json: '["the export states no length, so nothing independent confirms the track is this hike''s"]'}
+        - {hike_number: 203, grade: 'fair', route_notes_json: '["the track measures 5.0 mi against the export''s stated 4.0 mi (+25%)"]'}
+        - {hike_number: 204, grade: 'strong', route_notes_json: '[]'}
+        - {hike_number: 205, grade: 'fair', route_notes_json: '["the track measures 6.0 mi against the export''s stated 4.0 mi (+50%) - the publisher''s own two figures disagree"]'}
+        - {hike_number: 206, grade: 'fair', route_notes_json: '["the export calls this a ''Out and back'' but the track''s ends sit 812 m apart"]'}
+        - {hike_number: 207, grade: 'strong', route_notes_json: '[]'}
+        - {hike_number: 208, grade: 'fair', route_notes_json: '["the export calls this a '' Lollipop '' but the track''s ends sit 300 m apart"]'}
+        - {hike_number: 209, grade: 'fair', route_notes_json: '["the track measures 3.8 mi against the export''s stated 3.0 mi (+25%)"]'}
+        - {hike_number: 210, grade: 'fair', route_notes_json: '["the track measures 6.0 mi against the export''s stated 4.0 mi (+50%) - the publisher''s own two figures disagree","the export calls this a ''Circuit'' but the track''s ends sit 1500 m apart"]'}
+        - {hike_number: 211, grade: 'rejected', route_notes_json: '["the published GPX holds fewer than two points, so it is not a route"]'}
+        - {hike_number: 212, grade: 'fair', route_notes_json: '["the export states no length, so nothing independent confirms the track is this hike''s"]'}
+        - {hike_number: 213, grade: 'strong', route_notes_json: '[]'}
+  - name: int_suggested_hikes__routed_ships_what_build_document_ships
+    description: >
+      SH05, SH06 and SH08: export_suggested_hikes.py's build_document() over
+      the graded routes. A rejected or endless route ships nothing; a published
+      track ships only where the phone's re-walk between its samples comes back
+      within TRACK_REPRODUCTION_TOLERANCE of its own length, with the drift
+      printed; a closed walk repeats its first end; a climb is absent where it
+      was never priced, and rounded half to even where it was. From
+      test_export_suggested_hikes.py's gate, walk and climb cases;
+      tests/test_dbt_suggested_hikes_parity.py runs build_document() over the
+      same rows, the step's re-walk standing in for track_ends()' snap and
+      search.
+    model: int_suggested_hikes__routed
+    given:
+      - input: ref('int_suggested_hikes__graded')
+        rows:
+          # test_a_closed_walk_repeats_its_first_end_so_the_phone_closes_it, with its climb half to even (90.5 to 90, 91.5 to 92)
+          - {hike_number: 301, provenance: 'generated', grade: 'strong', route_notes_json: '[]', route_closed: true, route_miles: 5.1834, route_ends: '[[-74.3,41.62],[-74.29,41.625],[-74.285,41.63]]', walked_trails: '["Pine Meadow Trail (red)"]', climb_gain_ft: 90.5, climb_loss_ft: 91.5, rewalk_problem: null, rewalk_ends: null, rewalk_miles: null, rewalk_climb_gain_ft: null, rewalk_climb_loss_ft: null}
+          # test_an_open_walk_does_not; test_climb_ships_when_the_route_was_priced_and_is_absent_when_it_was_not: never priced
+          - {hike_number: 302, provenance: 'generated', grade: 'fair', route_notes_json: '["walks 1 of the 2 trails the description names"]', route_closed: false, route_miles: 3.0, route_ends: '[[-74.2,41.5],[-74.19,41.51]]', walked_trails: '["Trail 1 (red)"]', climb_gain_ft: null, climb_loss_ft: null, rewalk_problem: null, rewalk_ends: null, rewalk_miles: null, rewalk_climb_gain_ft: null, rewalk_climb_loss_ft: null}
+          # a closed walk whose last end is already its first gets no second copy
+          - {hike_number: 303, provenance: 'generated', grade: 'strong', route_notes_json: '[]', route_closed: true, route_miles: 2.0, route_ends: '[[-74.25,41.55],[-74.24,41.56],[-74.25,41.55]]', walked_trails: '["Trail 1 (red)"]', climb_gain_ft: 10.0, climb_loss_ft: 10.0, rewalk_problem: null, rewalk_ends: null, rewalk_miles: null, rewalk_climb_gain_ft: null, rewalk_climb_loss_ft: null}
+          # test_a_rejected_route_ships_nothing_and_is_named_in_the_manifest (SH05)
+          - {hike_number: 304, provenance: 'generated', grade: 'rejected', route_notes_json: '["walks 1 of the 3 trails the description names - it is not following the write-up"]', route_closed: true, route_miles: null, route_ends: '[]', walked_trails: '[]', climb_gain_ft: null, climb_loss_ft: null, rewalk_problem: null, rewalk_ends: null, rewalk_miles: null, rewalk_climb_gain_ft: null, rewalk_climb_loss_ft: null}
+          # SH05: an endless route ships nothing, whatever its grade
+          - {hike_number: 305, provenance: 'generated', grade: 'fair', route_notes_json: '[]', route_closed: true, route_miles: null, route_ends: '[]', walked_trails: '[]', climb_gain_ft: null, climb_loss_ft: null, rewalk_problem: null, rewalk_ends: null, rewalk_miles: null, rewalk_climb_gain_ft: null, rewalk_climb_loss_ft: null}
+          # test_a_track_that_re_walks_on_this_builds_lines_ships_with_its_drift_recorded; test_a_published_hikes_climb_is_priced_from_this_builds_graph
+          - {hike_number: 306, provenance: 'published', grade: 'strong', route_notes_json: '[]', route_closed: false, route_miles: 2.0834, route_ends: '[[-74.31,41.6],[-74.305,41.605],[-74.3,41.61],[-74.295,41.615]]', walked_trails: null, climb_gain_ft: null, climb_loss_ft: null, rewalk_problem: null, rewalk_ends: '[[-74.3100004,41.6000004],[-74.3050001,41.6050002],[-74.2950003,41.6150001]]', rewalk_miles: 2.1659, rewalk_climb_gain_ft: 120.5, rewalk_climb_loss_ft: 33.5}
+          # a re-walk 15% off the track's own length is not the track (TRACK_REPRODUCTION_TOLERANCE 0.10)
+          - {hike_number: 307, provenance: 'published', grade: 'strong', route_notes_json: '[]', route_closed: false, route_miles: 2.0, route_ends: '[[-74.41,41.6],[-74.4,41.61]]', walked_trails: null, climb_gain_ft: null, climb_loss_ft: null, rewalk_problem: null, rewalk_ends: '[[-74.41,41.6],[-74.4,41.61]]', rewalk_miles: 2.3, rewalk_climb_gain_ft: null, rewalk_climb_loss_ft: null}
+          # test_a_track_that_leaves_this_builds_lines_is_dropped_rather_than_re_drawn
+          - {hike_number: 308, provenance: 'published', grade: 'strong', route_notes_json: '[]', route_closed: false, route_miles: 0.6, route_ends: '[[-73.3,42.62],[-73.29,42.62]]', walked_trails: null, climb_gain_ft: null, climb_loss_ft: null, rewalk_problem: 'a 400 m sample at -73.300000, 42.620000 sits more than 150 ft from any line this build draws', rewalk_ends: null, rewalk_miles: null, rewalk_climb_gain_ft: null, rewalk_climb_loss_ft: null}
+          # a track whose length rounds to 0 is never re-walked: `if not track_miles`
+          - {hike_number: 309, provenance: 'published', grade: 'strong', route_notes_json: '[]', route_closed: false, route_miles: 0.0004, route_ends: '[[-74.51,41.6],[-74.5099999,41.6]]', walked_trails: null, climb_gain_ft: null, climb_loss_ft: null, rewalk_problem: null, rewalk_ends: '[[-74.51,41.6],[-74.5099999,41.6]]', rewalk_miles: 0.0004, rewalk_climb_gain_ft: null, rewalk_climb_loss_ft: null}
+          # 1.1 against 1.0 drifts 0.10000000000000009, past the tolerance
+          - {hike_number: 310, provenance: 'published', grade: 'strong', route_notes_json: '[]', route_closed: false, route_miles: 1.0, route_ends: '[[-74.61,41.6],[-74.6,41.61]]', walked_trails: null, climb_gain_ft: null, climb_loss_ft: null, rewalk_problem: null, rewalk_ends: '[[-74.61,41.6],[-74.6,41.61]]', rewalk_miles: 1.1, rewalk_climb_gain_ft: null, rewalk_climb_loss_ft: null}
+          # 0.9 against 1.0 drifts 0.09999999999999998, inside it
+          - {hike_number: 311, provenance: 'published', grade: 'strong', route_notes_json: '[]', route_closed: false, route_miles: 1.0, route_ends: '[[-74.71,41.6],[-74.7,41.61]]', walked_trails: null, climb_gain_ft: null, climb_loss_ft: null, rewalk_problem: null, rewalk_ends: '[[-74.71,41.6],[-74.7,41.61]]', rewalk_miles: 0.9, rewalk_climb_gain_ft: null, rewalk_climb_loss_ft: null}
+          # miles round to 3 decimals and then to 2: 2.12549 is 2.125 and then 2.12
+          - {hike_number: 312, provenance: 'generated', grade: 'strong', route_notes_json: '[]', route_closed: false, route_miles: 2.12549, route_ends: '[[-74.8,41.6],[-74.79,41.61]]', walked_trails: '["Trail 1 (red)"]', climb_gain_ft: null, climb_loss_ft: null, rewalk_problem: null, rewalk_ends: null, rewalk_miles: null, rewalk_climb_gain_ft: null, rewalk_climb_loss_ft: null}
+          # every end cut to 6 decimals as round(x, 6) cuts it
+          - {hike_number: 313, provenance: 'generated', grade: 'strong', route_notes_json: '[]', route_closed: false, route_miles: 1.5, route_ends: '[[-74.1234565,41.0000005],[-74.2000004999,41.1234567891]]', walked_trails: '["Trail 1 (red)"]', climb_gain_ft: null, climb_loss_ft: null, rewalk_problem: null, rewalk_ends: null, rewalk_miles: null, rewalk_climb_gain_ft: null, rewalk_climb_loss_ft: null}
+          # a published track that closes repeats its re-walk's first end
+          - {hike_number: 314, provenance: 'published', grade: 'strong', route_notes_json: '[]', route_closed: true, route_miles: 3.0, route_ends: '[[-74.91,41.6],[-74.9,41.61],[-74.91,41.6]]', walked_trails: null, climb_gain_ft: null, climb_loss_ft: null, rewalk_problem: null, rewalk_ends: '[[-74.9100001,41.6000002],[-74.9,41.61],[-74.9099,41.6001]]', rewalk_miles: 3.1, rewalk_climb_gain_ft: null, rewalk_climb_loss_ft: null}
+          # SH08: a re-walk never priced ships no climb
+          - {hike_number: 315, provenance: 'published', grade: 'strong', route_notes_json: '[]', route_closed: false, route_miles: 1.2, route_ends: '[[-75.01,41.6],[-75.0,41.61]]', walked_trails: null, climb_gain_ft: null, climb_loss_ft: null, rewalk_problem: null, rewalk_ends: '[[-75.01,41.6],[-75.0,41.61]]', rewalk_miles: 1.21, rewalk_climb_gain_ft: null, rewalk_climb_loss_ft: null}
+    expect:
+      rows:
+        - {hike_number: 301, miles_json: '5.18', segments_json: '[[{"coord":[-74.3,41.62],"poiId":null},{"coord":[-74.29,41.625],"poiId":null},{"coord":[-74.285,41.63],"poiId":null},{"coord":[-74.3,41.62],"poiId":null}]]', trails_json: '["Pine Meadow Trail (red)"]', climb_gain_ft: 90, climb_loss_ft: 92, track_reproduction: null}
+        - {hike_number: 302, miles_json: '3.0', segments_json: '[[{"coord":[-74.2,41.5],"poiId":null},{"coord":[-74.19,41.51],"poiId":null}]]', trails_json: '["Trail 1 (red)"]', climb_gain_ft: null, climb_loss_ft: null, track_reproduction: null}
+        - {hike_number: 303, miles_json: '2.0', segments_json: '[[{"coord":[-74.25,41.55],"poiId":null},{"coord":[-74.24,41.56],"poiId":null},{"coord":[-74.25,41.55],"poiId":null}]]', trails_json: '["Trail 1 (red)"]', climb_gain_ft: 10, climb_loss_ft: 10, track_reproduction: null}
+        - {hike_number: 306, miles_json: '2.08', segments_json: '[[{"coord":[-74.31,41.6],"poiId":null},{"coord":[-74.305,41.605],"poiId":null},{"coord":[-74.295,41.615],"poiId":null}]]', trails_json: '[]', climb_gain_ft: 120, climb_loss_ft: 34, track_reproduction: '4.0%'}
+        - {hike_number: 311, miles_json: '1.0', segments_json: '[[{"coord":[-74.71,41.6],"poiId":null},{"coord":[-74.7,41.61],"poiId":null}]]', trails_json: '[]', climb_gain_ft: null, climb_loss_ft: null, track_reproduction: '10.0%'}
+        - {hike_number: 312, miles_json: '2.12', segments_json: '[[{"coord":[-74.8,41.6],"poiId":null},{"coord":[-74.79,41.61],"poiId":null}]]', trails_json: '["Trail 1 (red)"]', climb_gain_ft: null, climb_loss_ft: null, track_reproduction: null}
+        - {hike_number: 313, miles_json: '1.5', segments_json: '[[{"coord":[-74.123457,41.0],"poiId":null},{"coord":[-74.2,41.123457],"poiId":null}]]', trails_json: '["Trail 1 (red)"]', climb_gain_ft: null, climb_loss_ft: null, track_reproduction: null}
+        - {hike_number: 314, miles_json: '3.0', segments_json: '[[{"coord":[-74.91,41.6],"poiId":null},{"coord":[-74.9,41.61],"poiId":null},{"coord":[-74.9099,41.6001],"poiId":null},{"coord":[-74.91,41.6],"poiId":null}]]', trails_json: '[]', climb_gain_ft: null, climb_loss_ft: null, track_reproduction: '3.3%'}
+        - {hike_number: 315, miles_json: '1.2', segments_json: '[[{"coord":[-75.01,41.6],"poiId":null},{"coord":[-75.0,41.61],"poiId":null}]]', trails_json: '[]', climb_gain_ft: null, climb_loss_ft: null, track_reproduction: '0.8%'}
+  - name: int_suggested_hikes__highlights_resolves_what_resolve_resolves
+    description: >
+      SH12 and SH13: lib/highlights.py's resolve() and as_published(), every
+      row in the file's order with the first rule it breaks in resolve()'s
+      words. A leg's miles come from the published POIs and are ordered; an end
+      with no published mile, both ends at one mile, a leg that is not a
+      well-formed object, or any failing leg drops the whole row; the first row
+      to carry an id claims it; the club is the first stretch whose half-open
+      range holds the first leg's low end. From test_lib_highlights.py's
+      resolving, refusal, club and shape cases;
+      tests/test_dbt_suggested_hikes_parity.py runs resolve() over the same
+      rows.
+    model: int_suggested_hikes__highlights
+    given:
+      - input: ref('base_ourhike__highlights')
+        rows:
+          # test_takes_the_mile_range_from_the_published_pois; test_derives_the_club_rather_than_taking_the_file_s_word; test_names_its_basis_and_never_says_popular
+          - {file_row: 0, highlight: '{"id":"mcafee-knob","name":"McAfee Knob","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20","legs":[{"trail":"AT","from_poi":"park:1","to_poi":"summit:1"}]}'}
+          # test_orders_the_ends_so_a_leg_never_runs_backwards
+          - {file_row: 1, highlight: '{"id":"backwards","name":"McAfee Knob","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20","legs":[{"trail":"AT","from_poi":"summit:1","to_poi":"park:1"}]}'}
+          # test_drops_what_it_cannot_place: from_poi gone
+          - {file_row: 2, highlight: '{"id":"from-gone","name":"McAfee Knob","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20","legs":[{"trail":"AT","from_poi":"gone:9","to_poi":"summit:1"}]}'}
+          # the same pytest: to_poi gone
+          - {file_row: 3, highlight: '{"id":"to-gone","name":"McAfee Knob","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20","legs":[{"trail":"AT","from_poi":"park:1","to_poi":"gone:9"}]}'}
+          # the same pytest: no from_poi
+          - {file_row: 4, highlight: '{"id":"no-from","name":"McAfee Knob","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20","legs":[{"trail":"AT","to_poi":"summit:1"}]}'}
+          # the same pytest: no trail
+          - {file_row: 5, highlight: '{"id":"no-trail","name":"McAfee Knob","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20","legs":[{"from_poi":"park:1","to_poi":"summit:1"}]}'}
+          # the same pytest: no legs
+          - {file_row: 6, highlight: '{"id":"no-legs","name":"McAfee Knob","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20","legs":[]}'}
+          # the same pytest: no name
+          - {file_row: 7, highlight: '{"id":"no-name","name":"","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20","legs":[{"trail":"AT","from_poi":"park:1","to_poi":"summit:1"}]}'}
+          # the same pytest: no id
+          - {file_row: 8, highlight: '{"id":"","name":"McAfee Knob","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20","legs":[{"trail":"AT","from_poi":"park:1","to_poi":"summit:1"}]}'}
+          # test_one_bad_row_does_not_cost_the_rows_beside_it
+          - {file_row: 9, highlight: '{"id":"wayah-bald","name":"Wayah Bald","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20","legs":[{"trail":"AT","from_poi":"park:1","to_poi":"summit:1"}]}'}
+          # test_drops_a_poi_that_published_without_a_mile
+          - {file_row: 10, highlight: '{"id":"no-mile","name":"McAfee Knob","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20","legs":[{"trail":"AT","from_poi":"nomile:1","to_poi":"summit:1"}]}'}
+          # test_keeps_mile_zero_which_is_springer_mountain
+          - {file_row: 11, highlight: '{"id":"springer","name":"Springer Mountain","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20","legs":[{"trail":"AT","from_poi":"springer:0","to_poi":"springer:1"}]}'}
+          # test_drops_a_walk_between_two_ends_at_the_same_mile
+          - {file_row: 12, highlight: '{"id":"same-mile","name":"McAfee Knob","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20","legs":[{"trail":"AT","from_poi":"park:1","to_poi":"twin:1"}]}'}
+          # test_drops_the_second_of_two_rows_claiming_one_id
+          - {file_row: 13, highlight: '{"id":"mcafee-knob","name":"A different walk","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20","legs":[{"trail":"AT","from_poi":"park:1","to_poi":"summit:1"}]}'}
+          # test_publishes_nothing_of_a_highlight_whose_second_leg_fails
+          - {file_row: 14, highlight: '{"id":"two-legs-one-bad","name":"McAfee Knob","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20","legs":[{"trail":"AT","from_poi":"park:1","to_poi":"summit:1"},{"trail":"Falling Waters","from_poi":"summit:1","to_poi":"gone:9"}]}'}
+          # test_a_mile_two_clubs_share_resolves_northbound
+          - {file_row: 15, highlight: '{"id":"northbound","name":"McAfee Knob","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20","legs":[{"trail":"AT","from_poi":"gap:77","to_poi":"gap:80"}]}'}
+          # test_an_unattributed_mile_has_no_club_and_that_is_not_an_error
+          - {file_row: 16, highlight: '{"id":"unattributed","name":"McAfee Knob","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20","legs":[{"trail":"AT","from_poi":"mid:500","to_poi":"mid:505"}]}'}
+          # a club whose acronym is not a string answers no club, and the next club is not asked
+          - {file_row: 17, highlight: '{"id":"no-acronym","name":"McAfee Knob","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20","legs":[{"trail":"AT","from_poi":"nullclub:1","to_poi":"nullclub:2"}]}'}
+          # a leg that is not an object
+          - {file_row: 18, highlight: '{"id":"leg-not-object","name":"McAfee Knob","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20","legs":["park:1"]}'}
+          # legs that are not a list
+          - {file_row: 19, highlight: '{"id":"legs-not-list","name":"McAfee Knob","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20","legs":"park:1"}'}
+          # an id that is not a string
+          - {file_row: 20, highlight: '{"id":5,"name":"McAfee Knob","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20","legs":[{"trail":"AT","from_poi":"park:1","to_poi":"summit:1"}]}'}
+          # a name that is not a string
+          - {file_row: 21, highlight: '{"id":"name-not-string","name":7,"note":"The most photographed spot on the A.T.","reviewed":"2026-08-20","legs":[{"trail":"AT","from_poi":"park:1","to_poi":"summit:1"}]}'}
+          # no to_poi
+          - {file_row: 22, highlight: '{"id":"no-to","name":"McAfee Knob","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20","legs":[{"trail":"AT","from_poi":"park:1"}]}'}
+          # an empty trail
+          - {file_row: 23, highlight: '{"id":"empty-trail","name":"McAfee Knob","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20","legs":[{"trail":"","from_poi":"park:1","to_poi":"summit:1"}]}'}
+          # each end to 2 decimals as round(x, 2) cuts it
+          - {file_row: 24, highlight: '{"id":"two-decimals","name":"McAfee Knob","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20","legs":[{"trail":"AT","from_poi":"round:1","to_poi":"round:2"}]}'}
+          # no note, and a reviewed date that is not a string: both published as ''
+          - {file_row: 25, highlight: '{"id":"bare-citation","name":"Bare Citation","reviewed":20260820,"legs":[{"trail":"AT","from_poi":"park:1","to_poi":"summit:1"}]}'}
+          # the first row to carry an id claims it, even though it then fails
+          - {file_row: 26, highlight: '{"id":"claimed","name":"","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20","legs":[{"trail":"AT","from_poi":"park:1","to_poi":"summit:1"}]}'}
+          # so a second row with that id is a duplicate
+          - {file_row: 27, highlight: '{"id":"claimed","name":"Claimed Walk","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20","legs":[{"trail":"AT","from_poi":"park:1","to_poi":"summit:1"}]}'}
+          # two legs on two trails, the club read from the first
+          - {file_row: 28, highlight: '{"id":"two-trails","name":"McAfee Knob","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20","legs":[{"trail":"AT","from_poi":"park:1","to_poi":"summit:1"},{"trail":"Falling Waters","from_poi":"summit:1","to_poi":"round:2"}]}'}
+      - input: ref('int_suggested_hikes__published_pois')
+        rows:
+          - {poi_id: 'park:1', mile: 705.6}
+          - {poi_id: 'summit:1', mile: 709.1}
+          - {poi_id: 'twin:1', mile: 705.6}
+          - {poi_id: 'nomile:1', mile: null}
+          - {poi_id: 'springer:0', mile: 0.0}
+          - {poi_id: 'springer:1', mile: 8.8}
+          - {poi_id: 'gap:77', mile: 77.0}
+          - {poi_id: 'gap:80', mile: 80.0}
+          - {poi_id: 'mid:500', mile: 500.0}
+          - {poi_id: 'mid:505', mile: 505.0}
+          - {poi_id: 'nullclub:1', mile: 600.0}
+          - {poi_id: 'nullclub:2', mile: 605.0}
+          - {poi_id: 'round:1', mile: 705.555}
+          - {poi_id: 'round:2', mile: 712.345}
+      - input: ref('int_suggested_hikes__club_stretches')
+        rows:
+          - {acronym: 'GATC', start_mile: 0.0, end_mile: 77.0, club_order: 0, stretch_order: 0}
+          - {acronym: 'NHC', start_mile: 77.0, end_mile: 100.0, club_order: 1, stretch_order: 0}
+          - {acronym: 'RATC', start_mile: 700.0, end_mile: 720.0, club_order: 2, stretch_order: 0}
+          - {acronym: null, start_mile: 600.0, end_mile: 610.0, club_order: 3, stretch_order: 0}
+          - {acronym: 'LATER', start_mile: 590.0, end_mile: 620.0, club_order: 4, stretch_order: 0}
+    expect:
+      rows:
+        - {file_row: 0, highlight_id: 'mcafee-knob', problem: null, legs_json: '[{"trail":"AT","start_mile":705.6,"end_mile":709.1}]', club: 'RATC', record_json: '{"id":"mcafee-knob","name":"McAfee Knob","bases":["named"],"citations":{"named":{"by":"OurHike","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20"}},"legs":[{"trail":"AT","start_mile":705.6,"end_mile":709.1}],"club":"RATC"}'}
+        - {file_row: 1, highlight_id: 'backwards', problem: null, legs_json: '[{"trail":"AT","start_mile":705.6,"end_mile":709.1}]', club: 'RATC', record_json: '{"id":"backwards","name":"McAfee Knob","bases":["named"],"citations":{"named":{"by":"OurHike","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20"}},"legs":[{"trail":"AT","start_mile":705.6,"end_mile":709.1}],"club":"RATC"}'}
+        - {file_row: 2, highlight_id: 'from-gone', problem: 'from_poi gone:9 has no published mile', legs_json: null, club: null, record_json: null}
+        - {file_row: 3, highlight_id: 'to-gone', problem: 'to_poi gone:9 has no published mile', legs_json: null, club: null, record_json: null}
+        - {file_row: 4, highlight_id: 'no-from', problem: 'a leg names no from_poi', legs_json: null, club: null, record_json: null}
+        - {file_row: 5, highlight_id: 'no-trail', problem: 'a leg names no trail', legs_json: null, club: null, record_json: null}
+        - {file_row: 6, highlight_id: 'no-legs', problem: 'entry has no legs', legs_json: null, club: null, record_json: null}
+        - {file_row: 7, highlight_id: 'no-name', problem: 'entry has no name', legs_json: null, club: null, record_json: null}
+        - {file_row: 8, highlight_id: '<no id>', problem: 'entry has no id', legs_json: null, club: null, record_json: null}
+        - {file_row: 9, highlight_id: 'wayah-bald', problem: null, legs_json: '[{"trail":"AT","start_mile":705.6,"end_mile":709.1}]', club: 'RATC', record_json: '{"id":"wayah-bald","name":"Wayah Bald","bases":["named"],"citations":{"named":{"by":"OurHike","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20"}},"legs":[{"trail":"AT","start_mile":705.6,"end_mile":709.1}],"club":"RATC"}'}
+        - {file_row: 10, highlight_id: 'no-mile', problem: 'from_poi nomile:1 has no published mile', legs_json: null, club: null, record_json: null}
+        - {file_row: 11, highlight_id: 'springer', problem: null, legs_json: '[{"trail":"AT","start_mile":0.0,"end_mile":8.8}]', club: 'GATC', record_json: '{"id":"springer","name":"Springer Mountain","bases":["named"],"citations":{"named":{"by":"OurHike","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20"}},"legs":[{"trail":"AT","start_mile":0.0,"end_mile":8.8}],"club":"GATC"}'}
+        - {file_row: 12, highlight_id: 'same-mile', problem: 'both ends resolve to the same mile', legs_json: null, club: null, record_json: null}
+        - {file_row: 13, highlight_id: 'mcafee-knob', problem: 'duplicate id', legs_json: null, club: null, record_json: null}
+        - {file_row: 14, highlight_id: 'two-legs-one-bad', problem: 'to_poi gone:9 has no published mile', legs_json: null, club: null, record_json: null}
+        - {file_row: 15, highlight_id: 'northbound', problem: null, legs_json: '[{"trail":"AT","start_mile":77.0,"end_mile":80.0}]', club: 'NHC', record_json: '{"id":"northbound","name":"McAfee Knob","bases":["named"],"citations":{"named":{"by":"OurHike","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20"}},"legs":[{"trail":"AT","start_mile":77.0,"end_mile":80.0}],"club":"NHC"}'}
+        - {file_row: 16, highlight_id: 'unattributed', problem: null, legs_json: '[{"trail":"AT","start_mile":500.0,"end_mile":505.0}]', club: null, record_json: '{"id":"unattributed","name":"McAfee Knob","bases":["named"],"citations":{"named":{"by":"OurHike","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20"}},"legs":[{"trail":"AT","start_mile":500.0,"end_mile":505.0}],"club":null}'}
+        - {file_row: 17, highlight_id: 'no-acronym', problem: null, legs_json: '[{"trail":"AT","start_mile":600.0,"end_mile":605.0}]', club: null, record_json: '{"id":"no-acronym","name":"McAfee Knob","bases":["named"],"citations":{"named":{"by":"OurHike","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20"}},"legs":[{"trail":"AT","start_mile":600.0,"end_mile":605.0}],"club":null}'}
+        - {file_row: 18, highlight_id: 'leg-not-object', problem: 'a leg is not an object', legs_json: null, club: null, record_json: null}
+        - {file_row: 19, highlight_id: 'legs-not-list', problem: 'entry has no legs', legs_json: null, club: null, record_json: null}
+        - {file_row: 20, highlight_id: '<no id>', problem: 'entry has no id', legs_json: null, club: null, record_json: null}
+        - {file_row: 21, highlight_id: 'name-not-string', problem: 'entry has no name', legs_json: null, club: null, record_json: null}
+        - {file_row: 22, highlight_id: 'no-to', problem: 'a leg names no to_poi', legs_json: null, club: null, record_json: null}
+        - {file_row: 23, highlight_id: 'empty-trail', problem: 'a leg names no trail', legs_json: null, club: null, record_json: null}
+        - {file_row: 24, highlight_id: 'two-decimals', problem: null, legs_json: '[{"trail":"AT","start_mile":705.55,"end_mile":712.35}]', club: 'RATC', record_json: '{"id":"two-decimals","name":"McAfee Knob","bases":["named"],"citations":{"named":{"by":"OurHike","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20"}},"legs":[{"trail":"AT","start_mile":705.55,"end_mile":712.35}],"club":"RATC"}'}
+        - {file_row: 25, highlight_id: 'bare-citation', problem: null, legs_json: '[{"trail":"AT","start_mile":705.6,"end_mile":709.1}]', club: 'RATC', record_json: '{"id":"bare-citation","name":"Bare Citation","bases":["named"],"citations":{"named":{"by":"OurHike","note":"","reviewed":""}},"legs":[{"trail":"AT","start_mile":705.6,"end_mile":709.1}],"club":"RATC"}'}
+        - {file_row: 26, highlight_id: 'claimed', problem: 'entry has no name', legs_json: null, club: null, record_json: null}
+        - {file_row: 27, highlight_id: 'claimed', problem: 'duplicate id', legs_json: null, club: null, record_json: null}
+        - {file_row: 28, highlight_id: 'two-trails', problem: null, legs_json: '[{"trail":"AT","start_mile":705.6,"end_mile":709.1},{"trail":"Falling Waters","start_mile":709.1,"end_mile":712.35}]', club: 'RATC', record_json: '{"id":"two-trails","name":"McAfee Knob","bases":["named"],"citations":{"named":{"by":"OurHike","note":"The most photographed spot on the A.T.","reviewed":"2026-08-20"}},"legs":[{"trail":"AT","start_mile":705.6,"end_mile":709.1},{"trail":"Falling Waters","start_mile":709.1,"end_mile":712.35}],"club":"RATC"}'}
+  - name: int_suggested_hikes__highlights_names_a_row_that_is_not_an_object
+    description: >
+      resolve() does not survive a row that is not an object (entry.get
+      raises), and neither does the build: this row's problem is 'not an
+      object', which the model's error test fails on.
+    model: int_suggested_hikes__highlights
+    given:
+      - input: ref('base_ourhike__highlights')
+        rows:
+          # a bare string in the list
+          - {file_row: 0, highlight: '"McAfee Knob"'}
+      - input: ref('int_suggested_hikes__published_pois')
+        rows:
+          - {poi_id: 'park:1', mile: 705.6}
+          - {poi_id: 'summit:1', mile: 709.1}
+      - input: ref('int_suggested_hikes__club_stretches')
+        rows: []
+    expect:
+      rows:
+        - {file_row: 0, highlight_id: '<no id>', problem: 'not an object', legs_json: null, club: null, record_json: null}
+  - name: int_suggested_hikes__records_writes_what_record_for_and_split_record_write
+    description: >
+      SH10 and SH11: export_suggested_hikes.py's record_for(), split by
+      split_record() into the shelf record and the detail, as JSON text in
+      their key order. Absent, never empty: no photo, climb, publication or
+      trackReproduction key where there is none, and no hikerNote at all; the
+      card's author is the registry's steward and the publication's the page's,
+      two authors kept apart. From test_export_suggested_hikes.py's record
+      cases; tests/test_dbt_suggested_hikes_parity.py runs record_for() over
+      the same rows.
+    model: int_suggested_hikes__records
+    given:
+      - input: ref('int_suggested_hikes__hike_finder')
+        rows:
+          # test_everything_the_export_said_is_carried_across_the_two_objects; test_the_two_authors_are_kept_apart; test_the_photo_travels_on_the_shelf_rather_than_in_the_detail; a page never revised keeps verifiedOn null
+          - {hike_number: 401, hike_id: 'nynjtc_hike_finder:401', name: 'Pine Meadow Loop', source_url: 'https://www.example.test/hikefinder/hike.php?id=401', summary: 'A loop past the lake.', stated_miles: 4.8, difficulty: 'Moderate', difficulty_slug: 'moderate', estimated_hours: 2.5, route_type: 'Circuit', dogs: 'Allowed on leash', park: 'Harriman State Park', region: 'Lower Hudson', author: 'Daniel Chazin', has_start: true, start_lat: 41.6, start_lon: -74.3005, start_label: 'Parking location', features_json: '["Views","Historic feature"]', published_on: 'July 11, 2013', updated_on: null, directions_json: '["Park at the gate."]', description_json: '["Follow the red-blazed trail.","Turn left at the lake."]', public_transport_json: '["Short Line bus to Tuxedo."]'}
+          # test_a_hike_naming_no_author_ships_no_publication_block; test_a_hike_nobody_confirmed_carries_no_photo_key_at_all; test_very_strenuous_takes_the_hardest_slug_there_is_and_keeps_its_own_word; a published track with its drift
+          - {hike_number: 402, hike_id: 'nynjtc_hike_finder:402', name: 'Ridge Walk', source_url: 'https://www.example.test/hikefinder/hike.php?id=402', summary: null, stated_miles: 2.1, difficulty: 'Very Strenuous', difficulty_slug: 'strenuous', estimated_hours: null, route_type: 'Out and back', dogs: null, park: null, region: 'Upper Hudson', author: null, has_start: true, start_lat: 41.62, start_lon: -74.3, start_label: 'Parking location', features_json: '["Views"]', published_on: 'May 1, 2020', updated_on: 'March 3, 2024', directions_json: '[]', description_json: '["Climb the ridge."]', public_transport_json: '[]'}
+          # no coordinate, no stated length, a difficulty with no slot, no tags; a priced walk on flat ground keeps its 0 ft, which is a measurement; a credit with an apostrophe
+          - {hike_number: 403, hike_id: 'nynjtc_hike_finder:403', name: 'Flat Walk', source_url: 'https://www.example.test/hikefinder/hike.php?id=403', summary: null, stated_miles: null, difficulty: 'Extreme', difficulty_slug: null, estimated_hours: null, route_type: null, dogs: null, park: null, region: null, author: 'Jane Daniels', has_start: false, start_lat: null, start_lon: null, start_label: null, features_json: '[]', published_on: 'June 2, 2015', updated_on: null, directions_json: '[]', description_json: '["Walk the towpath."]', public_transport_json: '[]'}
+          # a hike whose route does not ship has no record
+          - {hike_number: 404, hike_id: 'nynjtc_hike_finder:404', name: 'Unrouted Hike', source_url: 'https://www.example.test/hikefinder/hike.php?id=404', summary: null, stated_miles: null, difficulty: null, difficulty_slug: null, estimated_hours: null, route_type: null, dogs: null, park: null, region: null, author: null, has_start: false, start_lat: null, start_lon: null, start_label: null, features_json: '[]', published_on: null, updated_on: null, directions_json: '[]', description_json: '["Somewhere."]', public_transport_json: '[]'}
+      - input: ref('int_suggested_hikes__routed')
+        rows:
+          - {hike_number: 401, provenance: 'generated', grade: 'fair', route_notes_json: '["50% of the walk doubles back on itself"]', route_closed: true, miles_json: '5.18', segments_json: '[[{"coord":[-74.3005,41.6],"poiId":null},{"coord":[-74.29,41.61],"poiId":null},{"coord":[-74.28,41.6],"poiId":null},{"coord":[-74.3005,41.6],"poiId":null}]]', trails_json: '["Pine Meadow Trail (red)"]', climb_gain_ft: 91, climb_loss_ft: 90, track_reproduction: null}
+          - {hike_number: 402, provenance: 'published', grade: 'strong', route_notes_json: '[]', route_closed: false, miles_json: '2.08', segments_json: '[[{"coord":[-74.3,41.62],"poiId":null},{"coord":[-74.3,41.6275],"poiId":null},{"coord":[-74.3,41.635],"poiId":null}]]', trails_json: '[]', climb_gain_ft: null, climb_loss_ft: null, track_reproduction: '4.0%'}
+          - {hike_number: 403, provenance: 'generated', grade: 'strong', route_notes_json: '[]', route_closed: false, miles_json: '1.25', segments_json: '[[{"coord":[-74.1,41.0],"poiId":null},{"coord":[-74.09,41.01],"poiId":null}]]', trails_json: '["Towpath"]', climb_gain_ft: 0, climb_loss_ft: 0, track_reproduction: null}
+      - input: ref('int_suggested_hikes__photos')
+        rows:
+          - {hike_key: '401', file_row: 401, digest: 'd2922372131239317837d760004d37d0b2ca5f803a6c9c4060c565d63c216609', digest_is_valid: true, photo_url: 'photos/d2922372131239317837d760004d37d0b2ca5f803a6c9c4060c565d63c216609.jpg', photo_credit: 'Photo by Daniel Chazin', photo_licence: 'By permission of the New York-New Jersey Trail Conference'}
+          - {hike_key: '403', file_row: 403, digest: '5dc27af287fa554aa10fec9de8d724a7964572f1ffd24c2b00e1a3a860ce7679', digest_is_valid: true, photo_url: 'photos/5dc27af287fa554aa10fec9de8d724a7964572f1ffd24c2b00e1a3a860ce7679.jpg', photo_credit: 'Photo by Bill O''Brien', photo_licence: 'By permission of the New York-New Jersey Trail Conference'}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: 'nynjtc_hike_finder', steward: 'New York-New Jersey Trail Conference', attribution: 'Trail data © New York-New Jersey Trail Conference'}
+    expect:
+      rows:
+        - {hike_number: 401, shelf_json: '{"id":"nynjtc_hike_finder:401","name":"Pine Meadow Loop","miles":5.18,"climb":{"gainFt":91,"lossFt":90},"difficulty":"moderate","author":{"kind":"club","name":"New York-New Jersey Trail Conference"},"photo":{"url":"photos/d2922372131239317837d760004d37d0b2ca5f803a6c9c4060c565d63c216609.jpg","credit":"Photo by Daniel Chazin","licence":"By permission of the New York-New Jersey Trail Conference"},"segments":[[{"coord":[-74.3005,41.6],"poiId":null},{"coord":[-74.29,41.61],"poiId":null},{"coord":[-74.28,41.6],"poiId":null},{"coord":[-74.3005,41.6],"poiId":null}]],"routeProvenance":"generated","routeGrade":"fair","routeNotes":["50% of the walk doubles back on itself"],"features":["Views","Historic feature"],"region":"Lower Hudson","park":"Harriman State Park","publishedDifficulty":"Moderate","estimatedHours":2.5,"dogs":"Allowed on leash","routeType":"Circuit","closed":true}', detail_json: '{"url":"https://www.example.test/hikefinder/hike.php?id=401","publishedMiles":4.8,"overview":["A loop past the lake."],"description":["Follow the red-blazed trail.","Turn left at the lake."],"trails":["Pine Meadow Trail (red)"],"start":{"lat":41.6,"lon":-74.3005,"basis":"Parking location"},"publishedOn":"July 11, 2013","updatedOn":null,"directions":["Park at the gate."],"publicTransport":["Short Line bus to Tuxedo."],"licence":"By permission of the New York-New Jersey Trail Conference","measured":{"miles":5.18,"note":"measured on the pipeline''s copy of the trail lines without the phone''s same-tread swap (trailGraph.ts holdDesignation), so a leg two organizations both draw can differ by up to 5% of its length"},"publication":{"submittedBy":"Daniel Chazin","submittedOn":"July 11, 2013","verifiedOn":null},"id":"nynjtc_hike_finder:401"}'}
+        - {hike_number: 402, shelf_json: '{"id":"nynjtc_hike_finder:402","name":"Ridge Walk","miles":2.08,"difficulty":"strenuous","author":{"kind":"club","name":"New York-New Jersey Trail Conference"},"segments":[[{"coord":[-74.3,41.62],"poiId":null},{"coord":[-74.3,41.6275],"poiId":null},{"coord":[-74.3,41.635],"poiId":null}]],"routeProvenance":"published","routeGrade":"strong","routeNotes":[],"features":["Views"],"region":"Upper Hudson","park":null,"publishedDifficulty":"Very Strenuous","estimatedHours":null,"dogs":null,"routeType":"Out and back","closed":false}', detail_json: '{"url":"https://www.example.test/hikefinder/hike.php?id=402","publishedMiles":2.1,"overview":[],"description":["Climb the ridge."],"trails":[],"start":{"lat":41.62,"lon":-74.3,"basis":"Parking location"},"publishedOn":"May 1, 2020","updatedOn":"March 3, 2024","directions":[],"publicTransport":[],"licence":"By permission of the New York-New Jersey Trail Conference","measured":{"miles":2.08,"note":"measured on the pipeline''s copy of the trail lines without the phone''s same-tread swap (trailGraph.ts holdDesignation), so a leg two organizations both draw can differ by up to 5% of its length"},"trackReproduction":"4.0%","id":"nynjtc_hike_finder:402"}'}
+        - {hike_number: 403, shelf_json: '{"id":"nynjtc_hike_finder:403","name":"Flat Walk","miles":1.25,"climb":{"gainFt":0,"lossFt":0},"difficulty":null,"author":{"kind":"club","name":"New York-New Jersey Trail Conference"},"photo":{"url":"photos/5dc27af287fa554aa10fec9de8d724a7964572f1ffd24c2b00e1a3a860ce7679.jpg","credit":"Photo by Bill O''Brien","licence":"By permission of the New York-New Jersey Trail Conference"},"segments":[[{"coord":[-74.1,41.0],"poiId":null},{"coord":[-74.09,41.01],"poiId":null}]],"routeProvenance":"generated","routeGrade":"strong","routeNotes":[],"features":[],"region":null,"park":null,"publishedDifficulty":"Extreme","estimatedHours":null,"dogs":null,"routeType":null,"closed":false}', detail_json: '{"url":"https://www.example.test/hikefinder/hike.php?id=403","publishedMiles":null,"overview":[],"description":["Walk the towpath."],"trails":["Towpath"],"start":null,"publishedOn":"June 2, 2015","updatedOn":null,"directions":[],"publicTransport":[],"licence":"By permission of the New York-New Jersey Trail Conference","measured":{"miles":1.25,"note":"measured on the pipeline''s copy of the trail lines without the phone''s same-tread swap (trailGraph.ts holdDesignation), so a leg two organizations both draw can differ by up to 5% of its length"},"publication":{"submittedBy":"Jane Daniels","submittedOn":"June 2, 2015","verifiedOn":null},"id":"nynjtc_hike_finder:403"}'}
+  - name: int_suggested_hikes__records_credits_the_attribution_where_the_registry_names_no_steward
+    description: >
+      The card credits `source.get("steward") or source.get("attribution")`: a
+      registry entry naming no steward is credited by its attribution. main()
+      refuses an entry naming neither, which the mart's error test on
+      author_name does in its place.
+    model: int_suggested_hikes__records
+    given:
+      - input: ref('int_suggested_hikes__hike_finder')
+        rows:
+          - {hike_number: 501, hike_id: 'nynjtc_hike_finder:501', name: 'Attribution Walk', source_url: 'https://www.example.test/hikefinder/hike.php?id=501', summary: null, stated_miles: null, difficulty: null, difficulty_slug: null, estimated_hours: null, route_type: null, dogs: null, park: null, region: null, author: null, has_start: false, start_lat: null, start_lon: null, start_label: null, features_json: '[]', published_on: null, updated_on: null, directions_json: '[]', description_json: '["Walk."]', public_transport_json: '[]'}
+      - input: ref('int_suggested_hikes__routed')
+        rows:
+          - {hike_number: 501, provenance: 'generated', grade: 'strong', route_notes_json: '[]', route_closed: false, miles_json: '1.0', segments_json: '[[{"coord":[-74.0,41.0],"poiId":null},{"coord":[-74.01,41.01],"poiId":null}]]', trails_json: '["Trail 1 (red)"]', climb_gain_ft: null, climb_loss_ft: null, track_reproduction: null}
+      - input: ref('int_suggested_hikes__photos')
+        rows: []
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: 'nynjtc_hike_finder', steward: null, attribution: 'New York-New Jersey Trail Conference'}
+    expect:
+      rows:
+        - {hike_number: 501, shelf_json: '{"id":"nynjtc_hike_finder:501","name":"Attribution Walk","miles":1.0,"difficulty":null,"author":{"kind":"club","name":"New York-New Jersey Trail Conference"},"segments":[[{"coord":[-74.0,41.0],"poiId":null},{"coord":[-74.01,41.01],"poiId":null}]],"routeProvenance":"generated","routeGrade":"strong","routeNotes":[],"features":[],"region":null,"park":null,"publishedDifficulty":null,"estimatedHours":null,"dogs":null,"routeType":null,"closed":false}', detail_json: '{"url":"https://www.example.test/hikefinder/hike.php?id=501","publishedMiles":null,"overview":[],"description":["Walk."],"trails":["Trail 1 (red)"],"start":null,"publishedOn":null,"updatedOn":null,"directions":[],"publicTransport":[],"licence":"By permission of the New York-New Jersey Trail Conference","measured":{"miles":1.0,"note":"measured on the pipeline''s copy of the trail lines without the phone''s same-tread swap (trailGraph.ts holdDesignation), so a leg two organizations both draw can differ by up to 5% of its length"},"id":"nynjtc_hike_finder:501"}'}

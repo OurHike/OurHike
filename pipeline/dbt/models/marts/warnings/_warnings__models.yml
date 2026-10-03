@@ -1,0 +1,401 @@
+version: 2
+
+models:
+  - name: warnings
+    description: >
+      What a hiker should know that does not block the trail (decision 2):
+      organization notices that do not obstruct it or that nobody has
+      classified (decision 7: unknown lands here, never dropped), NWS's
+      relayed alerts, and OurHike's serious reports. No hazard POIs:
+      ELT.md's warnings ledger, "No hazard POI exists to port". Every row's source may publish, and a
+      notice's source passed int_closures__gate. Rebuilt whole each run, as
+      the closures mart is.
+    config:
+      access: public
+      contract:
+        enforced: true
+    # Decision 44: a phone file's shape is a version of the mart it is
+    # written from. v1 is today's shape at today's keys, and every pub_ writer
+    # reading this mart pins it, ref('warnings', v=1), so a later latest
+    # version cannot move a published file. A removed, renamed or retyped
+    # column ships as a v2 beside v1 until v1's deprecation_date;
+    # check_contract_versions.py holds that against the base's manifest. dbt
+    # 2.0.6 builds v1 as warnings_v1 and keeps `warnings` as a view of the latest
+    # version (measured 2026-10-02, on a scratch copy of this project).
+    latest_version: 1
+    versions:
+      - v: 1
+        defined_in: warnings
+    data_tests:
+      # Never a block: false, or null where nobody has classified it (decision 7).
+      - dbt_utils.expression_is_true:
+          name: warnings_never_obstruct_the_trail
+          arguments:
+            expression: "not coalesce(obstructs_trail, false)"
+      # An unclassified notice reads as not reviewed, whatever its source says.
+      - dbt_utils.expression_is_true:
+          name: warnings_unclassified_notices_read_not_reviewed
+          arguments:
+            expression: "obstructs_trail is not null or review_state = 'not_reviewed'"
+      # CL09: an ATC update nobody here has read is never a block, and is only
+      # ever ATC's (int_closures__atc_automatic forces obstructs_trail false).
+      - dbt_utils.expression_is_true:
+          name: warnings_automatic_atc_rows_are_atcs_and_never_obstruct
+          arguments:
+            expression: >
+              review_state != 'auto'
+              or (obstructs_trail = false and source_key = 'atc_trail_updates')
+      # An NWS alert is relayed, in NWS's words, and a serious report is a moderator's.
+      - dbt_utils.expression_is_true:
+          name: warnings_say_who_stands_behind_each_kind
+          arguments:
+            expression: >
+              case warning_kind
+                  when 'nws_alert' then review_state = 'relayed'
+                  when 'serious_report' then review_state = 'moderator_verified'
+                  else true
+              end
+      - dbt_utils.expression_is_true:
+          name: warnings_alert_areas_are_in_lon_lat
+          arguments:
+            expression: >
+              st_xmin(st_geomfromgeojson(geom_geojson)) >= -180
+              and st_xmax(st_geomfromgeojson(geom_geojson)) <= 180
+              and st_ymin(st_geomfromgeojson(geom_geojson)) >= -90
+              and st_ymax(st_geomfromgeojson(geom_geojson)) <= 90
+          config:
+            where: "geom_geojson is not null"
+      # The lon/lat swap test, which the range test above cannot be: a swapped
+      # point is still inside +/-180 and +/-90. Its boxes and their evidence are
+      # tests/generic/lands_in_the_region_its_source_publishes_in.sql's.
+      - lands_in_the_region_its_source_publishes_in:
+          name: warnings_alert_areas_land_in_the_region_their_source_publishes_in
+          arguments:
+            geometry: st_geomfromgeojson(geom_geojson)
+    columns:
+      - name: warning_id
+        description: >
+          `<source key>:<the source's own id>`: an organization notice keeps
+          its closures-union id, an NWS alert is `nws_alerts:<NWS's message
+          id>`, a report `ourhike_reports:<its UUID>`.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests: [not_null, unique]
+      - name: warning_kind
+        description: org_notice, nws_alert or serious_report.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [org_notice, nws_alert, serious_report]
+      - name: club
+        description: The extract folder that landed the row (atc, nynjtc, ourhike, nws).
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: source_key
+        description: >
+          The registry key, or the key unregistered_publishing_sources lets
+          publish (OurHike's reports and closures, NWS's alerts). Tested
+          against int_sources__publication, which holds both.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('int_sources__publication')
+                field: source_key
+      - name: _loaded_at
+        description: When the extract loaded the row's source.
+        data_type: timestamptz
+        constraints:
+          - type: not_null
+      - name: notice_kind
+        description: atc_trail_update, nynjtc_trail_alert, ourhike_closure, nws_alert or ourhike_report.
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: obstructs_trail
+        description: False, or null where nobody has classified the notice (every NYNJTC alert today). Never true.
+        data_type: boolean
+      - name: review_state
+        description: >
+          `not_reviewed` wherever `obstructs_trail` is null, and otherwise who
+          stands behind it: `reviewed` (ATC's reviewed file),
+          `moderator_verified` (OurHike), `relayed` (NWS, in its own words),
+          `auto` (an ATC update posted since the review that its mechanical
+          gate publishes, int_closures__atc_automatic, which nobody here has
+          read; the phone file calls it `unreviewed`).
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [not_reviewed, reviewed, moderator_verified, relayed, auto]
+      - name: atc_id
+        description: ATC's slug for an ATC update.
+        data_type: varchar
+      - name: title
+        description: An organization notice's headline, as its source wrote it.
+        data_type: varchar
+      - name: category
+        description: ATC's own category; null for NYNJTC, which publishes none per alert.
+        data_type: varchar
+      - name: states
+        description: The states an ATC update names.
+        data_type: json
+      - name: locality
+        description: Roughly where a NYNJTC alert is, from its own regions, states or parks.
+        data_type: varchar
+      - name: trail_id
+        description: AT for an A.T. mile range; OurHike's trail id for its closures.
+        data_type: varchar
+      - name: mile_start
+        description: The NOBO A.T. mile a notice starts at, null where nobody has placed it.
+        data_type: double
+      - name: mile_end
+        description: The mile it ends at.
+        data_type: double
+      - name: source_edited_at
+        description: >
+          The row's own date from its source: ATC's `updated_at`, NYNJTC's
+          `modified`, NWS's `sent`. Null where the source gives none.
+        data_type: timestamptz
+      - name: updated_at
+        description: An organization notice's own date as published, text.
+        data_type: varchar
+      - name: source_url
+        description: The organization's own page for the notice.
+        data_type: varchar
+      - name: list_position
+        description: >
+          An ATC update's place in the reviewed file, the published order; for
+          an automatic one (review_state `auto`), its place in slug order,
+          published after every reviewed row.
+        data_type: bigint
+      - name: closure_uuid
+        description: A reopened OurHike closure's UUID, published as `id`.
+        data_type: varchar
+      - name: reported_at
+        description: When the hiker filed an OurHike closure or report.
+        data_type: timestamptz
+      - name: reason_type
+        description: A reopened OurHike closure's reason.
+        data_type: varchar
+      - name: note
+        description: The reporter's own words on an OurHike closure or report.
+        data_type: varchar
+      - name: closure_status
+        description: "`open` for a reopened OurHike closure, which does not block the trail (closureBanner.ts)."
+        data_type: varchar
+      - name: moderation_status
+        description: An OurHike closure's moderation state, always verified.
+        data_type: varchar
+      - name: verified_at
+        description: When a moderator verified an OurHike closure or report.
+        data_type: timestamptz
+      - name: closed_since
+        description: When a reopened OurHike closure had closed, where the reporter said.
+        data_type: timestamptz
+      - name: expected_reopen
+        description: When it was expected to reopen, where anyone said.
+        data_type: timestamptz
+      - name: reroute_url
+        description: A page describing the way around, where there was one.
+        data_type: varchar
+      - name: start_lat
+        description: Where an OurHike closure's start mile physically is.
+        data_type: double
+      - name: start_lon
+        description: The longitude of the same point.
+        data_type: double
+      - name: end_lat
+        description: Where its end mile physically is.
+        data_type: double
+      - name: end_lon
+        description: The longitude of the same point.
+        data_type: double
+      - name: alert_id
+        description: NWS's message id, published as `id`.
+        data_type: varchar
+      - name: alert_event
+        description: NWS's `event`, as written.
+        data_type: varchar
+      - name: headline
+        description: NWS's `headline`, as written; null where NWS sent none.
+        data_type: varchar
+      - name: alert_description
+        description: NWS's `description`, as written.
+        data_type: varchar
+      - name: instruction
+        description: NWS's `instruction`, as written; null where NWS sent none.
+        data_type: varchar
+      - name: alert_severity
+        description: NWS's `severity` (Extreme, Severe, Moderate, Minor, Unknown).
+        data_type: varchar
+      - name: urgency
+        description: NWS's `urgency`.
+        data_type: varchar
+      - name: certainty
+        description: NWS's `certainty`.
+        data_type: varchar
+      - name: alert_response
+        description: NWS's `response`.
+        data_type: varchar
+      - name: message_type
+        description: NWS's `messageType`, Alert or Update.
+        data_type: varchar
+      - name: sent_at
+        description: NWS's `sent`, text with NWS's own offset.
+        data_type: varchar
+      - name: effective_at
+        description: NWS's `effective`, as written.
+        data_type: varchar
+      - name: onset_at
+        description: NWS's `onset`, as written; null where NWS sent none.
+        data_type: varchar
+      - name: expires_at
+        description: NWS's `expires`, as written.
+        data_type: varchar
+      - name: ends_at
+        description: NWS's `ends`, as written; null where NWS has given the alert no end, which is not ending now.
+        data_type: varchar
+      - name: sender_name
+        description: The NWS office that issued it.
+        data_type: varchar
+      - name: area_desc
+        description: NWS's `areaDesc`, the counties or zones in its own words.
+        data_type: varchar
+      - name: affected_zones
+        description: The NWS zone URLs the alert names, as JSON.
+        data_type: json
+      - name: collection_updated
+        description: The `updated` of the NWS answer the alert came in, published as `nws_updated`.
+        data_type: varchar
+      - name: geom_geojson
+        description: >
+          An NWS alert's own polygon in lon/lat, as GeoJSON, or null where NWS
+          places it by zone. Text for the reason the closures mart's
+          geom_geojson gives.
+        data_type: varchar
+      - name: report_uuid
+        description: A serious report's UUID, published as `id`.
+        data_type: varchar
+      - name: report_type
+        description: The report's type (blowdown, flooding, animals...), published as `type`.
+        data_type: varchar
+      - name: poi_id
+        description: The published POI a report is about, where it is about one.
+        data_type: varchar
+      - name: lat
+        description: Where a report was filed.
+        data_type: double
+      - name: lon
+        description: The longitude of the same point.
+        data_type: double
+      - name: report_mile
+        description: The A.T. mile a report was filed at, published as `mile`.
+        data_type: double
+      - name: reporter_type
+        description: thru, section, day or maintainer.
+        data_type: varchar
+      - name: follow_up
+        description: The report's follow-up answers, as JSON.
+        data_type: json
+      - name: report_status
+        description: verified or resolved, published as `status`.
+        data_type: varchar
+      - name: visibility
+        description: Always public.
+        data_type: varchar
+      - name: report_severity
+        description: Always serious, published as `severity`.
+        data_type: varchar
+      - name: source_row_key
+        description: The row's key in its staging model, for lineage.
+        data_type: varchar
+      - name: _first_seen_at
+        description: "{{ doc('row_first_seen_at') }}"
+        data_type: timestamptz
+        data_tests:
+          - not_null:
+              config:
+                # warn only on a leg build_marts.py built without its history,
+                # where both dates are null and the run is red already.
+                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' else 'error' }}"
+      - name: _changed_at
+        description: "{{ doc('row_changed_at') }}"
+        data_type: timestamptz
+        data_tests:
+          - not_null:
+              config:
+                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' else 'error' }}"
+
+unit_tests:
+  - name: warnings_takes_every_notice_that_does_not_block_and_reads_a_null_as_not_reviewed
+    description: >
+      Decision 7's split, the warnings mart's half, over the same notices as
+      closures_takes_what_blocks_the_trail_from_a_source_that_passed_and_may_publish:
+      a false keeps its source's review state, and a null, which nobody has
+      classified, reads not_reviewed whatever its source said. Nothing that
+      did not land in closures is dropped unless its source was held back or
+      may not publish.
+    model: int_warnings__final
+    given:
+      - input: ref('int_closures__unioned')
+        rows:
+          - {notice_id: 'atc_trail_updates:a1', source_key: atc_trail_updates, obstructs_trail: true, review_state: reviewed}
+          - {notice_id: 'atc_trail_updates:a2', source_key: atc_trail_updates, obstructs_trail: false, review_state: reviewed}
+          - {notice_id: 'nynjtc_trail_alerts:n1', source_key: nynjtc_trail_alerts, obstructs_trail: null, review_state: reviewed}
+          - {notice_id: 'ourhike_closures:c2', source_key: ourhike_closures, obstructs_trail: false, review_state: moderator_verified}
+          - {notice_id: 'oprhp_trail_closures:o1', source_key: oprhp_trail_closures, obstructs_trail: null, review_state: org_published}
+      - input: ref('int_closures__gate')
+        rows:
+          - {source_key: atc_trail_updates, passed: true}
+          - {source_key: nynjtc_trail_alerts, passed: true}
+          - {source_key: ourhike_closures, passed: false}
+          - {source_key: oprhp_trail_closures, passed: true}
+      - input: ref('int_warnings__unioned')
+        rows: []
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: atc_trail_updates, may_publish: true}
+          - {source_key: nynjtc_trail_alerts, may_publish: true}
+          - {source_key: ourhike_closures, may_publish: true}
+          - {source_key: oprhp_trail_closures, may_publish: false}
+    expect:
+      rows:
+        - {warning_id: 'atc_trail_updates:a2', warning_kind: org_notice, obstructs_trail: false, review_state: reviewed}
+        - {warning_id: 'nynjtc_trail_alerts:n1', warning_kind: org_notice, obstructs_trail: null, review_state: not_reviewed}
+
+  - name: warnings_relays_nws_alerts_and_serious_reports_from_sources_that_may_publish
+    description: >
+      The warnings that are not organization notices: each NWS alert and
+      serious report int_warnings__unioned holds lands under its own
+      warning_kind, keeping the review state its intermediate gave it, and a
+      source int_sources__publication holds back publishes none of its rows.
+    model: int_warnings__final
+    given:
+      - input: ref('int_closures__unioned')
+        rows: []
+      - input: ref('int_closures__gate')
+        rows: []
+      - input: ref('int_warnings__unioned')
+        rows:
+          - {notice_id: 'nws_alerts:urn:oid:test.1', notice_kind: nws_alert, source_key: nws_alerts, obstructs_trail: false, review_state: relayed}
+          - {notice_id: 'ourhike_reports:r1', notice_kind: ourhike_report, source_key: ourhike_reports, obstructs_trail: false, review_state: moderator_verified}
+          - {notice_id: 'ourhike_reports:r2', notice_kind: ourhike_report, source_key: held_back_reports, obstructs_trail: false, review_state: moderator_verified}
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: nws_alerts, may_publish: true}
+          - {source_key: ourhike_reports, may_publish: true}
+          - {source_key: held_back_reports, may_publish: false}
+    expect:
+      rows:
+        - {warning_id: 'nws_alerts:urn:oid:test.1', warning_kind: nws_alert, review_state: relayed}
+        - {warning_id: 'ourhike_reports:r1', warning_kind: serious_report, review_state: moderator_verified}

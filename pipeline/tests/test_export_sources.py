@@ -853,26 +853,56 @@ class TestTheRegistryTheConsoleReads:
         Spelled out rather than counted, because the point of the case is that
         a registration cannot arrive without somebody writing its id down: a
         length assertion alone would pass for any seventeen, including
-        seventeen typos.
+        seventeen typos. 30 until 2026-10-03, when decision 53's JSON API
+        notice sources registered four more (FMST, FoOT, PA DCNR, TEHCC).
         """
         orgs = self.real()["organizations"]
 
-        assert len(orgs) == 30
+        # 52 since decision 53's ArcGIS closure and warning layers (2026-10-03) registered 18
+        # stewards with no row before, 62 since decision 54's places wave registered 10, and
+        # 77 since its trail-line rows (2026-10-03) registered 15: ATA, Austin PARD,
+        # the Bay Area Ridge Trail Council, Chesapeake Conservancy, the City of Des Moines,
+        # GMC, Indiana and Iowa DNR, Lake County MN, OCTA, ONDA, Oregon Metro, SHTA, TKO and TPWD.
+        assert len(orgs) == 77
         assert {org["steward_id"] for org in orgs} == {
             "org:alaskatrails",
+            "org:amc",
+            "org:ata",
             "org:atc",
+            "org:austinpard",
             "org:azgeo",
             "org:blm",
+            "org:bta",
+            "org:cdpr",
             "org:cdtc",
+            "org:chesapeakeconservancy",
             "org:cpw",
+            "org:ctc",
             "org:ctdeep",
+            "org:desmoines",
             "org:duluth",
+            "org:fltc",
+            "org:fmst",
+            "org:foot",
+            "org:fpc",
+            "org:fta",
             "org:gatc",
+            "org:gmc",
+            "org:iata",
+            "org:indnr",
+            "org:iowadnr",
+            "org:kingcountyparks",
+            "org:lakecountymn",
+            "org:madcr",
             "org:massgis",
+            "org:midpen",
             "org:mohonk",
+            "org:mtsg",
             "org:ncparks",
             "org:ncta",
             "org:ndmc",
+            "org:nhgranit",
+            "org:nifc",
             "org:njdep",
             "org:nps",
             "org:nycdot",
@@ -880,15 +910,38 @@ class TestTheRegistryTheConsoleReads:
             "org:nynjtc",
             "org:nysdec",
             "org:nysoprhp",
+            "org:octa",
+            "org:odfw",
+            "org:onda",
+            "org:oregonmetro",
             "org:osm",
+            "org:padcnr",
             "org:pasda",
+            "org:patc",
             "org:pcta",
+            "org:portlandparks",
+            "org:ridgetrail",
+            "org:sbts",
+            "org:sccparks",
+            "org:shta",
+            "org:spnhf",
+            "org:tdec",
+            "org:tehcc",
+            "org:tko",
+            "org:tpwd",
             "org:trta",
+            "org:trustees",
+            "org:ttc",
             "org:ugrc",
+            "org:usace",
             "org:usfs",
+            "org:usfws",
             "org:usgs",
+            "org:utahffsl",
+            "org:wadnr",
             "org:warco",
             "org:wdnr",
+            "org:wsprc",
         }
 
     def test_composes_nothing_a_reviewer_would_have_to_check(self):

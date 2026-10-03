@@ -1,0 +1,27 @@
+version: 2
+
+models:
+  - name: base_podcasts__podcast_episodes
+    data_tests:
+      # Says how many rows the dedupe dropped, which for a key unique by
+      # construction is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('podcasts', 'raw_podcasts__podcast_episodes')
+          config:
+            severity: warn
+    description: >
+      reference/podcast_episodes.json, every row, keyed, each row still the
+      JSON its reviewer wrote. Read by int_podcasts__checked.
+    columns:
+      - name: episode_row_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the file's path and the row's place in it.
+        data_tests: [not_null, unique]
+      - name: file_row
+        description: The row's place in the file, from 0. The published order.
+        data_tests: [not_null]
+      - name: episode
+        description: The row as its reviewer wrote it, as JSON.
+        data_tests: [not_null]

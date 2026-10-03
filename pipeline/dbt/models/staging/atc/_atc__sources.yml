@@ -3,29 +3,40 @@ version: 2
 sources:
   - name: atc
     description: >
-      ATC's ArcGIS feature layers, fetched by fetch_all.py off sources.json
-      and loaded untouched into the warehouse by load_raw.py. Descriptions
+      ATC's ArcGIS feature layers, landed by the extract's atc/ folder
+      (pipeline/extract/atc/) off sources.json. Descriptions
       below are transcribed from that registry's own metadata
       (title/discovered_via/discovered_date), not authored here - DBT.md's
       "nothing invented" rule for docs.
     schema: raw
-    loaded_at_field: _loaded_at
-    freshness:
-      # Measures "how recently did load_raw.py run", NOT upstream ATC
-      # staleness - the fetchers own real upstream change-detection
-      # (dataLastEditDate, ETags). DBT.md is explicit that this narrower
-      # signal must be labelled as such.
-      #
-      # @unvalidated - 7 days is picked, not derived. Nobody has measured
-      # what load cadence makes this warehouse stale, and there is no bake
-      # schedule to derive one from yet: load_raw.py runs when somebody runs
-      # it. What would settle it is a decided cadence for the warehouse
-      # build, at which point the threshold is that cadence plus a margin.
-      # The same tag sits on the four Phase D source files, which inherited
-      # this number rather than measuring their own.
-      warn_after: {count: 7, period: day}
+    config:
+      loaded_at_field: _loaded_at
+      freshness:
+        # Measures "how recently did the extract read this layer", NOT
+        # upstream ATC staleness - the extract owns real upstream
+        # change-detection (dataLastEditDate, ETags). DBT.md is explicit that
+        # this narrower signal must be labelled as such. `_loaded_at` is
+        # stamped only when a resource runs, so a layer the change check
+        # found FRESH keeps its last read's stamp (pipeline/ELT.md, "dlt
+        # configuration requirements"), and on the monthly lane this 7-day
+        # threshold warns between reads; the per-cadence thresholds are
+        # stage 5 of #1793's.
+        #
+        # @unvalidated - 7 days is picked, not derived. Nobody has measured
+        # what load cadence makes this warehouse stale, and there is no bake
+        # schedule to derive one from yet: the extract lanes are not wired to
+        # their jobs until stage 4 of #1793. What would settle it is a decided cadence for the warehouse
+        # build, at which point the threshold is that cadence plus a margin.
+        # The same tag sits on the four Phase D source files, which inherited
+        # this number rather than measuring their own.
+        warn_after: {count: 7, period: day}
     tables:
       - name: raw_atc__shelters
+        data_tests:
+          # Rows sharing stg_atc__shelters's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'shelters'", "globalid"]
         description: >
           A.T. Shelters (sources.json: discovered 2026-07-24 via the ATC
           Experience Builder app's operational layers). One row per shelter,
@@ -40,6 +51,11 @@ sources:
           - name: Name
             description: The shelter's name as ATC publishes it.
       - name: raw_atc__campsites
+        data_tests:
+          # Rows sharing stg_atc__campsites's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'campsites'", "globalid"]
         description: >
           A.T. Campsites (sources.json: discovered 2026-07-24 via the ATC
           Experience Builder app's operational layers). Same ANST_Facilities
@@ -52,6 +68,11 @@ sources:
           - name: Name
             description: The campsite's name as ATC publishes it.
       - name: raw_atc__viewpoints
+        data_tests:
+          # Rows sharing stg_atc__viewpoints's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'viewpoints'", "globalid"]
         description: >
           A.T. Viewpoints (sources.json: discovered 2026-07-24 via the ATC
           Experience Builder app's operational layers). ANST_Facilities
@@ -60,6 +81,11 @@ sources:
           - name: GlobalID
             data_tests: [not_null, unique]
       - name: raw_atc__parking
+        data_tests:
+          # Rows sharing stg_atc__parking's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'parking'", "globalid"]
         description: >
           A.T. Parking (sources.json: discovered 2026-07-24). ANST_Facilities
           schema family, plus lot inventory (Type/Surface/Capacity fields).
@@ -67,6 +93,11 @@ sources:
           - name: GlobalID
             data_tests: [not_null, unique]
       - name: raw_atc__privies
+        data_tests:
+          # Rows sharing stg_atc__privies's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'privies'", "globalid"]
         description: >
           A.T. Privies (sources.json: discovered 2026-07-24). ANST_Facilities
           schema family.
@@ -74,6 +105,11 @@ sources:
           - name: GlobalID
             data_tests: [not_null, unique]
       - name: raw_atc__communities
+        data_tests:
+          # Rows sharing stg_atc__communities's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'communities'", "globalid"]
         description: >
           A.T. Communities (sources.json: discovered 2026-07-24). Towns with
           official A.T. Community designation - a resupply PROXY, which is
@@ -86,6 +122,11 @@ sources:
           - name: NAME
             description: The community's name (upstream spells it upper-case).
       - name: raw_atc__bridges
+        data_tests:
+          # Rows sharing stg_atc__bridges's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'bridges'", "globalid"]
         description: >
           A.T. Bridges (sources.json: discovered 2026-07-24).
           ANST_Facilities schema family. The one POI-shaped registered layer
@@ -96,6 +137,11 @@ sources:
           - name: GlobalID
             data_tests: [not_null, unique]
       - name: raw_atc__centerline
+        data_tests:
+          # Rows sharing stg_atc__centerline_segments's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'centerline'", "coalesce(globalid, cast(objectid as varchar))"]
         description: >
           A.T. Centerline (sources.json: discovered 2026-07-24) - the 3,025
           maintaining-club-edited segments every geometry export merges.
@@ -104,8 +150,19 @@ sources:
           per DBT.md's scope.
         columns:
           - name: GlobalID
-            data_tests: [not_null, unique]
+            data_tests:
+              # WARN: the staging key falls back to OBJECTID where a row has
+              # no GlobalID, so a missing one is reported, not fatal.
+              - not_null:
+                  config:
+                    severity: warn
+              - unique
       - name: raw_atc__side_trails
+        data_tests:
+          # Rows sharing stg_atc__side_trails's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'side_trails'", "coalesce(globalid, cast(objectid as varchar))"]
         description: >
           A.T. Side Trails (sources.json: discovered 2026-07-24) - the blue
           blazes. export_spurs.py owns the published artifact; the staged
@@ -113,8 +170,19 @@ sources:
           features/TRAIL_BLAZE_COLORS.md's normalisation to build on.
         columns:
           - name: GlobalID
-            data_tests: [not_null, unique]
+            data_tests:
+              # WARN: the staging key falls back to OBJECTID where a row has
+              # no GlobalID, so a missing one is reported, not fatal.
+              - not_null:
+                  config:
+                    severity: warn
+              - unique
       - name: raw_atc__trail_club_sections
+        data_tests:
+          # Rows sharing stg_atc__club_sections's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'trail_club_sections'", "globalid"]
         description: >
           A.T. Trail Club Sections (sources.json: discovered 2026-07-24) -
           which club maintains which stretch. export_club_sections.py owns
@@ -125,6 +193,11 @@ sources:
           - name: GlobalID
             data_tests: [not_null, unique]
       - name: raw_atc__half_mile_points_from_springer
+        data_tests:
+          # Rows sharing stg_atc__half_mile_markers's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'half_mile_points_from_springer'", "point_id"]
         description: >
           A.T. Half Mile Points From Springer (sources.json: discovered
           2026-07-24) - ATC's own mile scale, the calibration authority for
@@ -137,9 +210,165 @@ sources:
             description: ATC's NOBO mile at this marker - the axis authority.
             data_tests: [not_null]
       - name: raw_atc__at_treadway
+        data_tests:
+          # Rows sharing stg_atc__treadway's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'at_treadway'", "globalid"]
         description: >
           A.T. Treadway (sources.json: discovered 2026-07-24) - 30 built
           treadway segments with construction inventory.
         columns:
           - name: GlobalID
             data_tests: [not_null, unique]
+      - name: raw_atc__atc_trail_updates
+        data_tests:
+          # Rows sharing base_atc__atc_trail_updates's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'reference/atc_updates.json'", "_row"]
+        config:
+          # Read on the hourly conditions lane, as every closures type is
+          # (extract/_contract.py's CADENCE_BY_TYPE). No freshness, as for every
+          # reviewed file: its change marker is the file's sha256, so its
+          # `_loaded_at` moves only when somebody edits the file.
+          freshness: null
+          meta:
+            cadence: hourly
+        description: >
+          ATC's Trail Updates as a person reviewed them into
+          reference/atc_updates.json (sources.json's `atc_trail_updates`,
+          `reviewed_input`): 35 rows, reviewed 2026-08-24. One row per row of
+          the file's `updates`, each landed whole in `row_json` as the JSON
+          its reviewer wrote (ReviewedFile's `verbatim`,
+          extract/atc/closures.py), so int_closures__atc_checked sees the
+          typos lib/atc_updates.py refuses. The file's other fields
+          (`reviewed_at`, `reviewed_by`, `source_marker`, `source`) ride every
+          row as `_file`. Key: `_row`, the row's place in the file, unique by
+          construction.
+        columns:
+          - name: row_json
+            description: The row as written, as JSON text. Never typed by the extract.
+            data_tests: [not_null]
+          - name: _row
+            description: The row's place in the file, from 0. The published order.
+          - name: _file
+            description: The file's fields besides `updates` and `_README`, as JSON text, on every row.
+      - name: raw_atc__atc_updates
+        data_tests:
+          # Rows sharing base_atc__atc_updates's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'reference/atc_updates.json'", "_path"]
+        config:
+          # The same file as raw_atc__atc_trail_updates, on the same lane, with
+          # no freshness for the same reason.
+          freshness: null
+          meta:
+            cadence: hourly
+        description: >
+          reference/atc_updates.json whole, as one row (extract/atc/closures.py's
+          second resource). The review is a fact about the file, so this is
+          where int_closures__gate reads `reviewed_at`, even when the file's
+          `updates` is empty and raw_atc__atc_trail_updates has no rows to
+          carry it.
+        columns:
+          - name: row_json
+            description: The file as written, `_README` aside, as JSON text.
+            data_tests: [not_null]
+          - name: _path
+            description: The file's path in the repository.
+      - name: raw_atc__atc_trail_updates_pages
+        data_tests:
+          # Rows sharing base_atc__atc_trail_updates_pages's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'atc_trail_updates'", "slug"]
+        config:
+          # Read on the hourly conditions lane, as every closures type is, and
+          # warned on at the source's 7 days, as NYNJTC's alerts are. How
+          # recently the extract loaded the pages, which is every run that
+          # lands them: AtcTrailUpdatePages' change check is never FRESH, since
+          # each run re-reads a share of its pages, so `_loaded_at` stands
+          # still only while the read is refused, or incomplete with too many
+          # pages moved to fit one run's budget. @unvalidated: 7 days is the
+          # atc source's inherited threshold, and what settles it is stage 5
+          # of #1793 — Rebuild the data platform as dlt → dbt: seven
+          # contracted marts, a monthly refresh, published docs, and lighter
+          # phone downloads reading _extract_runs.checked_at instead.
+          meta:
+            cadence: hourly
+        description: >
+          ATC's Trail Updates as their website shows them
+          (sources.json's `atc_trail_updates`, read by extract/_kinds.py's
+          AtcTrailUpdatePages): one row per update ATC's trail-updates sitemap
+          lists, as lib/atc_scrape.py's parse_update() reads the update's
+          page. ATC's prose is not landed (sources.json's licence, "facts and
+          a link only"). int_closures__atc_automatic decides which rows may
+          publish without a person (CL07-CL10).
+        columns:
+          - name: slug
+            description: ATC's slug for the update, from its URL in the sitemap. Unique by construction.
+            data_tests: [not_null, unique]
+          - name: title
+            description: The update's headline, from the page's <title>, entities decoded.
+            data_tests: [not_null]
+          - name: category
+            description: ATC's category, from the chip under the headline; null where the page has no chip.
+          - name: states
+            description: The chip's state codes, a JSON list; empty where the page has no chip.
+          - name: date_modified
+            description: The page's JSON-LD dateModified, as written, offset and all.
+            data_tests: [not_null]
+          - name: date_published
+            description: The page's JSON-LD datePublished, as written.
+          - name: miles
+            description: >
+              Every "NOBO mile X to Y" in the update's text, in order, a JSON
+              list of {direction, start, end, raw}: start and end as numbers,
+              thousands separators read (CL11), end null for a point.
+          - name: source_url
+            description: The update's own page, lib/atc_scrape.py's update_url().
+          - name: sitemap_lastmod
+            description: >
+              The sitemap's lastmod for the page when the page was read, as
+              written. A row is carried from run to run while the sitemap
+              still says this.
+          - name: page_sha256
+            description: The page's sha256 as read, for provenance; the page itself is the as-sent copy's.
+          - name: page_fetched_at
+            description: >
+              When the extract read the page, UTC; a carried row keeps the
+              time it was read, not the time it was carried. Null on a row
+              landed before rows were carried.
+          - name: _row
+            description: The update's place in the sitemap, from 0.
+      - name: raw_atc__water_distance
+        config:
+          # No freshness, as for every reviewed file: its `_loaded_at` moves
+          # only when its bytes do (its change marker is the file's sha256),
+          # so a week-old stamp means nobody re-ran build_water_distance.py,
+          # not that the extract stopped. The exceptions seed says so to the
+          # evaluator.
+          freshness: null
+        data_tests:
+          # Rows sharing base_atc__water_distance's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'reference/water_distance.json'", "atc_global_id"]
+        description: >
+          reference/water_distance.json's `sites`, one row per A.T. shelter
+          and campsite (512 on 2026-10-01): how far ATC's Campsite
+          Sustainability Index puts the nearest water, in feet, and how ATC
+          arrived at it (`provenance`, CSI's own Nearest_Water_Source value).
+          Generated by build_water_distance.py and reviewed into git, so it
+          loads whole from extract/atc/points_of_interest.py's reviewed file.
+          305 rows carry a distance; the other 207 carry the reason there is
+          none (`unresolved`) and publish nothing. Key: atc_global_id, 512 of
+          512.
+        columns:
+          - name: atc_global_id
+            description: ATC's GlobalID for the shelter or campsite.
+            data_tests: [not_null, unique]
+          - name: distance_ft
+            description: CSI's distance to the nearest water, in feet. Null where the row says why there is none.

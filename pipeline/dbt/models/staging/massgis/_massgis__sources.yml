@@ -1,0 +1,27 @@
+version: 2
+
+sources:
+  - name: massgis
+    description: >
+      MassGIS's registered layers, landed by the extract's massgis/ folder
+      (pipeline/extract/massgis/) as raw_massgis__<key>, and staged once each
+      by a base model here. Descriptions transcribed from sources.json's
+      titles.
+    schema: raw
+    config:
+      loaded_at_field: _loaded_at
+      freshness:
+        # The extract's cadence, not the steward's. @unvalidated, the same
+        # threshold and open question as _atc__sources.yml.
+        warn_after: {count: 7, period: day}
+    tables:
+      - name: raw_massgis__massgis_long_distance_trails
+        data_tests:
+          # Rows sharing base_massgis__long_distance_trails's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'massgis_long_distance_trails'", "globalid"]
+        description: >
+          Massachusetts long-distance trails (MassGIS) (sources.json
+          `massgis_long_distance_trails`). Key: GLOBALID unique on 32 of 32
+          live rows.

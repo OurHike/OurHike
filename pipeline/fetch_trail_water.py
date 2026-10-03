@@ -141,6 +141,7 @@ from build_water_distance import fetch_atc_features
 from export_basemap import AT_STATES, OSM_RAW_DIR, fetch_states
 from lib import fetch_receipts
 from lib.http_retry import download_with_retry
+from lib.nhd import NHD_GPKG_URL
 from lib.user_agent import USER_AGENT
 
 ROOT = Path(__file__).parent
@@ -195,7 +196,6 @@ NHD_LINEAGE_TAGS = ("NHD:FCode", "NHD:ReachCode", "NHD:ComID")
 # NHD is a frozen snapshot - USGS retired it 2023-10-01 and its 3DHP
 # successor drops the flow classification entirely (WATER_SOURCES.md §5) -
 # which is the second reason the answer is checked in rather than re-fetched.
-NHD_GPKG_URL = "https://prd-tnm.s3.amazonaws.com/StagedProducts/Hydrography/NHD/HU4/GPKG/NHD_H_{huc4}_HU4_GPKG.zip"
 
 # The 21 subregions the trail actually crosses, from the WBD's own polygons
 # queried against the centerline (not its bounding box, which is a slab of

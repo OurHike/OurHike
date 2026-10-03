@@ -113,8 +113,16 @@ def test_every_source_records_what_its_licence_rests_on():
     the `<x>_licence` blocks, and anything wanting to COUNT them had to decide
     by reading those sentences - "which would print a licence claim for data
     nobody publishes the first time one was reworded".
+
+    `public_gis` joined the three on 2026-10-03 with decision 54's first
+    registrations: decision 21a's presumption for a GIS layer an organization
+    publishes itself, anonymously, on a public endpoint (pipeline/ELT.md, "Who
+    may publish", rule 3), which the `publishable_licence_bases` seed already
+    admits for GIS kinds. It is not `stated_by_org`, because the organization
+    stated nothing, and not `maintainer_authorisation`, because the
+    presumption is a rule over every such layer rather than one ruling.
     """
-    vocabulary = {"stated_by_org", "maintainer_authorisation", "unresolved"}
+    vocabulary = {"stated_by_org", "maintainer_authorisation", "unresolved", "public_gis"}
     unclassified = [s["key"] for s in REGISTRY["sources"] if s.get("licence_basis") not in vocabulary]
 
     assert unclassified == [], (
@@ -290,9 +298,56 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
 
     This test is expected to change when an organization answers. It should
     change by somebody editing it deliberately, with the org's answer in hand.
+
+    THE SECOND `unresolved` (2026-10-01) is The Green Tunnel's feed,
+    `green_tunnel_podcast`: registered because the maintainer reviewed it as
+    ATC-sponsored, with nobody yet asked what of the feed may show, and
+    `reaches_hikers: false` until somebody is.
+
+    DECISION 53'S JSON API SOURCES (2026-10-03, phase B) add seven, 32 -> 36
+    and 30 -> 33. NPS's alerts and road events and USGS's elevated volcanoes
+    are federal works, `stated_by_org` on the nps_trails reading. PA DCNR's
+    park advisories, TEHCC's wiki announcements, FoOT's condition sheet and
+    FMST's recovery map have no terms anybody read that reach this use, and
+    publish on the maintainer's decision 53 (facts and a link), which is
+    `maintainer_authorisation`. All seven are `reaches_hikers: false` until
+    phase C has a mart read their tables.
+
+    DECISION 54'S ELEVATION ROWS (2026-10-03), all `reaches_hikers: false`:
+    ATC's Z centerline, `atc_atx_centerline`, rests on `atc_licence` (+1
+    here); NJDEP's county high points, `nj_high_elevation_points`, carry the
+    Data Distribution Agreement `njdep_licence` reads (+1 `stated_by_org`);
+    and NCTA's, PCTA's and PASDA's four state nothing and are `public_gis`.
+
+    DECISION 54'S PLACES WAVE, FEDERAL (2026-10-03): 19 place layers - NPS,
+    BLM, USFS, USFWS and USGS boundaries and gazetteers - each `stated_by_org`
+    on 17 U.S.C. 105, the reading usfs_licence records, and each at
+    `reaches_hikers: false` until a mart reads it.
+
+    DECISION 54'S PLACES WAVE, STATE AND CITY (2026-10-03): 34 layers, 9
+    `stated_by_org` (CC0, CC BY 4.0, NJDEP's Data Distribution Agreement) and
+    25 `public_gis` (decision 21(a)), each at `reaches_hikers: false`.
+
+    DECISION 54'S PLACES WAVE, CLUBS (2026-10-03): 30 layers, 28 `public_gis`,
+    CDTC's CC BY sections `stated_by_org`, and one `unresolved`: the Buckeye
+    Trail Association's map outlines, extracted under decision 39 from a
+    `refuse` organization and never published until its permission is
+    recorded.
+
+    DECISION 54'S TRAIL-LINE ROWS, FEDERAL (2026-10-03), all `reaches_hikers:
+    false`: the Park Service's, BLM's and USFS Region 6's 27. 23 are federal
+    works on section 105's reading (`stated_by_org`), and 4 are NPS-hosted
+    layers whose own items say a county, a university, an intern or a
+    contractor made them (`public_gis`, decision 21a).
+
+    DECISION 54'S TRAIL-LINE ROWS, CLUBS AND AGENCIES (2026-10-03), all
+    `reaches_hikers: false`: 71 more. 70 rest on decision 21a's presumption
+    (`public_gis`), and USACE Mobile District's trails are a federal work
+    (`stated_by_org`).
     """
     counts: dict[str, int] = {}
     for source in REGISTRY["sources"]:
         counts[source["licence_basis"]] = counts.get(source["licence_basis"], 0) + 1
 
-    assert counts == {"maintainer_authorisation": 32, "stated_by_org": 30, "unresolved": 1}
+    # Decision 53's ArcGIS closure and warning layers (2026-10-03) add 76 rows, all reaches_hikers false: 11 `maintainer_authorisation`, 35 `public_gis`, 30 `stated_by_org`.
+    assert counts == {"maintainer_authorisation": 48, "public_gis": 166, "stated_by_org": 117, "unresolved": 3}

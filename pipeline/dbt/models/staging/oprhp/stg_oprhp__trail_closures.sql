@@ -32,11 +32,42 @@
 -- layer whose staleness nobody can state is worse than one nobody claimed
 -- anything about.
 with source as (
-    select * from {{ source('oprhp', 'raw_oprhp__oprhp_trail_closures') }}
+    -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
+    -- hint); cast here, as decision 40 has staging do.
+    --
+    -- `rowid` is the row's place in the raw table: the order the layer's
+    -- pages served the areas, which is the order load_closure_areas() lists
+    -- them in (Reasoned, as stg_nynjtc__long_path has it).
+    -- apply_area_closures() gives a trail section the reason of the area it
+    -- overlaps most, and a tie to the area that comes first, so
+    -- int_trail_lines__network_area_closures breaks a tie by `source_row`.
+    select
+        rowid as source_row,
+        * exclude (geometry),
+        st_geomfromgeojson(cast(geometry as varchar)) as geom
+    from {{ source('oprhp', 'raw_nysparks__oprhp_trail_closures') }}
+),
+
+renamed as (
+    select
+        {{ dbt_utils.generate_surrogate_key([
+            "'oprhp_trail_closures'",
+            'name',
+            geometry_key('geom'),
+        ]) }} as closure_key,
+        name as closure_reason,
+        descript as closure_place,
+        -- The closed area itself, which int_closures__oprhp_areas carries into
+        -- the closures mart (#1152 — Move OPRHP's temporary closures onto the
+        -- conditions clock, where a safety layer belongs).
+        st_setcrs(geom, 'OGC:CRS84') as geom,
+        source_row,
+        _loaded_at as loaded_at
+    from source
 )
 
-select
-    name as closure_reason,
-    descript as closure_place,
-    _loaded_at as loaded_at
-from source
+-- An exact copy keeps its first row, so source_row stays the first place
+-- the area appears in the file.
+{{ dbt_utils.deduplicate(
+    relation='renamed', partition_by='closure_key', order_by='source_row'
+) }}

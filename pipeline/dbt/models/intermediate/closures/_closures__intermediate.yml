@@ -581,6 +581,7 @@ unit_tests:
           - {source_key: ourhike_closures, may_publish: true}
           - {source_key: ourhike_reports, may_publish: true}
           - {source_key: nws_alerts, may_publish: true}
+          - {source_key: 'reference/work_projects.json', may_publish: true}
       - input: ref('base_ourhike__reports')
         rows: []
       - input: ref('base_nws__alerts')
@@ -629,6 +630,7 @@ unit_tests:
           - {source_key: ourhike_closures, may_publish: true}
           - {source_key: ourhike_reports, may_publish: true}
           - {source_key: nws_alerts, may_publish: true}
+          - {source_key: 'reference/work_projects.json', may_publish: true}
       - input: ref('base_ourhike__reports')
         rows: []
       - input: ref('base_nws__alerts')
@@ -678,6 +680,7 @@ unit_tests:
           - {source_key: ourhike_closures, may_publish: true}
           - {source_key: ourhike_reports, may_publish: true}
           - {source_key: nws_alerts, may_publish: true}
+          - {source_key: 'reference/work_projects.json', may_publish: true}
       - input: ref('base_ourhike__reports')
         rows: []
       - input: ref('base_nws__alerts')
@@ -721,6 +724,7 @@ unit_tests:
           - {source_key: ourhike_closures, may_publish: true}
           - {source_key: ourhike_reports, may_publish: true}
           - {source_key: nws_alerts, may_publish: true}
+          - {source_key: 'reference/work_projects.json', may_publish: true}
       - input: ref('base_ourhike__reports')
         rows: []
       - input: ref('base_nws__alerts')
@@ -774,6 +778,7 @@ unit_tests:
           - {source_key: ourhike_closures, may_publish: true}
           - {source_key: ourhike_reports, may_publish: true}
           - {source_key: nws_alerts, may_publish: true}
+          - {source_key: 'reference/work_projects.json', may_publish: true}
       - input: ref('base_ourhike__reports')
         rows: []
       - input: ref('base_nws__alerts')
@@ -818,6 +823,7 @@ unit_tests:
           - {source_key: atc_trail_updates, may_publish: true, publication_rule: registered_and_publishable}
           - {source_key: nynjtc_trail_alerts, may_publish: false, publication_rule: held_back_by_the_registry}
           - {source_key: ourhike_closures, may_publish: true, publication_rule: publishing_before_registration}
+          - {source_key: 'reference/work_projects.json', may_publish: false, publication_rule: held_back_by_the_registry}
       - input: ref('base_ourhike__reports')
         rows: []
       - input: ref('base_nws__alerts')
@@ -836,7 +842,7 @@ unit_tests:
         - {source_key: ourhike_closures, may_publish: true, passed: true, held_because: null}
         - {source_key: ourhike_reports, may_publish: false, passed: false, held_because: 'int_sources__publication has no row for ourhike_reports, so nothing says it may publish'}
         - {source_key: nws_alerts, may_publish: false, passed: false, held_because: 'int_sources__publication has no row for nws_alerts, so nothing says it may publish'}
-        - {source_key: 'reference/work_projects.json', may_publish: true, passed: true, held_because: null}
+        - {source_key: 'reference/work_projects.json', may_publish: false, passed: false, held_because: 'int_sources__publication holds reference/work_projects.json back (held_back_by_the_registry)'}
 
   - name: int_closures__gate_holds_back_each_file_no_notice_feeds_on_its_own
     description: >
@@ -869,6 +875,7 @@ unit_tests:
           - {source_key: ourhike_closures, may_publish: true}
           - {source_key: ourhike_reports, may_publish: true}
           - {source_key: nws_alerts, may_publish: true}
+          - {source_key: 'reference/work_projects.json', may_publish: true}
       - input: ref('base_ourhike__reports')
         format: sql
         rows: |
@@ -920,6 +927,7 @@ unit_tests:
           - {source_key: ourhike_closures, may_publish: true}
           - {source_key: ourhike_reports, may_publish: true}
           - {source_key: nws_alerts, may_publish: true}
+          - {source_key: 'reference/work_projects.json', may_publish: true}
       - input: ref('base_ourhike__reports')
         rows: []
       - input: ref('base_nws__alerts')

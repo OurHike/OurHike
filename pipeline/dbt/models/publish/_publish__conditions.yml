@@ -135,9 +135,10 @@ models:
       and join (#760), from int_closures__work_projects_checked: one row,
       `generated_at`, the file's `reviewed_at` and `work_projects`, which
       phone_file copies to processed_dir/conditions_work_projects.json.
-      Writes nothing while int_closures__gate holds the file back: nobody
-      reviewed it, or lib/work_projects.py's file_problems() would find a
-      problem. No mart owns work projects. parity.py compares it with
+      Writes nothing while int_closures__gate holds the file back:
+      int_sources__publication does not let it publish, nobody reviewed it,
+      or lib/work_projects.py's file_problems() would find a problem. No mart
+      owns work projects. parity.py compares it with
       export_work_projects.py's main().
     config:
       access: public

@@ -17,6 +17,8 @@
 --
 -- NO ROW, SO NO FILE, while int_closures__gate holds the file back
 -- (`meta.gate`), and the phone keeps its last file:
+-- - int_sources__publication does not let it publish, or has no row for it
+--   (unregistered_publishing_sources), so publish.py fails the run;
 -- - nobody has reviewed it (lib/work_projects.py's is_reviewed()), for which
 --   export_work_projects.py exits 0, so publish.py does not fail the run;
 -- - it has any problem, its own or a row's, or did not land as exactly one

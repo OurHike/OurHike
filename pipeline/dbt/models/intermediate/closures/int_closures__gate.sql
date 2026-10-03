@@ -190,13 +190,7 @@ judged as (
             when 'ourhike_reports' then ourhike_reports.rows_not_finite
             else coalesce(counts.rows_invalid, 0)
         end as rows_invalid,
-        -- reference/work_projects.json has no publication row yet:
-        -- export_work_projects.py publishes it without one today.
-        coalesce(
-            publication.may_publish
-            or gated_sources.source_key = 'reference/work_projects.json',
-            false
-        ) as may_publish,
+        coalesce(publication.may_publish, false) as may_publish,
         case
             when gated_sources.source_key = 'atc_trail_updates'
                 then atc_document.reviewed_at
@@ -212,15 +206,14 @@ judged as (
             )
             or (
                 gated_sources.source_key = 'reference/work_projects.json'
+                and publication.may_publish
                 and work_projects.documents = 1
                 and not work_projects.is_reviewed
             ),
             false
         ) as awaiting_review,
         case
-            when
-                publication.source_key is null
-                and gated_sources.source_key != 'reference/work_projects.json'
+            when publication.source_key is null
                 then
                     'int_sources__publication has no row for '
                     || gated_sources.source_key

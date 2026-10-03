@@ -392,6 +392,13 @@ jobs:
       # reads the fallback before the pointer. The environment comes off the
       # base as the client reads it: `.../environments/<name>`, else
       # production.
+      #
+      # Phones read the UPLOADED copy at `${base}/channels.json`, not this
+      # commit's, and only the release train's `publish.py --channels` uploads
+      # it (RELEASING.md §10). So the step also fails when an uploaded copy
+      # names another release for this environment and schema, and passes
+      # with a notice when none is uploaded (a 404), because phones then read
+      # the compiled DATA_RELEASE, which the step above checked.
       - name: Confirm channels.json's release exists
         working-directory: client
         env:
@@ -420,6 +427,24 @@ jobs:
             echo "::error::channels.json points ${environment}'s ${schema} at ${release}, but ${manifest} does not resolve. Phones would refuse it and stay on the release they hold."
             exit 1
           fi
+          uploaded="${RUNNER_TEMP:-/tmp}/uploaded-channels.json"
+          code=$(curl -sS --retry 3 --max-time 30 -o "$uploaded" -w '%{http_code}' "${base}/channels.json") || code="no answer"
+          case "$code" in
+            200)
+              # The uploaded entry is compared, never printed: it is remote
+              # text, and this line is a workflow command.
+              served=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))[sys.argv[2]][sys.argv[3]])' "$uploaded" "$environment" "$schema" 2>/dev/null) || served=""
+              if [ "$served" != "$release" ]; then
+                echo "::error::Phones read ${base}/channels.json, and its ${environment} ${schema} entry is not the committed ${release}. The release train must run publish.py --channels first, so that this deploy checks the release phones follow."
+                exit 1
+              fi
+              echo "The uploaded channels.json at ${base} names ${release} too." ;;
+            404)
+              echo "::notice::No channels.json is uploaded at ${base}, so phones read the compiled DATA_RELEASE until the release train runs publish.py --channels." ;;
+            *)
+              echo "::error::${base}/channels.json answered ${code}, so this deploy cannot tell which release phones follow."
+              exit 1 ;;
+          esac
 
       # Same proof for the same reason, one step later. Setting a variable and
       # having it reach the bundle are different claims, and the gap between

@@ -12,12 +12,15 @@ import { get, set } from 'idb-keyval'
  *
  * THE POINTER. A committed `channels.json` at the repository root names, per
  * data environment and per schema version, the release folder a phone reads:
- * `{"production": {"v1": "<id>"}, "ua": {"v1": "<id>"}}`. A dispatch uploads
- * it beside `latest.json`, and moving an entry is a reviewed commit, so the
- * 2026-09-09 reason for a committed pin below still holds: the dataset changes
- * only with a commit, a review and history. What changes is that the commit no
- * longer needs an app release. `readDataChannel` below reads it; what it
- * names becomes this phone's release from its NEXT launch, never mid-session.
+ * `{"production": {"v1": "<id>"}, "ua": {"v1": "<id>"}}`. Phones read the
+ * copy at the data base, beside `latest.json`, never this commit's, and only
+ * the release train puts it there, by running `publish.py --channels`
+ * (RELEASING.md §10: no workflow runs that yet). Moving an entry is a reviewed
+ * commit, so the 2026-09-09 reason for a committed pin below still holds: the
+ * dataset changes only with a commit, a review and history. What changes is
+ * that the commit no longer needs an app release. `readDataChannel` below
+ * reads the uploaded copy; what it names becomes this phone's release from
+ * its NEXT launch, never mid-session.
  *
  * THE COMPILED FALLBACK, `DATA_RELEASE` below, is what a session reads when
  * this phone has never recorded a pointer it could verify: a first run, a
@@ -50,7 +53,8 @@ import { get, set } from 'idb-keyval'
  * Nothing here has to remember that: `pages.yml` and `ua.yml` each assert
  * this folder's manifest resolves against their OWN base before deploying, so
  * a wrong pin costs a red deploy rather than a hiker's map. They assert the
- * same of `channels.json`'s entry for this build's schema version.
+ * same of `channels.json`'s entry for this build's schema version, and that
+ * the copy uploaded at that base, where one is, names the same release.
  *
  * 2026-09-24-2 IS v1.3.2's DATA, minted by that release train on 2026-09-24.
  * Production's -1 is the vector data (both DEM variants had published flat

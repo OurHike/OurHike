@@ -256,7 +256,9 @@ jobs:
       # same name, which says why both it and the step above must hold. The
       # environment is read off the base as the client reads it, so a
       # UA_DATA_BASE_URL override pointing at production's data checks
-      # production's entry, the one such a build's phones take.
+      # production's entry, the one such a build's phones take. It also holds
+      # the committed entry to the copy uploaded at that base, which is the
+      # one phones read: pages.yml's step says why, and why a 404 passes.
       - name: Confirm channels.json's release exists
         if: steps.can.outputs.deploy == 'true'
         working-directory: client
@@ -286,6 +288,23 @@ jobs:
             echo "::error::channels.json points ${environment}'s ${schema} at ${release}, but ${manifest} does not resolve. UA's phones would refuse it and stay on the release they hold."
             exit 1
           fi
+          uploaded="${RUNNER_TEMP:-/tmp}/uploaded-channels.json"
+          code=$(curl -sS --retry 3 --max-time 30 -o "$uploaded" -w '%{http_code}' "${base}/channels.json") || code="no answer"
+          case "$code" in
+            200)
+              # Compared, never printed: remote text in a workflow command.
+              served=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))[sys.argv[2]][sys.argv[3]])' "$uploaded" "$environment" "$schema" 2>/dev/null) || served=""
+              if [ "$served" != "$release" ]; then
+                echo "::error::UA's phones read ${base}/channels.json, and its ${environment} ${schema} entry is not the committed ${release}. The release train must run publish.py --channels first, so that this deploy checks the release phones follow."
+                exit 1
+              fi
+              echo "The uploaded channels.json at ${base} names ${release} too." ;;
+            404)
+              echo "::notice::No channels.json is uploaded at ${base}, so UA's phones read the compiled DATA_RELEASE until the release train runs publish.py --channels." ;;
+            *)
+              echo "::error::${base}/channels.json answered ${code}, so this deploy cannot tell which release UA's phones follow."
+              exit 1 ;;
+          esac
 
       - name: Publish UA
         id: deploy

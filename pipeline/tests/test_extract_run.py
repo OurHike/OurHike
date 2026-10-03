@@ -428,8 +428,10 @@ def test_an_r2_store_uploads_in_fixed_size_parts_and_a_local_one_passes_no_optio
     the same length"."""
 
     def kwargs(bucket_url):
-        destination = make_pipeline("monthly", bucket_url, str(tmp_path / "pipelines")).destination
-        return destination.configuration(None, accept_partial=True).kwargs
+        # The factory's own arguments, not its resolved configuration: resolving s3:// credentials with none set
+        # sends botocore to the instance metadata address, which the socket guard refuses (pipeline-tests.yml,
+        # 37097625630).
+        return make_pipeline("monthly", bucket_url, str(tmp_path / "pipelines")).destination.config_params.get("kwargs")
 
     assert kwargs("s3://our-hike-raw/raw/dlt/monthly") == {"fixed_upload_size": True}
     assert kwargs((tmp_path / "store").as_uri()) is None

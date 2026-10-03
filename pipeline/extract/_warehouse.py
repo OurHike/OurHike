@@ -1,33 +1,28 @@
 """Raw store -> the warehouse's `raw` schema, reading only what a committed load wrote.
 
-load_raw.py's successor (pipeline/ELT.md, "Where data lands"), for the tables
-pipeline/extract/ lands; load_raw.py keeps loading the rest until each club's
-folder replaces its fetcher, and is deleted once this loads every table it did.
+load_raw.py's successor (pipeline/ELT.md, "Where data lands") for the tables
+pipeline/extract/ lands; load_raw.py loads the rest until each club's folder
+replaces its fetcher, and is then deleted.
 
-THE FILES ARE AN EXPLICIT LIST, NEVER A GLOB. For each table, the warehouse
-reads the files of exactly one load: the one `_extract_runs` recorded as that
-table's latest `loaded` run, and only when `_dlt_loads` records that load as
-complete. A glob would also read the files an interrupted load left behind -
-on plain Parquet a replace load that fails half-way leaves the new first file
-beside nothing, so a closures table would read as one closure, or none, and
-pass every check (ELT.md, "A full reload that cannot empty a safety table",
-measured 2026-10-01). A table with no committed file refuses the build rather
-than loading as empty, because "no closures" is a claim and a missing file is
-not evidence for it.
+THE FILES ARE AN EXPLICIT LIST, NEVER A GLOB: each table is read from the
+files of the one load `_extract_runs` records as its latest `loaded` run, and
+only when `_dlt_loads` records that load complete. On plain Parquet a
+`replace` load that fails half-way can leave its first new file and nothing
+else, so a glob would read a closures table as one closure, or none, and pass
+every check (ELT.md, "A full reload that cannot empty a safety table",
+measured 2026-10-01). A table with no committed file refuses the build:
+"no closures" is a claim, and a missing file is not evidence for it.
 
-A PINNED RAW_RUN (`pin`, `load --raw-run`; the monthly lane,
-refresh-reference.yml). A raw_run is one extract run's `run_id`. `pin` copies
-exactly what a build of that run reads - each table's committed rows as of
-that run, its `_extract_runs` rows and its as-landed files - to
-`<steps-url>/raw_inputs/<raw_run>/`, write-once, `raw_inputs.json` last, so
-the promotion build reads the rows UA verified rather than whatever the next
-`replace` left (ELT.md, "Storage tiers", the `raw_inputs` row; "Why a
-scheduled run cannot reach production", the pin). `load --raw-run` builds the
-warehouse from that copy alone and refuses when it is missing: a pin that has
-expired or been purged makes a promotion refuse rather than read current raw.
-DuckLake replaces this for the monthly tables at stage 3's first step, once
-its three go/no-go runs pass (ELT.md, "DuckLake at phases 3 and 4"); until
-then this is the freeze.
+A PINNED RAW_RUN (`pin`, `load --raw-run`; refresh-reference.yml's monthly
+run) is a write-once copy, at `<steps-url>/raw_inputs/<raw_run>/`, of what a
+build of one extract run (its `run_id`, the raw_run) reads: each table's
+committed rows as of that run, its `_extract_runs` rows and its as-landed
+files, `raw_inputs.json` last. The production promotion builds from it alone,
+so it reads the rows UA verified rather than whatever the next `replace` left,
+and an expired or purged pin stops it (ELT.md, "Storage tiers" and "Why a
+scheduled run cannot reach production"). DuckLake replaces this for the
+monthly tables at stage 3's first step, once its three go/no-go runs pass
+(ELT.md, "DuckLake at phases 3 and 4").
 """
 
 from __future__ import annotations
@@ -97,12 +92,13 @@ def _naming(pipeline):
 def _create_proven_empty(con, schema: str, table: str, hints: dict, pipeline) -> None:
     """An empty table with the columns its resource hinted, plus dlt's own, under dlt's naming.
 
-    Only for a load the run log shows as a proven zero: no rows, and the
-    upstream's own count read zero in the same run. dlt writes no file for a
-    table's first load when it holds no rows (a later empty replace does write
-    a zero-row file), so without this a closures layer that is empty the first
-    time it is read would refuse the whole build. And for a table not yet
-    loaded at all (not_yet_loaded()), which the annotation beside it names.
+    For a load the run log shows as a proven zero (no rows, and the upstream's
+    own count read zero in the same run): dlt writes no file for a table's
+    first load when it holds no rows (a later empty replace does write a
+    zero-row file), so without this a closures layer empty the first time it
+    is read would refuse the whole build. Also for a table
+    not yet loaded (not_yet_loaded()), which load_warehouse() names in a
+    `::warning` annotation.
     """
     naming = _naming(pipeline)
     columns = {
@@ -193,12 +189,12 @@ def load_warehouse(con: duckdb.DuckDBPyConnection, pipeline, schema: str = "raw"
         loaded[table] = arrow.num_rows
     # NOT YET LOADED IS NOT A REFUSAL OF EVERYONE ELSE. A carrying read still
     # on its first pass has no committed file, and a missing table would stop
-    # every model downstream of it, so every other club's closures with it.
-    # It is created empty, from its own hints, and named in an annotation. For
-    # ATC's trail-updates pages that publishes the reviewed rows without the
-    # automatic ones, which is what export_atc_updates.py publishes today when
-    # fetch_atc_updates.py's cache is missing ("A missing or unreadable cache
-    # costs the auto-published rows and nothing else", its CACHE_PATH).
+    # every model downstream of it, every other club's closures included. So it
+    # is created empty from its own hints and named in an annotation. For ATC's
+    # trail-updates pages that publishes the reviewed rows without the
+    # automatic ones, as export_atc_updates.py does today when
+    # fetch_atc_updates.py's cache is missing (export_atc_updates.py's
+    # CACHE_PATH comment).
     for table, hints in sorted(not_yet_loaded(pipeline, committed_tables(pipeline)).items()):
         print(f"::warning title={table} not yet loaded::its first read is still in progress, so it is empty in this build")
         _create_proven_empty(con, schema, table, hints, pipeline)

@@ -52,10 +52,10 @@ TYPES = (
 
 CADENCES = ("hourly", "daily", "weekly", "monthly")
 
-# Decision 28a: the lane belongs to the type. Closures and warnings are the
-# two safety types a hiker reads as "now", so they ride the hourly lane;
-# everything else a club publishes is monthly. A resource that differs says
-# why on itself (Resource.cadence_reason), and the layout test refuses an
+# The lane belongs to the type (ELT.md decision 28a). Closures and warnings
+# are the two safety types a hiker reads as "now", so they ride the hourly
+# lane; everything else a club publishes is monthly. A resource that differs
+# says why on itself (Resource.cadence_reason), and the layout test refuses an
 # override without one.
 DEFAULT_CADENCE = "monthly"
 CADENCE_BY_TYPE = {"closures": "hourly", "warnings": "hourly"}
@@ -103,22 +103,19 @@ def slug_for_folder(folder: str) -> str:
 def raw_table(folder: str, key: str) -> str:
     """`raw_<folder>__<key>`, the raw table a club's resource lands in.
 
-    Written as dlt's `table_name` and never passed through dlt's own
-    normalizer: `normalize_table_identifier()` alone collapses the `__` to one
-    underscore, while a run keeps the name as written (measured 2026-10-01,
-    dlt 1.30.0, ELT.md "Folder name = trail_orgs.json slug"), unless the key
-    starts with a digit, which this refuses (below). A key that is a
-    file path is written without `.json`, and under reference/ as its path
-    there: `reference/challenges/atc` lands as `raw_atc__challenges_atc`, and
-    the registry's own `sources.json` as `raw_registry__sources`.
+    Passed to dlt as `table_name`, which a run keeps as written, though
+    `normalize_table_identifier()` called alone would collapse the `__` to one
+    underscore (measured 2026-10-01, dlt 1.30.0, ELT.md "Folder name =
+    trail_orgs.json slug"). A file-path key loses `.json` and `reference/`:
+    `reference/challenges/atc` lands as `raw_atc__challenges_atc`, and the
+    registry's own `sources.json` as `raw_registry__sources`.
     """
     key = key.removeprefix("reference/").removesuffix(".json").replace("/", "_")
-    # dlt normalizes a table name as a path split on `__`, and escapes a
-    # segment that starts with a digit with a leading underscore, so
-    # `raw_usgs__3dep_13_current` landed as `raw_usgs___3dep_13_current` and
-    # every check reading the name as written found nothing (measured
-    # 2026-10-02, dlt 1.30.0; tests/test_extract_layout.py holds every
-    # resource's table to dlt's own normalize_path).
+    # dlt escapes a `__`-separated segment that starts with a digit with a
+    # leading underscore: `raw_usgs__3dep_13_current` landed as
+    # `raw_usgs___3dep_13_current`, and every check reading the name as
+    # written found nothing (measured 2026-10-02, dlt 1.30.0).
+    # tests/test_extract_layout.py holds every table to dlt's normalize_path.
     if key[:1].isdigit():
         raise ValueError(f"{folder}/{key}: a raw table's key may not start with a digit; dlt would rename the table")
     return f"raw_{folder}__{key.replace('-', '_')}"
@@ -128,16 +125,15 @@ def raw_table(folder: str, key: str) -> str:
 class NotAvailable:
     """Nothing this pipeline may load from this org for this type, as of `confirmed`.
 
-    Three cases share the shape: not published; published but refused, with
-    the refusing words quoted in `terms`; or published and not landed yet,
-    with `reason` saying what landing it waits on (usually a sources.json row,
-    since a builder takes a registered key). `checked` lists what a person
-    looked at, written so the next person can repeat it, and `where` the URLs.
+    Three cases share the shape: not published; published but refused, the
+    refusing words quoted in `terms`; or published and not landed yet,
+    `reason` saying what landing waits on (usually a sources.json row, since a
+    builder takes a registered key). `checked` lists what a person looked at,
+    so the next person can repeat it, and `where` the URLs.
 
     A note says what was checked, never that a search happened that did not.
-    The layout test can check a note's shape and nothing else - it cannot tell
-    a search that was done from one that was written down - so that half is a
-    reviewer's check (ELT.md, "A GIS-shaped type is not given up early").
+    The layout test checks a note's shape only, so whether the search was done
+    is a reviewer's check (ELT.md, "A GIS-shaped type is not given up early").
     """
 
     confirmed: date
@@ -185,14 +181,12 @@ class NotClub:
 class SameAs:
     """A republished copy of a dataset another resource already extracts: noted, never loaded.
 
-    Each upstream dataset is extracted once, in its steward's folder (decision
-    34; the maintainer: "Are we landing the same data, multiple times? We
-    shouldn't."). A copy - an ArcGIS Online twin of an on-prem layer, an older
-    export of the same assets - is recorded here so the next person does not
-    add it as a second resource and leave dedup to remove it. It ages like a
-    NotAvailable, because a copy can stop being one: once its publisher edits
-    it apart from the original, it is an independent dataset and gets a
-    resource of its own.
+    Each upstream dataset is extracted once, in its steward's folder (ELT.md
+    decision 34; the maintainer: "Are we landing the same data, multiple
+    times? We shouldn't."). A copy, such as an ArcGIS Online twin of an
+    on-prem layer, is recorded here so nobody adds it as a second resource. It
+    ages like a NotAvailable: once its publisher edits it apart from the
+    original, it is an independent dataset and gets a resource of its own.
     """
 
     original: str  # the claimed key whose resource extracts the dataset
@@ -215,15 +209,15 @@ class SameAs:
 class Unavailable(Exception):
     """A change check's answer that the upstream cannot be read here, and that its own rule leaves out of the lane.
 
-    Not a fourth Freshness. FRESH says "checked, nothing changed" and keeps the
-    last rows. This says nobody can tell, so extract/_run.py leaves the
-    resource out of the run and logs it `unavailable`, and
-    extract/_warehouse.py withdraws the table rather than serving its last rows
-    as current. Absent means unknown, never zero (CLAUDE.md). The one raiser
-    today is export_conditions.py's PENDING_READER_SETUP, which omits notes
-    and disputes when `field_notes` is not configured for the reader, while
-    closures and reports carry on. Any other failure raises as itself and
-    stops the lane.
+    Not a fourth Freshness: FRESH says "checked, nothing changed" and keeps
+    the last rows; this says nobody can tell. extract/_run.py leaves the
+    resource out and logs it `unavailable`, and extract/_warehouse.py
+    withdraws the table rather than serve its last rows as current: absent
+    means unknown, never zero (CLAUDE.md). The one raiser today is
+    ConditionsQuery.change_check (extract/_kinds.py), for a table
+    export_conditions.py's PENDING_READER_SETUP lists: notes and disputes are
+    omitted while `field_notes` is not readable, and closures and reports
+    carry on. Any other failure raises as itself and stops the lane.
     """
 
 
@@ -231,19 +225,12 @@ class Unavailable(Exception):
 class Carried:
     """What extract/_run.py hands a resource that reads only what moved (Resource.carries), before its read.
 
-    `committed` is the resource's table as its last committed load left it:
-    the load `_extract_runs` last recorded `loaded` for the table and
-    `_dlt_loads` records as complete, read from that load's own files by
-    name, never a glob (extract/_warehouse.py's rule), as plain rows with
-    dlt's own columns dropped. Empty on a first run.
-
-    `progress` is what an earlier read that ran out of budget had read and
-    kept (Incomplete below), none of it ever landed: extract/_run.py's
-    `_extract_progress` table, which nothing reads as the data.
-
-    `seconds` is how long the read may take from the moment it is handed
-    this, or None for no budget, in which case the read reads everything it
-    needs and never answers Incomplete.
+    `committed` is the resource's table as its last committed load left it,
+    dlt's own columns dropped (extract/_run.py's committed_rows()); empty on a
+    first run. `progress` is what an earlier read that ran out of budget kept
+    (Incomplete below), never landed. `seconds` is the read's budget from the
+    moment it is handed this, or None for none, in which case the read reads
+    everything it needs and never answers Incomplete.
     """
 
     committed: tuple[dict, ...] = ()
@@ -254,13 +241,12 @@ class Carried:
 class Incomplete(Exception):
     """A carrying resource's read that ran out of budget before it had every row its table must hold.
 
-    Nothing lands: the table keeps its last committed rows, or, on a first
-    run, stays not yet loaded, because a partial set landed under `replace`
-    would read as the whole and drop every row it had not reached yet.
-    `progress` is every row read so far that a later read may carry,
-    which extract/_run.py keeps in `_extract_progress` until the table
-    loads. `read` is how many rows this run read, and `needed` how many it
-    still lacks, for the run's summary.
+    Nothing lands: the table keeps its last committed rows, or on a first run
+    stays not yet loaded, because a partial set landed under `replace` would
+    read as the whole and drop every row not reached yet. `progress` is every
+    row read so far, which extract/_run.py keeps in `_extract_progress` for a
+    later read to carry until the table loads. `read` and `needed` are how
+    many rows this run read and how many it still lacks, for the summary.
     """
 
     def __init__(self, message: str, progress: list[dict], read: int, needed: int):

@@ -2,61 +2,54 @@
 
     python -m extract._fixtures --raw-dir <fixtures> --warehouse <warehouse.duckdb>
 
-ELT.md, "Fixture mode", is the design: CI has no fetched data and may not
-fetch any (TESTING.md), so the dbt job's warehouse used to come from
-make_dbt_fixtures.py's GeoJSON files through load_raw.py, which shaped every
-table the way no extract run ever would. This runs the extract's own
-resources instead: the change checks, the ArcGIS and Socrata pagers, the
-column hints, dlt's normalize and naming, the run check, the committed-load
-read. What a staging model reads in CI is then a table dlt wrote.
+ELT.md, "Fixture mode", is the design. CI has no fetched data and may not
+fetch any (TESTING.md), so this runs the extract's own resources over canned
+answers: the change checks, the ArcGIS and Socrata pagers, the column hints,
+dlt's normalize and naming, the run check and the committed-load read. What a
+staging model reads in CI is then a table dlt wrote.
 
-THE ANSWERS COME FROM THE SAME FILES. make_dbt_fixtures.py still writes one
-GeoJSON file per layer, and every property name in it is one sources.json
-records as measured against the live layer (its docstring's "Nothing here is
-invented"). FixtureAdapter serves each file the way its server would: an
-ArcGIS layer's metadata, `returnCountOnly` count and GeoJSON pages; a
-Socrata dataset's `count(*)` and `:id`-ordered pages; opentrail's feed. A
-layer's `fields` are the file's property names, and the TYPES are read off
-the fixture's own values (an integer, a float, otherwise a string), because
-no file records the live layer's types. A field that is null on every
-fixture row is typed as a string, the safest guess for a column nobody has
-seen a value in (Reasoned).
+LAYER FILES. make_dbt_fixtures.py writes one GeoJSON file per layer, each
+property name one sources.json records as measured against the live layer
+(its docstring's "Nothing here is invented"). FixtureAdapter serves each file
+as its server would: an ArcGIS layer's metadata, `returnCountOnly` count and
+GeoJSON pages; a Socrata dataset's `count(*)` and `:id`-ordered pages;
+opentrail's feed. A layer's `fields` are the file's property names, typed by
+the fixture's own values (integer, float, else string), because no file
+records the live layer's types. A field null on every fixture row is typed
+string, the safest guess for a column nobody has seen a value in (Reasoned).
 
-THE REVIEWED FILES RUN AS THEY ARE. Their upstream is a file in git under
-pipeline/reference/, so CI reads the real thing: the podcast episodes, the
-POI identity ledger, ATC's reviewed Trail Updates and the rest, and each
-club's folder of challenge files (ReviewedDir), one row per file.
+REVIEWED FILES run as they are: their upstream is a file in git under
+pipeline/reference/ (the podcast episodes, the POI identity ledger, ATC's
+reviewed Trail Updates, and each club's folder of challenge files, one row
+per file through ReviewedDir), so CI reads the real thing.
 
-NYNJTC'S HIKE FINDER EXPORT IS ANSWERED TOO, so the suggested_hikes family's
-models build in CI (stage 3 of #1793 — Rebuild the data platform as dlt → dbt:
-seven contracted marts, a monthly refresh, published docs, and lighter phone
-downloads): make_dbt_fixtures.py's
-suggested_hikes_fixtures() writes a listing, the pages and their GPX under
-hikefinder/, served at `hikes.php`, `hike.php?id=<id>` and
-`download_gpx.php?id=<id>`, so PublishedHikes' own listing guard, parse and
-GPX check run. The host's 10-second crawl delay is the live host's request,
-not the fixture's, so it is lifted while fixture mode runs.
+OTHER UPSTREAMS are answered from what make_dbt_fixtures.py writes, so the
+suggested_hikes, closures and warnings marts build in CI (stage 3 of #1793 —
+Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly
+refresh, published docs, and lighter phone downloads). Only the transport,
+the HTTP session or the Postgres connection, is swapped:
+- NYNJTC's Hike Finder export (hikefinder/): the listing, pages and GPX at
+  `hikes.php`, `hike.php?id=<id>` and `download_gpx.php?id=<id>`, so
+  PublishedHikes' listing guard, parse and GPX check run;
+- NWS's /alerts/active body (conditions/), for lib/nws_alerts.py's
+  ALERTS_URL, so check_response(), the column hints and the count-as-proof run;
+- NYNJTC's WordPress routes (conditions/): the category lookup by slug, the
+  posts and the four place taxonomies, with X-WP-Total and X-WP-TotalPages,
+  so wp_list()'s paging, the change check's marker, WP_DROPPED and the terms'
+  empty-vocabulary refusal run;
+- OurHike's Postgres (conditions/), through FixtureConnection, which answers
+  ConditionsQuery's SQL (reader_problem()'s four catalog questions, the
+  LIMIT 0 description, the count(*) and the rows), so reader_problem()'s
+  decision, POSTGRES_TYPES, the count-as-proof and the WITHHELD_COLUMNS
+  refusal run;
+- ATC's website (TEXT_FIXTURES): the trail-updates sitemap and each update's
+  page, so AtcTrailUpdatePages' sitemap parse, lib/atc_scrape.py's
+  parse_update() and the slug count as proof run. The same file carries the
+  listing pages fetch_atc_updates.py walks, which parity.py serves to
+  today's fetcher;
+- a guide published as web pages (the guide_pages kind), page by page from
+  guide_pages/<key>/, so its own parser reads NYNJTC's skeleton.
 
-THE HOURLY LANE'S OTHER UPSTREAMS ARE ANSWERED TOO, so the closures and
-warnings marts build in CI (#1793, stage 3). make_dbt_fixtures.py writes one
-answer for each under conditions/, and only the transport is swapped:
-- NWS's /alerts/active body is served for lib/nws_alerts.py's ALERTS_URL, so
-  check_response(), the column hints and the count-as-proof all run;
-- NYNJTC's WordPress routes (the category lookup by slug, the posts, the four
-  place taxonomies) are served with X-WP-Total and X-WP-TotalPages, so
-  wp_list()'s paging, the change check's marker, WP_DROPPED and the terms'
-  empty-vocabulary refusal all run;
-- OurHike's Postgres is a stand-in connection (FixtureConnection) that answers
-  the SQL ConditionsQuery sends: reader_problem()'s four catalog questions,
-  the LIMIT 0 description its column hints come from, the count(*) that is
-  its proof, and the rows. reader_problem()'s decision, POSTGRES_TYPES, the
-  count-as-proof and the WITHHELD_COLUMNS refusal all run;
-- ATC's website answers by URL from one file of its pages (TEXT_FIXTURES):
-  the trail-updates sitemap and each update's page for AtcTrailUpdatePages,
-  so its sitemap parse, lib/atc_scrape.py's parse_update() and the slug
-  count as proof all run, with ATC_CRAWL_DELAY_SECONDS at 0 because no host
-  is asked anything. The same file carries the listing pages
-  fetch_atc_updates.py walks, which parity.py serves to today's fetcher.
 WHAT FIXTURE MODE DOES NOT EXERCISE for Postgres, so nobody reads a green
 dbt job as evidence of it: the query text itself. The rows are the queries'
 answers as the fixture states them, so the moderation predicates, the
@@ -66,16 +59,10 @@ and backend/tests/test_conditions_publisher_contract.py for the column
 lists). The catalog's answers are canned too: the table exists, the reader
 may select, and row-level security is off, which is the CI database's case.
 
-What is left out of the run, and why:
-- every fetched resource whose key has no fixture file, because CI fetches
-  nothing.
-
-A guide published as web pages (the guide_pages kind) is answered page by
-page from guide_pages/<key>/, so its own parser reads NYNJTC's skeleton.
-
-An unknown URL raises, so a resource that reaches past its fixture fails
-loudly rather than reaching the network, and so does any SQL the stand-in
-connection does not recognise.
+A fetched resource whose key has no fixture file is left out, because CI
+fetches nothing. An unknown URL raises, so a resource that reaches past its
+fixture fails loudly rather than reaching the network, and so does any SQL
+FixtureConnection does not recognise.
 """
 
 from __future__ import annotations
@@ -176,8 +163,9 @@ def conditions_fixture(raw_dir: Path, name: str) -> dict | None:
     return json.loads(path.read_text()) if path.exists() else None
 
 
-# Postgres type names as the stand-in connection reports them: each fixture
-# column's declared type, so POSTGRES_TYPES maps it as it maps a real one.
+# The declared column types whose values _row() hands back as datetimes, as
+# psycopg does. FixtureConnection reports each fixture column's declared type
+# name as its type, so POSTGRES_TYPES maps it as it maps a real one.
 TIMESTAMP_TYPES = frozenset({"timestamp", "timestamptz"})
 
 
@@ -345,10 +333,9 @@ class FixtureAdapter(requests.adapters.BaseAdapter):
         self.wordpress = wordpress or {}
         # NWS's /alerts/active body.
         self.nws = nws
-        # Text served as a site serves it, by its exact URL: (content type, body).
-        # ATC's Trail Updates pages (text_answers()), the Hike Finder export's
-        # listing, pages and GPX tracks (hikefinder_answers()), and a guide's
-        # pages, by the URL the guide_pages kind asks for.
+        # Text served by exact URL as (content type, body): ATC's Trail Updates
+        # pages (text_answers()), the Hike Finder export (hikefinder_answers())
+        # and a guide's pages (fixture_resources()).
         self.pages = pages or {}
 
     def send(self, request, **kwargs):
@@ -487,11 +474,10 @@ def fixture_resources(raw_dir: Path) -> tuple[list, FixtureAdapter]:
 
 def build(raw_dir: Path, warehouse: Path, store: Path) -> dict[str, int]:
     """Run every lane over the fixtures into a `file://` store under `store`, then load the warehouse. Returns {table: rows}."""
-    # The run machinery is imported here, where a lane runs, and not at the
-    # top: parity.py's old sides import FixtureConnection and FixtureAdapter
-    # under the pipeline's own pins (requirements.txt), which hold no dlt
-    # and no pyarrow (measured 2026-10-02: with every package
-    # requirements.txt does not pin blocked, `import dlt` stopped parity.py's
+    # Imported here, not at the top: parity.py's old sides (today's exporters)
+    # import FixtureConnection and FixtureAdapter under requirements.txt's
+    # pins, which hold no dlt and no pyarrow (measured 2026-10-02: with every
+    # package requirements.txt does not pin blocked, `import dlt` stopped the
     # closures, reports and atc_updates old sides).
     from extract._run import LANES, lane_resources, make_pipeline, run_pipeline
     from extract._warehouse import load_warehouse
@@ -515,9 +501,9 @@ def build(raw_dir: Path, warehouse: Path, store: Path) -> dict[str, int]:
     # URL, so fixture mode names one that no real driver could reach.
     real_psycopg, url_was = _kinds.psycopg, os.environ.get(export_conditions.URL_ENV_VAR)
     postgres = conditions_fixture(raw_dir, POSTGRES_FIXTURE)
-    # No host is asked anything here, so neither host's crawl delay, ATC's
-    # Crawl-delay nor the Hike Finder's 10 s a request, has anybody to be
-    # polite to. Both are the live hosts' asks, restored below.
+    # No host is asked anything here, so ATC's Crawl-delay and the Hike
+    # Finder's 10 s a request, both the live hosts' asks, are set to 0 and
+    # restored below.
     crawl_delay, real_throttle = _kinds.ATC_CRAWL_DELAY_SECONDS, _kinds.HIKEFINDER_THROTTLE_SECONDS
     _kinds.ATC_CRAWL_DELAY_SECONDS, _kinds.HIKEFINDER_THROTTLE_SECONDS = 0, 0
     _kinds.session = fixture_session

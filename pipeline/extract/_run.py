@@ -6,61 +6,50 @@ Usage: python -m extract._run --lane monthly --bucket-url file:///path/to/raw-st
        python -m extract._run --lane monthly --only raw_registry__sources \\
            --bucket-url file:///tmp/registry-store --warehouse data/warehouse.duckdb
 
-`--lane` is a lane (`monthly`, `hourly`) or a conditions leg
-(`conditions_production`, `conditions_ua`: the hourly lane for one data
-environment, in a dlt pipeline of its own; LEGS below). `--raw-bucket` names
-the private raw bucket and puts the run at its pipeline's own prefix
-(raw_store_url); `--bucket-url` gives the whole URL instead. `--only` keeps
-the named tables of the lane and nothing else. `--warehouse` loads every
-table the run's pipeline has committed into that DuckDB file's `raw` schema
-afterwards (extract/_warehouse.py's committed-file read). `--summary` appends
-the run's evidence, as Markdown, to a file: rows and the upstream's own
-count per table, every refusal and unavailable resource, and how long each
-part took. It is written on a refused run too, before the exit.
+A lane is one scheduled extract job and the cadences it carries (LANES):
+`monthly`, or `hourly`, which also runs daily resources when due. A
+conditions leg (LEGS) is the hourly lane for one data environment, as a dlt
+pipeline of its own. `--help` describes each flag; `--summary` is written on
+a refused run too.
 
-A conditions leg isolates each upstream: it reads every resource on its own
-first, within `--read-seconds`, and one whose read fails, runs out of time or
-is refused by the run check is left out while the rest load, its last
-committed table standing. OurHike's own Postgres rows still stop the whole
-leg (stops_the_leg). A leg that left something out exits PARTIAL_EXIT (3),
-so its job still goes red after it has published what did load.
+The steps, as pipeline/ELT.md designs them in "Change checks, verdicts and
+`_loaded_at`" and "A full reload that cannot empty a safety table" (#1793 —
+Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly
+refresh, published docs, and lighter phone downloads):
 
-pipeline/ELT.md, "Change checks, verdicts and `_loaded_at`" and "A full reload
-that cannot empty a safety table", is the design (#1793 — Rebuild the data
-platform as dlt → dbt: seven contracted marts, a monthly refresh, published
-docs, and lighter phone downloads). In order:
-
-1. Each resource's change check runs, before dlt. FRESH leaves the resource
-   out of the run, so its table keeps the rows it has; STALE and UNKNOWN both
-   read it whole.
+1. Each resource's change check, before dlt, compares the upstream's change
+   marker (an ETag, a newest edit date), where it has one, with the one its
+   last committed load recorded. FRESH leaves the resource out, so its table
+   keeps its rows; STALE and UNKNOWN both read it whole.
 2. dlt extracts and normalizes what is left, every table `replace`.
-3. The run check: each table present, non-empty unless its type may be empty
-   and the upstream's own count says zero, not shorter than that count, and
-   not collapsed below half its last loaded size. A failure aborts the
-   package, so nothing lands and no change marker advances.
-4. The load, then the after-run check: the load committed, and the rows on
-   disk are the rows normalized. A failure records `unverified`, and the
-   warehouse step refuses to read the tables (extract/_warehouse.py).
+3. The run check (run_check()): each table present, non-empty unless its
+   type may be empty and the upstream's own count says zero, not shorter than
+   that count, and not below COLLAPSE_FLOOR of its last loaded size. A
+   failure aborts the package, so nothing lands and no marker advances.
+4. The load, then the after-run check (committed()): the load committed, and
+   the rows on disk are the rows normalized. A failure logs `unverified`, and
+   extract/_warehouse.py refuses to read the tables.
 5. One `_extract_runs` row per resource per run, skipped ones included.
 
-What is not built yet, and ELT.md designs: the as-sent copy beside dlt's
-normalized one (`_source_path`), the raw lake (DuckLake) for the monthly lane,
-the daily and weekly lanes, and fixture mode for CI's dbt job.
+A conditions leg isolates each upstream (_extract_and_load()): one that
+fails or is refused is left out while the rest load, and the leg exits
+PARTIAL_EXIT (3) so its job still goes red. OurHike's own Postgres rows
+still stop the whole leg (stops_the_leg()).
 
-THE AS-LANDED COPY (--as-landed, the monthly lane's refresh-reference.yml):
-a stand-in for the as-sent copy, built so the go/no-go gate's parity can run
-today's exporters on exactly the rows the dbt side read (decision 30, "the
-same frozen inputs run through the old and the new pipeline"). For each
-ArcGIS, Socrata and opentrail resource that ran, the rows it yielded are
-written back out as the GeoJSON file today's fetcher would have written, at
-the fetcher's own path under data/raw/ (`as_landed_path`), and uploaded to
-`<bucket-url>/as_landed/<load_id>/` once the load has committed and the run
-log is written. It is NOT the upstream's bytes, in two ways: person fields
-are already left out (the resource never asked for them), and an ArcGIS
-feature's GeoJSON `id` member is gone, because the resource does not land it
-(TL05's ledger row). So parity on it compares today's exporters with dbt on
-one input; it says nothing about today's fetchers against the dlt resources,
-which tests/test_extract_run.py and the run check hold instead.
+Not built yet, and designed in ELT.md: the as-sent copy beside dlt's
+normalized one (`_source_path`), the raw lake (DuckLake) for the monthly
+lane, and a lane for `weekly` resources.
+
+THE AS-LANDED COPY (--as-landed, refresh-reference.yml's monthly run) stands
+in for the as-sent copy so parity.py, for ELT.md's go/no-go gate, can run
+today's exporters on exactly the rows dbt read (decision 30). Each ArcGIS,
+Socrata and opentrail resource that ran is written back out as its fetcher's
+GeoJSON file (as_landed_path()) and uploaded to
+`<bucket-url>/as_landed/<load_id>/` after the load commits and the run log is
+written. It is not the upstream's bytes (person fields were never asked for,
+and an ArcGIS feature's GeoJSON `id` is not landed: ELT.md's ledger row TL05),
+so it tests today's exporters against dbt, not today's fetchers against the
+dlt resources, which tests/test_extract_run.py and the run check hold.
 """
 
 from __future__ import annotations
@@ -81,11 +70,11 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
-# Before dlt is imported, and here as well as in .dlt/config.toml, so a run
-# started from any directory has both: telemetry is on by default, to
-# telemetry.scalevector.ai, from a job holding R2 write keys; and `snake_case`,
-# dlt's default naming, turns `GlobalID` into `global_id` where 16 staging
-# models read `globalid` (ELT.md, "dlt configuration requirements").
+# Set before dlt is imported, and in .dlt/config.toml too, so a run from any
+# directory has both. dlt's telemetry is on by default, to
+# telemetry.scalevector.ai, from jobs holding R2 write keys; dlt's default
+# naming turns `GlobalID` into `global_id` where 16 staging models read
+# `globalid` (ELT.md, "dlt configuration requirements").
 os.environ.setdefault("RUNTIME__DLTHUB_TELEMETRY", "false")
 os.environ.setdefault("SCHEMA__NAMING", "sql_ci_v1")
 
@@ -113,21 +102,17 @@ from extract._kinds import (  # noqa: E402
 from lib.freshness_state import Freshness  # noqa: E402
 from lib.source_registry import is_arcgis_feature_layer, is_external_source  # noqa: E402
 
-# Which cadences each lane carries. Daily and weekly resources would ride the
-# hourly pipeline when due (ELT.md); none of the folders extracted so far has
-# one, so no lane carries them yet and the layout test refuses one.
+# Which cadences each lane carries. A daily resource rides the hourly lane and
+# runs when due (DUE_AFTER). No resource is weekly yet, so no lane carries
+# `weekly` and tests/test_extract_layout.py refuses a resource that is.
 LANES = {"monthly": ("monthly",), "hourly": ("hourly", "daily")}
 # The conditions legs: publish-conditions.yml runs the hourly lane once per
-# data environment, and each leg is a dlt pipeline of its own, so each has its
-# own prefix in the raw store, its own markers and its own `_extract_runs`.
-# OurHike's Postgres rows are why: each leg reads its own environment's
-# database (ConditionsQuery's CONDITIONS_DATABASE_URL), and one pipeline for
-# both would replace production's closures table with UA's and back again
-# every hour, which the workflow's matrix exists to prevent (ELT.md, "The
-# hourly lanes"). ELT.md names per-environment raw tables for that
-# (`raw_ourhike_production__*`); a pipeline per leg separates them by prefix
-# instead and leaves every table name, and so every dbt source, as it is
-# (Reasoned). Not in LANES, so fixture mode, which runs each lane of LANES,
+# data environment, each leg its own dlt pipeline (own raw-store prefix,
+# markers and `_extract_runs`), because each reads its own environment's
+# Postgres (CONDITIONS_DATABASE_URL) and one pipeline would swap production's
+# closures table for UA's every hour (ELT.md, "The hourly lanes"). A prefix
+# per leg, rather than ELT.md's `raw_ourhike_production__*` table names,
+# keeps every dbt source unchanged (Reasoned). Not in LANES, so fixture mode
 # does not run the hourly resources three times.
 LEGS = {"conditions_production": "hourly", "conditions_ua": "hourly"}
 # A daily resource has no job of its own: it rides the hourly lane and runs
@@ -144,22 +129,21 @@ RUNS_TABLE = "_extract_runs"
 UNAVAILABLE = "unavailable"
 # The outcome of a carrying resource whose read ran out of budget before it
 # had every row (extract/_contract.py's Incomplete): left out of the run, its
-# last committed table standing, or, never loaded, not yet loaded.
+# last committed table standing (on a first run, not yet loaded).
 INCOMPLETE = "incomplete"
-# What an incomplete read had read, kept for the next run to carry and never
-# read as the data: one row per page, `row_json` the row as the resource
-# yielded it, under `resource_name`. Written whole, `replace`, in the run
-# log's own load, which every run commits, refused or not, so what a read
-# fetched survives a run whose other tables were refused. extract/_warehouse.py
-# loads only the tables `_extract_runs` names, which this never is.
+# What an incomplete read had read, kept for the next run to carry on from and
+# never read as data: one row per row read, `row_json` as the resource yielded
+# it. Replaced whole in the run log's own load, which every run commits, so it
+# survives a run whose other tables were refused. extract/_warehouse.py loads
+# only tables `_extract_runs` names, which this never is.
 PROGRESS_TABLE = "_extract_progress"
 
-#: Another lane's resources a lane also reads into its own raw store when run
-#: with `cross_lane=True` (--cross-lane-inputs, refresh-reference.yml), each
-#: with the reason. A node is built by one lane (build_marts.py --lane); where
-#: a node of this lane reads a table another lane lands, this lane lands its
-#: own copy at its own time, so its warehouse holds every table its nodes read
-#: and its pin freezes it. Never in fixture mode, whose lanes share one store.
+#: Other lanes' resources a lane also lands in its own raw store with
+#: `cross_lane=True` (--cross-lane-inputs, refresh-reference.yml), each with
+#: the reason. A dbt node is built by one lane (build_marts.py --lane), so the
+#: lane lands its own copy of every table its nodes read, and its pinned
+#: raw_run (extract/_warehouse.py) freezes them. Never in fixture mode, whose
+#: lanes share one store.
 ALSO_READS: dict[str, dict[str, str]] = {
     "monthly": {
         "raw_nysparks__oprhp_trail_closures": (
@@ -218,22 +202,20 @@ class RunReport:
     hints: dict[str, dict] = field(default_factory=dict)
     # Resources whose change check raised Unavailable, by name: why each was left out.
     unavailable: dict[str, str] = field(default_factory=dict)
-    # Seconds each part of the run took, in the order they ran: the change
-    # checks, extract, normalize, load, the run log. A part a run did not
-    # reach is absent.
+    # Seconds each timed() part took, in the order they ran (sync, change
+    # checks, read, extract, normalize, load, after-run check, run log,
+    # warehouse). A part a run did not reach is absent.
     timings: dict[str, float] = field(default_factory=dict)
     # A conditions leg only: resources refused on their own while the rest
-    # loaded, by name, with why. Each keeps its last committed table and is
-    # logged `refused` (ISOLATED_OUTCOME); the command line then exits
-    # PARTIAL_EXIT, so the run still goes red.
+    # loaded, by name, with why. Each keeps its last committed table, is logged
+    # ISOLATED_OUTCOME, and makes the command line exit PARTIAL_EXIT.
     isolated: dict[str, str] = field(default_factory=dict)
     # {table: path under data/raw/} of the as-landed files this run uploaded under
     # `as_landed/<load_id>/`; empty unless run_pipeline(as_landed=True).
     as_landed: dict[str, str] = field(default_factory=dict)
-    # Carrying resources whose read ran out of budget this run (Incomplete),
-    # by name, with how far it got: left out, their last committed table
-    # standing or, on a first run, not yet loaded. Not a refusal, so the exit
-    # stays 0; a read that fit no page at all raises instead, and is isolated.
+    # Carrying resources whose read ran out of budget (INCOMPLETE), by name,
+    # with how far it got. Not a refusal, so the exit stays 0; a read that fit
+    # no page at all raises instead, and is isolated.
     incomplete: dict[str, str] = field(default_factory=dict)
     # What each incomplete read had read, by name, which write_run_log keeps
     # in PROGRESS_TABLE for the next run.
@@ -278,7 +260,7 @@ def cross_lane_resources(lane: str, resources: list[Resource], own: list[Resourc
 
 
 #: The raw store's prefix for dlt's files, inside the private bucket: raw
-#: under `raw/` (decision 43) and one prefix per dlt pipeline (ELT.md,
+#: under `raw/` (ELT.md decision 43) and one prefix per dlt pipeline (ELT.md,
 #: "Storage tiers": `dlt/<pipeline>/raw/<table>/…`), where dlt itself adds
 #: the dataset, `raw`, and the table.
 RAW_STORE_PREFIX = "raw/dlt"
@@ -287,13 +269,11 @@ RAW_STORE_PREFIX = "raw/dlt"
 def raw_store_url(bucket: str, lane: str) -> str:
     """`s3://<bucket>/raw/dlt/<lane>`: one lane's, or one leg's, own prefix in the raw store.
 
-    The prefix is the lane's name as ELT.md's "Storage tiers" writes it
-    (`dlt/monthly/`, and `conditions_production` and `conditions_ua` for the
-    legs), which is also the prefix refresh-reference.yml's monthly lane
-    writes, so two lanes or legs never share a table file, a marker or a run
-    log. dlt's own pipeline is `ourhike_<lane>` (make_pipeline). dlt reads the
-    endpoint and the keys from `DESTINATION__FILESYSTEM__CREDENTIALS__*`,
-    never from here.
+    Named for the lane as ELT.md's "Storage tiers" writes it (`dlt/monthly/`,
+    the prefix refresh-reference.yml's monthly run writes), and for each leg by
+    its own name, so no two lanes or legs share a table file, a marker or a run
+    log. dlt reads the endpoint and keys from
+    `DESTINATION__FILESYSTEM__CREDENTIALS__*`, never from here.
     """
     cadences_of(lane)  # refuses an unknown lane before any URL is made
     if not bucket or "/" in bucket or ":" in bucket:
@@ -312,14 +292,13 @@ ISOLATED_OUTCOME = "refused"
 def stops_the_leg(resource: Resource) -> bool:
     """Whether a refused or failed read of this resource stops the whole leg, rather than only itself.
 
-    OurHike's own conditions rows do (ConditionsQuery): their reader's problem
-    "stops the lane, as it stops the bake" (extract/_shared/ourhike/closures.py),
-    because export_conditions.py today publishes nothing when it cannot read
-    the database, and a phone then keeps the last file with its true age.
-    Every other upstream is somebody else's site, and its failure is its own:
-    the leg leaves it out and its last committed table stands, as today's bake
-    carries ATC's and NYNJTC's previous cache forward when either is
-    unreachable (publish-conditions.yml's fetch steps).
+    OurHike's own Postgres rows (ConditionsQuery) do, as they stop
+    export_conditions.py today (extract/_shared/ourhike/closures.py): it
+    publishes nothing when it cannot read the database, and a phone keeps the
+    last file with its true age. Every other upstream is somebody else's site
+    and fails on its own: the leg leaves it out and its last committed table
+    stands, as publish-conditions.yml's fetch steps carry ATC's and NYNJTC's
+    previous cache forward when either is unreachable.
     """
     return isinstance(resource, ConditionsQuery)
 
@@ -327,23 +306,18 @@ def stops_the_leg(resource: Resource) -> bool:
 def read_each(report: RunReport, to_run: list[Planned], seconds: float | None) -> tuple[list[Planned], dict]:
     """Read every resource's rows before dlt runs, so one upstream's failure, or its slowness, is its own.
 
-    One thread per extract folder, so a club's own resources are asked one
-    after another, as they would be in one run, and no host is asked twice at
-    once; the folders run side by side. `seconds` is the whole read's budget:
-    a folder still reading when it runs out leaves its unread resources out
-    of this run. Nothing waits on them, and nothing shortens a host's
-    Crawl-delay to fit (lib/http_retry.py's throttle is the resource's own);
-    a daemon thread is abandoned, and dies with the process.
+    One thread per extract folder, so a club's resources are read one after
+    another and no host is asked twice at once. `seconds` is the whole read's
+    budget: a folder still reading at the end leaves its unread resources out
+    of this run, and its daemon thread is abandoned. No host's Crawl-delay is
+    shortened to fit (lib/http_retry.py's throttle is the resource's own).
+    A carrying resource (Resource.carries) gets what is left of the budget, so
+    it can stop in time: it answers Incomplete and goes in `report.incomplete`
+    (what it read in `report.progress`) rather than being refused.
 
-    A carrying resource (Resource.carries) is handed what is left of the
-    budget, so it can stop before it is abandoned and keep what it read: one
-    that runs out answers Incomplete, lands nothing, and is in
-    `report.incomplete`, its progress in `report.progress`, rather than
-    refused.
-
-    Returns the resources that answered, and {name: rows}. A resource whose
-    read failed, or ran out of time, is in `report.isolated`, or, where
-    stops_the_leg() says so, re-raised.
+    Returns the resources that answered, and {name: rows}. One whose read
+    failed or ran out of time goes in `report.isolated`, or is re-raised where
+    stops_the_leg() says so.
     """
     results: dict[str, object] = {}
 
@@ -449,18 +423,14 @@ def make_pipeline(lane: str, bucket_url: str, pipelines_dir: str | None = None):
 def store_schema(pipeline) -> dlt.Schema:
     """The one dlt schema everything a lane writes goes into: the store's default, or SOURCE_NAME's in a store with none.
 
-    dlt extracts its own state into the default schema's load package, so any
-    other schema makes a second package in the same run, and _extract_and_load
-    refuses a run that commits two. The monthly lane's first run
-    (refresh-reference.yml, 37058045092) was refused before its load, and its
-    second (37070628933) refused with "one load expected from this run, and 2
-    committed". tests/test_extract_run.py reproduces both: the refused run's
-    log, a bare resource, takes a schema named after the pipeline
-    (`ourhike_<lane>`), which becomes the store's default, and the next run's
-    `extract` schema is then a second one. The R2 store's own schema list was
-    not read (Reasoned from the reproduction). Writing to the default schema
-    when there is one keeps a store an older build left like that on one
-    package a run.
+    dlt puts its own state in the default schema's load package, so a second
+    schema makes a second package, which _extract_and_load refuses ("one load
+    expected from this run, and 2 committed": refresh-reference.yml's monthly
+    run 37070628933, after 37058045092 was refused before its load).
+    tests/test_extract_run.py reproduces it: a refused run's log, a bare
+    resource, makes `ourhike_<lane>` the store's default schema, and the next
+    run's `extract` schema is a second one. Reasoned from that reproduction;
+    the R2 store's own schema list was not read.
     """
     if pipeline.default_schema_name:
         return pipeline.default_schema
@@ -548,11 +518,10 @@ def as_landed_path(resource: Resource) -> str | None:
     """Where today's fetcher writes this resource's layer, relative to data/raw/, or None for a kind it has no file for.
 
     fetch_all.py writes each `is_arcgis_feature_layer` entry to
-    data/raw/<key>.geojson (its RAW_DIR, `out_path = RAW_DIR / f"{key}.geojson"`);
-    fetch_external_layers.py writes every other organization's layer, ArcGIS or
-    Socrata, to data/raw/external/<key>.geojson; fetch_opentrail.py writes
-    OPENTRAIL_RAW_NAME. Those are the paths extract/_fixtures.py's
-    fixture_file() reads back, and every exporter parity.py runs reads.
+    data/raw/<key>.geojson; fetch_external_layers.py writes every other
+    organization's layer, ArcGIS or Socrata, to data/raw/external/<key>.geojson;
+    fetch_opentrail.py writes OPENTRAIL_RAW_NAME. extract/_fixtures.py's
+    fixture_file() and every exporter parity.py runs read those paths.
     """
     if isinstance(resource, OpentrailFeed):
         return OPENTRAIL_RAW_NAME
@@ -780,12 +749,10 @@ def readable_tables(pipeline, log: list[dict], complete: set[str]) -> set[str]:
 def committed_rows(pipeline, table: str, *, log: list[dict] | None = None, complete: set[str] | None = None) -> tuple[dict, ...]:
     """The table's rows as its last committed load left them, dlt's own columns dropped; () where it has none.
 
-    The load is the one extract/_warehouse.py's committed_tables() would
-    serve (the table's latest `loaded` run whose load `_dlt_loads` records
-    complete, and not withdrawn since), and its files are listed by that
-    load id, never globbed, so nothing an uncommitted package left behind is
-    carried. Imported here rather than at the top, because that module
-    imports this one.
+    The load is the one extract/_warehouse.py's committed_tables() serves, and
+    its files are listed by that load id, never globbed, so nothing an
+    uncommitted package left behind is carried. Imported here rather than at
+    the top, because that module imports this one.
     """
     from extract._warehouse import committed_tables
 
@@ -799,11 +766,10 @@ def committed_rows(pipeline, table: str, *, log: list[dict] | None = None, compl
 def stored_progress(pipeline, complete: set[str] | None = None) -> dict[str, list[dict]]:
     """What earlier incomplete reads kept (PROGRESS_TABLE), by resource name: the newest committed load's rows.
 
-    The files are those of one load, the newest that `_dlt_loads` records
-    complete and that wrote this table, picked out by the load id in each
-    file's name: a `replace` load deletes the files before it, so this is the
-    one snapshot there is, and a load cut short, which never commits, is
-    passed over for the last that did.
+    The load is the newest that `_dlt_loads` records complete and that wrote
+    this table, found by the load id in each file's name. A `replace` load
+    deletes the files before it, so that is the one snapshot; a load cut
+    short never commits, and is passed over for the last that did.
     """
     files = table_files(pipeline, PROGRESS_TABLE)
     if not files:
@@ -920,14 +886,13 @@ def write_run_log(
     ]
     for item in planned:
         resource = item.resource
-        # An isolated resource (a conditions leg's, refused on its own) is
-        # logged like a FRESH one in what it leaves behind, no rows and no
-        # load, and as refused in its outcome: committed_tables() then keeps
-        # reading its last committed load, and due() does not count the check.
+        # An isolated resource (refused on its own by a leg) and an incomplete
+        # read leave what a FRESH one leaves, no rows and no load, and are
+        # logged `refused` or `incomplete`, so committed_tables() keeps serving
+        # the last committed load and due() does not count the check. An
+        # incomplete one keeps its column hints, so the warehouse can create a
+        # table not yet loaded, empty, rather than refuse the build.
         isolated = resource.name in report.isolated
-        # An incomplete read (a carrying resource out of budget) leaves the same
-        # nothing behind, and is logged `incomplete`; it keeps its column hints, so
-        # the warehouse can name a table not yet loaded rather than refuse the build.
         incomplete = resource.name in report.incomplete
         skipped = item.verdict is Freshness.FRESH or isolated or incomplete
         outcome = ISOLATED_OUTCOME if isolated else INCOMPLETE if incomplete else "skipped" if skipped else report.outcome
@@ -1003,12 +968,10 @@ def run_pipeline(
     """One lane, or one conditions leg, end to end. Raises ExtractRefused, after logging, when either check fails.
 
     Whatever it raises carries the run's RunReport as `.report` where the
-    exception will take one, so a caller can say what the run got to.
-    `read_seconds` is a conditions leg's budget for reading its upstreams
-    (read_each()); the lanes ignore it.
-    `as_landed` also writes the as-landed copy (the module docstring) for every
-    resource that ran, after the load commits and the run log is written.
-    `cross_lane` also reads the other lanes' resources ALSO_READS names for this lane.
+    exception takes one, so a caller can say how far the run got.
+    `read_seconds` is a conditions leg's read budget (read_each()); the lanes
+    ignore it. `as_landed` also writes the as-landed copy (the module
+    docstring). `cross_lane` also reads ALSO_READS' resources for this lane.
     """
     cadences_of(lane)
     if resources is None:
@@ -1041,16 +1004,13 @@ def _run(
     as_landed: bool = False,
 ) -> None:
     pipeline = make_pipeline(lane, bucket_url, pipelines_dir)
-    # A run that died after its extract and before its load committed leaves
-    # its package pending in the working directory, and its resource state
-    # with it. Kept, the next run reads that uncommitted marker as recorded and
-    # answers FRESH for a change it never loaded, and the run log's own
-    # pipeline.run() commits the dead package without an `_extract_runs` row
-    # (measured 2026-10-01: tests/test_extract_run.py's
-    # test_a_load_that_dies_before_it_commits...). Dropped first, then synced,
-    # the committed marker comes back (the dlt skill, "A marker advances only
-    # when a load commits"). CI's runners start with no working directory, so
-    # this bites a reused one: a laptop, a cached runner.
+    # Drop a package a dead run left pending, then sync, so the committed
+    # marker comes back. Kept, the next run reads the dead run's uncommitted
+    # marker and answers FRESH for a change it never loaded, and the run log's
+    # pipeline.run() commits the dead package with no `_extract_runs` row
+    # (measured 2026-10-01, tests/test_extract_run.py's
+    # test_a_load_that_dies_before_it_commits...). CI's runners start with no
+    # working directory; a laptop or a cached runner may not.
     with timed(report, "sync"):
         if pipeline.has_pending_data:
             print(f"::warning title={lane} dropped an uncommitted load::a previous run died before its load committed")
@@ -1065,16 +1025,12 @@ def _run(
     planned, unavailable = [], []
     with timed(report, "change checks"):
         for resource in plan_resources:
-            # A MARKER COUNTS ONLY BESIDE ROWS A BUILD CAN READ. dlt commits a
-            # resource's marker with its load's state, and a load can commit
-            # with no `_extract_runs` row to say so: the monthly lane's second
-            # run (refresh-reference.yml, 37070628933) committed and then
-            # refused before its run log. committed_tables() rightly serves no
-            # such load, but its markers stood, so the third run (37081046157)
-            # answered 53 resources FRESH whose rows no build could see, and
-            # the pin then had no raw_nysparks__oprhp_trails to hand
-            # export_nearby_trails.py. A marker whose table has no logged,
-            # committed load is read as no marker: the resource fetches again.
+            # A MARKER COUNTS ONLY BESIDE ROWS A BUILD CAN READ: one whose table
+            # has no logged, committed load (`current`) is read as none, and the
+            # resource fetches again. A load can commit its markers with no
+            # `_extract_runs` row: refresh-reference.yml's monthly run 37070628933
+            # did, and the next (37081046157) answered 53 resources FRESH whose
+            # rows no build could see, raw_nysparks__oprhp_trails among them.
             before = recorded.get(resource.name) if resource.table in current else None
             try:
                 verdict, marker = resource.change_check(before)
@@ -1133,15 +1089,13 @@ def _extract_and_load(
 
     `progress` is _run()'s: what PROGRESS_TABLE holds after this run, given
     the resources that loaded, which every run log written here carries."""
-    # A CONDITIONS LEG ISOLATES EACH UPSTREAM. One club's failure must not hold
-    # back another club's closures, so a leg reads every resource on its own
-    # first (read_each), and a resource whose read fails, runs out of time or
-    # is refused by the run check is left out of this run, as a FRESH one is:
-    # its last committed table stands, it is logged `refused`, and the rest
-    # load. OurHike's own rows are the exception (stops_the_leg). ELT.md's "A
-    # full reload that cannot empty a safety table" reasoned that a refusal
-    # costs the whole leg an hour; this is the change that stops it doing so.
-    # The monthly and hourly lanes are unchanged: one refusal refuses the run.
+    # A CONDITIONS LEG ISOLATES EACH UPSTREAM, so one club's failure does not
+    # hold back another club's closures. A leg reads every resource first
+    # (read_each), and one whose read fails, runs out of time or is refused by
+    # the run check is left out like a FRESH one: its last committed table
+    # stands, it is logged `refused`, and the rest load (extracted again after
+    # a run-check refusal). OurHike's own rows are the exception
+    # (stops_the_leg). On the monthly and hourly lanes one refusal refuses the run.
     read = None
     if to_run and lane in LEGS:
         with timed(report, "read"):
@@ -1245,14 +1199,12 @@ def report_document(report: RunReport) -> dict:
 def summary_markdown(report: RunReport | None, lane: str, *, failure: BaseException | None = None) -> str:
     """The run's evidence as Markdown, for `$GITHUB_STEP_SUMMARY`: what each table loaded, and why a run stopped.
 
-    One row per resource the run planned: its verdict, the rows it landed,
-    and the upstream's own count read in the same run, blank where the
-    platform has none and never written as 0 for it. A FRESH resource lands
-    nothing and keeps its last committed table, so its rows read "kept"; an
-    unavailable one is withdrawn from the warehouse, and reads "withdrawn"; a
-    carrying read that ran out of budget landed nothing, and reads so.
-    A run that stopped before normalize has no counts at all, and its rows
-    are left blank rather than written as zero.
+    One row per resource the run planned: its verdict, the rows it landed, and
+    the upstream's own count read in the same run, blank where the platform
+    has none and never written as 0. The rows read "kept" for a FRESH resource
+    (its last committed table stands), "withdrawn" for an unavailable one, and
+    say so for a refused or incomplete one. A run that stopped before
+    normalize has no counts, so its rows are blank rather than zero.
     """
     lines = [f"### Extract: `{lane}`", ""]
     if report is None:
@@ -1341,9 +1293,8 @@ def main(argv: list[str] | None = None) -> RunReport:
     )
     args = parser.parse_args(argv)
     if args.only and args.cross_lane_inputs:
-        # --only keeps the named tables and nothing else, so ALSO_READS' tables
-        # would be missing and cross_lane_resources() would refuse them by a
-        # name the command line never gave.
+        # Otherwise cross_lane_resources() would refuse ALSO_READS' tables,
+        # which --only removed, by a name the command line never gave.
         parser.error("--only keeps only the tables it names, so it cannot also read --cross-lane-inputs' tables")
     bucket_url = args.bucket_url or raw_store_url(args.raw_bucket, args.lane)
     resources = all_resources(discover() + discover_shared())

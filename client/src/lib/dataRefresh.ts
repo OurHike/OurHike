@@ -60,7 +60,11 @@ import {
   type ArtifactChange,
   type PublishedSnapshot,
 } from './dataManifest'
-import { SESSION_FOLLOWS_POINTER, SESSION_RELEASE } from './dataRelease'
+import {
+  releaseSortsBefore,
+  SESSION_FOLLOWS_POINTER,
+  SESSION_RELEASE,
+} from './dataRelease'
 
 /** Where the record of what this phone downloaded lives. Beside the data it
  *  describes (`trailData.ts`'s keys), under the same `ourhike:` prefix. */
@@ -112,9 +116,15 @@ export interface StoredRelease {
  *  so a test can hold each case; the app's value is lib/dataRelease.ts's. */
 export interface SessionRelease {
   followsPointer: boolean
+  /** The release folder this session reads, whose manifest is the snapshot
+   *  on offer (lib/dataRelease.ts's RELEASE_MANIFEST_PATH). */
+  release: string
 }
 
-const THIS_SESSION: SessionRelease = { followsPointer: SESSION_FOLLOWS_POINTER }
+const THIS_SESSION: SessionRelease = {
+  followsPointer: SESSION_FOLLOWS_POINTER,
+  release: SESSION_RELEASE,
+}
 
 /** A connection good enough to spend megabytes on without asking twice.
  *
@@ -172,6 +182,15 @@ export interface AvailableRefresh {
    * genuinely unknown.
    */
   described: boolean
+  /**
+   * Whether the release on offer was minted BEFORE the one this phone's data
+   * came from (lib/dataRelease.ts's releaseSortsBefore): the pointer moved
+   * back, as a rollback moves it. Still offered, because the pointer is the
+   * reviewed answer to which release a phone reads, but chrome/TrailDataUpdate
+   * must not call it newer. False where either release is unknown, as on a
+   * record written before decision 44, which never stamped one.
+   */
+  older: boolean
   added: number
   removed: number
   moved: number
@@ -229,7 +248,8 @@ export function availableRefresh(
   // mirror of the pointer record was lost and the record and the data were
   // not (lib/dataRelease.ts); the next launch reads the repaired mirror and
   // asks honestly. A deliberate rollback is not this case: it moves the
-  // pointer, and a session following the pointer offers it like any move.
+  // pointer, and a session following the pointer offers it like any move,
+  // marked `older` below so the row does not call it newer.
   if (!session.followsPointer && stored.fromPointer === true) return null
 
   const keys = Object.keys(stored.hashes)
@@ -257,7 +277,17 @@ export function availableRefresh(
     ? (sizes as number[]).reduce((total, size) => total + size, 0)
     : null
 
-  return { version: snapshot.version, keys, described: complete, ...rolled, bytes }
+  const older =
+    stored.release !== undefined && releaseSortsBefore(session.release, stored.release)
+
+  return {
+    version: snapshot.version,
+    keys,
+    described: complete,
+    older,
+    ...rolled,
+    bytes,
+  }
 }
 
 /** Whether to caution the hiker about what this costs before they accept it.

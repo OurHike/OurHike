@@ -172,6 +172,25 @@ export interface ChannelRecord {
 const RELEASE_ID = /^\d{4}-\d{2}-\d{2}(-\d+)?$/
 
 /**
+ * Whether release id `a` was minted before `b`, in the order
+ * lib/releases.next_release_id mints them: by date, then by the same-day
+ * suffix, where the unsuffixed id is the first of its day and `-2` the
+ * second. The suffix is compared as a number, so `2026-09-24-10` comes after
+ * `2026-09-24-2`, which a string compare gets backwards. False when either is
+ * not an id, because then neither is known to be older.
+ */
+export function releaseSortsBefore(a: string, b: string): boolean {
+  const first = RELEASE_ID.exec(a)
+  const second = RELEASE_ID.exec(b)
+  if (first === null || second === null) return false
+  const [dayA, dayB] = [a.slice(0, 10), b.slice(0, 10)]
+  if (dayA !== dayB) return dayA < dayB
+  const nth = (suffix: string | undefined) =>
+    suffix === undefined ? 1 : Number(suffix.slice(1))
+  return nth(first[1]) < nth(second[1])
+}
+
+/**
  * The data environment a base URL serves. A non-production environment's
  * tree is `environments/<name>/` in the bucket (pipeline/lib/data_env.py's
  * `prefix_for`), and ua.yml builds UA against exactly that; production is the

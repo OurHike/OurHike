@@ -281,31 +281,77 @@ describe('a session reading the compiled fallback', () => {
     sizes: { 'poi_water.geojson': 1_000 },
     changes: { 'poi_water.geojson': routine },
   })
+  const onFallback = { followsPointer: false, release: DATA_RELEASE }
+  const onPointer = { followsPointer: true, release: DATA_RELEASE }
 
   it('never offers the fallback over data the pointer brought, which is newer than it', () => {
     // The mirror of the pointer record was lost and the data was not: offering
     // the fallback here would offer older water as "newer trail data".
     const fromPointer = { ...stored('v1', held), fromPointer: true }
-    expect(availableRefresh(fromPointer, newer, { followsPointer: false })).toBeNull()
+    expect(availableRefresh(fromPointer, newer, onFallback)).toBeNull()
   })
 
   it('offers a move of the pointer over data the pointer brought, a rollback included', () => {
     const fromPointer = { ...stored('v1', held), fromPointer: true }
-    expect(availableRefresh(fromPointer, newer, { followsPointer: true })?.version).toBe(
-      'v2',
-    )
+    expect(availableRefresh(fromPointer, newer, onPointer)?.version).toBe('v2')
   })
 
   it('offers what it always offered over data the compiled pin brought', () => {
     const fromPin = { ...stored('v1', held), fromPointer: false }
     const writtenBeforeDecision44 = stored('v1', held)
-    expect(availableRefresh(fromPin, newer, { followsPointer: false })?.version).toBe(
+    expect(availableRefresh(fromPin, newer, onFallback)?.version).toBe('v2')
+    expect(availableRefresh(writtenBeforeDecision44, newer, onFallback)?.version).toBe(
       'v2',
     )
-    expect(
-      availableRefresh(writtenBeforeDecision44, newer, { followsPointer: false })
-        ?.version,
-    ).toBe('v2')
+  })
+})
+
+// chrome/TrailDataUpdate says "Newer trail data" unless `older` is set, so
+// `older` is what keeps a rollback from being offered as newer water.
+describe('a move to a release minted before the one held', () => {
+  const held = { 'poi_water.geojson': 'aaa' }
+  const moved = snapshot({
+    version: 'v2',
+    previousVersion: 'v1',
+    hashes: { 'poi_water.geojson': 'bbb' },
+    changes: { 'poi_water.geojson': routine },
+  })
+  const holding = (release: string): StoredRelease => ({
+    ...stored('v1', held),
+    release,
+    fromPointer: false,
+  })
+  const following = (release: string) => ({ followsPointer: true, release })
+
+  it('still offers a pointer that moved back, and marks it older', () => {
+    // A first run took the compiled 2026-09-24-2, and the pointer this
+    // session follows names the earlier 2026-09-24.
+    const offer = availableRefresh(
+      holding('2026-09-24-2'),
+      moved,
+      following('2026-09-24'),
+    )
+    expect(offer?.version).toBe('v2')
+    expect(offer?.older).toBe(true)
+  })
+
+  it('does not mark a later release older', () => {
+    const later = (from: string, to: string) =>
+      availableRefresh(holding(from), moved, following(to))?.older
+    expect(later('2026-09-24', '2026-09-24-2')).toBe(false)
+    expect(later('2026-09-24-2', '2026-10-01')).toBe(false)
+  })
+
+  it('reads the same-day suffix as a number, so 2026-09-24-10 comes after 2026-09-24-2', () => {
+    const older = (from: string, to: string) =>
+      availableRefresh(holding(from), moved, following(to))?.older
+    expect(older('2026-09-24-2', '2026-09-24-10')).toBe(false)
+    expect(older('2026-09-24-10', '2026-09-24-2')).toBe(true)
+  })
+
+  it('does not mark older a record from before decision 44, which names no release', () => {
+    const offer = availableRefresh(stored('v1', held), moved, following('2026-01-01'))
+    expect(offer?.older).toBe(false)
   })
 })
 

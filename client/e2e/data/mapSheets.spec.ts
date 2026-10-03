@@ -204,18 +204,33 @@ async function openLegend(page: Page): Promise<Locator> {
  * trip. The coarse grid below is that measurement turned into a budget — it
  * reaches that point in about fifteen taps — and the fine pass behind it is
  * what catches a release that moves the line between two coarse rows.
+ *
+ * ONLY A SHEET THAT OFFERS "Take this trail" ENDS THE SWEEP. Release
+ * 2026-10-03 draws the National Park Service's trails at this camera, and
+ * the sweep's first hit there was Sugarland Mountain Trail, whose sheet says
+ * "Not the trail you chose" and offers no Take (flow-data, run 37112698327).
+ * Every test below is about a trail a hiker can take, so a sheet for any
+ * other line is closed and the sweep carries on, as it does past a pin.
  */
 async function tapTheTrail(page: Page): Promise<Locator> {
   const box = await frameOf(page)
   const sheet = page.getByRole('dialog', { name: 'Trail line' })
   const card = page.getByRole('dialog', { name: 'Waypoint' })
+  let untakeable = 0
 
   const tap = async (across: number, down: number): Promise<boolean> => {
     await page.mouse.click(
       box.x + (box.width * across) / 20,
       box.y + (box.height * down) / 20,
     )
-    if ((await sheet.count()) > 0) return true
+    if ((await sheet.count()) > 0) {
+      if ((await sheet.getByRole('button', { name: /Take this trail/ }).count()) > 0)
+        return true
+      untakeable += 1
+      await sheet.getByRole('button', { name: 'Close' }).click()
+      await expect(sheet).toHaveCount(0)
+      return false
+    }
     // A tap that lands on a PIN opens a waypoint instead, and the card then
     // covers the canvas, so every remaining tap would hit the card and the
     // sweep would run out having tested nothing. Closing it and carrying on is
@@ -236,8 +251,11 @@ async function tapTheTrail(page: Page): Promise<Locator> {
     }
   }
   throw new Error(
-    'nothing on the map opened a trail line — either the release drew no ' +
-      'trail at the seeded camera, or a tap on one no longer opens its sheet',
+    untakeable > 0
+      ? `${untakeable} tap(s) opened a trail line, and none offered "Take this trail" — ` +
+          'either the chosen trail is not drawn at the seeded camera, or its sheet lost the button'
+      : 'nothing on the map opened a trail line — either the release drew no ' +
+          'trail at the seeded camera, or a tap on one no longer opens its sheet',
   )
 }
 
@@ -357,10 +375,11 @@ test.describe('a trail line’s sheet', () => {
     // pinned here — what is pinned is that the sheet HAS a heading and a
     // source sentence, because a line that says "Trail" and nothing about
     // where the geometry came from is the failure this sheet exists to fix
-    // (#134). The sentence's shape is the app's; the org's name is the
-    // release's.
+    // (#134). The sentence's shape is the app's, `From ${source}.` in
+    // lib/lineDetail.ts; the org's name is the release's, and only some names
+    // begin with "the" ("From National Park Service." does not).
     await expect(sheet.getByRole('heading')).toBeVisible()
-    await expect(sheet).toContainText(/From the .+\./)
+    await expect(sheet).toContainText(/From .+\./)
     await expect(sheet.getByRole('button', { name: /Take this trail/ })).toBeVisible()
   })
 

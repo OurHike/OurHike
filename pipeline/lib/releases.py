@@ -32,7 +32,7 @@ so; `is_release_artifact` is that sentence made mechanical.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Iterable
 
 # The index and the release folders. Both spelled here rather than built at
@@ -99,10 +99,16 @@ def next_release_id(taken: Iterable[str], today: date | None = None) -> str:
     would be two spellings of "the first one today", and the layout cannot
     rename either afterwards.
 
+    The default is today on the UTC calendar, not date.today(): the machine's
+    local date differs from UTC near midnight, and a release cut from a laptop
+    then gets the previous day's id (#1769, the same skew #659 fixed in
+    lib/freshness_state.py's utc_today, which is not imported here because it
+    pulls in requests and the release gate runs without it).
+
     `today` is injected rather than read here so a test can assert the
     same-day case without waiting a day for it.
     """
-    stamp = (today or date.today()).isoformat()
+    stamp = (today or datetime.now(timezone.utc).date()).isoformat()
     used = set(taken)
     if stamp not in used:
         return stamp

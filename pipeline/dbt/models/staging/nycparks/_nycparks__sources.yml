@@ -47,7 +47,9 @@ sources:
         description: >
           NYC Parks Trails (five boroughs) (sources.json `nyc_parks_trails`).
           Key: geometry and date_collected, 7,055 of 7,055 live rows after 4
-          exact copies; date_collected is null on 4.
+          exact copies; date_collected is null on 4. Re-measured 2026-10-03:
+          7,059 rows, and each copy differs from the row it repeats only in
+          Socrata's row id, `_socrata_id`, which duplicates_are_exact skips.
       - name: raw_nycparks__nyc_public_restrooms
         data_tests:
           # Rows sharing base_nycparks__nyc_public_restrooms's key must be exact copies (decision 40).
@@ -57,4 +59,6 @@ sources:
         description: >
           NYC Public Restrooms (operational) (sources.json
           `nyc_public_restrooms`). Key: geometry, 973 of 973 live rows after 2
-          exact copies.
+          exact copies. Re-measured 2026-10-03: 975 rows, and each copy
+          differs from the row it repeats only in Socrata's row id,
+          `_socrata_id`, which duplicates_are_exact skips.

@@ -25,6 +25,8 @@ renamed as (
     from source
 )
 
+-- Copies may differ in Socrata's row id, so the lowest one survives, as in
+-- every NYC Socrata base model (macros/duckdb__deduplicate.sql).
 {{ dbt_utils.deduplicate(
-    relation='renamed', partition_by='trail_segment_key', order_by='_dlt_id'
+    relation='renamed', partition_by='trail_segment_key', order_by='_socrata_id'
 ) }}

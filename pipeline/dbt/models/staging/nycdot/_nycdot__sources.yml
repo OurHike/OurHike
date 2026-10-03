@@ -45,3 +45,6 @@ sources:
           NYC DOT Greenways (current, off-street) (sources.json
           `nyc_dot_greenways`). Key: segmentid, 2,995 of 2,995 live rows after
           44 exact copies: every repeated segmentid was a repeated record.
+          Re-measured 2026-10-03: 3,039 rows, and each copy differs from the
+          row it repeats only in Socrata's row id, `_socrata_id`, which
+          duplicates_are_exact skips.

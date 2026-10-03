@@ -29,6 +29,9 @@ renamed as (
     from source
 )
 
+-- Copies may differ in Socrata's row id, so the lowest one survives, as in
+-- every NYC Socrata base model (macros/duckdb__deduplicate.sql). 0 copies on
+-- 2,061 live rows, 2026-10-03.
 {{ dbt_utils.deduplicate(
-    relation='renamed', partition_by='park_key', order_by='_dlt_id'
+    relation='renamed', partition_by='park_key', order_by='_socrata_id'
 ) }}

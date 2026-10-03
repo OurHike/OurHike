@@ -6,7 +6,14 @@
 --
 -- Key: geometry and date_collected, 7,055 of 7,055 live rows after 4 exact
 -- copies; date_collected is null on 4 (pipeline/ELT.md, "One key per table",
--- measured 2026-10-01).
+-- measured 2026-10-01). Re-measured 2026-10-03 on the landed table: 7,059
+-- rows, 4 keys held by 2 rows each, all Pelham Bay Park's 'Unnamed Official
+-- Trail' segments surveyed 2015-05-05. Each pair differs in nothing but
+-- Socrata's row id (`_socrata_id`) and dlt's `_dlt_id`. The lowest
+-- `_socrata_id` survives, and it is the line's published id
+-- (int_trail_lines__network_judged), so the same upstream rows always
+-- publish the same id; a whole-dataset replace mints every `:id` again
+-- (ELT.md, "Stable upstream keys").
 with source as (
     -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
     -- hint); cast here, as decision 40 has staging do.
@@ -28,5 +35,5 @@ renamed as (
 )
 
 {{ dbt_utils.deduplicate(
-    relation='renamed', partition_by='trail_segment_key', order_by='_dlt_id'
+    relation='renamed', partition_by='trail_segment_key', order_by='_socrata_id'
 ) }}

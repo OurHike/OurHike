@@ -940,7 +940,10 @@ A server's row id (`OBJECTID`, `FID`) is never an input on its own, because a tr
 - **How.** `dbt_project.yml`'s `dispatch` block searches `ourhike` before `dbt_utils`, so dbt finds `pipeline/dbt/macros/duckdb__deduplicate.sql`, a `QUALIFY row_number() … = 1`. This is the documented way to give a package an adapter it lacks, and the models call nothing but the package. Measured on dbt 2.0.6: the same three rows came back as `(1, 'a', NULL), (2, 'b', 'x')`.
 - **Today's staging models still carry classification literals** (`'shelter' as poi_type`, `'high' as confidence`) and `stg_opentrail__waypoints`' join to the `poi_type_mapping` seed. Decision 40 puts those in the intermediate layer. They move when stage 3 rebuilds staging on the dlt tables, and the models written then follow the rule from the start.
 
-**A dedupe may only remove exact copies, and the build proves it.** The generic test `duplicates_are_exact` (`pipeline/dbt/tests/generic/`) runs on every raw table, at error. It takes the same key expressions the model builds, and fails when two rows share the key and differ in any column other than the server's own row ids (`OBJECTID`, `FID`, GDAL's `OGC_FID`, dlt's `_dlt_id`).
+**A dedupe may only remove exact copies, and the build proves it.** The generic test `duplicates_are_exact` (`pipeline/dbt/tests/generic/`) runs on every raw table, at error. It takes the same key expressions the model builds, and fails when two rows share the key and differ in any column other than the server's own row ids (`OBJECTID`, `FID`, GDAL's `OGC_FID`, dlt's `_dlt_id`, and Socrata's `:id`, which the extract lands as `_socrata_id`).
+
+- `_socrata_id` joined that list after the monthly lane's first live build (refresh-reference.yml run 37109384156), which failed three NYC tests on copies that differ only in it. `spike_table_keys.py` had already counted `:id` as a row id when it measured those copies; the test had not.
+- Where copies can differ in a row id that is published, the dedupe keeps the lowest: DEC's POI models and `stg_oprhp__facilities` order by `objectid`, the seven NYC Socrata base models by `_socrata_id`. The same upstream rows then always keep the same id, and it is the copy `parity.py`'s `_exact_copy_reasons` expects kept.
 
 - So a key missing a column fails the build. It never drops a real feature quietly.
 - Checked both ways on the CI fixtures, 2026-10-01: with `dec_primitive_campsites`' key cut to `ASSET_UID`, that test failed; with the measured key it passes.
@@ -980,9 +983,9 @@ A server's row id (`OBJECTID`, `FID`) is never an input on its own, because a tr
 | `nyc_drinking_fountains` | `system`, `gispropnum` | 3,195 |
 | `nyc_park_polygons` | `gispropnum` | 2,061 of 2,061, non-null on every row (re-measured 2026-10-03). This row used to share the fountains' key, and the layer has no `system` column (Socrata `enfh-gkve` declares 33, none of them `system`), so the monthly lane's first live build failed to bind it (refresh-reference.yml run 37109384156) |
 | `nyc_cscl_paths`, `nyc_park_drives` | `globalid` | 6,496 of 6,496; the drives are a filtered subset of the same dataset |
-| `nyc_dot_greenways` | `segmentid` | 2,995 of 2,995 **after 44 exact copies**: every repeated `segmentid` was a repeated record |
-| `nyc_parks_trails` | geometry, `date_collected` | 7,055 of 7,055 after 4 exact copies; `date_collected` is null on 4 |
-| `nyc_public_restrooms` | geometry | 973 of 973 after 2 exact copies |
+| `nyc_dot_greenways` | `segmentid` | 2,995 of 2,995 **after 44 exact copies**: every repeated `segmentid` was a repeated record. Re-measured 2026-10-03 on the landed table: 3,039 rows, 10 `segmentid`s on 54 of them, each copy differing only in `_socrata_id` |
+| `nyc_parks_trails` | geometry, `date_collected` | 7,055 of 7,055 after 4 exact copies; `date_collected` is null on 4. Re-measured 2026-10-03: 7,059 rows, 4 keys on 8, each copy differing only in `_socrata_id` |
+| `nyc_public_restrooms` | geometry | 973 of 973 after 2 exact copies. Re-measured 2026-10-03: 975 rows, 2 keys on 4, each copy differing only in `_socrata_id` |
 | `atc_trail_updates` (`reference/atc_updates.json`) | `atc_id`, ATC's slug | 35 of 35 |
 | `reference/water_distance.json` | `atc_global_id` | 512 of 512 |
 | `reference/challenges/<org>/` | the file's `id` | one file per challenge |

@@ -223,3 +223,56 @@ def test_the_raw_tables_exactness_test_checks_the_key_the_model_builds(path):
         f"{path.stem} builds its key from {expected}, but {source[1]}'s duplicates_are_exact checks "
         f"{tests[0]['arguments']['key_columns']}"
     )
+
+
+def _socrata_tables() -> set[str]:
+    """The raw tables extract/_kinds.py's SocrataDataset lands, each row carrying Socrata's `:id` as `_socrata_id`."""
+    from extract._contract import all_resources, discover, discover_shared
+    from extract._kinds import SocrataDataset
+
+    resources = all_resources(discover() + discover_shared())
+    return {resource.table for resource in resources if isinstance(resource, SocrataDataset)}
+
+
+SOCRATA_MODELS = [path for path in MODELS if SOURCE.search(path.read_text()).group(2) in _socrata_tables()]
+GENERIC_TEST = DBT / "tests" / "generic" / "duplicates_are_exact.sql"
+
+
+def test_the_socrata_models_are_the_seven_nyc_base_models():
+    assert {path.stem for path in SOCRATA_MODELS} == {
+        "base_nycdot__nyc_cscl_paths",
+        "base_nycdot__nyc_dot_greenways",
+        "base_nycdot__nyc_park_drives",
+        "base_nycparks__nyc_drinking_fountains",
+        "base_nycparks__nyc_park_polygons",
+        "base_nycparks__nyc_parks_trails",
+        "base_nycparks__nyc_public_restrooms",
+    }
+
+
+@pytest.mark.parametrize("path", SOCRATA_MODELS, ids=lambda p: p.stem)
+def test_each_socrata_tables_duplicates_are_exact_skips_socrata_id_as_a_row_id(path):
+    """Socrata mints `:id` per row, so two copies of one record always differ in it.
+
+    Without `_socrata_id` among the row ids, duplicates_are_exact failed the monthly lane's first live
+    build (refresh-reference.yml run 37109384156) on nyc_dot_greenways, nyc_parks_trails and
+    nyc_public_restrooms, whose repeated rows differ in nothing else (measured 2026-10-03).
+    """
+    source = SOURCE.search(path.read_text()).groups()
+    (test,) = [t["duplicates_are_exact"] for t in source_tests()[source] if isinstance(t, dict) and "duplicates_are_exact" in t]
+    row_ids = test["arguments"].get("row_id_columns")
+    if row_ids is None:
+        default = re.search(r"row_id_columns=(\[.*?\])", GENERIC_TEST.read_text(), re.S)
+        assert default, f"{GENERIC_TEST.name}: no row_id_columns default to read"
+        row_ids = ast.literal_eval(default.group(1))
+    assert "_socrata_id" in row_ids, f"{source[1]}'s duplicates_are_exact compares `_socrata_id`, so every copy fails it"
+
+
+@pytest.mark.parametrize("path", SOCRATA_MODELS, ids=lambda p: p.stem)
+def test_each_socrata_model_keeps_the_copy_with_the_lowest_socrata_id(path):
+    """`_socrata_id` is the published id of a Socrata POI or line, so the survivor is chosen by it, not by `_dlt_id`.
+
+    dlt mints `_dlt_id` at random on each load, so ordering by it could publish a different copy's id
+    from the same upstream rows each month; parity.py's _exact_copy_reasons expects the lowest id kept.
+    """
+    assert DEDUPE.search(path.read_text().rstrip()).group(2) == "_socrata_id"

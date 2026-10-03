@@ -26,6 +26,9 @@ renamed as (
     from source
 )
 
+-- Copies may differ in Socrata's row id, which is this POI's published id
+-- (the registry's `id_field` is `:id`), so the lowest one survives
+-- (macros/duckdb__deduplicate.sql). 0 copies on 3,195 live rows, 2026-10-03.
 {{ dbt_utils.deduplicate(
-    relation='renamed', partition_by='poi_key', order_by='_dlt_id'
+    relation='renamed', partition_by='poi_key', order_by='_socrata_id'
 ) }}

@@ -15,9 +15,19 @@
     dbt_utils.generate_surrogate_key; tests/test_dbt_keys.py holds the two
     lists equal. `row_id_columns` are the columns a server mints per row
     (OBJECTID, FID), which differ between two copies of one record.
+
+    `_socrata_id` is one of them: Socrata's row id `:id`, which
+    extract/_kinds.py's SocrataDataset lands under that name. It was missing
+    here until the monthly lane's first live build (refresh-reference.yml run
+    37109384156), where it failed three NYC tests on rows that differ in
+    nothing else. Measured 2026-10-03 on the live rows: nyc_dot_greenways'
+    10 repeated segmentids (54 rows), nyc_parks_trails' 4 repeated keys (8
+    rows) and nyc_public_restrooms' 2 (4 rows) differ only in `_socrata_id`
+    and `_dlt_id`. pipeline/spike_table_keys.py, which counted those copies
+    on 2026-10-01, already treated `:id` as a row id; this list had not.
 -#}
 {% test duplicates_are_exact(
-    model, key_columns, row_id_columns=['objectid', 'fid', 'ogc_fid', '_dlt_id']
+    model, key_columns, row_id_columns=['objectid', 'fid', 'ogc_fid', '_dlt_id', '_socrata_id']
 ) %}
 
 {#- Every column but the row ids, by name. Spelled out rather than written as

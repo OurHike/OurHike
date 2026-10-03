@@ -6060,6 +6060,672 @@
             "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
           }
         }
+      },
+      "USFWS": {
+        "probed_date": "2026-10-03",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          }
+        }
+      },
+      "USACE": {
+        "probed_date": "2026-10-03",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          }
+        }
+      },
+      "NIFC": {
+        "probed_date": "2026-10-03",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          }
+        }
+      },
+      "ODFW": {
+        "probed_date": "2026-10-03",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          }
+        }
+      },
+      "California State Parks": {
+        "probed_date": "2026-10-03",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          }
+        }
+      },
+      "King County Parks": {
+        "probed_date": "2026-10-03",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          }
+        }
+      },
+      "Midpen": {
+        "probed_date": "2026-10-03",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          }
+        }
+      },
+      "Santa Clara County Parks": {
+        "probed_date": "2026-10-03",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          }
+        }
+      },
+      "MA DCR": {
+        "probed_date": "2026-10-03",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          }
+        }
+      },
+      "WA DNR": {
+        "probed_date": "2026-10-03",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          }
+        }
+      },
+      "WA State Parks": {
+        "probed_date": "2026-10-03",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          }
+        }
+      },
+      "Utah FFSL": {
+        "probed_date": "2026-10-03",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          }
+        }
+      },
+      "TDEC": {
+        "probed_date": "2026-10-03",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          }
+        }
+      },
+      "Portland Parks": {
+        "probed_date": "2026-10-03",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          }
+        }
+      },
+      "CTC": {
+        "probed_date": "2026-10-03",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          }
+        }
+      },
+      "IATA": {
+        "probed_date": "2026-10-03",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          }
+        }
+      },
+      "FLTC": {
+        "probed_date": "2026-10-03",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          }
+        }
+      },
+      "FTA": {
+        "probed_date": "2026-10-03",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          }
+        }
       }
     }
   },

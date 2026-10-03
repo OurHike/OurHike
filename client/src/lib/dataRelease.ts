@@ -344,20 +344,41 @@ export interface ChannelAnswer {
   recorded: string | null
 }
 
-/** fetch, abandoned at CHANNEL_READ_TIMEOUT_MS or when the caller aborts. */
-async function fetchWithin(
+/**
+ * The body at `url` as text, or null for an answer that is not 200-299; it
+ * throws once CHANNEL_READ_TIMEOUT_MS passes or the caller aborts.
+ *
+ * THE BODY IS INSIDE THE DEADLINE, not only the headers. A server that sends
+ * its headers and then stalls would otherwise outlive both the timeout and
+ * the caller's abort, and the read would never settle. So the body read races
+ * the same abort the request does, which also covers a fetch whose stream
+ * does not honour the signal.
+ */
+async function textWithin(
   url: string,
   signal: AbortSignal | undefined,
   init: RequestInit = {},
-): Promise<Response> {
+): Promise<string | null> {
   // An abort that landed before this read began, as fetch itself treats one.
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
   const controller = new AbortController()
   const abort = () => controller.abort()
   const deadline = setTimeout(abort, CHANNEL_READ_TIMEOUT_MS)
   signal?.addEventListener('abort', abort, { once: true })
+  const abandoned = new Promise<never>((_, reject) => {
+    controller.signal.addEventListener(
+      'abort',
+      () => reject(new DOMException('Aborted', 'AbortError')),
+      { once: true },
+    )
+  })
   try {
-    return await fetch(url, { ...init, signal: controller.signal })
+    const response = await Promise.race([
+      fetch(url, { ...init, signal: controller.signal }),
+      abandoned,
+    ])
+    if (!response.ok) return null
+    return await Promise.race([response.text(), abandoned])
   } finally {
     clearTimeout(deadline)
     signal?.removeEventListener('abort', abort)
@@ -388,12 +409,9 @@ async function resolves(
   signal?: AbortSignal,
 ): Promise<boolean> {
   try {
-    const response = await fetchWithin(
-      `${base}/releases/${release}/manifest.json`,
-      signal,
-    )
-    if (!response.ok) return false
-    const manifest: unknown = await response.json()
+    const text = await textWithin(`${base}/releases/${release}/manifest.json`, signal)
+    if (text === null) return false
+    const manifest: unknown = JSON.parse(text)
     if (typeof manifest !== 'object' || manifest === null) return false
     const { artifacts, release: named } = manifest as Record<string, unknown>
     if (typeof artifacts !== 'object' || artifacts === null || Array.isArray(artifacts))
@@ -434,19 +452,16 @@ export async function readDataChannel(
     recorded: recorded?.release ?? null,
   })
 
-  let text: string
+  let text: string | null
   try {
     // no-store: the pointer is what says which release is current, and a
     // cached copy is the one answer it must not give (publish.py serves it
     // no-cache, as it serves latest.json).
-    const response = await fetchWithin(`${base}/${CHANNELS_KEY}`, signal, {
-      cache: 'no-store',
-    })
-    if (!response.ok) return kept('unreachable')
-    text = await response.text()
+    text = await textWithin(`${base}/${CHANNELS_KEY}`, signal, { cache: 'no-store' })
   } catch {
     return kept('unreachable')
   }
+  if (text === null) return kept('unreachable')
 
   const entry = entryIn(text)
   if (entry === null) return kept('malformed')

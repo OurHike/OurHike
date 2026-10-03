@@ -438,6 +438,75 @@ describe('a phone never ends with no data because of the pointer', () => {
     expect(await answer).toEqual({ outcome: 'unreachable', recorded: LAST_GOOD })
   })
 
+  // Headers, then nothing: a 200 whose body never ends. The deadline and the
+  // caller's abort have to cover the body too, or the read never settles.
+  const bodyRead = { started: false }
+  const stalled: Route = () => {
+    const response = new Response(new ReadableStream({ start() {} }))
+    const text = response.text.bind(response)
+    response.text = () => {
+      bodyRead.started = true
+      return text()
+    }
+    return response
+  }
+  beforeEach(() => {
+    bodyRead.started = false
+  })
+
+  /** What `answer` has settled to so far, without waiting on it. */
+  function settledSoFar<T>(answer: Promise<T>): { value?: T } {
+    const seen: { value?: T } = {}
+    void answer.then((value) => {
+      seen.value = value
+    })
+    return seen
+  }
+
+  it('gives up on a pointer whose body never ends, at the same deadline', async () => {
+    vi.useFakeTimers()
+    rememberPointer(LAST_GOOD)
+    const release = await launch()
+    serve({ [`${BASE}/channels.json`]: stalled })
+
+    const seen = settledSoFar(release.readDataChannel(BASE))
+    await vi.advanceTimersByTimeAsync(release.CHANNEL_READ_TIMEOUT_MS)
+
+    expect(seen.value).toEqual({ outcome: 'unreachable', recorded: LAST_GOOD })
+  })
+
+  it('gives up on a release manifest whose body never ends, and records nothing', async () => {
+    vi.useFakeTimers()
+    rememberPointer(LAST_GOOD)
+    const release = await launch()
+    serve({
+      [`${BASE}/channels.json`]: channels({ production: { v1: NEWER } }),
+      [`${BASE}/releases/${NEWER}/manifest.json`]: stalled,
+    })
+
+    const seen = settledSoFar(release.readDataChannel(BASE))
+    await vi.advanceTimersByTimeAsync(release.CHANNEL_READ_TIMEOUT_MS)
+
+    expect(seen.value).toEqual({ outcome: 'unresolved', recorded: LAST_GOOD })
+    expect(idb.store.get(KEY)).toMatchObject({ release: LAST_GOOD })
+  })
+
+  it('settles when the caller aborts while the body is still arriving', async () => {
+    rememberPointer(LAST_GOOD)
+    const release = await launch()
+    serve({ [`${BASE}/channels.json`]: stalled })
+    const controller = new AbortController()
+
+    const answer = release.readDataChannel(BASE, { signal: controller.signal })
+    // Past the headers and reading the body before the abort lands.
+    await vi.waitFor(() => expect(bodyRead.started).toBe(true))
+    const seen = settledSoFar(answer)
+    controller.abort()
+    await vi.waitFor(() => expect(seen.value).toBeDefined(), { timeout: 1_000 })
+
+    expect(seen.value).toEqual({ outcome: 'unreachable', recorded: LAST_GOOD })
+  })
+
   it('never rejects when fetch throws before it starts, as an unstubbed test fetch does', async () => {
     const release = await launch()
     vi.stubGlobal('fetch', () => {

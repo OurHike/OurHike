@@ -13,8 +13,16 @@
 -- once, before either sum, "because a threshold applied in the wrong unit is
 -- a different threshold". Each unbroken run of samples is measured on its
 -- own, so a DEM gap inside an edge adds nothing: that under-counts by
--- whatever happened inside the gap, the honest direction, and
--- partially_covered says which edges it applies to. Loss is the same dead
+-- whatever happened inside the gap, which is NOT the cautious direction for
+-- a hiker's time estimate (int_suggested_hikes__routed says why short is the
+-- dangerous side), and nothing published marks it; partially_covered says
+-- which edges it applies to. How often it happens: on UA's whole network,
+-- 3 of 3,551,452 edges span a DEM gap and 125 have no elevation at all (124
+-- NPS, 1 CDTC), across 738 tiles (publish-vector-data.yml run 37114537637,
+-- Measured 2026-10-03). The fixture's 57 of 117 is its small DEM, not
+-- coverage. @unvalidated whether the 124 NPS edges are the territories and
+-- Alaska, where the 1/3 arc-second product has no tile; a per-edge lookup
+-- against the tile index would settle it. Loss is the same dead
 -- band on the ground turned over, as a positive number. Both are rounded to
 -- the nearest whole foot as Python's round() rounds them (printf('%.0f')),
 -- so an edge's climb can read up to half a foot under or over its unrounded

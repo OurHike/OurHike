@@ -1,32 +1,22 @@
-"""Central Iowa Trail Association: trail lines, published, and not landed (coverage audit 2026-10-01,
-batch p02_persist).
+"""Central Iowa Trail Association: the trails its areas sit in, published by the City of Des Moines for the
+regional GIS partnership and by Iowa DNR.
 
-Licence: Des Moines: explicit_restriction: "© Copyright City of Des Moines, Iowa 2025. All rights
-reserved. Disclaimer: The data is provided for reference only…". Iowa DNR: none_stated (empty
-`licenseInfo` and `copyrightText`; `accessInformation` "Iowa Department of Natural Resources").
-Johnston: …
+Decision 54, wave 1: read live on 2026-10-03 (robots.txt first, lib/user_agent.py's agent, 2 s or more
+between requests to one host) and registered in sources.json, where each row carries the count, extent,
+statistics fingerprint, measured key, person fields and the item's own terms.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `des_moines_trails`: Trails, Des Moines Area Regional GIS (City of Des Moines). 4,924 lines, keyed on `GlobalID`.
+- `iowa_dnr_state_park_trails`: Iowa state park and state forest trails (Iowa DNR). 2,386 lines, keyed on `GlobalID`.
+
+CITA's own areas (Ewing Park, Sycamore, Center and Denmans and others) are segments of the Des Moines
+layer by name (coverage audit, 2026-10-01). Not landed: the Johnston layer the audit's trimmed note
+names, which was not identified in this read.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "Des Moines Area Regional GIS Partnership / City of Des Moines Trails: "
-        "`https://services.arcgis.com/HT7H9QGiZQoRJDpJ/arcgis/rest/services/Trails_view/FeatureServer/0` (item "
-        "`758972248b7b47cf8891dee2b429c4cd`; also published as Shapefile, GeoJSON, CSV and FGDB items). 4,924 "
-        "polylines, last edit 2026-09-04; `SurfaceType='Earthen'` 215 segments, 40.2 mi. CITA areas by name: "
-        "Ewing Park (Nature Trails, Nature Trail, Flow Trail) 51 segments / 7.14 mi. Grandview Park Nature "
-        'Trail 4 / 1.44 mi. "Center and Denmans" 32 / 9.95 mi. Sycamore (Sycamore Access, Sycamore North, Top '
-        "Shelf, Owl Trail, Lake …",
-    ),
-    where=(
-        "https://services.arcgis.com/HT7H9QGiZQoRJDpJ/arcgis/rest/services/Trails_view/FeatureServer/0",
-        "https://programs.iowadnr.gov/geospatial/rest/services/Recreation/State_Parks_trails_view/MapServer/0",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+CLAIMS = (
+    "des_moines_trails",
+    "iowa_dnr_state_park_trails",
 )
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

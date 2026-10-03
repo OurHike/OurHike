@@ -339,10 +339,15 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     works on section 105's reading (`stated_by_org`), and 4 are NPS-hosted
     layers whose own items say a county, a university, an intern or a
     contractor made them (`public_gis`, decision 21a).
+
+    DECISION 54'S TRAIL-LINE ROWS, CLUBS AND AGENCIES (2026-10-03), all
+    `reaches_hikers: false`: 71 more. 70 rest on decision 21a's presumption
+    (`public_gis`), and USACE Mobile District's trails are a federal work
+    (`stated_by_org`).
     """
     counts: dict[str, int] = {}
     for source in REGISTRY["sources"]:
         counts[source["licence_basis"]] = counts.get(source["licence_basis"], 0) + 1
 
     # Decision 53's ArcGIS closure and warning layers (2026-10-03) add 76 rows, all reaches_hikers false: 11 `maintainer_authorisation`, 35 `public_gis`, 30 `stated_by_org`.
-    assert counts == {"maintainer_authorisation": 48, "public_gis": 96, "stated_by_org": 116, "unresolved": 3}
+    assert counts == {"maintainer_authorisation": 48, "public_gis": 166, "stated_by_org": 117, "unresolved": 3}

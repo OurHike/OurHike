@@ -1,29 +1,19 @@
-"""Green Mountain Club: trail lines, published, and not landed (coverage audit 2026-10-01, batch
-c1_at_clubs_north).
+"""Green Mountain Club: the Long Trail system, TRAIL_MASTER, from GMC's ArcGIS Online organization.
 
-The Long Trail north of Maine Junction is in no loaded row. `licenseInfo` is empty. The owner is not
-on `_agol_accepted_owners`. The layer advertises Create/Update/Delete/Editing (see Terms).
+Decision 54, wave 1: read live on 2026-10-03 (robots.txt first, lib/user_agent.py's agent, 2 s or more
+between requests to one host) and registered in sources.json, where each row carries the count, extent,
+statistics fingerprint, measured key, person fields and the item's own terms.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `gmc_trail_master`: Long Trail system, TRAIL_MASTER (GMC). 403 lines, keyed on `GlobalID`.
+
+The A.T.'s stretch with the Long Trail is LOADED via atc/; this layer is GMC's own line of it and of the
+Long Trail north of Maine Junction, which no loaded row carried. Not landed: `TRAIL_MASTER_DayHikes`
+(362 rows of the same schema plus DayHikeID columns, last edited 2026-04-13), a suggested_hikes input
+rather than a trail-line dataset, and `ProjectPlanning_DataCollectionLines`, a working layer.
+MileMarkers_LT is a points layer.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "`https://services8.arcgis.com/kClE0vHJkIEmhQ53/arcgis/rest/services/TRAIL_MASTER/FeatureServer/0` "
-        "(ArcGIS layer, owner `GMC_Special_Projects`): 403 polylines, last edit 2026-09-24. By TrailType: LT "
-        "177 segments / 259.9 mi, ST 144 / 175.5 mi, AT-only 23 / 46.4 mi, SP 54 / 7.3 mi, OT 4 / 6.6 mi, MA 1 "
-        "/ 3.9 mi. Fields include TrailName, MaintName, TrailType, AT, Length_mi, Source, Sourcedate. Also "
-        "`MileMarkers_LT/FeatureServer/0` (259 points, field `Mile`). The A.T. overlap is already LOADED via "
-        "`atc`.",
-    ),
-    where=(
-        "https://services8.arcgis.com/kClE0vHJkIEmhQ53/arcgis/rest/services/TRAIL_MASTER/FeatureServer/0",
-        "https://services8.arcgis.com/kClE0vHJkIEmhQ53/arcgis/rest/services/MileMarkers_LT/FeatureServer/0",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("gmc_trail_master",)
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

@@ -1,31 +1,16 @@
-"""Texas Trail Tamers: trail lines, published, and not landed (coverage audit 2026-10-01, batch
-p05_persist).
+"""Texas Trail Tamers: the state park trails its crews work on, published by Texas Parks and Wildlife.
 
-explicit_restriction. Item `876c319bff684aa4ac92e9e3e7fc3b8c` licenseInfo ends: "This data is not
-intended to be used for profit." copyrightText `TPWD|SP|NR|PGR`. The service description warns: "Any
-trails may be closed or re-routed without warning." Folder `tpwd/`; GUMO is `nps/`; Violet Crown is
-…
+Decision 54, wave 1: read live on 2026-10-03 (robots.txt first, lib/user_agent.py's agent, 2 s or more
+between requests to one host) and registered in sources.json, where each row carries the count, extent,
+statistics fingerprint, measured key, person fields and the item's own terms.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `tpwd_state_park_trails`: Texas State Parks trails (TPWD). 3,307 lines, keyed on `GlobalID`.
+
+Guadalupe Mountains is LOADED via nps/'s `nps_trails` (UNITCODE GUMO, 55). Austin's Violet Crown Trail
+work sits on the City of Austin PARD's layer, which austin_trail/ extracts once.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "`https://tpwd.texas.gov/arcgis/rest/services/Parks/TexasStateParksTrails/MapServer/0` (MapServer, "
-        'polyline). McKinney Falls: 56 segments, 12.75 mi, including "Onion Creek Hike and Bike Trail" (10 '
-        'segments, 2.98 mi; the 2022–2023 reroute), "Flint Rock Loop Trail" (3, 1.47 mi) and "Homestead Trail" '
-        '(11, 3.12 mi). Davis Mountains: 36, 18.36 mi, including "Old CCC Trail", the October 2026 project. '
-        "Inks Lake: 40, 9.47 mi. Guadalupe Mountains is LOADED via `nps_trails` (`UNITCODE='GUMO'`: 55). Violet"
-        " Crown: Austin PARD `pard_trails_nrpa/FeatureServer/0` has 37 features; River Place has 0. Tried: 1 …",
-    ),
-    where=(
-        "https://tpwd.texas.gov/arcgis/rest/services/Parks/TexasStateParksTrails/MapServer/0",
-        "https://texastrailtamers.org/",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("tpwd_state_park_trails",)
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

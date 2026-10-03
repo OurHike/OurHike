@@ -1,31 +1,28 @@
-"""The Trail Foundation (Austin): trail lines, published, and not landed (coverage audit 2026-10-01,
-batch p08_persist).
+"""The Trail Conservancy (Austin): the Ann and Roy Butler Hike and Bike Trail around Lady Bird Lake.
 
-Licence, TTC layers: `licenseInfo` and `copyrightText` are both empty. Class: none_stated, presumed
-reusable under 21(a). Licence, PARD `pard_trails` (`94b29c9c…`): "This product is for informational
-purposes and may not have been prepared for or be suitable for legal, engineering, or surveying …
+The organization is reference/trail_orgs.json's 'The Trail Foundation (Austin)', registered in sources.json as
+The Trail Conservancy (org:ttc), whose initials its ArcGIS Online layers' TTC prefix matches.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Decision 54, wave 1: read live on 2026-10-03 (robots.txt first, lib/user_agent.py's agent, 2 s or more
+between requests to one host) and registered in sources.json, where each row carries the count, extent,
+statistics fingerprint, measured key, person fields and the item's own terms.
+
+- `ttc_butler_trail`: Ann and Roy Butler Hike and Bike Trail (The Trail Conservancy). 237 lines, keyed on `GlobalID_2`.
+- `austin_pard_trails`: Austin Parks and Recreation trails on parkland (City of Austin PARD). 4,096 lines, keyed on `ASSET_MGMT_ID`.
+
+Two datasets of the same ground: TTC's own Butler Trail layer, built from the city's data and edited
+apart since, and the City of Austin PARD's trail inventory, which is also the line tx_tamers/'s Violet
+Crown Trail work sits on. Not landed, each a working layer of the same trail on TTC's organization and
+read 2026-10-03: `Butler_Trail_clipped` (278, a February 2025 derivative of Butler_Trail), `trail_route`
+(248) and `hikers_route` (120), 2020 editions of the same route, `Pard_trails_RECA` (5 rows of PARD's
+schema at one site), and `Adjacent_Trails` (227), OpenStreetMap ways carrying their osm_id, a copy of
+OSM, whose ODbL terms would travel with it.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "`Butler_Trail/FeatureServer/0` (item `12f880fe…`): 237 polylines in PARD's NRPA schema, all "
-        '`TRAIL_SYSTEM_NAME` "Ann and Roy Butler Hike and Bike Trail" (`SYSTEM_TYPE` National Designation 143, '
-        "Local 55, Local Connector 39). Last edit 2025-03-12. Also: `Butler_Trail_clipped` 278 (2025-02-14); "
-        "`trail_route` 248 (2020-09-18); `Pard_trails_RECA` 5 (2026-08-05); `Adjacent_Trails` 227 (OSM-derived,"
-        " 2020); `The_Butler_Trail_Mile_Markers` 19 points (2025-03-06); `MileMarkerMap_WFL1`. Upstream "
-        "(audit): PARD `pard_trails_nrpa`, 4,096 features. Website: "
-        "`wp-json/wp/v2/media?media_type=application` …",
-    ),
-    where=(
-        "https://services7.arcgis.com/X8BO7jvq5nMMymtB/arcgis/rest/services/Butler_Trail/FeatureServer/0",
-        "https://thetrailfoundation.org/",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+CLAIMS = (
+    "ttc_butler_trail",
+    "austin_pard_trails",
 )
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

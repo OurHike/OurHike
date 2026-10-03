@@ -1,28 +1,17 @@
-"""US Fish & Wildlife Service: trail lines, published, and not landed (coverage audit 2026-10-01, batch
-c9_federal_state_rest).
+"""U.S. Fish and Wildlife Service: the National Wildlife Refuge System's trail inventory,
+FWS_HQ_Trails_Cycle_3_Public_View layer 1.
 
-The item describes it as the National Trails Inventory, collected to the Federal Trail Data
-Standards. That is the same schema family as NPS and USFS (`TRNAME`, `TRCLASS`, `NATTRDESIGNATION`,
-`PUBLICDISPLAY`, `DATAACCESS`, `SEASONAL`). The item text says Cycle 3 ran 2019–2022 "and may
-contain …
+Decision 54, wave 1: read live on 2026-10-03 (robots.txt first, lib/user_agent.py's agent, 2 s or more
+between requests to one host) and registered in sources.json, where each row carries the count, extent,
+statistics fingerprint, measured key, person fields and the item's own terms.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `usfws_trail_segments`: FWS HQ trail segments, National Wildlife Refuges (USFWS). 6,420 lines, keyed on `GlobalID`.
+
+Not landed: layer 2, Trails_Info, a table of 2,982 trail-level rows without geometry (coverage audit),
+which a staging model could join to the segments.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "`https://services.arcgis.com/QVENGdaPbd4LUkLV/arcgis/rest/services/FWS_HQ_Trails_Cycle_3_Public_View/FeatureServer/1`"
-        ' ("FWS HQ Trail Segments"). ArcGIS item `a0120cfde3dd4082bbee9deb280f2cfa`, owner `an email address`. '
-        "6,420 polylines, 3,624 mi (sum of `SECLENGTHMI`). maxRecordCount 2,000. Last edit 2026-10-01 00:37 "
-        "UTC. A trail-level table `Trails_Info` (layer 2) holds 2,982 rows.",
-    ),
-    where=(
-        "https://services.arcgis.com/QVENGdaPbd4LUkLV/arcgis/rest/services/FWS_HQ_Trails_Cycle_3_Public_View/FeatureServer/1",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("usfws_trail_segments",)
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

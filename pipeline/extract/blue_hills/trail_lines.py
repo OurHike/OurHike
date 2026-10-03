@@ -1,27 +1,18 @@
-"""Friends of the Blue Hills: trail lines, published, and not landed (coverage audit 2026-10-01, batch
-c4_regional_1).
+"""Friends of the Blue Hills: the Blue Hills Reservation's trail lines, published by the landowner,
+Massachusetts DCR.
 
-Not LOADED (correction 2). The `ILLEGAL` field needs filtering: R that it marks unofficial paths.
+Decision 54, wave 1: read live on 2026-10-03 (robots.txt first, lib/user_agent.py's agent, 2 s or more
+between requests to one host) and registered in sources.json, where each row carries the count, extent,
+statistics fingerprint, measured key, person fields and the item's own terms.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `dcr_blue_hills_trails`: Blue Hills Reservation trail lines (MA DCR, public). 1,630 lines, keyed on `GlobalID`.
+
+DCR's statewide roads and trails layer, which carries the same reservation among every DCR property, is
+massgis/'s; the two are independent datasets of the same ground. FBH's own maps are PDFs of DCR's map
+(coverage audit), a format no reader takes yet.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        'DCR\'s "Blue Hills Trail Lines (public)", '
-        "`https://services1.arcgis.com/7iJyYTjCtKsZS1LR/arcgis/rest/services/BlueHillsTrailLinesPublic/FeatureServer/2`:"
-        " 1,630 polylines with NAME, STATUS, TRAIL_MARK, CONDITION, ILLEGAL; lastEdit 2026-07-28. MassGIS "
-        "`AGOL/DCR_Roads_and_Trails_Arcs/FeatureServer/0`: 36,859 statewide, not registered. FBH's own: PDFs "
-        "`wp/wp-content/uploads/trails/maps/blue-hills-trail-map-2020.pdf` (DCR's map).",
-    ),
-    where=(
-        "https://services1.arcgis.com/7iJyYTjCtKsZS1LR/arcgis/rest/services/BlueHillsTrailLinesPublic/FeatureServer/2",
-        "https://arcgisserver.digital.mass.gov/arcgisserver/rest/services/AGOL/DCR_Roads_and_Trails_Arcs/FeatureServer/0",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("dcr_blue_hills_trails",)
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

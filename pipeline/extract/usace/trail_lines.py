@@ -1,24 +1,21 @@
-"""US Army Corps of Engineers: trail lines, published, and not landed (coverage audit 2026-10-01, batch
-c9_federal_state_rest).
+"""U.S. Army Corps of Engineers: two districts' recreational trail layers, Mobile's at Lake Lanier and
+Tulsa's.
 
-As the row says, nothing national. RIDB has no centerlines.
+Decision 54, wave 1: read live on 2026-10-03 (robots.txt first, lib/user_agent.py's agent, 2 s or more
+between requests to one host) and registered in sources.json, where each row carries the count, extent,
+statistics fingerprint, measured key, person fields and the item's own terms.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `usace_mobile_trails`: Recreational trails, Mobile District at Lake Lanier (USACE). 149 lines, keyed on `GlobalID`.
+- `usace_tulsa_trails`: Recreation trails, Tulsa District (USACE). 6 lines, keyed on `GlobalID`.
+
+Nothing national: RIDB carries no centerlines (coverage audit). Other districts' layers were not
+searched for in this read.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "District layers only. Mobile District: "
-        "`services2.arcgis.com/sdTb0lsRURdKFejG/.../Trails_Public_View/FeatureServer/0`, 149 lines, plus 80 "
-        "trail-feature points on layer 1. Tulsa District: "
-        "`services8.arcgis.com/GvI5dZtQIoT0Fznq/.../District_Recreation_Features_SWT/FeatureServer/13`, 6 "
-        "lines.",
-    ),
-    where=("https://usace.army.mil/",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+CLAIMS = (
+    "usace_mobile_trails",
+    "usace_tulsa_trails",
 )
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

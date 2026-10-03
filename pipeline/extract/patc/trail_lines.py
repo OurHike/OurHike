@@ -1,28 +1,19 @@
-"""Potomac Appalachian Trail Club: trail lines, published, and not landed (coverage audit 2026-10-01,
-batch c2_at_clubs_mid).
+"""Potomac Appalachian Trail Club: PATC's trails master, from its own ArcGIS Online organization.
 
-I gave this row AVAILABLE rather than LOADED because about 950 of PATC's roughly 1,190 managed miles
-(Tuscarora plus other trails) do not arrive through ATC (Reasoned from the club's stated mileage).
-The layer's 381.6 A.T. miles exceed PATC's 240 because the `Maintainer` field also names NBATC …
+Decision 54, wave 1: read live on 2026-10-03 (robots.txt first, lib/user_agent.py's agent, 2 s or more
+between requests to one host) and registered in sources.json, where each row carries the count, extent,
+statistics fingerprint, measured key, person fields and the item's own terms.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `patc_trails_master`: PATC Trails Master, view (PATC). 2,101 lines, keyed on `GlobalID`.
+
+The A.T. portion is LOADED via atc/; this layer carries the Tuscarora (about 230 mi by the coverage
+audit), the Massanutten and the club's other trails, about 950 of the 1,190 miles PATC manages (Reasoned
+by the audit from the club's stated mileage). Not landed: the older editions `PATC_Trails_2022` and
+`PATC_All_Trails_2020`, which this view supersedes, and the organization's working layers (GPS ranger
+tracks, relocation lines, buffers).
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "A.T. portion LOADED via atc. Own layer: "
-        "`https://services7.arcgis.com/BbnVmymrKxjFL0SO/arcgis/rest/services/PATC_Trails_Master_view/FeatureServer/10`,"
-        " 2,101 segments, 664 `TrailName` values, `SegmentLengthMiles` sum 2,198.3, `dataLastEditDate` "
-        "2026-10-01, capabilities `Query`. Fields: TrailName, Maintainer, District, GuidebookSection, "
-        "SurveyDate, MapMethod. Trails in it: Appalachian Trail 381.6 mi/197 seg; Tuscarora (all name variants)"
-        " about 230 mi; Massanutten 408, 35.8; Catoctin 23.7; Bull Run Occoquan 15.5; 960 segs/495.1 mi have no"
-        " TrailName. Older siblings: `PATC_Trails_2022/0` (2,001 …",
-    ),
-    where=("https://services7.arcgis.com/BbnVmymrKxjFL0SO/arcgis/rest/services/PATC_Trails_Master_view/FeatureServer/10",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("patc_trails_master",)
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

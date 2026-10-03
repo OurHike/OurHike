@@ -1,29 +1,27 @@
-"""Superior Hiking Trail Association: trail lines, published, and not landed (coverage audit
-2026-10-01, batch c7_regional_4).
+"""Superior Hiking Trail Association: the Superior Hiking Trail's lines, SHTA's own 2025 alignment and Lake
+County's layer of the trail.
 
-Correction 2. I chose AVAILABLE_NOT_LOADED over LOADED because about two-thirds of the trail is not
-loaded and one layer holds all of it. Skeptic: re-counted `agol_sht_public` at 272 features. The
-sentence "only through the Data Request form" is wrong. The SHTA's own …
+Decision 54, wave 1: read live on 2026-10-03 (robots.txt first, lib/user_agent.py's agent, 2 s or more
+between requests to one host) and registered in sources.json, where each row carries the count, extent,
+statistics fingerprint, measured key, person fields and the item's own terms.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `shta_line_2025`: Superior Hiking Trail main line, 2025 (SHTA). 55 lines, keyed on geometry.
+- `shta_spurs_and_loops`: Superior Hiking Trail spurs and loops, 2025 (SHTA). 182 lines, keyed on geometry.
+- `shta_spirit_mountain_spur_2025`: Spirit Mountain spur, 2025 (SHTA). 1 line, keyed on the registry key alone.
+- `lake_county_superior_hiking_trail`: Superior Hiking Trail (Lake County, Minnesota). 576 lines, keyed on geometry.
+
+Four datasets of the same ground with NCTA's `ncta_superior_hiking_trail` (ncta/), Duluth's
+`duluth_superior_hiking_trail` (duluth/) and usfs_trails' 36 segments: deduplication is dbt's. The SHTA
+service's other layers are campsites and trailheads (points) and parcels and easements (polygons), not
+trail lines.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "NCTA's `agol_sht_public`: 272 lines, 300.3 mi. It is partly LOADED today:",
-        "via `duluth` (`duluth_superior_hiking_trail`): 67 features, about 42 mi",
-        "via `usfs_trails`: 36 features, 59.8 mi; The SHTA's own geometry comes only through the Data Request "
-        "form. A Lake County layer (`amy.lewis_lakecountymn` `Superior_Hiking`/3) holds 576 features.",
-    ),
-    where=(
-        "https://utility.arcgis.com/usrsvcs/servers/085f4309eec943a8998e801f7849b1b8/rest/services",
-        "https://superiorhiking.org/",
-        "https://services6.arcgis.com/MoQNIarJueJ3X9ir/arcgis/rest/services/SHT_Trail_Protection_Web_Map_WFL1/FeatureServer",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+CLAIMS = (
+    "shta_line_2025",
+    "shta_spurs_and_loops",
+    "shta_spirit_mountain_spur_2025",
+    "lake_county_superior_hiking_trail",
 )
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

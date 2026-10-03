@@ -1,24 +1,22 @@
-"""Chesapeake Conservancy: trail lines, published, and not landed (coverage audit 2026-10-01, batch
-c11_nht).
+"""Chesapeake Conservancy: the Captain John Smith Chesapeake NHT's water trail and a baywide trails
+compilation, from the Conservancy's own ArcGIS Server (cicgis.org).
 
-A water trail. Baywide_Trails has unknown provenance and could duplicate state layers
+Decision 54, wave 1: read live on 2026-10-03 (robots.txt first, lib/user_agent.py's agent, 2 s or more
+between requests to one host) and registered in sources.json, where each row carries the count, extent,
+statistics fingerprint, measured key, person fields and the item's own terms.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `chesapeake_cajo_complete`: Captain John Smith Chesapeake NHT water trail, CAJO_Complete (Chesapeake Conservancy). 843 lines, keyed on geometry.
+- `chesapeake_baywide_trails`: Baywide Trails compilation (Chesapeake Conservancy). 23,146 lines, keyed on geometry + every attribute column.
+
+NPS's own centerline of the same NHT is nps/'s `nps_captain_john_smith_nht` (832 lines), an independent
+line of the same water. CAJO_Complete's server refuses pagination, and the extract reads it by object id
+(its row's pagination_comment).
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        'Own: `https://cicgis.org/arcgis/rest/services/Chesapeake/CAJO/MapServer/0` "CAJO_Complete": 843 lines,'
-        ' `copyrightText` "Chesapeake Conservancy". `cicgis.org/…/Baywide_Trails/MapServer/0`: 23,146 lines (a '
-        "compilation; `source` fields blank on samples). Upstream: "
-        "`NPSAGOL/CAJO_Captain_John_Smith_Chesapeake_NHT_Centerline_ln/0`: 832 lines (2026-05-14). "
-        "`nps_trails`: 0",
-    ),
-    where=("https://cicgis.org/arcgis/rest/services/Chesapeake/CAJO/MapServer/0",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+CLAIMS = (
+    "chesapeake_cajo_complete",
+    "chesapeake_baywide_trails",
 )
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

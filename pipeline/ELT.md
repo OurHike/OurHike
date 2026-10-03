@@ -3596,6 +3596,17 @@ Every folder's `org.py` also loads its catalogue row (145 of 145). Seven files h
 - **The phone download** grows with every POI. Stage 6's packed download puts other clubs' POIs, except water and shelters, into 1° cells, so a hiker downloads only the cells they choose. Every wave's new-data report carries the byte count it adds, before and after packing.
 - **The hourly lane** carries closures and warnings only (decision 53's phase F measures its budget), so waves 1 to 6 never touch it.
 
+#### What wave 1's live reads found that phase C must honour (2026-10-03)
+
+- **A historic alignment is not tread.** NPS's National Historic Trail lines and OCTA's atlas routes are ruts, swales and congressional routes, much of them on private land and roads; NPS's own terms say "Do not cross private land without permission." They never draw as a trail a hiker can walk, and never join the routable network.
+- **A winter trail is seasonal.** BLM's Iditarod line is "primarily a winter trail and many sections of the Trail are barely usable in the summer", over frozen rivers and wetland. It needs a seasonal flag before it draws.
+- **Roads ride in some trail layers.** MassGIS DCR's roads-and-trails layer carries public roads (`TYPE` says which); staging drops them.
+- **A layer's own words can hold it back.** USFS's Pacific Northwest Trail line is "not intended for trip planning or to determine public access along the trail" and was last edited 2017-04-04: decision 38's condition that cannot be met holds it.
+- **Units and dimensions.** ATA's Z is in feet and ATC's in metres; a Z-enabled line needs `ST_Force2D` before the network ([Risks](#risks-and-what-nobody-has-checked)).
+- **A server's extent can lie.** USFWS's trail segments answered `returnExtentOnly` with lat -24.99 to 90, while its vertices span lat 13.64 to 63.20 and lon -159.48 to 144.87, so region boxes are set from vertices, never from the server's extent.
+- **The on-prem change check has no geometry term.** `extract/_kinds.py`'s `_onprem_check` compares count, max object id and a maintained date, not `sum(Shape_Length)` as the dlt skill's rule 4 asks, so a geometry-only edit reads as FRESH. That is a false fresh on a closures layer too, and it is fixed before phase C.
+- **A host whose robots.txt fails is read as refusing.** `arcgisserver.digital.mass.gov` answered 502 twice on 2026-10-03, which RFC 9309 reads as disallow, and `massgis_long_distance_trails` already loads from it. Whether the extract checks robots.txt before a monthly read is `@unvalidated`.
+
 #### Order of work
 
 1. Wave 1's live read, one worker per type (points of interest, trail lines, places, elevation), once decision 53's inventory has finished with each host.

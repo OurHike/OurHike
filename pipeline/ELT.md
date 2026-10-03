@@ -15,7 +15,7 @@ This is the design for **#1793 — Rebuild the data platform as dlt → dbt: sev
 - [Where data lives between runs](#where-data-lives-between-runs): storage tiers, DuckLake, a full reload that cannot empty a safety table, skip checks, stable keys, how dbt builds (open), geometry rules
 - [Running it](#running-it): workflows, the hourly lanes, cadence, CI, secrets, docs, skills
 - [Every club's closures and alerts (decision 53)](#every-clubs-closures-and-alerts-decision-53): where it stands, the rules it keeps, phases A to G
-- [Row dates (decision 52)](#row-dates-decision-52): first seen and last changed on every row, from one dbt snapshot per source
+- [Row dates (decision 52)](#row-dates-decision-52): first seen and last changed on every mart row, from one dbt snapshot per mart (decision 57)
 - [What the clubs publish that is not loaded yet](#what-the-clubs-publish-that-is-not-loaded-yet): the tally, what makes the gaps, and loading all of it (decision 54)
 - [Phases](#phases): the build stages of one pull request, the work in flight, and the go/no-go gate
 - [Risks and what nobody has checked](#risks-and-what-nobody-has-checked): the register, and every `@unvalidated` claim
@@ -3489,41 +3489,151 @@ F and G close it.
 
 ## Row dates (decision 52)
 
-**Every row of every intermediate and mart model says when OurHike first saw it and when it last changed.** The maintainer, 2026-10-03: *"Is there a date field for each row? Maybe we should track when the last updated at datetime was … Like for every row in the int & marts folders."* Until this lands, a row carries `_loaded_at`, which is the run that last fetched its table, not the day the row itself appeared or moved.
+**Every mart row says when OurHike first saw it and when it last changed.** The maintainer, 2026-10-03: *"Is there a date field for each row? Maybe we should track when the last updated at datetime was … Like for every row in the int & marts folders."* That was decision 52. **Decision 57 amended it the same day, and its row in the decisions table is this design's spec:** one snapshot per mart, built in the intermediate layer, and only marts carry the dates. Decision 52's first design, a snapshot on every source, hashed fields nothing publishes, so an editor's name moving would have moved `_changed_at`. Before either decision, a row carried only `_loaded_at`: the run that last fetched its table, not the day the row itself appeared or moved.
 
-### What a row carries
+### What a mart row carries
 
 | column | means | comes from |
 |---|---|---|
-| `_first_seen_at` | the first run in which a row with this key existed | the source's snapshot: the earliest `dbt_valid_from` for the key |
-| `_changed_at` | the last run in which this row's content differed from the run before | the snapshot: the newest `dbt_valid_from` for the key |
-| the source's own date, under its own name | what the publisher says, such as ArcGIS `dataLastEditDate` or a WordPress `modified` | the raw table, unchanged. Never filled in when the source has none |
+| `_first_seen_at` | the first build whose snapshot held this key. The row appeared at or before then, and after the build before it | the earliest `dbt_valid_from` of the key in `int_<mart>__history` |
+| `_changed_at` | the build whose snapshot first held the row's current content, compared by `_row_hash` | the current version's `dbt_valid_from` |
+| the source's own date, under its own name | what the publisher says, such as ArcGIS `dataLastEditDate` or a WordPress `modified` | the raw table, where a mart carries it. Never filled in when the source has none |
 
-**Neither date is ever invented.** A source with no date of its own carries only the two OurHike dates, and a reader is never told the publisher's date is OurHike's.
+Both dates are `timestamptz` in UTC, in every mart's enforced contract, and tested not_null. **Neither is ever invented.** They are null only in a build whose history could not be restored (below), where null means unknown, never new. A v2 mart (`points_of_interest_v2`, `trail_lines_v2`, `elevation_v2`) carries v1's dates, because its rows are v1's rows printed for v2's files. Other intermediates carry neither date.
 
 ### How the dates are made
 
-1. **One dbt snapshot per base model**, under `dbt/snapshots/`, with the check strategy on the model's key and `_row_hash` (a hash of every column except the bookkeeping ones). The snapshot holds only the key, the hash and dbt's validity columns, so it stays small whatever the row is.
-2. **The snapshots outlive the warehouse.** `warehouse.duckdb` is rebuilt every run, so each job restores the snapshot tables from `OURHIKE_HISTORY_URL` (a prefix in the private raw store) before `dbt build` and writes them back after a build whose checks passed. A failed build writes nothing back, so a bad run cannot rewrite history.
-3. **A deleted row closes.** The snapshots set `hard_deletes`, so a key that leaves its source gets an end date rather than lingering as current.
-4. **Downstream models carry both columns.** A model that joins several inputs takes the earliest `_first_seen_at` and the latest `_changed_at` of the rows it combined, through two macros, so a mart row moves when any of its inputs moved.
-5. **A test enforces it.** A pytest fails any intermediate or mart model without both columns. It starts with a `PENDING` set of the models not yet converted, and go needs that set empty.
+`macros/row_history.sql` holds every piece. Each mart is one chain:
+
+```
+int_<mart>__final  ->  int_<mart>__history  ->  <mart>
+(a view: the mart's      (a dbt snapshot, schema       (row_history_mart(): the current
+ SQL, every contracted    intermediate: every version   rows and their two dates)
+ column but the dates)    of every row, whole)
+```
+
+1. **`int_<mart>__final`** is the SQL the mart held before decision 57, moved without change. Each of the eleven bodies is identical to its old mart's line for line once comments are stripped (checked with `diff`, 2026-10-03). Unit tests of a mart's logic test this model.
+2. **`int_<mart>__history`** (`snapshots/<mart>/`) is `row_history_snapshot()` under the mart's key. It stores the final model's whole row, plus three more columns:
+   - `_row_hash`: `macros/row_hash.sql` over every column but `_loaded_at` and the other load columns;
+   - `_built_by`: the git commit and workflow run that wrote the version, from `OURHIKE_BUILT_BY`, which `build_marts.py` sets;
+   - dbt's validity columns.
+
+   `dbt_project.yml`'s `snapshots:` block sets `strategy: check` on `_row_hash` alone and `hard_deletes: invalidate`. `_built_by` is never hashed, so a new commit on unchanged data opens no version. A version written by a new commit on unchanged raw data is a rule change, not an upstream one.
+3. **A removed row closes and leaves the mart.** Its last version keeps its content with `dbt_valid_to` set. A key that comes back opens a new version and keeps its first `_first_seen_at` (Reasoned from dbt's snapshot SQL, which inserts any key with no current version; not measured). How removed features merge back is left to a later decision (decision 57). `row_history_removed()` is the hook for it, and no model reads it today.
+4. **The clock is UTC.** dbt 2.0.6's own snapshot clock writes the process zone's wall time. `duckdb__snapshot_get_time()` overrides it, and `build_marts.py` runs every dbt command with `TZ=UTC`, so a `timestamptz` hashes in the same characters on every machine.
+5. **Two tests enforce it.**
+   - `pipeline/tests/test_dbt_row_dates.py` reads the SQL and YAML. It checks:
+     - every mart calls `row_history_mart()`, or is a later version selecting both dates;
+     - each contract declares both dates with the not_null severity a degraded leg needs;
+     - each snapshot is its own mart's history under the mart's key;
+     - no other snapshot exists.
+
+     It has no `PENDING` list; every mart is converted.
+   - `pipeline/tests/test_dbt_row_dates_builds.py` drives real builds of the podcasts mart through a restore (below). It runs in `pipeline-tests.yml`'s dbt job and `scripts/test.sh`'s dbt suite.
+
+**What dbt 2.0.6 does, measured 2026-10-03** in a scratch project on DuckDB and then on this project's fixtures:
+- a SQL snapshot block with `check` on `[_row_hash]`, a one-column or list `unique_key` and `hard_deletes: invalidate`:
+  - kept an unchanged row's one version across builds;
+  - opened a new version for an edited row;
+  - set `dbt_valid_to` on a row that disappeared;
+- `dbt build` ran the final model, then the snapshot, then the mart;
+- the `snapshots:` block reached snapshots in subfolders;
+- the legacy `invalidate_hard_deletes` is refused beside `hard_deletes` ("You cannot set both");
+- under `TZ=America/New_York`, dbt's own clock wrote 10:29 for a 14:29 UTC build. The profile's `TimeZone` setting did not change that; the override did;
+- `--exclude resource_type:snapshot` leaves the snapshots out of a build.
+
+### Keeping the history between runs
+
+`warehouse.duckdb` is rebuilt on every run, so the snapshots live in the private raw store's bucket. `pipeline/row_history.py` handles them, and `build_marts.py` runs it first and last:
+
+- **restore** before `dbt seed` copies the newest save into the warehouse;
+- **save** after the pub_ writers writes every `intermediate.*__history` table as zstd Parquet, with a `history.json` pointer giving each table's sha256, row count and `history_started_at`. The newest 24 saves are kept (`KEEP_SAVES`).
+
+There is one store per pipeline:
+
+| store | written by | when a restore fails |
+|---|---|---|
+| `history/monthly/` | `refresh-reference.yml`'s build job | **the build stops before dbt runs.** No run silently dates every row as new |
+| `history/conditions_<leg>/` | `publish-conditions.yml`'s dbt path, per leg (UA only today: the dbt path refuses a production leg) | **the leg still publishes** (the maintainer, by poll, 2026-10-03). See the list below the table |
+
+When a conditions leg's restore fails, `--history-on-failure degrade`:
+- builds closures and warnings from their final models with both dates null;
+- leaves the snapshots out (`--exclude resource_type:snapshot`, `OURHIKE_ROW_HISTORY=off`);
+- saves nothing;
+- exits 4.
+
+The workflow records exit 4 as `history_lost`, publishes, and its last step turns the run red. The phone files do not change either way (Reasoned: no pub_ writer selects either date).
+
+The other failure modes, each tested:
+
+- **A failed build saves nothing**, so a bad run cannot rewrite history.
+- **An empty store is a cold start only until it is listed.** `pipeline/row_history_stores.toml` names each store whose first run has saved. Once a store is listed, an empty prefix is refused as lost history: the monthly lane stops, and a conditions leg degrades.
+- **A command's own exit 4 is answered with 1**, so the workflow never reads a failed build as a degraded one (`test_build_marts.py`).
+- **Not hashed:** a column that changes on every run while the row does not would open a version for every row on every run. `row_history_snapshot()`'s `skip=[...]` leaves such a column out of the hash.
+  - On the fixtures, two `build_marts.py --fixtures` runs, regenerated and reloaded in fresh warehouses sharing one store, opened **no version and closed none** in any of the eleven snapshots. All 12,724 versions were still build 1's by `_built_by` (measured 2026-10-03). So no mart column moves on every run there, `_loaded_at` aside.
+  - On real data it is `@unvalidated`. The second monthly run's save settles it: its row counts against the first's, per snapshot.
+
+`test_dbt_row_dates_builds.py` measures the round trip on podcasts, three builds in fresh warehouses with the store restored between them (8 passed, three runs, 2026-10-03):
+- an episode reloaded unchanged, with a new `_dlt_id` and `_loaded_at`, keeps both dates;
+- a retitled one moves only `_changed_at`;
+- a dropped one leaves the mart and keeps its last title in the snapshot;
+- a new one is first seen in the build that saw it;
+- a build without its history still builds the mart, with null dates.
 
 ### The cold start, said honestly
 
-**The first run has no history.** Every row it sees gets that run's time as `_first_seen_at`, which is the day history began, not the row's age. The same holds after a lost history prefix. So the first run's dates are marked as the start of history, and nothing a hiker sees may read "new" from a `_first_seen_at` equal to it. The exact marker is the foundation commit's to set; until it is in, this paragraph is the rule.
+**The first run has no history.** Every row it sees gets that run's time as `_first_seen_at`, which is the day history began, not the row's age. The same holds after a lost store is cleared and started again. So a `_first_seen_at` equal to the history start means "at or before then, possibly long before". The history start is the snapshot's earliest `dbt_valid_from`: `row_history_started_at()` in SQL, `history_started_at` in `history.json`. Nothing a hiker sees may read "new" from a `_first_seen_at` equal to it.
 
-### Order of work
+### Keys that are positions, not ids
 
-1. **The foundation** (one worker): the snapshot macro and one snapshot per base model, the restore and write-back steps in `refresh-reference.yml` and `publish-conditions.yml`, the two carrying macros, and the test with every model in `PENDING`.
-2. **Five family conversions, in parallel**, each emptying its own part of `PENDING`: closures and warnings; trail_lines and trail_network; points_of_interest; elevation and suggested_hikes; places, sources, podcasts and challenges.
-3. **Notices' `checked_at`** (decision 53, phase D) rides on top: the time OurHike last read the notice, which moves every hour even when `_changed_at` does not.
+A snapshot can only follow a row by its mart's key. Where that key is a place in an ordering, or is made from the row's content, a change upstream reads differently from what happened. Each snapshot's header says which of its keys these are. All of it is Reasoned from the key derivations and not measured on real data:
+
+| mart | key | what a change upstream reads as |
+|---|---|---|
+| `trail_lines` | `<source>:chain:<chain_index>`; `generated-<layer_position>` for a line with no GlobalID, OBJECTID or Socrata id | a chain added, or a feature moved in its layer: an edit to every later id |
+| `trail_network` | `<part_id>.<piece_index>` | a part split differently: edits to its edges, plus a removal or an addition at the end |
+| `elevation` | `[line_id, seq]` | a line that gains distance at its start: one new version per later sample |
+| `closures`, `warnings` | an OPRHP closure's name and geometry; an ATC update without an `atc_id`, its file row | an edit to an OPRHP name or shape: one closure removed, another first seen |
+
+### Removed features, and the POI identity ledger
+
+**The A.T.'s POIs already have a mechanism for removed features.** The identity ledger, `pipeline/reference/poi_identity.json`, issues tombstones, which `retired_poi.geojson` publishes. When the maintainer decides how removed features merge back, the snapshot and the ledger must end up with one home for "this POI was removed", not two. Nothing about the ledger changes now.
+
+### How large the history is
+
+**Measured on the fixture warehouse**, 2026-10-03: the first save after one `build_marts.py --fixtures` run, 11 tables, 12,724 rows, as zstd Parquet.
+
+| snapshot | rows | bytes |
+|---|---:|---:|
+| `int_places__history` | 19 | 6,579 |
+| `int_challenges__history` | 1 | 11,503 |
+| `int_closures__history` | 14 | 12,797 |
+| `int_podcasts__history` | 71 | 13,306 |
+| `int_trail_lines__history` | 92 | 14,253 |
+| `int_trail_network__history` | 172 | 14,774 |
+| `int_suggested_hikes__history` | 2 | 18,473 |
+| `int_sources__history` | 64 | 26,926 |
+| `int_warnings__history` | 46 | 27,034 |
+| `int_elevation__history` | 6,036 | 250,425 |
+| `int_points_of_interest__history` | 6,207 | 730,055 |
+
+**For real data, estimated, not measured.** All four rows are Reasoned from release `2026-09-24-2`'s files ("What a phone downloads today"), on the assumption that zstd Parquet of a mart's columns lands near the gzip size of the GeoJSON those columns print. `@unvalidated`: the first monthly run's `history.json` settles all four.
+
+| mart | what the estimate rests on | first save |
+|---|---|---|
+| `points_of_interest` | 20,506 other organizations' POIs plus the A.T.'s own; the nine POI files are 11.9 MB raw and 1.6 MB on the wire, and the mart carries more columns than they print | a few MB |
+| `trail_lines` | `trails.geojson` alone is 11.5 MB raw and 4.0 MB on the wire, and the mart adds every network line at full precision | tens of MB |
+| `trail_network` | 656,621 edges, whose 505 graph cells are 132.9 MB of JSON | 30 to 60 MB |
+| `elevation` | the A.T.'s 138,697 samples, plus every junction-graph edge sampled about every 25 m; at the fixture's 41 bytes a row, a few million edge samples would be hundreds of MB | the largest by far, possibly hundreds of MB |
+
+Each later save adds only the versions that changed, but every save is a full copy, so a store holds up to 24 times its tables (`KEEP_SAVES`). The conditions legs' two tables are kilobytes on the fixtures. They hold every version of every notice, so they grow with the number of notices and with how often each is edited. How fast is `@unvalidated` until the soak's saves show it.
 
 ### What nobody has checked yet
 
-- **The hourly cost.** Restoring and writing back the closures and warnings snapshots adds time to every hourly run, which has a read budget (phase F of decision 53 measures it). `@unvalidated`: settled by timing the first hourly run that carries them.
-- **How large the history grows.** One row per key per change. `@unvalidated`: settled by the history prefix's size after the 3-day soak.
-- **The hash is only as good as the columns it covers.** A column that changes every fetch without meaning anything (a server timestamp) would make every row look changed every run. Each base model's hash leaves those columns out, and the test cannot know which they are, so this is a reviewer's check.
+- **The hourly cost.** The restore and the save sit inside the conditions build step's 4 minutes. `@unvalidated`: the first soak run's log settles it.
+- **The monthly cost of `elevation`.** If the estimate above is right, its restore and save move hundreds of MB, and a re-sampled line opens a version for every sample after the change. `@unvalidated`: the first monthly run's `history.json` and step timings settle it. If it is too large, `skip=[...]` cannot help, because the content really did change. The answer would be a coarser history for that one mart, which is the maintainer's call.
+- **Volatile columns on real data.** Covered under the failure modes above.
+- **Notices' `checked_at`** (decision 53, phase D) rides on top: the time OurHike last read a notice, which moves every hour even when `_changed_at` does not.
 
 ## What the clubs publish that is not loaded yet
 
@@ -3647,8 +3757,7 @@ The session works several things at once. This table is where each one stands, s
 
 | workstream | who | state (2026-10-03) | next |
 |---|---|---|---|
-| Row dates, the foundation ([Row dates](#row-dates-decision-52), step 1) | worker, worktree `agent-a36e6b48` | probing dbt snapshot behaviour: time zone, the hash, the restore path | the lead integrates its commits, then starts the five family conversions |
-| Row dates, five family conversions | not started | waits on the foundation | one worker per family, in parallel |
+| Row dates ([Row dates](#row-dates-decision-52), decision 57) | worker, worktree `agent-a36e6b48`, branch `rowdates-foundation` | **built**: all eleven marts and the three v2 marts carry both dates from one snapshot each, the history is restored and saved on both lanes, and a failed restore on a conditions leg publishes with null dates and goes red. Under decision 57 there are no per-family conversions left | the lead integrates its commits |
 | Notices, phase A inventory ([decision 53](#every-clubs-closures-and-alerts-decision-53)) | five workers | **done**, 129 clubs read live 2026-10-03, every request under `USER_AGENT` with robots.txt read first and every `Crawl-delay` honoured: **114 extract, 8 unclear, 5 refused, 2 publish nothing**. The refusals each quote their rule: ADK's terms ("you will not access the Services through automated or non-human means"), nycgovparks.org's robots.txt (`Disallow: /*json`), CalTopo's (`Disallow: /api/`, for KTA and NMVFO) and Trail Finder's terms ("shall not … systematically extract data", UVTA). Sources checked: 126 web pages, 106 ArcGIS, 50 JSON APIs, 37 WordPress, 21 RSS, 6 PDFs. Safety items: PA DCNR's live lead advisory on the Laurel Highlands Trail between miles 24 and 25; USFS Region 6 fire closures marked Active past their end date; CDPR closures past their reopen dates; pinhotitrailalliance.org now serves spam (no code publishes the link) | results in the session scratchpad, `inventory/all_results.json` |
 | Notices, phase B readers | three workers | **`FeedNotices` and `PageNotice` landed** (b2b4a2c3); **the JSON adapters landed** (f9fbca1a to aa40e647): NPS alerts for 27 park codes in one read, PA DCNR's advisories (Laurel Highlands' lead advisory among them), USGS volcanoes, NPS road events, TEHCC, FoOT and FMST's Helene status; `NPS_API_KEY` is passed (9a7b0d16), and the maintainer added the secret on 2026-10-03. The ArcGIS sources are still being wired | then the non-ArcGIS sources wired club by club, then phases C to G. The hourly lane now reads seven more sources each run: the soak covers that from 2026-10-03 18:18 |
 | Decision 54, wave 1: every ArcGIS layer the clubs publish ([Loading everything](#loading-everything-the-clubs-publish-decision-54)) | four workers, one per type: points of interest, trail lines, places, elevation | started 2026-10-03, extract side only (registry rows, resources, fixtures) | dbt models once decision 52's foundation lands |

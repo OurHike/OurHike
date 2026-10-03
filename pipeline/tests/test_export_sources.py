@@ -853,11 +853,12 @@ class TestTheRegistryTheConsoleReads:
         Spelled out rather than counted, because the point of the case is that
         a registration cannot arrive without somebody writing its id down: a
         length assertion alone would pass for any seventeen, including
-        seventeen typos.
+        seventeen typos. 30 until 2026-10-03, when decision 53's JSON API
+        notice sources registered four more (FMST, FoOT, PA DCNR, TEHCC).
         """
         orgs = self.real()["organizations"]
 
-        assert len(orgs) == 30
+        assert len(orgs) == 34
         assert {org["steward_id"] for org in orgs} == {
             "org:alaskatrails",
             "org:atc",
@@ -867,6 +868,8 @@ class TestTheRegistryTheConsoleReads:
             "org:cpw",
             "org:ctdeep",
             "org:duluth",
+            "org:fmst",
+            "org:foot",
             "org:gatc",
             "org:massgis",
             "org:mohonk",
@@ -881,8 +884,10 @@ class TestTheRegistryTheConsoleReads:
             "org:nysdec",
             "org:nysoprhp",
             "org:osm",
+            "org:padcnr",
             "org:pasda",
             "org:pcta",
+            "org:tehcc",
             "org:trta",
             "org:ugrc",
             "org:usfs",

@@ -295,9 +295,18 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     `green_tunnel_podcast`: registered because the maintainer reviewed it as
     ATC-sponsored, with nobody yet asked what of the feed may show, and
     `reaches_hikers: false` until somebody is.
+
+    DECISION 53'S JSON API SOURCES (2026-10-03, phase B) add seven, 32 -> 36
+    and 30 -> 33. NPS's alerts and road events and USGS's elevated volcanoes
+    are federal works, `stated_by_org` on the nps_trails reading. PA DCNR's
+    park advisories, TEHCC's wiki announcements, FoOT's condition sheet and
+    FMST's recovery map have no terms anybody read that reach this use, and
+    publish on the maintainer's decision 53 (facts and a link), which is
+    `maintainer_authorisation`. All seven are `reaches_hikers: false` until
+    phase C has a mart read their tables.
     """
     counts: dict[str, int] = {}
     for source in REGISTRY["sources"]:
         counts[source["licence_basis"]] = counts.get(source["licence_basis"], 0) + 1
 
-    assert counts == {"maintainer_authorisation": 32, "stated_by_org": 30, "unresolved": 2}
+    assert counts == {"maintainer_authorisation": 36, "stated_by_org": 33, "unresolved": 2}

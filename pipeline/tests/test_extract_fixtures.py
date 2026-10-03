@@ -15,7 +15,16 @@ import requests
 
 import export_conditions
 import make_dbt_fixtures
-from extract._fixtures import FixtureAdapter, FixtureConnection, build, esri_type, fixture_file, fixture_resources
+from extract._fixtures import (
+    JSON_API_DIR,
+    JSON_API_KINDS,
+    FixtureAdapter,
+    FixtureConnection,
+    build,
+    esri_type,
+    fixture_file,
+    fixture_resources,
+)
 from extract._kinds import (
     AtcTrailUpdatePages,
     ConditionsQuery,
@@ -51,7 +60,7 @@ def test_every_fixture_file_with_a_resource_lands_whole(fixtures):
         | AtcTrailUpdatePages
         | GuidePages
     )
-    fetched = [r for r in resources if not isinstance(r, answered)]
+    fetched = [r for r in resources if not isinstance(r, answered) and not isinstance(r, JSON_API_KINDS)]
     assert len(fetched) == 56, "55 monthly layers and OPRHP's temporary closures on the hourly lane"
     for resource in fetched:
         expected = len(json.loads(fixture_file(root / "raw", resource.key).read_text())["features"])
@@ -79,6 +88,40 @@ def test_the_hourly_lanes_other_upstreams_land_from_their_conditions_answers(fix
     assert counts["raw_nynjtc__nynjtc_trail_alerts_terms"] == sum(len(terms) for terms in nynjtc["terms"].values())
     for artifact in ("closures", "reports", "notes", "disputes"):
         assert counts[f"raw_ourhike__{artifact}"] == len(postgres[artifact]["rows"]), artifact
+
+
+#: Each JSON API notice source's table, and the rows make_dbt_fixtures.py's answers hold for it.
+JSON_API_ROWS = {
+    "raw_nps__nps_alerts": 3,
+    "raw_nps__nps_road_events": 2,
+    "raw_pasda__pa_dcnr_park_advisories": 2,
+    "raw_usgs__usgs_elevated_volcanoes": 2,
+    "raw_tehcc__tehcc_wiki_announcements": 2,
+    "raw_ouachita__foot_trail_condition_report": 3,
+    "raw_fmst__fmst_helene_status": 3,
+}
+
+
+def test_the_json_api_notice_sources_land_from_their_answers_with_no_nps_key_in_the_environment(fixtures):
+    """Every extract/_json_apis.py resource answered from conditions/json_apis/, NPS's two under fixture mode's placeholder key."""
+    root, counts = fixtures
+    resources, _ = fixture_resources(root / "raw")
+    landed = {r.table for r in resources if isinstance(r, JSON_API_KINDS)}
+    assert landed == set(JSON_API_ROWS)
+    assert all((root / "raw" / "conditions" / JSON_API_DIR / f"{r.key}.json").exists() for r in resources if r.table in landed)
+    assert {table: counts[table] for table in JSON_API_ROWS} == JSON_API_ROWS
+
+
+def test_the_lead_advisory_and_the_sheets_person_columns_reach_the_warehouse_as_their_readers_decide(fixtures):
+    """The fixture's lead-contamination advisory arrives whole; the sheet's two person columns arrive nowhere."""
+    root, _ = fixtures
+    with duckdb.connect(str(root / "warehouse.duckdb"), read_only=True) as con:
+        (message,) = con.execute("select message from raw.raw_pasda__pa_dcnr_park_advisories where isalert").fetchone()
+        sheet = {row[0] for row in con.execute("describe raw.raw_ouachita__foot_trail_condition_report").fetchall()}
+        values = json.dumps(con.execute("select * from raw.raw_ouachita__foot_trail_condition_report").fetchall(), default=str)
+    assert "contaminated by lead" in message and "drinking water source" in message
+    assert not {"adopted_by", "source_of_last_condition_report"} & sheet
+    assert "Fixture Adopter" not in values and "Fixture Reporter" not in values
 
 
 def test_atcs_pages_land_one_row_per_update_the_fixture_sitemap_lists(fixtures):

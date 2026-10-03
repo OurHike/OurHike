@@ -1,25 +1,37 @@
-"""PASDA / PA DCNR: warnings, published, and not landed (coverage audit 2026-10-01, batch
-b5_nyc_nj_ct_ma_pa).
+"""PASDA / PA DCNR: warnings, from DCNR's ParkAdvisory API, hourly (decision 53, phase B).
 
-Hunting season matters on state forest trails. Spray blocks are a short-lived closure or warning
-shape.
+`pa_dcnr_park_advisories` reads each park id sources.json's entry lists in
+`park_ids`: Laurel Ridge State Park (6219), which administers the Laurel
+Highlands Hiking Trail, and Tioga State Forest (8116). An advisory is HTML
+text with an IsAlert flag and nothing else, so each row is keyed by a hash of
+its park and text (extract/_json_apis.py's advisory_key).
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+WHY THIS FOLDER AND NOT laurel/. The API is PA DCNR's own, it answers for
+every park and forest DCNR runs, and one upstream is extracted once, in its
+steward's folder (decision 34). trail_orgs.json names this folder's org
+"PASDA / PA DCNR" and points laurel's row here (`via: pasda`), and
+laurel/trail_lines.py already draws from this folder, so laurel's closures.py
+and warnings.py are `via` notes naming this file, and another club's park is
+a new id on the same entry rather than a second resource.
+
+LIVE, 2026-10-03: Laurel Ridge's answer carries IsAlert true, "The unnamed
+tributary between mile-marker 24 and 25 has been contaminated by lead and
+other heavy metals. Please do not use this as a drinking water source." That
+is a water fact at an LHHT mile and belongs on the water path as well as in
+warnings; nothing reads it there yet.
+
+WHAT THIS MISSES: Tioga's answer held only two statewide items (drones,
+firewood) and not the Asaph Run reroute its advisories page carries (the
+decision 53 inventory, 2026-10-03), so for a state forest the page, not this
+API, is the channel.
+
+The coverage audit's other DCNR warnings (2026-10-01), all ArcGIS and all
+decision 54 wave 1's once registered: `agsprod/BOF/HuntStateForest/MapServer`
+(11 hunting layers), `pasda/DCNR2/MapServer/9` ("State Forest Gated Roads
+Open for Deer Season 202310", 308 features) and `BOF/SpongyMothSprayBlocks`.
 """
 
-from datetime import date
+from extract._json_apis import dcnr_park_advisories
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "`agsprod/BOF/HuntStateForest/MapServer`, 11 layers including Bear Check Stations, Wildlife Management "
-        "Units, Elk Hunt Zones, Roads Opened for Deer Season and Special CWD DMAP Units. "
-        '`pasda/DCNR2/MapServer/9` "State Forest Gated Roads Open for Deer Season 202310": 308. '
-        "`BOF/SpongyMothSprayBlocks` and `SpongyMothTwpStatus` (spray operations). Daily fire-danger PDFs "
-        "(c17).",
-    ),
-    where=("https://mapservices.pasda.psu.edu/server/rest/services/pasda/DCNR2/MapServer/9",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("pa_dcnr_park_advisories",)
+RESOURCES = [dcnr_park_advisories("pa_dcnr_park_advisories")]

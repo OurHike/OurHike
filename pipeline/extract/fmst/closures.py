@@ -1,24 +1,22 @@
-"""Friends of the Mountains-to-Sea Trail: closures, published, and not landed (coverage audit
-2026-10-01, batch c7_regional_4).
+"""Friends of the Mountains-to-Sea Trail: closures, from FMST's Hurricane Helene recovery map, hourly
+(decision 53, phase B).
 
-Closures with geometry, in KML. Google-hosted, so the captcha does not apply.
+`fmst_helene_status` reads the Google My Maps map's KML export, one row per trail line with the
+steward's own geometry: 12 lines on 2026-10-03, two of them CLOSED ("West of N Fork Catawba
+crossing to east of N Fork Catawba crossing", 0.1 mi, and "Blue Ridge Parkway Boundary to NC 80",
+2.6 mi, closed with a detour) and one a temporary detour (South Toe River, 7.7 mi). Each line's
+status is in its description's "Trail Status" line and in its colour, both landed as served; dbt
+reads which is closed, and only the steward's own "CLOSED" sets `obstructs_trail`.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+What is not read: mountainstoseatrail.org itself, whose trail-updates and detour pages sit behind a
+SiteGround captcha that answers even its robots.txt (the decision 53 inventory, 2026-10-03),
+recorded and not worked round. The coverage audit (2026-10-01) found the detour pages by search:
+`/possum-track-detour/`, `/south-toe-detour/`, `/i-540-detour/` (I-540 construction, "through
+February 2028"), `/steels-creek-detour/`, `/harper-creek-detour/`, `/eno-river-state-park-detour/`,
+and `/the-trail/trail-updates/`.
 """
 
-from datetime import date
+from extract._json_apis import my_maps_placemarks
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        'Helene KML (above). Each line carries "Trail Status": 2 `CLOSED` (Segment 4, "West of N Fork Catawba '
-        'crossing…" 0.1 mi and "Blue Ridge Parkway Boundary to NC 80" 2.6 mi), 1 detour (South Toe River, 7.7 '
-        "mi) and 9 open. Plus detour pages found by search: `/possum-track-detour/`, `/south-toe-detour/`, "
-        '`/i-540-detour/` (I-540 construction, "through February 2028"), `/steels-creek-detour/`, '
-        "`/harper-creek-detour/`, `/eno-river-state-park-detour/`. Plus `/the-trail/trail-updates/`.",
-    ),
-    where=("https://mountainstoseatrail.org/",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("fmst_helene_status",)
+RESOURCES = [my_maps_placemarks("fmst_helene_status")]

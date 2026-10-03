@@ -2745,14 +2745,292 @@ def _atc_trail_updates() -> dict:
     return {"answers": answers}
 
 
+# --- the JSON API notice sources (extract/_json_apis.py, decision 53 phase B) --
+#
+# One file per registry key under conditions/json_apis/, each a list of the
+# answers its upstream gives: a URL without its query, the query parameters
+# that answer needs, and the body as served. Every field name is one the
+# decision 53 inventory read off the live answer on 2026-10-03 (sources.json's
+# `notes` for each key); every value is invented, and no real alert, advisory,
+# page or segment is copied. The person fields a live answer carries are here
+# with invented values, so the readers' rules that keep them out are run.
+
+NPS_ALERTS_URL = "https://developer.nps.gov/api/v1/alerts"
+NPS_ROAD_EVENTS_URL = "https://developer.nps.gov/api/v1/roadevents"
+DCNR_ADVISORY_URL = "https://services.dcnr.pa.gov/ParkAddresses/api/ParkAdvisory/get"
+USGS_VOLCANOES_URL = "https://volcanoes.usgs.gov/hans-public/api/volcano/getElevatedVolcanoes"
+TEHCC_WIKI_API = "https://tehcc.org/clubwiki/api.php"
+FOOT_SHEET_URL = "https://docs.google.com/spreadsheets/d/1_3_u_8gtQSoiFSgzVAf3uGwPMj_nqQ25/export"
+FMST_KML_URL = "https://www.google.com/maps/d/kml"
+JSON = "application/json; charset=utf-8"
+
+
+def _answer(url: str, body, query: dict | None = None, content_type: str = JSON) -> dict:
+    return {
+        "url": url,
+        "query": query or {},
+        "content_type": content_type,
+        "body": body if isinstance(body, str) else json.dumps(body),
+    }
+
+
+def _nps_alert(number: int, park: str, category: str, title: str, indexed: str, road_events=()) -> dict:
+    return {
+        "id": f"00000000-0000-4000-8000-{number:012d}",
+        "url": f"https://www.nps.gov/{park}/planyourvisit/conditions.htm" if number % 2 else "",
+        "title": title,
+        "parkCode": park,
+        "description": f"Fixture description {number}.",
+        "category": category,
+        "relatedRoadEvents": list(road_events),
+        "lastIndexedDate": f"{indexed} 00:00:00.0",
+    }
+
+
+def _nps_alerts_answers() -> dict:
+    """Three alerts across three codes the entry lists, each category but Danger, and one road event linked."""
+    road = {"title": "Fixture Road closed", "id": "00000000-0000-4000-9000-000000000001", "type": "roadevent", "url": ""}
+    alerts = [
+        _nps_alert(1, "semo", "Park Closure", "Fixture Visitor Center Closed", "2026-08-13"),
+        _nps_alert(2, "grsm", "Caution", "Fixture Trail Washout", "2026-09-20", road_events=[road]),
+        _nps_alert(3, "iatr", "Information", "Reroute in Effect - Fixture Segment", "2026-09-30"),
+    ]
+    return {"answers": [_answer(NPS_ALERTS_URL, {"total": "3", "limit": "500", "start": "0", "data": alerts})]}
+
+
+def _nps_road_events_answers() -> dict:
+    """Two WZDx events, a line and a multi-line, under a header whose contact fields must never land."""
+    sources = [
+        {
+            "data_source_id": "fixture-source-1",
+            "organization_name": "Fixture National Park",
+            "update_date": "2026-09-01T00:00:00Z",
+            "contact_name": "Fixture Park",
+            "contact_email": "fixture-superintendent@example.invalid",
+        }
+    ]
+
+    def event(number, event_type, geometry, **extra):
+        return {
+            "type": "Feature",
+            "geometry": geometry,
+            "properties": {
+                "core_details": {
+                    "name": f"Fixture Road event {number}",
+                    "data_source_id": "fixture-source-1",
+                    "event_type": event_type,
+                    "road_names": ["Fixture Road"],
+                    "direction": "eastbound",
+                    "description": f"Fixture road event {number}.",
+                },
+                "start_date": "2026-09-24T01:00:00Z",
+                "location_method": "unknown",
+                "vehicle_impact": "all-lanes-closed",
+                "is_start_date_verified": False,
+                "is_end_date_verified": False,
+                "is_start_position_verified": False,
+                "is_end_position_verified": False,
+                "beginning_accuracy": "estimated",
+                "ending_accuracy": "estimated",
+                "start_date_accuracy": "estimated",
+                "end_date_accuracy": "estimated",
+                "Id": f"00000000-0000-4000-a000-{number:012d}",
+                "_id": number - 1,
+                **extra,
+            },
+        }
+
+    body = {
+        "road_event_feed_info": {
+            "publisher": "National Park Service",
+            "version": "4.1",
+            "update_date": "2026-10-01T00:00:00Z",
+            "contact_name": "Fixture Publisher",
+            "contact_email": "fixture-publisher@example.invalid",
+            "data_sources": sources,
+        },
+        "type": "FeatureCollection",
+        "features": [
+            event(1, "incident", _line(0), end_date="2027-01-01T07:59:59Z", types_of_incident=[{"incident_type": "fire"}]),
+            event(
+                2,
+                "work-zone",
+                {"type": "MultiLineString", "coordinates": [_line(1)["coordinates"], _line(2)["coordinates"]]},
+                types_of_work=[{"type_name": "surface-work"}],
+            ),
+        ],
+    }
+    return {"answers": [_answer(NPS_ROAD_EVENTS_URL, body)]}
+
+
+def _dcnr_advisories_answers() -> dict:
+    """Laurel Ridge's id with a statewide item and a lead-contamination alert shaped like the live one; Tioga's empty.
+
+    The wording is invented. The shape is the 2026-10-03 one that matters: an
+    IsAlert item naming two LHHT mile-markers, lead, and "drinking water", as
+    HTML with a non-breaking space, which a reader must carry through whole.
+    """
+    laurel = [
+        {"IsAlert": False, "Message": "<p><strong>Fixture Restrictions:</strong> A statewide fixture advisory.</p>"},
+        {
+            "IsAlert": True,
+            "Message": (
+                "<p>The fixture stream between mile-marker 31 and 32 has been contaminated by lead.&nbsp; "
+                "Do not use it as a drinking water source.</p>\r\n<p></p>"
+            ),
+        },
+    ]
+    return {
+        "answers": [
+            _answer(DCNR_ADVISORY_URL, laurel, {"id": "6219"}),
+            _answer(DCNR_ADVISORY_URL, [], {"id": "8116"}),
+        ]
+    }
+
+
+def _usgs_volcanoes_answers() -> dict:
+    """Two volcanoes sharing one observatory notice, as three AVO volcanoes did on 2026-10-03."""
+
+    def volcano(vnum, name, color, level):
+        notice = "DOI-USGS-FIX-2026-10-02T00:00:00+00:00"
+        return {
+            "obs_fullname": "Fixture Volcano Observatory",
+            "obs_abbr": "fix",
+            "volcano_name": name,
+            "vnum": vnum,
+            "notice_type_cd": "WU",
+            "notice_identifier": notice,
+            "sent_utc": "2026-10-02 00:00:00",
+            "sent_unixtime": 1790899200,
+            "color_code": color,
+            "alert_level": level,
+            "notice_url": f"https://volcanoes.usgs.gov/hans-public/notice/{notice}",
+            "notice_data": f"https://volcanoes.usgs.gov/hans-public/api/notice/getNotice/{notice}",
+        }
+
+    body = [volcano("900001", "Fixture Peak", "YELLOW", "ADVISORY"), volcano("900002", "Fixture Cone", "ORANGE", "WATCH")]
+    return {"answers": [_answer(USGS_VOLCANOES_URL, body)]}
+
+
+def _tehcc_wiki_answers() -> dict:
+    """The template's own page, the listing with revisions, and the listing alone, most specific first."""
+    pages = [
+        {"pageid": 9001, "ns": 0, "title": "Fixture Shelter", "touched": "2026-09-22T01:06:28Z", "lastrevid": 101, "length": 64},
+        {
+            "pageid": 9002,
+            "ns": 10,
+            "title": "Template:Fixture Bear Closure",
+            "touched": "2026-07-28T11:08:02Z",
+            "lastrevid": 102,
+            "length": 48,
+        },
+    ]
+    for page in pages:
+        page["fullurl"] = f"https://tehcc.org/clubwiki/index.php?title={page['title'].replace(' ', '_')}"
+    revisions = {
+        9001: "{{Announcement|Fixture: a bear has been seen near the shelter.}}\nFixture page text.",
+        9002: "{{Announcement|Fixture bear closure.}}",
+    }
+    with_revisions = [
+        {
+            **page,
+            "revisions": [
+                {
+                    "revid": page["lastrevid"],
+                    "parentid": page["lastrevid"] - 1,
+                    "timestamp": page["touched"],
+                    "slots": {
+                        "main": {"contentmodel": "wikitext", "contentformat": "text/x-wiki", "content": revisions[page["pageid"]]}
+                    },
+                }
+            ],
+        }
+        for page in pages
+    ]
+    template = {"batchcomplete": True, "query": {"pages": [{"pageid": 9000, "ns": 10, "title": "Template:Announcement"}]}}
+    return {
+        "answers": [
+            _answer(TEHCC_WIKI_API, template, {"titles": "Template:Announcement"}),
+            _answer(TEHCC_WIKI_API, {"batchcomplete": True, "query": {"pages": with_revisions}}, {"prop": "info|revisions"}),
+            _answer(TEHCC_WIKI_API, {"batchcomplete": True, "query": {"pages": pages}}, {"prop": "info"}),
+        ]
+    }
+
+
+def _foot_sheet_answers() -> dict:
+    """A condition report shaped like FoOT's: a date row, two titled tables, the two person columns, a legend.
+
+    The person columns hold invented names so the reader's allow list is what
+    keeps them out; the second table's header has no Shelter Distance, as the
+    live sheet's lower tables do not.
+    """
+    header = "Sect,Ranger District,Begin,End,Description,Miles,Adopted by,Last Condition Report Submitted,"
+    rows = [
+        ",,,,10/1/2026,,,,,,",
+        "Fixture Trail CONDITION REPORT,,,,,,,,,,",
+        header + '"Source of Last  Condition Report \n",Comments,"Shelter\nDistance"',
+        "1,Fixture District,0.0,2.4,Fixture TH to Fixture Vista,2.4,Fixture Adopter One,10/25,Fixture Reporter One,,",
+        "1,Fixture District,2.4,5.8,Fixture Vista to FR 1,3.4,Fixture Adopter Two,9/25,Fixture Reporter Two,Down tree removed,6.2",
+        ",,,,,,,,,,",
+        "Fixture Loop CONDITION REPORT,,,,,,,,,,",
+        header + "Source of Last  Condition Report,Comments,",
+        "FL,Fixture District,0.0,1.5,Fixture Loop start to campsite,1.5,Fixture Adopter Three,11/23,Fixture Reporter Three,,",
+        ",Color Codes:,,Green=trail is clear,,,,,,,",
+    ]
+    return {"answers": [_answer(FOOT_SHEET_URL, "\n".join(rows) + "\n", {"format": "csv"}, "text/csv; charset=utf-8")]}
+
+
+def _fmst_kml_answers() -> dict:
+    """Three lines in one folder, open, closed and detour, each status in its description and its style, as FMST's map."""
+
+    def placemark(name, status, style, i):
+        coordinates = " ".join(f"{x},{y},0" for x, y in _line(i)["coordinates"])
+        description = (
+            f"{name}    <br>       <br>   Segment   4    <br>   Name   {name}    <br>   Length   1.0    <br>"
+            f"   Trail Status   {status}"
+        )
+        return (
+            f"<Placemark><name>{name}</name><description><![CDATA[{description}]]></description>"
+            f"<styleUrl>#line-{style}-4000</styleUrl><LineString><tessellate>1</tessellate>"
+            f"<coordinates>{coordinates}</coordinates></LineString></Placemark>"
+        )
+
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document>'
+        "<name>Fixture Recovery Status</name><Folder><name>Fixture Route</name>"
+        + placemark("Fixture Gap to Fixture Ford", "Open", "38A800", 0)
+        + placemark("Fixture Ford to Fixture Road", "CLOSED", "FF0000", 1)
+        + placemark("Fixture River Detour", "Temporary detour", "FFA500", 2)
+        + "</Folder></Document></kml>"
+    )
+    return {"answers": [_answer(FMST_KML_URL, body, {"forcekml": "1"}, "text/xml; charset=utf-8")]}
+
+
+def _json_api_fixtures() -> dict[str, str]:
+    return {
+        f"conditions/json_apis/{key}.json": json.dumps(document)
+        for key, document in (
+            ("nps_alerts", _nps_alerts_answers()),
+            ("nps_road_events", _nps_road_events_answers()),
+            ("pa_dcnr_park_advisories", _dcnr_advisories_answers()),
+            ("usgs_elevated_volcanoes", _usgs_volcanoes_answers()),
+            ("tehcc_wiki_announcements", _tehcc_wiki_answers()),
+            ("foot_trail_condition_report", _foot_sheet_answers()),
+            ("fmst_helene_status", _fmst_kml_answers()),
+        )
+    }
+
+
 def closures_and_warnings_fixtures() -> dict[str, str]:
-    """The closures and warnings family's fixture files, under conditions/: NWS, NYNJTC's WordPress, OurHike's Postgres, ATC's site."""
+    """The closures and warnings family's fixture files, under conditions/: NWS, NYNJTC's WordPress, OurHike's Postgres,
+    ATC's site, and the JSON API notice sources."""
     return {
         "conditions/nws_alerts.json": json.dumps(_nws_alerts()),
         "conditions/nynjtc_trail_alerts.json": json.dumps(_nynjtc_trail_alerts()),
         "conditions/ourhike_postgres.json": json.dumps(_ourhike_postgres()),
         "conditions/atc_trail_updates.json": json.dumps(_atc_trail_updates()),
         "weather/squares.json": json.dumps(_weather_squares(), separators=(",", ":")),
+        **_json_api_fixtures(),
     }
 
 

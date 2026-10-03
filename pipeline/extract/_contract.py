@@ -213,11 +213,13 @@ class Unavailable(Exception):
     the last rows; this says nobody can tell. extract/_run.py leaves the
     resource out and logs it `unavailable`, and extract/_warehouse.py
     withdraws the table rather than serve its last rows as current: absent
-    means unknown, never zero (CLAUDE.md). The one raiser today is
+    means unknown, never zero (CLAUDE.md). Two raise it today:
     ConditionsQuery.change_check (extract/_kinds.py), for a table
     export_conditions.py's PENDING_READER_SETUP lists: notes and disputes are
     omitted while `field_notes` is not readable, and closures and reports
-    carry on. Any other failure raises as itself and stops the lane.
+    carry on; and the NPS readers' change checks (extract/_json_apis.py),
+    while NPS_API_KEY is unset. Any other failure raises as itself and stops
+    the lane.
     """
 
 

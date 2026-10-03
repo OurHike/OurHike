@@ -263,6 +263,29 @@
       "licence_basis": "stated_by_org"
     },
     {
+      "key": "usgs_elevated_volcanoes",
+      "title": "USGS Volcano Hazards: volcanoes at an elevated alert level",
+      "provider": "USGS",
+      "kind": "published_notices",
+      "url": "https://volcanoes.usgs.gov/hans-public/api/volcano/getElevatedVolcanoes",
+      "trust": "authoritative",
+      "steward": "U.S. Geological Survey",
+      "steward_contact": "https://www.usgs.gov/programs/VHP",
+      "licence": "Public domain, as a work of the United States government (17 U.S.C. 105), the reading usgs_3dhp is registered on. No terms were read for this API, and its host serves no robots.txt (404, the decision 53 inventory, batch 1, 2026-10-03). Facts and a link only (decision 53).",
+      "licence_basis": "stated_by_org",
+      "attribution": "U.S. Geological Survey",
+      "freshness": {
+        "kind": "read_in_full",
+        "url": "https://volcanoes.usgs.gov/hans-public/api/volcano/getElevatedVolcanoes",
+        "notes": "No ETag and no Last-Modified (inventory, 2026-10-03): one request of about 3 KB every hourly run. A 200 with a JSON list is the answer and its length the count; an empty list is Reasoned to mean nothing is elevated, not observed."
+      },
+      "discovered_via": "pipeline/ELT.md decision 53's phase A inventory, batch 1 (usgs-tnm), registered in phase B. Lands in _shared/usgs/, beside 3DEP and NHD, as a national service.",
+      "discovered_date": "2026-10-03",
+      "notes": "5 volcanoes on 2026-10-03: Gareloi, Shishaldin and Ahyi Seamount YELLOW/ADVISORY, Great Sitkin and Kilauea ORANGE/WATCH. Fields: obs_fullname, obs_abbr, volcano_name, vnum, notice_type_cd, notice_identifier, sent_utc, sent_unixtime, color_code, alert_level, notice_url, notice_data. The key is vnum (unique on 5 of 5): three AVO volcanoes shared one notice_identifier that day, so the notice cannot key the table. No coordinates; vnum is the Smithsonian volcano number. It reaches a hiker only where a drawn trail is near a volcano (the Cascades, Hawaii, Alaska), which is dbt's join to make.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted; nothing reads it into a mart yet, so it ships nowhere. Phase C flips this to true when a mart reads the table; decision 53 publishes it then, as facts and a link. Which trails it concerns is that mart's join to make."
+    },
+    {
       "key": "usdm_drought",
       "title": "U.S. Drought Monitor weekly class polygons",
       "provider": "National Drought Mitigation Center (UNL), USDA, NOAA, NASA",
@@ -1089,6 +1112,142 @@
       "blaze_comment": "Declared so network_line_sources() reads this layer at all (#1787): that selector is `'blaze_field' in s or 'blaze_default' in s`, and a trail-line source carrying neither is skipped exactly as OPRHP's facilities points are. `reaches_hikers` gates publish.py and is a different question - #1786 flipped it alone and this layer still reached nobody. 'Unknown' is what usfs_trails and the four NYC layers already use for a steward publishing no blaze. EVERY FIELD OF THIS LAYER WAS READ LIVE on 2026-09-30 rather than pattern-matched, because #1778's probe used a name filter and a filter only finds what it was told to look for. `TRLCLASS` is the trail's construction standard, not a blaze."
     },
     {
+      "key": "nps_alerts",
+      "title": "NPS Alerts, for the park codes the clubs draw on",
+      "provider": "NPS",
+      "kind": "published_notices",
+      "url": "https://developer.nps.gov/api/v1/alerts",
+      "trust": "authoritative",
+      "steward": "National Park Service",
+      "steward_contact": "https://www.nps.gov/aboutus/contactus.htm",
+      "licence": "PUBLIC DOMAIN, on 17 U.S.C. 105, the reading nps_trails ships on and the reason this is `stated_by_org` rather than `maintainer_authorisation` (usfs_trails' own reasoning). NPS's website disclaimer, as the decision 53 inventory quoted it (batch 5, 2026-10-03) from https://www.nps.gov/aboutus/disclaimer.htm: \"material created by the National Park Service and presented on this website, unless otherwise indicated, is generally considered in the public domain.\" NPS's developer terms were not read: https://www.nps.gov/subjects/developer/terms-of-service.htm answered 404 to the inventory (batch 2, 2026-10-03), so whether they say anything about a scheduled reader is @unvalidated. What publishes is decision 53's facts and a link (features/ORG_NOTICES.md §7): title, category, park, date and the link, never the description.",
+      "licence_basis": "stated_by_org",
+      "attribution": "National Park Service",
+      "api_key_comment": "developer.nps.gov is api.data.gov's gateway, which refuses a request with no key (it answered /robots.txt itself with 403 `API_KEY_MISSING`, the decision 53 inventory, 2026-10-03). The extract reads the key from the NPS_API_KEY environment variable (extract/_json_apis.py's NPS_API_KEY_ENV) and sends it as the `X-Api-Key` header, never in a URL; unset, the resource is `unavailable` and its table is withdrawn, never read as no alerts (extract/_json_apis.py). A key is free from https://www.nps.gov/subjects/developer/get-started.htm. The public demonstration key allows 10 requests an hour (`x-ratelimit-limit: 10`, measured by the inventory) and is never used by a scheduled job.",
+      "park_codes": {
+        "alka": [
+          "ala-kahakai",
+          "e-mau"
+        ],
+        "appa": [
+          "atc",
+          "amc-dv"
+        ],
+        "blri": [
+          "nc-mst"
+        ],
+        "buov": [
+          "butterfield"
+        ],
+        "cajo": [
+          "chesapeake"
+        ],
+        "cali": [
+          "octa"
+        ],
+        "dena": [
+          "alaska-trails"
+        ],
+        "dewa": [
+          "amc-dv"
+        ],
+        "elca": [
+          "carta"
+        ],
+        "elte": [
+          "ecr-tejas"
+        ],
+        "goga": [
+          "ridgetrail"
+        ],
+        "grsm": [
+          "bmta",
+          "nc-mst"
+        ],
+        "iatr": [
+          "iata"
+        ],
+        "juba": [
+          "anza"
+        ],
+        "kefj": [
+          "alaska-trails"
+        ],
+        "lecl": [
+          "lc-trust",
+          "lcthf"
+        ],
+        "mopi": [
+          "mormon-trails"
+        ],
+        "natr": [
+          "natr"
+        ],
+        "olsp": [
+          "osta"
+        ],
+        "oreg": [
+          "octa"
+        ],
+        "ovvi": [
+          "ovta"
+        ],
+        "poex": [
+          "pony-express"
+        ],
+        "pohe": [
+          "pohe"
+        ],
+        "safe": [
+          "sfta"
+        ],
+        "semo": [
+          "semo"
+        ],
+        "stsp": [
+          "stsp"
+        ],
+        "trte": [
+          "tota"
+        ]
+      },
+      "park_codes_comment": "Each NPS park code a club folder draws on, and those folders by trail_orgs.json slug: the one home for both. The extract asks for every code here in one request (`parkCode=` takes a comma-separated list, measured by the inventory as one call of 10 codes, batch 3), and dbt assigns each club its portion from this map (decision 34). Twenty-five of the codes come from the decision 53 inventory's live reads (batches 1 to 5, 2026-10-03); `appa` and `dewa` come from amc_dv/closures.py's note, and `grsm` for nc-mst from nc_mst/warnings.py's, read 2026-10-01. The atc/ and amc_dv/ files are left as they are (ATC's own resources, and a note drawn from atc/), so those two codes reach dbt through this map alone. WHAT THIS LIST LEAVES OUT: nps/ and nps_poi/ are national (nps_trails holds 31,485 features across every unit, and the API's national list held 622 alerts on 2026-10-03), and every unit not named here is not read. Deleting this field would not read them either: the resource refuses an entry with no codes, because a national read is a decision for the maintainer (two pages of about 500 an hour), not a default.",
+      "freshness": {
+        "kind": "read_in_full",
+        "url": "https://developer.nps.gov/api/v1/alerts",
+        "notes": "No ETag and no Last-Modified on the API's answers (decision 53 inventory, every batch, 2026-10-03), so nothing can say FRESH: every hourly run reads the listed codes, one request of up to NPS_PAGE_SIZE alerts, paged by `start` if the answer is longer. The answer's own `total` (a string) is the count that proves a zero, read in the same response as the rows."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED rows, re-read live by pipeline/ELT.md decision 53's phase A inventory (batches 1 to 5), registered in phase B.",
+      "discovered_date": "2026-10-03",
+      "notes": "Fields per alert (measured on the national list's first 50, 2026-10-03): id (a GUID, unique on 50 of 50), url (empty on 31 of 50), title, parkCode, description, category (Park Closure 25, Caution 11, Information 8, Danger 6), relatedRoadEvents (a list of {title, id, type, url}), lastIndexedDate ('2026-10-02 00:00:00.0', an index date, not a start or an end). No geometry: a park code is the place, so `place` stays unplaced unless a reviewed term says otherwise. Category alone does not decide obstructs_trail: a Park Closure most often closes a facility or a road, not a trail (semo's two, 2026-10-03, close visitor centres). One resource, in nps/warnings.py; nps/closures.py SHARES it.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted; nothing reads it into a mart yet, so it ships nowhere. Phase C flips this to true when a mart reads the table; decision 53 publishes it then, as facts and a link."
+    },
+    {
+      "key": "nps_road_events",
+      "title": "NPS Road Events (WZDx)",
+      "provider": "NPS",
+      "kind": "published_notices",
+      "url": "https://developer.nps.gov/api/v1/roadevents",
+      "trust": "authoritative",
+      "steward": "National Park Service",
+      "steward_contact": "https://www.nps.gov/aboutus/contactus.htm",
+      "licence": "PUBLIC DOMAIN, on 17 U.S.C. 105, as nps_alerts; the decision 53 inventory (batch 4, 2026-10-03) recorded the feed's own license as https://creativecommons.org/publicdomain/zero/1.0/. Facts and a link only (decision 53, features/ORG_NOTICES.md §7).",
+      "licence_basis": "stated_by_org",
+      "attribution": "National Park Service",
+      "api_key_comment": "The same gateway and key as nps_alerts: NPS_API_KEY, sent as the `X-Api-Key` header; unset, this table is withdrawn rather than read as no road events.",
+      "freshness": {
+        "kind": "read_in_full",
+        "url": "https://developer.nps.gov/api/v1/roadevents",
+        "notes": "No ETag and no Last-Modified (decision 53 inventory, batch 4, 2026-10-03), so every hourly run reads the whole feed, one request of about 457 KB. A FeatureCollection with an empty `features` list is the proven zero."
+      },
+      "discovered_via": "pipeline/ELT.md decision 53's phase A inventory, batch 4, reading the endpoint the coverage audit's skeptic named in nps_poi/closures.py.",
+      "discovered_date": "2026-10-03",
+      "notes": "86 events on 2026-10-03 (incident 55, work-zone 31), WZDx 4.1, national, no park filter. Each feature: LineString (78) or MultiLineString (8), properties core_details {name, data_source_id, event_type, road_names, direction, description}, start_date, end_date (on 72), vehicle_impact, types_of_incident or types_of_work, four is_*_verified flags, accuracies, `Id` (a GUID, unique on 86 of 86 in that one read; stable across reads is @unvalidated) and `_id` (0 to 85, the position in the answer, so never a key). The header's road_event_feed_info names each data source's park (`organization_name`), which the row carries as data_source_organization; its contact_name and contact_email fields are never copied. These are road events: a closed road to a trailhead is the 'unable to get off the trail quickly' case, and whether one feeds closures or warnings is dbt's (nps/closures.py SHARES this file's resources).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted; nothing reads it into a mart yet, so it ships nowhere. Phase C flips this to true when a mart reads the table; decision 53 publishes it then, as facts and a link."
+    },
+    {
       "key": "blm_trails",
       "title": "BLM trails and routes (Natl GTLF public display)",
       "provider": "BLM",
@@ -1448,6 +1607,108 @@
       "blaze_field": null,
       "blaze_default": "Unknown",
       "blaze_comment": "Declared so network_line_sources() reads this layer at all (#1787): that selector is `'blaze_field' in s or 'blaze_default' in s`, and a trail-line source carrying neither is skipped exactly as OPRHP's facilities points are. `reaches_hikers` gates publish.py and is a different question - #1786 flipped it alone and this layer still reached nobody. 'Unknown' is what usfs_trails and the four NYC layers already use for a steward publishing no blaze. EVERY FIELD OF THIS LAYER WAS READ LIVE on 2026-09-30 rather than pattern-matched, because #1778's probe used a name filter and a filter only finds what it was told to look for."
+    },
+    {
+      "key": "pa_dcnr_park_advisories",
+      "title": "PA DCNR park advisories (ParkAdvisory API)",
+      "provider": "PA DCNR",
+      "kind": "published_notices",
+      "url": "https://services.dcnr.pa.gov/ParkAddresses/api/ParkAdvisory/get",
+      "trust": "authoritative",
+      "steward": "Pennsylvania Department of Conservation and Natural Resources",
+      "steward_contact": "https://www.pa.gov/agencies/dcnr",
+      "licence": "Facts and a link only (decision 53, features/ORG_NOTICES.md §7), on the maintainer's 2026-10-03 decision to publish every club's notices that way; NOT a grant from PA DCNR. The decision 53 inventory (batch 1, 2026-10-03) found no terms on pa.gov that bear on automated access (\"No terms link on pa.gov beyond privacy/disclaimers, which say nothing on automated access\"), and services.dcnr.pa.gov serves no robots.txt (404). An advisory has no title, so what a phone shows for one is a design question for phase E.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Pennsylvania DCNR",
+      "park_ids": {
+        "6219": [
+          "laurel"
+        ],
+        "8116": [
+          "pasda"
+        ]
+      },
+      "park_ids_comment": "Each PA DCNR park id this reads, and the club folders that draw on it: 6219 is Laurel Ridge State Park, which administers the Laurel Highlands Hiking Trail (its alerts page's data-park-id); 8116 is Tioga State Forest. Both measured by the decision 53 inventory, 2026-10-03. A park for another club is a new id here, not a new resource. Tioga's answer held two statewide items and not the Asaph Run reroute its advisories page carries, so for a state forest this API does not replace the page.",
+      "freshness": {
+        "kind": "read_in_full",
+        "url": "https://services.dcnr.pa.gov/ParkAddresses/api/ParkAdvisory/get",
+        "notes": "No ETag and no Last-Modified (2,425 bytes for 6219, inventory 2026-10-03): every hourly run reads each id, one request each, 2 s apart. Each answer is a JSON list, and the rows are built from it, so its length is the count."
+      },
+      "discovered_via": "The Laurel Ridge alerts page's `data-api-url`, found by pipeline/ELT.md decision 53's phase A inventory (batch 1), registered in phase B.",
+      "discovered_date": "2026-10-03",
+      "notes": "An item is {IsAlert: bool, Message: HTML} and nothing else: no title, no date, no id (measured 2026-10-03). The extract keys each by a sha256 of its park id and text (advisory_key in extract/_json_apis.py), so an edited advisory is a new row, and decision 52's _first_seen_at is the only date it will have. LIVE SAFETY ITEM, 2026-10-03: Laurel Ridge's answer carries IsAlert true, \"The unnamed tributary between mile-marker 24 and 25 has been contaminated by lead and other heavy metals. Please do not use this as a drinking water source.\" That is a water fact at an LHHT mile, and belongs on the water path as well as in warnings. The other three Laurel Ridge items are statewide (drones, spotted lanternfly, firewood).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted; nothing reads it into a mart yet, so it ships nowhere. Phase C flips this to true when a mart reads the table; decision 53 publishes it then, as facts and a link. The lead-contamination advisory at LHHT miles 24-25 should not wait for the notices mart: it is the first item for the water path, which nothing reads from this table yet."
+    },
+    {
+      "key": "tehcc_wiki_announcements",
+      "title": "TEHCC club wiki announcements",
+      "provider": "TEHCC",
+      "kind": "published_notices",
+      "url": "https://tehcc.org/clubwiki/api.php",
+      "trust": "authoritative",
+      "steward": "Tennessee Eastman Hiking & Canoeing Club",
+      "steward_contact": "https://tehcc.org/",
+      "licence": "Facts and a link only (decision 53, features/ORG_NOTICES.md §7), on the maintainer's 2026-10-03 decision; NOT a grant from TEHCC. The wiki's rightsinfo is empty (the coverage audit, 2026-10-01) and no terms were read. tehcc.org's robots.txt, read 2026-10-03, is `User-agent: *` / `Disallow: /wp-admin/` / `Allow: /wp-admin/admin-ajax.php`, nothing under /clubwiki/.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Tennessee Eastman Hiking & Canoeing Club",
+      "template": "Template:Announcement",
+      "freshness": {
+        "kind": "mediawiki_revisions",
+        "url": "https://tehcc.org/clubwiki/api.php",
+        "notes": "The listing of pages that transclude `template`, with prop=info: a sha256 over each page's (pageid, lastrevid, touched) and the count. `touched` moves when a template a page carries is edited, which its own lastrevid does not. One request of about 2 KB an hour; the wikitext is read only when that moves."
+      },
+      "discovered_via": "The coverage audit's tehcc warnings note (2026-10-01), re-read by pipeline/ELT.md decision 53's phase A inventory (batch 3), registered in phase B.",
+      "discovered_date": "2026-10-03",
+      "notes": "9 pages on 2026-10-03: Brumley Mountain Trail, Chimney Top, Dennis Cove Rd to Wilbur Dam Rd, Shelter:Overmountain, Shelter:Iron Mountain, Shelter:Watauga Lake, Catawba Falls Trail, Template:Watauga Area Bear Closure and The Channels Natural Area Preserve; each 4 to 10 KB of wikitext. The key is pageid. An announcement carries no expiry (the 2023 Watauga bear closure looks lapsed, audit), so these land as warnings with their revision date, never as closures. The editor's user name and the edit summary are never asked for.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted; nothing reads it into a mart yet, so it ships nowhere. Phase C flips this to true when a mart reads the table; decision 53 publishes it then, as facts and a link."
+    },
+    {
+      "key": "foot_trail_condition_report",
+      "title": "Friends of the Ouachita Trail: Trail Condition Report",
+      "provider": "FoOT",
+      "kind": "published_notices",
+      "url": "https://docs.google.com/spreadsheets/d/1_3_u_8gtQSoiFSgzVAf3uGwPMj_nqQ25/export?format=csv&gid=866760807",
+      "trust": "authoritative",
+      "steward": "Friends of the Ouachita Trail",
+      "steward_contact": "https://friendsoftheouachita.org/",
+      "licence": "Facts and a link only (decision 53, features/ORG_NOTICES.md §7), on the maintainer's 2026-10-03 decision; NOT a grant from FoOT. No terms were read. docs.google.com's robots.txt, read 2026-10-03 under our agent, allows the export (`User-agent: *`, `Allow: /spreadsheet`, the longest match over `Disallow: /`) and asks `Crawl-delay: 1`; the export redirects (307) to doc-04-ac-sheets.googleusercontent.com, whose /robots.txt answered 404 the same day, which RFC 9309 reads as no rules.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Friends of the Ouachita Trail",
+      "freshness": {
+        "kind": "read_in_full",
+        "url": "https://docs.google.com/spreadsheets/d/1_3_u_8gtQSoiFSgzVAf3uGwPMj_nqQ25/export?format=csv&gid=866760807",
+        "notes": "No ETag and no Last-Modified, and `cache-control: no-cache, no-store` (2026-10-03): one request of about 23 KB every hourly run. The sheet's own report date is its first row's date cell ('10/1/2026' on 2026-10-03), landed on every row as report_date."
+      },
+      "discovered_via": "The coverage audit's ouachita warnings note (gid 866760807, 2026-10-01), re-read by pipeline/ELT.md decision 53's phase A inventory (batch 1, as xlsx) and as CSV in phase B, 2026-10-03.",
+      "discovered_date": "2026-10-03",
+      "notes": "Read 2026-10-03 as CSV: 184 segment rows in four tables (the Ouachita Trail, Black Fork Wilderness, Eagle Rock Loop and the Womble Trail), each under its own title row and `Sect` header, then a colour legend and a disclaimer. Key: (table_title, sect, begin_mile, end_mile), unique on 184 of 184. Eleven columns; two of them, 'Adopted by' and 'Source of Last Condition Report', name people and never load: the extract keeps an allow list of the other nine (extract/_json_apis.py's SHEET_COLUMNS). WHAT THE CSV LOSES, and the coverage audit said so first ('read the xlsx, not the CSV, or the one field that says \"treacherous\" is lost'): each segment's condition is its cells' fill colour, by the sheet's own legend green clear, yellow some impediment, red difficult to follow, gray no current report, plus blue and orange; a CSV holds values only. The xlsx export keeps the fills and needs a spreadsheet reader (openpyxl) the extract job does not install, which is the maintainer's call. Until then the condition a hiker most needs from this sheet does not land.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted; nothing reads it into a mart yet, so it ships nowhere. Phase C flips this to true when a mart reads the table; decision 53 publishes it then, as facts and a link. Arguably not before the sheet's colour status lands (see notes)."
+    },
+    {
+      "key": "fmst_helene_status",
+      "title": "MST Hurricane Helene Recovery Status (Google My Maps)",
+      "provider": "FMST",
+      "kind": "published_notices",
+      "url": "https://www.google.com/maps/d/kml?mid=1oSH-JQQpOan3r5Km7lJSVDDopenkW6k&forcekml=1",
+      "trust": "authoritative",
+      "steward": "Friends of the Mountains-to-Sea Trail",
+      "steward_contact": "https://mountainstoseatrail.org/",
+      "licence": "Facts and a link only (decision 53, features/ORG_NOTICES.md §7), on the maintainer's 2026-10-03 decision; NOT a grant from FMST. No terms of FMST's were read: mountainstoseatrail.org sits behind a SiteGround captcha that answers even its robots.txt (the decision 53 inventory, batch 5, 2026-10-03), recorded and not worked round. The map itself is Google-hosted. www.google.com's robots.txt, `User-agent: *`, has `Disallow: /maps/` and the longer `Allow: /maps/d/`, which wins for /maps/d/kml (RFC 9309 longest match; the inventory, 2026-10-03). Google's terms, as the inventory quoted them from https://policies.google.com/terms: forbids \"using automated means to access content from any of our services in violation of the machine-readable instructions on our web pages (for example, robots.txt files that disallow crawling, training, or other activities)\", which the robots.txt above does not do for this path. The geometry is the steward's own.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Friends of the Mountains-to-Sea Trail",
+      "freshness": {
+        "kind": "read_in_full",
+        "url": "https://www.google.com/maps/d/kml?mid=1oSH-JQQpOan3r5Km7lJSVDDopenkW6k&forcekml=1",
+        "notes": "200 text/xml (KML 2.2), 1,704,637 bytes, `cache-control: no-store`, no ETag and no Last-Modified (the inventory, 2026-10-03), so every hourly run reads the whole file. Whether 1.7 MB an hour fits the conditions leg's read budget is part of decision 53's phase F, @unvalidated."
+      },
+      "discovered_via": "The coverage audit's fmst closures note (2026-10-01), re-read by pipeline/ELT.md decision 53's phase A inventory (batch 5), registered in phase B.",
+      "discovered_date": "2026-10-03",
+      "notes": "12 LineStrings in one folder, 'MST Route', on 2026-10-03 (Segments 1 to 5). Each placemark's description is a label-value table (Segment, Name, EB Segment Mileage, WB Segment Mileage, Length, Land Manager, Trail Status); there is no ExtendedData and no placemark id. Trail Status: Open 9, CLOSED 1 ('West of N Fork Catawba crossing to east of N Fork Catawba crossing'), 'CLOSED with a detour' 1 ('Blue Ridge Parkway Boundary to NC 80'), 'Temporary detour' 1 ('South Toe River Detour'). The style's colour says the same by the document's own legend: line-FF0000 red closed, FFA500 orange detour, 38A800 green open. Key: (folder, name), unique on 12 of 12. obstructs_trail should come only from 'CLOSED*' in the steward's own status (decision 53, 'Omit rather than guess'), which is dbt's to read. One resource, in fmst/closures.py; fmst/warnings.py SHARES it for the detours and the not-assessed (yellow) lines.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted; nothing reads it into a mart yet, so it ships nowhere. Phase C flips this to true when a mart reads the table; decision 53 publishes it then, as facts and a link. Its two CLOSED segments on the MST are live closures with the steward's own geometry."
     }
   ],
   "usdm_licence": {
@@ -1742,6 +2003,22 @@
       "Wisconsin DNR": {
         "state": "not_asked",
         "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "PA DCNR": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03), at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "TEHCC": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03), at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "FoOT": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03), at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+      },
+      "FMST": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03), at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
       }
     },
     "claim_vocabulary": {
@@ -2283,6 +2560,26 @@
         "provider": "Washington RCO",
         "name": "Washington Recreation and Conservation Office",
         "note": "Keeps Washington's State Trails Database. The catalogue recorded 0 miles for it; the layer holds 22,454 trail features and a separate trailheads layer nothing here fetches."
+      },
+      "org:padcnr": {
+        "provider": "PA DCNR",
+        "name": "Pennsylvania Department of Conservation and Natural Resources",
+        "note": "Pennsylvania's state parks and forests agency, whose park advisories API carries each park page's alerts. Its land trails reach this build through PASDA (org:pasda); this id is DCNR's own services."
+      },
+      "org:tehcc": {
+        "provider": "TEHCC",
+        "name": "Tennessee Eastman Hiking & Canoeing Club",
+        "note": "The A.T. maintaining club for Tennessee and southwest Virginia, registered for the announcements on its club wiki."
+      },
+      "org:foot": {
+        "provider": "FoOT",
+        "name": "Friends of the Ouachita Trail",
+        "note": "The volunteer organization that maintains the Ouachita Trail in Arkansas and Oklahoma, registered for its segment-by-segment trail condition report."
+      },
+      "org:fmst": {
+        "provider": "FMST",
+        "name": "Friends of the Mountains-to-Sea Trail",
+        "note": "The nonprofit that builds and maintains North Carolina's Mountains-to-Sea Trail with its partners, registered for its Hurricane Helene recovery status map."
       }
     }
   },
@@ -3707,6 +4004,150 @@
           "trailhead": {
             "status": "unprobed",
             "note": "The layer registered here is a single trail's centerline and carries no point at all - PCTA's is one feature with two columns, CDTC's eight with five. That is a fact about what is REGISTERED, not about what the organization publishes elsewhere, which nobody has looked at."
+          }
+        }
+      },
+      "PA DCNR": {
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          }
+        }
+      },
+      "TEHCC": {
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          }
+        }
+      },
+      "FoOT": {
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its trail condition report (decision 53, phase B, 2026-10-03), which lists shelters as rows by mile ('Shelter Distance', and rows such as a shelter and its spur trail at one mile; read 2026-10-03). Nobody has counted or assessed those as shelter points, so `unprobed` is the literal state."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          }
+        }
+      },
+      "FMST": {
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
           }
         }
       }

@@ -1,32 +1,31 @@
-"""National Park Service: warnings, published, and not landed (coverage audit 2026-10-01, batch
-b6_federal).
+"""National Park Service: warnings, from NPS's alerts API and its road events feed, hourly (decision 53, phase B).
 
-Two alerts bear on water and are not drought: grca "INNER CANYON WATER SHUTOFFS" (Danger) and grfa
-"Public restrooms closed … no drinking water". They belong next to the water card, not in warnings
-alone. Maintainer call.
+`nps_alerts` reads every park code sources.json's entry lists in `park_codes`,
+in one request, and that map also names the club folders drawing on each
+code; their closures.py and warnings.py are `via` notes naming this file
+(decision 34). Every alert lands once, whatever its `category`: Danger,
+Caution and Information feed warnings, and nps/closures.py SHARES this file
+for Park Closure, each split made in dbt. `nps_road_events` is NPS's national
+WZDx feed, a road closed to a trailhead being the "unable to get off the
+trail quickly" case.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+WHAT THIS DOES NOT READ: the units no club folder names. nps_trails and
+nps_poi/ are national, and the API's national list held 622 alerts on
+2026-10-03, so a hiker on a trail in an unlisted park gets no NPS alert from
+here. Reading them all is two pages an hour and the maintainer's call
+(sources.json's `park_codes_comment`).
+
+Both need NPS_API_KEY (extract/_json_apis.py, "THE KEY"); without it the two
+tables are withdrawn, never read as no alerts.
+
+The coverage audit's other NPS warnings, ArcGIS park layers it measured on
+2026-10-01 (`YOSE_FireRestrictionStages/FeatureServer/0`, 147 polygons;
+`YOSE_RockFall_HazardLine_YosemiteValley/FeatureServer/0`, 12 lines), have
+no sources.json row yet: they are decision 54 wave 1's, and join this file's
+CLAIMS when registered.
 """
 
-from datetime import date
+from extract._json_apis import nps_alerts, nps_road_events
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        'Same endpoint, Danger 15 + Caution 107 of the 500. Examples: peco "South Pasture Trail, all River '
-        'Access Closed Due to Flood Conditions" (Danger); olym "Crews Responding to Mount Tom Creek Fire"; kefj'
-        ' "Canyon from Toe of Exit Glacier to the Outwash Plain". Keyword hits in the 500: fire 29, flood 17, '
-        "heat 12, hunt 10, bear 5.",
-        "Skeptic adds (Measured 2026-10-01), park layers in the NPS org: "
-        "`YOSE_FireRestrictionStages/FeatureServer/0` holds 147 polygons (`RESTRICTSTAGE`, `RESTRICTDESC`), "
-        "edited 2026-08-27. `YOSE_RockFall_HazardLine_YosemiteValley/FeatureServer/0` holds 12 lines, edited …",
-    ),
-    where=(
-        "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/YOSE_FireRestrictionStages/FeatureServer/0",
-        "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/YOSE_RockFall_HazardLine_YosemiteValley/FeatureServer/0",
-        "https://mapservices.nps.gov/arcgis/rest/services",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("nps_alerts", "nps_road_events")
+RESOURCES = [nps_alerts("nps_alerts"), nps_road_events("nps_road_events")]

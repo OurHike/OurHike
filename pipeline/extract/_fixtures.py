@@ -48,7 +48,13 @@ the HTTP session or the Postgres connection, is swapped:
   listing pages fetch_atc_updates.py walks, which parity.py serves to
   today's fetcher;
 - a guide published as web pages (the guide_pages kind), page by page from
-  guide_pages/<key>/, so its own parser reads NYNJTC's skeleton.
+  guide_pages/<key>/, so its own parser reads NYNJTC's skeleton;
+- each JSON API notice source (extract/_json_apis.py: NPS's alerts and road
+  events, PA DCNR's advisories, USGS's volcanoes, TEHCC's wiki, FoOT's sheet
+  and FMST's map), from conditions/json_apis/<key>.json: a list of answers,
+  each a URL without its query, the query parameters it must carry, and the
+  body, so a reader's paging, count and person-column rules run. NPS's key is
+  set to a placeholder for the build, since no request leaves the process.
 
 WHAT FIXTURE MODE DOES NOT EXERCISE for Postgres, so nobody reads a green
 dbt job as evidence of it: the query text itself. The rows are the queries'
@@ -80,7 +86,7 @@ import requests
 from requests.structures import CaseInsensitiveDict
 
 import export_conditions
-from extract import _kinds
+from extract import _json_apis, _kinds
 from extract._contract import all_resources, discover, discover_shared
 from extract._kinds import (
     CONDITIONS_QUERIES,
@@ -119,6 +125,20 @@ POSTGRES_FIXTURE = "ourhike_postgres.json"
 # A website's pages, by the registry key they are read for: `{"answers": {url:
 # {"content_type": ..., "body": ...}}}`, served as the site would serve them.
 TEXT_FIXTURES = {"atc_trail_updates": "atc_trail_updates.json"}
+# The JSON API notice sources' answers (make_dbt_fixtures.py's _json_api_fixtures()),
+# one file per registry key: `{"answers": [{"url", "query", "content_type", "body"}]}`.
+JSON_API_DIR = "json_apis"
+JSON_API_KINDS = (
+    _json_apis.NpsAlerts,
+    _json_apis.NpsRoadEvents,
+    _json_apis.DcnrParkAdvisories,
+    _json_apis.UsgsElevatedVolcanoes,
+    _json_apis.MediawikiAnnouncements,
+    _json_apis.SheetCsvSegments,
+    _json_apis.MyMapsPlacemarks,
+)
+# What NPS_API_KEY holds while fixture mode runs, when the environment has none.
+FIXTURE_NPS_KEY = "fixture-mode-key"
 
 
 def text_answers(document: dict) -> dict[str, tuple[str, str]]:
@@ -352,9 +372,13 @@ class FixtureAdapter(requests.adapters.BaseAdapter):
         wordpress: dict[str, dict] | None = None,
         nws: dict | None = None,
         pages: dict[str, tuple[str, str]] | None = None,
+        routed: list[dict] | None = None,
     ):
         super().__init__()
         self.arcgis, self.socrata, self.feeds = arcgis, socrata, feeds
+        # The JSON API sources' answers (JSON_API_DIR): the first whose `url` is the
+        # request's without its query, and whose `query` the request's query holds.
+        self.routed = routed or []
         # A WordPress site's REST root -> its answers: categories, posts, and terms by taxonomy.
         self.wordpress = wordpress or {}
         # NWS's /alerts/active body.
@@ -372,6 +396,9 @@ class FixtureAdapter(requests.adapters.BaseAdapter):
         query = {name: values[0] for name, values in parse_qs(parts.query, keep_blank_values=True).items()}
         if self.nws is not None and base == NWS_ALERTS_URL:
             return _response(request, self.nws, headers={"Content-Type": "application/geo+json"})
+        for answer in self.routed:
+            if base == answer["url"] and all(query.get(name) == value for name, value in (answer.get("query") or {}).items()):
+                return _text_response(request, answer["content_type"], answer["body"])
         for api, document in self.wordpress.items():
             if base.startswith(api + "/"):
                 return self._wordpress(request, document, base[len(api) + 1 :], query)
@@ -443,11 +470,17 @@ class FixtureAdapter(requests.adapters.BaseAdapter):
 
 def fixture_resources(raw_dir: Path) -> tuple[list, FixtureAdapter]:
     """The extract's own resources that have a fixture file, and the adapter that answers them."""
-    arcgis, socrata, feeds, wordpress, pages, chosen = {}, {}, {}, {}, {}, []
+    arcgis, socrata, feeds, wordpress, pages, routed, chosen = {}, {}, {}, {}, {}, [], []
     nws, postgres = conditions_fixture(raw_dir, NWS_FIXTURE), conditions_fixture(raw_dir, POSTGRES_FIXTURE)
     for resource in all_resources(discover() + discover_shared()):
         if isinstance(resource, ReviewedFile | ReviewedDir):
             chosen.append(resource)  # a committed file, or a folder of them, is its own fixture
+            continue
+        if isinstance(resource, JSON_API_KINDS):
+            document = conditions_fixture(raw_dir, f"{JSON_API_DIR}/{resource.key}.json")
+            if document is not None:
+                routed.extend(document["answers"])
+                chosen.append(resource)
             continue
         if isinstance(resource, AtcTrailUpdatePages):
             document = conditions_fixture(raw_dir, TEXT_FIXTURES[resource.key])
@@ -501,7 +534,7 @@ def fixture_resources(raw_dir: Path) -> tuple[list, FixtureAdapter]:
         else:
             continue
         chosen.append(resource)
-    return chosen, FixtureAdapter(arcgis, socrata, feeds, wordpress=wordpress, nws=nws, pages=pages)
+    return chosen, FixtureAdapter(arcgis, socrata, feeds, wordpress=wordpress, nws=nws, pages=pages, routed=routed)
 
 
 def build(raw_dir: Path, warehouse: Path, store: Path) -> dict[str, int]:
@@ -538,6 +571,11 @@ def build(raw_dir: Path, warehouse: Path, store: Path) -> dict[str, int]:
     # restored below.
     crawl_delay, real_throttle = _kinds.ATC_CRAWL_DELAY_SECONDS, _kinds.HIKEFINDER_THROTTLE_SECONDS
     _kinds.ATC_CRAWL_DELAY_SECONDS, _kinds.HIKEFINDER_THROTTLE_SECONDS = 0, 0
+    polite_gap, nps_key_was = _json_apis.POLITE_GAP_SECONDS, os.environ.get(_json_apis.NPS_API_KEY_ENV)
+    _json_apis.POLITE_GAP_SECONDS = 0
+    # The NPS readers refuse to run without a key (Unavailable). No request leaves
+    # the process here, so a placeholder stands in when the environment has none.
+    os.environ.setdefault(_json_apis.NPS_API_KEY_ENV, FIXTURE_NPS_KEY)
     _kinds.session = fixture_session
     if postgres is not None:
         _kinds.psycopg = FixturePsycopg(postgres)
@@ -551,6 +589,9 @@ def build(raw_dir: Path, warehouse: Path, store: Path) -> dict[str, int]:
         _kinds.ATC_CRAWL_DELAY_SECONDS = crawl_delay
         _kinds.psycopg = real_psycopg
         _kinds.HIKEFINDER_THROTTLE_SECONDS = real_throttle
+        _json_apis.POLITE_GAP_SECONDS = polite_gap
+        if nps_key_was is None:
+            os.environ.pop(_json_apis.NPS_API_KEY_ENV, None)
         if postgres is not None:
             if url_was is None:
                 os.environ.pop(export_conditions.URL_ENV_VAR, None)

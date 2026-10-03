@@ -32,6 +32,8 @@ The kinds built so far for stage 2 (#1793 â€” Rebuild the data platform as dlt â
     reviewed_dir(path)      a folder of reviewed files, one row per file (a
                             club's challenges)
     podcast_feed(key)       a podcast's RSS feed, one row per episode
+    feed_notices(key)       a club's RSS or Atom notices, one row per item (extract/_notices.py)
+    page_notice(key)        a club's notice page or PDF, one notice per page (extract/_notices.py)
     catalogue_row()         the club's own trail_orgs.json row, for org.py
     atc_trail_update_pages(key)
                             ATC's Trail Updates read off their website, one row
@@ -68,6 +70,11 @@ from extract._contract import (
     read_club_file,
     slug_for_folder,
 )
+
+# Decision 53's notice readers, in a module of their own for this file's
+# length. They are builders like the rest, so a club file imports them from
+# here; extract/_notices.py's docstring says why it cannot import this file.
+from extract._notices import FeedNotices, PageNotice, feed_notices, page_notice, polite, query_refused  # noqa: F401
 from fetch_atc_updates import TOLERATED_PARSE_FAILURES as ATC_TOLERATED_PARSE_FAILURES
 from fetch_club_pdfs import extract_page_texts
 from fetch_elevation import TILE_URL_TEMPLATE as DEM_TILE_URL_TEMPLATE
@@ -646,7 +653,7 @@ def wp_list(api: str, route: str, params: dict, http: requests.Session) -> tuple
 
 @dataclass(frozen=True)
 class WordpressPosts(Resource):
-    """One WordPress category's posts, a row each, from the site's REST API.
+    """One WordPress category's posts, or one custom post type's, a row each, from the site's REST API.
 
     The registry row's `url` is the category page a person reads
     (`/category/<slug>/`); the REST root is that page's origin plus
@@ -655,7 +662,36 @@ class WordpressPosts(Resource):
     land as WordPress serves them, `title` and `content` still rendered, with
     their taxonomy ids: the terms are their own daily table
     (`wordpress_terms`), resolved in dbt (ELT.md, "Source kinds").
+
+    THREE OPTIONS, each for a site decision 53's inventory measured on
+    2026-10-03 (extract/_notices.py's module docstring says what that read
+    was, and the bracketed batch which of its workers read it):
+
+    - `category_slugs`: several categories as one table. The Florida Trail
+      Association files its closures and notices to hikers under five
+      (ids 37, 40, 41, 42 and 43; X-WP-Total 14 under all five) [b3]. The
+      slugs go to WordPress as one comma-separated `slug`, which it reads as
+      a list (Reasoned from its REST API's list parameters; a site that did
+      not would resolve a slug to no id and refuse the run, never narrow it).
+      Left empty, the url's own slug is the one category.
+    - `post_type`: a custom post type's `rest_base`, read whole: the Green
+      Mountain Club's alerts are the `alert` route (X-WP-Total 15, with its
+      own `alert-category` taxonomy) [b5]. Such posts sit in no category, so
+      this takes none, and the url is then the page a person reads.
+    - `crawl_delay`: the host's robots.txt Crawl-delay, kept between every
+      request this resource sends (extract/_notices.py's polite()):
+      aztrail.org, greenmountainclub.org and carolinamountainclub.org ask 10
+      [b1, b3, b5]. NYNJTC asks none (its robots.txt answered 200 and empty,
+      2026-10-01), and 0 sends as this always has.
+
+    Every request carries a query string, so a host whose robots.txt
+    disallows them (extract/_notices.py's QUERY_DISALLOWED_HOSTS:
+    foothillstrail.org and newenglandtrail.org) is refused at import.
     """
+
+    category_slugs: tuple[str, ...] = ()
+    post_type: str | None = None
+    crawl_delay: float = 0.0
 
     @property
     def entry(self) -> dict:
@@ -666,18 +702,42 @@ class WordpressPosts(Resource):
         return _wp_api(self.entry)
 
     @property
+    def route(self) -> str:
+        return self.post_type or "posts"
+
+    @property
     def category_slug(self) -> str:
         parts = [part for part in urlparse(self.entry["url"]).path.split("/") if part]
         if len(parts) < 2 or parts[-2] != "category":
             raise KeyError(f"{self.key}: url is not a /category/<slug>/ page: {self.entry['url']}")
         return parts[-1]
 
-    def category_id(self, http: requests.Session) -> int:
-        found, _ = wp_list(self.api, "categories", {"slug": self.category_slug, "_fields": "id,slug"}, http)
-        ids = [term["id"] for term in found if term.get("slug") == self.category_slug]
-        if len(ids) != 1:
-            raise RuntimeError(f"{self.key}: category {self.category_slug!r} resolves to {len(ids)} ids")
-        return ids[0]
+    @property
+    def scope_slugs(self) -> tuple[str, ...]:
+        """The categories the posts are read from: none for a custom post type, else the named ones or the url's."""
+        if self.post_type:
+            return ()
+        return self.category_slugs or (self.category_slug,)
+
+    def _session(self) -> requests.Session:
+        return polite(session(), self.crawl_delay) if self.crawl_delay else session()
+
+    def category_ids(self, http: requests.Session) -> list[int]:
+        slugs = self.scope_slugs
+        found, _ = wp_list(self.api, "categories", {"slug": ",".join(slugs), "_fields": "id,slug"}, http)
+        ids = []
+        for slug in slugs:
+            matched = [term["id"] for term in found if term.get("slug") == slug]
+            if len(matched) != 1:
+                raise RuntimeError(f"{self.key}: category {slug!r} resolves to {len(matched)} ids")
+            ids.append(matched[0])
+        return ids
+
+    def scope(self, http: requests.Session) -> dict:
+        """The list route's own filter: the category ids, or none for a custom post type."""
+        if self.post_type:
+            return {}
+        return {"categories": ",".join(str(term) for term in self.category_ids(http))}
 
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         """A hash of the category's (id, modified) set, and its `X-WP-Total`.
@@ -689,10 +749,8 @@ class WordpressPosts(Resource):
         ever decides FRESH here.
         """
         try:
-            http = session()
-            posts, total = wp_list(
-                self.api, "posts", {"categories": self.category_id(http), "_fields": "id,modified_gmt,slug"}, http
-            )
+            http = self._session()
+            posts, total = wp_list(self.api, self.route, {**self.scope(http), "_fields": "id,modified_gmt,slug"}, http)
         except (requests.RequestException, ValueError, KeyError, RuntimeError) as error:
             print(f"  {self.key}: change check failed ({error}); fetching")
             return Freshness.UNKNOWN, None
@@ -705,8 +763,8 @@ class WordpressPosts(Resource):
         return compare_marker(_canonical(recorded), _canonical(marker)), marker
 
     def rows(self, proofs: dict[str, int]):
-        http = session()
-        posts, total = wp_list(self.api, "posts", {"categories": self.category_id(http)}, http)
+        http = self._session()
+        posts, total = wp_list(self.api, self.route, self.scope(http), http)
         if total is not None:
             if len(posts) < total:
                 raise RuntimeError(f"{self.key}: the site counts {total} posts and {len(posts)} were read")
@@ -719,7 +777,10 @@ class WordpressPosts(Resource):
 # is a user id that resolves to a person, and Yoast's SEO blocks
 # (`yoast_head`, `yoast_head_json`) spell that person's name out ("Written
 # by"); `_links` is the API's own hypermedia. Read off NYNJTC's 18 posts,
-# 2026-10-01.
+# 2026-10-01. The Green Mountain Club's `alert` posts add Spectra's
+# `uagb_author_info`, whose `display_name` is a staff member's, and
+# `spectra_custom_meta`, which carries edit locks and Yoast's meta (decision
+# 53's inventory [b5], 2026-10-03).
 WP_DROPPED = frozenset(
     {
         "author",
@@ -732,6 +793,8 @@ WP_DROPPED = frozenset(
         "yoast_head",
         "yoast_head_json",
         "class_list",
+        "uagb_author_info",
+        "spectra_custom_meta",
     }
 )
 
@@ -783,13 +846,20 @@ class WordpressTerms(Resource):
 
 
 def wordpress_posts(key: str, **overrides) -> WordpressPosts:
+    if "category_slugs" in overrides:
+        overrides["category_slugs"] = tuple(overrides["category_slugs"])
     resource = WordpressPosts(key=key, **overrides)
-    resource.category_slug  # a url that is not a category page fails at import, in the layout test
+    if refused := query_refused(resource.entry["url"]):
+        raise ValueError(f"{key}: {refused}, and every WordPress list request carries one")
+    if resource.post_type and resource.category_slugs:
+        raise ValueError(f"{key}: a custom post type sits in no category, so post_type takes no category_slugs")
+    resource.scope_slugs  # a url that is not a category page fails at import, in the layout test
     return resource
 
 
 def wordpress_terms(key: str, taxonomies: tuple[str, ...], **overrides) -> WordpressTerms:
-    registry_entry(key)
+    if refused := query_refused(registry_entry(key)["url"]):
+        raise ValueError(f"{key}: {refused}, and every WordPress list request carries one")
     if not taxonomies:
         raise ValueError(f"{key}: wordpress_terms needs the taxonomies a post is tagged from")
     overrides.setdefault("cadence_override", "daily")

@@ -243,6 +243,7 @@ jobs:
             pipeline/build_marts.py
             pipeline/row_history.py
             pipeline/row_history_stores.toml
+            pipeline/tests/test_dbt_row_dates_builds.py
             pipeline/step_node_lines.py
             pipeline/build_trail_graph.py
             pipeline/export_poi.py
@@ -464,6 +465,22 @@ jobs:
       - name: dbt build, the Python steps and the pub_ writers (build_marts.py)
         if: steps.scope.outputs.run == 'true'
         run: python build_marts.py --fixtures --python "$RUNNER_TEMP/pipeline/bin/python"
+
+      # ROW DATES ACROSS BUILDS (decision 57): the podcasts mart built three
+      # times in fresh warehouses, with row_history.py's store restored
+      # between them, as every production run starts. The third build runs
+      # as a conditions leg whose restore failed, with its snapshots left
+      # out. Here, not in the pytest job, because it drives this job's dbt;
+      # the pytest job skips it. Its own warehouses and target path, so it
+      # touches nothing the steps around it read. On the pipeline's pins,
+      # which carry duckdb for row_history.py, plus the pytest that
+      # requirements-dev.txt pins. Measured locally 2026-10-03 on dbt 2.0.6:
+      # 8 passed in 119 to 142 s over three runs.
+      - name: Row dates across builds (tests/test_dbt_row_dates_builds.py)
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          "$RUNNER_TEMP/pipeline/bin/pip" install --quiet "$(grep -E '^pytest==' requirements-dev.txt)"
+          OURHIKE_DBT="$(command -v dbt)" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_row_dates_builds.py
 
       # Shadow-run parity (ELT.md, "How a rule moves"): each family the dbt
       # path writes, against today's exporter on the same input, record by

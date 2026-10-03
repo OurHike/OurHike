@@ -461,6 +461,9 @@ if selected_has dbt; then
     # dbt is $DBT_DIR's; the steps run on $PY, the suites' own Python, which
     # carries requirements.txt's rasterio as CI's pipeline venv does.
     step "dbt build_marts"       env -C pipeline DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS=false "$PY" build_marts.py --fixtures --dbt "$DBT_DIR/dbt" --warehouse "$dbt_tmp/warehouse.duckdb" --processed-dir "$dbt_tmp/processed" --raw-dir "$dbt_tmp/raw"
+    # Row dates across builds, as CI's dbt job runs it (decision 57): three
+    # podcasts builds in fresh warehouses, the history restored between them.
+    step "dbt row dates builds"  env -C pipeline OURHIKE_DBT="$DBT_DIR/dbt" "$PY" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_row_dates_builds.py
     for family in podcasts:podcasts_episodes stewards:stewards registry:registry; do
       step "dbt parity ${family%%:*}" env -C pipeline "$PY" parity.py "${family%%:*}" --new "$dbt_tmp/processed/${family#*:}.json"
     done

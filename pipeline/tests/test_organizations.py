@@ -351,10 +351,19 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     points and the Smokies' shelters are federal works, `stated_by_org` as
     blm_trails and nps_trails are; and NJDEP's open-space points carry the
     Data Distribution Agreement, `stated_by_org` as njdep_park_trails is.
+
+    DECISION 54'S POINTS OF INTEREST, THE REST (2026-10-03), all
+    `reaches_hikers: false`: 33 more. 19 `public_gis` (PA DCNR's five, TDEC's
+    three Tennessee State Parks layers and the Cumberland Trail's three, NC
+    DPR's park offices, the Ridge Trail's campsites, SBTS's trailheads, CPW's
+    two, UGRC's state park campsites and Black Hills Trails' two), and 14
+    `stated_by_org`: USGS's six and USFWS's two as federal works, CT DEEP's
+    two under CC0, UGRC's trailheads and highest peaks under CC BY 4.0, and
+    MA DCR's two Blue Hills layers, whose licenseInfo grants copying and use.
     """
     counts: dict[str, int] = {}
     for source in REGISTRY["sources"]:
         counts[source["licence_basis"]] = counts.get(source["licence_basis"], 0) + 1
 
     # Decision 53's ArcGIS closure and warning layers (2026-10-03) add 76 rows, all reaches_hikers false: 11 `maintainer_authorisation`, 35 `public_gis`, 30 `stated_by_org`.
-    assert counts == {"maintainer_authorisation": 48, "public_gis": 198, "stated_by_org": 121, "unresolved": 3}
+    assert counts == {"maintainer_authorisation": 48, "public_gis": 217, "stated_by_org": 135, "unresolved": 3}

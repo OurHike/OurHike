@@ -1,10 +1,9 @@
-"""Trailkeepers of Oregon: points of interest, published, and not landed (coverage audit 2026-10-01,
-batch c6_regional_3).
+"""Trailkeepers of Oregon: points of interest, published as hikes rather than points.
 
-The API is machine-readable, and robots.txt does not disallow `api.php`. Blocked on the Field Guide
-terms.
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+TKO's public ArcGIS layer, OregonHikers_Featured_Hikes_PublicView, is 4,069 featured-hike points with a title,
+a link to the Oregon Hikers Field Guide page and up to six image links: the suggested_hikes type, not this one,
+so it is not registered as a point layer here. The Field Guide's trailhead pages sit behind its terms, which
+the coverage audit found block the MediaWiki route.
 """
 
 from datetime import date
@@ -12,17 +11,17 @@ from datetime import date
 from extract._contract import NotAvailable
 
 NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
+    confirmed=date(2026, 10, 3),
     checked=(
-        "Oregon Hikers Field Guide, MediaWiki API `https://www.oregonhikers.org/w/api.php`: "
-        "`Category:Trailheads` holds 1,738 pages. Each carries `{{maplinkinfo|latitude=…|longitude=…}}` and an "
-        "elevation, e.g. Larch Mountain Trailhead 45.52937, -122.08843, 3,900 ft. Also "
-        "`OregonHikers_Featured_Hikes_PublicView/FeatureServer/0` (4,069 points, last edited 2021-09-11) and "
-        "`OCT_Section_Points` (11).",
+        "OregonHikers_Featured_Hikes_PublicView/FeatureServer/0, 4,069 points, GlobalID unique (4,069 of "
+        "4,069), fields title, name, url, latitude, longitude and Image1 to Image6, last edited 2021-09-11; a"
+        " view of OregonHikers_Featured_Hikes (read 2026-10-03)",
+        "the coverage audit's read (2026-10-01): the Field Guide's Category:Trailheads holds 1,738 pages with"
+        " coordinates, blocked on the Field Guide terms",
     ),
     where=(
-        "https://www.oregonhikers.org/w/api.php",
         "https://services3.arcgis.com/3g7oRa9lIIf3eCBb/arcgis/rest/services/OregonHikers_Featured_Hikes_PublicView/FeatureServer/0",
+        "https://www.oregonhikers.org/w/api.php",
     ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    reason="published as hike points, the suggested_hikes type; the Field Guide's trailheads wait on its terms",
 )

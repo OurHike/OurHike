@@ -864,7 +864,8 @@ class TestTheRegistryTheConsoleReads:
         # the Bay Area Ridge Trail Council, Chesapeake Conservancy, the City of Des Moines,
         # GMC, Indiana and Iowa DNR, Lake County MN, OCTA, ONDA, Oregon Metro, SHTA, TKO and TPWD.
         # 78 since decision 54's points of interest (2026-10-03) registered org:cfpa.
-        assert len(orgs) == 78
+        # 79 since its second batch of points registered org:blackhillstrails.
+        assert len(orgs) == 79
         assert {org["steward_id"] for org in orgs} == {
             "org:alaskatrails",
             "org:amc",
@@ -872,6 +873,7 @@ class TestTheRegistryTheConsoleReads:
             "org:atc",
             "org:austinpard",
             "org:azgeo",
+            "org:blackhillstrails",
             "org:blm",
             "org:bta",
             "org:cdpr",

@@ -1,9 +1,7 @@
-"""Friends of the Blue Hills: points of interest, published, and not landed (coverage audit 2026-10-01,
-batch c4_regional_1).
+"""Friends of the Blue Hills: points of interest, drawn from massgis/'s resources.
 
-The numbered intersections are the markers hikers navigate by (FBH's hikes cite "marker 4234").
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+The Blue Hills' public parking and numbered trail intersections are MA DCR's layers, extracted once as
+ma_dcr_blue_hills_parking and ma_dcr_blue_hills_intersections in massgis/points_of_interest.py (decision 34).
 """
 
 from datetime import date
@@ -11,16 +9,18 @@ from datetime import date
 from extract._contract import NotAvailable
 
 NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
+    confirmed=date(2026, 10, 3),
     checked=(
-        'DCR\'s "Blue Hills Parking Lots (public)", `…/BlueHillsParkingLotsPublic2024_07_24/FeatureServer/0`: 33'
-        ' points with capacity fields. DCR\'s "Blue Hills Numbered Trail Intersections", '
-        "`…/BlueHillsNumberedIntersectionsOn2020TrailMap2024_07_24/FeatureServer/1`: 262 points (2024-10-01).",
+        "BlueHillsParkingLotsPublic2024_07_24/FeatureServer/0, 33 points, and "
+        "BlueHillsNumberedIntersectionsOn2020TrailMap2024_07_24/FeatureServer/1, 262 points, on DCR's org "
+        "(read 2026-10-03), registered as ma_dcr_blue_hills_parking and ma_dcr_blue_hills_intersections and "
+        "extracted in massgis/",
     ),
     where=(
-        "https://arcgisserver.digital.mass.gov/arcgisserver/rest/services",
-        "https://services1.arcgis.com/7iJyYTjCtKsZS1LR/arcgis/rest/services",
-        "https://friendsofthebluehills.org/",
+        "https://services1.arcgis.com/7iJyYTjCtKsZS1LR/arcgis/rest/services/BlueHillsParkingLotsPublic2024_07_24/FeatureServer/0",
+        "https://services1.arcgis.com/7iJyYTjCtKsZS1LR/arcgis/rest/services/BlueHillsNumberedIntersectionsOn2020TrailMap2024_07_24/FeatureServer/1",
     ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    reason=(
+        "drawn from massgis/'s resources, extracted once there (decision 34); checked names the layers this org's data arrives in"
+    ),
 )

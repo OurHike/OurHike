@@ -49,6 +49,12 @@
     69.57. IATA's reach lon -92.67 in western Wisconsin and FTA's lat 25.86
     at the Florida Trail's southern end, both outside the eastern box.
 
+    The second batch of point rows follows, the same way: USGS's trailheads,
+    ranger stations and GNIS springs and both USFWS layers reach the
+    territories (usfws_refuge_property_points lon -177.38 to 179.29, the
+    Pacific refuges either side of the antimeridian), and TDEC's three
+    Tennessee State Parks layers reach lon -90.13 near Memphis.
+
     @unvalidated Every margin is picked, not measured. What would settle it
     is the per-club box from trail_orgs.json's `states` that pipeline/ELT.md
     plans. A source loading outside the eastern box without a row in
@@ -178,6 +184,26 @@
     'iata_water': 'national',
     'iata_camping': 'national',
     'iata_parking': 'national',
+    'usgs_structures_campgrounds': 'national',
+    'usgs_structures_trailheads': 'us_and_territories',
+    'usgs_structures_cabins': 'national',
+    'usgs_structures_shelters': 'national',
+    'usgs_structures_ranger_stations': 'us_and_territories',
+    'usgs_gnis_springs': 'us_and_territories',
+    'cotrex_trailheads': 'national',
+    'cpw_facilities': 'national',
+    'utah_trailheads': 'national',
+    'utah_state_park_campsites': 'national',
+    'utah_highest_peaks': 'national',
+    'black_hills_trailheads': 'national',
+    'black_hills_parking': 'national',
+    'sbts_connected_community_trailheads': 'national',
+    'ridgetrail_campsites': 'national',
+    'usfws_refuge_property_points': 'us_and_territories',
+    'usfws_refuge_access_points': 'us_and_territories',
+    'tn_state_parks_hiking_assets': 'national',
+    'tn_state_parks_campgrounds': 'national',
+    'tn_state_parks_campsites': 'national',
 } -%}
 
 with placed as (

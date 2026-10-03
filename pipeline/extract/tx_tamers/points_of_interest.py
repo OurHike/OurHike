@@ -1,10 +1,8 @@
-"""Texas Trail Tamers: points of interest, published, and not landed (coverage audit 2026-10-01, batch
-p05_persist).
+"""Texas Trail Tamers: points of interest, published by a steward with no club folder.
 
-explicit_restriction, the same sentence, item `3d25602d20844752a23f233207d19718`; copyrightText
-`TPWD | SP | NR | PGR`. Folder `tpwd/`.
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+The points at McKinney Falls are Texas Parks and Wildlife's (Texas_State_Parks_Public_Areas), whose layer
+carries its own restriction (decision 36: publish as non-commercial). TPWD has no folder among
+trail_orgs.json's managing clubs, so it waits on decision 54's wave 6.
 """
 
 from datetime import date
@@ -12,14 +10,13 @@ from datetime import date
 from extract._contract import NotAvailable
 
 NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
+    confirmed=date(2026, 10, 3),
     checked=(
-        "`https://services1.arcgis.com/1mtXwieMId59thmg/arcgis/rest/services/Texas_State_Parks_Public_Areas/FeatureServer`,"
-        " `ParkName LIKE 'McKinney%'`: layer 0 headquarters 1; layer 1 buildings 13 (Comfort Station 6, "
-        "Restroom 3, and one each of Playground, Visitor Center, Dining Hall and Amphitheater); layer 2 "
-        "campground areas 7; layer 3 day-use areas 4. I found no water-source or trailhead layer. Tried: 1–6 as"
-        " trail_lines.",
+        "the coverage audit's read (2026-10-01): Texas_State_Parks_Public_Areas/FeatureServer layers 0 to 3 "
+        "under ParkName LIKE 'McKinney%': headquarters 1, buildings 13, campground areas 7, day-use areas 4; "
+        "no water-source or trailhead layer",
+        "the extract's folder list, 2026-10-03: no folder for TPWD, so no row is registered for it in this wave",
     ),
     where=("https://services1.arcgis.com/1mtXwieMId59thmg/arcgis/rest/services/Texas_State_Parks_Public_Areas/FeatureServer",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    reason="published by a steward with no club folder (TPWD); waits on decision 54's wave 6",
 )

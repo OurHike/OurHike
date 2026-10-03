@@ -1,12 +1,8 @@
-"""Rocky Mountain Field Institute: points of interest, published, and not landed (coverage audit
-2026-10-01, batch p07_persist).
+"""Rocky Mountain Field Institute: points of interest, drawn from cotrex/'s resources.
 
-Licence: `CPWAdminData` reads "This map is a product and property of the Colorado Parks and
-Wildlife… The Colorado Department of Natural Resources is not responsible…". That is a property
-claim plus a disclaimer, so none_stated. COTREX's app terms (b7) govern the app, not this service.
-Folders: …
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+The coverage audit counted 109 of CPW's COTREX trailheads in RMFI's envelope, and CPW Facilities points there
+too. Both are extracted once, as cotrex_trailheads and cpw_facilities, in cotrex/points_of_interest.py
+(decision 34); RMFI's portion is assigned in dbt.
 """
 
 from datetime import date
@@ -14,15 +10,16 @@ from datetime import date
 from extract._contract import NotAvailable
 
 NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
+    confirmed=date(2026, 10, 3),
     checked=(
-        "CPW's `services5.arcgis.com/ttNGmDvKQA7oeDQ3/ArcGIS/rest/services/CPWAdminData/FeatureServer/14` "
-        '"COTREX Trailheads" (2,585 statewide, edited 2026-08-27): 109 in the envelope. By manager: the City '
-        "48, El Paso County 18, Mueller SP 12, USFS Pikes Peak RD 12. By `water`: yes 14, seasonally 10, "
-        "conditional 1, no 71, blank 13. Loaded `usfs_rec_sites` in the envelope: trailheads 26, campgrounds 5,"
-        " observation sites 6, picnic sites 4. CPW Facilities (`/0`) also has points in the envelope (largest "
-        "`FAC_TYPE` groups: code 4050, 24 points; code 3120, 19). The codes are not labelled in the query. …",
+        "CPWAdminData/FeatureServer/14, 2,585 trailheads statewide (read 2026-10-03), registered as "
+        "cotrex_trailheads and extracted in cotrex/; 109 in RMFI's envelope on the coverage audit's read "
+        "(2026-10-01)",
+        "CPWAdminData/FeatureServer/0, 5,520 facilities statewide (read 2026-10-03), registered as "
+        "cpw_facilities and extracted in cotrex/",
     ),
     where=("https://services5.arcgis.com/ttNGmDvKQA7oeDQ3/ArcGIS/rest/services/CPWAdminData/FeatureServer/14",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    reason=(
+        "drawn from cotrex/'s resources, extracted once there (decision 34); checked names the layers this org's data arrives in"
+    ),
 )

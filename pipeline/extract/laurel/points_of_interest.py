@@ -1,12 +1,8 @@
-"""Laurel Highlands Hiking Trail (PA DCNR): points of interest, published, and not landed (coverage
-audit 2026-10-01, batch c9_federal_state_rest).
+"""Laurel Highlands Hiking Trail (PA DCNR): points of interest, drawn from pasda/'s resources.
 
-~~No shelter-area layer exists. The LHHT's shelters, the trail's main safety feature, are in a
-PDF.~~ (changed by skeptic: a point layer of all 40 shelters and 16 latrines exists. Status
-unchanged; the format is ArcGIS, not PDF.) Caveats for the maintainer: it is DCNR's insurance
-inventory and …
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+The LHHT's shelter areas are rows of PA DCNR's state park buildings layer (USE1 'Trail Shelter'; the coverage
+audit matched 40 to DCNR's own description), extracted once as pasda_state_park_buildings in
+pasda/points_of_interest.py (decision 34). Its access points are Explore PA Trails', pasda_explore_pa_trail_access.
 """
 
 from datetime import date
@@ -14,18 +10,18 @@ from datetime import date
 from extract._contract import NotAvailable
 
 NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
+    confirmed=date(2026, 10, 3),
     checked=(
-        "The trail map PDF, `https://elibrary.dcnr.pa.gov/GetDocument?docId=1743399&DocName=LARI_ParkMap.pdf`, "
-        "shows the 8 shelter areas (per DCNR's page: five Adirondack shelters, two vault toilets and space for "
-        "30 tents each). Explore PA Trails accesses (`EPAT_NEW/MapServer/0`): 2,087 statewide, 6 for LHHT, "
-        "`UPDATE_` dated 2009-03-10. `Parks/State_Parks/MapServer/3`: 126 park-level amenity points. "
-        "`Forestry/BOF_StateForestCampsites`: 801, all in state forests rather than on the LHHT. Skeptic find "
-        "(Measured 2026-10-01): the shelters are in an ArcGIS layer. …",
+        "StateParkBuildingsMASTER/MapServer/0, 4,359 points with USE1 'Trail Shelter' on 55 (read "
+        "2026-10-03), registered as pasda_state_park_buildings and extracted in pasda/",
+        "ExplorePAtrails/MapServer/2, 3,030 access points (read 2026-10-03), registered as "
+        "pasda_explore_pa_trail_access and extracted in pasda/; the coverage audit counted 6 for the LHHT",
     ),
     where=(
-        "https://elibrary.dcnr.pa.gov/GetDocument?docId=1743399&DocName=LARI_ParkMap.pdf",
         "https://www.gis.dcnr.pa.gov/agsprod/rest/services/Parks/StateParkBuildingsMASTER/MapServer/0",
+        "https://mapservices.pasda.psu.edu/server/rest/services/pasda/ExplorePAtrails/MapServer/2",
     ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    reason=(
+        "drawn from pasda/'s resources, extracted once there (decision 34); checked names the layers this org's data arrives in"
+    ),
 )

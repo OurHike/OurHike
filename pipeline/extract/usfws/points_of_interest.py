@@ -1,28 +1,13 @@
-"""US Fish & Wildlife Service: points of interest, published, and not landed (coverage audit
-2026-10-01, batch c9_federal_state_rest).
+"""The Fish and Wildlife Service's refuge property points and access points, public views.
 
-`Public_Use`, `Public_View` and `Status` (`Valid` / `Needs Validation` / `Delete`) have to filter
-it. The layer also holds sewage plants and fuel tanks. No water-source points were found for hikers:
-`FWS_Assets_Water_Resources_Inventory_PublicView` is water-management infrastructure and was not …
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Read live 2026-10-03 for decision 54's wave 1. Both carry Public_Use, which a mart must filter on: the property
+layer also holds sewage plants, fuel tanks and staff-only gates.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "`.../FWS_HQ_Fac_Property_Pt_PublicView/FeatureServer/0`: 14,921 points. `Prop_Type` has 67 codes, "
-        "including Campground, Campsite, Overlook, Observation Deck / Platform, Parking Lot, Kiosks, Picnic "
-        "Area, Pullout. `.../FWS_Access_PublicView/FeatureServer/0`: 1,757 access points, of which 832 have "
-        "`Acc_Type='Trailhead'`.",
-    ),
-    where=(
-        "https://services.arcgis.com/QVENGdaPbd4LUkLV/arcgis/rest/services",
-        "https://fws.gov/",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+CLAIMS = (
+    "usfws_refuge_property_points",
+    "usfws_refuge_access_points",
 )
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

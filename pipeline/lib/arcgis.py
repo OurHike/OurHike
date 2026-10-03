@@ -88,6 +88,7 @@ def iter_layer_pages(
     session=None,
     backoff: tuple[int, ...] = DEFAULT_BACKOFF_SECONDS,
     return_z: bool = False,
+    paginate: bool = True,
 ):
     """Yield each page of GeoJSON features `fetch_layer_geojson` would collect, in order.
 
@@ -128,9 +129,33 @@ def iter_layer_pages(
     repeated one - so it is not a second pager. Off by default, and with it
     off the request is exactly what it was before (tests/test_lib_arcgis.py
     pins the whole query).
+
+    `paginate=False` IS FOR A SERVER THAT REFUSES `resultOffset`, one whose
+    layer metadata reads `advancedQueryCapabilities.supportsPagination: false`.
+    Measured 2026-10-03 on cicgis.org's `Chesapeake/CAJO/MapServer/0`: a paged
+    query answers `{"error": {"code": 400, "message": "Pagination is not
+    supported."}}`, which this loop would halve down to a page of one and then
+    fail on. That layer answers `returnIdsOnly` (843 ids under `FID`) and an
+    `objectIds` query by GET and by POST alike, so `iter_pages_by_object_id`
+    reads the ids once and then the features in batches of `page_size`, in
+    object-id order. The caller sets `page_size` no larger than the layer's
+    `maxRecordCount`; the proof of a whole read stays the caller's
+    `returnCountOnly` count.
     """
     query_url = layer_url.rstrip("/") + "/query"
     records = PAGE_SIZE if page_size is None else page_size
+    if not paginate:
+        yield from iter_pages_by_object_id(
+            query_url,
+            out_fields=out_fields,
+            geometry_precision=geometry_precision,
+            batch_size=records,
+            where=where,
+            session=session,
+            backoff=backoff,
+            return_z=return_z,
+        )
+        return
     offset = 0
     previous = None
     while True:
@@ -166,6 +191,80 @@ def iter_layer_pages(
         yield batch
         previous = batch
         offset += len(batch)
+
+
+def _feature_object_id(feature: dict, oid_field: str | None):
+    """A page's feature's object id, or None where it carries none: GeoJSON's `id`, else the id field's value."""
+    if feature.get("id") is not None:
+        return feature["id"]
+    properties = feature.get("properties") or {}
+    return properties.get(oid_field) if oid_field else None
+
+
+def iter_pages_by_object_id(
+    query_url: str,
+    *,
+    out_fields: str = "*",
+    geometry_precision: int | None = None,
+    batch_size: int = PAGE_SIZE,
+    where: str = "1=1",
+    session=None,
+    backoff: tuple[int, ...] = DEFAULT_BACKOFF_SECONDS,
+    return_z: bool = False,
+):
+    """Yield a non-paginating layer's features in pages, by object id: iter_layer_pages' `paginate=False` path.
+
+    One `returnIdsOnly` query under `where`, then the ids in ascending order,
+    `batch_size` at a time, each batch POSTed as `objectIds`. POST, because a
+    thousand ids are several kilobytes of URL, past the 2,048-byte query
+    string IIS allows by default (Reasoned from IIS's documented default; the
+    measured layer answered GET and POST the same for 3 ids). A batch the
+    server refuses is asked for again at half the size, as a refused page is.
+    A server that answers a batch with features whose ids it was not asked
+    for is ignoring `objectIds` and is refused, rather than read as the
+    layer. An empty id list is an empty layer; whether it is a whole one is
+    the caller's `returnCountOnly` check, as for the paged loop.
+    """
+    answer = request_with_retry(
+        query_url,
+        session=session,
+        params={"where": where, "returnIdsOnly": "true", "f": "json"},
+        timeout=60,
+        backoff=backoff,
+    )
+    refusal = page_refusal(answer)
+    if refusal is not None:
+        raise RuntimeError(f"{query_url} {refusal} when asked for its object ids")
+    body = answer.json()
+    oid_field = body.get("objectIdFieldName")
+    ids = sorted(body.get("objectIds") or [])
+    size = batch_size
+    index = 0
+    while index < len(ids):
+        batch = ids[index : index + size]
+        form = {"objectIds": ",".join(str(oid) for oid in batch), "outFields": out_fields, "outSR": 4326, "f": "geojson"}
+        if return_z:
+            form["f"] = "json"
+            form["returnZ"] = "true"
+        if geometry_precision is not None:
+            form["geometryPrecision"] = geometry_precision
+        resp = request_with_retry(query_url, session=session, method="post", data=form, timeout=60, backoff=backoff)
+        refusal = page_refusal(resp)
+        if refusal is not None:
+            if size <= 1:
+                raise RuntimeError(f"{query_url} {refusal} for 1 object id")
+            print(f"  {query_url} {refusal} for {size} object ids; retrying at {size // 2}")
+            size //= 2
+            continue
+        features = resp.json().get("features", [])
+        if return_z:
+            features = [esri_feature_to_geojson(feature) for feature in features]
+        asked = set(batch)
+        stray = [oid for oid in (_feature_object_id(f, oid_field) for f in features) if oid is not None and oid not in asked]
+        if stray:
+            raise RuntimeError(f"{query_url} answered object ids it was not asked for ({stray[:3]}); it ignores objectIds")
+        yield features
+        index += len(batch)
 
 
 def esri_geometry_to_geojson(geometry: dict | None) -> dict | None:

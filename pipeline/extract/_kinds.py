@@ -74,6 +74,7 @@ from fetch_elevation import TILE_URL_TEMPLATE as DEM_TILE_URL_TEMPLATE
 from fetch_hikefinder import sign_in as hikefinder_sign_in
 from fetch_opentrail import API_URL as OPENTRAIL_API_URL
 from fetch_opentrail import strip_comments as strip_opentrail_comments
+from lib.arcgis import PAGE_SIZE as ARCGIS_PAGE_SIZE
 from lib.arcgis import iter_layer_pages, layer_count
 from lib.atc_scrape import parse_update as parse_atc_update
 from lib.atc_scrape import update_url as atc_update_url
@@ -466,6 +467,9 @@ class ArcgisLayer(Resource):
         # Person fields are left out of the field list asked for, so they never
         # cross the wire; "*" only when the layer has none to leave out.
         out_fields = "*" if len(kept) == len(fields) else ",".join(kept)
+        # A server that refuses resultOffset says so in its metadata, and is read by
+        # object id in batches no larger than its own maxRecordCount (lib/arcgis.py).
+        paginate = (metadata.get("advancedQueryCapabilities") or {}).get("supportsPagination") is not False
         pages = iter_layer_pages(
             self.url,
             where=self.where,
@@ -473,6 +477,8 @@ class ArcgisLayer(Resource):
             session=named,
             backoff=self.read_backoff,
             return_z=self.return_z,
+            paginate=paginate,
+            page_size=None if paginate else min(ARCGIS_PAGE_SIZE, metadata.get("maxRecordCount") or ARCGIS_PAGE_SIZE),
         )
         features = [feature for page in pages for feature in page]
         count = layer_count(self.url + "/query", where=self.where, session=named, backoff=self.read_backoff)

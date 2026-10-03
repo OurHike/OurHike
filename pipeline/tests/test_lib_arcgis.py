@@ -463,12 +463,14 @@ def test_a_layer_read_with_return_z_keeps_every_vertex_elevation_that_geojson_wo
     assert [r.qs["resultoffset"][0] for r in requests_mock.request_history] == ["0", "2", "3"]
 
 
-def test_return_z_off_asks_exactly_what_the_loop_asked_before_it_existed(requests_mock):
+def test_the_default_path_asks_exactly_what_the_loop_asked_before_return_z_and_paginate_existed(requests_mock):
     """The same whole-dict pin as the fetch_layer_geojson defaults above, on the generator the extract calls."""
     requests_mock.get(LAYER_URL + "/query", [{"json": {"features": []}}])
 
-    assert list(arcgis.iter_layer_pages(LAYER_URL, return_z=False)) == []
+    assert list(arcgis.iter_layer_pages(LAYER_URL, return_z=False, paginate=True)) == []
 
+    assert len(requests_mock.request_history) == 1, "no returnIdsOnly query on the paged path"
+    assert requests_mock.request_history[0].method == "GET"
     assert requests_mock.request_history[0].qs == {
         "where": ["1=1"],
         "outfields": ["*"],
@@ -516,3 +518,93 @@ def test_an_esri_geometry_becomes_the_geojson_shape_f_geojson_answers_with_its_z
 def test_an_esri_polygon_is_refused_rather_than_read_with_its_holes_wrong():
     with pytest.raises(ValueError, match="polygon"):
         arcgis.esri_geometry_to_geojson({"rings": [[[0, 0, 1], [0, 1, 1], [1, 1, 1], [0, 0, 1]]]})
+
+
+# --- a server that refuses pagination -----------------------------------------
+#
+# cicgis.org's Chesapeake/CAJO/MapServer/0, measured 2026-10-03: metadata
+# reads supportsPagination false, a paged query answers the error below, and
+# returnIdsOnly lists 843 ids under FID, starting at 0. The ids and features
+# here are invented.
+
+PAGINATION_REFUSED = {"error": {"code": 400, "message": "Pagination is not supported.", "details": []}}
+
+
+class UnpagedLayer:
+    """A layer that refuses resultOffset and answers returnIdsOnly and objectIds, GET or POST."""
+
+    def __init__(self, requests_mock, ids, *, ignores_object_ids=False, refuses_over=None):
+        self.ids, self.ignores, self.refuses_over = list(ids), ignores_object_ids, refuses_over
+        requests_mock.get(LAYER_URL + "/query", json=self.answer)
+        requests_mock.post(LAYER_URL + "/query", json=self.answer)
+
+    def answer(self, request, context):
+        from urllib.parse import parse_qs
+
+        asked = {key.lower(): value[0] for key, value in parse_qs(request.text or "").items()}
+        asked.update({key.lower(): value[0] for key, value in request.qs.items()})
+        if "resultoffset" in asked:
+            return PAGINATION_REFUSED
+        if asked.get("returnidsonly") == "true":
+            return {"objectIdFieldName": "FID", "objectIds": list(reversed(self.ids))}
+        wanted = [int(oid) for oid in asked["objectids"].split(",")]
+        if self.refuses_over is not None and len(wanted) > self.refuses_over:
+            return {"error": {"code": 500, "message": "Error performing query operation"}}
+        if self.ignores:
+            wanted = self.ids[: len(wanted)]
+        if asked.get("f") == "json":
+            return {"features": [{"attributes": {"FID": oid}, "geometry": {"x": -76.0, "y": 38.0, "z": 3.5}} for oid in wanted]}
+        return {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "id": oid,
+                    "properties": {"FID": oid},
+                    "geometry": {"type": "Point", "coordinates": [-76.0, 38.0]},
+                }
+                for oid in wanted
+            ],
+        }
+
+
+def test_a_layer_that_refuses_pagination_is_read_by_object_id_in_batches_in_id_order(requests_mock):
+    UnpagedLayer(requests_mock, ids=range(7))
+
+    pages = list(arcgis.iter_layer_pages(LAYER_URL, paginate=False, page_size=3))
+
+    assert [[f["id"] for f in page] for page in pages] == [[0, 1, 2], [3, 4, 5], [6]]
+    assert not any("resultoffset" in r.qs for r in requests_mock.request_history), "never asks for a page by offset"
+    from urllib.parse import parse_qs
+
+    posted = [parse_qs(r.text)["objectIds"][0] for r in requests_mock.request_history if r.method == "POST"]
+    assert posted == ["0,1,2", "3,4,5", "6"], "ascending, though returnIdsOnly listed them in reverse"
+
+
+def test_the_paged_loop_fails_on_that_server_which_is_why_the_object_id_path_exists(requests_mock):
+    UnpagedLayer(requests_mock, ids=range(3))
+    with pytest.raises(RuntimeError, match="Pagination is not supported"):
+        list(arcgis.iter_layer_pages(LAYER_URL))
+
+
+def test_reading_by_object_id_keeps_z_when_asked(requests_mock):
+    UnpagedLayer(requests_mock, ids=range(2))
+
+    features = [f for page in arcgis.iter_layer_pages(LAYER_URL, paginate=False, return_z=True) for f in page]
+
+    assert [f["geometry"] for f in features] == [{"type": "Point", "coordinates": [-76.0, 38.0, 3.5]}] * 2
+    assert [f["properties"]["FID"] for f in features] == [0, 1]
+
+
+def test_an_object_id_batch_the_server_refuses_is_asked_for_again_at_half_the_size(requests_mock):
+    UnpagedLayer(requests_mock, ids=range(5), refuses_over=2)
+
+    pages = list(arcgis.iter_layer_pages(LAYER_URL, paginate=False, page_size=4))
+
+    assert [[f["id"] for f in page] for page in pages] == [[0, 1], [2, 3], [4]]
+
+
+def test_a_server_that_ignores_object_ids_is_refused_rather_than_read_as_the_layer(requests_mock):
+    UnpagedLayer(requests_mock, ids=range(4), ignores_object_ids=True)
+    with pytest.raises(RuntimeError, match="ignores objectIds"):
+        list(arcgis.iter_layer_pages(LAYER_URL, paginate=False, page_size=2))

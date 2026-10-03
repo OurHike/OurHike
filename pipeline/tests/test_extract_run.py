@@ -60,6 +60,7 @@ from tests.test_lib_hikefinder import GPX, page
 AGOL = "https://services1.arcgis.com/orgid/arcgis/rest/services"
 LINES_URL = f"{AGOL}/Trails/FeatureServer/0"
 LINES_Z_URL = f"{AGOL}/CenterlineZ/FeatureServer/9"
+UNPAGED_URL = "https://gis.example.org/arcgis/rest/services/Trail/MapServer/0"
 CLOSURES_URL = f"{AGOL}/Closures/FeatureServer/0"
 STAFFED_URL = f"{AGOL}/Waypoints/FeatureServer/1"
 ONPREM_URL = "https://gis.example.gov/arcgis/rest/services/assets/MapServer/3"
@@ -174,6 +175,7 @@ def registry(tmp_path, monkeypatch):
                 "sources": [
                     {"key": "trails", "url": LINES_URL},
                     {"key": "centerline_z", "url": LINES_Z_URL, "return_z": True},
+                    {"key": "unpaged", "url": UNPAGED_URL},
                     {"key": "closures_layer", "url": CLOSURES_URL},
                     {
                         "key": "staffed",
@@ -717,6 +719,44 @@ def test_a_layer_without_return_z_is_asked_for_exactly_what_it_was_asked_for_bef
     pages = [r.qs for r in requests_mock.request_history if r.path.endswith("/query") and "resultoffset" in r.qs]
     assert pages and all(set(qs) == {"where", "outfields", "outsr", "f", "resultoffset", "resultrecordcount"} for qs in pages)
     assert all(qs["f"] == ["geojson"] for qs in pages)
+
+
+def test_a_layer_whose_server_refuses_pagination_is_read_whole_by_object_id(registry, requests_mock):
+    """cicgis.org's CAJO layer's shape (measured 2026-10-03): supportsPagination false, and a paged query an error."""
+    ids = list(range(5))
+
+    def metadata(request, context):
+        fields = [{"name": "FID", "type": "esriFieldTypeOID"}, {"name": "NAME", "type": "esriFieldTypeString"}]
+        return {"fields": fields, "maxRecordCount": 2, "advancedQueryCapabilities": {"supportsPagination": False}}
+
+    def query(request, context):
+        asked = {key.lower(): value[0] for key, value in parse_qs(request.text or "").items()}
+        asked.update({key.lower(): value[0] for key, value in request.qs.items()})
+        if "resultoffset" in asked:
+            return {"error": {"code": 400, "message": "Pagination is not supported.", "details": []}}
+        if asked.get("returncountonly") == "true":
+            return {"count": len(ids)}
+        if asked.get("returnidsonly") == "true":
+            return {"objectIdFieldName": "FID", "objectIds": ids}
+        wanted = [int(oid) for oid in asked["objectids"].split(",")]
+        assert len(wanted) <= 2, "a batch is never larger than the layer's own maxRecordCount"
+        point = {"type": "Point", "coordinates": [-76.0, 38.0]}
+        return {
+            "features": [
+                {"type": "Feature", "id": oid, "properties": {"FID": oid, "NAME": "CAJO"}, "geometry": point} for oid in wanted
+            ]
+        }
+
+    requests_mock.get(UNPAGED_URL, json=metadata)
+    requests_mock.get(UNPAGED_URL + "/query", json=query)
+    requests_mock.post(UNPAGED_URL + "/query", json=query)
+    resource = ArcgisLayer(key="unpaged", club="testclub", type="trail_lines")
+    proofs = {}
+
+    rows = list(resource.rows(proofs))
+
+    assert [row["FID"] for row in rows] == ids
+    assert proofs == {resource.table: 5}, "the proof is still the server's returnCountOnly"
 
 
 def test_turning_return_z_on_reads_a_layer_again_and_leaves_every_other_digest_as_it_was(registry):

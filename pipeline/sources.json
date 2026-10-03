@@ -225,7 +225,7 @@
       "discovered_date": "2026-10-03",
       "notes": "697 rows (returnCountOnly), 25 fields, polyline, hasZ and hasM true, maxRecordCount 2,000, served in EPSG:3857, dataLastEditDate 2025-10-01, all measured 2026-10-03. OBJECTID and GlobalID are each unique on all 697. 18 ROWS HAVE NO GEOMETRY: OBJECTID 681 to 698 repeat segment 25-01-03 (OBJECTID 192) attribute for attribute with a null Shape__Length, so the layer holds 679 lines, 4,586,382 m of them, and full_ID is unique on those 679 only. N_end_mileage and S_end_mileage are null on every row. THE LAYER IS EDITABLE BY ANYONE: capabilities read 'Create,Delete,Query,Update,Editing' on a public item, and editorTrackingInfo reads allowAnonymousToUpdate and allowAnonymousToDelete true. That reading is Reasoned from the metadata and was not tested, since testing it means writing to ATC's layer; it means a Z value here can change without ATC changing it. Layers 1, 5 and 10 of the same service and Map/FeatureServer/0 are copies (atc/elevation.py's SAME_AS notes).",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), and nothing has decided how a club's elevation product calibrates or checks the 3DEP profile a hiker sees. False until a model reads it and the maintainer flips it; an elevation figure that reached a phone before anyone checked it against 3DEP would be a display outrunning its source (CLAUDE.md)."
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no model reads this table yet. Phase C flips this to true when its generated base model and the elevation union read it. Until then false, because an elevation figure that reached a phone before anyone checked it against the 3DEP profile would be a display outrunning its source (CLAUDE.md)."
     },
     {
       "key": "gatc_water_sources",
@@ -927,7 +927,7 @@
       "discovered_date": "2026-10-03",
       "notes": "21 points, one per county, fields OBJECTID, COUNTY, ELEVATION, EASTING, NORTHING and GLOBALID, served in EPSG:3424, dataLastEditDate 2024-07-24, measured 2026-10-03; OBJECTID, COUNTY and GLOBALID are each unique on all 21. ELEVATION runs 62 (Cape May) to 1,803 (Sussex). The item's own description: the highest publicly accessible natural elevation in each county, where five counties' highest points are landfills and several are on private land, which it excludes.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), and nothing has decided how a club's elevation product calibrates or checks the 3DEP profile a hiker sees. False until a model reads it and the maintainer flips it; an elevation figure that reached a phone before anyone checked it against 3DEP would be a display outrunning its source (CLAUDE.md)."
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no model reads this table yet. Phase C flips this to true when its generated base model and the elevation union read it. Until then false, because an elevation figure that reached a phone before anyone checked it against the 3DEP profile would be a display outrunning its source (CLAUDE.md)."
     },
     {
       "key": "nyc_parks_trails",
@@ -1423,7 +1423,7 @@
       "discovered_date": "2026-10-03",
       "notes": "394 points, fields Id, mile_point, Z and OBJECTID, served in EPSG:26916, maxRecordCount 1,000, measured 2026-10-03. OBJECTID, mile_point and Z are each unique on all 394; Id is 0 on every row. STALE: dataLastEditDate 2021-01-12, and the service calls itself a 'Temporary Mileage Index for the Kekekabic section of the North Country Trail in Minnesota', so it is one section, never updated in almost five years, and whether it matches today's tread is unknown. mile_point runs 0 to 39.1 in 0.1-mile steps, with OBJECTID 394 at mile 20.69, out of sequence.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), and nothing has decided how a club's elevation product calibrates or checks the 3DEP profile a hiker sees. False until a model reads it and the maintainer flips it; an elevation figure that reached a phone before anyone checked it against 3DEP would be a display outrunning its source (CLAUDE.md)."
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no model reads this table yet. Phase C flips this to true when its generated base model and the elevation union read it. Until then false, because an elevation figure that reached a phone before anyone checked it against the 3DEP profile would be a display outrunning its source (CLAUDE.md)."
     },
     {
       "key": "alaska_trails",
@@ -1489,7 +1489,7 @@
       "discovered_date": "2026-10-03",
       "notes": "67 points, one per county, fields OBJECTID_1 (the object id), OBJECTID, POINTID, Lat, Long, County and Max_Elevat, measured 2026-10-03; OBJECTID_1, POINTID and County are each unique on all 67. Max_Elevat runs 445 to 3,213. An on-prem MapServer with no editingInfo and no date field, so the change check answers UNKNOWN and the 67 rows are read whole each month.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), and nothing has decided how a club's elevation product calibrates or checks the 3DEP profile a hiker sees. False until a model reads it and the maintainer flips it; an elevation figure that reached a phone before anyone checked it against 3DEP would be a display outrunning its source (CLAUDE.md)."
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no model reads this table yet. Phase C flips this to true when its generated base model and the elevation union read it. Until then false, because an elevation figure that reached a phone before anyone checked it against the 3DEP profile would be a display outrunning its source (CLAUDE.md)."
     },
     {
       "key": "ct_deep_blue_blazed",
@@ -1665,7 +1665,7 @@
       "discovered_date": "2026-10-03",
       "notes": "14 polylines, one per 1,000-ft band (gridcode 1 to 14), fields OBJECTID, FID_PCTA_Centerline, FID_DEM_Classed_Per_Thousand_Ft, Id, gridcode, Elevation_Range, PCT_Miles and Shape__Length, hasZ false, dataLastEditDate 2024-04-29, measured 2026-10-03; OBJECTID and gridcode are each unique. The item's own words: 'PCT classed by elevation ranges on 30m DEM'. PCT_Miles sums to 2,662.9. A classification of a 30 m DEM, coarser than 3DEP's 10 m, so it is a cross-check on a profile, never a profile.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), and nothing has decided how a club's elevation product calibrates or checks the 3DEP profile a hiker sees. False until a model reads it and the maintainer flips it; an elevation figure that reached a phone before anyone checked it against 3DEP would be a display outrunning its source (CLAUDE.md)."
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no model reads this table yet. Phase C flips this to true when its generated base model and the elevation union read it. Until then false, because an elevation figure that reached a phone before anyone checked it against the 3DEP profile would be a display outrunning its source (CLAUDE.md)."
     },
     {
       "key": "pcta_corridor_elevation_ranges",
@@ -1685,7 +1685,7 @@
       "discovered_date": "2026-10-03",
       "notes": "14 polygons (the layer is named DEM_Classed_Per_Thousand_Ft), fields OBJECTID, Id, gridcode, Elevation_Range, Shape__Area and Shape__Length, hasZ false, dataLastEditDate 2024-06-18, measured 2026-10-03; OBJECTID and gridcode are each unique. The item's own words: 'This layer represents the PCT corridor by elevation in ranges per 1,000ft. Data derived from 30m DEM'.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), and nothing has decided how a club's elevation product calibrates or checks the 3DEP profile a hiker sees. False until a model reads it and the maintainer flips it; an elevation figure that reached a phone before anyone checked it against 3DEP would be a display outrunning its source (CLAUDE.md)."
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no model reads this table yet. Phase C flips this to true when its generated base model and the elevation union read it. Until then false, because an elevation figure that reached a phone before anyone checked it against the 3DEP profile would be a display outrunning its source (CLAUDE.md)."
     },
     {
       "key": "cdtc_centerline",

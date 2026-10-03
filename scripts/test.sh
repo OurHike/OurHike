@@ -423,14 +423,8 @@ fi
 #   - --no-dbt-deps can skip `dbt deps`, out loud.
 # Telemetry is off for the same reason, and by the same documented opt-out,
 # as in CI: the workflow's dbt job says why that variable and no other.
-# The docs site's three parts are checked the same way the workflow step
-# checks them; that step is the home of what the site must contain.
-dbt_docs_site_complete() {
-  local site="$1"
-  test -s "$site/index.html" || { echo "no $site/index.html" >&2; return 1; }
-  test -n "$(find "$site/assets" -type f -print -quit 2>/dev/null)" || { echo "no $site/assets" >&2; return 1; }
-  test -n "$(find "$site" -name '*.parquet' -print -quit)" || { echo "no Parquet under $site" >&2; return 1; }
-}
+# The docs site is checked by pipeline/check_docs_site.py, as the workflow
+# step checks it; that script is the home of what the site must contain.
 if selected_has dbt; then
   if [ -z "$DBT_DIR" ]; then
     echo "-- dbt suite: SKIPPED, no dbt ${DBT_PIN:-?} first on PATH (found: ${dbt_found})."
@@ -476,7 +470,7 @@ if selected_has dbt; then
     done
     step "dbt source freshness"  "${dbt_cmd[@]}" source freshness --profiles-dir .
     step "dbt docs generate"     "${dbt_cmd[@]}" docs generate --profiles-dir . --output-dir target/docs
-    step "dbt docs site"         dbt_docs_site_complete pipeline/dbt/target/docs
+    step "dbt docs site"         env -C pipeline "$PY" check_docs_site.py dbt/target/docs
     step "dbt project evaluator" env DBT_PROJECT_EVALUATOR_SEVERITY=error "${dbt_cmd[@]}" build -s package:dbt_project_evaluator --profiles-dir .
   fi
 fi

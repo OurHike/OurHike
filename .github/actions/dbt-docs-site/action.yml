@@ -1,0 +1,77 @@
+# Builds the dbt docs site ourhike.org/data/ serves (pipeline/ELT.md, "Docs
+# and charts at https://ourhike.org/data/"), for the two workflows that
+# assemble a site: pages.yml, production at a v* tag, and pr-preview.yml.
+# ua.yml has no site and does not call it.
+#
+# An action rather than two copies, for changed-paths' reason: the steps are
+# few and the ways to get them subtly different are not (the Python version
+# requirements-dbt.txt was compiled on, the cache key the dbt job saves
+# under, the telemetry opt-out). The caller copies `dir` into `_site/data/`
+# in its own assembly step and runs pipeline/check_docs_site.py on the copy,
+# because that copy is the bytes that ship.
+#
+# AGAINST AN EMPTY WAREHOUSE, never the fixtures and never real data. The page
+# is public and counts only, with no maps (decision 10), and a warehouse with
+# no tables is the build that cannot put a row in it. Measured 2026-10-03 on
+# dbt 2.0.6, from this project: `dbt docs generate` against a DuckDB file with
+# no tables compiled all 1,845 nodes and wrote 355 files, 13,165,633 bytes
+# (315 assets, 38 Parquet), in 17.0 s through build.sh and 30.7 s on an
+# earlier run, with dbt_rt.relations, run_results and adapter_queries all
+# empty, and check_docs_site.py passed it. The CI fixture build's docs, built
+# the same day, documented the same 1,567 columns with the same 559 declared
+# types (neither build had an actual type for any of them) and added 2,012
+# run results of fixture tests, which are no fact about OurHike's data. That
+# compiling with no tables works on a runner, and not only in a web sandbox,
+# is `@unvalidated` until the first pull request preview builds it.
+#
+# NO SECRET. Nothing here reads one, and dbt_rt.invocations publishes each
+# invocation's `args` and `vars_override`, so nothing may ever reach this
+# build through `--vars`; check_docs_site.py fails a page that records one.
+
+name: dbt docs site
+description: Build the dbt docs site for /data/ against an empty warehouse, and say where it is.
+
+outputs:
+  dir:
+    description: >-
+      The directory `dbt docs generate` wrote: index.html, assets/ and the
+      Parquet under info_schema/. Under the runner's temp directory, never
+      in the checkout.
+    value: ${{ steps.build.outputs.dir }}
+
+runs:
+  using: composite
+  steps:
+    # 3.12 for the dbt job's reason: requirements-dbt.txt was compiled on it.
+    - uses: actions/setup-python@v7
+      with:
+        python-version: "3.12"
+        cache: pip
+        cache-dependency-path: pipeline/requirements-dbt.txt
+
+    # The dbt job's entry, under its key (pipeline-tests.yml says what is in
+    # it and what is measured about it). Restored, never saved here: a miss
+    # downloads dbt's DuckDB driver and v2's spatial build again, which is
+    # slower and never wrong, and the dbt job saves the entry on its own miss.
+    # The profile loads spatial on every connection, so even a compile against
+    # an empty file needs it.
+    - name: Restore dbt's DuckDB driver and v2's spatial extension
+      uses: actions/cache/restore@v6
+      with:
+        path: |
+          ~/.cache/com.getdbt/adbc
+          ~/.duckdb/extensions/v1.5.4
+        key: dbt-v2-runtime-${{ runner.os }}-${{ hashFiles('pipeline/requirements-dbt.txt') }}
+
+    - name: Install dbt
+      shell: bash
+      run: pip install -r pipeline/requirements-dbt.txt
+
+    - name: Build the docs site
+      id: build
+      shell: bash
+      env:
+        OUT: ${{ runner.temp }}/dbt-docs
+      run: |
+        bash "$GITHUB_ACTION_PATH/build.sh" "$OUT"
+        echo "dir=$OUT" >> "$GITHUB_OUTPUT"

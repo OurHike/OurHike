@@ -438,7 +438,11 @@ R2 keys, format, coordinate decimals, offline tier and size budget.
   assets directory and Parquet: on stage 1's fixtures, 315 assets and 38
   Parquet files, 12,301,390 bytes on 2.0.6 (2026-10-01). `--static` and
   `--empty-catalog` exist on neither 2.0.5 nor 2.0.6 (`dbt docs generate
-  --help`, read 2026-10-01). The site build makes them.
+  --help`, read 2026-10-01). `pages.yml` and `pr-preview.yml` build the
+  published copy through `.github/actions/dbt-docs-site`, against an empty
+  warehouse, and `pipeline/check_docs_site.py` checks what they copy into
+  `_site/data/`. Its one exemption is the unit tests' own coordinates, which
+  the page carries; whether it should is open (ELT.md, "Docs and charts").
 - **dbt Charts boards are YAML in `pipeline/dbt/charts/`, rendered only once
   dbt Charts supports dbt v2** (decision 19): `dbt-charts` 0.8.0 pins
   `dbt-core>=1.8,<2`. That is a named external blocker. Do not work around it
@@ -474,7 +478,8 @@ python build_marts.py --fixtures --python "$RUNNER_TEMP/pipeline/bin/python"   #
 "$RUNNER_TEMP/pipeline/bin/python" parity.py <family> --new data/processed/dbt/<file>   # one line per family
 cd dbt
 dbt source freshness --profiles-dir .
-dbt docs generate --profiles-dir . --output-dir target/docs   # then checks index.html, assets/ and Parquet exist
+dbt docs generate --profiles-dir . --output-dir target/docs
+python ../check_docs_site.py target/docs                     # the parts, no --vars, telemetry off, no coordinates outside the unit tests
 DBT_PROJECT_EVALUATOR_SEVERITY=error dbt build -s package:dbt_project_evaluator --profiles-dir .
 # save the cache on a miss, even when a step failed
 ```

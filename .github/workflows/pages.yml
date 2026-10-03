@@ -3,7 +3,7 @@
 # GitHub Pages is what makes this installable at all: a PWA needs HTTPS before
 # any browser will offer "Install app", and Pages provides it for free.
 #
-# Three things land, at the paths the site is written to expect:
+# Four things land, at the paths the site is written to expect:
 #
 #   /         site/dist/              - the site, built by Astro from
 #                                       site/src (#116; WEBSITE.md is the plan)
@@ -12,6 +12,11 @@
 #                                       visitor's browser (#467); passed
 #                                       through Astro's public/ untouched, so
 #                                       the substitution below still finds it
+#   /data/    pipeline/dbt/           - the data platform's dbt docs, built
+#                                       against an empty warehouse
+#                                       (.github/actions/dbt-docs-site;
+#                                       pipeline/ELT.md, decision 10). Never
+#                                       under /app/, the app's PWA scope
 #
 # Those are apex paths because `site/CNAME` moves this site onto `ourhike.org`
 # (#733). It used to be a project site under `/OurHike/`, and the prefix was
@@ -443,9 +448,28 @@ jobs:
             exit 1
           fi
 
+      # The page at /data/ (pipeline/ELT.md, "Docs and charts at
+      # https://ourhike.org/data/"). The action says why it is built against
+      # an empty warehouse, and it reads no secret. Here, in the production
+      # build rather than a workflow of its own, because the publish step
+      # below replaces the whole gh-pages branch with _site: a second
+      # workflow writing /data/ would be deleted by the next deploy. The page
+      # changes only at a tag, so a monthly data refresh moves UA's data and
+      # not these docs (Reasoned, ELT.md).
+      #
+      # A re-run is no longer a push of nothing. Measured 2026-10-03 across
+      # two builds of one commit: the 315 assets were byte-identical, while
+      # index.html (its `generated_at`) and 16 of the 38 Parquet files
+      # (1,154,363 bytes) differed, so republishing a tag commits about
+      # 1.2 MB to gh-pages where it used to commit nothing.
+      - name: Build the data docs
+        id: docs
+        uses: ./.github/actions/dbt-docs-site
+
       - name: Assemble the site
         env:
           DATA_URL: ${{ steps.data.outputs.url }}
+          DOCS_DIR: ${{ steps.docs.outputs.dir }}
         run: |
           mkdir -p _site/app
           # The BUILT site, not the source tree - site/src would be shipped
@@ -460,6 +484,20 @@ jobs:
           cp site/CNAME _site/CNAME
           cp -r client/dist/. _site/app/
           cp client/public/favicon.svg _site/favicon.svg
+          # The dbt docs at /data/, beside the app and never under it: /app/
+          # is the PWA's scope, and an installed app would claim the docs.
+          # Refused if the site already put something there, so the two can
+          # never be silently merged. Then checked as copied, because this
+          # copy is what ships: check_docs_site.py fails a missing index.html,
+          # assets/ or Parquet, a recorded --vars, and coordinate-shaped text
+          # (it says what it searches for, and the one place it allows it).
+          if [ -e _site/data ]; then
+            echo "::error::site/dist already holds data/, which is the dbt docs' path. Move one of them."
+            exit 1
+          fi
+          mkdir -p _site/data
+          cp -r "$DOCS_DIR"/. _site/data/
+          python pipeline/check_docs_site.py _site/data
           # Pages runs Jekyll by default, which skips files beginning with an
           # underscore - Vite does not emit any today, but a build tool changing
           # its naming should not silently break the deploy.

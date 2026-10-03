@@ -829,3 +829,87 @@ class TestDraftingWithoutDeploying:
         assert "%{http_code}" in post
         assert "::error::Drafting" in run
         assert ".message" in run
+
+
+class TestTheDataDocs:
+    """The dbt docs at `/data/` (pipeline/ELT.md, "Docs and charts at https://ourhike.org/data/").
+
+    Stage 7 of **#1793 — Rebuild the data platform as dlt → dbt: seven
+    contracted marts, a monthly refresh, published docs, and lighter phone
+    downloads**. Production and every preview serve the page beside the app,
+    built by `.github/actions/dbt-docs-site` and checked by
+    `pipeline/check_docs_site.py` as copied; UA has no site and gets none. The
+    first three tests are the three assertions ELT.md names; the fourth is
+    its "the docs step needs no secret".
+    """
+
+    ACTION = REPO_ROOT / ".github" / "actions" / "dbt-docs-site"
+    CHECKER = REPO_ROOT / "pipeline" / "check_docs_site.py"
+    SITE_BUILDS = [("pages.yml", "Assemble the site"), ("pr-preview.yml", "Assemble the preview")]
+
+    @staticmethod
+    def _steps(workflow: str) -> list[dict]:
+        parsed = yaml.safe_load((WORKFLOW_DIR / workflow).read_text(encoding="utf-8"))
+        return [step for job in parsed["jobs"].values() for step in job["steps"]]
+
+    @pytest.mark.parametrize(("workflow", "assemble"), SITE_BUILDS)
+    def test_both_site_builds_assemble_the_docs_at_data_index_html(self, workflow, assemble):
+        """Built before the assembly, copied into `_site/data/` by it, and checked there.
+
+        The check is on the copy because the copy is what ships, and it is the
+        only thing between a preview and its trap: `_site/404.html` is the app
+        shell, so a missing `_site/data/index.html` would be answered with the
+        app rather than with a failure.
+        """
+        steps = self._steps(workflow)
+        names = [step.get("name") for step in steps]
+        build = next(step for step in steps if step.get("uses") == "./.github/actions/dbt-docs-site")
+        step = next(step for step in steps if step.get("name") == assemble)
+        assert names.index(build["name"]) < names.index(assemble)
+        assert step["env"]["DOCS_DIR"] == "${{ steps.%s.outputs.dir }}" % build["id"]
+        assert 'cp -r "$DOCS_DIR"/. _site/data/' in step["run"]
+        assert "python pipeline/check_docs_site.py _site/data" in step["run"]
+        # And the checker is what refuses a site with no index.html.
+        assert 'site / "index.html"' in self.CHECKER.read_text(encoding="utf-8")
+
+    @pytest.mark.parametrize(("workflow", "assemble"), SITE_BUILDS)
+    def test_nothing_lands_under_the_apps_data_path(self, workflow, assemble):
+        """`/app/` is the app's base path and its PWA scope, so docs there would be the installed app's.
+
+        Everything copied under `_site/app/` is the app's own build, and
+        client/public, which Vite copies into that build, holds no `data/`.
+        """
+        steps = self._steps(workflow)
+        run = next(step for step in steps if step.get("name") == assemble)["run"]
+        copies = [line.split() for line in run.splitlines() if line.strip().startswith("cp ")]
+        into_app = [words for words in copies if words[-1].startswith("_site/app")]
+        assert into_app and all(words[-2] == "client/dist/." for words in into_app), into_app
+        docs = [words for words in copies if '"$DOCS_DIR"/.' in words]
+        assert [words[-1] for words in docs] == ["_site/data/"]
+        assert "_site/app/data" not in yaml.safe_dump(steps)
+        assert not (REPO_ROOT / "client" / "public" / "data").exists()
+
+    def test_ua_still_deploys_client_dist_alone(self):
+        """UA has no site, and giving it one is a separate decision (ELT.md)."""
+        steps = self._steps("ua.yml")
+        deploy = next(step for step in steps if "wrangler-action" in step.get("uses", ""))
+        assert "pages deploy client/dist" in deploy["with"]["command"]
+        assert "_site" not in yaml.safe_dump(steps)
+        assert all(step.get("uses") != "./.github/actions/dbt-docs-site" for step in steps)
+        assert "check_docs_site" not in yaml.safe_dump(steps)
+
+    def test_the_docs_build_reads_no_secret_and_passes_no_vars(self):
+        """`dbt_rt.invocations` publishes `args` and `vars_override` with the page.
+
+        So the build holds no secret to leak, and nothing reaches dbt through
+        `--vars`; check_docs_site.py refuses a page that records one anyway.
+        """
+        action = (self.ACTION / "action.yml").read_text(encoding="utf-8")
+        assert "secrets." not in action
+        for workflow, _ in self.SITE_BUILDS:
+            build = next(step for step in self._steps(workflow) if step.get("uses") == "./.github/actions/dbt-docs-site")
+            assert "secrets." not in yaml.safe_dump(build)
+        script = (self.ACTION / "build.sh").read_text(encoding="utf-8")
+        commands = [line for line in script.splitlines() if not line.strip().startswith("#")]
+        assert not [line for line in commands if "--vars" in line]
+        assert "DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS=false" in script

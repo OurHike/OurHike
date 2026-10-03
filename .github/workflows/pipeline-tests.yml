@@ -234,6 +234,7 @@ jobs:
           # lands the photo manifests; step_long_path_guide.py places the
           # Long Path guide through lib/nynjtc_long_path_guide.py. The
           # challenges family's runs export_challenges.py.
+          # check_docs_site.py checks the site the docs step writes.
           paths: >-
             pipeline/dbt/
             pipeline/extract/
@@ -242,6 +243,7 @@ jobs:
             pipeline/reference/
             pipeline/parity.py
             pipeline/check_contract_versions.py
+            pipeline/check_docs_site.py
             pipeline/export_podcasts.py
             pipeline/export_sources.py
             pipeline/export_atc_updates.py
@@ -655,18 +657,22 @@ jobs:
       # 12,301,390 bytes; dbt-oss 2.0.5 wrote the same counts in 12,291,821
       # bytes). Written to target/docs, inside the gitignored target/, so
       # nothing here can be committed; .github/tests/test_no_committed_data.py
-      # refuses any path under pipeline/dbt/target/ besides. The checks after
-      # it fail the step when v2 stops writing one of the three parts. Nothing
-      # publishes the site yet; the plan puts it at ourhike.org/data/.
+      # refuses any path under pipeline/dbt/target/ besides.
+      #
+      # pages.yml and pr-preview.yml publish this site at /data/, built by
+      # .github/actions/dbt-docs-site against an empty warehouse rather than
+      # this job's fixtures, and run check_docs_site.py on the copy they
+      # ship. It runs here too, on this build's copy, so a pull request finds
+      # a missing part, a recorded --vars or coordinate-shaped text before a
+      # tag does (pipeline/ELT.md, "Docs and charts at
+      # https://ourhike.org/data/"). The script is the one home of what the
+      # site must hold.
       - name: dbt docs generate
         if: steps.scope.outputs.run == 'true'
         working-directory: pipeline/dbt
         run: |
           dbt docs generate --profiles-dir . --output-dir target/docs
-          test -s target/docs/index.html || { echo "::error::no target/docs/index.html"; exit 1; }
-          test -n "$(find target/docs/assets -type f -print -quit)" || { echo "::error::no target/docs/assets"; exit 1; }
-          test -n "$(find target/docs -name '*.parquet' -print -quit)" || { echo "::error::no Parquet under target/docs"; exit 1; }
-          echo "docs: $(find target/docs/assets -type f | wc -l) assets, $(find target/docs -name '*.parquet' | wc -l) Parquet files"
+          python ../check_docs_site.py target/docs
 
       # Separate from the data build so "did my data pass" and "does my
       # project follow conventions" stay independently readable (DBT.md).

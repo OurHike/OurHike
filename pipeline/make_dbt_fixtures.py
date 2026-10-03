@@ -3854,6 +3854,146 @@ def _places_fixtures(files: dict[str, dict | str | bytes]) -> dict[str, dict | s
     return {**files, "external/oprhp_park_polygons.geojson": _feature_collection(parks)}
 
 
+# --- Decision 54, wave 1: the clubs' elevation products ----------------------
+#
+# Six layers registered 2026-10-03 (pipeline/ELT.md, "Loading everything the
+# clubs publish"). The FIELD NAMES are each live layer's own, read off its
+# metadata that day and listed in its sources.json `notes`; the VALUES are
+# invented, shaped like what the live rows hold, and carry the dirt the live
+# read found: ATX's rows with no geometry that repeat a segment, NCTA's point
+# out of mileage order, PCTA's labels with a minus sign (U+2212) rather than a
+# hyphen. Every elevation is in the unit its row's `elevation_unit` records,
+# so a model that converts it the wrong way reads fixture values 3.28 times
+# off, not plausible ones.
+
+
+def _z_line(i: int, z: float) -> dict:
+    """A two-vertex line whose vertices carry a Z, as a `return_z` layer's rows land."""
+    x, y = -74.0 + i * 0.01, 41.0 + i * 0.01
+    return {"type": "LineString", "coordinates": [[x, y, z], [x, y + 0.005, z + 12.5]]}
+
+
+def _atc_atx_centerline_layer() -> dict:
+    """ATC's ATX Ratings centerline: Z in metres on the geometry, and a row with no geometry repeating a segment.
+
+    N_end_mileage and S_end_mileage are null on every live row, and notes on
+    all but 18 of 697 (measured 2026-10-03), so the fixture's are null too.
+    """
+    rows = []
+    for index in range(2):
+        rows.append(
+            {
+                "OBJECTID": index + 1,
+                "ORIG_SEQ": index + 1,
+                "N_end_desc": f"Fixture North End {index + 1}",
+                "S_end_desc": f"Fixture South End {index + 1}",
+                "N_end_lat": 41.005 + index * 0.01,
+                "N_end_long": -74.0 + index * 0.01,
+                "S_end_lat": 41.0 + index * 0.01,
+                "S_end_long": -74.0 + index * 0.01,
+                "N_end_mileage": None,
+                "S_end_mileage": None,
+                "tot_miles": 0.35 + index,
+                "label_current": f"Zone {index + 2}: Fixture segment {index + 1}",
+                "label_desired": f"Zone {index + 2}: Fixture segment {index + 1}",
+                "current_rating": 2.5 + index,
+                "desired_rating": 2.5,
+                "trail_club": "0",
+                "club_acro": "0",
+                "club_sec_ID": "01",
+                "club_subsec_ID": "01",
+                "seg_ID": f"0{index + 1}",
+                "full_ID": f"01-01-0{index + 1}",
+                "state": "23",
+                "notes": None,
+                "GlobalID": f"{{fixture-atx-{index + 1}}}",
+                "Shape__Length": 560.0 + index,
+            }
+        )
+    geometries = [_z_line(0, 330.5), _z_line(1, 1149.9), None]
+    # OBJECTID 681-698 on the live layer: segment 25-01-03 again, every attribute but the id, and no geometry.
+    rows.append({**rows[1], "OBJECTID": 3, "GlobalID": "{fixture-atx-3}", "Shape__Length": None})
+    return _feature_collection(
+        [{"type": "Feature", "properties": row, "geometry": geometry} for row, geometry in zip(rows, geometries, strict=True)]
+    )
+
+
+def _ncta_kek_mileage_elev_layer() -> dict:
+    """NCTA's Kekekabic mileage index: Z is an attribute in feet, and one point is out of mileage order."""
+    rows = [
+        {"Id": 0, "mile_point": 0.0, "Z": 1501.65, "OBJECTID": 1},
+        {"Id": 0, "mile_point": 0.1, "Z": 1501.18, "OBJECTID": 2},
+        {"Id": 0, "mile_point": 20.69, "Z": 1898.65, "OBJECTID": 3},
+    ]
+    return _features(rows, _point)
+
+
+def _pcta_band_rows() -> list[dict]:
+    """The first two of PCTA's fourteen bands, labelled as the live layers label them: a hyphen, then a minus sign."""
+    labels = ("0 - 1000 ft", "1000−2000 ft")
+    return [{"OBJECTID": i + 1, "Id": i + 1, "gridcode": i + 1, "Elevation_Range": label} for i, label in enumerate(labels)]
+
+
+def _pcta_per_thousand_ft_layer() -> dict:
+    rows = [
+        {
+            **row,
+            "FID_PCTA_Centerline": 1,
+            "FID_DEM_Classed_Per_Thousand_Ft": row["gridcode"],
+            "PCT_Miles": 12.2 + row["gridcode"],
+            "Shape__Length": 28160.5 + row["gridcode"],
+        }
+        for row in _pcta_band_rows()
+    ]
+    return _features(rows, _line)
+
+
+def _pcta_corridor_elevation_ranges_layer() -> dict:
+    rows = [{**row, "Shape__Area": 48238797.4 + row["gridcode"], "Shape__Length": 96166.7} for row in _pcta_band_rows()]
+    return _features(rows, _polygon)
+
+
+def _nj_high_elevation_points_layer() -> dict:
+    rows = [
+        {
+            "OBJECTID": i + 1,
+            "COUNTY": f"Fixture County {i + 1}",
+            "ELEVATION": elevation,
+            "EASTING": 447747.5 + i,
+            "NORTHING": 906178.4 + i,
+            "GLOBALID": f"{{fixture-nj-high-{i + 1}}}",
+        }
+        for i, elevation in enumerate((1803, 62))
+    ]
+    return _features(rows, _point)
+
+
+def _pasda_county_max_elevations_layer() -> dict:
+    rows = [
+        {
+            "OBJECTID_1": i + 1,
+            "OBJECTID": i + 1,
+            "POINTID": i + 1,
+            "Lat": 41.0 + i * 0.01,
+            "Long": -74.0 + i * 0.01,
+            "County": f"Fixture County {i + 1}",
+            "Max_Elevat": elevation,
+        }
+        for i, elevation in enumerate((2234, 445))
+    ]
+    return _features(rows, _point)
+
+
+ELEVATION_PRODUCT_FIXTURES = {
+    "external/atc_atx_centerline.geojson": _atc_atx_centerline_layer,
+    "external/ncta_kek_mileage_elev.geojson": _ncta_kek_mileage_elev_layer,
+    "external/pcta_per_thousand_ft.geojson": _pcta_per_thousand_ft_layer,
+    "external/pcta_corridor_elevation_ranges.geojson": _pcta_corridor_elevation_ranges_layer,
+    "external/nj_high_elevation_points.geojson": _nj_high_elevation_points_layer,
+    "external/pasda_county_max_elevations.geojson": _pasda_county_max_elevations_layer,
+}
+
+
 def write_fixtures(raw_dir: Path) -> list[str]:
     files = {
         "shelters.geojson": _atc_layer("Shelter", 3),
@@ -3990,6 +4130,7 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         "external/pcta_centerline.geojson": _registered_trail_lines_layer("pcta_centerline", None),
         "external/cdtc_centerline.geojson": _registered_trail_lines_layer("cdtc_centerline", None),
         "external/wi_ice_age_trail.geojson": _registered_trail_lines_layer("wi_ice_age_trail", None),
+        **{name: build() for name, build in ELEVATION_PRODUCT_FIXTURES.items()},
         **closures_and_warnings_fixtures(),
         **suggested_hikes_fixtures(),
     }

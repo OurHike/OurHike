@@ -1,25 +1,18 @@
-"""PASDA / PA DCNR: elevation, published, and not landed (coverage audit 2026-10-01, batch
-b5_nyc_nj_ct_ma_pa).
+"""PA DCNR's Maximum Elevations in Pennsylvania Counties, PASDA's `DCNR2/MapServer/3`: each county's high point.
 
-3DEP covers PA. Load only if it is shown to differ (c9's verdict, kept).
+67 points, the elevation in `Max_Elevat`, in feet: the layer names no unit,
+and 3 points sit a median of 0.36 m from 3DEP read as feet and 1,553 m read as
+metres (measured 2026-10-03; sources.json's `elevation_unit_comment`). An
+on-prem layer with no date to fingerprint, so it is read whole each month.
+Nothing reads it yet, and its `reaches_hikers` is false.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Not landed, and why: PAMAP's DEM, `imagery.pasda.psu.edu`'s
+`PAMAP_DEM_mosaic/MapServer`, is a raster (its layers are Raster Layers, read
+2026-10-03), and decision 35 lands no raster as data; 3DEP is the elevation
+source for Pennsylvania.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "PAMAP, DCNR's statewide lidar programme, served by PASDA: "
-        "`imagery.pasda.psu.edu/arcgis/rest/services/pasda/PAMAP_DEM_mosaic/MapServer`, `PAMAP_Hillshade`. "
-        '`pasda/DCNR2/MapServer/3` "Maximum Elevations in Pennsylvania Counties 202207": 67 points.',
-    ),
-    where=(
-        "https://mapservices.pasda.psu.edu/server/rest/services/pasda/DCNR2/MapServer/3",
-        "https://imagery.pasda.psu.edu/arcgis/rest/services/pasda/PAMAP_DEM_mosaic/MapServer",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("pasda_county_max_elevations",)
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

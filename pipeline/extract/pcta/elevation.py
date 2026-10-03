@@ -1,26 +1,20 @@
-"""Pacific Crest Trail Association: elevation, published, and not landed (coverage audit 2026-10-01,
-batch b7_long_trails_states).
+"""PCTA's two elevation classifications of the PCT: the trail and its corridor by 1,000-ft band.
 
-A 30 m-DEM classification is coarser than the shared USGS source, so there is no reason to load it
-as elevation (Reasoned).
+`PCT_Per_Thousand_Ft/FeatureServer/0` is the centerline cut into 14 lines,
+one per band, with `PCT_Miles` in each; `PCT_Corridor_Elevation_Ranges/
+FeatureServer/0` is the corridor as 14 polygons in the same bands. Both say
+they come from a 30 m DEM, coarser than 3DEP's 10 m, so they can check a
+profile and never be one. The unit is in each label ("1000−2000 ft"), and 6
+centerline vertices read against 3DEP each fell inside their stated band
+(measured 2026-10-03; sources.json's `elevation_unit_comment`). Twelve labels
+separate the range with a minus sign (U+2212), not a hyphen.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+`Trips` rows carry `Gain_ft` and `Loss_ft` (coverage audit 2026-10-01, batch
+b7_long_trails_states); that layer is suggested_hikes.py's to register.
+Nothing reads either table yet, and both rows' `reaches_hikers` is false.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        '`PCT_Per_Thousand_Ft/FeatureServer/0` (14 lines, the PCT classed per 1,000 ft "on 30m DEM", last edit '
-        "2024-04-29). `PCT_Corridor_Elevation_Ranges/FeatureServer/0` (14 polygons). `Trips` rows carry "
-        "`Gain_ft`/`Loss_ft`.",
-    ),
-    where=(
-        "https://services5.arcgis.com/ZldHa25efPFpMmfB/arcgis/rest/services/PCT_Per_Thousand_Ft/FeatureServer/0",
-        "https://services5.arcgis.com/ZldHa25efPFpMmfB/arcgis/rest/services/PCT_Corridor_Elevation_Ranges/FeatureServer/0",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("pcta_per_thousand_ft", "pcta_corridor_elevation_ranges")
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

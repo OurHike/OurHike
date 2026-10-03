@@ -113,8 +113,16 @@ def test_every_source_records_what_its_licence_rests_on():
     the `<x>_licence` blocks, and anything wanting to COUNT them had to decide
     by reading those sentences - "which would print a licence claim for data
     nobody publishes the first time one was reworded".
+
+    `public_gis` joined the three on 2026-10-03 with decision 54's first
+    registrations: decision 21a's presumption for a GIS layer an organization
+    publishes itself, anonymously, on a public endpoint (pipeline/ELT.md, "Who
+    may publish", rule 3), which the `publishable_licence_bases` seed already
+    admits for GIS kinds. It is not `stated_by_org`, because the organization
+    stated nothing, and not `maintainer_authorisation`, because the
+    presumption is a rule over every such layer rather than one ruling.
     """
-    vocabulary = {"stated_by_org", "maintainer_authorisation", "unresolved"}
+    vocabulary = {"stated_by_org", "maintainer_authorisation", "unresolved", "public_gis"}
     unclassified = [s["key"] for s in REGISTRY["sources"] if s.get("licence_basis") not in vocabulary]
 
     assert unclassified == [], (
@@ -304,9 +312,15 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     publish on the maintainer's decision 53 (facts and a link), which is
     `maintainer_authorisation`. All seven are `reaches_hikers: false` until
     phase C has a mart read their tables.
+
+    DECISION 54'S ELEVATION ROWS (2026-10-03), all `reaches_hikers: false`:
+    ATC's Z centerline, `atc_atx_centerline`, rests on `atc_licence` (+1
+    here); NJDEP's county high points, `nj_high_elevation_points`, carry the
+    Data Distribution Agreement `njdep_licence` reads (+1 `stated_by_org`);
+    and NCTA's, PCTA's and PASDA's four state nothing and are `public_gis`.
     """
     counts: dict[str, int] = {}
     for source in REGISTRY["sources"]:
         counts[source["licence_basis"]] = counts.get(source["licence_basis"], 0) + 1
 
-    assert counts == {"maintainer_authorisation": 36, "stated_by_org": 33, "unresolved": 2}
+    assert counts == {"maintainer_authorisation": 37, "stated_by_org": 34, "unresolved": 2, "public_gis": 4}

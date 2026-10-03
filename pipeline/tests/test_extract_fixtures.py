@@ -61,10 +61,24 @@ def test_every_fixture_file_with_a_resource_lands_whole(fixtures):
         | GuidePages
     )
     fetched = [r for r in resources if not isinstance(r, answered) and not isinstance(r, JSON_API_KINDS)]
-    assert len(fetched) == 56, "55 monthly layers and OPRHP's temporary closures on the hourly lane"
+    assert len(fetched) == 62, "61 monthly layers and OPRHP's temporary closures on the hourly lane"
     for resource in fetched:
         expected = len(json.loads(fixture_file(root / "raw", resource.key).read_text())["features"])
         assert counts[resource.table] == expected, resource.table
+
+
+def test_atcs_z_centerline_lands_its_z_and_its_rows_with_no_geometry(fixtures):
+    """`return_z` end to end in CI's build: Esri JSON pages, the conversion, dlt, and ST_GeomFromGeoJSON keep the Z."""
+    root, counts = fixtures
+    assert counts["raw_atc__atc_atx_centerline"] == 3
+    with duckdb.connect(str(root / "warehouse.duckdb"), read_only=True) as con:
+        con.execute("LOAD spatial")
+        rows = con.execute(
+            "select objectid, case when geometry is null then null"
+            " else st_z(st_startpoint(st_geomfromgeojson(geometry::varchar))) end"
+            ' from raw."raw_atc__atc_atx_centerline" order by objectid'
+        ).fetchall()
+    assert rows == [(1, 330.5), (2, 1149.9), (3, None)], "metres as served, and the live layer's geometry-less repeat"
 
 
 def test_the_long_path_guide_lands_one_row_per_page_its_index_links(fixtures):

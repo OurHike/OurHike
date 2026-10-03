@@ -1,30 +1,24 @@
-"""NJDEP / NJGIN — Statewide Trails: elevation, published, and not landed (coverage audit 2026-10-01,
-batch b5_nyc_nj_ct_ma_pa).
+"""NJDEP's Publicly Accessible High Elevation Points in New Jersey, `FeatureServer/11`: each county's high point.
 
-1:100,000 grids are far coarser than 3DEP. Not worth loading for profiles. The trail grade fields
-are the only trail-specific product, and they cover 9% of segments. NJ's statewide lidar is
-published by NJOGIS (Treasury), not NJDEP, so it belongs in `_shared/` (Reasoned).
+21 points, the elevation in `ELEVATION` in feet (its alias says "Elevation
+(ft)", and 3 points sit a median of 0.47 m from 3DEP; measured 2026-10-03).
+Its licence is the NJDEP Data Distribution Agreement, the same text as
+`njdep_licence`'s, so the same three conditions travel with it. Nothing reads
+it yet, and its `reaches_hikers` is false.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Not landed here, and why (coverage audit 2026-10-01, batch b5_nyc_nj_ct_ma_pa,
+not re-read): NJGWS DGS99-4, "Digital Elevation Grids for New Jersey
+(1:100,000 scale)", is a raster in a zip, and decision 35 lands no raster;
+DGS00-3's 1:100,000 contours are a zip too, a file for decision 54's wave 2,
+and contours are the maintainer's call (wave 1 registers none: background-map
+material, which decision 35 does not cover). The audit's "hosted trails
+layer" whose `grade_max` and `grade_mean` are populated on 270 of 3,068
+segments is neither of the two NJ trail layers registered: neither has a
+grade, elevation or slope field (read 2026-10-03, 3,305 and 13,296 rows). Which
+layer it is was not found; it would be trail_lines.py's to register.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        'NJGWS DGS99-4 "Digital Elevation Grids for New Jersey (1:100,000 scale)", a zip at '
-        "`https://nj.gov/dep/gis/digidownload/zips/OpenData/njgws/dgs99-4.zip` (item modified 2023-04-12). "
-        "DGS00-3 topographic contours (1:100,000). The hosted trails layer's `grade_max`/`grade_mean` are "
-        "populated on 270 of 3,068 segments. `Publicly_Accessible_High_Elevation_Points_in_New_Jersey/11` holds"
-        " 21 points (edited 2024-07-24).",
-    ),
-    where=(
-        "https://nj.gov/dep/gis/digidownload/zips/OpenData/njgws/dgs99-4.zip",
-        "https://mapsdep.nj.gov/arcgis/rest/services",
-        "https://services1.arcgis.com/QWdNfRs7lkPq4g4Q/arcgis/rest/services",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("nj_high_elevation_points",)
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

@@ -112,6 +112,18 @@ REFERENCE_DIR = PIPELINE_DIR / "reference"
 # updateByDisplay. A denylist is only as complete as the layers somebody has
 # read: a person field under another name loads until its name is added here,
 # which is why a new registry row is reviewed field by field.
+#
+# ArcGIS editor tracking's four names hold the account that created or last
+# edited each row, and an account is a person's or names one. Added
+# 2026-10-03, when a metadata read of 44 of the 45 registered ArcGIS layers
+# found 15 carrying them, and loading them: Creator and Editor on 10 of ATC's
+# 12 layers; created_user and last_edited_user on oprhp_park_polygons,
+# nj_statewide_trails, utah_sgid_trails, ncta_trail and
+# duluth_superior_hiking_trail. (massgis_long_distance_trails was not read:
+# its host's robots.txt answered 502.) ArcgisLayer also drops whatever names
+# a layer's own `editFieldsInfo` gives, and a layer whose person field has an
+# ordinary name, such as a `source` holding surveyors' names, lists it in the
+# `person_fields` of its sources.json row.
 PERSON_FIELDS = frozenset(
     name.lower()
     for name in (
@@ -122,8 +134,49 @@ PERSON_FIELDS = frozenset(
         "SUPERVISOR",
         "SUPERVIS_1",
         "updateByDisplay",
+        "Creator",
+        "Editor",
+        "created_user",
+        "last_edited_user",
     )
 )
+
+# The backstop for a person field nobody has named yet, such as next month's
+# new staff column: an ArcGIS field whose name reads as a person's is left out
+# unless its sources.json row clears it in `not_person_fields` (PASDA's
+# `LastEdit_1`, say, if it ever arrives as text). Matched against the name
+# split at each camelCase step and lower-cased, so `LastEdBy` is read as
+# `last_ed_by`. Dropped and printed, never a failed run: a false match costs
+# one column until somebody clears it, and a missed one ships a person.
+# @unvalidated: the word list was drafted for decision 54 on 2026-10-03 from
+# the names seen so far, not from a survey of field names. What would settle
+# it is the names a few monthly runs print, read for false matches and misses.
+PERSON_SHAPED = re.compile(
+    r"(^|_)(user|user_?name|editor|edited_?by|created_?by|creator|last_?ed_?by|last_?edit(ed|or)?(_?by)?"
+    r"|owner|phone|telephone|tel|fax|email|e_?mail|contact)($|_|\d)"
+)
+
+# Field types whose values are never a person's name, whatever the field is
+# called: ArcGIS's ids and its dates. So editor tracking's `last_edited_date`
+# loads while `last_edited_user` does not, and so does a date that happens to
+# be named like an editor.
+NEVER_PERSON_TYPES = frozenset(
+    {
+        "esriFieldTypeOID",
+        "esriFieldTypeGlobalID",
+        "esriFieldTypeGUID",
+        "esriFieldTypeDate",
+        "esriFieldTypeDateOnly",
+        "esriFieldTypeTimeOnly",
+        "esriFieldTypeTimestampOffset",
+    }
+)
+
+
+def _name_words(name: str) -> str:
+    """`LastEdBy` as `last_ed_by`: split at each lower-to-upper step, then lower-cased, so PERSON_SHAPED sees the words."""
+    return re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", name).lower()
+
 
 # ArcGIS field types -> dlt data types. Hinting every column from the layer's
 # own `fields` is what makes a column that is null on every row exist at all
@@ -326,12 +379,57 @@ class ArcgisLayer(Resource):
             return Freshness.STALE, marker
         return compare_marker(_canonical(recorded), _canonical(marker)), marker
 
+    @property
+    def field_rules(self) -> dict[str, list[str]]:
+        """The row's own person-field rules, lower-cased: `person_fields` always left out, `not_person_fields` cleared.
+
+        One home per upstream, so they sit on the sources.json row beside its
+        URL. extract/_run.py's definition_digest() keeps them in the marker,
+        so a name added to either reads a layer that has not moved again.
+        """
+        entry = self.entry
+        return {rule: sorted(name.lower() for name in entry.get(rule) or []) for rule in ("person_fields", "not_person_fields")}
+
+    def dropped_fields(self, metadata: dict) -> dict[str, str]:
+        """Every field of the layer that is never asked for or kept, lower-cased, with the rule that drops it.
+
+        In order: PERSON_FIELDS; the row's `person_fields`; the creator and
+        editor fields the layer's own `editFieldsInfo` names (never its
+        creation and edit dates, which load); and the PERSON_SHAPED backstop,
+        which the row's `not_person_fields` clears and which never reads an id
+        or a date as a person.
+        """
+        rules = self.field_rules
+        tracking = metadata.get("editFieldsInfo") or {}
+        tracked = {(tracking.get(role) or "").lower() for role in ("creatorField", "editorField")} - {""}
+        dropped = {}
+        for field in metadata.get("fields") or []:
+            name = field.get("name")
+            if not name:
+                continue
+            lower = name.lower()
+            if lower in PERSON_FIELDS:
+                dropped[lower] = "PERSON_FIELDS"
+            elif lower in rules["person_fields"]:
+                dropped[lower] = "the row's person_fields"
+            elif lower in tracked:
+                dropped[lower] = "the layer's editFieldsInfo"
+            elif (
+                field.get("type") not in NEVER_PERSON_TYPES
+                and lower not in rules["not_person_fields"]
+                and PERSON_SHAPED.search(_name_words(name))
+            ):
+                dropped[lower] = "a person-shaped name"
+        return dropped
+
     def column_hints(self) -> dict:
         hints = {"geometry": {"data_type": "json"}}
-        for field in self.metadata(self.read_backoff).get("fields") or []:
+        metadata = self.metadata(self.read_backoff)
+        dropped = self.dropped_fields(metadata)
+        for field in metadata.get("fields") or []:
             name = field.get("name")
             data_type = ESRI_TYPES.get(field.get("type"))
-            if name and data_type and name.lower() not in PERSON_FIELDS:
+            if name and data_type and name.lower() not in dropped:
                 hints[name] = {"data_type": data_type}
         return hints
 
@@ -343,8 +441,15 @@ class ArcgisLayer(Resource):
         leaves nothing half-written.
         """
         named = session()
-        fields = [field.get("name") for field in self.metadata(self.read_backoff).get("fields") or [] if field.get("name")]
-        kept = [name for name in fields if name.lower() not in PERSON_FIELDS]
+        metadata = self.metadata(self.read_backoff)
+        dropped = self.dropped_fields(metadata)
+        fields = [field.get("name") for field in metadata.get("fields") or [] if field.get("name")]
+        kept = [name for name in fields if name.lower() not in dropped]
+        shaped = sorted(name for name in fields if dropped.get(name.lower()) == "a person-shaped name")
+        if shaped:
+            print(
+                f"  {self.key}: left out {shaped}, person-shaped names its sources.json row does not clear in not_person_fields"
+            )
         # Person fields are left out of the field list asked for, so they never
         # cross the wire; "*" only when the layer has none to leave out.
         out_fields = "*" if len(kept) == len(fields) else ",".join(kept)
@@ -356,7 +461,11 @@ class ArcgisLayer(Resource):
                 raise RuntimeError(f"{self.key}: the server counts {count} features and {len(features)} were read")
             proofs[self.table] = count
         for feature in features:
-            row = {name: value for name, value in (feature.get("properties") or {}).items() if name.lower() not in PERSON_FIELDS}
+            row = {
+                name: value
+                for name, value in (feature.get("properties") or {}).items()
+                if name.lower() not in dropped and name.lower() not in PERSON_FIELDS
+            }
             row["geometry"] = feature.get("geometry")
             yield row
 

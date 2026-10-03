@@ -475,11 +475,14 @@ def definition_digest(resource: Resource) -> str:
     """A sha256 of what decides a resource's rows on our side: its own fields, the fields every read drops, its `where`.
 
     Kept in its marker, so a fix to the resource, such as a field added to
-    PERSON_FIELDS, reads an upstream that has not moved again once.
+    PERSON_FIELDS or to an ArcGIS row's `person_fields`, reads an upstream
+    that has not moved again once.
     """
     definition = {
         "resource": repr(resource),
         "person_fields": sorted(_kinds.PERSON_FIELDS),
+        "person_shaped": _kinds.PERSON_SHAPED.pattern,
+        "field_rules": getattr(resource, "field_rules", None),
         "wordpress_dropped": sorted(_kinds.WP_DROPPED),
         "withheld_columns": sorted(_kinds.WITHHELD_COLUMNS),
         "where": getattr(resource, "where", None),

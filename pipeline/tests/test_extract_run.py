@@ -59,6 +59,7 @@ from tests.test_lib_hikefinder import GPX, page
 AGOL = "https://services1.arcgis.com/orgid/arcgis/rest/services"
 LINES_URL = f"{AGOL}/Trails/FeatureServer/0"
 CLOSURES_URL = f"{AGOL}/Closures/FeatureServer/0"
+STAFFED_URL = f"{AGOL}/Waypoints/FeatureServer/1"
 ONPREM_URL = "https://gis.example.gov/arcgis/rest/services/assets/MapServer/3"
 FEED_URL = "https://feeds.example.org/show.xml"
 SOCRATA = "https://data.example.gov/resource/abcd-1234"
@@ -130,6 +131,12 @@ def registry(tmp_path, monkeypatch):
                 "sources": [
                     {"key": "trails", "url": LINES_URL},
                     {"key": "closures_layer", "url": CLOSURES_URL},
+                    {
+                        "key": "staffed",
+                        "url": STAFFED_URL,
+                        "person_fields": ["source"],
+                        "not_person_fields": ["LastEdit_1", "Editor"],
+                    },
                     {"key": "onprem_dated", "url": ONPREM_URL, "freshness": {"kind": "arcgis_max_field", "field": "UPDATED"}},
                     {"key": "onprem_undated", "url": ONPREM_URL},
                     {"key": "a_podcast", "url": FEED_URL, "kind": "podcast_feed"},
@@ -544,6 +551,93 @@ def test_person_fields_never_reach_a_row_or_a_column_hint(registry, requests_moc
     assert all(r.headers["User-Agent"] == USER_AGENT for r in requests_mock.request_history)
     assert "RANGER" not in resource.column_hints()
     assert resource.column_hints()["EDITED"] == {"data_type": "bigint"}, "ArcGIS dates stay epoch milliseconds"
+
+
+STAFFED_FIELDS = [
+    {"name": "OBJECTID", "type": "esriFieldTypeOID"},
+    {"name": "NAME", "type": "esriFieldTypeString"},
+    {"name": "CreatedBy", "type": "esriFieldTypeString"},
+    {"name": "LastEdited", "type": "esriFieldTypeString"},
+    {"name": "LAST_EDITOR", "type": "esriFieldTypeString"},
+    {"name": "Editor", "type": "esriFieldTypeString"},
+    {"name": "TELEPHONE", "type": "esriFieldTypeString"},
+    {"name": "created_user", "type": "esriFieldTypeString"},
+    {"name": "LastEdBy", "type": "esriFieldTypeString"},
+    {"name": "Surveyor", "type": "esriFieldTypeString"},
+    {"name": "source", "type": "esriFieldTypeString"},
+    {"name": "last_edited_date", "type": "esriFieldTypeDate"},
+    {"name": "LastEdit_1", "type": "esriFieldTypeString"},
+]
+STAFF = {
+    "CreatedBy": "a.person",
+    "LastEdited": "a.person",
+    "LAST_EDITOR": "a.person",
+    "Editor": "a.person",
+    "TELEPHONE": "555-0100",
+    "created_user": "a.person",
+    "LastEdBy": "a.person",
+    "Surveyor": "a.person",
+    "source": "GPS A. Person",
+}
+
+
+class StaffedLayer(FakeLayer):
+    """A layer whose staff columns go by every name a club has used, and whose editor tracking names its own creator field."""
+
+    def metadata(self, request, context):
+        context.headers["ETag"] = self.etag
+        return {
+            "objectIdField": "OBJECTID",
+            "fields": STAFFED_FIELDS,
+            "editFieldsInfo": {"creatorField": "Surveyor", "creationDateField": "last_edited_date"},
+        }
+
+
+def staffed_feature(oid):
+    properties = {"OBJECTID": oid, "NAME": "Spring", **STAFF, "last_edited_date": 1790000000000, "LastEdit_1": "2025-02-19"}
+    return {"type": "Feature", "properties": properties, "geometry": {"type": "Point", "coordinates": [-74.0, 42.0]}}
+
+
+def staffed():
+    return ArcgisLayer(key="staffed", club="testclub", type="points_of_interest")
+
+
+def test_no_staff_column_lands_under_any_name_and_the_dates_beside_them_still_do(registry, requests_mock, capsys):
+    """The row's `person_fields`, the layer's editFieldsInfo, PERSON_FIELDS and the person-shaped backstop, together.
+
+    `Editor` is in the row's `not_person_fields` and is dropped anyway: that
+    list clears the backstop's guesses, never a name PERSON_FIELDS holds. A
+    date keeps its column whatever it is called, and `LastEdit_1`, a date
+    published as text, loads because its row clears it.
+    """
+    StaffedLayer(requests_mock, STAFFED_URL, [staffed_feature(1), staffed_feature(2)])
+    resource = staffed()
+
+    rows = list(resource.rows({}))
+    hints = resource.column_hints()
+
+    landed = {"OBJECTID", "NAME", "last_edited_date", "LastEdit_1", "geometry"}
+    assert all(set(row) == landed for row in rows), rows
+    assert set(hints) == landed
+    asked = {name for r in requests_mock.request_history if "outfields" in r.qs for name in r.qs["outfields"][0].split(",")}
+    assert asked and not asked & {name.lower() for name in STAFF}, "never asked for, not only dropped"
+    assert "a.person" not in json.dumps(rows) and "555-0100" not in json.dumps(rows)
+    printed = capsys.readouterr().out
+    assert "['CreatedBy', 'LAST_EDITOR', 'LastEdBy', 'LastEdited', 'TELEPHONE']" in printed, printed
+
+
+def test_a_name_added_to_a_rows_person_fields_reads_an_unmoved_layer_again(registry, monkeypatch):
+    """The row's lists live in sources.json, not in the resource, so definition_digest() has to read them itself."""
+    before = _run.definition_digest(staffed())
+    entries = json.loads(registry.read_text())
+    next(e for e in entries["sources"] if e["key"] == "staffed")["person_fields"].append("Maint_Name")
+    registry.write_text(json.dumps(entries))
+    _kinds._registry.cache_clear()
+
+    after_the_row = _run.definition_digest(staffed())
+    assert after_the_row != before
+    monkeypatch.setattr(_kinds, "PERSON_SHAPED", _kinds.re.compile("steward"))
+    assert _run.definition_digest(staffed()) != after_the_row, "a change to the backstop reads every layer again too"
 
 
 def test_an_onprem_layer_with_no_maintained_date_is_always_read(registry, requests_mock):

@@ -1,7 +1,7 @@
 {{ config(
     format='json',
     location='conditions_work_projects.json',
-    meta={'when_empty': 'keep_last_file'},
+    meta={'when_empty': 'keep_last_file', 'gate': 'reference/work_projects.json'},
 ) }}
 -- conditions/work_projects.json, the club workdays a hiker can see and join
 -- (#760), in the shape export_work_projects.py's main() writes:
@@ -15,13 +15,13 @@
 -- with the next build, because the extract replaces the file's one row
 -- whenever its bytes change and this writes the file from that row alone.
 --
--- NOTHING IS WRITTEN, and the last good file stays on the phone, when:
--- - nobody has reviewed the file (lib/work_projects.py's is_reviewed()): no
---   row is selected, and phone_file's `when_empty: keep_last_file` writes
---   nothing and succeeds, as export_work_projects.py exits 0 for it;
--- - the file has any problem, its own or a row's: this fails with the first
---   of them, as export_work_projects.py prints each and exits 1;
--- - the file did not land as exactly one row, so its review cannot be read.
+-- NO ROW, SO NO FILE, while int_closures__gate holds the file back
+-- (`meta.gate`), and the phone keeps its last file:
+-- - nobody has reviewed it (lib/work_projects.py's is_reviewed()), for which
+--   export_work_projects.py exits 0, so publish.py does not fail the run;
+-- - it has any problem, its own or a row's, or did not land as exactly one
+--   row, for which export_work_projects.py exits 1, so publish.py fails the
+--   run after publishing the rest.
 --
 -- `generated_at` is dbt's run_started_at, stamped as _stamp_utc() stamps:
 -- one clock for every writer in a run.
@@ -29,78 +29,28 @@ with checked as (
     select * from {{ ref('int_closures__work_projects_checked') }}
 ),
 
--- The file's own row: its review, read as is_reviewed() reads it.
-judged_review as (
-    select
-        count(*) as documents,
-        max(reviewed_at) as reviewed_at,
-        coalesce(bool_and(is_reviewed), false) as is_reviewed
-    from checked
-    where row_position is null
+gate as (
+    select * from {{ ref('int_closures__gate') }}
+    where source_key = 'reference/work_projects.json'
 ),
 
--- file_problems()'s list, in its order: the file's own (on the one row with
--- no position), each repeated id in row order, then each row's own.
-problems as (
+-- The file's review as written, from its own row (no position), and its
+-- rows in file order.
+published as (
     select
-        list_concat(
-            flatten(
-                coalesce(
-                    list(row_problems) filter (where row_position is null), []
-                )
-            ),
-            flatten(
-                coalesce(
-                    list(duplicate_problems order by row_position)
-                    filter (where row_position is not null),
-                    []
-                )
-            ),
-            flatten(
-                coalesce(
-                    list(row_problems order by row_position)
-                    filter (where row_position is not null),
-                    []
-                )
-            )
-        ) as file_problems,
+        max(reviewed_at) filter (where row_position is null) as reviewed_at,
         coalesce(
             list(published_row order by row_position)
             filter (where row_position is not null),
             []
         ) as work_projects
     from checked
-),
-
-judged as (
-    select
-        judged_review.documents,
-        judged_review.reviewed_at,
-        judged_review.is_reviewed,
-        problems.file_problems,
-        problems.work_projects
-    from judged_review
-    cross join problems
 )
 
 select
-    case
-        when documents != 1
-            then error(
-                'conditions/work_projects.json is not written: '
-                || 'reference/work_projects.json landed as ' || documents
-                || ' rows, so its review cannot be read'
-            )
-        when len(file_problems) > 0
-            then error(
-                'conditions/work_projects.json is not written: '
-                || len(file_problems) || ' problem(s) in '
-                || 'reference/work_projects.json, the first: '
-                || file_problems[1]
-            )
-        else {{ python_run_stamp() }}
-    end as generated_at,
-    reviewed_at,
-    work_projects
-from judged
-where is_reviewed or documents != 1
+    {{ python_run_stamp() }} as generated_at,
+    published.reviewed_at,
+    published.work_projects
+from published
+inner join gate on gate.source_key = 'reference/work_projects.json'
+where gate.passed

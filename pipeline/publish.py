@@ -1560,6 +1560,14 @@ DBT_RUN_RESULTS_PATH = DBT_PROJECT_DIR / "target" / "run_results.json"
 #: never runs dbt to ask it.
 DBT_PROCESSED_DIR_ENV_VAR = "OURHIKE_PROCESSED_DIR"
 DBT_PROCESSED_DIR_DEFAULT = "../data/processed/dbt"
+#: profiles.yml's warehouse, by the same rule: this variable if set, else
+#: ../data/warehouse.duckdb, against pipeline/dbt/.
+DBT_WAREHOUSE_ENV_VAR = "OURHIKE_WAREHOUSE"
+DBT_WAREHOUSE_DEFAULT = "../data/warehouse.duckdb"
+#: The model whose rows say which conditions source is held this run, and
+#: why. A writer names its row with `meta.gate`, and selects no row while the
+#: row is held (models/intermediate/closures/int_closures__gate.sql).
+DBT_GATE_MODEL = "int_closures__gate"
 
 #: Keys a phone reads at the bucket root and that no manifest names: the
 #: podcast list, which export_podcasts.py puts in place on a person's dispatch
@@ -1611,6 +1619,47 @@ def dbt_processed_dir() -> Path:
     return raw if raw.is_absolute() else (DBT_PROJECT_DIR / raw).resolve()
 
 
+def dbt_warehouse() -> Path:
+    """The warehouse dbt built in, by profiles.yml's `path` rule."""
+    raw = Path(os.environ.get(DBT_WAREHOUSE_ENV_VAR) or DBT_WAREHOUSE_DEFAULT)
+    return raw if raw.is_absolute() else (DBT_PROJECT_DIR / raw).resolve()
+
+
+@dataclass(frozen=True)
+class GateVerdict:
+    """One int_closures__gate row: why its source is held (None: it passed), and
+    whether the hold is an unreviewed file, which the Python exits 0 for."""
+
+    held_because: str | None
+    awaiting_review: bool = False
+
+
+def read_gate(manifest: dict, warehouse: Path | None = None) -> dict[str, GateVerdict]:
+    """int_closures__gate's rows, by source_key, from the warehouse the writers read.
+
+    The relation is the manifest's, so a schema rename moves both. The model is
+    a table, so reading it needs no spatial extension."""
+    import duckdb  # only the dbt path reads the warehouse
+
+    node = next(
+        (
+            node
+            for node in (manifest.get("nodes") or {}).values()
+            if node.get("resource_type") == "model" and node.get("name") == DBT_GATE_MODEL
+        ),
+        None,
+    )
+    if node is None:
+        raise RuntimeError(
+            f"The manifest has no {DBT_GATE_MODEL}, so no gated writer's file can be judged. Nothing was published."
+        )
+    warehouse = warehouse or dbt_warehouse()
+    relation = f'"{node["schema"]}"."{node.get("alias") or node["name"]}"'
+    with duckdb.connect(str(warehouse), read_only=True) as con:
+        rows = con.execute(f"select source_key, held_because, awaiting_review from {relation}").fetchall()
+    return {key: GateVerdict(held_because, bool(awaiting)) for key, held_because, awaiting in rows}
+
+
 @dataclass
 class DbtPhoneFiles:
     """What the dbt writers left for this publish.
@@ -1621,12 +1670,15 @@ class DbtPhoneFiles:
     root keys in LIVE_ROOT_PREFIXES. `kept` is every key whose writer wrote
     nothing this run, with the reason: publish() carries the bucket's last good
     object forward for it, as it does for any key a run did not produce.
+    `held` is the kept keys whose gate row held their source, which fail the
+    run once everything else is published (fail_for_held_files()).
     `owned` is every key a dbt writer's exposure names, written or kept.
     """
 
     artifacts: dict[str, dict] = field(default_factory=dict)
     live: dict[str, dict] = field(default_factory=dict)
     kept: dict[str, str] = field(default_factory=dict)
+    held: dict[str, str] = field(default_factory=dict)
     owned: set[str] = field(default_factory=set)
 
 
@@ -1653,6 +1705,7 @@ def collect_dbt_phone_files(
     manifest_path: Path | None = None,
     run_results_path: Path | None = None,
     processed_dir: Path | None = None,
+    gate: dict[str, GateVerdict] | None = None,
 ) -> DbtPhoneFiles:
     """Every phone file a dbt writer wrote in the run being published, keyed
     by the R2 key its exposure names.
@@ -1672,12 +1725,20 @@ def collect_dbt_phone_files(
     from an empty `processed_dir`, as a fresh runner does, is what keeps that
     direction safe (Reasoned; nothing here caches data/processed/dbt/).
 
+    A WRITER WITH `meta.gate` writes nothing while that int_closures__gate row
+    holds its source (`gate`, else read from the warehouse). Its key is kept,
+    and `held` too unless the hold is an unreviewed file. The gate is what
+    tells that choice from a writer that selected no row by mistake, so a
+    gated writer that wrote nothing while its row passed is refused, as is
+    one that wrote a held source's file.
+
     Refuses, rather than publishing less: a missing manifest or run results;
     run results naming none of the writers (the build's last dbt invocation
     was not the writers', and every dbt file would read as kept); a writer
     whose run did not succeed; a writer that must write (`when_empty` other
-    than keep_last_file) with no file this run; an empty file; and one key
-    named by two writers.
+    than keep_last_file) with no file this run; a gated writer whose file
+    disagrees with its gate row, or that has no row; an empty file; and one
+    key named by two writers.
     """
     manifest_path = manifest_path or DBT_MANIFEST_PATH
     run_results_path = run_results_path or DBT_RUN_RESULTS_PATH
@@ -1696,6 +1757,7 @@ def collect_dbt_phone_files(
     found = DbtPhoneFiles()
     owner: dict[str, str] = {}
     writers_seen = 0
+    verdicts = gate
     for exposure_id, exposure in sorted((manifest.get("exposures") or {}).items()):
         # Which writer writes which key: one writer every key, several writers
         # each the key named for its own file (the eight poi_<type>.geojson
@@ -1728,6 +1790,27 @@ def collect_dbt_phone_files(
                 )
             started = _run_started_at(result)
             written = path.exists() and (started is None or path.stat().st_mtime >= started - WRITER_CLOCK_SLACK_S)
+            gate_key = (config.get("meta") or {}).get("gate")
+            verdict = None
+            if gate_key is not None:
+                if verdicts is None:
+                    verdicts = read_gate(manifest)
+                verdict = verdicts.get(gate_key)
+                if verdict is None:
+                    raise RuntimeError(
+                        f"{writer_id} names {gate_key} as its gate, and {DBT_GATE_MODEL} has no row for it, so nothing "
+                        "says whether it was held."
+                    )
+                if written and verdict.held_because is not None:
+                    raise RuntimeError(
+                        f"{writer_id} wrote {path} while {DBT_GATE_MODEL} holds {gate_key} ({verdict.held_because}); "
+                        "a held source's file is never published."
+                    )
+                if not written and verdict.held_because is None:
+                    raise RuntimeError(
+                        f"{writer_id} wrote nothing this run, and {DBT_GATE_MODEL} holds nothing for {gate_key}: a "
+                        "writer that selected no row by mistake must not pass as one that chose to."
+                    )
             if not written:
                 if when_empty != "keep_last_file":
                     state = "is older than its run" if path.exists() else "is not there"
@@ -1740,6 +1823,10 @@ def collect_dbt_phone_files(
                     found.kept[key] = (
                         f"{config['location']} {reason} {writer_id} wrote nothing this run (when_empty: keep_last_file)"
                     )
+                    if verdict is not None:
+                        found.kept[key] += f", because {DBT_GATE_MODEL} holds {gate_key}: {verdict.held_because}"
+                        if not verdict.awaiting_review:
+                            found.held[key] = f"{gate_key} is held: {verdict.held_because}"
                 continue
             size = path.stat().st_size
             if size == 0:
@@ -1754,6 +1841,17 @@ def collect_dbt_phone_files(
             "run that wrote them. Keep the writers' run results aside before any later dbt command."
         )
     return found
+
+
+def fail_for_held_files(held: dict[str, str]) -> None:
+    """Fail the run, once everything else is published, for each phone file
+    whose source int_closures__gate held: the phone keeps that file's last
+    copy, with its own age, and the red run is how somebody finds out."""
+    if not held:
+        return
+    for key, why in sorted(held.items()):
+        print(f"::error title={key} not rewritten::{why}. Its last published copy stands; every other file was published.")
+    raise SystemExit(f"{len(held)} phone file(s) held back by {DBT_GATE_MODEL}: {', '.join(sorted(held))}.")
 
 
 def with_dbt_phone_files(artifacts: dict[str, dict], dbt: DbtPhoneFiles) -> dict[str, dict]:
@@ -2561,6 +2659,7 @@ def main(argv: list[str] | None = None) -> dict:
 
     artifacts = collect_artifacts()
     kept_everything = False
+    held: dict[str, str] = {}
     if source == PHONE_FILES_FROM_DBT:
         dbt = collect_dbt_phone_files()
         artifacts = with_dbt_phone_files(artifacts, dbt)
@@ -2574,8 +2673,10 @@ def main(argv: list[str] | None = None) -> dict:
         # Writers that ran and chose to write nothing are an answer, not the
         # broken handoff the refusal below is for: the run results say they ran.
         kept_everything = not artifacts and bool(dbt.kept)
+        held = dbt.held
     if kept_everything:
         print("Nothing to publish: every phone file's writer kept its last good file this run. No new version written.")
+        fail_for_held_files(held)
         return {
             "environment": environment,
             "uploaded": [],
@@ -2646,6 +2747,7 @@ def main(argv: list[str] | None = None) -> dict:
     # goes looking for a fault that is not there.
     if not result["version_written"] and not result["photos_uploaded"]:
         print(f"Nothing changed - all {len(result['skipped'])} artifacts already up to date. No new version written.")
+    fail_for_held_files(held)
     return result
 
 

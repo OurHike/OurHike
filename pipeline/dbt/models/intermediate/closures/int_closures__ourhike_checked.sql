@@ -15,11 +15,13 @@
 -- OurHike's closures rather than publishing them. `verified_by` and
 -- `reported_by` never left the database (_kinds.py's WITHHELD_COLUMNS).
 --
--- Nothing else is refused. export_conditions.py publishes every row its
--- query returns, and the backend bounds a closure's miles itself: finite,
--- and swapped into order on the way in (app/schemas/closure.py, #257). The
--- closures mart's tests report a mile outside the A.T.'s 0.5-2197.5 at warn
--- rather than hold OurHike's closures back over one.
+-- A MILE OR COORDINATE THAT IS NOT A FINITE NUMBER is a problem too:
+-- export_conditions.py's write_document() refuses it (allow_nan=False),
+-- because JSON.parse on a phone rejects the whole document over one NaN
+-- (lib/strict_json.py, #658). The backend bounds a closure's miles itself
+-- (app/schemas/closure.py, #257), so this is the second lock. Nothing else is
+-- refused: the closures mart's tests report a mile outside the A.T.'s
+-- 0.5-2197.5 at warn rather than hold OurHike's closures back over one.
 with closures as (
     select * from {{ ref('base_ourhike__closures') }}
 ),
@@ -42,6 +44,22 @@ checked as (
                             || coalesce(moderation_status, 'null')
                             || ', and only a verified closure leaves the '
                             || 'database'
+                end,
+                case
+                    when
+                        not (
+                            coalesce(isfinite(start_mile_marker), true)
+                            and coalesce(isfinite(end_mile_marker), true)
+                            and coalesce(isfinite(start_lat), true)
+                            and coalesce(isfinite(start_lon), true)
+                            and coalesce(isfinite(end_lat), true)
+                            and coalesce(isfinite(end_lon), true)
+                        )
+                        then
+                            closure_uuid
+                            || ': a mile or a coordinate is not '
+                            || 'a finite number, and JSON.parse on a phone '
+                            || 'rejects the whole document'
                 end
             ],
             lambda p: p is not null

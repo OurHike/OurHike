@@ -1,4 +1,8 @@
-{{ config(format='json', location='conditions_closures.json') }}
+{{ config(
+    format='json',
+    location='conditions_closures.json',
+    meta={'when_empty': 'keep_last_file', 'gate': 'ourhike_closures'},
+) }}
 -- conditions/closures.json, OurHike's moderator-verified closures, in the
 -- shape export_conditions.py's build_document("closures", ...) writes:
 -- `generated_at` and every row PUBLIC_CLOSURES_SQL selects, in its order
@@ -10,12 +14,10 @@
 -- (int_closures__ourhike_checked says why), and the file has always held
 -- every verified closure whatever its status: the client reads `status`.
 --
--- NOTHING IS WRITTEN, and the phone keeps its last good file, when
--- int_closures__gate holds OurHike's closures back (for a row, or because
--- int_sources__publication does), or when a row carries a mile or a
--- coordinate that is not a finite
--- number: write_document()'s allow_nan=False, because JSON.parse on a phone
--- rejects the whole document on one NaN (lib/strict_json.py, #658).
+-- NO ROW, SO NO FILE, while int_closures__gate holds OurHike's closures back
+-- (`meta.gate`): for a row, a number that is not finite, or because
+-- int_sources__publication does. The phone keeps its last file, and
+-- publish.py fails the run after publishing the rest.
 --
 -- `generated_at` is dbt's run_started_at: one clock for this file and
 -- conditions/reports.json, as export_conditions.py's main() keeps one.
@@ -94,46 +96,13 @@ published as (
                 ) order by mile_start, closure_uuid
             ),
             []
-        ) as closures,
-        count(*) filter (
-            where not (
-                coalesce(isfinite(mile_start), true)
-                and coalesce(isfinite(mile_end), true)
-                and coalesce(isfinite(start_lat), true)
-                and coalesce(isfinite(start_lon), true)
-                and coalesce(isfinite(end_lat), true)
-                and coalesce(isfinite(end_lon), true)
-            )
-        ) as rows_not_finite
+        ) as closures
     from ourhike_rows
-),
-
-judged as (
-    select
-        published.closures,
-        published.rows_not_finite,
-        coalesce(gate.passed, false) as passed,
-        coalesce(
-            gate.held_because,
-            'int_closures__gate has no row for ourhike_closures'
-        ) as held_because
-    from published
-    left join gate on gate.source_key = 'ourhike_closures'
 )
 
 select
-    case
-        when passed and rows_not_finite = 0
-            then {{ python_run_stamp() }}
-        when not passed
-            then error(
-                'conditions/closures.json is not written: ' || held_because
-            )
-        else error(
-            'conditions/closures.json is not written: ' || rows_not_finite
-            || ' row(s) carry a mile or a coordinate that is not a finite '
-            || 'number, and JSON.parse on a phone rejects the whole document'
-        )
-    end as generated_at,
-    closures
-from judged
+    {{ python_run_stamp() }} as generated_at,
+    published.closures
+from published
+inner join gate on gate.source_key = 'ourhike_closures'
+where gate.passed

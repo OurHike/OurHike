@@ -1,4 +1,8 @@
-{{ config(format='json', location='conditions_nynjtc_alerts.json') }}
+{{ config(
+    format='json',
+    location='conditions_nynjtc_alerts.json',
+    meta={'when_empty': 'keep_last_file', 'gate': 'nynjtc_trail_alerts'},
+) }}
 -- conditions/nynjtc_alerts.json, NYNJTC's Trail Alerts, in the shape
 -- export_nynjtc_alerts.py's build_document() writes: `generated_at` and
 -- every alert by slug, each as lib/nynjtc_alerts.py's published_rows()
@@ -15,9 +19,9 @@
 -- file has always written it, and the mart's own value where one is known,
 -- so a notice classified as blocking can never go out as passable.
 --
--- NOTHING IS WRITTEN for a source int_closures__gate holds back, as
--- pub_conditions_atc_updates says: the model fails before the copy and the
--- phone keeps its last good file.
+-- NO ROW, SO NO FILE, while int_closures__gate holds NYNJTC back
+-- (`meta.gate`): the phone keeps its last file, and publish.py fails the run
+-- after publishing the rest.
 with nynjtc_rows as (
     select
         closure_id as notice_id,
@@ -67,27 +71,11 @@ published as (
             []
         ) as nynjtc_alerts
     from nynjtc_rows
-),
-
-judged as (
-    select
-        published.nynjtc_alerts,
-        coalesce(gate.passed, false) as passed,
-        coalesce(
-            gate.held_because,
-            'int_closures__gate has no row for nynjtc_trail_alerts'
-        ) as held_because
-    from published
-    left join gate on gate.source_key = 'nynjtc_trail_alerts'
 )
 
 select
-    case
-        when passed
-            then {{ python_run_stamp() }}
-        else error(
-            'conditions/nynjtc_alerts.json is not written: ' || held_because
-        )
-    end as generated_at,
-    nynjtc_alerts
-from judged
+    {{ python_run_stamp() }} as generated_at,
+    published.nynjtc_alerts
+from published
+inner join gate on gate.source_key = 'nynjtc_trail_alerts'
+where gate.passed

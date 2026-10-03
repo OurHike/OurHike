@@ -184,7 +184,8 @@ models:
     description: >
       OurHike's moderator-verified closures, each with whether it blocks the
       trail (its status, read as client/src/lib/closureBanner.ts reads it) and
-      a problem for a row that is not verified (CL15).
+      a problem for a row that is not verified (CL15), or whose mile or
+      coordinate is not a finite number.
     columns:
       - name: ourhike_closure_key
         description: base_ourhike__closures's key.
@@ -235,19 +236,19 @@ models:
 
   - name: int_closures__gate
     description: >
-      The per-source gate: one row per notice source, `rows_invalid` and
-      `passed`, so one bad ATC row holds back ATC's file and nothing else
-      (pipeline/ELT.md, "A whole-file gate becomes a per-source gate"). The
-      marts keep only passing sources, and each writer refuses to write a held
-      source's file, so the phone keeps the last good one. ATC's review is
-      read from the file landed whole, so an empty reviewed file passes and
-      publishes `atc_updates: []`, as export_atc_updates.py does.
+      The per-source gate: one row per source a conditions file is written
+      from, with `passed` and `held_because`, so one bad ATC row holds back
+      ATC's file and nothing else (pipeline/ELT.md, "A whole-file gate becomes
+      a per-source gate"). The marts keep only the notice sources that pass.
+      Each pub_conditions_* writer names its row in `meta.gate` and selects no
+      row while it is held, so the phone keeps its last file and every other
+      file is written; publish.py then fails the run for each held file.
+      ATC's review is read from the file landed whole, so an empty reviewed
+      file passes and publishes `atc_updates: []`, as export_atc_updates.py
+      does.
     data_tests:
       # Warns, never fails: failing the build would hold back every source
-      # for one. dbt 2.0.6 reports only the count of held sources; to see
-      # which and why, from pipeline/dbt:
-      #   dbt show --profiles-dir . --inline "select source_key, held_because
-      #     from intermediate.int_closures__gate where not passed"
+      # for one. publish.py names each held file and why, after the upload.
       - dbt_utils.expression_is_true:
           arguments:
             expression: "passed"
@@ -255,12 +256,17 @@ models:
             severity: warn
     columns:
       - name: source_key
-        description: The notice source, one row for each branch of int_closures__unioned.
+        description: >
+          The source: one row for each branch of int_closures__unioned, and
+          one each for OurHike's reports, NWS's alerts and
+          reference/work_projects.json, whose files no notice feeds.
         data_tests: [not_null, unique]
       - name: rows_total
-        description: The source's rows in int_closures__unioned.
+        description: >
+          The source's rows: in int_closures__unioned for a notice source,
+          else its public reports, landed alerts or work-project rows.
       - name: rows_invalid
-        description: Its rows with a problem.
+        description: Its rows with a problem, or for reports a number that is not finite.
         data_tests: [not_null]
       - name: may_publish
         description: >
@@ -280,11 +286,11 @@ models:
         description: Why not, in words for the job log; null where it passed.
       - name: awaiting_review
         description: >
-          True only for ATC's file when nobody has reviewed it yet, the one
-          hold export_atc_updates.py treats as no failure (it writes nothing
-          and exits 0). pub_conditions_atc_updates then selects no row, and
-          phone_file's `when_empty: keep_last_file` leaves the last good file
-          and succeeds. Every other hold still fails the writer.
+          True only for ATC's file or reference/work_projects.json when nobody
+          has reviewed it yet, the holds export_atc_updates.py and
+          export_work_projects.py treat as no failure (each writes nothing and
+          exits 0). The writer selects no row, as for any hold, and publish.py
+          does not fail the run for this one.
         data_tests: [not_null]
 
   - name: int_closures__work_projects_checked
@@ -517,6 +523,27 @@ unit_tests:
         - {closure_uuid: u4, obstructs_trail: null, problem: null}
         - {closure_uuid: u5, obstructs_trail: true, problem: 'u5: moderation_status is submitted, and only a verified closure leaves the database'}
 
+  - name: int_closures__ourhike_checked_refuses_a_number_json_cannot_carry
+    description: >
+      A mile or coordinate that is not a finite number is a problem, as
+      write_document()'s allow_nan=False refuses it, so OurHike's closures
+      are held back rather than published in a document a phone rejects.
+    model: int_closures__ourhike_checked
+    given:
+      - input: ref('base_ourhike__closures')
+        format: sql
+        rows: |
+          select 'c1' as ourhike_closure_key, 'u1' as closure_uuid, cast(null as timestamptz) as reported_at, 'at' as trail_id, 10.0 as start_mile_marker, 11.0 as end_mile_marker, 'flood' as reason_type, '' as note, 'closed' as closure_status, 'verified' as moderation_status, cast(null as timestamptz) as verified_at, cast(null as timestamptz) as closed_since, cast(null as timestamptz) as expected_reopen, cast(null as varchar) as reroute_url, 41.0 as start_lat, -74.0 as start_lon, cast(null as double) as end_lat, cast(null as double) as end_lon, cast(null as timestamptz) as _loaded_at
+          union all
+          select 'c2', 'u2', null, 'at', cast('nan' as double), 11.0, 'flood', '', 'closed', 'verified', null, null, null, null, 41.0, -74.0, null, null, null
+          union all
+          select 'c3', 'u3', null, 'at', 10.0, 11.0, 'flood', '', 'open', 'verified', null, null, null, null, 41.0, cast('-inf' as double), null, null, null
+    expect:
+      rows:
+        - {closure_uuid: u1, problem: null}
+        - {closure_uuid: u2, problem: 'u2: a mile or a coordinate is not a finite number, and JSON.parse on a phone rejects the whole document'}
+        - {closure_uuid: u3, problem: 'u3: a mile or a coordinate is not a finite number, and JSON.parse on a phone rejects the whole document'}
+
   - name: int_closures__gate_holds_back_one_bad_atc_row_and_nothing_else
     description: >
       One bad ATC row holds back ATC's file and no other source's
@@ -552,12 +579,27 @@ unit_tests:
           - {source_key: nynjtc_trail_alerts, may_publish: true}
           - {source_key: oprhp_trail_closures, may_publish: true}
           - {source_key: ourhike_closures, may_publish: true}
+          - {source_key: ourhike_reports, may_publish: true}
+          - {source_key: nws_alerts, may_publish: true}
+      - input: ref('base_ourhike__reports')
+        rows: []
+      - input: ref('base_nws__alerts')
+        format: sql
+        rows: |
+          select 'k1' as nws_alert_key
+      - input: ref('int_closures__work_projects_checked')
+        format: sql
+        rows: |
+          select cast(null as bigint) as row_position, true as is_reviewed, cast([] as varchar[]) as row_problems, cast([] as varchar[]) as duplicate_problems
     expect:
       rows:
         - {source_key: atc_trail_updates, rows_total: 2, rows_invalid: 1, passed: false, held_because: '1 of 2 rows cannot publish, and a partial set of safety notices is worse than none'}
         - {source_key: nynjtc_trail_alerts, rows_total: 1, rows_invalid: 0, passed: true, held_because: null}
         - {source_key: oprhp_trail_closures, rows_total: 0, rows_invalid: 0, passed: true, held_because: null}
         - {source_key: ourhike_closures, rows_total: 1, rows_invalid: 0, passed: true, held_because: null}
+        - {source_key: ourhike_reports, rows_total: 0, rows_invalid: 0, passed: true, held_because: null}
+        - {source_key: nws_alerts, rows_total: 1, rows_invalid: 0, passed: true, held_because: null}
+        - {source_key: 'reference/work_projects.json', rows_total: 0, rows_invalid: 0, passed: true, held_because: null}
 
   - name: int_closures__gate_holds_back_an_unreviewed_atc_file
     description: >
@@ -585,12 +627,27 @@ unit_tests:
           - {source_key: nynjtc_trail_alerts, may_publish: true}
           - {source_key: oprhp_trail_closures, may_publish: true}
           - {source_key: ourhike_closures, may_publish: true}
+          - {source_key: ourhike_reports, may_publish: true}
+          - {source_key: nws_alerts, may_publish: true}
+      - input: ref('base_ourhike__reports')
+        rows: []
+      - input: ref('base_nws__alerts')
+        format: sql
+        rows: |
+          select 'k1' as nws_alert_key
+      - input: ref('int_closures__work_projects_checked')
+        format: sql
+        rows: |
+          select cast(null as bigint) as row_position, true as is_reviewed, cast([] as varchar[]) as row_problems, cast([] as varchar[]) as duplicate_problems
     expect:
       rows:
         - {source_key: atc_trail_updates, reviewed_at: '  ', passed: false, held_because: 'reference/atc_updates.json has no reviewed_at, so nobody has checked it against ATC''s page', awaiting_review: true}
         - {source_key: nynjtc_trail_alerts, reviewed_at: null, passed: false, held_because: 'NYNJTC''s Trail Alerts category has no posts at all, which means the parse broke', awaiting_review: false}
         - {source_key: oprhp_trail_closures, reviewed_at: null, passed: true, held_because: null, awaiting_review: false}
         - {source_key: ourhike_closures, reviewed_at: null, passed: true, held_because: null, awaiting_review: false}
+        - {source_key: ourhike_reports, reviewed_at: null, passed: true, held_because: null, awaiting_review: false}
+        - {source_key: nws_alerts, reviewed_at: null, passed: true, held_because: null, awaiting_review: false}
+        - {source_key: 'reference/work_projects.json', reviewed_at: null, passed: true, held_because: null, awaiting_review: false}
 
   - name: int_closures__gate_passes_an_empty_reviewed_atc_file_and_holds_back_an_unverified_closure
     description: >
@@ -619,12 +676,27 @@ unit_tests:
           - {source_key: nynjtc_trail_alerts, may_publish: true}
           - {source_key: oprhp_trail_closures, may_publish: true}
           - {source_key: ourhike_closures, may_publish: true}
+          - {source_key: ourhike_reports, may_publish: true}
+          - {source_key: nws_alerts, may_publish: true}
+      - input: ref('base_ourhike__reports')
+        rows: []
+      - input: ref('base_nws__alerts')
+        format: sql
+        rows: |
+          select 'k1' as nws_alert_key
+      - input: ref('int_closures__work_projects_checked')
+        format: sql
+        rows: |
+          select cast(null as bigint) as row_position, true as is_reviewed, cast([] as varchar[]) as row_problems, cast([] as varchar[]) as duplicate_problems
     expect:
       rows:
         - {source_key: atc_trail_updates, rows_total: 0, reviewed_at: '2026-08-24', passed: true, held_because: null}
         - {source_key: nynjtc_trail_alerts, rows_total: 1, reviewed_at: null, passed: true, held_because: null}
         - {source_key: oprhp_trail_closures, rows_total: 0, reviewed_at: null, passed: true, held_because: null}
         - {source_key: ourhike_closures, rows_total: 1, reviewed_at: null, passed: false, held_because: '1 of 1 rows cannot publish, and a partial set of safety notices is worse than none'}
+        - {source_key: ourhike_reports, rows_total: 0, reviewed_at: null, passed: true, held_because: null}
+        - {source_key: nws_alerts, rows_total: 1, reviewed_at: null, passed: true, held_because: null}
+        - {source_key: 'reference/work_projects.json', rows_total: 0, reviewed_at: null, passed: true, held_because: null}
 
   - name: int_closures__gate_holds_back_an_atc_file_whose_updates_is_not_a_list
     description: >
@@ -647,12 +719,27 @@ unit_tests:
           - {source_key: nynjtc_trail_alerts, may_publish: true}
           - {source_key: oprhp_trail_closures, may_publish: true}
           - {source_key: ourhike_closures, may_publish: true}
+          - {source_key: ourhike_reports, may_publish: true}
+          - {source_key: nws_alerts, may_publish: true}
+      - input: ref('base_ourhike__reports')
+        rows: []
+      - input: ref('base_nws__alerts')
+        format: sql
+        rows: |
+          select 'k1' as nws_alert_key
+      - input: ref('int_closures__work_projects_checked')
+        format: sql
+        rows: |
+          select cast(null as bigint) as row_position, true as is_reviewed, cast([] as varchar[]) as row_problems, cast([] as varchar[]) as duplicate_problems
     expect:
       rows:
         - {source_key: atc_trail_updates, passed: false, held_because: '`updates` is missing or is not a list'}
         - {source_key: nynjtc_trail_alerts, passed: true, held_because: null}
         - {source_key: oprhp_trail_closures, passed: true, held_because: null}
         - {source_key: ourhike_closures, passed: true, held_because: null}
+        - {source_key: ourhike_reports, passed: true, held_because: null}
+        - {source_key: nws_alerts, passed: true, held_because: null}
+        - {source_key: 'reference/work_projects.json', passed: true, held_because: null}
 
   - name: int_closures__gate_holds_back_an_atc_file_whose_two_landings_disagree
     description: >
@@ -685,12 +772,27 @@ unit_tests:
           - {source_key: nynjtc_trail_alerts, may_publish: true}
           - {source_key: oprhp_trail_closures, may_publish: true}
           - {source_key: ourhike_closures, may_publish: true}
+          - {source_key: ourhike_reports, may_publish: true}
+          - {source_key: nws_alerts, may_publish: true}
+      - input: ref('base_ourhike__reports')
+        rows: []
+      - input: ref('base_nws__alerts')
+        format: sql
+        rows: |
+          select 'k1' as nws_alert_key
+      - input: ref('int_closures__work_projects_checked')
+        format: sql
+        rows: |
+          select cast(null as bigint) as row_position, true as is_reviewed, cast([] as varchar[]) as row_problems, cast([] as varchar[]) as duplicate_problems
     expect:
       rows:
         - {source_key: atc_trail_updates, passed: false, held_because: 'reference/atc_updates.json lists 1 updates and 2 landed as rows, so the two landings are of different files'}
         - {source_key: nynjtc_trail_alerts, passed: true, held_because: null}
         - {source_key: oprhp_trail_closures, passed: true, held_because: null}
         - {source_key: ourhike_closures, passed: true, held_because: null}
+        - {source_key: ourhike_reports, passed: true, held_because: null}
+        - {source_key: nws_alerts, passed: true, held_because: null}
+        - {source_key: 'reference/work_projects.json', passed: true, held_because: null}
 
   - name: int_closures__gate_holds_back_a_source_that_may_not_publish
     description: >
@@ -716,12 +818,129 @@ unit_tests:
           - {source_key: atc_trail_updates, may_publish: true, publication_rule: registered_and_publishable}
           - {source_key: nynjtc_trail_alerts, may_publish: false, publication_rule: held_back_by_the_registry}
           - {source_key: ourhike_closures, may_publish: true, publication_rule: publishing_before_registration}
+      - input: ref('base_ourhike__reports')
+        rows: []
+      - input: ref('base_nws__alerts')
+        format: sql
+        rows: |
+          select 'k1' as nws_alert_key
+      - input: ref('int_closures__work_projects_checked')
+        format: sql
+        rows: |
+          select cast(null as bigint) as row_position, true as is_reviewed, cast([] as varchar[]) as row_problems, cast([] as varchar[]) as duplicate_problems
     expect:
       rows:
         - {source_key: atc_trail_updates, may_publish: true, passed: true, held_because: null}
         - {source_key: nynjtc_trail_alerts, may_publish: false, passed: false, held_because: 'int_sources__publication holds nynjtc_trail_alerts back (held_back_by_the_registry)'}
         - {source_key: oprhp_trail_closures, may_publish: false, passed: false, held_because: 'int_sources__publication has no row for oprhp_trail_closures, so nothing says it may publish'}
         - {source_key: ourhike_closures, may_publish: true, passed: true, held_because: null}
+        - {source_key: ourhike_reports, may_publish: false, passed: false, held_because: 'int_sources__publication has no row for ourhike_reports, so nothing says it may publish'}
+        - {source_key: nws_alerts, may_publish: false, passed: false, held_because: 'int_sources__publication has no row for nws_alerts, so nothing says it may publish'}
+        - {source_key: 'reference/work_projects.json', may_publish: true, passed: true, held_because: null}
+
+  - name: int_closures__gate_holds_back_each_file_no_notice_feeds_on_its_own
+    description: >
+      OurHike's reports with a coordinate that is not finite, an hour in
+      which no NWS alert landed, and a reviewed work-projects file with a bad
+      row each hold back their own file and nothing else, so the notice
+      sources' files are still written.
+    model: int_closures__gate
+    given:
+      - input: ref('int_closures__unioned')
+        format: sql
+        rows: |
+          select 'atc_trail_updates' as source_key, cast([] as varchar[]) as problems
+          union all
+          select 'nynjtc_trail_alerts' as source_key, cast([] as varchar[]) as problems
+          union all
+          select 'ourhike_closures' as source_key, cast([] as varchar[]) as problems
+      - input: ref('int_closures__atc_checked')
+        format: sql
+        rows: |
+          select 0 as file_row
+      - input: ref('base_atc__atc_updates')
+        rows:
+          - {atc_updates_document_key: d1, document_json: '{"reviewed_at": "2026-08-24", "updates": [{}]}'}
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: atc_trail_updates, may_publish: true}
+          - {source_key: nynjtc_trail_alerts, may_publish: true}
+          - {source_key: oprhp_trail_closures, may_publish: true}
+          - {source_key: ourhike_closures, may_publish: true}
+          - {source_key: ourhike_reports, may_publish: true}
+          - {source_key: nws_alerts, may_publish: true}
+      - input: ref('base_ourhike__reports')
+        format: sql
+        rows: |
+          select 'verified' as report_status, 'public' as visibility, cast('nan' as double) as lat, -74.0 as lon, cast(null as double) as mile
+          union all
+          select 'resolved' as report_status, 'public' as visibility, 41.0 as lat, -74.0 as lon, 10.5 as mile
+          union all
+          select 'verified' as report_status, 'private' as visibility, cast('inf' as double) as lat, -74.0 as lon, 1.0 as mile
+      - input: ref('base_nws__alerts')
+        format: sql
+        rows: |
+          select 'k1' as nws_alert_key where false
+      - input: ref('int_closures__work_projects_checked')
+        format: sql
+        rows: |
+          select cast(null as bigint) as row_position, true as is_reviewed, cast([] as varchar[]) as row_problems, cast([] as varchar[]) as duplicate_problems
+          union all
+          select 0 as row_position, cast(null as boolean) as is_reviewed, ['rows[0]: date is not a date'] as row_problems, cast([] as varchar[]) as duplicate_problems
+    expect:
+      rows:
+        - {source_key: atc_trail_updates, rows_total: 1, rows_invalid: 0, passed: true, held_because: null, awaiting_review: false}
+        - {source_key: nynjtc_trail_alerts, rows_total: 1, rows_invalid: 0, passed: true, held_because: null, awaiting_review: false}
+        - {source_key: oprhp_trail_closures, rows_total: 0, rows_invalid: 0, passed: true, held_because: null, awaiting_review: false}
+        - {source_key: ourhike_closures, rows_total: 1, rows_invalid: 0, passed: true, held_because: null, awaiting_review: false}
+        - {source_key: ourhike_reports, rows_total: 2, rows_invalid: 1, passed: false, held_because: '1 row(s) carry a coordinate or a mile that is not a finite number, and JSON.parse on a phone rejects the whole document', awaiting_review: false}
+        - {source_key: nws_alerts, rows_total: 0, rows_invalid: 0, passed: false, held_because: 'no NWS alert landed, so nothing says when NWS was asked', awaiting_review: false}
+        - {source_key: 'reference/work_projects.json', rows_total: 1, rows_invalid: 0, passed: false, held_because: '1 problem(s) in reference/work_projects.json, the first: rows[0]: date is not a date', awaiting_review: false}
+
+  - name: int_closures__gate_awaits_review_of_an_unreviewed_work_projects_file
+    description: >
+      A work-projects file nobody has reviewed is held and awaiting review,
+      the hold export_work_projects.py exits 0 for, whatever its rows hold.
+    model: int_closures__gate
+    given:
+      - input: ref('int_closures__unioned')
+        format: sql
+        rows: |
+          select 'nynjtc_trail_alerts' as source_key, cast([] as varchar[]) as problems
+      - input: ref('int_closures__atc_checked')
+        rows: []
+      - input: ref('base_atc__atc_updates')
+        rows:
+          - {atc_updates_document_key: d1, document_json: '{"reviewed_at": "2026-08-24", "updates": []}'}
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: atc_trail_updates, may_publish: true}
+          - {source_key: nynjtc_trail_alerts, may_publish: true}
+          - {source_key: oprhp_trail_closures, may_publish: true}
+          - {source_key: ourhike_closures, may_publish: true}
+          - {source_key: ourhike_reports, may_publish: true}
+          - {source_key: nws_alerts, may_publish: true}
+      - input: ref('base_ourhike__reports')
+        rows: []
+      - input: ref('base_nws__alerts')
+        format: sql
+        rows: |
+          select 'k1' as nws_alert_key
+      - input: ref('int_closures__work_projects_checked')
+        format: sql
+        rows: |
+          select cast(null as bigint) as row_position, false as is_reviewed, cast([] as varchar[]) as row_problems, cast([] as varchar[]) as duplicate_problems
+          union all
+          select 0 as row_position, cast(null as boolean) as is_reviewed, ['rows[0]: date is not a date'] as row_problems, cast([] as varchar[]) as duplicate_problems
+    expect:
+      rows:
+        - {source_key: atc_trail_updates, passed: true, held_because: null, awaiting_review: false}
+        - {source_key: nynjtc_trail_alerts, passed: true, held_because: null, awaiting_review: false}
+        - {source_key: oprhp_trail_closures, passed: true, held_because: null, awaiting_review: false}
+        - {source_key: ourhike_closures, passed: true, held_because: null, awaiting_review: false}
+        - {source_key: ourhike_reports, passed: true, held_because: null, awaiting_review: false}
+        - {source_key: nws_alerts, passed: true, held_because: null, awaiting_review: false}
+        - {source_key: 'reference/work_projects.json', passed: false, held_because: 'nobody has reviewed reference/work_projects.json', awaiting_review: true}
 
   - name: int_closures__atc_automatic_refuses_what_auto_publish_refusal_refuses
     description: >

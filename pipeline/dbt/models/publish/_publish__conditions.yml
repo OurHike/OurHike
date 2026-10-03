@@ -2,13 +2,14 @@ version: 2
 
 # The closures and warnings family's phone files (pipeline/ELT.md, "Publish
 # (reverse ETL)"): six writers, and an exposure for each of the eight files
-# they and export_conditions.py's notes and disputes write. Every writer
-# fails rather than write a held-back source's file, so the last good copy
-# stays on the phone. None of them uploads anything: publish-conditions.yml
-# and publish-weather.yml still upload the Python exporters' files until
-# stage 4 of #1793 — Rebuild the data platform as dlt → dbt: seven
-# contracted marts, a monthly refresh, published docs, and lighter phone
-# downloads.
+# they and export_conditions.py's notes and disputes write. Each writer names
+# its int_closures__gate row in `meta.gate` and selects no row while that
+# source is held, so its last copy stays on the phone while the others are
+# written, and publish.py fails the run afterwards. None of them uploads
+# anything: publish-conditions.yml and publish-weather.yml still upload the
+# Python exporters' files until stage 4 of #1793 — Rebuild the data platform
+# as dlt → dbt: seven contracted marts, a monthly refresh, published docs,
+# and lighter phone downloads.
 
 models:
   - name: pub_conditions_atc_updates
@@ -17,8 +18,9 @@ models:
       ones ATC posted since the review that publish without a person, from
       the closures and warnings marts: one row, `generated_at`, the file's
       `reviewed_at` and `atc_updates`, which phone_file copies to
-      processed_dir/conditions_atc_updates.json. Fails, writing nothing, when
-      int_closures__gate or int_sources__publication holds ATC back.
+      processed_dir/conditions_atc_updates.json. Writes nothing while
+      int_closures__gate holds ATC back, for a bad row, an unreviewed file or
+      int_sources__publication.
       parity.py compares it with export_atc_updates.py's build_document().
     config:
       access: public
@@ -46,10 +48,11 @@ models:
       reaches a trail square, from the warnings mart's NWS rows placed by
       int_warnings__nws_placed (WN03): one document, written verbatim by
       phone_file's json_document format to
-      processed_dir/conditions_weather_alerts.json. Fails, writing nothing,
-      when int_sources__publication holds NWS back, without exactly one
-      weather squares document, or when no NWS alert landed to say when NWS
-      was asked. parity.py compares it with export_weather_alerts.py's bake().
+      processed_dir/conditions_weather_alerts.json. Writes nothing while
+      int_closures__gate holds NWS back (int_sources__publication, or no
+      alert landed to say when NWS was asked), and fails without exactly one
+      weather squares document. parity.py compares it with
+      export_weather_alerts.py's bake().
     config:
       access: public
       contract:
@@ -68,8 +71,8 @@ models:
     description: >
       Writes conditions/nynjtc_alerts.json, NYNJTC's Trail Alerts, from the
       warnings mart (and the closures mart, which holds none of them today):
-      one row, `generated_at` and `nynjtc_alerts`. Fails, writing nothing,
-      when int_closures__gate or int_sources__publication holds NYNJTC back.
+      one row, `generated_at` and `nynjtc_alerts`. Writes nothing while
+      int_closures__gate holds NYNJTC back.
       parity.py compares it with export_nynjtc_alerts.py's build_document().
     config:
       access: public
@@ -88,9 +91,9 @@ models:
     description: >
       Writes conditions/closures.json, OurHike's moderator-verified closures,
       from the closures and warnings marts: one row, `generated_at` and
-      `closures`. Fails, writing nothing, when int_closures__gate or
-      int_sources__publication holds OurHike's closures back, or a row holds
-      a number that is not finite. parity.py compares it with
+      `closures`. Writes nothing while int_closures__gate holds OurHike's
+      closures back, for a row, a number that is not finite or
+      int_sources__publication. parity.py compares it with
       export_conditions.py's read_closures() and build_document().
     config:
       access: public
@@ -109,9 +112,9 @@ models:
     description: >
       Writes conditions/reports.json, every verified or resolved public
       report whatever its severity, from base_ourhike__reports: one row,
-      `generated_at` and `reports`. Fails, writing nothing, when
-      int_sources__publication holds OurHike's reports back, or a row holds a
-      number that is not finite. parity.py compares it with
+      `generated_at` and `reports`. Writes nothing while int_closures__gate
+      holds OurHike's reports back, for int_sources__publication or a number
+      that is not finite. parity.py compares it with
       export_conditions.py's read_reports() and build_document().
     config:
       access: public
@@ -132,9 +135,9 @@ models:
       and join (#760), from int_closures__work_projects_checked: one row,
       `generated_at`, the file's `reviewed_at` and `work_projects`, which
       phone_file copies to processed_dir/conditions_work_projects.json.
-      Writes nothing and succeeds for a file nobody reviewed; fails, writing
-      nothing, on any problem lib/work_projects.py's file_problems() would
-      find. No mart owns work projects. parity.py compares it with
+      Writes nothing while int_closures__gate holds the file back: nobody
+      reviewed it, or lib/work_projects.py's file_problems() would find a
+      problem. No mart owns work projects. parity.py compares it with
       export_work_projects.py's main().
     config:
       access: public

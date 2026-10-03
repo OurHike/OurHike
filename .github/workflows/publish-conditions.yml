@@ -1089,6 +1089,10 @@ jobs:
         # job is the conditions manifest and nothing else - a fresh checkout
         # has run no other export script. The manifest merge is additive, so
         # the trail artifacts already in latest.json survive untouched.
+        #
+        # On the dbt path a source int_closures__gate holds back writes no
+        # file, so its last copy stays, and publish.py exits 1 after
+        # uploading the rest, with an annotation naming the source and why.
         run: |
           started=$SECONDS
           python publish.py

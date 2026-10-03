@@ -101,7 +101,7 @@ class Project:
                     "config": {
                         "materialized": "phone_file",
                         "location": spec["location"],
-                        "meta": {"when_empty": spec["when_empty"]},
+                        "meta": {"when_empty": spec["when_empty"], **({"gate": spec["gate"]} if "gate" in spec else {})},
                     }
                 }
                 for node_id, spec in writers.items()
@@ -132,9 +132,9 @@ class Project:
         ]
         (self.target / "run_results.json").write_text(json.dumps({"results": results}))
 
-    def collect(self) -> publish.DbtPhoneFiles:
+    def collect(self, gate=None) -> publish.DbtPhoneFiles:
         return publish.collect_dbt_phone_files(
-            self.target / "manifest.json", self.target / "run_results.json", processed_dir=self.out
+            self.target / "manifest.json", self.target / "run_results.json", processed_dir=self.out, gate=gate
         )
 
 
@@ -335,6 +335,130 @@ POI_WRITERS = {
     "model.ourhike.pub_poi_shelter": {"location": "poi_shelter.geojson", "when_empty": "fail", "keys": []},
     "model.ourhike.pub_poi_water": {"location": "poi_water.geojson", "when_empty": "fail", "keys": []},
 }
+
+
+# --- a gated writer: `meta.gate` names its int_closures__gate row ------------
+
+# A writer that always writes, and two conditions writers that select no row
+# while their gate row holds their source (pub_conditions_*'s meta).
+GATED = {
+    "model.ourhike.pub_stewards": WRITERS["model.ourhike.pub_stewards"],
+    "model.ourhike.pub_conditions_nynjtc_alerts": {
+        "location": "conditions_nynjtc_alerts.json",
+        "when_empty": "keep_last_file",
+        "gate": "nynjtc_trail_alerts",
+        "keys": ["conditions/nynjtc_alerts.json"],
+    },
+    "model.ourhike.pub_conditions_closures": {
+        "location": "conditions_closures.json",
+        "when_empty": "keep_last_file",
+        "gate": "ourhike_closures",
+        "keys": ["conditions/closures.json"],
+    },
+}
+PASSED = publish.GateVerdict(None)
+HELD = publish.GateVerdict("NYNJTC's Trail Alerts category has no posts at all, which means the parse broke")
+
+
+def _write_gated(project: Project) -> None:
+    """The files of a run in which NYNJTC's writer selected no row."""
+    project.write("stewards.json", json.dumps({"stewards": ["first"]}))
+    project.write("conditions_closures.json", json.dumps({"closures": []}))
+
+
+def test_a_held_sources_file_is_kept_and_every_other_file_is_still_collected(project):
+    """One held source no longer stops every conditions file: its key is kept,
+    so the phone keeps its last copy, and is marked held so the run fails."""
+    _write_gated(project)
+    project.build(writers=GATED)
+
+    found = project.collect(gate={"nynjtc_trail_alerts": HELD, "ourhike_closures": PASSED})
+
+    assert set(found.artifacts) == {"stewards.json", "conditions/closures.json"}
+    assert found.held == {"conditions/nynjtc_alerts.json": f"nynjtc_trail_alerts is held: {HELD.held_because}"}
+    assert HELD.held_because in found.kept["conditions/nynjtc_alerts.json"]
+
+
+def test_an_unreviewed_file_is_kept_without_failing_the_run(project):
+    """export_atc_updates.py and export_work_projects.py exit 0 for a file
+    nobody reviewed yet, so its hold keeps the file and is not `held`."""
+    _write_gated(project)
+    project.build(writers=GATED)
+    unreviewed = publish.GateVerdict("nobody has reviewed it", awaiting_review=True)
+
+    found = project.collect(gate={"nynjtc_trail_alerts": unreviewed, "ourhike_closures": PASSED})
+
+    assert "conditions/nynjtc_alerts.json" in found.kept
+    assert found.held == {}
+
+
+def test_a_gated_writer_that_wrote_nothing_while_its_gate_passed_refuses(project):
+    """Why when_empty defaults to 'fail': a writer that selected no row by
+    mistake must not pass as one that chose to. The gate row tells them apart."""
+    _write_gated(project)
+    project.build(writers=GATED)
+
+    with pytest.raises(RuntimeError, match="holds nothing for nynjtc_trail_alerts"):
+        project.collect(gate={"nynjtc_trail_alerts": PASSED, "ourhike_closures": PASSED})
+
+
+def test_a_gated_writer_that_wrote_a_held_sources_file_refuses(project):
+    _write_gated(project)
+    project.write("conditions_nynjtc_alerts.json", json.dumps({"nynjtc_alerts": []}))
+    project.build(writers=GATED)
+
+    with pytest.raises(RuntimeError, match="while int_closures__gate holds nynjtc_trail_alerts"):
+        project.collect(gate={"nynjtc_trail_alerts": HELD, "ourhike_closures": PASSED})
+
+
+def test_a_gated_writer_whose_gate_has_no_row_refuses(project):
+    _write_gated(project)
+    project.build(writers=GATED)
+
+    with pytest.raises(RuntimeError, match="has no row for it"):
+        project.collect(gate={"ourhike_closures": PASSED})
+
+
+def test_the_gate_is_not_read_when_no_gated_writer_ran(monkeypatch, project):
+    """The monthly lane runs no conditions writer, and its warehouse holds no gate."""
+    _write_gated(project)
+    project.build(writers=GATED, ran=["model.ourhike.pub_stewards"])
+
+    def unread(manifest, warehouse=None):
+        raise AssertionError("the gate was read")
+
+    monkeypatch.setattr(publish, "read_gate", unread)
+
+    assert set(project.collect().artifacts) == {"stewards.json"}
+
+
+def test_the_gate_is_read_from_the_relation_the_manifest_names(tmp_path):
+    import duckdb
+
+    warehouse = tmp_path / "warehouse.duckdb"
+    with duckdb.connect(str(warehouse)) as con:
+        con.execute("create schema intermediate")
+        con.execute(
+            "create table intermediate.int_closures__gate as select * from (values "
+            "('nynjtc_trail_alerts', 'the parse broke', false), ('ourhike_closures', null, false), "
+            "('atc_trail_updates', 'nobody has reviewed it', true)) as t (source_key, held_because, awaiting_review)"
+        )
+    manifest = {
+        "nodes": {
+            "model.ourhike.int_closures__gate": {
+                "resource_type": "model",
+                "name": "int_closures__gate",
+                "schema": "intermediate",
+                "alias": "int_closures__gate",
+            }
+        }
+    }
+
+    assert publish.read_gate(manifest, warehouse) == {
+        "nynjtc_trail_alerts": publish.GateVerdict("the parse broke"),
+        "ourhike_closures": publish.GateVerdict(None),
+        "atc_trail_updates": publish.GateVerdict("nobody has reviewed it", awaiting_review=True),
+    }
 
 
 def _poi_exposure(keys):
@@ -539,6 +663,54 @@ def test_with_the_switch_on_a_run_whose_writers_all_kept_is_a_quiet_no_op(monkey
     assert result["version_written"] is False
     assert _keys(s3_client) == {}
     assert "every phone file's writer kept its last good file" in capsys.readouterr().out
+
+
+def _main_on_dbt(monkeypatch, s3_client, project, verdicts):
+    monkeypatch.setattr(publish, "collect_artifacts", dict)
+    monkeypatch.setattr(publish, "DBT_MANIFEST_PATH", project.target / "manifest.json")
+    monkeypatch.setattr(publish, "DBT_RUN_RESULTS_PATH", project.target / "run_results.json")
+    monkeypatch.setattr(publish, "read_gate", lambda manifest, warehouse=None: verdicts)
+    monkeypatch.setenv(publish.DBT_PROCESSED_DIR_ENV_VAR, str(project.out))
+    monkeypatch.setenv(publish.PHONE_FILES_ENV_VAR, publish.PHONE_FILES_FROM_DBT)
+    _main_env(monkeypatch, s3_client)
+
+
+def test_main_publishes_every_other_file_and_then_fails_for_a_held_one(monkeypatch, s3_client, project, capsys):
+    _write_gated(project)
+    project.build(writers=GATED)
+    _main_on_dbt(monkeypatch, s3_client, project, {"nynjtc_trail_alerts": HELD, "ourhike_closures": PASSED})
+
+    with pytest.raises(SystemExit, match="conditions/nynjtc_alerts.json"):
+        publish.main()
+
+    published = _keys(s3_client)
+    assert "stewards.json" in published and "conditions/closures.json" in published
+    assert "conditions/nynjtc_alerts.json" not in published
+    out = capsys.readouterr().out
+    assert f"::error title=conditions/nynjtc_alerts.json not rewritten::nynjtc_trail_alerts is held: {HELD.held_because}" in out
+
+
+def test_main_fails_for_a_held_file_when_nothing_else_changed(monkeypatch, s3_client, project):
+    """The quiet path, every writer kept, still ends red for a held source."""
+    writers = {"model.ourhike.pub_conditions_nynjtc_alerts": GATED["model.ourhike.pub_conditions_nynjtc_alerts"]}
+    project.build(writers=writers)
+    _main_on_dbt(monkeypatch, s3_client, project, {"nynjtc_trail_alerts": HELD})
+
+    with pytest.raises(SystemExit, match="held back by int_closures__gate"):
+        publish.main()
+
+    assert _keys(s3_client) == {}
+
+
+def test_main_does_not_fail_for_an_unreviewed_file(monkeypatch, s3_client, project):
+    _write_gated(project)
+    project.build(writers=GATED)
+    unreviewed = publish.GateVerdict("nobody has reviewed it", awaiting_review=True)
+    _main_on_dbt(monkeypatch, s3_client, project, {"nynjtc_trail_alerts": unreviewed, "ourhike_closures": PASSED})
+
+    result = publish.main()
+
+    assert result["version_written"] is True
 
 
 # --- the live root key ------------------------------------------------------

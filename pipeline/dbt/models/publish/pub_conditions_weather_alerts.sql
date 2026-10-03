@@ -1,4 +1,8 @@
-{{ config(format='json_document', location='conditions_weather_alerts.json') }}
+{{ config(
+    format='json_document',
+    location='conditions_weather_alerts.json',
+    meta={'when_empty': 'keep_last_file', 'gate': 'nws_alerts'},
+) }}
 -- conditions/weather_alerts.json, every relayed NWS alert that reaches a
 -- trail square (#1056), in the shape export_weather_alerts.py's bake()
 -- writes: its four constants, `fetched_at`, NWS's own `updated`,
@@ -13,11 +17,13 @@
 -- The mart itself holds every relayed alert and none of the placement, so the
 -- hourly lane's other files never wait on the weather squares.
 --
--- NOTHING IS WRITTEN WHEN NWS MAY NOT PUBLISH (int_sources__publication):
--- the mart would then hold no NWS row, and `alerts: []` would read as "no
--- warnings", the one thing the warnings line must never say by mistake
--- (WEATHER.md §5). So this fails before writing, and the last good file
--- stays. It fails the same way without exactly one weather squares document.
+-- NO ROW, SO NO FILE, while int_closures__gate holds NWS back (`meta.gate`):
+-- when NWS may not publish, the mart holds no NWS row, and `alerts: []` would
+-- read as "no warnings", the one thing the warnings line must never say by
+-- mistake (WEATHER.md §5); and when no alert landed (below). The phone keeps
+-- its last file, and publish.py fails the run after publishing the rest. A
+-- missing or doubled weather squares document is a fault in
+-- step_weather_squares, not a held source, so it fails the writer.
 --
 -- `fetched_at` is the alerts' `_loaded_at`: the moment the extract run that
 -- asked NWS began, which extract/_run.py stamps on every row it lands. bake()
@@ -25,10 +31,10 @@
 -- resources too, so this can be earlier than the request by as long as
 -- they take, and never later: the phone then calls the copy older than it
 -- is, the cautious side (Reasoned, from _run.py's checked_at). When NWS
--- answers with no alert at all, nothing landed holds that moment, so this
--- fails before writing and the last good file stays, as bake() would not
--- (Reasoned: 344 to 486 alerts were active at every read measured, ELT.md;
--- 389 at 2026-10-02 11:23 UTC).
+-- answers with no alert at all, nothing landed holds that moment, so the gate
+-- holds NWS and the last file stays, as bake() would not (Reasoned: 344 to
+-- 486 alerts were active at every read measured, ELT.md; 389 at 2026-10-02
+-- 11:23 UTC).
 -- A failed NWS request never reaches here: the extract refuses it and the
 -- last good table stands, so this rewrites the last answer with its own
 -- `fetched_at`, the age the phone shows (export_weather_alerts.py, "IF NWS
@@ -56,9 +62,8 @@ squares_document as (
     from {{ ref('stg_derived__weather_squares') }}
 ),
 
-publication as (
-    select coalesce(bool_or(may_publish), false) as may_publish
-    from {{ ref('int_sources__publication') }}
+gate as (
+    select * from {{ ref('int_closures__gate') }}
     where source_key = 'nws_alerts'
 ),
 
@@ -122,33 +127,23 @@ judged as (
         squares_document.documents,
         squares_document.squares_release,
         squares_document.zone_files,
-        publication.may_publish,
         published.alert_rows,
-        unknown.zone_keys
+        unknown.zone_keys,
+        gate.passed
     from landed
     cross join squares_document
-    cross join publication
     cross join published
     cross join unknown
+    inner join gate on gate.source_key = 'nws_alerts'
 )
 
 select
     case
-        when not may_publish
-            then error(
-                'conditions/weather_alerts.json is not written: '
-                || 'int_sources__publication does not let nws_alerts publish'
-            )
         when documents != 1
             then error(
                 'conditions/weather_alerts.json is not written: '
                 || documents
                 || ' weather squares documents, where one places every alert'
-            )
-        when fetched_at is null
-            then error(
-                'conditions/weather_alerts.json is not written: no NWS alert '
-                || 'landed, so nothing says when NWS was asked'
             )
         else json_object(
             'payload', 'weather_alerts',
@@ -167,3 +162,4 @@ select
         )
     end as document  -- noqa: RF04
 from judged
+where passed

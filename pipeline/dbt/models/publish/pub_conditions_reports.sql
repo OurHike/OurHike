@@ -1,4 +1,8 @@
-{{ config(format='json', location='conditions_reports.json') }}
+{{ config(
+    format='json',
+    location='conditions_reports.json',
+    meta={'when_empty': 'keep_last_file', 'gate': 'ourhike_reports'},
+) }}
 -- conditions/reports.json, OurHike's public reports, in the shape
 -- export_conditions.py's build_document("reports", ...) writes:
 -- `generated_at` and every row PUBLIC_REPORTS_SQL selects, in its order
@@ -12,10 +16,10 @@
 -- applied again: a report the extract should never have landed is left out
 -- rather than published.
 --
--- NOTHING IS WRITTEN, and the phone keeps its last good file, when
--- int_sources__publication holds OurHike's reports back, or when a row
--- carries a coordinate or a mile that is not a finite number, as
--- pub_conditions_closures says.
+-- NO ROW, SO NO FILE, while int_closures__gate holds OurHike's reports back
+-- (`meta.gate`): because int_sources__publication does, or for a number that
+-- is not finite. The phone keeps its last file, and publish.py fails the run
+-- after publishing the rest.
 --
 -- `generated_at` is dbt's run_started_at: one clock for this file and
 -- conditions/closures.json, as export_conditions.py's main() keeps one.
@@ -26,8 +30,8 @@ with reports as (
         and visibility = 'public'
 ),
 
-publication as (
-    select * from {{ ref('int_sources__publication') }}
+gate as (
+    select * from {{ ref('int_closures__gate') }}
     where source_key = 'ourhike_reports'
 ),
 
@@ -53,42 +57,13 @@ published as (
                 ) order by reported_at, report_uuid
             ),
             []
-        ) as reports,
-        count(*) filter (
-            where not (
-                coalesce(isfinite(lat), true)
-                and coalesce(isfinite(lon), true)
-                and coalesce(isfinite(mile), true)
-            )
-        ) as rows_not_finite
+        ) as reports
     from reports
-),
-
-judged as (
-    select
-        published.reports,
-        published.rows_not_finite,
-        coalesce(publication.may_publish, false) as may_publish,
-        coalesce(publication.publication_rule, 'no row') as publication_rule
-    from published
-    left join publication on publication.source_key = 'ourhike_reports'
 )
 
 select
-    case
-        when may_publish and rows_not_finite = 0
-            then {{ python_run_stamp() }}
-        when not may_publish
-            then error(
-                'conditions/reports.json is not written: '
-                || 'int_sources__publication holds ourhike_reports back ('
-                || publication_rule || ')'
-            )
-        else error(
-            'conditions/reports.json is not written: ' || rows_not_finite
-            || ' row(s) carry a coordinate or a mile that is not a finite '
-            || 'number, and JSON.parse on a phone rejects the whole document'
-        )
-    end as generated_at,
-    reports
-from judged
+    {{ python_run_stamp() }} as generated_at,
+    published.reports
+from published
+inner join gate on gate.source_key = 'ourhike_reports'
+where gate.passed

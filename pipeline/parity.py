@@ -473,7 +473,7 @@ def _places_old() -> dict:
     line and built by that family's parity helper, called as it is; this only writes them where build_output() reads:
     - OPRHP's park layer and ATC's Communities, as fixture mode landed them;
     - nearby_trails.geojson from export_nearby_trails.main() (_published_network(), which the POI exporters read too);
-    - trails.geojson from export_trails.main() (_export_trails_run()), cut to six decimals as _trails_old() cuts it,
+    - trails.geojson from export_trails.main() (_export_trails_run()), cut to six decimals (_cut_trails()),
       because the dbt side measures the trail_lines mart's geometry, which is the cut file's (decision 8). Measured
       2026-10-02 on 1,546 real places: the cut moves one lot's trailMiles by a tenth, 17.8 to 17.9, and nothing else;
     - the trailhead, parking and resupply poi_<type>.geojson files from export_poi.main(), as _poi_by_type_old() runs it;
@@ -483,23 +483,16 @@ def _places_old() -> dict:
     import io
     import tempfile
 
-    from shapely.geometry import shape
-
     import export_places
     import export_poi
-    from export_nearby_trails import _rounded_geometry
     from lib.source_registry import load_registry
 
     network = _published_network()
     export_poi.NETWORK_LINES_PATH = network
     with contextlib.redirect_stdout(io.StringIO()):
         export_poi.main()
-    trails = json.loads((_export_trails_run() / "trails.geojson").read_text(encoding="utf-8"))
-    for feature in trails["features"]:
-        feature["geometry"] = _rounded_geometry(shape(feature["geometry"]))
+    trails_path = _cut_trails()
     with tempfile.TemporaryDirectory() as out:
-        trails_path = Path(out) / "trails.geojson"
-        trails_path.write_text(json.dumps(trails), encoding="utf-8")
         nearby_poi = Path(out) / "nearby_poi.geojson"
         nearby_poi.write_text(json.dumps(_nearby_poi_old()), encoding="utf-8")
         output, _ = export_places.build_output(
@@ -575,6 +568,26 @@ def _export_trails_run() -> Path:
     return out
 
 
+@functools.cache
+def _cut_trails() -> Path:
+    """_export_trails_run()'s trails.geojson with every coordinate cut to six decimals, as decision 8 cuts the dbt
+    file's, by export_nearby_trails._rounded_geometry, the never-degenerate rule included, written once for this
+    process to a folder of its own. The trails family's old side is this file, and the places and challenges old sides
+    read it as their trails.geojson, so all three measure the line the dbt side measures."""
+    import tempfile
+
+    from shapely.geometry import shape
+
+    from export_nearby_trails import _rounded_geometry
+
+    document = json.loads((_export_trails_run() / "trails.geojson").read_text(encoding="utf-8"))
+    for feature in document["features"]:
+        feature["geometry"] = _rounded_geometry(shape(feature["geometry"]))
+    path = Path(tempfile.mkdtemp(prefix="parity_cut_trails_")) / "trails.geojson"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    return path
+
+
 def _trails_records(document: dict, path: Path | None) -> dict:
     """trails.geojson's features as flat records keyed by their `id` property, each with its geometry and the
     feature's own members, so a feature-level `id` or a missing `type` would show."""
@@ -593,17 +606,9 @@ def _trails_records(document: dict, path: Path | None) -> dict:
 
 
 def _trails_old() -> dict:
-    """export_trails.py's trails.geojson with every coordinate cut to six decimals, as decision 8 cuts the dbt
-    file's, by export_nearby_trails._rounded_geometry, the never-degenerate rule included. That is the one
+    """export_trails.py's trails.geojson with every coordinate cut to six decimals (_cut_trails()). That is the one
     deliberate difference, applied to the old side, so every difference left is a defect."""
-    from shapely.geometry import shape
-
-    from export_nearby_trails import _rounded_geometry
-
-    document = json.loads((_export_trails_run() / "trails.geojson").read_text(encoding="utf-8"))
-    for feature in document["features"]:
-        feature["geometry"] = _rounded_geometry(shape(feature["geometry"]))
-    return _trails_records(document, None)
+    return _trails_records(json.loads(_cut_trails().read_text(encoding="utf-8")), None)
 
 
 def _trail_miles_records(document: dict, path: Path) -> dict:
@@ -1218,8 +1223,8 @@ FAMILIES.update(
 # old side reads what export_challenges.main() reads: the club folders and
 # publishers.json in git, sources.json, the poi_<type>.geojson files
 # export_poi.main() writes from the same raw layers, and trails.geojson's
-# centerline from export_trails.main(), cut to decision 8's six decimals as
-# the trails family cuts its old side, so both sides measure one line.
+# centerline from export_trails.main(), cut to decision 8's six decimals by
+# _cut_trails(), the trails family's old side, so both sides measure one line.
 
 #: Why a challenge can be in today's file and not in the dbt writer's.
 #: tests/test_dbt_challenges_parity.py holds the reason to a warehouse where
@@ -1247,24 +1252,14 @@ def _challenges_old() -> dict:
     buffer, so the step prints the comparison and nothing else."""
     import contextlib
     import io
-    import tempfile
-
-    from shapely.geometry import shape
 
     import export_challenges
     import export_poi
-    from export_nearby_trails import _rounded_geometry
 
     with contextlib.redirect_stdout(io.StringIO()):
         export_poi.NETWORK_LINES_PATH = _published_network()
         export_poi.main()
-    trails = json.loads((_export_trails_run() / "trails.geojson").read_text(encoding="utf-8"))
-    for feature in trails["features"]:
-        feature["geometry"] = _rounded_geometry(shape(feature["geometry"]))
-    with tempfile.TemporaryDirectory() as scratch:
-        path = Path(scratch) / "trails.geojson"
-        path.write_text(json.dumps(trails), encoding="utf-8")
-        centerline = export_challenges.load_centerline(path)
+    centerline = export_challenges.load_centerline(_cut_trails())
     pois = export_challenges.load_published_pois(export_poi.OUT_DIR)
     publishers = export_challenges.load_publishers()
     organizations = export_challenges.load_organizations()

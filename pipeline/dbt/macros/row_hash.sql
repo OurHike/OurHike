@@ -5,11 +5,12 @@
     raw copies with it, and every row-history snapshot stores it as
     `_row_hash` (macros/row_history.sql).
 
-    Example, in a snapshot of base_atc__shelters:
+    Example, in the row-history snapshot of the closures mart:
 
-        {{ row_hash(ref('base_atc__shelters'), row_hash_row_ids() + row_hash_load_columns() + ['poi_key']) }}
+        {{ row_hash(ref('int_closures__final'), row_hash_load_columns()) }}
 
-    renders md5(cast(row("globalid", "shelter_name", ..., "geom") as varchar)).
+    renders md5(cast(row("closure_id", "club", ..., "geom_geojson") as varchar)),
+    every contracted column but `_loaded_at`.
 
     WHY row() CAST TO TEXT. DuckDB writes a struct as text with every string
     quoted where it would be ambiguous and NULL unquoted, so ('a, b', c) and
@@ -61,10 +62,10 @@
     load id and `_loaded_at`, the name several staging models give
     `_loaded_at` (`loaded_at`), and `source_row`, a row's place in the raw
     table (DuckDB's rowid), which moves for every later row when one row
-    upstream is added or removed. A row-history snapshot leaves these out
-    as well as the row ids, or every row would read as changed on every
-    load. duplicates_are_exact keeps them: two copies inside one load share
-    them. -#}
+    upstream is added or removed. A row-history snapshot leaves these out,
+    or every row would read as changed on every load: every mart carries
+    `_loaded_at`. duplicates_are_exact keeps them: two copies inside one load
+    share them. -#}
 {% macro row_hash_load_columns() -%}
     {{ return(['_dlt_load_id', '_loaded_at', 'loaded_at', 'source_row']) }}
 {%- endmacro %}

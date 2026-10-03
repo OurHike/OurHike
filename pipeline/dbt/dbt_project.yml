@@ -10,6 +10,7 @@ model-paths: ["models"]
 seed-paths: ["seeds"]
 test-paths: ["tests"]
 macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
 
 target-path: target
 clean-targets: [target, dbt_packages]
@@ -38,6 +39,24 @@ models:
       # would otherwise write its file before the tests upstream of it fail.
       +materialized: phone_file
       +schema: publish
+
+# The row-history snapshots, one per mart (macros/row_history.sql):
+# decision 57, which amends decision 52, puts them in the intermediate layer,
+# so they build into the `intermediate` schema as int_<mart>__history. Each
+# holds the mart's whole row and `_row_hash`, so `check` on that one column
+# opens a new version exactly when the hash moves, and `invalidate` sets
+# dbt_valid_to on a key that leaves the mart, keeping its last content.
+# Measured on dbt 2.0.6, 2026-10-03, in a scratch project: these settings
+# here apply to every snapshot under snapshots/, a list unique_key works,
+# and the legacy invalidate_hard_deletes is refused beside hard_deletes
+# ("You cannot set both"). build_marts.py restores these tables before dbt
+# runs and saves them after the build (pipeline/row_history.py).
+snapshots:
+  ourhike:
+    +schema: intermediate
+    +strategy: check
+    +check_cols: ["_row_hash"]
+    +hard_deletes: invalidate
 
 seeds:
   ourhike:

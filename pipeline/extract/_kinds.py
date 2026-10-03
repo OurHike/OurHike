@@ -257,6 +257,25 @@ def _file_sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def object_id_field(metadata: dict) -> str:
+    """A layer's object id field: its metadata's `objectIdField`, else the field typed esriFieldTypeOID, else OBJECTID.
+
+    Not every server names it in `objectIdField`: cicgis.org's
+    `Chesapeake/CAJO/MapServer/0` leaves that key out, and its id field is
+    `FID`, typed esriFieldTypeOID (measured 2026-10-03), so a bare "OBJECTID"
+    fallback asked for statistics on a field the layer does not have. That
+    particular layer refuses statistics on FID too ("Unable to complete
+    operation", supportsStatistics false), so its check still answers
+    UNKNOWN; a layer that does support them gets its fingerprint.
+    """
+    if metadata.get("objectIdField"):
+        return metadata["objectIdField"]
+    for field in metadata.get("fields") or []:
+        if field.get("type") == "esriFieldTypeOID" and field.get("name"):
+            return field["name"]
+    return "OBJECTID"
+
+
 @dataclass(frozen=True)
 class ArcgisLayer(Resource):
     """An ArcGIS FeatureServer or MapServer layer, read whole through lib/arcgis.py's own loop.
@@ -369,7 +388,7 @@ class ArcgisLayer(Resource):
         date_field = (self.entry.get("freshness") or {}).get("field")
         if not date_field:
             return Freshness.UNKNOWN, None
-        oid = self.metadata().get("objectIdField") or "OBJECTID"
+        oid = object_id_field(self.metadata())
         statistics = [
             {"statisticType": "count", "onStatisticField": oid, "outStatisticFieldName": "n"},
             {"statisticType": "max", "onStatisticField": oid, "outStatisticFieldName": "max_oid"},

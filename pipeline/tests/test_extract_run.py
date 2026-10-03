@@ -796,6 +796,40 @@ def test_an_onprem_fingerprint_sees_a_delete_that_the_edit_date_alone_would_miss
     assert resource.change_check(marker)[0] is Freshness.STALE
 
 
+def test_an_onprem_fingerprint_asks_for_the_layers_own_id_field_when_its_metadata_does_not_name_one(registry, requests_mock):
+    """CAJO's shape (measured 2026-10-03): no objectIdField key, and its id field is FID, typed esriFieldTypeOID."""
+    fields = [{"name": "FID", "type": "esriFieldTypeOID"}, {"name": "UPDATED", "type": "esriFieldTypeDate"}]
+    requests_mock.get(ONPREM_URL, json={"fields": fields})
+
+    def statistics(request, context):
+        # Read off the URL itself: requests_mock's `qs` lowercases values, and the JSON's keys with them.
+        outstatistics = json.loads(parse_qs(urlsplit(request.url).query)["outStatistics"][0])
+        if {stat["onStatisticField"] for stat in outstatistics} != {"FID", "UPDATED"}:
+            return {"error": {"code": 400, "message": "Unable to complete operation."}}
+        return {"features": [{"attributes": {"n": 843, "max_oid": 842, "max_date": 1790000000000}}]}
+
+    requests_mock.get(ONPREM_URL + "/query", json=statistics)
+    resource = ArcgisLayer(key="onprem_dated", club="testclub", type="trail_lines")
+
+    verdict, marker = resource.change_check(None)
+
+    assert verdict is Freshness.STALE and marker == {"n": "843", "max_oid": "842", "max_date": "1790000000000"}
+    assert resource.change_check(marker) == (Freshness.FRESH, marker)
+
+
+@pytest.mark.parametrize(
+    ("metadata", "expected"),
+    [
+        ({"objectIdField": "OBJECTID_1", "fields": [{"name": "FID", "type": "esriFieldTypeOID"}]}, "OBJECTID_1"),
+        ({"fields": [{"name": "NAME", "type": "esriFieldTypeString"}, {"name": "FID", "type": "esriFieldTypeOID"}]}, "FID"),
+        ({"fields": [{"name": "NAME", "type": "esriFieldTypeString"}]}, "OBJECTID"),
+        ({}, "OBJECTID"),
+    ],
+)
+def test_the_object_id_field_is_the_metadatas_then_the_oid_typed_field_then_objectid(metadata, expected):
+    assert _kinds.object_id_field(metadata) == expected
+
+
 def test_a_change_check_that_errors_is_unknown_and_fetches(registry, requests_mock):
     requests_mock.get(LINES_URL, status_code=503)
     assert lines().change_check({"etag": "v1"}) == (Freshness.UNKNOWN, None)

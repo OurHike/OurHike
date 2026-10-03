@@ -2878,9 +2878,10 @@
       "licence_basis": "stated_by_org",
       "attribution": "US Army Corps of Engineers",
       "person_fields": [
-        "ContactInfo"
+        "ContactInfo",
+        "ContactOffice"
       ],
-      "person_fields_comment": "Read off the layer's live field list in the decision 53 phase A inventory (2026-10-03): each names or reaches a person (an editor account, an e-mail address, a phone number, a named team member), so the extract leaves it out of the fields it asks for and it never reaches the raw store (pipeline/ELT.md, 'Who may publish', rule 8).",
+      "person_fields_comment": "Read off the layer's live field list in the decision 53 phase A inventory (2026-10-03): each names or reaches a person (an editor account, an e-mail address, a phone number, a named team member), so the extract leaves it out of the fields it asks for and it never reaches the raw store (pipeline/ELT.md, 'Who may publish', rule 8). ContactOffice is listed beside ContactInfo: the inventory read it as an office rather than a person, but its values were not read, and the person-shaped backstop leaves it out whatever this row says.",
       "id_field": "GlobalID",
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 3, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
@@ -2924,6 +2925,10 @@
       "licence": "PUBLIC DOMAIN on the 17 U.S.C. 105 reading usfs_trails' row records, Reasoned rather than decided: WFIGS is an interagency federal product, and its item's licenseInfo is a liability disclaimer ('shall not be held liable') with no use restriction (coverage audit 2026-10-01, inventory batch 4).",
       "licence_basis": "stated_by_org",
       "attribution": "National Interagency Fire Center",
+      "person_fields": [
+        "attr_CreatedBySystem"
+      ],
+      "person_fields_comment": "attr_CreatedBySystem names what created each record, and its values were not read in the phase A inventory (2026-10-03); the person-shaped backstop leaves it out, so the row says so rather than leave it to a printed warning each run. None of the layer's other 149 fields names a person.",
       "id_field": "GlobalID",
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 4, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",

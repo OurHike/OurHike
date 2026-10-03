@@ -3339,7 +3339,6 @@ NOTICE_LAYERS = {
             "Restriction": "No Hunting or Trapping",
             "AreaID": "FX-1",
             "AreaName": "Fixture Recreation Area",
-            "ContactOffice": "Fixture Project Office",
             "GlobalID": "{fixture-usace-garrison-hunting-restrictions-1}",
         },
     ),

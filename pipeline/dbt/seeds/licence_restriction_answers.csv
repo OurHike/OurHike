@@ -1,0 +1,22 @@
+restriction,licence_basis,answered_by,named_by,why
+commercial,public_gis,decision 36,"\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*36\b","Profit, sale or commercial use barred: publish with the publisher's attribution, because OurHike is non-commercial in these terms' sense (the maintainer, 2026-10-01)"
+commercial,maintainer_authorisation,decision 36,"\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*36\b","As above, on the maintainer's authorisation"
+commercial,stated_by_org,decision 36,"\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*36\b","As above, on the organization's own terms"
+commercial,maintainer_authorisation,decision 55,"\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*55\b","A club's notices whose terms restrict copying publish as facts and a link, copying no wording (poll, 2026-10-03)"
+no_reuse,public_gis,decision 37,"\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*37\b","""Internal use"", ""not for distribution"" or ""all rights reserved"" on an anonymous public GIS endpoint: publish under the GIS presumption, against the items' own words (the maintainer, 2026-10-01)"
+no_reuse,maintainer_authorisation,decision 37,"\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*37\b","As above, where the row ships on the maintainer's authorisation and its licence names decision 37 (Wisconsin DNR's park closures view)"
+no_reuse,maintainer_authorisation,decision 55,"\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*55\b","A club's notices whose terms restrict copying publish as facts and a link, copying no wording"
+no_reuse,maintainer_clearinghouse,decisions 20 and 22,"\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*(20|22)\b","A DEC or OPRHP dataset the NYS GIS Clearinghouse lists publishes, its own ""Secondary Distribution of the data is not allowed"" or ""Do not redistribute"" quoted beside it (the maintainer, 2026-10-01)"
+no_reuse,stated_by_org,njdep_licence,\bnjdep_licence\b,"The NJDEP Data Distribution Agreement read in full: it regulates reproduction rather than forbidding it, and its conditions travel with the layer (sources.json's njdep_licence, under decision 38)"
+permission,maintainer_authorisation,decision 55,"\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*55\b","Terms that ask permission to copy, not to read: a notice publishes as facts and a link"
+purpose_limited,public_gis,decision 37,"\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*37\b","An internal-use limit on an anonymous public GIS endpoint (decision 37's ""internal use"")"
+purpose_limited,maintainer_authorisation,decision 37,"\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*37\b","As above, on the maintainer's authorisation"
+purpose_limited,maintainer_authorisation,decision 55,"\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*55\b","A notice's purpose-limited terms (WTA's ""used solely for internal informational purposes""): facts and a link"
+condition,any,decision 38,"\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*38\b","Conditions rather than refusals: publish, honouring each, the condition travelling with its layer in the sources mart (the maintainer, 2026-10-01)"
+condition,stated_by_org,njdep_licence,\bnjdep_licence\b,"The NJDEP Data Distribution Agreement's three conditions, which njdep_licence records and decision 38 carries with each layer"
+condition,maintainer_authorisation,decision 55,"\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*55\b","A notice publishes as facts and a link, so the data's own conditions on reproducing it are not reached"
+commercial,stated_by_org,17 U.S.C. 105,\b17 U\.S\.C\. 105\b,"A federal work is public domain by statute: words on it bind nothing (sources.json's usfs_licence, the maintainer's adoption for usfs_trails, 2026-09-02)"
+no_reuse,stated_by_org,17 U.S.C. 105,\b17 U\.S\.C\. 105\b,As above
+permission,stated_by_org,17 U.S.C. 105,\b17 U\.S\.C\. 105\b,As above
+purpose_limited,stated_by_org,17 U.S.C. 105,\b17 U\.S\.C\. 105\b,"As above: NPS's ""for administrative purposes only"" on a public-domain layer"
+condition,stated_by_org,17 U.S.C. 105,\b17 U\.S\.C\. 105\b,"As above: a condition on a public-domain work is honoured as courtesy, never a bar"

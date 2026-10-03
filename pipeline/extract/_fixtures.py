@@ -394,6 +394,12 @@ class FixtureAdapter(requests.adapters.BaseAdapter):
         parts = urlsplit(request.url)
         base = f"{parts.scheme}://{parts.netloc}{parts.path}"
         query = {name: values[0] for name, values in parse_qs(parts.query, keep_blank_values=True).items()}
+        if request.method == "POST" and request.body:
+            # lib/arcgis.py's query_page() sends a page query as a POST form once its GET URL would pass
+            # GET_URL_LIMIT (a layer with 120 fields asks for each by name), and a server reads the form as
+            # it reads a query string; without this, every page of such a layer answers as offset 0.
+            body = request.body.decode() if isinstance(request.body, bytes) else request.body
+            query.update({name: values[0] for name, values in parse_qs(body, keep_blank_values=True).items()})
         if self.nws is not None and base == NWS_ALERTS_URL:
             return _response(request, self.nws, headers={"Content-Type": "application/geo+json"})
         for answer in self.routed:

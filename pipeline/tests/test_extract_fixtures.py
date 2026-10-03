@@ -355,6 +355,35 @@ def test_a_return_z_layer_is_answered_as_esri_json_with_its_z_and_lands_with_it(
     assert without == [line, point], "the default path is answered exactly as before"
 
 
+def test_a_page_query_sent_as_a_post_form_is_paged_by_its_form():
+    """A layer that names 150 fields pages past GET_URL_LIMIT, so query_page() POSTs; fixture mode reads the form.
+
+    Found when PA DCNR's state park buildings (120-odd fields, decision 54's points of interest) failed
+    fixture mode with "it ignores resultOffset": every POSTed page was answered as offset 0.
+    """
+    from lib.arcgis import GET_URL_LIMIT, iter_layer_pages
+
+    url = "https://services9.arcgis.com/fixture/arcgis/rest/services/Wide/FeatureServer/0"
+    fields = [f"INSURED_REPLACEMENT_VALUE_{n:03d}" for n in range(150)]
+    features = [
+        {
+            "type": "Feature",
+            "properties": {"OBJECTID": n, **dict.fromkeys(fields)},
+            "geometry": {"type": "Point", "coordinates": [-77.5, 40.5]},
+        }
+        for n in (1, 2, 3)
+    ]
+    session = requests.Session()
+    session.mount("https://", FixtureAdapter({url: features}, {}, {}))
+    out_fields = ",".join(["OBJECTID", *fields])
+    get_url = requests.Request("GET", url + "/query", params={"outFields": out_fields}).prepare().url
+    assert len(get_url) > GET_URL_LIMIT, "the case needs a query that goes as a POST"
+
+    pages = list(iter_layer_pages(url, session=session, out_fields=out_fields, page_size=1))
+
+    assert [feature["properties"]["OBJECTID"] for page in pages for feature in page] == [1, 2, 3]
+
+
 @pytest.mark.parametrize(
     ("values", "expected"),
     [

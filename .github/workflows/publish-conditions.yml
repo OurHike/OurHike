@@ -987,7 +987,11 @@ jobs:
       # store completes over about 8 hours. OurHike's own rows are the
       # exception and stop the leg, as export_conditions.py stops today's
       # bake. A refusal exits 3: this step records it, and the last step
-      # fails the run after everything that loaded is published.
+      # fails the run after everything that loaded is published. A refused
+      # row whose sources.json says reaches_hikers false exits 0 instead
+      # (extract/_run.py's exit_status()). A leg takes on at most 10 tables
+      # it has never loaded per run (NEW_TABLES_PER_LEG_RUN), because run
+      # 506 met 70 at once and this step's cap stopped its load.
       #
       # 150 s of reading inside a 4-minute step (the cap "Fetch ATC's trail
       # updates" has; its comment says why) leaves about 90 s for dlt's

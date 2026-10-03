@@ -20,8 +20,10 @@
 -- - `maintainer_clearinghouse` (decisions 20 and 22) covers NYS DEC and
 --   OPRHP alone, so another steward's row with that basis is refused.
 -- - `public_gis` (decision 21a) needs a GIS endpoint: an ArcGIS or Socrata
---   layer, or a source with no `kind`, which the fetcher reads as an ArcGIS
---   layer. A photo, audio or page source is refused (rule 6).
+--   layer (`club_arcgis_layer` is a club's ArcGIS layer that only the
+--   extract reads, lib/source_registry.py), or a source with no `kind`,
+--   which the fetcher reads as an ArcGIS layer. A photo, audio or page
+--   source is refused (rule 6).
 --
 -- ONE ROW IS NOT IN THE REGISTRY. The unregistered_publishing_sources seed
 -- lists the sources an exporter publishes today with no sources.json row,
@@ -84,7 +86,11 @@ decided as (
             when
                 bases.applies_to = 'gis'
                 and coalesce(registered.kind, 'external_arcgis_layer')
-                not in ('external_arcgis_layer', 'socrata_geojson_layer')
+                not in (
+                    'external_arcgis_layer',
+                    'club_arcgis_layer',
+                    'socrata_geojson_layer'
+                )
                 then 'public_gis_needs_a_gis_endpoint'
             else 'registered_and_publishable'
         end as publication_rule
